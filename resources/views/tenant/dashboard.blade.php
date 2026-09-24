@@ -17,15 +17,29 @@
                 </p>
             </div>
 
-            {{-- Branch filter --}}
-            <form method="GET" action="{{ url('/dashboard') }}" class="d-flex gap-2 align-items-center">
-                <select name="branch_id" class="form-select form-select-sm" style="min-width:160px" onchange="this.form.submit()">
-                    <option value="">All Branches</option>
-                    @foreach($branches as $b)
-                        <option value="{{ $b->id }}" {{ $selectedBranch == $b->id ? 'selected' : '' }}>{{ $b->name }}</option>
-                    @endforeach
-                </select>
-            </form>
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                {{-- SALES-ANALYTICS-1 — link SIRF us ko jis ke paas us route ki ijazat ho. Abhi wo
+                     sirf Owner hai (deploy.sh naye route ki permission sirf Owner ko deta hai, aur
+                     koi additive grant nahi chalaya gaya). @can route ke NAAM par hai, kisi alag
+                     jhande par nahi — is liye jis din owner kisi aur role ko de, button khud ba khud
+                     us ke saamne aa jayega. --}}
+                @can('tenant.reports.analytics')
+                    {{-- `url()`, `route()` nahi — tenant routes {subdomain} group me hain. --}}
+                    <a href="{{ url('/reports/analytics') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="ti ti-chart-line me-1"></i>Analytics
+                    </a>
+                @endcan
+
+                {{-- Branch filter --}}
+                <form method="GET" action="{{ url('/dashboard') }}" class="d-flex gap-2 align-items-center">
+                    <select name="branch_id" class="form-select form-select-sm" style="min-width:160px" onchange="this.form.submit()">
+                        <option value="">All Branches</option>
+                        @foreach($branches as $b)
+                            <option value="{{ $b->id }}" {{ $selectedBranch == $b->id ? 'selected' : '' }}>{{ $b->name }}</option>
+                        @endforeach
+                    </select>
+                </form>
+            </div>
         </div>
 
         {{-- Alerts --}}
@@ -261,11 +275,14 @@
             <div class="col-lg-7">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-header bg-white border-0 pb-0">
-                        <h6 class="mb-0">Last 7 Days — Net Sales</h6>
+                        {{-- DASHBOARD-8DAY-1: unwaan bhi USI constant se banta hai jis se window
+                             banti hai. Warna yahan likha "7" aur neeche ginn kar 8 qatarein —
+                             wohi purana rog, ke card ka lafz apne hi data se ikhtilaf kare. --}}
+                        <h6 class="mb-0">Last {{ $windowDays }} Days — Net Sales</h6>
                     </div>
                     <div class="card-body p-0">
                         <table class="table table-sm mb-0">
-                            <caption class="visually-hidden">Sales summary for last 7 days</caption>
+                            <caption class="visually-hidden">Sales summary for last {{ $windowDays }} days</caption>
                             <thead class="table-light">
                                 <tr>
                                     <th scope="col">Date</th>
@@ -278,8 +295,8 @@
                                      now(): the UTC calendar date and the Karachi business date are
                                      different things between midnight there and midnight UTC, and this
                                      table used to ask for keys the query had never produced. --}}
-                                @foreach($last7DayKeys as $day)
-                                    @php $row = $last7Days[$day] ?? null; @endphp
+                                @foreach($salesWindowKeys as $day)
+                                    @php $row = $salesWindowRows[$day] ?? null; @endphp
                                     <tr @if($day === $todayBusinessDate) class="table-primary" @endif>
                                         <td>{{ \Carbon\Carbon::parse($day)->format('D, d M') }}</td>
                                         <td class="text-end">{{ $row ? $fig($row->orders, 0) : "—" }}</td>

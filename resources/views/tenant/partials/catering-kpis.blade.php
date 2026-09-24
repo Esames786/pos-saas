@@ -8,47 +8,57 @@
     the same SalesReportService the Report Centre uses; catering does not get a
     second, competing version of that number.)
 --}}
-@php $k = $cateringKpis; @endphp
+@php
+    $k = $cateringKpis;
+    // HIDE-AMOUNTS-CATERING-1 — paisa wale figure usi EK authority se guzarte hain jo dashboard
+    // tiles, Close Shift aur Close Branch use karte hain. Ginti wale card (events, drafts,
+    // production pending) paisa NAHI hain, wo khule rehte hain.
+    //
+    // ⚠️ Fail CLOSED: variable na pahunche to mask lagta hai. Chhupa hua figure ghalti se dikh
+    // jane se behtar hai ke dikhne wala figure ghalti se chhup jaye.
+    $money = fn ($value, $decimals = 2) => app(\App\Support\AmountVisibility::class)
+        ->format($maySeeAmounts ?? false, $value, $decimals);
+@endphp
 <div class="row g-3 mb-3">
     <div class="col-6 col-lg">
         <div class="card h-100">
             <div class="card-body py-3">
-                <div class="text-muted fs-12">Today's Events</div>
-                <div class="fs-3 fw-bold">{{ number_format($k['today']) }}</div>
+                <div class="fs-13 fw-semibold text-body-secondary">Today's Events</div>
+                <div class="fs-2 fw-bold lh-1 mt-1">{{ number_format($k['today']) }}</div>
             </div>
         </div>
     </div>
     <div class="col-6 col-lg">
         <div class="card h-100">
             <div class="card-body py-3">
-                <div class="text-muted fs-12">Next 7 Days</div>
-                <div class="fs-3 fw-bold">{{ number_format($k['next7']) }}</div>
+                <div class="fs-13 fw-semibold text-body-secondary">Next 7 Days</div>
+                <div class="fs-2 fw-bold lh-1 mt-1">{{ number_format($k['next7']) }}</div>
             </div>
         </div>
     </div>
     <div class="col-6 col-lg">
         <div class="card h-100">
             <div class="card-body py-3">
-                <div class="text-muted fs-12">Awaiting Finalization</div>
-                <div class="fs-3 fw-bold">{{ number_format($k['drafts']) }}</div>
-                <div class="fs-12 text-muted">draft quotations</div>
+                <div class="fs-13 fw-semibold text-body-secondary">Awaiting Finalization</div>
+                <div class="fs-2 fw-bold lh-1 mt-1">{{ number_format($k['drafts']) }}</div>
+                <div class="fs-12 text-body-secondary">draft quotations</div>
             </div>
         </div>
     </div>
     <div class="col-6 col-lg">
         <div class="card h-100">
             <div class="card-body py-3">
-                <div class="text-muted fs-12">Production Pending</div>
-                <div class="fs-3 fw-bold">{{ number_format($k['production_pending']) }}</div>
+                <div class="fs-13 fw-semibold text-body-secondary">Production Pending</div>
+                <div class="fs-2 fw-bold lh-1 mt-1">{{ number_format($k['production_pending']) }}</div>
             </div>
         </div>
     </div>
     <div class="col-12 col-lg">
         <div class="card h-100">
             <div class="card-body py-3">
-                <div class="text-muted fs-12">Outstanding Customer Balance</div>
-                <div class="fs-3 fw-bold">{{ number_format($k['outstanding_balance'], 2) }}</div>
-                <div class="fs-12 text-muted">open bookings, net of refunds</div>
+                <div class="fs-13 fw-semibold text-body-secondary">Outstanding Customer Balance</div>
+                <div class="fs-3 fw-bold lh-1 mt-1">{{ $money($k['outstanding_balance']) }}</div>
+                <div class="fs-12 text-body-secondary">open bookings, net of refunds</div>
             </div>
         </div>
     </div>
@@ -63,7 +73,7 @@
         <div class="table-responsive">
             <table class="table table-sm mb-0 align-middle">
                 <thead>
-                    <tr class="text-muted fs-12">
+                    <tr class="fs-13 fw-semibold text-body-secondary">
                         <th class="ps-3">Booking</th>
                         <th>Date</th>
                         <th>Time</th>
@@ -91,7 +101,7 @@
                                 {{ $ev['status_label'] }}
                             </span>
                         </td>
-                        <td class="fs-12">{{ $ev['next_action'] }}</td>
+                        <td class="fw-semibold">{{ $ev['next_action'] }}</td>
                         <td class="text-end pe-3">
                             <a class="btn btn-sm btn-outline-primary" href="{{ url($ev['url']) }}">Open</a>
                         </td>

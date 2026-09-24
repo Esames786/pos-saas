@@ -123,6 +123,12 @@ class CateringCustomerCreditMySqlTest extends MySqlTenantTestCase
             ['product_id' => $this->productId, 'item_name' => 'Catering Package', 'quantity' => 1, 'rate' => $total],
         ]);
         $this->estimates->markSent($revised->refresh());
+
+        // CATERING-REVISION-MONEY-1: the revision took the booking back to
+        // draft — its confirmation belonged to the superseded quotation — and
+        // finalising promoted it to quoted. The NEW figure has to be agreed
+        // before the booking can be billed on it.
+        $this->estimates->confirmEvent($event->refresh());
     }
 
     /** Kashif's booking, reproduced: the quotation drops below what was paid. */

@@ -121,6 +121,165 @@ class CateringCalendarEntitlementHttpMySqlTest extends MySqlTenantTestCase
             'a permission check here would be meaningless — every Owner holds every permission');
     }
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // HIDE-AMOUNTS-CATERING-1 — catering ke paisa wale figure bhi usi mask ke tabey
+    //
+    // Maalik: "jo number hide wala permission tha, ye bhi add kardo".
+    // `AmountVisibility` ka usool: DO switch, aur chhupne ke liye dono chalna zaroori hai —
+    // branch ka `hide_amounts_from_operators`, aur user ke paas `tenant.shifts.view-amounts`
+    // na hona.
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * "Upcoming value" — dono soorton me, asli partial render kar ke.
+     *
+     * ⚠️ Pehle maine ye guard AJAX endpoint (`/dashboard/catering-calendar`) par likha tha, ye
+     * samajh kar ke mahina badalne wala button raqam bina mask ke wapas laata hai. Harness ne
+     * jhoot nahi bola: wahan "Upcoming value" milta hi nahi, kyunki wo `@unless($fragment)` ke
+     * andar hai. Yani us raaste par koi leak tha hi nahi — aur guard ko wahan rakhna be-maani
+     * hota. Ab ye us jagah par hai jahan wo figure waqai banta hai: poora (non-fragment) partial.
+     */
+    public function test_upcoming_value_follows_the_mask(): void
+    {
+        $cal = $this->calendarWindow();
+
+        $hidden = view('tenant.partials.catering-calendar', [
+            'cateringCalendar' => $cal, 'fragment' => false, 'maySeeAmounts' => false,
+        ])->render();
+
+        $shown = view('tenant.partials.catering-calendar', [
+            'cateringCalendar' => $cal, 'fragment' => false, 'maySeeAmounts' => true,
+        ])->render();
+
+        $this->assertStringContainsString(\App\Support\AmountVisibility::MASK,
+            $this->around($hidden, 'Upcoming value'),
+            'chhupi hui soorat me "Upcoming value" par mask hona chahiye');
+
+        $this->assertStringNotContainsString(\App\Support\AmountVisibility::MASK,
+            $this->around($shown, 'Upcoming value'),
+            'jis ke paas permission hai usay raqam nazar aani chahiye');
+    }
+
+    /** Flag hi na pahunche to raqam LEAK na ho — calendar bhi fail closed. */
+    public function test_the_calendar_fails_closed_when_the_flag_is_missing(): void
+    {
+        $html = view('tenant.partials.catering-calendar', [
+            'cateringCalendar' => $this->calendarWindow(),
+            'fragment' => false,
+            // maySeeAmounts jaan-boojh kar NAHI bheja
+        ])->render();
+
+        $this->assertStringContainsString(\App\Support\AmountVisibility::MASK,
+            $this->around($html, 'Upcoming value'),
+            'flag ke baghair raqam nahi dikhni chahiye — partial fail CLOSED hona chahiye');
+    }
+
+    /**
+     * 🚨 LINKAGE — AJAX endpoint bhi flag bhejta rahe.
+     *
+     * Fragment me abhi koi raqam nahi jaati, magar partial ka `$money` helper wahan bhi maujood
+     * hai. Agar koi kal us fragment ke andar koi raqam le aaye aur controller flag na bhej raha
+     * ho, to partial fail-closed ho kar usay owner se bhi chhupa dega — ya us se bhi bura, koi
+     * `?? false` hata kar leak khol de. Is liye flag ka bhejna abhi se pinned hai.
+     */
+    public function test_the_ajax_endpoint_passes_the_visibility_flag(): void
+    {
+        $this->setPlanModules(['catering', 'printing']);
+
+        $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
+            ->get($this->uri)
+            ->assertStatus(200)
+            ->assertViewHas('maySeeAmounts');
+    }
+
+    /**
+     * Outstanding Customer Balance — dono soorton me asli partial render kar ke.
+     *
+     * Ye seedha partial par chalta hai kyunki wo tile poore dashboard par aata hai, aur dashboard
+     * ko is fixture me render karne ke liye poora POS ka data darkar hota — us se guard ka nishana
+     * dhundla ho jata.
+     */
+    public function test_outstanding_customer_balance_follows_the_same_mask(): void
+    {
+        $kpis = [
+            'today' => 1, 'next7' => 4, 'drafts' => 10,
+            'production_pending' => 11, 'outstanding_balance' => 3036145.70,
+        ];
+
+        $hidden = view('tenant.partials.catering-kpis', [
+            'cateringKpis' => $kpis, 'cateringNextSeven' => [], 'maySeeAmounts' => false,
+        ])->render();
+
+        $shown = view('tenant.partials.catering-kpis', [
+            'cateringKpis' => $kpis, 'cateringNextSeven' => [], 'maySeeAmounts' => true,
+        ])->render();
+
+        $this->assertStringNotContainsString('3,036,145.70', $hidden, 'raqam chhupni chahiye thi');
+        $this->assertStringContainsString(\App\Support\AmountVisibility::MASK, $hidden);
+        $this->assertStringContainsString('3,036,145.70', $shown, 'khuli soorat me raqam aani chahiye');
+
+        // Ginti dono soorton me nazar aani chahiye — kaam ka pata chalta rahe, raqam ka nahi.
+        foreach (['chhupi' => $hidden, 'khuli' => $shown] as $which => $html) {
+            $this->assertStringContainsString('Production Pending', $html,
+                "ginti wala card {$which} soorat me bhi rehna chahiye");
+        }
+    }
+
+    /** Variable hi na pahunche to raqam LEAK na ho — fail closed. */
+    public function test_the_kpi_tile_fails_closed_when_the_flag_is_missing(): void
+    {
+        $html = view('tenant.partials.catering-kpis', [
+            'cateringKpis' => [
+                'today' => 0, 'next7' => 0, 'drafts' => 0,
+                'production_pending' => 0, 'outstanding_balance' => 987654.32,
+            ],
+            'cateringNextSeven' => [],
+            // maySeeAmounts jaan-boojh kar NAHI bheja
+        ])->render();
+
+        $this->assertStringNotContainsString('987,654.32', $html,
+            'flag ke baghair raqam nahi dikhni chahiye — partial fail CLOSED hona chahiye');
+        $this->assertStringContainsString(\App\Support\AmountVisibility::MASK, $html);
+    }
+
+    // ── madadgar ──────────────────────────────────────────────────────────────
+
+    private function hideAmountsOnBranch(): void
+    {
+        DB::connection('tenant')->table('branches')->update(['hide_amounts_from_operators' => 1]);
+    }
+
+    private function grantToOwner(string $permission): void
+    {
+        $c = DB::connection('tenant');
+        $roleId = $c->table('roles')->where('name', 'Owner')->where('guard_name', 'tenant')->value('id');
+        $permId = $c->table('permissions')->where('name', $permission)->where('guard_name', 'tenant')->value('id')
+            ?: $c->table('permissions')->insertGetId([
+                'name' => $permission, 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        $c->table('role_has_permissions')->updateOrInsert(
+            ['permission_id' => $permId, 'role_id' => $roleId], []
+        );
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    private function calendarWindow(): array
+    {
+        return app(\App\Services\Catering\CateringCalendarService::class)->window(null, null);
+    }
+
+    /**
+     * Kisi lafz ke aas paas ka tukra — poore safhe par assert karna be-maani hota, kyunki mask
+     * ya raqam kisi doosre hisse se bhi mil sakti hai aur test jhoota hara reh jata.
+     */
+    private function around(string $html, string $needle, int $length = 220): string
+    {
+        $at = strpos($html, $needle);
+        $this->assertNotFalse($at, "safhe par [{$needle}] hona chahiye");
+
+        return substr($html, $at, $length);
+    }
+
     /**
      * Build the plan from the given module keys.
      *

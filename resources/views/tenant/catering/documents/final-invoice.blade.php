@@ -12,7 +12,13 @@
 <meta charset="utf-8">
 <title>{{ $invoice->invoice_no }} — Final Invoice</title>
 <style>
-    @page { size: A4 portrait; margin: 14mm; }
+    /* CATERING-A4-FIT-1 — wohi geometry jo quotation par lagai gayi.
+       Ye document usi booking se banta hai, is liye is me utni hi lines hoti
+       hain. 19 line wali booking ki invoice bilkul usi tarah doosre safhe par
+       phatt-ti — ye andaza nahi, dono ka items table aur uski spacing bilkul
+       aik jaisi hai. Aaj sirf is liye bach rahi thi ke maujooda tanha invoice
+       chhoti hai. Tafseeli wajah estimate-style me likhi hai. */
+    @page { size: A4 portrait; margin: 10mm; }
     * { box-sizing: border-box; }
     /* @page margin applies to PAPER only — on screen the sheet is drawn at real
        A4 size on a grey desk so the preview matches the printed output. Undone
@@ -21,11 +27,11 @@
     body {
         font-family: {{ $isUr ? "'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif" : "Arial, Helvetica, sans-serif" }};
         color: #111827; font-size: {{ $isUr ? '16px' : '13px' }}; line-height: 1.5;
-        width: 210mm; min-height: 297mm; margin: 12px auto; padding: 14mm;
+        width: 210mm; min-height: 297mm; margin: 12px auto; padding: 10mm;
         background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.18);
     }
     @media screen and (max-width: 230mm) {
-        body { width: 100%; min-height: 0; margin: 0; padding: 10mm; box-shadow: none; }
+        body { width: 100%; min-height: 0; margin: 0; padding: 8mm; box-shadow: none; }
     }
     @media print {
         html { background: #fff; }
@@ -33,31 +39,39 @@
     }
     /* Nastaliq descenders clip at the body's Latin leading. */
     .ur { font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif; direction: rtl; line-height: 2; font-size: {{ $isUr ? '1em' : '1.28em' }}; }
-    .doc-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #111827; padding-bottom: 12px; }
+    .doc-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #111827; padding-bottom: 9px; }
     .brand { font-size: 26px; font-weight: bold; }
     .brand-sub { color: #6b7280; font-size: {{ $isUr ? '16px' : '12px' }}; }
     .doc-title { text-align: {{ $isUr ? 'left' : 'right' }}; }
     .doc-title h2 { margin: 0; font-size: 20px; }
-    .meta-grid { display: flex; gap: 24px; margin: 14px 0; }
-    .meta-box { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 14px; }
+    .meta-grid { display: flex; gap: 20px; margin: 10px 0; }
+    .meta-box { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; }
     .meta-box h4 { margin: 0 0 6px; font-size: {{ $isUr ? '15px' : '11px' }}; text-transform: uppercase; color: #6b7280; letter-spacing: 1px; }
+    {{-- CATERING-DOC-META-1 — same fix as the quotation, stated again because
+         this document keeps its own stylesheet rather than including
+         estimate-style. Padding on the label, never flex `gap`: dompdf draws
+         this sheet too and implements no gap, so a gap-only fix would look
+         right on screen and still print "Addresssaima royal residency…". --}}
     .meta-row { display: flex; justify-content: space-between; padding: 2px 0; }
-    .meta-row .k { color: #6b7280; }
-    table.items { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .meta-row .k { color: #6b7280; flex: 0 0 auto; white-space: nowrap;
+                   padding-{{ $isUr ? 'left' : 'right' }}: 14px; }
+    .meta-row .v { min-width: 0; text-align: {{ $isUr ? 'left' : 'right' }}; word-wrap: break-word; }
+    .meta-box .cap, .meta-box .name { text-transform: uppercase; }
+    table.items { width: 100%; border-collapse: collapse; margin-top: 6px; }
     table.items th { background: #111827; color: #fff; padding: 8px; font-size: {{ $isUr ? '15px' : '12px' }}; text-align: {{ $isUr ? 'right' : 'left' }}; }
     table.items th.num, table.items td.num { text-align: {{ $isUr ? 'left' : 'right' }}; }
-    table.items td { padding: 7px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    table.items td { padding: 4px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; line-height: 1.35; }
     table.items tr:nth-child(even) td { background: #f9fafb; }
     .item-ur { color: #374151; font-size: 18px; }
     .totals { width: 46%; margin-{{ $isUr ? 'right' : 'left' }}: auto; margin-top: 10px; border-collapse: collapse; }
-    .totals td { padding: 5px 8px; }
+    .totals td { padding: 3px 8px; }
     .totals .k { color: #6b7280; }
     .totals .num { text-align: {{ $isUr ? 'left' : 'right' }}; }
     .totals .grand td { font-weight: bold; font-size: 15px; border-top: 2px solid #111827; }
     .totals .due td { font-weight: bold; font-size: 16px; border-top: 3px double #111827; }
     .paid-stamp { display: inline-block; border: 3px solid #15803d; color: #15803d; padding: 4px 18px; border-radius: 6px; font-size: 18px; font-weight: bold; transform: rotate(-4deg); }
-    .adv { margin-top: 14px; width: 46%; margin-{{ $isUr ? 'right' : 'left' }}: auto; font-size: 12px; color: #6b7280; }
-    .footer { margin-top: 26px; display: flex; justify-content: space-between; font-size: 12px; }
+    .adv { margin-top: 10px; width: 46%; margin-{{ $isUr ? 'right' : 'left' }}: auto; font-size: 12px; color: #6b7280; }
+    .footer { margin-top: 16px; display: flex; justify-content: space-between; font-size: 12px; }
     .sig { border-top: 1px solid #9ca3af; padding-top: 4px; width: 200px; text-align: center; color: #6b7280; }
     /* Sits in the grey gutter beside the sheet; it used to overlap the header. */
     .print-bar { position: fixed; top: 10px; {{ $isUr ? 'left' : 'right' }}: 10px; z-index: 10; }
@@ -88,7 +102,7 @@
 <div class="meta-grid">
     <div class="meta-box">
         <h4>{{ $t('Customer', 'کسٹمر') }}</h4>
-        <div style="font-weight:bold; font-size: 15px;">
+        <div class="name" style="font-weight:bold; font-size: 15px;">
             @if($isUr && !empty($s['customer_name_ur']))
                 <span class="ur">{{ $s['customer_name_ur'] }}</span>
             @else
@@ -98,15 +112,15 @@
                 @endif
             @endif
         </div>
-        @if(!empty($s['customer_phone']))<div class="meta-row"><span class="k">{{ $t('Phone', 'فون') }}</span><span dir="ltr">{{ $s['customer_phone'] }}</span></div>@endif
-        @if(!empty($s['customer_address']))<div class="meta-row"><span class="k">{{ $t('Address', 'پتہ') }}</span><span>{{ $s['customer_address'] }}</span></div>@endif
+        @if(!empty($s['customer_phone']))<div class="meta-row"><span class="k">{{ $t('Phone', 'فون') }}</span><span class="v" dir="ltr">{{ $s['customer_phone'] }}</span></div>@endif
+        @if(!empty($s['customer_address']))<div class="meta-row"><span class="k">{{ $t('Address', 'پتہ') }}</span><span class="v cap">{{ $s['customer_address'] }}</span></div>@endif
     </div>
     <div class="meta-box">
         <h4>{{ $t('Event', 'تقریب') }}</h4>
-        @if(!empty($s['event_type']))<div class="meta-row"><span class="k">{{ $t('Type', 'قسم') }}</span><span>{{ $s['event_type'] }}</span></div>@endif
+        @if(!empty($s['event_type']))<div class="meta-row"><span class="k">{{ $t('Type', 'قسم') }}</span><span class="v cap">{{ $s['event_type'] }}</span></div>@endif
         <div class="meta-row"><span class="k">{{ $t('Date', 'تاریخ') }}</span><span>{{ \Carbon\Carbon::parse($s['event_date'])->format('l, d F Y') }}</span></div>
         @if(!empty($s['service_time']))<div class="meta-row"><span class="k">{{ $t('Time', 'وقت') }}</span><span>{{ \Carbon\Carbon::parse($s['service_time'])->format('g:i A') }}</span></div>@endif
-        @if(!empty($s['venue']))<div class="meta-row"><span class="k">{{ $t('Venue', 'مقام') }}</span><span>{{ $s['venue'] }}</span></div>@endif
+        @if(!empty($s['venue']))<div class="meta-row"><span class="k">{{ $t('Venue', 'مقام') }}</span><span class="v cap">{{ $s['venue'] }}</span></div>@endif
         <div class="meta-row"><span class="k">{{ $t('Guests (PAX)', 'مہمان') }}</span><span><strong>{{ number_format($s['pax'] ?? 0) }}</strong></span></div>
     </div>
 </div>

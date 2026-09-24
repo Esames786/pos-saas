@@ -502,7 +502,7 @@ class CateringEventController extends Controller
             $request->merge(['customer_id' => null]);
         }
 
-        return $request->validate([
+        $data = $request->validate([
             'branch_id' => ['nullable', 'exists:branches,id'],
             'customer_id' => ['nullable', 'exists:customers,id'],
             'customer_name' => ['required', 'string', 'max:255'],
@@ -515,8 +515,31 @@ class CateringEventController extends Controller
             'event_date' => ['required', 'date'],
             'service_time' => ['nullable', 'date_format:H:i'],
             'venue' => ['nullable', 'string', 'max:255'],
-            'pax' => ['required', 'integer', 'min:0'],
+            // CATERING-PAX-OPTIONAL-1: an inquiry often arrives before the guest
+            // count does — "shaadi hai, rate bata dein" — and the booking was
+            // refused with "Please fill out this field" until a number was
+            // invented. A made-up PAX is worse than none: it prints on the
+            // quotation and the kitchen sheet as though somebody counted.
+            //
+            // Nothing computes FROM pax (no per-head rate, no division), so an
+            // absent one costs no arithmetic — checked before this was relaxed.
+            'pax' => ['nullable', 'integer', 'min:0'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
+
+        // The column is unsignedInteger NOT NULL with a default of 0. A DEFAULT
+        // only applies when the column is omitted, never when it is handed an
+        // explicit null — so the absence is turned into the zero here, once, on
+        // the way in, rather than left for each write path to trip over.
+        //
+        // Both spellings of "absent" are handled. A browser posts an empty box
+        // as '', and ConvertEmptyStringsToNull turns that into null for ordinary
+        // web requests — but that is middleware, not a law, and '' reaching the
+        // model is a database error rather than a validation message. `?? 0`
+        // alone let it straight through, which is how the guard for this caught
+        // it.
+        $data['pax'] = ($data['pax'] ?? '') === '' ? 0 : (int) $data['pax'];
+
+        return $data;
     }
 }

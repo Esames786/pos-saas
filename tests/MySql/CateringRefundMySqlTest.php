@@ -132,6 +132,12 @@ class CateringRefundMySqlTest extends MySqlTenantTestCase
         ]);
         $this->estimates->markSent($revised->refresh());
 
+        // CATERING-REVISION-MONEY-1: revising took the booking back to draft,
+        // because the confirmation belonged to the quotation that was just
+        // superseded. Finalising promoted it to quoted; somebody now has to
+        // agree to the NEW figure before it can be billed.
+        $this->estimates->confirmEvent($event->refresh());
+
         return $event->refresh();
     }
 

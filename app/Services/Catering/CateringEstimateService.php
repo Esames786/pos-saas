@@ -64,6 +64,7 @@ class CateringEstimateService
                 'created_by_user_id' => $userId,
             ]);
 
+            $this->enrolCustomer($event);
             $this->rememberCustomerUrduName($event);
 
             return $event;
@@ -77,6 +78,7 @@ class CateringEstimateService
         }
 
         $event->update($eventData);
+        $this->enrolCustomer($event);
         $this->rememberCustomerUrduName($event);
 
         return $event;
@@ -303,6 +305,35 @@ class CateringEstimateService
 
             $estimate->forceFill(['status' => CateringEstimate::STATUS_ACCEPTED, 'accepted_at' => now()])->save();
 
+            // CATERING-ACCEPT-CONFIRMS-1 — the booking follows the customer's
+            // yes.
+            //
+            // Acceptance used to move only this document, while the calendar
+            // and every other screen read the BOOKING — so a customer could
+            // agree and the calendar would still say "quoted" until somebody
+            // remembered to press Confirm Booking. Two status machines
+            // disagreeing where everyone could see it.
+            //
+            // Confirmation is NOT forced. confirmEvent() has its own guards —
+            // the costing must be complete — and they stay in charge. If it
+            // refuses, the acceptance still stands: recording that the customer
+            // said yes must never depend on the kitchen's arithmetic being
+            // finished. The booking simply waits at `quoted`, and the caller
+            // reads the event's own status to see which happened rather than
+            // being told a second time by this method.
+            $event = $estimate->event;
+            if ($event) {
+                try {
+                    $this->confirmEvent($event->refresh());
+                } catch (RuntimeException $e) {
+                    // Deliberately swallowed, and ONLY here: the acceptance is
+                    // the operator's action and it succeeded. Why the booking
+                    // could not follow is visible on the screen that shows the
+                    // costing, and pressing Confirm Booking will say it again
+                    // in full.
+                }
+            }
+
             return $estimate;
         });
     }
@@ -317,6 +348,17 @@ class CateringEstimateService
             // cannot be halfway through changing those numbers while readiness is
             // being judged on them.
             $this->locks->refreshEvent($event);
+
+            // Already confirmed is not an error. cancelEvent() has always
+            // returned quietly when the booking was already cancelled, and
+            // since CATERING-ACCEPT-CONFIRMS-1 a booking can arrive here
+            // already confirmed by the customer's acceptance — with the
+            // Confirm Booking button still on screen, and an operator who has
+            // always pressed it. Refusing would punish a habit the system
+            // itself just made redundant.
+            if ($event->status === CateringEvent::STATUS_CONFIRMED) {
+                return $event;
+            }
 
             if (! in_array($event->status, [CateringEvent::STATUS_QUOTED, CateringEvent::STATUS_DRAFT], true)) {
                 throw new RuntimeException("Event {$event->event_no} cannot be confirmed from status {$event->status}.");
@@ -425,6 +467,38 @@ class CateringEstimateService
                 'status' => CateringEstimate::STATUS_SUPERSEDED,
                 'superseded_at' => now(),
             ])->save();
+
+            // CATERING-REVISION-MONEY-1 — the booking follows the paper back.
+            //
+            // A confirmation is agreement to SPECIFIC NUMBERS, and those numbers
+            // have just been superseded. Leaving the booking on `confirmed`
+            // while its quotation is an unfinalised draft made the screen say
+            // the customer had agreed to figures that no longer existed — and
+            // it is a state confirmEvent() REFUSES to create, since it demands
+            // a non-draft estimate. The system would not knowingly build it,
+            // but it drifted into it.
+            //
+            // So the booking returns to `draft`, and the normal road carries it
+            // forward again: finalising the revision promotes it to `quoted`
+            // (markSent), and someone confirms the NEW numbers deliberately.
+            //
+            // MONEY IS NOT TOUCHED. Advances, refunds, invoices and journal
+            // entries are left exactly as posted; only what the booking is
+            // billed FOR changes, and position() re-reads that on its own.
+            //
+            // Only these two statuses move. A `released` booking keeps its
+            // status because its kitchen sheet has already gone out, and
+            // rewriting that to `draft` would deny a release that exists.
+            $event = $estimate->event;
+            if ($event && in_array($event->status, [
+                CateringEvent::STATUS_QUOTED,
+                CateringEvent::STATUS_CONFIRMED,
+            ], true)) {
+                $event->forceFill([
+                    'status' => CateringEvent::STATUS_DRAFT,
+                    'confirmed_at' => null,
+                ])->save();
+            }
 
             return $revision;
         });
@@ -635,6 +709,43 @@ class CateringEstimateService
      * translation row (optional, spec §4) so future documents reuse it. Base
      * customers table is never modified here.
      */
+    /**
+     * CATERING-CUSTOMER-ENROL-1 — a new client booked here lands in the book.
+     *
+     * Reported from the live trial: a walk-in was booked, the quotation went
+     * out, and the customer could not be found in Customers afterwards. Nothing
+     * had gone wrong in the sense of an error — the booking simply carries its
+     * own copy of the name and phone, and a typed name was never enrolled.
+     * KASHIF-EVENT-FORM-3 made that path WORK (a non-numeric id is dropped so
+     * the booking is not refused); it never made the person exist.
+     *
+     * The phone is the identity. A name alone cannot identify anybody, and
+     * guessing from one is how a book fills with near-duplicates — so with no
+     * phone this does nothing and the booking keeps its own copy, exactly as
+     * before.
+     *
+     * DELIBERATELY ONLY FILLS A BLANK. When the booking already names a
+     * customer, that link is left alone even if the phone now disagrees. A
+     * catering booking legitimately carries somebody else's contact number —
+     * the secretary, the son, the venue manager — and silently re-pointing the
+     * booking at whoever owns that number would invent a different wrong
+     * answer. A disagreement is the OPERATOR's to resolve, and the form says so
+     * on screen before it is saved.
+     */
+    private function enrolCustomer(CateringEvent $event): void
+    {
+        if ($event->customer_id || empty($event->customer_phone) || empty($event->customer_name)) {
+            return;
+        }
+
+        $customer = app(\App\Services\Tenant\CustomerDirectory::class)
+            ->findOrCreateByPhone((string) $event->customer_phone, (string) $event->customer_name);
+
+        if ($customer) {
+            $event->forceFill(['customer_id' => $customer->id])->save();
+        }
+    }
+
     private function rememberCustomerUrduName(CateringEvent $event): void
     {
         if (! $event->customer_id || empty($event->customer_name_ur)) {

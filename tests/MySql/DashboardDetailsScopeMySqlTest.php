@@ -12,7 +12,7 @@ use Spatie\Permission\PermissionRegistrar;
 use Tests\MySql\Support\TenantFixtures;
 
 /**
- * DASHBOARD-DETAILS-1 — "Top 5 Products Today" and "Last 7 Days — Net Sales" belong to the owner.
+ * DASHBOARD-DETAILS-1 — "Top 5 Products Today" and "Last N Days — Net Sales" belong to the owner.
  *
  * Both cards read the WHOLE branch: what sells, and how each day compared. A counter operator has
  * no business with either. `tenant.dashboard` could not be trimmed to do this — it is a baseline
@@ -76,7 +76,7 @@ class DashboardDetailsScopeMySqlTest extends MySqlTenantTestCase
 
         $res->assertOk();
         $res->assertSee('Top 5 Products Today');
-        $res->assertSee('Last 7 Days');
+        $res->assertSee('Days — Net Sales');
         $res->assertSee('Chicken Biryani');           // the product that was actually sold
     }
 
@@ -90,7 +90,7 @@ class DashboardDetailsScopeMySqlTest extends MySqlTenantTestCase
         $res->assertOk();
         $res->assertSee('Net Sales Today');            // the tiles stay — the owner asked for that
         $res->assertDontSee('Top 5 Products Today');
-        $res->assertDontSee('Last 7 Days');
+        $res->assertDontSee('Days — Net Sales');
         $res->assertDontSee('Chicken Biryani',  false);
     }
 
@@ -123,7 +123,7 @@ class DashboardDetailsScopeMySqlTest extends MySqlTenantTestCase
 
         $res = $this->dashboardAs($this->operatorId);
         $res->assertSee('Top 5 Products Today');
-        $res->assertSee('Last 7 Days');
+        $res->assertSee('Days — Net Sales');
     }
 
     private function permissionId(): int

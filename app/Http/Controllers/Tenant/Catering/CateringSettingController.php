@@ -61,11 +61,17 @@ class CateringSettingController extends Controller
     {
         $data = $request->validate([
             'reminder_recipient_email' => ['nullable', 'email', 'max:255'],
+            'send_customer_emails' => ['nullable', 'boolean'],
             'default_service_charge_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'print_language_profile' => ['required', Rule::in(CateringSetting::PRINT_PROFILES)],
             'reminder_offsets' => ['nullable', 'array'],
             'reminder_offsets.*' => [Rule::in(CateringSetting::DEFAULT_REMINDER_OFFSETS)],
         ]);
+
+        // An unticked checkbox posts NOTHING, so absence must mean off — read
+        // from the request rather than from $data, or the switch could only
+        // ever be turned on.
+        $data['send_customer_emails'] = $request->boolean('send_customer_emails');
 
         $data['default_service_charge_percent'] = $data['default_service_charge_percent'] ?? 0;
         $data['reminder_offsets'] = array_values($data['reminder_offsets'] ?? []);

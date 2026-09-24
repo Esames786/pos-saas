@@ -30,7 +30,12 @@
                             <i class="ti ti-eraser me-1"></i>Clear customer
                         </button>
                     </div>
-                    <select name="customer_id" class="form-select form-select-lg customer-select">
+                    {{-- CATERING-CUSTOMER-MISMATCH-1: the linked customer's OWN name and
+                         phone travel with the box, so the warning below can tell the
+                         operator who this booking is really attached to. --}}
+                    <select name="customer_id" class="form-select form-select-lg customer-select"
+                            data-linked-name="{{ $event?->customer?->name }}"
+                            data-linked-phone="{{ $event?->customer?->phone }}">
                         @if(old('customer_id', $event?->customer_id))
                             <option value="{{ old('customer_id', $event?->customer_id) }}" selected>
                                 {{ $event?->customer?->name ?? 'Selected customer' }}
@@ -40,6 +45,30 @@
                     <div class="form-text">
                         Phone ya naam likhein — mil jaye to neeche sab khud bhar jayega;
                         naya ho to wohi naam likh kar Enter, aur neeche detail poori kar dein.
+                    </div>
+
+                    {{-- CATERING-CUSTOMER-MISMATCH-1 — the booking says one person, the
+                         link says another.
+
+                         Two live bookings were found attached to somebody else entirely:
+                         the operator picked a customer from the list (or one got picked
+                         for them), then corrected the name and phone below by hand. The
+                         visible fields obeyed. The hidden id did not, and the booking
+                         stayed filed under a stranger. Nothing on screen said so.
+
+                         This is a WARNING, not a block: a booking can legitimately carry
+                         somebody else's number. But it can no longer happen silently. --}}
+                    <div class="alert alert-warning py-2 px-3 mt-2 mb-0 d-none customer-link-mismatch" role="alert">
+                        <div class="fw-semibold fs-13 mb-1">
+                            <i class="ti ti-alert-triangle me-1"></i>Ye booking kisi aur customer se judi hai
+                        </div>
+                        <div class="fs-13">
+                            Upar chuna gaya customer: <strong class="mismatch-linked"></strong><br>
+                            Neeche likha hua: <strong class="mismatch-typed"></strong>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-warning mt-2 customer-unlink">
+                            <i class="ti ti-unlink me-1"></i>Link hataayein — naya customer banayein
+                        </button>
                     </div>
                 </div>
                 <div class="col-md-4">
@@ -62,10 +91,25 @@
                     <input type="email" name="customer_email" class="form-control"
                            value="{{ old('customer_email', $event?->customer_email) }}">
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label">Address</label>
-                    <input type="text" name="customer_address" class="form-control"
-                           value="{{ old('customer_address', $event?->customer_address) }}">
+                {{-- A real address does not fit on one line at a third of the
+                     width. The column is TEXT and the customer record holds up
+                     to 500 characters, so nothing was ever being truncated —
+                     it simply could not be SEEN, which is what the client was
+                     looking at when they said it was incomplete. --}}
+                <div class="col-md-8">
+                    <label class="form-label d-flex justify-content-between align-items-center">
+                        <span>Address</span>
+                        {{-- CATERING-ADDRESS-PICKER-1 — shown ONLY when the customer
+                             actually has more than one saved address. The default is
+                             already filled; this is for the booking that is not at
+                             the usual place. --}}
+                        <a href="#" id="addr-more" class="fs-12 d-none">
+                            <i class="ti ti-map-pin me-1"></i><span id="addr-more-count"></span>
+                        </a>
+                    </label>
+                    <textarea name="customer_address" class="form-control" rows="2"
+                              placeholder="House / street, area, city"
+                              >{{ old('customer_address', $event?->customer_address) }}</textarea>
                 </div>
             </div>
         </div>
@@ -109,7 +153,18 @@
                            value="{{ old('event_date', $event?->event_date?->format('Y-m-d')) }}">
                     {{-- Filled by JS: weekday, days away, and any clashing booking. --}}
                     <div class="form-text event-date-hint"></div>
-                    <div class="d-flex flex-wrap gap-1 mt-2 date-chips">
+                    {{-- KASHIF-DATE-CHIPS-OFF-1 — the client asked for these four
+                         off (17 Sep, "ye 4ro htana h"). A caterer types a real
+                         date; Today / Tomorrow / This weekend / In a month were
+                         never the dates a booking lands on.
+
+                         HIDDEN rather than deleted, because "abhe" means for
+                         now. The handler in event-form-support binds to
+                         '.date-chips [data-days]' and simply finds nothing, so
+                         nothing breaks either way. Bringing them back is one
+                         attribute; if they stay gone, the wiring goes with them
+                         in a later pass rather than being half-removed now. --}}
+                    <div class="d-flex flex-wrap gap-1 mt-2 date-chips d-none">
                         <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-days="0">Today</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-days="1">Tomorrow</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-weekend="1">This weekend</button>
@@ -151,14 +206,42 @@
                            value="{{ old('venue', $event?->venue) }}">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">PAX (guests) <span class="text-danger">*</span></label>
-                    <input type="number" name="pax" class="form-control" min="0" required
+                    {{-- CATERING-PAX-OPTIONAL-1: an inquiry often arrives before the
+                         guest count does. The browser's own "Please fill out this
+                         field" was refusing those bookings, so `required` and the
+                         asterisk are gone and the server takes a blank as zero.
+                         The 100 stays as a STARTING point for a new booking — the
+                         operator sees it and can clear it, which is the difference
+                         between a suggestion and a fabrication. --}}
+                    <label class="form-label">PAX (guests)</label>
+                    <input type="number" name="pax" class="form-control" min="0"
                            value="{{ old('pax', $event?->pax ?? 100) }}">
                 </div>
                 <div class="col-12">
                     <label class="form-label">Notes</label>
                     <textarea name="notes" class="form-control" rows="2">{{ old('notes', $event?->notes) }}</textarea>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- CATERING-ADDRESS-PICKER-1 — the customer's saved addresses, to pick from.
+     Picking only FILLS the box: the address belongs to this booking, and the
+     customer's address book is never written to from here. --}}
+<div class="modal fade" id="addrModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Saved addresses</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-muted fs-12 mb-2">
+                    Choosing one fills the Address box for <strong>this booking only</strong> —
+                    the customer's saved addresses are not changed.
+                </div>
+                <div id="addr-list" class="list-group"></div>
             </div>
         </div>
     </div>

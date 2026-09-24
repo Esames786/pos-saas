@@ -292,6 +292,51 @@
     @endif
 </table>
 
+{{-- TABLE-BILL-PREVIEW-PARITY-1 — sirf Table Bill Preview ye `tableBill` pass karta hai
+     (RestaurantTableSessionController::renderTableBillReceipt). Koi aur caller — asli receipt,
+     reprint, cart preview — ye variable deta hi nahi, is liye un sab ka output bilkul waisa hi
+     rehta hai jaisa is block se pehle tha.
+
+     Kaam do: (1) kai round wali table par har round ka number + total, taake cashier jama kiye
+     hue bill ko wapas rounds se mila sake; (2) jo round pehle ada ho chuke, unki alag fehrist —
+     wo upar ke Total me JAM NAHI hote, warna grahak se do baar paise maange jayein. --}}
+@isset($tableBill)
+    @if($tableBill['rounds']->isEmpty())
+    <hr>
+    <div class="center">No open rounds on this table.</div>
+    @elseif($tableBill['rounds']->count() > 1)
+    <hr>
+    <div class="bold">Rounds ({{ $tableBill['rounds']->count() }}):</div>
+    @foreach($tableBill['rounds'] as $round)
+    <table class="totals">
+        <tr>
+            <td>{{ $round->sale_no }}</td>
+            <td>{{ $money($round->grand_total) }}</td>
+        </tr>
+    </table>
+    @endforeach
+    @endif
+
+    @if($tableBill['paid']->isNotEmpty())
+    <hr>
+    <div class="bold">Previously paid ({{ $tableBill['paid']->count() }}):</div>
+    @foreach($tableBill['paid'] as $paidRound)
+    <table class="totals">
+        <tr>
+            <td>{{ $paidRound->sale_no }}</td>
+            <td>{{ $money($paidRound->grand_total) }}</td>
+        </tr>
+    </table>
+    @endforeach
+    <table class="totals">
+        <tr>
+            <td class="bold">Already settled:</td>
+            <td class="bold">{{ $money($tableBill['paid']->sum('grand_total')) }}</td>
+        </tr>
+    </table>
+    @endif
+@endisset
+
 @if($show('show_payment_breakdown') && $salesOrder->payments->isNotEmpty())
 <hr>
 <div class="bold">Payments:</div>

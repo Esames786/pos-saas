@@ -27,6 +27,27 @@
                            value="{{ old('reminder_recipient_email', $settings->reminder_recipient_email) }}">
                     <div class="form-text">Internal address that receives upcoming-event reminder emails.</div>
                 </div>
+                {{-- CATERING-EMAIL-SWITCH-1 — asked for during the live trial:
+                     one switch for whether the system writes to CUSTOMERS at
+                     all. The reminder address above is internal and is not
+                     affected — that one goes to your own staff. --}}
+                <div class="col-md-6">
+                    <label class="form-label">Customer Emails</label>
+                    <div class="form-check form-switch mt-2">
+                        <input type="checkbox" value="1" name="send_customer_emails" id="send-customer-emails"
+                               class="form-check-input"
+                               {{ old('send_customer_emails', $settings->send_customer_emails) ? 'checked' : '' }}>
+                        <label class="form-check-label" for="send-customer-emails">
+                            Email the customer automatically
+                        </label>
+                    </div>
+                    <div class="form-text">
+                        Quotation sent, booking confirmed, advance received and the final invoice.
+                        Switch off and the system keeps every record as usual but writes to nobody —
+                        useful while you are still setting up. Your internal reminders above are
+                        unaffected.
+                    </div>
+                </div>
                 <div class="col-md-6">
                     <label class="form-label">Default Service Charge %</label>
                     <input type="number" step="0.01" min="0" max="100" name="default_service_charge_percent" class="form-control"

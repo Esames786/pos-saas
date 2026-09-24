@@ -29,6 +29,74 @@
     window.initCateringEventForm = function (root) {
         var $root = $(root);
 
+        // ── CATERING-EVENT-FORM-ENTER-1 ────────────────────────────────
+        //
+        // Enter moves to the next field, exactly like Tab. Asked for on the
+        // live trial: operators fill a booking top to bottom and reach for
+        // Enter out of habit, and HTML's answer to Enter in a form is to
+        // SUBMIT it — so the form fired half-filled.
+        //
+        // The order is the DOM's own, which is the same order Tab uses, so
+        // the two keys can never disagree about what comes next.
+        const focusableFields = function () {
+            return [...root.querySelectorAll('input, select, textarea, button')]
+                .filter(f => ! f.disabled && f.type !== 'hidden' && f.offsetParent !== null);
+        };
+
+        const focusNextAfter = function (el) {
+            const fields = focusableFields();
+            const at = fields.indexOf(el);
+            if (at === -1 || at >= fields.length - 1) return false;
+
+            const next = fields[at + 1];
+            next.focus();
+            // Landing on a box that already has something in it should offer
+            // to replace it, the way Tab does.
+            if (next.select && typeof next.select === 'function' && next.value) next.select();
+
+            return true;
+        };
+
+        const onEnterWalksNext = function (e) {
+            if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+
+            // The date and time boxes handle their own Enter — they have to
+            // parse what was typed and close a calendar first. They run on the
+            // element and call preventDefault, so by the time this bubbles up
+            // the work is done.
+            if (e.defaultPrevented) return;
+
+            const el = e.target;
+            if (! el || ! el.tagName) return;
+
+            const tag = el.tagName.toLowerCase();
+
+            // A textarea is the one place Enter means Enter: the address is
+            // two lines on purpose.
+            if (tag === 'textarea') return;
+
+            // A button is being pressed, not left.
+            if (tag === 'button' || el.type === 'submit') return;
+
+            // select2 owns Enter inside its own search box — that is how a
+            // customer gets picked, and how a NEW name is accepted.
+            if (el.classList.contains('select2-search__field') || el.closest('.select2-container')) return;
+
+            // On the last field, let Enter do what it always did and submit —
+            // stopping there would take away the shortcut rather than add one.
+            if (focusNextAfter(el)) e.preventDefault();
+        };
+
+        // This initialiser can run a SECOND time over a node that is already
+        // on the page — workspace-ajax's reinit() re-runs it across every
+        // [data-event-form-root] after a swap, and the select2 setup just
+        // below guards against the same thing. Two copies of the handler
+        // would walk two fields per press.
+        if (root.dataset.enterWalksBound !== '1') {
+            root.dataset.enterWalksBound = '1';
+            root.addEventListener('keydown', onEnterWalksNext);
+        }
+
 
         var $customer = $root.find('.customer-select');
         if ($customer.length && ! $customer.hasClass('select2-hidden-accessible')) {
@@ -81,6 +149,11 @@
                     const typed = (data.text || '').trim();
                     set('customer_name', typed);
                     ['customer_phone', 'customer_email', 'customer_address'].forEach(n => set(n, ''));
+                    renderAddressChoices([]);
+                    // CATERING-CUSTOMER-MISMATCH-1: a typed name links to nobody,
+                    // so there is nobody left to disagree with.
+                    forgetLinked();
+                    checkCustomerMismatch();
                     $root.find('[name=customer_phone]').trigger('focus');
 
                     return;
@@ -93,21 +166,161 @@
                 set('customer_name', c.name || '');
                 set('customer_phone', c.phone || '');
                 set('customer_email', c.email || '');
+                // addresses[0] IS the default: CustomerLookupController eager-loads
+                // them orderByDesc('is_default'). The common case needs no thought.
                 const addr = (c.addresses && c.addresses.length) ? c.addresses[0].address : c.legacy_address;
                 set('customer_address', addr || '');
+
+                // CATERING-ADDRESS-PICKER-1: offer the rest only when there ARE
+                // others. A link promising a choice that does not exist is noise.
+                renderAddressChoices(c.addresses || []);
+
+                // CATERING-CUSTOMER-MISMATCH-1: remember WHO was linked, so that
+                // editing the fields below can be seen to disagree with them.
+                rememberLinked(c);
+                checkCustomerMismatch();
             });
 
             // Clearing means CLEARING: the search box AND everything it filled.
             // Leaving the fields behind is how a booking ends up carrying the
             // wrong customer's phone under the right customer's name.
+            /**
+             * CATERING-ADDRESS-PICKER-1 — the customer's OTHER saved addresses.
+             *
+             * The default one is already in the box. This exists for the booking
+             * that is not at the usual place: a regular whose function is at a
+             * marquee. Without it the operator has to know the second address by
+             * heart and retype it.
+             *
+             * Picking only fills the field. The address belongs to THIS booking —
+             * catering never writes to the customer's address book, which is why
+             * a different venue for one function cannot overwrite someone's home.
+             */
+            function renderAddressChoices(addresses) {
+                const link = document.getElementById('addr-more');
+                const list = document.getElementById('addr-list');
+                const count = document.getElementById('addr-more-count');
+                if (! link || ! list) return;
+
+                const rows = (addresses || []).filter(a => (a.address || '').trim() !== '');
+
+                // One address is not a choice, and a link offering one is noise.
+                if (rows.length < 2) {
+                    link.classList.add('d-none');
+                    list.innerHTML = '';
+
+                    return;
+                }
+
+                count.textContent = rows.length + ' saved addresses';
+                link.classList.remove('d-none');
+
+                list.innerHTML = rows.map((a, i) =>
+                    '<button type="button" class="list-group-item list-group-item-action js-addr-pick"'
+                    + ' data-address="' + $('<div>').text(a.address).html().replace(/"/g, '&quot;') + '">'
+                    + '<div class="d-flex justify-content-between align-items-start gap-2">'
+                    + '<span>' + $('<div>').text(a.address).html() + '</span>'
+                    + (a.is_default ? '<span class="badge bg-secondary flex-shrink-0">usual</span>' : '')
+                    + '</div>'
+                    + (a.label ? '<span class="d-block text-muted fs-12">' + $('<div>').text(a.label).html() + '</span>' : '')
+                    + '</button>'
+                ).join('');
+            }
+
+            $root.on('click', '#addr-more', function (e) {
+                e.preventDefault();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('addrModal')).show();
+            });
+
+            $(document).on('click', '.js-addr-pick', function () {
+                $root.find('[name=customer_address]').val(this.dataset.address || '');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('addrModal')).hide();
+            });
+
             function clearCustomer() {
                 $customer.val(null).trigger('change');
                 ['customer_name', 'customer_name_ur', 'customer_phone', 'customer_email', 'customer_address']
                     .forEach(n => $root.find('[name=' + n + ']').val(''));
+                forgetLinked();
                 $root.find('[name=customer_name]').trigger('focus');
             }
             $customer.on('select2:clear select2:unselect', clearCustomer);
             $root.find('.customer-reset').on('click', clearCustomer);
+
+            // ── CATERING-CUSTOMER-MISMATCH-1 ──────────────────────────────
+            //
+            // The booking's visible name and phone can be edited after a
+            // customer has been picked, and the hidden id does not follow. Two
+            // live bookings were found filed under a stranger that way, one of
+            // them carrying 70,000 in advances. The fields obeyed; the link did
+            // not; nothing on screen disagreed.
+            //
+            // So the form now says it out loud, the moment the two part company.
+            const sel = $customer.get(0);
+            const digits = s => (s || '').replace(/\D+/g, '');
+            const norm = s => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+            function rememberLinked(c) {
+                if (! sel) return;
+                sel.dataset.linkedName = (c && c.name) || '';
+                sel.dataset.linkedPhone = (c && c.phone) || '';
+            }
+            function forgetLinked() { rememberLinked(null); }
+
+            function checkCustomerMismatch() {
+                const box = $root.find('.customer-link-mismatch');
+                if (! box.length || ! sel) return;
+
+                const id = $customer.val();
+                const linkedName = sel.dataset.linkedName || '';
+                const linkedPhone = sel.dataset.linkedPhone || '';
+
+                // No link, or nothing known about who was linked, means there is
+                // nothing to disagree with.
+                if (! id || ! /^\d+$/.test(String(id)) || (! linkedName && ! linkedPhone)) {
+                    box.addClass('d-none');
+
+                    return;
+                }
+
+                const typedName = $root.find('[name=customer_name]').val();
+                const typedPhone = $root.find('[name=customer_phone]').val();
+
+                // A phone is an identity, so any difference counts. A name is
+                // compared only when BOTH sides have one, and only loosely —
+                // spacing and case are not a different person.
+                const phoneDiffers = digits(typedPhone) !== '' && digits(linkedPhone) !== ''
+                    && digits(typedPhone) !== digits(linkedPhone);
+                const nameDiffers = norm(typedName) !== '' && norm(linkedName) !== ''
+                    && norm(typedName) !== norm(linkedName);
+
+                if (! phoneDiffers && ! nameDiffers) {
+                    box.addClass('d-none');
+
+                    return;
+                }
+
+                box.find('.mismatch-linked').text(linkedName + (linkedPhone ? ' — ' + linkedPhone : ''));
+                box.find('.mismatch-typed').text((typedName || '(naam khali)') + (typedPhone ? ' — ' + typedPhone : ''));
+                box.removeClass('d-none');
+            }
+
+            $root.on('input change', '[name=customer_name], [name=customer_phone]', checkCustomerMismatch);
+
+            // Unlinking keeps what the operator TYPED and drops only the link —
+            // clearCustomer() would wipe the fields they just corrected, which
+            // is the opposite of helpful here.
+            $root.on('click', '.customer-unlink', function () {
+                $customer.val(null).trigger('change');
+                forgetLinked();
+                checkCustomerMismatch();
+                $root.find('[name=customer_name]').trigger('focus');
+            });
+
+            // An event opened for editing already carries a link, and the
+            // disagreement may already exist — say so on arrival, not only after
+            // the next keystroke.
+            checkCustomerMismatch();
 
             // KASHIF-EVENT-FORM-3 — a typed name is not a customer id.
             // Leaving typed text in the box used to post it AS the id and the

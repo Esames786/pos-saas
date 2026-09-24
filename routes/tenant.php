@@ -715,6 +715,13 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // Catalog API — shared barcode/SKU lookup used by POS, GRN, stock screens
                 Route::post('/api/catalog/barcode/lookup', [ProductController::class, 'lookupBarcode'])->name('tenant.api.catalog.barcode.lookup');
 
+                // SALES-ANALYTICS-1 — graphs wala sales/growth ka safha.
+                // ⚠️ SIRF OWNER. `deploy.sh` naye route ki permission sirf Owner ko deta hai, aur
+                // doosre roles ko kuch nahi milta jab tak koi alag se additive givePermissionTo na
+                // chalaye. Yani ise Owner-only rakhne ke liye wo grant CHALANA HI NAHI hai.
+                // docs/plans/sales-analytics-dashboard-2026-09-13.md
+                Route::get('/reports/analytics', [\App\Http\Controllers\Tenant\Reports\SalesAnalyticsController::class, 'index'])->name('tenant.reports.analytics');
+
                 // SALES REPORT CENTER — one shared engine (tenant.reports.* => reports module).
                 Route::get('/reports/center', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'index'])->name('tenant.reports.center.index');
                 Route::get('/reports/center/export', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'export'])->name('tenant.reports.center.export');

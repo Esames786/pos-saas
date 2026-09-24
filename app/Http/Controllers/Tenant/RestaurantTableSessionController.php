@@ -304,17 +304,32 @@ class RestaurantTableSessionController extends Controller
         // Render the bill preview using the branch's configured RECEIPT layout so the
         // preview + its print match the actual receipt look (header/footer/font/paper),
         // instead of generic admin styling.
-        $layout = \App\Models\Tenant\ReceiptLayoutSetting::where('branch_id', $restaurantTableSession->branch_id)
-            ->where('document_type', 'receipt')
+        //
+        // TABLE-BILL-PREVIEW-PARITY-1: lookup ab wohi hai jo POSController::billPreview() ka hai —
+        // branch ka apna layout, warna global (branch_id NULL) wala. Pehle yahan sirf branch-wala
+        // dekha jata tha, is liye jis tenant ka layout global hai us ki table bill bina layout ke
+        // render hoti thi aur cart preview se alag dikhti thi.
+        $layout = \App\Models\Tenant\ReceiptLayoutSetting::where('document_type', 'receipt')
+            ->where(function ($q) use ($restaurantTableSession) {
+                $q->whereNull('branch_id')->orWhere('branch_id', $restaurantTableSession->branch_id);
+            })
+            ->orderByDesc('branch_id')
             ->first();
 
         if (request()->expectsJson()) {
             return response()->json([
                 'ok' => true,
-                'html' => view('tenant.pos.partials.table-bill-preview', [
-                    'session' => $restaurantTableSession,
-                    'layout'  => $layout,
-                ])->render(),
+                'html' => $this->renderTableBillReceipt($restaurantTableSession, $layout),
+                // BILL-PREVIEW-WRONG-PRINT-1 — preview ke sath ye BATANA lazmi hai ke ye bill kin
+                // orders ka hai. Pehle sirf `html` jata tha, is liye modal ka "Send to network"
+                // ke paas koi sale id hoti hi nahi thi aur wo CART ka order bhej deta tha: screen
+                // par table 9 ka bill, printer par table 5 ki parchi.
+                //
+                // Sirf `held` — jo ada ho chuke un ki parchi dobara bhejne ka koi matlab nahi.
+                'held_sale_ids' => $restaurantTableSession->salesOrders
+                    ->where('status', 'held')
+                    ->pluck('id')
+                    ->values(),
             ]);
         }
 
@@ -322,6 +337,89 @@ class RestaurantTableSessionController extends Controller
             'session' => $restaurantTableSession,
             'layout'  => $layout,
         ]);
+    }
+
+    /**
+     * TABLE-BILL-PREVIEW-PARITY-1 (2026-09-14).
+     *
+     * Table Bill Preview ab wohi document hai jo POS ka "Current Cart Preview" hai:
+     * `tenant/printing/documents/receipt.blade.php` — yani wohi template jo asli receipt
+     * chhapta hai, usi saved layout ke sath.
+     *
+     * Pehle ye apna alag `tenant/pos/partials/table-bill-preview` partial tha, is liye
+     * dono preview ek doosre se alag dikhte the: Rate ka column nahi tha, Order/Cashier ki
+     * satarein nahi thin, aur layout ki aadhi settings (tax no, order type, column dividers,
+     * item_font_size, font-size bands) kabhi lagti hi nahi thin. Wajah koi design faisla
+     * nahi tha — 11 Aug ka BILL-PREVIEW-PARITY-1 sirf cart wale raaste par laga tha aur
+     * table wala raasta chhoot gaya tha.
+     *
+     * Ek table ke kai held rounds ho sakte hain, aur receipt.blade.php EK sale ka document
+     * banata hai. Is liye saare held rounds ki lines ek GHAIR-MEHFOOZ (unsaved) SalesOrder
+     * me jama ki jati hain — bilkul wohi tarkeeb jo POSController::billPreview() par pehle
+     * se live hai. Kuch save nahi hota, koi sale number issue nahi hota, koi journal nahi
+     * banta: ye object sirf render hone ke liye banta hai aur phenk diya jata hai.
+     *
+     * ⚠️ Sirf `held` jama hote hain. Jo round ada ho chuka wo bill me DOBARA nahi jurta —
+     * warna preview grahak se do baar paise maang le. Ada shuda rounds sirf neeche
+     * "Previously paid" ki fehrist me, alag se, dikhte hain.
+     */
+    private function renderTableBillReceipt(RestaurantTableSession $session, $layout): string
+    {
+        $held = $session->salesOrders->where('status', 'held')->values();
+        $paid = $session->salesOrders->where('status', 'paid')->values();
+
+        $sum = fn (string $column) => (float) $held->sum(fn ($sale) => (float) ($sale->{$column} ?? 0));
+
+        $sale = new \App\Models\Tenant\SalesOrder([
+            'branch_id'              => $session->branch_id,
+            'order_type'             => 'dine_in',
+            'subtotal'               => $sum('subtotal'),
+            'discount_amount'        => $sum('discount_amount'),
+            'tax_amount'             => $sum('tax_amount'),
+            'service_charge_amount'  => $sum('service_charge_amount'),
+            'delivery_charge_amount' => $sum('delivery_charge_amount'),
+            'tip_amount'             => $sum('tip_amount'),
+            'grand_total'            => $sum('grand_total'),
+            'paid_amount'            => 0,
+            'change_amount'          => 0,
+        ]);
+
+        // Check number hi is bill ki shanakht hai — table ka bill kisi ek round ka nahi hota.
+        $sale->sale_no = $session->session_no;
+        $sale->sale_date = app(\App\Support\TenantClock::class)->now();
+
+        $sale->setRelation('branch', $session->branch);
+        $sale->setRelation('customer', null);
+        $sale->setRelation('createdBy', auth('tenant')->user());
+        $sale->setRelation('payments', collect());
+        $sale->setRelation('restaurantTable', $session->table);
+        $sale->setRelation('restaurantTableSession', $session);
+        $sale->setRelation('restaurantWaiter', $session->waiter);
+        $sale->setRelation('deliveryChannel', null);
+        $sale->setRelation('deliveryRider', null);
+        // shift NULL rakhna jaan-boojh kar: receipt ka timezone phir branch ka chalta hai, jo
+        // ek zinda (abhi khuli) table ke liye durust hai — ye koi purani parchi nahi.
+        $sale->setRelation('shift', null);
+
+        // Lines saare held rounds se jama. `sales_order_lines.id` poore tenant me yakta hai, is
+        // liye combo header <- component ka rishta (parent_sales_order_line_id) rounds ke aar-paar
+        // bhi durust rehta hai — template usi id par joron ko dhoondta hai.
+        $sale->setRelation('lines', $held->flatMap(fn ($round) => $round->lines)->values());
+
+        return view('tenant.printing.documents.receipt', [
+            'job'        => null,
+            'salesOrder' => $sale,
+            'layout'     => $layout,
+            'isPreview'  => true,
+            // Ye EKLAUTA raasta hai jo `tableBill` pass karta hai. receipt.blade.php me is ka
+            // block `@isset($tableBill)` ke peeche hai, is liye asli chhapne wali receipt ka
+            // output bilkul waisa hi rehta hai jaisa pehle tha.
+            'tableBill'  => [
+                'session' => $session,
+                'rounds'  => $held,
+                'paid'    => $paid,
+            ],
+        ])->render();
     }
 
     public function move(Request $request, RestaurantTableSession $restaurantTableSession)
