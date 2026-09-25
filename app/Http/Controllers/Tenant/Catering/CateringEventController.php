@@ -257,9 +257,18 @@ class CateringEventController extends Controller
         // and the server-side send/confirm gate can never reach different
         // verdicts about the same estimate.
         $costingReadiness = null;
+        // CATERING-ADOPT-PUNCHED-RATE-1: the dishes the blocker is about, with
+        // the rate this quotation already carries for each — so the wall can
+        // carry the way through it instead of only the reason.
+        $rateOffers = [];
         if ($cateringEvent->currentEstimate && $cateringEvent->currentEstimate->lines->isNotEmpty()) {
             $costingReadiness = app(\App\Services\Catering\CateringEstimateCostingService::class)
                 ->readiness($cateringEvent->currentEstimate);
+
+            if (! $costingReadiness['ready']) {
+                $rateOffers = app(\App\Services\Catering\CateringPunchedRateAdoptionService::class)
+                    ->offersFor($cateringEvent->currentEstimate);
+            }
         }
 
         // KASHIF-CATERING-PRODUCT-UX-1 (item 7) — destinations for sending a
@@ -303,6 +312,7 @@ class CateringEventController extends Controller
             'profileMap' => $profileMap,
             'paymentMethods' => $paymentMethods,
             'costingReadiness' => $costingReadiness,
+            'rateOffers' => $rateOffers,
             'printers' => $printers,
             'position' => $finance->position($cateringEvent),
             // CATERING-STATUS-ROLLBACK-1: worked out once, by the service that

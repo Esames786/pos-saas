@@ -274,6 +274,55 @@
                     <li>{{ $blocker }}</li>
                 @endforeach
             </ul>
+
+            {{-- CATERING-ADOPT-PUNCHED-RATE-1 — the way THROUGH the wall.
+
+                 Before this, a dish with no cost block could only be fixed by
+                 leaving the booking, opening Cost Blocks and adding a part by
+                 hand. What operators actually added was an empty block at rate
+                 0, purely to open the door — "Chatni", "Paratha (Pcs)" and
+                 "Decoration" on the live tenant all carry one, and Decoration
+                 sold for 45,000 with a cost basis of nothing.
+
+                 So the offer is made where the wall is, carrying the rate the
+                 operator already typed on this quotation. --}}
+            @if(! empty($rateOffers) && $isDraft)
+                @can('tenant.catering.estimates.send')
+                <form method="POST" action="{{ url('/catering/estimates/' . $estimate->id . '/send') }}"
+                      class="mt-3 pt-3 border-top">
+                    @csrf
+                    <div class="fw-semibold fs-13 mb-2">
+                        Yahin se rate de sakte hain — wohi jo aap ne is quotation par likha hai:
+                    </div>
+
+                    @foreach($rateOffers as $offer)
+                        <label class="d-flex align-items-start gap-2 mb-1 fs-13">
+                            <input type="checkbox" class="form-check-input mt-1 flex-shrink-0"
+                                   name="adopt_punched_rate[]" value="{{ $offer['product_id'] }}" checked>
+                            <span>
+                                <strong>{{ $offer['name'] }}</strong> —
+                                is quotation ka rate <strong>{{ number_format($offer['rate'], 2) }}</strong>@if($offer['unit']) / {{ $offer['unit'] }}@endif
+                                ko hi is dish ka rate bana dein
+                            </span>
+                        </label>
+                    @endforeach
+
+                    {{-- Said before anything happens, because this is the part an
+                         operator would not guess: one booking's price becomes the
+                         dish's price on every quotation after it. --}}
+                    <div class="alert alert-warning py-2 px-3 mt-2 mb-2 fs-13">
+                        <i class="ti ti-alert-triangle me-1"></i>
+                        Ye rate <strong>aage banne wali har quotation</strong> par bhi lagega — sirf is booking par nahi.
+                        Cost Blocks screen se jab chahein badal sakte hain.
+                    </div>
+
+                    <button type="submit" class="btn btn-sm btn-warning"
+                            onclick="return confirm('Chune hue dishes ka rate is quotation wala bana kar quotation bhej dein?\n\nYe rate aage ki har quotation par bhi lagega.')">
+                        <i class="ti ti-check me-1"></i>Rate bana kar quotation bhejo
+                    </button>
+                </form>
+                @endcan
+            @endif
         </div>
     @elseif($isDraft)
         <div class="alert alert-success py-2">

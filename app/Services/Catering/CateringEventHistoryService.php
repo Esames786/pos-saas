@@ -43,6 +43,11 @@ class CateringEventHistoryService
         // the customer already has editable again.
         'status_moved_back' => 'Booking moved back a stage',
         'reverted' => 'Reverted to an earlier state',
+        // CATERING-ADOPT-PUNCHED-RATE-1 — a dish that had no cost basis was
+        // given one from this quotation's own rate. On the timeline because it
+        // changes what EVERY later quotation prices that dish at, not just this
+        // one, and six months later "why is chatni 0?" needs an answer.
+        'cost_block_adopted' => 'Dish rate taken from this quotation',
     ];
 
     // ─────────────────────────────────────────────────────────────────────────
