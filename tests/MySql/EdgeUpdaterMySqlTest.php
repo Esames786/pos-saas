@@ -91,9 +91,22 @@ class EdgeUpdaterMySqlTest extends MySqlTenantTestCase
         return app(EdgeUpdatePackageService::class)->build($art, $this->signSecret, array_merge(['edge_app_version' => '0.2.0-edge'], $overrides));
     }
 
+    /**
+     * The mini artifacts here carry no runnable runtime, so the schema step runs the in-process upgrader (the pre-fix
+     * behaviour) through the seam. The PRODUCTION path — the schema upgrade executed by the NEW runtime's own artisan
+     * after the pointer switch — is proven end-to-end by EdgeCleanMachineInstallMySqlTest (package B ships a migration
+     * package A does not have; it must be applied after the A→B update).
+     */
     private function installer(): EdgeUpdateInstaller
     {
-        return app(EdgeUpdateInstaller::class);
+        return new class(app(EdgeUpdateVerifier::class), app(EdgeUpdatePackageService::class), app(EdgeBackupService::class)) extends EdgeUpdateInstaller {
+            protected function applySchemaUpgrade(string $versionDir): string
+            {
+                app(\App\Services\Edge\EdgeLocalSchemaUpgrader::class)->upgrade();
+
+                return (string) config('edge.config_schema');
+            }
+        };
     }
 
     private function currentVersion(): ?string
@@ -228,7 +241,7 @@ class EdgeUpdaterMySqlTest extends MySqlTenantTestCase
 
         $art = $this->makeArtifact();
         $failing = new class(app(EdgeUpdateVerifier::class), app(EdgeUpdatePackageService::class), app(EdgeBackupService::class)) extends EdgeUpdateInstaller {
-            protected function applySchemaUpgrade(): string
+            protected function applySchemaUpgrade(string $versionDir): string
             {
                 throw new \RuntimeException('forced schema upgrade failure');
             }

@@ -4,6 +4,7 @@ namespace App\Services\Edge;
 
 use App\Support\EdgeRuntime;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -90,12 +91,16 @@ class EdgeUpdateInstaller
             throw $e;
         }
 
+        // 3b. The staged runtime must be able to BOOT on its own before the switch: writable runtime dirs and, for a dev/test
+        //     package whose app\vendor is a junction to the shared closure, the same junction (a release ships real files).
+        $this->prepareStagedRuntime($stagedArtifactDir, $versionDir);
         // 4. ATOMIC switch.
         $this->switchPointer($root, $this->safe($to));
 
-        // 5. Forward-only schema upgrade.
+        // 5. Forward-only schema upgrade — run by the NEW runtime (its own migration files), never by this process,
+        //    which was booted from the OLD version (EDGE-UPDATE-SCHEMA-IN-NEW-RUNTIME-1, LAB 0.6.0→0.7.0, 25 Sep 2026).
         try {
-            $schemaAfter = $this->applySchemaUpgrade();
+            $schemaAfter = $this->applySchemaUpgrade($versionDir);
         } catch (\Throwable $e) {
             if ($previous !== null) {
                 $this->switchPointer($root, $previous);                 // revert the runtime pointer
@@ -206,6 +211,35 @@ class EdgeUpdateInstaller
         return true;
     }
 
+    /**
+     * Make the staged version bootable as a separate process (the schema upgrade runs there): create the runtime
+     * directories a fresh copy lacks, and re-link a dev/test package's vendor junction (stage() never copies links;
+     * the operator tooling used to re-link it only AFTER the update, too late for the schema step).
+     */
+    private function prepareStagedRuntime(string $stagedArtifactDir, string $versionDir): void
+    {
+        foreach (['bootstrap/cache', 'storage/framework/cache/data', 'storage/framework/views', 'storage/framework/sessions', 'storage/logs', 'storage/app'] as $dir) {
+            $path = $versionDir . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $dir);
+            if (! is_dir($path)) {
+                @mkdir($path, 0775, true);
+            }
+        }
+        $srcVendor = $stagedArtifactDir . DIRECTORY_SEPARATOR . 'vendor';
+        $dstVendor = $versionDir . DIRECTORY_SEPARATOR . 'vendor';
+        if (DIRECTORY_SEPARATOR !== '\\' || is_dir($dstVendor) || ! is_dir($srcVendor) || ! $this->isReparsePoint($srcVendor)) {
+            return;
+        }
+        $target = @realpath($srcVendor);
+        if ($target === false) {
+            return;
+        }
+        $out = [];
+        $code = 1;
+        @exec('cmd /c mklink /J "' . $dstVendor . '" "' . $target . '" 2>&1', $out, $code);
+        if ($code !== 0 || ! is_dir($dstVendor)) {
+            throw new RuntimeException('UPDATE_STAGE_FAILED: could not re-link the dev vendor junction for the staged runtime: ' . mb_substr(implode(' ', $out), 0, 200));
+        }
+    }
     /** Windows junction / mount point detection (PHP reports some reparse points as directories, not links). */
     private function isReparsePoint(string $path): bool
     {
@@ -221,10 +255,40 @@ class EdgeUpdateInstaller
         return $norm($real) !== $norm($path);
     }
 
-    /** Forward-only schema upgrade; returns the schema generation after. Test-overridable seam. */
-    protected function applySchemaUpgrade(): string
+    /**
+     * Forward-only schema upgrade; returns the schema generation after. Test-overridable seam.
+     *
+     * EDGE-UPDATE-SCHEMA-IN-NEW-RUNTIME-1 — the LAB 0.6.0→0.7.0 update (25 Sep 2026) proved that running the upgrader
+     * IN THIS PROCESS silently skips every migration the new version ships: `edge:local:update` is launched through the
+     * appliance launcher, which resolved the OLD runtime before the pointer switch, so database_path() pointed at the
+     * OLD version's migration files, "pending" was empty and the update still recorded "applied". The upgrade therefore
+     * runs as a CHILD PROCESS of the NEW version's own artisan (`<versions>/<to>/artisan edge:local:schema-upgrade`),
+     * with the same PHP binary and the inherited appliance environment (BINGOO_EDGE_ENV_DIR). Any non-zero exit fails
+     * closed → the caller reverts the pointer (reverted_runtime) or reports restore_required, exactly as before.
+     */
+    protected function applySchemaUpgrade(string $versionDir): string
     {
-        app(EdgeLocalSchemaUpgrader::class)->upgrade(); // forward-only, non-destructive
+        $artisan = $versionDir . DIRECTORY_SEPARATOR . 'artisan';
+        if (! is_file($artisan)) {
+            throw new RuntimeException("UPDATE_SCHEMA_UPGRADE_FAILED: the staged runtime has no artisan launcher at [{$artisan}].");
+        }
+        $cmd = [PHP_BINARY, $artisan, 'edge:local:schema-upgrade', '--no-interaction'];
+        $spec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        $env = array_merge(getenv(), array_filter(['BINGOO_EDGE_ENV_DIR' => getenv('BINGOO_EDGE_ENV_DIR') ?: null]));
+        $proc = proc_open($cmd, $spec, $pipes, $versionDir, $env);   // array form: no shell, no quoting ambiguity (Windows-safe)
+        if (! is_resource($proc)) {
+            throw new RuntimeException('UPDATE_SCHEMA_UPGRADE_FAILED: could not start the new runtime for the schema upgrade.');
+        }
+        fclose($pipes[0]);
+        $out = (string) stream_get_contents($pipes[1]);
+        $err = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $code = proc_close($proc);
+        Log::info('[edge-update] schema upgrade in the new runtime', ['version_dir' => $versionDir, 'exit' => $code, 'output' => mb_substr($out . $err, 0, 4000)]);
+        if ($code !== 0) {
+            throw new RuntimeException('UPDATE_SCHEMA_UPGRADE_FAILED: the new runtime exited ' . $code . ': ' . mb_substr(trim($out . "\n" . $err), 0, 1500));
+        }
 
         return (string) config('edge.config_schema');
     }

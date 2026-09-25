@@ -143,8 +143,22 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $this->dropDb($this->installDb2);
     }
 
+    private const PROOF_MIGRATION = '2099_09_26_000000_clean_machine_proof_marker.php';
+
+    /** Copy the fixture migration into the tree for the package-B build only (removed right after; tearDown is the safety net). */
+    private function plantProofMigration(): void
+    {
+        copy(base_path('tests/Fixtures/edge/migrations/' . self::PROOF_MIGRATION), base_path('database/migrations/edge/' . self::PROOF_MIGRATION));
+    }
+
+    private function removeProofMigration(): void
+    {
+        @unlink(base_path('database/migrations/edge/' . self::PROOF_MIGRATION));
+    }
+
     protected function tearDown(): void
     {
+        $this->removeProofMigration();
         foreach (array_reverse($this->procs) as $p) {
             $this->killTree($p['pid']);
             @proc_close($p['proc']);
@@ -182,8 +196,13 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $vendorOpt = $vendorFrom !== '' ? ['--vendor-from' => $vendorFrom] : ['--vendor-junction' => base_path('vendor')];
         $this->report['RELEASE_VENDOR_REAL_FILES'] = $vendorFrom !== '' ? 'yes (--vendor-from ' . $vendorFrom . ')' : 'no (dev junction — set EDGE_PROOF_VENDOR_FROM for the release shape)';
         $this->assertSame(0, Artisan::call('edge:build-package', ['dest' => $this->pkgA, '--allow-dirty' => true, '--git-commit' => 'clean-install-proof'] + $signing + $vendorOpt), Artisan::output());
+        // EDGE-UPDATE-SCHEMA-IN-NEW-RUNTIME-1: package B ships a migration package A does not have (planted for the build only).
+        $this->plantProofMigration();
         config(['edge.app_version' => '0.2.0-edge']);
         $this->assertSame(0, Artisan::call('edge:build-package', ['dest' => $this->pkgB, '--allow-dirty' => true, '--git-commit' => 'clean-install-proof-2'] + $signing + $vendorOpt), Artisan::output());
+        $this->removeProofMigration();
+        $this->assertFileDoesNotExist($this->pkgA . '\\app\\database\\migrations\\edge\\' . self::PROOF_MIGRATION, 'package A must not carry the proof migration');
+        $this->assertFileExists($this->pkgB . '\\app\\database\\migrations\\edge\\' . self::PROOF_MIGRATION, 'package B must carry the proof migration');
         if ($vendorFrom !== '') {
             $this->assertFileExists($this->pkgA . '\\app\\vendor\\autoload.php', 'release shape: a REAL vendor closure inside the package');
             $this->assertFalse(is_link($this->pkgA . '\\app\\vendor'));
@@ -457,6 +476,12 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         [$code, $out] = $this->edge(['edge:local:status', '--json', '--no-interaction'], ['EDGE_INCLUDE_PROBE_OUT' => $probeOut2, 'PHP_INI_SCAN_DIR' => $this->probeIniDir($this->installRoot . '\\runtime\\versions\\0.2.0-edge')]);
         $this->assertSame(0, $code, $out);
         $this->assertIncludedFilesUnder($probeOut2, $this->installRoot . '\\runtime\\versions\\0.2.0-edge', $vendorFrom !== '', 'the updated 0.2.0 runtime');
+        // EDGE-UPDATE-SCHEMA-IN-NEW-RUNTIME-1: the migration only package B ships MUST be applied by the update (in the NEW runtime).
+        $proofName = substr(self::PROOF_MIGRATION, 0, -4);
+        $this->assertSame(1, (int) $pdo->query("select count(*) from migrations where migration = '{$proofName}'")->fetchColumn(), 'the B-only migration is recorded after the A→B update');
+        $this->assertSame(1, (int) $pdo->query("select count(*) from information_schema.tables where table_schema = database() and table_name = 'edge_clean_machine_proof_marker'")->fetchColumn(), 'the B-only migration really ran');
+        $this->assertSame('edge-local-schema@' . $proofName, (string) $pdo->query('select edge_schema_version from edge_local_meta')->fetchColumn(), 'the applied schema version is the NEW runtime\'s newest edge migration');
+        $this->report['UPDATE_APPLIES_NEW_MIGRATIONS'] = 'yes (B-only edge migration ' . $proofName . ' applied by the new runtime after the pointer switch)';
         $this->report['SIGNED_UPDATE'] = '0.1.0-edge → 0.2.0-edge via Update-EdgeAppliance.ps1 (pre-update backup, pointer switch, outbox kept)';
         $this->report['TAMPERED_UPDATE_REFUSED'] = 'yes (package hash mismatch, pointer unchanged)';
 
