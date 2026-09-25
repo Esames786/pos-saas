@@ -172,7 +172,61 @@ class CateringAdoptPunchedRateMySqlTest extends MySqlTenantTestCase
             'and the blocker still blocks');
     }
 
+    /**
+     * The screen must actually DRAW the offer, with a working address on it.
+     *
+     * The first version of the blade wrote `$estimate->id` — a variable this
+     * view does not have. Every assertion above still passed, because they call
+     * the controller directly and never render anything. The page went out with
+     * action="/catering/estimates//send" and a button that did nothing, and it
+     * took a warning in a production log to find it.
+     */
+    public function test_the_screen_draws_the_offer_with_a_working_address(): void
+    {
+        [$estimate, $pid] = $this->quotationWithBlocklessDish(240.0);
+
+        // The layout reads $errors, which ShareErrorsFromSession supplies on a
+        // real request; rendering directly skips the middleware.
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        $this->actingAsSender();
+
+        $html = app(\App\Http\Controllers\Tenant\Catering\CateringEventController::class)
+            ->show($estimate->event)
+            ->render();
+
+        $this->assertStringContainsString('adopt_punched_rate', $html, 'the offer is on the page');
+        $this->assertStringContainsString("/catering/estimates/{$estimate->id}/send", $html,
+            'and the form posts to a real estimate');
+        $this->assertStringNotContainsString('/catering/estimates//send', $html,
+            'never an empty id — that is the bug this test exists for');
+        $this->assertStringContainsString('har quotation par bhi lagega', $html,
+            'and the consequence is stated before the button');
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────
+
+    /**
+     * The block is behind @can('tenant.catering.estimates.send'), so the screen
+     * needs somebody allowed to send. Only the per-user assignment is made here:
+     * the permission rows themselves come from a migration and are not a test's
+     * to create or clear.
+     */
+    private function actingAsSender(): void
+    {
+        $user = \App\Models\Tenant\User::on('tenant')->find(
+            $this->makeUser(['employee_code' => 'AP'.\Illuminate\Support\Str::random(4)])
+        );
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        DB::connection('tenant')->table('cache')->where('key', 'like', '%spatie.permission.cache%')->delete();
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        $user->givePermissionTo(
+            \Spatie\Permission\Models\Permission::on('tenant')->firstOrCreate(
+                ['name' => 'tenant.catering.estimates.send', 'guard_name' => 'tenant']
+            )
+        );
+    }
 
     private function send(CateringEstimate $estimate, array $adopt, array $extra = []): void
     {

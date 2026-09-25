@@ -286,9 +286,14 @@
 
                  So the offer is made where the wall is, carrying the rate the
                  operator already typed on this quotation. --}}
-            @if(! empty($rateOffers) && $isDraft)
+            {{-- `$estimate` is NOT a variable this view has — the first version
+                 of this block used it, the URL came out as
+                 /catering/estimates//send, and the button did nothing. The
+                 estimate here is the event's current one, and it is named in
+                 the condition too so the form cannot render without it. --}}
+            @if(! empty($rateOffers) && $isDraft && $event->currentEstimate)
                 @can('tenant.catering.estimates.send')
-                <form method="POST" action="{{ url('/catering/estimates/' . $estimate->id . '/send') }}"
+                <form method="POST" action="{{ url('/catering/estimates/' . $event->currentEstimate->id . '/send') }}"
                       class="mt-3 pt-3 border-top">
                     @csrf
                     <div class="fw-semibold fs-13 mb-2">
