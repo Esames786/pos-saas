@@ -5,8 +5,10 @@ namespace Tests\MySql;
 use App\Models\Edge\EdgeLocalMeta;
 use App\Models\Master\Tenant;
 use App\Models\Tenant\Branch;
+use App\Services\Edge\EdgeAuthorityService;
 use App\Services\Edge\EdgeBootstrapService;
 use App\Services\Edge\EdgeLocalBootstrapImporter;
+use App\Services\Edge\EdgeLocalConfigRefreshApplier;
 use App\Services\Edge\EdgePairingService;
 use App\Services\Edge\OfflineEdgeEntitlementService;
 use App\Services\Tenancy\TenancyManager;
@@ -236,5 +238,42 @@ class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
         $this->assertSame(0, (int) $c->table('currency_denominations')->where('id', $this->d500)->value('is_active'), 'deactivated, never deleted (cash_count_lines reference it)');
         $this->assertSame(0, $c->table('product_modifier_group')->count(), 'a pure composition row is deleted');
         $this->assertSame(0, (int) $c->table('payment_methods')->where('id', $this->cardId)->value('is_active'));
+    }
+    /**
+     * Coordinator (25 Sep 2026, found by the 0.7.0-edge update dry-run): an appliance INSTALLED by the previous build carries
+     * `edge_local_meta.bootstrap_schema = edge-bootstrap-v6` — the software update does not (and must not) rewrite it. The
+     * first v7 revision the new build applies is the moment the local configuration conforms to v7, so the refresh applier
+     * records it; without that the SCHEMA_COMPATIBLE readiness gate stayed false for ever after an update (a refresh never
+     * touched the column, a re-bootstrap is refused on a bootstrapped device). The applier also refuses a package of
+     * another generation itself, because the standby freshness worker reaches it without the importer.
+     */
+    public function test_the_first_refresh_after_a_software_update_records_the_new_bootstrap_schema(): void
+    {
+        $first = $this->package();
+        $second = $this->package('Demo Foods', 2, 'snap-2');
+
+        $this->toEdgeDb();
+        $this->importer()->import($first);
+        // what the 0.6.0 build left behind, as the 0.7.0 update finds it
+        EdgeLocalMeta::query()->where('singleton_guard', EdgeLocalMeta::SINGLETON)->update(['bootstrap_schema' => 'edge-bootstrap-v6']);
+        $this->assertFalse(app(EdgeAuthorityService::class)->gates()['SCHEMA_COMPATIBLE'], 'a v6 record on a v7 build is not schema-compatible');
+
+        $meta = $this->importer()->import($second);
+
+        $this->assertSame(2, (int) $meta->last_applied_config_revision);
+        $this->assertSame('edge-bootstrap-v7', $meta->bootstrap_schema, 'the applied v7 revision records the v7 generation');
+        $this->assertSame('edge-bootstrap-v7', EdgeLocalMeta::current()->bootstrap_schema);
+        $this->assertTrue(app(EdgeAuthorityService::class)->gates()['SCHEMA_COMPATIBLE'], 'SCHEMA_COMPATIBLE recovers with the first applied revision');
+
+        // the applier itself refuses another generation (the freshness worker bypasses the importer)
+        $foreign = $this->packageFrom($second['sections'], 3, 'snap-3', 'edge-bootstrap-v6');
+        try {
+            app(EdgeLocalConfigRefreshApplier::class)->apply($foreign['manifest'], $foreign['sections']);
+            $this->fail('the applier must refuse a package of another bootstrap generation');
+        } catch (RuntimeException $e) {
+            $this->assertStringStartsWith('SCHEMA_UNSUPPORTED', $e->getMessage());
+        }
+        $this->assertSame(2, (int) EdgeLocalMeta::current()->last_applied_config_revision, 'a refused package applies nothing');
+        $this->assertSame('edge-bootstrap-v7', EdgeLocalMeta::current()->bootstrap_schema);
     }
 }

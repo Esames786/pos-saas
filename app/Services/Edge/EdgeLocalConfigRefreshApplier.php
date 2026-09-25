@@ -121,8 +121,15 @@ class EdgeLocalConfigRefreshApplier
         if ($revision < 1) {
             throw new RuntimeException('CONFIG_REVISION_MISSING: a refresh package must carry a positive config_revision.');
         }
+        // EDGE-BOOTSTRAP-SCHEMA-FOLLOWS-REFRESH-1: the applier is reached through the importer (which asserted the
+        // package schema) AND directly by the standby freshness worker (which did not). Assert it here as well:
+        // a package of another bootstrap generation is refused whole, never partially applied.
+        $schema = (string) ($manifest['schema_version'] ?? '');
+        if ($schema !== EdgeBootstrapService::SCHEMA_VERSION) {
+            throw new RuntimeException("SCHEMA_UNSUPPORTED: package schema [{$schema}] is not " . EdgeBootstrapService::SCHEMA_VERSION . '.');
+        }
 
-        $result = DB::connection(self::CONN)->transaction(function () use ($manifest, $sections, $revision) {
+        $result = DB::connection(self::CONN)->transaction(function () use ($manifest, $sections, $revision, $schema) {
             // THE refresh authority: the singleton binding row. Locking it first serialises every
             // concurrent refresh attempt; all decisions below happen under this lock.
             $meta = EdgeLocalMeta::query()->where('singleton_guard', EdgeLocalMeta::SINGLETON)->lockForUpdate()->first();
@@ -170,6 +177,11 @@ class EdgeLocalConfigRefreshApplier
 
             $meta->update([
                 'last_applied_config_revision' => $revision,
+                // After a software update the appliance still records the PREVIOUS build's bootstrap generation
+                // (a 0.6.0 install carries edge-bootstrap-v6). The first revision applied by the new build is the
+                // moment the local configuration conforms to the new generation, so record it here — otherwise the
+                // SCHEMA_COMPATIBLE readiness gate could never recover after an update (found in the 0.7.0 dry-run).
+                'bootstrap_schema' => $schema,
                 'config_schema_version' => (string) ($manifest['config_schema_version'] ?? ''),
                 'last_refresh_snapshot_uuid' => (string) ($manifest['snapshot_uuid'] ?? ''),
                 'last_refreshed_at' => now(),
