@@ -408,6 +408,21 @@ commit the worktree is at; from `06bb53b` on that is **bootstrap v7**.
 5. Unchanged from C6: STANDBY_READY + authority standby, outbox 0/0/0 (a deferred row would show as `leased`), no open shift / held check / open table,
    fresh verified backup, record version/manifest/pointer/Cloud head, snapshot LAB Cloud DBs into the evidence folder.
 
+### C5b. Coordinator amendments at the release commit `7b8f886` (25 Sep 2026)
+
+- **C5 unknown resolved (dry-run on a copy of the dev appliance DB, LAB untouched):** the "same device, newer schema" path is a REFRESH, not a
+  re-bootstrap — but the applier never recorded the new generation, so the `SCHEMA_COMPATIBLE` gate would have stayed false after the update.
+  Fixed in `7b8f886`: `EdgeLocalConfigRefreshApplier::apply()` asserts the package schema (`SCHEMA_UNSUPPORTED`) and records `bootstrap_schema`
+  with the applied revision; regression test in `EdgeBootstrapV7MySqlTest`. C8 step 5 (refresh to v7) is therefore REQUIRED to regain STANDBY_READY.
+- **C5 rollback question resolved:** true 0.6.0 code (`623f887` export with its own no-dev vendor) accepts a DB carrying the two additive columns and
+  is `SCHEMA_COMPATIBLE` while the meta still says v6 (pointer rollback viable BEFORE the first v7 refresh); after a v7 refresh it is not (rollback =
+  restore the pre-update backup, LAB Cloud back on `30105df`).
+- **C1/C2 done:** release commit `7b8f886`; RELEASE package `BingooEdge-0.7.0-edge` — `package_hash 4fb33780e3d049f0bed056e7b8589082537198380759bb6b00f839778bfa4e42`,
+  `artifact_manifest_hash e40dc2281957da4b4029fe1b58ebca5d3bf6263abd919a94b675421ec70a9e47`, 8,752 files, signing key id `a2eaf8a3d3e66a48`.
+- **C3/C4 done:** `edge:audit-package` PACKAGE OK, boundary audit clean, source proof 2,040 / 0 mismatches; `EdgeUpdateVerifier` VERIFIED_OK against
+  the appliance key; tampered payload, foreign key, downgrade and backwards schema refused. Owner-facing summary: `docs/status/edge-0.7.0-pre-install-report.md`.
+- **C6a.2 confirmed read-only on the LAB Cloud tenant:** the Lab Cashier holds exactly `tenant.pos.hold / recall / store / view` and no role.
+
 ### C10a. Gate status at `06bb53b` (wave 2)
 
 ```
