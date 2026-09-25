@@ -163,7 +163,9 @@ class EdgeCashierControlCensusHttpMySqlTest extends MySqlTenantTestCase
         $summary = ['online_controls' => count($rows), 'by_state' => $counts, 'online_view_sha1' => $fixture['online_view_sha1'], 'taken_at' => now()->toIso8601String()];
         @mkdir(storage_path('framework/testing'), 0777, true);
         file_put_contents(storage_path('framework/testing/edge-pos-census-summary.json'), json_encode($summary, JSON_PRETTY_PRINT));
-        $this->assertGreaterThan(0, $counts['planned'] + $counts['partial'], 'The census reports no open rows — verify the fixture was not blanked.');
+        // Sanity (not a target): the fixture still describes the whole Online surface. Zero planned/partial rows is a legitimate
+        // end state (reached 25 Sep 2026) — never a failure.
+        $this->assertGreaterThan(200, $counts['present'] + $counts['equivalent'] + $counts['online_required'] + $counts['partial'] + $counts['planned'], 'The census fixture was blanked.');
     }
 
     // ───────────────────────────── 4: deferral strings must be registered ─────────────────────────────

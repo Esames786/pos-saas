@@ -58,7 +58,11 @@ class EdgeBackupRecoveryAuthorityMySqlTest extends MySqlTenantTestCase
         file_put_contents($this->envFile, "APP_ROLE=branch_server\nEDGE_BACKUP_RECOVERY_KEY=\nEDGE_BACKUP_RECOVERY_KEY_ID=k1\nEDGE_BACKUP_RETIRED_KEYS={}\n");
         config(['edge.backup.path' => $this->backupDir, 'edge.backup.recovery_key' => null, 'edge.backup.recovery_key_id' => 'k1', 'edge.backup.retired_keys' => []]);
 
-        $this->cleanTenant(['edge_branch_authority_leases', 'edge_sync_outbox', 'edge_local_user_credentials', 'edge_local_meta', 'branches', 'users', 'accounts']);
+        // The restore validates every FK in the backup against the fresh appliance — rows another test class left behind
+        // (shifts / sales pointing at branches this class deletes) must not be inside the snapshot, so clean them too.
+        $this->cleanTenant(['edge_branch_authority_leases', 'edge_sync_outbox', 'edge_local_user_credentials', 'edge_local_meta',
+            'kot_batch_lines', 'kot_batches', 'print_jobs', 'sale_payments', 'sales_order_lines', 'sales_orders', 'shifts', 'terminals',
+            'branches', 'users', 'accounts']);
         (new DefaultChartOfAccountsSeeder())->run();
         $this->branchId = $this->makeBranch(['name' => 'Recovery A']);
         $this->otherBranchId = $this->makeBranch(['name' => 'Recovery B']);
@@ -98,6 +102,13 @@ class EdgeBackupRecoveryAuthorityMySqlTest extends MySqlTenantTestCase
             @unlink($f);
         }
         @rmdir($this->backupDir);
+        // Leave no tenant registration behind in the master test DB: a later canonical class that registers the same test
+        // tenant database (BillPreviewPrintTargetMySqlTest) would otherwise hit a duplicate key.
+        try {
+            DB::connection('master')->table('tenant_databases')->where('db_database', $this->tenantDb)->delete();
+        } catch (\Throwable) {
+            // best effort — the schema may be mid-teardown
+        }
         parent::tearDown();
     }
 

@@ -879,8 +879,12 @@
             "overrides": {
                 "paymentModal": {
                     "edge": [
-                        "text:Review &amp; Pay"
-                    ]
+                        "text:Review &amp; Pay",
+                        "#payment_method_id",
+                        "#complete-sale-btn"
+                    ],
+                    "state": "equivalent",
+                    "note": "W2 25 Sep 2026: Online payment modal ids inside the shared dialog"
                 },
                 "paymentModalLabel": {
                     "state": "equivalent",
@@ -1477,8 +1481,11 @@
             "overrides": {
                 "billPreviewModal": {
                     "edge": [
-                        "text:Preview Bill"
-                    ]
+                        "text:Preview Bill",
+                        "#print-bill-preview-btn"
+                    ],
+                    "state": "equivalent",
+                    "note": "W2/W5 + reconcile 25 Sep 2026: canonical bill document with rounds / previously paid (Team 6 1baa34c), Print here / Send to network — rendered in the shared dialog"
                 },
                 "bill-preview-btn": {
                     "state": "present",
@@ -1505,10 +1512,12 @@
                 },
                 "bill-preview-modal-body": {
                     "edge": [
-                        "text:Running bill"
+                        "text:Preview Bill",
+                        "#bill-preview-frame"
                     ],
                     "record": "A30",
-                    "note": "cart-level totals only; rounds / previously paid / print planned"
+                    "note": "W5 + reconcile 25 Sep 2026: the canonical receipt document (table-bill block proven by EdgeCashierTablesWorkspaceHttpMySqlTest)",
+                    "state": "equivalent"
                 },
                 "bill-preview-frame": {
                     "state": "present",
@@ -2105,6 +2114,15 @@
                         "#quickReportModalLabel"
                     ],
                     "note": "W4 25 Sep 2026"
+                },
+                "quickReportModal": {
+                    "state": "equivalent",
+                    "edge": [
+                        "text:Quick Report",
+                        "#quickReportModalLabel",
+                        "#qr-print"
+                    ],
+                    "note": "W4 25 Sep 2026: Online quick-report ids inside the shared dialog"
                 }
             }
         },
