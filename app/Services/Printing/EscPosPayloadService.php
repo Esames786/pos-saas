@@ -997,19 +997,30 @@ class EscPosPayloadService
             $out .= $this->center($headerText) . "\n";
         }
 
-        $heading = match ($eventType) {
-            'cancel' => '*** CANCEL KOT #' . $sequenceNo . ' ***',
-            'addition' => '*** ADDITION KOT #' . $sequenceNo . ' ***',
-            'duplicate' => '*** DUPLICATE KOT #' . $sequenceNo . ' ***',
-            default => '*** KOT #' . ($sequenceNo ?: 1) . ' ***',
+        // KOT-HEADING-STARS-1 — Khatri ke client ne parchi par likha tha "star remove". Magar ye
+        // code chaaron chalti hui businesses ki parchi chhapta hai aur maang sirf ek ki hai, is
+        // liye sitare hataye NAHI — switch ke peeche rakhe. Default `true` = aaj wali soorat, to
+        // deploy ke din kisi ki parchi nahi badalti; sirf jab operator Edit Layout me band kare.
+        //
+        // ⚠️ `$show(...)` ka doosra argument default hai: `true` rakhna LAZMI hai. `false` likh
+        // dete to jis tenant ki layout row abhi purani hai (column hi nahi) us ke sitare chup-chaap
+        // gayab ho jate — yani wohi cheez jis se bachne ke liye ye switch banaya gaya.
+        $stars = $show('show_heading_stars', true);
+        $kotLabel = match ($eventType) {
+            'cancel' => 'CANCEL KOT #' . $sequenceNo,
+            'addition' => 'ADDITION KOT #' . $sequenceNo,
+            'duplicate' => 'DUPLICATE KOT #' . $sequenceNo,
+            default => 'KOT #' . ($sequenceNo ?: 1),
         };
+        $heading = $stars ? '*** ' . $kotLabel . ' ***' : $kotLabel;
         // The heading (KOT / CANCEL KOT / ADDITION KOT) reads at the same big scale as the order
         // type and category below it — a cancel ticket the kitchen can read across the pass.
         $out .= $this->scaled($heading, $big, true, true);
         if ($eventType === 'duplicate') {
             $out .= $this->center('DUPLICATE ' . max($copyNo, 1)) . "\n";
         }
-        $out .= $this->scaled('** ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . ' **', $big, true, true);
+        $orderTypeLabel = strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE'));
+        $out .= $this->scaled($stars ? '** ' . $orderTypeLabel . ' **' : $orderTypeLabel, $big, true, true);
         // One ticket per category — name the category so the station knows the slip is theirs.
         // The show_category_header toggle (default ON) lets a single-station kitchen drop this line.
         if ($show('show_category_header', true) && ! empty($payload['kot_category'])) {

@@ -78,6 +78,7 @@
             'show_order_type'        => 'Order Type',
             'show_column_dividers'   => 'Column Divider Lines',
             'show_category_header'   => 'KOT Category Header',
+            'show_heading_stars'     => 'Stars around KOT heading (*** KOT #1 ***)',
         ] as $field => $label)
         @php
             // Most toggles default ON for a brand-new layout; dividers are the exception (today's
