@@ -48,7 +48,7 @@ schema step instead of after the update). Regression test: package **B ships a m
 B build; `EdgeProofMigrationNeverShipsTest` fails the tree if it is ever left behind); after the A→B signed update the migration must be recorded,
 its table must exist and `edge_schema_version` must name it. Results: `EdgeUpdaterMySqlTest` 10/35; clean-machine dev mode **OK 160 assertions**
 (the first run correctly rolled back — `reverted_runtime` — when the staged runtime could not boot, which is what led to the staging fix);
-release-mode run recorded separately. The 0.7.0 updater path is **not certified**; the next release carries the fix.
+release-mode run (real no-dev closure vendor, `EDGE_PROOF_VENDOR_FROM`) **OK 165 assertions** (22 min, 26 Sep 04:05–04:27) — the B-only migration is applied by the new runtime in release shape as well. The 0.7.0 updater path stays **not certified** (the LAB build predates the fix); the next release carries the fix.
 
 ## LAB tooling added/changed (LAB only, no product code)
 
