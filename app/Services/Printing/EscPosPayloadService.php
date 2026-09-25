@@ -1002,10 +1002,20 @@ class EscPosPayloadService
         // liye sitare hataye NAHI — switch ke peeche rakhe. Default `true` = aaj wali soorat, to
         // deploy ke din kisi ki parchi nahi badalti; sirf jab operator Edit Layout me band kare.
         //
-        // ⚠️ `$show(...)` ka doosra argument default hai: `true` rakhna LAZMI hai. `false` likh
-        // dete to jis tenant ki layout row abhi purani hai (column hi nahi) us ke sitare chup-chaap
-        // gayab ho jate — yani wohi cheez jis se bachne ke liye ye switch banaya gaya.
-        $stars = $show('show_heading_stars', true);
+        // ⚠️ `$show()` JAAN-BOOJH KAR istemal NAHI kiya. Us ka default SIRF us soorat me chalta
+        // hai jab POORA `$layout` null ho:
+        //
+        //     $show = fn ($f, $default = true) => $layout === null ? $default : (bool) $layout->{$f};
+        //
+        // Yani row maujood ho magar column na ho — us tenant par jahan migration abhi chali hi
+        // nahi — to `(bool) null` yani FALSE milta aur sitare CHUP-CHAAP gayab ho jate. Theek
+        // wohi cheez jis se bachne ke liye ye switch banaya gaya tha. (Ye farq sabotage ne pakra:
+        // pehli koshish me `$show()` istemal hua tha aur poora suite hara reh gaya tha, kyunki
+        // test ki row me column ka DB default pehle se baitha tha.)
+        //
+        // Is liye yahan khud null-safe parha ja raha hai. `$show` ko badalna ghalat hota: wo har
+        // doosre toggle par asar dalta, aur un me se kai ka durust default FALSE hai.
+        $stars = $layout === null ? true : (bool) ($layout->show_heading_stars ?? true);
         $kotLabel = match ($eventType) {
             'cancel' => 'CANCEL KOT #' . $sequenceNo,
             'addition' => 'ADDITION KOT #' . $sequenceNo,

@@ -162,6 +162,41 @@ class LayoutRowDividerMySqlTest extends MySqlTenantTestCase
             'default par order type ke sitare bhi qaayam');
     }
 
+    /**
+     * 🚨 COLUMN HI NA HO TO BHI SITARE RAHEIN — deploy aur migration ke DARMIYAN ki soorat.
+     *
+     * Ye guard pehli koshish me tha hi nahi, aur sabotage ne pakra: maine `$show(...)` ka default
+     * `true` se `false` kar diya aur poora suite HARA reh gaya. Wajah — `setLayout()` ki row me
+     * column ka DB default (1) pehle se baitha tha, is liye code ka default chhua hi nahi jata.
+     *
+     * Asal khatra yahan hai: row maujood ho magar column NULL/gayab — jaise us tenant par jahan
+     * migration abhi chali nahi. Purane `$show()` me wo `(bool) null` yani FALSE ban jata aur
+     * sitare chup-chaap gayab ho jate. Ab null-safe padha jata hai.
+     */
+    public function test_stars_survive_when_the_column_is_missing(): void
+    {
+        $this->setLayout('kot', ['kot_font_size' => 18]);
+
+        // Column ko waqai GIRA kar dekha ja raha hai — yehi us tenant ki soorat hai jahan
+        // migration abhi chali nahi. (NULL nahi kar sakte: column NOT NULL default(true) hai.)
+        \Schema::connection('tenant')->table('receipt_layout_settings', function ($t) {
+            $t->dropColumn('show_heading_stars');
+        });
+
+        try {
+            \App\Models\Tenant\ReceiptLayoutSetting::on('tenant')->first()?->newInstance();   // schema cache saaf
+            $payload = $this->kotPayload();
+
+            $this->assertStringContainsString('*** KOT #1 ***', $payload,
+                'column maujood na ho to bhi aaj wali soorat qaayam rehni chahiye — warna '
+                .'migration se pehle wale tenant ke sitare chup-chaap gayab ho jayenge');
+        } finally {
+            \Schema::connection('tenant')->table('receipt_layout_settings', function ($t) {
+                $t->boolean('show_heading_stars')->default(true);
+            });
+        }
+    }
+
     /** Switch band — sitare jayen, magar naam aur number bilkul wahi rahein. */
     public function test_turning_the_switch_off_drops_the_stars_and_nothing_else(): void
     {
