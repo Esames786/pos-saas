@@ -88,9 +88,28 @@
                         </button>
                     @endcan
                     @can('tenant.catering.documents.bulk-kitchen-sheets')
+                        {{-- KITCHEN-SHEET-LANG-1 — bare button tenant ki default zabaan
+                             kholta hai, jaisa pehle karta tha; caret us ke saath teen
+                             sarih chunaav deta hai. Bulk route pehle se ?lang= maanta
+                             hai (CateringBulkDocumentController::language), aur
+                             bulk-print ka JS data-url ki mojooda query string ke saath
+                             ids[] jorta hai — is liye lang wahin rakha ja sakta hai. --}}
                         <button type="button" class="btn btn-outline-secondary bulk-print" data-url="{{ url('/catering/documents/bulk/kitchen-sheets') }}">
                             <i class="ti ti-chef-hat me-1"></i>Kitchen Sheets
                         </button>
+                        <button type="button" class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split px-2"
+                                data-bs-toggle="dropdown" data-bs-strategy="fixed" aria-expanded="false">
+                            <span class="visually-hidden">Kitchen Sheets — zabaan chunein</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><h6 class="dropdown-header">Kitchen Sheets — zabaan</h6></li>
+                            <li><button type="button" class="dropdown-item bulk-print"
+                                        data-url="{{ url('/catering/documents/bulk/kitchen-sheets?lang=en') }}">English</button></li>
+                            <li><button type="button" class="dropdown-item bulk-print"
+                                        data-url="{{ url('/catering/documents/bulk/kitchen-sheets?lang=ur') }}">اردو</button></li>
+                            <li><button type="button" class="dropdown-item bulk-print"
+                                        data-url="{{ url('/catering/documents/bulk/kitchen-sheets?lang=both') }}">Both</button></li>
+                        </ul>
                     @endcan
                     @can('tenant.catering.documents.bulk-address-sheet')
                         <button type="button" class="btn btn-outline-secondary bulk-print" data-url="{{ url('/catering/documents/bulk/address-sheet') }}">
@@ -232,9 +251,23 @@
                                             <i class="ti ti-file-invoice me-2"></i>Quotation</a></li>
                                     @endif
                                     @if($release)
-                                        <li><a class="dropdown-item" target="_blank"
-                                               href="{{ url('/catering/documents/kitchen-sheet/' . $release->id) }}">
-                                            <i class="ti ti-tools-kitchen-2 me-2"></i>Kitchen Sheet</a></li>
+                                        {{-- KITCHEN-SHEET-LANG-1 — zabaan ka chunaav yahan bhi.
+                                             Production Release screen par ye teen (EN / اردو / Both)
+                                             pehle se thay; events list par sirf ek link tha jo tenant
+                                             ki default zabaan kholta tha. Bawarchi Urdu parhta hai aur
+                                             daftar English — dono ek hi list se nikalne parte hain.
+                                             Route pehle se ?lang= maanta hai; sirf chunaav nahi tha. --}}
+                                        <li class="px-3 py-1">
+                                            <div class="fs-13 mb-1"><i class="ti ti-tools-kitchen-2 me-2"></i>Kitchen Sheet</div>
+                                            <div class="btn-group btn-group-sm w-100" role="group" aria-label="Kitchen Sheet language">
+                                                <a class="btn btn-outline-secondary" target="_blank"
+                                                   href="{{ url('/catering/documents/kitchen-sheet/' . $release->id . '?lang=en') }}">EN</a>
+                                                <a class="btn btn-outline-secondary" target="_blank"
+                                                   href="{{ url('/catering/documents/kitchen-sheet/' . $release->id . '?lang=ur') }}">اردو</a>
+                                                <a class="btn btn-outline-secondary" target="_blank"
+                                                   href="{{ url('/catering/documents/kitchen-sheet/' . $release->id . '?lang=both') }}">Both</a>
+                                            </div>
+                                        </li>
                                         <li><a class="dropdown-item"
                                                href="{{ url('/catering/production-releases/' . $release->id) }}">
                                             <i class="ti ti-clipboard-check me-2"></i>Production Release
