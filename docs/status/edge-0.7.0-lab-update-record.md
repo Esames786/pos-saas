@@ -66,3 +66,19 @@ release-mode run (real no-dev closure vendor, `EDGE_PROOF_VENDOR_FROM`) **OK 165
    LAB tenant (config data only; synced by the normal refresh). Requesting approval.
 3. **Cloud device record.** The Cloud still shows the LAB device as 0.6.0-edge / v6 because the appliance reports its version only at pairing —
    a follow-up item (periodic compatibility re-report), not a failure.
+
+## Supervised Local Mode acceptance + controlled handback (26–27 Sep 2026) — DONE
+
+Owner approvals: disposable LAB menu seed; supervised LAB-only Local Mode; stopping the LAB Cloud process to let the lease lapse.
+Evidence: `SEED-*`, `T0`–`T5`, `PERM-*`, `H1`/`H2`, `P1`–`P3`, `HB0`–`HB7`, laptop screenshots.
+
+| Step | Result |
+|---|---|
+| LAB menu seed | 13 products (1 per-kg), 4 variants, 5 barcodes, 2 modifier groups / 6 modifiers, 2 deals (branch-scoped — the export requires `combos.branch_id`), 2 floors / 10 tables, 3 waiters, 3 void reasons, PKR + 10 denominations, CASH + 2 display-only methods, KOT routing, 2 customers, 15 stock balances; synced by revisions 4–5, stock baseline accepted |
+| Takeover | `Start-LabCloud.ps1 -Stop` 18:10:58 local; lease lapsed naturally (online → unstable → lost → preparing_local at 13:13:32 UTC); all 9 gates + zero work proven; `edge:local:authority-takeover --confirm --by="Mohsin, …"` → LOCAL MODE ACTIVATED 13:14:08 UTC, fresh=true, no mutation from entering Local Mode |
+| Cashier acceptance (second laptop, real interaction) | login/TLS, POS layout, categories, variants, modifiers, weighted qty, barcode, cart edit, Hold/Draft/Recall, table open, Add Round, Request Bill, Bill Preview, move (G1→G4), merge test, sent-line void + manager approval (`LABMF2DE`), whole-order cancel + approval, Review & Pay, cash sales (5 paid: 250 / 1,000 / 1,450 / 180 / 80), Direct Pay KOT, normal/addition/cancellation KOT, KOT reminder (DUPLICATE KOT), receipt + reprint, Recent Prints, shift open/close, denied login (approver lacks `tenant.pos.index`), delivery mode with rider. **Not exercised:** sales return; shift close without denomination count |
+| Permissions found missing (LAB cashier set was route-derived, not the Online cashier role) | `tenant.pos.void-kot-item` (shared `KotCancellationService` checks the requesting cashier before the approval), `tenant.restaurant.table-sessions.move/merge`, `tenant.sales-returns.*`, `tenant.pos.customers.quick-store` — granted by the owner on both LAB databases (42 rows); the LAB Cloud grant re-synced on reconnect (revision 6). Lesson: derive Edge cashier sets from the provisioned Online cashier role |
+| Printing (FakePrinter only, PHYSICAL_PRINT_CERTIFIED=no) | 33 print jobs ↔ documents on the FakePrinter, one delivery each, no duplicate logical key or delivery; KOT #1 per category, ADDITION #2, CANCEL #3/#4 (approval), DUPLICATE KOT (reminder), receipts + reprint; printer 1 / terminal 1 routing |
+| Handback | LAB Cloud restarted from the 7b8f886 export; outbox 5/5 acknowledged (sale #1 on attempt 1,951), Cloud ingestions 5 = 5 distinct sale UUIDs, all applied (2,960.00); state machine local_active → connection_restored → reconciling → handing_back → online/standby; `edge:local:authority-handback --by=…` accepted; after: STANDBY_READY, standby, LOCAL_ACTIVE=no, 22 consecutive acks, lease holder cloud, outbox 0 pending / 0 failed, all freshness ok, AUTO_FAILOVER=no |
+
+Open findings carried into the next release: exact Online layout via one shared cashier view; offline add-customer; Edge cashier permission set = Online cashier role; Cloud device record reports version only at pairing.
