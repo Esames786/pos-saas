@@ -28,6 +28,7 @@ class CateringSetting extends Model
         'send_customer_emails',
         'default_service_charge_percent',
         'print_language_profile',
+        'show_kitchen_requirements',
         'reminder_offsets',
     ];
 
@@ -35,6 +36,7 @@ class CateringSetting extends Model
     {
         return [
             'send_customer_emails' => 'boolean',
+            'show_kitchen_requirements' => 'boolean',
             'default_service_charge_percent' => 'decimal:4',
             'reminder_offsets' => 'array',
         ];
@@ -53,6 +55,12 @@ class CateringSetting extends Model
                 // every customer email was skipped as "disabled" on a brand-new
                 // tenant - the opposite of what the column says.
                 'send_customer_emails' => true,
+                // Same reason as the line above, and the same trap: firstOrCreate
+                // hands back NULL for a column it did not write, and NULL reads
+                // as false here — which happens to be the wanted answer, but by
+                // accident rather than by the column's own default. Stated so a
+                // later change to that default is not silently ignored.
+                'show_kitchen_requirements' => false,
             ]
         );
     }

@@ -69,22 +69,23 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
     }
 
     /**
-     * Client ki apni booking jitni: 12 khane, aath course me.
+     * 16 khane ek safhe par — wohi adad jo client ne purane software ke muqable
+     * me maanga tha.
      *
-     * 12 ka adad andaza nahi — CSS se naapa gaya. Pehle ek Urdu khane ki qatar
-     * ~76px leti thi aur safhe par ~7 khane aate the, jo client ki bheji hui
-     * tasveer se bilkul milta hai. Ab qatar ~46px hai aur ~13 khane aate hain.
+     * Ye do qadmon me mila, aur dono naape gaye:
+     *   • CSS kasne se (Urdu ki leading, qatar ki padding, header ka size):
+     *     qatar ~76px se ~46px, aur safhe par 7 se 12 khane.
+     *   • Phir malik ne 26 Sep ko course ke unwaan hatwa diye — har patti ~25px
+     *     leti thi — aur adad 18 tak pahunch gaya.
      *
-     * 16 ka pehra jaan-boojh kar NAHI lagaya. 16 tak pahunchne ke liye wo do
-     * cheezein hatani partin jo client ne KHUD maangi thin — har khane ke neeche
-     * material ka breakdown (29 Aug) aur course ke unwaan (18 Sep) — ya Urdu ka
-     * naam itna chhota karna parta ke chulhe par door se parha na jaye. Wo
-     * faisla malik ka hai, mera nahi.
+     * Pehra 16 par lagaya gaya hai, 18 par nahi: naap me thori gunjaish rakhni
+     * chahiye, warna khane ke naam thora lamba hote hi test bina kisi asal
+     * kharabi ke red ho jata.
      */
     public function test_a_normal_sheet_fits_on_one_page(): void
     {
-        $this->assertSame(1, $this->pagesFor(12, 'ur'),
-            '12 khane ek safhe par — pehle 7 par hi doosra safha shuru ho jata tha');
+        $this->assertSame(1, $this->pagesFor(16, 'ur'),
+            '16 khane ek safhe par — shuru me 7 par hi doosra safha shuru ho jata tha');
     }
 
     /** Aur Urdu par bhi, kyunke client ka sheet Urdu me hi chhapta hai. */
@@ -129,8 +130,11 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
         $html = $this->sheetHtml(16, 'en');
 
         $this->assertSame(16, substr_count($html, '☐'), 'har khane ka apna checkbox');
-        $this->assertSame(count(self::COURSES), substr_count($html, 'class="course"'),
-            'har course ka unwaan');
+        // KITCHEN-SHEET-NO-COURSE-HEADINGS-1 (26 Sep): malik ne pattiyan hatwa
+        // din. Tarteeb qayam hai — wo CateringCourseOrderMySqlTest me parkhi
+        // jati hai — magar sar-naame ab nahi chhapte.
+        $this->assertSame(0, substr_count($html, 'class="course"'),
+            'course ki patti ab nahi chhapti');
         $this->assertSame(1, substr_count($html, '<table class="items">'),
             'ek hi table — malik ne per-course tables hatwaye the');
         $this->assertSame(1, substr_count($html, '<thead>'),

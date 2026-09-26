@@ -75,8 +75,20 @@
         Sirf tashreeh ke liye ek directive ka naam likhne se hi ye file compile
         hona band ho gayi thi. Is liye upar ki saari baatein lafzon me hain,
         misaal ki shakl me nahi. --}}
+{{-- KITCHEN-SHEET-NO-COURSE-HEADINGS-1 (26 Sep) — TARTEEB rahi, UNWAAN gaye.
+
+     18 Sep ko course ke unwaan is dalil par daale gaye the ke bawarchi
+     course-dar-course pakata hai. Malik ne 26 Sep ko wo dalil rad kar di:
+     "category hata do, need nahi, aur space aa jayega" — do khanon wale sheet
+     par do pattiyan aa rahi thin, aur jagah wahi cheez kha rahi thi jis ki
+     shikayat thi.
+
+     TARTEEB PAR KOI ASAR NAHI. Khane ab bhi usi silsile me chhapte hain jo
+     client ne 21 Sep ko maanga tha (starter → biryani → gravy → BBQ → …), is
+     liye groups() ki jagah sort() — wohi helper, wohi tarteeb, sirf sar-naame
+     nahi. Estimate ka kaghaz pehle se yehi karta hai. --}}
 @php
-    $courses = \App\Support\Catering\CourseOrder::groups($release->lines);
+    $orderedLines = \App\Support\Catering\CourseOrder::sort($release->lines);
 @endphp
     <table class="items">
         <thead>
@@ -90,16 +102,7 @@
         </thead>
         <tbody>
             @php $sr = 0; @endphp
-            @foreach($courses as $course)
-            {{-- Bawarchi ek waqt me ek course banata hai; ye patti us ko batati
-                 hai ke ye hissa kahan se shuru hota hai aur kitne item hain. --}}
-            <tr class="course">
-                <td colspan="5">
-                    <span class="course-name">{{ $course['name'] }}</span>
-                    <span class="course-count">{{ $course['lines']->count() }}</span>
-                </td>
-            </tr>
-            @foreach($course['lines'] as $line)
+            @foreach($orderedLines as $line)
             <tr>
                 <td class="sr">{{ ++$sr }}</td>
                 <td class="num"><span class="qty">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }} {{ $line->unit_code }}</span></td>
@@ -125,11 +128,18 @@
                 <td style="text-align:center; font-size: 18px;">☐</td>
             </tr>
             @endforeach
-            @endforeach
         </tbody>
     </table>
 
-@if(!empty($requirements))
+{{-- KITCHEN-SHEET-REQUIREMENTS-TOGGLE-1 (26 Sep) — bawarchi is table ko nahi
+     parhta, wo sirf jagah leti hai. Ab ye Catering Settings ka switch hai aur
+     BAND haalat me aata hai; jise planning ka hisaab chahiye wo khol le.
+
+     Setting se parha ja raha hai, view ko diye gaye kisi variable se nahi: ye
+     partial teen jagah se render hoti hai (tanha document, bulk composition,
+     aur network print), aur teenon ko alag alag yaad rakhna hi wo tareeqa hai
+     jis se ek jagah switch kaam karna chhor deta hai. --}}
+@if(!empty($requirements) && \App\Models\Tenant\CateringSetting::tenantDefault()->show_kitchen_requirements)
 <div class="req">
     <h3>{{ $t('Consolidated Raw Material Requirements (planning)', 'مجموعی خام مال کی ضروریات') }}</h3>
     <table class="req-table">
