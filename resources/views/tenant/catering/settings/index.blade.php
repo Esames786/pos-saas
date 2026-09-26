@@ -48,6 +48,28 @@
                         unaffected.
                     </div>
                 </div>
+
+                {{-- KITCHEN-SHEET-REQUIREMENTS-TOGGLE-1 (26 Sep) — band haalat me
+                     aata hai, kyunke bawarchi ye table nahi parhta aur ye safhe ki
+                     jagah kha raha tha. Jise store ki planning chahiye wo khol le. --}}
+                <div class="col-md-6">
+                    <label class="form-label">Kitchen Sheet — Raw Material Requirements</label>
+                    <div class="form-check form-switch mt-2">
+                        <input type="checkbox" value="1" name="show_kitchen_requirements" id="show-kitchen-requirements"
+                               class="form-check-input"
+                               {{ old('show_kitchen_requirements', $settings->show_kitchen_requirements) ? 'checked' : '' }}>
+                        <label class="form-check-label" for="show-kitchen-requirements">
+                            Print the consolidated requirements table
+                        </label>
+                    </div>
+                    <div class="form-text">
+                        Kitchen sheet ke neeche wali planning table — har material ka poori booking
+                        par jama. <strong>Default band hai:</strong> bawarchi upar wali dish list se
+                        kaam karta hai, aur ye table kaghaz leti hai. Store se issue karne wala bhi
+                        yehi sheet chhapta ho to khol dein.
+                    </div>
+                </div>
+
                 <div class="col-md-6">
                     <label class="form-label">Default Service Charge %</label>
                     <input type="number" step="0.01" min="0" max="100" name="default_service_charge_percent" class="form-control"

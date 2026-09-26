@@ -33,29 +33,7 @@
     table.items th { text-align: {{ $isUr ? 'right' : 'left' }}; border-bottom: 2px solid #111827; padding: 4px 8px; font-size: 11px; text-transform: uppercase; color: #374151; }
     table.items th.num, table.items td.num { text-align: {{ $isUr ? 'left' : 'right' }}; }
     table.items td { padding: 2px 8px; border-bottom: 1px solid #d1d5db; vertical-align: top; }
-    /* CATERING-COURSE-ORDER-1 — course ka unwaan.
-       Jaan-boojh kar HALKA rakha gaya: jo kaali patti pehle hatwai gayi thi wo
-       safhe par khane se zyada shor karti thi. Ye patti apna kaam karti hai —
-       nazar aa jati hai, nazarandaz nahi hoti — aur us se aage nahi jati. */
-    table.items tr.course td {
-        background: #f3f4f6;
-        border-top: 2px solid #111827;
-        border-bottom: 1px solid #9ca3af;
-        padding: 2px 8px;
-    }
-    .course-name { font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #111827; }
-    /* Ginti unwaan ke saath — bawarchi ko pehle hi maloom ho ke is course me
-       kitne item hain, safha palatne se pehle. */
-    .course-count {
-        float: {{ $isUr ? 'left' : 'right' }};
-        font-size: 11px; font-weight: bold; color: #374151;
-        background: #fff; border: 1px solid #9ca3af; border-radius: 9px;
-        padding: 0 7px; min-width: 20px; text-align: center;
-    }
     table.items th.sr, table.items td.sr { text-align: center; color: #6b7280; font-size: 12px; }
-    /* Unwaan safhe ke aakhir me akela na chhoote jab ke us ka pehla khana agle
-       safhe par chala jaye. */
-    table.items tr.course { break-after: avoid; page-break-after: avoid; }
     .item-name { font-size: 15px; font-weight: bold; }
     .item-ur { font-size: 16px; }
     .qty { font-size: 16px; font-weight: bold; white-space: nowrap; }
