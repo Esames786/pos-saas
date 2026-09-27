@@ -117,6 +117,8 @@ class EdgeCashierReturnHttpMySqlTest extends MySqlTenantTestCase
 
     public function test_a_cashier_without_the_return_permission_is_refused(): void
     {
+        // W-E: the seeded cashier holds the full catalogue template — model the operator without Return explicitly.
+        $this->revokeEdgePermission($this->userId, 'tenant.sales-returns.store');
         $sale = $this->cashSale(1);
         $this->getJson('/edge/local/pos/returns/search?q=' . urlencode((string) $sale['sale_no']))->assertStatus(403);
         $this->postJson('/edge/local/pos/returns', ['sales_order_id' => 1, 'refund_method' => 'cash', 'lines' => [['sales_order_line_id' => 1, 'quantity' => 1]]])->assertStatus(403);

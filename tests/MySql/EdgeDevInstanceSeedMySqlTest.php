@@ -90,14 +90,13 @@ class EdgeDevInstanceSeedMySqlTest extends MySqlTenantTestCase
         $this->bindEdgeLocalMeta($branchId, 1, 42, 'dev-edge-instance');
         $this->seedEdgeCredential($cashierId, $branchId, 1, 'CashierPass1');
         $this->seedEdgeCredential($managerId, $branchId, 1, 'MgrPass1');
-        foreach (['tenant.sales-returns.store', 'tenant.pos.quick-report-send'] as $p) {
+        // W-E (A6): DEVCASH1 holds the FULL `Cashier (Counter)` catalogue template (Return, Quick Report, Change terminal,
+        // void-kot-item, table / shift / returns screens…) — seedEdgeCredential grants it; made explicit here so the dev
+        // render always shows every cashier control. DEVMGR1 holds the whole catalogue (cashier + manager + finance).
+        foreach (\App\Support\Pos\PosPermissionCatalog::cashier() as $p) {
             $this->grantEdgePermission($cashierId, $p);
-            $this->grantEdgePermission($managerId, $p);
         }
-        foreach (['tenant.pos.void-kot-item', 'tenant.pos.change-terminal', 'tenant.shifts.view-amounts',
-            \App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_LEDGER, \App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_PAYMENT,
-            \App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_JOURNAL, \App\Services\Edge\EdgeLocalPurchaseReturnService::PERM_STORE,
-            \App\Services\Edge\EdgeLocalPurchaseReturnService::PERM_POST] as $p) {
+        foreach (\App\Support\Pos\PosPermissionCatalog::all() as $p) {
             $this->grantEdgePermission($managerId, $p);
         }
 

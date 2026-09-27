@@ -109,6 +109,8 @@ class EdgeCashierScreenRendersHttpMySqlTest extends MySqlTenantTestCase
      *  is offered ONLY his assigned terminal, even when the branch has other terminals. */
     public function test_pinned_operator_is_offered_only_his_assigned_terminal(): void
     {
+        // W-E: the seeded cashier holds the full catalogue template (incl. change-terminal) — model the pinned operator explicitly.
+        $this->revokeEdgePermission($this->userId, 'tenant.pos.change-terminal');
         $other = $this->makeTerminal($this->branchId, ['name' => 'Counter Two']);
 
         $html = $this->get('/edge/local/pos')->assertOk()->getContent();

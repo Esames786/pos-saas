@@ -169,7 +169,8 @@ class EdgeCashierRouteGatesHttpMySqlTest extends MySqlTenantTestCase
     public function test_terminal_pin_and_assignments_are_enforced_server_side(): void
     {
         DB::connection('tenant')->table('users')->where('id', $this->userId)->update(['default_terminal_id' => $this->terminalA]);
-        $this->login();
+        // W-E: the seeded cashier holds the full catalogue template (incl. change-terminal) — model the pinned operator explicitly.
+        $this->revoke('tenant.pos.change-terminal');
 
         // pinned (no change-terminal permission): own terminal yes, the other no
         $this->postJson('/edge/local/pos/terminal/select', ['terminal_id' => $this->terminalA])->assertOk();

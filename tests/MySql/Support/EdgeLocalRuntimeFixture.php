@@ -67,24 +67,18 @@ trait EdgeLocalRuntimeFixture
      * session-freshness guard (EnsureEdgeAuthenticated) accepts the user's session. Returns the row id.
      */
     /**
-     * ONLINE ROUTE-PERMISSION parity (W0b, owner directive 20 Sep 2026): the Online cashier reaches these routes only
-     * with these permissions (EnsureRoutePermission by route name); the Edge endpoints enforce the SAME names, so every
-     * seeded cashier holds the set — a test that models a restricted operator revokes the one it studies.
+     * W-E (owner decision A6) — the canonical `Cashier (Counter)` template, PosPermissionCatalog::cashier(): every
+     * permission the POS cashier workflows actually check at runtime (Edge endpoints enforce the SAME names as the
+     * Online routes — W0b), which is also what TenantProvisioner gives a NEW tenant's cashier role. It replaces the
+     * former route-derived list of 10 (the LAB drift). Every seeded cashier holds the whole set — a test that models a
+     * restricted operator revokes the one it studies (revokeEdgePermission). NOTE: the set includes
+     * tenant.pos.void-kot-item, which the Edge also treats as the offline manager-approval marker.
+     *
+     * @return list<string>
      */
     protected function onlinePosParityPermissions(): array
     {
-        return [
-            'tenant.pos.index',                            // open the POS page
-            'tenant.pos.store',                            // Complete Sale (canonical f12f1fc)
-            'tenant.held-sales.store',                     // Hold / Draft / Add Round
-            'tenant.held-sales.cancel',                    // Cancel order
-            'tenant.sales-orders.split-bill.store',        // Split Bill
-            'tenant.restaurant.table-sessions.open',       // Open table
-            'tenant.restaurant.table-sessions.close',      // Close table session
-            'tenant.shifts.store',                         // Open shift
-            'tenant.shifts.close',                         // Close shift
-            'tenant.api.manager-approvals.verify',         // ask a manager to approve
-        ];
+        return \App\Support\Pos\PosPermissionCatalog::cashier();
     }
 
     protected function seedEdgeCredential(int $userId, int $branchId, int $activationEpoch = 1, string $password = 'CashierPass1'): int
@@ -115,6 +109,21 @@ trait EdgeLocalRuntimeFixture
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
         // The acting user model may already have lazily loaded its permissions (every gated endpoint calls can());
         // a real request re-resolves the user from the session, so mirror that here by dropping the stale relations.
+        $acting = auth('tenant')->user();
+        if ($acting && (int) $acting->getKey() === $userId) {
+            $acting->unsetRelation('permissions');
+            $acting->unsetRelation('roles');
+        }
+    }
+
+    /** Remove a DIRECT (spatie, tenant guard) permission from a user — the counterpart of grantEdgePermission. */
+    protected function revokeEdgePermission(int $userId, string $permission): void
+    {
+        $conn = DB::connection('tenant');
+        $permId = (int) $conn->table('permissions')->where('name', $permission)->where('guard_name', 'tenant')->value('id');
+        $conn->table('model_has_permissions')->where('permission_id', $permId)
+            ->where('model_type', \App\Models\Tenant\User::class)->where('model_id', $userId)->delete();
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
         $acting = auth('tenant')->user();
         if ($acting && (int) $acting->getKey() === $userId) {
             $acting->unsetRelation('permissions');

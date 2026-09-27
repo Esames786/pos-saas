@@ -10,6 +10,7 @@ use App\Models\Master\TenantDomain;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Currency;
 use App\Models\Tenant\User;
+use App\Support\Pos\PosPermissionCatalog;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -958,6 +959,9 @@ class TenantProvisioner
             Permission::findOrCreate($permission, 'tenant');
         }
 
+        // W-E (A6): a tenant is NEW when it has no Owner role yet — decided BEFORE the Owner is created below.
+        $isNewTenant = ! Role::where('name', 'Owner')->where('guard_name', 'tenant')->exists();
+
         $role = Role::findOrCreate('Owner', 'tenant');
         // givePermissionTo, NOT syncPermissions: on a re-provision of an existing tenant,
         // sync REPLACES the whole set and silently strips permissions granted after first
@@ -965,6 +969,9 @@ class TenantProvisioner
         // like tenant.reports.center.* were wiped by onboarding re-runs; found on prod 2026-08-09).
         $role->givePermissionTo($tenantPermissions);
         $owner->syncRoles([$role]);
+
+        // W-E (A6): the `Cashier (Counter)` role template, alongside Owner, for NEW tenants only (never assigned).
+        $this->provisionCashierRoleTemplate($isNewTenant);
 
         // Seed the default Chart of Accounts (FIN-2). Idempotent; tenant DB is active here.
         (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
@@ -979,6 +986,36 @@ class TenantProvisioner
 
         // Map payment methods → cash/bank accounts (FIN-7B) — after cash/bank seeder.
         (new \Database\Seeders\Tenant\DefaultPaymentMethodCashBankMappingSeeder())->run();
+    }
+
+    /**
+     * W-E (owner decision A6) — the `Cashier (Counter)` role template = PosPermissionCatalog::cashier() (every
+     * permission the POS cashier workflows check, Online and Edge alike).
+     *
+     * NEW tenants only: a re-provision of an existing tenant (Owner already present) creates nothing; an existing
+     * role of the same name is never touched (no overwrite of a tenant-customised role, no silent expansion); the
+     * role is never assigned to anyone — the tenant assigns it. Catalogue names that only arrive later through the
+     * route catalog (e.g. tenant.held-sales.reattach-table) are created here so the grant cannot fail.
+     * Existing tenants are reported by `permissions:audit-cashier-roles` (read-only), never granted.
+     */
+    public function provisionCashierRoleTemplate(bool $isNewTenant): ?Role
+    {
+        if (! $isNewTenant) {
+            return null;
+        }
+        $name = PosPermissionCatalog::CASHIER_ROLE_TEMPLATE;
+        if (Role::where('name', $name)->where('guard_name', 'tenant')->exists()) {
+            return null;
+        }
+
+        $permissions = PosPermissionCatalog::cashier();
+        foreach ($permissions as $permission) {
+            Permission::findOrCreate($permission, 'tenant');
+        }
+        $cashier = Role::create(['name' => $name, 'guard_name' => 'tenant']);
+        $cashier->givePermissionTo($permissions);
+
+        return $cashier;
     }
 
     protected function makeDatabaseName(Tenant $tenant): string
