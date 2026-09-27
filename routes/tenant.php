@@ -971,6 +971,16 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::post('/catering/documents/estimate/{cateringEstimate}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printEstimate'])->name('tenant.catering.documents.estimate-print');
                     Route::post('/catering/documents/final-invoice/{cateringFinalInvoice}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printFinalInvoice'])->name('tenant.catering.documents.final-invoice-print');
 
+                    // CATERING-CUSTOMER-BALANCES-1 (28 Sep) — graahak ka hisaab,
+                    // booking ke bahar se. Read-only: paisa yahan se nahi liya
+                    // jata, wo event ke against advance service ka kaam hai.
+                    //
+                    // Naam `tenant.catering.*` hai chahe sidebar par Finance ke
+                    // neeche dikhe: module route ke NAAM se tay hota hai, aur ye
+                    // screen catering ki hai.
+                    Route::get('/catering/customer-balances', [\App\Http\Controllers\Tenant\Catering\CateringCustomerBalanceController::class, 'index'])->name('tenant.catering.customer-balances.index');
+                    Route::get('/catering/customer-balances/{customer}', [\App\Http\Controllers\Tenant\Catering\CateringCustomerBalanceController::class, 'show'])->name('tenant.catering.customer-balances.show');
+
                     Route::get('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'index'])->name('tenant.catering.printer-mappings.index');
                     Route::post('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'store'])->name('tenant.catering.printer-mappings.store');
                     Route::delete('/catering/printer-mappings/{cateringPrinterMapping}', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'destroy'])->name('tenant.catering.printer-mappings.destroy');

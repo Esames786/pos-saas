@@ -2,7 +2,9 @@
 
 namespace App\Services\Catering;
 
+use App\Models\Tenant\CateringEstimate;
 use App\Models\Tenant\CateringEvent;
+use App\Models\Tenant\CateringFinalInvoice;
 
 /**
  * KASHIF-CATERING-CUSTOMER-CREDIT-1 — where a booking stands, in one place.
@@ -345,21 +347,49 @@ class CateringFinancialPositionService
     }
 
     /** @return array{0: float, 1: string} */
-    private function billed(CateringEvent $event): array
-    {
-        if ($invoice = $event->finalInvoice()->first()) {
+    /**
+     * CATERING-CUSTOMER-BALANCES-1 (28 Sep) — "kis cheez par bill bana" ka
+     * qaida, bina kisi query ke.
+     *
+     * Ye `billed()` se alag kar ke isliye nikala gaya ke Customer Balances ki
+     * fehrist dozens bookings ek saath dikhati hai. Wahan har booking par
+     * `billed()` bulana N+1 hai, magar us se bhi bari baat: hisaab DOBARA
+     * likhna parta. Jis din wo doosri copy is se ek qadam hat jati, fehrist
+     * aur booking ki screen alag adad kehne lagtin — aur yehi kharabi is
+     * module se ek din pehle `balance_due` par pakri gayi thi.
+     *
+     * Is liye qaida yahan hai aur queries callers ke paas: `billed()` apne
+     * raaste se relations laata hai, fehrist eager-load se. Faisla ek hi.
+     *
+     * @return array{0: float, 1: string}
+     */
+    public static function billedFrom(
+        ?CateringFinalInvoice $invoice,
+        bool $isCancelled,
+        ?CateringEstimate $currentEstimate
+    ): array {
+        if ($invoice) {
             return [round((float) $invoice->grand_total, 2), self::SOURCE_INVOICE];
         }
 
-        if ($event->isCancelled()) {
+        if ($isCancelled) {
             return [0.0, self::SOURCE_CANCELLED];
         }
 
-        if ($estimate = $event->currentEstimate) {
-            return [round((float) $estimate->grand_total, 2), self::SOURCE_ESTIMATE];
+        if ($currentEstimate) {
+            return [round((float) $currentEstimate->grand_total, 2), self::SOURCE_ESTIMATE];
         }
 
         return [0.0, self::SOURCE_NONE];
+    }
+
+    private function billed(CateringEvent $event): array
+    {
+        return self::billedFrom(
+            $event->finalInvoice()->first(),
+            $event->isCancelled(),
+            $event->currentEstimate,
+        );
     }
 
     /**
