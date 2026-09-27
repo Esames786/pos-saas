@@ -30,6 +30,53 @@
     #punch-table thead th.punch-mat-group { background: #f0f8f3; color: #2b7a5b; }
     #punch-table thead th.punch-mat-col { background: #f7fbf9; }
     #punch-table .form-control, #punch-table .form-select { min-height: 34px; font-size: 13px; }
+    /* PUNCH-GRID-LEGIBILITY-1 (27 Sep) — malik: "interface thora bold karna
+       hai, rows me professional colors, aur chhoti screen par bhi sab andar
+       aaye aur bold ho."
+
+       Har column ab `min-width` par hai, `width` par nahi: browser `width` ko
+       tajweez samajhta hai aur jagah kam ho to us se neeche le jata hai —
+       isi liye Qty ka khana sikuṛ kar sirf spinner reh gaya tha. `min-width`
+       farsh hai: ab tang screen par table KHUD SCROLL hoti hai (wrapper par
+       table-responsive pehle se hai) aur koi khana kuchla nahi jata. */
+
+    /* Jo number parha jata hai wo bold aur qatar me seedha — tabular-nums ke
+       baghair 1 aur 7 alag chaurai lete hain aur qatar tirchi lagti hai. */
+    #punch-table input[type=number], #lines-table input[type=number],
+    #punch-table .text-end, #lines-table .text-end {
+        font-variant-numeric: tabular-nums;
+    }
+    #punch-table input[type=number], #lines-table input[type=number] {
+        font-weight: 600;
+    }
+    #punch-table #punch-live-rate { font-size: 15px; }
+
+    /* Rows: halka zebra aur hover. Rang sirf itna ke qatar aankh se na
+       phisle — ye kaam ki grid hai, dashboard nahi. */
+    /* `tr.line-row` likhna meri ghalti thi — wo class markup me hai hi nahi,
+       aur rule khamoshi se kuch na karta. Asal qatarein #lines-body ki
+       seedhi aulad hain; cost-details wali qatar us se alag rakhni hai,
+       warna khuli tafseel bhi zebra me aa kar qatar tor deti hai. */
+    #lines-body > tr:not(.cost-details-row):nth-of-type(even) > td { background: var(--bs-tertiary-bg, #fafbfc); }
+    #lines-body > tr:not(.cost-details-row):hover > td { background: #eef4ff; }
+    #lines-table thead th {
+        background: var(--bs-tertiary-bg, #f6f7f9); font-weight: 600; font-size: 12px;
+        color: var(--bs-secondary-color, #5b6470); white-space: nowrap;
+        border-bottom: 2px solid var(--bs-border-color, #dee2e6);
+    }
+    /* Item ka naam wohi cheez hai jo operator sab se pehle dhoondta hai. */
+    #lines-table tbody td:first-child { font-weight: 600; }
+
+    /* Chhoti screen: table apne wrapper me scroll kare, aur us ka kinara
+       nazar aaye — warna operator ko pata hi nahi chalta ke daayen aur
+       columns hain. */
+    #punch-bar .table-responsive, #lines-table-wrap {
+        border: 1px solid var(--bs-border-color, #dee2e6); border-radius: 6px;
+    }
+    @media (max-width: 991.98px) {
+        #punch-table th, #punch-table td { padding: .3rem .4rem; }
+        #punch-table .form-control, #punch-table .form-select { font-size: 12.5px; }
+    }
     /* The Material Breakdown reads as one section — a hairline down each side,
        and only a dotted rule BETWEEN materials so the product cells beside them
        are never cut through. */
@@ -522,21 +569,21 @@
                         <thead>
                             <tr>
                                 <th rowspan="2" style="min-width:250px;">Item</th>
-                                <th rowspan="2" style="width:95px;" class="text-end">Qty</th>
-                                <th rowspan="2" style="width:105px;" class="text-end">System Rate</th>
-                                <th rowspan="2" style="width:115px;" class="text-end">Customer Rate</th>
+                                <th rowspan="2" style="min-width:110px;" class="text-end">Qty</th>
+                                <th rowspan="2" style="min-width:110px;" class="text-end">System Rate</th>
+                                <th rowspan="2" style="min-width:120px;" class="text-end">Customer Rate</th>
                                 <th colspan="5" class="text-center punch-mat-group">Material Breakdown</th>
                                 <th rowspan="2" style="min-width:170px;">Kitchen Instructions</th>
                                 <th rowspan="2" style="min-width:160px;">Additional Note</th>
-                                <th rowspan="2" style="width:110px;" class="text-end">Line Amount</th>
-                                <th rowspan="2" style="width:130px;">Action</th>
+                                <th rowspan="2" style="min-width:115px;" class="text-end">Line Amount</th>
+                                <th rowspan="2" style="min-width:120px;">Action</th>
                             </tr>
                             <tr>
                                 <th class="punch-mat-col" style="min-width:160px;">Material</th>
-                                <th class="punch-mat-col text-end" style="width:95px;">Rate</th>
-                                <th class="punch-mat-col text-end" style="width:105px;">Required Qty</th>
-                                <th class="punch-mat-col text-end" style="width:95px;">Own</th>
-                                <th class="punch-mat-col text-end" style="width:95px;">Party</th>
+                                <th class="punch-mat-col text-end" style="min-width:100px;">Rate</th>
+                                <th class="punch-mat-col text-end" style="min-width:110px;">Required Qty</th>
+                                <th class="punch-mat-col text-end" style="min-width:100px;">Own</th>
+                                <th class="punch-mat-col text-end" style="min-width:100px;">Party</th>
                             </tr>
                         </thead>
                         <tbody id="punch-body">
@@ -595,19 +642,19 @@
                 </div>
                 <div id="punch-live" class="fs-13 text-muted mt-2"></div>
             </div>
-            <div class="table-responsive">
+            <div class="table-responsive" id="lines-table-wrap">
                 <table class="table mb-0" id="lines-table">
                     <thead>
                         <tr>
                             <th style="min-width:170px;">Item</th>
                             <th style="min-width:110px;">Urdu Name</th>
-                            <th style="width:80px;" class="text-end">Qty</th>
-                            <th style="width:85px;">Unit</th>
-                            <th style="width:100px;" class="text-end"
+                            <th style="min-width:90px;" class="text-end">Qty</th>
+                            <th style="min-width:90px;">Unit</th>
+                            <th style="min-width:105px;" class="text-end"
                                 data-bs-toggle="tooltip" title="System Calculated Rate: what the configured materials and making charges work out to per selling unit.">System Rate</th>
-                            <th style="width:115px;" class="text-end"
+                            <th style="min-width:120px;" class="text-end"
                                 data-bs-toggle="tooltip" title="Customer Quoted Rate: what the customer actually pays per selling unit. It follows the system rate unless an agreed override is recorded.">Customer Rate</th>
-                            <th style="width:100px;" class="text-end">Amount</th>
+                            <th style="min-width:105px;" class="text-end">Amount</th>
                             <th style="min-width:140px;">Instructions</th>
                             <th style="width:36px;"></th>
                         </tr>
