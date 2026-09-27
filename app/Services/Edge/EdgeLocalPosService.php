@@ -214,6 +214,8 @@ class EdgeLocalPosService
                     deliveryCharge: $delivery['charge'],
                 );
                 $this->assertEnvelopeCanCarryLineDiscounts($resolved, (string) ($data['discount_type'] ?? 'none'), $totals['promotion_id'] ?? null);
+                // A2: a FIXED order discount can never exceed what is left of the bill after line discounts.
+                $this->assertFixedDiscountWithinBill($resolved, (string) ($data['discount_type'] ?? 'none'), (float) ($data['discount_value'] ?? 0));
                 $this->consumeManualDiscountApproval($totals, $data, $branch, $user, 0, $clientUuid);
                 $customer = $this->resolveHeldSaleCustomer($data, null);
 
@@ -380,6 +382,47 @@ class EdgeLocalPosService
             if ((float) ($line['discount_amount'] ?? 0) < 0) {
                 throw ValidationException::withMessages(['lines' => 'A line discount cannot be negative.']);
             }
+        }
+    }
+
+    /**
+     * A2 (owner decision, manual discount aligned to Online): a FIXED order discount larger than the bill it
+     * reduces (subtotal − line discounts) is refused outright — the shared totals service would silently clamp
+     * it, which would bind a manager approval to a different amount than the cashier typed. A percent above 100
+     * is already refused by assertDiscountFieldsValid.
+     */
+    private function assertFixedDiscountWithinBill(array $resolvedLines, string $discountType, float $discountValue): void
+    {
+        if ($discountType !== 'fixed') {
+            return;
+        }
+        $subtotal = 0.0;
+        $lineDiscounts = 0.0;
+        foreach ($resolvedLines as $line) {
+            $subtotal += (float) ($line['quantity'] ?? 0) * (float) ($line['unit_price'] ?? 0);
+            $lineDiscounts += (float) ($line['discount_amount'] ?? 0);
+        }
+        if (round($discountValue, 2) > round(max($subtotal - $lineDiscounts, 0), 2) + 0.001) {
+            throw ValidationException::withMessages(['discount_value' => 'The discount cannot be more than the bill subtotal.']);
+        }
+    }
+
+    /**
+     * A2 (owner decision): Online refuses a manual ORDER discount while holding (HeldSaleController::store — the
+     * discount and its manager approval are a payment concern, applied when the check is paid). Same refusal and
+     * message here, for a new hold AND a revision, before anything is written. A bad discount type is left to
+     * assertDiscountFieldsValid (Online's validator answers it first too).
+     */
+    private function refuseManualDiscountAtHold(array $data): void
+    {
+        $type = (string) ($data['discount_type'] ?? 'none');
+        if (! in_array($type, ['none', 'fixed', 'percent'], true)) {
+            return;
+        }
+        if ($type !== 'none' || (float) ($data['discount_value'] ?? 0) > 0) {
+            throw ValidationException::withMessages([
+                'discount_value' => 'Manual discounts are applied with manager approval when taking payment, not while holding an order.',
+            ]);
         }
     }
 
@@ -849,6 +892,9 @@ class EdgeLocalPosService
         if (! $user->allowsOrderType($orderType)) {
             throw ValidationException::withMessages(['order_type' => "Order type [{$orderType}] is not allowed for this user."]);
         }
+        // A2: no manual ORDER discount on a hold or a revision (Online HeldSaleController::store) — it is applied, with its
+        // manager approval, at settle. Promo codes and per-line discounts (W2) are unchanged.
+        $this->refuseManualDiscountAtHold($data);
         $this->assertDiscountFieldsValid($data);
         // PHASE 2b parity (canonical 0d41617): a Quick Sale REQUIRES a vehicle number AND a waiter — the SAME
         // server-side rule as the Cloud POS (required_if), so an offline quick sale carries identical attribution.
@@ -906,17 +952,19 @@ class EdgeLocalPosService
 
             $delivery = $this->resolveDeliveryAttribution($orderType, $data, $branch, $session);
             $resolved = $this->resolveLines($lines, $branch);
+            // A2: the order discount is always none on a hold (refused above); only per-line discounts can reach the
+            // manual-discount gate here (W2 behaviour, unchanged).
             $totals = $this->totals->calculate(
                 resolvedLines: $resolved,
-                discountType: (string) ($data['discount_type'] ?? 'none'),
-                discountValue: (float) ($data['discount_value'] ?? 0),
+                discountType: 'none',
+                discountValue: 0,
                 branchId: $branchId,
                 orderType: $orderType,
                 promoCode: $data['promo_code'] ?? null,
                 tipAmount: 0,
                 deliveryCharge: $delivery['charge'],
             );
-            $this->consumeManualDiscountApproval($totals, $data, $branch, $user, 0, null);
+            $this->consumeManualDiscountApproval($totals, ['discount_type' => 'none', 'discount_value' => 0] + $data, $branch, $user, 0, null);
 
             // ONLINE-POS PARITY: the request's customer wins; otherwise a seated reservation on this session's
             // table carries its customer onto the order (matching "open reserved table -> customer on order").
@@ -934,8 +982,8 @@ class EdgeLocalPosService
                 'vehicle_number' => $this->vehicleNumberFor($orderType, $data),
                 'sale_date' => now(),
                 'subtotal' => $totals['subtotal'],
-                'discount_type' => (string) ($data['discount_type'] ?? 'none'),
-                'discount_value' => (float) ($data['discount_value'] ?? 0),
+                'discount_type' => 'none',
+                'discount_value' => 0,
                 'discount_amount' => $totals['discount_amount'],
                 'promotion_id' => $totals['promotion_id'],
                 'promo_code' => $totals['promo_code'],
@@ -1109,11 +1157,16 @@ class EdgeLocalPosService
             $this->kotCancellations->recordLineCancellations($sale, $detected, (int) $user->id, $operatorTerminalId !== null ? (string) $operatorTerminalId : null); // T2-2: the cancel KOT routes at the voiding counter (Online operatorTerminalId)
         }
 
-        // ── KOT-sent carry-over, then Cloud's delete+recreate churn. The discount travels with the check: a
-        //    revision may set/keep/clear it; a NEW manual discount consumes its manager approval (branch mode). ──
+        // ── KOT-sent carry-over, then Cloud's delete+recreate churn. ──
+        // A2 (owner decision, Online parity): a manual ORDER discount is never carried on a held check — it is applied
+        // with its manager approval at settle. Online's revision writes the posted discount, which is always none (a
+        // discount is refused at hold), so a revision writes none/0 here too. CONSEQUENCE: a LEGACY held check that still
+        // carries a stored order discount (held before A2) LOSES it on its next revision; the cashier re-applies it when
+        // taking payment. Per-line discounts keep their W2 behaviour (their gate runs only when the order discount
+        // changes, exactly as before).
         $kotSentByLineId = $existing->map(fn ($l) => (float) $l->kot_sent_quantity);
-        $discountType = array_key_exists('discount_type', $data) ? (string) ($data['discount_type'] ?? 'none') : (string) ($sale->discount_type ?? 'none');
-        $discountValue = array_key_exists('discount_value', $data) ? (float) ($data['discount_value'] ?? 0) : (float) $sale->discount_value;
+        $discountType = 'none';
+        $discountValue = 0.0;
         $promoCode = array_key_exists('promo_code', $data) ? ($data['promo_code'] ?: null) : $sale->promo_code;
         $totals = $this->totals->calculate(
             resolvedLines: $resolved,
@@ -1300,20 +1353,41 @@ class EdgeLocalPosService
             throw ValidationException::withMessages(['client_uuid' => 'Settling a held sale requires a valid client_uuid for safe retries.']);
         }
 
+        // A2 (owner decision, Online parity — paying a held sale = POST /pos with held_sale_id): the manual discount and its
+        // manager approval are a SETTLEMENT concern. Only a request that carries the `discount_type` key reprices the check
+        // (the pre-A2 page never sends it, so its absence keeps the old behaviour and the old totals exactly).
+        $applyDiscount = array_key_exists('discount_type', $data);
+        $discountType = $applyDiscount ? (string) ($data['discount_type'] ?? 'none') : 'none';
+        $discountValue = $applyDiscount ? (float) ($data['discount_value'] ?? 0) : 0.0;
+        $tipAmount = 0.0;
+        if ($applyDiscount) {
+            $this->assertDiscountFieldsValid(['discount_type' => $discountType, 'discount_value' => $discountValue]);
+            $tipAmount = $this->tipAmountFor($data);
+        }
+        $requestPromoCode = array_key_exists('promo_code', $data) ? ($data['promo_code'] ?: null) : null;
+
         $preflight = SalesOrder::on('tenant')->where('id', $heldSaleId)->where('branch_id', $branchId)->first();
         if (! $preflight) {
             throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to settle.']);
         }
         // Effective settle intent: the held sale's durable identity + payments (lines are already
-        // server-authoritative rows — nothing about them is request-controlled here).
-        $payloadHash = $this->idempotency->buildPayloadHash($this->idempotency->canonicalSalePayload([
+        // server-authoritative rows — nothing about them is request-controlled here). A2: when the request
+        // carries a discount, the effective discount / promo / tip are client intent and are hashed (a retry with a
+        // different discount is a conflict, never a silent replay); absent, the hash is byte-for-byte the pre-A2 one
+        // so every pre-existing retry key keeps matching.
+        $payloadHash = $this->idempotency->buildPayloadHash($this->idempotency->canonicalSalePayload(array_merge([
             'branch_id' => $branchId, 'terminal_id' => $terminal->id, 'order_source' => 'pos',
             'order_type' => (string) $preflight->order_type,
             'held_sale_id' => $preflight->sale_uuid, // the durable identity, never the local PK
             'restaurant_table_session_id' => $preflight->restaurant_table_session_id,
             'discount_type' => 'none', 'discount_value' => 0, 'promo_code' => null,
             'payments' => array_map(fn ($p) => ['payment_method_id' => $p['payment_method_id'] ?? null, 'amount' => $p['amount'] ?? null], $payments),
-        ]));
+        ], $applyDiscount ? [
+            'discount_type' => $discountType,
+            'discount_value' => round($discountValue, 2),
+            'promo_code' => $requestPromoCode,
+            'tip_amount' => $tipAmount > 0 ? $tipAmount : null,
+        ] : [])));
         if ($existing = $this->idempotency->findFinalized($clientUuid)) {
             return $this->replayOrConflict($existing, $payloadHash);
         }
@@ -1321,7 +1395,7 @@ class EdgeLocalPosService
         $this->beforeSaleTransaction(); // shared 2C seam — no-op in production
 
         try {
-            return DB::connection('tenant')->transaction(function () use ($heldSaleId, $user, $branchId, $terminal, $payments, $clientUuid, $payloadHash) {
+            return DB::connection('tenant')->transaction(function () use ($heldSaleId, $user, $branchId, $terminal, $payments, $clientUuid, $payloadHash, $applyDiscount, $discountType, $discountValue, $tipAmount, $data) {
                 if ($winner = $this->idempotency->findFinalized($clientUuid)) {
                     return $this->replayOrConflict($winner, $payloadHash);
                 }
@@ -1359,6 +1433,49 @@ class EdgeLocalPosService
                 $currentLines = $sale->lines()->lockForUpdate()->get();
                 // W2 contract boundary (line discounts) — same guard as Direct Pay, before any payment row is written.
                 $this->assertEnvelopeCanCarryLineDiscounts($currentLines, (string) ($sale->discount_type ?? 'none'), $sale->promotion_id);
+
+                if ($applyDiscount) {
+                    // A2: reprice the check from its LOCKED stored rows (captured prices, line discounts, tax — never the
+                    // catalog, never the request), exactly as Online recomputes totals when a held sale is paid; the
+                    // approval is consumed here, bound to THIS held sale (payload sales_order_id = held sale id, as Online).
+                    // discount_type 'none' = remove the discount (clears any stored legacy order discount).
+                    $branch = Branch::on('tenant')->findOrFail($branchId);
+                    $products = Product::on('tenant')->whereIn('id', $currentLines->pluck('product_id')->filter()->unique()->all())->get()->keyBy('id');
+                    $resolved = $currentLines->map(fn ($l) => [
+                        'product_id' => (int) $l->product_id,
+                        'category_id' => $products->get((int) $l->product_id)?->category_id,
+                        'quantity' => (float) $l->quantity,
+                        'unit_price' => (float) $l->unit_price,
+                        'discount_amount' => (float) $l->discount_amount,
+                        'tax_amount' => (float) $l->tax_amount,
+                        'line_kind' => (string) ($l->line_kind ?? 'standard'),
+                        'combo_id' => $l->combo_id,
+                    ])->values()->all();
+                    $totals = $this->totals->calculate(
+                        resolvedLines: $resolved,
+                        discountType: $discountType,
+                        discountValue: $discountValue,
+                        branchId: $branchId,
+                        orderType: (string) $sale->order_type,
+                        promoCode: array_key_exists('promo_code', $data) ? ($data['promo_code'] ?: null) : $sale->promo_code,
+                        tipAmount: $tipAmount,
+                        deliveryCharge: (float) $sale->delivery_charge_amount,
+                    );
+                    $this->assertFixedDiscountWithinBill($resolved, $discountType, $discountValue);
+                    $this->consumeManualDiscountApproval($totals, ['discount_type' => $discountType, 'discount_value' => $discountValue] + $data, $branch, $user, (int) $sale->id, $clientUuid);
+                    $sale->update([
+                        'subtotal' => $totals['subtotal'],
+                        'discount_type' => $discountType,
+                        'discount_value' => $discountValue,
+                        'discount_amount' => $totals['discount_amount'],
+                        'promotion_id' => $totals['promotion_id'],
+                        'promo_code' => $totals['promo_code'],
+                        'tax_amount' => $totals['tax_amount'],
+                        'service_charge_amount' => $totals['service_charge_amount'],
+                        'tip_amount' => $totals['tip_amount'] ?? 0,
+                        'grand_total' => $totals['grand_total'],
+                    ]);
+                }
 
                 $paidAmount = array_sum(array_map(fn ($p) => (float) $p['amount'], $payments));
                 if ($paidAmount + 1e-6 < (float) $sale->grand_total) {

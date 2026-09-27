@@ -114,7 +114,7 @@ class EdgeComboVoidReconcileHttpMySqlTest extends MySqlTenantTestCase
     {
         return (int) $this->postJson('/edge/local/pos/manager-approvals/verify', [
             'manager_employee_code' => $this->managerCode, 'manager_credential' => 'MgrPass1', 'action_type' => $action, 'payload' => $payload,
-        ])->assertStatus(201)->json('approval_id');
+        ])->assertStatus(200)->json('approval_id');
     }
 
     /** Hold `qty` of a deal, send it to the kitchen; returns [saleId, headerLineId, componentRows]. */

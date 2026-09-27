@@ -234,7 +234,7 @@ class EdgeCashierDealsDiscountsHttpMySqlTest extends MySqlTenantTestCase
             'manager_employee_code' => $this->managerCode, 'manager_credential' => 'MgrPass1',
             'action_type' => 'manual_discount',
             'payload' => ['sales_order_id' => 0, 'branch_id' => $this->branchId, 'client_uuid' => $clientUuid, 'discount_type' => 'fixed', 'discount_value' => 50, 'discount_amount' => 50],
-        ])->assertStatus(201)->json('approval_id');
+        ])->assertStatus(200)->json('approval_id');
         $sale = $this->postJson('/edge/local/pos/sales', $payload + ['manager_approval_id' => $approvalId])->assertStatus(201);
         $this->assertSame(150.0, (float) $sale->json('grand_total'), '2 × 100 − 50');
         $row = DB::connection('tenant')->table('sales_orders')->where('id', $sale->json('sale_id'))->first();

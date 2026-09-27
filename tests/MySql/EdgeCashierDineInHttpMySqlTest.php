@@ -255,7 +255,7 @@ class EdgeCashierDineInHttpMySqlTest extends MySqlTenantTestCase
         $this->postJson('/edge/local/pos/held-sales', [
             'order_type' => 'dine_in', 'restaurant_table_session_id' => $sessionId,
             'lines' => [['product_id' => $this->productP, 'quantity' => 1]],
-        ])->assertStatus(422);
+        ])->assertStatus(409);
 
         // 4. The bill is still payable.
         $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", [

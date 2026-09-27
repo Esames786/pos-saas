@@ -100,7 +100,8 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::post('/held-sales/{sale}/cancel', [EdgeLocalHeldSalesController::class, 'cancelHeldSale'])->name('held.cancel');
         // ONLINE-POS PARITY — Split Bill (a new held check on the same table; each pays on its own).
         Route::post('/held-sales/{sale}/split', [EdgeLocalHeldSalesController::class, 'splitHeldSale'])->name('held.split');
-        Route::post('/manager-approvals/verify', [EdgeLocalManagerApprovalController::class, 'verifyManagerApproval'])->name('manager.verify');
+        // W-B: throttle:10,1 — the SAME brute-force ceiling as Online `/api/manager-approvals/verify` (the credential is a manager's).
+        Route::post('/manager-approvals/verify', [EdgeLocalManagerApprovalController::class, 'verifyManagerApproval'])->middleware('throttle:10,1')->name('manager.verify');
 
         // EDGE-CASHIER-UI-4 — printing: receipt / KOT reprint / Recent Prints / Print Here document / fallback completion / retry.
         Route::post('/sales/{sale}/receipt', [EdgeLocalPrintJobController::class, 'queueReceipt'])->name('sales.receipt');
@@ -157,6 +158,30 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::post('/sales/{sale}/printing/retry', [EdgeLocalPrintJobController::class, 'retryDirectPayPrinting'])->name('sales.printing.retry'); // Direct Pay printing retry
         Route::post('/bill-preview/document', [EdgeLocalPrintJobController::class, 'billPreviewDocument'])->name('bill-preview.document');      // canonical BILL PREVIEW
         Route::get('/print-preferences', [EdgeLocalPrintJobController::class, 'printPreferences'])->name('print-preferences');                  // terminal auto-print prefs
+
+        // ═══════════════ W-B (next release, shared cashier view) — Edge runtime adapter routes; each also in config/edge.php
+        //                 route_allowlist and the URI census (tests/Feature/Edge/EdgeBranchServerRegistrationTest) ═══════════════
+        // THE shared page: tenant.pos.index rendered with the Edge runtime (Phase 2 side by side; `edge.local.pos.screen` = fallback).
+        Route::get('/shared', [EdgeLocalPosController::class, 'sharedScreen'])->name('shared');
+        // Canonical JSON twins of Online endpoints the shared page calls (§3.2).
+        Route::get('/server-time', [EdgeLocalPosController::class, 'serverTime'])->name('server-time');                                 // /api/server-time
+        Route::post('/totals/quote', [EdgeLocalPosController::class, 'totalsQuote'])->name('totals.quote');                           // /api/pos/totals/quote (O16)
+        Route::post('/promotions/quote', [EdgeLocalPosController::class, 'promoQuote'])->name('promotions.quote');                    // /api/pos/promotions/quote (O17)
+        Route::get('/restaurant/board/html', [EdgeLocalRestaurantController::class, 'restaurantBoardHtml'])->name('restaurant.board.html'); // /api/pos/table-board {ok, html}
+        Route::get('/restaurant/table-sessions/{session}/open-orders', [EdgeLocalRestaurantController::class, 'sessionOpenOrders'])->name('restaurant.session.open-orders'); // O14
+        // SEPARATE SCREENS (owner requirement): the SAME tenant views Online embeds by iframe (?embed=1) / links directly.
+        Route::get('/shifts/open', [EdgeLocalShiftController::class, 'openPage'])->name('shifts.create-page');                          // tenant/shifts/open
+        Route::post('/shifts/open', [EdgeLocalShiftController::class, 'storeFromPage'])->name('shifts.store-page');
+        Route::get('/shifts/{shift}/close', [EdgeLocalShiftController::class, 'closePage'])->whereNumber('shift')->name('shifts.close-page'); // tenant/shifts/close
+        Route::post('/shifts/{shift}/close', [EdgeLocalShiftController::class, 'closeFromPage'])->whereNumber('shift')->name('shifts.close-store-page');
+        Route::get('/shared/shifts', [EdgeLocalShiftController::class, 'indexPage'])->name('shifts.index-page');                        // tenant/shifts/index
+        Route::get('/shared/shifts/{shift}', [EdgeLocalShiftController::class, 'showPage'])->whereNumber('shift')->name('shifts.show-page'); // tenant/shifts/show
+        Route::get('/sales-returns/create', [EdgeLocalReturnController::class, 'createPage'])->name('sales-returns.create-page');       // tenant/sales-returns/create
+        Route::post('/sales-returns', [EdgeLocalReturnController::class, 'storeFromPage'])->name('sales-returns.store-page');
+        Route::get('/shared/sales-returns', [EdgeLocalReturnController::class, 'indexPage'])->name('sales-returns.index-page');         // tenant/sales-returns/index
+        Route::get('/shared/sales-returns/{salesReturn}', [EdgeLocalReturnController::class, 'showPage'])->whereNumber('salesReturn')->name('sales-returns.show-page'); // tenant/sales-returns/show
+        Route::get('/held-sales/{sale}/split-bill', [EdgeLocalHeldSalesController::class, 'splitPage'])->whereNumber('sale')->name('split-bill.page');     // tenant/sales-orders/split-bill
+        Route::post('/held-sales/{sale}/split-bill', [EdgeLocalHeldSalesController::class, 'splitFromPage'])->whereNumber('sale')->name('split-bill.store-page');
     });
 
     // ── W1 (Team 1) — local static assets (UNAUTHENTICATED on purpose: the login page needs them too) ──
@@ -173,4 +198,6 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
             \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
         ])
         ->name('assets');
+    // W-C (Edge next release §4.3) — product images from storage/app/public (png/jpg/jpeg/webp/svg only; same hardening; sandbox CSP; no session). Allowlist: `edge.local.storage`.
+    Route::get('/storage/{path}', [\App\Http\Controllers\Edge\EdgeLocalAssetController::class, 'storage'])->where('path', '.*')->withoutMiddleware([\Illuminate\Session\Middleware\StartSession::class, \Illuminate\View\Middleware\ShareErrorsFromSession::class, \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])->name('storage');
 });

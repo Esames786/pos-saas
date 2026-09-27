@@ -12,7 +12,7 @@
         "that is the point — the register can no longer drift from the screen."
     ],
     "online_view": "resources/views/tenant/pos/index.blade.php",
-    "online_view_sha1": "6d4061de7820522ebdc809bf1e177aea8f410857",
+    "online_view_sha1": "5752896fa3c51ef3582756992d8526a05d57b645",
     "edge_view": "resources/views/edge/pos/index.blade.php",
     "groups": {
         "header-shell": {
@@ -40,7 +40,6 @@
                 "pos-shift-status",
                 "pos-shift-badge",
                 "pos-shift-detail",
-                "pos-shift-open-link",
                 "no-terminal-warning",
                 "order_type"
             ],
@@ -200,15 +199,6 @@
                     ],
                     "note": "W1 25 Sep 2026"
                 },
-                "pos-shift-open-link": {
-                    "state": "present",
-                    "edge": [
-                        "#pos-shift-open-link"
-                    ],
-                    "record": "R1.2",
-                    "workstream": "W4",
-                    "note": "W1 25 Sep 2026: opens the in-page shift dialog (Team 4 openShiftDialog)"
-                },
                 "no-terminal-warning": {
                     "state": "present",
                     "record": "E-06",
@@ -232,7 +222,8 @@
                     ],
                     "note": "W1 25 Sep 2026: toggles the Edge navigation strip"
                 }
-            }
+            },
+            "note": "Phase 2: pos-shift-open-link left the Online view (the shift-open link now takes its href from the runtime route map without a fixed id)."
         },
         "customer-chip": {
             "label": "Customer chip on the cart header",
@@ -2624,18 +2615,6 @@
                     "note": "W2 25 Sep 2026: options (modifiers) — bootstrap v7 needed on a real appliance"
                 }
             }
-        },
-        "manager-pin": {
-            "label": "Manager PIN prompt (SweetAlert)",
-            "record": "A40",
-            "workstream": "W1",
-            "state": "equivalent",
-            "edge": [
-                "#ma-cred"
-            ],
-            "ids": [
-                "swal-manager-pin"
-            ]
         }
     },
     "deferrals": [

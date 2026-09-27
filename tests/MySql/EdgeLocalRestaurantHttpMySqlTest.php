@@ -154,7 +154,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         $this->postJson('/edge/local/pos/held-sales', [
             'order_type' => 'dine_in', 'restaurant_table_session_id' => $sessionId,
             'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
-        ])->assertStatus(422);
+        ])->assertStatus(409);
         // held sale consumed NO stock and produced NO settlement.
         $this->assertSame(20.0, $this->edgeOnHand($this->baselineId, $this->productId));
         $this->assertSame(0, DB::connection('tenant')->table('sales_ledgers')->count());
@@ -280,7 +280,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
             'manager_employee_code' => $this->managerCode, 'manager_credential' => 'MgrPass1', 'action_type' => 'void_kot_item',
             'payload' => ['sales_order_id' => $saleId, 'sales_order_line_id' => $lineId, 'quantity' => 2],
         ]);
-        $verify->assertStatus(201);
+        $verify->assertStatus(200);
         $this->assertSame($this->userId, (int) auth('tenant')->id(), 'manager re-auth must not replace the cashier session');
         $approvalId = $verify->json('approval_id');
         $this->assertTrue(Str::isUlid($verify->json('approval_uuid')));
@@ -337,6 +337,8 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         // missing permission: enrolled Edge manager credential but NO tenant.pos.void-kot-item.
         $noPermId = $this->makeUser(['default_branch_id' => $this->branchId, 'employee_code' => 'NOPERM' . Str::random(3)]);
         $this->seedEdgeCredential($noPermId, $this->branchId, 1, 'NoPermPass1');
+        // W-E: the fixture seeds the full cashier template (which includes void-kot-item) — model the non-approver explicitly.
+        $this->revokeEdgePermission($noPermId, 'tenant.pos.void-kot-item');
         $verify(User::on('tenant')->find($noPermId)->employee_code, 'NoPermPass1')->assertStatus(422);
 
         // wrong branch: manager belongs to another branch (no assignment here) — refused before permission.
@@ -357,7 +359,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
 
         // and the restored, current manager works — proving the matrix refused for the right reasons.
         $ok = $verify($this->managerCode, 'MgrPass1');
-        $ok->assertStatus(201);
+        $ok->assertStatus(200);
         $this->assertSame($this->managerId, (int) DB::connection('tenant')->table('manager_approvals')->where('id', $ok->json('approval_id'))->value('approved_by_user_id'));
     }
 

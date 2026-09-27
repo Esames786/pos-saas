@@ -62,10 +62,14 @@ class EdgeLocalManagerApprovalController extends Controller
                 $data['manager_employee_code'], $data['manager_credential'], $data['action_type'],
                 auth('tenant')->user(), $request->input('payload')
             );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // W-B canonical contract (§3.2): every refusal is `{ok:false, message}` (+ the field errors for the form).
+            return response()->json(['ok' => false, 'message' => collect($e->errors())->flatten()->first() ?: $e->getMessage(), 'errors' => $e->errors()], 422);
         } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['approval_id' => $approval->id, 'approval_no' => $approval->approval_no, 'approval_uuid' => $approval->approval_uuid], 201);
+        // W-B canonical contract (§3.2): Online ManagerApprovalController@verify answers 200 `{ok:true, approval_id, …}`.
+        return response()->json(['ok' => true, 'approval_id' => $approval->id, 'approval_no' => $approval->approval_no, 'approval_uuid' => $approval->approval_uuid], 200);
     }
 }

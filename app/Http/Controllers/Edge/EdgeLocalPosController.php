@@ -41,13 +41,493 @@ use RuntimeException;
  */
 class EdgeLocalPosController extends Controller
 {
-    use ResolvesEdgePosContext;
+    use ResolvesEdgePosContext {
+        selectedTerminal as private resolveSelectedTerminal;
+    }
 
     public function __construct(
         private readonly EdgeBranchContext $context,
         private readonly EdgeLocalPosService $pos,
         private readonly EdgeOperationalBaselineService $baselines,
     ) {
+    }
+
+    /** W-B canonical contract (§3.2): a missing / stale terminal answers 422 with Online's `code: INVALID_TERMINAL`. */
+    protected function selectedTerminal(Request $request): Terminal|JsonResponse
+    {
+        if ($refused = \App\Services\Edge\EdgePosRuntimeFactory::adoptRequestedTerminal($request, (int) $this->context->requireCurrent()->branch_id, fn ($t) => $this->denyUnlessMayOperateTerminal($t))) {
+            return $refused;
+        }
+
+        return \App\Services\Edge\EdgePosRuntimeFactory::terminalOrCoded($this->resolveSelectedTerminal($request));
+    }
+
+    // ═══════════════════════ W-B — the SHARED cashier view (tenant.pos.index) on the Branch Server ═══════════════════════
+
+    /**
+     * POS-RUNTIME-1 — render THE Online cashier page (`tenant.pos.index`, the same Blade the Cloud renders) from the local
+     * database, with the Edge runtime adapter. The variable set is EXACTLY what Online POSController::index passes (names and
+     * shapes), built from the bound branch only; everything that legitimately differs travels in `$posRuntime`
+     * (EdgePosRuntimeFactory). Phase 2 route: `edge.local.pos.shared` (the old page stays on `edge.local.pos.screen`
+     * until cutover).
+     */
+    public function sharedScreen(Request $request): View
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $branch = Branch::on('tenant')->findOrFail($branchId);
+        $user = auth('tenant')->user();
+        abort_unless((bool) $user?->can('tenant.pos.index'), 403, 'Permission denied — your account may not open the POS.');
+
+        $runtime = app(\App\Services\Edge\EdgePosRuntimeFactory::class)->make($request);
+
+        // W-A's closed page-data contract: a key the view needs can never be present on the Cloud and missing here.
+        return view('tenant.pos.index', \App\Support\Pos\PosPageData::fromArray($this->sharedPageData($request, $branch, $user, $runtime))
+            ->toViewData($runtime));
+    }
+
+    /**
+     * The Online POSController::index variable set, from the local DB (W-B §1.4). Public shape contract: the same keys the
+     * Online page receives — deadSession, branches, selectedBranchId, terminals, categories, pillCategoryIds,
+     * contentCategoryIds, hasUncategorizedCombos, productsPayload, combosPayload, paymentMethods, floors, waiters,
+     * quickReportBranches, quickReportPrinters, deliveryChannels, deliveryRiders, allowedOrderTypes, tableSession, heldSale,
+     * receiptLayouts, terminalPrintConfig, activeMode.
+     *
+     * @return array<string, mixed>
+     */
+    public function sharedPageData(Request $request, Branch $branch, $user, \App\Support\Pos\PosRuntime $runtime): array
+    {
+        $branchId = (int) $branch->id;
+        $allowedOrderTypes = array_values(array_intersect(
+            array_keys(\App\Models\Tenant\User::ORDER_TYPES),
+            $user?->effectiveAllowedOrderTypes() ?? array_keys(\App\Models\Tenant\User::ORDER_TYPES)
+        ));
+
+        // Deep links (the same query keys as Online): ?held_sale_id= / ?table_session_id= / ?mode= — bound branch only.
+        $heldSale = null;
+        if ($request->filled('held_sale_id')) {
+            $heldSale = \App\Models\Tenant\SalesOrder::on('tenant')->with([
+                'lines', 'customer', 'restaurantTableSession.table.floor', 'restaurantTableSession.waiter',
+                'restaurantTableSession.closedBy', 'restaurantTable', 'restaurantWaiter',
+            ])->where('status', 'held')->where('branch_id', $branchId)->find((int) $request->input('held_sale_id'));
+        }
+        $sessionWith = ['table.floor', 'waiter', 'salesOrders' => fn ($q) => $q->where('status', 'held')];
+        $tableSession = null;
+        if ($request->filled('table_session_id')) {
+            $tableSession = \App\Models\Tenant\RestaurantTableSession::on('tenant')->with($sessionWith)
+                ->whereIn('status', ['open', 'bill_requested'])->where('branch_id', $branchId)
+                ->find((int) $request->input('table_session_id'));
+        }
+        if (! $tableSession && $heldSale?->restaurant_table_session_id) {
+            $tableSession = \App\Models\Tenant\RestaurantTableSession::on('tenant')->with($sessionWith)
+                ->whereIn('status', ['open', 'bill_requested'])->where('branch_id', $branchId)
+                ->find((int) $heldSale->restaurant_table_session_id);
+        }
+        // HELD-SALE-DEAD-SESSION-1 / P5 — the orphaned bill facts, in Online's display format.
+        $deadSession = null;
+        if ($heldSale && $heldSale->restaurant_table_session_id && ! $tableSession) {
+            $info = app(\App\Services\Edge\EdgeLocalTableOperationsService::class)->deadSessionInfo($heldSale);
+            if ($info) {
+                $deadSession = array_merge($info, [
+                    'closed_at' => $info['closed_at'] ? app(\App\Support\TenantClock::class)->format($info['closed_at'], 'd M, h:i A') : null,
+                ]);
+            }
+        }
+
+        $requestedMode = $tableSession || $heldSale?->restaurant_table_session_id
+            ? 'dine_in'
+            : (string) $request->input('mode', $user?->effectiveDefaultOrderType() ?? 'quick_sale');
+        if (! in_array($requestedMode, $allowedOrderTypes, true)) {
+            $requestedMode = $user?->effectiveDefaultOrderType() ?? ($allowedOrderTypes[0] ?? 'quick_sale');
+            if (! in_array($requestedMode, $allowedOrderTypes, true)) {
+                $requestedMode = $allowedOrderTypes[0] ?? 'quick_sale';
+            }
+        }
+        if (($tableSession || $heldSale?->restaurant_table_session_id) && ! in_array('dine_in', $allowedOrderTypes, true)) {
+            abort(403, 'Your account is not allowed to use Dine In orders.');
+        }
+
+        // Terminals: the bound branch's active terminals; POS-TERMINAL-PIN-1 — a pinned operator sees only his own.
+        $canChangeTerminal = (bool) $user?->can(UserDataScope::CHANGE_TERMINAL_PERMISSION);
+        $defaultTerminalId = $user?->default_terminal_id ? (int) $user->default_terminal_id : null;
+        $terminals = Terminal::on('tenant')->where('branch_id', $branchId)->where('status', 'active')->orderBy('name')->get()
+            ->when(! $canChangeTerminal && $defaultTerminalId, fn ($list) => $list->where('id', $defaultTerminalId)->values());
+
+        [$productsPayload, $combosPayload, $categories, $pillCategoryIds, $contentCategoryIds] = $this->sharedMenu($branch, $runtime);
+
+        // Payment methods: EVERY active method, cash first (the Online select); non-cash rides flagged display-only —
+        // the page renders them disabled with the capability hint (nonCashTender=false); the server refuses them anyway.
+        $paymentMethods = PaymentMethod::on('tenant')->where('is_active', true)
+            ->orderByRaw("CASE WHEN method_type = 'cash' THEN 0 ELSE 1 END")->orderBy('name')->get()
+            ->each(function (PaymentMethod $m) {
+                $m->setAttribute('offline_supported', $m->method_type === 'cash');
+                $m->setAttribute('display_only', $m->method_type !== 'cash');
+            });
+
+        $canQuickReportSend = (bool) $user?->can('tenant.pos.quick-report-send');
+
+        return [
+            'deadSession' => $deadSession,
+            'branches' => collect([$branch]),
+            'selectedBranchId' => $branchId,
+            'terminals' => $terminals,
+            'categories' => $categories,
+            'pillCategoryIds' => $pillCategoryIds,
+            'contentCategoryIds' => $contentCategoryIds,
+            'hasUncategorizedCombos' => collect($combosPayload)->contains(fn ($c) => empty($c['category_id'])),
+            'productsPayload' => $productsPayload,
+            'combosPayload' => $combosPayload,
+            'paymentMethods' => $paymentMethods,
+            'floors' => $this->boardFloors($branchId),
+            'waiters' => RestaurantWaiter::on('tenant')
+                ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))
+                ->where('status', 'active')->orderBy('name')->get(),
+            'quickReportBranches' => $canQuickReportSend ? collect([$branch->only(['id', 'name'])])->map(fn ($b) => (object) $b) : collect(),
+            'quickReportPrinters' => $canQuickReportSend
+                ? \App\Models\Tenant\Printer::on('tenant')->where('is_active', 1)->where('printer_type', 'network')
+                    ->whereNotNull('ip_address')->orderBy('name')->get(['id', 'name', 'paper_size'])
+                : collect(),
+            'deliveryChannels' => \App\Models\Tenant\DeliveryChannel::on('tenant')->where('is_active', true)
+                ->orderBy('sort_order')->orderBy('name')->get(),
+            'deliveryRiders' => \App\Models\Tenant\DeliveryRider::on('tenant')->where('status', 'active')->orderBy('name')->get(),
+            'allowedOrderTypes' => $allowedOrderTypes,
+            'tableSession' => $tableSession,
+            'heldSale' => $heldSale,
+            'receiptLayouts' => $this->safeCollection(fn () => \App\Models\Tenant\ReceiptLayoutSetting::on('tenant')
+                ->where('document_type', 'receipt')->get()->keyBy('branch_id')
+                ->map(fn ($l) => [
+                    'header_text' => $l->header_text,
+                    'footer_text' => $l->footer_text,
+                    'paper_size' => $l->paper_size,
+                    'show_branch_name' => (bool) $l->show_branch_name,
+                ])),
+            'terminalPrintConfig' => $this->safeCollection(fn () => \App\Models\Tenant\TerminalPrinterSetting::on('tenant')->get()
+                ->keyBy('terminal_id')
+                ->map(fn ($s) => [
+                    'auto_print_receipt' => (bool) $s->auto_print_receipt,
+                    'auto_print_kot' => (bool) $s->auto_print_kot,
+                ])),
+            'activeMode' => $requestedMode,
+        ];
+    }
+
+    /**
+     * The Online productsPayload / combosPayload / category pills from the SYNCED menu (Edge visibility + the Edge
+     * operational stock the sale actually refuses on). Prices are the resolved branch prices (SalePricingService — what
+     * the sale charges), so `branch_prices` is empty and the page's productPrice() falls through to price/selling_price.
+     *
+     * @return array{0: \Illuminate\Support\Collection, 1: \Illuminate\Support\Collection, 2: \Illuminate\Support\Collection, 3: array<int,int>, 4: array<int,int>}
+     */
+    private function sharedMenu(Branch $branch, \App\Support\Pos\PosRuntime $runtime): array
+    {
+        $branchId = (int) $branch->id;
+        $liveOrderProductIds = DB::connection('tenant')->table('sales_order_lines as l')
+            ->join('sales_orders as o', 'o.id', '=', 'l.sales_order_id')
+            ->where('o.branch_id', $branchId)->whereIn('o.status', ['held', 'draft'])
+            ->whereNotNull('l.product_id')->pluck('l.product_id')->map(fn ($id) => (int) $id)->unique()->values();
+        $comboComponentProductIds = DB::connection('tenant')->table('combo_components as cc')
+            ->join('combos as c', 'c.id', '=', 'cc.combo_id')->where('c.status', 'active')
+            ->where(fn ($q) => $q->whereNull('c.branch_id')->orWhere('c.branch_id', $branchId))
+            ->pluck('cc.product_id')->map(fn ($id) => (int) $id)->unique()->values();
+
+        $products = Product::on('tenant')
+            ->with(['category:id,name,branch_id', 'unit:id,code,name,unit_type', 'variants', 'barcodes'])
+            ->where(function ($q) use ($branchId, $liveOrderProductIds, $comboComponentProductIds) {
+                $q->where(function ($visible) use ($branchId) {
+                    $visible->where('status', 'active')->where('is_sellable', true)->where('is_pos_visible', true)
+                        ->where(fn ($scope) => $scope->whereNull('category_id')
+                            ->orWhereHas('category', fn ($c) => $c->forBranch($branchId)));
+                });
+                $escape = $liveOrderProductIds->merge($comboComponentProductIds)->unique()->values();
+                if ($escape->isNotEmpty()) {
+                    $q->orWhereIn('id', $escape->all());
+                }
+            })
+            ->orderBy('sort_order')->orderBy('name')
+            ->get();
+        $menu = $this->menuPayload($products, $branch);
+
+        $productsPayload = $products->map(function (Product $p) use ($menu, $branchId, $runtime) {
+            $m = $menu[(int) $p->id] ?? [];
+            $tracked = ($m['stock_kind'] ?? null) === 'tracked';
+            $visible = $p->status === 'active' && $p->is_sellable && $p->is_pos_visible
+                && ($p->category === null || $p->category->branch_id === null || (int) $p->category->branch_id === $branchId);
+            $imagePath = ltrim((string) $p->image_path, '/');
+            $imageUrl = $imagePath !== '' && (is_file(storage_path('app/public/' . $imagePath)) || is_file(public_path('storage/' . $imagePath)))
+                ? $runtime->asset('storage/' . $imagePath) : null; // only a file that is ON the appliance, served locally
+
+            return [
+                'id' => (int) $p->id,
+                'name' => $p->name,
+                'sku' => $p->sku,
+                'image_url' => $imageUrl,
+                'category_id' => $p->category_id ? (int) $p->category_id : null,
+                'category_name' => $p->category?->name,
+                'unit_id' => $p->unit_id ? (int) $p->unit_id : null,
+                'unit_name' => $p->unit?->name,
+                'unit_code' => $p->unit?->code,
+                'unit_type' => $m['unit_type'] ?? ($p->unit?->unit_type ?? 'quantity'),
+                'allow_decimal_qty' => (bool) ($m['allow_decimal_qty'] ?? false),
+                'quantity_step' => $m['quantity_step'] ?? 1,
+                'price' => (float) ($m['price'] ?? $p->default_selling_price ?? 0),
+                // Edge truth: only a stock item that tracks stock has an on-hand count the sale refuses on.
+                'is_stock_tracked' => $tracked,
+                'pos_grid_visible' => (bool) $visible,
+                'is_taxable' => (bool) ($m['is_taxable'] ?? false),
+                'tax_rate_percent' => (float) ($m['tax_rate_percent'] ?? 0),
+                'barcodes' => $m['barcodes'] ?? [],
+                'branch_prices' => [],
+                'modifier_groups' => $m['modifier_groups'] ?? [],
+                'variants' => collect($m['variants'] ?? [])->map(fn ($v) => [
+                    'id' => (int) $v['id'],
+                    'name' => $v['name'],
+                    'sku' => $v['sku'],
+                    'selling_price' => (float) $v['price'],
+                    'stock_by_branch' => $tracked ? [$branchId => (float) ($v['stock'] ?? 0)] : [],
+                    'barcodes' => $v['barcodes'],
+                ])->values(),
+                'stock_by_branch' => $tracked ? [$branchId => (float) ($m['stock'] ?? 0)] : [],
+                // Recipe "makeable" preview is not computed on the appliance (the sale refuses on the operational balances).
+                'is_recipe' => false,
+                'makeable_by_branch' => [],
+                'limiting_ingredient_by_branch' => [],
+            ];
+        })->values();
+
+        $productIndex = $products->keyBy('id');
+        $combosPayload = Combo::on('tenant')->with(['components'])
+            ->where('status', 'active')
+            ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))
+            ->orderBy('sort_order')->orderBy('name')->get()
+            ->map(function (Combo $combo) use ($productIndex) {
+                $components = $combo->components->filter(fn ($c) => $productIndex->has((int) $c->product_id))
+                    ->sortBy('sort_order')
+                    ->map(function ($c) use ($productIndex) {
+                        $product = $productIndex->get((int) $c->product_id);
+                        $variant = $c->product_variant_id ? $product?->variants->firstWhere('id', (int) $c->product_variant_id) : null;
+
+                        return [
+                            'id' => (int) $c->id,
+                            'product_id' => (int) $c->product_id,
+                            'product_variant_id' => $c->product_variant_id ? (int) $c->product_variant_id : null,
+                            'product_name' => $product?->name,
+                            'variant_name' => $variant?->name,
+                            'unit_code' => $product?->unit?->code,
+                            'quantity' => (float) $c->quantity,
+                            'sort_order' => (int) $c->sort_order,
+                        ];
+                    })->values();
+
+                return [
+                    'id' => (int) $combo->id,
+                    'branch_id' => $combo->branch_id ? (int) $combo->branch_id : null,
+                    'category_id' => $combo->category_id ? (int) $combo->category_id : null,
+                    'code' => $combo->code,
+                    'name' => $combo->name,
+                    'price' => (float) $combo->price,
+                    'sort_order' => (int) $combo->sort_order,
+                    'description' => $combo->description,
+                    'header_product_id' => (int) ($components->first()['product_id'] ?? 0),
+                    'components' => $components,
+                ];
+            })
+            ->filter(fn ($c) => $c['header_product_id'] > 0 && count($c['components']) > 0)
+            ->values();
+
+        // CATEGORY-BRANCH-SCOPE-1: parents + ACTIVE children this branch may show (the Online child strip).
+        $categories = Category::on('tenant')
+            ->with(['children' => fn ($q) => $q->where('is_active', true)->forBranch($branchId)->orderBy('sort_order')->orderBy('name')])
+            ->forBranch($branchId)
+            ->whereNull('parent_id')->where('is_active', true)
+            ->orderBy('sort_order')->orderBy('name')
+            ->get();
+        $contentCategoryIds = $productsPayload->filter(fn ($p) => $p['pos_grid_visible'])->pluck('category_id')
+            ->merge($combosPayload->pluck('category_id'))->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        $pillCategoryIds = $categories->filter(fn ($parent) => collect([$parent->id])->merge($parent->children->pluck('id'))
+            ->map(fn ($id) => (int) $id)->intersect($contentCategoryIds)->isNotEmpty())
+            ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+        return [$productsPayload, $combosPayload, $categories, $pillCategoryIds, $contentCategoryIds->all()];
+    }
+
+    /**
+     * The dine-in board floors in the Online table-board partial shape (POSController::loadBoardFloors): active floors →
+     * non-inactive tables → openSession(waiter, held+paid orders). An ACTIVE Edge reservation (edge_table_reservations —
+     * never restaurant_tables config) is projected onto the in-memory table as Online's reserved_* attributes, so the
+     * SAME partial renders the reserved tile; nothing is saved.
+     */
+    public function boardFloors(int $branchId): \Illuminate\Support\Collection
+    {
+        $floors = \App\Models\Tenant\RestaurantFloor::on('tenant')->with([
+            'tables' => fn ($q) => $q->where('status', '!=', 'inactive')->orderBy('sort_order')->orderBy('table_no'),
+            'tables.openSession.waiter',
+            'tables.openSession.salesOrders' => fn ($q) => $q->whereIn('status', ['held', 'paid']),
+        ])->where('branch_id', $branchId)->where('status', 'active')->orderBy('sort_order')->orderBy('name')->get();
+
+        $reservations = \App\Models\Edge\EdgeTableReservation::on('tenant')
+            ->where('status', \App\Models\Edge\EdgeTableReservation::STATUS_ACTIVE)
+            ->whereIn('restaurant_table_id', $floors->flatMap(fn ($f) => $f->tables->pluck('id'))->all() ?: [0])
+            ->get()->keyBy('restaurant_table_id');
+        foreach ($floors as $floor) {
+            foreach ($floor->tables as $table) {
+                $r = $table->openSession ? null : $reservations->get($table->id);
+                if ($r) {
+                    $table->setAttribute('status', 'reserved');
+                    $table->setAttribute('reserved_customer_id', $r->customer_id);
+                    $table->setAttribute('reserved_name', $r->customer_name);
+                    $table->setAttribute('reserved_phone', $r->customer_phone);
+                    $table->setAttribute('reserved_for', $r->reserved_for);
+                    $table->setAttribute('reservation_note', $r->note);
+                    $table->syncOriginal(); // an in-memory projection only — never a dirty model that could be saved
+                }
+            }
+        }
+
+        return $floors;
+    }
+
+    /** A read that must never break the page (a table the appliance may not carry yet) → an empty collection. */
+    private function safeCollection(callable $read): \Illuminate\Support\Collection
+    {
+        try {
+            return collect($read());
+        } catch (\Throwable $e) {
+            report($e);
+
+            return collect();
+        }
+    }
+
+    /** Online `GET /api/server-time` twin — the header clock's resync source (`{epoch_ms}`). */
+    public function serverTime(): JsonResponse
+    {
+        return response()->json(['epoch_ms' => (int) round(microtime(true) * 1000)]);
+    }
+
+    /**
+     * Online `POST /api/pos/totals/quote` twin (O16) over the SAME sale truth as Preview Bill (EdgeLocalPosService::
+     * previewBill — server prices, deals, shared SalesTotalsService), answered in Online's FLAT keys. Zero mutation.
+     */
+    public function totalsQuote(Request $request): JsonResponse
+    {
+        $data = $this->quoteInput($request);
+        if ($data instanceof JsonResponse) {
+            return $data;
+        }
+        [$preview, $error] = $this->quotePreview($request, $data);
+        if ($error) {
+            return $error;
+        }
+        $t = $preview['totals'] ?? $preview;
+
+        return response()->json([
+            'ok' => true,
+            'subtotal' => (float) ($t['subtotal'] ?? 0),
+            'discount_amount' => (float) ($t['discount_amount'] ?? 0),
+            'promotion_id' => $t['promotion_id'] ?? (null),
+            'promo_code' => $t['promo_code'] ?? (null),
+            'promotion_discount_amount' => (float) ($t['promotion_discount_amount'] ?? 0),
+            'tax_amount' => (float) ($t['tax_amount'] ?? 0),
+            'service_charge_amount' => (float) ($t['service_charge_amount'] ?? 0),
+            'tip_amount' => (float) ($t['tip_amount'] ?? 0),
+            'delivery_charge_amount' => (float) ($t['delivery_charge_amount'] ?? 0),
+            'grand_total' => (float) ($t['grand_total'] ?? 0),
+        ]);
+    }
+
+    /** Online `POST /api/pos/promotions/quote` twin (O17): `{valid, discount_amount, promotion_id, promo_code, …}`, 422 when invalid. */
+    public function promoQuote(Request $request): JsonResponse
+    {
+        if (trim((string) $request->input('promo_code', '')) === '') {
+            return response()->json(['message' => 'The promo code field is required.', 'errors' => ['promo_code' => ['The promo code field is required.']]], 422);
+        }
+        $data = $this->quoteInput($request);
+        if ($data instanceof JsonResponse) {
+            return $data;
+        }
+        [$preview, $error] = $this->quotePreview($request, $data);
+        if ($error) {
+            return $error;
+        }
+        $promo = $preview['promo'] ?? [];
+        if (empty($promo['valid'])) {
+            return response()->json([
+                'valid' => false,
+                'message' => 'Promo code is invalid, expired, or does not apply to this order.',
+                'discount_amount' => 0,
+                'promotion_id' => null,
+                'promo_code' => null,
+            ], 422);
+        }
+        $promotion = \App\Models\Tenant\Promotion::on('tenant')->find((int) $promo['promotion_id']);
+
+        return response()->json([
+            'valid' => true,
+            'discount_amount' => round((float) ($promo['discount_amount'] ?? 0), 2),
+            'promotion_id' => (int) $promo['promotion_id'],
+            'promo_code' => $promo['promo_code'] ?? $promotion?->code,
+            'promotion_name' => $promo['promotion_name'] ?? $promotion?->name,
+            'discount_type' => $promotion?->discount_type,
+            'discount_value' => (float) ($promotion?->discount_value ?? 0),
+        ]);
+    }
+
+    /** The quote twins accept Online's body (lines with unit_price/category_id — ignored: the server prices) and map it. */
+    private function quoteInput(Request $request): array|JsonResponse
+    {
+        $data = $request->validate([
+            'order_type' => ['required', 'string', 'in:quick_sale,takeaway,dine_in,delivery'],
+            'discount_type' => ['nullable', 'in:none,fixed,percent'],
+            'discount_value' => ['nullable', 'numeric', 'min:0'],
+            'promo_code' => ['nullable', 'string', 'max:50'],
+            'tip_amount' => ['nullable', 'numeric', 'min:0'],
+            'delivery_charge_amount' => ['nullable', 'numeric', 'min:0'],
+            'lines' => ['nullable', 'array'],
+            'lines.*.product_id' => ['nullable', 'integer'],
+            'lines.*.combo_id' => ['nullable', 'integer'],
+            'lines.*.product_variant_id' => ['nullable', 'integer'],
+            'lines.*.quantity' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.modifiers' => ['nullable'],
+            'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.line_kind' => ['nullable', 'string'],
+        ]);
+        // Online quotes standard lines; a deal's component rows (line_kind component) are priced by their header here.
+        $data['lines'] = collect($data['lines'] ?? [])
+            ->filter(fn ($l) => (float) ($l['quantity'] ?? 0) > 0 && ($l['line_kind'] ?? 'standard') !== 'component'
+                && (! empty($l['product_id']) || ! empty($l['combo_id'])))
+            ->map(fn ($l) => array_filter([
+                'product_id' => isset($l['product_id']) ? (int) $l['product_id'] : null,
+                'combo_id' => isset($l['combo_id']) ? (int) $l['combo_id'] : null,
+                'product_variant_id' => isset($l['product_variant_id']) ? (int) $l['product_variant_id'] : null,
+                'quantity' => (float) $l['quantity'],
+                'modifiers' => is_array($l['modifiers'] ?? null) ? $l['modifiers'] : (is_string($l['modifiers'] ?? null) ? (json_decode($l['modifiers'], true) ?: []) : []),
+                'discount_amount' => isset($l['discount_amount']) ? (float) $l['discount_amount'] : null,
+            ], fn ($v) => $v !== null))
+            ->values()->all();
+        $data['discount_type'] ??= 'none';
+
+        return $data;
+    }
+
+    /** @return array{0: array|null, 1: JsonResponse|null} */
+    private function quotePreview(Request $request, array $data): array
+    {
+        if ($data['lines'] === []) {
+            // Online quotes an empty cart as zeros (every amount 0 except a locked delivery charge).
+            return [['totals' => ['subtotal' => 0, 'discount_amount' => 0, 'tax_amount' => 0, 'service_charge_amount' => 0,
+                'tip_amount' => 0, 'delivery_charge_amount' => 0, 'grand_total' => 0], 'promo' => ['valid' => false]], null];
+        }
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return [null, $terminal];
+        }
+        try {
+            return [$this->pos->previewBill($data, auth('tenant')->user(), $terminal->id), null];
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return [null, response()->json(['ok' => false, 'message' => collect($e->errors())->flatten()->first(), 'errors' => $e->errors()], 422)];
+        } catch (\Throwable $e) {
+            return [null, response()->json(['ok' => false, 'message' => $e->getMessage()], 422)];
+        }
     }
 
     /**
@@ -565,12 +1045,15 @@ class EdgeLocalPosController extends Controller
         // Team 1 request: `?id=N` = the exact customer (the Online `/pos?customer_id=` deep link preselects one).
         $rows = \App\Models\Tenant\Customer::on('tenant')->where('status', 'active')
             ->when($id > 0, fn ($w) => $w->whereKey($id), fn ($w) => $w->where(fn ($x) => $x->where('name', 'like', "%{$q}%")->orWhere('phone', 'like', "%{$q}%")->orWhere('code', 'like', "%{$q}%")))
-            ->orderBy('name')->limit(20)->get(['id', 'name', 'phone', 'address']);
+            ->orderBy('name')->limit(20)->get(['id', 'customer_uuid', 'name', 'phone', 'email', 'address']);
         $addresses = \App\Models\Tenant\CustomerAddress::on('tenant')->whereIn('customer_id', $rows->pluck('id'))
             ->orderByDesc('is_default')->orderBy('id')->get(['id', 'customer_id', 'label', 'address', 'is_default'])->groupBy('customer_id');
 
+        // W-B canonical contract (§3.2): Online /ajax/customers keys {id, customer_uuid, name, phone, email, addresses[],
+        // legacy_address}; `address` stays for the old page (additive).
         return response()->json(['customers' => $rows->map(fn ($c) => [
-            'id' => (int) $c->id, 'name' => $c->name, 'phone' => $c->phone, 'address' => $c->address,
+            'id' => (int) $c->id, 'customer_uuid' => $c->customer_uuid, 'name' => $c->name, 'phone' => $c->phone,
+            'email' => $c->email, 'address' => $c->address, 'legacy_address' => $c->address,
             'addresses' => ($addresses->get($c->id) ?? collect())->map(fn ($a) => ['id' => (int) $a->id, 'label' => $a->label, 'address' => $a->address, 'is_default' => (bool) $a->is_default])->values(),
         ])->values()]);
     }

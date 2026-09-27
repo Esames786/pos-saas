@@ -24,7 +24,69 @@ use RuntimeException;
  */
 class EdgeLocalRestaurantController extends Controller
 {
-    use ResolvesEdgePosContext;
+    use ResolvesEdgePosContext {
+        selectedTerminal as private resolveSelectedTerminal;
+    }
+
+    /** W-B canonical contract (§3.2): a missing / stale terminal answers 422 with Online's `code: INVALID_TERMINAL`. */
+    protected function selectedTerminal(Request $request): \App\Models\Tenant\Terminal|JsonResponse
+    {
+        if ($refused = \App\Services\Edge\EdgePosRuntimeFactory::adoptRequestedTerminal($request, (int) $this->context->requireCurrent()->branch_id, fn ($t) => $this->denyUnlessMayOperateTerminal($t))) {
+            return $refused;
+        }
+
+        return \App\Services\Edge\EdgePosRuntimeFactory::terminalOrCoded($this->resolveSelectedTerminal($request));
+    }
+
+    /**
+     * W-B — Online `GET /api/pos/table-board` twin: the SAME `tenant.pos.partials.table-board` partial the shared page renders
+     * on first load, re-rendered from the local board (EdgeLocalPosController::boardFloors — Edge reservations projected onto
+     * the tiles), answered as Online's `{ok, html}`. `selected_session_id` highlights the working session. The JSON board
+     * (`restaurant/board`) stays for the old page.
+     */
+    public function restaurantBoardHtml(Request $request): JsonResponse
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $tableSession = null;
+        if ($request->filled('selected_session_id')) {
+            $tableSession = \App\Models\Tenant\RestaurantTableSession::on('tenant')->with(['table.floor', 'waiter'])
+                ->whereIn('status', ['open', 'bill_requested'])->where('branch_id', $branchId)
+                ->find((int) $request->input('selected_session_id'));
+        }
+        $runtime = app(\App\Services\Edge\EdgePosRuntimeFactory::class)->make($request);
+        $html = view('tenant.pos.partials.table-board', [
+            'floors' => app(EdgeLocalPosController::class)->boardFloors($branchId),
+            'selectedBranchId' => $branchId,
+            'tableSession' => $tableSession,
+            'posRuntime' => $runtime,
+        ])->render();
+
+        return response()->json(['ok' => true, 'html' => $html]);
+    }
+
+    /**
+     * W-B — Online `GET /api/pos/table-sessions/{session}/open-orders` twin (O14): `{ok, table_session_id, branch_id, session,
+     * orders[]}` with each order's full line payload (recall client-side). Gated like Online's route (permission-free on
+     * Online; UserDataScope → the bound branch here).
+     */
+    public function sessionOpenOrders(int $session): JsonResponse
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $row = \App\Models\Tenant\RestaurantTableSession::on('tenant')->with(['table', 'waiter'])->where('branch_id', $branchId)->find($session);
+        if (! $row) {
+            return response()->json(['ok' => false, 'message' => 'No table session found.'], 404);
+        }
+        $orders = SalesOrder::on('tenant')->with('lines')->where('restaurant_table_session_id', $row->id)
+            ->where('status', 'held')->orderByDesc('updated_at')->get();
+
+        return response()->json([
+            'ok' => true,
+            'table_session_id' => (int) $row->id,
+            'branch_id' => (int) $row->branch_id,
+            'session' => $this->tables->sessionPayload($row) + ['branch_id' => (int) $row->branch_id],
+            'orders' => $orders->map(fn (SalesOrder $s) => EdgeLocalHeldSalesController::openOrderView($s))->values(),
+        ]);
+    }
 
     /** Online RestaurantTableController::RESERVE_PERMISSION — reserve / unreserve / details gate on the table-open permission. */
     private const RESERVE_PERMISSION = 'tenant.restaurant.table-sessions.open';
@@ -109,6 +171,8 @@ class EdgeLocalRestaurantController extends Controller
         }
         try {
             $session = $this->pos->openTableSession($table, $data, auth('tenant')->user(), $terminal->id);
+        } catch (\App\Exceptions\ShiftException $e) {
+            return \App\Services\Edge\EdgePosRuntimeFactory::noOpenShift($e);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -229,6 +293,14 @@ class EdgeLocalRestaurantController extends Controller
         if ($denied = $this->denyUnlessCan(self::RESERVE_PERMISSION, 'Reserving a table needs the Open Table permission.')) {
             return $denied;
         }
+        // W-B canonical contract (§3.2): the shared page posts Online's field names (RestaurantTableController::reserve —
+        // reserved_customer_id / reserved_name / reserved_phone / reservation_note); the old page's names keep working.
+        $request->merge(array_filter([
+            'customer_id' => $request->input('customer_id', $request->input('reserved_customer_id')),
+            'customer_name' => $request->input('customer_name', $request->input('reserved_name')),
+            'customer_phone' => $request->input('customer_phone', $request->input('reserved_phone')),
+            'note' => $request->input('note', $request->input('reservation_note')),
+        ], fn ($v) => $v !== null && $v !== ''));
         $data = $request->validate([
             'customer_id' => ['nullable', 'integer'],
             'customer_name' => ['nullable', 'string', 'max:190'],
@@ -239,10 +311,12 @@ class EdgeLocalRestaurantController extends Controller
         try {
             $r = $this->reservations->reserve($table, $data, auth('tenant')->user());
         } catch (\Throwable $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
         }
+        $view = $this->reservationView($r);
 
-        return response()->json($this->reservationView($r), 201);
+        // `{ok:true, reservation}` (Online) + the flat reservation keys the old page reads (additive).
+        return response()->json(['ok' => true, 'reservation' => $view] + $view, 201);
     }
 
     /** ONLINE-POS PARITY — view the active reservation on a table. */
@@ -253,7 +327,7 @@ class EdgeLocalRestaurantController extends Controller
         }
         $r = $this->reservations->activeFor($table);
 
-        return response()->json(['reservation' => $r ? $this->reservationView($r) : null]);
+        return response()->json(['ok' => true, 'reservation' => $r ? $this->reservationView($r) : null]);
     }
 
     /** ONLINE-POS PARITY — cancel the active reservation on a table. */
@@ -268,7 +342,7 @@ class EdgeLocalRestaurantController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['status' => 'cancelled']);
+        return response()->json(['ok' => true, 'status' => 'cancelled']);
     }
 
     private function reservationView(EdgeTableReservation $r): array
@@ -285,6 +359,11 @@ class EdgeLocalRestaurantController extends Controller
             // R16 — Online reservationDetailsModal: who reserved it and when it was marked.
             'reserved_by' => $r->reserved_by_user_id ? \App\Models\Tenant\User::on('tenant')->find((int) $r->reserved_by_user_id)?->name : null,
             'reserved_at' => $r->reserved_at?->toIso8601String(),
+            // W-B canonical contract (§3.2): Online RestaurantTableController::reservation keys (display formats) — additive.
+            'name' => $r->customer_name,
+            'phone' => $r->customer_phone,
+            'reserved_for_display' => $r->reserved_for ? app(\App\Support\TenantClock::class)->format($r->reserved_for, 'd-M-Y h:i A') : null,
+            'reserved_at_display' => $r->reserved_at ? app(\App\Support\TenantClock::class)->format($r->reserved_at, 'd-M-Y h:i A') : null,
         ];
     }
 }

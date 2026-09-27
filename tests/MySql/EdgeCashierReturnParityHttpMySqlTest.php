@@ -121,12 +121,12 @@ class EdgeCashierReturnParityHttpMySqlTest extends MySqlTenantTestCase
         $this->postJson('/edge/local/pos/returns', $post)->assertStatus(422)->assertJsonPath('message', 'Manager approval is required to post a return at this branch.');
 
         // An approval for ANOTHER amount does not authorise this return (binding).
-        $wrong = $this->approve(['sales_order_id' => $saleId, 'branch_id' => $this->branchId, 'refund_method' => 'cash', 'refund_amount' => 50])->assertStatus(201)->json('approval_id');
+        $wrong = $this->approve(['sales_order_id' => $saleId, 'branch_id' => $this->branchId, 'refund_method' => 'cash', 'refund_amount' => 50])->assertStatus(200)->json('approval_id');
         $this->postJson('/edge/local/pos/returns', $post + ['manager_approval_id' => $wrong])->assertStatus(422)->assertJsonPath('message', 'Manager approval does not match this action.');
         $this->assertSame(0, DB::table('sales_returns')->count());
 
         // The bound approval posts the return, once.
-        $ok = $this->approve(['sales_order_id' => $saleId, 'branch_id' => $this->branchId, 'refund_method' => 'cash', 'refund_amount' => 100])->assertStatus(201)->json('approval_id');
+        $ok = $this->approve(['sales_order_id' => $saleId, 'branch_id' => $this->branchId, 'refund_method' => 'cash', 'refund_amount' => 100])->assertStatus(200)->json('approval_id');
         $r = $this->postJson('/edge/local/pos/returns', $post + ['manager_approval_id' => $ok])->assertStatus(201)->json('return');
         $this->assertSame(100.0, (float) $r['refund_amount']);
         $this->assertStringEndsWith('/edge/local/pos/sales-returns/' . $r['id'], (string) $r['detail_url']);
@@ -154,7 +154,7 @@ class EdgeCashierReturnParityHttpMySqlTest extends MySqlTenantTestCase
         }
         $this->assertSame(0, DB::table('manager_approvals')->count(), 'a malformed binding never mints an approval');
         // a well-formed payload still works (identity model unchanged: the manager's own Edge credential)
-        $this->approve(['sales_order_id' => 0, 'branch_id' => $this->branchId, 'refund_method' => 'cash', 'refund_amount' => 10])->assertStatus(201);
+        $this->approve(['sales_order_id' => 0, 'branch_id' => $this->branchId, 'refund_method' => 'cash', 'refund_amount' => 10])->assertStatus(200);
     }
 
     public function test_return_routes_refuse_without_the_permission_and_the_page_hides_the_entry(): void

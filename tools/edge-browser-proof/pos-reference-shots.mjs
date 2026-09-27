@@ -3,6 +3,7 @@
 //        [--email lab.cashier@edgehomelab.test] (password in env POS_SHOT_PASS)             ← Online: tenant e-mail login
 //   node pos-reference-shots.mjs --base-url https://desktop-0024epm.local:8443 --mode edge --user LAB2C5D --ignore-tls --out …
 //        (password in env POS_SHOT_PASS)                                                    ← Edge: employee-code login
+//   [--path /edge/local/pos/shared]  the POS page opened after login (Edge default /edge/local/pos, Cloud default /pos)
 // States captured (same list in both modes, same viewport): main POS, categories tab, customer modal, context modal,
 // held orders, recent orders, recent prints, quick report, table workspace, review & pay (cart with 2 lines), qty entry,
 // modifier entry. Missing states are recorded as skipped, never faked. Output: <out>/<viewport>/<state>.png + report.json.
@@ -19,6 +20,8 @@ for (let i = 0; i < argv.length; i++) {
 }
 const base = (args['base-url'] || '').replace(/\/$/, '');
 const mode = args.mode || 'cloud';
+// --path: the POS page to open after login (default /pos on Cloud, /edge/local/pos on Edge; W-B: /edge/local/pos/shared).
+const posPath = args.path || (mode === 'cloud' ? '/pos' : '/edge/local/pos');
 const out = path.resolve(args.out || `./evidence/phase2/${mode}-${Date.now()}`);
 const pass = process.env.POS_SHOT_PASS || '';
 if (!base || !pass) { console.error('need --base-url and POS_SHOT_PASS in the environment'); process.exit(2); }
@@ -31,12 +34,12 @@ for (const vp of viewports) {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: !!args['ignore-tls'], viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1 });
   // Offline discipline: abort every request that is not same-host loopback (e.g. the theme's Google Fonts @import) — it also
   // stops the load event from hanging on an unreachable CDN. Blocked hosts are recorded in the report.
-  await ctx.route("**/*", (route) => { const u = new URL(route.request().url()); const ok = ["127.0.0.1", "localhost", "edgehomelab.localhost", "desktop-0024epm.local"].includes(u.hostname.toLowerCase()); if (!ok) { report.blocked = report.blocked || []; if (!report.blocked.includes(u.hostname)) report.blocked.push(u.hostname); return route.abort(); } return route.continue(); });
+  await ctx.route("**/*", (route) => { const u = new URL(route.request().url()); const ok = ["127.0.0.1", "localhost", "edgehomelab.localhost", "desktop-0024epm.local"].includes(u.hostname.toLowerCase()) || (args["allow-fonts"] && /fonts\.(googleapis|gstatic)\.com$/.test(u.hostname)); if (!ok) { report.blocked = report.blocked || []; if (!report.blocked.includes(u.hostname)) report.blocked.push(u.hostname); return route.abort(); } return route.continue(); });
   const page = await ctx.newPage();
   page.setDefaultNavigationTimeout(90000); page.setDefaultTimeout(20000);
   page.on('pageerror', (e) => report.errors.push({ vp: vp.name, error: String(e).slice(0, 200) }));
   const dir = path.join(out, vp.name); fs.mkdirSync(dir, { recursive: true });
-  const shot = async (name) => { await page.waitForTimeout(400); await page.screenshot({ path: path.join(dir, `${name}.png`), fullPage: false }); report.shots.push(`${vp.name}/${name}`); };
+  const settle = Number(args.settle || 400); const shot = async (name) => { await page.waitForTimeout(settle); await page.mouse.move(0, 0); await page.screenshot({ path: path.join(dir, `${name}.png`), fullPage: false }); report.shots.push(`${vp.name}/${name}`); };
   const open = async (name, clickSel, waitSel) => {
     try {
       const el = page.locator(clickSel).first();
@@ -54,13 +57,13 @@ for (const vp of viewports) {
     await page.fill('input[name="email"]', args.email || 'lab.cashier@edgehomelab.test');
     await page.fill('input[name="password"]', pass);
     await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click('button[type="submit"]')]);
-    await page.goto(`${base}/pos`, { waitUntil: 'load' });
+    await page.goto(`${base}${posPath}`, { waitUntil: 'load' });
   } else {
     await page.goto(`${base}/edge/local/login`, { waitUntil: 'load' });
     await page.fill('input[name="employee_code"]', args.user || 'LAB2C5D');
     await page.fill('input[name="credential"], input[name="password"]', pass);
     await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click('button[type="submit"]')]);
-    await page.goto(`${base}/edge/local/pos`, { waitUntil: 'load' });
+    await page.goto(`${base}${posPath}`, { waitUntil: 'load' });
   }
   await page.waitForTimeout(1200);
   await shot('01-main');

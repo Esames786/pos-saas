@@ -33,7 +33,19 @@ use RuntimeException;
  */
 class EdgeLocalPrintJobController extends Controller
 {
-    use ResolvesEdgePosContext;
+    use ResolvesEdgePosContext {
+        selectedTerminal as private resolveSelectedTerminal;
+    }
+
+    /** W-B canonical contract (§3.2): a missing / stale terminal answers 422 with Online's `code: INVALID_TERMINAL`. */
+    protected function selectedTerminal(Request $request): \App\Models\Tenant\Terminal|JsonResponse
+    {
+        if ($refused = \App\Services\Edge\EdgePosRuntimeFactory::adoptRequestedTerminal($request, (int) $this->context->requireCurrent()->branch_id, fn ($t) => $this->denyUnlessMayOperateTerminal($t))) {
+            return $refused;
+        }
+
+        return \App\Services\Edge\EdgePosRuntimeFactory::terminalOrCoded($this->resolveSelectedTerminal($request));
+    }
 
     public function __construct(
         private readonly EdgeBranchContext $context,
@@ -410,8 +422,14 @@ class EdgeLocalPrintJobController extends Controller
             'is_reprint' => (bool) data_get($j->payload, 'is_reprint', false),
             'error_message' => $j->error_message,
             'has_document' => in_array($j->document_type, ['receipt', 'invoice', 'kot', 'reminder'], true),
-            'preview_url' => url('/edge/local/pos/print-jobs/' . $j->id . '/document'),
+            // path-only (never an absolute http:// URL): the page opens it on the same origin.
+            'preview_url' => '/edge/local/pos/print-jobs/' . $j->id . '/document',
             'created_at' => $j->created_at?->toIso8601String(),
+            // W-B canonical contract (§3.2): Online's print-job answers key the job as `job_id` (queueKot / queueReceipt /
+            // reminders) and show the humanised time (ajaxForSale `created_at`) — both added, nothing removed.
+            'job_id' => (int) $j->id,
+            'printer_id' => $j->printer_id !== null ? (int) $j->printer_id : null,
+            'created_at_human' => $j->created_at?->diffForHumans(),
         ];
     }
 }

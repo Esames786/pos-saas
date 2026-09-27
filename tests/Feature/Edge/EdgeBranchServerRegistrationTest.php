@@ -157,6 +157,7 @@ class EdgeBranchServerRegistrationTest extends TestCase
             // ═══ PARITY WORKSTREAMS (owner directive 20 Sep 2026) — one block per team, append-only, mirrors routes/edge_runtime.php ═══
             // ── W1 (Team 1) — shell / navigation ──
             'edge/local/assets/{path}', // W1: whitelisted public/assets streamer (unauthenticated; tests/Feature/Edge/EdgeLocalAssetRouteTest)
+            'edge/local/storage/{path}', // W-C: whitelisted storage/app/public image streamer (unauthenticated; EdgeLocalAssetRouteTest)
             // ── W2 (Team 2) — menu & sale ──
             // ── W3 (Team 3) — tables & order lifecycle ──
             'edge/local/pos/restaurant/table-sessions',
@@ -188,6 +189,21 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/sales/{sale}/printing/retry',
             'edge/local/pos/bill-preview/document',
             'edge/local/pos/print-preferences',
+            // ── W-B (next release) — the ONE shared cashier view + canonical JSON twins + the separate screens (same tenant views) ──
+            'edge/local/pos/shared',
+            'edge/local/pos/server-time',
+            'edge/local/pos/totals/quote',
+            'edge/local/pos/promotions/quote',
+            'edge/local/pos/restaurant/board/html',
+            'edge/local/pos/restaurant/table-sessions/{session}/open-orders',
+            'edge/local/pos/shifts/open',
+            'edge/local/pos/shifts/{shift}/close',
+            'edge/local/pos/shared/shifts',
+            'edge/local/pos/shared/shifts/{shift}',
+            'edge/local/pos/sales-returns/create',
+            'edge/local/pos/shared/sales-returns',
+            'edge/local/pos/shared/sales-returns/{salesReturn}',
+            'edge/local/pos/held-sales/{sale}/split-bill',
         ];
 
         $uris = collect(\Illuminate\Support\Facades\Route::getRoutes()->getRoutes())

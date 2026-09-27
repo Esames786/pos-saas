@@ -22,7 +22,9 @@ use RuntimeException;
  */
 class EdgeLocalHeldSalesController extends Controller
 {
-    use ResolvesEdgePosContext;
+    use ResolvesEdgePosContext {
+        selectedTerminal as private resolveSelectedTerminal;
+    }
 
     public function __construct(
         private readonly EdgeBranchContext $context,
@@ -30,6 +32,102 @@ class EdgeLocalHeldSalesController extends Controller
         private readonly EdgeLocalOrderLifecycleService $lifecycle,
         private readonly EdgeLocalTableOperationsService $tables,
     ) {
+    }
+
+    /** W-B canonical contract (§3.2): a missing / stale terminal answers 422 with Online's `code: INVALID_TERMINAL`. */
+    protected function selectedTerminal(Request $request): \App\Models\Tenant\Terminal|JsonResponse
+    {
+        if ($refused = \App\Services\Edge\EdgePosRuntimeFactory::adoptRequestedTerminal($request, (int) $this->context->requireCurrent()->branch_id, fn ($t) => $this->denyUnlessMayOperateTerminal($t))) {
+            return $refused;
+        }
+
+        return \App\Services\Edge\EdgePosRuntimeFactory::terminalOrCoded($this->resolveSelectedTerminal($request));
+    }
+
+    /**
+     * Online HeldSaleController::store TABLE_HAS_OPEN_ORDERS (409): a NEW check on a table session that already carries an
+     * open one answers with the session + its open orders so the page offers "continue" (same keys as Online). A non-locking
+     * pre-check for the response shape only — EdgeLocalPosService still refuses under the row lock (a race → 422).
+     */
+    private function tableHasOpenOrders(array $data): ?JsonResponse
+    {
+        if (! empty($data['held_sale_id']) || empty($data['restaurant_table_session_id'])) {
+            return null;
+        }
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $session = \App\Models\Tenant\RestaurantTableSession::on('tenant')->with(['table', 'waiter'])
+            ->where('branch_id', $branchId)->whereIn('status', ['open', 'bill_requested'])
+            ->find((int) $data['restaurant_table_session_id']);
+        if (! $session) {
+            return null;
+        }
+        $orders = SalesOrder::on('tenant')->with('lines')->where('restaurant_table_session_id', $session->id)
+            ->where('status', 'held')->orderByDesc('updated_at')->get();
+        if ($orders->isEmpty()) {
+            return null;
+        }
+
+        return response()->json([
+            'ok' => false,
+            'code' => 'TABLE_HAS_OPEN_ORDERS',
+            'message' => 'This table already has an open check. Continue it to add the next round.',
+            'table_session_id' => (int) $session->id,
+            'branch_id' => (int) $session->branch_id,
+            'session' => $this->tables->sessionPayload($session) + ['branch_id' => (int) $session->branch_id],
+            'orders' => $orders->map(fn (SalesOrder $s) => $this->openOrderView($s))->values(),
+        ], 409);
+    }
+
+    /**
+     * Online HeldSaleController::openOrderPayload shape (O14) — shared by the 409 above and the table-session open-orders
+     * twin (EdgeLocalRestaurantController::sessionOpenOrders). `recall_url` is null on Edge: the page recalls through the
+     * runtime route map (posIndex / heldShow), never a Cloud URL.
+     */
+    public static function openOrderView(SalesOrder $sale): array
+    {
+        $sale->loadMissing('lines');
+
+        return [
+            'id' => (int) $sale->id,
+            'sale_no' => $sale->sale_no,
+            'order_type' => $sale->order_type,
+            'terminal_id' => $sale->terminal_id !== null ? (int) $sale->terminal_id : null,
+            'restaurant_table_session_id' => $sale->restaurant_table_session_id !== null ? (int) $sale->restaurant_table_session_id : null,
+            'restaurant_table_id' => $sale->restaurant_table_id !== null ? (int) $sale->restaurant_table_id : null,
+            'is_draft' => (bool) $sale->is_draft,
+            'grand_total' => (float) $sale->grand_total,
+            'grand_total_formatted' => number_format((float) $sale->grand_total, 2),
+            'items_count' => $sale->lines->count(),
+            'created_at' => $sale->created_at?->format('d M Y H:i'),
+            'updated_at' => $sale->updated_at?->diffForHumans(),
+            'recall_url' => null,
+            'lines' => $sale->lines->map(fn ($l) => self::onlineLineView($l))->values(),
+        ];
+    }
+
+    /** One held line in Online's ajaxList / openOrderPayload shape (W2 re-hydration keys included). */
+    public static function onlineLineView($l): array
+    {
+        return [
+            'id' => (int) $l->id,
+            'product_id' => (int) $l->product_id,
+            'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
+            'parent_sales_order_line_id' => $l->parent_sales_order_line_id ? (int) $l->parent_sales_order_line_id : null,
+            'line_kind' => (string) ($l->line_kind ?? 'standard'),
+            'combo_id' => $l->combo_id ? (int) $l->combo_id : null,
+            'quantity' => (float) $l->quantity,
+            'unit_price' => (float) $l->unit_price,
+            'discount_amount' => (float) $l->discount_amount,
+            'tax_amount' => (float) $l->tax_amount,
+            'line_total' => (float) $l->line_total,
+            'product_name' => $l->product_name,
+            'variant_name' => $l->variant_name,
+            'unit_code' => $l->unit_code,
+            'modifiers' => is_array($l->modifiers) ? $l->modifiers : [],
+            'kot_sent' => (bool) $l->kot_sent,
+            'kot_sent_quantity' => (float) ($l->kot_sent_quantity ?? 0),
+            'kitchen_note' => $l->kitchen_note,
+        ];
     }
 
     /** Create or revise (Add Round) a HELD sale. */
@@ -80,12 +178,17 @@ class EdgeLocalHeldSalesController extends Controller
         if ($terminal instanceof JsonResponse) {
             return $terminal;
         }
+        if ($conflict = $this->tableHasOpenOrders($data)) {
+            return $conflict;
+        }
         // T3-3 (D-06): remember the newest KOT batch BEFORE a revision that voids sent lines, so the correction
         // Reminder is planned for exactly the cancel batch this save creates (Team 5 EdgeLocalPrintKotService).
         $hasVoids = ! empty($data['held_sale_id']) && ! empty($data['void_items']);
         $batchBefore = $hasVoids ? (int) \App\Models\Tenant\KotBatch::on('tenant')->where('sales_order_id', (int) $data['held_sale_id'])->max('id') : null;
         try {
             $sale = $this->pos->holdOrReviseSale($data, auth('tenant')->user(), $terminal->id);
+        } catch (\App\Exceptions\ShiftException $e) {
+            return \App\Services\Edge\EdgePosRuntimeFactory::noOpenShift($e);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -131,12 +234,22 @@ class EdgeLocalHeldSalesController extends Controller
     /** Settle (pay) a held sale with cash — closes the table session when it was the last open check. */
     public function settleHeldSale(Request $request, int $sale): JsonResponse
     {
+        // W-B (shared POS, §3.2 "Pay a held order"): the shared page sends the SAME payload it sends Online's POST /pos with
+        // held_sale_id — every key this settle cannot apply (lines, order_type, branch_id, customer, print intents …) is simply
+        // not validated and therefore ignored. A2 (owner decision): the manual discount + its manager approval are a
+        // SETTLEMENT concern — accepted here and consumed inside the settle transaction (EdgeLocalPosService::settleHeldSale).
         $data = $request->validate([
             'client_uuid' => ['required', 'string', 'max:36'],
             'payments' => ['required', 'array', 'min:1'],
             'payments.*.payment_method_id' => ['required', 'integer'],
             'payments.*.amount' => ['required', 'numeric', 'gt:0'],
             'payments.*.tendered_amount' => ['nullable', 'numeric'],
+            'payments.*.transaction_ref' => ['nullable', 'string', 'max:190'],
+            'discount_type' => ['nullable', 'string'],
+            'discount_value' => ['nullable', 'numeric'],
+            'manager_approval_id' => ['nullable', 'integer'],
+            'promo_code' => ['nullable', 'string', 'max:50'],
+            'tip_amount' => ['nullable', 'numeric', 'min:0'],
         ]);
         $terminal = $this->selectedTerminal($request);
         if ($terminal instanceof JsonResponse) {
@@ -195,9 +308,14 @@ class EdgeLocalHeldSalesController extends Controller
         $j->loadMissing('printer');
 
         return [
-            'id' => (int) $j->id, 'document_type' => $j->document_type, 'print_status' => $j->print_status,
+            'id' => (int) $j->id, 'job_id' => (int) $j->id, 'job_no' => $j->job_no,
+            'document_type' => $j->document_type, 'print_status' => $j->print_status,
+            'printer_id' => $j->printer_id !== null ? (int) $j->printer_id : null,
+            'printer_type' => $j->printer?->printer_type ?? 'browser',
             'printer_name' => $j->printer?->name ?? 'Print here (browser)', 'fallback' => empty($j->printer_id),
-            'preview_url' => url('/edge/local/pos/print-jobs/' . $j->id . '/document'),
+            // path-only (never an absolute http:// URL): the page opens it on the same origin.
+            'preview_url' => '/edge/local/pos/print-jobs/' . $j->id . '/document',
+            'created_at_human' => $j->created_at?->diffForHumans(),
         ];
     }
 
@@ -231,6 +349,77 @@ class EdgeLocalHeldSalesController extends Controller
         ], 201);
     }
 
+    // ═══════════ W-B SEPARATE SCREEN — the SAME split-bill page (tenant/sales-orders/split-bill), Edge data + routes ═══════════
+
+    /**
+     * Online SplitBillController@create → tenant.sales-orders.split-bill for a HELD check on the bound branch. The POS embeds
+     * it in its Split Bill modal (iframe, `?embed=1`) exactly like Online; it is also reachable directly.
+     */
+    public function splitPage(Request $request, int $sale)
+    {
+        abort_unless((bool) auth('tenant')->user()?->can('tenant.sales-orders.split-bill'), 403, 'Splitting a bill needs the Split Bill permission (tenant.sales-orders.split-bill).');
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $row = SalesOrder::on('tenant')->with([
+            'branch', 'terminal', 'customer', 'restaurantTableSession.table', 'restaurantTableSession.salesOrders',
+            'restaurantWaiter', 'restaurantTable', 'lines.product.unit', 'lines.variant',
+        ])->where('branch_id', $branchId)->find($sale);
+        abort_if(! $row, 404, 'No such check on this Branch Server.');
+        if ($row->status !== 'held') {
+            return back()->withErrors(['sale' => 'Only held sales can be split.']);
+        }
+        abort_if(app(\App\Services\Security\UserDataScope::class)->deniesSale(auth('tenant')->user(), $row), 403);
+
+        return view('tenant.sales-orders.split-bill', [
+            'salesOrder' => $row,
+            'paymentMethods' => \App\Models\Tenant\PaymentMethod::on('tenant')->where('is_active', true)->orderBy('name')->get(),
+            'posRuntime' => app(\App\Services\Edge\EdgePosRuntimeFactory::class)->make($request),
+        ]);
+    }
+
+    /**
+     * Online SplitBillController@store (the split form's POST: lines[i][sales_order_line_id], lines[i][quantity], notes) →
+     * EdgeLocalPosService::splitHeldSale (the same authority the JSON split uses), then the SAME top-window breakout Online
+     * answers with (the form lives in the POS modal's iframe): back to the shared POS on the table, recalling the remaining
+     * original (or the new check when the original emptied).
+     */
+    public function splitFromPage(Request $request, int $sale)
+    {
+        abort_unless((bool) auth('tenant')->user()?->can('tenant.sales-orders.split-bill.store'), 403, 'Splitting a bill needs the Split Bill permission (tenant.sales-orders.split-bill.store).');
+        $data = $request->validate([
+            'notes' => ['nullable', 'string', 'max:500'],
+            'lines' => ['required', 'array'],
+            'lines.*.sales_order_line_id' => ['nullable', 'integer'],
+            'lines.*.quantity' => ['nullable', 'numeric', 'min:0'],
+        ]);
+        $selected = collect($data['lines'])
+            ->filter(fn ($l) => ! empty($l['sales_order_line_id']) && (float) ($l['quantity'] ?? 0) > 0)
+            ->map(fn ($l) => ['sales_order_line_id' => (int) $l['sales_order_line_id'], 'quantity' => (float) $l['quantity']])
+            ->values()->all();
+        if ($selected === []) {
+            return back()->withErrors(['split' => 'Select at least one item quantity to split.'])->withInput();
+        }
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return back()->withErrors(['split' => (string) ($terminal->getData(true)['message'] ?? 'Select a terminal first.')])->withInput();
+        }
+        try {
+            $result = $this->pos->splitHeldSale($sale, $selected, auth('tenant')->user(), $terminal->id, $data['notes'] ?? null);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['split' => $e->getMessage()])->withInput();
+        }
+        $parent = $result['parent']->fresh();
+        $child = $result['child']->fresh();
+        $recallId = $parent->status === 'held' ? $parent->id : $child->id;
+        $sessionId = $child->restaurant_table_session_id;
+        $target = \App\Services\Edge\EdgePosRuntimeFactory::SHARED_PAGE . '?held_sale_id=' . $recallId
+            . ($sessionId ? '&table_session_id=' . $sessionId : '') . '&mode=dine_in&branch_id=' . $child->branch_id;
+        session()->flash('status', 'Split into held order ' . $child->sale_no . '. Pay each order from the POS.');
+        $encoded = json_encode($target, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+
+        return response('<!doctype html><meta charset="utf-8"><script>window.top.location.href=' . $encoded . ';</script>'
+            . 'Split complete — returning to the POS…');
+    }
+
     // ═══════════════════════ EDGE-CASHIER-UI-2 — Recall / Dine-In browser workflow data ═══════════════════════
 
     /** RECALL parity — the open checks (held + draft) on the bound branch, limited to the order types this operator may run. */
@@ -240,8 +429,51 @@ class EdgeLocalHeldSalesController extends Controller
         // widens) and UserDataScope (branch / terminal / order-type assignments).
         $sales = $this->lifecycle->heldSalesQuery(auth('tenant')->user(), $request->query('order_type'))
             ->orderByDesc('updated_at')->orderByDesc('id')->limit(100)->get();
+        // W-B canonical contract (§3.2): Online /api/pos/held-sales embeds every check's lines under `sales` — the shared page
+        // recalls client-side without a second call. The old page keeps reading `held_sales` (additive).
+        $sales->load(['lines', 'customer:id,name,phone', 'deliveryChannel:id,name,type', 'deliveryRider:id,name']);
 
-        return response()->json(['held_sales' => $sales->map(fn (SalesOrder $s) => $this->heldSaleView($s))->values()]);
+        return response()->json([
+            'held_sales' => $sales->map(fn (SalesOrder $s) => $this->heldSaleView($s))->values(),
+            'sales' => $sales->map(fn (SalesOrder $s) => $this->onlineHeldView($s))->values(),
+        ]);
+    }
+
+    /** Online HeldSaleController::ajaxList row (keys + formats), from the local check. */
+    private function onlineHeldView(SalesOrder $s): array
+    {
+        return [
+            'id' => (int) $s->id,
+            'sale_no' => $s->sale_no,
+            'is_draft' => (bool) $s->is_draft,
+            'order_type' => $s->order_type,
+            'branch_id' => (int) $s->branch_id,
+            'terminal_id' => $s->terminal_id !== null ? (int) $s->terminal_id : null,
+            'restaurant_table_session_id' => $s->restaurant_table_session_id !== null ? (int) $s->restaurant_table_session_id : null,
+            'restaurant_table_id' => $s->restaurant_table_id !== null ? (int) $s->restaurant_table_id : null,
+            'delivery_channel_id' => $s->delivery_channel_id !== null ? (int) $s->delivery_channel_id : null,
+            'delivery_rider_id' => $s->delivery_rider_id !== null ? (int) $s->delivery_rider_id : null,
+            'delivery_channel' => $s->deliveryChannel?->name,
+            'delivery_channel_type' => $s->deliveryChannel?->type,
+            'delivery_rider' => $s->deliveryRider?->name,
+            'delivery_address' => $s->delivery_address,
+            'delivery_charge_amount' => (float) $s->delivery_charge_amount,
+            'vehicle_number' => $s->vehicle_number,
+            'restaurant_waiter_id' => $s->restaurant_waiter_id !== null ? (int) $s->restaurant_waiter_id : null,
+            'waiter' => $s->restaurantWaiter?->name,
+            'table' => $s->restaurantTable?->table_no,
+            'discount_type' => $s->discount_type,
+            'discount_value' => (float) $s->discount_value,
+            'customer' => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
+            'customer_id' => $s->customer_id !== null ? (int) $s->customer_id : null,
+            'customer_name' => $s->customer_name ?: $s->customer?->name,
+            'customer_phone' => $s->customer_phone ?: $s->customer?->phone,
+            'total' => number_format((float) $s->grand_total, 2),
+            'items' => $s->lines->count(),
+            'time' => $s->created_at?->diffForHumans(),
+            'notes' => $s->notes,
+            'lines' => $s->lines->map(fn ($l) => self::onlineLineView($l))->values(),
+        ];
     }
 
     /** One open check with its lines — what Recall / Add Round / Review & Pay load into the cart. */
@@ -269,7 +501,21 @@ class EdgeLocalHeldSalesController extends Controller
     /** A27 — Recent / Completed Orders (Online POSController::recentSales; tenant.api.pos.* is permission-free on Online). */
     public function recentSales(Request $request): JsonResponse
     {
-        return response()->json(['sales' => $this->lifecycle->recentSales(auth('tenant')->user(), $request->query('order_type'))]);
+        $rows = $this->lifecycle->recentSales(auth('tenant')->user(), $request->query('order_type'));
+        // W-B canonical contract (§3.2): Online POSController::recentSales `time` = TenantClock::formatSale('d M, h:i A') and
+        // `ago` = diffForHumans(); the ISO instant stays available as `time_iso`.
+        $models = SalesOrder::on('tenant')->with(['shift', 'branch'])->whereIn('id', collect($rows)->pluck('id')->all() ?: [0])->get()->keyBy('id');
+        $clock = app(\App\Support\TenantClock::class);
+        $rows = collect($rows)->map(function (array $r) use ($models, $clock) {
+            $s = $models->get($r['id']);
+            $r['time_iso'] = $r['time'] ?? null;
+            $r['time'] = $s ? $clock->formatSale($s, 'd M, h:i A') : ($r['time'] ?? null);
+            $r['ago'] = optional($s?->sale_date ?? $s?->created_at)->diffForHumans();
+
+            return $r;
+        })->values();
+
+        return response()->json(['sales' => $rows]);
     }
 
     /** A29/R31 — dead-session recovery: a held bill on a closed session moves to a NEW session on a free table. */

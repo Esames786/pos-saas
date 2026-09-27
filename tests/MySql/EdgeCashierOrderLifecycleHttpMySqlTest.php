@@ -106,7 +106,7 @@ class EdgeCashierOrderLifecycleHttpMySqlTest extends MySqlTenantTestCase
     {
         return (int) $this->postJson('/edge/local/pos/manager-approvals/verify', [
             'manager_employee_code' => $this->managerCode, 'manager_credential' => 'MgrPass1', 'action_type' => $action, 'payload' => $payload,
-        ])->assertStatus(201)->json('approval_id');
+        ])->assertStatus(200)->json('approval_id');
     }
 
     private function quickSale(float $amount = 100): int

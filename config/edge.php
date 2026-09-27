@@ -280,6 +280,7 @@ return [
         'edge.local.pos.health.view',
         // ── W1 (Team 1, parity directive 20 Sep 2026) — shell (each name deliberate; mirrors routes/edge_runtime.php W1) ──
         'edge.local.assets',   // whitelisted public/assets streamer (EdgeLocalAssetController; unauthenticated, no session)
+        'edge.local.storage',  // W-C: whitelisted storage/app/public image streamer (EdgeLocalAssetController::storage; images only, no session)
         // ── W3 (Team 3, parity directive 20 Sep 2026) — tables & order lifecycle (each name deliberate; mirrors routes/edge_runtime.php W3) ──
         'edge.local.pos.restaurant.sessions.index',
         'edge.local.pos.restaurant.session.show',
@@ -311,6 +312,25 @@ return [
         'edge.local.pos.sales.printing.retry',
         'edge.local.pos.bill-preview.document',
         'edge.local.pos.print-preferences',
+        // ── W-B (next release — ONE shared cashier view; each name deliberate; mirrors routes/edge_runtime.php W-B) ──
+        'edge.local.pos.shared',                          // tenant.pos.index + the Edge runtime (Phase 2 beside edge.local.pos.screen)
+        'edge.local.pos.server-time',                     // Online /api/server-time twin
+        'edge.local.pos.totals.quote',                    // Online /api/pos/totals/quote twin (O16)
+        'edge.local.pos.promotions.quote',                // Online /api/pos/promotions/quote twin (O17)
+        'edge.local.pos.restaurant.board.html',           // Online /api/pos/table-board twin ({ok, html}, shared partial)
+        'edge.local.pos.restaurant.session.open-orders',  // Online /api/pos/table-sessions/{s}/open-orders twin (O14)
+        'edge.local.pos.shifts.create-page',              // separate screens: the SAME tenant views (owner requirement)
+        'edge.local.pos.shifts.store-page',
+        'edge.local.pos.shifts.close-page',
+        'edge.local.pos.shifts.close-store-page',
+        'edge.local.pos.shifts.index-page',
+        'edge.local.pos.shifts.show-page',
+        'edge.local.pos.sales-returns.create-page',
+        'edge.local.pos.sales-returns.store-page',
+        'edge.local.pos.sales-returns.index-page',
+        'edge.local.pos.sales-returns.show-page',
+        'edge.local.pos.split-bill.page',
+        'edge.local.pos.split-bill.store-page',
     ],
 
     /*
