@@ -3,7 +3,33 @@
 @section('title', 'Catering Events')
 
 @section('content')
-@php $q = $q ?? ''; @endphp
+@php $q = $q ?? ''; $from = $from ?? ''; $to = $to ?? ''; @endphp
+<style>
+    /* CATERING-LIST-RESPONSIVE-1 (27 Sep) — "datatable choti screen par bhi
+       responsive ho".
+
+       Gyarah columns laptop par to aa jate hain, chhoti screen par nahi. Do
+       cheezein ki gayi hain:
+
+       1. HAR DATA COLUMN PAR `min-width` — `width` NAHI. HTML me `width`
+          browser ke liye tajweez hai, farsh nahi: jagah kam parey to browser
+          us se neeche chala jata hai aur khana kuchal deta hai. Yehi keeda
+          punch grid par Qty ko ghayab kar chuka hai.
+       2. 992px SE NEECHE VENUE AUR PAX QATAAR SE NIKAL KAR customer ke naam ke
+          neeche aa jate hain. Maloomat kahin nahi jaati, sirf jagah badalti
+          hai — aur bachi hui chaurai un khanon ko milti hai jin par faisla
+          hota hai: raqam, position aur status.
+
+       Table phir bhi apne wrapper me scroll hoti hai; wrapper ka kinara nazar
+       aata hai taake operator ko pata rahe ke daayen aur kuch hai. */
+    #events-table th { white-space: nowrap; }
+    #events-table > :not(caption) > * > * { vertical-align: middle; }
+    #events-table-wrap { border-inline-end: 1px solid var(--bs-border-color, #dee2e6); }
+    @media (max-width: 991.98px) {
+        #events-table { font-size: .84rem; }
+        #events-table > :not(caption) > * > * { padding-top: .45rem; padding-bottom: .45rem; }
+    }
+</style>
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <h1 class="mb-0">Catering Events &amp; Estimates</h1>
     <div class="d-flex gap-2 flex-wrap">
@@ -60,13 +86,13 @@
 <div class="card">
     <div class="card-body pb-0">
         <form method="GET" class="row g-2 mb-3">
-            <div class="col-md-4">
+            <div class="col-12 col-md-6 col-lg-3">
                 {{-- KASHIF-CATERING-OPERATOR-UI-1: the fields an operator actually
                      holds when the phone rings — number, name, phone, venue. --}}
                 <input type="search" name="q" value="{{ $q }}" class="form-control"
                        placeholder="Search booking #, customer, phone, venue or address…">
             </div>
-            <div class="col-md-3">
+            <div class="col-12 col-md-6 col-lg-2">
                 <select name="status" class="form-select">
                     <option value="">All Statuses</option>
                     @foreach(\App\Models\Tenant\CateringEvent::STATUSES as $s)
@@ -74,10 +100,37 @@
                     @endforeach
                 </select>
             </div>
+            {{-- CATERING-LIST-DATE-RANGE-1 — bucket cards sirf aaj/kal/haftay ka
+                 jawab dete hain; "is mahine kya kya tha" ka koi raasta nahi tha.
+                 Khane ke andar hi "From"/"To" likha hai: bagair label ke do
+                 khaali date box ye nahi batate ke kaun sa kaun sa hai, aur alag
+                 label satar ki oonchai tor dete. --}}
+            <div class="col-6 col-md-3 col-lg-2">
+                <div class="input-group">
+                    <span class="input-group-text fs-12">From</span>
+                    <input type="date" name="from" value="{{ $from }}" class="form-control"
+                           aria-label="Event date se">
+                </div>
+            </div>
+            <div class="col-6 col-md-3 col-lg-2">
+                <div class="input-group">
+                    <span class="input-group-text fs-12">To</span>
+                    <input type="date" name="to" value="{{ $to }}" class="form-control"
+                           aria-label="Event date tak">
+                </div>
+            </div>
             <div class="col-auto">
                 <button type="submit" class="btn btn-light">Search</button>
                 <a href="{{ url('/catering/events') }}" class="btn btn-light">Clear</a>
             </div>
+            @if($from !== '' && $to !== '' && $from > $to)
+                {{-- Khali fehrist khud nahi batati ke wo kyun khali hai. --}}
+                <div class="col-12">
+                    <div class="fs-12 text-danger mt-1">
+                        <i class="ti ti-alert-triangle me-1"></i>"From" ki tareekh "To" se baad ki hai — is liye is fehrist me kuch nahi aayega.
+                    </div>
+                </div>
+            @endif
             <div class="col text-end">
                 {{-- Bulk documents for the ticked bookings. GET pages that compose
                      A4 print runs — nothing moves, posts, or changes state. --}}
@@ -128,23 +181,25 @@
              read it. The floor gives a short list room to breathe; the menu
              itself escapes the scroller via `data-bs-strategy="fixed"` below,
              so it stays readable however many rows there are. --}}
-        <div class="table-responsive" style="min-height: 320px;">
-            <table class="table table-hover mb-0">
+        <div class="table-responsive" id="events-table-wrap" style="min-height: 320px;">
+            <table class="table table-hover mb-0" id="events-table">
                 <thead>
                     <tr>
+                        {{-- Tick ka khana jaan-boojh kar `width` rakhta hai: ye
+                             wahi soorat hai jahan sikuṛna theek hai. --}}
                         <th style="width:30px" class="ps-3">
                             <input type="checkbox" class="form-check-input" id="select-all-events"
                                    title="Select every booking on this page">
                         </th>
-                        <th>Event #</th>
-                        <th>Customer</th>
-                        <th>Event Date</th>
-                        <th>Venue</th>
-                        <th class="text-end">PAX</th>
-                        <th>Quotation</th>
-                        <th class="text-end">Position</th>
-                        <th>Status</th>
-                        <th>Next Action</th>
+                        <th style="min-width:125px;">Event #</th>
+                        <th style="min-width:170px;">Customer</th>
+                        <th style="min-width:135px;">Event Date</th>
+                        <th style="min-width:120px;" class="d-none d-lg-table-cell">Venue</th>
+                        <th style="min-width:70px;" class="text-end d-none d-lg-table-cell">PAX</th>
+                        <th style="min-width:130px;">Quotation</th>
+                        <th style="min-width:120px;" class="text-end">Position</th>
+                        <th style="min-width:110px;">Status</th>
+                        <th style="min-width:160px;">Next Action</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -160,6 +215,18 @@
                             @if($event->customer_phone)
                                 <div class="text-muted fs-12"><i class="ti ti-phone me-1"></i>{{ $event->customer_phone }}</div>
                             @endif
+                            {{-- 992px se neeche Venue aur PAX apne columns me
+                                 nahi hote — yahan hain. PAX sifar ho to likha
+                                 nahi jata: PAX ab ikhtiyari hai, aur "0 PAX"
+                                 khabar nahi, shor hai. --}}
+                            <div class="d-lg-none text-muted fs-12">
+                                @if($event->venue)
+                                    <i class="ti ti-map-pin me-1"></i>{{ $event->venue }}
+                                @endif
+                                @if($event->pax > 0)
+                                    <span class="ms-1">· {{ number_format($event->pax) }} PAX</span>
+                                @endif
+                            </div>
                         </td>
                         <td>
                             {{ $event->event_date->format('d M Y') }}
@@ -167,8 +234,8 @@
                                 <span class="text-muted">{{ \Carbon\Carbon::parse($event->service_time)->format('g:i A') }}</span>
                             @endif
                         </td>
-                        <td>{{ $event->venue ?? '—' }}</td>
-                        <td class="text-end">{{ number_format($event->pax) }}</td>
+                        <td class="d-none d-lg-table-cell">{{ $event->venue ?? '—' }}</td>
+                        <td class="text-end d-none d-lg-table-cell">{{ number_format($event->pax) }}</td>
                         <td>
                             @if($event->currentEstimate)
                                 <div>{{ number_format($event->currentEstimate->grand_total, 2) }}</div>

@@ -24,6 +24,13 @@ class CateringEventController extends Controller
         $filter = $request->input('filter');
         $status = $request->input('status');
 
+        // CATERING-LIST-DATE-RANGE-1 (27 Sep) — "date range filter bhi de do".
+        // Bucket cards sirf aaj/kal/haftay ke sawal ka jawab dete hain. Malik ka
+        // asal sawal aksar "is mahine kya kya tha" hota hai, aur us ka koi
+        // raasta nahi tha.
+        $from = $this->filterDate($request->input('from'));
+        $to = $this->filterDate($request->input('to'));
+
         // KASHIF-CATERING-OPERATOR-UI-1: predictable search over the fields an
         // operator actually holds — booking number, customer, phone, venue or
         // address. Deliberately NOT a cross-module global search.
@@ -53,6 +60,22 @@ class CateringEventController extends Controller
             // first — the old ascending order buried today's work under an
             // event book that now runs years deep.
             ->orderByDesc('id');
+
+        // Likhi hui range aur bucket card DONO event_date ko baandhte hain. Agar
+        // dono chal jayen to fehrist khamoshi se un ka QATAA (intersection)
+        // dikhati hai — aksar khali — aur operator ko do filter nazar aate hain
+        // jin me se har ek theek lagta hai. Sarih range jeetti hai, aur bucket
+        // gira diya jata hai taake card bhi chuna hua dikhna band kar de.
+        if ($from !== null || $to !== null) {
+            $filter = null;
+        }
+
+        if ($from !== null) {
+            $query->whereDate('event_date', '>=', $from);
+        }
+        if ($to !== null) {
+            $query->whereDate('event_date', '<=', $to);
+        }
 
         match ($filter) {
             'today' => $query->whereDate('event_date', $today),
@@ -97,7 +120,33 @@ class CateringEventController extends Controller
                 : null;
         }
 
-        return view('tenant.catering.events.index', compact('events', 'buckets', 'filter', 'status', 'q', 'backTargets'));
+        return view('tenant.catering.events.index',
+            compact('events', 'buckets', 'filter', 'status', 'q', 'backTargets', 'from', 'to'));
+    }
+
+    /**
+     * Ek tareekh jis par bharosa kiya ja sake, warna kuch nahi.
+     *
+     * Aadha likha hua khana fehrist ko khali nahi kar sakta: browser ka date
+     * input khali ya poora bhejta hai, magar URL haath se bhi likhi jati hai.
+     * Round-trip isi liye jaanchi jati hai — Carbon '2026-13-45' ko chupke se
+     * agle saal me badal deta hai, aur phir fehrist ek aisi tareekh dikhati
+     * hai jo kisi ne maangi hi nahi thi.
+     */
+    private function filterDate(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            $date = \Carbon\Carbon::createFromFormat('Y-m-d', $value);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $date && $date->format('Y-m-d') === $value ? $date->toDateString() : null;
     }
 
     public function create()
