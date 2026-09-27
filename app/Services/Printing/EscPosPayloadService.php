@@ -997,19 +997,40 @@ class EscPosPayloadService
             $out .= $this->center($headerText) . "\n";
         }
 
-        $heading = match ($eventType) {
-            'cancel' => '*** CANCEL KOT #' . $sequenceNo . ' ***',
-            'addition' => '*** ADDITION KOT #' . $sequenceNo . ' ***',
-            'duplicate' => '*** DUPLICATE KOT #' . $sequenceNo . ' ***',
-            default => '*** KOT #' . ($sequenceNo ?: 1) . ' ***',
+        // KOT-HEADING-STARS-1 — Khatri ke client ne parchi par likha tha "star remove". Magar ye
+        // code chaaron chalti hui businesses ki parchi chhapta hai aur maang sirf ek ki hai, is
+        // liye sitare hataye NAHI — switch ke peeche rakhe. Default `true` = aaj wali soorat, to
+        // deploy ke din kisi ki parchi nahi badalti; sirf jab operator Edit Layout me band kare.
+        //
+        // ⚠️ `$show()` JAAN-BOOJH KAR istemal NAHI kiya. Us ka default SIRF us soorat me chalta
+        // hai jab POORA `$layout` null ho:
+        //
+        //     $show = fn ($f, $default = true) => $layout === null ? $default : (bool) $layout->{$f};
+        //
+        // Yani row maujood ho magar column na ho — us tenant par jahan migration abhi chali hi
+        // nahi — to `(bool) null` yani FALSE milta aur sitare CHUP-CHAAP gayab ho jate. Theek
+        // wohi cheez jis se bachne ke liye ye switch banaya gaya tha. (Ye farq sabotage ne pakra:
+        // pehli koshish me `$show()` istemal hua tha aur poora suite hara reh gaya tha, kyunki
+        // test ki row me column ka DB default pehle se baitha tha.)
+        //
+        // Is liye yahan khud null-safe parha ja raha hai. `$show` ko badalna ghalat hota: wo har
+        // doosre toggle par asar dalta, aur un me se kai ka durust default FALSE hai.
+        $stars = $layout === null ? true : (bool) ($layout->show_heading_stars ?? true);
+        $kotLabel = match ($eventType) {
+            'cancel' => 'CANCEL KOT #' . $sequenceNo,
+            'addition' => 'ADDITION KOT #' . $sequenceNo,
+            'duplicate' => 'DUPLICATE KOT #' . $sequenceNo,
+            default => 'KOT #' . ($sequenceNo ?: 1),
         };
+        $heading = $stars ? '*** ' . $kotLabel . ' ***' : $kotLabel;
         // The heading (KOT / CANCEL KOT / ADDITION KOT) reads at the same big scale as the order
         // type and category below it — a cancel ticket the kitchen can read across the pass.
         $out .= $this->scaled($heading, $big, true, true);
         if ($eventType === 'duplicate') {
             $out .= $this->center('DUPLICATE ' . max($copyNo, 1)) . "\n";
         }
-        $out .= $this->scaled('** ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . ' **', $big, true, true);
+        $orderTypeLabel = strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE'));
+        $out .= $this->scaled($stars ? '** ' . $orderTypeLabel . ' **' : $orderTypeLabel, $big, true, true);
         // One ticket per category — name the category so the station knows the slip is theirs.
         // The show_category_header toggle (default ON) lets a single-station kitchen drop this line.
         if ($show('show_category_header', true) && ! empty($payload['kot_category'])) {
