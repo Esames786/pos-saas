@@ -497,6 +497,28 @@ class CateringEventController extends Controller
         return back()->with('status', $message);
     }
 
+    /**
+     * CATERING-PHONE-2-1 — phone ki ginti ADADON par, likhi hui shakl par nahi.
+     *
+     * Operator "0312-2951623" ya "+92 312 2951623" likhta hai. `digits_between`
+     * aisi string ko seedha rad kar deta hai, halanke number bilkul durust
+     * hai. Is liye pehle ghair-adad nikaal kar ginti ki jati hai — bilkul
+     * wohi kaam jo `CustomerDirectory::normalizePhone` karta hai, taake jo
+     * number yahan qubool ho wo aage customer dhoondne me bhi chale.
+     *
+     * 11 se 14: 11 seedha `03xxxxxxxxx`, aur 14 tak taake `+92` wali shakl
+     * bhi samaye.
+     */
+    private function phoneDigits(): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) {
+            $digits = strlen(preg_replace('/\D+/', '', (string) $value) ?? '');
+            if ($digits < 11 || $digits > 14) {
+                $fail("Phone number me 11 se 14 adad hone chahiyen — is me {$digits} hain.");
+            }
+        };
+    }
+
     private function validated(Request $request): array
     {
         // KASHIF-EVENT-FORM-3 — a TYPED name is not a customer id.
@@ -517,7 +539,20 @@ class CateringEventController extends Controller
             'customer_id' => ['nullable', 'exists:customers,id'],
             'customer_name' => ['required', 'string', 'max:255'],
             'customer_name_ur' => ['nullable', 'string', 'max:255'],
-            'customer_phone' => ['nullable', 'string', 'max:50'],
+            // CATERING-PHONE-2-1 (27 Sep) — phone 1 LAZMI, phone 2 marzi ka.
+            //
+            // Phone lazmi is liye ke customer ki pehchan usi par bunti hai:
+            // `findOrCreateByPhone` phone na hone par kuch nahi karta, aur
+            // booking kisi graahak ke khaate me jati hi nahi. Prod par aisi
+            // 11 bookings mili jin par naam to tha magar phone nahi, aur
+            // isi liye un ka koi balance nikala hi nahi ja sakta tha.
+            //
+            // Ginti ADADON par hoti hai, likhe hue huroof par nahi: log
+            // "0312-2951623" likhte hain, aur `digits_between` aisi string
+            // ko rad kar deta hai. 11 se 14 — 11 seedha 03xxxxxxxxx, aur 14
+            // tak is liye ke +92 wali shakl aur space bhi samaye.
+            'customer_phone' => ['required', 'string', 'max:50', $this->phoneDigits()],
+            'customer_phone_2' => ['nullable', 'string', 'max:50', $this->phoneDigits()],
             'customer_email' => ['nullable', 'email', 'max:255'],
             'customer_address' => ['nullable', 'string', 'max:2000'],
             'event_type' => ['nullable', 'string', 'max:50'],

@@ -81,10 +81,28 @@
                     <input type="text" name="customer_name_ur" class="form-control" dir="rtl" lang="ur"
                            value="{{ old('customer_name_ur', $event?->customer_name_ur) }}">
                 </div>
+                {{-- CATERING-PHONE-2-1 (27 Sep) — phone LAZMI.
+
+                     Graahak ki pehchan phone par bunti hai: customer usi se
+                     dhoonda ya banaya jata hai. Phone ke baghair booking kisi
+                     ke khaate me jati hi nahi — prod par aisi 11 bookings
+                     mili jin par naam to tha magar phone nahi, aur un ka
+                     balance nikalna mumkin hi nahi tha. --}}
                 <div class="col-md-4">
-                    <label class="form-label">Phone</label>
-                    <input type="text" name="customer_phone" class="form-control"
-                           value="{{ old('customer_phone', $event?->customer_phone) }}">
+                    <label class="form-label">Phone <span class="text-danger">*</span></label>
+                    <input type="text" name="customer_phone" class="form-control" required
+                           inputmode="tel" value="{{ old('customer_phone', $event?->customer_phone) }}">
+                    <div class="form-text fs-12">11 se 14 adad. Isi se graahak pehchana jata hai.</div>
+                </div>
+                {{-- Doosra number — marzi ka. Ye sirf sahulat nahi: ab tak jahan
+                     do number thay wahan dono EK hi khaane me thoos diye jate
+                     thay ("0312-0080000  0312-0090000"), jo na dial hota hai
+                     na dhoonda ja sakta hai. --}}
+                <div class="col-md-4">
+                    <label class="form-label">Phone 2 <span class="text-muted fs-12">(marzi ka)</span></label>
+                    <input type="text" name="customer_phone_2" class="form-control"
+                           inputmode="tel" value="{{ old('customer_phone_2', $event?->customer_phone_2) }}">
+                    <div class="form-text fs-12">Raabte ke liye. Pehchan pehle number se hi hoti hai.</div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Email</label>
