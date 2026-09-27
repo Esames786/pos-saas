@@ -43,8 +43,11 @@ class CateringPunchGridLegibilityMySqlTest extends MySqlTenantTestCase
     /** Jo khana operator me type karta hai, wo kuchla na ja sake. */
     public function test_every_numeric_column_has_a_floor_not_a_suggestion(): void
     {
-        // Punch grid.
-        foreach (['Qty', 'System Rate', 'Customer Rate', 'Line Amount', 'Required Qty', 'Own', 'Party'] as $col) {
+        // Punch grid. 'Line Amount' aur 'Action' yahan JAAN-BOOJH KAR nahi hain:
+        // PUNCH-ENTRY-FOOTER-1 me wo table se nikal kar footer strip me chale
+        // gaye. Unhe list me chhorna ek aisa assert hota jo is liye pass karta
+        // ke us naam ka <th> hai hi nahi — yani khamoshi se bemani.
+        foreach (['Qty', 'System Rate', 'Customer Rate', 'Required Qty', 'Own', 'Party'] as $col) {
             $this->assertDoesNotMatchRegularExpression(
                 '/<th[^>]*style="width:\d+px;"[^>]*>'.preg_quote($col, '/').'</',
                 $this->blade,
@@ -95,6 +98,53 @@ class CateringPunchGridLegibilityMySqlTest extends MySqlTenantTestCase
                 "CSS '{$selector}' ({$what}) ko nishana banati hai magar wo markup me nahi — murda rule"
             );
         }
+    }
+
+    /**
+     * PUNCH-ENTRY-FOOTER-1 — Save Row safhe se bahar nahi ja sakta.
+     *
+     * Screenshot me wo daayen sire par, horizontal scroll ke peeche tha:
+     * operator punch karta aur Save dhoondne ke liye scroll karta. Wo chaar
+     * khane ab table se bahar, entry block ke footer me hain — table 13 se 9
+     * columns par aa gayi.
+     */
+    public function test_the_entry_tail_left_the_table_and_became_a_footer(): void
+    {
+        // Table ke header me ab ye chaar nahi.
+        foreach (['Kitchen Instructions</th>', 'Additional Note</th>', 'Line Amount</th>', 'Action</th>'] as $gone) {
+            $this->assertStringNotContainsString($gone, $this->blade,
+                'ye khana table ke header me nahi hona chahiye — wo footer me chala gaya');
+        }
+
+        // Magar khane khud mojood hain — nikaale nahi, jagah badli hai.
+        $this->assertStringContainsString('id="punch-tail"', $this->blade, 'footer strip mojood');
+        foreach (['id="punch-instr-ids"', 'id="punch-instr"', 'id="punch-live-amount"', 'id="punch-commit"'] as $kept) {
+            $this->assertStringContainsString($kept, $this->blade,
+                'khana gum nahi hona chahiye, sirf hat kar neeche aana chahiye');
+        }
+
+        // Aur wo footer TABLE ke baad aaye, warna "neeche" ka koi matlab nahi.
+        $this->assertGreaterThan(
+            mb_strpos($this->blade, 'id="punch-entry-row"'),
+            mb_strpos($this->blade, 'id="punch-tail"'),
+            'footer entry row ke BAAD hona chahiye'
+        );
+    }
+
+    /** Banners ne poori chaurai chhor di, magar maloomat nahi. */
+    public function test_the_costing_banners_gave_their_width_back(): void
+    {
+        $this->assertStringNotContainsString('alert alert-success py-2', $this->blade,
+            'green banner poori chaurai leta tha jab karne ko kuch tha hi nahi');
+        $this->assertStringNotContainsString('Costing notes (do not block sending)', $this->blade,
+            'yellow banner bhi');
+
+        // Magar warnings safhe par rehni chahiyen — toast ghayab ho jata hai aur
+        // operator dobara parh nahi sakta.
+        $this->assertStringContainsString('id="costing-notes"', $this->blade,
+            'costing notes ab bhi safhe par hain, bas collapse me');
+        $this->assertStringContainsString('Costing basis complete', $this->blade,
+            'aur "sab theek" ab ek line hai, poora banner nahi');
     }
 
     /** Aur jo maanga gaya tha: bold, rang, chhoti screen. */

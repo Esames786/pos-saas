@@ -377,18 +377,36 @@
             @endif
         </div>
     @elseif($isDraft)
-        <div class="alert alert-success py-2">
-            <i class="ti ti-shield-check me-1"></i>Costing basis complete — every material has an effective Catering Material Rate.
+        {{-- COSTING-STATUS-COMPACT-1 (27 Sep) — malik: "remove this success and
+             warning or show it in toast so space will be free on this screen".
+
+             Green banner poori chaurai le kar ye kehta tha ke sab theek hai —
+             yani jab karne ko kuch nahi hota, tab sab se zyada jagah leta tha.
+             Ab ek line. --}}
+        <div class="d-flex align-items-center gap-2 text-success fs-13 mb-2">
+            <i class="ti ti-shield-check"></i>Costing basis complete
         </div>
     @endif
     @if($costingReadiness['warnings'] !== [])
-        <div class="alert alert-warning py-2">
-            <div class="fw-bold">Costing notes (do not block sending):</div>
-            <ul class="mb-0">
-                @foreach($costingReadiness['warnings'] as $warning)
-                    <li>{{ $warning }}</li>
-                @endforeach
-            </ul>
+        {{-- TOAST JAAN-BOOJH KAR NAHI. Toast ghayab ho jata hai, aur ye asal
+             maloomat hai — kis dish ka rate qeemat me kuch nahi jor raha. Jo
+             cheez operator ko dobara parhni par sakti hai wo safhe par rehni
+             chahiye, bas chhoti shakl me: ginti bahar, tafseel click par. --}}
+        <div class="mb-2">
+            <button class="btn btn-sm btn-link text-warning-emphasis p-0 fs-13 text-decoration-none"
+                    type="button" data-bs-toggle="collapse" data-bs-target="#costing-notes">
+                <i class="ti ti-alert-triangle me-1"></i>{{ count($costingReadiness['warnings']) }}
+                costing {{ \Illuminate\Support\Str::plural('note', count($costingReadiness['warnings'])) }}
+                <span class="text-body-secondary">— bhejne se rokte nahi</span>
+                <i class="ti ti-chevron-down ms-1"></i>
+            </button>
+            <div class="collapse" id="costing-notes">
+                <ul class="mb-0 mt-1 fs-13 text-body-secondary">
+                    @foreach($costingReadiness['warnings'] as $warning)
+                        <li>{{ $warning }}</li>
+                    @endforeach
+                </ul>
+            </div>
         </div>
     @endif
 @endif
@@ -573,10 +591,6 @@
                                 <th rowspan="2" style="min-width:110px;" class="text-end">System Rate</th>
                                 <th rowspan="2" style="min-width:120px;" class="text-end">Customer Rate</th>
                                 <th colspan="5" class="text-center punch-mat-group">Material Breakdown</th>
-                                <th rowspan="2" style="min-width:170px;">Kitchen Instructions</th>
-                                <th rowspan="2" style="min-width:160px;">Additional Note</th>
-                                <th rowspan="2" style="min-width:115px;" class="text-end">Line Amount</th>
-                                <th rowspan="2" style="min-width:120px;">Action</th>
                             </tr>
                             <tr>
                                 <th class="punch-mat-col" style="min-width:160px;">Material</th>
@@ -615,30 +629,39 @@
                                            class="form-control form-control-sm text-end d-none punch-step" placeholder="system">
                                 </td>
                                 <td class="punch-mat-cell text-muted fs-12" colspan="5">Item chunte hi is ke material yahan aa jayenge.</td>
-                                <td class="punch-span">
-                                    {{-- The managed vocabulary, right in the punch — the same
-                                         list the line carries afterwards. --}}
-                                    <select id="punch-instr-ids" class="form-select form-select-sm d-none punch-step" multiple
-                                            data-placeholder="Select / type instruction…">
-                                        @foreach($activeInstructions as $instr)
-                                            <option value="{{ $instr->id }}">{{ $instr->label }}</option>
-                                        @endforeach
-                                    </select>
-                                </td>
-                                <td class="punch-span">
-                                    <input id="punch-instr" type="text" class="form-control form-control-sm d-none punch-step"
-                                           placeholder="Select / type note…">
-                                </td>
-                                <td class="punch-span text-end">
-                                    <strong id="punch-live-amount" class="d-none punch-step">0.00</strong>
-                                </td>
-                                <td class="punch-span text-nowrap">
-                                    <button type="button" class="btn btn-warning btn-sm fw-bold d-none punch-step" id="punch-commit">Save Row</button>
-                                    <button type="button" class="btn btn-link btn-sm text-muted p-0 ms-2 d-none punch-step" id="punch-cancel">Esc</button>
-                                </td>
                             </tr>
                         </tbody>
                     </table>
+                </div>
+                {{-- PUNCH-ENTRY-FOOTER-1 — ye chaar khane pehle table ke daayen
+                     sire par thay, jahan "Save Row" safhe se bahar nikal jata tha.
+                     Ab entry block ke neeche, poori chaurai me: dono text ke khanon
+                     ko zyada jagah, aur Save hamesha nazar me. --}}
+                <div id="punch-tail" class="row g-2 align-items-end mt-2">
+                    <div class="col-12 col-lg-5">
+                        <label class="form-label fs-12 text-muted mb-1">Kitchen Instructions</label>
+                        {{-- The managed vocabulary, right in the punch — the same
+                             list the line carries afterwards. --}}
+                        <select id="punch-instr-ids" class="form-select form-select-sm d-none punch-step" multiple
+                                data-placeholder="Select / type instruction…">
+                            @foreach($activeInstructions as $instr)
+                                <option value="{{ $instr->id }}">{{ $instr->label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-12 col-lg-4">
+                        <label class="form-label fs-12 text-muted mb-1">Additional Note</label>
+                        <input id="punch-instr" type="text" class="form-control form-control-sm d-none punch-step"
+                               placeholder="Select / type note…">
+                    </div>
+                    <div class="col-6 col-lg-1 text-end">
+                        <div class="form-label fs-12 text-muted mb-1">Line Amount</div>
+                        <strong id="punch-live-amount" class="d-none punch-step fs-15">0.00</strong>
+                    </div>
+                    <div class="col-6 col-lg-2 text-end text-nowrap">
+                        <button type="button" class="btn btn-warning btn-sm fw-bold d-none punch-step" id="punch-commit">Save Row</button>
+                        <button type="button" class="btn btn-link btn-sm text-muted p-0 ms-2 d-none punch-step" id="punch-cancel">Esc</button>
+                    </div>
                 </div>
                 <div id="punch-live" class="fs-13 text-muted mt-2"></div>
             </div>
