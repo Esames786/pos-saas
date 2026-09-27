@@ -52,6 +52,13 @@ class CateringCustomerBalanceController extends Controller
         return view('tenant.catering.customer-balances.show', $this->balances->forCustomer(
             $customer,
             $request->integer('branch_id') ?: null,
-        ));
+        ) + [
+            // Wohi fehrist jo booking ki screen deti hai. Paisa lene ke form
+            // yahan se bhi wohi endpoints par jate hain, is liye khaane bhi
+            // bilkul wohi hone chahiyen — warna do screenein do alag cheezein
+            // maangne lagti hain.
+            'paymentMethods' => \App\Models\Tenant\PaymentMethod::on('tenant')
+                ->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+        ]);
     }
 }

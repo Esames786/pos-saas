@@ -256,6 +256,145 @@ class CateringCustomerBalancesMySqlTest extends MySqlTenantTestCase
             'magar us ke 30,000 abhi hamare paas hain — ye rakam nazar se ojhal nahi honi chahiye');
     }
 
+    // ── Qadam 3 aur 4: ledger, aur paise wale actions ────────────────────
+
+    /**
+     * LEDGER KA AAKHRI ADAD SAR PAR LIKHE ADAD SE MILE.
+     *
+     * Ledger ki satrein mojood documents se aati hain, magar graahak ki satah
+     * ka RUNNING is screen ka apna NAYA adad hai — aur naya adad hi wo jagah
+     * hai jahan ek screen apni hi sar-khat se alag ho jati hai.
+     *
+     * Aakhri running theek `credit − balance` hona chahiye.
+     */
+    public function test_the_ledger_ends_exactly_where_the_header_says(): void
+    {
+        $phone = '03007779999';
+        $a = $this->booking('MR. LEDGER', $phone, 100000);
+        $this->receive($a, 40000);
+
+        $b = $this->booking('MR. LEDGER', $phone, 38000);
+        app(CateringFinalInvoiceService::class)->issue($b->refresh());
+        $this->receive($b, 38000);
+
+        $customer = Customer::on('tenant')->where('phone', $phone)->firstOrFail();
+        $view = $this->balances->forCustomer($customer);
+
+        $this->assertNotEmpty($view['ledger'],
+            'ledger khali nahi hona chahiye — warna neeche ka milan bemani hai');
+
+        $last = $view['ledger']->last()['running'];
+        $expected = round($view['totals']['credit'] - $view['totals']['balance'], 2);
+
+        $this->assertSame($expected, $last,
+            'ledger ka aakhri running sar par likhe Balance/Credit se alag hai — ek screen do kahaniyan keh rahi hai');
+    }
+
+    /** Koi satar chup-chaap na gire. Ginti database se ALAG nikaali jati hai. */
+    public function test_the_ledger_carries_every_document(): void
+    {
+        $phone = '03006665555';
+        $a = $this->booking('MR. EVERY ROW', $phone, 60000);
+        $this->receive($a, 20000);
+        $this->receive($a, 10000);
+
+        $b = $this->booking('MR. EVERY ROW', $phone, 38000);
+        app(CateringFinalInvoiceService::class)->issue($b->refresh());
+        $this->receive($b, 38000);
+
+        $customer = Customer::on('tenant')->where('phone', $phone)->firstOrFail();
+        $ledger = $this->balances->forCustomer($customer)['ledger'];
+
+        $ids = [$a->id, $b->id];
+        $advances = DB::connection('tenant')->table('catering_advances')->whereIn('catering_event_id', $ids)->count();
+        $refunds = DB::connection('tenant')->table('catering_refunds')->whereIn('catering_event_id', $ids)->count();
+        $invoices = DB::connection('tenant')->table('catering_final_invoices')->whereIn('catering_event_id', $ids)->count();
+
+        $this->assertSame(3, $advances, 'fixture: teen receipts');
+        $this->assertSame(1, $invoices, 'fixture: ek invoice');
+
+        $moneyRows = $ledger->filter(fn ($r) => $r['money_in'] > 0 || $r['money_out'] > 0)->count();
+        $this->assertSame($advances + $refunds, $moneyRows,
+            'paisa hilne wali har satar ledger par honi chahiye');
+        $this->assertSame($invoices, $ledger->where('type', 'Final invoice issued')->count(),
+            'aur har jaari shuda invoice bhi');
+    }
+
+    /**
+     * Is screen se liya gaya paisa WOHI journal banaye jo booking screen se
+     * banta.
+     *
+     * Ye test jaan-boojh kar CONTROLLER ko bulata hai, service ko nahi. Agar
+     * kal koi is screen ke liye apna advance ka raasta likh de, service wala
+     * test phir bhi hara rehta — aur ye red ho jata.
+     */
+    public function test_money_taken_from_this_screen_posts_the_same_journal(): void
+    {
+        $event = $this->booking('MR. SAME JOURNAL', '03004443333', 50000);
+        $before = DB::connection('tenant')->table('journal_entries')->count();
+
+        app(\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class)->store(
+            Request::create('/x', 'POST', [
+                'amount' => 20000,
+                'received_date' => now()->toDateString(),
+                'payment_method_id' => $this->paymentMethodId,
+                'reference' => 'FROM-CUSTOMER-SCREEN',
+            ]),
+            $event->refresh()
+        );
+
+        $this->assertSame($before + 1, DB::connection('tenant')->table('journal_entries')->count(),
+            'ek journal entry banni chahiye');
+
+        $advance = DB::connection('tenant')->table('catering_advances')
+            ->where('catering_event_id', $event->id)->latest('id')->first();
+        $this->assertNotNull($advance->journal_entry_id, 'receipt GL se juri honi chahiye');
+
+        $lines = DB::connection('tenant')->table('journal_lines')
+            ->where('journal_entry_id', $advance->journal_entry_id)->get();
+        $this->assertSame(20000.0, round((float) $lines->sum('debit'), 2));
+        $this->assertSame(20000.0, round((float) $lines->sum('credit'), 2));
+
+        $customer = Customer::on('tenant')->where('phone', '03004443333')->firstOrFail();
+        $this->assertSame(30000.0, $this->balances->rows()->firstWhere('customer_id', $customer->id)['balance'],
+            'screen ka adad foran badla hua ho: 50,000 se 30,000');
+    }
+
+    /**
+     * Refund ke baad operator IS screen par wapas aaye, booking par nahi.
+     *
+     * Controller pehle hard-coded booking ka path banata tha, aur us ki wajah
+     * durust hai — tenant routes me {subdomain} ki wajah se `route()` paisa
+     * chalne ke BAAD phenk deta tha. Ab wo ek ADAD leta hai aur path khud
+     * banata hai: client se koi URL nahi jata.
+     */
+    public function test_a_refund_from_this_screen_comes_back_to_this_screen(): void
+    {
+        $phone = '03002221111';
+        $event = $this->booking('MR. REFUND HERE', $phone, 25000);
+        $this->receive($event, 25000);
+        $this->requoteAt($event, 20000);
+
+        $customer = Customer::on('tenant')->where('phone', $phone)->firstOrFail();
+
+        $response = app(\App\Http\Controllers\Tenant\Catering\CateringRefundController::class)->store(
+            Request::create('/x', 'POST', [
+                'amount' => 5000,
+                'refund_date' => now()->toDateString(),
+                'payment_method_id' => $this->paymentMethodId,
+                'reason' => 'quotation revised down',
+                'return_customer' => $customer->id,
+            ]),
+            $event->refresh()
+        );
+
+        $this->assertStringContainsString('/catering/customer-balances/'.$customer->id,
+            $response->getTargetUrl(), 'refund ke baad graahak ki screen par wapas aana chahiye');
+
+        $this->assertSame(0.0, $this->balances->rows()->firstWhere('customer_id', $customer->id)['credit'],
+            'aur credit wapas ho chuka ho');
+    }
+
     /** Dono screenein khulti hain — asal controller se, sirf service se nahi. */
     public function test_both_screens_render(): void
     {
