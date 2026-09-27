@@ -31,7 +31,11 @@ class CateringEventController extends Controller
 
         $query = CateringEvent::with([
             'currentEstimate',
-            'finalInvoice:id,catering_event_id,balance_due,status',
+            // CATERING-LIVE-BALANCE-1: `grand_total` bhi — fehrist ab baqi ka hisaab
+            // khud lagati hai (jama hue `balance_due` ke bajaye), aur us hisaab
+            // ka ek sira yehi adad hai. Ise chhorne par har booking "kuch baqi
+            // nahi" dikhane lagti — ek khamosh aur bilkul ghalat jawab.
+            'finalInvoice:id,catering_event_id,grand_total,balance_due,status',
             // KASHIF-EVENT-ACTIONS-1: the row Actions menu links straight to the
             // kitchen sheet / production release, so the release identity has to
             // travel with the row rather than cost a query per booking.
