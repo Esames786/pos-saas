@@ -56,7 +56,8 @@ class EdgeAuthorityService
         $meta = $this->context->requireCurrent();
         $seq = (int) $meta->authority_heartbeat_seq + 1;
         try {
-            $ack = $this->client->heartbeat($seq, $this->state());
+            // W-F: the informational build block rides every beat (buildReport() never throws; null when unavailable).
+            $ack = $this->client->heartbeat($seq, $this->state(), $this->client->buildReport($meta));
         } catch (RuntimeException $e) {
             // Q: a failure is RECORDED (counters drive the connection state), never acted on. A lost connection also
             // invalidates any earlier "reconciliation clean" — it must be re-proven once the Cloud answers again.

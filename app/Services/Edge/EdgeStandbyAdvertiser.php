@@ -13,6 +13,11 @@ use App\Models\Tenant\Branch;
  */
 class EdgeStandbyAdvertiser
 {
+    /** W-F — the Cloud-controlled capability advertisement (see capabilities()). @var array<string,bool> */
+    public const CLOUD_CAPABILITIES = [
+        'customer_create' => false,
+    ];
+
     public function __construct(
         private readonly EdgeBootstrapService $bootstrap,
         private readonly EdgeBaselineIssuanceService $baselines,
@@ -30,6 +35,7 @@ class EdgeStandbyAdvertiser
                 'cloud_config_revision' => null, 'cloud_config_watermark' => null, 'stock_watermark' => null, 'stock_as_of' => null,
                 'returnable_watermark' => null, 'returnable_as_of' => null, 'supplier_finance_watermark' => null, 'supplier_finance_as_of' => null,
                 'purchase_return_watermark' => null, 'purchase_return_as_of' => null,
+                'capabilities' => $this->capabilities(),
             ];
         }
         $config = $this->bootstrap->currentConfigRevision($tenant, $branch);
@@ -49,6 +55,19 @@ class EdgeStandbyAdvertiser
             'supplier_finance_as_of' => (string) $finance['as_of'],
             'purchase_return_watermark' => (string) $purchase['watermark'],
             'purchase_return_as_of' => (string) $purchase['as_of'],
+            'capabilities' => $this->capabilities(),
         ];
+    }
+
+    /**
+     * W-F — what THIS Cloud can accept from an appliance, advertised on every heartbeat ACK (additive: an old appliance
+     * ignores the key). The Cloud controls it; an appliance must treat an absent key as `false`. `customer_create` gates
+     * the offline add-customer envelope (W-D) and stays false until the Cloud can ingest it.
+     *
+     * @return array<string,bool>
+     */
+    public function capabilities(): array
+    {
+        return self::CLOUD_CAPABILITIES;
     }
 }

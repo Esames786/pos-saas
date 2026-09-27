@@ -6,6 +6,7 @@ use App\Models\Master\EdgeDevice;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\EdgeBranchAuthorityLease;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use App\Exceptions\EdgeStaleHeartbeatException;
 use RuntimeException;
 
@@ -90,6 +91,106 @@ class EdgeAuthorityLeaseService
 
             return $this->view($lease);
         });
+    }
+
+    /**
+     * W-F VERSION REPORTING — the build facts an appliance may report on a heartbeat, with their bounds. Anything else in
+     * the block is ignored (a newer appliance may add keys; this Cloud records what it understands).
+     */
+    public const BUILD_STRING_FIELDS = [
+        'edge_app_version' => 64,
+        'git_commit' => 64,
+        'artifact_version' => 64,
+        'bootstrap_schema' => 64,
+        'config_schema' => 64,
+        'edge_schema_version' => 190,
+        'applied_edge_schema_version' => 190,
+    ];
+
+    /** List members of the build block: [max items, max length per item]. */
+    public const BUILD_LIST_FIELDS = [
+        'envelope_versions' => [20, 64],
+        'capabilities' => [100, 100],
+    ];
+
+    /**
+     * The canonical (allowlisted, ordered) form of an ALREADY VALIDATED build block — the thing that is hashed and stored.
+     */
+    public function normalizeBuild(array $build): array
+    {
+        $out = [];
+        foreach (self::BUILD_STRING_FIELDS as $key => $max) {
+            $v = $build[$key] ?? null;
+            $out[$key] = is_scalar($v) && trim((string) $v) !== '' ? mb_substr(trim((string) $v), 0, $max) : null;
+        }
+        foreach (self::BUILD_LIST_FIELDS as $key => [$maxItems, $maxLen]) {
+            $list = [];
+            foreach (array_values(is_array($build[$key] ?? null) ? $build[$key] : []) as $item) {
+                if (is_scalar($item) && trim((string) $item) !== '') {
+                    $list[] = mb_substr(trim((string) $item), 0, $maxLen);
+                }
+            }
+            $out[$key] = array_slice($list, 0, $maxItems);
+        }
+
+        return $out;
+    }
+
+    /**
+     * W-F — record the build an appliance reported on an ACCEPTED heartbeat, on the MASTER device row, only when it changed
+     * (sha256 of the canonical block differs from `build_reported_hash`). Informational and idempotent:
+     *  - it runs AFTER (and outside) the tenant lease transaction and never touches the lease, the fence or edge_state;
+     *  - the write is conditional in SQL too (a concurrent identical beat updates nothing);
+     *  - it can never fail a heartbeat — every failure is swallowed and logged.
+     *
+     * @return bool true when the device row was written
+     */
+    public function recordBuildReport(EdgeDevice $device, ?array $build): bool
+    {
+        if ($build === null) {
+            return false; // an old appliance (or one whose facts were unavailable) — nothing to record
+        }
+        try {
+            $build = $this->normalizeBuild($build);
+            $hash = EdgeCanonicalJson::hash($build);
+            $known = (string) ($device->getAttribute('build_reported_hash') ?? '');
+            if ($known !== '' && hash_equals($known, $hash)) {
+                return false;
+            }
+            $now = now();
+            $manifest = $build + [
+                // Aliases in the compatibility-report vocabulary so EdgeCompatibilityService::classify() reads either source.
+                'bootstrap_schema_version' => $build['bootstrap_schema'],
+                'config_schema_version' => $build['config_schema'],
+                'reported_via' => 'heartbeat',
+            ];
+            $update = [
+                'compatibility_manifest' => json_encode($manifest, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'compatibility_reported_at' => $now,
+                'build_reported_hash' => $hash,
+                'build_reported_at' => $now,
+                'updated_at' => $now,
+            ];
+            if ($build['edge_app_version'] !== null) {
+                $update['app_version'] = mb_substr($build['edge_app_version'], 0, 64);
+            }
+            if ($build['bootstrap_schema'] !== null) {
+                $update['schema_version'] = mb_substr($build['bootstrap_schema'], 0, 64);
+            }
+            $written = DB::connection($device->getConnectionName() ?: 'master')->table('edge_devices')
+                ->where('id', (int) $device->getKey())
+                ->where(fn ($q) => $q->whereNull('build_reported_hash')->orWhere('build_reported_hash', '!=', $hash))
+                ->update($update);
+            $device->setAttribute('build_reported_hash', $hash);
+
+            return $written > 0;
+        } catch (\Throwable $e) {
+            Log::warning('[edge-authority] build report not recorded (heartbeat unaffected)', [
+                'device' => (string) $device->public_uuid, 'error' => mb_substr($e->getMessage(), 0, 300),
+            ]);
+
+            return false;
+        }
     }
 
     /**
