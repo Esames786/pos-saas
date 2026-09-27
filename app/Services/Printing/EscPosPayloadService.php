@@ -328,15 +328,27 @@ class EscPosPayloadService
         if ($topLevel->isEmpty()) {
             $out .= $this->scaled('NO REMAINING ITEMS', $big, true);
         }
+        // REMINDER-DEAL-NAME-ONLY-1 — reminder par deal ka SIRF NAAM.
+        //
+        // Pehle har deal ke neeche us ke saare components chhapte thay:
+        //
+        //     1  CLASSIC PLATTER 3 (3 PERSONS)
+        //        - 1 x ARABIC RICE
+        //        - 1 x CHICKEN MALAI BOTI
+        //        - 1 x BEEF SEEKH KEBAB          … aath satarein ek deal ke liye
+        //
+        // Maalik ne kaha ye tafseel reminder par nahi chahiye. Ye theek wohi faisla hai jo
+        // RECEIPT par pehle se laga hua hai (COMBO-RECEIPT-NAME-ONLY, f191680): deal apne naam
+        // se jaana jaye, us ke purze nahi. Ab do documents ka ikhtilaf bhi khatam hota hai.
+        //
+        // ⚠️ KOT par components QAAYAM hain aur rehne chahiyen — kitchen unhi se khana banati
+        // hai. Reminder counter ka recap hai, kitchen ka parcha nahi. Is par apna guard hai.
+        //
+        // ⚠️ Component ke saath us ke modifiers aur kitchen note bhi jate hain (wo isi loop ke
+        // andar thay). Ye maalik ke saamne rakha gaya tha. Top-level item ke modifiers aur note
+        // neeche waale loop me hain aur QAAYAM hain.
         foreach ($topLevel as $line) {
             $out .= $this->reminderLine($line, $revision > 1, $rowBig, '', $dividers);
-            foreach ($lines->where('parent_line_id', $line['line_id'] ?? null) as $component) {
-                $out .= $this->reminderLine($component, $revision > 1, $sub, '  - ');
-                foreach (($component['modifiers'] ?? []) as $modifier) {
-                    if (!empty($modifier['name'])) { $out .= $this->subRow('    + ' . $modifier['name'], $sub); }
-                }
-                if (!empty($component['kitchen_note'])) { $out .= $this->subRow('    NOTE: ' . $component['kitchen_note'], $sub, true); }
-            }
             foreach (($line['modifiers'] ?? []) as $modifier) {
                 if (!empty($modifier['name'])) {
                     $out .= $this->subRow('  + ' . $modifier['name'], $sub);
