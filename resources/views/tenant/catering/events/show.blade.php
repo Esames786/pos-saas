@@ -70,9 +70,45 @@
     /* Chhoti screen: table apne wrapper me scroll kare, aur us ka kinara
        nazar aaye — warna operator ko pata hi nahi chalta ke daayen aur
        columns hain. */
-    #punch-bar .table-responsive, #lines-table-wrap {
+    #lines-table-wrap {
         border: 1px solid var(--bs-border-color, #dee2e6); border-radius: 6px;
     }
+
+    /* PUNCH-ENTRY-FRAME-1 (27 Sep) — malik ne poore entry block ke gird ek
+       laal daira bana kar likha: "is ko ek table mein, dark edges karo."
+
+       Block teen tukron me bata hua tha — table, uske neeche khulay hue
+       footer ke khane, aur uske neeche validation ki satar — aur teeno ke
+       kinare itne halke thay ke safhe me ghul jate thay. Nazar ko ye ek cheez
+       nahi lagti thi, teen lagti thi.
+
+       Ab teeno EK frame ke andar hain, aur frame ka kinara gehra hai. Andar
+       ki lakeerein jaan-boojh kar halki rakhi gayi hain: gehra bahar, halka
+       andar — isi se aankh ko "ye ek table hai" ka ehsaas hota hai. Agar
+       andar ki lakeerein bhi gehri kar dein to grid jaal ban jati hai aur
+       adad parhna mushkil ho jata hai.
+
+       GOL KINARE AUR `overflow: hidden` JAAN-BOOJH KAR NAHI. Isi safhe par
+       ek dafa yehi keeda pakra ja chuka hai: `.table-responsive` ka
+       `overflow-x: auto` dropdown ko kaat deta tha. Frame ke andar Kitchen
+       Instructions ek select2 hai — us par `overflow: hidden` lagana wohi
+       ghalti dobara karna hota. Seedhe kinare waise bhi ERP grid par zyada
+       theek lagte hain. */
+    #punch-bar { --punch-edge: #8b95a1; }
+    #punch-frame { border: 1px solid var(--punch-edge); background: #fff; }
+    #punch-frame > .table-responsive { border: 0; border-radius: 0; }
+    #punch-table > :not(caption) > * > * { border-color: #e1e5ea; }
+    #punch-table thead th { border-bottom: 2px solid var(--punch-edge); }
+    #punch-tail {
+        border-top: 1px solid var(--punch-edge);
+        margin: 0; padding: .55rem .35rem;
+        background: var(--bs-tertiary-bg, #f8f9fa);
+    }
+    #punch-live { margin: 0; padding: .4rem .6rem; background: #fff; }
+    /* Khali satar apni jagah na ghere — punch se pehle yahan kuch hota hi
+       nahi, aur ek khali patti frame ko neeche se dhundla kar deti hai. */
+    #punch-live:not(:empty) { border-top: 1px dashed var(--punch-edge); }
+    #punch-live:empty { display: none; }
     @media (max-width: 991.98px) {
         #punch-table th, #punch-table td { padding: .3rem .4rem; }
         #punch-table .form-control, #punch-table .form-select { font-size: 12.5px; }
@@ -582,6 +618,10 @@
                     <span class="fs-12 text-muted">Item chunein — uske material neeche ki taraf, unhi columns me barhte hain.</span>
                     <span class="fs-12 text-muted"><kbd>Enter</kbd> next · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> save · <kbd>Esc</kbd> cancel</span>
                 </div>
+                {{-- PUNCH-ENTRY-FRAME-1 — table, footer ke khane aur validation
+                     ki satar EK frame ke andar, taake ye teen cheezein nahi,
+                     ek table lagey. --}}
+                <div id="punch-frame">
                 <div class="table-responsive">
                     <table class="table table-sm mb-0 align-middle" id="punch-table">
                         <thead>
@@ -637,7 +677,7 @@
                      sire par thay, jahan "Save Row" safhe se bahar nikal jata tha.
                      Ab entry block ke neeche, poori chaurai me: dono text ke khanon
                      ko zyada jagah, aur Save hamesha nazar me. --}}
-                <div id="punch-tail" class="row g-2 align-items-end mt-2">
+                <div id="punch-tail" class="row g-2 align-items-end">
                     <div class="col-12 col-lg-5">
                         <label class="form-label fs-12 text-muted mb-1">Kitchen Instructions</label>
                         {{-- The managed vocabulary, right in the punch — the same
@@ -663,7 +703,8 @@
                         <button type="button" class="btn btn-link btn-sm text-muted p-0 ms-2 d-none punch-step" id="punch-cancel">Esc</button>
                     </div>
                 </div>
-                <div id="punch-live" class="fs-13 text-muted mt-2"></div>
+                <div id="punch-live" class="fs-13 text-muted"></div>
+                </div>
             </div>
             <div class="table-responsive" id="lines-table-wrap">
                 <table class="table mb-0" id="lines-table">
