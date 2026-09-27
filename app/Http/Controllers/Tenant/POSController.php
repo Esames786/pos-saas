@@ -22,6 +22,8 @@ use App\Models\Tenant\TerminalPrinterSetting;
 use App\Services\Kitchen\UnitConversionService;
 use App\Services\Sales\SalesTotalsService;
 use App\Services\Security\UserDataScope;
+use App\Support\Pos\CloudPosRuntimeFactory;
+use App\Support\Pos\PosPageData;
 use Illuminate\Http\Request;
 
 class POSController extends Controller
@@ -38,6 +40,9 @@ class POSController extends Controller
         $selectedBranchId = $branches->contains('id', $requestedBranchId)
             ? $requestedBranchId
             : (int) $branches->first()->id;
+
+        // W-A: the shared cashier view is driven by a PosRuntime (endpoint map, capabilities, asset base).
+        $posRuntime = app(CloudPosRuntimeFactory::class)->make($selectedBranchId, $branches->firstWhere('id', $selectedBranchId)?->name);
 
         $heldSale = null;
 
@@ -234,7 +239,7 @@ class POSController extends Controller
 
         $unitConversion = app(UnitConversionService::class);
 
-        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion) {
+        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion, $posRuntime) {
             $defaultVariant = $product->defaultVariant ?: $product->variants->first();
 
             $barcodes = $product->barcodes
@@ -319,7 +324,7 @@ class POSController extends Controller
                 'name'              => $product->name,
                 'sku'               => $product->sku,
                 // POS-UX-1: tile image (public disk URL) — null keeps initials avatar.
-                'image_url'         => $product->image_path ? asset('storage/' . $product->image_path) : null,
+                'image_url'         => $product->image_path ? $posRuntime->asset('storage/' . $product->image_path) : null,
                 'category_id'       => $product->category_id ? (int) $product->category_id : null,
                 'category_name'     => $product->category?->name,
                 'unit_id'           => $product->unit_id ? (int) $product->unit_id : null,
@@ -416,7 +421,8 @@ class POSController extends Controller
             ->values()
             ->all();
 
-        return view('tenant.pos.index', [
+        // W-A: every page variable goes through the PosPageData contract (the Edge provider builds the same set).
+        return view('tenant.pos.index', PosPageData::fromArray([
             'deadSession'      => $deadSession,
             'branches'         => $branches,
             'selectedBranchId' => $selectedBranchId,
@@ -488,7 +494,7 @@ class POSController extends Controller
                     'auto_print_kot'     => (bool) $s->auto_print_kot,
                 ]),
             'activeMode'       => $requestedMode,
-        ]);
+        ])->toViewData($posRuntime));
     }
 
     /**
@@ -536,6 +542,7 @@ class POSController extends Controller
             'floors'           => $this->loadBoardFloors($selectedBranchId),
             'selectedBranchId' => $selectedBranchId,
             'tableSession'     => $tableSession,
+            'posRuntime'       => app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make(),
         ])->render();
 
         return response()->json(['ok' => true, 'html' => $html]);

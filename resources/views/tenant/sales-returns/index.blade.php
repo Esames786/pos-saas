@@ -1,4 +1,6 @@
-@extends('layouts.app')
+@extends(isset($posRuntime) && $posRuntime->isEdge() ? 'layouts.pos' : 'layouts.app')
+{{-- W-A: every endpoint of this shared screen comes from the runtime map; Online controllers pass no runtime → the Cloud one. --}}
+@php $posRuntime = $posRuntime ?? app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make(); @endphp
 
 @section('title', 'Sales Returns')
 
@@ -9,7 +11,7 @@
         <p class="fw-medium">Returns posted against paid sales.</p>
     </div>
     @can('tenant.sales-returns.create')
-        <a href="{{ url('/sales-returns/create') }}" class="btn btn-primary">
+        <a href="{{ $posRuntime->route('salesReturnCreatePage') }}" class="btn btn-primary">
             <i class="ti ti-plus me-1" aria-hidden="true"></i>New Return
         </a>
     @endcan
@@ -19,7 +21,7 @@
     <div class="alert alert-success" role="alert" aria-live="polite">{{ session('status') }}</div>
 @endif
 
-@include('tenant.partials.date-range-filter', ['action' => url('/sales-returns'), 'dateFrom' => $dateFrom ?? null, 'dateTo' => $dateTo ?? null])
+@include('tenant.partials.date-range-filter', ['action' => $posRuntime->route('salesReturnIndexPage'), 'dateFrom' => $dateFrom ?? null, 'dateTo' => $dateTo ?? null])
 
 <div class="card">
     <div class="card-body table-responsive">
@@ -42,13 +44,13 @@
                 <tr>
                     <td><code>{{ $return->return_no }}</code></td>
                     <td>
-                        @can('tenant.sales-orders.show')
-                            <a href="{{ url('/sales-orders/' . $return->order?->id) }}">
+                        @if($posRuntime->route('salesOrderShow') !== null && \Illuminate\Support\Facades\Gate::allows('tenant.sales-orders.show'))
+                            <a href="{{ $posRuntime->route('salesOrderShow', ['sale' => $return->order?->id]) }}">
                                 <code>{{ $return->order?->sale_no }}</code>
                             </a>
                         @else
                             <code>{{ $return->order?->sale_no }}</code>
-                        @endcan
+                        @endif
                     </td>
                     <td>{{ $return->branch?->name }}</td>
                     <td>{{ app(\App\Support\TenantClock::class)->format(
@@ -65,7 +67,7 @@
                     </td>
                     <td class="text-end">
                         @can('tenant.sales-returns.show')
-                            <a href="{{ url('/sales-returns/' . $return->id) }}" class="btn btn-sm btn-light">View</a>
+                            <a href="{{ $posRuntime->route('salesReturnShowPage', ['salesReturn' => $return->id]) }}" class="btn btn-sm btn-light">View</a>
                         @endcan
                     </td>
                 </tr>

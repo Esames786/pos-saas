@@ -1,4 +1,6 @@
-@extends('layouts.app')
+@extends(isset($posRuntime) && $posRuntime->isEdge() ? 'layouts.pos' : 'layouts.app')
+{{-- W-A: every endpoint of this shared screen comes from the runtime map; Online controllers pass no runtime → the Cloud one. --}}
+@php $posRuntime = $posRuntime ?? app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make(); @endphp
 
 @section('title', 'Close Shift #' . $shift->id)
 
@@ -8,14 +10,14 @@
         <h1 class="mb-1">Close Shift #{{ $shift->id }}</h1>
         <p class="fw-medium">{{ $shift->branch?->name }} — {{ $shift->terminal?->name }}</p>
     </div>
-    <a href="{{ url('/shifts') }}" class="btn btn-light">Back</a>
+    <a href="{{ $posRuntime->route('shiftIndexPage') }}" class="btn btn-light">Back</a>
 </div>
 
 @if($errors->any())
     <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
 @endif
 
-<form method="POST" action="{{ url('/shifts/' . $shift->id . '/close') }}" novalidate>
+<form method="POST" action="{{ $posRuntime->route('shiftCloseStore', ['shift' => $shift->id]) }}" novalidate>
     @csrf
 
     <div class="card mb-4">
@@ -80,17 +82,23 @@
     {{-- CASH-SHORTAGE-1 --}}
     <div class="alert alert-warning py-2 small" role="note">
         <i class="ti ti-alert-triangle me-1" aria-hidden="true"></i>
+        @if(! empty($posRuntime->labels['shortageVoucher']))
+            {{-- The finance draft voucher is raised by the Cloud only; the runtime says what happens here instead. --}}
+            <strong>If the counted cash is less than expected</strong>, the shift still closes and the shortage is recorded on it.
+            {{ $posRuntime->labels['shortageVoucher'] }}
+        @else
         <strong>If the counted cash is less than expected</strong>, the shift still closes and the shortage is recorded on it.
         A <strong>draft expense voucher</strong> is created automatically under the
         <strong>“{{ \App\Services\Finance\CashShortageExpenseService::CATEGORY_NAME }}”</strong> category
         (Finance → Expenses) so the finance team can review and settle it later. Nothing hits the accounts until they post it.
+        @endif
     </div>
 
     <div class="d-flex gap-2">
         <button type="submit" class="btn btn-danger">
             <i class="ti ti-lock me-1" aria-hidden="true"></i>Close Shift
         </button>
-        <a href="{{ url('/shifts') }}" class="btn btn-light">Cancel</a>
+        <a href="{{ $posRuntime->route('shiftIndexPage') }}" class="btn btn-light">Cancel</a>
     </div>
 
     @push('scripts')

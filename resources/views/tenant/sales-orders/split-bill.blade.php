@@ -1,4 +1,6 @@
-@extends('layouts.app')
+@extends(isset($posRuntime) && $posRuntime->isEdge() ? 'layouts.pos' : 'layouts.app')
+{{-- W-A: every endpoint of this shared screen comes from the runtime map; Online controllers pass no runtime → the Cloud one. --}}
+@php $posRuntime = $posRuntime ?? app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make(); @endphp
 
 @section('title', 'Split Bill')
 
@@ -15,11 +17,20 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
         @if($salesOrder->restaurant_table_session_id)
-            <a href="{{ url('/restaurant/table-sessions/' . $salesOrder->restaurant_table_session_id . '/bill-preview') }}" class="btn btn-dark">
+            {{-- Online: the table bill page. Edge answers this key with JSON (the POS Bill Preview modal), so the link stays in
+                 place, disabled. --}}
+            @if(! $posRuntime->isEdge())
+            <a href="{{ $posRuntime->route('tableBillPreview', ['session' => $salesOrder->restaurant_table_session_id]) }}" class="btn btn-dark">
                 Table Bill
             </a>
+            @else
+            <a class="btn btn-dark disabled" aria-disabled="true" tabindex="-1" title="Use Bill Preview on the POS table board.">
+                Table Bill
+            </a>
+            @endif
         @endif
-        <a href="{{ url('/held-sales') }}" class="btn btn-light">Held Sales</a>
+        {{-- Online: the Held Sales page (no runtime key for that page yet → kept as the literal on the Cloud branch); Edge: back to the POS. --}}
+        <a href="{{ $posRuntime->isEdge() ? $posRuntime->route('posIndex') : url('/held-sales') }}" class="btn btn-light">Held Sales</a>
     </div>
 </div>
 
@@ -29,7 +40,7 @@
 
 <div class="row g-3">
     <div class="col-lg-8">
-        <form method="POST" action="{{ url('/sales-orders/' . $salesOrder->id . '/split-bill') }}">
+        <form method="POST" action="{{ $posRuntime->route('splitBillStore', ['sale' => $salesOrder->id]) }}">
             @csrf
 
             <div class="card mb-3">
