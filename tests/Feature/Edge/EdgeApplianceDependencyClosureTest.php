@@ -27,13 +27,117 @@ class EdgeApplianceDependencyClosureTest extends TestCase
         $entry = $this->entryPoints();
         $this->assertGreaterThan(30, count($entry), 'expected the appliance entry points to be discovered');
 
+        [$seen, $missing] = $this->walk($entry, $plan);
+        $report = '';
+        foreach ($missing as $file => $via) {
+            $report .= "\n  {$file}  (reached via {$via})";
+        }
+        $this->assertSame([], array_keys($missing), 'the appliance runtime would instantiate classes that are NOT in the artifact:' . $report);
+        $this->assertGreaterThan(60, count($seen), 'the closure should span the Edge runtime (' . count($seen) . ' classes walked)');
+        // The closure must never reach a Cloud-only subsystem, even one that happens to ship.
+        foreach (array_keys($seen) as $class) {
+            $this->assertDoesNotMatchRegularExpression('/^App\\\\Services\\\\(Saas|Catering|Manufacturing|Purchasing|Central)\\\\/', $class, "{$class} is reachable from the appliance runtime");
+        }
+    }
+
+    /**
+     * W-C (Edge next release §4.5) — the SHARED cashier view reaches classes the container walk above cannot see: Blade
+     * static calls (`\App\Models\Tenant\VoidReason::where(…)`, `\App\Models\Tenant\User::ORDER_TYPES`, `@can(\App\…::CONST)`)
+     * and container lookups (`app(\App\Support\TenantClock::class)`). Every `App\` class referenced from
+     * resources/views/tenant/pos/** and layouts/pos.blade.php must be in the artifact plan (not excluded), and so must
+     * its constructor closure — otherwise the appliance page dies with "Class not found" on the first render.
+     */
+    public function test_every_class_the_shared_pos_views_reference_ships_in_the_artifact(): void
+    {
+        $plan = array_flip(EdgeArtifactBuilder::fromConfig()->plan(base_path()));
+        $refs = $this->bladeClassReferences();
+        $this->assertNotEmpty($refs, 'expected the shared POS views to reference App classes');
+
+        $unknown = [];
+        foreach ($refs as $class => $where) {
+            if (! class_exists($class) && ! interface_exists($class) && ! enum_exists($class) && ! trait_exists($class)) {
+                $unknown[] = "{$class} ({$where})";
+            }
+        }
+        $this->assertSame([], $unknown, 'the shared POS views reference App classes that do not exist');
+
+        foreach (['App\\Support\\TenantClock', 'App\\Models\\Tenant\\VoidReason', 'App\\Models\\Tenant\\User', 'App\\Services\\Security\\UserDataScope'] as $expected) {
+            $this->assertArrayHasKey($expected, $refs, "the scan must find {$expected} (it is referenced by tenant/pos/index.blade.php today)");
+        }
+
+        [$seen, $missing] = $this->walk(array_keys($refs), $plan);
+        $report = '';
+        foreach ($missing as $file => $via) {
+            $report .= "\n  {$file}  (reached via {$via})";
+        }
+        $report .= "\nBlade references: " . json_encode($refs, JSON_UNESCAPED_SLASHES);
+        $this->assertSame([], array_keys($missing), 'the shared POS views reference classes that are NOT in the artifact:' . $report);
+        foreach (array_keys($seen) as $class) {
+            $this->assertDoesNotMatchRegularExpression('/^App\\\\Services\\\\(Saas|Catering|Manufacturing|Purchasing|Central)\\\\/', $class, "{$class} is reachable from the shared POS views");
+        }
+    }
+
+    /**
+     * FQCN => "view:line" of the first reference, for every `App\` class the shared POS views name statically.
+     *
+     * @return array<string,string>
+     */
+    private function bladeClassReferences(): array
+    {
+        $files = [];
+        $dir = resource_path('views/tenant/pos');
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)) as $f) {
+            if ($f->isFile() && str_ends_with($f->getFilename(), '.blade.php')) {
+                $files[] = $f->getPathname();
+            }
+        }
+        if (is_file(resource_path('views/layouts/pos.blade.php'))) {
+            $files[] = resource_path('views/layouts/pos.blade.php');
+        }
+        sort($files);
+
+        $patterns = [
+            // \App\X\Y::member / \App\X\Y::class (static calls, constants, app(\App\…::class), @can(\App\…::CONST))
+            '/(?<![A-Za-z0-9_\\\\])\\\\?(App(?:\\\\[A-Za-z_][A-Za-z0-9_]*)+)\s*::/',
+            // @inject('name', 'App\X\Y') / app('App\X\Y') / resolve('App\X\Y')
+            '/(?:@inject\(\s*[\'"][^\'"]+[\'"]\s*,|\b(?:app|resolve)\()\s*[\'"]\\\\?(App(?:\\\\{1,2}[A-Za-z_][A-Za-z0-9_]*)+)[\'"]/',
+            // `use App\X\Y;` inside @php
+            '/\buse\s+\\\\?(App(?:\\\\[A-Za-z_][A-Za-z0-9_]*)+)\s*(?:as\s+\w+\s*)?;/',
+        ];
+        $refs = [];
+        foreach ($files as $file) {
+            $rel = ltrim(str_replace('\\', '/', substr($file, strlen(resource_path('views')))), '/');
+            foreach (preg_split('/\R/', (string) file_get_contents($file)) as $i => $line) {
+                foreach ($patterns as $pattern) {
+                    if (preg_match_all($pattern, $line, $m)) {
+                        foreach ($m[1] as $class) {
+                            $class = str_replace('\\\\', '\\', $class);
+                            $refs[$class] = $refs[$class] ?? ($rel . ':' . ($i + 1));
+                        }
+                    }
+                }
+            }
+        }
+        ksort($refs);
+
+        return $refs;
+    }
+
+    /**
+     * Transitive constructor / handle() closure from $entry; a class whose file is not in the plan is recorded (file =>
+     * the class that reached it) and not walked into.
+     *
+     * @return array{0: array<string,bool>, 1: array<string,string>}
+     */
+    private function walk(array $entry, array $plan): array
+    {
         $seen = [];
         $queue = $entry;
         $missing = [];
         $edges = [];
         while ($queue !== []) {
             $class = array_shift($queue);
-            if (isset($seen[$class]) || ! class_exists($class)) {
+            if (isset($seen[$class]) || (! class_exists($class) && ! interface_exists($class))) {
                 continue;
             }
             $seen[$class] = true;
@@ -49,16 +153,8 @@ class EdgeApplianceDependencyClosureTest extends TestCase
                 }
             }
         }
-        $report = '';
-        foreach ($missing as $file => $via) {
-            $report .= "\n  {$file}  (reached via {$via})";
-        }
-        $this->assertSame([], array_keys($missing), 'the appliance runtime would instantiate classes that are NOT in the artifact:' . $report);
-        $this->assertGreaterThan(60, count($seen), 'the closure should span the Edge runtime (' . count($seen) . ' classes walked)');
-        // The closure must never reach a Cloud-only subsystem, even one that happens to ship.
-        foreach (array_keys($seen) as $class) {
-            $this->assertDoesNotMatchRegularExpression('/^App\\\\Services\\\\(Saas|Catering|Manufacturing|Purchasing|Central)\\\\/', $class, "{$class} is reachable from the appliance runtime");
-        }
+
+        return [$seen, $missing];
     }
 
     /** @return string[] */

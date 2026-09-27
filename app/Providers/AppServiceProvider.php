@@ -64,7 +64,10 @@ class AppServiceProvider extends ServiceProvider
         // Tenant subscription banner — only when a tenant is active in the
         // container (bound by TenancyManager::activate via IdentifyTenant).
         // Tenant is NOT on $request->attributes; it lives in app('tenant').
-        View::composer('layouts.app', function ($view) {
+        // The subscription banner composer is Cloud-only: a Branch Server never binds a tenant and must not reference the
+        // (excluded) Saas services at all — the shared POS layout carries no composer (POS-RUNTIME-1).
+        if (! \App\Support\EdgeRuntime::isBranchServer()) {
+                View::composer('layouts.app', function ($view) {
             if (!app()->bound('tenant')) {
                 return;
             }
@@ -80,5 +83,6 @@ class AppServiceProvider extends ServiceProvider
                 app(TenantSubscriptionAccessService::class)->subscriptionStatus($tenant)
             );
         });
+        }
     }
 }

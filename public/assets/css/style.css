@@ -1,7 +1,6 @@
 @charset "UTF-8";
 /****** Utils ******/
-@import url("https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700&amp;display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&amp;display=swap");
+/* Fonts: Nunito is self-hosted (assets/css/fonts-local.css, linked before this file) - no remote font import (owner decision A3). */
 .search-dropdown .search-info .customers li a img {
   -webkit-transition: all 0.5s;
   -moz-transition: all 0.5s;

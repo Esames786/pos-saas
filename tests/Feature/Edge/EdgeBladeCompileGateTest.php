@@ -72,6 +72,51 @@ class EdgeBladeCompileGateTest extends TestCase
         $views = array_merge($views, glob(resource_path('views/edge') . '/*.blade.php'));
         $this->assertNotEmpty($views, 'expected Edge Blade views to exist');
 
+        $this->assertViewsCompileAndLint($views);
+    }
+
+    /**
+     * W-C (Edge next release §4.5) — the SHARED cashier view: the Online POS page (resources/views/tenant/pos/**, every
+     * depth) is the page the Branch Server renders once W-A/W-B land, so it takes the same compile + `php -l` gate.
+     */
+    public function test_the_shared_online_pos_views_compile_and_the_generated_php_lints(): void
+    {
+        $views = $this->bladeFilesUnder(resource_path('views/tenant/pos'));
+        $this->assertContains(str_replace('\\', '/', resource_path('views/tenant/pos/index.blade.php')), $views, 'the shared POS page must exist');
+
+        $this->assertViewsCompileAndLint($views);
+    }
+
+    /** W-C — the shared POS layout (layouts/pos.blade.php, W-A). Skipped until W-A creates it; a compile error fails. */
+    public function test_the_shared_pos_layout_compiles_and_the_generated_php_lints(): void
+    {
+        $layout = resource_path('views/layouts/pos.blade.php');
+        if (! is_file($layout)) {
+            $this->markTestSkipped('resources/views/layouts/pos.blade.php does not exist yet (W-A creates it) — the gate engages as soon as it does.');
+        }
+
+        $this->assertViewsCompileAndLint([$layout]);
+    }
+
+    /** @return string[] every *.blade.php under $dir at any depth (POSIX slashes, sorted) */
+    private function bladeFilesUnder(string $dir): array
+    {
+        $files = [];
+        if (is_dir($dir)) {
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)) as $f) {
+                if ($f->isFile() && str_ends_with($f->getFilename(), '.blade.php')) {
+                    $files[] = str_replace('\\', '/', $f->getPathname());
+                }
+            }
+        }
+        sort($files);
+
+        return $files;
+    }
+
+    /** @param string[] $views */
+    private function assertViewsCompileAndLint(array $views): void
+    {
         $php = (new \Symfony\Component\Process\PhpExecutableFinder())->find() ?: PHP_BINARY;
 
         foreach ($views as $path) {

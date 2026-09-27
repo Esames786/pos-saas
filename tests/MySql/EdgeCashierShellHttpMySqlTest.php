@@ -130,6 +130,8 @@ class EdgeCashierShellHttpMySqlTest extends MySqlTenantTestCase
     // ── A33 / E-06: Branch & Terminal context — bound branch (no selector), terminal in the Online dialog, Change gated ──
     public function test_branch_and_terminal_context_dialog_and_change_gate(): void
     {
+        // W-E: the seeded cashier holds the full catalogue template (incl. change-terminal) — model the pinned operator explicitly.
+        $this->revokeEdgePermission($this->userId, UserDataScope::CHANGE_TERMINAL_PERMISSION);
         $html = $this->page();
         $this->assertStringContainsString('id="posContextModal"', $html);
         $this->assertStringContainsString('<select id="terminal"', $html);
@@ -146,6 +148,9 @@ class EdgeCashierShellHttpMySqlTest extends MySqlTenantTestCase
     // ── A44/R3.1/R5.1 gating of the header entry points by the Online permission ──
     public function test_return_and_quick_report_buttons_follow_the_online_permission(): void
     {
+        // W-E: the seeded cashier holds the full catalogue template — model the operator without Return / Quick Report explicitly.
+        $this->revokeEdgePermission($this->userId, 'tenant.sales-returns.store');
+        $this->revokeEdgePermission($this->userId, 'tenant.pos.quick-report-send');
         $html = $this->page();
         $this->assertMatchesRegularExpression('/id="pos-return-btn"[^>]*hidden data-denied="1"/', $html, 'no return permission → hidden, never wired');
         $this->assertMatchesRegularExpression('/id="pos-quick-report-btn"[^>]*hidden data-denied="1"/', $html);
@@ -224,6 +229,50 @@ class EdgeCashierShellHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame([], $foreign, 'no external/CDN asset or link');
         $this->assertStringNotContainsString('@import', $html);
         $this->assertStringNotContainsString('fonts.googleapis', $html);
+    }
+
+    // ── W-C (owner decision A3) — the no-external-URL rule extends INTO every stylesheet the page links: each one is fetched
+    //    through the app (the appliance's own asset route), and none may @import or url() another host. The self-hosted
+    //    Nunito (fonts-local.css → fonts/nunito/*.woff2) resolves through the same route. ──
+    public function test_every_linked_stylesheet_is_served_by_the_app_and_carries_no_import_or_remote_url(): void
+    {
+        config(['edge.route_allowlist' => array_values(array_unique(array_merge((array) config('edge.route_allowlist'), [EdgeLocalAssetController::ROUTE_NAME])))]);
+        $html = $this->page();
+
+        preg_match_all('/<link\b[^>]*\brel\s*=\s*["\']stylesheet["\'][^>]*>/i', $html, $tags);
+        $hrefs = [];
+        foreach ($tags[0] as $tag) {
+            if (preg_match('/\bhref\s*=\s*["\']([^"\']+)["\']/i', $tag, $h)) {
+                $hrefs[] = html_entity_decode($h[1], ENT_QUOTES);
+            }
+        }
+        $this->assertNotEmpty($hrefs, 'the page links its stylesheets');
+        $origin = rtrim(url('/'), '/');
+
+        foreach (array_unique($hrefs) as $href) {
+            $this->assertTrue(str_starts_with($href, $origin . '/') || (str_starts_with($href, '/') && ! str_starts_with($href, '//')), "{$href} must be same-origin");
+            $path = str_starts_with($href, $origin) ? substr($href, strlen($origin)) : $href;
+            $res = $this->get($path);
+            $this->assertSame(200, $res->getStatusCode(), "{$path} must be served by the appliance itself");
+            $this->assertStringStartsWith('text/css', (string) $res->headers->get('Content-Type'), $path);
+            $css = $res->baseResponse instanceof \Symfony\Component\HttpFoundation\BinaryFileResponse
+                ? (string) file_get_contents($res->baseResponse->getFile()->getPathname())
+                : (string) $res->getContent();
+            $this->assertStringNotContainsString('@import', $css, "{$path} must not @import anything");
+            $this->assertDoesNotMatchRegularExpression('/url\(\s*[\'"]?(?:https?:)?\/\//i', $css, "{$path} must not url() another host");
+            $this->assertStringNotContainsString('fonts.googleapis', $css, $path);
+
+            if (str_ends_with(parse_url($path, PHP_URL_PATH) ?: '', '/fonts-local.css')) {
+                preg_match_all('/url\("([^"]+\.woff2)"\)/', $css, $fonts);
+                $this->assertNotEmpty($fonts[1]);
+                foreach (array_unique($fonts[1]) as $rel) {
+                    $fontPath = preg_replace('#/css/[^/]+$#', '/', parse_url($path, PHP_URL_PATH)) . preg_replace('#^\.\./#', '', $rel);
+                    $font = $this->get($fontPath);
+                    $this->assertSame(200, $font->getStatusCode(), "{$fontPath} (Nunito) must be served locally");
+                    $this->assertStringStartsWith('font/woff2', (string) $font->headers->get('Content-Type'));
+                }
+            }
+        }
     }
 
     // ── E-10: the packaged Bootstrap / SweetAlert2 / Tabler load through the local asset route once it is allowlisted ──

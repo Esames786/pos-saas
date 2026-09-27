@@ -24,10 +24,18 @@ use Symfony\Component\HttpFoundation\Response;
  * the resolved real path must stay inside public/assets. Everything else is a plain 404 (nothing advertised). The
  * route is unauthenticated on purpose (the login page needs the stylesheet too) and exposes nothing but the Online
  * frontend's own public assets.
+ *
+ * W-C (Edge next release, §4.3) — a SECOND hardened root: `storage/app/public` (the product photos the Online POS loads
+ * via asset('storage/…'); the appliance has no public/storage symlink) at GET /edge/local/storage/{path}, route name
+ * `edge.local.storage`. Same segment grammar, same no-symlink walk, same real-path containment, read-only — IMAGE types
+ * only (png/jpg/jpeg/webp/svg), and every storage response carries a sandboxing CSP so an uploaded SVG can never run
+ * script in the appliance origin.
  */
 class EdgeLocalAssetController extends Controller
 {
     public const ROUTE_NAME = 'edge.local.assets';
+
+    public const STORAGE_ROUTE_NAME = 'edge.local.storage';
 
     /** Extension => Content-Type. Anything else is refused. */
     private const TYPES = [
@@ -41,6 +49,18 @@ class EdgeLocalAssetController extends Controller
         'ico' => 'image/x-icon',
     ];
 
+    /** storage/app/public — IMAGES only (product photos). Anything else is refused. */
+    private const STORAGE_TYPES = [
+        'png' => 'image/png',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'webp' => 'image/webp',
+        'svg' => 'image/svg+xml',
+    ];
+
+    /** Uploaded (user) content is never scriptable in the appliance origin, even when opened directly. */
+    private const USER_CONTENT_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox";
+
     /** Segment grammar: starts with a letter/digit (so no '.', '..', '.env', '.htaccess'), then [A-Za-z0-9._-]. */
     private const SEGMENT = '/^[A-Za-z0-9][A-Za-z0-9._-]*$/';
 
@@ -51,11 +71,13 @@ class EdgeLocalAssetController extends Controller
      */
     public static function available(): bool
     {
-        if (! Route::has(self::ROUTE_NAME)) {
-            return false;
-        }
+        return self::routeUsable(self::ROUTE_NAME);
+    }
 
-        return EdgeRuntime::isCloud() || EdgeRouteManifest::isAllowed(self::ROUTE_NAME);
+    /** The same rule for the storage (product image) root — `edge.local.storage`. */
+    public static function storageAvailable(): bool
+    {
+        return self::routeUsable(self::STORAGE_ROUTE_NAME);
     }
 
     /** URL of one asset (relative to public/assets), for the Blade partials. */
@@ -64,9 +86,54 @@ class EdgeLocalAssetController extends Controller
         return url('/edge/local/assets/' . ltrim($path, '/'));
     }
 
+    /** URL of one public-disk file (relative to storage/app/public), e.g. a product image path as stored. */
+    public static function storageUrl(string $path): string
+    {
+        return url('/edge/local/storage/' . ltrim($path, '/'));
+    }
+
     public function show(Request $request, string $path): Response
     {
-        $file = $this->resolve($path);
+        return $this->serve($request, $path, public_path('assets'), self::TYPES, false);
+    }
+
+    public function storage(Request $request, string $path): Response
+    {
+        return $this->serve($request, $path, storage_path('app/public'), self::STORAGE_TYPES, true);
+    }
+
+    private static function routeUsable(string $name): bool
+    {
+        if (! Route::has($name)) {
+            return false;
+        }
+
+        return EdgeRuntime::isCloud() || EdgeRouteManifest::isAllowed($name);
+    }
+
+    /**
+     * On Windows `is_link()` is FALSE for a directory junction (mklink /J needs no privilege), while readlink() resolves
+     * it to its target; for an ordinary file or directory readlink() returns the path itself. A readlink() answer that
+     * differs from the path (case-insensitive, as NTFS is) therefore marks a junction/link.
+     */
+    private static function isWindowsReparsePoint(string $path): bool
+    {
+        if (PHP_OS_FAMILY !== 'Windows' || ! file_exists($path)) {
+            return false;
+        }
+        $target = @readlink($path);
+        if ($target === false) {
+            return false;
+        }
+        $norm = static fn (string $p): string => rtrim(str_replace('/', '\\', $p), '\\');
+
+        return strcasecmp($norm($target), $norm($path)) !== 0;
+    }
+
+    /** @param array<string,string> $types */
+    private function serve(Request $request, string $path, string $rootDir, array $types, bool $userContent): Response
+    {
+        $file = $this->resolve($path, $rootDir, $types);
         if ($file === null) {
             abort(404);
         }
@@ -77,12 +144,15 @@ class EdgeLocalAssetController extends Controller
         $etag = '"' . sha1($path . '|' . $size . '|' . $mtime) . '"';
 
         $headers = [
-            'Content-Type' => self::TYPES[$ext],
+            'Content-Type' => $types[$ext],
             'Cache-Control' => 'public, max-age=86400',
             'ETag' => $etag,
             'Last-Modified' => gmdate('D, d M Y H:i:s', $mtime) . ' GMT',
             'X-Content-Type-Options' => 'nosniff',
         ];
+        if ($userContent) {
+            $headers['Content-Security-Policy'] = self::USER_CONTENT_CSP;
+        }
 
         $inm = (string) $request->headers->get('If-None-Match', '');
         if ($inm !== '' && in_array($etag, array_map('trim', explode(',', $inm)), true)) {
@@ -91,13 +161,17 @@ class EdgeLocalAssetController extends Controller
 
         $response = new BinaryFileResponse($file, 200, $headers, true, null, false, false);
         // BinaryFileResponse may guess a type — the whitelist decides it, always.
-        $response->headers->set('Content-Type', self::TYPES[$ext]);
+        $response->headers->set('Content-Type', $types[$ext]);
 
         return $response;
     }
 
-    /** The absolute path of an allowed asset, or null. Never throws for hostile input. */
-    private function resolve(string $path): ?string
+    /**
+     * The absolute path of an allowed file under $rootDir, or null. Never throws for hostile input.
+     *
+     * @param array<string,string> $types
+     */
+    private function resolve(string $path, string $rootDir, array $types): ?string
     {
         if ($path === '' || strlen($path) > 255 || str_contains($path, "\0") || str_contains($path, '\\') || str_contains($path, ':')) {
             return null;
@@ -109,20 +183,21 @@ class EdgeLocalAssetController extends Controller
             }
         }
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-        if (! array_key_exists($ext, self::TYPES)) {
+        if (! array_key_exists($ext, $types)) {
             return null;
         }
 
-        $root = realpath(public_path('assets'));
-        if ($root === false) {
+        $root = realpath($rootDir); // the root is app configuration (may itself live on a linked data volume); below it, no link
+
+        if ($root === false || ! is_dir($root)) {
             return null;
         }
 
-        // No symlink anywhere on the path (a link inside public/assets could point anywhere).
+        // No symlink anywhere on the path (a link inside the root could point anywhere).
         $cursor = $root;
         foreach ($segments as $segment) {
             $cursor .= DIRECTORY_SEPARATOR . $segment;
-            if (is_link($cursor)) {
+            if (is_link($cursor) || self::isWindowsReparsePoint($cursor)) {
                 return null;
             }
         }

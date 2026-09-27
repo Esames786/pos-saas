@@ -30,6 +30,7 @@ class EdgeBuildPackageCommand extends Command
         {--signing-key-file= : DEV/TEST only: file holding a plaintext base64 Ed25519 signing key (else EDGE_UPDATE_SIGNING_KEY)}
         {--no-sign : Build without a signed update package (dev only)}
         {--allow-dirty : DEV/TEST only — permit a dirty tree + --git-commit override}
+        {--allow-untracked : DEV/TEST only — permit untracked files under public/ or resources/ (builds a DEV package, never a release)}
         {--git-commit= : (dev only) override the stamped commit}
         {--vendor-junction= : (dev/test only) build app/ without vendor and junction this vendor dir into it}
         {--vendor-from= : RELEASE: the vendor closure from a separate `composer install --no-dev` tree (its composer.lock must equal this tree composer.lock)}
@@ -40,9 +41,23 @@ class EdgeBuildPackageCommand extends Command
     public function handle(EdgeUpdatePackageService $updates): int
     {
         $dest = rtrim(str_replace('\\', '/', (string) $this->argument('dest')), '/');
-        $release = ! $this->option('allow-dirty');
+        $release = ! $this->option('allow-dirty') && ! $this->option('allow-untracked');
         $head = trim((string) (Process::run('git rev-parse HEAD')->output() ?? ''));
         $dirty = trim((string) (Process::run('git status --porcelain --untracked-files=no')->output() ?? '')) !== '';
+        // W-C (Edge next release §4.6) — `public` and `resources` ship WHOLE, so an untracked file there (a stray view, a
+        // font, a script) would ship silently in a build stamped with a clean commit. A RELEASE refuses; a dev build warns
+        // and is stamped dirty. `--untracked-files=no` above deliberately does not see these — hence the separate probe.
+        $untracked = $this->untrackedShippedFiles();
+        if ($untracked !== []) {
+            $listing = implode("\n  ", array_slice($untracked, 0, 20)) . (count($untracked) > 20 ? "\n  … (" . (count($untracked) - 20) . ' more)' : '');
+            if ($release) {
+                $this->error("Release package REFUSED — untracked files under public/ or resources/ would ship unreviewed:\n  {$listing}\nCommit or remove them (or use --allow-untracked for a DEV package).");
+
+                return self::FAILURE;
+            }
+            $this->warn("DEV package: untracked files under public/ or resources/ will ship (build stamped dirty):\n  {$listing}");
+            $dirty = true;
+        }
         if ($release) {
             if ($head === '' || $dirty || $this->option('git-commit')) {
                 $this->error('Release package REFUSED — needs a clean committed tree and no --git-commit override. Use --allow-dirty for a dev/test package.');
@@ -151,6 +166,29 @@ class EdgeBuildPackageCommand extends Command
         $this->table(['field', 'value'], collect($summary)->map(fn ($v, $k) => [$k, is_scalar($v) || $v === null ? var_export($v, true) : json_encode($v)])->values()->all());
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Untracked (not ignored) files under the shipped whole-directory roots public/ and resources/, as git reports them.
+     * Fail closed: when git cannot answer, the probe itself is returned as a finding so a release refuses.
+     *
+     * @return string[]
+     */
+    private function untrackedShippedFiles(): array
+    {
+        $result = Process::path(base_path())->run(['git', 'status', '--porcelain', '--untracked-files=all', '--', 'public', 'resources']);
+        if (! $result->successful()) {
+            return ['(git status failed — cannot prove public/ and resources/ carry no untracked file)'];
+        }
+        $files = [];
+        foreach (preg_split('/\r?\n/', (string) $result->output()) ?: [] as $line) {
+            if (str_starts_with($line, '?? ')) {
+                $files[] = trim(substr($line, 3), '"');
+            }
+        }
+        sort($files);
+
+        return $files;
     }
 
     private function recursiveDelete(string $dir): void
