@@ -26,7 +26,22 @@
 @php
     $compact = $compact ?? false;
     $fmtQty = fn ($q) => rtrim(rtrim(number_format((float) $q, 3), '0'), '.');
-    $matLine = collect($materials ?? [])->map(function ($m) use ($fmtQty, $t, $compact) {
+    // KITCHEN-SHEET-RTL-MEASURE-1 — naap ko ULTA CHHAPNE se bachao.
+    //
+    // Urdu kaghaz `dir="rtl"` hai. "84 KG" us me DO tukre hain — ek adad
+    // ka, ek harf ka — aur RTL unhe ulta laga kar "KG 84" bana deta hai.
+    // Yehi kharabi waqt par bhi thi.
+    //
+    // Do ilaj hain, aur yahan DONO istemaal hote hain — wajah ke saath:
+    //   • kitchen sheet (compact) par naap apne `dir="ltr"` span me jati
+    //     hai. Markup zyada saaf hai aur test us par kaat sakta hai.
+    //   • quotation par naap ek JURE HUE jumle ke beech me hai
+    //     ("chawal 30 KG (hum)"), jahan span daalne ke liye poora jumla
+    //     tukron me torna parta. Wahan Unicode ke isolate nishan — LRI aur
+    //     PDI — wohi kaam bina markup ke karte hain. Ye be-chaurai hain,
+    //     chhapte nahi.
+    $ltr = fn (string $s) => "⁦".$s."⁩";
+    $matLine = collect($materials ?? [])->map(function ($m) use ($fmtQty, $t, $compact, $ltr) {
         $qty = $fmtQty($m['qty'] ?? 0).' '.($m['unit_code'] ?? '');
         $name = trim((string) ($m['name'] ?? ''));
         $supply = $m['supply'] ?? 'ours';
@@ -43,39 +58,39 @@
             // dikha do". Ek dish jis ka kuch maal party laati hai aur kuch
             // hum, us par do satrein aati hain.
             if ($supply === 'customer') {
-                return [$t('Party', 'پارٹی').' '.$qty];
+                return [[$t('Party', 'پارٹی'), $qty]];
             }
             if ($supply === 'split') {
                 $parts = [];
                 if (round((float) ($m['customer'] ?? 0), 3) > 0) {
-                    $parts[] = $t('Party', 'پارٹی').' '.$fmtQty($m['customer']).' '.$unit;
+                    $parts[] = [$t('Party', 'پارٹی'), $fmtQty($m['customer']).' '.$unit];
                 }
                 if (round((float) ($m['ours'] ?? 0), 3) > 0) {
-                    $parts[] = $t('Own', 'اپنا').' '.$fmtQty($m['ours']).' '.$unit;
+                    $parts[] = [$t('Own', 'اپنا'), $fmtQty($m['ours']).' '.$unit];
                 }
 
                 return $parts ?: null;
             }
 
-            return [$t('Own', 'اپنا').' '.$qty];
+            return [[$t('Own', 'اپنا'), $qty]];
         }
 
         if ($supply === 'customer') {
-            return $name.' '.$qty.' ('.$t('PAR', 'گاہک').')';
+            return $name.' '.$ltr($qty).' ('.$t('PAR', 'گاہک').')';
         }
 
         if ($supply === 'split') {
-            return $name.' '.$qty.' ('.$t('CAT', 'ہم').' '.$fmtQty($m['ours'] ?? 0)
-                .', '.$t('PAR', 'گاہک').' '.$fmtQty($m['customer'] ?? 0).')';
+            return $name.' '.$ltr($qty).' ('.$t('CAT', 'ہم').' '.$ltr($fmtQty($m['ours'] ?? 0))
+                .', '.$t('PAR', 'گاہک').' '.$ltr($fmtQty($m['customer'] ?? 0)).')';
         }
 
-        return $name.' '.$qty.' ('.$t('CAT', 'ہم').')';
+        return $name.' '.$ltr($qty).' ('.$t('CAT', 'ہم').')';
     })->filter();
 @endphp
 @if($compact)
     {{-- Har hissa apni satar par: "Party 30 KG" ke neeche "Own 12 KG". --}}
-    @foreach($matLine->flatten() as $part)
-        <div class="supply-line">{{ $part }}</div>
+    @foreach($matLine->flatten(1) as $part)
+        <div class="supply-line">{{ $part[0] }} <span dir="ltr">{{ $part[1] }}</span></div>
     @endforeach
 @else
     @php($joined = $matLine->implode(' · '))

@@ -87,9 +87,15 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
      *
      * ASAL ADAD, aur ye zaroori hai: purane software par 14 khane safha bhar
      * dete hain. CLIENT BROWSER SE CHHAPTA HAI, is liye asal naap Chrome ki
-     * hai — aur Chrome par, Kashif Kitchen ke ASLI (lambe) naamon ke saath,
-     * hamara parcha ab Urdu me 14 aur English me 15 par safha bharta hai.
-     * Yani purane software ke barabar.
+     * hai — aur Chrome par, Kashif Kitchen ke ASLI (lambe) naamon ke saath:
+     *
+     *   27 Sep, pehla daur : Urdu 14, English 15  — purane software ke barabar
+     *   27 Sep, doosra daur: Urdu 13, English 15  — malik ne Urdu font aur
+     *                                               bara karwaya (21 -> 24px)
+     *
+     * Yani ab 14 khanon wali booking doosre safhe par jayegi. Ye malik ka
+     * soch-samajh kar kiya gaya faisla hai: bara harf, kam khane. English
+     * nahi badla kyunke `.item-name` ko haath nahi lagaya gaya.
      *
      * Neeche wale adad (12/16) DOMPDF ke hain aur is test ke apne CHHOTE
      * farzi naamon ke hain — dono cheezein Chrome+asli-naam se alag hain, is
@@ -115,6 +121,45 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
     {
         $this->assertSame(1, $this->pagesFor(10, 'ur'));
         $this->assertSame(1, $this->pagesFor(10, 'en'));
+    }
+
+    /**
+     * KITCHEN-SHEET-FOOT-BOTTOM-1 (27 Sep) — paer HAMESHA safhe ki tal par.
+     *
+     * Malik: "jo footer hai wo hamesha bottom mai hi aae, irrespective ek
+     * item ho ya 14-15." Pehle paer table ke foran baad chipka tha, is liye
+     * 8 khanon wale parche par beech me latak jata tha.
+     *
+     * Ye teen cheezein MIL KAR kaam karti hain, aur koi ek bhi tootne par
+     * paer wapas upar chala jata hai — is liye teenon par pehra hai:
+     *   1. body ek khara flex ho
+     *   2. paer par `margin-top: auto`
+     *   3. print me body ki `min-height` 100% ho, 0 nahi (0 par body sirf
+     *      apne matn jitni oonchi hoti aur "neeche" ka koi matlab na rehta)
+     *
+     * (3) khaas taur par likha ja raha hai kyunke wo purani qeemat is file me
+     * mahinon se `min-height: 0` thi aur bilkul maasoom lagti hai.
+     */
+    public function test_the_footer_is_pinned_to_the_bottom_of_the_page(): void
+    {
+        $css = view('tenant.catering.documents.partials.kitchen-sheet-style', ['isUr' => true])->render();
+
+        $this->assertSame(1, preg_match('/\.foot\s*\{([^}]*)\}/s', $css, $foot),
+            'paer ka qaida CSS me milna chahiye');
+        $this->assertStringContainsString('margin-top: auto', $foot[1],
+            'paer par margin-top: auto — yehi use tal par le jata hai');
+        $this->assertStringNotContainsString('margin-top: 4px', $foot[1],
+            'purani chipki hui qeemat wapas aa gayi');
+
+        $this->assertSame(1, preg_match('/@media print\s*\{.*?body\s*\{([^}]*)\}/s', $css, $print),
+            'print wala body qaida milna chahiye');
+        $this->assertStringContainsString('min-height: 100%', $print[1],
+            'print me body poore safhe jitni oonchi ho');
+        $this->assertStringNotContainsString('min-height: 0', $print[1],
+            'min-height: 0 wapas aa gayi — is par paer beech me latak jata hai');
+
+        $this->assertMatchesRegularExpression('/body\s*\{[^}]*flex-direction:\s*column/s', $css,
+            'body khara flex hona chahiye, warna margin-top: auto ka koi asar nahi');
     }
 
     /**

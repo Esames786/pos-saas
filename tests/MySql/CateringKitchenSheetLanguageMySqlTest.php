@@ -159,6 +159,60 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
             'waqt dir="ltr" ke andar ho — RTL safhe par bina is ke "PM 10:00" chhapta hai');
     }
 
+    /**
+     * KITCHEN-SHEET-RTL-MEASURE-1 (27 Sep) — MIQDAAR bhi ulti chhap rahi thi.
+     *
+     * Malik ne parche par gol daira laga kar bheja: "KG 56" ki jagah "56 KG"
+     * hona chahiye, aur Party/Own par bhi wohi.
+     *
+     * Ye wohi kharabi hai jo waqt par thi, teesri jagah — dekho
+     * `test_the_time_never_prints_back_to_front_on_the_urdu_sheet`. Jahan bhi
+     * RTL safhe par ADAD aur HARF saath likhe jate hain, RTL unhe ulta laga
+     * deta hai. Ab tak ye teen jagah nikli: waqt, miqdaar, aur maal.
+     *
+     * Is liye ye test sirf aaj ki kharabi ka nahi — ye us TARAH ka pehra hai.
+     * Koi naya khaana jo "adad + unit" chhape, usay bhi `dir="ltr"` chahiye.
+     */
+    public function test_the_quantity_prints_number_first_not_unit_first(): void
+    {
+        $release = $this->release();
+
+        $html = $this->sheet($release->id, 'ur');
+
+        // Probe zinda hai? Miqdaar kaghaz par mojood hai.
+        $this->assertStringContainsString('27 KG', $html,
+            'miqdaar kaghaz par honi chahiye — warna neeche wali jaanch bemani hai');
+
+        $this->assertStringContainsString('<span class="qty" dir="ltr">', $html,
+            'miqdaar dir="ltr" ke andar ho — warna RTL safhe par "KG 27" chhapta hai');
+    }
+
+    /**
+     * Party/Own ka khaana — wohi kharabi, aur yahan zyada bareek: UNWAAN Urdu
+     * me rehna chahiye (RTL) magar NAAP LTR. Poori satar ko LTR kar dene se
+     * "اپنا" ghalat taraf chala jata.
+     *
+     * Partial ko seedha render kiya ja raha hai, poore parche ke zariye nahi:
+     * ye us EK jagah ka pehra hai jahan kharabi thi, aur fixture ke maal par
+     * tika hua test us din chup ho jata jis din fixture badal jaye.
+     */
+    public function test_the_party_and_own_measure_prints_number_first(): void
+    {
+        $html = view('tenant.catering.documents.partials.line-materials', [
+            'materials' => [[
+                'name' => 'Beef', 'qty' => 84, 'unit_code' => 'KG', 'supply' => 'ours',
+            ]],
+            'compact' => true,
+            't' => fn ($en, $ur) => $ur,
+        ])->render();
+
+        $this->assertStringContainsString('84 KG', $html, 'naap mojood honi chahiye');
+        $this->assertStringContainsString('<span dir="ltr">84 KG</span>', $html,
+            'naap apne LTR khaane me ho');
+        $this->assertStringContainsString('اپنا', $html,
+            'unwaan Urdu me rehna chahiye — usay LTR me daalna ghalat taraf le jata hai');
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────
 
     private function sheet(int $releaseId, string $lang): string
