@@ -339,6 +339,15 @@ class MasterSeeder extends Seeder
                 'is_core' => false,
             ],
             [
+                'key' => 'customer_payments',
+                'name' => 'Customer Payments',
+                'category' => 'Finance',
+                'description' => 'Receipts recorded against customer receivables. Separate from catering advances, which post through the catering event.',
+                'route_module_keys' => ['tenant.finance.customer-payments'],
+                'sort_order' => 141,
+                'is_core' => false,
+            ],
+            [
                 'key' => 'finance',
                 'name' => 'Finance',
                 'category' => 'Finance',
@@ -590,7 +599,7 @@ class MasterSeeder extends Seeder
                     'display_order' => 40,
                     'public_description' => 'Best for full-service restaurants, kitchens, and multi-station operations.',
                 ],
-                'modules' => ['pos', 'catalog', 'restaurant', 'kitchen_display', 'kitchen_inventory', 'inventory', 'purchasing', 'stock_count', 'printing', 'reports', 'sales_controls', 'multi_branch', 'users_roles', 'finance'],
+                'modules' => ['pos', 'catalog', 'restaurant', 'kitchen_display', 'kitchen_inventory', 'inventory', 'purchasing', 'stock_count', 'printing', 'reports', 'sales_controls', 'multi_branch', 'users_roles', 'finance', 'customer_payments'],
                 'features' => [
                     'branch_limit' => '3',
                     'terminal_limit' => '6',
@@ -643,7 +652,7 @@ class MasterSeeder extends Seeder
                     'public_description' => 'For finance-led businesses: accounting, purchasing, inventory control, receivables/payables, and an ERP/manufacturing roadmap. Custom / contact sales.',
                 ],
                 // Available modules only — NO restaurant/kitchen.
-                'modules' => ['pos', 'catalog', 'inventory', 'stock_count', 'purchasing', 'printing', 'reports', 'sales_controls', 'multi_branch', 'users_roles', 'finance', 'manufacturing'],
+                'modules' => ['pos', 'catalog', 'inventory', 'stock_count', 'purchasing', 'printing', 'reports', 'sales_controls', 'multi_branch', 'users_roles', 'finance', 'customer_payments', 'manufacturing'],
                 'features' => [
                     'branch_limit' => null,
                     'terminal_limit' => null,
