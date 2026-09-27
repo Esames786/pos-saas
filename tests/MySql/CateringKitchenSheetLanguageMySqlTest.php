@@ -127,6 +127,38 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('Kitchen Sheet', $html);
     }
 
+    /**
+     * KITCHEN-SHEET-FILL-1 (27 Sep) — WAQT ULTA NA CHHAPE.
+     *
+     * Urdu parche par `10:00 PM` ki jagah `PM 10:00` chhap raha tha. Wajah
+     * bidi hai: document `dir="rtl"` hai, aur us me "10:00" ADAD ka tukra hai
+     * aur "PM" HARF ka — do alag tukre RTL me ulti tarteeb me lagte hain.
+     *
+     * Ye pehra isi liye likha ja raha hai ke ye kharabi EK BAAR "theek" keh
+     * kar chhori ja chuki hai. 27 Sep ko malik ne "am pm time theek kardo"
+     * kaha, aur us waqt sirf TOOT-NE wali kharabi dekhi gayi ("8:00" upar,
+     * "PM" neeche) — us par `white-space: nowrap` laga diya gaya. Nowrap
+     * tarteeb nahi badalta, is liye ULTA CHHAPNA live par chalta raha aur
+     * malik ko dobara tasveer bhejni pari.
+     *
+     * Ilaj CSS ka nahi, markup ka hai: waqt apne `dir="ltr"` wale span me.
+     */
+    public function test_the_time_never_prints_back_to_front_on_the_urdu_sheet(): void
+    {
+        $release = $this->release(['service_time' => '22:00']);
+
+        $html = $this->sheet($release->id, 'ur');
+
+        // Probe pehle khud ko zinda sabit kare: waqt kaghaz par mojood hai.
+        // Is ke baghair neeche wali jaanch khali parche par bhi "pass" ho
+        // sakti thi.
+        $this->assertStringContainsString('10:00 PM', $html,
+            'waqt kaghaz par hona chahiye — warna neeche wali jaanch bemani hai');
+
+        $this->assertMatchesRegularExpression('/<span dir="ltr">\s*10:00 PM\s*<\/span>/u', $html,
+            'waqt dir="ltr" ke andar ho — RTL safhe par bina is ke "PM 10:00" chhapta hai');
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────
 
     private function sheet(int $releaseId, string $lang): string
@@ -160,7 +192,14 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
             ->render();
     }
 
-    private function release(): \App\Models\Tenant\CateringProductionRelease
+    /**
+     * @param  array  $eventAttrs  booking par jo cheez RELEASE SE PEHLE honi
+     *                             chahiye. Release ek jama hua snapshot hai
+     *                             aur model use badalne nahi deta, is liye
+     *                             "waqt wala parcha" banane ka sahi tareeqa
+     *                             yehi hai — snapshot ko baad me chhedna nahi.
+     */
+    private function release(array $eventAttrs = []): \App\Models\Tenant\CateringProductionRelease
     {
         $categoryId = $this->makeCategory(['name' => 'RICE', 'sort_order' => 2]);
         $pid = $this->makeProduct($categoryId, ['name' => 'Dish 1', 'sku' => 'KL1', 'unit_id' => $this->unitId]);
@@ -170,13 +209,13 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
         ]);
 
         $estimates = app(CateringEstimateService::class);
-        $event = $estimates->createEvent([
+        $event = $estimates->createEvent(array_merge([
             'branch_id' => $this->branchId,
             'customer_name' => 'MR,ABDUL NAEEM',
             'booking_date' => now()->toDateString(),
             'event_date' => now()->addDays(2)->toDateString(),
             'pax' => 551,
-        ]);
+        ], $eventAttrs));
 
         $estimate = $event->currentEstimate;
         $estimates->saveDraftLines($estimate, [[

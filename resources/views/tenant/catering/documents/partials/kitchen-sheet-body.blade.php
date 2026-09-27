@@ -261,10 +261,10 @@
             <span class="svc">{{ $t('SERVICE', 'سروس') }}</span>
         @endif
         @if(!empty($snapshot['service_time']))
-            <span class="ft"><span class="ftl">{{ $t('SERVE', 'سرو') }}</span>{{ \Carbon\Carbon::parse($snapshot['service_time'])->format('g:i A') }}</span>
+            <span class="ft"><span class="ftl">{{ $t('SERVE', 'سرو') }}</span><span dir="ltr">{{ \Carbon\Carbon::parse($snapshot['service_time'])->format('g:i A') }}</span></span>
         @endif
         @if(!empty($snapshot['dispatch_time']))
-            <span class="ft"><span class="ftl">{{ $t('DEPARTURE', 'روانگی') }}</span>{{ \Carbon\Carbon::parse($snapshot['dispatch_time'])->format('g:i A') }}</span>
+            <span class="ft"><span class="ftl">{{ $t('DEPARTURE', 'روانگی') }}</span><span dir="ltr">{{ \Carbon\Carbon::parse($snapshot['dispatch_time'])->format('g:i A') }}</span></span>
         @endif
     </div>
     <div class="foot-r">
