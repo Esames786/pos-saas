@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\CateringEvent;
 use App\Models\Tenant\CateringSetting;
 use App\Services\Catering\CateringFinancialPositionService;
+use App\Services\Catering\CateringProductionReleaseService;
 use Illuminate\Http\Request;
+use RuntimeException;
 
 /**
  * KASHIF-CATERING-OPERATOR-UI-1 — bulk documents for a selected set of bookings.
@@ -54,15 +56,30 @@ class CateringBulkDocumentController extends Controller
     }
 
     /**
-     * One kitchen sheet per selected booking that HAS a production release —
-     * a booking without one has no kitchen document to print, and inventing a
-     * provisional sheet from a draft estimate is exactly what a release exists
-     * to prevent. Skipped bookings are named, not silently dropped.
+     * Har chuni hui booking ka ek kitchen sheet — CHAAHE US KA STATUS KUCH BHI HO.
+     *
+     * Yahan pehle likha tha: booking jis ki release na hui ho us ka koi kitchen
+     * document nahi banta, aur draft estimate se aarzi parcha gharna theek wohi
+     * cheez hai jise rokne ke liye release ka nizam bana hai. Malik ne 27
+     * September ko is ke khilaf faisla diya — bawarchi-khane ko parcha release
+     * se PEHLE chahiye, har status par (draft, quoted, confirmed, released).
+     * Wo caveat yahan se HATA diya gaya hai, chhupaya nahi: jo baat ab sach na
+     * ho, usay comment me chhod dena baad me aane wale ko ghalat samjhata hai.
+     *
+     * Us caveat ka asal khauf — ke aarzi parcha asli jaisa dikhega aur
+     * bawarchi-khane ke paas do sach ho jayenge — is tarah door kiya gaya ke
+     * aarzi parcha KHUD apne oopar likhta hai ke wo jaari nahi hua
+     * (`! $release->exists` par preview band). Aur wo kuch mehfooz nahi karta:
+     * na release banti hai, na release number kharch hota hai, na status hilta.
+     *
+     * Ab sirf ek hi booking chhoot sakti hai: jis par koi estimate hi na ho.
+     * Wo naam le kar batai jati hai, khamoshi se giraayi nahi jati.
      */
     public function kitchenSheets(Request $request)
     {
         $events = $this->selectedEvents($request, ['productionReleases.lines', 'productionReleases.event']);
 
+        $previews = app(CateringProductionReleaseService::class);
         $releases = collect();
         $skipped = [];
         foreach ($events as $event) {
@@ -70,25 +87,38 @@ class CateringBulkDocumentController extends Controller
                 ->where('status', 'released')
                 ->sortByDesc('released_at')
                 ->first();
+
             if ($release) {
                 $releases->push($release);
-            } else {
+
+                continue;
+            }
+
+            // Release nahi hui — usi mojooda estimate se aarzi parcha.
+            try {
+                $releases->push($previews->preview($event));
+            } catch (RuntimeException $e) {
+                // Ab yahan aane ki ek hi asli wajah bachti hai: booking par
+                // koi estimate hi nahi.
                 $skipped[] = $event->event_no;
             }
         }
 
         // This page opens in a NEW TAB, so an abort() shows the operator a
-        // framework error for a situation where nothing is actually wrong: the
-        // bookings they picked simply have not been released to the kitchen
-        // yet. Say that, in the tab they are already looking at.
+        // framework error for a situation where nothing is actually wrong.
+        //
+        // Ye paighaam pehle kehta tha "release nahi hui, is liye parcha nahi
+        // bana" — ab wo jhooth hoga: release se pehle bhi parcha banta hai.
+        // Ab yahan aane ki ek hi soorat hai: chuni hui booking par koi
+        // quotation hi nahi.
         if ($releases->isEmpty()) {
             return response()->view('tenant.catering.documents.nothing-to-print', [
                 'title' => 'No kitchen sheet yet',
                 'message' => $skipped === []
                     ? 'No bookings were selected.'
-                    : 'These bookings have not been released to the kitchen yet, so there is no kitchen sheet to print:',
+                    : 'These bookings have no quotation yet, so there are no dishes to put on a kitchen sheet:',
                 'references' => $skipped,
-                'hint' => 'Release production for the booking first — from the events list Actions menu, or from the booking itself. The kitchen sheet is created at that moment.',
+                'hint' => 'Add the dishes to the booking first. The kitchen sheet can then be printed at any status — before production is released it prints as a clearly marked PREVIEW.',
             ], 422);
         }
 

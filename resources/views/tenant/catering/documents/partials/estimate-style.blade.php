@@ -23,7 +23,16 @@
        Kai safhon par jaane ki salahiyat qayam hai: 40 item ki quotation ab bhi
        kai safhon par jayegi aur har safhe par table ka header dobara aayega.
        Sirf aam lambai wali quotation ab ek safhe me sama jati hai. */
-    @page { size: A4 portrait; margin: 10mm; }
+    {{-- KITCHEN-SHEET-PAPER-SETTING-1 (27 Sep): size ab Catering Settings se.
+         Default A4 lamba — yani kisi tenant ke liye kuch nahi badla; ye sirf
+         us cheez ko setting bana deti hai jo tay-shuda thi. Kitchen sheet ki
+         apni alag setting hai: wo bawarchi ke haath me jati hai, ye graahak
+         ko. --}}
+    @php
+        $qPaper = \App\Models\Tenant\CateringSetting::tenantDefault()->quotation_paper;
+        $qMm = \App\Models\Tenant\CateringSetting::paperMm($qPaper, 'a4_portrait');
+    @endphp
+    @page { size: {{ \App\Models\Tenant\CateringSetting::cssPageSize($qPaper, 'A4 portrait') }}; margin: 10mm; }
     * { box-sizing: border-box; }
     /* @page margin applies to PAPER only. On screen the sheet is drawn at real
        A4 size on a grey desk so the preview matches what comes out of the
@@ -34,7 +43,7 @@
     body {
         font-family: {{ $isUr ? "'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif" : "Arial, Helvetica, sans-serif" }};
         color: #111827; font-size: {{ $isUr ? '16px' : '13px' }}; line-height: 1.5;
-        width: 210mm; min-height: 297mm; margin: 12px auto; padding: 10mm;
+        width: {{ $qMm["w"] }}mm; min-height: {{ $qMm["h"] }}mm; margin: 12px auto; padding: 10mm;
         background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.18);
     }
     @media screen and (max-width: 230mm) {

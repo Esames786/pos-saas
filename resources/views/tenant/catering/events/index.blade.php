@@ -273,7 +273,33 @@
                                             <i class="ti ti-clipboard-check me-2"></i>Production Release
                                             <span class="text-muted fs-12">{{ $release->release_no }}</span></a></li>
                                     @else
-                                        <li><span class="dropdown-item-text text-muted fs-12">No production release yet</span></li>
+                                        {{-- KITCHEN-SHEET-PREVIEW-1 (27 Sep) — yahan pehle sirf
+                                             "No production release yet" likha tha aur bas. Malik
+                                             ko parcha release se PEHLE chahiye tha, is liye wohi
+                                             teen zabaanein yahan bhi — magar preview ke taur par.
+
+                                             Ye raasta kuch MEHFOOZ NAHI karta: na release banti
+                                             hai, na number kharch hota hai, na status hilta hai.
+                                             Kaghaz khud oopar likhta hai ke wo jaari nahi hua. --}}
+                                        @can('tenant.catering.documents.kitchen-sheet-preview')
+                                            <li class="px-3 py-1">
+                                                <div class="fs-13 mb-1">
+                                                    <i class="ti ti-tools-kitchen-2 me-2"></i>Kitchen Sheet
+                                                    <span class="badge bg-warning-subtle text-warning-emphasis fs-11">preview</span>
+                                                </div>
+                                                <div class="fs-12 text-muted mb-1">Release se pehle — sirf chhapne ke liye</div>
+                                                <div class="btn-group btn-group-sm w-100" role="group" aria-label="Kitchen Sheet preview language">
+                                                    <a class="btn btn-outline-secondary" target="_blank"
+                                                       href="{{ url('/catering/documents/kitchen-sheet-preview/' . $event->id . '?lang=en') }}">EN</a>
+                                                    <a class="btn btn-outline-secondary" target="_blank"
+                                                       href="{{ url('/catering/documents/kitchen-sheet-preview/' . $event->id . '?lang=ur') }}">اردو</a>
+                                                    <a class="btn btn-outline-secondary" target="_blank"
+                                                       href="{{ url('/catering/documents/kitchen-sheet-preview/' . $event->id . '?lang=both') }}">Both</a>
+                                                </div>
+                                            </li>
+                                        @else
+                                            <li><span class="dropdown-item-text text-muted fs-12">No production release yet</span></li>
+                                        @endcan
                                     @endif
 
                                     <li><hr class="dropdown-divider"></li>

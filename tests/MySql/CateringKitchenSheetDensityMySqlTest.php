@@ -105,7 +105,12 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
     {
         $css = view('tenant.catering.documents.partials.kitchen-sheet-style', ['isUr' => true])->render();
 
-        $this->assertSame(1, preg_match('/direction: rtl; line-height: ([\d.]+)/', $css, $m),
+        // Needle property ki TARTEEB se azaad hai. Pehle wo
+        // "direction: rtl; line-height:" dhoondti thi; jis din `.ur` me beech
+        // me `font-size` aaya, probe andha ho gaya — leading 1.7 se 1.6 par
+        // giri aur ye test us par khamosh raha. Ab `.ur` ke poore block me se
+        // line-height nikalti hai, property kahin bhi ho.
+        $this->assertSame(1, preg_match('/\.ur\s*\{[^}]*line-height:\s*([\d.]+)/', $css, $m),
             'Urdu ki leading CSS me milni chahiye — probe pehle khud ko zinda sabit kare');
         $this->assertGreaterThanOrEqual(1.7, (float) $m[1],
             'Nastaliq ko itni leading chahiye — is se neeche harf katte hain');
@@ -155,9 +160,30 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
         $options->set('isRemoteEnabled', false);
         $options->set('isPhpEnabled', false);
 
+        // KITCHEN-SHEET-A5-1 (27 Sep): kaghaz ab SETTING se aata hai, aur naap
+        // usi kaghaz par honi chahiye jo parcha waqai istemaal karta hai.
+        // Pehle yahan 'a4','portrait' likha tha; jis din parcha A5 hua, ye
+        // test us kaghaz ko naapta raha jo product chhapta hi nahi — ek aisa
+        // adad jo na sach tha na jhoot.
+        $paper = \App\Models\Tenant\CateringSetting::tenantDefault()->kitchen_sheet_paper ?: 'a5_portrait';
+        [$size, $orientation] = match ($paper) {
+            'a5_landscape' => ['a5', 'landscape'],
+            'a4_landscape' => ['a4', 'landscape'],
+            'a4_portrait' => ['a4', 'portrait'],
+            default => ['a5', 'portrait'],
+        };
+
         $pdf = new Dompdf($options);
-        $pdf->setPaper('a4', 'portrait');
-        $pdf->loadHtml($this->sheetHtml($count, $lang), 'UTF-8');
+        $pdf->setPaper($size, $orientation);
+        // Kitchen sheet browser se chhapti hai, dompdf se nahi — is liye dompdf
+        // us ke @media print qawaid nahi lagata aur screen wali body (chaurai +
+        // padding + min-height) page box se takra jati hai. Wohi qawaid yahan
+        // haath se lagaye ja rahe hain jo browser khud lagata hai.
+        $html = str_replace('</head>',
+            '<style>body{width:auto!important;min-height:0!important;margin:0!important;'
+            .'padding:0!important;box-shadow:none!important}</style></head>',
+            $this->sheetHtml($count, $lang));
+        $pdf->loadHtml($html, 'UTF-8');
         $pdf->render();
 
         return $pdf->getCanvas()->get_page_count();

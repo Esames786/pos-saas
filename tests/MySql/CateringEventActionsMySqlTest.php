@@ -333,14 +333,26 @@ class CateringEventActionsMySqlTest extends MySqlTenantTestCase
             'position' => app(\App\Services\Catering\CateringFinancialPositionService::class)->position($event),
         ])->render();
 
-        // KASHIF-PRINT-CAT-PAR-1 changed the words, not the arithmetic: the
-        // house calls them CAT (ours) and PAR (the party's).
-        $sentence = 'Chicken 5 KG (CAT 3, PAR 2)';
+        // KITCHEN-SHEET-A5-1 (27 Sep) ne LAFZ alag kar diye, HISAAB nahi.
+        //
+        // Pehle dono kaghaz bilkul ek jumla chhapte thay. Malik ne kaha:
+        // "instruction mai sirf instruction ae — bas Party aur us ki qty, aur
+        // agar own to Own aur us ki qty." Bawarchi ko maal ka NAAM nahi
+        // chahiye (wo dish se jaanta hai); graahak ke kaghaz par naam zaroori
+        // hai, kyunke wahan wo hisaab ka hissa hai.
+        //
+        // Is liye ab jumla nahi, ADAD milaya ja raha hai — aur asal khatra
+        // wohi tha: agar dono kaghaz alag ginti kahen to bawarchi aur graahak
+        // ke paas do sach ho jayenge.
+        $this->assertStringContainsString('Chicken 5 KG (CAT 3, PAR 2)', $quotation,
+            "graahak ke kaghaz par poora jumla, naam samet");
 
-        $this->assertStringContainsString($sentence, $quotation,
-            "the customer's copy already said this");
-        $this->assertStringContainsString($sentence, $sheet,
-            'and the kitchen must read the SAME sentence — one arithmetic, or the two papers disagree');
+        $this->assertStringContainsString('Party 2 KG', $sheet,
+            'kitchen sheet par: party kitna laayegi');
+        $this->assertStringContainsString('Own 3 KG', $sheet,
+            'aur hamare store se kitna');
+        $this->assertStringNotContainsString('Chicken 5 KG (CAT 3, PAR 2)', $sheet,
+            'magar maal ka naam aur poora jumla kitchen sheet par nahi — wo jagah khaata hai');
     }
 
     public function test_a_release_frozen_before_the_snapshot_existed_still_prints(): void
@@ -361,23 +373,38 @@ class CateringEventActionsMySqlTest extends MySqlTenantTestCase
         ])->render();
 
         $this->assertStringContainsString('Chicken Biryani', $sheet, 'the sheet still renders');
-        $this->assertStringNotContainsString('(us', $sheet, 'it just has nothing to say about materials');
+        // Needle ASLI markup par hai, kisi dheele lafz par nahi. Pehle yahan
+        // '(us' dhoonda jata tha, aur wo CSS ke ek comment ke lafz "(uska
+        // x-height…)" se ja takraya — test red hua jab ke parche par maal ki
+        // ek satar bhi nahi thi.
+        $this->assertStringNotContainsString('class="supply-line"', $sheet,
+            'snapshot hai hi nahi, to maal ki koi satar nahi aani chahiye');
     }
 
-    public function test_bulk_kitchen_sheets_explains_itself_instead_of_throwing(): void
+    /**
+     * KITCHEN-SHEET-PREVIEW-1 (27 Sep) ne is usool ko ULAT diya.
+     *
+     * Ye test pehle parakhta tha ke release ke baghair bulk parche se INKAAR
+     * kare aur "Release production" ka raasta batae. Malik ne kaha: "kitchen
+     * sheet can be print to any status." Ab parcha banta hai — aur khud kehta
+     * hai ke production jaari nahi hui.
+     *
+     * Purane test ka ASAL maqsad ab bhi qaayam hai aur yahin parkha ja raha
+     * hai: naye tab me framework ka error na aaye. Pehle wo 422 wale safhe se
+     * poora hota tha, ab parche se.
+     */
+    public function test_bulk_kitchen_sheets_print_before_release(): void
     {
-        // The bulk pages open in a NEW TAB, where a framework error page is the
-        // only thing the operator sees — for a situation where nothing is wrong.
         $event = $this->booking();
 
-        $response = app(\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class)
-            ->kitchenSheets(Request::create('/catering/documents/bulk/kitchen-sheets', 'GET', ['ids' => [$event->id]]));
+        $html = app(\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class)
+            ->kitchenSheets(Request::create('/catering/documents/bulk/kitchen-sheets', 'GET', ['ids' => [$event->id]]))
+            ->render();
 
-        $this->assertSame(422, $response->getStatusCode());
-        $html = $response->getContent();
-        $this->assertStringContainsString('No kitchen sheet yet', $html);
-        $this->assertStringContainsString($event->event_no, $html, 'the booking is named, not silently dropped');
-        $this->assertStringContainsString('Release production', $html, 'and the way forward is stated');
+        $this->assertStringContainsString('KITCHEN / SERVICE SHEET', $html,
+            'release se pehle bhi parcha banna chahiye');
+        $this->assertStringContainsString('<div class="preview-band">', $html,
+            'aur parcha khud kehna chahiye ke production jaari nahi hui');
     }
 
     public function test_an_explicit_urdu_name_is_never_overwritten_by_the_product_book(): void

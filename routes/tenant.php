@@ -949,6 +949,12 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
 
                     Route::get('/catering/documents/estimate/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'estimate'])->name('tenant.catering.documents.estimate');
                     Route::get('/catering/documents/kitchen-sheet/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheet'])->name('tenant.catering.documents.kitchen-sheet');
+                    // KITCHEN-SHEET-PREVIEW-1: wohi parcha, release se pehle. Alag
+                    // route is liye ke binding EVENT par hai, release par nahi.
+                    // Alag route ka matlab alag permission hai — migration
+                    // 2026_09_27_000001 wo har us role ko deti hai jis ke paas
+                    // asli kitchen sheet pehle se hai.
+                    Route::get('/catering/documents/kitchen-sheet-preview/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheetPreview'])->name('tenant.catering.documents.kitchen-sheet-preview');
                     Route::get('/catering/documents/final-invoice/{cateringFinalInvoice}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'finalInvoice'])->name('tenant.catering.documents.final-invoice');
 
                     // KASHIF-CATERING-OPERATOR-UI-1: bulk documents for a selected set

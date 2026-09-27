@@ -65,6 +65,11 @@ class CateringSettingController extends Controller
             'default_service_charge_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'print_language_profile' => ['required', Rule::in(CateringSetting::PRINT_PROFILES)],
             'show_kitchen_requirements' => ['nullable', 'boolean'],
+            // KITCHEN-SHEET-PAPER-SETTING-1: jaiz size ki fehrist MODEL par hai —
+            // yahan dobara likhne se do fehristein ban jatin aur naya size ek
+            // jagah reh jata.
+            'kitchen_sheet_paper' => ['nullable', Rule::in(array_keys(CateringSetting::PAPER_SIZES))],
+            'quotation_paper' => ['nullable', Rule::in(array_keys(CateringSetting::PAPER_SIZES))],
             'reminder_offsets' => ['nullable', 'array'],
             'reminder_offsets.*' => [Rule::in(CateringSetting::DEFAULT_REMINDER_OFFSETS)],
         ]);

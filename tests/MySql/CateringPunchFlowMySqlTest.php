@@ -230,9 +230,21 @@ class CateringPunchFlowMySqlTest extends MySqlTenantTestCase
         $this->assertCount(2, $releaseLines);
         $this->assertSame('Main Kitchen', $releaseLines[0]->production_station, 'the item\'s own kitchen');
         $this->assertSame('Cold Section', $releaseLines[1]->production_station);
-        $this->assertStringContainsString('CUSTOMER SUPPLIES: Chicken 2 KG (of 6 KG)',
-            (string) $releaseLines[0]->instructions, 'the kitchen sheet knows the split');
-        $this->assertStringContainsString('Zafran on top', (string) $releaseLines[0]->instructions);
+        // KITCHEN-SHEET-A5-1 (27 Sep): hidayaat me ab SIRF hidayaat. Pehle
+        // yahan "CUSTOMER SUPPLIES: Chicken 2 KG (of 6 KG)" bhi jorra jata
+        // tha; malik ne kaha wo wahan se hataya jaye.
+        //
+        // Magar "kitchen ko split ka pata ho" wala usool QAYAM hai — wo baat
+        // ab line ke SNAPSHOT me hai aur parche par apne khaane me chhapti
+        // hai. Is liye pehra wahan lag gaya, hataya nahi gaya.
+        $this->assertSame('Zafran on top', trim((string) $releaseLines[0]->instructions),
+            'hidayaat me sirf hidayat — maal ka jumla nahi');
+
+        $mats = $releaseLines[0]->materials_snapshot;
+        $this->assertIsArray($mats, 'maal snapshot me mehfooz hona chahiye');
+        $this->assertSame('split', $mats[0]['supply'], 'kitchen ko split ka pata hai');
+        $this->assertEqualsWithDelta(2.0, $mats[0]['customer'], 0.001, 'graahak 2 KG laa raha hai');
+        $this->assertEqualsWithDelta(6.0, $mats[0]['qty'], 0.001, 'aur pakana poore 6 KG ka hai');
 
         // ── And the whole trip moved no money and no stock. ──
         $this->assertSame($before, $ledgers());

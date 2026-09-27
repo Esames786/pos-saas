@@ -124,6 +124,9 @@ class PermissionCatalogService
         'tenant.catering.production-releases.reprint' => 'Print / Reprint',
         'tenant.catering.documents.estimate' => 'Print / Reprint',
         'tenant.catering.documents.kitchen-sheet' => 'Print / Reprint',
+        // KITCHEN-SHEET-PREVIEW-1: wohi parcha, release se pehle. Sirf chhapne
+        // ke liye — kuch mehfooz nahi hota.
+        'tenant.catering.documents.kitchen-sheet-preview' => 'Print / Reprint',
         'tenant.catering.documents.final-invoice' => 'Print / Reprint',
         // Bulk print runs compose the same documents for a selected set of
         // bookings — same grant family as the single-document prints.

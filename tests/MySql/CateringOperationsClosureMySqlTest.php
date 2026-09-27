@@ -221,11 +221,19 @@ class CateringOperationsClosureMySqlTest extends MySqlTenantTestCase
         // OFF — the default, and what the kitchen prints today.
         $off = $this->kitchenSheetHtml($release);
         $this->assertStringNotContainsString('Kitchen Needs', $off, 'planning table band hai');
-        $this->assertStringContainsString('Rice', $off,
-            'a material the customer brings must not disappear from the kitchen sheet');
-        $this->assertStringContainsString('CUSTOMER SUPPLIES', $off,
-            'and the DISH LINE must still say who is bringing it — otherwise switching the '
-            .'planning table off would quietly send the kitchen to our store for it');
+        // KITCHEN-SHEET-A5-1 (27 Sep): ye usool QAYAM hai — planning table
+        // band karne se bhi ye baat gayab nahi honi chahiye ke maal graahak
+        // laa raha hai, warna bawarchi hamare store ki taraf chala jayega.
+        //
+        // Sirf JAGAH aur LAFZ badle. Pehle dish ki hidayaat me
+        // "CUSTOMER SUPPLIES: Rice …" likha aata tha; malik ne kaha hidayaat
+        // me sirf hidayaat aayen. Ab maal ka apna khaana hai jis me
+        // "Party <qty>" likha hota hai, aur maal ka NAAM nahi — bawarchi usay
+        // dish ke naam se jaanta hai.
+        $this->assertStringContainsString('class="supply-line"', $off,
+            'maal ka khaana mojood ho — planning table band hone se ye gayab na ho');
+        $this->assertStringContainsString('Party', $off,
+            'aur us me saaf likha ho ke maal graahak laa raha hai');
 
         // ON — whoever issues from the store can still have the totals.
         \App\Models\Tenant\CateringSetting::tenantDefault()->update(['show_kitchen_requirements' => true]);
@@ -279,8 +287,16 @@ class CateringOperationsClosureMySqlTest extends MySqlTenantTestCase
 
         // The dishes themselves are still all there — the guard must be able to
         // tell "no headings" apart from "no sheet".
-        $this->assertStringContainsString('Rice', $html);
-        $this->assertStringContainsString('Chicken', $html);
+        //
+        // Ye do assert pehle 'Rice' aur 'Chicken' dhoondte thay, jo is fixture
+        // me DISH nahi balke KHAAM MAAL hain (RM-RICE, RM-CHK) — comment kuch
+        // aur keh raha tha aur code kuch aur parakh raha tha. 27 Sep se
+        // kitchen sheet maal ka naam chhapti hi nahi (sirf "Party 4 KG"), is
+        // liye ab wo dish ka naam dekhte hain — jo shuru se maqsad tha.
+        $this->assertStringContainsString('Chicken Biryani', $html,
+            'parcha waqai bana hai — warna oopar wale "koi station bar nahi" khali safhe par bhi pass ho jate');
+        $this->assertStringContainsString('class="supply-line"', $html,
+            'aur maal ka khaana bhi bhara hai');
     }
 
     public function test_the_release_screen_shows_both_figures(): void
