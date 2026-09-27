@@ -38,8 +38,8 @@ TEST_STATUS=Feature: tests/Feature/Edge 162/36,113 green; tests/Feature/Pos 19/3
                      170 tests green after the contract-expectation updates; EdgeDiscountFlowMySqlTest 8/175; EdgeSharedPosView +
                      EdgeSharedPosContract 10 green; EdgeCashierPermissionMatrixMySqlTest + clean-machine 4/347 (clean-machine alone
                      160 assertions, 5:13); EdgeHeartbeatBuildReportMySqlTest 6/87; EdgeCashierControlCensus re-pinned + green (two
-                     Online ids retired). FULL Edge MySQL gate on the integrated tree (729 tests, shared DBs): RUNNING at checkpoint time
-                     — result appended below when it ends. Known load-sensitive tests (Authority/Connection partition) re-run alone if
+                     Online ids retired). FULL Edge MySQL gate on the integrated tree (729 tests, shared DBs): **OK — 729 tests / 7,977 assertions, 1 skipped, 0 failures, 0 errors
+                     (31 min 17 s, 27 Sep 05:45–06:16; includes the load-sensitive partition tests, green in this run).** Known load-sensitive tests (Authority/Connection partition) re-run alone if
                      they fail under load, as in the 0.7.0 gate.
 FILES_CHANGED=86 files, +9,028 / −285 vs 599c5d0 (resources/views 18, tests/MySql 17, tests/Feature 10, app/Http 10, app/Services 7,
                      public/assets 5, docs 5, app/Support 4, tools 3, app/Console 2, routes 1, config 1, database/migrations 1,
