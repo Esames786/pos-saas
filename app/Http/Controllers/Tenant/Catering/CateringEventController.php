@@ -524,6 +524,7 @@ class CateringEventController extends Controller
             'booking_date' => ['required', 'date'],
             'event_date' => ['required', 'date'],
             'service_time' => ['nullable', 'date_format:H:i'],
+            'dispatch_time' => ['nullable', 'date_format:H:i'],
             'venue' => ['nullable', 'string', 'max:255'],
             // CATERING-PAX-OPTIONAL-1: an inquiry often arrives before the guest
             // count does — "shaadi hai, rate bata dein" — and the booking was

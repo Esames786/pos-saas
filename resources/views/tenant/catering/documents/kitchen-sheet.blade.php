@@ -11,7 +11,10 @@
 <html lang="{{ $isUr ? 'ur' : 'en' }}" dir="{{ $isUr ? 'rtl' : 'ltr' }}">
 <head>
 <meta charset="utf-8">
-<title>{{ $release->release_no }} — Kitchen Sheet</title>
+{{-- KITCHEN-SHEET-PREVIEW-1: tab ka naam — aur "save as PDF" ki file ka naam —
+     bhi sach bole. Ek file jis par "PR-… Kitchen Sheet" likha ho aur andar
+     preview ho, wo filing cabinet me wohi ghalti hai jo deewar par hoti. --}}
+<title>{{ $release->exists ? $release->release_no : 'PREVIEW '.($snapshot['event_no'] ?? '') }} — Kitchen Sheet</title>
 @include("tenant.catering.documents.partials.kitchen-sheet-style")
 </head>
 <body>

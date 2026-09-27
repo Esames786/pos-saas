@@ -276,22 +276,53 @@ class CateringDashboardParityMySqlTest extends MySqlTenantTestCase
         $this->assertSame($before, $after, 'bulk printing posts nothing, moves nothing, finalizes nothing');
     }
 
-    public function test_bulk_kitchen_sheets_refuse_when_nothing_is_released(): void
+    /**
+     * KITCHEN-SHEET-PREVIEW-1 (27 Sep) ne is usool ko ULAT diya.
+     *
+     * Ye test pehle pehra deta tha ke release ke baghair bulk parcha chhapne se
+     * INKAAR kare — "no sheet was invented from an unreleased booking". Malik
+     * ne saaf kaha: "kitchen sheet can be print to any status." Ab release se
+     * pehle bhi parcha banta hai.
+     *
+     * Test narm nahi kiya gaya, NAYE usool par laya gaya hai. Purane usool ke
+     * peeche jo asal khauf tha — ke aarzi parcha asli jaisa dikhega — us ka
+     * pehra ab yehi test deta hai: parcha bane, aur khud kahe ke wo jaari
+     * nahi hua.
+     */
+    public function test_bulk_kitchen_sheets_print_before_release_as_a_marked_preview(): void
     {
         $a = $this->booking(now()->addDays(2)->toDateString());
+
+        $html = app(CateringBulkDocumentController::class)->kitchenSheets(
+            Request::create('/x', 'GET', ['ids' => [$a->id]])
+        )->render();
+
+        $this->assertStringContainsString('KITCHEN / SERVICE SHEET', $html,
+            'release se pehle bhi parcha banna chahiye — yehi maanga gaya tha');
+        $this->assertStringContainsString('<div class="preview-band">', $html,
+            'aur parcha khud kahe ke production abhi jaari nahi hui');
+        $this->assertStringContainsString('PRODUCTION NOT RELEASED YET', $html);
+    }
+
+    /**
+     * Ab bulk sirf EK soorat me inkaar karta hai: booking par koi quotation hi
+     * na ho — yani parche par rakhne ko koi khana hi na ho.
+     */
+    public function test_bulk_kitchen_sheets_still_refuse_a_booking_with_no_quotation(): void
+    {
+        $a = $this->booking(now()->addDays(2)->toDateString());
+
+        $db = DB::connection('tenant');
+        $estimateIds = $db->table('catering_estimates')->where('catering_event_id', $a->id)->pluck('id');
+        $db->table('catering_estimate_lines')->whereIn('catering_estimate_id', $estimateIds)->delete();
+        $db->table('catering_estimates')->whereIn('id', $estimateIds)->delete();
 
         $response = app(CateringBulkDocumentController::class)->kitchenSheets(
             Request::create('/x', 'GET', ['ids' => [$a->id]])
         );
 
-        // Still a refusal, and still 422 — a booking without a release has no
-        // kitchen sheet to print. KASHIF-KITCHEN-MATERIALS-1 only changed what
-        // the operator SEES: these pages open in a new tab, where an exception
-        // renders a framework error for a situation where nothing is wrong.
         $this->assertSame(422, $response->getStatusCode());
-        $this->assertStringNotContainsString('KITCHEN / SERVICE SHEET', $response->getContent(),
-            'no sheet was invented from an unreleased booking');
         $this->assertStringContainsString($a->event_no, $response->getContent(),
-            'and the booking that has none is named');
+            'aur jo booking chhoot gayi, us ka naam liya jaye');
     }
 }

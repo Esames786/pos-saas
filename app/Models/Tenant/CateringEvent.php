@@ -68,6 +68,8 @@ class CateringEvent extends Model
         'booking_date',
         'event_date',
         'service_time',
+        // KITCHEN-SHEET-A5-1: khana NIKLEGA kab — bawarchi-khane ka asal sawal.
+        'dispatch_time',
         'venue',
         'pax',
         'status',

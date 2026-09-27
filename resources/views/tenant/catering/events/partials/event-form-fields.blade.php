@@ -200,6 +200,22 @@
                         </div>
                     @endif
                 </div>
+                {{-- KITCHEN-SHEET-A5-1 (27 Sep) — khana yahan se NIKLEGA kab.
+
+                     Service Time wo waqt hai jab mehmaan khate hain; bawarchi-
+                     khane ka asal sawal doosra hai. Purane software ke parche
+                     par ye waqt mojood tha, hamare par nahi — is liye malik
+                     usay haath se likhte rahe.
+
+                     Marzi ka: purani bookings me hai hi nahi, aur khali hone
+                     par kaghaz us satar ko chhapta hi nahi. --}}
+                <div class="col-md-3">
+                    <label class="form-label">Dispatch Time</label>
+                    <input type="time" name="dispatch_time" class="form-control"
+                           aria-label="Select dispatch time"
+                           value="{{ old('dispatch_time', $event?->dispatch_time ? \Carbon\Carbon::parse($event->dispatch_time)->format('H:i') : '') }}">
+                    <div class="form-text fs-12">Khana kitchen se nikalne ka waqt.</div>
+                </div>
                 <div class="col-md-6">
                     <label class="form-label">Venue</label>
                     <input type="text" name="venue" class="form-control"
