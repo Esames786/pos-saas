@@ -128,7 +128,59 @@ class CateringCustomerBalanceService
             'customer' => $customer,
             'events' => $events,
             'totals' => $this->totals($events->pluck('event')),
+            'ledger' => $this->ledger($events->pluck('event')),
         ];
+    }
+
+    /**
+     * Graahak ka poora hisaab — har booking ki har satar, tareekh ke hisaab se.
+     *
+     * Satrein yahan BANAYI NAHI jatin: har ek
+     * `CateringFinancialPositionService::ledger()` se aati hai, jo pehle se har
+     * booking ka statement banata hai (advance, refund, invoice, aur "advance
+     * applied"). Yahan sirf unhe jor kar tarteeb di jati hai aur har satar par
+     * booking ka number lagaya jata hai.
+     *
+     * EK NAYA ADAD zaroor banta hai aur wohi is method ka khatra hai: graahak
+     * ki satah ka running total. Booking ka apna running us ki apni kahani
+     * sunata hai; mila-jula fehrist me wo bemani ho jata. Is liye running
+     * yahan naye sire se chalta hai — andar, bahar aur bill — aur AAKHRI satar
+     * ka running theek `credit − balance` ke barabar aana chahiye. Test usi
+     * par khara hai: agar ye adad sar par likhe adad se alag ho gaya, to ek hi
+     * screen do kahaniyan keh rahi hai.
+     *
+     * @param  Collection<int, CateringEvent>  $events
+     * @return Collection<int, array>
+     */
+    private function ledger(Collection $events): Collection
+    {
+        $position = app(CateringFinancialPositionService::class);
+
+        $rows = collect();
+        foreach ($events as $event) {
+            foreach ($position->ledger($event) as $row) {
+                $row['event_no'] = $event->event_no;
+                $row['event_id'] = $event->id;
+                $rows->push($row);
+            }
+        }
+
+        $running = 0.0;
+
+        return $rows
+            ->sortBy([['sort_date', 'asc'], ['sort_at', 'asc']])
+            ->values()
+            ->map(function (array $row) use (&$running) {
+                // Wohi simt jo booking ke statement ki hai: musbat = graahak ka
+                // lena, manfi = graahak par baqi.
+                $running = round(
+                    $running + (float) $row['money_in'] - (float) $row['money_out'] - (float) $row['charged'],
+                    2
+                );
+                $row['running'] = $running;
+
+                return $row;
+            });
     }
 
     // ── andar ka kaam ──────────────────────────────────────────────────────

@@ -224,3 +224,121 @@ The guard for step 1 is the one that matters most and must be written first:
 for every customer, **the module's total equals the sum of `position()` over
 that customer's events**, computed independently. If those two ever disagree,
 the module is telling a story the booking screens do not.
+
+---
+
+# Addendum — qadam 3 aur 4: ledger aur paise wale actions
+
+Date: 2026-09-28, qadam 1 live hone ke baad (`ad2690f`)
+
+## Malik ki farmaish, unhi ke lafzon me
+
+> "Maine tumhein kaha tha is screen mai saare wo option hon — record payment,
+> credit, debit, refund, advance, all option against customer order, wohi jaise
+> event wali screen se karte hain. Aur poora us ka ledger bhi dekh sakein."
+
+Yani: is screen par wohi kaam ho sakein jo booking ki screen par hote hain, aur
+graahak ka poora hisaab ek jagah nazar aaye.
+
+## Sab se ahem faisla: NAYA RAASTA NAHI BANEGA
+
+Ye kaam do tarah ho sakta hai, aur farq baad me bohot mehnga parta hai.
+
+**Ghalat tareeqa:** is screen ke liye apna advance/refund controller likhna.
+Tab do jagah paisa leti hain, do jagah validate karti hain, aur do jagah
+posting ka faisla karti hain. Ek din un me se ek badalti hai aur doosri wahin
+reh jati hai.
+
+**Jo kiya jayega:** wohi mojooda endpoints —
+`POST /catering/events/{event}/advances` aur
+`POST /catering/events/{event}/refunds`. Ye screen sirf **event chunti hai aur
+wohi form kholti hai**. Paisa lene ka faisla, uski hadd, aur uski posting
+jahan aaj hai wahin rahegi.
+
+Isi wajah se har action **EVENT ke against** hai, "graahak ke against" nahi.
+Posting ka qaida hi event par mabni hai:
+
+| Paisa kab aaya | `posting_type` | Ledger |
+| --- | --- | --- |
+| Final invoice se pehle | `advance` | Dr cash/bank · Cr **2300** |
+| Final invoice ke baad | `settlement` | Dr cash/bank · Cr **1300** |
+
+Ek screen jo sirf "graahak" jaanti ho, ye faisla kar hi nahi sakti.
+
+### Agar graahak ke kai events par baqi hai
+
+Form events ki fehrist dikhayega — har ek ka apna baqi saath — aur operator
+chunega. **Ek payment khud-ba-khud kai events par baant-na mana hai.** Wo
+allocation ka faisla hai, us ke accounting nataij hain, aur wo insaan ka kaam
+hai.
+
+## "Credit / debit" ka matlab is nizaam me
+
+Malik ne "credit debit" kaha. Is nizaam me un ke asal naam ye hain, aur inhi
+do ke ilawa koi teesra instrument nahi:
+
+- **Advance / Payment received** — paisa andar. `CateringAdvanceService::record()`
+- **Refund** — paisa bahar. `CateringRefundService::record()`, apni alag
+  permission ke peeche kyunke ye WAHID catering action hai jo paisa bahar
+  nikalta hai.
+
+Manfi advance ("debit note") **nahi** banega: model us par saaf mana karta hai —
+*"a receipt must be for a positive amount. Money going back to the customer is a
+refund."* Paisa wapas jane ka ek hi darwaza hai, aur us par apna pehra hai.
+
+## Ledger
+
+`CateringFinancialPositionService::ledger($event)` pehle se har booking ka poora
+statement banata hai — advances, refunds, invoice, aur "advance applied". Ye
+screen usi ko **har event ke liye bula kar, tareekh ke hisaab se jor degi**, aur
+har satar par booking ka number likha hoga.
+
+Ek naya adad zaroor banega aur us par pehra zaroori hai: **graahak ki satah ka
+running total**. Ye har satar ke baad "aaj tak ka position" hai (andar − bahar −
+charged). Test us par khara hoga: **aakhri satar ka running theek
+`credit − balance` ke barabar hona chahiye** — wohi do adad jo sar par likhe
+hain. Agar ye kabhi alag hue, to ledger aur sar do alag kahaniyan keh rahe hain.
+
+## Ek asal rukawat, aur us ka hal
+
+`CateringRefundController::store()` kaam ke baad **hard-coded** `/catering/events/{id}`
+par bhejta hai. Wajah file me likhi hai: tenant routes me `{subdomain}` hota hai,
+is liye `route()` paisa chalne ke BAAD exception phenk deta tha, aur path us se
+bachata hai.
+
+Customer screen se refund karne par ye operator ko booking par pheink dega.
+
+**Hal:** ek marzi ka `return_customer` input jo sirf **customer ka id (integer)**
+leta hai. Controller khud path banata hai. Client se koi URL nahi liya jata, is
+liye open-redirect ka imkaan hi nahi. `back()` isteemal nahi kiya ja raha kyunke
+mojooda tareeqa jaan-boojh kar path banata hai aur us wajah ko torna nahi.
+
+`CateringAdvanceController` pehle se `back()` karta hai — us me koi tabdeeli
+nahi chahiye.
+
+## Permissions
+
+Koi nayi permission nahi. Buttons wohi permissions dekhenge jo booking screen
+dekhti hai:
+
+- `tenant.catering.advances.store`
+- `tenant.catering.refunds.store`
+
+Ek doosri permission banana "kaun paisa le sakta hai" ka do jawab bana deta.
+
+## Kya nahi banega
+
+- Koi naya posting raasta.
+- Invoice par koi likhai — wo immutable hai.
+- Ek payment ka kai events par khud-ba-khud bat-wara.
+- Graahakon ka aapas me merge.
+
+## Pehre
+
+1. Ledger ka aakhri running = `credit − balance` (upar wali wajah).
+2. Ledger me har advance, refund aur invoice ki satar mojood ho — ginti
+   database se alag nikaal kar milayi jaye, taake koi satar chup-chaap gire
+   nahi.
+3. Customer screen se record kiya gaya advance **wohi** journal banaye jo
+   booking screen se banta — dono ka GL saath milaya jaye.
+4. Refund ke baad operator customer screen par wapas aaye, booking par nahi.

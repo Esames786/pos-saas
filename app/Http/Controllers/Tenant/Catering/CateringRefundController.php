@@ -47,7 +47,20 @@ class CateringRefundController extends Controller
         // The tenant routes carry a {subdomain} parameter, so route() would bind
         // the event to the subdomain and throw after the money had already
         // moved. A path keeps the redirect out of that.
-        return redirect()->to('/catering/events/'.$cateringEvent->id)
+        // CATERING-CUSTOMER-BALANCES-1 (28 Sep): refund ab Customer Catering
+        // Balances ki screen se bhi hota hai, aur operator ko wahin wapas aana
+        // chahiye — warna wo booking par pheink diya jata hai.
+        //
+        // Client se koi URL NAHI liya ja raha, sirf ek adad; path controller
+        // khud banata hai. Is liye yahan open-redirect ka imkaan hi nahi, aur
+        // upar wali wajah bhi barqarar rehti hai: raasta hamesha yahin bana
+        // hua path hai, kisi soorat me route() nahi.
+        $returnCustomer = (int) $request->integer('return_customer');
+        $path = $returnCustomer > 0
+            ? '/catering/customer-balances/'.$returnCustomer
+            : '/catering/events/'.$cateringEvent->id;
+
+        return redirect()->to($path)
             ->with('status', 'Refund '.$refund->refund_no.' of '.number_format((float) $refund->amount, 2)
                 .' recorded — posted to the general ledger and taken off the cash/bank balance.');
     }
