@@ -127,6 +127,35 @@ class CateringFinancialPositionService
             ->values();
     }
 
+    /**
+     * CATERING-LIVE-BALANCE-1 (28 Sep) — "abhi kitna baqi hai" ka QAIDA, EK
+     * jagah.
+     *
+     * Ye method is liye mojood hai ke ye hisaab pehle KAI jagah alag alag
+     * likha hua tha, aur un me se ek jagah GHALAT thi. Malik ne 27 Sep ko
+     * pakra: invoice CI-20260925-0002 ne kaghaz par 38,000 baqi chhapa jab ke
+     * screen 0 keh rahi thi.
+     *
+     * Wajah ye THI ke wo kaghaz `catering_final_invoices.balance_due` parh
+     * raha tha. Wo khaana invoice banate waqt likha jata hai aur phir kabhi
+     * nahi badalta — aur badal bhi nahi sakta: is model par `updating` ka
+     * pehra hai jo kehta hai "a catering final invoice is immutable once
+     * issued", aur ye pehra durust hai. Ek jaari shuda invoice ek jama hua
+     * document hai; us ka `balance_due` us DIN ka sach hai, aaj ka nahi.
+     *
+     * Is liye ilaj khaane ko taza karna NAHI hai (wo us pehre se takraata
+     * hai). Ilaj ye hai ke jo bhi AAJ ka jawab dikhata ho, wo hisaab lagaye —
+     * aur sab ek hi qaide se lagayein, warna yehi kharabi kisi naye khaane me
+     * dobara paida ho jayegi.
+     *
+     * Chhoti aur khali si lagti hai. Iska maqsad hisaab bachana nahi, QAIDE
+     * ko ek naam dena hai.
+     */
+    public static function outstanding(float $billed, float $netReceived): float
+    {
+        return round(max($billed - $netReceived, 0), 2);
+    }
+
     public function position(CateringEvent $event): array
     {
         $grossReceived = round((float) $event->advances()->sum('amount'), 2);
@@ -137,7 +166,7 @@ class CateringFinancialPositionService
 
         // The two halves of one number, each reported positively under its own
         // name. Exactly one of them can be non-zero.
-        $balanceDue = round(max($billed - $netReceived, 0), 2);
+        $balanceDue = self::outstanding($billed, $netReceived);
         $customerCredit = round(max($netReceived - $billed, 0), 2);
 
         return [

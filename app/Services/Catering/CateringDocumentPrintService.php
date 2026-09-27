@@ -146,7 +146,17 @@ class CateringDocumentPrintService
             'lines' => $invoice->snapshot['lines'] ?? [],
             'grand_total' => (float) $invoice->grand_total,
             'advance_total' => (float) ($invoice->advance_total ?? 0),
-            'balance' => (float) $invoice->balance_due,
+            // CATERING-LIVE-BALANCE-1: AAJ ka baqi, invoice ke jame hue
+            // khaane se nahi — wo jaari hote waqt ka adad hai aur immutable
+            // hai, is liye us ke baad aaya hua paisa us me kabhi nahi aata.
+            'balance' => $event
+                ? (float) app(\App\Services\Catering\CateringFinancialPositionService::class)
+                    ->position($event)['balance_due']
+                // Event ke baghair koi booking hi nahi, is liye us par kuch
+                // baqi bhi nahi. Yahan jame hue khaane par girna sab se bura
+                // hoga: wohi adad jise hum hata rahe hain, aur theek us surat
+                // me jab hamein sab se kam maloom hai.
+                : 0.0,
         ];
 
         return $this->createJob(

@@ -251,12 +251,21 @@
                                  against what is held net of refunds. --}}
                             @php
                                 $received = (float) ($event->advances_sum ?? 0) - (float) ($event->refunds_sum ?? 0);
-                                $billed = $event->finalInvoice
-                                    ? null // the invoice's own frozen balance is the authority
-                                    : (float) ($event->currentEstimate?->grand_total ?? 0);
-                                $balance = $event->finalInvoice
-                                    ? (float) $event->finalInvoice->balance_due
-                                    : $billed - $received;
+                                // CATERING-LIVE-BALANCE-1 (28 Sep) — yahan pehle likha tha
+                                // "the invoice's own frozen balance is the authority", aur
+                                // wohi faisla is poori kharabi ki jarh tha. Wo khaana invoice
+                                // jaari hote waqt likha jata hai aur immutable hai; us ke baad
+                                // aaya hua paisa us me kabhi nahi pahunchta. Is fehrist par
+                                // booking "38,000 baqi" dikhati rehti thi jab ke usi booking
+                                // ki apni screen 0 keh rahi thi.
+                                //
+                                // Invoice ka `grand_total` ab bhi ISI se aata hai — wo us din
+                                // ka sauda hai aur usay jamna hi chahiye. Sirf "kitna baqi"
+                                // aaj ka hai, aur us ka hisaab wohi qaida lagata hai jo screen
+                                // lagati hai.
+                                $billed = (float) ($event->finalInvoice?->grand_total
+                                    ?? $event->currentEstimate?->grand_total ?? 0);
+                                $balance = \App\Services\Catering\CateringFinancialPositionService::outstanding($billed, $received);
                             @endphp
                             @if($received > 0 || ($event->currentEstimate && (float) $event->currentEstimate->grand_total > 0))
                                 <div class="fs-12 text-muted">recv {{ number_format($received, 2) }}</div>
@@ -432,7 +441,7 @@
                                              actually grant it: invoiced, and nothing left owing in
                                              either direction. Offering it earlier would hand the
                                              operator a button whose only outcome is an error. --}}
-                                        @if($event->status === 'completed' && $event->finalInvoice && (float) $event->finalInvoice->balance_due <= 0)
+                                        @if($event->status === 'completed' && $event->finalInvoice && \App\Services\Catering\CateringFinancialPositionService::outstanding((float) $event->finalInvoice->grand_total, (float) (($event->advances_sum ?? 0) - ($event->refunds_sum ?? 0))) <= 0)
                                             <li>
                                                 <button type="button" class="dropdown-item js-event-action"
                                                         data-url="{{ url('/catering/events/' . $event->id . '/close') }}"

@@ -26,19 +26,32 @@
     /* @page margin applies to PAPER only — on screen the sheet is drawn at real
        size on a grey desk so the preview matches the printed output. Undone
        inside @media print so margins are never doubled. */
-    html { background: #e5e7eb; }
+    html { background: #e5e7eb; height: 100%; }
+    /* KITCHEN-SHEET-FOOT-BOTTOM-1 (27 Sep) — malik: "jo footer hai wo hamesha
+       bottom mai hi aae, irrespective ek item ho ya 14-15."
+
+       Pehle paer table ke foran baad chipka hua tha, is liye 8 khanon wale
+       parche par wo safhe ke beech me latak jata tha. Ab body ek KHARA flex
+       hai aur paer par `margin-top: auto` — bachi hui saari jagah paer ke
+       UPAR chali jati hai, chahe khane 1 hon ya 14.
+
+       Isi liye print me `min-height` ab 0 nahi balke 100% hai: 0 par body
+       sirf apne matn jitni oonchi hoti aur "neeche" ka koi matlab hi na
+       rehta. Iske liye html ko bhi height chahiye, warna 100% kis cheez ka
+       100% — us ka jawab hi na hota. */
     body {
         font-family: {{ $isUr ? "'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif" : "Arial, Helvetica, sans-serif" }};
         color: #111827; font-size: 11px; line-height: 1.25;
         width: {{ $kMm["w"] }}mm; min-height: {{ $kMm["h"] }}mm; margin: 12px auto; padding: 8mm;
         background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.18);
+        display: flex; flex-direction: column;
     }
     @media screen and (max-width: 230mm) {
         body { width: 100%; min-height: 0; margin: 0; padding: 6mm; box-shadow: none; }
     }
     @media print {
-        html { background: #fff; }
-        body { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+        html { background: #fff; height: 100%; }
+        body { width: auto; min-height: 100%; margin: 0; padding: 0; box-shadow: none; }
     }
     /* Nastaliq descenders clip at the body's Latin leading — and the kitchen
        reads this sheet at arm's length, so give it extra room. */
@@ -71,8 +84,10 @@
        `ftl` label apni value se CHIPKE nahi: pehli koshish me "12:00 PMSERVE"
        chhap raha tha, kyunke label inline tha aur beech me koi jagah nahi
        thi. Ab label apni satar par hai. */
+    /* `margin-top: auto` — dekho upar body ka flex wala note. Yehi ek lafz
+       paer ko safhe ki tal par le jata hai. */
     .foot { display: flex; justify-content: space-between; align-items: baseline;
-            gap: 12px; margin-top: 4px; padding-top: 3px; border-top: 2px solid #111827; }
+            gap: 12px; margin-top: auto; padding-top: 3px; border-top: 2px solid #111827; }
     .foot-l { display: flex; align-items: baseline; gap: 12px; }
     .foot-r { text-align: {{ $isUr ? 'left' : 'right' }}; }
     /* Waqt kabhi na toote: "8:00" upar aur "PM" neeche chala jata tha, jis se
@@ -175,7 +190,17 @@
        jani chahiye, khali hashiye me nahi. */
     table.items td { padding: 3px 6px; }
     .item-name { font-size: 15px; font-weight: 800; }
-    .item-ur { font-size: 21px; }
+    /* KITCHEN-SHEET-FOOT-BOTTOM-1 (27 Sep) — malik: "urdu items ka font
+       mazeed increase karo." 21 -> 24px.
+
+       ⚠ QEEMAT SAAF RAKHNA: qatar ki bulandi ISI khane se banti hai, is liye
+       har barhotri safhe par khane ghataati hai. Chrome se naapa gaya: 24px
+       par ek A5 safhe par 13 khane aate hain, 14 nahi. Yani 14 ya us se zyada
+       khanon wali booking ab doosre safhe par jayegi. Malik ne bara font
+       maanga hai aur wo ye
+       adla-badli jaante hue maange — magar agli baar jab koi "do safhe kyun"
+       poochhe, jawab yahan likha hai. */
+    .item-ur { font-size: 24px; }
     .qty { font-size: 16px; font-weight: bold; white-space: nowrap; }
     .instructions { color: #374151; font-size: 12px; }
     /* KASHIF-KITCHEN-MATERIALS-1: the material line sits UNDER the dish and

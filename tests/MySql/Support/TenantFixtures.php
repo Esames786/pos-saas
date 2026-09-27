@@ -132,6 +132,26 @@ trait TenantFixtures
         ], $attrs));
     }
 
+    /**
+     * KITCHEN-SHEET-RTL-MEASURE-1 — bidi ke NA-NAZAR AANE WALE nishan hata
+     * kar matn parho.
+     *
+     * Urdu kaghaz par "30 KG" ko ulta chhapne se rokne ke liye us ke gird
+     * Unicode ke isolate nishan (LRI/PDI) lagte hain. Wo be-chaurai hain aur
+     * chhapte nahi, magar matn me MOJOOD hote hain — is liye seedha
+     * assertStringContainsString('Chicken 6 KG') un ke bagair match nahi
+     * karta.
+     *
+     * Test ko in nishanon ki shakl se koi gharz nahi honi chahiye; usay ye
+     * dekhna hai ke JUMLA kya kehta hai. Is liye parhne se pehle nishan
+     * hata do. (Rukh ka apna pehra alag test me hai, jahan wo asal sawal
+     * hai.)
+     */
+    protected function plainText(string $html): string
+    {
+        return preg_replace('/[\x{2066}-\x{2069}\x{200E}\x{200F}]/u', '', $html) ?? $html;
+    }
+
     protected function makePrintJob(?int $printerId, array $attrs = []): int
     {
         return $this->tenant()->table('print_jobs')->insertGetId(array_merge([

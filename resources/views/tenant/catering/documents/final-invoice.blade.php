@@ -174,11 +174,33 @@
         <tr><td class="k">{{ $t('Tax', 'ٹیکس') }}</td><td class="num">{{ number_format($invoice->tax_amount, 2) }}</td></tr>
     @endif
     <tr class="grand"><td>{{ $t('Net Total', 'کل واجب الادا') }}</td><td class="num">{{ number_format($invoice->grand_total, 2) }}</td></tr>
-    <tr><td class="k">{{ $t('Advances Received', 'ایڈوانس وصول شدہ') }}</td><td class="num">-{{ number_format($invoice->advance_total, 2) }}</td></tr>
-    <tr class="due"><td>{{ $t('Balance Due', 'بقایا رقم') }}</td><td class="num">{{ number_format($invoice->balance_due, 2) }}</td></tr>
+    {{-- CATERING-LIVE-BALANCE-1 (28 Sep) — ye do adad AB ke hain, invoice
+         banne ke waqt ke nahi.
+
+         Malik ne CI-20260925-0002 ka kaghaz bheja: "38,000 baqi" — jab ke
+         wo poora paisa aa chuka tha. Wajah ye thi ke yahan
+         `$invoice->advance_total` aur `$invoice->balance_due` parhe ja
+         rahe the. Wo khaane invoice JAARI HOTE WAQT likhe jate hain aur
+         phir kabhi nahi badalte — aur badal bhi nahi sakte: model par
+         pehra hai ke jaari shuda invoice immutable hai. Us booking par
+         paisa invoice se 70 SECOND baad aaya tha.
+
+         Upar wale adad (subtotal, charges, net total) jaan-boojh kar
+         SNAPSHOT se hi aate hain — wo us din ka sauda hain aur unhe badalna
+         nahi chahiye. Sirf "kitna aaya" aur "kitna baqi" aaj ke hain.
+
+         Hisaab yahin lagaya ja raha hai, controller me nahi: ye document
+         do raaston se render hota hai (HTML aur PDF), aur kal koi teesra
+         raasta banega. Controller me rakhne par har naye caller ko yaad
+         rakhna parta — aur yehi bhool is kharabi ki jarh thi. --}}
+    @php
+        $live = app(\App\Services\Catering\CateringFinancialPositionService::class)->position($invoice->event);
+    @endphp
+    <tr><td class="k">{{ $t('Advances Received', 'ایڈوانس وصول شدہ') }}</td><td class="num">-{{ number_format($live['net_received'], 2) }}</td></tr>
+    <tr class="due"><td>{{ $t('Balance Due', 'بقایا رقم') }}</td><td class="num">{{ number_format($live['balance_due'], 2) }}</td></tr>
 </table>
 
-@if($invoice->balance_due <= 0)
+@if($live['balance_due'] <= 0)
     <div style="text-align: {{ $isUr ? 'left' : 'right' }}; margin-top: 10px;">
         <span class="paid-stamp">{{ $t('FULLY PAID', 'مکمل ادا شدہ') }}</span>
     </div>

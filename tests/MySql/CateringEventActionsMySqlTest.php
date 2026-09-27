@@ -252,7 +252,7 @@ class CateringEventActionsMySqlTest extends MySqlTenantTestCase
             'position' => app(\App\Services\Catering\CateringFinancialPositionService::class)->position($event),
         ])->render();
 
-        $this->assertStringContainsString('Chicken 5 KG (CAT 3, PAR 2)', $quotation,
+        $this->assertStringContainsString('Chicken 5 KG (CAT 3, PAR 2)', $this->plainText($quotation),
             'ours is CAT, the customer is PAR');
         $this->assertStringNotContainsString('(us 3, customer 2)', $quotation);
     }
@@ -344,14 +344,17 @@ class CateringEventActionsMySqlTest extends MySqlTenantTestCase
         // Is liye ab jumla nahi, ADAD milaya ja raha hai — aur asal khatra
         // wohi tha: agar dono kaghaz alag ginti kahen to bawarchi aur graahak
         // ke paas do sach ho jayenge.
-        $this->assertStringContainsString('Chicken 5 KG (CAT 3, PAR 2)', $quotation,
+        $this->assertStringContainsString('Chicken 5 KG (CAT 3, PAR 2)', $this->plainText($quotation),
             "graahak ke kaghaz par poora jumla, naam samet");
 
-        $this->assertStringContainsString('Party 2 KG', $sheet,
+        // Naap apne LTR khaane me hai, warna Urdu kaghaz par "KG 2" chhapta
+        // hai. Markup samet jaancha ja raha hai: sirf "2 KG" dhoondne par ye
+        // us din bhi hara rehta jis din rukh wapas toot jaye.
+        $this->assertStringContainsString('Party <span dir="ltr">2 KG</span>', $sheet,
             'kitchen sheet par: party kitna laayegi');
-        $this->assertStringContainsString('Own 3 KG', $sheet,
+        $this->assertStringContainsString('Own <span dir="ltr">3 KG</span>', $sheet,
             'aur hamare store se kitna');
-        $this->assertStringNotContainsString('Chicken 5 KG (CAT 3, PAR 2)', $sheet,
+        $this->assertStringNotContainsString('Chicken 5 KG (CAT 3, PAR 2)', $this->plainText($sheet),
             'magar maal ka naam aur poora jumla kitchen sheet par nahi — wo jagah khaata hai');
     }
 

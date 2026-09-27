@@ -46,9 +46,17 @@ class KashifKitchenPlanSeeder extends Seeder
         'catering',          // the vertical itself
     ];
 
-    /** Deliberately excluded — a caterer has no till and no factory. */
+    /**
+     * Deliberately excluded — a caterer has no till and no factory.
+     *
+     * customer_payments bhi yahan hai (28 Sep). Wo screen graahak se paisa
+     * RECEIVABLE ke khilaf leti hai — yani POS/sales ke udhaar ke khilaf.
+     * Caterer ka paisa catering advance ke zariye aata hai aur wo event par
+     * post hota hai, is liye ye screen yahan sirf uljhan paida karti thi.
+     */
     public const EXCLUDED = [
         'pos', 'restaurant', 'manufacturing', 'reports', 'ecommerce', 'erp_extensions',
+        'customer_payments',
     ];
 
     public function run(): void

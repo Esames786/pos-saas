@@ -3,6 +3,7 @@
 namespace App\Services\Catering;
 
 use App\Models\Tenant\CateringEvent;
+use App\Services\Catering\CateringFinancialPositionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -42,7 +43,14 @@ class CateringCalendarService
 
         $events = CateringEvent::query()
             ->with('currentEstimate:id,catering_event_id,grand_total,version_no,status')
-            ->with('finalInvoice:id,catering_event_id,balance_due,status')
+            // CATERING-LIVE-BALANCE-1: `grand_total` chahiye (jama hua sauda —
+            // durust) aur advances/refunds ke sums (aaj ka paisa). Balance in
+            // dono se banta hai, invoice ke jame hue `balance_due` se NAHI.
+            // withSum ek hi aggregate subquery hai, is liye qatar-dar-qatar
+            // koi nayi query nahi chalti.
+            ->with('finalInvoice:id,catering_event_id,grand_total,balance_due,status')
+            ->withSum('advances', 'amount')
+            ->withSum('refunds', 'amount')
             ->withCount('productionReleases')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
             ->whereBetween('event_date', [$from->toDateString(), $to->toDateString()])
@@ -142,7 +150,16 @@ class CateringCalendarService
             return 'Store Issue Pending';
         }
 
-        return (float) $invoice->balance_due > 0 ? 'Balance Due' : 'Complete';
+        // Jama hua khaana nahi — aaj ka hisaab. Wo khaana invoice jaari
+        // hote waqt likha jata hai aur immutable hai, is liye us ke baad
+        // aaya hua paisa us me kabhi nahi aata: ek poori ada-shuda booking
+        // calendar par mahinon "Balance Due" pari rehti thi.
+        $netReceived = round((float) ($event->advances_sum_amount ?? 0)
+            - (float) ($event->refunds_sum_amount ?? 0), 2);
+        $outstanding = CateringFinancialPositionService::outstanding(
+            (float) $invoice->grand_total, $netReceived);
+
+        return $outstanding > 0 ? 'Balance Due' : 'Complete';
     }
 
     /**
@@ -157,7 +174,14 @@ class CateringCalendarService
 
         return CateringEvent::query()
             ->with('currentEstimate:id,catering_event_id,grand_total,version_no,status')
-            ->with('finalInvoice:id,catering_event_id,balance_due,status')
+            // CATERING-LIVE-BALANCE-1: `grand_total` chahiye (jama hua sauda —
+            // durust) aur advances/refunds ke sums (aaj ka paisa). Balance in
+            // dono se banta hai, invoice ke jame hue `balance_due` se NAHI.
+            // withSum ek hi aggregate subquery hai, is liye qatar-dar-qatar
+            // koi nayi query nahi chalti.
+            ->with('finalInvoice:id,catering_event_id,grand_total,balance_due,status')
+            ->withSum('advances', 'amount')
+            ->withSum('refunds', 'amount')
             ->withCount('productionReleases')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
             ->whereBetween('event_date', [$today->toDateString(), $today->addDays($days)->toDateString()])

@@ -150,7 +150,7 @@
             @foreach($orderedLines as $line)
             <tr>
                 <td class="sr">{{ ++$sr }}</td>
-                <td class="num"><span class="qty">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }} {{ $line->unit_code }}</span></td>
+                <td class="num"><span class="qty" dir="ltr">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }} {{ $line->unit_code }}</span></td>
                 <td>
                     @if($isUr && $line->item_name_ur)
                         <div class="item-ur ur">{{ $line->item_name_ur }}</div>
