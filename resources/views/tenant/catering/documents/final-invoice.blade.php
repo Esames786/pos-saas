@@ -119,7 +119,7 @@
         <h4>{{ $t('Event', 'تقریب') }}</h4>
         @if(!empty($s['event_type']))<div class="meta-row"><span class="k">{{ $t('Type', 'قسم') }}</span><span class="v cap">{{ $s['event_type'] }}</span></div>@endif
         <div class="meta-row"><span class="k">{{ $t('Date', 'تاریخ') }}</span><span>{{ \Carbon\Carbon::parse($s['event_date'])->format('l, d F Y') }}</span></div>
-        @if(!empty($s['service_time']))<div class="meta-row"><span class="k">{{ $t('Time', 'وقت') }}</span><span>{{ \Carbon\Carbon::parse($s['service_time'])->format('g:i A') }}</span></div>@endif
+        @if(!empty($s['service_time']))<div class="meta-row"><span class="k">{{ $t('Time', 'وقت') }}</span><span dir="ltr">{{ \Carbon\Carbon::parse($s['service_time'])->format('g:i A') }}</span></div>@endif
         @if(!empty($s['venue']))<div class="meta-row"><span class="k">{{ $t('Venue', 'مقام') }}</span><span class="v cap">{{ $s['venue'] }}</span></div>@endif
         <div class="meta-row"><span class="k">{{ $t('Guests (PAX)', 'مہمان') }}</span><span><strong>{{ number_format($s['pax'] ?? 0) }}</strong></span></div>
     </div>

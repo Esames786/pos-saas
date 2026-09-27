@@ -50,6 +50,10 @@ class CateringRedirectContractMySqlTest extends MySqlTenantTestCase
         $request = Request::create('/catering/events', 'POST', [
             'branch_id' => $this->branchId,
             'customer_name' => 'Redirect Contract',
+            // CATERING-PHONE-2-1: phone ab lazmi hai. Ye test raaste ka
+            // pehra hai, phone ke qaide ka nahi — magar wo raasta ab
+            // phone ke baghair chalta hi nahi.
+            'customer_phone' => '03001234567',
             'booking_date' => now()->toDateString(),
             'event_date' => now()->addDays(9)->toDateString(),
             'pax' => 80,
@@ -75,6 +79,7 @@ class CateringRedirectContractMySqlTest extends MySqlTenantTestCase
         $request = Request::create('/', 'PUT', [
             'branch_id' => $this->branchId,
             'customer_name' => 'Update Contract Renamed',
+            'customer_phone' => '03001234567',
             'booking_date' => now()->toDateString(),
             'event_date' => now()->addDays(12)->toDateString(),
             'pax' => 45,

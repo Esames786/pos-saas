@@ -77,8 +77,33 @@
     .foot-r { text-align: {{ $isUr ? 'left' : 'right' }}; }
     /* Waqt kabhi na toote: "8:00" upar aur "PM" neeche chala jata tha, jis se
        parche par do adhoore hisse nazar aate the. */
-    .ft { display: inline-block; font-size: 13px; font-weight: bold; white-space: nowrap; }
-    .ftl { font-size: 8px; font-weight: normal; text-transform: uppercase;
+    /* Waqt ka qad SERVICE ke barabar — purane parche par dono ek jitne hain.
+       Waqt ka chhota label jaan-boojh kar chhota rehta hai: wo sirf batata
+       hai ke ye kaun sa waqt hai, parha waqt jata hai.
+
+       ⚠ IN COMMENTS ME WO LAFZ NA LIKHNA JO PARCHE PAR CHHAPTE HAIN. Ye
+       stylesheet parche ke andar jati hai, is liye yahan likha hua har lafz
+       document ke matn ka hissa ban jata hai. Abhi isi jagah rawangi wale
+       label ka naam aur ek namoona waqt likh diya gaya tha, aur wo test
+       foran red ho gaya jo kehta hai "jo waqt darj nahi us ka label parche
+       par na ho" — label kahin nahi tha, sirf is comment me tha.
+
+       WAQT PAR DO ALAG KHARABIYAN THIN, aur inhe alag rakhna zaroori hai:
+
+       1. TOOT-NA: ghanta upar aur din ka hissa neeche chala jata tha. Ilaj
+          yahan ka `white-space: nowrap` hai.
+       2. ULTA CHHAPNA: dono hisse ulti tarteeb me. Ye nowrap se theek NAHI
+          hota — ye bidi hai. Document `dir="rtl"` hai; ghante wala hissa
+          ADAD ka tukra hai aur din wala HARF ka, aur RTL do alag tukron ko
+          ulta laga deta hai. Ilaj CSS ka nahi, MARKUP ka hai: waqt apne
+          `dir="ltr"` wale span me hai (wohi jo phone par pehle se tha).
+
+       27 Sep ko jab malik ne waqt theek karne ko kaha to sirf (1) dekha gaya
+       aur nowrap laga kar ise band samajh liya gaya — (2) live par chhapta
+       raha aur malik ko dobara tasveer bhejni pari. Naya waqt kahin aur
+       lagate waqt: wo span lazmi hai. */
+    .ft { display: inline-block; font-size: 16px; font-weight: bold; white-space: nowrap; }
+    .ftl { font-size: 10px; font-weight: normal; text-transform: uppercase;
            color: #6b7280; letter-spacing: .8px; margin-{{ $isUr ? "left" : "right" }}: 4px; }
     .foot .venue { font-size: 12px; font-weight: bold; display: inline; }
     .foot .addr { font-size: 13px; font-weight: bold; color: #111827; display: inline; margin-{{ $isUr ? "right" : "left" }}: 10px; }
@@ -87,7 +112,22 @@
     table.items th { text-align: {{ $isUr ? 'right' : 'left' }}; border-bottom: 2px solid #111827; padding: 3px 6px; font-size: 9px; text-transform: uppercase; color: #374151; }
     table.items th.num, table.items td.num { text-align: {{ $isUr ? 'left' : 'right' }}; }
     table.items td { padding: 2px 6px; border-bottom: 1px solid #d1d5db; vertical-align: top; }
-    table.items th.sr, table.items td.sr { text-align: center; color: #6b7280; font-size: 10px; }
+    /* KITCHEN-SHEET-FILL-1 (27 Sep) — GINTI ab halki nahi.
+       Malik ne apni tasveer par 1 aur 2 ke neeche laal lakeer khainch kar
+       likha: "serial aur service ka text bold aur big karo". Ye adad
+       bawarchi-khane me PUKARA jata hai ("number saat wala nikal do"), is
+       liye grey 10px se kaala 13px bold. Sar-naame wala # halka hi rehta
+       hai — wo pukara nahi jata. */
+    table.items th.sr { text-align: center; color: #6b7280; }
+    table.items td.sr { text-align: center; font-size: 13px; font-weight: bold; color: #111827; }
+    /* KITCHEN-SHEET-FILL-1 — KHARI LAKEEREN. Malik ne hamare chhape hue
+       parche par teen khari lakeerein HAATH SE khainch kar bheji hain, aur
+       purane software ke parche par ye pehle se hain: har khaana poori
+       bulandi tak alag. Khali khaana (jahan hidayat ya maal nahi) tab bhi
+       ek khaana dikhta hai — abhi wo saath wale me ghul jata tha.
+       border-collapse pehle se hai, is liye milti hui lakeerein ek hi
+       bantī hain, dohri nahi. */
+    table.items th, table.items td { border-left: 1px solid #9ca3af; border-right: 1px solid #9ca3af; }
     /* KITCHEN-SHEET-A5-1: bawarchi sab se pehle DISH ka naam parhta hai — malik
        ne bheji tasveer par usi par teer laga kar "bold" likha tha. A5 par font
        chhota hua hai, is liye naam ka wazan aur barhaya gaya hai, kam nahi. */
@@ -95,13 +135,17 @@
        charges li gayi hon, aur RAQAM kabhi nahi: is parche par paisa nahi
        aata. Border se banaya gaya, background se nahi — print par background
        gir jate hain. */
-    .svc { border: 1.5px solid #111827; border-radius: 3px; padding: 1px 6px;
-           font-size: 11px; font-weight: bold; letter-spacing: .08em; align-self: center; }
+    /* KITCHEN-SHEET-FILL-1 (27 Sep) — SERVICE bara. Doosri laal lakeer isi
+       par thi. Purane parche par ye paer ka sab se numaya lafz hai aur
+       waqt us ke saath ek dabbe me bara chhapta hai; hamara 11px ka tha
+       aur baqi paer me gum ho jata tha. */
+    .svc { border: 2px solid #111827; border-radius: 3px; padding: 2px 8px;
+           font-size: 15px; font-weight: bold; letter-spacing: .08em; align-self: center; }
     /* KITCHEN-SHEET-A5-1 (teesra daur) — "Done" ke khaane ki jagah MAAL.
        Party upar, Own neeche, har ek apni satar par. Bold: bawarchi ke liye
        ye faisla-kun khabar hai — ye cheez us ke store se nahi aayegi. */
     table.items th.supply, table.items td.supply { text-align: {{ $isUr ? 'left' : 'right' }}; }
-    .supply-line { font-size: 11px; font-weight: bold; white-space: nowrap; line-height: 1.2; }
+    .supply-line { font-size: 13px; font-weight: bold; white-space: nowrap; line-height: 1.2; }
     /* Tick box apne khaane me. 12px — 18px par ye AKELA hi har row ko lamba
        kar deta tha, kyunke row ki bulandi us ke sab se lambe khane se banti
        hai, aur us se safhe par do khane kam ho jate the. */
@@ -111,11 +155,29 @@
        kyunke maal ki satar har khane ke NEECHE lagi hui thi aur sar bhari tha.
        Ab maal ka apna khaana hai (row ek hi satar ki rahi), sar halka hua,
        aur row ki lambai bhi kas di gayi. */
-    table.items td { padding: 1.5px 6px; }
-    .item-name { font-size: 12.5px; font-weight: 800; }
-    .item-ur { font-size: 18px; }
-    .qty { font-size: 13px; font-weight: bold; white-space: nowrap; }
-    .instructions { color: #374151; }
+    /* KITCHEN-SHEET-FILL-1 (27 Sep) — SAFHA BHARO. Ye upar wale hadaf ka
+       ULTA rukh hai, aur jaan-boojh kar.
+
+       26 Sep ki shikayat thi "saat khane poora safha kha gaye" — us par sab
+       kas diya gaya aur gunjaish 18–19 satron tak pahunch gayi. Ab 27 Sep ko
+       malik ne hamara chhapa hua parcha bhej kar us ke upar aur neeche
+       "EMPTY SPACE" likh diya: 9 khanon wali booking par aadha safha khali
+       ja raha tha, jab ke purane software ka parcha bhara hua aata hai.
+
+       Dono baatein ek hi adad par milti hain: PURANE SOFTWARE PAR 14. Us se
+       kam ho to kaghaz zaya, zyada ho to harf chhote. Chrome (wohi engine
+       jis se client chhapta hai) se naapa gaya — dompdf se nahi, wo is
+       parche ka raasta hai hi nahi.
+
+       Naap: gunjaish 18 thi, qatar ~8.9mm. 14 ke liye ~11.5mm chahiye, yani
+       ~29% zyada — jo padding se nahi, HARF SE diya gaya hai: bawarchi ise
+       chulhe se, kaam karte hue parhta hai, is liye bari jagah bare harf me
+       jani chahiye, khali hashiye me nahi. */
+    table.items td { padding: 3px 6px; }
+    .item-name { font-size: 15px; font-weight: 800; }
+    .item-ur { font-size: 21px; }
+    .qty { font-size: 16px; font-weight: bold; white-space: nowrap; }
+    .instructions { color: #374151; font-size: 12px; }
     /* KASHIF-KITCHEN-MATERIALS-1: the material line sits UNDER the dish and
        stays quieter than it — the dish name is what the cook reads first. */
     .line-mats-inline { font-size: 10px; color: #4b5563; margin-top: 0; line-height: 1.25; }

@@ -62,6 +62,11 @@ class CateringEvent extends Model
         'customer_name',
         'customer_name_ur',
         'customer_phone',
+        // CATERING-PHONE-2-1: doosra raabte ka number. PEHCHAN PHONE 1 SE HI
+        // hoti hai — customer usi se dhoonda/banaya jata hai. Ye driver ke
+        // liye hai; is par pehchan karne se ek hi shaks ke do customer ban
+        // jate.
+        'customer_phone_2',
         'customer_email',
         'customer_address',
         'event_type',

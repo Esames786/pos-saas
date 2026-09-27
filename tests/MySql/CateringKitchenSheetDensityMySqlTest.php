@@ -69,23 +69,45 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
     }
 
     /**
-     * 16 khane ek safhe par — wohi adad jo client ne purane software ke muqable
-     * me maanga tha.
+     * KITCHEN-SHEET-FILL-1 (27 Sep) — DONO TARAF SE PEHRA.
      *
-     * Ye do qadmon me mila, aur dono naape gaye:
-     *   • CSS kasne se (Urdu ki leading, qatar ki padding, header ka size):
-     *     qatar ~76px se ~46px, aur safhe par 7 se 12 khane.
-     *   • Phir malik ne 26 Sep ko course ke unwaan hatwa diye — har patti ~25px
-     *     leti thi — aur adad 18 tak pahunch gaya.
+     * Pehle yahan sirf ek taraf ka pehra tha: "16 khane ek safhe par". Wo 26
+     * Sep ki shikayat ka jawab tha ("saat khane poora safha kha gaye"). Us
+     * pehre ne apna kaam kiya — aur PHIR US SE AAGE NIKAL GAYA: gunjaish
+     * 18–19 tak pahunch gayi, aur 27 Sep ko malik ne hamara chhapa hua parcha
+     * bhej kar us ke upar aur neeche "EMPTY SPACE" likh diya. 9 khanon wali
+     * booking par aadha safha khali ja raha tha.
      *
-     * Pehra 16 par lagaya gaya hai, 18 par nahi: naap me thori gunjaish rakhni
-     * chahiye, warna khane ke naam thora lamba hote hi test bina kisi asal
-     * kharabi ke red ho jata.
+     * Ek tarfa pehra yehi karta hai: jis simt dhakelo, us simt had se aage le
+     * jata hai. Is liye ab BAND hai, hadaf nahi:
+     *   • 12 khane ek safhe par AANE CHAHIYEN  → parcha is se zyada phool na
+     *     jaye (warna wapas "empty space")
+     *   • 16 khane ek safhe par NA AAYEN       → parcha dobara na kase (warna
+     *     wapas 26 Sep wali shikayat)
+     *
+     * ASAL ADAD, aur ye zaroori hai: purane software par 14 khane safha bhar
+     * dete hain. CLIENT BROWSER SE CHHAPTA HAI, is liye asal naap Chrome ki
+     * hai — aur Chrome par, Kashif Kitchen ke ASLI (lambe) naamon ke saath,
+     * hamara parcha ab Urdu me 14 aur English me 15 par safha bharta hai.
+     * Yani purane software ke barabar.
+     *
+     * Neeche wale adad (12/16) DOMPDF ke hain aur is test ke apne CHHOTE
+     * farzi naamon ke hain — dono cheezein Chrome+asli-naam se alag hain, is
+     * liye adad bhi alag hain. Inhe "client ko itne khane dikhenge" na samjha
+     * jaye; ye sirf regression par kaatte hain.
+     *
+     * Chrome wali asal naap dobara lene ka tareeqa (jab malik phir shikayat
+     * kare): parcha kisi asli release par render kar ke
+     *   chrome --headless=new --no-pdf-header-footer --print-to-pdf=out.pdf file:///sheet.html
+     * chalao aur out.pdf me `/Count N` parho.
      */
-    public function test_a_normal_sheet_fits_on_one_page(): void
+    public function test_the_sheet_neither_wastes_the_page_nor_cramps_it(): void
     {
-        $this->assertSame(1, $this->pagesFor(16, 'ur'),
-            '16 khane ek safhe par — shuru me 7 par hi doosra safha shuru ho jata tha');
+        $this->assertSame(1, $this->pagesFor(12, 'ur'),
+            'parcha phool gaya — 12 khane bhi ek safhe par nahi aa rahe, yani wapas "empty space"');
+
+        $this->assertSame(2, $this->pagesFor(16, 'ur'),
+            'parcha dobara kas gaya — 16 khane ek safhe par aa gaye, yani harf phir chhote ho gaye');
     }
 
     /** Aur Urdu par bhi, kyunke client ka sheet Urdu me hi chhapta hai. */
@@ -93,6 +115,47 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
     {
         $this->assertSame(1, $this->pagesFor(10, 'ur'));
         $this->assertSame(1, $this->pagesFor(10, 'en'));
+    }
+
+    /**
+     * KITCHEN-SHEET-FILL-1 (27 Sep) — GINTI aur SERVICE.
+     *
+     * Malik ne apni tasveer par do cheezon ke neeche laal lakeer khainchi:
+     * qatar ka number, aur paer ka SERVICE. Dono halke the — number grey
+     * 10px, SERVICE 11px.
+     *
+     * Jaanch ULTI likhi gayi hai — "purani qeemat gayi ya nahi" — sidhi
+     * nahi. Wajah tajruba hai: ek dafa dashboard par `.68rem` isi liye bach
+     * gaya tha ke har "nayi qeemat mojood hai?" wali jaanch pehli baar me
+     * pass ho gayi, aur purani qeemat neeche kisi doosre qaide me zinda
+     * rahi. Sidhi jaanch nayi satar dekh kar khush ho jati hai; ulti jaanch
+     * purani satar par kaat-ti hai.
+     */
+    public function test_the_serial_and_the_service_word_stay_big(): void
+    {
+        $css = view('tenant.catering.documents.partials.kitchen-sheet-style', ['isUr' => true])->render();
+
+        // Probe zinda hai? Dono qaide CSS me mojood hone chahiyen, warna
+        // neeche wali "purani qeemat nahi mili" khali file par bhi pass ho
+        // jayegi.
+        $this->assertSame(1, preg_match('/td\.sr\s*\{([^}]*)\}/', $css, $sr),
+            'ginti ka qaida CSS me milna chahiye');
+        $this->assertSame(1, preg_match('/\.svc\s*\{([^}]*)\}/s', $css, $svc),
+            'SERVICE ka qaida CSS me milna chahiye');
+
+        // Ginti: kaali aur bold, 13px se chhoti nahi — aur purana 10px gaya.
+        $this->assertStringNotContainsString('font-size: 10px', $sr[1],
+            'ginti wapas 10px par chali gayi');
+        $this->assertStringContainsString('font-weight: bold', $sr[1],
+            'ginti bold honi chahiye — bawarchi-khane me ye adad pukara jata hai');
+        $this->assertSame(1, preg_match('/font-size:\s*([\d.]+)px/', $sr[1], $m));
+        $this->assertGreaterThanOrEqual(13, (float) $m[1], 'ginti 13px se chhoti na ho');
+
+        // SERVICE: purana 11px gaya, ab 15px se chhota nahi.
+        $this->assertStringNotContainsString('font-size: 11px', $svc[1],
+            'SERVICE wapas 11px par chala gaya');
+        $this->assertSame(1, preg_match('/font-size:\s*([\d.]+)px/', $svc[1], $m));
+        $this->assertGreaterThanOrEqual(15, (float) $m[1], 'SERVICE 15px se chhota na ho');
     }
 
     /**
