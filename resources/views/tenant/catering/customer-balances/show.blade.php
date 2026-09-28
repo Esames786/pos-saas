@@ -140,7 +140,8 @@
                                         @if($event->status !== 'cancelled')
                                             <button type="button" class="btn btn-sm btn-primary js-advance"
                                                     data-event="{{ $event->id }}" data-no="{{ $event->event_no }}"
-                                                    data-balance="{{ $row['balance'] }}">Receive</button>
+                                                    data-balance="{{ $row['balance'] }}"
+                                                    data-credit="{{ $row['credit'] }}">Receive</button>
                                         @endif
                                     @endcan
                                     @can('tenant.catering.refunds.store')
@@ -244,7 +245,7 @@
                     <p class="text-muted fs-13" id="cbAdvanceHint"></p>
                     <div class="mb-2">
                         <label class="form-label">Amount <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" name="amount" class="form-control" required>
+                        <input type="number" step="0.01" name="amount" id="cbAdvAmount" class="form-control" required>
                     </div>
                     <div class="mb-2">
                         <label class="form-label">Received date <span class="text-danger">*</span></label>
@@ -264,9 +265,37 @@
                         <label class="form-label">Reference</label>
                         <input type="text" name="reference" class="form-control" placeholder="Slip / transaction #">
                     </div>
+
+                    {{-- Ye do khaane pehli koshish me CHHOOT gaye the, aur us se
+                         screen booking wali screen se kam kar rahi thi: manfi
+                         rakam "reason chahiye" keh kar rad ho jati aur reason
+                         dene ki koi jagah hi nahi thi, aur bill se zyada lene ka
+                         darwaza bhi band tha.
+
+                         MINUS = REFUND. Controller manfi rakam ko negative
+                         receipt nahi banata — wo usay Refund me badal deta hai,
+                         kyunke position() advances ko JAMA karta hai aur ek
+                         manfi satar chup-chaap "kitna aaya" ki tareef badal
+                         deti. Us par refundable ki hadd bhi lagti hai.
+
+                         `allow_overpayment` chhupa hua hai aur JS us waqt 1
+                         karta hai jab typed rakam baqi se barh jaye — kyunke
+                         paisa qiston me aata hai aur form kholte waqt kisi ko
+                         nahi pata hota ke ye qist total cross karegi. Server us
+                         jhande ko un logon ke liye gira deta hai jin ke paas
+                         `tenant.catering.advances.overpay` nahi — yani yahan se
+                         koi ikhtiyar udhaar nahi liya ja sakta. --}}
+                    <input type="hidden" name="allow_overpayment" id="cbAdvOverpay" value="0">
+                    <div class="mb-2 d-none" id="cbAdvReasonWrap">
+                        <label class="form-label">Reason <span class="text-danger">*</span></label>
+                        <input type="text" name="overpayment_reason" class="form-control" maxlength="255"
+                               placeholder="Why more than the bill, or why money is going back">
+                    </div>
+
                     <div class="alert alert-light border fs-12 mb-0">
                         Recording this <strong>posts to the general ledger</strong> and increases the mapped
                         cash/bank balance. It does not move stock.
+                        <div class="mt-1" id="cbAdvCreditHint"></div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -340,18 +369,50 @@
 <script>
 // Har button apni booking ka id laata hai aur form ka action wahi banta hai.
 // Ek hi modal, kyunke khaane har booking par wohi hain — sirf pata badalta hai.
+var cbOutstanding = 0, cbCredit = 0;
+
+// Reason ka khaana us WAQT maanga jata hai jab wo waqai darkar ho — pehle se
+// nahi. Paisa qiston me aata hai: 250,000 ke bill par 100,000 ki teen qisten
+// teesri par total cross karti hain, aur form kholte waqt kisi ko ye maloom
+// nahi hota. Is liye arithmetic screen karti hai aur sawal usi lamhe uthta hai
+// jab wo sach ban jata hai.
+function cbSyncAdvance() {
+    var amount = parseFloat(document.getElementById('cbAdvAmount').value || '0');
+    var goingBack = amount < 0;
+    var over = amount > cbOutstanding;
+
+    document.getElementById('cbAdvOverpay').value = over ? '1' : '0';
+    document.getElementById('cbAdvReasonWrap').classList.toggle('d-none', !(goingBack || over));
+    document.getElementById('cbAdvCreditHint').textContent = goingBack
+        ? 'A minus amount is recorded as a REFUND, not a negative receipt — and only up to the credit held.'
+        : (over ? 'This is more than the booking is short by. The excess becomes credit owed to the customer.' : '');
+}
+
 document.querySelectorAll('.js-advance').forEach(function (btn) {
     btn.addEventListener('click', function () {
         var form = document.getElementById('cbAdvanceForm');
         form.action = '/catering/events/' + btn.dataset.event + '/advances';
         document.getElementById('cbAdvanceNo').textContent = btn.dataset.no;
-        var balance = parseFloat(btn.dataset.balance || '0');
-        document.getElementById('cbAdvanceHint').textContent = balance > 0
-            ? 'Outstanding on this booking: ' + balance.toLocaleString(undefined, {minimumFractionDigits: 2})
-            : 'Nothing is outstanding on this booking.';
+
+        cbOutstanding = parseFloat(btn.dataset.balance || '0');
+        cbCredit = parseFloat(btn.dataset.credit || '0');
+
+        document.getElementById('cbAdvanceHint').textContent =
+            (cbOutstanding > 0
+                ? 'Outstanding on this booking: ' + cbOutstanding.toLocaleString(undefined, {minimumFractionDigits: 2})
+                : 'Nothing is outstanding on this booking.')
+            + (cbCredit > 0
+                ? ' · Credit held: ' + cbCredit.toLocaleString(undefined, {minimumFractionDigits: 2})
+                  + ' — a MINUS amount hands it back.'
+                : ' · A minus amount hands credit back, once there is any.');
+
+        document.getElementById('cbAdvAmount').value = '';
+        cbSyncAdvance();
         new bootstrap.Modal(document.getElementById('cbAdvanceModal')).show();
     });
 });
+
+document.getElementById('cbAdvAmount')?.addEventListener('input', cbSyncAdvance);
 
 document.querySelectorAll('.js-refund').forEach(function (btn) {
     btn.addEventListener('click', function () {
