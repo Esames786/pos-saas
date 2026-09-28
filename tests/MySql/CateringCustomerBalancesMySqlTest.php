@@ -395,6 +395,71 @@ class CateringCustomerBalancesMySqlTest extends MySqlTenantTestCase
             'aur credit wapas ho chuka ho');
     }
 
+    /**
+     * MANFI RAKAM = REFUND, is screen se bhi.
+     *
+     * Booking screen par "Record Advance" ke khaane me minus daalne se paisa
+     * WAPAS jata hai — controller usay negative receipt nahi banata balke
+     * Refund me badal deta hai. Wajah controller me likhi hai: `position()`
+     * advances ko JAMA karta hai, is liye ek manfi satar chup-chaap "kitna
+     * aaya" ki tareef badal deti, aur us hadd se bhi nikal jati jo bill cover
+     * karne wala paisa wapas dene se rokti hai.
+     *
+     * Ye test isi liye likha gaya ke pehli koshish me ye kaam is screen par
+     * TOOTA HUA tha: modal me `overpayment_reason` ka khaana hi nahi tha, is
+     * liye minus "reason chahiye" keh kar rad ho jata aur reason dene ki koi
+     * jagah nahi thi. Screen booking screen se kam kar rahi thi, aur maanga
+     * yehi gaya tha ke wo barabar ho.
+     */
+    public function test_a_minus_amount_from_this_screen_becomes_a_refund(): void
+    {
+        $phone = '03008887777';
+        $event = $this->booking('MR. MINUS', $phone, 25000);
+        $this->receive($event, 25000);
+        $this->requoteAt($event, 20000);
+
+        $refundsBefore = DB::connection('tenant')->table('catering_refunds')->count();
+
+        app(\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class)->store(
+            Request::create('/x', 'POST', [
+                'amount' => -5000,
+                'received_date' => now()->toDateString(),
+                'payment_method_id' => $this->paymentMethodId,
+                'overpayment_reason' => 'quotation revised down, returning the difference',
+            ]),
+            $event->refresh()
+        );
+
+        $this->assertSame($refundsBefore + 1, DB::connection('tenant')->table('catering_refunds')->count(),
+            'minus ek REFUND banna chahiye');
+        $this->assertSame(0, DB::connection('tenant')->table('catering_advances')
+            ->where('catering_event_id', $event->id)->where('amount', '<', 0)->count(),
+            'aur koi manfi receipt ka row nahi banna chahiye — wo position() ki tareef tor deta');
+
+        $customer = Customer::on('tenant')->where('phone', $phone)->firstOrFail();
+        $this->assertSame(0.0, $this->balances->rows()->firstWhere('customer_id', $customer->id)['credit'],
+            'credit wapas ho chuka ho');
+    }
+
+    /**
+     * Wo do khaane jin ke baghair upar wala kaam ho hi nahi sakta, modal me
+     * MOJOOD hon.
+     *
+     * Ye jaanch sidhi nahi, ULTI soorat par kaat-ti hai: agar reason ka khaana
+     * kabhi nikal gaya to minus aur overpayment dono khamoshi se marr jate
+     * hain — form post hota rahega aur har baar "reason chahiye" keh kar rad
+     * hota rahega, bina koi jagah diye.
+     */
+    public function test_the_receive_form_can_actually_carry_a_reason_and_the_overpayment_flag(): void
+    {
+        $blade = file_get_contents(base_path('resources/views/tenant/catering/customer-balances/show.blade.php'));
+
+        $this->assertStringContainsString('name="overpayment_reason"', $blade,
+            'reason ka khaana chahiye — us ke baghair minus aur overpayment dono rad hote hain');
+        $this->assertStringContainsString('name="allow_overpayment"', $blade,
+            'overpayment ka jhanda chahiye — server us par apni permission khud lagata hai');
+    }
+
     /** Dono screenein khulti hain — asal controller se, sirf service se nahi. */
     public function test_both_screens_render(): void
     {
