@@ -186,7 +186,9 @@
 
 @can('tenant.catering.commercial-rates.store')
 <div class="modal fade" id="rateModal" tabindex="-1">
-    <div class="modal-dialog">
+    {{-- Malik: "modal ko size xl karo." Do chunav, ginti, aur pichli rates —
+         sab ek saath dekhne ke liye chaurai chahiye. --}}
+    <div class="modal-dialog modal-xl">
         <form method="POST" action="{{ url('/catering/commercial-rates') }}" class="modal-content"
               data-rate-history='@json($historyByMaterial ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)'>
             @csrf
@@ -266,7 +268,7 @@
                                      raasta banana ka matlab hota teesri jagah jo
                                      kal in dono se alag ho jati. --}}
                                 <div class="form-check form-check-inline m-0">
-                                    <input class="form-check-input" type="checkbox" id="apply-all">
+                                    <input class="form-check-input" type="checkbox" id="apply-all" checked>
                                     <label class="form-check-label fs-13 fw-semibold" for="apply-all">Sab par</label>
                                 </div>
                             </div>
@@ -283,23 +285,38 @@
 
                             <div class="form-check mt-1">
                                 <input class="form-check-input" type="checkbox" name="apply_manual"
-                                       value="1" id="apply-manual">
+                                       value="1" id="apply-manual" checked>
                                 <label class="form-check-label fs-13" for="apply-manual">
                                     Jo haath se likhi gayi hain, unhe bhi house rate par le aao
                                     <span class="badge bg-warning-subtle text-warning-emphasis ms-1"
                                           data-count="manual">—</span>
                                 </label>
-                                {{-- Ye jaan-boojh kar khali hai. Haath ka rate kisi
-                                     ne soch kar rakha tha; use ek rate ke khane se
-                                     chupke se mita dena wo cheez hai jis ka pata
-                                     hafton baad chalta hai. --}}
-                                <div class="form-text fs-12">
-                                    Ye un dishes ka rate badal dega jo kisi ne alag rakhi thi. Har tabdeeli log me darj hoti hai.
-                                </div>
                             </div>
 
-                            <div class="form-text fs-12 mt-2 mb-0">
-                                Pehle se bani hui quotations kisi soorat nahi badaltin — un ke liye impact screen hai.
+                            {{-- Malik: "neeche ki detail hide ho, collapse ho, show
+                                 karne pe pata ho neeche kya hai."
+
+                                 Tafseel chhupi hai, magar us ka UNWAAN nazar aata
+                                 hai — warna ye chhupana nahi, mitana hota. Jo
+                                 operator pehli baar ye safha khol raha hai usay
+                                 parhna chahiye; jo rozana kholta hai usay har baar
+                                 nahi. --}}
+                            <button class="btn btn-link btn-sm p-0 fs-12 text-decoration-none mt-2" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#apply-notes">
+                                <i class="ti ti-info-circle me-1"></i>Ye kya karega?
+                                <i class="ti ti-chevron-down ms-1"></i>
+                            </button>
+                            <div class="collapse" id="apply-notes">
+                                <div class="fs-12 text-body-secondary mt-1">
+                                    <div>
+                                        <strong>Haath wali dishes:</strong> in ka rate kisi ne alag rakha tha.
+                                        Tick lagane par wo house rate par aa jayengi. Har tabdeeli log me darj hoti hai.
+                                    </div>
+                                    <div class="mt-1">
+                                        <strong>Pehle se bani hui quotations kisi soorat nahi badaltin</strong> —
+                                        un ke liye impact screen hai, jahan har booking ka pehle/baad ka total dikhta hai.
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -365,6 +382,27 @@
         product.addEventListener('change', function () { paint(); syncAll(); });
         paint();
         syncAll();
+
+        // Ab dono tick DEFAULT ON hain (malik ki sarih maang). Is liye save par
+        // ek confirm lazmi hai jo GINTI bolta hai: ek default-on tick wo cheez
+        // hai jo bina dekhe chal jati hai, aur yahan us ka matlab ek click me
+        // sau qeematein hai.
+        form.addEventListener('submit', function (e) {
+            const row = counts[product.value] || {book: 0, manual: 0};
+            const f = document.getElementById('apply-following');
+            const m = document.getElementById('apply-manual');
+            const parts = [];
+            if (f && f.checked && ! f.disabled && row.book) parts.push(row.book + ' dishes jo pehle se house rate par hain');
+            if (m && m.checked && ! m.disabled && row.manual) parts.push(row.manual + ' dishes jo haath se likhi gayi hain');
+            if (! parts.length) return;
+
+            const rate = form.querySelector('[name=rate]');
+            if (! confirm('Ye rate (' + (rate ? rate.value : '') + ') in par lag jayega:\n\n· '
+                    + parts.join('\n· ')
+                    + '\n\nKisi dish ka rate BARH bhi sakta hai aur GIR bhi. Pehle se bani hui quotations nahi badlengi.\n\nAage barhein?')) {
+                e.preventDefault();
+            }
+        });
     })();
 </script>
 @endcan
