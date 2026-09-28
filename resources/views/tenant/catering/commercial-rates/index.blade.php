@@ -243,6 +243,67 @@
                         </div>
                     </div>
 
+                    {{-- RATE-APPLY-ON-SAVE-1 (28 Sep) — malik: "rate change karte
+                         he do checkbox dedo, click karne pe sab pe apply ho jaye."
+
+                         Pehle rate LIKHNA aur rate LAGANA do alag safhe thay, aur
+                         doosra safha itna lamba tha ke us ka asal button neeche
+                         dab jata tha. Ab chunav wahin hai jahan rate likha jata
+                         hai.
+
+                         Har tick ke saath GINTI likhi hai. Ek tick jis ke saath
+                         koi adad na ho wo chunav nahi, andaza hai — aur yahan
+                         andaza lagana ek hi click me sau qeematein hila deta
+                         hai. --}}
+                    <div class="col-12">
+                        <div class="border rounded p-2" id="rate-apply-choices"
+                             data-block-counts='@json($blockCounts ?? [], JSON_UNESCAPED_SLASHES)'>
+                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                                <span class="fw-semibold fs-13">Save karte hi kin dishes par lag jaye?</span>
+                                {{-- Malik: "checkbox laga do all ka." Ye apna koi
+                                     alag amal nahi hai — sirf neeche wale dono ko
+                                     ek saath uthata aur girata hai. Ek teesra
+                                     raasta banana ka matlab hota teesri jagah jo
+                                     kal in dono se alag ho jati. --}}
+                                <div class="form-check form-check-inline m-0">
+                                    <input class="form-check-input" type="checkbox" id="apply-all">
+                                    <label class="form-check-label fs-13 fw-semibold" for="apply-all">Sab par</label>
+                                </div>
+                            </div>
+
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="apply_following"
+                                       value="1" id="apply-following" checked>
+                                <label class="form-check-label fs-13" for="apply-following">
+                                    Jo dishes pehle se house rate par hain
+                                    <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1"
+                                          data-count="book">—</span>
+                                </label>
+                            </div>
+
+                            <div class="form-check mt-1">
+                                <input class="form-check-input" type="checkbox" name="apply_manual"
+                                       value="1" id="apply-manual">
+                                <label class="form-check-label fs-13" for="apply-manual">
+                                    Jo haath se likhi gayi hain, unhe bhi house rate par le aao
+                                    <span class="badge bg-warning-subtle text-warning-emphasis ms-1"
+                                          data-count="manual">—</span>
+                                </label>
+                                {{-- Ye jaan-boojh kar khali hai. Haath ka rate kisi
+                                     ne soch kar rakha tha; use ek rate ke khane se
+                                     chupke se mita dena wo cheez hai jis ka pata
+                                     hafton baad chalta hai. --}}
+                                <div class="form-text fs-12">
+                                    Ye un dishes ka rate badal dega jo kisi ne alag rakhi thi. Har tabdeeli log me darj hoti hai.
+                                </div>
+                            </div>
+
+                            <div class="form-text fs-12 mt-2 mb-0">
+                                Pehle se bani hui quotations kisi soorat nahi badaltin — un ke liye impact screen hai.
+                            </div>
+                        </div>
+                    </div>
+
                     @include('tenant.catering.partials.rate-history-panel', [
                         'historyLabel' => 'Is material ki pichli house rates',
                     ])
@@ -255,5 +316,56 @@
         </form>
     </div>
 </div>
+
+{{-- Ginti material ke sath badalti hai. Alag IIFE — history panel ka apna
+     handler hai aur us me ghusna dono ko aapas me uljha deta. --}}
+<script>
+    (function () {
+        const box = document.getElementById('rate-apply-choices');
+        if (! box) return;
+        const form = box.closest('form');
+        const product = form ? form.querySelector('[name=product_id]') : null;
+        if (! product) return;
+
+        let counts = {};
+        try {
+            counts = JSON.parse(box.dataset.blockCounts || '{}');
+        } catch (e) {
+            return; // Kharab data modal ko sath le kar na doobe.
+        }
+
+        function paint() {
+            const row = counts[product.value] || {book: 0, manual: 0};
+            box.querySelectorAll('[data-count]').forEach(function (el) {
+                const n = row[el.dataset.count] || 0;
+                el.textContent = n === 1 ? '1 dish' : n + ' dishes';
+                // Jis par kuch hai hi nahi, us par tick ka koi matlab nahi.
+                const input = el.closest('.form-check').querySelector('input');
+                input.disabled = n === 0;
+                if (n === 0) input.checked = false;
+            });
+        }
+
+        // "Sab par" ka apna koi asar nahi — wo sirf dono ko ek saath uthata hai,
+        // aur agar koi ek haath se hata diya jaye to khud bhi utar jata hai.
+        const all = document.getElementById('apply-all');
+        const boxes = Array.from(box.querySelectorAll('input[name^=apply_]'));
+
+        function syncAll() {
+            const live = boxes.filter(b => ! b.disabled);
+            all.checked = live.length > 0 && live.every(b => b.checked);
+            all.disabled = live.length === 0;
+        }
+
+        all.addEventListener('change', function () {
+            boxes.forEach(function (b) { if (! b.disabled) b.checked = all.checked; });
+        });
+        boxes.forEach(b => b.addEventListener('change', syncAll));
+
+        product.addEventListener('change', function () { paint(); syncAll(); });
+        paint();
+        syncAll();
+    })();
+</script>
 @endcan
 @endsection
