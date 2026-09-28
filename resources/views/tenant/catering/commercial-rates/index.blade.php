@@ -260,19 +260,38 @@
                     <div class="col-12">
                         <div class="border rounded p-2" id="rate-apply-choices"
                              data-block-counts='@json($blockCounts ?? [], JSON_UNESCAPED_SLASHES)'>
-                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                                <span class="fw-semibold fs-13">Save karte hi kin dishes par lag jaye?</span>
-                                {{-- Malik: "checkbox laga do all ka." Ye apna koi
-                                     alag amal nahi hai — sirf neeche wale dono ko
-                                     ek saath uthata aur girata hai. Ek teesra
-                                     raasta banana ka matlab hota teesri jagah jo
-                                     kal in dono se alag ho jati. --}}
+                            {{-- Malik ne is poore hisse par laal cross laga kar
+                                 likha: "COLLAPSED".
+
+                                 Band hai, magar KHALI NAHI. Unwaan par kul ginti
+                                 likhi rehti hai, is liye band haalat me bhi ye
+                                 nazar aata hai ke save kitni dishes ko chhuega —
+                                 aur "Sab par" bahar hi rehta hai, kyunke rozana
+                                 ka kaam wahi ek tick hai. Andar ki do satrein
+                                 sirf tab chahiyen jab operator un me se ek
+                                 chhorna chahe.
+
+                                 Ginti chhupa dena aasan tha aur ghalat hota: phir
+                                 ye "chhupana" nahi, "mitana" hota. --}}
+                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <span class="fw-semibold fs-13" role="button"
+                                      data-bs-toggle="collapse" data-bs-target="#apply-which">
+                                    Save karte hi kin dishes par lag jaye?
+                                    <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1"
+                                          data-count="total">—</span>
+                                    <i class="ti ti-chevron-down ms-1 text-muted"></i>
+                                </span>
+                                {{-- "Sab par" apna koi alag amal nahi hai — sirf
+                                     andar wale dono ko ek saath uthata aur girata
+                                     hai. Ek teesra raasta banane ka matlab hota
+                                     teesri jagah jo kal in dono se alag ho jati. --}}
                                 <div class="form-check form-check-inline m-0">
                                     <input class="form-check-input" type="checkbox" id="apply-all" checked>
                                     <label class="form-check-label fs-13 fw-semibold" for="apply-all">Sab par</label>
                                 </div>
                             </div>
 
+                            <div class="collapse mt-2" id="apply-which">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="apply_following"
                                        value="1" id="apply-following" checked>
@@ -291,6 +310,8 @@
                                     <span class="badge bg-warning-subtle text-warning-emphasis ms-1"
                                           data-count="manual">—</span>
                                 </label>
+                            </div>
+
                             </div>
 
                             {{-- Malik: "neeche ki detail hide ho, collapse ho, show
@@ -353,13 +374,24 @@
 
         function paint() {
             const row = counts[product.value] || {book: 0, manual: 0};
+            const total = (row.book || 0) + (row.manual || 0);
+
             box.querySelectorAll('[data-count]').forEach(function (el) {
-                const n = row[el.dataset.count] || 0;
+                const n = el.dataset.count === 'total' ? total : (row[el.dataset.count] || 0);
                 el.textContent = n === 1 ? '1 dish' : n + ' dishes';
-                // Jis par kuch hai hi nahi, us par tick ka koi matlab nahi.
-                const input = el.closest('.form-check').querySelector('input');
+
+                const check = el.closest('.form-check');
+                if (! check) return; // unwaan wali ginti ka apna koi tick nahi
+
+                // MALIK: "all pe check pehle se ho jaise hai, main item pe select
+                // karun." Pehle yahan keeda tha: ginti 0 par tick hata diya jata
+                // tha aur material chunne par DOBARA NAHI lagta tha — yani chunav
+                // ke baad sab khali mil te. Ab har material par default wapas aa
+                // jata hai, aur jis par kuch hai hi nahi us par tick ka matlab
+                // hi nahi.
+                const input = check.querySelector('input');
                 input.disabled = n === 0;
-                if (n === 0) input.checked = false;
+                input.checked = n > 0;
             });
         }
 
