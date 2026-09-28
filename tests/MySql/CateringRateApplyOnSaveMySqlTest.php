@@ -320,6 +320,53 @@ class CateringRateApplyOnSaveMySqlTest extends MySqlTenantTestCase
         $this->assertSame(250.0, $this->blockRate($this->manualDishId));
     }
 
+    /**
+     * BAND HAI, MAGAR KHALI NAHI.
+     *
+     * Malik ne chunav wale hisse par laal cross laga kar likha "COLLAPSED". Wo
+     * band ho gaya — magar KUL GINTI collapse ke BAHAR rakhi gayi hai, taake
+     * band haalat me bhi safha ye bata sake ke save kitni dishes ko chhuega.
+     *
+     * Ginti bhi andar daal dena ek satar kam likhna tha aur ghalat hota: phir
+     * ye chhupana nahi, mitana hota — aur ek pehle se laga hua tick jiska koi
+     * adad nazar na aaye, wo chunav nahi, andaza hai.
+     */
+    public function test_collapsing_the_choices_does_not_hide_how_many_dishes_move(): void
+    {
+        $blade = file_get_contents(
+            resource_path('views/tenant/catering/commercial-rates/index.blade.php')
+        );
+
+        $this->assertStringContainsString('id="apply-which"', $blade, 'chunav collapse me hon');
+
+        // Ginti aur "Sab par" dono us collapse se PEHLE aayen — yani us ke bahar.
+        $collapse = mb_strpos($blade, 'id="apply-which"');
+        foreach (['data-count="total"' => 'kul ginti', 'id="apply-all"' => '"Sab par" ka tick'] as $needle => $what) {
+            $this->assertLessThan($collapse, mb_strpos($blade, $needle),
+                "{$what} collapse ke BAHAR hona chahiye — warna band haalat me safha khamosh hai");
+        }
+    }
+
+    /**
+     * Material chunte hi tick WAPAS lag jaye.
+     *
+     * Ye mera apna keeda tha: ginti sifar hone par tick hata diya jata tha aur
+     * material chunne par dobara nahi lagta tha — yani operator material
+     * chunta aur sab khane khali mil te, jab ke markup me "checked" likha hua
+     * tha. Markup sach bolta tha, chalta hua safha nahi.
+     */
+    public function test_choosing_a_material_puts_the_ticks_back(): void
+    {
+        $blade = file_get_contents(
+            resource_path('views/tenant/catering/commercial-rates/index.blade.php')
+        );
+
+        $this->assertStringContainsString('input.checked = n > 0;', $blade,
+            'ginti aane par tick wapas lagna chahiye, sirf hatna nahi');
+        $this->assertStringNotContainsString('if (n === 0) input.checked = false;', $blade,
+            'purana ek-tarfa qaida wapas na aaye');
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────
 
     private function block(int $dishId, array $attrs): CateringProductCostBlock
