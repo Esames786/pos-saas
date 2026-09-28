@@ -274,6 +274,52 @@ class CateringRateApplyOnSaveMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('name="apply_manual"', $blade);
     }
 
+    /**
+     * DEFAULT ON HAI, IS LIYE SAVE PAR CONFIRM LAZMI HAI.
+     *
+     * Malik ne do dafa kaha: "all already check ho." Wo un ka faisla hai. Magar
+     * ek tick jo pehle se laga ho wo dekha nahi jata — aur yahan us ka matlab
+     * ek click me 98 qeematein hai, jin me se prod par 98 ki 98 NEECHE jati
+     * hain. Is liye confirm ka hona utna hi lazmi hai jitna tick ka.
+     *
+     * Ye test us JORE ka pehra hai: agar kal koi confirm hata de aur tick
+     * default on chhor de, to ye bolega.
+     */
+    public function test_the_boxes_are_pre_ticked_and_saving_asks_first(): void
+    {
+        $blade = file_get_contents(
+            resource_path('views/tenant/catering/commercial-rates/index.blade.php')
+        );
+
+        foreach (['id="apply-all" checked', 'id="apply-manual" checked', 'id="apply-following" checked'] as $on) {
+            $this->assertStringContainsString($on, $blade, "'{$on}' — tick pehle se laga hona chahiye");
+        }
+
+        $this->assertStringContainsString("form.addEventListener('submit'", $blade,
+            'save par pehle poochha jana chahiye');
+        $this->assertStringContainsString('e.preventDefault()', $blade,
+            'aur "nahi" kehne par ruk bhi jaye');
+        $this->assertStringContainsString('modal-xl', $blade, 'modal chaura ho');
+    }
+
+    /**
+     * Server ka qanoon UI ke default se ALAG hai, aur alag hi rehna chahiye.
+     *
+     * Checkbox ka pehle se laga hona sirf safhe ki baat hai. Agar jhanda na
+     * aaye to kuch nahi hota — warna koi aur raasta (API, purana form, test)
+     * chupke se qeematein hila deta. Ye test upar wale
+     * `..._with_nothing_ticked_...` ka jora hai: wo bartaao jaanchta hai, ye
+     * ye baat ke wo bartaao UI ke default ke bawajood zinda hai.
+     */
+    public function test_the_ui_default_does_not_become_the_server_default(): void
+    {
+        $this->recordRate(150);
+
+        $this->assertSame(100.0, $this->blockRate($this->followingDishId),
+            'jhanda na ho to safhe ka tick kuch nahi karta');
+        $this->assertSame(250.0, $this->blockRate($this->manualDishId));
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────
 
     private function block(int $dishId, array $attrs): CateringProductCostBlock
