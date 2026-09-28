@@ -5,6 +5,7 @@ namespace Tests\MySql;
 use App\Http\Controllers\Tenant\PosQuickReportController;
 use App\Mail\SalesReportMail;
 use App\Models\Tenant\User;
+use App\Services\Reports\SalesReportEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -422,5 +423,131 @@ class PosQuickReportMySqlTest extends MySqlTenantTestCase
             'dono branch ka jama ek branch se zyada hona chahiye');
         $names = collect($one['categories'])->map(fn ($c) => ((array) $c)['name'] ?? '')->all();
         $this->assertSame(['Sirf Doosri Branch Ka'], $names, 'chuni hui branch ka hi maal');
+    }
+
+    /* ── QUICK-REPORT-WAITER-NULL-1 ──────────────────────────────────────────────────────────────
+       A waiter is attached on dine-in only, so counter work carries restaurant_waiter_id = NULL —
+       and SQL's IN (...) never matches NULL. Picking waiters therefore DROPPED every takeaway and
+       delivery order without saying so: on Khatri 46 of 82 orders in a day, on Kashif Food the
+       whole day. These guards hold the shape of the fix: the counter population is reachable, a
+       named pick still means only that waiter, and a narrowed report admits what it left out. */
+
+    /** The counter order the old filter could not see: takeaway, no waiter, 300. */
+    private function counterOrder(): int
+    {
+        $term = $this->makeTerminal($this->branchId, ['name' => 'Counter']);
+        $s = $this->makeSale($this->branchId, [
+            'terminal_id' => $term, 'order_type' => 'takeaway', 'restaurant_waiter_id' => null,
+            'business_date' => $this->date, 'subtotal' => 300, 'grand_total' => 300,
+        ]);
+        $this->makeSaleLine($s, $this->prodA, ['unit_price' => 300, 'line_total' => 300]);
+
+        return $s;
+    }
+
+    public function test_orders_with_no_waiter_are_reachable_through_the_no_waiter_option(): void
+    {
+        $this->counterOrder();
+        Auth::guard('tenant')->login($this->permittedUser());
+        $total = fn (array $p) => (float) $this->controller()
+            ->print($this->req($p + ['sections' => ['overview', 'waiters']]))->getData()['overview']['grand_total'];
+
+        $this->assertSame(600.0, $total([]), 'whole day = 100 (Ali) + 200 (Sara) + 300 (counter)');
+
+        // Every NAMED waiter — exactly what the modal used to send for "everything". The counter
+        // order is still out, but that is now a visible choice with a way to undo it, not a silent
+        // loss: the "No waiter" box sits right beside the names.
+        $this->assertSame(300.0, $total(['waiter_ids' => [$this->w1, $this->w2]]),
+            'named waiters alone cannot reach a NULL waiter_id');
+
+        // …and with the sentinel the whole day comes back. THIS is what a ticked-everything modal
+        // now sends, so a counter gets its full report.
+        $this->assertSame(600.0, $total(['waiter_ids' => [$this->w1, $this->w2, SalesReportEngine::WAITER_NONE]]),
+            'the sentinel restores the counter orders');
+
+        // The sentinel ALONE = exactly the counter orders, nothing else.
+        $onlyNone = $this->controller()->print($this->req([
+            'sections' => ['overview', 'waiters'], 'waiter_ids' => [SalesReportEngine::WAITER_NONE],
+        ]))->getData();
+        $this->assertSame(300.0, (float) $onlyNone['overview']['grand_total']);
+        $this->assertSame(['Unassigned'], array_map(fn ($r) => $r['label'], $onlyNone['waiters']));
+
+        // A single waiter still means THAT waiter. If the OR ever leaked out of its where() group
+        // this assertion catches it — "just Ali's orders" would swell to the whole day.
+        $this->assertSame(100.0, $total(['waiter_ids' => [$this->w1]]),
+            'one waiter = only his own orders, counter work excluded');
+    }
+
+    public function test_a_day_where_no_order_has_a_waiter_is_not_emptied(): void
+    {
+        // Kashif Food's shape: every order in the day is counter work. Ticking every box in the
+        // panel — the names AND "No waiter" — must return the day, not nothing.
+        DB::connection('tenant')->table('sales_orders')->update(['restaurant_waiter_id' => null]);
+        $this->counterOrder();
+        Auth::guard('tenant')->login($this->permittedUser());
+
+        $all = $this->controller()->print($this->req([
+            'sections' => ['overview'],
+            'waiter_ids' => [$this->w1, $this->w2, SalesReportEngine::WAITER_NONE],
+        ]))->getData();
+
+        $this->assertSame(600.0, (float) $all['overview']['grand_total'],
+            'a counter-only day must not come back empty');
+    }
+
+    public function test_the_order_type_filter_is_unchanged(): void
+    {
+        $this->counterOrder();
+        Auth::guard('tenant')->login($this->permittedUser());
+        $total = fn (array $p) => (float) $this->controller()
+            ->print($this->req($p + ['sections' => ['overview']]))->getData()['overview']['grand_total'];
+
+        // order_type is NOT NULL on every row, so listing them all has always equalled listing
+        // none. This guard keeps that true — the waiter fix must not drift into it.
+        $this->assertSame($total([]), $total(['order_types' => ['dine_in', 'takeaway', 'quick_sale', 'delivery']]),
+            'every order type = no order-type filter');
+        $this->assertSame(100.0, $total(['order_types' => ['dine_in']]), 'and one type still narrows');
+    }
+
+    public function test_a_narrowed_report_says_so_and_a_full_one_does_not(): void
+    {
+        $this->counterOrder();
+        Auth::guard('tenant')->login($this->permittedUser());
+        $render = fn (array $p) => $this->controller()->print($this->req($p + ['sections' => ['overview']]))->render();
+
+        // A full report renders exactly as before — no banner for the Report Center or the nightly
+        // PDF to inherit.
+        $full = $this->controller()->print($this->req(['sections' => ['overview']]));
+        $this->assertSame([], $full->getData()['narrowing']);
+        $this->assertStringNotContainsString('PARTIAL', $render([]));
+
+        // Waiter and order-type filters leave no trace in the rows themselves, so the header is the
+        // only place a reader can learn the report is a slice. It names the slice.
+        $byWaiter = $render(['waiter_ids' => [$this->w1]]);
+        $this->assertStringContainsString('PARTIAL — NOT THE WHOLE DAY', $byWaiter);
+        $this->assertStringContainsString('Waiters: Ali', $byWaiter);
+
+        $this->assertStringContainsString('Waiters: Ali, Unassigned',
+            $render(['waiter_ids' => [$this->w1, SalesReportEngine::WAITER_NONE]]),
+            'the counter bucket is named too, so "who is in this report" stays answerable');
+
+        $this->assertStringContainsString('Order types: Dine In', $render(['order_types' => ['dine_in']]));
+    }
+
+    public function test_a_saved_selection_keeps_the_no_waiter_option(): void
+    {
+        $user = $this->permittedUser();
+        Auth::guard('tenant')->login($user);
+
+        $this->controller()->saveSettings(Request::create('/pos/quick-report/save-settings', 'POST', [
+            'sections' => ['overview'], 'waiter_ids' => [(string) $this->w1, SalesReportEngine::WAITER_NONE],
+        ]));
+
+        $saved = DB::connection('tenant')->table('pos_quick_report_settings')
+            ->where('user_id', $user->id)->value('payload');
+
+        // The sentinel is a STRING among integer ids. A stray intval anywhere on this path would
+        // turn it into 0 and quietly restore the original bug on the next reload.
+        $this->assertContains(SalesReportEngine::WAITER_NONE, json_decode($saved, true)['waiter_ids']);
     }
 }
