@@ -173,4 +173,29 @@ class PosFrontendRegressionTest extends TestCase
         $this->assertStringContainsString('Attach a customer before saving a delivery order.', $view);
         $this->assertGreaterThanOrEqual(3, substr_count($view, 'if (!requireDeliveryCustomer()) return;'));
     }
+
+    /**
+     * QUICK-REPORT-WAITER-NULL-1 — "tick everything" must equal "tick nothing".
+     *
+     * The waiter panel promises "Leave all unticked = every waiter", but ticking all of them sent a
+     * list of ids, and an order with NO waiter matches no id — so one counter's saved selection cut
+     * its Quick Report in half every day for a month. The rule now lives in collect(); this guard is
+     * what stops a later edit from quietly putting the old helper back.
+     */
+    public function test_quick_report_treats_every_box_ticked_as_no_filter(): void
+    {
+        $view = file_get_contents(resource_path('views/tenant/pos/index.blade.php'));
+
+        $this->assertStringContainsString('var checkedUnlessAll = function (sel)', $view);
+        $this->assertStringContainsString("waiter_ids: checkedUnlessAll('.qr-waiter')", $view);
+        $this->assertStringContainsString("order_types: checkedUnlessAll('.qr-ordertype')", $view);
+        $this->assertStringNotContainsString("waiter_ids: checked('.qr-waiter')", $view);
+        $this->assertStringNotContainsString("order_types: checked('.qr-ordertype')", $view);
+
+        // The counter population has to be pickable, and the panel has to say it exists — a filter
+        // that silently omits half the day is the whole bug.
+        $this->assertStringContainsString('id="qr-w-none"', $view);
+        $this->assertStringContainsString('SalesReportEngine::WAITER_NONE', $view);
+        $this->assertStringContainsString('carry no waiter', $view);
+    }
 }
