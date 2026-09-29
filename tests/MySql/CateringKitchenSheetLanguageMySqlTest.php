@@ -155,7 +155,12 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('10:00 PM', $html,
             'waqt kaghaz par hona chahiye — warna neeche wali jaanch bemani hai');
 
-        $this->assertMatchesRegularExpression('/<span dir="ltr">\s*10:00 PM\s*<\/span>/u', $html,
+        // Jaanch us cheez par hai jo AHEM hai — rukh — na ke class par. Pehla
+        // version theek `<span dir="ltr">` maangta tha, aur jis din waqt ke
+        // span par ek class lagi (dotted border ke liye) wo bina kisi asal
+        // kharabi ke red ho gaya. Ek pehra jo saj-dhaj par kaat-ta ho, log
+        // usay theek karne ke bajaye kamzor kar dete hain.
+        $this->assertMatchesRegularExpression('/<span[^>]*\bdir="ltr"[^>]*>\s*10:00 PM\s*<\/span>/u', $html,
             'waqt dir="ltr" ke andar ho — RTL safhe par bina is ke "PM 10:00" chhapta hai');
     }
 

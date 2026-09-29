@@ -132,13 +132,35 @@
        raha aur malik ko dobara tasveer bhejni pari. Naya waqt kahin aur
        lagate waqt: wo span lazmi hai. */
     .ft { display: inline-block; font-size: 16px; font-weight: bold; white-space: nowrap; }
+    /* Waqt ka apna khaana — malik ne parche par dono waqt gol kar ke
+       "border dotted do" likha. Dotted is liye ke thos lakeer SERVICE ke
+       dabbe se takraati: wo paer ka sab se numaya nishan rehna chahiye.
+       Border se banaya gaya hai, background se nahi — print par background
+       girte hain (dekho `.sup-tag` par likhi hui tafseel). */
+    .ftv { border: 1.5px dotted #111827; border-radius: 2px; padding: 0 5px; }
     .ftl { font-size: 10px; font-weight: normal; text-transform: uppercase;
            color: #6b7280; letter-spacing: .8px; margin-right: 5px; }
     .foot .venue { font-size: 12px; font-weight: bold; display: inline; }
     .foot .addr { font-size: 13px; font-weight: bold; color: #111827; display: inline; margin-left: 10px; }
     .doc-meta { display: flex; justify-content: space-between; margin: 4px 2px; color: #6b7280; font-size: 11px; }
     table.items { width: 100%; border-collapse: collapse; }
-    table.items th { text-align: {{ $isUr ? 'right' : 'left' }}; border-bottom: 2px solid #111827; padding: 3px 6px; font-size: 9px; text-transform: uppercase; color: #374151; }
+    /* KITCHEN-SHEET-HEADINGS-1 (29 Sep) — malik: "column ka urdu name ka
+       size bhi increase karo."
+
+       Qad ZABAN PAR mauqoof hai, aur ye jaan-boojh kar hai: Nastaliq usi
+       point size par Latin se chhoti nazar aati hai (us ka x-height kam
+       hai). English ke unwaan 9px par saaf hain; Urdu ke wahan nuqte tak
+       gum ho jate the.
+
+       `line-height` Urdu par 1.7 — wohi hadd jo `.ur` par hai. Nastaliq
+       ke neeche jane wale harf is se kam par kat jate hain, aur sar-naame
+       ki qatar chhoti hone ki wajah se wahan ye sab se pehle katte. */
+    table.items th { text-align: {{ $isUr ? 'right' : 'left' }}; border-bottom: 2px solid #111827;
+        padding: 3px 6px; color: #374151;
+        font-size: {{ $isUr ? '13px' : '9px' }};
+        line-height: {{ $isUr ? '1.7' : '1.2' }};
+        text-transform: {{ $isUr ? 'none' : 'uppercase' }};
+        letter-spacing: {{ $isUr ? 'normal' : '.02em' }}; }
     table.items th.num, table.items td.num { text-align: {{ $isUr ? 'left' : 'right' }}; }
     table.items td { padding: 2px 6px; border-bottom: 1px solid #d1d5db; vertical-align: top; }
     /* KITCHEN-SHEET-FILL-1 (27 Sep) — GINTI ab halki nahi.
