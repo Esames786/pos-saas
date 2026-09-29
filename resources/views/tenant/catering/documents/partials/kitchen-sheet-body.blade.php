@@ -261,16 +261,24 @@
      safhe par sirf 10 satrein bachti thin. Neeche aa kar wo jagah khane ko
      mil gayi — aur bawarchi ke liye tarteeb bhi durust hui: pehle khana,
      phir "kab aur kahan". --}}
-<div class="foot">
+{{-- KITCHEN-SHEET-PREVIEW-TRUTH-1 (29 Sep) — malik: "urdu footer bhi aise
+     hi aae, aur time English me jaise English ka aata hai."
+
+     Poore paer par `dir="ltr"`: is se SERVICE/SERVE/DEPARTURE baayen aur
+     venue/pata dayen aate hain — bilkul English parche jaisa — chahe
+     baqi safha RTL ho. Lafz bhi tarjuma nahi hote (neeche dekho): purane
+     software par bhi paer ke ye lafz Latin hain, aur bawarchi-khana unhe
+     isi shakl me pehchanta hai. --}}
+<div class="foot" dir="ltr">
     <div class="foot-l">
         @if($snapshot['has_service_charge'] ?? false)
-            <span class="svc">{{ $t('SERVICE', 'سروس') }}</span>
+            <span class="svc">SERVICE</span>
         @endif
         @if(!empty($snapshot['service_time']))
-            <span class="ft"><span class="ftl">{{ $t('SERVE', 'سرو') }}</span><span dir="ltr">{{ \Carbon\Carbon::parse($snapshot['service_time'])->format('g:i A') }}</span></span>
+            <span class="ft"><span class="ftl">SERVE</span><span dir="ltr">{{ \Carbon\Carbon::parse($snapshot['service_time'])->format('g:i A') }}</span></span>
         @endif
         @if(!empty($snapshot['dispatch_time']))
-            <span class="ft"><span class="ftl">{{ $t('DEPARTURE', 'روانگی') }}</span><span dir="ltr">{{ \Carbon\Carbon::parse($snapshot['dispatch_time'])->format('g:i A') }}</span></span>
+            <span class="ft"><span class="ftl">DEPARTURE</span><span dir="ltr">{{ \Carbon\Carbon::parse($snapshot['dispatch_time'])->format('g:i A') }}</span></span>
         @endif
     </div>
     <div class="foot-r">
