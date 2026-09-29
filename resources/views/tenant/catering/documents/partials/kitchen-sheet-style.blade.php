@@ -100,10 +100,25 @@
        thi. Ab label apni satar par hai. */
     /* `margin-top: auto` — dekho upar body ka flex wala note. Yehi ek lafz
        paer ko safhe ki tal par le jata hai. */
-    .foot { display: flex; justify-content: space-between; align-items: baseline;
-            gap: 12px; margin-top: auto; padding-top: 3px; border-top: 2px solid #111827; }
-    .foot-l { display: flex; align-items: baseline; gap: 12px; }
-    .foot-r { text-align: right; }
+    /* KITCHEN-SHEET-FOOT-WRAP-1 (29 Sep) — malik: "address bhale aise hi
+       aaye, agar pehli satar se bahar nikal gaya to neeche wali satar me
+       lamba continue kar le."
+
+       Pehle paer ek hi qatar tha, is liye pata us tang jagah me nichurta
+       tha jo waqt ke baad bachti hai — aath chhoti chhoti satrein, aur
+       parche ki tal se BAHAR nikal jata tha.
+
+       Ab paer lipat sakta hai, aur pate ko `flex-basis` di gayi hai: itni
+       jagah na mile to wo POORI agli satar le leta hai. Ye "hamesha neeche"
+       se behtar hai — chhota pata (misaal "johar") waqt ke saath usi satar
+       par rehta hai, jaisa purane parche par hai. Faisla lambai khud karti
+       hai, koi sharti code nahi. */
+    .foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;
+            gap: 2px 12px; margin-top: auto; padding-top: 3px; border-top: 2px solid #111827; }
+    .foot-l { display: flex; align-items: baseline; gap: 12px; flex: 0 0 auto; }
+    /* `min-width: 0` ke baghair flex item apne matn se chhota nahi hota aur
+       lamba pata lipatne ke bajaye khaane ko phaila deta hai. */
+    .foot-r { flex: 1 1 62mm; min-width: 0; text-align: right; }
     /* Waqt kabhi na toote: "8:00" upar aur "PM" neeche chala jata tha, jis se
        parche par do adhoore hisse nazar aate the. */
     /* Waqt ka qad SERVICE ke barabar — purane parche par dono ek jitne hain.

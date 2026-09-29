@@ -134,6 +134,37 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
     }
 
     /**
+     * KITCHEN-SHEET-FOOT-WRAP-1 (29 Sep) — lamba pata safhe se BAHAR na jaye.
+     *
+     * Malik ne ek parcha bheja jis par pata paer ki tang jagah me nichur kar
+     * aath chhoti chhoti satrein ban gaya tha aur parche ki tal se bahar nikal
+     * gaya tha. Ye khamosh nakami hai: screen par sab theek lagta hai, matn
+     * bas kaghaz se neeche chala jata hai.
+     *
+     * Do cheezein mil kar ise rokti hain, aur koi ek bhi tootne par pata
+     * wapas nichurne lagta hai:
+     *   • paer par `flex-wrap: wrap` — warna pata lipat kar agli satar par
+     *     ja hi nahi sakta;
+     *   • pate ke khaane par `min-width: 0` — is ke baghair flex item apne
+     *     matn se chhota hota hi nahi aur lipatne ke bajaye khaane ko
+     *     phaila deta hai.
+     */
+    public function test_a_long_address_can_wrap_onto_its_own_line(): void
+    {
+        $css = view('tenant.catering.documents.partials.kitchen-sheet-style', ['isUr' => true])->render();
+
+        $this->assertSame(1, preg_match('/\.foot\s*\{([^}]*)\}/s', $css, $foot),
+            'paer ka qaida CSS me milna chahiye');
+        $this->assertStringContainsString('flex-wrap: wrap', $foot[1],
+            'is ke baghair lamba pata agli satar par ja hi nahi sakta');
+
+        $this->assertSame(1, preg_match('/\.foot-r\s*\{([^}]*)\}/s', $css, $right),
+            'pate ke khaane ka qaida milna chahiye');
+        $this->assertStringContainsString('min-width: 0', $right[1],
+            'is ke baghair flex item lipta nahi, khaana phailta hai');
+    }
+
+    /**
      * KITCHEN-SHEET-SUPPLY-TAG-1 (29 Sep) — PARTY/OWN ka gehra dabba CHHAPNA
      * chahiye.
      *
