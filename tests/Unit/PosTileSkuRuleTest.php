@@ -5,17 +5,20 @@ namespace Tests\Unit;
 use Tests\TestCase;
 
 /**
- * PRODUCT-TILE-SKU-1 — the rule that decides whether a POS tile prints its SKU.
+ * PRODUCT-TILE-SKU-1 — the rule that decides whether a POS tile prints its identifier.
  *
- * A SKU exists to tell things apart. On some tenants every SKU is the product name in capitals,
- * so the tile printed the same words twice; on others it is a real code (KF-001, RM-BEEF) or a
- * scannable barcode, where hiding it would take away something the counter reads. The rule is
- * therefore per product, and needs no setting anyone has to keep true.
+ * Both tiles carry one: a product prints its `sku`, a deal prints its `code`, in the same slot
+ * under the name. An identifier exists to TELL THINGS APART, so it earns that line only when it
+ * says something the name does not.
+ *
+ * Measured across every tenant before this was wired: 272 of 1,557 products repeat their own name
+ * (Khatri 66/66, Kashif Food 212/212), but 0 of 90 deals do — every deal code is a real one
+ * (KF-PLAT-ALFAHAM-H, TK-D1). So this hides a great many product lines and, today, not one deal
+ * line. The deal tile is wired anyway so the rule cannot disagree with itself later.
  *
  * The rule lives in JavaScript, and a guard that only greps the blade is weak: one such guard in
- * this repo stayed GREEN while the code it was meant to protect had been switched off with
- * `if (false)`. So this pulls the SHIPPED function out of the blade and RUNS it in node against
- * real product shapes taken from the four live tenants. Where node is unavailable the
+ * this repo stayed GREEN while the code it protected had been switched off with `if (false)`. So
+ * this pulls the SHIPPED function out of the blade and RUNS it in node. Where node is missing the
  * behavioural part skips loudly instead of passing quietly.
  */
 class PosTileSkuRuleTest extends TestCase
@@ -39,24 +42,24 @@ class PosTileSkuRuleTest extends TestCase
         return null;
     }
 
-    /** Run the blade's own skuSaysSomethingNew() over these products and return its answers. */
-    private function runShippedRule(array $products): array
+    /** Run the blade's own labelSaysSomethingNew() over these [label, name] pairs. */
+    private function runShippedRule(array $cases): array
     {
         $node = $this->nodeBinary();
         if ($node === null) {
-            $this->markTestSkipped('node not found; set NODE_BINARY to run the behavioural SKU-rule guard');
+            $this->markTestSkipped('node not found; set NODE_BINARY to run the behavioural tile-label guard');
         }
 
-        preg_match('/\n    function skuSaysSomethingNew\(product\) \{.*?\n    \}\n/s', $this->posBlade(), $m);
-        $this->assertNotEmpty($m, 'skuSaysSomethingNew() could not be located in the POS blade');
+        preg_match('/\n    function labelSaysSomethingNew\(label, name\) \{.*?\n    \}\n/s', $this->posBlade(), $m);
+        $this->assertNotEmpty($m, 'labelSaysSomethingNew() could not be located in the POS blade');
 
-        // The cases are EMBEDDED in the script rather than passed as argv: Windows wraps arguments
-        // in double quotes and ate the JSON on its way through the shell.
+        // Cases are EMBEDDED in the script rather than passed as argv: Windows wraps arguments in
+        // double quotes and ate the JSON on its way through the shell.
         $script = $m[0]
-            . PHP_EOL . 'const cases = ' . json_encode($products) . ';'
-            . PHP_EOL . 'console.log(JSON.stringify(cases.map(skuSaysSomethingNew)));' . PHP_EOL;
+            . PHP_EOL . 'const cases = ' . json_encode($cases) . ';'
+            . PHP_EOL . 'console.log(JSON.stringify(cases.map(function (c) { return labelSaysSomethingNew(c.label, c.name); })));' . PHP_EOL;
 
-        $file = tempnam(sys_get_temp_dir(), 'skurule') . '.js';
+        $file = tempnam(sys_get_temp_dir(), 'tilelabel') . '.js';
         file_put_contents($file, $script);
 
         $out = [];
@@ -71,76 +74,100 @@ class PosTileSkuRuleTest extends TestCase
         return $answers;
     }
 
-    public function test_a_sku_that_only_repeats_the_name_is_not_shown(): void
+    public function test_a_label_that_only_repeats_the_name_is_not_shown(): void
     {
-        // Real rows: Khatri is 66/66 like this, Kashif Food 212/212.
         $answers = $this->runShippedRule([
-            ['name' => 'Beef Khatri Biryani 1 Pao', 'sku' => 'BEEF-KHATRI-BIRYANI-1-PAO'],
-            ['name' => 'Plain Rice', 'sku' => 'PLAIN-RICE'],
+            ['name' => 'Beef Khatri Biryani 1 Pao', 'label' => 'BEEF-KHATRI-BIRYANI-1-PAO'],
+            ['name' => 'Plain Rice', 'label' => 'PLAIN-RICE'],
             // Punctuation must not fool it: this name is stored with the slashes dropped.
-            ['name' => 'Beef Khatri Biryani (1/2 kg)', 'sku' => 'BEEF-KHATRI-BIRYANI-12-KG'],
-            ['name' => 'Singaporean Rice (Family Pack Large)', 'sku' => 'SINGAPOREAN-RICE-FAMILY-PACK-LARGE'],
+            ['name' => 'Beef Khatri Biryani (1/2 kg)', 'label' => 'BEEF-KHATRI-BIRYANI-12-KG'],
+            ['name' => 'Singaporean Rice (Family Pack Large)', 'label' => 'SINGAPOREAN-RICE-FAMILY-PACK-LARGE'],
             // Case alone is not a difference either.
-            ['name' => 'plain rice', 'sku' => 'PLAIN-RICE'],
+            ['name' => 'plain rice', 'label' => 'PLAIN-RICE'],
         ]);
 
         $this->assertSame([false, false, false, false, false], $answers,
-            'a SKU carrying no information beyond the name must not take a line on the tile');
+            'a label carrying no information beyond the name must not take a line on the tile');
     }
 
     public function test_a_real_code_or_a_barcode_is_always_shown(): void
     {
-        // Rows that exist today: Tawakal is 0/112 name-like, Kashif Kitchen 0/918, and retaildemo
-        // stores actual barcodes. Hiding these would destroy what the counter reads.
+        // Rows that exist today: Tawakal 0/112 name-like products, Kashif Kitchen 0/918, and
+        // retaildemo stores actual barcodes. Hiding these would destroy what the counter reads.
         $answers = $this->runShippedRule([
-            ['name' => 'Singaporean Rice', 'sku' => 'KF-001'],
-            ['name' => 'Chicken (Regular)', 'sku' => 'RM-CHICKEN'],
-            ['name' => 'Beef (With Bone)', 'sku' => 'RM-BEEF'],
-            ['name' => 'Basmati Rice 5kg', 'sku' => '890100000001'],
-            // A near-miss is still a difference — it is exactly how a stale SKU shows itself.
-            ['name' => 'Rice of Khaas', 'sku' => 'SINGAPOREAN-RICE-KHAAS-BBQ'],
+            ['name' => 'Singaporean Rice', 'label' => 'KF-001'],
+            ['name' => 'Chicken (Regular)', 'label' => 'RM-CHICKEN'],
+            ['name' => 'Beef (With Bone)', 'label' => 'RM-BEEF'],
+            ['name' => 'Basmati Rice 5kg', 'label' => '890100000001'],
+            // A near-miss is still a difference — it is how a stale SKU shows itself.
+            ['name' => 'Rice of Khaas', 'label' => 'SINGAPOREAN-RICE-KHAAS-BBQ'],
         ]);
 
         $this->assertSame([true, true, true, true, true], $answers,
-            'a SKU that says something the name does not must stay on the tile');
+            'a label that says something the name does not must stay on the tile');
     }
 
-    public function test_an_empty_sku_keeps_the_old_no_sku_line(): void
+    public function test_every_deal_code_in_the_system_today_stays_on_its_tile(): void
     {
-        // No product carries an empty SKU today, but changing that behaviour would be a silent
+        // 0 of 90 combos repeat their name, so wiring the deal tile must change nothing for them.
+        $answers = $this->runShippedRule([
+            ['name' => 'Grill Chicken Al-Faham (Half)', 'label' => 'KF-PLAT-ALFAHAM-H'],
+            ['name' => 'Classic Platter 1 (6 Persons)', 'label' => 'KF-PLAT-CLASSIC-1'],
+            ['name' => 'Deal 1', 'label' => 'TK-D1'],
+            ['name' => 'Burger Meal Combo', 'label' => 'COMBO-BURGER'],
+        ]);
+
+        $this->assertSame([true, true, true, true], $answers);
+
+        // …and it still dedupes a deal whose code IS its name, which is the only reason the deal
+        // tile is wired at all.
+        $this->assertSame([false], $this->runShippedRule([
+            ['name' => 'Family Deal', 'label' => 'FAMILY-DEAL'],
+        ]));
+    }
+
+    public function test_an_empty_label_keeps_the_old_fallback_line(): void
+    {
+        // Nothing carries an empty label today, but changing that behaviour would be a silent
         // extra change riding along with this one.
         $answers = $this->runShippedRule([
-            ['name' => 'Plain Rice', 'sku' => ''],
-            ['name' => 'Plain Rice', 'sku' => null],
+            ['name' => 'Plain Rice', 'label' => ''],
+            ['name' => 'Plain Rice', 'label' => null],
             ['name' => 'Plain Rice'],
         ]);
 
-        $this->assertSame([true, true, true], $answers, 'an empty SKU still renders the No SKU line');
+        $this->assertSame([true, true, true], $answers);
     }
 
-    public function test_search_and_barcode_scanning_are_not_touched(): void
+    public function test_searching_by_sku_or_deal_code_is_not_touched(): void
     {
-        // THE guard that matters most on a sensitive screen: a hidden SKU must still be findable.
-        // The tile stops PRINTING it; nothing may stop READING it.
+        // THE guard that matters most on a sensitive screen: a hidden identifier must still be
+        // findable. The tile stops PRINTING it; nothing may stop READING it.
         $view = $this->posBlade();
 
         $this->assertStringContainsString("String(product.sku || '').toLowerCase().includes(query)", $view,
             'the product grid filter must still match on SKU');
         $this->assertStringContainsString("String(p.sku || '').toLowerCase().indexOf(q) !== -1", $view,
             'the search suggestion list must still match on SKU');
+        $this->assertStringContainsString("String(combo.code || '').toLowerCase().includes(query)", $view,
+            'deal search must still match on code');
     }
 
-    public function test_the_tile_actually_consults_the_rule(): void
+    public function test_both_tiles_consult_the_rule(): void
     {
         $view = $this->posBlade();
 
-        // Pin the call site: the rule existing while the tile ignores it is the failure mode a
-        // grep-only guard misses.
-        $this->assertStringContainsString('(skuSaysSomethingNew(product)', $view);
-        $this->assertStringNotContainsString(
-            "'<div class=\"text-muted small mb-2\">' + escapeHtml(product.sku || 'No SKU') + '</div>' +",
-            $view,
-            'the unconditional SKU line must be gone, not merely shadowed'
-        );
+        // Wiring one tile and not the other is exactly the gap this test exists to close.
+        $this->assertStringContainsString('(labelSaysSomethingNew(product.sku, product.name)', $view);
+        $this->assertStringContainsString('(labelSaysSomethingNew(combo.code, combo.name)', $view);
+
+        foreach (["escapeHtml(product.sku || 'No SKU')", "escapeHtml(combo.code || 'Combo')"] as $call) {
+            $this->assertStringNotContainsString(
+                $call . " + '</div>' +",
+                $view,
+                'the UNCONDITIONAL line must be gone: only it carries the trailing plus that '
+                    . 'joined it straight into the next fragment — ' . $call
+            );
+        }
     }
 }

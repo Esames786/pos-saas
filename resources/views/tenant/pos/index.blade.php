@@ -2615,6 +2615,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // PRODUCT-TILE-SKU-1: the SKU line earns its place only when it says something the name does not.
     //
+    // Serves BOTH tiles: a product carries a `sku`, a deal carries a `code`, and both print in
+    // the same slot under the name. Measured before wiring the deal tile: 272 of 1,557 products
+    // repeat their own name, but 0 of 90 deals do — every deal code is a real one
+    // (KF-PLAT-ALFAHAM-H, TK-D1). So today this changes no deal tile at all; it is wired so the
+    // rule cannot disagree with itself the day someone files a deal whose code is just its name.
+    //
     // A SKU exists to TELL THINGS APART. On some tenants every SKU is just the name in capitals, so
     // each tile printed the same words twice; on others it is a real code (KF-001, RM-BEEF) or a
     // scannable barcode, and hiding it would take away something the counter actually reads. So the
@@ -2626,11 +2632,11 @@ document.addEventListener('DOMContentLoaded', function () {
     //
     // Search and barcode scanning still read product.sku and are deliberately untouched - a hidden
     // SKU is still findable, it is only not written on the tile.
-    function skuSaysSomethingNew(product) {
+    function labelSaysSomethingNew(label, name) {
         var flat = function (v) { return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
-        var sku = flat(product.sku);
+        var code = flat(label);
 
-        return sku === '' || sku !== flat(product.name);
+        return code === '' || code !== flat(name);
     }
 
     function hasModifierGroups(product) {
@@ -2824,7 +2830,9 @@ document.addEventListener('DOMContentLoaded', function () {
             button.innerHTML =
                 '<div class="product-avatar"><i class="ti ti-package"></i></div>' +
                 '<div class="fw-bold mb-1 product-name">' + escapeHtml(combo.name) + '</div>' +
-                '<div class="text-muted small mb-2">' + escapeHtml(combo.code || 'Combo') + '</div>' +
+                (labelSaysSomethingNew(combo.code, combo.name)
+                    ? '<div class="text-muted small mb-2">' + escapeHtml(combo.code || 'Combo') + '</div>'
+                    : '') +
                 '<div class="tile-footer">' +
                     '<span class="fw-bold product-price">' + money(combo.price) + '</span>' +
                     '<span class="stock-badge ' + badgeClass + '">' + badgeText + '</span>' +
@@ -2857,7 +2865,7 @@ document.addEventListener('DOMContentLoaded', function () {
             button.innerHTML =
                 avatarHtml +
                 '<div class="fw-bold mb-1 product-name">' + escapeHtml(product.name) + '</div>' +
-                (skuSaysSomethingNew(product)
+                (labelSaysSomethingNew(product.sku, product.name)
                     ? '<div class="text-muted small mb-2">' + escapeHtml(product.sku || 'No SKU') + '</div>'
                     : '') +
                 '<div class="tile-footer">' +
