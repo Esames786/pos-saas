@@ -513,13 +513,34 @@ class CateringEventController extends Controller
      * 11 se 14: 11 seedha `03xxxxxxxxx`, aur 14 tak taake `+92` wali shakl
      * bhi samaye.
      */
+    /**
+     * CATERING-PHONE-11-1 (29 Sep) — THEEK 11 adad, dono khaanon par.
+     *
+     * Pehle 11 se 14 ki gunjaish thi taake "+92 312 2951623" bhi chal jaye.
+     * Malik ne 29 Sep ko us gunjaish ko band karwa diya: "limit the phone
+     * number 11 digits, both required and optional fields if entered."
+     *
+     * ⚠ IS KA EK ASAR HAI: "+92" wali shakl (12 adad) ab RAD hogi. Ye qeemat
+     * jaan-boojh kar di ja rahi hai — ek hi shakl ka hona graahak ki pehchan
+     * ko bharosa-mand banata hai, kyunke customer usi number se dhoonda aur
+     * banaya jata hai. Is liye paigham sirf "ghalat" nahi kehta, wo BATATA
+     * hai ke karna kya hai.
+     *
+     * GINTI ADADON PAR hoti hai, likhi hui shakl par nahi: "0312-295 1623"
+     * bilkul durust hai aur usay rad karna operator ko bina wajah rokna hai.
+     */
     private function phoneDigits(): \Closure
     {
         return function (string $attribute, mixed $value, \Closure $fail) {
             $digits = strlen(preg_replace('/\D+/', '', (string) $value) ?? '');
-            if ($digits < 11 || $digits > 14) {
-                $fail("Phone number me 11 se 14 adad hone chahiyen — is me {$digits} hain.");
+            if ($digits === 11) {
+                return;
             }
+
+            $fail($digits > 11
+                ? "Phone number me theek 11 adad hone chahiyen — is me {$digits} hain. "
+                    .'Agar "+92" se likha hai to us ki jagah 0 lagayein.'
+                : "Phone number me theek 11 adad hone chahiyen — is me sirf {$digits} hain.");
         };
     }
 

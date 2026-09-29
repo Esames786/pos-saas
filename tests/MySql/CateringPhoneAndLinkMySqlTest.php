@@ -66,7 +66,7 @@ class CateringPhoneAndLinkMySqlTest extends MySqlTenantTestCase
     public function test_a_phone_is_judged_on_its_digits_not_its_punctuation(string $phone, bool $ok): void
     {
         $digits = strlen(preg_replace('/\D+/', '', $phone) ?? '');
-        $accepted = $digits >= 11 && $digits <= 14;
+        $accepted = $digits === 11;
 
         $this->assertSame($ok, $accepted, "[{$phone}] me {$digits} adad — faisla ghalat nikla");
     }
@@ -77,13 +77,61 @@ class CateringPhoneAndLinkMySqlTest extends MySqlTenantTestCase
             'seedha 11 adad' => ['03122951623', true],
             'dash ke saath' => ['0312-2951623', true],
             'space ke saath' => ['0312 295 1623', true],
-            '+92 wali shakl' => ['+92 312 2951623', true],
             'das adad — kam' => ['0332201120', false],
+            'barah adad — zyada' => ['031225516233', false],
+            // CATERING-PHONE-11-1 (29 Sep): pehle ye QUBOOL hoti thi, kyunke
+            // hadd 11 se 14 thi. Malik ne hadd theek 11 karwa di, is liye
+            // "+92" wali shakl (12 adad) ab RAD hoti hai. Ye kharabi nahi,
+            // faisla hai — ek hi shakl ka hona graahak ki pehchan ko
+            // bharosa-mand banata hai, aur paigham operator ko batata hai ke
+            // "+92" ki jagah 0 lagayein.
+            '+92 wali shakl ab RAD' => ['+92 312 2951623', false],
             'do number ek saath' => ['0312-0080000  0312-0090000', false],
             'khali' => ['', false],
         ];
     }
 
+    /**
+     * ASAL RAASTA. Upar wala test qaida KHUD hisaab kar ke jaanchta hai; ye
+     * CONTROLLER ko bulata hai.
+     *
+     * Farq ahem hai: agar kal koi `phoneDigits()` ko validation se hata de, ya
+     * `customer_phone` par rule lagana bhool jaye, to upar wala test phir bhi
+     * hara rehta — kyunke wo sirf arithmetic dekh raha hai. Ye red ho jayega.
+     */
+    public function test_the_booking_form_itself_refuses_a_phone_that_is_not_eleven_digits(): void
+    {
+        $controller = app(\App\Http\Controllers\Tenant\Catering\CateringEventController::class);
+
+        $post = fn (string $phone) => \Illuminate\Http\Request::create('/catering/events', 'POST', [
+            'branch_id' => $this->branchId,
+            'customer_name' => 'MR ELEVEN',
+            'customer_phone' => $phone,
+            'booking_date' => now()->toDateString(),
+            'event_date' => now()->addDays(3)->toDateString(),
+            'pax' => 40,
+        ]);
+
+        // Pehle probe ko zinda sabit karo: durust number qubool hota hai.
+        $controller->store($post('0312-295 1623'));
+        $this->assertSame(1, CateringEvent::where('customer_name', 'MR ELEVEN')->count(),
+            'durust number par booking banni chahiye — warna neeche wali jaanch bemani hai');
+
+        // Aur "+92" wali shakl (12 adad) ab RAD hoti hai, wajah batate hue.
+        try {
+            $controller->store($post('+92 312 2951623'));
+            $this->fail('barah adad qubool ho gaye — hadd theek 11 honi chahiye');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $message = implode(' ', $e->validator->errors()->all());
+            $this->assertStringContainsString('11 adad', $message);
+            // Paigham sirf "ghalat" na kahe — batae ke karna kya hai.
+            $this->assertStringContainsString('+92', $message,
+                'paigham me wo hal bhi ho jo operator ko chahiye');
+        }
+
+        $this->assertSame(1, CateringEvent::where('customer_name', 'MR ELEVEN')->count(),
+            'rad hone par koi doosri booking nahi banni chahiye');
+    }
     // ── Purani bookings ka link ───────────────────────────────────────────
 
     /** Phone hai, link nahi — command jor deti hai. */
@@ -137,7 +185,8 @@ class CateringPhoneAndLinkMySqlTest extends MySqlTenantTestCase
     /**
      * SAB SE AHEM. Ek 12 adad wala number TYPO hai, do number nahi. Usay kaat
      * dena ek asli number ko ghalat number bana deta — is liye command usay
-     * chhod deti hai.
+     * chhod deti hai. (29 Sep ke baad wo hadd se bhi bahar hai, magar ye test
+     * us hadd ka nahi — ye is baat ka hai ke command ANDAZA na lagaye.)
      */
     public function test_an_odd_length_number_is_never_chopped_into_two(): void
     {
