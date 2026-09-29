@@ -58,21 +58,21 @@
             // dikha do". Ek dish jis ka kuch maal party laati hai aur kuch
             // hum, us par do satrein aati hain.
             if ($supply === 'customer') {
-                return [[$t('Party', 'پارٹی'), $qty]];
+                return [['PARTY', $qty]];
             }
             if ($supply === 'split') {
                 $parts = [];
                 if (round((float) ($m['customer'] ?? 0), 3) > 0) {
-                    $parts[] = [$t('Party', 'پارٹی'), $fmtQty($m['customer']).' '.$unit];
+                    $parts[] = ['PARTY', $fmtQty($m['customer']).' '.$unit];
                 }
                 if (round((float) ($m['ours'] ?? 0), 3) > 0) {
-                    $parts[] = [$t('Own', 'اپنا'), $fmtQty($m['ours']).' '.$unit];
+                    $parts[] = ['OWN', $fmtQty($m['ours']).' '.$unit];
                 }
 
                 return $parts ?: null;
             }
 
-            return [[$t('Own', 'اپنا'), $qty]];
+            return [['OWN', $qty]];
         }
 
         if ($supply === 'customer') {
@@ -90,7 +90,7 @@
 @if($compact)
     {{-- Har hissa apni satar par: "Party 30 KG" ke neeche "Own 12 KG". --}}
     @foreach($matLine->flatten(1) as $part)
-        <div class="supply-line">{{ $part[0] }} <span dir="ltr">{{ $part[1] }}</span></div>
+        <div class="supply-line"><span class="sup-tag" dir="ltr">{{ $part[0] }} <span dir="ltr">{{ $part[1] }}</span></span></div>
     @endforeach
 @else
     @php($joined = $matLine->implode(' · '))

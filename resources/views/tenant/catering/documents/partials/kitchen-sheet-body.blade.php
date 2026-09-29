@@ -130,7 +130,13 @@
             <tr>
                 <th class="sr" style="width: 5%;">#</th>
                 <th class="num" style="width: 16%;">{{ $t("Qty", "مقدار") }}</th>
-                <th>{{ $t('Item', 'آئٹم') }}</th>
+                {{-- Item par chaurai AB LIKHI HUI hai (42%), pehle ye baqi sab ke baad
+                     bachi hui jagah leta tha. Malik ne 42% maanga; teen fisad un do
+                     khaanon se liye gaye jin ka content is daur me chhota hua —
+                     Party/Own (label ab 11px) aur Done. Qty aur Instructions waise
+                     hi hain, is liye un se kuch nahi liya gaya.
+                     Jama: 5 + 16 + 42 + 19 + 13 + 5 = 100. --}}
+                <th style="width: 42%;">{{ $t('Item', 'آئٹم') }}</th>
                 <th style="width: 19%;">{{ $t("Instructions", "ہدایات") }}</th>
                 {{-- KITCHEN-SHEET-A5-1 (teesra daur) — "Done" ka khaana gaya,
                      us ki jagah maal. Malik: "done wali column hatado, us ki
@@ -138,11 +144,11 @@
 
                      Tick box ki jagah wo khabar aa gayi jo bawarchi ko kaam
                      se pehle chahiye: maal kis ka hai aur kitna. --}}
-                <th class="supply" style="width: 15%;">{{ $t('Party / Own', 'پارٹی / اپنا') }}</th>
+                <th class="supply" style="width: 13%;">{{ $t('Party / Own', 'پارٹی / اپنا') }}</th>
                 {{-- Tick box wapas, magar ab APNE khaane me — malik: "add new
                      column of checkbox that you remove, also add as separate
                      column". Pehle ye maal ki jagah par tha; ab dono hain. --}}
-                <th class="done" style="width: 6%;">{{ $t('Done', 'مکمل') }}</th>
+                <th class="done" style="width: 5%;">{{ $t('Done', 'مکمل') }}</th>
             </tr>
         </thead>
         <tbody>

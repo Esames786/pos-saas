@@ -90,12 +90,13 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
      * hai — aur Chrome par, Kashif Kitchen ke ASLI (lambe) naamon ke saath:
      *
      *   27 Sep, pehla daur : Urdu 14, English 15  — purane software ke barabar
-     *   27 Sep, doosra daur: Urdu 13, English 15  — malik ne Urdu font aur
-     *                                               bara karwaya (21 -> 24px)
+     *   27 Sep, doosra daur: Urdu 13, English 15  — Urdu font 21 -> 24px
+     *   29 Sep            : Urdu 14, English 16  — Urdu 24 -> 21px wapas,
+     *                                              English 15 -> 14px
      *
-     * Yani ab 14 khanon wali booking doosre safhe par jayegi. Ye malik ka
-     * soch-samajh kar kiya gaya faisla hai: bara harf, kam khane. English
-     * nahi badla kyunke `.item-name` ko haath nahi lagaya gaya.
+     * Har daur wohi adla-badli hai: jitna bara harf, utne kam khane. 29 Sep
+     * ko malik ne Urdu ko 21px par wapas laaya, is liye gunjaish bhi purane
+     * software wale 14 par wapas aa gayi.
      *
      * Neeche wale adad (12/16) DOMPDF ke hain aur is test ke apne CHHOTE
      * farzi naamon ke hain — dono cheezein Chrome+asli-naam se alag hain, is
@@ -121,6 +122,36 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
     {
         $this->assertSame(1, $this->pagesFor(10, 'ur'));
         $this->assertSame(1, $this->pagesFor(10, 'en'));
+    }
+
+    /**
+     * KITCHEN-SHEET-SUPPLY-TAG-1 (29 Sep) — PARTY/OWN ka gehra dabba CHHAPNA
+     * chahiye.
+     *
+     * Ye pehra ek KHAMOSH nakami ke liye hai. Browser print par background
+     * rang girte hain — isi file me do jagah (SERVICE ka dabba, preview ki
+     * patti) jaan-boojh kar border se banayi gayi hain, isi wajah se. Yahan
+     * malik ne gehra dabba maanga, aur harf safed hai.
+     *
+     * Agar `print-color-adjust` nikal gaya to background gir jayega aur label
+     * safed par safed reh kar BILKUL GHAYAB ho jayega. Kuch ghalat nazar nahi
+     * aayega — bas parche se khabar chali jayegi ke maal party ka hai ya hamara.
+     * Aisi nakami ka pakra jana screen dekh kar mumkin nahi, is liye test.
+     *
+     * (Wo property waqai kaam karti hai, ye naapa gaya: parcha Chrome se PDF
+     * bana kar us me fill rang dhoonda — `.0667 .0941 .1529 rg` nau baar mila.)
+     */
+    public function test_the_supply_tag_will_actually_print_its_dark_box(): void
+    {
+        $css = view('tenant.catering.documents.partials.kitchen-sheet-style', ['isUr' => true])->render();
+
+        $this->assertSame(1, preg_match('/\.sup-tag\s*\{([^}]*)\}/s', $css, $tag),
+            'PARTY/OWN ke dabbe ka qaida CSS me milna chahiye');
+
+        $this->assertStringContainsString('print-color-adjust: exact', $tag[1],
+            'is ke baghair background print par gir jata hai aur safed label ghayab ho jata hai');
+        $this->assertStringContainsString('color: #fff', $tag[1],
+            'harf safed hai — yehi wajah hai ke upar wali property lazmi hai');
     }
 
     /**

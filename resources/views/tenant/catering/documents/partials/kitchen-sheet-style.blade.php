@@ -160,7 +160,44 @@
        Party upar, Own neeche, har ek apni satar par. Bold: bawarchi ke liye
        ye faisla-kun khabar hai — ye cheez us ke store se nahi aayegi. */
     table.items th.supply, table.items td.supply { text-align: {{ $isUr ? 'left' : 'right' }}; }
-    .supply-line { font-size: 13px; font-weight: bold; white-space: nowrap; line-height: 1.2; }
+    /* KITCHEN-SHEET-SUPPLY-TAG-1 (29 Sep) — PARTY / OWN ek gehre dabbe me,
+       purane software ki tarah. Malik ne usi dabbe ki tasveer bheji thi.
+
+       Label Latin me hai, Urdu parche par bhi — malik ki misaal bhi Latin me
+       thi ("[party 18 KG]" agli satar "[OWN 10 KG]") aur purane software par
+       bhi ye lafz Latin hain.
+
+       ⚠ BROWSER PRINT PAR BACKGROUND GIRTE HAIN. Isi file me do jagah
+       (SERVICE ka dabba aur preview ki patti) jaan-boojh kar BORDER se banayi
+       gayi hain aur wahan likha hai ke background par bharosa na karo. Yahan
+       gehra dabba maanga gaya hai, aur safed harf par background gir jane ka
+       matlab hota: label BILKUL GHAYAB — safed par safed. Ye sab se buri
+       soorat hai, kyunke kuch ghalat nazar nahi aata, bas khabar chali jati
+       hai.
+
+       Ilaj `print-color-adjust: exact` hai, aur ye NAAPA GAYA hai — maan
+       kar nahi chhora gaya. Parcha Chrome se PDF banaya aur us ke andar
+       fill rang dhoonda: `.0667 .0941 .1529 rg` (yani #111827) NAU baar
+       mojood mila, aur safed harf bhi. Client Chrome hi se chhapta hai.
+
+       Agar kabhi ye property nikal gayi to label safed par safed reh kar
+       GHAYAB ho jayega — bina kisi nishani ke. Isi liye us par test hai.
+       (Yahan koi CSS fallback mumkin nahi: CSS ye jaan hi nahi sakta ke
+       background gira ya nahi.) */
+    /* Dabbe par `dir="ltr"` MARKUP me hai, aur wo lazmi hai: poora dabba
+       Urdu safhe ki RTL rau me baith kar "43.5 KG OWN" parhne lagta tha —
+       label peeche. Malik ne "[PARTY 18 KG]" maanga tha, label pehle.
+       Ye WOHI bidi kharabi hai jo waqt aur miqdaar par pakri ja chuki hai;
+       ab chauthi jagah. Jahan bhi RTL safhe par Latin aur adad saath likhe
+       jayen, unhe apna LTR khaana chahiye. */
+    .sup-tag {
+        display: inline-block; background: #111827; color: #fff;
+        font-size: 11px; font-weight: bold; letter-spacing: .04em;
+        padding: 1px 5px; border-radius: 2px; border: 1px solid #111827;
+        white-space: nowrap;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .supply-line { font-size: 11px; font-weight: bold; white-space: nowrap; line-height: 1.45; }
     /* Tick box apne khaane me. 12px — 18px par ye AKELA hi har row ko lamba
        kar deta tha, kyunke row ki bulandi us ke sab se lambe khane se banti
        hai, aur us se safhe par do khane kam ho jate the. */
@@ -189,19 +226,19 @@
        chulhe se, kaam karte hue parhta hai, is liye bari jagah bare harf me
        jani chahiye, khali hashiye me nahi. */
     table.items td { padding: 3px 6px; }
-    .item-name { font-size: 15px; font-weight: 800; }
+    .item-name { font-size: 14px; font-weight: 800; }
     /* KITCHEN-SHEET-FOOT-BOTTOM-1 (27 Sep) — malik: "urdu items ka font
        mazeed increase karo." 21 -> 24px.
 
        ⚠ QEEMAT SAAF RAKHNA: qatar ki bulandi ISI khane se banti hai, is liye
        har barhotri safhe par khane ghataati hai. Chrome se naapa gaya: 24px
-       par ek A5 safhe par 13 khane aate hain, 14 nahi. Yani 14 ya us se zyada
+       par ek A5 safhe par (29 Sep ko malik ne 21px par wapas laaya) khane aate hain. Jitna bara harf, utne kam khane —
        khanon wali booking ab doosre safhe par jayegi. Malik ne bara font
        maanga hai aur wo ye
        adla-badli jaante hue maange — magar agli baar jab koi "do safhe kyun"
        poochhe, jawab yahan likha hai. */
-    .item-ur { font-size: 24px; }
-    .qty { font-size: 16px; font-weight: bold; white-space: nowrap; }
+    .item-ur { font-size: 21px; }
+    .qty { font-size: 14px; font-weight: bold; white-space: nowrap; }
     .instructions { color: #374151; font-size: 12px; }
     /* KASHIF-KITCHEN-MATERIALS-1: the material line sits UNDER the dish and
        stays quieter than it — the dish name is what the cook reads first. */

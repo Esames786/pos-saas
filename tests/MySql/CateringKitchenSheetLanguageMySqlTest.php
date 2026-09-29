@@ -207,10 +207,24 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
         ])->render();
 
         $this->assertStringContainsString('84 KG', $html, 'naap mojood honi chahiye');
-        $this->assertStringContainsString('<span dir="ltr">84 KG</span>', $html,
-            'naap apne LTR khaane me ho');
-        $this->assertStringContainsString('اپنا', $html,
-            'unwaan Urdu me rehna chahiye — usay LTR me daalna ghalat taraf le jata hai');
+        // Dabbe par `dir="ltr"` LAZMI hai: us ke baghair poora dabba Urdu
+        // safhe ki RTL rau me baith kar "43.5 KG OWN" parhne lagta hai —
+        // label PEECHE. Ye wohi bidi kharabi hai jo waqt aur miqdaar par
+        // pehle pakri ja chuki hai; ab chauthi jagah.
+        // Poora tukra EK gehre dabbe me — malik: "[PARTY 18 KG] ese pora
+        // background dark". Naap phir bhi apne LTR khaane me, warna Urdu
+        // safhe par "KG 84" ulta chhapta hai.
+        $this->assertStringContainsString('<span class="sup-tag" dir="ltr">OWN <span dir="ltr">84 KG</span></span>', $html,
+            'label aur naap ek hi gehre dabbe me hon');
+
+        // KITCHEN-SHEET-SUPPLY-TAG-1 (29 Sep): label ab Latin me hai, Urdu
+        // parche par bhi — malik ki misaal bhi Latin me thi aur purane
+        // software par bhi ye lafz Latin hain. Pehle yahan 'اپنا' tha.
+        // ...aur purana Urdu lafz WAPAS na aaye. Ulti jaanch is liye ke
+        // seedhi jaanch ("OWN mojood hai?") us din bhi hari rehti jis din
+        // dono lafz saath chhapne lag jayen.
+        $this->assertStringNotContainsString('اپنا', $html,
+            'compact shakl me label tarjuma nahi hota — purana Urdu lafz wapas aa gaya');
     }
 
     // ── helpers ────────────────────────────────────────────────────────────
