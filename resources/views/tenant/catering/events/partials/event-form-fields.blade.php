@@ -90,9 +90,10 @@
                      balance nikalna mumkin hi nahi tha. --}}
                 <div class="col-md-4">
                     <label class="form-label">Phone <span class="text-danger">*</span></label>
-                    <input type="text" name="customer_phone" class="form-control" required
+                    <input type="text" name="customer_phone" class="form-control js-phone" required
                            inputmode="tel" value="{{ old('customer_phone', $event?->customer_phone) }}">
-                    <div class="form-text fs-12">11 se 14 adad. Isi se graahak pehchana jata hai.</div>
+                    <div class="form-text fs-12">Theek 11 adad. Isi se graahak pehchana jata hai.</div>
+                    <div class="invalid-feedback d-block fs-12 js-phone-msg"></div>
                 </div>
                 {{-- Doosra number — marzi ka. Ye sirf sahulat nahi: ab tak jahan
                      do number thay wahan dono EK hi khaane me thoos diye jate
@@ -100,9 +101,10 @@
                      na dhoonda ja sakta hai. --}}
                 <div class="col-md-4">
                     <label class="form-label">Phone 2 <span class="text-muted fs-12">(marzi ka)</span></label>
-                    <input type="text" name="customer_phone_2" class="form-control"
+                    <input type="text" name="customer_phone_2" class="form-control js-phone"
                            inputmode="tel" value="{{ old('customer_phone_2', $event?->customer_phone_2) }}">
-                    <div class="form-text fs-12">Raabte ke liye. Pehchan pehle number se hi hoti hai.</div>
+                    <div class="form-text fs-12">Marzi ka — magar likha jaye to theek 11 adad. Pehchan pehle number se hi hoti hai.</div>
+                    <div class="invalid-feedback d-block fs-12 js-phone-msg"></div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Email</label>
@@ -280,3 +282,65 @@
         </div>
     </div>
 </div>
+
+{{-- CATERING-PHONE-11-1 (29 Sep) — malik: "on tab switch validation error
+     bhi dikhe ke tum ne kam digits daale hain."
+
+     Ghalti khaane se NIKALTE waqt nazar aati hai, likhte waqt nahi: aadha
+     likha hua number hamesha "ghalat" hota hai, aur har harf par laal
+     dikhana operator ko sirf tang karta hai. Isi liye `blur` par.
+
+     Ye server ke qaide ki JAGAH nahi — us ki naqal hai, taake jawab foran
+     mile. Faisla wahin hota hai jahan hota tha (controller ka
+     `phoneDigits()`), aur ginti yahan bhi ADADON par hai, likhi hui shakl par
+     nahi: "0312-295 1623" bilkul durust hai.
+
+     Barhne se bhi roka ja raha hai — magar `maxlength` se NAHI. Wo HARF ginta
+     hai, aur "0312-2951623" me barah harf hain; maxlength=11 aisa number
+     likhne hi na deta. Is liye adad gine jate hain aur sirf barhwan ADAD
+     rukta hai. --}}
+@once
+@push('scripts')
+<script>
+(function () {
+    var NEEDED = 11;
+    var digitsOf = function (v) { return (v || '').replace(/\D+/g, ''); };
+
+    document.querySelectorAll('.js-phone').forEach(function (input) {
+        var msg = input.parentElement.querySelector('.js-phone-msg');
+        if (! msg) { return; }
+
+        var say = function (text) {
+            msg.textContent = text || '';
+            input.classList.toggle('is-invalid', !! text);
+        };
+
+        // Barhwan adad rok do — aur sirf adad, taake dash aur space likhe ja saken.
+        input.addEventListener('input', function () {
+            if (digitsOf(input.value).length > NEEDED) {
+                var kept = '', n = 0;
+                for (var i = 0; i < input.value.length; i++) {
+                    var ch = input.value[i];
+                    if (/\d/.test(ch)) { if (n >= NEEDED) { continue; } n++; }
+                    kept += ch;
+                }
+                input.value = kept;
+            }
+            if (input.classList.contains('is-invalid')) { say(''); }
+        });
+
+        input.addEventListener('blur', function () {
+            var n = digitsOf(input.value).length;
+            if (n === 0) {
+                // Khali doosra number bilkul jaiz hai; pehla number `required`
+                // se pakra jata hai, is liye yahan use ghalat nahi kehna.
+                say('');
+                return;
+            }
+            say(n === NEEDED ? '' : 'Theek ' + NEEDED + ' adad chahiyen — abhi ' + n + ' hain.');
+        });
+    });
+})();
+</script>
+@endpush
+@endonce

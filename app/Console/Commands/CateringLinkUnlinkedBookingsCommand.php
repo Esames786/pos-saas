@@ -82,9 +82,12 @@ class CateringLinkUnlinkedBookingsCommand extends Command
 
             [$first, $second] = $this->split($raw);
 
+            // CATERING-PHONE-11-1: wohi hadd jo form lagata hai. Do jagah do
+            // alag hadden rakhne se ye command wo number jorne lagti jo form
+            // qubool hi nahi karta.
             $digits = strlen(preg_replace('/\D+/', '', $first) ?? '');
-            if ($digits < 11 || $digits > 14) {
-                $skipped[] = [$event->event_no, mb_substr($name, 0, 24), "phone me {$digits} adad — haath se dekhna parega"];
+            if ($digits !== 11) {
+                $skipped[] = [$event->event_no, mb_substr($name, 0, 24), "phone me {$digits} adad — theek 11 chahiyen, haath se dekhna parega"];
 
                 continue;
             }
