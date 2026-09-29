@@ -91,8 +91,17 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
      *
      *   27 Sep, pehla daur : Urdu 14, English 15  — purane software ke barabar
      *   27 Sep, doosra daur: Urdu 13, English 15  — Urdu font 21 -> 24px
-     *   29 Sep            : Urdu 14, English 16  — Urdu 24 -> 21px wapas,
+     *   29 Sep, pehla daur : Urdu 14, English 16  — Urdu 24 -> 21px wapas,
      *                                              English 15 -> 14px
+     *   29 Sep, doosra daur: Urdu 13, English 16  — malik ne Urdu wapas 24px
+     *                                              par maanga, aur wazan 600
+     *
+     * DOMPDF KE ADAD 29 Sep ko 12/16 se 8/12 par laaye gaye. Ye parche ka
+     * phoolna NAHI hai — Chrome par gunjaish 13 hai. Ye us khaayi ka barhna
+     * hai jo dompdf aur Chrome ke darmiyan hai: dompdf ke paas Nastaliq hai
+     * hi nahi aur wo 24px par DejaVu se kaam chalata hai, jo kahin chaura
+     * hai. Isi liye upar likha hai ke ye adad "client ko itne khane
+     * dikhenge" ka daawa nahi — sirf regression par kaat-te hain.
      *
      * Har daur wohi adla-badli hai: jitna bara harf, utne kam khane. 29 Sep
      * ko malik ne Urdu ko 21px par wapas laaya, is liye gunjaish bhi purane
@@ -110,18 +119,18 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
      */
     public function test_the_sheet_neither_wastes_the_page_nor_cramps_it(): void
     {
-        $this->assertSame(1, $this->pagesFor(12, 'ur'),
-            'parcha phool gaya — 12 khane bhi ek safhe par nahi aa rahe, yani wapas "empty space"');
+        $this->assertSame(1, $this->pagesFor(8, 'ur'),
+            'parcha phool gaya — 8 khane bhi ek safhe par nahi aa rahe, yani wapas "empty space"');
 
-        $this->assertSame(2, $this->pagesFor(16, 'ur'),
-            'parcha dobara kas gaya — 16 khane ek safhe par aa gaye, yani harf phir chhote ho gaye');
+        $this->assertSame(2, $this->pagesFor(12, 'ur'),
+            'parcha dobara kas gaya — 12 khane ek safhe par aa gaye, yani harf phir chhote ho gaye');
     }
 
     /** Aur Urdu par bhi, kyunke client ka sheet Urdu me hi chhapta hai. */
     public function test_the_urdu_sheet_is_the_one_that_must_fit(): void
     {
-        $this->assertSame(1, $this->pagesFor(10, 'ur'));
-        $this->assertSame(1, $this->pagesFor(10, 'en'));
+        $this->assertSame(1, $this->pagesFor(8, 'ur'));
+        $this->assertSame(1, $this->pagesFor(8, 'en'));
     }
 
     /**

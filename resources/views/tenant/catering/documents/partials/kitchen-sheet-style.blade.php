@@ -46,8 +46,22 @@
         background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.18);
         display: flex; flex-direction: column;
     }
+    /* KITCHEN-SHEET-PREVIEW-TRUTH-1 (29 Sep) — malik: "preview print me
+       footer upar hi aa raha hai, page end pe nahi, lekin jab print
+       nikalta hoon tab neeche aata hai — aisa kyun?"
+
+       Wajah yahan thi. Is qaide me `min-height: 0` likha tha, is liye
+       tang screen par body sirf apne MATN jitni oonchi hoti thi — aur
+       jab body ki apni koi bulandi na ho to paer ka `margin-top: auto`
+       kisi cheez ko neeche nahi dhakel sakta. Print me `min-height: 100%`
+       lagta hai, is liye wahan paer tal par chala jata tha.
+
+       Yani PRINT durust tha aur PREVIEW jhoot bol raha tha — aur ek
+       preview jo chhapne wali cheez se alag dikhe, us ka hona na hona
+       barabar hai. Ab kaghaz ki bulandi yahan bhi qayam rehti hai;
+       sirf chaurai screen ke mutabiq hoti hai. */
     @media screen and (max-width: 230mm) {
-        body { width: 100%; min-height: 0; margin: 0; padding: 6mm; box-shadow: none; }
+        body { width: 100%; margin: 0; padding: 6mm; box-shadow: none; }
     }
     @media print {
         html { background: #fff; height: 100%; }
@@ -89,7 +103,7 @@
     .foot { display: flex; justify-content: space-between; align-items: baseline;
             gap: 12px; margin-top: auto; padding-top: 3px; border-top: 2px solid #111827; }
     .foot-l { display: flex; align-items: baseline; gap: 12px; }
-    .foot-r { text-align: {{ $isUr ? 'left' : 'right' }}; }
+    .foot-r { text-align: right; }
     /* Waqt kabhi na toote: "8:00" upar aur "PM" neeche chala jata tha, jis se
        parche par do adhoore hisse nazar aate the. */
     /* Waqt ka qad SERVICE ke barabar — purane parche par dono ek jitne hain.
@@ -119,9 +133,9 @@
        lagate waqt: wo span lazmi hai. */
     .ft { display: inline-block; font-size: 16px; font-weight: bold; white-space: nowrap; }
     .ftl { font-size: 10px; font-weight: normal; text-transform: uppercase;
-           color: #6b7280; letter-spacing: .8px; margin-{{ $isUr ? "left" : "right" }}: 4px; }
+           color: #6b7280; letter-spacing: .8px; margin-right: 5px; }
     .foot .venue { font-size: 12px; font-weight: bold; display: inline; }
-    .foot .addr { font-size: 13px; font-weight: bold; color: #111827; display: inline; margin-{{ $isUr ? "right" : "left" }}: 10px; }
+    .foot .addr { font-size: 13px; font-weight: bold; color: #111827; display: inline; margin-left: 10px; }
     .doc-meta { display: flex; justify-content: space-between; margin: 4px 2px; color: #6b7280; font-size: 11px; }
     table.items { width: 100%; border-collapse: collapse; }
     table.items th { text-align: {{ $isUr ? 'right' : 'left' }}; border-bottom: 2px solid #111827; padding: 3px 6px; font-size: 9px; text-transform: uppercase; color: #374151; }
@@ -193,11 +207,11 @@
     .sup-tag {
         display: inline-block; background: #111827; color: #fff;
         font-size: 11px; font-weight: bold; letter-spacing: .04em;
-        padding: 1px 5px; border-radius: 2px; border: 1px solid #111827;
+        padding: 0 5px; border-radius: 2px; border: 1px solid #111827;
         white-space: nowrap;
         -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
-    .supply-line { font-size: 11px; font-weight: bold; white-space: nowrap; line-height: 1.45; }
+    .supply-line { font-size: 11px; font-weight: bold; white-space: nowrap; line-height: 1.3; }
     /* Tick box apne khaane me. 12px — 18px par ye AKELA hi har row ko lamba
        kar deta tha, kyunke row ki bulandi us ke sab se lambe khane se banti
        hai, aur us se safhe par do khane kam ho jate the. */
@@ -237,7 +251,20 @@
        maanga hai aur wo ye
        adla-badli jaante hue maange — magar agli baar jab koi "do safhe kyun"
        poochhe, jawab yahan likha hai. */
-    .item-ur { font-size: 21px; }
+    /* KITCHEN-SHEET-URDU-BOLD-1 (29 Sep) — malik: "urdu ka font size wapsi 24
+       kardo aur thora aur bold kardo."
+
+       Wazan 600 rakha gaya hai, 700 nahi: Jameel Noori Nastaleeq ka koi
+       alag BOLD chehra nahi hota, is liye browser khud mota karta hai
+       (synthetic bold). Nastaliq me harf ek doosre par charhte hain, aur
+       zyada synthetic wazan un jorron ko bhar kar dhabba bana deta hai —
+       khaas kar chhoti chhoti "ی" aur "ہ" par. 600 par harf mota lagta
+       hai aur jore khule rehte hain.
+
+       ⚠ Aur 24px ka matlab safhe par KAM khane: naapa gaya to Urdu 14 se
+       13 par aa gaya. Yani 14 khanon wali booking ab doosre safhe par
+       jayegi. Ye adla-badli har baar wohi hai. */
+    .item-ur { font-size: 24px; font-weight: 600; }
     .qty { font-size: 14px; font-weight: bold; white-space: nowrap; }
     .instructions { color: #374151; font-size: 12px; }
     /* KASHIF-KITCHEN-MATERIALS-1: the material line sits UNDER the dish and
