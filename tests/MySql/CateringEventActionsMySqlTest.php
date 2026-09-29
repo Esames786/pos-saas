@@ -350,9 +350,9 @@ class CateringEventActionsMySqlTest extends MySqlTenantTestCase
         // Naap apne LTR khaane me hai, warna Urdu kaghaz par "KG 2" chhapta
         // hai. Markup samet jaancha ja raha hai: sirf "2 KG" dhoondne par ye
         // us din bhi hara rehta jis din rukh wapas toot jaye.
-        $this->assertStringContainsString('Party <span dir="ltr">2 KG</span>', $sheet,
+        $this->assertStringContainsString('<span class="sup-tag" dir="ltr">PARTY <span dir="ltr">2 KG</span></span>', $sheet,
             'kitchen sheet par: party kitna laayegi');
-        $this->assertStringContainsString('Own <span dir="ltr">3 KG</span>', $sheet,
+        $this->assertStringContainsString('<span class="sup-tag" dir="ltr">OWN <span dir="ltr">3 KG</span></span>', $sheet,
             'aur hamare store se kitna');
         $this->assertStringNotContainsString('Chicken 5 KG (CAT 3, PAR 2)', $this->plainText($sheet),
             'magar maal ka naam aur poora jumla kitchen sheet par nahi — wo jagah khaata hai');

@@ -190,7 +190,15 @@ class CateringDashboardParityMySqlTest extends MySqlTenantTestCase
 
     public function test_a_busy_date_renders_one_count_pill_with_the_day_listing(): void
     {
-        $date = now()->addDays(2)->toDateString();
+        // Tareekh MAHINE KE ANDAR se chuni ja rahi hai, "aaj se do din baad"
+        // se nahi. `window()` sirf mojooda mahine ke aakhir tak dekhta hai
+        // ($anchor->endOfMonth()), is liye purana `addDays(2)` har mahine ke
+        // AAKHRI DO DIN agle mahine me chala jata tha aur ye test bina kisi
+        // asal kharabi ke red ho jata. 29 September ko theek yehi hua.
+        //
+        // Is test ka sawal ye hai ke ek masroof tareekh par EK ginti wala
+        // nishan bane — us ka mustaqbil me hona zaroori nahi.
+        $date = now()->startOfMonth()->addDays(9)->toDateString();
         $a = $this->booking($date, 400, 'First Booking', '0300-1111111');
         $b = $this->booking($date, 400, 'Second Booking', '0300-2222222');
 
