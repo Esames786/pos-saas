@@ -144,6 +144,10 @@ class ProductFormRoleDetectMySqlTest extends MySqlTenantTestCase
         // The detected card is drawn as active, so a click "to confirm the type" used to silently
         // reset role, POS visibility, purchasing, stock and consumption.
         $this->assertStringContainsString('var IS_EDIT = true', $edit);
+        // Pin the CONDITION, not the word. Looking only for "window.confirm" stayed green when
+        // the condition was sabotaged to `if (false)` — prompt still in the file, never reachable.
+        $this->assertStringContainsString('if (IS_EDIT && MODES[mode] && MODES[mode].def) {', $edit,
+            'the confirm must hang off the real edit condition, not sit in a dead branch');
         $this->assertStringContainsString('window.confirm', $edit);
 
         // A NEW product has nothing to lose, so it must not be nagged.
@@ -152,5 +156,32 @@ class ProductFormRoleDetectMySqlTest extends MySqlTenantTestCase
             ->render();
         $this->assertStringContainsString('var IS_EDIT = false', $create);
         $this->assertSame('pos_sale', $this->mode($create));
+    }
+
+    /**
+     * The two client-side rules, pinned to their MECHANISM.
+     *
+     * This harness cannot execute the form's JavaScript, so these assert the source that ships.
+     * That is weaker than a behavioural test and the weakness is real: the first version of the
+     * confirm guard below only looked for the word "window.confirm" and stayed GREEN when the
+     * condition was sabotaged to `if (false)` — the prompt was still in the file, permanently
+     * dead. So each assertion now pins the actual condition or statement, which is what a
+     * deletion or a rewiring would disturb. They catch a removed rule, not a logic error inside
+     * one.
+     */
+    public function test_a_mode_cannot_hide_a_flag_the_product_already_carries(): void
+    {
+        $html = $this->renderEdit([
+            'product_kind' => 'packaging_material', 'product_type' => 'service',
+            'is_purchasable' => 1, 'is_stock_tracked' => 1,
+        ]);
+
+        foreach ([['is_purchasable', 'purchase'], ['is_stock_tracked', 'stock']] as [$flag, $group]) {
+            $this->assertMatchesRegularExpression(
+                "/isChecked\('{$flag}'\)\s*&&\s*groups\.indexOf\('{$group}'\)\s*===\s*-1\)\s*groups\.push\('{$group}'\)/",
+                $html,
+                "a mode that omits the '{$group}' group must still show it while {$flag} is on"
+            );
+        }
     }
 }
