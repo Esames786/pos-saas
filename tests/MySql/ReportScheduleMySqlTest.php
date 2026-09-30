@@ -44,6 +44,17 @@ class ReportScheduleMySqlTest extends MySqlTenantTestCase
         app()->instance('tenant', $tenant);
     }
 
+    /** The real services the container would inject — the stand-in below is otherwise identical. */
+    private function serviceArgs(): array
+    {
+        return [
+            app(\App\Services\Reports\SalesReportEngine::class),
+            app(\App\Services\Reports\SalesReportExporter::class),
+            app(\App\Services\Reports\SalesReportDocumentService::class),
+            app(\App\Support\TenantClock::class),
+        ];
+    }
+
     public function test_due_schedule_sends_once_and_retries_are_no_ops(): void
     {
         $this->bindTenant('owner@example.test');
@@ -143,5 +154,126 @@ class ReportScheduleMySqlTest extends MySqlTenantTestCase
                 && $mail->pdfFilename === 'sales-report-2026-08-26.pdf'
                 && str_starts_with((string) $mail->pdfContent, '%PDF-');
         });
+    }
+
+    /* ── WHATSAPP-REPORT-CHANNEL-1: the claim is per CHANNEL ─────────────────────────────────────
+       The old claim was (schedule, period) for the send as a whole. With a second channel that shape
+       turns poisonous: email goes out, the other channel throws, the catch frees the SHARED claim,
+       and the next tick emails the owner again — while last_failure talks about the other channel.
+       Two copies a day, and two facts nobody would connect.
+
+       Only email exists today, so these drive the real runDue() through the two seams the WhatsApp
+       channel will fill (channelsFor / deliver). Everything else — claiming, freeing, the status
+       columns, the return contract — is the shipped code. */
+
+    public function test_a_failing_channel_does_not_make_the_working_one_send_twice(): void
+    {
+        $this->bindTenant('owner@example.test');
+        $svc = new TwoChannelSchedules(...$this->serviceArgs());
+        $schedule = $this->makeSchedule();
+        $at = Carbon::parse('2026-08-09 08:30', $svc->timezone());
+
+        // Tick 1: email lands, the second channel throws.
+        $this->assertSame('failed', $svc->runDue($schedule, $at));
+        $this->assertSame(['email', 'whatsapp'], $svc->attempts);
+
+        // Tick 2, SAME period: the failure must retry, the success must NOT repeat.
+        $svc->attempts = [];
+        $this->assertSame('failed', $svc->runDue($schedule, $at->copy()->addMinutes(20)));
+        $this->assertSame(['whatsapp'], $svc->attempts,
+            'email already went out for this period — it must never be attempted again');
+
+        // And the owner's inbox is the real proof: exactly one report, not two.
+        Mail::assertSent(SalesReportMail::class, 1);
+    }
+
+    public function test_a_channel_that_starts_working_still_gets_its_turn(): void
+    {
+        $this->bindTenant('owner@example.test');
+        $svc = new TwoChannelSchedules(...$this->serviceArgs());
+        $schedule = $this->makeSchedule();
+        $at = Carbon::parse('2026-08-09 08:30', $svc->timezone());
+
+        $this->assertSame('failed', $svc->runDue($schedule, $at));
+
+        // Whatever was broken is fixed before the next tick.
+        $svc->failing = [];
+        $svc->attempts = [];
+        $this->assertSame('sent', $svc->runDue($schedule, $at->copy()->addMinutes(20)));
+        $this->assertSame(['whatsapp'], $svc->attempts, 'only the channel that had failed is retried');
+
+        // Nothing is left owing: a further tick has nothing to do.
+        $this->assertSame('skipped_already_sent', $svc->runDue($schedule, $at->copy()->addMinutes(40)));
+    }
+
+    public function test_one_channel_succeeding_does_not_erase_another_channels_failure(): void
+    {
+        $this->bindTenant('owner@example.test');
+        // Order matters here: the failure is recorded FIRST, then a success follows it. A blanket
+        // "clear last_failure on success" would wipe it and the schedule would look healthy while
+        // half its delivery was broken — which is exactly how this stays hidden in production.
+        $svc = new TwoChannelSchedules(...$this->serviceArgs());
+        $svc->order = ['whatsapp', 'email'];
+        $schedule = $this->makeSchedule();
+
+        $this->assertSame('failed', $svc->runDue($schedule, Carbon::parse('2026-08-09 08:30', $svc->timezone())));
+
+        $failure = (string) DB::connection('tenant')->table('report_schedules')
+            ->where('id', $schedule->id)->value('last_failure');
+        $this->assertStringStartsWith('whatsapp:', $failure,
+            "the failure must survive the other channel's success, and must name the channel");
+    }
+
+    public function test_the_claim_row_records_which_channel_it_belongs_to(): void
+    {
+        $this->bindTenant('owner@example.test');
+        $svc = new TwoChannelSchedules(...$this->serviceArgs());
+        $svc->failing = [];
+        $schedule = $this->makeSchedule();
+
+        $svc->runDue($schedule, Carbon::parse('2026-08-09 08:30', $svc->timezone()));
+
+        $channels = DB::connection('tenant')->table('report_schedule_runs')
+            ->where('report_schedule_id', $schedule->id)->pluck('channel')->sort()->values()->all();
+        $this->assertSame(['email', 'whatsapp'], $channels,
+            'one claim per channel — a shared claim is what let one failure resend the other');
+    }
+}
+
+/**
+ * WHATSAPP-REPORT-CHANNEL-1 — a two-channel stand-in, so the per-channel claim can be proven before a
+ * second channel exists.
+ *
+ * It replaces only the two seams (channelsFor / deliver). Claiming, freeing, the status columns and
+ * the return contract all come from the shipped service, which is the point: asserting against a
+ * reimplementation of runDue() would prove nothing about what actually runs at 02:30.
+ */
+class TwoChannelSchedules extends ReportScheduleService
+{
+    /** @var list<string> */
+    public array $order = ['email', 'whatsapp'];
+
+    /** @var list<string> */
+    public array $failing = ['whatsapp'];
+
+    /** @var list<string> every channel deliver() was asked for, in order */
+    public array $attempts = [];
+
+    protected function channelsFor(object $schedule): array
+    {
+        return $this->order;
+    }
+
+    protected function deliver(object $schedule, array $period, string $channel): void
+    {
+        $this->attempts[] = $channel;
+
+        if (in_array($channel, $this->failing, true)) {
+            throw new \RuntimeException($channel.' is down');
+        }
+
+        if ($channel === 'email') {
+            parent::deliver($schedule, $period, $channel);
+        }
     }
 }
