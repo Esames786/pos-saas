@@ -92,6 +92,17 @@ class ReportScheduleService
      * Run one schedule if due. Returns 'sent' | 'skipped_not_due' | 'skipped_already_sent' | 'failed'.
      * IDEMPOTENT: the unique run row is claimed BEFORE the send — a concurrent/retried dispatcher
      * loses the insert and skips; a genuine send failure frees the claim for the next tick.
+     *
+     * WHATSAPP-REPORT-CHANNEL-1 — the claim is now PER CHANNEL, and this is the whole reason the
+     * method was split. The old shape claimed (schedule, period) once for the send as a whole. Add a
+     * second channel to that and the first failure takes the other channel down with it: email goes
+     * out, WhatsApp throws, the catch frees the shared claim, and the next tick sends the EMAIL again.
+     * The owner would get two copies a day while `last_failure` talked about WhatsApp — two facts
+     * almost nobody would connect.
+     *
+     * So each channel claims its own period and frees only its own. The return value keeps its old
+     * four-way contract for the dispatcher command: any failure reports 'failed' so the tick is
+     * retried, and a retry then skips whatever already went out.
      */
     public function runDue(object $schedule, ?Carbon $nowTz = null): string
     {
@@ -101,50 +112,116 @@ class ReportScheduleService
         }
         $period = $this->period($schedule, $nowTz);
 
+        $results = [];
+        foreach ($this->channelsFor($schedule) as $channel) {
+            $results[] = $this->runChannel($schedule, $period, $channel);
+        }
+
+        if (in_array('failed', $results, true)) {
+            return 'failed';
+        }
+
+        return in_array('sent', $results, true) ? 'sent' : 'skipped_already_sent';
+    }
+
+    /**
+     * Which channels this schedule delivers on.
+     *
+     * Only email exists today, so this returns exactly what the service has always done. The branch /
+     * tenant `report_channels` settings are read here when the WhatsApp channel lands; keeping that
+     * out of this step is deliberate, so the per-channel claim can be proven on its own against
+     * behaviour that has not moved.
+     *
+     * Protected, not private: this and deliver() are the two seams the WhatsApp channel replaces in
+     * step 3, and they are what a test substitutes to exercise two channels before one exists.
+     *
+     * @return list<string>
+     */
+    protected function channelsFor(object $schedule): array
+    {
+        return ['email'];
+    }
+
+    /** Claim, send and record ONE channel. Returns 'sent' | 'skipped_already_sent' | 'failed'. */
+    private function runChannel(object $schedule, array $period, string $channel): string
+    {
         $claimed = DB::connection('tenant')->table('report_schedule_runs')->insertOrIgnore([
             'report_schedule_id' => $schedule->id,
             'period_key' => $period['key'],
+            'channel' => $channel,
             'status' => 'sent',
             'created_at' => now(),
         ]);
         if ($claimed === 0) {
-            return 'skipped_already_sent'; // unique(schedule, period) — retry can never double-send
+            return 'skipped_already_sent'; // unique(schedule, period, channel) — retry can never double-send
         }
 
         try {
-            $recipients = $this->recipients($schedule);
-            $filters = $this->engine->normalizeFilters(['date_from' => $period['from'], 'date_to' => $period['to']]);
-            $selected = (array) json_decode($schedule->sections, true);
-            $business = app()->bound('tenant') ? (string) app('tenant')->business_name : 'Bingoo POS';
-            $label = $period['from'].' to '.$period['to'];
+            $this->deliver($schedule, $period, $channel);
 
-            if (($schedule->delivery_format ?? 'csv') === 'a4_pdf') {
-                $mail = new SalesReportMail(
-                    $business,
-                    $label,
-                    [],
-                    $this->document->pdf($filters, $selected),
-                    'sales-report-'.$period['from'].'.pdf',
-                    $selected,
-                );
-            } else {
-                $mail = new SalesReportMail($business, $label, $this->exporter->sections($filters, $selected));
+            $update = ['last_run_at' => now(), 'last_success_at' => now(), 'updated_at' => now()];
+
+            // Clear the failure only if it is OURS. Blanket-clearing here would erase a sibling
+            // channel's failure the moment this one succeeded, and the schedule would look healthy
+            // while half its delivery was silently broken.
+            $current = (string) DB::connection('tenant')->table('report_schedules')
+                ->where('id', $schedule->id)->value('last_failure');
+            if ($current === '' || str_starts_with($current, $channel.':')) {
+                $update['last_failure'] = null;
             }
-            Mail::to($recipients)->send($mail);
 
-            DB::connection('tenant')->table('report_schedules')->where('id', $schedule->id)
-                ->update(['last_run_at' => now(), 'last_success_at' => now(), 'last_failure' => null, 'updated_at' => now()]);
+            DB::connection('tenant')->table('report_schedules')->where('id', $schedule->id)->update($update);
 
             return 'sent';
         } catch (\Throwable $e) {
-            // free the period claim so the NEXT tick retries; record the failure.
+            // free THIS channel's claim so the next tick retries it — and only it.
             DB::connection('tenant')->table('report_schedule_runs')
-                ->where('report_schedule_id', $schedule->id)->where('period_key', $period['key'])->delete();
+                ->where('report_schedule_id', $schedule->id)
+                ->where('period_key', $period['key'])
+                ->where('channel', $channel)
+                ->delete();
+
+            // Name the channel in the failure. Without it "the report failed" and "the report arrived
+            // twice" read as unrelated complaints.
             DB::connection('tenant')->table('report_schedules')->where('id', $schedule->id)
-                ->update(['last_run_at' => now(), 'last_failure' => mb_substr($e->getMessage(), 0, 500), 'updated_at' => now()]);
+                ->update([
+                    'last_run_at' => now(),
+                    'last_failure' => mb_substr($channel.': '.$e->getMessage(), 0, 500),
+                    'updated_at' => now(),
+                ]);
 
             return 'failed';
         }
+    }
+
+    /** Build and hand off one report on one channel. */
+    protected function deliver(object $schedule, array $period, string $channel): void
+    {
+        $filters = $this->engine->normalizeFilters(['date_from' => $period['from'], 'date_to' => $period['to']]);
+        $selected = (array) json_decode($schedule->sections, true);
+        $business = app()->bound('tenant') ? (string) app('tenant')->business_name : 'Bingoo POS';
+        $label = $period['from'].' to '.$period['to'];
+
+        if ($channel !== 'email') {
+            throw new RuntimeException('Unknown report channel: '.$channel);
+        }
+
+        $recipients = $this->recipients($schedule);
+
+        if (($schedule->delivery_format ?? 'csv') === 'a4_pdf') {
+            $mail = new SalesReportMail(
+                $business,
+                $label,
+                [],
+                $this->document->pdf($filters, $selected),
+                'sales-report-'.$period['from'].'.pdf',
+                $selected,
+            );
+        } else {
+            $mail = new SalesReportMail($business, $label, $this->exporter->sections($filters, $selected));
+        }
+
+        Mail::to($recipients)->send($mail);
     }
 
     /** @return list<string> */
