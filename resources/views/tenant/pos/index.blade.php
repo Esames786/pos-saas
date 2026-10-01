@@ -1685,7 +1685,7 @@
                     <i class="ti ti-wifi me-1"></i>Send to network
                 </button>
                 <button type="button" class="btn btn-sm btn-primary" id="qr-email">
-                    <i class="ti ti-mail me-1"></i>Email to owner
+                    <i class="ti ti-send me-1"></i>Send to owner
                 </button>
             </div>
         </div>
