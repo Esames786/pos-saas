@@ -3,7 +3,8 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
-use App\Mail\SalesReportMail;
+use App\Services\Reports\Delivery\ReportDelivery;
+use App\Services\Reports\Delivery\ReportDispatcher;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\PosQuickReportSetting;
@@ -37,6 +38,7 @@ class PosQuickReportController extends Controller
     public function __construct(
         private readonly SalesReportEngine $engine,
         private readonly SalesReportDocumentService $document,
+        private readonly ReportDispatcher $dispatcher,
     ) {}
 
     private function guard(): void
@@ -157,12 +159,25 @@ class PosQuickReportController extends Controller
             return response()->json(['ok' => false, 'message' => 'No owner email is configured to send the report to.'], 422);
         }
 
-        $pdf = $this->document->pdf($filters, $sections);
-        Mail::to($recipients)->send(new SalesReportMail(
-            $this->businessName(), $date . ' to ' . $date, [], $pdf, 'sales-report-' . $date . '.pdf', $sections
-        ));
+        // WHATSAPP-REPORT-CHANNEL-1: one door. The branch is known here — POS always stands on one —
+        // so this button follows the BRANCH's channels, falling back to the tenant's.
+        $delivery = new ReportDelivery(
+            businessName: $this->businessName(),
+            label: $date . ' to ' . $date,
+            filters: $filters,
+            sections: $sections,
+            format: 'a4_pdf',
+            fileName: 'sales-report-' . $date . '.pdf',
+        );
 
-        return response()->json(['ok' => true, 'sent_to' => $recipients]);
+        $branchId = auth('tenant')->user()?->default_branch_id;
+        $sent = [];
+        foreach ($this->dispatcher->channelsFor($branchId) as $channel) {
+            $this->dispatcher->send($channel, $delivery, $channel === 'email' ? $recipients : []);
+            $sent[] = $channel;
+        }
+
+        return response()->json(['ok' => true, 'sent_to' => $recipients, 'channels' => $sent]);
     }
 
     /** Thermal print view (browser print → the local receipt printer). */
