@@ -379,6 +379,14 @@ class CateringEventController extends Controller
                 ->restoreTargetIsAssumed($cateringEvent),
             'headline' => $finance->headline($cateringEvent),
             'ledger' => $finance->ledger($cateringEvent),
+            // CATERING-ADVANCE-VOID-1 — ulti hui receipts ALAG se.
+            //
+            // Inhein `advances` relation me milana aasan tha aur ghalat hota:
+            // wohi relation hai jis se `$advanceTotal` aur baqi sums bante
+            // hain. Ek nazar aane wali satar ki khatir ulti hui rakam dobara
+            // ginti me aa jati. Nazar aana aur gina jana do alag cheezein hain
+            // aur yahan unhein alag hi rehna chahiye.
+            'voidedAdvances' => $finance->voidedAdvances($cateringEvent),
             // KASHIF-EVENT-HISTORY-1: the unified timeline + every quotation
             // version, for the History panel.
             'revisions' => $revisions,

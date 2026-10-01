@@ -193,6 +193,7 @@
                             <th class="text-end">Money out</th>
                             <th class="text-end">Billed</th>
                             <th class="text-end">Running</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -218,9 +219,38 @@
                                 <td class="text-end fw-semibold {{ $row['running'] < 0 ? 'text-danger' : ($row['running'] > 0 ? 'text-warning' : '') }}">
                                     {{ number_format($row['running'], 2) }}
                                 </td>
+                                {{-- CATERING-ADVANCE-VOID-1 — malik ne booking ki
+                                     screen par ye kaam maanga, phir isi screen ka
+                                     screenshot bhej kar kaha "is screen pe bhi".
+                                     Parcha wohi hai jo wahan hai aur service bhi
+                                     wohi — ek kaam, ek qaida. --}}
+                                <td class="text-end pe-1" style="width:1%; white-space:nowrap;">
+                                    @if(!empty($row['advance_id']))
+                                        @can('tenant.catering.advances.update-reference')
+                                            <button type="button" class="btn btn-link btn-sm p-0 text-muted adv-ref-btn"
+                                                    data-id="{{ $row['advance_id'] }}"
+                                                    data-reference="{{ $row['reference'] }}"
+                                                    data-notes="{{ $row['advance_notes'] }}"
+                                                    title="Slip number ya note theek karein. Rakam nahi badalti.">
+                                                <i class="ti ti-pencil"></i>
+                                            </button>
+                                        @endcan
+                                        @if($row['can_void'] ?? false)
+                                            @can('tenant.catering.advances.void')
+                                                <button type="button" class="btn btn-link btn-sm p-0 text-danger ms-2 adv-void-btn"
+                                                        data-id="{{ $row['advance_id'] }}"
+                                                        data-amount="{{ number_format($row['money_in'], 2) }}"
+                                                        data-date="{{ $row['date'] }}"
+                                                        title="Ghalat darj hui receipt ko ulta karein — journal ulti hoti hai aur cash/bank wapas ho jata hai.">
+                                                    <i class="ti ti-ban"></i>
+                                                </button>
+                                            @endcan
+                                        @endif
+                                    @endif
+                                </td>
                             </tr>
                         @empty
-                            <tr><td colspan="7" class="text-center text-muted py-4">Nothing has moved on this customer's bookings yet.</td></tr>
+                            <tr><td colspan="8" class="text-center text-muted py-4">Nothing has moved on this customer's bookings yet.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -364,6 +394,12 @@
     </div>
 </div>
 @endcan
+
+{{-- Wohi do parche jo booking ki screen par hain — ek hi partial se, taake
+     kal koi tabdeeli ek jagah hokar doosri jagah reh na jaye. --}}
+@canany(['tenant.catering.advances.void', 'tenant.catering.advances.update-reference'])
+    @include('tenant.catering.partials.advance-fix-modals', ['returnCustomer' => $customer->id])
+@endcanany
 
 @push('scripts')
 <script>

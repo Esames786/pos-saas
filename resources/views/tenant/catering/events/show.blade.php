@@ -1080,16 +1080,66 @@
             <div class="card-body p-0">
                 <table class="table table-sm mb-0">
                     <tbody>
+                        {{-- CATERING-ADVANCE-VOID-1 — darj shuda receipt ki ghalti
+                             theek karne ka raasta. Pehle koi nahi tha: receipt
+                             ek baar darj ho jaye to bas ho gayi.
+
+                             Do alag karwaiyan hain aur ye farq jaan-boojh kar
+                             hai. Reference sirf ek label hai — usay badalne se
+                             paisa nahi hilta. Amount ke saath paisa hilta hai,
+                             is liye wo badli NAHI jati: receipt ulti hoti hai
+                             aur sahi nayi darj hoti hai. --}}
+                        @php $mayVoid = ! $event->finalInvoice; @endphp
                         @forelse($event->advances as $advance)
                         <tr>
                             <td>{{ $advance->received_date->format('d M Y') }}</td>
                             <td>{{ $advance->paymentMethod?->name ?? '—' }}</td>
                             <td class="text-muted">{{ $advance->reference }}</td>
                             <td class="text-end">{{ number_format($advance->amount, 2) }}</td>
+                            <td class="text-end pe-2" style="width:1%; white-space:nowrap;">
+                                @can('tenant.catering.advances.update-reference')
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-muted adv-ref-btn"
+                                            data-id="{{ $advance->id }}"
+                                            data-reference="{{ $advance->reference }}"
+                                            data-notes="{{ $advance->notes }}"
+                                            title="Slip number ya note theek karein. Rakam nahi badalti aur koi entry nahi banti.">
+                                        <i class="ti ti-pencil"></i>
+                                    </button>
+                                @endcan
+                                @if($mayVoid)
+                                    @can('tenant.catering.advances.void')
+                                        <button type="button" class="btn btn-link btn-sm p-0 text-danger ms-2 adv-void-btn"
+                                                data-id="{{ $advance->id }}"
+                                                data-amount="{{ number_format($advance->amount, 2) }}"
+                                                data-date="{{ $advance->received_date->format('d M Y') }}"
+                                                title="Ghalat darj hui receipt ko ulta karein — journal ulti hoti hai aur cash/bank wapas ho jata hai.">
+                                            <i class="ti ti-ban"></i>
+                                        </button>
+                                    @endcan
+                                @endif
+                            </td>
                         </tr>
                         @empty
-                        <tr><td class="text-center text-muted py-3">No advances recorded.</td></tr>
+                        <tr><td colspan="5" class="text-center text-muted py-3">No advances recorded.</td></tr>
                         @endforelse
+
+                        {{-- Ulti hui receipts yahan NAZAR aati hain magar kisi
+                             ginti me nahi. Inhein chhupa dena aasan tha aur
+                             ghalat hota: screen par ek khala reh jata aur koi
+                             na jaanta ke us din paisa aaya tha aur phir wapas
+                             gaya. --}}
+                        @foreach($voidedAdvances as $voided)
+                        <tr class="text-muted">
+                            <td><s>{{ $voided->received_date->format('d M Y') }}</s></td>
+                            <td><s>{{ $voided->paymentMethod?->name ?? '—' }}</s></td>
+                            <td>
+                                <span class="badge bg-danger-subtle text-danger-emphasis fs-11">VOIDED</span>
+                                <span class="fs-11">{{ $voided->void_reason }}</span>
+                            </td>
+                            <td class="text-end"><s>{{ number_format($voided->amount, 2) }}</s></td>
+                            <td></td>
+                        </tr>
+                        @endforeach
 
                         @foreach($event->refunds as $refund)
                         <tr class="text-warning-emphasis">
@@ -1097,6 +1147,7 @@
                             <td>Refund · {{ $refund->paymentMethod?->name ?? '—' }}</td>
                             <td class="text-muted">{{ $refund->refund_no }}</td>
                             <td class="text-end">({{ number_format($refund->amount, 2) }})</td>
+                            <td></td>
                         </tr>
                         @endforeach
 
@@ -1104,6 +1155,7 @@
                         <tr class="fw-bold">
                             <td colspan="3">Received{{ $position['refunded'] > 0 ? ', less refunds' : '' }}</td>
                             <td class="text-end">{{ number_format($position['net_received'], 2) }}</td>
+                            <td></td>
                         </tr>
                         <tr class="fw-bold">
                             <td colspan="3">
@@ -1116,6 +1168,7 @@
                                 </span>
                             </td>
                             <td class="text-end text-{{ $headline['tone'] }}">{{ number_format($headline['amount'], 2) }}</td>
+                            <td></td>
                         </tr>
                         @endif
                     </tbody>
@@ -1471,6 +1524,14 @@
 </div>
 @endcan
 @endif
+
+{{-- CATERING-ADVANCE-VOID-1 — ulta karne aur reference theek karne ke parche.
+     Jaan-boojh kar Record Advance ke "booking cancelled nahi" aur "balance
+     baqi hai" wali shart se BAHAR: ghalat darj hui receipt theek karni padti
+     hai chahe booking ki haalat kuch bhi ho. --}}
+@canany(['tenant.catering.advances.void', 'tenant.catering.advances.update-reference'])
+    @include('tenant.catering.partials.advance-fix-modals', ['returnCustomer' => null])
+@endcanany
 
 {{-- ── Refund the customer ───────────────────────────────────────────────
      Deliberately OUTSIDE the "not cancelled" guard above. A cancelled booking

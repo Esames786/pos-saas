@@ -658,6 +658,11 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
             'position' => $finance->position($event),
             'headline' => $finance->headline($event),
             'ledger' => $finance->ledger($event),
+            // CATERING-ADVANCE-VOID-1 — controller jo bhejta hai, wohi yahan
+            // bhi. Ye test is naye khaane ke chhoot jane par hi laal hua tha,
+            // aur yehi us ka kaam hai: view ke mutalbe aur controller ki
+            // supply me farq pakarna.
+            'voidedAdvances' => $finance->voidedAdvances($event),
         ];
     }
 
