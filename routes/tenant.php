@@ -112,6 +112,15 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
     ->middleware(['tenant.only'])
     ->group(function () {
 
+    // WHATSAPP-REPORT-CHANNEL-1: a shared report opens HERE, on the tenant subdomain, after the
+    // central /r/{token} redirect. Deliberately OUTSIDE auth: the owner reads it from WhatsApp
+    // without logging in. The token is what grants access — it is random, it expires, and the
+    // controller refuses it on any subdomain but the one that owns it.
+    Route::get('/r/{token}', [\App\Http\Controllers\ReportShareController::class, 'show'])
+        ->where('token', '[A-Za-z0-9]{16,64}')->name('tenant.report.share');
+    Route::get('/r/{token}/pdf', [\App\Http\Controllers\ReportShareController::class, 'pdf'])
+        ->where('token', '[A-Za-z0-9]{16,64}')->name('tenant.report.share.pdf');
+
         Route::get('/login', [AuthController::class, 'showLogin'])->name('tenant.login');
         Route::post('/login', [AuthController::class, 'login'])->name('tenant.login.post');
 

@@ -3,35 +3,56 @@
 namespace App\Http\Controllers;
 
 use App\Models\Master\Tenant;
-use App\Services\Reports\Delivery\ReportDelivery;
 use App\Services\Reports\SalesReportDocumentService;
 use App\Services\Reports\Sharing\ReportShareLinkService;
-use App\Services\Tenancy\TenancyManager;
 use Illuminate\Http\Request;
 
 /**
- * WHATSAPP-REPORT-CHANNEL-1 (qadam 4) — what opens when the owner taps the link.
+ * WHATSAPP-REPORT-CHANNEL-1 — the link the owner taps in WhatsApp.
  *
- * This sits on the CENTRAL domain, so it starts with no tenant: the token is the only thing that says
- * which shop's figures to load, and an expired or unknown one must say nothing at all.
+ * Two hops, on purpose:
  *
- * The owner asked for the page to open AND the PDF to download. One HTTP response can only do one of
- * those, so the page opens, starts the download itself, and also carries a button — because WhatsApp's
- * in-app browser blocks automatic downloads often enough that relying on it would leave some owners
- * with nothing and no idea anything was missing.
+ *  1. CENTRAL (bingoopos.com/r/{token}) — only looks the token up and REDIRECTS. The approved
+ *     template's button carries one fixed base URL for every tenant, so the first hop cannot be a
+ *     subdomain; a per-tenant base would have meant a separate approved template per customer.
+ *  2. TENANT (kashiffood.bingoopos.com/r/{token}) — renders it. By then the normal tenant middleware
+ *     has run, so this is an ordinary tenant page with an ordinary tenant connection. Rendering on
+ *     the central domain instead would mean activating tenancy by hand in a place that has none.
  */
 class ReportShareController extends Controller
 {
     public function __construct(
         private readonly ReportShareLinkService $links,
         private readonly SalesReportDocumentService $document,
-        private readonly TenancyManager $tenancy,
     ) {}
 
-    /** The page: figures first, download started, button always there. */
+    /** CENTRAL: send the reader to the tenant that owns this report. */
+    public function redirect(Request $request, string $token)
+    {
+        // The approved template's button base was entered as '.../r/{{1}}' and Meta APPENDS the
+        // parameter rather than substituting it, so live links arrive as '/r/{{1}}<token>'. Stripping
+        // it keeps today's messages working, and costs nothing once the template is corrected — a
+        // clean token simply has no prefix to remove.
+        $token = preg_replace('/^\{\{1\}\}/', '', $token) ?? $token;
+
+        $link = $this->links->resolve($token);
+        abort_if($link === null, 404);
+
+        $tenant = Tenant::find($link->tenant_id);
+        abort_if($tenant === null, 404);
+
+        return redirect()->away(sprintf(
+            'https://%s.%s/r/%s',
+            $tenant->tenant_code,
+            config('tenancy.tenant_base_domain'),
+            $token,
+        ));
+    }
+
+    /** TENANT: the page itself — figures first, download started, button always there. */
     public function show(Request $request, string $token)
     {
-        [$link, $tenant] = $this->open($token);
+        $link = $this->claim($token);
 
         $data = $this->document->data(
             (array) json_decode($link->filters, true),
@@ -43,26 +64,23 @@ class ReportShareController extends Controller
 
         return response()
             ->view('reports.shared', $data + [
-                'businessName' => $tenant->business_name,
+                'businessName' => app('tenant')->business_name,
                 'periodLabel' => $link->label,
                 'pdfUrl' => url('/r/'.$token.'/pdf'),
             ])
-            // A report is not something to leave in a shared cache.
             ->header('Cache-Control', 'no-store, private')
             ->header('X-Robots-Tag', 'noindex, nofollow');
     }
 
-    /** The PDF itself — same token, same expiry, so the file is no more open than the page. */
+    /** TENANT: the PDF — same token, same expiry, so the file is no more open than the page. */
     public function pdf(Request $request, string $token)
     {
-        [$link, $tenant] = $this->open($token);
+        $link = $this->claim($token);
 
-        $pdf = $this->document->pdf(
+        return response($this->document->pdf(
             (array) json_decode($link->filters, true),
             (array) json_decode($link->sections, true),
-        );
-
-        return response($pdf, 200, [
+        ), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="sales-report-'.$link->label.'.pdf"',
             'Cache-Control' => 'no-store, private',
@@ -71,22 +89,19 @@ class ReportShareController extends Controller
     }
 
     /**
-     * Resolve the token and switch into its tenant, or 404.
+     * Resolve the token AND check it belongs to the tenant whose subdomain we are on.
      *
-     * 404 — not 403 — on purpose: a wrong or expired token should not confirm that it ever existed.
-     *
-     * @return array{0: object, 1: Tenant}
+     * Without that second check a link minted for one shop would render on another shop's subdomain —
+     * the reader would simply swap the hostname and read somebody else's takings.
      */
-    private function open(string $token): array
+    private function claim(string $token): object
     {
         $link = $this->links->resolve($token);
         abort_if($link === null, 404);
 
-        $tenant = Tenant::find($link->tenant_id);
-        abort_if($tenant === null, 404);
+        abort_unless(app()->bound('tenant'), 404);
+        abort_if((int) $link->tenant_id !== (int) app('tenant')->id, 404);
 
-        $this->tenancy->activate($tenant);
-
-        return [$link, $tenant];
+        return $link;
     }
 }
