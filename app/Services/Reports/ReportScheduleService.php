@@ -2,11 +2,11 @@
 
 namespace App\Services\Reports;
 
-use App\Mail\SalesReportMail;
+use App\Services\Reports\Delivery\ReportDelivery;
+use App\Services\Reports\Delivery\ReportDispatcher;
 use App\Support\TenantClock;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use RuntimeException;
 
 /**
@@ -24,8 +24,7 @@ class ReportScheduleService
 {
     public function __construct(
         private readonly SalesReportEngine $engine,
-        private readonly SalesReportExporter $exporter,
-        private readonly SalesReportDocumentService $document,
+        private readonly ReportDispatcher $dispatcher,
         private readonly TenantClock $clock,
     ) {}
 
@@ -139,7 +138,9 @@ class ReportScheduleService
      */
     protected function channelsFor(object $schedule): array
     {
-        return ['email'];
+        // A schedule has no branch — report_schedules carries no branch_id, so the nightly report
+        // covers the whole tenant. NULL asks the dispatcher for the tenant-level answer.
+        return $this->dispatcher->channelsFor(null);
     }
 
     /** Claim, send and record ONE channel. Returns 'sent' | 'skipped_already_sent' | 'failed'. */
@@ -194,34 +195,42 @@ class ReportScheduleService
         }
     }
 
-    /** Build and hand off one report on one channel. */
+    /** Build the report and hand it to the channel that will carry it. */
     protected function deliver(object $schedule, array $period, string $channel): void
     {
-        $filters = $this->engine->normalizeFilters(['date_from' => $period['from'], 'date_to' => $period['to']]);
-        $selected = (array) json_decode($schedule->sections, true);
-        $business = app()->bound('tenant') ? (string) app('tenant')->business_name : 'Bingoo POS';
-        $label = $period['from'].' to '.$period['to'];
+        $delivery = new ReportDelivery(
+            businessName: app()->bound('tenant') ? (string) app('tenant')->business_name : 'Bingoo POS',
+            label: $period['from'].' to '.$period['to'],
+            filters: $this->engine->normalizeFilters(['date_from' => $period['from'], 'date_to' => $period['to']]),
+            sections: (array) json_decode($schedule->sections, true),
+            format: (string) ($schedule->delivery_format ?? 'csv'),
+            fileName: 'sales-report-'.$period['from'].'.pdf',
+        );
 
-        if ($channel !== 'email') {
-            throw new RuntimeException('Unknown report channel: '.$channel);
+        $this->dispatcher->send($channel, $delivery, $this->recipientsFor($channel, $schedule));
+    }
+
+    /**
+     * Who this channel addresses.
+     *
+     * Email keeps the schedule's OWN recipient list — that is what it has always used, and moving it
+     * to a tenant-wide setting would silently change who gets the nightly report.
+     *
+     * @return list<string>
+     */
+    private function recipientsFor(string $channel, object $schedule): array
+    {
+        if ($channel === 'email') {
+            return $this->recipients($schedule);
         }
 
-        $recipients = $this->recipients($schedule);
-
-        if (($schedule->delivery_format ?? 'csv') === 'a4_pdf') {
-            $mail = new SalesReportMail(
-                $business,
-                $label,
-                [],
-                $this->document->pdf($filters, $selected),
-                'sales-report-'.$period['from'].'.pdf',
-                $selected,
-            );
-        } else {
-            $mail = new SalesReportMail($business, $label, $this->exporter->sections($filters, $selected));
+        // WhatsApp numbers are a TENANT setting, not the schedule's. A schedule carries no
+        // branch_id, so the nightly report has no branch to ask.
+        if ($channel === 'whatsapp') {
+            return $this->dispatcher->whatsappRecipients(null);
         }
 
-        Mail::to($recipients)->send($mail);
+        return [];
     }
 
     /** @return list<string> */

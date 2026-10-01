@@ -3,7 +3,8 @@
 namespace App\Http\Controllers\Tenant\Reports;
 
 use App\Http\Controllers\Controller;
-use App\Mail\SalesReportMail;
+use App\Services\Reports\Delivery\ReportDelivery;
+use App\Services\Reports\Delivery\ReportDispatcher;
 use App\Services\Reports\ReportScheduleService;
 use App\Services\Reports\SalesReportEngine;
 use App\Services\Reports\SalesReportExporter;
@@ -56,6 +57,7 @@ class SalesReportCenterController extends Controller
     public function __construct(
         private readonly SalesReportEngine $engine,
         private readonly SalesReportExporter $exporter,
+        private readonly ReportDispatcher $dispatcher,
     ) {}
 
     private function filters(Request $request): array
@@ -330,12 +332,21 @@ class SalesReportCenterController extends Controller
         $filters = $this->filters($request);
         $allowed = $this->allowedSections();
         $sections = array_values(array_intersect((array) $request->input('sections', $allowed), $allowed));
-        $csv = $this->exporter->sections($filters, $sections);
-        Mail::to($recipient)->send(new SalesReportMail(
-            (string) app('tenant')->business_name,
-            $filters['date_from'].' → '.$filters['date_to'],
-            $csv
-        ));
+        // WHATSAPP-REPORT-CHANNEL-1: one door (see ReportDispatcher). The branch comes from the
+        // filter when one is picked; with no branch filter this is a tenant-wide report and takes
+        // the tenant's channels.
+        $delivery = new ReportDelivery(
+            businessName: (string) app('tenant')->business_name,
+            label: $filters['date_from'].' → '.$filters['date_to'],
+            filters: $filters,
+            sections: $sections,
+            format: 'csv',
+        );
+
+        $branchId = count($filters['branch_ids'] ?? []) === 1 ? (int) $filters['branch_ids'][0] : null;
+        foreach ($this->dispatcher->channelsFor($branchId) as $channel) {
+            $this->dispatcher->send($channel, $delivery, $channel === 'email' ? [$recipient] : $this->dispatcher->whatsappRecipients($branchId));
+        }
 
         return back()->with('status', 'Report emailed to '.$recipient.'.');
     }

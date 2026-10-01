@@ -49,8 +49,7 @@ class ReportScheduleMySqlTest extends MySqlTenantTestCase
     {
         return [
             app(\App\Services\Reports\SalesReportEngine::class),
-            app(\App\Services\Reports\SalesReportExporter::class),
-            app(\App\Services\Reports\SalesReportDocumentService::class),
+            app(\App\Services\Reports\Delivery\ReportDispatcher::class),
             app(\App\Support\TenantClock::class),
         ];
     }
