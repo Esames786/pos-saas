@@ -250,8 +250,18 @@
                          operator sees it and can clear it, which is the difference
                          between a suggestion and a fabrication. --}}
                     <label class="form-label">PAX (guests)</label>
+                    {{-- CUSTOMER-SEARCH-PUNCT-1 (1 Oct) — nayi booking par ye khaana
+                         KHALI rehta hai. Pehle 100 bhara hua aata tha, aur client ne
+                         kaha "pax ko zero type ay, by default 100 aa raha hai" —
+                         operator ko har baar pehle 100 mitana parta tha, aur jo bhool
+                         jaye us ki booking par 100 mehmaan darj ho jate.
+
+                         Khali chhora ja raha hai, 0 nahi: 0 bhi mitana parta hai. Jo
+                         khaana khali jaye usay controller khud 0 bana deta hai
+                         (`$data['pax'] = … === '' ? 0 : …`), is liye mehfooz qeemat
+                         wohi rehti hai. --}}
                     <input type="number" name="pax" class="form-control" min="0"
-                           value="{{ old('pax', $event?->pax ?? 100) }}">
+                           value="{{ old('pax', $event?->pax) }}">
                 </div>
                 <div class="col-12">
                     <label class="form-label">Notes</label>
