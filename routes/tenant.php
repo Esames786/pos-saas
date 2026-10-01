@@ -918,6 +918,21 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::put('/catering/profiles/{cateringProductProfile}/blocks', [\App\Http\Controllers\Tenant\Catering\CateringCostBlockController::class, 'update'])->name('tenant.catering.cost-blocks.update');
 
                     Route::post('/catering/events/{cateringEvent}/advances', [\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class, 'store'])->name('tenant.catering.advances.store');
+                    // CATERING-ADVANCE-VOID-1 (1 Oct) — darj shuda receipt ki
+                    // ghalti theek karne ke do raaste.
+                    //
+                    // VOID: amount ghalat ho to usay EDIT nahi kiya jata — receipt
+                    // ulti hoti hai (journal reversal + cash/bank wapas) aur sahi
+                    // nayi darj hoti hai. Amount ko chup chaap badal dena kitabon
+                    // me ek adad aur screen par doosra chhor deta.
+                    //
+                    // REFERENCE: sirf slip number / notes — in ka ledger se koi
+                    // taluq nahi, is liye un ke liye paisa hilana bemani hai.
+                    //
+                    // Dono raaste booking ki screen aur Customer Catering Balances
+                    // dono se chalte hain — ek hi endpoint, do darwaze.
+                    Route::post('/catering/advances/{cateringAdvance}/void', [\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class, 'void'])->name('tenant.catering.advances.void');
+                    Route::post('/catering/advances/{cateringAdvance}/reference', [\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class, 'updateReference'])->name('tenant.catering.advances.update-reference');
 
                     // KASHIF-CATERING-CUSTOMER-CREDIT-1: the one catering action that
                     // pays money OUT, behind its own permission for that reason.

@@ -228,19 +228,55 @@ class CateringFinancialPositionService
      * @return array<int, array{
      *   date: string, type: string, reference: ?string, note: ?string,
      *   money_in: float, money_out: float, charged: float,
-     *   running: float, informational: bool
+     *   running: float, informational: bool,
+     *   advance_id?: ?int, advance_notes?: ?string, can_void?: bool
      * }>
      */
+    /**
+     * CATERING-ADVANCE-VOID-1 — ulti hui receipts, sirf DIKHANE ke liye.
+     *
+     * Ye yahan is liye hai ke `withoutGlobalScope('notVoided')` ek aisi
+     * likhai hai jo jitni jagah phailegi utni hi aasani se kisi ginti me
+     * ghus jayegi. Jo bhi inhein screen par laana chahe wo yahan se le, apni
+     * query na likhe.
+     *
+     * @return \Illuminate\Support\Collection<int, \App\Models\Tenant\CateringAdvance>
+     */
+    public function voidedAdvances(CateringEvent $event)
+    {
+        return \App\Models\Tenant\CateringAdvance::withoutGlobalScope('notVoided')
+            ->with('paymentMethod')
+            ->where('catering_event_id', $event->id)
+            ->whereNotNull('voided_at')
+            ->orderBy('received_date')
+            ->get();
+    }
+
     public function ledger(CateringEvent $event): array
     {
         $rows = [];
 
-        foreach ($event->advances()->with('paymentMethod')->get() as $advance) {
+        // Invoice ki mojoodgi ek baar poochhi jati hai: neeche `can_void` ki
+        // shart isi par khari hai, aur wo shart har receipt par lagti hai.
+        $hasInvoice = $event->finalInvoice()->exists();
+
+        // CATERING-ADVANCE-VOID-1 — ledger par ULTI HUI receipt BHI aati hai,
+        // aur ye is file me WAHID jagah hai jahan global scope hataya jata
+        // hai. Baqi har jagah wo rakam ginti se bahar rehni chahiye; yahan
+        // us ka hona KHUD khabar hai — "ye paisa aaya tha aur phir ulta kiya
+        // gaya" ek aisi baat hai jo statement par nazar aani chahiye, warna
+        // record me ek khala reh jata hai aur koi nahi jaanta ke kyun.
+        //
+        // Satar `informational` hai: paisa ab bhi dikhta hai magar running
+        // me nahi jorta — wo hil kar wapas ja chuka hai.
+        foreach ($event->advances()->withoutGlobalScope('notVoided')->with('paymentMethod')->get() as $advance) {
             $rows[] = [
                 'sort_date' => $advance->received_date?->toDateString() ?? '',
                 'sort_at' => (string) $advance->created_at,
                 'date' => $advance->received_date?->format('d M Y') ?? '—',
-                'type' => $advance->posting_type === 'settlement' ? 'Payment received' : 'Advance received',
+                'type' => $advance->voided_at !== null
+                    ? ($advance->posting_type === 'settlement' ? 'Payment received — VOIDED' : 'Advance received — VOIDED')
+                    : ($advance->posting_type === 'settlement' ? 'Payment received' : 'Advance received'),
                 'reference' => $advance->reference,
                 // CATERING-OVERPAYMENT-1 (step 5): a receipt that went past the
                 // bill says so on the statement, in the same row, with the
@@ -252,11 +288,30 @@ class CateringFinancialPositionService
                         ? 'of which '.number_format((float) $advance->credit_portion, 2).' held as credit'
                         : null,
                     (float) $advance->credit_portion > 0 ? $advance->overpayment_reason : null,
+                    $advance->voided_at !== null
+                        ? 'VOIDED — '.$advance->void_reason
+                        : null,
                 ])->filter()->implode(' · '),
-                'money_in' => round((float) $advance->amount, 2),
+                // Ulti hui rakam DIKHTI hai magar jorti nahi — wo wapas ja
+                // chuki hai. money_in sifar rakhna usay chhupa deta; ye use
+                // nazar me rakhta hai aur hisaab se bahar bhi.
+                'money_in' => $advance->voided_at !== null ? 0.0 : round((float) $advance->amount, 2),
+                'voided_amount' => $advance->voided_at !== null ? round((float) $advance->amount, 2) : null,
                 'money_out' => 0.0,
                 'charged' => 0.0,
-                'informational' => false,
+                'informational' => $advance->voided_at !== null,
+                // CATERING-ADVANCE-VOID-1 — statement par baithi satar se seedha
+                // us receipt ki ghalti theek ki ja sake. Customer Catering
+                // Balances par ledger hi wo jagah hai jahan rakam nazar aati
+                // hai; wahan se booking kholne par majboor karna ek fazool
+                // qadam hai.
+                //
+                // `can_void` yahan banta hai, screen par nahi: button par wohi
+                // shart lagni chahiye jo service nafaz karti hai, warna screen
+                // ek aisa kaam pesh karegi jisay POST mana kar dega.
+                'advance_id' => $advance->voided_at === null ? $advance->id : null,
+                'advance_notes' => $advance->notes,
+                'can_void' => $advance->voided_at === null && ! $hasInvoice,
             ];
         }
 

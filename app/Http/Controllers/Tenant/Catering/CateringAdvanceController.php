@@ -107,4 +107,66 @@ class CateringAdvanceController extends Controller
         return back()->with('status', 'Advance of '.number_format((float) $advance->amount, 2)
             .' recorded — posted to the general ledger and added to the cash/bank balance.');
     }
+    /**
+     * CATERING-ADVANCE-VOID-1 — receipt ulta karo.
+     *
+     * Dono screenein isi par aati hain — booking ki screen aur Customer
+     * Catering Balances — aur `return_customer` ke zariye wapas apni jagah
+     * chali jati hain. Client se koi URL nahi liya jata, sirf ek adad; path
+     * yahan banta hai, is liye open-redirect ka imkaan hi nahi. (Wohi tareeqa
+     * jo refund par pehle se chal raha hai.)
+     */
+    public function void(Request $request, \App\Models\Tenant\CateringAdvance $cateringAdvance)
+    {
+        $data = $request->validate([
+            // Wajah LAZMI hai. Paisa kitabon se nikal raha hai, aur chhe mahine
+            // baad "ye reversal kyun hua" ka jawab sirf yahin milega.
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+            'return_customer' => ['nullable', 'integer'],
+        ]);
+
+        $eventId = $cateringAdvance->catering_event_id;
+
+        try {
+            app(\App\Services\Catering\CateringAdvanceService::class)
+                ->void($cateringAdvance, $data['reason'], $request->user()?->id);
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['advance' => $e->getMessage()]);
+        }
+
+        $returnCustomer = (int) ($data['return_customer'] ?? 0);
+        $path = $returnCustomer > 0
+            ? '/catering/customer-balances/'.$returnCustomer
+            : '/catering/events/'.$eventId;
+
+        return redirect()->to($path)->with('status',
+            'Receipt ulti kar di gayi — journal reverse ho gayi aur cash/bank balance wapas adjust ho gaya.');
+    }
+
+    /**
+     * Sirf slip number aur notes. Amount yahan se NAHI badalti — us ke saath
+     * paisa hilta hai, aur us ka raasta void hai.
+     */
+    public function updateReference(Request $request, \App\Models\Tenant\CateringAdvance $cateringAdvance)
+    {
+        $data = $request->validate([
+            'reference' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:255'],
+            'return_customer' => ['nullable', 'integer'],
+        ]);
+
+        try {
+            app(\App\Services\Catering\CateringAdvanceService::class)
+                ->updateReference($cateringAdvance, $data['reference'] ?? null, $data['notes'] ?? null);
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['advance' => $e->getMessage()]);
+        }
+
+        $returnCustomer = (int) ($data['return_customer'] ?? 0);
+        $path = $returnCustomer > 0
+            ? '/catering/customer-balances/'.$returnCustomer
+            : '/catering/events/'.$cateringAdvance->catering_event_id;
+
+        return redirect()->to($path)->with('status', 'Receipt ka reference theek kar diya gaya.');
+    }
 }

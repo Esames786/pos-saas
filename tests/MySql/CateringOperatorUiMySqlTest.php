@@ -157,6 +157,7 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
             'position' => $finance->position($event),
             'headline' => $finance->headline($event),
             'ledger' => $finance->ledger($event),
+            'voidedAdvances' => $finance->voidedAdvances($event),
         ])->render();
     }
 

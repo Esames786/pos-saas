@@ -246,6 +246,10 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
             'Store Issue',
             'Take More Than Due',
             'View Catering',
+            // CATERING-ADVANCE-VOID-1 (1 Oct): darj shuda receipt ulta karna.
+            // 'Record Advance' se alag, kyunke ulta karne se cash/bank ka
+            // balance GHATTA hai — paisa kitabon se nikalta hai.
+            'Void Receipt',
         ];
 
         foreach ($featureNames as $name) {
