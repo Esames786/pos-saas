@@ -211,11 +211,65 @@ class CateringDocumentLock
      * justified it: revise after invoicing and v2 is a draft on an invoiced
      * event, where "it is a draft" would otherwise read as permission.
      */
+    /**
+     * Wohi do jaanchein jo `assertEditable()` lagata hai, magar BINA us ke ke
+     * "draft hona chahiye" wali shart — kyunke revise ka maqsad hi ek
+     * GHAIR-draft version ko aage barhana hai.
+     *
+     * Alag method is liye hai ke revise() `assertEditable()` se guzar hi nahi
+     * sakta: wahan pehli hi satar draft maangti hai aur revise wahin ruk
+     * jata.
+     */
+    public function assertRevisable(CateringEstimate $estimate): void
+    {
+        if (! $this->isCommerciallyOpen($estimate)) {
+            throw new RuntimeException(
+                'This booking is closed to commercial change — it has been invoiced, completed or cancelled.'
+            );
+        }
+
+        $this->assertMayEditAfterRelease($estimate);
+    }
+    /**
+     * CATERING-EDIT-AFTER-RELEASE-1 — release ke baad badalna ek ALAG ikhtiyar
+     * hai.
+     *
+     * Ye yahan hai, controllers me nahi, aur ye jaan-boojh kar hai. Quotation
+     * chhe raaston se badalti hai — edit, reprice, revise, restore-version,
+     * revert, aur line-level update — aur chhe jagah ek hi jaanch likhne ka
+     * matlab hai ke ek na ek din koi ek jagah bhool jayegi. Har raasta yahan
+     * se guzarta hai.
+     *
+     * BINA LOGIN WALE RAASTE (console, queue, seeder) is se bahar hain. Wahan
+     * koi user hota hi nahi, aur unhe rokne se har command aur test ruk jata.
+     * Wo raaste pehle se mehfooz hain; HTTP par user hamesha hota hai.
+     */
+    private function assertMayEditAfterRelease(CateringEstimate $estimate): void
+    {
+        if ($estimate->event?->status !== CateringEvent::STATUS_RELEASED) {
+            return;
+        }
+
+        $user = auth()->user();
+        if ($user === null || $user->can('tenant.catering.estimates.edit-after-release')) {
+            return;
+        }
+
+        throw new RuntimeException(
+            'Production for this booking has already been released, so changing the quotation '
+            .'needs the edit-after-release permission — the kitchen sheet already out would no '
+            .'longer match the bill.'
+        );
+    }
     public function isCommerciallyOpen(CateringEstimate $estimate): bool
     {
         $event = $estimate->event;
 
-        if ($event === null || ! $event->isOpen()) {
+        // CATERING-EDIT-AFTER-RELEASE-1 (1 Oct): `released` ab bhi khula hai.
+        // Dekho CateringEvent::isCommerciallyOpen() — wahan likha hai ke ye
+        // `isOpen()` se alag kyun hai (calendar usi se "overdue" tay karta
+        // hai). Invoice ki hadd neeche waise hi qayam hai.
+        if ($event === null || ! $event->isCommerciallyOpen()) {
             return false;
         }
 
@@ -250,6 +304,8 @@ class CateringDocumentLock
                 'This booking is closed to commercial change — it has been invoiced, completed or cancelled.'
             );
         }
+
+        $this->assertMayEditAfterRelease($estimate);
     }
 
     /**

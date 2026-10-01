@@ -286,6 +286,7 @@ class TenantProvisioner
             // it to. This list is the only path a new tenant has.
             'tenant.catering.advances.overpay',
             'tenant.catering.refunds.beyond-credit',
+            'tenant.catering.estimates.edit-after-release',
 
             'tenant.users.index',
             'tenant.users.create',

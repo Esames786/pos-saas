@@ -26,6 +26,24 @@
 
      Border aur weight se banaya gaya hai, background se nahi: browser print
      par background rang gira dete hain. --}}
+{{-- CATERING-EDIT-AFTER-RELEASE-1 (1 Oct) — PURANA PARCHA khud bolay.
+
+     Quotation ab release ke baad bhi badal sakti hai. Jo parcha pehle nikal
+     chuka, wo us tabdeeli ko nahi jaanta — aur bawarchi screen nahi dekhta,
+     wo deewar par laga hua kaghaz dekhta hai. Is liye kaghaz KHUD kehta hai
+     ke us ke baad sauda badla hai.
+
+     Wohi dalil preview wale band ki hai jo neeche likhi hai: bawarchi-khane
+     ke paas do sach ho jayen aur purana wala nazar na aaye — yehi sab se
+     khatarnak surat hai. --}}
+@if($release->exists && $release->catering_estimate_id
+    && $release->event?->currentEstimate
+    && $release->catering_estimate_id !== $release->event->currentEstimate->id)
+    <div class="preview-band">
+        <strong>{{ $t('QUOTATION CHANGED AFTER THIS SHEET', 'یہ پرچہ نکلنے کے بعد سودا بدلا ہے') }}</strong>
+        <span>{{ $t('check the current quotation', 'موجودہ کوٹیشن دیکھ لیں') }}</span>
+    </div>
+@endif
 @if(! $release->exists)
     {{-- EK hi satar. A5 par ye band TEEN satrein kha raha tha — yani teen
          khane. Kaam wohi karta hai: nazar aata hai aur nazarandaz nahi hota. --}}
