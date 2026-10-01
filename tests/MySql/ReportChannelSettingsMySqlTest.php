@@ -111,4 +111,29 @@ class ReportChannelSettingsMySqlTest extends MySqlTenantTestCase
             $this->assertStringNotContainsString('>Email Now<', $body);
         }
     }
+
+    public function test_only_someone_who_may_save_the_setting_can_see_the_numbers(): void
+    {
+        // On khatribiryani SEVEN roles can open the Report Center — Delivery, Dine In, Takeaway,
+        // Quick Sale, Accounts, Manager, Owner — while only Owner holds the channels permission.
+        // Ungated, this card puts the owner's and managers' personal mobile numbers on a delivery
+        // rider's screen and then refuses their Save with a 403. The gate IS the permission that
+        // governs saving, so what you can see and what you can save cannot drift apart.
+        $body = file_get_contents(base_path('resources/views/tenant/reports/center/index.blade.php'));
+
+        $open = strpos($body, "@can('tenant.reports.center.channels')");
+        $this->assertNotFalse($open, 'The report-delivery card is not gated at all.');
+
+        $close = strpos($body, '@endcan', $open);
+        $this->assertNotFalse($close, 'The gate is never closed.');
+
+        $gated = substr($body, $open, $close - $open);
+
+        // The number field is the thing that leaks, so it is the thing that must sit inside.
+        $this->assertStringContainsString('name="whatsapp"', $gated);
+        $this->assertStringContainsString('Report delivery', $gated);
+
+        // ...and it must not also appear anywhere outside the gate.
+        $this->assertSame(1, substr_count($body, 'name="whatsapp"'));
+    }
 }
