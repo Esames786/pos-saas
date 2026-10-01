@@ -345,7 +345,7 @@ class SalesReportCenterController extends Controller
 
         $branchId = count($filters['branch_ids'] ?? []) === 1 ? (int) $filters['branch_ids'][0] : null;
         foreach ($this->dispatcher->channelsFor($branchId) as $channel) {
-            $this->dispatcher->send($channel, $delivery, $channel === 'email' ? [$recipient] : []);
+            $this->dispatcher->send($channel, $delivery, $channel === 'email' ? [$recipient] : $this->dispatcher->whatsappRecipients($branchId));
         }
 
         return back()->with('status', 'Report emailed to '.$recipient.'.');

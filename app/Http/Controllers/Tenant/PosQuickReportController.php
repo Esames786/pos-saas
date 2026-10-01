@@ -173,7 +173,7 @@ class PosQuickReportController extends Controller
         $branchId = auth('tenant')->user()?->default_branch_id;
         $sent = [];
         foreach ($this->dispatcher->channelsFor($branchId) as $channel) {
-            $this->dispatcher->send($channel, $delivery, $channel === 'email' ? $recipients : []);
+            $this->dispatcher->send($channel, $delivery, $channel === 'email' ? $recipients : $this->dispatcher->whatsappRecipients($branchId));
             $sent[] = $channel;
         }
 

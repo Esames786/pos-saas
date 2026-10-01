@@ -10,6 +10,15 @@ Route::domain(config('tenancy.central_domain'))
 
         Route::get('/pricing', [PublicSiteController::class, 'pricing'])->name('public.pricing');
 
+        // WHATSAPP-REPORT-CHANNEL-1: the report link a WhatsApp message carries. It lives on the
+        // CENTRAL domain because the approved template button is one fixed base URL for every
+        // tenant — a per-tenant subdomain would have needed its own approved template each time.
+        // The token carries no tenant hint and the row behind it expires; see ReportShareController.
+        Route::get('/r/{token}', [\App\Http\Controllers\ReportShareController::class, 'show'])
+            ->where('token', '[A-Za-z0-9]{16,64}')->name('report.share');
+        Route::get('/r/{token}/pdf', [\App\Http\Controllers\ReportShareController::class, 'pdf'])
+            ->where('token', '[A-Za-z0-9]{16,64}')->name('report.share.pdf');
+
         Route::get('/features', [PublicSiteController::class, 'features'])->name('public.features');
 
         Route::get('/demos', [PublicSiteController::class, 'demos'])->name('public.demos');

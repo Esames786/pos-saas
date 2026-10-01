@@ -220,7 +220,17 @@ class ReportScheduleService
      */
     private function recipientsFor(string $channel, object $schedule): array
     {
-        return $channel === 'email' ? $this->recipients($schedule) : [];
+        if ($channel === 'email') {
+            return $this->recipients($schedule);
+        }
+
+        // WhatsApp numbers are a TENANT setting, not the schedule's. A schedule carries no
+        // branch_id, so the nightly report has no branch to ask.
+        if ($channel === 'whatsapp') {
+            return $this->dispatcher->whatsappRecipients(null);
+        }
+
+        return [];
     }
 
     /** @return list<string> */

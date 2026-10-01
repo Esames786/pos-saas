@@ -101,9 +101,9 @@ class ReportDispatcherMySqlTest extends MySqlTenantTestCase
 
     public function test_a_channel_this_build_does_not_have_cannot_take_the_report_down(): void
     {
-        // Settings outlive code: a row may name 'whatsapp' before that channel ships, or after it is
+        // Settings outlive code: a row may name a channel before it ships, or long after it is
         // removed. Reading one must not throw — the nightly report has to go out regardless.
-        $this->bindTenant(['email', 'whatsapp', 'carrier-pigeon']);
+        $this->bindTenant(['email', 'carrier-pigeon', 'telegram']);
 
         $this->assertSame(['email'], $this->dispatcher()->channelsFor(null),
             'unknown channels are dropped, and email still goes');
@@ -113,9 +113,50 @@ class ReportDispatcherMySqlTest extends MySqlTenantTestCase
     {
         // The worst shape: everything configured is unavailable. Returning [] here would mean the
         // report silently stops — the owner would notice only by its absence, days later.
-        $this->bindTenant(['whatsapp']);
+        $this->bindTenant(['carrier-pigeon']);
 
         $this->assertSame(['email'], $this->dispatcher()->channelsFor(null));
+    }
+
+
+    public function test_turning_whatsapp_on_actually_turns_it_on(): void
+    {
+        // The mirror of the guard above, and the one that matters more. If a configured channel were
+        // quietly dropped the owner would see the setting saved, see no WhatsApp arrive, and have
+        // nothing anywhere to explain it — the exact failure the model fillable gap would have caused.
+        $this->bindTenant(['email', 'whatsapp']);
+
+        $this->assertSame(['email', 'whatsapp'], $this->dispatcher()->channelsFor(null));
+    }
+
+    public function test_a_branch_can_send_whatsapp_while_the_tenant_does_not(): void
+    {
+        // The two-branch case this design exists for.
+        $this->bindTenant(['email']);
+        DB::connection('tenant')->table('branches')->where('id', $this->branchId)
+            ->update(['report_channels' => json_encode(['email', 'whatsapp'])]);
+
+        $this->assertSame(['email', 'whatsapp'], $this->dispatcher()->channelsFor($this->branchId));
+        $this->assertSame(['email'], $this->dispatcher()->channelsFor(null),
+            'and the tenant-wide answer is untouched by one branch opting in');
+    }
+
+    public function test_whatsapp_numbers_come_from_the_branch_first_then_the_tenant(): void
+    {
+        app()->instance('tenant', new Tenant([
+            'tenant_code' => 'ttest', 'business_name' => 'Test Biz',
+            'report_channels' => ['email'], 'report_whatsapp' => ['923000000001'],
+        ]));
+
+        $this->assertSame(['923000000001'], $this->dispatcher()->whatsappRecipients(null));
+        $this->assertSame(['923000000001'], $this->dispatcher()->whatsappRecipients($this->branchId),
+            'a branch with no list of its own uses the tenant list');
+
+        DB::connection('tenant')->table('branches')->where('id', $this->branchId)
+            ->update(['report_whatsapp' => json_encode(['923000000002'])]);
+
+        $this->assertSame(['923000000002'], $this->dispatcher()->whatsappRecipients($this->branchId),
+            'but its own list wins when it has one');
     }
 
     /** @return list<string> */

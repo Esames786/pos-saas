@@ -26,9 +26,9 @@ final class ReportDispatcher
     /** @var array<string, ReportChannel> */
     private array $channels;
 
-    public function __construct(EmailChannel $email)
+    public function __construct(EmailChannel $email, WhatsAppChannel $whatsapp)
     {
-        $this->channels = [$email->key() => $email];
+        $this->channels = [$email->key() => $email, $whatsapp->key() => $whatsapp];
     }
 
     /**
@@ -68,6 +68,35 @@ final class ReportDispatcher
         }
 
         $this->channels[$channel]->send($delivery, $recipients);
+    }
+
+    /**
+     * WhatsApp numbers for this branch, falling back to the tenant.
+     *
+     * Same shape as channelsFor() and for the same reason: a two-branch tenant can send each
+     * branch's figures to that branch's people, and a single-branch one sets it once.
+     *
+     * @return list<string>
+     */
+    public function whatsappRecipients(?int $branchId = null): array
+    {
+        if ($branchId) {
+            try {
+                $raw = DB::connection('tenant')->table('branches')->where('id', $branchId)->value('report_whatsapp');
+                $branch = $this->decode($raw);
+                if ($branch !== null) {
+                    return $branch;
+                }
+            } catch (\Throwable) {
+                // column not migrated here yet — fall through to the tenant
+            }
+        }
+
+        if (! app()->bound('tenant')) {
+            return [];
+        }
+
+        return $this->decode(app('tenant')->report_whatsapp ?? null) ?? [];
     }
 
     /** @return list<string>|null */
