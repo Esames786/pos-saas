@@ -273,7 +273,7 @@
                 ])
             @endcan
         @endif
-        @if($event->isOpen())
+        @if($event->isCommerciallyOpen())
             @can('tenant.catering.events.edit')
                 {{-- KASHIF-CATERING-NO-RELOAD-2: editing happens beside the work,
                      in an offcanvas — the operator never leaves the booking. --}}
@@ -522,7 +522,7 @@
             @unless($isDraft)<i class="ti ti-lock ms-1" title="Commercially immutable"></i>@endunless
         </h5>
         <div class="d-flex gap-2">
-            @if($isDraft && $event->isOpen())
+            @if($isDraft && $event->isCommerciallyOpen())
                 @can('tenant.catering.estimates.reprice')
                     {{-- RECALC-ASKS-TO-SAVE-1: this posts to the server and the
                          workspace is re-rendered from what the server HAS. Rows
@@ -575,7 +575,7 @@
                     </form>
                 @endcan
             @endunless
-            @if(! $isDraft && $event->isOpen())
+            @if(! $isDraft && $event->isCommerciallyOpen())
                 @can('tenant.catering.estimates.revise')
                     {{-- CATERING-REVISION-MONEY-1 — a revision is a FINANCIAL act
                          once money has been received, because what the customer
@@ -595,7 +595,7 @@
         </div>
     </div>
 
-    @if($isDraft && $event->isOpen())
+    @if($isDraft && $event->isCommerciallyOpen())
     {{-- ── Draft estimate builder ─────────────────────────────────────── --}}
     @can('tenant.catering.estimates.update')
     <form method="POST" action="{{ url('/catering/estimates/' . $current->id) }}" id="estimate-form">
@@ -1139,6 +1139,23 @@
         <div class="card h-100">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 class="mb-0">Production</h5>
+                {{-- CATERING-EDIT-AFTER-RELEASE-1 (1 Oct) — ye tanbeeh wo cheez hai jo
+                     release ke baad editing ko qabil-e-bardasht banati hai.
+
+                     Ab quotation release ke BAAD bhi badli ja sakti hai (malik ki
+                     farmaish — graahak aksar usi din item barha deta hai). Magar jo
+                     kaghaz bawarchi-khane me laga hua hai wo purani quotation ka hai,
+                     aur us ka chup chaap purana ho jana sab se bura nateeja hota:
+                     bawarchi 10 KG pakata aur bill 12 KG ka banta, aur kisi ko pata
+                     bhi na chalta.
+
+                     Ginti version se nahi, release ke apne `catering_estimate_id` se
+                     hoti hai — yani us se jo us parche ne WAQAI istemaal kiya tha. --}}
+                @if($event->hasStaleRelease())
+                    <span class="badge bg-warning-transparent text-warning fs-12">
+                        <i class="ti ti-alert-triangle me-1"></i>quotation revised after release
+                    </span>
+                @endif
                 @if($current && ! $current->isDraft() && in_array($event->status, ['quoted', 'confirmed', 'production_ready']))
                     @can('tenant.catering.production-releases.store')
                         <form method="POST" action="{{ url('/catering/events/' . $event->id . '/production-releases') }}">
@@ -1626,7 +1643,7 @@
                         {{-- KASHIF-EVENT-HISTORY-2: bring this version back as
                              the new current draft. Never a rewrite — the trail
                              only moves forward. --}}
-                        @if($version->status === \App\Models\Tenant\CateringEstimate::STATUS_SUPERSEDED && $event->isOpen())
+                        @if($version->status === \App\Models\Tenant\CateringEstimate::STATUS_SUPERSEDED && $event->isCommerciallyOpen())
                             @can('tenant.catering.estimates.restore-version')
                             <span data-act="{{ url('/catering/estimates/' . $version->id . '/restore-version') }}"
                                   data-act-method="POST">
@@ -1646,7 +1663,7 @@
 </div>
 @endif
 @can('tenant.catering.events.edit')
-@if($event->isOpen())
+@if($event->isCommerciallyOpen())
 {{-- KASHIF-CATERING-NO-RELOAD-2 — Edit Event beside the work. data-no-ajax
      keeps the generic workspace engine away: this form has its OWN handler,
      because a validation mistake must keep the panel open with every typed
@@ -1745,7 +1762,7 @@
                             </section>
                         @endif
 
-                        @if($i > 0 && $event->isOpen())
+                        @if($i > 0 && $event->isCommerciallyOpen())
                             @can('tenant.catering.events.revisions.revert')
                             <div class="mt-2"
                                  data-act="{{ url('/catering/events/' . $event->id . '/revisions/' . $rev->id . '/revert') }}"
@@ -2218,7 +2235,7 @@ document.addEventListener('keydown', function (e) {
     }
 });
 </script>
-@if($current && $isDraft && $event->isOpen())
+@if($current && $isDraft && $event->isCommerciallyOpen())
 @php
     // Build the JS payloads in PHP, NOT inline inside @json(...). Blade matches a directive
     // argument with a RECURSIVE paren regex; on a long multi-line payload that

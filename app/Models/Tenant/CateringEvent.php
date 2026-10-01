@@ -150,6 +150,59 @@ class CateringEvent extends Model
         return in_array($this->status, self::OPEN_STATUSES, true);
     }
 
+    /**
+     * CATERING-EDIT-AFTER-RELEASE-1 (1 Oct) — kya is booking ka SAUDA abhi
+     * badla ja sakta hai.
+     *
+     * `isOpen()` se ALAG rakhi gayi hai, aur ye farq ahem hai. `isOpen()` ka
+     * matlab "booking abhi chal rahi hai" hai aur calendar usi se faisla karta
+     * hai ke kaun si booking "overdue" ya "needs attention" hai. Us me
+     * `released` daal dene se har nikli hui booking calendar par tawajjo
+     * maangne lagti — ek screen ka jawab badal kar doosri screen ko ghalat kar
+     * dena.
+     *
+     * Ye method sirf ek sawal ka jawab deti hai: quotation abhi badal sakti
+     * hai ya nahi.
+     *
+     * Malik (1 Oct) ne release ke BAAD bhi badalne ki ijazat maangi: aam taur
+     * par graahak usi din item barha deta hai, aur us waqt tak parcha nikal
+     * chuka hota hai.
+     *
+     * ⚠ IS KI EK QEEMAT HAI, aur wo chhupayi nahi ja sakti: nikla hua kitchen
+     * sheet us quotation ka hai jo ab purani ho chuki. Bawarchi 10 KG pakayega
+     * aur bill 12 KG ka banega. Is liye jahan bhi release aur mojooda
+     * quotation alag hon, screen aur parcha dono us par tanbeeh karte hain —
+     * dekho `hasStaleRelease()`.
+     *
+     * INVOICE phir bhi aakhri hadd hai. Us ke baad kuch nahi hilta, aur wo
+     * faisla `CateringDocumentLock::isCommerciallyOpen()` me alag se lagta
+     * hai.
+     */
+    public function isCommerciallyOpen(): bool
+    {
+        return $this->isOpen() || $this->status === self::STATUS_RELEASED;
+    }
+
+    /**
+     * Koi aisi release mojood hai jo MOJOODA quotation se nahi bani?
+     *
+     * Yehi wo khabar hai jo release ke baad editing ko qabil-e-bardasht
+     * banati hai. Is ke baghair tabdeeli khamosh hoti: kaghaz bawarchi-khane
+     * me laga rehta aur koi na jaanta ke wo purana ho chuka.
+     */
+    public function hasStaleRelease(): bool
+    {
+        $currentId = $this->currentEstimate?->id;
+
+        if ($currentId === null) {
+            return false;
+        }
+
+        return $this->productionReleases()
+            ->where('catering_estimate_id', '!=', $currentId)
+            ->exists();
+    }
+
     public function isCancelled(): bool
     {
         return $this->status === self::STATUS_CANCELLED;
