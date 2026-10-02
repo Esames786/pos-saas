@@ -333,4 +333,94 @@ class CateringDashboardParityMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString($a->event_no, $response->getContent(),
             'aur jo booking chhoot gayi, us ka naam liya jaye');
     }
+
+    /**
+     * CAL-BALANCE-FILTER-1 (3 Oct) — calendar par "balance baqi" ka filter.
+     *
+     * Malik: "ek filter aur daalo, sirf wo jin par balance hai."
+     *
+     * Ye filter TONES SE ALAG hai, aur yehi is test ki asal baat hai. Tone har
+     * booking par EK hi lagta hai (confirmed YA quoted YA draft); "balance hai"
+     * ek alag sifat hai jo un me se kisi ke bhi saath aa sakti hai. Agar kabhi
+     * ise saatwan tone bana diya gaya to har booking ko do tone chahiye honge
+     * aur chips ek doosre ko kaat-ne lagenge.
+     *
+     * Aur baqi ka hisaab yahan DOBARA nahi likha ja raha: `outstanding()` wohi
+     * hai jo booking ki screen aur Customer Balances chalate hain.
+     */
+    public function test_the_calendar_carries_each_booking_s_outstanding_balance(): void
+    {
+        $date = now()->startOfMonth()->addDays(9)->toDateString();
+
+        // Dono ek jaisi: 10 KG x 400 = 4,000.
+        $owing = $this->booking($date, 400, 'Owing Customer', '0300-7777771');
+        $settled = $this->booking($date, 400, 'Settled Customer', '0300-7777772');
+
+        $billed = (float) $owing->fresh()->currentEstimate->grand_total;
+        $this->assertGreaterThan(0, $billed, 'quotation bani honi chahiye');
+
+        // AUR AB PAISA AATA HAI. Ye is jaanch ki jaan hai: agar dono par kuch
+        // na aaya hota to "billed" aur "baqi" ek hi adad hote, aur ye test us
+        // din bhi hara rehta jis din calendar ghataana bhool jaata. (Pehli baar
+        // maine yehi ghalti ki thi — probe ne tooti halat par bhi hari jhandi
+        // dikhai.)
+        $pay = function (CateringEvent $e, float $amount) {
+            $est = $e->currentEstimate;
+            $this->estimates->markSent($est);
+            $this->estimates->markAccepted($est->refresh());
+            app(CateringAdvanceService::class)->record($e->refresh(), [
+                'amount' => $amount, 'payment_method_id' => $this->paymentMethodId,
+                'received_date' => now()->toDateString(),
+            ]);
+        };
+        $pay($owing, 1500);        // adhoora
+        $pay($settled, $billed);   // poora
+
+        // Events `months -> weeks -> days` me nested hain. Test ko us shakl par
+        // nahi bandha ja raha: wo dhaancha kal badal sakta hai aur tab ye test
+        // bina kisi asal kharabi ke girta. Jo bhi array `event_no` rakhta ho,
+        // wohi ek booking hai.
+        $flat = [];
+        $walk = function ($node) use (&$walk, &$flat) {
+            if (! is_array($node)) { return; }
+            if (isset($node['event_no'])) { $flat[$node['event_no']] = $node; return; }
+            foreach ($node as $child) { $walk($child); }
+        };
+        $walk(app(CateringCalendarService::class)->window());
+
+        $owingRow = $flat[$owing->event_no] ?? null;
+        $settledRow = $flat[$settled->event_no] ?? null;
+
+        $this->assertNotNull($owingRow, 'booking calendar par honi chahiye — warna neeche ki jaanch bemani hai');
+        $this->assertNotNull($settledRow);
+        $this->assertArrayHasKey('balance', $owingRow,
+            'har booking apna baqi saath le kar aaye — filter isi par chalta hai');
+
+        // Jo adhoori bhari gayi: baqi 2,500 — yani 4,000 me se 1,500 ghata hua.
+        $this->assertSame(
+            \App\Services\Catering\CateringFinancialPositionService::outstanding($billed, 1500.0),
+            $owingRow['balance'],
+            'calendar ka baqi us qaide se alag nikla jo baqi screenein chalati hain'
+        );
+        $this->assertSame(2500.0, $owingRow['balance'],
+            'aur wo 2,500 hai — ghataana hua hi nahi to ye 4,000 hoga');
+
+        // Jo poori bhar di gayi: sifar — aur yehi wajah hai ke filter ise chhupata hai.
+        $this->assertSame(0.0, $settledRow['balance'],
+            'poori bhari booking par kuch baqi nahi — warna filter use bhi dikhata rahega');
+    }
+
+    /** Chip tones se alag ho — warna wo un ko kaat-ne lagega. */
+    public function test_the_balance_chip_is_not_a_seventh_tone(): void
+    {
+        $blade = file_get_contents(resource_path('views/tenant/partials/catering-calendar.blade.php'));
+
+        $this->assertStringContainsString('id="cal-only-balance"', $blade, 'chip mojood ho');
+        $this->assertDoesNotMatchRegularExpression('/id="cal-only-balance"[^>]*class="[^"]*cal-tone/', $blade,
+            'ye chip tone NAHI hai — tone ban-ne par har booking ko do tone chahiye honge');
+
+        // "All" dono saaf kare, warna wo adhoora saaf karta hai.
+        $this->assertMatchesRegularExpression('/cal-clear-tones.*?activeTones = \[\];\s*onlyBalance = false;/s', $blade,
+            '"All" par balance ka filter bhi hatna chahiye');
+    }
 }
