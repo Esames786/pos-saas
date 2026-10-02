@@ -141,9 +141,14 @@ class PurchasingService
             }
         }
 
-        // The LAST line takes whatever is left, so the parts add back up to the charge exactly —
-        // apportioning by division alone loses a paisa or two, and a cost that does not reconcile
-        // is worse than no apportionment at all.
+        // The last carrier takes whatever is left, so the SHARES add back up to the charge exactly
+        // rather than drifting by a few ten-thousandths.
+        //
+        // Honest note: this is belt-and-braces and is NOT separately guarded, because its effect
+        // cannot be observed. Share drift is ~0.0001; the unit_cost rounding above it is ~100x
+        // larger and sets the floor for anything measurable through the ledger. Deleting these
+        // lines leaves every test green — that was checked, not assumed. It is kept because it is
+        // correct and costs nothing, not because a test is holding it in place.
         // The remainder goes to the last line that can CARRY it — a zero-quantity line is
         // skipped below, and handing it the remainder would drop that money on the floor.
         $carriers = $grn->lines->filter(fn ($l) => (float) $l->quantity_received > 0)->pluck('id')->all();
