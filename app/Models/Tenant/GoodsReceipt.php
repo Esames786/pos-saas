@@ -12,11 +12,13 @@ class GoodsReceipt extends Model
     protected $fillable = [
         'grn_no', 'purchase_order_id', 'branch_id', 'supplier_id',
         'receipt_date', 'status', 'notes', 'posted_by_user_id', 'posted_at',
+        'extra_charges', 'extra_charges_note',
     ];
 
     protected $casts = [
         'receipt_date' => 'date',
         'posted_at'    => 'datetime',
+        'extra_charges' => 'decimal:4',
     ];
 
     public function purchaseOrder()
