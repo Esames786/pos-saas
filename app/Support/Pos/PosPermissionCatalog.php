@@ -60,7 +60,7 @@ final class PosPermissionCatalog
         ],
         'tenant.pos.quick-report-send' => [
             'groups' => ['cashier'],
-            'edge' => 'EdgeQuickReportController::PERMISSION (guard on every quick-report action) + canQuickReport page flag',
+            'edge' => 'EdgeQuickReportController::PERMISSION (guard → denyUnlessCan {message, permission} 403 on every JSON quick-report action; HTML 403 on the thermal page) + canQuickReport page flag',
             'online' => 'synthetic — PosQuickReportController (migration 2026_08_27_000001_add_pos_quick_report_permission)',
         ],
         'tenant.pos.void-kot-item' => [

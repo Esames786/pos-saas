@@ -76,6 +76,20 @@
                                     <div class="small">
                                         <div class="fw-semibold">{{ $row['device']->device_name ?: 'Edge device' }}</div>
                                         <div class="text-muted">{{ $row['device']->status }} · paired {{ optional($row['device']->paired_at)->diffForHumans() }}</div>
+                                        {{-- W-F version reporting: the build the appliance reports on its heartbeat (read-only facts). --}}
+                                        @php $build = $row['build'] ?? null; @endphp
+                                        @if($build)
+                                            <div class="text-muted mt-1 edge-device-build" data-device="{{ $row['device']->public_uuid }}">
+                                                <div>App version <span class="fw-semibold font-monospace">{{ $build['app_version'] ?? '—' }}</span>
+                                                    · Commit <span class="font-monospace">{{ $build['git_commit'] ?? '—' }}</span></div>
+                                                <div>Bootstrap schema <span class="font-monospace">{{ $build['bootstrap_schema'] ?? '—' }}</span>
+                                                    · Applied edge schema <span class="font-monospace">{{ $build['applied_edge_schema'] ?? '—' }}</span></div>
+                                                <div>Capabilities: {{ !empty($build['capabilities']) ? implode(', ', $build['capabilities']) : '—' }}</div>
+                                                <div>Reported {{ $build['reported_at'] ? $build['reported_at']->diffForHumans() . ' (' . $build['reported_at']->format('d M Y, H:i') . ')' : '—' }}</div>
+                                            </div>
+                                        @else
+                                            <div class="text-muted mt-1 edge-device-build" data-device="{{ $row['device']->public_uuid }}">Version not reported yet</div>
+                                        @endif
                                     </div>
                                 @elseif($row['has_live_code'])
                                     <span class="text-info small">Pairing code active — expires {{ optional($row['code_expires'])->diffForHumans() }}</span>

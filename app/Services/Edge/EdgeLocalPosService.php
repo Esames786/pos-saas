@@ -1365,6 +1365,10 @@ class EdgeLocalPosService
             $tipAmount = $this->tipAmountFor($data);
         }
         $requestPromoCode = array_key_exists('promo_code', $data) ? ($data['promo_code'] ?: null) : null;
+        // W-G1 (Online parity — paying a held sale IS POST /pos + held_sale_id, SalesOrderController::store :117/:392): the Direct Pay
+        // print intents, when BOTH are sent, become the sale's durable DirectPayPrintOrchestrator initial state and are part of
+        // the hashed intent (SaleIdempotencyService::canonicalSalePayload :57-58). Absent (the old page) → null, hash unchanged.
+        $directPayPrintState = $this->directPayPrintState($data);
 
         $preflight = SalesOrder::on('tenant')->where('id', $heldSaleId)->where('branch_id', $branchId)->first();
         if (! $preflight) {
@@ -1382,7 +1386,10 @@ class EdgeLocalPosService
             'restaurant_table_session_id' => $preflight->restaurant_table_session_id,
             'discount_type' => 'none', 'discount_value' => 0, 'promo_code' => null,
             'payments' => array_map(fn ($p) => ['payment_method_id' => $p['payment_method_id'] ?? null, 'amount' => $p['amount'] ?? null], $payments),
-        ], $applyDiscount ? [
+        ], $directPayPrintState ? [
+            'kot_print_intent' => $directPayPrintState['kot_intent'],
+            'receipt_print_intent' => $directPayPrintState['receipt_intent'],
+        ] : [], $applyDiscount ? [
             'discount_type' => $discountType,
             'discount_value' => round($discountValue, 2),
             'promo_code' => $requestPromoCode,
@@ -1395,7 +1402,7 @@ class EdgeLocalPosService
         $this->beforeSaleTransaction(); // shared 2C seam — no-op in production
 
         try {
-            return DB::connection('tenant')->transaction(function () use ($heldSaleId, $user, $branchId, $terminal, $payments, $clientUuid, $payloadHash, $applyDiscount, $discountType, $discountValue, $tipAmount, $data) {
+            return DB::connection('tenant')->transaction(function () use ($heldSaleId, $user, $branchId, $terminal, $payments, $clientUuid, $payloadHash, $applyDiscount, $discountType, $discountValue, $tipAmount, $data, $directPayPrintState) {
                 if ($winner = $this->idempotency->findFinalized($clientUuid)) {
                     return $this->replayOrConflict($winner, $payloadHash);
                 }
@@ -1505,7 +1512,7 @@ class EdgeLocalPosService
                         : 0;
                 }, $payments));
 
-                $sale->update([
+                $sale->update(array_merge([
                     'client_uuid' => $clientUuid,
                     'client_payload_hash' => $payloadHash,
                     'paid_amount' => $paidAmount,
@@ -1514,7 +1521,9 @@ class EdgeLocalPosService
                     // A paid order is never a draft — same finalization rule as Cloud SalesService::finalizePaidSale.
                     'is_draft' => false,
                     'completed_at' => now(),
-                ]);
+                    // W-G1: the SAME initial Direct Pay print state Online writes when a held sale is paid (:392) — the
+                    // controller orchestrates KOT/receipt AFTER this commit (and on a replay) through the shared orchestrator.
+                ], $directPayPrintState ? ['direct_pay_print_state' => $directPayPrintState] : []));
 
                 // Operational stock: the FINAL quantities, exactly once, at settle (never during rounds).
                 // The sale carries the LOCKED current lines (loadMissing respects a set relation).

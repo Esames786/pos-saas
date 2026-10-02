@@ -231,15 +231,26 @@ class EdgeLocalHeldSalesController extends Controller
         ]);
     }
 
-    /** Settle (pay) a held sale with cash — closes the table session when it was the last open check. */
+    /**
+     * Settle (pay) a held sale with cash — closes the table session when it was the last open check.
+     *
+     * W-G1 — Direct Pay printing on a held settle, Online parity (SalesOrderController::store with held_sale_id: the intents are
+     * validated :833-834, hashed :57-58 of SaleIdempotencyService, stored on the paid row :392, orchestrated AFTER the commit
+     * :616 and re-orchestrated on an idempotent replay :636; the response carries `printing` + `idempotent_replay` :651-660).
+     * The SAME EdgeLocalPrintDirectPayService the Direct Pay endpoint uses (EdgeLocalPosController::storeSale) runs the shared
+     * DirectPayPrintOrchestrator: ensure-once receipt, existing-KOT reuse, Reminder plan — a retried settle never queues twice.
+     */
     public function settleHeldSale(Request $request, int $sale): JsonResponse
     {
         // W-B (shared POS, §3.2 "Pay a held order"): the shared page sends the SAME payload it sends Online's POST /pos with
-        // held_sale_id — every key this settle cannot apply (lines, order_type, branch_id, customer, print intents …) is simply
-        // not validated and therefore ignored. A2 (owner decision): the manual discount + its manager approval are a
-        // SETTLEMENT concern — accepted here and consumed inside the settle transaction (EdgeLocalPosService::settleHeldSale).
+        // held_sale_id — every key this settle cannot apply (lines, order_type, branch_id, customer …) is simply not validated
+        // and therefore ignored. A2 (owner decision): the manual discount + its manager approval are a SETTLEMENT concern —
+        // accepted here and consumed inside the settle transaction (EdgeLocalPosService::settleHeldSale).
         $data = $request->validate([
             'client_uuid' => ['required', 'string', 'max:36'],
+            // Online Direct Pay print intents (tenant.pos.store `in:print,skip`) — the same rule as the Edge Direct Pay endpoint.
+            'kot_print_intent' => ['nullable', 'in:print,skip'],
+            'receipt_print_intent' => ['nullable', 'in:print,skip'],
             'payments' => ['required', 'array', 'min:1'],
             'payments.*.payment_method_id' => ['required', 'integer'],
             'payments.*.amount' => ['required', 'numeric', 'gt:0'],
@@ -258,6 +269,12 @@ class EdgeLocalHeldSalesController extends Controller
         if ($denied = $this->denyUnlessMayCompleteSale()) {
             return $denied;
         }
+        // Online `idempotent_replay`: a sale already finalized under this client_uuid before this request is a replay (the
+        // service then verifies the hash — same payload replays, a different one is a 409). Read BEFORE the settle so the
+        // flag is truthful for the request that actually posted the sale.
+        $idempotency = app(\App\Services\Sales\SaleIdempotencyService::class);
+        $normalizedUuid = $idempotency->normalizeClientUuid($data['client_uuid']);
+        $replay = $normalizedUuid !== null && $idempotency->findFinalized($normalizedUuid) !== null;
         try {
             $settled = $this->pos->settleHeldSale($sale, $data, auth('tenant')->user(), $terminal->id);
         } catch (SaleIdempotencyConflictException $e) {
@@ -266,12 +283,32 @@ class EdgeLocalHeldSalesController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        // Direct Pay printing AFTER the paid settle committed (and on an idempotent replay) — the durable orchestrator state
+        // drives it; a printing failure is recorded as retryable state and NEVER unwinds the sale (Online semantics). The same
+        // call, the same service and the same fallback as the Edge Direct Pay endpoint (EdgeLocalPosController::storeSale).
+        $printing = null;
+        if ($settled->direct_pay_print_state) {
+            try {
+                $printing = app(\App\Services\Edge\EdgeLocalPrintDirectPayService::class)
+                    ->afterPaidSale($settled, $settled->direct_pay_print_state['kot_intent'] ?? null, $settled->direct_pay_print_state['receipt_intent'] ?? null);
+            } catch (\Throwable $e) {
+                report($e);
+                $printing = null; // the page falls back to print_intents → POST /sales/{sale}/printing/retry
+            }
+        }
+
         return response()->json([
             'sale_id' => $settled->id, 'sale_no' => $settled->sale_no, 'sale_uuid' => $settled->sale_uuid,
             'status' => $settled->status, 'grand_total' => (float) $settled->grand_total,
             'paid_amount' => (float) $settled->paid_amount,
             'change_amount' => (float) $settled->payments()->first()?->change_amount,
             'edge_sync_state' => $settled->edge_sync_state,
+            // Online saleResponse keys the shared page reads after a held settle (SalesOrderController :651-660).
+            'idempotent_replay' => $replay,
+            'printing' => $printing,
+            'print_intents' => $settled->direct_pay_print_state
+                ? ['kot' => $settled->direct_pay_print_state['kot_intent'] ?? null, 'receipt' => $settled->direct_pay_print_state['receipt_intent'] ?? null]
+                : null,
         ]);
     }
 

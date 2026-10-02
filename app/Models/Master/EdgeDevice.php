@@ -35,6 +35,8 @@ class EdgeDevice extends Model
         // EDGE-COMPATIBILITY-CONTRACT-1 — last reported compatibility manifest.
         'compatibility_manifest'    => 'array',
         'compatibility_reported_at' => 'datetime',
+        // W-F VERSION REPORTING — when the heartbeat last recorded a (changed) build block.
+        'build_reported_at'         => 'datetime',
     ];
 
     protected $hidden = ['device_secret_hash'];

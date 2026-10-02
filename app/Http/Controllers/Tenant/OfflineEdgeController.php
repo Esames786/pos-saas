@@ -116,11 +116,15 @@ class OfflineEdgeController extends Controller
 
         $rows = $branches->map(function (Branch $b) use ($tenant, $devices) {
             $liveCode = $this->pairing->liveCodeForBranch($tenant->id, $b->id);
+            $device = $devices->get($b->id);
+
             return [
                 'id'            => $b->id,
                 'name'          => $b->name,
                 'lifecycle'     => $b->local_edge_status,
-                'device'        => $devices->get($b->id),
+                'device'        => $device,
+                // W-G1 — the build the appliance reported on its heartbeat (read-only facts; null = nothing reported yet).
+                'build'         => $device ? $this->buildFacts($device) : null,
                 'has_live_code' => (bool) $liveCode,
                 'code_expires'  => $liveCode?->expires_at,
             ];
@@ -131,6 +135,50 @@ class OfflineEdgeController extends Controller
             'deviceLimit'   => $this->pairing->deviceLimit($tenant),
             'activeDevices' => $this->pairing->activeDeviceCount($tenant->id),
         ];
+    }
+
+    /**
+     * W-F VERSION REPORTING (W-G1 display) — what the appliance last reported about itself, as recorded by
+     * EdgeAuthorityLeaseService::recordBuildReport on the master device row: `app_version` / `schema_version` (the widened
+     * pairing-era columns), the canonical build block in `compatibility_manifest` (edge_app_version, git_commit,
+     * bootstrap_schema, applied_edge_schema_version, capabilities …; the compatibility-report endpoint writes the
+     * `*_version` aliases) and `build_reported_at` / `compatibility_reported_at`. Nothing here is invented: a fact the
+     * appliance did not report renders as a dash, and a device that never reported renders "not reported yet".
+     *
+     * @return array{app_version:?string, git_commit:?string, bootstrap_schema:?string, applied_edge_schema:?string, capabilities:list<string>, reported_at:?\Illuminate\Support\Carbon}|null
+     */
+    private function buildFacts(EdgeDevice $device): ?array
+    {
+        $manifest = is_array($device->compatibility_manifest) ? $device->compatibility_manifest : [];
+        $str = function (string ...$keys) use ($manifest): ?string {
+            foreach ($keys as $k) {
+                $v = $manifest[$k] ?? null;
+                if (is_scalar($v) && trim((string) $v) !== '') {
+                    return trim((string) $v);
+                }
+            }
+
+            return null;
+        };
+        $capabilities = array_values(array_filter(array_map(
+            fn ($c) => is_scalar($c) ? trim((string) $c) : '',
+            is_array($manifest['capabilities'] ?? null) ? $manifest['capabilities'] : []
+        ), fn ($c) => $c !== ''));
+        $reportedAt = $device->build_reported_at ?? $device->compatibility_reported_at;
+
+        $facts = [
+            'app_version'         => $device->app_version ?: $str('edge_app_version', 'artifact_version'),
+            'git_commit'          => $str('git_commit'),
+            'bootstrap_schema'    => $str('bootstrap_schema', 'bootstrap_schema_version') ?: ($device->schema_version ?: null),
+            'applied_edge_schema' => $str('applied_edge_schema_version', 'edge_schema_version'),
+            'capabilities'        => $capabilities,
+            'reported_at'         => $reportedAt,
+        ];
+
+        $reported = $reportedAt !== null || $facts['app_version'] || $facts['git_commit'] || $facts['bootstrap_schema']
+            || $facts['applied_edge_schema'] || $capabilities !== [];
+
+        return $reported ? $facts : null;
     }
 
     /**

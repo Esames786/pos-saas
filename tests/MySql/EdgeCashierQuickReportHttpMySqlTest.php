@@ -204,4 +204,43 @@ class EdgeCashierQuickReportHttpMySqlTest extends MySqlTenantTestCase
         $this->get('/edge/local/pos/quick-report/view')->assertStatus(403);
         $this->postJson('/edge/local/pos/quick-report/email', [])->assertStatus(403);
     }
+    /**
+     * W-G1 — the 403 SHAPE. Every JSON/fetch quick-report endpoint refuses like every other Edge POS JSON endpoint
+     * (W-B §3.2: `{message, permission}` via the shared denyUnlessCan — the page explains the permission the way Online
+     * does), while the thermal VIEW is an HTML page load and keeps an HTML 403 (`Permission denied.`) — unless the
+     * request itself asks for JSON.
+     */
+    public function test_quick_report_403_is_the_shared_json_shape_for_fetches_and_html_for_the_page(): void
+    {
+        $this->revokeEdgePermission($this->userId, 'tenant.pos.quick-report-send');
+
+        foreach ([
+            fn () => $this->getJson('/edge/local/pos/quick-report/options'),
+            fn () => $this->getJson('/edge/local/pos/quick-report/settings'),
+            fn () => $this->postJson('/edge/local/pos/quick-report/save-settings', ['sections' => ['overview']]),
+            fn () => $this->postJson('/edge/local/pos/quick-report/network', ['printer_id' => 1]),
+            fn () => $this->postJson('/edge/local/pos/quick-report/email', []),
+            fn () => $this->getJson('/edge/local/pos/quick-report/view'), // a fetch of the page URL still gets JSON
+        ] as $call) {
+            $res = $call();
+            $res->assertStatus(403)->assertHeader('content-type', 'application/json')
+                ->assertJsonPath('permission', 'tenant.pos.quick-report-send')->assertJsonStructure(['message', 'permission']);
+            $this->assertNotSame('', (string) $res->json('message'));
+        }
+
+        // The HTML page load: an HTML 403, never a JSON body.
+        $page = $this->get('/edge/local/pos/quick-report/view')->assertStatus(403);
+        $this->assertStringStartsWith('text/html', (string) $page->headers->get('content-type'));
+        $this->assertStringNotContainsString('"permission"', (string) $page->getContent());
+
+        // Nothing was written by a refused call.
+        $this->assertSame(0, DB::connection('tenant')->table('pos_quick_report_settings')->count());
+        $this->assertSame(0, PrintJob::on('tenant')->where('document_type', 'report')->count());
+
+        // Permission back → the same endpoints answer again (the gate is the synced permission, nothing else).
+        $this->grantEdgePermission($this->userId, 'tenant.pos.quick-report-send');
+        $this->getJson('/edge/local/pos/quick-report/options')->assertOk();
+        $this->getJson('/edge/local/pos/quick-report/settings')->assertOk()->assertJsonPath('ok', true);
+        $this->get('/edge/local/pos/quick-report/view')->assertOk();
+    }
 }

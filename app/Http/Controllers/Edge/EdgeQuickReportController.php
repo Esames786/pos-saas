@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Edge;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Edge\Concerns\ResolvesEdgePosContext;
 use App\Http\Controllers\Tenant\PosQuickReportController;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
@@ -33,9 +34,14 @@ use Illuminate\Http\Request;
  */
 class EdgeQuickReportController extends Controller
 {
+    // W-G1: the shared Edge refusal helpers (denyUnlessCan — the {message, permission} 403 every Edge POS JSON endpoint answers).
+    use ResolvesEdgePosContext;
+
     public const SECTIONS = PosQuickReportController::SECTIONS;
 
     private const PERMISSION = 'tenant.pos.quick-report-send';
+
+    private const PERMISSION_MESSAGE = 'Sending or printing the Quick Report needs the Quick Report permission.';
 
     public function __construct(
         private readonly EdgeBranchContext $context,
@@ -44,9 +50,21 @@ class EdgeQuickReportController extends Controller
     ) {
     }
 
-    private function guard(): void
+    /**
+     * W-G1 — the permission gate, in the shape the caller can consume: a JSON/fetch endpoint (every action but the thermal
+     * page) answers the shared `{message, permission}` 403 via denyUnlessCan (W-B §3.2 — never a bare abort page); the
+     * thermal VIEW is an HTML page load and keeps Online's HTML 403 (`Permission denied.`, EnsureRoutePermission) unless the
+     * request itself asks for JSON.
+     */
+    private function guard(?Request $request = null, bool $htmlPage = false): ?JsonResponse
     {
-        abort_unless((bool) auth('tenant')->user()?->can(self::PERMISSION), 403, 'Permission denied.');
+        if ($htmlPage && ! ($request?->expectsJson() ?? false)) {
+            abort_unless((bool) auth('tenant')->user()?->can(self::PERMISSION), 403, 'Permission denied.');
+
+            return null;
+        }
+
+        return $this->denyUnlessCan(self::PERMISSION, self::PERMISSION_MESSAGE);
     }
 
     private function branch(): Branch
@@ -59,7 +77,7 @@ class EdgeQuickReportController extends Controller
      * category/item/waiter/order-type filters that narrow the WHOLE report, include_open = true.
      * On the appliance the scope is the bound branch — and only if the operator's assignment allows it.
      */
-    private function context(Request $request): array
+    private function context(Request $request, bool $htmlPage = false): array|JsonResponse
     {
         $branch = $this->branch();
         $date = $request->input('date');
@@ -68,7 +86,12 @@ class EdgeQuickReportController extends Controller
         }
         $allowed = array_map('intval', app(UserDataScope::class)->branchIds(auth('tenant')->user()) ?: []);
         if ($allowed !== [] && ! in_array((int) $branch->id, $allowed, true)) {
-            abort(403, 'This report is outside your branch scope.');
+            // W-G1: a scope refusal (not a missing permission) — JSON callers get {message} 403, the HTML page keeps abort(403).
+            if ($htmlPage && ! $request->expectsJson()) {
+                abort(403, 'This report is outside your branch scope.');
+            }
+
+            return response()->json(['message' => 'This report is outside your branch scope.'], 403);
         }
 
         $filters = $this->engine->normalizeFilters([
@@ -90,7 +113,9 @@ class EdgeQuickReportController extends Controller
     /** What the modal needs: sections, today's business date, filter books, network printers, and the truthful email state. */
     public function options(): JsonResponse
     {
-        $this->guard();
+        if ($denied = $this->guard()) {
+            return $denied;
+        }
         $branch = $this->branch();
 
         return response()->json([
@@ -112,8 +137,14 @@ class EdgeQuickReportController extends Controller
     /** VIEW / PRINT HERE — the canonical thermal report page (same Blade as Report Center's thermal print). */
     public function view(Request $request)
     {
-        $this->guard();
-        [$filters, $sections, $date, $branch] = $this->context($request);
+        if ($denied = $this->guard($request, htmlPage: true)) {
+            return $denied;
+        }
+        $context = $this->context($request, htmlPage: true);
+        if ($context instanceof JsonResponse) {
+            return $context;
+        }
+        [$filters, $sections, $date, $branch] = $context;
 
         $data = $this->document->data($filters, $sections, false);
         $data['mode'] = 'thermal';
@@ -126,9 +157,15 @@ class EdgeQuickReportController extends Controller
     /** NETWORK — the same report bytes as Report Center, queued on the Edge print authority. */
     public function network(Request $request, EscPosPayloadService $esc): JsonResponse
     {
-        $this->guard();
+        if ($denied = $this->guard()) {
+            return $denied;
+        }
         $request->validate(['printer_id' => ['required', 'integer']]);
-        [$filters, $sections, $date, $branch] = $this->context($request);
+        $context = $this->context($request);
+        if ($context instanceof JsonResponse) {
+            return $context;
+        }
+        [$filters, $sections, $date, $branch] = $context;
 
         $printer = Printer::on('tenant')->where('id', $request->integer('printer_id'))->where('is_active', true)
             ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branch->id))->first();
@@ -182,7 +219,9 @@ class EdgeQuickReportController extends Controller
      */
     public function saveSettings(Request $request): JsonResponse
     {
-        $this->guard();
+        if ($denied = $this->guard()) {
+            return $denied;
+        }
         $data = $request->validate([
             'sections' => ['array'],
             'sections.*' => ['string'],
@@ -209,7 +248,9 @@ class EdgeQuickReportController extends Controller
 
     public function settings(): JsonResponse
     {
-        $this->guard();
+        if ($denied = $this->guard()) {
+            return $denied;
+        }
         $row = \App\Models\Tenant\PosQuickReportSetting::on('tenant')->where('user_id', auth('tenant')->id())->first();
 
         return response()->json(['ok' => true, 'settings' => $row->payload ?? null, 'stored' => 'branch_server']);
@@ -237,7 +278,9 @@ class EdgeQuickReportController extends Controller
     /** EMAIL — ONLINE_REQUIRED on the appliance. Never a fake "sent". */
     public function email(): JsonResponse
     {
-        $this->guard();
+        if ($denied = $this->guard()) {
+            return $denied;
+        }
 
         return response()->json([
             'ok' => false,

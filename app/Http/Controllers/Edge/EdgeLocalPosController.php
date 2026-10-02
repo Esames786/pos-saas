@@ -231,7 +231,12 @@ class EdgeLocalPosController extends Controller
             ->pluck('cc.product_id')->map(fn ($id) => (int) $id)->unique()->values();
 
         $products = Product::on('tenant')
-            ->with(['category:id,name,branch_id', 'unit:id,code,name,unit_type', 'variants', 'barcodes'])
+            ->with([
+                'category:id,name,branch_id', 'unit:id,code,name,unit_type', 'variants', 'barcodes',
+                // W-G1: recipe config is in the bootstrap (recipes / recipe_ingredients / unit_conversions, Section K) — the same
+                // relations Online loads for the "makeable" preview (RecipeAvailability).
+                'activeRecipe.ingredients.product.unit', 'activeRecipe.ingredients.unit', 'activeRecipe.ingredients.variant',
+            ])
             ->where(function ($q) use ($branchId, $liveOrderProductIds, $comboComponentProductIds) {
                 $q->where(function ($visible) use ($branchId) {
                     $visible->where('status', 'active')->where('is_sellable', true)->where('is_pos_visible', true)
@@ -247,7 +252,13 @@ class EdgeLocalPosController extends Controller
             ->get();
         $menu = $this->menuPayload($products, $branch);
 
-        $productsPayload = $products->map(function (Product $p) use ($menu, $branchId, $runtime) {
+        // W-G1: the recipe "makeable" preview from the ACCEPTED operational baseline — the very balances
+        // EdgeOperationalStockService::consumeRecipe decrements / refuses on — through the ONE shared computation Online uses.
+        // No accepted baseline → an empty lookup → 0 makeable (the sale refuses without a baseline too; never a guess).
+        $recipeAvailability = app(\App\Support\Pos\RecipeAvailability::class);
+        $recipeStock = $this->recipeStockLookup($branchId);
+
+        $productsPayload = $products->map(function (Product $p) use ($menu, $branchId, $runtime, $branch, $recipeAvailability, $recipeStock) {
             $m = $menu[(int) $p->id] ?? [];
             $tracked = ($m['stock_kind'] ?? null) === 'tracked';
             $visible = $p->status === 'active' && $p->is_sellable && $p->is_pos_visible
@@ -255,6 +266,7 @@ class EdgeLocalPosController extends Controller
             $imagePath = ltrim((string) $p->image_path, '/');
             $imageUrl = $imagePath !== '' && (is_file(storage_path('app/public/' . $imagePath)) || is_file(public_path('storage/' . $imagePath)))
                 ? $runtime->asset('storage/' . $imagePath) : null; // only a file that is ON the appliance, served locally
+            $recipe = $recipeAvailability->forProduct($p, [$branch], $recipeStock);
 
             return [
                 'id' => (int) $p->id,
@@ -287,10 +299,9 @@ class EdgeLocalPosController extends Controller
                     'barcodes' => $v['barcodes'],
                 ])->values(),
                 'stock_by_branch' => $tracked ? [$branchId => (float) ($m['stock'] ?? 0)] : [],
-                // Recipe "makeable" preview is not computed on the appliance (the sale refuses on the operational balances).
-                'is_recipe' => false,
-                'makeable_by_branch' => [],
-                'limiting_ingredient_by_branch' => [],
+                'is_recipe' => $recipe['is_recipe'],
+                'makeable_by_branch' => $recipe['makeable'],
+                'limiting_ingredient_by_branch' => $recipe['limiting'],
             ];
         })->values();
 
@@ -384,6 +395,27 @@ class EdgeLocalPosController extends Controller
         }
 
         return $floors;
+    }
+
+    /**
+     * W-G1 — `[branchId][productId][variantId|0] => qty` from the ACCEPTED operational baseline, the Edge counterpart of
+     * Online's grouped stock_balances lookup (RecipeAvailability::stockLookup). Raw-material (ingredient) products ride the
+     * baseline like any stock item (EdgeOperationalStockService::consumeRecipe decrements them), so the preview reads the
+     * same number the sale will. Empty when no baseline is accepted.
+     *
+     * @return array<int, array<int, array<int, float>>>
+     */
+    private function recipeStockLookup(int $branchId): array
+    {
+        $baseline = $this->baselines->currentAccepted();
+        if (! $baseline) {
+            return [];
+        }
+        $rows = DB::connection('tenant')->table('edge_operational_stock_balances')->where('baseline_id', $baseline->id)
+            ->get(['product_id', 'product_variant_id', 'quantity_on_hand'])
+            ->map(fn ($b) => ['branch_id' => $branchId, 'product_id' => $b->product_id, 'product_variant_id' => $b->product_variant_id, 'quantity_on_hand' => $b->quantity_on_hand]);
+
+        return \App\Support\Pos\RecipeAvailability::stockLookup($rows, 'quantity_on_hand');
     }
 
     /** A read that must never break the page (a table the appliance may not carry yet) → an empty collection. */
