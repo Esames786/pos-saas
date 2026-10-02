@@ -94,7 +94,12 @@ class FinancialExportService
      *
      * @return Collection<int, JournalLine>
      */
-    public function generalLedgerLines(string $from, string $to, array|int|null $branchIds = null, ?int $accountId = null, int $limit = 5000): Collection
+    /**
+     * JOURNAL-SOURCE-MULTI-1 — $sourceTypes is appended LAST and defaults to empty, so the two
+     * other callers (FinancialExportController, GeneralLedgerController) keep their exact
+     * behaviour; they pass positionally and never reach this argument.
+     */
+    public function generalLedgerLines(string $from, string $to, array|int|null $branchIds = null, ?int $accountId = null, int $limit = 5000, array $sourceTypes = []): Collection
     {
         $branchIds = $this->normalizeBranchIds($branchIds);
 
@@ -104,6 +109,7 @@ class FinancialExportService
             ->where('journal_entries.status', 'posted')
             ->when($accountId, fn ($q) => $q->where('journal_lines.account_id', $accountId))
             ->when($branchIds, fn ($q) => $q->whereIn('journal_lines.branch_id', $branchIds))
+            ->when($sourceTypes, fn ($q) => $q->whereIn('journal_entries.source_type', $sourceTypes))
             ->whereDate('journal_entries.entry_date', '>=', $from)
             ->whereDate('journal_entries.entry_date', '<=', $to)
             ->with(['account', 'branch', 'journalEntry'])

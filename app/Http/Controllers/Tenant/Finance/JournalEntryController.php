@@ -22,8 +22,12 @@ class JournalEntryController extends Controller
         if ($request->filled('date_to')) {
             $query->whereDate('entry_date', '<=', $request->date_to);
         }
-        if ($request->filled('source_type')) {
-            $query->where('source_type', $request->source_type);
+        // JOURNAL-SOURCE-MULTI-1: the Source filter takes several sources at once. A SCALAR is
+        // still accepted, because every link and bookmark already out there carries
+        // ?source_type=supplier_payment and must keep working.
+        $sourceFilter = $this->requestedSourceTypes($request);
+        if ($sourceFilter) {
+            $query->whereIn('source_type', $sourceFilter);
         }
         if ($request->filled('q')) {
             $search = trim($request->q);
@@ -52,10 +56,30 @@ class JournalEntryController extends Controller
         return view('tenant.finance.journal-entries.index', [
             'entries'     => $query->orderByDesc('entry_date')->orderByDesc('id')->limit(500)->get(),
             'sourceTypes' => $sourceTypes,
-            'filters'     => $request->only(['date_from', 'date_to', 'source_type', 'q']),
+            'filters'     => $request->only(['date_from', 'date_to', 'q']) + ['source_type' => $sourceFilter],
         ]);
     }
 
+    /**
+     * JOURNAL-SOURCE-MULTI-1 — the Source filter, however it arrived.
+     *
+     * `?source_type=supplier_payment` (old links, bookmarks, anything already saved) and
+     * `?source_type[]=a&source_type[]=b` (the tick-list) both land here. Blanks are dropped so an
+     * untouched "All sources" stays empty rather than becoming a filter on the empty string.
+     *
+     * @return list<string>
+     */
+    private function requestedSourceTypes(Request $request): array
+    {
+        $raw = $request->input('source_type', []);
+
+        return collect(is_array($raw) ? $raw : [$raw])
+            ->map(fn ($v) => is_string($v) ? trim($v) : $v)
+            ->filter(fn ($v) => $v !== '' && $v !== null)
+            ->unique()
+            ->values()
+            ->all();
+    }
     public function show(JournalEntry $journalEntry)
     {
         $journalEntry->load(['lines.account', 'lines.branch', 'postedBy', 'reversedEntry']);
@@ -91,11 +115,17 @@ class JournalEntryController extends Controller
 
     private function csvLines(Request $request)
     {
+        // JOURNAL-SOURCE-MULTI-1: this export used to ignore the Source filter entirely, so the
+        // screen and its own line-level CSV disagreed. Harmless while the filter was one awkward
+        // dropdown nobody reached for; a tick-list invites use, and a filter that silently does
+        // not apply to one of the two buttons beside it is a trap.
         $lines = $this->exportService->generalLedgerLines(
             $request->input('date_from') ?: '2000-01-01',
             $request->input('date_to') ?: today()->format('Y-m-d'),
             null,
-            null
+            null,
+            5000,
+            $this->requestedSourceTypes($request)
         );
 
         $header = CsvStreamer::financeHeader('Journal Lines (detail)');

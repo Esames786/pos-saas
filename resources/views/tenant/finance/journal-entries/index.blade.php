@@ -49,14 +49,33 @@
                         <label class="form-label mb-1">To</label>
                         <input type="date" name="date_to" class="form-control" value="{{ $filters['date_to'] ?? '' }}">
                     </div>
+                    {{-- JOURNAL-SOURCE-MULTI-1: a tick-list, not a one-at-a-time dropdown. Reading
+                         "what did the suppliers cost us" meant supplier payments AND purchase bills,
+                         and the old control could only ever answer half of that. Nothing ticked
+                         still means every source. --}}
+                    @php $chosenSources = (array) ($filters['source_type'] ?? []); @endphp
                     <div class="col-sm-3">
-                        <label class="form-label mb-1">Source</label>
-                        <select name="source_type" class="form-select">
-                            <option value="">All sources</option>
-                            @foreach($sourceTypes as $st)
-                                <option value="{{ $st }}" {{ ($filters['source_type'] ?? '') === $st ? 'selected' : '' }}>{{ str_replace('_', ' ', $st) }}</option>
-                            @endforeach
-                        </select>
+                        <label class="form-label mb-1">
+                            Source
+                            <span class="text-muted small">
+                                @if($chosenSources) ({{ count($chosenSources) }} chosen) @else (all) @endif
+                            </span>
+                        </label>
+                        <div class="border rounded p-2" style="max-height:150px; overflow-y:auto;">
+                            @forelse($sourceTypes as $st)
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="source_type[]"
+                                           value="{{ $st }}" id="src-{{ $loop->index }}"
+                                           @checked(in_array($st, $chosenSources, true))>
+                                    <label class="form-check-label small" for="src-{{ $loop->index }}">
+                                        {{ str_replace('_', ' ', $st) }}
+                                    </label>
+                                </div>
+                            @empty
+                                <div class="text-muted small">No sources yet.</div>
+                            @endforelse
+                        </div>
+                        <div class="form-text">Tick none for all sources.</div>
                     </div>
                     <div class="col-sm-3">
                         <label class="form-label mb-1">Search</label>
