@@ -57,6 +57,18 @@
             // Har hissa apni SATAR par — malik: "part ya own upar neeche
             // dikha do". Ek dish jis ka kuch maal party laati hai aur kuch
             // hum, us par do satrein aati hain.
+            // KITCHEN-SHEET-OWN-BARE-1 (2 Oct) — client: "sirf OWN na likha
+            // hua aaye, 7 KG aa jaye."
+            //
+            // Bawarchi ke liye khabar SIRF ye hai ke cheez us ke store se
+            // NAHI aayegi. Jo waise bhi store se aati hai, us par label
+            // lagana shor hai — aur prod ke parche par saat me se chhe
+            // rows par wohi shor tha. Naap phir bhi chahiye (bawarchi ko
+            // nikalna kitna hai), is liye label jata hai, adad rehta hai.
+            //
+            // Khali string jaan-boojh kar: wohi "label" ka khaana hai, aur
+            // view us par dabba nahi lagati. Ek alag jhanda rakhne se do
+            // jagah faisla hota aur ek din wo alag ho jate.
             if ($supply === 'customer') {
                 return [['PARTY', $qty]];
             }
@@ -66,13 +78,17 @@
                     $parts[] = ['PARTY', $fmtQty($m['customer']).' '.$unit];
                 }
                 if (round((float) ($m['ours'] ?? 0), 3) > 0) {
+                    // Bata hua maal: yahan adad akela bemani hota, kyunke
+                    // us ke oopar PARTY wali satar hai aur dono ek doosre ke
+                    // saath parhe jate hain. Is liye is EK surat me label
+                    // rehta hai.
                     $parts[] = ['OWN', $fmtQty($m['ours']).' '.$unit];
                 }
 
                 return $parts ?: null;
             }
 
-            return [['OWN', $qty]];
+            return [['', $qty]];
         }
 
         if ($supply === 'customer') {
@@ -90,7 +106,14 @@
 @if($compact)
     {{-- Har hissa apni satar par: "Party 30 KG" ke neeche "Own 12 KG". --}}
     @foreach($matLine->flatten(1) as $part)
-        <div class="supply-line"><span class="sup-tag" dir="ltr">{{ $part[0] }} <span dir="ltr">{{ $part[1] }}</span></span></div>
+        @if($part[0] === '')
+            {{-- Label nahi to dabba bhi nahi — khali kaala dabba apne aap me
+                 ek nishan ban jata, aur nishan wahan nahi hona chahiye jahan
+                 kehne ko kuch nahi. --}}
+            <div class="supply-line" dir="ltr">{{ $part[1] }}</div>
+        @else
+            <div class="supply-line"><span class="sup-tag" dir="ltr">{{ $part[0] }} <span dir="ltr">{{ $part[1] }}</span></span></div>
+        @endif
     @endforeach
 @else
     @php($joined = $matLine->implode(' · '))
