@@ -79,6 +79,26 @@
                 @error('receipt_date') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
 
+            {{-- GRN-EXTRA-CHARGES-1: cartage, labour, unloading. A charge is not a product, and
+                 without a box of its own a counter books it as one — four receipts here carried
+                 "Spoon, qty 1, rate 400" to record cartage. --}}
+            <div class="col-md-4">
+                <label for="extra_charges" class="form-label">Extra Charges</label>
+                <input type="number" step="0.01" min="0" id="extra_charges" name="extra_charges"
+                       class="form-control @error('extra_charges') is-invalid @enderror"
+                       value="{{ old('extra_charges') }}" placeholder="0.00">
+                <div class="form-text">Added to what the received goods cost, split by value. Not a stock item.</div>
+                @error('extra_charges') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+
+            <div class="col-md-8">
+                <label for="extra_charges_note" class="form-label">Charges Description</label>
+                <input type="text" maxlength="255" id="extra_charges_note" name="extra_charges_note"
+                       class="form-control @error('extra_charges_note') is-invalid @enderror"
+                       value="{{ old('extra_charges_note') }}" placeholder="e.g. Cartage, Labour, Unloading">
+                @error('extra_charges_note') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+
             <div class="col-12">
                 <label for="notes" class="form-label">Notes</label>
                 <textarea id="notes" name="notes" rows="2"

@@ -54,6 +54,18 @@
                 @endif
             </dd>
 
+            {{-- GRN-EXTRA-CHARGES-1: the charge raised what these goods cost, so the receipt has
+                 to say so — a cost that moved invisibly is a cost nobody can check. --}}
+            @if((float) ($goodsReceipt->extra_charges ?? 0) > 0)
+                <dt class="col-sm-3">Extra Charges</dt>
+                <dd class="col-sm-9">
+                    {{ number_format((float) $goodsReceipt->extra_charges, 2) }}
+                    @if($goodsReceipt->extra_charges_note)
+                        &mdash; {{ $goodsReceipt->extra_charges_note }}
+                    @endif
+                    <div class="form-text">Split across the lines below by value and included in their stock cost.</div>
+                </dd>
+            @endif
             @if($goodsReceipt->notes)
                 <dt class="col-sm-3">Notes</dt>
                 <dd class="col-sm-9">{{ $goodsReceipt->notes }}</dd>
