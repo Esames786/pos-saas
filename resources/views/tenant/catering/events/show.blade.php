@@ -2667,7 +2667,17 @@ $(function () {
                 label: this.value, name: this.value, unit: 'KG',
                 ratio: qty > 0 ? total / qty : 0,
                 rate: parseFloat(g('rate')) || 0, origRate: parseFloat(g('rate')) || 0,
-                own: Math.max(0, total - cust), ownTouched: true, cust,
+                own: Math.max(0, total - cust), cust,
+                // CATERING-PUNCH-OWN-FOLLOWS-QTY-1 — `ownTouched: true` yahan se
+                // hata diya gaya. Wo kehta tha "operator ne khud likha hai",
+                // magar sach ye tha ke ye adad PICHHLI baar likha gaya tha —
+                // aur us ki wajah se qty badalne par Own hilta hi nahi tha.
+                // Ab us ki NISBAT yaad rakhi jati hai aur adad qty ke saath
+                // chalta hai; `ownTouched` sirf is baar ke haath se likhe par.
+                ownTouched: false,
+                ownRatio: qty > 0 ? Math.max(0, total - cust) / qty : 0,
+                custTouched: false,
+                custRatio: qty > 0 ? cust / qty : 0,
             });
         });
 
@@ -2773,10 +2783,55 @@ $(function () {
      * them is what makes this a rearrangement of what is seen rather than a
      * rewrite of what happens.
      */
+    /**
+     * CATERING-PUNCH-OWN-FOLLOWS-QTY-1 — "Own ke khaane me kya hona chahiye"
+     * ka jawab, EK jagah.
+     *
+     * Malik (2 Oct): "jaise add karte hue qty daalte waqt Own bhi barh jata
+     * hai, waise hi edit karte waqt hona chahiye."
+     *
+     * Pehle ye faisla AATH jagah alag alag likha tha — `m.ownTouched ? m.own
+     * : qty * m.ratio` — aur edit ka raasta har material par `ownTouched`
+     * laga deta tha, is liye edit me Own kabhi hilta hi nahi tha. Required 6
+     * se 15 ho jata aur Own 6 par jama rehta: screen 15 KG maangti aur sirf 6
+     * KG ginti.
+     *
+     * Ab do nisbatein hain:
+     *   • naya row  — `ratio`, yani NUSKHE ki nisbat
+     *   • edit      — `ownRatio`, yani us saude ki apni nisbat (own ÷ qty)
+     *
+     * Edit par nuskhe ki nisbat lagana ghalat hota: us line par kisi ne
+     * jaan-boojh kar nuskhe se zyada likha tha (nuskha 4 KG, likha 6 KG), aur
+     * qty badalte hi us faisle ko nuskhe par wapas kheench lena us ka iraada
+     * mita deta. Nisbat qayam rehti hai, adad qty ke saath chalta hai.
+     *
+     * `ownTouched` ka matlab ab wohi hai jo naye row par hai: "is baar operator
+     * ne khud haath se likha hai" — us ke baad Own rukk jata hai.
+     */
+    function punchOwnFor(m, qty) {
+        if (m.ownTouched) { return Math.max(0, parseFloat(m.own) || 0); }
+        const r = (m.ownRatio != null) ? m.ownRatio : (m.ratio || 0);
+
+        return Math.max(0, qty * r);
+    }
+
+    /**
+     * Wohi baat Party ke liye. Agar Own qty ke saath barhe aur Party wahin
+     * jami rahe, to split ki SHAKAL bigar jati hai: 4+2 ka sauda qty dugni
+     * karne par 8+2 ban jata aur Required 12 maangta — har party wali satar
+     * foran "mukhtalif" ho jati. Dono apni apni nisbat se chalte hain.
+     */
+    function punchCustFor(m, qty) {
+        if (m.custTouched) { return Math.max(0, parseFloat(m.cust) || 0); }
+        const r = (m.custRatio != null) ? m.custRatio : 0;
+
+        return Math.max(0, r ? qty * r : (parseFloat(m.cust) || 0));
+    }
+
     function punchMatCells(m, i, qty) {
         const esc = s => _.escape(String(s == null ? '' : s));
         const required = qty * m.ratio;
-        const own = m.ownTouched ? m.own : required;
+        const own = punchOwnFor(m, qty);
         // party_allowed is the ITEM's answer today. Asked per material here, so
         // that the day it becomes a per-material column only this line changes.
         const partyAllowed = m.partyAllowed !== undefined
@@ -2804,7 +2859,7 @@ $(function () {
                 + '<input class="form-control form-control-sm text-end pm-own" data-i="' + i + '" value="' + punchFmt(own) + '">'
             + '</td>'
             + '<td class="punch-mat-cell text-end" data-i="' + i + '">'
-                + '<input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" value="' + punchFmt(m.cust || 0) + '"'
+                + '<input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" value="' + punchFmt(punchCustFor(m, qty)) + '"'
                 + (partyAllowed ? '' : ' disabled title="Is item par party supply band hai"') + '>'
             + '</td>';
     }
@@ -2866,8 +2921,8 @@ $(function () {
 
         mats.forEach((m, i) => {
             const required = qty * m.ratio;
-            const own = Math.max(0, m.ownTouched ? m.own : required);
-            const cust = Math.max(0, m.cust || 0);
+            const own = punchOwnFor(m, qty);
+            const cust = punchCustFor(m, qty);
             const ok = Math.abs((own + cust) - required) < 0.0005;
             if (ok) matched++;
             $('#punch-body .punch-mat-cell[data-i="' + i + '"]')
@@ -2893,8 +2948,14 @@ $(function () {
         if (!punch) return;
         const qty = parseFloat(this.value) || 0;
         $('#punch-body .pm-own').each(function () {
-            const i = +this.dataset.i;
-            if (!punch.mats[i].ownTouched) this.value = punchFmt(qty * punch.mats[i].ratio);
+            this.value = punchFmt(punchOwnFor(punch.mats[+this.dataset.i], qty));
+        });
+        // CATERING-PUNCH-OWN-FOLLOWS-QTY-1 — Party bhi saath chalti hai.
+        // Sirf Own ko hilana aur Party ko jama rakhna split ki SHAKAL bigaar
+        // deta: 4+2 ka sauda qty dugni karne par 8+2 ban jata aur Required 12
+        // maangta — har party wali satar foran "mukhtalif" ho jati.
+        $('#punch-body .pm-cust').each(function () {
+            this.value = punchFmt(punchCustFor(punch.mats[+this.dataset.i], qty));
         });
         // Required is the recipe's answer at THIS quantity, so it moves with it.
         $('#punch-body .pm-req').each(function () {
@@ -2907,7 +2968,9 @@ $(function () {
         const i = +this.dataset.i, m = punch.mats[i];
         if (this.classList.contains('pm-own')) { m.ownTouched = true; m.own = parseFloat(this.value) || 0; }
         if (this.classList.contains('pm-rate')) { m.rate = parseFloat(this.value) || 0; }
-        if (this.classList.contains('pm-cust')) { m.cust = parseFloat(this.value) || 0; }
+        // CATERING-PUNCH-OWN-FOLLOWS-QTY-1 — Party par bhi wohi qaida: haath se
+        // likhte hi wo qty ka peechha chhor deti hai.
+        if (this.classList.contains('pm-cust')) { m.custTouched = true; m.cust = parseFloat(this.value) || 0; }
         punchRefreshTotals();
         punchLive();
     });
@@ -3297,7 +3360,7 @@ $(function () {
         const making = Math.max(0, (punch.dishRate || 0) - baseMats);
         let amount = making * qty;
         punch.mats.forEach(m => {
-            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
+            const own = punchOwnFor(m, qty);
             amount += own * m.rate;
         });
         amount = Math.round(Math.max(0, amount) * 100) / 100;
@@ -3317,8 +3380,8 @@ $(function () {
             + '<thead><tr><th>Part</th><th class="text-end">Rate</th><th class="text-end">Kitchen</th>'
             + '<th class="text-end">Hum denge</th><th class="text-end">Party dega</th><th class="text-end">We charge</th></tr></thead><tbody>'
             + mats.map(m => {
-                const ours = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
-                const cust = Math.max(0, m.cust || 0);
+                const ours = punchOwnFor(m, qty);
+                const cust = punchCustFor(m, qty);
                 const total = ours + cust;
                 return '<tr><td>' + esc(punchShort(m.name || m.label)) + '</td>'
                     + '<td class="text-end">' + money(m.rate) + '</td>'
@@ -3347,7 +3410,10 @@ $(function () {
                 const cust = Math.min(parseFloat(g('cust')) || 0, total);
                 mats.push({ label: this.value, name: this.value, unit: 'KG', ratio: qty > 0 ? total / qty : 0,
                     rate: parseFloat(g('rate')) || 0, origRate: parseFloat(g('rate')) || 0,
-                    own: Math.max(0, total - cust), ownTouched: true, cust });
+                    own: Math.max(0, total - cust), cust,
+                    // CATERING-PUNCH-OWN-FOLLOWS-QTY-1 — nisbat, na ke jama hua adad.
+                    ownTouched: false, ownRatio: qty > 0 ? Math.max(0, total - cust) / qty : 0,
+                    custTouched: false, custRatio: qty > 0 ? cust / qty : 0 });
             });
 
             return mats;
@@ -3365,7 +3431,10 @@ $(function () {
             const total = parseFloat(totalInp.val()) || 0;
             const cust = Math.min(parseFloat(r.find('.split-customer').val()) || 0, total);
             mats.push({ label, name: label, unit: 'KG', ratio: qty > 0 ? total / qty : 0,
-                rate, origRate: rate, own: Math.max(0, total - cust), ownTouched: true, cust });
+                rate, origRate: rate, own: Math.max(0, total - cust), cust,
+                // CATERING-PUNCH-OWN-FOLLOWS-QTY-1 — nisbat, na ke jama hua adad.
+                ownTouched: false, ownRatio: qty > 0 ? Math.max(0, total - cust) / qty : 0,
+                custTouched: false, custRatio: qty > 0 ? cust / qty : 0 });
         });
 
         return mats;
@@ -3402,8 +3471,8 @@ $(function () {
 
         let mats = '';
         punch.mats.forEach((m, j) => {
-            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
-            const cust = Math.max(0, m.cust || 0);
+            const own = punchOwnFor(m, qty);
+            const cust = punchCustFor(m, qty);
             const total = own + cust;
             const p = 'lines[' + idx + '][materials][' + j + ']';
             mats += '<input type="hidden" name="' + p + '[label]" value="' + esc(m.label) + '">'
@@ -3412,8 +3481,8 @@ $(function () {
                 + '<input type="hidden" name="' + p + '[cust]" value="' + esc(cust) + '">';
         });
 
-        const supply = punch.mats.filter(m => (m.cust || 0) > 0)
-            .map(m => punchShort(m.name || m.label) + ' ' + punchFmt(m.cust)).join(', ');
+        const supply = punch.mats.filter(m => punchCustFor(m, qty) > 0)
+            .map(m => punchShort(m.name || m.label) + ' ' + punchFmt(punchCustFor(m, qty))).join(', ');
 
         const detail = punchDetailHtml(punch.mats, qty, punch.dishRate);
 
@@ -3510,8 +3579,8 @@ $(function () {
             + instrIds.map(id => '<input type="hidden" name="lines[' + idx + '][instruction_ids][]" value="' + esc(id) + '">').join('');
 
         mats.forEach((m, j) => {
-            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
-            const cust = Math.max(0, m.cust || 0);
+            const own = punchOwnFor(m, qty);
+            const cust = punchCustFor(m, qty);
             const p = 'lines[' + idx + '][materials][' + j + ']';
             hidden += '<input type="hidden" name="' + p + '[label]" value="' + esc(m.label) + '">'
                 + '<input type="hidden" name="' + p + '[kg]" value="' + esc(own + cust) + '">'
@@ -3525,8 +3594,8 @@ $(function () {
 
         // The material cells, one line of the stack each.
         const matCells = (m, j) => {
-            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
-            const cust = Math.max(0, m.cust || 0);
+            const own = punchOwnFor(m, qty);
+            const cust = punchCustFor(m, qty);
             const partyAllowed = punch.party && m.partyAllowed !== false;
 
             return '<td class="fs-13">' + esc(punchShort(m.name || m.label))
@@ -3613,8 +3682,8 @@ $(function () {
             }
             let html = '';
             punch.mats.forEach((m, j) => {
-                const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
-                const cust = Math.max(0, m.cust || 0);
+                const own = punchOwnFor(m, qty);
+                const cust = punchCustFor(m, qty);
                 const total = own + cust;
                 const p = 'lines[' + idx + '][materials][' + j + ']';
                 html += '<input type="hidden" name="' + p + '[label]" value="' + esc(m.label) + '">'
