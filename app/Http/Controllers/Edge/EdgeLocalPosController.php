@@ -148,9 +148,15 @@ class EdgeLocalPosController extends Controller
         }
 
         // Terminals: the bound branch's active terminals; POS-TERMINAL-PIN-1 — a pinned operator sees only his own.
+        // W-G3 (X2) Online parity (PosController::index :430-433): UserDataScope::terminalsForPos scopes the list to the
+        // operator's ASSIGNED terminals (terminal_user) first, THEN pins it to default_terminal_id for an operator without
+        // tenant.pos.change-terminal. An operator holding change-terminal (the dev seed's DEVCASH1) sees every counter — on
+        // Online too; a terminal-assigned operator sees only his assigned ones (the server re-checks on every use).
         $canChangeTerminal = (bool) $user?->can(UserDataScope::CHANGE_TERMINAL_PERMISSION);
         $defaultTerminalId = $user?->default_terminal_id ? (int) $user->default_terminal_id : null;
+        $assignedTerminalIds = app(UserDataScope::class)->terminalIds($user);
         $terminals = Terminal::on('tenant')->where('branch_id', $branchId)->where('status', 'active')->orderBy('name')->get()
+            ->when($assignedTerminalIds !== [], fn ($list) => $list->whereIn('id', $assignedTerminalIds)->values())
             ->when(! $canChangeTerminal && $defaultTerminalId, fn ($list) => $list->where('id', $defaultTerminalId)->values());
 
         [$productsPayload, $combosPayload, $categories, $pillCategoryIds, $contentCategoryIds] = $this->sharedMenu($branch, $runtime);
@@ -586,8 +592,11 @@ class EdgeLocalPosController extends Controller
         // is offered ONLY his assigned terminal; the page auto-selects the default rather than "first seen".
         $canChangeTerminal = (bool) $user?->can(UserDataScope::CHANGE_TERMINAL_PERMISSION);
         $defaultTerminalId = $user?->default_terminal_id ? (int) $user->default_terminal_id : null;
+        // W-G3 (X2): Online's assignment scoping (UserDataScope::terminalsForPos) before the pin — same as the shared page.
+        $assignedTerminalIds = app(UserDataScope::class)->terminalIds($user);
         $terminals = Terminal::on('tenant')->where('branch_id', $branchId)->where('status', 'active')
             ->orderBy('name')->get(['id', 'code', 'name'])
+            ->when($assignedTerminalIds !== [], fn ($list) => $list->whereIn('id', $assignedTerminalIds)->values())
             ->when(! $canChangeTerminal && $defaultTerminalId,
                 fn ($list) => $list->where('id', $defaultTerminalId)->values());
 
@@ -1003,7 +1012,12 @@ class EdgeLocalPosController extends Controller
             'lines.*.combo_id' => ['nullable', 'integer'],
             'lines.*.product_variant_id' => ['nullable', 'integer'],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
-            'lines.*.modifiers' => ['nullable', 'array'],
+            // W-G3 (G1): Online `nullable|string` (JSON) decoded by normalizeLineModifiers; the old page's array form stays.
+            'lines.*.modifiers' => ['nullable'],
+            // Online validateSale: the page's per-line identity keys + line kind (a deal's component rows are dropped below).
+            'lines.*.client_line_key' => ['nullable', 'string', 'max:120'],
+            'lines.*.parent_client_line_key' => ['nullable', 'string', 'max:120'],
+            'lines.*.line_kind' => ['nullable', 'in:standard,combo_header,component,modifier'],
             // W2 (A10): Online accepts lines.*.discount_amount (min:0); per-line kitchen note → sales_order_lines.kitchen_note.
             'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
             'lines.*.kitchen_note' => ['nullable', 'string', 'max:500'],
@@ -1017,6 +1031,8 @@ class EdgeLocalPosController extends Controller
             'vehicle_number' => ['nullable', 'string', 'max:50', 'required_if:order_type,quick_sale'],
             'restaurant_waiter_id' => ['nullable', 'integer', 'required_if:order_type,quick_sale'],
         ]);
+        // W-G3 (G1): the shared view's multipart shape (JSON-string modifiers, deal component rows) → Online's normalised lines.
+        $data['lines'] = $this->normalizeSharedLines($data['lines']);
         $terminal = $this->selectedTerminal($request);
         if ($terminal instanceof JsonResponse) {
             return $terminal;

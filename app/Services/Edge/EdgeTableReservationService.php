@@ -3,13 +3,11 @@
 namespace App\Services\Edge;
 
 use App\Models\Edge\EdgeTableReservation;
-use App\Models\Tenant\Branch;
 use App\Models\Tenant\Customer;
 use App\Models\Tenant\RestaurantTable;
 use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\User;
 use App\Support\EdgeRuntime;
-use App\Support\EdgeUserAuthz;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -22,9 +20,10 @@ use RuntimeException;
  * offline-correct authority and storage:
  *
  *   - AUTHORITY: reservations may be mutated here only on the Branch Server that is bound to the branch AND
- *     is holding sale authority (Local Mode active) — the same fence as sales (BranchOperatingModeService).
- *     While Local Mode is active the Cloud must not also mutate that branch's reservations (Cloud-side fence,
- *     the sales fence extended to reservations); this avoids a Cloud/Edge split-brain on the same table.
+ *     holds local mutation authority — THE SAME gate as a sale / hold / table open on this appliance
+ *     (EdgeLocalPosService::assertAuthorizedPrincipal; W-G3 G4). While the appliance is the writer the Cloud
+ *     must not also mutate that branch's reservations (Cloud-side fence, the sales fence extended to
+ *     reservations); this avoids a Cloud/Edge split-brain on the same table.
  *   - CONCURRENCY: reserve takes a `lockForUpdate` on the table row (the proven Edge pattern) and refuses if
  *     the table has an open session or an existing ACTIVE reservation — two terminals racing yield one winner.
  *   - STORAGE: state lives in the Edge-owned edge_local_table_reservations (backed up, recovery-safe), not on
@@ -122,25 +121,29 @@ class EdgeTableReservationService
         return $r->fresh();
     }
 
-    /** Authority: Branch Server, bound branch, Local Mode active, user on the branch. Returns the branch id. */
+    /**
+     * Authority: Branch Server + THE SAME mutation gate every other Edge POS mutation uses (sale, hold, table open / move /
+     * bill — EdgeLocalPosService::assertAuthorizedPrincipal: authenticated local principal, active + Edge-eligible + on the
+     * bound branch, and P0 branch authority: in lease mode only while LOCAL_ACTIVE; without lease mode the manual Local
+     * Mode switch governs). Returns the branch id.
+     *
+     * W-G3 (G4): this used to ALSO demand `branches.sales_operating_mode = local_edge` (BranchOperatingModeService::
+     * branchHandedToBranchServer) — stricter than a sale or a table open on the same appliance state (manual LOCAL MODE
+     * with the bound branch row still `cloud`), so a cashier could open a table but not reserve one. Online reserves on a
+     * cloud branch; the appliance reserves under exactly the authority it sells under — nothing stricter, nothing looser.
+     */
     private function authorize(User $user): int
     {
         if (! EdgeRuntime::isBranchServer()) {
             throw new RuntimeException('Reservations are managed on the Branch Server.');
         }
-        $meta = $this->context->requireCurrent();
-        $branchId = (int) $meta->branch_id;
-        $branch = Branch::on('tenant')->find($branchId);
-        if (! $branch || ! $this->mode->branchHandedToBranchServer($branch)) {
-            throw new RuntimeException('This branch is not under Branch Server authority.');
+        try {
+            return app(EdgeLocalPosService::class)->assertAuthorizedPrincipal($user);
+        } catch (ValidationException $e) {
+            // The controllers answer a RuntimeException as 422 {message} — surface the gate's own business message.
+            $messages = $e->validator->errors()->all();
+            throw new RuntimeException((string) ($messages[0] ?? 'This user is not authorized to manage reservations on this Branch Server.'), 0, $e);
         }
-        // P0 BRANCH AUTHORITY: in lease mode the appliance touches reservations only while it is the writer.
-        app(EdgeAuthorityService::class)->assertLocalMutationAllowed();
-        if (! EdgeUserAuthz::isActive($user) || ! EdgeUserAuthz::isEdgeLoginEligible($user) || ! EdgeUserAuthz::mayOperateBranch($user, $branchId)) {
-            throw new RuntimeException('This user is not authorized to manage reservations on this Branch Server.');
-        }
-
-        return $branchId;
     }
 
     /** @return array{0:?int,1:?string,2:?string,3:?string} [customer_id, customer_uuid, name, phone] */

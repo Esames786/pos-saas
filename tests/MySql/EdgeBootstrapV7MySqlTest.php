@@ -191,6 +191,42 @@ class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
         $this->assertNotSame($before, $this->svc->watermark(Branch::on('tenant')->find($this->branchId)));
     }
 
+    /**
+     * W-G3 (G3): an appliance must never receive a customer without a canonical identity (the Edge sale envelope refuses
+     * `customer_uuid` NULL, so the cashier could not sell to that customer). The exporter generates one ONCE for any NULL
+     * row before export (the migration-backfill rule), never touches a populated value, and moves the watermark so an
+     * already-bootstrapped appliance receives the repaired book with the next config revision.
+     */
+    public function test_the_export_generates_a_canonical_customer_uuid_once_for_any_null_row_and_never_changes_a_populated_one(): void
+    {
+        $c = DB::connection('tenant');
+        $c->table('customer_addresses')->delete();
+        $c->table('customers')->delete();
+        $now = now()->subMinute();
+        $known = (string) \Illuminate\Support\Str::ulid();
+        $legacyId = (int) $c->table('customers')->insertGetId(['customer_uuid' => null, 'code' => 'LEG', 'name' => 'Legacy Walk-in', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $keptId = (int) $c->table('customers')->insertGetId(['customer_uuid' => $known, 'code' => 'OK', 'name' => 'Already Canonical', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $inactiveId = (int) $c->table('customers')->insertGetId(['customer_uuid' => null, 'code' => 'OFF', 'name' => 'Inactive Legacy', 'status' => 'inactive', 'created_at' => $now, 'updated_at' => $now]);
+        $branch = Branch::on('tenant')->find($this->branchId);
+        $before = $this->svc->watermark($branch);
+
+        $s = $this->package()['sections'];
+        $byId = collect($s['customers'])->keyBy('id');
+        $this->assertTrue(\App\Support\Edge\EdgeIdentity::isValid((string) $byId[$legacyId]['customer_uuid'], \App\Support\Edge\EdgeIdentity::FORMAT_ULID), 'the NULL row ships WITH a canonical ULID');
+        $this->assertSame($known, $byId[$keptId]['customer_uuid'], 'a populated identity is never changed');
+        $minted = (string) $c->table('customers')->where('id', $legacyId)->value('customer_uuid');
+        $this->assertSame($minted, $byId[$legacyId]['customer_uuid'], 'the exported value IS the persisted value (generated once, before export)');
+        $this->assertNotNull($c->table('customers')->where('id', $inactiveId)->value('customer_uuid'), 'every NULL row is repaired, shipped or not');
+        $this->assertNotSame($before, $this->svc->watermark($branch), 'the repair moves the watermark → a new config revision carries it');
+
+        // Idempotent: a second export re-generates nothing and moves nothing.
+        $wm = $this->svc->watermark($branch);
+        $again = collect($this->package()['sections']['customers'])->keyBy('id');
+        $this->assertSame($minted, $again[$legacyId]['customer_uuid']);
+        $this->assertSame($known, $again[$keptId]['customer_uuid']);
+        $this->assertSame($wm, $this->svc->watermark($branch), 'no churn once every row carries its identity');
+    }
+
     public function test_v7_imports_coherently_persists_the_business_name_and_a_v6_package_is_refused(): void
     {
         $package = $this->package();

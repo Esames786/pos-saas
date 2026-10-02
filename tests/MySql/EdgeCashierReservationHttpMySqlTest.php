@@ -136,6 +136,45 @@ class EdgeCashierReservationHttpMySqlTest extends MySqlTenantTestCase
         $this->getJson('/edge/local/pos/held-sales')->assertOk()->assertJsonPath('held_sales.0.customer_name', 'Mrs Ahmed');
     }
 
+    /**
+     * W-G3 (G4): a reservation is gated by THE SAME authority every other Edge POS mutation uses — nothing stricter. The
+     * appliance state the browser proof ran under (manual LOCAL MODE, bound branch row still `sales_operating_mode = cloud`)
+     * accepted sales, holds and table open/move/bill but refused reserve with "This branch is not under Branch Server
+     * authority." Now: reserve / unreserve succeed exactly where a table open succeeds, and are refused (same message)
+     * exactly where a table open is refused — a lease-mode appliance in STANDBY.
+     */
+    public function test_g4_reservation_uses_the_same_authority_gate_as_a_table_open(): void
+    {
+        // The proof's appliance state: manual Local Mode (no lease heartbeat configured), branch row NOT handed over.
+        config(['edge.authority.heartbeat_url' => '']);
+        DB::connection('tenant')->table('branches')->where('id', $this->branchId)->update(['sales_operating_mode' => 'cloud', 'local_edge_status' => 'inactive']);
+
+        $this->postJson("/edge/local/pos/restaurant/tables/{$this->tableId}/open", ['guest_count' => 2])->assertStatus(201);
+        $this->postJson("/edge/local/pos/restaurant/tables/{$this->table2Id}/reserve", ['customer_name' => 'Mrs Ahmed', 'reserved_for' => now()->addHour()->toDateTimeString()])
+            ->assertStatus(201)->assertJsonPath('ok', true);
+        $this->assertSame('reserved', $this->tableOnBoard($this->table2Id)['status']);
+        $this->postJson("/edge/local/pos/restaurant/tables/{$this->table2Id}/unreserve", [])->assertOk()->assertJsonPath('status', 'cancelled');
+        $this->assertSame('available', $this->tableOnBoard($this->table2Id)['status']);
+
+        // Lease mode, appliance in STANDBY (the Cloud is the writer): a table open is refused — and so is a reservation,
+        // with the SAME business message (EdgeAuthorityService::assertLocalMutationAllowed).
+        config(['edge.authority.heartbeat_url' => 'https://cloud.example.test/edge/heartbeat']);
+        \App\Models\Edge\EdgeLocalMeta::on('tenant')->firstOrFail()->forceFill(['authority_state' => 'standby'])->save();
+        $open = $this->postJson("/edge/local/pos/restaurant/tables/{$this->table2Id}/open", ['guest_count' => 2])->assertStatus(422);
+        $reserve = $this->postJson("/edge/local/pos/restaurant/tables/{$this->table2Id}/reserve", ['customer_name' => 'Late'])->assertStatus(422);
+        $this->assertStringContainsString('Local Mode is not active', (string) $reserve->json('message'));
+        $this->assertSame((string) $open->json('message'), (string) $reserve->json('message'), 'identical refusal: the one shared gate');
+        $this->assertSame(0, DB::connection('tenant')->table('edge_local_table_reservations')->where('restaurant_table_id', $this->table2Id)->where('status', 'active')->count());
+        // unreserve is fenced the same way
+        $this->postJson("/edge/local/pos/restaurant/tables/{$this->table2Id}/unreserve", [])->assertStatus(422);
+
+        // Writer again (LOCAL_ACTIVE): both succeed again.
+        \App\Models\Edge\EdgeLocalMeta::on('tenant')->firstOrFail()->forceFill(['authority_state' => 'local_active'])->save();
+        $this->postJson("/edge/local/pos/restaurant/tables/{$this->table2Id}/reserve", ['customer_name' => 'Back'])->assertStatus(201);
+        $this->postJson("/edge/local/pos/restaurant/tables/{$this->table2Id}/unreserve", [])->assertOk();
+        config(['edge.authority.heartbeat_url' => '']);
+    }
+
     public function test_walk_in_reservation_then_cancel_frees_the_table(): void
     {
         // Walk-in (no customer given) reservation, no time — allowed; the board still shows it reserved.

@@ -29,4 +29,10 @@
      data-sync-url="{{ $posRuntime->route('syncSummary') }}">
     <script type="application/json" id="pos-edge-chrome-data">@json($edgeChromeData)</script>
     <form id="pos-edge-logout-form" method="POST" action="{{ $posRuntime->route('logout') }}">@csrf</form>
+    {{-- W-G3 (X1): the shared theme script (public/assets/js/theme-script.js setThemeAndSidebarTheme) looks for `.sidebar`
+         and, finding none, logs "Sidebar element not found" and SKIPS the data-theme/data-sidebar/data-color/data-layout
+         attributes it writes on <html> for the Online page. This zero-geometry hook (inside the display:none chrome, and
+         `body.pos-workspace.nosidebar .sidebar` is display:none too) lets Edge run the SAME code path as Online. It is not
+         the Cloud sidebar (<div class="sidebar"> never renders on Edge). --}}
+    <nav id="pos-edge-theme-hook" class="sidebar" hidden aria-hidden="true" style="display:none"></nav>
 </div>

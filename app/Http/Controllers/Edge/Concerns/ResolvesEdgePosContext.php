@@ -47,6 +47,50 @@ trait ResolvesEdgePosContext
     }
 
     /**
+     * W-G3 (G1) — the shared cashier view posts its cart as a MULTIPART form (index.blade.php buildInputs): each line's
+     * `modifiers` is a JSON STRING, and a deal arrives as its header row PLUS one row per component (line_kind
+     * `component`). Online accepts exactly that (SalesOrderController::validateSale `lines.*.modifiers` nullable|string,
+     * decoded by normalizeLineModifiers; HeldSaleController::store the same). The old Edge page posts JSON arrays.
+     * This accepts BOTH forms and normalises them the way Online does:
+     *   - modifiers: a JSON string decodes to its array (an undecodable string = no modifiers, as Online); an array stays;
+     *   - a deal's posted component rows are dropped — the Branch Server expands a deal from the SYNCED combo book
+     *     (EdgeLocalPosService::expandCombo), exactly as the quote twin already does (quoteInput).
+     * The service keeps resolving options from the synced modifier book; this only shapes the request.
+     */
+    protected function normalizeSharedLines(array $lines): array
+    {
+        $out = [];
+        foreach ($lines as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            if (($line['line_kind'] ?? 'standard') === 'component') {
+                continue;
+            }
+            if (array_key_exists('modifiers', $line)) {
+                $line['modifiers'] = self::decodeLineModifiers($line['modifiers']);
+            }
+            $out[] = $line;
+        }
+
+        return $out;
+    }
+
+    /** Online SalesOrderController::normalizeLineModifiers / HeldSaleController::normalizeLineModifiers input step. */
+    public static function decodeLineModifiers(mixed $value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_filter($value, fn ($m) => is_array($m)));
+    }
+
+    /**
      * TERMINAL AUTHORITY parity (Online UserDataScope): a pinned operator (no `tenant.pos.change-terminal`, default
      * terminal set) works on that terminal only; a terminal-assigned operator only on an assigned terminal.
      */

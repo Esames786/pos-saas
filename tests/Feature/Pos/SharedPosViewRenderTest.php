@@ -220,6 +220,44 @@ class SharedPosViewRenderTest extends TestCase
     }
 
     /**
+     * W-G3 (E3, owner A5/A6): the customer quick-add and add-address controls follow the SAME capability mechanism as every
+     * other capability-off control — disabled + title from `capability.<key>` — and the page JS shows that hint on a refused
+     * save (POS.hintText). On the Cloud render (capabilities on) NOTHING changes: no disabled attribute, no title, same elements.
+     */
+    public function test_customer_quick_add_and_add_address_follow_the_capability_mechanism_on_edge_and_are_untouched_on_cloud(): void
+    {
+        $cloud = $this->render($this->runtime());
+        $this->assertMatchesRegularExpression('/<button type="button" class="btn btn-primary btn-sm" id="qa-save"\s*>/s', $cloud, 'Cloud: enabled, no title');
+        $this->assertMatchesRegularExpression('/<button type="button" class="btn btn-sm btn-outline-primary w-100" id="new-addr-save"\s*>Save<\/button>/s', $cloud);
+        $this->assertDoesNotMatchRegularExpression('/id="qa-save"[^>]*\sdisabled/s', $cloud);
+        $this->assertDoesNotMatchRegularExpression('/id="new-addr-save"[^>]*\sdisabled/s', $cloud);
+
+        $caps = array_fill_keys(PosRuntime::CAPABILITY_KEYS, true);
+        $caps['customerCreate'] = false;
+        $caps['customerAddressCreate'] = false;
+        $edge = $this->render($this->runtime([
+            'mode' => PosRuntime::MODE_EDGE,
+            'capabilities' => $caps,
+            'managerCredential' => PosRuntime::CREDENTIAL_EMPLOYEE,
+            'labels' => ['capability.customerCreate' => 'Adding a new customer needs the Online POS.', 'capability.customerAddressCreate' => 'Saving another address needs the Online POS.'],
+        ]));
+        $this->assertMatchesRegularExpression('/<button[^>]*id="qa-save"[^>]*\sdisabled[^>]*title="Adding a new customer needs the Online POS\."/s', $edge);
+        $this->assertMatchesRegularExpression('/<button[^>]*id="new-addr-save"[^>]*\sdisabled[^>]*title="Saving another address needs the Online POS\."/s', $edge);
+        // Zero geometry change: the same single element in both renders, no new element added for the hint.
+        foreach (['qa-save', 'new-addr-save', 'qa-error'] as $id) {
+            $this->assertSame(1, preg_match_all('/id="' . $id . '"/', $cloud), $id);
+            $this->assertSame(1, preg_match_all('/id="' . $id . '"/', $edge), $id);
+        }
+        // The shared JS handles the recognisable capability-off rejection with the SAME hint (both renders carry the code).
+        foreach ([$cloud, $edge] as $html) {
+            $this->assertStringContainsString("err.textContent = POS.hintText('customerCreate')", $html);
+            $this->assertStringContainsString("notify('error', POS.hintText('customerAddressCreate'))", $html);
+            $this->assertStringContainsString("off.body = { ok: false, capabilityOff: true, route: key, message: off.message };", $html);
+            $this->assertStringContainsString('hintText: function (capability)', $html);
+        }
+    }
+
+    /**
      * layouts.pos also hosts the SECONDARY shared screens on Edge (shift, returns, split bill — Team B): a plain
      * @section('content') page with its own @push('styles'/'scripts') renders, and ?embed=1 behaves as in layouts.app.
      */

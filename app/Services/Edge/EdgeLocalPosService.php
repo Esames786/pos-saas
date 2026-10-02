@@ -906,6 +906,7 @@ class EdgeLocalPosService
         if (! $lines) {
             throw ValidationException::withMessages(['lines' => 'A held order needs at least one line.']);
         }
+        $this->savedLineClientKeys = [];
         return DB::connection('tenant')->transaction(function () use ($data, $user, $branch, $branchId, $terminal, $activationEpoch, $orderType, $lines, $isDraft) {
             [$user, $terminal] = $this->revalidateInTxn($user, $branchId, $terminal->id);
             $shift = $this->shiftService->lockOpenShiftForTerminal($terminal);
@@ -1246,7 +1247,24 @@ class EdgeLocalPosService
             if ($kind === 'combo_header' && isset($r['_key'])) {
                 $headerIds[$r['_key']] = (int) $line->id;
             }
+            // W-G3 (G2): remember which page row (client_line_key) each created line continues — the hold response
+            // echoes it exactly like Online's HeldSaleController::store $savedLinePayload.
+            $this->savedLineClientKeys[(int) $line->id] = $r['_client_line_key'] ?? null;
         }
+    }
+
+    /** @var array<int,string|null> created line id → the page's client_line_key, for the LAST holdOrReviseSale (W-G3 G2). */
+    private array $savedLineClientKeys = [];
+
+    /**
+     * W-G3 (G2) — Online HeldSaleController::store answers `lines[] = {id, client_line_key, kot_sent, kot_sent_quantity}`
+     * so the page learns the saved id of every row it posted. The last holdOrReviseSale's mapping (line id → key).
+     *
+     * @return array<int,string|null>
+     */
+    public function lastSavedLineClientKeys(): array
+    {
+        return $this->savedLineClientKeys;
     }
 
     /**
@@ -1792,10 +1810,16 @@ class EdgeLocalPosService
     {
         $out = [];
         foreach (array_values($lines) as $i => $line) {
+            // W-G3 (G2): the page's per-line identity key rides on the NAMED row only (Online's $savedLinePayload keys the
+            // line the client posted; a deal's server-expanded components carry none).
+            $clientKey = isset($line['client_line_key']) && $line['client_line_key'] !== '' ? (string) $line['client_line_key'] : null;
             if (! empty($line['combo_id'])) {
                 // DEAL parity: the client names the deal + quantity ONLY; topology and prices come from the
                 // synced combo book (never a client-supplied header/component price).
                 foreach ($this->expandCombo((int) $line['combo_id'], (float) ($line['quantity'] ?? 0), $branch, 'deal-' . $i . '-' . (int) $line['combo_id']) as $entry) {
+                    if (($entry['line_kind'] ?? '') === 'combo_header') {
+                        $entry['_client_line_key'] = $clientKey;
+                    }
                     $out[] = $entry;
                 }
                 continue;
@@ -1828,6 +1852,7 @@ class EdgeLocalPosService
                 'discount_amount' => $disc, 'tax_amount' => $tax, 'line_kind' => 'standard',
                 'modifiers' => $modifiers ?: null, '_keep_modifiers' => $keepModifiers,
                 'kitchen_note' => isset($line['kitchen_note']) ? (string) $line['kitchen_note'] : null,
+                '_client_line_key' => $clientKey,
             ];
         }
 

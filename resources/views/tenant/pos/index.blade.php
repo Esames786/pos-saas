@@ -2018,7 +2018,8 @@
                             <input id="qa-address" class="form-control form-control-sm" maxlength="500" autocomplete="off">
                         </div>
                         <div class="col-12">
-                            <button type="button" class="btn btn-primary btn-sm" id="qa-save">
+                            <button type="button" class="btn btn-primary btn-sm" id="qa-save"
+                                    @disabled(! $posRuntime->can('customerCreate')) @unless($posRuntime->can('customerCreate')) title="{{ $posRuntime->capabilityHint('customerCreate') }}" @endunless>
                                 <i class="ti ti-check me-1"></i>Add &amp; Attach <span class="opacity-75 small">(Enter)</span>
                             </button>
                             <span id="qa-error" class="text-danger small ms-2"></span>
@@ -2039,7 +2040,8 @@
                     <div class="row g-2 align-items-end">
                         <div class="col-md-4"><input id="new-addr-label" class="form-control form-control-sm" placeholder="Label (Home…)" maxlength="50"></div>
                         <div class="col-md-6"><input id="new-addr-text" class="form-control form-control-sm" placeholder="Add another address" maxlength="500"></div>
-                        <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-primary w-100" id="new-addr-save">Save</button></div>
+                        <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-primary w-100" id="new-addr-save"
+                                    @disabled(! $posRuntime->can('customerAddressCreate')) @unless($posRuntime->can('customerAddressCreate')) title="{{ $posRuntime->capabilityHint('customerAddressCreate') }}" @endunless>Save</button></div>
                     </div>
                 </div>
             </div>
@@ -6929,8 +6931,10 @@ document.addEventListener('DOMContentLoaded', function () {
         setButtonBusy(saveAddrBtn, true, 'Saving address');
         POS.api('customerAddressStore', { customer: selectedCustomer.id }, { method: 'POST', body: body })
         // an HTTP refusal resolves to its body (no `ok`) exactly like before; only a network failure reaches .catch
-        .catch(function (e) { if (e && e.status) return e.body; throw e; })
+        .catch(function (e) { if (e && (e.status || e.capabilityOff)) return e.body; throw e; })
         .then(function (data) {
+            // W-G3 (E3): capability off (customerAddressCreate, Edge) → the disabled button's hint, not the generic failure.
+            if (data && data.capabilityOff) { notify('error', POS.hintText('customerAddressCreate')); return; }
             if (!data || !data.ok) return;
             selectedCustomer.addresses = (selectedCustomer.addresses || []).concat([data.address]);
             ['new-addr-label', 'new-addr-text'].forEach(function (id) { const el = $id(id); if (el) el.value = ''; });
@@ -7067,9 +7071,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
         POS.api('customerQuickStore', {}, { method: 'POST', body: body })
             .then(function (j) { return { ok: true, json: j }; },
-                  function (e) { if (e && e.status) return { ok: false, json: e.body || {} }; throw e; })
+                  function (e) { if (e && (e.status || e.capabilityOff)) return { ok: false, json: e.body || {} }; throw e; })
             .then(function (res) {
                 if (!res.ok || !res.json.ok) {
+                    // W-G3 (E3): capability off (customerCreate, Edge) → the SAME hint the disabled button carries, not the
+                    // generic failure text. Online never takes this branch (the route is always on).
+                    if (res.json && res.json.capabilityOff) {
+                        if (err) err.textContent = POS.hintText('customerCreate');
+                        return;
+                    }
                     if (err) err.textContent = (res.json && res.json.message) || 'Could not save the customer.';
                     return;
                 }

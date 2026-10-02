@@ -164,7 +164,13 @@ class EdgeLocalHeldSalesController extends Controller
             'lines.*.combo_id' => ['nullable', 'integer'],
             'lines.*.product_variant_id' => ['nullable', 'integer'],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
-            'lines.*.modifiers' => ['nullable', 'array'],
+            // W-G3 (G1): Online HeldSaleController::store `nullable|string` (JSON) decoded by normalizeLineModifiers; arrays stay.
+            'lines.*.modifiers' => ['nullable'],
+            // W-G3 (G2): Online `lines.*.client_line_key` / `parent_client_line_key` / `line_kind` — the page matches the
+            // response's `client_line_key` to learn each saved line id (submitHeldSale → item._dbLineId).
+            'lines.*.client_line_key' => ['nullable', 'string', 'max:120'],
+            'lines.*.parent_client_line_key' => ['nullable', 'string', 'max:120'],
+            'lines.*.line_kind' => ['nullable', 'in:standard,combo_header,component,modifier'],
             // W2 (Online lines.*.kitchen_note / lines.*.discount_amount) — validated by EdgeLocalPosService; not stripped on Hold.
             'lines.*.kitchen_note' => ['nullable', 'string', 'max:500'],
             'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
@@ -174,6 +180,8 @@ class EdgeLocalHeldSalesController extends Controller
             'void_items.*.reason_id' => ['required_with:void_items', 'integer'],
             'void_items.*.manager_approval_id' => ['nullable', 'integer'],
         ]);
+        // W-G3 (G1): the shared view's multipart shape (JSON-string modifiers, deal component rows) → Online's normalised lines.
+        $data['lines'] = $this->normalizeSharedLines($data['lines']);
         $terminal = $this->selectedTerminal($request);
         if ($terminal instanceof JsonResponse) {
             return $terminal;
@@ -197,12 +205,28 @@ class EdgeLocalHeldSalesController extends Controller
             $voidJobs = app(\App\Services\Edge\EdgeLocalPrintKotService::class)->queueLineVoidCorrectionReminders($sale, (int) $terminal->id, $batchBefore);
         }
 
+        // W-G3 (G2) — Online HeldSaleController::store answers per saved line `{id, client_line_key, kot_sent, kot_sent_quantity}`
+        // (its $savedLinePayload); the page matches `client_line_key` to set item._dbLineId so the NEXT Hold carries
+        // `sales_order_line_id` (a kitchen-sent line is then continued, never "removed"). Same keys here — the Edge extras
+        // (line_uuid, product_id, quantity, unit_price) the old page reads stay additive. A deal's header row carries the
+        // deal's key; its server-expanded component rows carry none (the page posts them as components, which are dropped).
+        $clientKeys = $this->pos->lastSavedLineClientKeys();
+
         return response()->json([
             'void_print_jobs' => collect($voidJobs)->filter(fn ($j) => $j instanceof \App\Models\Tenant\PrintJob)->map(fn ($j) => $this->jobView($j))->values(),
             'sale_id' => $sale->id, 'sale_no' => $sale->sale_no, 'sale_uuid' => $sale->sale_uuid,
             'status' => $sale->status, 'is_draft' => (bool) $sale->is_draft, 'grand_total' => (float) $sale->grand_total,
             'restaurant_table_session_id' => $sale->restaurant_table_session_id,
-            'lines' => $sale->lines()->get(['id', 'line_uuid', 'product_id', 'quantity', 'unit_price', 'kot_sent', 'kot_sent_quantity']),
+            'lines' => $sale->lines()->orderBy('id')->get()->map(fn ($l) => [
+                'id' => (int) $l->id,
+                'client_line_key' => $clientKeys[(int) $l->id] ?? null,
+                'kot_sent' => (bool) $l->kot_sent,
+                'kot_sent_quantity' => (float) ($l->kot_sent_quantity ?? 0),
+                'line_uuid' => $l->line_uuid,
+                'product_id' => (int) $l->product_id,
+                'quantity' => (float) $l->quantity,
+                'unit_price' => (float) $l->unit_price,
+            ])->values(),
         ], empty($data['held_sale_id']) ? 201 : 200);
     }
 

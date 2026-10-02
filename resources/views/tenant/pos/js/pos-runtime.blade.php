@@ -66,8 +66,12 @@
         opts = opts || {};
         var url = route(key, params);
         if (url === null) {
+            // W-G3 (E3): a recognisable rejection — `capabilityOff: true`, status 0 (no HTTP happened), and a body shaped
+            // like a refused JSON response ({ok:false, message, capabilityOff}) so a page handler that resolves HTTP
+            // refusals to their body can treat it the same way. Never produced on Online (its routes are all non-null).
             var off = new Error((RT.labels && RT.labels.capabilityOff) || 'Not available in this mode.');
-            off.status = 0; off.capabilityOff = true;
+            off.status = 0; off.capabilityOff = true; off.routeKey = key;
+            off.body = { ok: false, capabilityOff: true, route: key, message: off.message };
             return Promise.reject(off);
         }
         if (opts.query) {
@@ -202,6 +206,11 @@
             var l = RT.labels || {};
             var t = l['capability.' + capability] || l.capabilityOff || 'Not available in this mode';
             return String(t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]; });
+        },
+        /** The same hint as plain text (for textContent / toasts) — W-G3 (E3). */
+        hintText: function (capability) {
+            var l = RT.labels || {};
+            return String(l['capability.' + capability] || l.capabilityOff || 'Not available in this mode');
         },
         managerCredentialFieldsHtml: managerCredentialFieldsHtml,
         managerCredentialFromPrompt: managerCredentialFromPrompt,

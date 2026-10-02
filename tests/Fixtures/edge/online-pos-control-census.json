@@ -12,7 +12,7 @@
         "that is the point — the register can no longer drift from the screen."
     ],
     "online_view": "resources/views/tenant/pos/index.blade.php",
-    "online_view_sha1": "5752896fa3c51ef3582756992d8526a05d57b645",
+    "online_view_sha1": "07b244608db120530ba4cefca103d40ce839f425",
     "edge_view": "resources/views/edge/pos/index.blade.php",
     "groups": {
         "header-shell": {

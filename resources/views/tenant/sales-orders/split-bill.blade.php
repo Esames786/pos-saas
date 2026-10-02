@@ -174,7 +174,10 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('split-total').textContent     = money(splitTotal);
         document.getElementById('remaining-total').textContent = money(Math.max(originalTotal - splitTotal, 0));
 
-        if (!tendered.dataset.manual) {
+        // W-G3 (X1): this page has no #tendered_amount (the split is NOT paid here) — the field is a leftover of the
+        // pay-on-split design. Guarded so neither runtime raises "Cannot read properties of null" (the Edge POS modal
+        // surfaced it as 3 pageerrors; Online's rendering is unchanged — the totals above were always updated first).
+        if (tendered && !tendered.dataset.manual) {
             tendered.value = money(splitTotal);
         }
     }
@@ -183,9 +186,11 @@ document.addEventListener('DOMContentLoaded', function () {
         input.addEventListener('input', recalc);
     });
 
-    tendered.addEventListener('input', function () {
-        this.dataset.manual = '1';
-    });
+    if (tendered) {
+        tendered.addEventListener('input', function () {
+            this.dataset.manual = '1';
+        });
+    }
 
     recalc();
 });

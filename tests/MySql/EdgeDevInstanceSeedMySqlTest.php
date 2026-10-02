@@ -195,7 +195,9 @@ class EdgeDevInstanceSeedMySqlTest extends MySqlTenantTestCase
         foreach (['Kamran', 'Saad'] as $r) {
             $t('delivery_riders')->insert(['branch_id' => $branchId, 'name' => 'Rider ' . $r, 'phone' => '0300' . random_int(1000000, 9999999), 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
         }
-        $cust = fn (string $code, string $name, string $phone) => $t('customers')->insertGetId(['code' => $code, 'name' => $name, 'phone' => $phone, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        // W-G3 (G3): every customer carries its canonical identity (HasCanonicalIdentity mints one on model create; a raw
+        // insert must mint it too) — the Edge sale envelope refuses a customer without a customer_uuid.
+        $cust = fn (string $code, string $name, string $phone) => $t('customers')->insertGetId(['customer_uuid' => (string) \Illuminate\Support\Str::ulid(), 'code' => $code, 'name' => $name, 'phone' => $phone, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
         $c1 = $cust('CUST-001', 'Ahmed Raza', '03001234567');
         $c2 = $cust('CUST-002', 'Sana Khan', '03211234567');
         $cust('CUST-003', 'Usman Tariq', '03331234567');
@@ -232,5 +234,6 @@ class EdgeDevInstanceSeedMySqlTest extends MySqlTenantTestCase
         fwrite(STDERR, $summary);
         $this->assertSame(14, $t('products')->count());
         $this->assertSame(1, $t('edge_local_meta')->count());
+        $this->assertSame(0, $t('customers')->whereNull('customer_uuid')->count(), 'W-G3 G3: every seeded customer carries a canonical customer_uuid');
     }
 }

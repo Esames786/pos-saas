@@ -140,6 +140,9 @@ class EdgeBootstrapService
     {
         try {
             [$tenant, $branch] = $this->assertContract($device);
+            // W-G3 (G3): BEFORE the claim watermark — a backfilled customer identity moves `customers.updated_at`, so doing
+            // it here keeps claim == txn == live (never a SOURCE_CHANGED on the very build that repaired the book).
+            $this->ensureCustomerIdentities();
             $claimRevision = $this->sourceRevision($branch);
 
             // EDGE-LOCAL-RUNTIME-1 (Section I): allocate (idempotently) the Cloud-authoritative
@@ -494,6 +497,9 @@ class EdgeBootstrapService
                 throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
             }
             $epoch = (int) $activation->generation;
+            // W-G3 (G3): identity safety net BEFORE the claim watermark (see createOrReuse) — the repaired rows then mint
+            // the new revision this very refresh ships, and claim == txn.
+            $this->ensureCustomerIdentities();
             $claim = $this->currentConfigRevision($tenant, $branch);
             [$sections, $txnWatermark] = DB::connection('tenant')->transaction(function () use ($tenant, $branch) {
                 return [$this->buildSections($tenant, $branch), $this->sourceRevision($branch)];
@@ -627,11 +633,37 @@ class EdgeBootstrapService
 
     /* ── deterministic branch-scoped sections (allowlists + coherence) ────── */
 
+    /**
+     * W-G3 (G3) — Cloud-side safety net: an appliance must NEVER receive a customer without a canonical identity (the Edge
+     * sale envelope refuses `customer_uuid` NULL — EdgeSaleEnvelopeBuilder::customerIdentity — so a cashier could not sell
+     * to that customer at all). The model (HasCanonicalIdentity) mints it on create and migration 2026_08_08_000010 backfilled,
+     * but rows inserted raw (legacy imports, seeds) can still be NULL. Generate-once, idempotent, the migration's own rule:
+     * a fresh ULID per NULL row; a populated value is NEVER changed. `updated_at` moves so the config watermark mints the
+     * revision that carries the identity to an already-bootstrapped appliance. Memory-bounded (1000 ids per round).
+     */
+    protected function ensureCustomerIdentities(): int
+    {
+        $conn = DB::connection('tenant');
+        $fixed = 0;
+        do {
+            $ids = $conn->table('customers')->whereNull('customer_uuid')->orderBy('id')->limit(1000)->pluck('id');
+            foreach ($ids as $id) {
+                // the NULL predicate re-checked in the UPDATE: a concurrent writer that already minted one wins (0 rows).
+                $fixed += $conn->table('customers')->where('id', $id)->whereNull('customer_uuid')
+                    ->update(['customer_uuid' => (string) Str::ulid(), 'updated_at' => now()]);
+            }
+        } while ($ids->count() > 0);
+
+        return $fixed;
+    }
+
     protected function buildSections(Tenant $tenant, Branch $branch): array
     {
         $conn = DB::connection('tenant');
         $b = (int) $branch->id;
         $rows = fn ($q, array $cols) => collect($q->orderBy('id')->get($cols))->map(fn ($r) => (array) $r)->all();
+        // W-G3 (G3): defence in depth — a no-op after createOrReuse / refreshPackage ran it before their claim.
+        $this->ensureCustomerIdentities();
 
         $terminalIds = $conn->table('terminals')->where('branch_id', $b)->pluck('id')->all();
         // W6 v7: the branch's groups PLUS the global ones (branch_id NULL) — the same set the Online POS offers.
