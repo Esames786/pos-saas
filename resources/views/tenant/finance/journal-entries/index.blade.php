@@ -5,6 +5,12 @@
 @php $statusBadge = ['draft' => 'bg-secondary', 'posted' => 'bg-success', 'void' => 'bg-danger']; @endphp
 
 @section('content')
+
+@if($eventNotFound ?? false)
+    {{-- Said out loud, because an empty table looks exactly like a filter that worked. --}}
+    <div class="alert alert-warning">No event <strong>{{ $filters['event_no'] }}</strong> found.</div>
+@endif
+
         <div class="page-header">
             <div class="page-title">
                 <h4>Journal Entries</h4>
@@ -81,6 +87,14 @@
                         <label class="form-label mb-1">Search</label>
                         <input type="text" name="q" class="form-control" placeholder="Entry / source / description" value="{{ $filters['q'] ?? '' }}">
                     </div>
+                    {{-- JOURNAL-EVENT-REF-1: EXACT event number. The number is the key; a partial
+                         like 0002 would match dozens of events. --}}
+                    <div class="col-sm-2">
+                        <label class="form-label mb-1">Event #</label>
+                        <input type="text" name="event_no" class="form-control"
+                               placeholder="EV-…" value="{{ $filters['event_no'] ?? '' }}">
+                        <div class="form-text">Exact number.</div>
+                    </div>
                     <div class="col-sm-2">
                         <button type="submit" class="btn btn-primary w-100">Filter</button>
                     </div>
@@ -112,7 +126,23 @@
                                 <td><a href="{{ url('/finance/journal-entries/' . $e->id) }}" class="fw-semibold">{{ $e->entry_no }}</a>@if($e->is_reversal)<span class="badge bg-warning text-dark ms-1">Reversal</span>@endif</td>
                                 <td>{{ optional($e->entry_date)->format('Y-m-d') }}</td>
                                 <td>{{ str_replace('_', ' ', $e->source_type ?? '—') }}</td>
-                                <td class="text-muted">{{ $e->source_no ?: '—' }}</td>
+                                <td class="text-muted">
+                                    {{ $e->source_no ?: '—' }}
+                                    {{-- JOURNAL-EVENT-REF-1: the event under the source no, because a
+                                         receipt's Source # is a ULID and says nothing to a person. --}}
+                                    @if($ev = ($eventFor[$e->id] ?? null))
+                                        <div class="small">
+                                            @can('tenant.catering.events.show')
+                                                <a href="{{ url('/catering/events/' . $ev['event_id']) }}">{{ $ev['event_no'] }}</a>
+                                            @else
+                                                {{ $ev['event_no'] }}
+                                            @endcan
+                                            @if($ev['customer_name'])
+                                                <span class="text-muted">· {{ $ev['customer_name'] }}</span>
+                                            @endif
+                                        </div>
+                                    @endif
+                                </td>
                                 <td class="text-muted">{{ $e->description }}</td>
                                 <td class="text-end">{{ number_format((float) $e->total_debit, 2) }}</td>
                                 <td class="text-end">{{ number_format((float) $e->total_credit, 2) }}</td>
