@@ -202,18 +202,33 @@ class JournalEventScreenMySqlTest extends MySqlTenantTestCase
         );
     }
 
-    /** The number is the key. A partial would quietly answer a different question. */
-    public function test_a_partial_or_unknown_event_number_matches_nothing_and_says_so(): void
+    /** Typing the whole EV-… number was too much (owner, 2026-10-04): a part of it is enough. */
+    public function test_part_of_the_event_number_is_enough(): void
     {
-        foreach (['0002', 'EV-20261231-9999'] as $typed) {
-            $view = $this->jeView(['event_no' => $typed]);
+        $this->assertSame(
+            ['JE-20260909-0001', 'JE-20260909-0002', 'JE-20260909-0003'],
+            $this->jeListed(['event_no' => '0002'])
+        );
 
-            $this->assertSame([], collect($view->getData()['entries'])->pluck('entry_no')->all(),
-                "[$typed] must not match anything");
-            $this->assertTrue($view->getData()['eventNotFound'],
-                "[$typed] — an empty table looks exactly like a filter that worked, so it must be said out loud");
-            $this->assertStringContainsString('No event <strong>' . $typed . '</strong> found', $view->render());
-        }
+        // A part shared by BOTH events brings back both trails — and still never the purchase bill.
+        $this->assertSame(
+            ['JE-20260909-0001', 'JE-20260909-0002', 'JE-20260909-0003', 'JE-20260925-0100'],
+            $this->jeListed(['event_no' => 'ev-2026'])
+        );
+
+        $this->assertSame(['JE-20260925-0100'],
+            array_values(array_unique($this->glEntryNos(['event_no' => '0069']))),
+            'the ledger takes a part of the number too');
+    }
+
+    /** Nothing matching is said out loud: an empty table looks exactly like a filter that worked. */
+    public function test_an_event_number_matching_nothing_says_so(): void
+    {
+        $view = $this->jeView(['event_no' => 'EV-20261231-9999']);
+
+        $this->assertSame([], collect($view->getData()['entries'])->pluck('entry_no')->all());
+        $this->assertTrue($view->getData()['eventNotFound']);
+        $this->assertStringContainsString('No event matching <strong>EV-20261231-9999</strong> found', $view->render());
     }
 
     /** A stray space either side is a paste, not a different event. */

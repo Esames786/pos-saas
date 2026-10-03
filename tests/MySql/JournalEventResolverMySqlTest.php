@@ -230,11 +230,10 @@ class JournalEventResolverMySqlTest extends MySqlTenantTestCase
         $this->assertNull($this->resolver()->entryRefsForEvent('EV-does-not-exist'));
         $this->assertNull($this->resolver()->entryRefsForEvent('   '));
 
-        // A PARTIAL must not match: the event number is the key, and 0002 would hit dozens.
-        $this->assertNull($this->resolver()->entryRefsForEvent('0002'));
-
-        // Exact, case-insensitive, trimmed.
-        $this->assertNotNull($this->resolver()->entryRefsForEvent('  ev-20260909-0002  '));
+        // A PART of the number matches (owner's call, 2026-10-04), so does the whole one —
+        // case-insensitive and trimmed either way.
+        $this->assertSame([$this->eventId], $this->resolver()->entryRefsForEvent('0002')['event_ids']);
+        $this->assertSame([$this->eventId], $this->resolver()->entryRefsForEvent('  ev-20260909-0002  ')['event_ids']);
     }
 
     public function test_filtering_by_event_returns_its_whole_trail_including_reversals(): void

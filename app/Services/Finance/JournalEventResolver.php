@@ -128,12 +128,12 @@ class JournalEventResolver
     }
 
     /**
-     * Event -> the (source_type, source_id) pairs of its entries, for the filters and the search.
+     * Event # filter -> the (source_type, source_id) pairs of the matching events' entries.
      *
-     * Returns null when no such event exists, so a caller can say "No event EV-... found" instead
-     * of showing an empty table that looks like a working filter with no results.
+     * Returns null when NO event number contains the text, so a caller can say "No event matching
+     * ... found" instead of showing an empty table that looks like a working filter.
      *
-     * @return array{event: object, refs: list<array{types: list<string>, ids: list<int>}>}|null
+     * @return array{event_ids: list<int>, refs: list<array{types: list<string>, ids: list<int>}>}|null
      */
     public function entryRefsForEvent(string $eventNo): ?array
     {
@@ -142,25 +142,28 @@ class JournalEventResolver
             return null;
         }
 
-        // EXACT number, case-insensitive. The event number is the key; a partial like "0002" would
-        // match dozens of events and quietly answer a different question than the one asked.
-        $event = DB::connection('tenant')->table('catering_events')
-            ->whereRaw('LOWER(event_no) = ?', [mb_strtolower($eventNo)])
-            ->first(['id', 'event_no', 'customer_name']);
+        // PARTIAL match, case-insensitive (owner's call, 2026-10-04: typing the whole EV-… number
+        // was too much). "0142" finds EV-20261003-0142 — and also any other event whose number
+        // contains 0142, which is the price of not typing it whole. The rows show each entry's
+        // event, so the reader can see which booking every line belongs to.
+        $eventIds = DB::connection('tenant')->table('catering_events')
+            ->whereRaw('LOWER(event_no) LIKE ?', ['%' . mb_strtolower($eventNo) . '%'])
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
 
-        if (! $event) {
+        if (! $eventIds) {
             return null;
         }
 
-        return ['event' => $event, 'refs' => $this->refsForEventIds([(int) $event->id])];
+        return ['event_ids' => $eventIds, 'refs' => $this->refsForEventIds($eventIds)];
     }
 
     /**
      * Refs for every event whose number CONTAINS the search text — for the `q` box.
      *
-     * The Event # FILTER is exact on purpose (the number is the key), but `q` is a search box and
-     * people paste partial numbers into it. Pasting an event number there used to find nothing at
-     * all, which is how this whole job started.
+     * Same partial match as the Event # filter. Pasting an event number into the search box used
+     * to find nothing at all, which is how this whole job started.
      *
      * @return list<array{types: list<string>, ids: list<int>}>
      */

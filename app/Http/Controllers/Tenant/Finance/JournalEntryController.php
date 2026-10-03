@@ -33,8 +33,8 @@ class JournalEntryController extends Controller
         if ($sourceFilter) {
             $query->whereIn('source_type', $sourceFilter);
         }
-        // JOURNAL-EVENT-REF-1: the Event # filter is EXACT — the event number is the key, and a
-        // partial like "0002" would match dozens. An unknown number is reported to the view so
+        // JOURNAL-EVENT-REF-1: the Event # filter takes the whole number or any part of it. When no
+        // event number contains the text, that is reported to the view so
         // the screen can say so, rather than showing an empty table that looks like a result.
         $eventNo = trim((string) $request->input('event_no', ''));
         $eventNotFound = false;
