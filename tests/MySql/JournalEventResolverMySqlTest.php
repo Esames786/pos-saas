@@ -160,7 +160,20 @@ class JournalEventResolverMySqlTest extends MySqlTenantTestCase
         ]);
         $entryId = $this->entry('catering_material_issue', $issueId);
 
-        $this->assertSame([], $this->resolve($entryId));
+        $entries = DB::connection('tenant')->table('journal_entries')
+            ->where('id', $entryId)->get(['id', 'source_type', 'source_id']);
+
+        DB::connection('tenant')->enableQueryLog();
+        DB::connection('tenant')->flushQueryLog();
+        $got = $this->resolver()->forEntries($entries);
+        $queries = count(DB::connection('tenant')->getQueryLog());
+        DB::connection('tenant')->disableQueryLog();
+
+        $this->assertSame([], $got);
+        // ONE query: the issue lookup. Letting a null event id through would add a pointless
+        // second query for event id 0 — the row would still be dropped later, so the only way
+        // to see that guard working is to count what it saves.
+        $this->assertSame(1, $queries, 'a null event id must not cost an events query');
     }
 
     public function test_non_catering_entries_resolve_to_nothing_and_run_no_query(): void
