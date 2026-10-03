@@ -307,4 +307,65 @@ BLADE;
             $this->assertSame(0, $code, "inline script #{$i} does not parse:\n" . implode("\n", $out) . "\n" . substr($js, 0, 300));
         }
     }
+
+    /**
+     * PHASE 3 (E) — `#ctx-terminal-name` read "No terminal" beside a selected terminal on BOTH runtimes. Root cause: the
+     * context-summary block runs while the document is still parsing (its IIFE), but the terminal is auto-selected inside
+     * the first block's DOMContentLoaded callback (`autoSelectTerminal` → `terminalEl.value = …`, no 'change' event), which
+     * fires later. Fix (once, in the shared view): the summary is re-read on DOMContentLoaded — registered AFTER the first
+     * block's callback, so it sees the auto-selected terminal. Same element, text only: the markup is unchanged.
+     */
+    public function test_the_context_bar_reads_the_auto_selected_terminal_after_dom_content_loaded(): void
+    {
+        $html = $this->render($this->runtime());
+
+        // Zero geometry change: the one element, rendered exactly as before (empty until the script fills it).
+        $this->assertSame(1, preg_match_all('/id="ctx-terminal-name"/', $html));
+        $this->assertStringContainsString('<span id="ctx-terminal-name" class="text-muted"></span>', $html);
+
+        // Ordering proof on the rendered page: block 1 registers its DOMContentLoaded callback (which calls autoSelectTerminal)
+        // BEFORE block 2 registers updateContextSummary on the same event, so the summary runs after the auto-selection.
+        $block1 = strpos($html, "document.addEventListener('DOMContentLoaded', function () {");
+        $autoSelect = strpos($html, "\n    autoSelectTerminal();");
+        $hook = strpos($html, "document.addEventListener('DOMContentLoaded', updateContextSummary);");
+        $this->assertNotFalse($block1);
+        $this->assertNotFalse($autoSelect);
+        $this->assertNotFalse($hook, 'the summary must be re-read on DOMContentLoaded');
+        $this->assertLessThan($autoSelect, $block1, 'autoSelectTerminal runs inside the first DOMContentLoaded callback');
+        $this->assertLessThan($hook, $autoSelect, 'the summary hook is registered after the auto-select callback');
+        $this->assertStringContainsString("if (document.readyState === 'loading') {\n        document.addEventListener('DOMContentLoaded', updateContextSummary);", $html);
+
+        // Behaviour of the shared function itself (Node): a programmatic selection with NO change event is read as the
+        // terminal name (text before the " — branch" suffix); no selection reads "No terminal".
+        $candidates = glob('D:/laragon2/bin/nodejs/*/node.exe') ?: [];
+        rsort($candidates);
+        $node = getenv('EDGE_NODE_BIN') ?: ($candidates ? reset($candidates) : ((new \Symfony\Component\Process\ExecutableFinder())->find('node') ?: null));
+        if (! $node) {
+            $this->markTestSkipped('no Node runtime available');
+        }
+        $this->assertSame(1, preg_match('/function updateContextSummary\(\) \{.*?\n    \}\n/s', $html, $fn), 'updateContextSummary must be extractable');
+        $script = <<<'JS'
+const els = {};
+const mk = (id, extra) => (els[id] = Object.assign({ textContent: '' }, extra || {}));
+const terminal = mk('terminal_id', { value: '', selectedOptions: [{ textContent: 'No Terminal' }] });
+mk('branch_id', { value: '1', selectedOptions: [{ textContent: '\n  Main\n' }] });
+mk('ctx-branch-name'); mk('ctx-terminal-name');
+const $id = (id) => els[id] || null;
+__FN__
+updateContextSummary();
+const before = els['ctx-terminal-name'].textContent;
+terminal.value = '3';                                        // autoSelectTerminal: programmatic, no 'change' event
+terminal.selectedOptions = [{ textContent: 'Till 1 — Main' }];
+updateContextSummary();
+console.log(JSON.stringify({ before, after: els['ctx-terminal-name'].textContent, branch: els['ctx-branch-name'].textContent }));
+JS;
+        $tmp = tempnam(sys_get_temp_dir(), 'pos_ctx_') . '.js';
+        file_put_contents($tmp, str_replace('__FN__', $fn[0], $script));
+        $out = [];
+        $code = 0;
+        exec(escapeshellarg($node) . ' ' . escapeshellarg($tmp) . ' 2>&1', $out, $code);
+        @unlink($tmp);
+        $this->assertSame(0, $code, implode("\n", $out));
+        $this->assertSame(['before' => 'No terminal', 'after' => 'Till 1', 'branch' => 'Main'], json_decode((string) end($out), true));
+    }
 }

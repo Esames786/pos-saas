@@ -547,7 +547,12 @@ class EdgeLocalPosController extends Controller
         return $data;
     }
 
-    /** @return array{0: array|null, 1: JsonResponse|null} */
+    /**
+     * PHASE 3 (B): the quote twins are as lenient as Online's `POSController::quoteTotals` (:734) — NO modifier
+     * min/max validation at quote time (`previewBill(..., quoteOnly: true)`); the paid sale / hold keep enforcing it.
+     *
+     * @return array{0: array|null, 1: JsonResponse|null}
+     */
     private function quotePreview(Request $request, array $data): array
     {
         if ($data['lines'] === []) {
@@ -560,7 +565,7 @@ class EdgeLocalPosController extends Controller
             return [null, $terminal];
         }
         try {
-            return [$this->pos->previewBill($data, auth('tenant')->user(), $terminal->id), null];
+            return [$this->pos->previewBill($data, auth('tenant')->user(), $terminal->id, quoteOnly: true), null];
         } catch (\Illuminate\Validation\ValidationException $e) {
             return [null, response()->json(['ok' => false, 'message' => collect($e->errors())->flatten()->first(), 'errors' => $e->errors()], 422)];
         } catch (\Throwable $e) {
@@ -1040,6 +1045,13 @@ class EdgeLocalPosController extends Controller
         if ($denied = $this->denyUnlessMayCompleteSale()) {
             return $denied;
         }
+        // PHASE 3 (F) — Online `idempotent_replay` (SalesOrderController::saleResponse :651-660; the Edge held settle carries it
+        // since W-G1): a sale already finalized under this client_uuid BEFORE this request is a replay (the service then verifies
+        // the payload hash — same intent replays, a different one is a 409). Read before the post so the flag is truthful for
+        // the request that actually created the sale.
+        $idempotency = app(\App\Services\Sales\SaleIdempotencyService::class);
+        $normalizedUuid = $idempotency->normalizeClientUuid($data['client_uuid']);
+        $replay = $normalizedUuid !== null && $idempotency->findFinalized($normalizedUuid) !== null;
 
         try {
             $sale = $this->pos->completePaidSale($data, auth('tenant')->user(), $terminal->id);
@@ -1072,6 +1084,8 @@ class EdgeLocalPosController extends Controller
             'paid_amount' => (float) $sale->paid_amount,
             'change_amount' => (float) $sale->payments()->first()?->change_amount,
             'edge_sync_state' => $sale->edge_sync_state,
+            // Online saleResponse: the page toasts "already completed - printing re-checked" on a replay.
+            'idempotent_replay' => $replay,
             // Online parity: the page follows the chosen Direct Pay print intents (Team 5 drives KOT/receipt from these).
             'print_intents' => $sale->direct_pay_print_state
                 ? ['kot' => $sale->direct_pay_print_state['kot_intent'] ?? null, 'receipt' => $sale->direct_pay_print_state['receipt_intent'] ?? null]

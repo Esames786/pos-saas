@@ -162,7 +162,13 @@ class EdgeCashierPaymentHttpMySqlTest extends MySqlTenantTestCase
         // the intents are part of the idempotent intent (Online hashes them): a replay with the same intents replays…
         $p = $this->payload(['kot_print_intent' => 'print', 'receipt_print_intent' => 'skip']);
         $first = $this->postJson('/edge/local/pos/sales', $p)->assertStatus(201)->json();
-        $this->assertSame($first['sale_id'], $this->postJson('/edge/local/pos/sales', $p)->assertStatus(201)->json('sale_id'));
+        // PHASE 3 (F): Online's `idempotent_replay` (SalesOrderController::saleResponse :651-660) — false on the request that
+        // posted the sale, true on the replay (the page then toasts "already completed - printing re-checked").
+        $this->assertFalse($first['idempotent_replay'], 'the first post is not a replay');
+        $replay = $this->postJson('/edge/local/pos/sales', $p)->assertStatus(201)->assertJsonPath('idempotent_replay', true);
+        $this->assertSame($first['sale_id'], $replay->json('sale_id'));
+        $this->assertSame($first['sale_no'], $replay->json('sale_no'));
+        $this->assertSame(1, DB::connection('tenant')->table('sales_orders')->where('client_uuid', $p['client_uuid'])->count(), 'one sale under the client_uuid');
         // …and a changed intent under the same client_uuid is a conflict, never a second sale.
         $this->postJson('/edge/local/pos/sales', array_merge($p, ['receipt_print_intent' => 'print']))->assertStatus(409);
     }

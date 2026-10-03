@@ -563,8 +563,15 @@ class EdgeLocalPosService
     /**
      * ONLINE-POS PARITY — Preview Bill: the running bill computed on the SAME server-side sale/totals truth,
      * with ZERO mutation (no sale, payment, stock movement, outbox, KOT, receipt, or Cloud call). Read-only.
+     *
+     * PHASE 3 (B) — `$quoteOnly`: the running-totals QUOTE (Online `POSController::quoteTotals`, POST /api/pos/totals/quote)
+     * never validates a line's modifier selection — Online prices the client's lines and only the sale/hold store enforces
+     * min/max (validateModifierModal + the store). The shared view quotes on every cart change (while the modifier modal is
+     * still open, and with no modifiers at all on the quote body), so a strict quote answered 422 for every product carrying
+     * a required group and the page silently kept a stale service charge / promo amount. A quote therefore resolves the
+     * options it is given and ignores the selection rules; Preview Bill / the paid sale / a hold stay strict.
      */
-    public function previewBill(array $data, User $user, ?int $terminalId): array
+    public function previewBill(array $data, User $user, ?int $terminalId, bool $quoteOnly = false): array
     {
         $meta = $this->context->requireCurrent();
         $branchId = (int) $meta->branch_id;
@@ -573,7 +580,7 @@ class EdgeLocalPosService
         $branch = Branch::on('tenant')->findOrFail($branchId);
         $orderType = (string) ($data['order_type'] ?? 'quick_sale');
 
-        $resolved = $this->resolveLines($data['lines'] ?? [], $branch);
+        $resolved = $this->resolveLines($data['lines'] ?? [], $branch, quoteOnly: $quoteOnly);
         // The preview shows the SAME total the payment will charge — including the delivery charge under the
         // branch lock rule (validation of channel/customer happens at payment; the preview only prices).
         $deliveryCharge = $orderType === 'delivery' && empty($data['restaurant_table_session_id'])
@@ -1310,16 +1317,18 @@ class EdgeLocalPosService
         return ['batch' => $jobs ? $batch : null, 'jobs' => $jobs];
     }
 
-    /** Which manager permission each offline approval action demands — unknown actions fail closed. */
+    /**
+     * Phase 3 (approver eligibility): the permission the APPROVED ACTION needs, which the approving manager must hold
+     * IN ADDITION to being an eligible approver (users.may_approve_pos — the Cloud manager-PIN flag, checked by
+     * EdgeLocalAuthService::verifyManager). tenant.pos.void-kot-item is no longer a blanket approver marker: it is
+     * required only where the action itself is a KOT void. Unknown actions fail closed.
+     */
     private const MANAGER_ACTION_PERMISSIONS = [
-        // DISCOUNT parity: on Cloud any manager-PIN holder approves a manual discount; on the appliance the
-        // manager is the branch-manager permission holder authenticating with THEIR OWN Edge credential.
-        'manual_discount' => 'tenant.pos.void-kot-item',
-        'void_kot_item' => 'tenant.pos.void-kot-item',
+        'manual_discount' => 'tenant.pos.store',                 // the discount lands on a POS sale
+        'void_kot_item' => 'tenant.pos.void-kot-item',           // KotCancellationService demands it of the requester too
         'void_kot_items' => 'tenant.pos.void-kot-item',
-        'cancel_held_order' => 'tenant.pos.void-kot-item',
-        // F1 RETURN-MANAGER-APPROVAL parity: the same branch-manager marker approves a return (Online: any manager-PIN holder).
-        'sales_return' => 'tenant.pos.void-kot-item',
+        'cancel_held_order' => 'tenant.held-sales.cancel',       // EdgeLocalHeldSalesController@cancelHeldSale gate
+        'sales_return' => 'tenant.sales-returns.store',          // F1 RETURN-MANAGER-APPROVAL: the return itself
     ];
 
     /**
@@ -1341,7 +1350,8 @@ class EdgeLocalPosService
             throw ValidationException::withMessages(['action_type' => "No offline manager-approval contract exists for [{$actionType}]."]);
         }
 
-        $manager = app(\App\Services\Edge\EdgeLocalAuthService::class)->verifyManager($employeeCode, $credential, $permission);
+        // Phase 3: the requester is passed so self-approval is refused server-side (approver_user_id ≠ requesting_user_id).
+        $manager = app(\App\Services\Edge\EdgeLocalAuthService::class)->verifyManager($employeeCode, $credential, $permission, (int) $requestingUser->id);
 
         return app(\App\Services\Sales\ManagerApprovalService::class)
             ->createApprovalForAuthenticatedManager($manager, $actionType, (int) $requestingUser->id, $payload);
@@ -1806,7 +1816,7 @@ class EdgeLocalPosService
      * on Add Round) is therefore re-resolved for identity/tax only and never refused for visibility; a NEW
      * line still has to be live on the menu.
      */
-    private function resolveLines(array $lines, Branch $branch, bool $carriedFromOpenBill = false): array
+    private function resolveLines(array $lines, Branch $branch, bool $carriedFromOpenBill = false, bool $quoteOnly = false): array
     {
         $out = [];
         foreach (array_values($lines) as $i => $line) {
@@ -1838,7 +1848,7 @@ class EdgeLocalPosService
             $keepModifiers = $carriedFromOpenBill && ! array_key_exists('modifiers', $line);
             $modifiers = $keepModifiers ? [] : ($carriedFromOpenBill
                 ? $this->normalizeSubmittedModifiers($line['modifiers'] ?? null)
-                : $this->resolveModifiers($product, $line['modifiers'] ?? null, (int) $branch->id));
+                : $this->resolveModifiers($product, $line['modifiers'] ?? null, (int) $branch->id, enforceSelection: ! $quoteOnly));
             // H6: ignore any submitted unit_price/tax on a standard line — server is the price authority. Modifier deltas fold
             // into the unit price exactly as the Online POS folds them (productPrice + modifierPriceDelta).
             $price = round($this->pricing->resolveSellingPrice($product, $variant, $branch->id, null)
@@ -1930,9 +1940,13 @@ class EdgeLocalPosService
      * come from the book, never the request. Returned in Online's normalizeLineModifiers shape (what the envelope, KOT and
      * receipt already carry).
      *
+     * PHASE 3 (B) — `$enforceSelection = false` is the totals QUOTE (previewBill $quoteOnly): the options the page sent are
+     * priced from the book, an option that is not on this product's menu is simply left out, and the min/max rules are not
+     * applied — Online's quoteTotals validates none of this. Every mutating path keeps the strict default.
+     *
      * @return array<int, array{modifier_group_id:int, modifier_group_name:string, modifier_id:int, name:string, price_delta:float}>
      */
-    private function resolveModifiers(Product $product, $requested, int $branchId): array
+    private function resolveModifiers(Product $product, $requested, int $branchId, bool $enforceSelection = true): array
     {
         $requestedIds = collect($this->normalizeSubmittedModifiers($requested))->pluck('modifier_id')->unique()->values();
         $groups = \App\Models\Tenant\ModifierGroup::on('tenant')
@@ -1951,11 +1965,14 @@ class EdgeLocalPosService
         foreach ($requestedIds as $id) {
             $option = $options->get($id);
             if (! $option) {
+                if (! $enforceSelection) {
+                    continue; // a quote prices what it can; the store refuses it
+                }
                 throw ValidationException::withMessages(['lines' => 'An option chosen for ' . $product->name . ' is not available on this menu.']);
             }
             $selected[] = $option;
         }
-        foreach ($groups as $group) {
+        foreach ($enforceSelection ? $groups : collect() as $group) {
             $count = count(array_filter($selected, fn ($o) => (int) $o->modifier_group_id === (int) $group->id));
             $min = (int) $group->min_select;
             $max = $group->max_select !== null ? (int) $group->max_select : null;

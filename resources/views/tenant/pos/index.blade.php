@@ -3626,6 +3626,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 unit_price:      item.unit_price || 0,
                 discount_amount: item.discount_amount || 0,
                 tax_amount:      item.tax_amount || 0,
+                // PHASE 3 (B): the line's identity, so a runtime that prices on the server (Edge) quotes the SAME
+                // option-inclusive line Online reads off unit_price. Online's quote ignores these keys.
+                product_variant_id: item.product_variant_id || null,
+                combo_id:         item.combo_id || null,
+                line_kind:        item.line_kind || 'standard',
+                modifiers:        normalizeModifiers(item.modifiers || []),
             };
         });
     }
@@ -7148,6 +7154,13 @@ document.addEventListener('DOMContentLoaded', function () {
         if (el) el.addEventListener('change', updateContextSummary);
     });
     updateContextSummary();
+    // PHASE 3 (E) — root cause of "No terminal" beside a selected terminal on BOTH runtimes: this block runs while the
+    // document is still parsing, but the terminal is auto-selected (autoSelectTerminal → terminalEl.value = …, no 'change'
+    // event) inside the first block's DOMContentLoaded callback, which fires LATER. That callback was registered first, so
+    // a DOMContentLoaded hook registered here runs after it and reads the selected terminal. Same element, text only.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', updateContextSummary);
+    }
 
     /* modal opens: clean slate, focused on the one box */
     const modalEl = $id('customerModal');

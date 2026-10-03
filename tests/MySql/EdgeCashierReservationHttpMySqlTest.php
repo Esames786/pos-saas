@@ -190,4 +190,42 @@ class EdgeCashierReservationHttpMySqlTest extends MySqlTenantTestCase
         // Cancelling again is a controlled refusal, not a 500.
         $this->postJson("/edge/local/pos/restaurant/tables/{$this->table2Id}/unreserve", [])->assertStatus(422);
     }
+
+    /**
+     * PHASE 3 (D) — every reservation refusal answers in Online's 422 shape: `message` + Laravel's `errors` bag
+     * (RestaurantTableController::reserve `$request->validate` :36-42), with `ok:false` kept (Online's own open-session
+     * refusal :33 is `{ok:false, message}`). A service ValidationException keeps its bag under ONLINE's field names
+     * (`reserved_customer_id`, not the Edge service's `customer_id`); a business refusal is filed under `table`.
+     * The shared view reads `message` (index.blade.php reserve-save-btn handler) — identical behaviour on both runtimes.
+     */
+    public function test_phase3_d_reservation_refusals_carry_online_message_plus_errors_bag(): void
+    {
+        $this->postJson("/edge/local/pos/restaurant/tables/{$this->tableId}/reserve", ['reserved_name' => 'Mrs Ahmed'])->assertStatus(201);
+
+        // business refusal (already reserved) → ok:false + message + errors.table
+        $dup = $this->postJson("/edge/local/pos/restaurant/tables/{$this->tableId}/reserve", ['reserved_name' => 'Someone Else'])->assertStatus(422);
+        $dup->assertJsonPath('ok', false)
+            ->assertJsonPath('message', 'This table already has an active reservation.')
+            ->assertJsonPath('errors.table.0', 'This table already has an active reservation.');
+        $this->assertSame(['ok', 'message', 'errors'], array_keys($dup->json()));
+
+        // service ValidationException (unknown book customer — Online `exists:customers,id` on reserved_customer_id) → the bag
+        // is keyed by Online's field name and `message` is the first error, exactly Laravel's 422 shape.
+        $this->postJson("/edge/local/pos/restaurant/tables/{$this->table2Id}/reserve", ['reserved_customer_id' => 999999, 'reserved_name' => 'Ghost'])
+            ->assertStatus(422)->assertJsonPath('ok', false)
+            ->assertJsonPath('message', 'The selected customer is not in the customer book on this Branch Server.')
+            ->assertJsonPath('errors.reserved_customer_id.0', 'The selected customer is not in the customer book on this Branch Server.');
+        $this->assertSame(0, DB::connection('tenant')->table('edge_local_table_reservations')->where('restaurant_table_id', $this->table2Id)->count());
+
+        // request validation (Online's `reserved_for` date rule) → Laravel's own {message, errors} — the same on both runtimes.
+        $bad = $this->postJson("/edge/local/pos/restaurant/tables/{$this->table2Id}/reserve", ['reserved_for' => 'not-a-date'])->assertStatus(422);
+        $this->assertArrayHasKey('reserved_for', $bad->json('errors'));
+        $this->assertNotSame('', (string) $bad->json('message'));
+
+        // cancel with nothing to cancel → the same shape (was a bare {message}).
+        $this->postJson("/edge/local/pos/restaurant/tables/{$this->table2Id}/unreserve", [])->assertStatus(422)
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath('message', 'No active reservation to cancel on this table.')
+            ->assertJsonPath('errors.table.0', 'No active reservation to cancel on this table.');
+    }
 }

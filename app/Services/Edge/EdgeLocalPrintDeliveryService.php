@@ -242,7 +242,10 @@ class EdgeLocalPrintDeliveryService
             // failed|cancelled and the Online Retry offers it; its delivery row (if any) is not live.
             $dismissed = $job && $job->print_status === 'cancelled' && ! ($delivery && $this->leaseIsLive($delivery));
             if (! $job || (! $dismissed && (! $delivery || $delivery->delivery_state !== EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED))) {
-                throw new RuntimeException('Only a terminally-failed local delivery can be retried.');
+                // PHASE 3 (C): Online's refusal text (PrintJobService::requeueFailed :614) — the shared view toasts `message`
+                // verbatim, so the cashier reads the same sentence on both runtimes. The Edge RULE is unchanged (a terminally
+                // failed local delivery or a dismissed job; never a queued/leased/printed one).
+                throw new RuntimeException('Only failed or cancelled jobs can be retried.');
             }
             $this->printJobs->requeueFailed($job); // shared eligibility + field contract (failed|cancelled only)
             $delivery?->update([

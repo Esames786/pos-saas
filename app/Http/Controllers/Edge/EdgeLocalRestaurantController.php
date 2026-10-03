@@ -311,7 +311,7 @@ class EdgeLocalRestaurantController extends Controller
         try {
             $r = $this->reservations->reserve($table, $data, auth('tenant')->user());
         } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+            return $this->reservationRefusal($e);
         }
         $view = $this->reservationView($r);
 
@@ -339,10 +339,33 @@ class EdgeLocalRestaurantController extends Controller
         try {
             $this->reservations->cancel($table, auth('tenant')->user());
         } catch (\Throwable $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            return $this->reservationRefusal($e);
         }
 
         return response()->json(['ok' => true, 'status' => 'cancelled']);
+    }
+
+    /**
+     * PHASE 3 (D) — ONE refusal shape for a reservation mutation, Online's: Laravel's 422 `{message, errors}` bag
+     * (RestaurantTableController::reserve `$request->validate` :36-42) with `ok:false` kept (Online's own open-session
+     * refusal :33 is `{ok:false, message}` — additive, the shared view reads `message`). A service ValidationException
+     * keeps its bag under Online's field names; a business RuntimeException is filed under `table`.
+     */
+    private function reservationRefusal(\Throwable $e): JsonResponse
+    {
+        $onlineField = ['customer_id' => 'reserved_customer_id', 'customer_name' => 'reserved_name', 'customer_phone' => 'reserved_phone', 'note' => 'reservation_note'];
+        if ($e instanceof \Illuminate\Validation\ValidationException) {
+            $errors = [];
+            foreach ($e->errors() as $field => $messages) {
+                $errors[$onlineField[$field] ?? $field] = array_values($messages);
+            }
+            $message = (string) (collect($errors)->flatten()->first() ?? $e->getMessage());
+        } else {
+            $message = $e->getMessage();
+            $errors = ['table' => [$message]];
+        }
+
+        return response()->json(['ok' => false, 'message' => $message, 'errors' => $errors], 422);
     }
 
     private function reservationView(EdgeTableReservation $r): array

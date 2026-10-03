@@ -7,6 +7,7 @@ use App\Services\Edge\EdgeAuthorityLeaseService;
 use App\Services\Edge\EdgeCanonicalJson;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -182,5 +183,106 @@ class EdgeHeartbeatBuildDevicePageHttpMySqlTest extends MySqlTenantTestCase
         // Facts it did not report are dashes — never invented.
         $this->assertMatchesRegularExpression('/Commit <span class="font-monospace">—<\/span>/', $cell);
         $this->assertMatchesRegularExpression('/Applied edge schema <span class="font-monospace">—<\/span>/', $cell);
+    }
+
+    /**
+     * PHASE 3 (owner §8) — the SAME paired device heartbeats a newer build over the REAL device-authenticated endpoint:
+     * version A → the page shows A; a later beat with version B → the page shows B, with NO re-pairing (the same device row —
+     * id, installation uuid, secret hash, paired_at — and no new row), and the build block never touches authority (the same
+     * lease row, holder and state; only the heartbeat sequence/timestamps advance). The heartbeat's replay / stale rules are
+     * intact with a build attached: a re-sent sequence is re-acknowledged and writes nothing; a stale sequence carrying a
+     * different build is refused and records nothing — the page keeps showing B.
+     */
+    public function test_a_newer_build_on_the_same_paired_device_updates_the_page_without_re_pairing_or_moving_authority(): void
+    {
+        $m = DB::connection('master');
+        DB::connection('tenant')->table('edge_branch_authority_leases')->whereIn('branch_id', [$this->reportingBranchId, $this->silentBranchId])->delete();
+        config(['edge.authority.ttl_seconds' => 60]);
+        $heartbeatUri = 'http://' . config('tenancy.central_domain') . '/api/edge/authority/heartbeat';
+        $headers = ['X-Edge-Device-ID' => $this->reportingUuid, 'Authorization' => 'Bearer secret-' . $this->reportingUuid];
+        $build = fn (string $version, string $commit) => [
+            'edge_app_version' => $version, 'git_commit' => $commit, 'artifact_version' => $version,
+            'bootstrap_schema' => (string) config('edge.bootstrap_schema'), 'config_schema' => (string) config('edge.config_schema'),
+            'edge_schema_version' => 'edge-local-schema@2026_09_27_000001_widen', 'applied_edge_schema_version' => 'edge-local-schema@2026_09_27_000001_widen',
+            'envelope_versions' => ['edge-sale-v1', 'edge-sale-v2'], 'capabilities' => ['local_auth', 'local_pos_cash_sales', 'config_refresh'],
+        ];
+        // One process plays both machines: a page request leaves the tenant bound in the container (IdentifyTenant), which the
+        // central-only heartbeat route refuses — release it as the end of a real request does (TenancyManager::deactivate).
+        $beat = function (int $seq, array $b) use ($heartbeatUri, $headers) {
+            app(\App\Services\Tenancy\TenancyManager::class)->deactivate();
+
+            return $this->postJson($heartbeatUri, ['seq' => $seq, 'edge_state' => 'standby', 'build' => $b], $headers);
+        };
+        $deviceRow = fn () => (array) $m->table('edge_devices')->where('public_uuid', $this->reportingUuid)->first();
+        $leaseRow = fn () => (array) DB::connection('tenant')->table('edge_branch_authority_leases')->where('branch_id', $this->reportingBranchId)->first();
+        $identity = fn (array $row) => Arr::only($row, ['id', 'public_uuid', 'tenant_id', 'branch_id', 'installation_uuid', 'device_name', 'device_secret_hash', 'status', 'active_slot', 'paired_at']);
+        $authority = fn (array $row) => Arr::except($row, ['heartbeat_seq', 'last_heartbeat_at', 'expires_at', 'updated_at']);
+        $devicesBefore = (int) $m->table('edge_devices')->where('tenant_id', $this->tenantId)->count();
+        $pairedIdentity = $identity($deviceRow());
+        $this->assertNotNull($pairedIdentity['paired_at']);
+
+        // Version A on the appliance's heartbeat → the page shows A.
+        Carbon::setTestNow(Carbon::parse('2026-10-02 09:00:00'));
+        $beat(1, $build('0.7.0-edge', 'aaa7000'))->assertOk()->assertJsonPath('holder', 'cloud')->assertJsonPath('edge_state', 'standby')->assertJsonPath('seq', 1);
+        $leaseA = $leaseRow();
+        $this->assertSame('cloud', $leaseA['holder']);
+        $this->assertSame('standby', $leaseA['edge_state']);
+        $this->assertSame((string) $this->reportingUuid, (string) $leaseA['device_public_uuid']);
+        $cell = $this->buildCell($this->reportingUuid);
+        $this->assertStringContainsString('0.7.0-edge', $cell);
+        $this->assertStringContainsString('aaa7000', $cell);
+        $this->assertStringContainsString('02 Oct 2026, 09:00', $cell);
+        $this->assertSame('0.7.0-edge', $deviceRow()['app_version']);
+
+        // Version B on the SAME device (the appliance was updated; nobody re-paired) → the page shows B and A is gone.
+        Carbon::setTestNow(Carbon::parse('2026-10-02 09:00:30'));
+        $beat(2, $build('0.8.0-edge', 'bbb8000'))->assertOk()->assertJsonPath('holder', 'cloud')->assertJsonPath('edge_state', 'standby')->assertJsonPath('seq', 2);
+        $cell = $this->buildCell($this->reportingUuid);
+        $this->assertStringContainsString('0.8.0-edge', $cell);
+        $this->assertStringContainsString('bbb8000', $cell);
+        $this->assertStringNotContainsString('0.7.0-edge', $cell);
+        $this->assertStringNotContainsString('aaa7000', $cell);
+        $html = $this->page()->getContent();
+        $this->assertSame(0, substr_count($html, 'aaa7000'), 'the superseded commit is nowhere on the page');
+        $this->assertSame(1, substr_count($html, 'bbb8000'), 'the new commit appears once — for this device');
+        $this->assertSame(1, preg_match('/data-device="' . preg_quote($this->silentUuid, '/') . '">(.*?)<\/div>/s', $html, $s));
+        $this->assertSame('Version not reported yet', trim($s[1]), 'the other device is untouched');
+        $deviceB = $deviceRow();
+        $this->assertSame('0.8.0-edge', $deviceB['app_version']);
+        $this->assertSame('2026-10-02 09:00:30', Carbon::parse($deviceB['build_reported_at'])->format('Y-m-d H:i:s'));
+
+        // NO re-pairing: the same device row identity (id, installation uuid, secret, paired_at…) and no new device row.
+        $this->assertSame($pairedIdentity, $identity($deviceB));
+        $this->assertSame($devicesBefore, (int) $m->table('edge_devices')->where('tenant_id', $this->tenantId)->count());
+
+        // Authority untouched by the build block: the same lease row, holder and state — only seq / heartbeat timestamps moved.
+        $leaseB = $leaseRow();
+        $this->assertSame($leaseA['id'], $leaseB['id']);
+        $this->assertSame($authority($leaseA), $authority($leaseB));
+        $this->assertSame(2, (int) $leaseB['heartbeat_seq']);
+
+        // Replay rule intact with a build attached: the same sequence re-sent is re-acknowledged and writes NOTHING.
+        Carbon::setTestNow(Carbon::parse('2026-10-02 09:00:40'));
+        $beat(2, $build('0.8.0-edge', 'bbb8000'))->assertOk()->assertJsonPath('holder', 'cloud')->assertJsonPath('seq', 2);
+        $this->assertSame($deviceB, $deviceRow(), 'a replayed beat re-writes no build');
+        $this->assertSame($leaseB, $leaseRow(), 'a replayed beat moves no authority');
+
+        // Stale rule intact: a lower sequence carrying a DIFFERENT build is refused and records nothing — the page still shows B.
+        $beat(1, $build('9.9.9-evil', 'eee9999'))->assertStatus(409)->assertJsonPath('status', 'refused')->assertJsonPath('failure_code', 'STALE_HEARTBEAT');
+        $this->assertSame($deviceB, $deviceRow(), 'a refused beat records no build');
+        $this->assertSame($leaseB, $leaseRow());
+        $cell = $this->buildCell($this->reportingUuid);
+        $this->assertStringContainsString('0.8.0-edge', $cell);
+        $this->assertStringContainsString('bbb8000', $cell);
+        $this->assertStringNotContainsString('9.9.9-evil', $cell);
+    }
+
+    /** The reporting device's build cell on the (re-rendered) security page. */
+    private function buildCell(string $uuid): string
+    {
+        $html = $this->page()->assertOk()->getContent();
+        $this->assertSame(1, preg_match('/<div class="text-muted mt-1 edge-device-build" data-device="' . preg_quote($uuid, '/') . '">(.*?)<\/div>\s*<\/div>/s', $html, $m), 'the build block renders for ' . $uuid);
+
+        return $m[1];
     }
 }

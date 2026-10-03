@@ -340,7 +340,8 @@ class EdgeLocalPrintDeliveryMySqlTest extends MySqlTenantTestCase
             $this->svc()->retryTerminalFailed($jobB);
             $this->fail('a non-terminal job must not be retryable through the Edge path');
         } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('terminally-failed', $e->getMessage());
+            // PHASE 3 (C): Online's refusal text (PrintJobService::requeueFailed) on the Edge rule.
+            $this->assertSame('Only failed or cancelled jobs can be retried.', $e->getMessage());
         }
     }
 

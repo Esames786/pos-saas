@@ -520,8 +520,10 @@ class EdgeCashierPrintingParityHttpMySqlTest extends MySqlTenantTestCase
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 150, 'tendered_amount' => 150]]])->assertStatus(201)->json('sale_id');
         $jobId = (int) $this->postJson("/edge/local/pos/sales/{$saleId}/receipt")->assertStatus(201)->json('id');
 
-        // A queued job that has not failed terminally cannot be "retried".
-        $this->postJson("/edge/local/pos/print-jobs/{$jobId}/retry")->assertStatus(422);
+        // A queued job that has not failed terminally cannot be "retried" — PHASE 3 (C): refused in Online's words
+        // (PrintJobService::requeueFailed :614), which the shared view toasts verbatim; the Edge rule is unchanged.
+        $this->postJson("/edge/local/pos/print-jobs/{$jobId}/retry")->assertStatus(422)
+            ->assertJsonPath('message', 'Only failed or cancelled jobs can be retried.');
 
         $svc = app(EdgeLocalPrintDeliveryService::class);
         $terminalFail = function () use ($svc, $jobId) {

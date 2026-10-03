@@ -64,7 +64,7 @@ class EdgeSharedPosContractMySqlTest extends MySqlTenantTestCase
             'manager_approvals', 'model_has_permissions', 'permissions',
             'restaurant_table_sessions', 'restaurant_tables', 'restaurant_floors', 'restaurant_waiters',
             'promotion_targets', 'promotions', 'customer_addresses', 'customers',
-            'sale_payments', 'sales_order_lines', 'sales_orders',
+            'sale_payments', 'sales_order_lines', 'sales_orders', 'product_modifier_group', 'modifiers', 'modifier_groups',
             'payment_methods', 'products', 'categories', 'shifts', 'terminals', 'branches', 'users',
         ]);
 
@@ -91,6 +91,7 @@ class EdgeSharedPosContractMySqlTest extends MySqlTenantTestCase
         ]);
         $this->seedEdgeCredential($this->userId, $this->branchId, 1);
         $this->seedEdgeCredential($this->managerId, $this->branchId, 1, 'MgrPass1');
+        $this->markPosApprover($this->managerId); // Phase 3: eligibility is the bootstrap flag, not a permission
         $this->managerCode = (string) User::on('tenant')->find($this->managerId)->employee_code;
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
         Auth::shouldUse('tenant');
@@ -218,6 +219,33 @@ class EdgeSharedPosContractMySqlTest extends MySqlTenantTestCase
         $this->assertEquals(180.0, $this->postJson('/edge/local/pos/totals/quote', ['order_type' => 'takeaway', 'promo_code' => 'SAVE10',
             'lines' => [['product_id' => $this->karahi, 'quantity' => 2]]])->assertOk()->json('grand_total'));
         $this->assertEquals(0.0, $this->postJson('/edge/local/pos/totals/quote', ['order_type' => 'takeaway', 'lines' => []])->assertOk()->json('grand_total'));
+
+        // PHASE 3 (B) — the quote is as lenient as Online's POSController::quoteTotals (:734-787, no modifier validation): a
+        // REQUIRED single-choice group on the karahi no longer turns every quote into a 422 (the shared view quotes on each cart
+        // change, with the modifier modal still open), the options the page names are priced from the synced book, an option
+        // not on this menu / a max-violation is tolerated — while the paid sale and Preview Bill keep refusing (the store rule).
+        $now = now();
+        $t = fn (string $table) => DB::connection('tenant')->table($table);
+        $spice = (int) $t('modifier_groups')->insertGetId(['branch_id' => null, 'name' => 'Spice Level', 'min_select' => 1, 'max_select' => 1, 'is_required' => 1, 'sort_order' => 1, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $mild = (int) $t('modifiers')->insertGetId(['modifier_group_id' => $spice, 'name' => 'Mild', 'price_delta' => 0, 'linked_product_id' => null, 'consume_stock' => 0, 'linked_quantity' => null, 'is_default' => 1, 'sort_order' => 1, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $hot = (int) $t('modifiers')->insertGetId(['modifier_group_id' => $spice, 'name' => 'Hot', 'price_delta' => 20, 'linked_product_id' => null, 'consume_stock' => 0, 'linked_quantity' => null, 'is_default' => 0, 'sort_order' => 2, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $t('product_modifier_group')->insert(['product_id' => $this->karahi, 'modifier_group_id' => $spice, 'sort_order' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        $quote = fn (array $line) => $this->postJson('/edge/local/pos/totals/quote', ['branch_id' => $this->branchId, 'order_type' => 'takeaway', 'discount_type' => 'none', 'lines' => [$line]]);
+        // no modifiers on the quote body (the modal is still open) → 200, priced on the base price — never "Select at least 1 option…"
+        $quote(['product_id' => $this->karahi, 'quantity' => 2, 'unit_price' => 1])->assertOk()->assertJsonPath('ok', true)->assertJsonPath('subtotal', 200);
+        // the option the page names is priced from the BOOK (+20 Hot), the client's delta is ignored
+        $quote(['product_id' => $this->karahi, 'quantity' => 2, 'line_kind' => 'standard', 'modifiers' => [['modifier_id' => $hot, 'name' => 'Hot', 'price_delta' => 999]]])
+            ->assertOk()->assertJsonPath('subtotal', 240);
+        // an option not on this menu is left out; a max-1 violation is not the quote's business (Online validates neither)
+        $quote(['product_id' => $this->karahi, 'quantity' => 1, 'modifiers' => [['modifier_id' => 999999, 'name' => 'Ghost']]])->assertOk()->assertJsonPath('subtotal', 100);
+        $quote(['product_id' => $this->karahi, 'quantity' => 1, 'modifiers' => [['modifier_id' => $mild], ['modifier_id' => $hot]]])->assertOk()->assertJsonPath('subtotal', 120);
+        // …the STORE and Preview Bill stay strict: the required group is enforced where the kitchen/money is.
+        $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'lines' => [['product_id' => $this->karahi, 'quantity' => 1]], 'payments' => $this->cash(100)])
+            ->assertStatus(422)->assertJsonPath('message', 'Select at least 1 option for Spice Level on Chicken Karahi.');
+        $this->postJson('/edge/local/pos/preview-bill', ['order_type' => 'takeaway', 'lines' => [['product_id' => $this->karahi, 'quantity' => 1]]])
+            ->assertStatus(422)->assertJsonPath('message', 'Select at least 1 option for Spice Level on Chicken Karahi.');
+        $this->assertSame(0, DB::connection('tenant')->table('sales_orders')->count(), 'the lenient quote wrote nothing and the strict store refused');
 
         $this->postJson('/edge/local/pos/promotions/quote', ['promo_code' => 'SAVE10', 'branch_id' => $this->branchId, 'order_type' => 'takeaway', 'subtotal' => 200,
             'lines' => [['product_id' => $this->karahi, 'quantity' => 2]]])
