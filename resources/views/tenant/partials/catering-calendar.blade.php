@@ -106,12 +106,27 @@
         <div class="d-flex flex-wrap gap-2 mb-3 align-items-center cal-legend">
             @foreach($tones as $key => $t)
                 <button type="button" class="badge fw-semibold fs-12 border-0 cal-tone" data-tone="{{ $key }}"
-                        aria-pressed="false" title="Sirf {{ $t['label'] }} dikhayein"
+                        aria-pressed="false" title="Show only {{ $t['label'] }}"
                         style="background:{{ $t['bg'] }};color:{{ $t['fg'] }};box-shadow:inset 0 0 0 1px {{ $t['fg'] }}33;cursor:pointer">
                     {{ $t['label'] }}
                 </button>
             @endforeach
-            <button type="button" class="btn btn-link btn-sm p-0 fs-12 text-muted d-none" id="cal-clear-tones">sab dikhayein</button>
+            {{-- CAL-BALANCE-FILTER-1 (3 Oct) — ye chip tones ke SAATH nahi, un se
+                 ALAG hai, aur ye farq ahem hai: tone har booking par EK hi lagta
+                 hai (confirmed YA quoted YA draft), jab ke "balance hai" ek alag
+                 sifat hai — ek confirmed booking par bhi baqi ho sakta hai.
+
+                 Is liye ye saatwan tone nahi banaya gaya. Agar banate to har
+                 booking ko do tone chahiye hote aur chips ek doosre ko kaat-ne
+                 lagte. Ab ye un ke SAATH lagta hai: "Confirmed" + "Balance" ka
+                 matlab hai confirmed bookings jin par paisa baqi hai. --}}
+            <span class="vr mx-1 opacity-25"></span>
+            <button type="button" class="badge fw-semibold fs-12 border-0" id="cal-only-balance"
+                    aria-pressed="false" title="Only bookings with money still outstanding"
+                    style="background:#FBEEDB;color:#8F5406;box-shadow:inset 0 0 0 1px #8F540633;cursor:pointer">
+                Balance outstanding
+            </button>
+            <button type="button" class="btn btn-link btn-sm p-0 fs-12 text-muted d-none" id="cal-clear-tones">All</button>
             <span class="fs-12 text-muted d-none" id="cal-filter-note"></span>
         </div>
 
@@ -244,6 +259,8 @@
     var CAL_TONES = @json(collect($tones)->map(fn ($t) => ['bg' => $t['bg'], 'fg' => $t['fg'], 'label' => $t['label']]));
     var TONE_ORDER = ['overdue', 'confirmed', 'quoted', 'draft', 'done', 'cancelled'];
     var activeTones = [];
+    // Tones se ALAG rakha gaya — dekho upar chip par likhi wajah.
+    var onlyBalance = false;
 
     function eventsOf(btn) {
         try { return JSON.parse(btn.getAttribute('data-events')) || []; } catch (e) { return []; }
@@ -268,16 +285,37 @@
                 : chip.style.boxShadow.replace('inset 0 0 0 2px currentColor', '');
         });
 
+        var balChip = document.getElementById('cal-only-balance');
+        if (balChip) {
+            balChip.setAttribute('aria-pressed', onlyBalance ? 'true' : 'false');
+            // Ye chip tone chips ke saath DHUNDLA nahi hota. Tone chips ek
+            // doosre ko kaat-te hain, is liye un me se jo chuna nahi gaya wo
+            // dhundla ho kar kehta hai "ye bahar hai". Balance kisi tone ko
+            // kaat-ta hi nahi — use dhundla karna jhooti baat kehta ke wo bhi
+            // tone ke chunao se bahar ho gaya. Yahan dabaav sirf halqe se.
+            balChip.style.opacity = '1';
+            balChip.style.boxShadow = onlyBalance
+                ? 'inset 0 0 0 2px currentColor'
+                : 'inset 0 0 0 1px #8F540633';
+        }
+
         var clear = document.getElementById('cal-clear-tones');
-        if (clear) clear.classList.toggle('d-none', activeTones.length === 0);
+        if (clear) clear.classList.toggle('d-none', activeTones.length === 0 && ! onlyBalance);
 
         var kept = 0, hidden = 0;
 
         body.querySelectorAll('.cal-day-count').forEach(function (btn) {
             var all = eventsOf(btn);
-            var shown = activeTones.length
-                ? all.filter(function (ev) { return activeTones.indexOf(ev.tone) > -1; })
-                : all;
+            // Tone aur balance DONO lagte hain, ek doosre ki jagah nahi:
+            // "Confirmed" + "Balance baqi" ka matlab hai confirmed bookings
+            // jin par paisa baqi hai. Isi liye balance ek alag jhanda hai,
+            // saatwan tone nahi.
+            var shown = all.filter(function (ev) {
+                if (activeTones.length && activeTones.indexOf(ev.tone) < 0) { return false; }
+                if (onlyBalance && ! (Number(ev.balance) > 0)) { return false; }
+
+                return true;
+            });
 
             // The modal reads THIS, so the list it opens always matches the
             // number on the badge.
@@ -301,12 +339,20 @@
 
         var note = document.getElementById('cal-filter-note');
         if (note) {
-            note.classList.toggle('d-none', activeTones.length === 0);
-            note.textContent = activeTones.length ? (kept + ' dikha rahe hain · ' + hidden + ' chhupi hain') : '';
+            var filtering = activeTones.length > 0 || onlyBalance;
+            note.classList.toggle('d-none', ! filtering);
+            note.textContent = filtering ? (kept + ' shown · ' + hidden + ' hidden') : '';
         }
     }
 
     card.addEventListener('click', function (e) {
+        if (e.target.closest('#cal-only-balance')) {
+            onlyBalance = ! onlyBalance;
+            applyTones();
+
+            return;
+        }
+
         var chip = e.target.closest('.cal-tone');
         if (chip) {
             var tone = chip.getAttribute('data-tone');
@@ -316,7 +362,9 @@
 
             return;
         }
-        if (e.target.closest('#cal-clear-tones')) { activeTones = []; applyTones(); }
+        // Balance bhi saaf — warna "sab dikhayein" adhoora saaf karta hai
+        // aur operator ko lagta hai ke kuch chhupa hua reh gaya.
+        if (e.target.closest('#cal-clear-tones')) { activeTones = []; onlyBalance = false; applyTones(); }
     });
     if (!card) return;
 

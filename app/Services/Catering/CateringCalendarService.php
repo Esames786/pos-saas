@@ -104,6 +104,27 @@ class CateringCalendarService
             // an operator must act on — it is neither "upcoming" nor "done".
             'needs_attention' => $isPast && $event->isOpen(),
             'next_action' => $this->nextAction($event),
+            // CAL-BALANCE-FILTER-1 (3 Oct) — malik: "ek filter aur daalo,
+            // sirf wo jin par balance hai."
+            //
+            // Hisaab YAHAN DOBARA NAHI likha gaya: billed ka faisla
+            // `billedFrom()` karta hai aur baqi `outstanding()` — wohi do
+            // jo booking ki screen aur Customer Balances chalate hain. Teen
+            // jagah teen hisaab rakhne ka anjaam 27 Sep ko dekh chuke hain,
+            // jab ek hi sawal ke chaar jawab chaar jagah likhe the.
+            //
+            // Sums query se pehle hi aa chuke hain (`withSum`), is liye yahan
+            // koi nayi query nahi chalti — calendar ek saath dozens bookings
+            // dikhata hai aur har ek par `position()` bulana N+1 hota.
+            'balance' => (function () use ($event) {
+                [$billed, ] = CateringFinancialPositionService::billedFrom(
+                    $event->finalInvoice, $event->isCancelled(), $event->currentEstimate
+                );
+                $received = round((float) ($event->advances_sum_amount ?? 0)
+                    - (float) ($event->refunds_sum_amount ?? 0), 2);
+
+                return CateringFinancialPositionService::outstanding($billed, $received);
+            })(),
             'tone' => $this->tone($event, $isPast),
             'url' => '/catering/events/'.$event->id,
         ];

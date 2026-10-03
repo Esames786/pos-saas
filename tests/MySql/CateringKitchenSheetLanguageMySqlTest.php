@@ -205,7 +205,7 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
     {
         $html = view('tenant.catering.documents.partials.line-materials', [
             'materials' => [[
-                'name' => 'Beef', 'qty' => 84, 'unit_code' => 'KG', 'supply' => 'ours',
+                'name' => 'Beef', 'qty' => 84, 'unit_code' => 'KG', 'supply' => 'customer',
             ]],
             'compact' => true,
             't' => fn ($en, $ur) => $ur,
@@ -219,7 +219,7 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
         // Poora tukra EK gehre dabbe me — malik: "[PARTY 18 KG] ese pora
         // background dark". Naap phir bhi apne LTR khaane me, warna Urdu
         // safhe par "KG 84" ulta chhapta hai.
-        $this->assertStringContainsString('<span class="sup-tag" dir="ltr">OWN <span dir="ltr">84 KG</span></span>', $html,
+        $this->assertStringContainsString('<span class="sup-tag" dir="ltr">PARTY <span dir="ltr">84 KG</span></span>', $html,
             'label aur naap ek hi gehre dabbe me hon');
 
         // KITCHEN-SHEET-SUPPLY-TAG-1 (29 Sep): label ab Latin me hai, Urdu
@@ -228,10 +228,91 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
         // ...aur purana Urdu lafz WAPAS na aaye. Ulti jaanch is liye ke
         // seedhi jaanch ("OWN mojood hai?") us din bhi hari rehti jis din
         // dono lafz saath chhapne lag jayen.
-        $this->assertStringNotContainsString('اپنا', $html,
+        $this->assertStringNotContainsString('پارٹی', $html,
             'compact shakl me label tarjuma nahi hota — purana Urdu lafz wapas aa gaya');
     }
 
+    /**
+     * KITCHEN-SHEET-OWN-BARE-1 (2 Oct) — apna maal: sirf naap, koi label nahi.
+     *
+     * Client: "sirf OWN na likha hua aaye, 7 KG aa jaye." Bawarchi ke liye
+     * khabar SIRF ye hai ke cheez us ke store se NAHI aayegi; jo waise bhi
+     * store se aati hai us par label lagana shor hai. Prod ke parche par saat
+     * me se chhe rows par wohi shor tha.
+     *
+     * PARTY ka label rehta hai — wahi to asal khabar hai.
+     */
+    public function test_own_material_prints_only_its_quantity(): void
+    {
+        $html = view('tenant.catering.documents.partials.line-materials', [
+            'materials' => [['name' => 'Beef', 'qty' => 7, 'unit_code' => 'KG', 'supply' => 'ours']],
+            'compact' => true,
+            't' => fn ($en, $ur) => $ur,
+        ])->render();
+
+        $this->assertStringContainsString('7 KG', $html, 'naap aani chahiye');
+        $this->assertStringNotContainsString('OWN', $html, 'magar label nahi');
+        // Khali label par kaala dabba bhi nahi — wo apne aap me ek nishan ban
+        // jata, aur nishan wahan nahi hona chahiye jahan kehne ko kuch nahi.
+        $this->assertStringNotContainsString('sup-tag', $html, 'aur dabba bhi nahi');
+    }
+
+    /** PARTY ka label aur dabba barqarar — wahi asal khabar hai. */
+    public function test_party_material_keeps_its_label_and_box(): void
+    {
+        $html = view('tenant.catering.documents.partials.line-materials', [
+            'materials' => [['name' => 'Beef', 'qty' => 18, 'unit_code' => 'KG', 'supply' => 'customer']],
+            'compact' => true,
+            't' => fn ($en, $ur) => $ur,
+        ])->render();
+
+        $this->assertStringContainsString('<span class="sup-tag" dir="ltr">PARTY <span dir="ltr">18 KG</span></span>', $html);
+    }
+
+    /**
+     * BATE HUE maal par OWN rehta hai — aur ye istisna jaan-boojh kar hai.
+     *
+     * Jab kuch party laati hai aur kuch hum, to adad akela bemani ho jata:
+     * do satrein ek doosre ke saath parhi jati hain aur bawarchi ko jaanna
+     * hota hai ke kaunsi kis ki hai.
+     */
+    public function test_a_split_still_names_both_sides(): void
+    {
+        $html = view('tenant.catering.documents.partials.line-materials', [
+            'materials' => [[
+                'name' => 'Beef', 'qty' => 30, 'unit_code' => 'KG', 'supply' => 'split',
+                'customer' => 18, 'ours' => 12,
+            ]],
+            'compact' => true,
+            't' => fn ($en, $ur) => $ur,
+        ])->render();
+
+        $this->assertStringContainsString('PARTY', $html);
+        $this->assertStringContainsString('OWN', $html, 'bate hue maal par dono taraf ka naam zaroori hai');
+    }
+
+    /**
+     * Sar ki chhoti satar par CHHAPNE ka waqt — aur wo ulta na chhape.
+     *
+     * Client: "preview wali line hata do, us ki jagah print time likh do."
+     * Pehle wahan parche ke BANNE ka waqt aata tha aur deewar par laga parcha
+     * do tareekhein dikhata tha; bawarchi ko sirf EVENT ki tareekh se kaam
+     * hai.
+     *
+     * `dir="ltr"` par jaanch is liye ke Urdu lafz aur Latin tareekh saath
+     * likhe hain — bina us ke "Oct 2026 6:55 PM 02 · چھپا" ban jata hai. Ye
+     * wohi bidi kharabi hai jo is parche par ab tak PAANCH jagah nikal chuki
+     * hai.
+     */
+    public function test_the_sheet_carries_its_print_time_the_right_way_round(): void
+    {
+        $release = $this->release();
+
+        $html = $this->sheet($release->id, 'ur');
+
+        $this->assertMatchesRegularExpression('/<span dir="ltr">[^<]*چھپا[^<]*\d{1,2} \w{3} \d{4}/u', $html,
+            'chhapne ka waqt apne LTR khaane me ho — warna tareekh ulti chhapti hai');
+    }
     // ── helpers ────────────────────────────────────────────────────────────
 
     private function sheet(int $releaseId, string $lang): string

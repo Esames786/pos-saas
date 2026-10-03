@@ -92,7 +92,15 @@
        bade aur bold. Driver aur bawarchi ye do cheezein doori se parhte hain:
        kis ko phone karna hai, aur khana kahan jaana hai. */
     .head .phone { font-size: 14px; font-weight: bold; color: #111827; display: inline; margin-{{ $isUr ? "right" : "left" }}: 10px; }
-    .head .edate { font-size: 12px; font-weight: bold; display: inline; }
+    /* KITCHEN-SHEET-OWN-BARE-1 (2 Oct) — client: "date saaf show ho … date
+       theek kar do, bold."
+
+       Ye EVENT ki tareekh hai — parche par sab se zyada poocha jane wala
+       adad, kyunke bawarchi-khane me kai din ke parche ek saath lage hote
+       hain. Ab ye graahak ke naam ke barabar qad par hai (12 -> 15px), aur
+       upar wali chhoti satar se sirf CHHAPNE ka waqt bacha hai, jo us se
+       ulajhta nahi.  */
+    .head .edate { font-size: 15px; font-weight: bold; display: inline; }
 
     /* Paer: SERVICE + waqt baayen, venue/pata dayen — purane parche ki tarah.
        `ftl` label apni value se CHIPKE nahi: pehli koshish me "12:00 PMSERVE"
