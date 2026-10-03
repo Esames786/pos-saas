@@ -13,12 +13,14 @@ class GoodsReceipt extends Model
         'grn_no', 'purchase_order_id', 'branch_id', 'supplier_id',
         'receipt_date', 'status', 'notes', 'posted_by_user_id', 'posted_at',
         'extra_charges', 'extra_charges_note',
+        'voided_at', 'voided_by_user_id', 'void_reason',
     ];
 
     protected $casts = [
         'receipt_date' => 'date',
         'posted_at'    => 'datetime',
         'extra_charges' => 'decimal:4',
+        'voided_at'     => 'datetime',
     ];
 
     public function purchaseOrder()

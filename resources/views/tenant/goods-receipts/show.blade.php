@@ -10,14 +10,39 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a href="{{ url('/goods-receipts') }}" class="btn btn-light">Back</a>
-        @if(!$goodsReceipt->bill)
+        @if(!$goodsReceipt->bill && $goodsReceipt->status === 'posted')
             @can('tenant.purchase-bills.create')
                 <a href="{{ url('/purchase-bills/create?goods_receipt_id=' . $goodsReceipt->id) }}"
                    class="btn btn-primary">Create Purchase Bill</a>
             @endcan
+            {{-- GRN-VOID-1: only while no bill exists. Once a bill is out, the supplier has been
+                 told what they are owed, and the way back is a Purchase Return. --}}
+            @can('tenant.goods-receipts.void')
+                <form method="POST" action="{{ url('/goods-receipts/' . $goodsReceipt->id . '/void') }}"
+                      onsubmit="return confirm('Void {{ $goodsReceipt->grn_no }}?
+
+The stock it brought in will be taken back out. The receipt stays on record as voided. This cannot be undone.');">
+                    @csrf
+                    <input type="hidden" name="void_reason" value="Voided from GRN screen">
+                    <button type="submit" class="btn btn-outline-danger">Void Receipt</button>
+                </form>
+            @endcan
         @endif
     </div>
 </div>
+
+@if($errors->any())
+    <div class="alert alert-danger">{{ $errors->first() }}</div>
+@endif
+
+@if($goodsReceipt->status === 'voided')
+    <div class="alert alert-warning">
+        <strong>This receipt is voided.</strong>
+        The stock it brought in has been taken back out
+        @if($goodsReceipt->voided_at) on {{ $goodsReceipt->voided_at->format('d-M-Y H:i') }} @endif.
+        @if($goodsReceipt->void_reason) &mdash; {{ $goodsReceipt->void_reason }} @endif
+    </div>
+@endif
 
 <div class="card mb-3">
     <div class="card-header"><strong>Details</strong></div>
