@@ -235,6 +235,12 @@ class GrnVoidMySqlTest extends MySqlTenantTestCase
         // One form per voidable receipt — the button must follow the SAME three conditions the
         // receipt's own screen uses, or the list offers an action that then refuses.
         $this->assertStringContainsString('/goods-receipts/' . $voidable->id . '/void', $html);
+        // …and something to CLICK. Asserting only the form's action passed with the button
+        // deleted — the action string lives on the form, not the button — so the row would have
+        // looked actionable in a test and been dead on the screen.
+        $this->assertStringContainsString('>Void</button>', $html, 'the row needs a clickable button');
+        $this->assertSame(1, substr_count($html, '>Void</button>'),
+            'exactly one row here is voidable, so exactly one button');
         $this->assertStringNotContainsString('/goods-receipts/' . $billed->id . '/void', $html,
             'a billed receipt must not be offered');
         $this->assertStringNotContainsString('/goods-receipts/' . $already->id . '/void', $html,
