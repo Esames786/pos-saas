@@ -3,6 +3,13 @@
 @section('title', 'Goods Receipts')
 
 @section('content')
+
+@if(session('success'))
+    <div class="alert alert-success">{{ session('success') }}</div>
+@endif
+@if($errors->any())
+    <div class="alert alert-danger">{{ $errors->first() }}</div>
+@endif
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
         <h1 class="mb-1">Goods Receipts</h1>
@@ -85,9 +92,26 @@
                         @endif
                     </td>
                     <td class="text-end">
-                        @can('tenant.goods-receipts.show')
-                            <a href="{{ url('/goods-receipts/' . $receipt->id) }}" class="btn btn-sm btn-light">View</a>
-                        @endcan
+                        <div class="d-inline-flex gap-1">
+                            @can('tenant.goods-receipts.show')
+                                <a href="{{ url('/goods-receipts/' . $receipt->id) }}" class="btn btn-sm btn-light">View</a>
+                            @endcan
+                            {{-- GRN-VOID-LIST-1: same three conditions as the receipt's own screen —
+                                 not billed, still posted, and the user may void. Offering it here saves
+                                 opening each receipt to find out it cannot be voided anyway. --}}
+                            @if(!$receipt->bill && $receipt->status === 'posted')
+                                @can('tenant.goods-receipts.void')
+                                    <form method="POST" action="{{ url('/goods-receipts/' . $receipt->id . '/void') }}"
+                                          onsubmit="return confirm('Void {{ $receipt->grn_no }}?
+
+The stock it brought in will be taken back out. The receipt stays on record as voided. This cannot be undone.');">
+                                        @csrf
+                                        <input type="hidden" name="void_reason" value="Voided from GRN list">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Void</button>
+                                    </form>
+                                @endcan
+                            @endif
+                        </div>
                     </td>
                 </tr>
             @empty
