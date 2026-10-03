@@ -216,4 +216,35 @@ class GrnVoidMySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString('Void Receipt', $after, 'not offered twice');
         $this->assertStringContainsString('This receipt is voided', $after, 'and it says so plainly');
     }
+
+    public function test_the_list_offers_void_on_exactly_the_rows_that_allow_it(): void
+    {
+        \Illuminate\Support\Facades\Auth::guard('tenant')->login($this->permittedUser());
+
+        $voidable = $this->receive(100);          // no bill, posted → offerable
+        $billed   = $this->receive(200);          // billed → not offerable
+        app(PurchaseBillController::class)->store(Request::create('/purchase-bills', 'POST', [
+            'goods_receipt_id' => $billed->id, 'bill_date' => now()->toDateString(),
+        ]));
+        $already  = $this->receive(50);
+        app(PurchasingService::class)->voidGrn($already, null, null);   // voided → not offerable
+
+        $html = app(GoodsReceiptController::class)
+            ->index(Request::create('/goods-receipts', 'GET'))->render();
+
+        // One form per voidable receipt — the button must follow the SAME three conditions the
+        // receipt's own screen uses, or the list offers an action that then refuses.
+        $this->assertStringContainsString('/goods-receipts/' . $voidable->id . '/void', $html);
+        // …and something to CLICK. Asserting only the form's action passed with the button
+        // deleted — the action string lives on the form, not the button — so the row would have
+        // looked actionable in a test and been dead on the screen.
+        $this->assertStringContainsString('>Void</button>', $html, 'the row needs a clickable button');
+        $this->assertSame(1, substr_count($html, '>Void</button>'),
+            'exactly one row here is voidable, so exactly one button');
+        $this->assertStringNotContainsString('/goods-receipts/' . $billed->id . '/void', $html,
+            'a billed receipt must not be offered');
+        $this->assertStringNotContainsString('/goods-receipts/' . $already->id . '/void', $html,
+            'an already-voided receipt must not be offered');
+        $this->assertStringContainsString('Voided', $html, 'and it reads as voided in the list');
+    }
 }

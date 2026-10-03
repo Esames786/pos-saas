@@ -20,7 +20,9 @@ class GoodsReceiptController extends Controller
 
     public function index(Request $request)
     {
-        $query = GoodsReceipt::with(['branch', 'supplier', 'purchaseOrder', 'postedBy'])
+        // GRN-VOID-LIST-1: `bill` is eager-loaded now. The Bill column already read it per row,
+        // which was one extra query per receipt, and the Void button reads it again.
+        $query = GoodsReceipt::with(['branch', 'supplier', 'purchaseOrder', 'postedBy', 'bill'])
             ->orderByDesc('receipt_date')
             ->orderByDesc('id');
 
