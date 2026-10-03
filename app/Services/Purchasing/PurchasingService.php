@@ -9,8 +9,11 @@ use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\Supplier;
 use App\Models\Tenant\SupplierLedger;
 use App\Models\Tenant\SupplierPayment;
+use App\Models\Tenant\StockBalance;
+use App\Models\Tenant\StockLedger;
 use App\Services\Inventory\InventoryService;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class PurchasingService
 {
@@ -173,6 +176,103 @@ class PurchasingService
         }
 
         return $costs;
+    }
+
+    /**
+     * GRN-VOID-1 — take back a receipt that has not been billed yet.
+     *
+     * A posted GRN is not editable and should not be: changing a quantity after the fact would
+     * rewrite stock history that FEFO layers, average cost and any sale since then already depend
+     * on, with nothing on the record to say it happened. Voiding is the honest alternative — the
+     * original receipt stays exactly as it was and the stock is undone by its own entries.
+     *
+     * Three things must be true, and each refusal says which one was not:
+     *  - no bill, because a bill is a payable the supplier has already been told about;
+     *  - still posted, so voiding twice cannot double-reverse the stock;
+     *  - the goods are still on hand, because what has been sold or issued cannot be unreceived.
+     *
+     * @throws RuntimeException when any of those does not hold
+     */
+    public function voidGrn(GoodsReceipt $grn, ?int $userId = null, ?string $reason = null): void
+    {
+        if ($grn->status !== 'posted') {
+            throw new RuntimeException('This receipt is already voided.');
+        }
+        if ($grn->bill) {
+            throw new RuntimeException(
+                'A purchase bill has already been created from this receipt, so it cannot be voided. '
+                . 'Use a Purchase Return instead.'
+            );
+        }
+
+        DB::connection('tenant')->transaction(function () use ($grn, $userId, $reason) {
+            foreach ($grn->lines as $line) {
+                $received = (float) $line->quantity_received;
+                if ($received <= 0) {
+                    continue;
+                }
+
+                // The receipt's own ledger rows carry the LANDED cost it was posted at, which is
+                // what has to come back out — recomputing it would quietly value the reversal
+                // differently from the receipt and leave the stock carrying a cost nobody booked.
+                $entries = StockLedger::query()
+                    ->where('reference_type', GoodsReceipt::class)
+                    ->where('reference_id', $grn->id)
+                    ->where('product_id', $line->product_id)
+                    ->where('direction', 'in')
+                    ->whereNull('reversal_of_id')
+                    ->get();
+
+                foreach ($entries as $entry) {
+                    $onHand = (float) StockBalance::query()
+                        ->where('branch_id', $entry->branch_id)
+                        ->where('product_id', $entry->product_id)
+                        ->sum('quantity_on_hand');
+
+                    if ($onHand < (float) $entry->quantity) {
+                        throw new RuntimeException(
+                            $line->product?->name . ' no longer has the quantity this receipt brought in '
+                            . '(' . rtrim(rtrim(number_format((float) $entry->quantity, 3), '0'), '.') . ' needed, '
+                            . rtrim(rtrim(number_format($onHand, 3), '0'), '.') . ' on hand), '
+                            . 'so the receipt cannot be voided. Use a Purchase Return or a Stock Adjustment.'
+                        );
+                    }
+
+                    $balance = $onHand - (float) $entry->quantity;
+
+                    StockLedger::create([
+                        'branch_id'          => $entry->branch_id,
+                        'product_id'         => $entry->product_id,
+                        'product_variant_id' => $entry->product_variant_id,
+                        'inventory_batch_id' => $entry->inventory_batch_id,
+                        'movement_type'      => 'adjustment_out',
+                        'direction'          => 'out',
+                        'quantity'           => $entry->quantity,
+                        'unit_cost'          => $entry->unit_cost,
+                        'total_cost'         => $entry->total_cost,
+                        'balance_after'      => $balance,
+                        'reference_type'     => GoodsReceipt::class,
+                        'reference_id'       => $grn->id,
+                        'reference_no'       => $grn->grn_no,
+                        'reversal_of_id'     => $entry->id,
+                        'notes'              => 'Goods receipt voided' . ($reason ? ' — ' . $reason : ''),
+                        'created_by_user_id' => $userId,
+                    ]);
+
+                    StockBalance::query()
+                        ->where('branch_id', $entry->branch_id)
+                        ->where('product_id', $entry->product_id)
+                        ->decrement('quantity_on_hand', (float) $entry->quantity);
+                }
+            }
+
+            $grn->forceFill([
+                'status'            => 'voided',
+                'voided_at'         => now(),
+                'voided_by_user_id' => $userId,
+                'void_reason'       => $reason,
+            ])->save();
+        });
     }
     public function postBill(PurchaseBill $bill, ?int $userId = null): void
     {

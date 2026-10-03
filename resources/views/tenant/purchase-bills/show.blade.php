@@ -50,6 +50,17 @@
 
             <dt class="col-sm-3">Subtotal</dt>
             <dd class="col-sm-9">{{ number_format($purchaseBill->subtotal, 2) }}</dd>
+            {{-- GRN-BILL-CHARGES-1: the receipt's cartage is part of this payable, so it is
+                 named here rather than buried inside the subtotal. --}}
+            @if((float) ($purchaseBill->extra_charges ?? 0) > 0)
+                <dt class="col-sm-3">Extra Charges</dt>
+                <dd class="col-sm-9">
+                    {{ number_format((float) $purchaseBill->extra_charges, 2) }}
+                    @if($purchaseBill->goodsReceipt?->extra_charges_note)
+                        &mdash; {{ $purchaseBill->goodsReceipt->extra_charges_note }}
+                    @endif
+                </dd>
+            @endif
 
             @if($purchaseBill->discount_total > 0)
                 <dt class="col-sm-3">Discount</dt>

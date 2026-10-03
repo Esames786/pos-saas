@@ -416,6 +416,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     ->name('tenant.goods-receipts.store');
                 Route::get('/goods-receipts/{goodsReceipt}', [GoodsReceiptController::class, 'show'])
                     ->name('tenant.goods-receipts.show');
+                // GRN-VOID-1: POST, not GET — voiding moves stock, and a link that moves stock
+                // can be followed by a crawler or a refresh.
+                Route::post('/goods-receipts/{goodsReceipt}/void', [GoodsReceiptController::class, 'void'])
+                    ->name('tenant.goods-receipts.void');
 
                 // Purchase Bills
                 Route::get('/purchase-bills', [PurchaseBillController::class, 'index'])

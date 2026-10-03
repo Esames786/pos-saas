@@ -140,6 +140,19 @@
                         <td colspan="4" class="text-end">GRN Subtotal</td>
                         <td class="text-end">{{ number_format($grnSubtotal, 2) }}</td>
                     </tr>
+                    {{-- GRN-BILL-CHARGES-1: shown BEFORE posting, so nobody is surprised by a
+                         payable that is larger than the goods on the lines above. --}}
+                    @if((float) ($goodsReceipt->extra_charges ?? 0) > 0)
+                    <tr>
+                        <td colspan="4" class="text-end">
+                            Extra Charges
+                            @if($goodsReceipt->extra_charges_note)
+                                <span class="text-muted">&mdash; {{ $goodsReceipt->extra_charges_note }}</span>
+                            @endif
+                        </td>
+                        <td class="text-end">{{ number_format((float) $goodsReceipt->extra_charges, 2) }}</td>
+                    </tr>
+                    @endif
                 </tfoot>
             </table>
         </div>

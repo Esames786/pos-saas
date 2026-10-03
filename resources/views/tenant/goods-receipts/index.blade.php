@@ -77,7 +77,12 @@
                         @endif
                     </td>
                     <td>
-                        <span class="badge bg-success">{{ ucfirst($receipt->status) }}</span>
+                        {{-- GRN-VOID-1: a voided receipt must not read like a live one. --}}
+                        @if($receipt->status === 'voided')
+                            <span class="badge bg-danger">Voided</span>
+                        @else
+                            <span class="badge bg-success">{{ ucfirst($receipt->status) }}</span>
+                        @endif
                     </td>
                     <td class="text-end">
                         @can('tenant.goods-receipts.show')

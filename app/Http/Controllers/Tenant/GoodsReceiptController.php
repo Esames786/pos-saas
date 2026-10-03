@@ -230,6 +230,32 @@ class GoodsReceiptController extends Controller
         return redirect(url('/goods-receipts'))->with('status', 'Goods receipt posted.');
     }
 
+    /**
+     * GRN-VOID-1 — take back a receipt that has not been billed yet.
+     *
+     * A posted receipt stays un-editable on purpose: changing a quantity afterwards would rewrite
+     * stock history that sales and costs already lean on. Voiding is the honest alternative — the
+     * receipt stays on the record and the stock is undone by its own reversal entries. To correct
+     * a mistake: void, then create the receipt again with the right figures.
+     */
+    public function void(Request $request, GoodsReceipt $goodsReceipt)
+    {
+        $goodsReceipt->load('lines.product', 'bill');
+
+        try {
+            $this->purchasingService->voidGrn(
+                $goodsReceipt,
+                auth('tenant')->id(),
+                $request->input('void_reason')
+            );
+        } catch (\RuntimeException $e) {
+            // The service's refusals are written for the person reading them, so they are shown
+            // rather than turned into a 500.
+            return back()->withErrors(['void' => $e->getMessage()]);
+        }
+
+        return redirect(url('/goods-receipts'))->with('success', 'Goods receipt ' . $goodsReceipt->grn_no . ' voided.');
+    }
     public function show(GoodsReceipt $goodsReceipt)
     {
         $goodsReceipt->load([
