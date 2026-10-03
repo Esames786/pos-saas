@@ -152,9 +152,56 @@ class JournalEventResolver
             return null;
         }
 
-        // One group per TABLE, carrying every source type that points at it (and its _reversal),
-        // so the whole trail comes back: invoice, receipts, advance application, refunds, material
-        // issues — and the reversal of any of them.
+        return ['event' => $event, 'refs' => $this->refsForEventIds([(int) $event->id])];
+    }
+
+    /**
+     * Refs for every event whose number CONTAINS the search text — for the `q` box.
+     *
+     * The Event # FILTER is exact on purpose (the number is the key), but `q` is a search box and
+     * people paste partial numbers into it. Pasting an event number there used to find nothing at
+     * all, which is how this whole job started.
+     *
+     * @return list<array{types: list<string>, ids: list<int>}>
+     */
+    public function refsForEventNoLike(string $search): array
+    {
+        $search = trim($search);
+        if ($search === '') {
+            return [];
+        }
+
+        $eventIds = DB::connection('tenant')->table('catering_events')
+            ->whereRaw('LOWER(event_no) LIKE ?', ['%' . mb_strtolower($search) . '%'])
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        return $eventIds ? $this->refsForEventIds($eventIds) : [];
+    }
+
+    /**
+     * The (source_type, source_id) groups for a set of events — one group per source table.
+     *
+     * Each group carries every source type that points at that table AND its `_reversal`, so the
+     * whole trail comes back: invoice, receipts, advance application, refunds, material issues,
+     * and the reversal of any of them. Shared by the exact filter and the `q` search so the two
+     * can never disagree about what belongs to an event.
+     *
+     * Reads the tables RAW, for the same reason as eventIdsBySourceId() below:
+     * CateringAdvance carries a `notVoided` global scope, and a voided receipt must still be
+     * found under its own event — filtering by an event has to return its whole trail, voids
+     * included. It selects `id` only, never an amount.
+     *
+     * @param  list<int>  $eventIds
+     * @return list<array{types: list<string>, ids: list<int>}>
+     */
+    private function refsForEventIds(array $eventIds): array
+    {
+        if (! $eventIds) {
+            return [];
+        }
+
         $typesByTable = [];
         foreach (self::SOURCE_TABLES as $type => $table) {
             $typesByTable[$table][] = $type;
@@ -163,15 +210,18 @@ class JournalEventResolver
 
         $refs = [];
         foreach ($typesByTable as $table => $types) {
-            $ids = $this->sourceIdsForEvent($table, (int) $event->id);
+            $ids = DB::connection('tenant')->table($table)
+                ->whereIn('catering_event_id', $eventIds)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
             if ($ids) {
                 $refs[] = ['types' => array_values($types), 'ids' => $ids];
             }
         }
 
-        return ['event' => $event, 'refs' => $refs];
+        return $refs;
     }
-
     /**
      * Narrow a journal query to one event's entries.
      *
@@ -221,17 +271,4 @@ class JournalEventResolver
             ->all();
     }
 
-    /**
-     * The source rows of one event in one table — the same raw-lookup rule as above.
-     *
-     * @return list<int>
-     */
-    private function sourceIdsForEvent(string $table, int $eventId): array
-    {
-        return DB::connection('tenant')->table($table)
-            ->where('catering_event_id', $eventId)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
-    }
 }

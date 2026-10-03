@@ -99,8 +99,20 @@ class FinancialExportService
      * other callers (FinancialExportController, GeneralLedgerController) keep their exact
      * behaviour; they pass positionally and never reach this argument.
      */
-    public function generalLedgerLines(string $from, string $to, array|int|null $branchIds = null, ?int $accountId = null, int $limit = 5000, array $sourceTypes = []): Collection
+    public function generalLedgerLines(string $from, string $to, array|int|null $branchIds = null, ?int $accountId = null, int $limit = 5000, array $sourceTypes = [], string $eventNo = ''): Collection
     {
+        // JOURNAL-EVENT-REF-1: $eventNo is appended LAST and defaults to empty, so the callers
+        // that pass nothing behave exactly as before. This one function feeds the GL screen, the
+        // GL CSV and the JE lines CSV, so filtering here covers all three at once.
+        $eventRefs = null;
+        $eventNo = trim($eventNo);
+        if ($eventNo !== '') {
+            $resolved = app(JournalEventResolver::class)->entryRefsForEvent($eventNo);
+            // Unknown event, or an event with no journals: match NOTHING. Widening to every line
+            // would hand back a full ledger that looks like the answer to the question asked.
+            $eventRefs = $resolved === null ? [] : $resolved['refs'];
+        }
+
         $branchIds = $this->normalizeBranchIds($branchIds);
 
         $query = JournalLine::query()
@@ -110,6 +122,9 @@ class FinancialExportService
             ->when($accountId, fn ($q) => $q->where('journal_lines.account_id', $accountId))
             ->when($branchIds, fn ($q) => $q->whereIn('journal_lines.branch_id', $branchIds))
             ->when($sourceTypes, fn ($q) => $q->whereIn('journal_entries.source_type', $sourceTypes))
+            ->when($eventRefs !== null, function ($q) use ($eventRefs) {
+                app(JournalEventResolver::class)->applyEventFilter($q, $eventRefs);
+            })
             ->whereDate('journal_entries.entry_date', '>=', $from)
             ->whereDate('journal_entries.entry_date', '<=', $to)
             ->with(['account', 'branch', 'journalEntry'])

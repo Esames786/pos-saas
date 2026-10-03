@@ -3,6 +3,12 @@
 @section('title', 'General Ledger')
 
 @section('content')
+
+@if($eventNotFound ?? false)
+    {{-- Said out loud, because an empty table looks exactly like a filter that worked. --}}
+    <div class="alert alert-warning">No event <strong>{{ $filters['event_no'] }}</strong> found.</div>
+@endif
+
         <div class="page-header">
             <div class="page-title">
                 <h4>General Ledger</h4>
@@ -44,6 +50,14 @@
                     <div class="col-sm-2">
                         <label class="form-label mb-1">To</label>
                         <input type="date" name="date_to" class="form-control" value="{{ $filters['date_to'] ?? '' }}">
+                    </div>
+                    {{-- JOURNAL-EVENT-REF-1: EXACT event number. The number is the key; a partial
+                         like 0002 would match dozens of events. --}}
+                    <div class="col-sm-2">
+                        <label class="form-label mb-1">Event #</label>
+                        <input type="text" name="event_no" class="form-control"
+                               placeholder="EV-…" value="{{ $filters['event_no'] ?? '' }}">
+                        <div class="form-text">Every line of that event.</div>
                     </div>
                     <div class="col-sm-1">
                         <button type="submit" class="btn btn-primary w-100">Go</button>
@@ -87,7 +101,23 @@
                                 <td>{{ optional($line->journalEntry->entry_date)->format('Y-m-d') }}</td>
                                 <td><a href="{{ url('/finance/journal-entries/' . $line->journal_entry_id) }}">{{ $line->journalEntry->entry_no ?? '' }}</a></td>
                                 <td class="text-muted">{{ $line->account->code ?? '' }} — {{ $line->account->name ?? '' }}</td>
-                                <td class="text-muted">{{ $line->description }}</td>
+                                <td class="text-muted">
+                                    {{ $line->description }}
+                                    {{-- JOURNAL-EVENT-REF-1: same event + customer the JE screens show, from the
+                                         same resolver, so the two screens can never disagree. --}}
+                                    @if($ev = ($eventFor[$line->journal_entry_id] ?? null))
+                                        <div class="small">
+                                            @can('tenant.catering.events.show')
+                                                <a href="{{ url('/catering/events/' . $ev['event_id']) }}">{{ $ev['event_no'] }}</a>
+                                            @else
+                                                {{ $ev['event_no'] }}
+                                            @endcan
+                                            @if($ev['customer_name'])
+                                                <span class="text-muted">· {{ $ev['customer_name'] }}</span>
+                                            @endif
+                                        </div>
+                                    @endif
+                                </td>
                                 <td class="text-muted">{{ $line->branch->name ?? '—' }}</td>
                                 <td class="text-end">{{ (float) $line->debit > 0 ? number_format((float) $line->debit, 2) : '' }}</td>
                                 <td class="text-end">{{ (float) $line->credit > 0 ? number_format((float) $line->credit, 2) : '' }}</td>
