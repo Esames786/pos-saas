@@ -82,9 +82,15 @@ class PurchaseBillController extends Controller
 
         DB::connection('tenant')->transaction(function () use ($data, $grn, $userId, &$purchaseBill) {
             $subtotal   = $grn->lines->sum(fn($l) => $l->quantity_received * $l->unit_cost);
+            // GRN-BILL-CHARGES-1: the receipt's cartage/labour is part of what the supplier
+            // charged, so it is part of what we owe them. Leaving it out made the payable short
+            // by exactly the charge. The GL stays balanced on its own because postPurchaseBill()
+            // debits 1400 Inventory and credits 2100 Payable with the SAME grand_total — and
+            // debiting inventory is right, since the GRN already put this charge into stock cost.
+            $charges    = round((float) ($grn->extra_charges ?? 0), 4);
             $discTotal  = (float) ($data['discount_amount'] ?? 0);
             $taxTotal   = (float) ($data['tax_amount'] ?? 0);
-            $grandTotal = $subtotal - $discTotal + $taxTotal;
+            $grandTotal = $subtotal + $charges - $discTotal + $taxTotal;
 
             $purchaseBill = PurchaseBill::create([
                 'bill_no'             => $this->purchasingService->nextBillNo(),
@@ -97,6 +103,7 @@ class PurchaseBillController extends Controller
                 'due_date'            => $data['due_date'] ?? null,
                 'status'              => 'posted',
                 'subtotal'            => $subtotal,
+                'extra_charges'       => $charges,
                 'discount_total'      => $discTotal,
                 'tax_total'           => $taxTotal,
                 'grand_total'         => $grandTotal,
