@@ -330,7 +330,8 @@ class CateringEventController extends Controller
         // a customer document has no station.
         $printers = \App\Models\Tenant\Printer::where('is_active', true)
             ->orderBy('name')
-            ->get(['id', 'name', 'paper_size']);
+            ->get(['id', 'name', 'paper_size', 'printer_type']);
+
 
         // KASHIF-CATERING-CUSTOMER-CREDIT-1: where this booking stands
         // financially, and how it got there. Computed once, by the one service

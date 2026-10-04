@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.5.0';
+const AGENT_VERSION = '2.6.0';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -254,6 +254,12 @@ function headers() {
     return {
         'X-Print-Agent-Code':  CONFIG.agentCode,
         'X-Print-Agent-Token': CONFIG.token,
+        // CATERING-SEND-TO-PRINTER-1 — ye agent A4/A5 document bhi chhap sakta
+        // hai. Server SIRF usi agent ko aisi job deta hai jo ye keh chuke; jo
+        // na kahe us ka purana kaam bilkul waisa hi chalta rehta hai. Isi liye
+        // restaurant ke chalte hue agents (v2.5.0) mehfooz hain — unhe kuch
+        // install kiye baghair ye job pahunchti hi nahi.
+        'X-Print-Agent-Caps':  'document',
         'Accept':              'application/json',
         'Content-Type':        'application/json',
     };
@@ -428,6 +434,139 @@ function sendToNetworkPrinter(ip, port, payload) {
     });
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * CATERING-SEND-TO-PRINTER-1 — A4/A5 DOCUMENT, WINDOWS KE PRINTER PAR.
+ *
+ * Malik: "client confuse ho raha hai, bar bar A4 / A5 select karna parta hai."
+ * Server ab kagaz ka size job ke saath bhejta hai; yahan us par amal hota hai.
+ *
+ * Ye hissa THERMAL WALE RAASTE SE BILKUL ALAG hai, aur jaan-boojh kar: upar wala
+ * `sendToNetworkPrinter()` ek harf nahi badla. Restaurant ke chalte hue agents
+ * wohi purana code chalate rehte hain, aur agar kal koi un par ye nayi version
+ * laga bhi de to un ke KOT ka raasta waisa ka waisa hai.
+ *
+ * ── TEEN QADAM ───────────────────────────────────────────────────────────────
+ *
+ * 1. Job ka `raw_payload` POORA HTML hota hai (server ne qatar me lagate waqt
+ *    jama kar diya tha), wo ek asthai .html file me likha jata hai.
+ *
+ * 2. CHROME se PDF. Yehi is poore design ki jaan hai: wohi Chrome jo is PC par
+ *    aaj bhi chhapta hai. Server par PDF banane ki koshish Urdu tod deti hai
+ *    (dompdf me complex-script shaping hai hi nahi), is liye render WAHIN hota
+ *    hai jahan wo pehle se durust hai.
+ *
+ *    `--print-background` LAZMI hai: us ke baghair kitchen sheet par PARTY/OWN
+ *    ka kala dabba safed chhapta hai aur bawarchi ko maal ka malik pata hi nahi
+ *    chalta.
+ *
+ * 3. PDF ko NAAM WALE Windows printer par bhejna. Windows me is ka koi built-in
+ *    tareeqa nahi jo kisi KHAAS printer par chup chaap bhej sake — "print" verb
+ *    sirf default printer par jata hai. Is liye neeche teen maaruf utilities me
+ *    se jo mile wo chalti hai, aur koi na mile to SAAF inkaar — kyunke khamoshi
+ *    se kuch na chhapna sab se bura natija hai.
+ * ───────────────────────────────────────────────────────────────────────────*/
+
+const { execFile } = require('child_process');
+
+/** Chrome jahan jahan hota hai — pehla jo mile. */
+function findChrome() {
+    const candidates = [
+        process.env.BINGOO_CHROME,
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    ].filter(Boolean);
+
+    return candidates.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || null;
+}
+
+/**
+ * PDF ko kisi KHAAS printer par bhejne wali utility.
+ *
+ * Tarteeb soch kar hai: SumatraPDF sab se halka aur bharosemand hai aur agent
+ * ke saath rakha ja sakta hai; PDFtoPrinter doosra aam hal hai; Acrobat aakhir
+ * me, kyunke wo dheema hai aur kabhi kabhi window khol deta hai.
+ */
+function findPdfPrinter() {
+    const options = [
+        { exe: process.env.BINGOO_PDF_PRINTER, args: (f, p) => ['-print-to', p, '-silent', f] },
+        { exe: path.join(exeDir(), 'SumatraPDF.exe'), args: (f, p) => ['-print-to', p, '-silent', '-exit-when-done', f] },
+        { exe: 'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe', args: (f, p) => ['-print-to', p, '-silent', '-exit-when-done', f] },
+        { exe: path.join(exeDir(), 'PDFtoPrinter.exe'), args: (f, p) => [f, p] },
+        { exe: 'C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe', args: (f, p) => ['/t', f, p] },
+        { exe: 'C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe', args: (f, p) => ['/t', f, p] },
+    ].filter((o) => o.exe);
+
+    return options.find((o) => { try { return fs.existsSync(o.exe); } catch { return false; } }) || null;
+}
+
+function runExe(exe, args, timeoutMs) {
+    return new Promise((resolve, reject) => {
+        execFile(exe, args, { timeout: timeoutMs, windowsHide: true }, (err, _stdout, stderr) => {
+            if (err) {
+                reject(new Error(
+                    `${path.basename(exe)}: ${err.message}${stderr ? ' — ' + String(stderr).slice(0, 200) : ''}`
+                ));
+
+                return;
+            }
+            resolve();
+        });
+    });
+}
+
+/**
+ * Ek A4/A5 document chhapo. Kagaz ka size server se aata hai — operator ko
+ * kabhi chunna nahi parta, aur yehi is poore kaam ki wajah thi.
+ */
+async function printDocumentOnWindows(job) {
+    const printer    = job.printer || {};
+    const targetName = printer.windows_printer_name || (job.payload || {}).windows_printer_name;
+
+    if (!targetName) {
+        throw new Error('Is printer par Windows wala naam likha hi nahi — agent usi naam se printer pehchanta hai.');
+    }
+
+    const chrome = findChrome();
+    if (!chrome) {
+        throw new Error('Chrome ya Edge is PC par nahi mila — document ka PDF usi se banta hai.');
+    }
+
+    const tool = findPdfPrinter();
+
+    const stamp    = `${job.job_no || job.id}-${Date.now()}`.replace(/[^A-Za-z0-9._-]/g, '-');
+    const htmlPath = path.join(os.tmpdir(), `bingoo-${stamp}.html`);
+    const pdfPath  = path.join(os.tmpdir(), `bingoo-${stamp}.pdf`);
+
+    try {
+        fs.writeFileSync(htmlPath, job.raw_payload || '', 'utf8');
+
+        // Kagaz ka size HTML ke apne `@page` me pehle se hai aur Chrome usi ko
+        // maanta hai. Yahan dobara likhna do jagah do jawab bana deta.
+        await runExe(chrome, [
+            '--headless=new',
+            '--disable-gpu',
+            '--no-sandbox',
+            '--no-pdf-header-footer',
+            '--print-background',          // is ke baghair parcha jhoot bolta hai
+            `--print-to-pdf=${pdfPath}`,
+            `file:///${htmlPath.replace(/\\/g, '/')}`,
+        ], 60000);
+
+        if (!fs.existsSync(pdfPath) || fs.statSync(pdfPath).size === 0) {
+            throw new Error('Chrome ne PDF banayi hi nahi.');
+        }
+
+        await runExe(tool.exe, tool.args(pdfPath, targetName), 120000);
+    } finally {
+        // Asthai files har soorat me jati hain — kamyabi par bhi, nakami par bhi.
+        for (const f of [htmlPath, pdfPath]) {
+            try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* chhor do */ }
+        }
+    }
+}
+
 async function markPrinted(jobId) {
     await httpJson('POST', `${CONFIG.baseUrl}/api/print-agent/jobs/${jobId}/printed`, {
         headers: headers(),
@@ -459,6 +598,32 @@ async function processJob(job) {
         log(`[SKIP]  ${job.job_no}: browser/manual fallback job`);
         return { printed: false, connectionFailure: false };
     }
+
+    // CATERING-SEND-TO-PRINTER-1 — A4/A5 document ka raasta, THERMAL WALE
+    // GUARD SE PEHLE. Yahan rakhne ka matlab ye hai ke neeche ka poora thermal
+    // hissa chhua hi nahi jata: wo apni shart par, apne retry par, apne lane
+    // par waisa ka waisa chalta rehta hai.
+    //
+    // Yahan retry NAHI hai, aur ye jaan-boojh kar: thermal ka retry is liye
+    // tha ke soya hua printer pehla connect kha jata hai. Yahan kuch connect
+    // nahi hota — Chrome aur spooler dono isi machine par hain. Jo nakami
+    // hoti hai wo asli hoti hai (printer ka naam ghalat, Chrome nahi mila),
+    // aur usay teen baar dohrana sirf der karta hai.
+    if (printer.printer_type === 'windows') {
+        try {
+            await printDocumentOnWindows(job);
+            await markPrinted(job.id);
+            log(`[OK]    ${job.job_no} -> ${printer.windows_printer_name} (${(job.payload || {}).paper || 'document'})`);
+
+            return { printed: true, connectionFailure: false };
+        } catch (err) {
+            await markFailed(job.id, err.message);
+            log(`[FAIL]  ${job.job_no}: ${err.message}`);
+
+            return { printed: false, connectionFailure: false };
+        }
+    }
+
     if (printer.printer_type !== 'network') {
         log(`[SKIP]  ${job.job_no}: non-network printer (${printer.printer_type})`);
         return { printed: false, connectionFailure: false };
@@ -557,6 +722,15 @@ function laneKeyOf(job) {
     if (p.id && p.printer_type === 'network' && p.ip_address) {
         return `${p.ip_address}:${Number(p.port || 9100)}`;
     }
+    // CATERING-SEND-TO-PRINTER-1 — har Windows printer ki apni lane.
+    //
+    // Sab ko `LOCAL_LANE` me daal dena aasan tha aur ghalat hota: ek lane ek
+    // waqt me ek hi kaam karti hai, is liye A5 kitchen sheet aur A4 quotation
+    // ek doosre ka intezar karte — chahe wo do alag printers par ja rahe hon.
+    if (p.id && p.printer_type === 'windows') {
+        return `win:${p.windows_printer_name || p.id}`;
+    }
+
     return LOCAL_LANE;
 }
 

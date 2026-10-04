@@ -29,9 +29,10 @@
 </head>
 <body>
     <div class="bulk-toolbar">
-        <button onclick="window.print()" style="padding:6px 18px;font-size:14px;cursor:pointer">
+        <button onclick="window.print()" class="doc-btn">
             Print {{ $releases->count() }} kitchen {{ \Illuminate\Support\Str::plural('sheet', $releases->count()) }}
         </button>
+        @include('tenant.catering.documents.partials.send-to-network', ['kind' => 'kitchen_sheet'])
         @if(! empty($skippedEvents))
             <div style="color:#92400e;font-size:12px;margin-top:4px">
                 Koi quotation nahi, is liye chhoot gayin: {{ implode(", ", $skippedEvents) }}

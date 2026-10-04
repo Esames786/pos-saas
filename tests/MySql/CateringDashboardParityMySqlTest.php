@@ -271,7 +271,13 @@ class CateringDashboardParityMySqlTest extends MySqlTenantTestCase
         $addresses = $controller->addressSheet(
             Request::create('/x', 'GET', ['ids' => [$a->id, $b->id]])
         )->render();
-        $this->assertStringContainsString('ADDRESS SHEET', $addresses);
+        // CATERING-ADDRESS-LABEL-1 (5 Oct) — ye kaghaz ab fehrist nahi, LABEL
+        // hai: ek booking = ek parchi jo delivery par chipakti hai. Purana
+        // `ADDRESS SHEET` wala safhe ka header jaan-boojh kar hataya gaya —
+        // label kaat kar alag hota hai, is liye safhe ke sar par likha naam
+        // pehli hi kaat par zaaya ho jata tha.
+        $this->assertStringContainsString('Delivery Labels', $addresses);
+        $this->assertStringContainsString('cut along the dashed lines', $addresses);
         $this->assertStringContainsString('Shadman Hall', $addresses);
         $this->assertStringNotContainsString('400.00', $addresses,
             'the drivers list carries no prices');

@@ -1232,7 +1232,7 @@
                             <td><span class="badge bg-{{ $release->status === 'released' ? 'success' : 'danger' }}">{{ ucfirst($release->status) }}</span></td>
                         </tr>
                         @empty
-                        <tr><td class="text-center text-muted py-3">
+                        <tr><td colspan="3" class="text-center text-muted py-3">
                             Not released yet.
                             @if($current && $current->isDraft())
                                 <div class="fs-12">Finalize the quotation first.</div>
