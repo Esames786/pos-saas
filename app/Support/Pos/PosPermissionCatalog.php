@@ -15,7 +15,12 @@ namespace App\Support\Pos;
  * missing here, so the catalogue cannot drift from the code again.
  *
  * Every entry documents:
- *   - `groups`  cashier | manager | finance (a permission may sit in more than one group — see void-kot-item);
+ *   - `groups`  cashier | manager | finance (a permission may sit in more than one group);
+ *
+ * Phase 3 (approver eligibility): offline manager-approval ELIGIBILITY is NOT a permission in this catalogue. It is the
+ * Cloud-authoritative bootstrap flag users[].may_approve_pos (edge-bootstrap-v8: active manager PIN AND active user),
+ * checked by EdgeLocalAuthService::verifyManager together with the permission the approved ACTION needs
+ * (EdgeLocalPosService::MANAGER_ACTION_PERMISSIONS). tenant.pos.void-kot-item is no longer an approver marker.
  *   - `edge`    the Edge check site(s) that enforce it;
  *   - `online`  the Online route (or the synthetic-permission migration) that owns the name.
  *
@@ -64,8 +69,8 @@ final class PosPermissionCatalog
             'online' => 'synthetic — PosQuickReportController (migration 2026_08_27_000001_add_pos_quick_report_permission)',
         ],
         'tenant.pos.void-kot-item' => [
-            'groups' => ['cashier', 'manager'],
-            'edge' => 'KotCancellationService::assertCancellationPermission (the REQUESTING cashier, held revise with void_items / cancel) + EdgeLocalPosService::MANAGER_ACTION_PERMISSIONS (the approving manager)',
+            'groups' => ['cashier'],
+            'edge' => 'KotCancellationService::assertCancellationPermission (the REQUESTING cashier, held revise with void_items / cancel) + EdgeLocalPosService::MANAGER_ACTION_PERMISSIONS (the approving manager must hold it too for void_kot_item(s) — eligibility itself is users.may_approve_pos, Phase 3)',
             'online' => 'synthetic — KotCancellationService (migration 2026_08_03_000001_add_kot_cancellation_controls)',
         ],
         'tenant.held-sales.store' => [
@@ -266,7 +271,7 @@ final class PosPermissionCatalog
         return self::group(self::GROUP_CASHIER);
     }
 
-    /** @return list<string> the approver / supervisor markers (tenant.pos.void-kot-item is the Edge approval marker). */
+    /** @return list<string> supervisor-only markers (NOT approver eligibility — that is the bootstrap flag may_approve_pos, Phase 3). */
     public static function manager(): array
     {
         return self::group(self::GROUP_MANAGER);

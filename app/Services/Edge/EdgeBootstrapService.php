@@ -39,7 +39,11 @@ class EdgeBootstrapService
     // every Edge posting path and the sale envelope still accept cash only), and the tenant business name the appliance
     // persists (edge_local_meta.tenant_business_name). A v6 appliance cannot import a v7 export (exact-match importer) and
     // is classified software_update_required by EdgeCompatibilityService.
-    public const SCHEMA_VERSION = 'edge-bootstrap-v7';
+    // v8 (Phase 3 security, approver eligibility): users[] carries the Cloud-authoritative boolean `may_approve_pos`
+    // (active manager PIN AND active user) which the Edge stores in the Edge-only users.may_approve_pos column; a v7
+    // appliance has no such column, so a v8 package must be refused whole (SCHEMA_UNSUPPORTED / update_required)
+    // instead of failing mid-import on an unknown column. Exact-match importer + applier, as for v6 → v7.
+    public const SCHEMA_VERSION = 'edge-bootstrap-v8';
 
 
     // EDGE-CONFIG-REFRESH-1: the CONFIG payload contract (which sections exist, their column sets, and
@@ -611,6 +615,10 @@ class EdgeBootstrapService
 
         $users = $conn->table('users')->whereIn('id', $userIds ?: [0]);
         $wm[] = 'users=' . (string) $users->max('updated_at') . '|' . $users->count();
+        // Phase 3 (approver eligibility): a manager PIN set, replaced or disabled for a branch user changes who may approve
+        // offline, so it must mint a new config revision (users[].may_approve_pos follows manager_pins, not users).
+        $pins = $conn->table('manager_pins')->whereIn('user_id', $userIds ?: [0])->orderBy('user_id')->get(['user_id', 'is_active']);
+        $wm[] = 'manager_pins=' . implode(',', $pins->map(fn ($r) => $r->user_id . ':' . (int) $r->is_active)->all());
 
         $tps = $conn->table('terminal_printer_settings')->whereIn('terminal_id', $termIds ?: [0]);
         $wm[] = 'terminal_printer_settings=' . (string) $tps->max('updated_at') . '|' . $tps->count();
@@ -845,6 +853,12 @@ class EdgeBootstrapService
             ->orderBy('id')
             ->get(['id', 'employee_code', 'name', 'default_branch_id', 'default_terminal_id', 'allowed_order_types', 'default_order_type', 'status', 'locale']);
         $userIds = $users->pluck('id')->all();
+        // Phase 3 (approver eligibility, bootstrap v8): the ONE canonical approver flag. A user may approve POS actions on
+        // the appliance iff they hold an ACTIVE manager PIN on the Cloud (the Online approval mechanism) AND are active.
+        // Only the boolean ships — never the PIN hash (SECRET_FIELDS). Not a permission: never derived from roles.
+        $approverIds = $userIds
+            ? $conn->table('manager_pins')->whereIn('user_id', $userIds)->where('is_active', 1)->pluck('user_id')->map(fn ($v) => (int) $v)->flip()->all()
+            : [];
         $roleMap = [];
         $roleIdsByUser = [];
         $permissionMap = [];
@@ -879,6 +893,7 @@ class EdgeBootstrapService
             'default_terminal_id' => $u->default_terminal_id, 'status' => $u->status, 'locale' => $u->locale,
             'allowed_order_types' => json_decode($u->allowed_order_types ?: '[]', true) ?: array_keys(\App\Models\Tenant\User::ORDER_TYPES),
             'default_order_type' => $u->default_order_type,
+            'may_approve_pos' => isset($approverIds[(int) $u->id]) && $u->status === 'active',
             'roles' => $roleMap[$u->id] ?? [],
             'permissions' => collect($permissionMap[$u->id] ?? [])->unique()->sort()->values()->all(),
         ])->all();

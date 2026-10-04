@@ -83,6 +83,7 @@ class EdgeCashierOrderLifecycleHttpMySqlTest extends MySqlTenantTestCase
         ]);
         $this->seedEdgeCredential($this->userId, $this->branchId, 1);
         $this->seedEdgeCredential($this->managerId, $this->branchId, 1, 'MgrPass1');
+        $this->markPosApprover($this->managerId); // Phase 3: eligibility is the bootstrap flag, not a permission
         foreach ([$this->userId, $this->managerId] as $uid) {
             $this->grantEdgePermission($uid, 'tenant.pos.void-kot-item');
         }

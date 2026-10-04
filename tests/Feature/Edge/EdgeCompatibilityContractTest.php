@@ -60,18 +60,23 @@ class EdgeCompatibilityContractTest extends TestCase
         }
     }
 
-    /** W6 (0.7.0-edge): the installed 0.6.0 appliance reports bootstrap v6 — once the Cloud exports v7 it must update. */
-    public function test_a_v6_appliance_is_update_required_and_a_v7_appliance_is_compatible(): void
+    /**
+     * W6 (0.7.0-edge) / Phase 3: the installed 0.7.0 LAB appliance reports bootstrap v7 — once the Cloud exports v8
+     * (users[].may_approve_pos) it must update; a v6 record is still update-required.
+     */
+    public function test_a_previous_generation_appliance_is_update_required_and_the_current_one_is_compatible(): void
     {
-        $this->assertSame('edge-bootstrap-v7', \App\Services\Edge\EdgeBootstrapService::SCHEMA_VERSION);
+        $this->assertSame('edge-bootstrap-v8', \App\Services\Edge\EdgeBootstrapService::SCHEMA_VERSION);
         $svc = app(EdgeCompatibilityService::class);
 
-        $old = $svc->classify($this->currentManifest(['bootstrap_schema_version' => 'edge-bootstrap-v6']));
-        $this->assertSame(EdgeCompatibilityService::SOFTWARE_UPDATE_REQUIRED, $old['overall']);
-        $this->assertSame(EdgeCompatibilityService::SOFTWARE_UPDATE_REQUIRED, $old['features']['config_refresh']);
-        $this->assertSame('edge-bootstrap-v7', $old['current_bootstrap_schema']);
+        foreach (['edge-bootstrap-v6', 'edge-bootstrap-v7'] as $previous) {
+            $old = $svc->classify($this->currentManifest(['bootstrap_schema_version' => $previous]));
+            $this->assertSame(EdgeCompatibilityService::SOFTWARE_UPDATE_REQUIRED, $old['overall'], $previous);
+            $this->assertSame(EdgeCompatibilityService::SOFTWARE_UPDATE_REQUIRED, $old['features']['config_refresh'], $previous);
+            $this->assertSame('edge-bootstrap-v8', $old['current_bootstrap_schema']);
+        }
 
-        $new = $svc->classify($this->currentManifest(['bootstrap_schema_version' => 'edge-bootstrap-v7']));
+        $new = $svc->classify($this->currentManifest(['bootstrap_schema_version' => 'edge-bootstrap-v8']));
         $this->assertSame(EdgeCompatibilityService::COMPATIBLE, $new['overall']);
         $this->assertSame(EdgeCompatibilityService::COMPATIBLE, $new['features']['config_refresh']);
     }

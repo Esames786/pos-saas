@@ -169,7 +169,7 @@ class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
 
     public function test_v7_export_carries_the_menu_denomination_payment_and_tenant_sections(): void
     {
-        $this->assertSame('edge-bootstrap-v7', EdgeBootstrapService::SCHEMA_VERSION);
+        $this->assertSame('edge-bootstrap-v8', EdgeBootstrapService::SCHEMA_VERSION, 'Phase 3: v8 = v7 + users[].may_approve_pos');
         $s = $this->package()['sections'];
 
         $this->assertSame([[$this->tikka, $this->globalGroup]], array_map(fn ($r) => [(int) $r['product_id'], (int) $r['modifier_group_id']], $s['product_modifier_group']));
@@ -243,7 +243,7 @@ class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
 
         $meta = $this->importer()->import($package);
         $this->assertSame(EdgeLocalMeta::STATE_BOOTSTRAPPED, $meta->runtime_state);
-        $this->assertSame('edge-bootstrap-v7', $meta->bootstrap_schema);
+        $this->assertSame(EdgeBootstrapService::SCHEMA_VERSION, $meta->bootstrap_schema);
         $this->assertSame('Demo Foods', $meta->tenant_business_name);
         $c = DB::connection('tenant');
         $this->assertSame(1, $c->table('product_modifier_group')->where('product_id', $this->tikka)->where('modifier_group_id', $this->globalGroup)->count());
@@ -297,8 +297,8 @@ class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
         $meta = $this->importer()->import($second);
 
         $this->assertSame(2, (int) $meta->last_applied_config_revision);
-        $this->assertSame('edge-bootstrap-v7', $meta->bootstrap_schema, 'the applied v7 revision records the v7 generation');
-        $this->assertSame('edge-bootstrap-v7', EdgeLocalMeta::current()->bootstrap_schema);
+        $this->assertSame(EdgeBootstrapService::SCHEMA_VERSION, $meta->bootstrap_schema, 'the applied revision records the current generation');
+        $this->assertSame(EdgeBootstrapService::SCHEMA_VERSION, EdgeLocalMeta::current()->bootstrap_schema);
         $this->assertTrue(app(EdgeAuthorityService::class)->gates()['SCHEMA_COMPATIBLE'], 'SCHEMA_COMPATIBLE recovers with the first applied revision');
 
         // the applier itself refuses another generation (the freshness worker bypasses the importer)
@@ -310,6 +310,6 @@ class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
             $this->assertStringStartsWith('SCHEMA_UNSUPPORTED', $e->getMessage());
         }
         $this->assertSame(2, (int) EdgeLocalMeta::current()->last_applied_config_revision, 'a refused package applies nothing');
-        $this->assertSame('edge-bootstrap-v7', EdgeLocalMeta::current()->bootstrap_schema);
+        $this->assertSame(EdgeBootstrapService::SCHEMA_VERSION, EdgeLocalMeta::current()->bootstrap_schema);
     }
 }

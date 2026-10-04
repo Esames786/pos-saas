@@ -383,6 +383,9 @@ class EdgeLocalConfigRefreshApplier
             $roles = $row['roles'] ?? [];
             $permissions = $row['permissions'] ?? [];
             unset($row['roles'], $row['permissions'], $row['password'], $row['remember_token']);
+            // Phase 3 (approver eligibility): Cloud-authoritative per revision — a PIN removed/disabled on the Cloud
+            // revokes offline approval rights with the next applied revision (mutable() carries it to the UPDATE).
+            $row['may_approve_pos'] = ! empty($row['may_approve_pos']) ? 1 : 0;
             if (isset($row['allowed_order_types']) && is_array($row['allowed_order_types'])) {
                 $row['allowed_order_types'] = json_encode($row['allowed_order_types']);
             }

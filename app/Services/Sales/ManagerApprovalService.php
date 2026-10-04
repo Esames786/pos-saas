@@ -46,6 +46,17 @@ class ManagerApprovalService
      */
     public function createApprovalForAuthenticatedManager($manager, string $actionType, int $requestingUserId, ?array $payload = null): ManagerApproval
     {
+        // Phase 3 approver-eligibility contract (Cloud AND Edge — this is the ONE creator): the approver must be a
+        // different person from the requester, and must be an active user. Both are refused SERVER-SIDE with a
+        // business message (never only hidden in the UI). Cloud verifyPin() already filters inactive users; this is
+        // the authority of record for both runtimes.
+        if ((int) $manager->id === $requestingUserId) {
+            throw new RuntimeException('You cannot approve your own request. Ask another manager to approve.');
+        }
+        if (($manager->status ?? null) !== 'active') {
+            throw new RuntimeException('This manager account is deactivated and cannot approve.');
+        }
+
         $saleId = (int) ($payload['sales_order_id'] ?? 0);
         $branchId = (int) ($payload['branch_id'] ?? 0);
         if ($saleId > 0) {
@@ -89,6 +100,10 @@ class ManagerApprovalService
         }
         if ((int) $approval->requested_by_user_id !== $requestingUserId) {
             throw new RuntimeException('Manager approval belongs to another cashier request.');
+        }
+        if ((int) $approval->approved_by_user_id === $requestingUserId) {
+            // Phase 3: an approval can never be consumed by its own approver (defence in depth behind the creator rule).
+            throw new RuntimeException('A manager approval cannot be used by the manager who granted it.');
         }
 
         $payload = $approval->payload ?? [];

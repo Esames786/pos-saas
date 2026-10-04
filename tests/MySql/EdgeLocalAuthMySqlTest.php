@@ -80,7 +80,7 @@ class EdgeLocalAuthMySqlTest extends MySqlTenantTestCase
     private function seedCloudSource(): void
     {
         $this->cleanTenant([
-            'model_has_permissions', 'model_has_roles', 'role_has_permissions', 'permissions', 'roles',
+            'manager_pins', 'model_has_permissions', 'model_has_roles', 'role_has_permissions', 'permissions', 'roles',
             'branch_user', 'users', 'branches',
         ]);
         $c = DB::connection('tenant');
@@ -94,6 +94,9 @@ class EdgeLocalAuthMySqlTest extends MySqlTenantTestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
         $c->table('branch_user')->insert(['branch_id' => $this->branchId, 'user_id' => $uid, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        // Phase 3 (approver eligibility): an ACTIVE Cloud manager PIN is what makes EMP1 an eligible offline approver —
+        // the v8 export carries ONLY the boolean (may_approve_pos), never the hash (case V below re-auths as a manager).
+        $c->table('manager_pins')->insert(['user_id' => $uid, 'pin_hash' => bcrypt('1234'), 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
 
         $roleId = $c->table('roles')->insertGetId(['name' => 'Cashier', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now()]);
         $permId = $c->table('permissions')->insertGetId(['name' => 'tenant.pos.store', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now()]);
@@ -322,6 +325,10 @@ class EdgeLocalAuthMySqlTest extends MySqlTenantTestCase
     public function test_V_manager_reauth_records_manager_and_requires_permission(): void
     {
         $this->enroll('strongpass1');
+        // Phase 3: the imported user carries the Cloud-derived approver flag (active manager PIN on the Cloud source)
+        // and the PIN hash itself never reached the appliance.
+        $this->assertSame(1, (int) DB::connection('tenant')->table('users')->where('id', $this->userId)->value('may_approve_pos'));
+        $this->assertFalse(\Illuminate\Support\Facades\Schema::connection('tenant')->hasTable('manager_pins') && DB::connection('tenant')->table('manager_pins')->exists(), 'no manager PIN hash on the appliance');
         // Manager has the permission (Cashier role granted tenant.pos.store here) → success returns manager.
         $manager = $this->authSvc()->verifyManager($this->employeeCode, 'strongpass1', 'tenant.pos.store');
         $this->assertSame($this->userId, (int) $manager->id);

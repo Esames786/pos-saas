@@ -127,10 +127,12 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
             ['product_id' => $this->productP, 'product_variant_id' => null, 'quantity' => 200],
             ['product_id' => $this->productQ, 'product_variant_id' => null, 'quantity' => 200],
         ]);
-        // Both hold EXACTLY the template (seedEdgeCredential grants onlinePosParityPermissions() = cashier()). The
-        // approver needs nothing beyond it: tenant.pos.void-kot-item is the Edge manager-approval marker.
+        // Both hold EXACTLY the template (seedEdgeCredential grants onlinePosParityPermissions() = cashier()). Phase 3:
+        // the approver additionally carries the bootstrap eligibility flag (may_approve_pos) — a permission is never
+        // an approver marker; the template still supplies the per-action permission the approver must hold.
         $this->seedEdgeCredential($this->userId, $this->branchId, 1);
         $this->seedEdgeCredential($this->managerId, $this->branchId, 1, 'MgrPass1');
+        $this->markPosApprover($this->managerId);
         $this->managerCode = (string) User::on('tenant')->find($this->managerId)->employee_code;
         $this->login();
     }

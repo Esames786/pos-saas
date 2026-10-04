@@ -26,7 +26,7 @@ return [
     'app_version'             => env('EDGE_APP_VERSION') ?: (\App\Support\EdgeRuntime::artifactVersion() ?? '0.1.0-edge'),
     'git_commit'              => env('EDGE_GIT_COMMIT'), // stamped into a built artifact's manifest
     'artifact_format_version' => '1',
-    'bootstrap_schema'        => EdgeBootstrapService::SCHEMA_VERSION,        // edge-bootstrap-v7 (W6)
+    'bootstrap_schema'        => EdgeBootstrapService::SCHEMA_VERSION,        // edge-bootstrap-v8 (Phase 3 approver eligibility; v7 = W6)
     'config_schema'           => EdgeBootstrapService::CONFIG_SCHEMA_VERSION, // edge-config-v1
     'sync_protocol'           => 'edge-sync-v0', // placeholder ONLY — offline sync is not built yet
     'min_php'                 => '8.2.0',

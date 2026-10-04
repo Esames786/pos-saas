@@ -64,7 +64,7 @@ class EdgeCashierReturnParityHttpMySqlTest extends MySqlTenantTestCase
         $this->acceptTestBaseline([['product_id' => $this->productId, 'product_variant_id' => null, 'quantity' => 30]]);
         $this->seedEdgeCredential($this->userId, $this->branchId, 1);
         $this->seedEdgeCredential($this->managerId, $this->branchId, 1, 'MgrPass1');
-        $this->grantEdgePermission($this->managerId, 'tenant.pos.void-kot-item');
+        $this->markPosApprover($this->managerId); // Phase 3: eligibility is the bootstrap flag (the template already holds tenant.sales-returns.store)
         $this->managerCode = (string) User::on('tenant')->find($this->managerId)->employee_code;
         foreach (['tenant.sales-returns.store', 'tenant.sales-returns.index', 'tenant.sales-returns.show'] as $p) {
             $this->grantEdgePermission($this->userId, $p);

@@ -52,12 +52,38 @@ class EdgeLocalAuthService
 
     /**
      * Section 11 — offline MANAGER re-authentication. The manager authenticates with THEIR OWN Edge
-     * credential and must hold $requiredPermission. Returns the manager User (the approval identity is
-     * the manager, not the requesting cashier).
+     * credential (the epoch-fenced verify() below — unchanged) and, in this order, must:
+     *   1. NOT be the requesting cashier ($requestingUserId) — self-approval is refused SERVER-SIDE with a business
+     *      message, before any credential processing (Phase 3 approver-eligibility contract);
+     *   2. pass the Edge credential rules (active + employee_code + bound branch, active credential of the CURRENT
+     *      activation epoch, lockout) — a deactivated/removed user fails here with the generic message;
+     *   3. be an eligible approver: EdgeUserAuthz::mayApprovePos (the bootstrap flag `may_approve_pos`, i.e. an active
+     *      Cloud manager PIN) — a cashier holding tenant.pos.void-kot-item without the flag is refused;
+     *   4. hold $requiredPermission — the permission the APPROVED ACTION needs (EdgeLocalPosService::MANAGER_ACTION_PERMISSIONS).
+     * Returns the manager User (the approval identity is the manager, not the requesting cashier). The approval row
+     * itself (one-time consumable, replay refused) is minted by the shared ManagerApprovalService creator.
      */
-    public function verifyManager(string $employeeCode, string $credential, string $requiredPermission, ?string $ip = null): User
+    public function verifyManager(string $employeeCode, string $credential, string $requiredPermission, ?int $requestingUserId = null, ?string $ip = null): User
     {
+        if ($requestingUserId !== null) {
+            $self = User::on('tenant')->where('employee_code', $employeeCode)->value('id');
+            if ($self !== null && (int) $self === (int) $requestingUserId) {
+                EdgeAuthAudit::record(EdgeAuthAudit::E_MGR_FAIL, ['user_id' => (int) $self, 'branch_id' => $this->context->boundBranchId(), 'detail' => 'self_approval', 'ip' => $ip]);
+                throw new RuntimeException('You cannot approve your own request. Ask another manager to approve.');
+            }
+        }
+
         $manager = $this->verify($employeeCode, $credential, EdgeAuthAudit::E_MGR_FAIL, $ip);
+
+        if ($requestingUserId !== null && (int) $manager->id === (int) $requestingUserId) {
+            // Defence in depth (an employee_code changed between the lookup and the verify).
+            EdgeAuthAudit::record(EdgeAuthAudit::E_MGR_FAIL, ['user_id' => $manager->id, 'branch_id' => $this->context->boundBranchId(), 'detail' => 'self_approval', 'ip' => $ip]);
+            throw new RuntimeException('You cannot approve your own request. Ask another manager to approve.');
+        }
+        if (! EdgeUserAuthz::mayApprovePos($manager)) {
+            EdgeAuthAudit::record(EdgeAuthAudit::E_MGR_FAIL, ['user_id' => $manager->id, 'branch_id' => $this->context->boundBranchId(), 'detail' => 'not_approver', 'ip' => $ip]);
+            throw new RuntimeException('This user is not an approving manager (no active manager PIN on the Cloud).');
+        }
         if (! $manager->can($requiredPermission)) {
             EdgeAuthAudit::record(EdgeAuthAudit::E_MGR_FAIL, ['user_id' => $manager->id, 'branch_id' => $this->context->boundBranchId(), 'detail' => 'missing_permission', 'ip' => $ip]);
             throw new RuntimeException('This user is not authorized to approve that action.');

@@ -41,4 +41,17 @@ class EdgeUserAuthz
     {
         return is_string($user->employee_code) && trim($user->employee_code) !== '';
     }
+
+    /**
+     * Phase 3 (approver eligibility) — may this user act as the APPROVING manager for an offline POS approval?
+     * The ONE Edge approver marker is the Cloud-authoritative bootstrap flag `may_approve_pos` (edge-bootstrap-v8:
+     * active manager PIN AND active user on the Cloud; stored on the appliance in the Edge-only users.may_approve_pos
+     * column and refreshed with every config revision). It is NOT a permission: holding tenant.pos.void-kot-item (or
+     * any other permission) never makes a user an approver — the approver must ALSO hold the permission the approved
+     * action needs, which EdgeLocalAuthService::verifyManager checks separately.
+     */
+    public static function mayApprovePos(User $user): bool
+    {
+        return self::isActive($user) && (bool) $user->getAttribute('may_approve_pos');
+    }
 }

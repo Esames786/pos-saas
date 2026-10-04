@@ -72,7 +72,8 @@ trait EdgeLocalRuntimeFixture
      * Online routes — W0b), which is also what TenantProvisioner gives a NEW tenant's cashier role. It replaces the
      * former route-derived list of 10 (the LAB drift). Every seeded cashier holds the whole set — a test that models a
      * restricted operator revokes the one it studies (revokeEdgePermission). NOTE: the set includes
-     * tenant.pos.void-kot-item, which the Edge also treats as the offline manager-approval marker.
+     * tenant.pos.void-kot-item, which is the REQUESTER's void permission only — since Phase 3 (approver eligibility) a
+     * seeded cashier is NOT an offline approver; a test models the approving manager with markPosApprover().
      *
      * @return list<string>
      */
@@ -95,6 +96,17 @@ trait EdgeLocalRuntimeFixture
             'credential_type' => 'password', 'credential_version' => 1, 'status' => 'active',
             'enrolled_at' => now(), 'created_at' => now(), 'updated_at' => now(),
         ]);
+    }
+
+    /**
+     * Phase 3 (approver eligibility): mark a bootstrapped user as an eligible offline approver — what the Cloud exports
+     * as users[].may_approve_pos (active manager PIN AND active user, edge-bootstrap-v8) and the importer/applier store
+     * in the Edge-only users.may_approve_pos column. EdgeLocalAuthService::verifyManager requires it; the approver must
+     * ALSO hold the permission the approved action needs (seedEdgeCredential's template covers the cashier actions).
+     */
+    protected function markPosApprover(int $userId, bool $eligible = true): void
+    {
+        DB::connection('tenant')->table('users')->where('id', $userId)->update(['may_approve_pos' => $eligible ? 1 : 0]);
     }
 
     /** Grant a synced (spatie, tenant guard) permission directly to a user — idempotent across tests. */

@@ -76,7 +76,7 @@ class EdgeReturnAuthorityMySqlTest extends MySqlTenantTestCase
         $this->seedEdgeCredential($this->userId, $this->branchId, 1);
         $this->seedEdgeCredential($this->managerId, $this->branchId, 1);
         $this->grantEdgePermission($this->userId, 'tenant.sales-returns.store');
-        $this->grantEdgePermission($this->managerId, 'tenant.pos.void-kot-item'); // the Edge branch-manager marker
+        $this->markPosApprover($this->managerId); // Phase 3: the approver flag (eligibility), plus the template's tenant.sales-returns.store
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
         Auth::shouldUse('tenant');
         app(ShiftService::class)->open(Branch::on('tenant')->find($this->branchId), Terminal::on('tenant')->find($this->terminalId), $this->userId, 500.0);
@@ -273,10 +273,11 @@ class EdgeReturnAuthorityMySqlTest extends MySqlTenantTestCase
         } catch (ValidationException $e) {
             $this->assertStringContainsString('Manager approval is required', collect($e->errors())->flatten()->first());
         }
-        // An UNAUTHORIZED user (no branch-manager marker) cannot approve — the Edge identity path refuses.
+        // An UNAUTHORIZED user cannot approve — the Edge identity path refuses (Phase 3: the requesting cashier is both
+        // self-approving and without the approver eligibility flag; either alone is refused server-side).
         try {
             app(EdgeLocalPosService::class)->verifyManagerApproval((string) User::on('tenant')->find($this->userId)->employee_code, 'CashierPass1', 'sales_return', $this->user(), ['sales_order_id' => $sale->id, 'branch_id' => $this->branchId, 'refund_method' => 'cash', 'refund_amount' => 90.0]);
-            $this->fail('a cashier without the manager marker cannot approve a return');
+            $this->fail('a cashier without approver eligibility cannot approve a return (and never their own request)');
         } catch (\Throwable $e) {
             $this->assertTrue(true);
         }

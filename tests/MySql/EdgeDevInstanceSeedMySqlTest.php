@@ -90,6 +90,10 @@ class EdgeDevInstanceSeedMySqlTest extends MySqlTenantTestCase
         $this->bindEdgeLocalMeta($branchId, 1, 42, 'dev-edge-instance');
         $this->seedEdgeCredential($cashierId, $branchId, 1, 'CashierPass1');
         $this->seedEdgeCredential($managerId, $branchId, 1, 'MgrPass1');
+        // Phase 3 (approver eligibility): DEVMGR1 is the dev instance's eligible approver (what a Cloud manager PIN would
+        // export as may_approve_pos); DEVCASH1 holds void-kot-item but is NOT an approver — the browser proof's W07/W08
+        // approvals are entered as DEVMGR1.
+        $this->markPosApprover($managerId);
         // W-E (A6): DEVCASH1 holds the FULL `Cashier (Counter)` catalogue template (Return, Quick Report, Change terminal,
         // void-kot-item, table / shift / returns screens…) — seedEdgeCredential grants it; made explicit here so the dev
         // render always shows every cashier control. DEVMGR1 holds the whole catalogue (cashier + manager + finance).

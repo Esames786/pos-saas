@@ -106,6 +106,7 @@ class EdgeCashierDineInHttpMySqlTest extends MySqlTenantTestCase
         ])->id;
         $this->seedEdgeCredential($this->userId, $this->branchId, 1);
         $this->seedEdgeCredential($this->managerId, $this->branchId, 1, 'MgrPass1');
+        $this->markPosApprover($this->managerId); // Phase 3: eligibility is the bootstrap flag, not a permission
         $this->managerCode = (string) User::on('tenant')->find($this->managerId)->employee_code;
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
         Auth::shouldUse('tenant');

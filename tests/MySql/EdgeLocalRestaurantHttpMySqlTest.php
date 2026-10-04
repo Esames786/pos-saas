@@ -96,6 +96,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         $this->seedEdgeCredential($this->userId, $this->branchId, 1);
         // the manager's OWN Edge-local credential — manager_pins are deliberately NEVER seeded on Edge.
         $this->seedEdgeCredential($this->managerId, $this->branchId, 1, 'MgrPass1');
+        $this->markPosApprover($this->managerId); // Phase 3: eligibility is the bootstrap flag, not a permission
         $this->managerCode = (string) User::on('tenant')->find($this->managerId)->employee_code;
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
         Auth::shouldUse('tenant');
@@ -334,12 +335,20 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
             'payload' => ['sales_order_id' => $saleId, 'sales_order_line_id' => $lineId, 'quantity' => 1],
         ]);
 
-        // missing permission: enrolled Edge manager credential but NO tenant.pos.void-kot-item.
+        // Phase 3 (approver eligibility): a cashier holding the full template INCLUDING tenant.pos.void-kot-item but
+        // WITHOUT the bootstrap approver flag is not an approver (W-E Finding 1 closed).
         $noPermId = $this->makeUser(['default_branch_id' => $this->branchId, 'employee_code' => 'NOPERM' . Str::random(3)]);
         $this->seedEdgeCredential($noPermId, $this->branchId, 1, 'NoPermPass1');
-        // W-E: the fixture seeds the full cashier template (which includes void-kot-item) — model the non-approver explicitly.
+        $verify(User::on('tenant')->find($noPermId)->employee_code, 'NoPermPass1')->assertStatus(422)
+            ->assertJsonPath('message', 'This user is not an approving manager (no active manager PIN on the Cloud).');
+        // an ELIGIBLE approver who lacks the permission the action needs (void-kot-item for a KOT void) is refused too.
+        $this->markPosApprover($noPermId);
         $this->revokeEdgePermission($noPermId, 'tenant.pos.void-kot-item');
-        $verify(User::on('tenant')->find($noPermId)->employee_code, 'NoPermPass1')->assertStatus(422);
+        $verify(User::on('tenant')->find($noPermId)->employee_code, 'NoPermPass1')->assertStatus(422)
+            ->assertJsonPath('message', 'This user is not authorized to approve that action.');
+        // self-approval: the requesting cashier's OWN code + credential is refused server-side.
+        $verify(User::on('tenant')->find($this->userId)->employee_code, 'CashierPass1')->assertStatus(422)
+            ->assertJsonPath('message', 'You cannot approve your own request. Ask another manager to approve.');
 
         // wrong branch: manager belongs to another branch (no assignment here) — refused before permission.
         $otherBranch = $this->makeBranch();

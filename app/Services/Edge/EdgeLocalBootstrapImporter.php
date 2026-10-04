@@ -415,6 +415,9 @@ class EdgeLocalBootstrapImporter
             unset($row['roles'], $row['permissions']);
             // Never a Cloud password on the appliance.
             unset($row['password'], $row['remember_token']);
+            // Phase 3 (approver eligibility): the Cloud-authoritative boolean lands in the Edge-only users.may_approve_pos
+            // column (edge migration 2026_10_04_000001). Absent or false → NOT an approver (fail closed).
+            $row['may_approve_pos'] = ! empty($row['may_approve_pos']) ? 1 : 0;
             // allowed_order_types is a JSON column in the schema.
             if (isset($row['allowed_order_types']) && is_array($row['allowed_order_types'])) {
                 $row['allowed_order_types'] = json_encode($row['allowed_order_types']);

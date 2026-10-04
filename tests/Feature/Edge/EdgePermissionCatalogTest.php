@@ -138,7 +138,9 @@ class EdgePermissionCatalogTest extends TestCase
         ] as $required) {
             $this->assertContains($required, PosPermissionCatalog::cashier(), "the cashier template lost {$required}");
         }
-        $this->assertContains('tenant.pos.void-kot-item', PosPermissionCatalog::manager(), 'void-kot-item is the Edge manager-approval marker');
+        // Phase 3 (approver eligibility): NO permission is an approver marker — eligibility is the bootstrap flag may_approve_pos.
+        $this->assertNotContains('tenant.pos.void-kot-item', PosPermissionCatalog::manager(), 'void-kot-item is the requester void permission, never the approver marker');
+        $this->assertStringContainsString('may_approve_pos', (string) file_get_contents(base_path('app/Support/Pos/PosPermissionCatalog.php')), 'the catalogue documents the non-permission approver contract');
         $this->assertNotContains('tenant.shifts.view-amounts', PosPermissionCatalog::cashier(), 'a counter cashier must stay subject to blind count');
         foreach (PosPermissionCatalog::finance() as $finance) {
             $this->assertNotContains($finance, PosPermissionCatalog::cashier(), "finance permission {$finance} leaked into the cashier template");
