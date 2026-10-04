@@ -271,6 +271,15 @@
                     'printers' => $printers ?? collect(),
                     'permission' => 'tenant.catering.documents.estimate-print',
                 ])
+                {{-- CATERING-SEND-TO-PRINTER-1 — delivery ki fehrist, hamesha A4.
+                     Sirf `windows` printers pesh hote hain: thermal par ye
+                     kaghaz ban hi nahi sakta. --}}
+                @include('tenant.catering.partials.document-print', [
+                    'action' => url('/catering/documents/address-sheet/' . $event->id . '/print'),
+                    'label' => 'Address Sheet',
+                    'printers' => $documentPrinters ?? collect(),
+                    'permission' => 'tenant.catering.documents.address-sheet-print',
+                ])
             @endcan
         @endif
         @if($event->isCommerciallyOpen())
@@ -1230,9 +1239,21 @@
                             <td><a href="{{ url('/catering/production-releases/' . $release->id) }}">{{ $release->release_no }}</a></td>
                             <td>{{ $release->released_at->format('d M Y g:i A') }}</td>
                             <td><span class="badge bg-{{ $release->status === 'released' ? 'success' : 'danger' }}">{{ ucfirst($release->status) }}</span></td>
+                            {{-- CATERING-SEND-TO-PRINTER-1 — kitchen sheet seedha
+                                 A4/A5 printer par. Kagaz APP tay karti hai (A5);
+                                 operator ko chunna nahi parta — yehi is poore
+                                 kaam ki wajah thi. --}}
+                            <td class="text-end">
+                                @include('tenant.catering.partials.document-print', [
+                                    'action' => url('/catering/documents/kitchen-sheet/' . $release->id . '/print'),
+                                    'label' => 'Send to printer',
+                                    'printers' => $documentPrinters ?? collect(),
+                                    'permission' => 'tenant.catering.documents.kitchen-sheet-print',
+                                ])
+                            </td>
                         </tr>
                         @empty
-                        <tr><td class="text-center text-muted py-3">
+                        <tr><td colspan="4" class="text-center text-muted py-3">
                             Not released yet.
                             @if($current && $current->isDraft())
                                 <div class="fs-12">Finalize the quotation first.</div>

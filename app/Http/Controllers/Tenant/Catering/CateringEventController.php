@@ -281,7 +281,15 @@ class CateringEventController extends Controller
         // a customer document has no station.
         $printers = \App\Models\Tenant\Printer::where('is_active', true)
             ->orderBy('name')
-            ->get(['id', 'name', 'paper_size']);
+            ->get(['id', 'name', 'paper_size', 'printer_type']);
+
+        // CATERING-SEND-TO-PRINTER-1 — kitchen sheet aur address sheet SIRF
+        // A4/A5 (windows) printer par ja sakte hain. Alag fehrist is liye di
+        // ja rahi hai ke screen aisa printer pesh hi na kare jise POST mana
+        // kar dega — ek button jo dabane par hamesha error de, screen ka jhoot
+        // hai. Quotation dono par ja sakti hai (thermal par English slip),
+        // is liye wo poori fehrist rakhta hai.
+        $documentPrinters = $printers->where('printer_type', \App\Models\Tenant\Printer::TYPE_WINDOWS)->values();
 
         // KASHIF-CATERING-CUSTOMER-CREDIT-1: where this booking stands
         // financially, and how it got there. Computed once, by the one service
@@ -318,6 +326,7 @@ class CateringEventController extends Controller
             'costingReadiness' => $costingReadiness,
             'rateOffers' => $rateOffers,
             'printers' => $printers,
+            'documentPrinters' => $documentPrinters,
             'position' => $finance->position($cateringEvent),
             // CATERING-STATUS-ROLLBACK-1: worked out once, by the service that
             // enforces it, so the button can never offer a step the POST would

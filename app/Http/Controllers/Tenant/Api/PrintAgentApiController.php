@@ -130,23 +130,61 @@ class PrintAgentApiController extends Controller
     /** Ceiling on distinct printers served in one poll (a branch has a handful; guards a runaway loop). */
     private const MAX_PRINTERS_PER_POLL = 25;
 
+    /**
+     * CATERING-SEND-TO-PRINTER-1 — kya ye agent A4/A5 document chhap sakta hai?
+     *
+     * Agent khud batata hai: `GET /api/print-agent/pending?caps=document`.
+     * Jo agent ye nahi bhejta use document job milti hi nahi — aur ye default
+     * jaan-boojh kar "nahi" hai. Purane agents ko kuch install kiye baghair
+     * mehfooz rakhne ka yehi tareeqa hai; agar default "haan" hota to ek purana
+     * agent chup chaap aisa kaam utha leta jo wo kar hi nahi sakta.
+     */
+    private function agentHandlesDocuments(Request $request): bool
+    {
+        $caps = array_map('trim', explode(',', (string) $request->query('caps', '')));
+
+        return in_array('document', $caps, true);
+    }
+
     public function pending(Request $request): JsonResponse
     {
         $agent = $this->authenticate($request);
 
         $agent->update(['last_seen_at' => now(), 'last_error' => null]);
 
-        $jobs = DB::connection('tenant')->transaction(function () use ($agent) {
+        // CATERING-SEND-TO-PRINTER-1 — SALAHIYAT KA PEHRA.
+        //
+        // A4/A5 document wali job sirf us agent ko milti hai jo keh chuka ho
+        // ke wo use chhap sakta hai. Purana agent ye nahi bhejta, is liye use
+        // aisi job kabhi nahi milegi — aur yehi is poore kaam ki hifazat hai:
+        // restaurant ke chalte hue agents apni jagah par bilkul mehfooz hain.
+        //
+        // Agar ye pehra na hota to ek purana agent document job UTHA leta,
+        // ESC/POS samajh kar A4 laser par bhej deta, aur natija safhe bhar
+        // kachra — ya khamoshi se kuch bhi nahi, bina kisi ko pata chale.
+        $handlesDocuments = $this->agentHandlesDocuments($request);
+
+        $jobs = DB::connection('tenant')->transaction(function () use ($agent, $handlesDocuments) {
             // The eligibility filter, shared by the "which printers have work" probe and the per-printer
             // claim below. `deferred_until` excludes tickets the agent parked while their printer was
             // cooling — they come back the moment the defer window lapses, without ever being lost.
             $eligible = fn () => PrintJob::query()
                 ->where('print_status', 'queued')
                 ->whereNotNull('printer_id')
-                ->whereHas('printer', function ($q) {
+                ->whereHas('printer', function ($q) use ($handlesDocuments) {
                     $q->where('is_active', true)
-                      ->where('printer_type', 'network')
-                      ->whereNotNull('ip_address');
+                      ->where(function ($kind) use ($handlesDocuments) {
+                          // Purana, thermal raasta — ek harf nahi badla.
+                          $kind->where(fn ($thermal) => $thermal
+                              ->where('printer_type', 'network')
+                              ->whereNotNull('ip_address'));
+
+                          if ($handlesDocuments) {
+                              $kind->orWhere(fn ($doc) => $doc
+                                  ->where('printer_type', Printer::TYPE_WINDOWS)
+                                  ->whereNotNull('windows_printer_name'));
+                          }
+                      });
                 })
                 ->where(function ($q) use ($agent) {
                     if ($agent->branch_id) {
@@ -214,6 +252,10 @@ class PrintAgentApiController extends Controller
                     'ip_address'   => $job->printer?->ip_address,
                     'port'         => $job->printer?->port,
                     'paper_size'   => $job->printer?->paper_size,
+                    // CATERING-SEND-TO-PRINTER-1 — `windows` qisam ke printer ka
+                    // pata IP nahi, Windows me likha hua NAAM hai. Agent isi se
+                    // spooler ko pehchanta hai.
+                    'windows_printer_name' => $job->printer?->windows_printer_name,
                 ],
                 'raw_payload' => $job->raw_payload,
                 'payload'     => $job->payload,
