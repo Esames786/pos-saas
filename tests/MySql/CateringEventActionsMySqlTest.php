@@ -350,10 +350,16 @@ class CateringEventActionsMySqlTest extends MySqlTenantTestCase
         // Naap apne LTR khaane me hai, warna Urdu kaghaz par "KG 2" chhapta
         // hai. Markup samet jaancha ja raha hai: sirf "2 KG" dhoondne par ye
         // us din bhi hara rehta jis din rukh wapas toot jaye.
-        $this->assertStringContainsString('<span class="sup-tag" dir="ltr">PARTY <span dir="ltr">2 KG</span></span>', $sheet,
-            'kitchen sheet par: party kitna laayegi');
-        $this->assertStringContainsString('<span class="sup-tag" dir="ltr">OWN <span dir="ltr">3 KG</span></span>', $sheet,
-            'aur hamare store se kitna');
+        //
+        // KITCHEN-SHEET-STACKED-TAG-1 (4 Oct): label ab naap ke UPAR baithta
+        // hai, is liye dono alag block hain. Jo baat badli NAHI — aur jis par
+        // ye jaanch waqai kaat-ti hai — wo `dir="ltr"` hai.
+        $this->assertStringContainsString(
+            '<span class="sup-tag" dir="ltr"><span class="sup-lbl">PARTY</span><span class="sup-qty" dir="ltr">2 KG</span></span>',
+            $sheet, 'kitchen sheet par: party kitna laayegi');
+        $this->assertStringContainsString(
+            '<span class="sup-tag" dir="ltr"><span class="sup-lbl">OWN</span><span class="sup-qty" dir="ltr">3 KG</span></span>',
+            $sheet, 'aur hamare store se kitna');
         $this->assertStringNotContainsString('Chicken 5 KG (CAT 3, PAR 2)', $this->plainText($sheet),
             'magar maal ka naam aur poora jumla kitchen sheet par nahi — wo jagah khaata hai');
     }

@@ -151,6 +151,33 @@ class CateringEvent extends Model
     }
 
     /**
+     * CATERING-BALANCES-STATUS-FILTER-1 — status ka NAAM aur RANG, ek jagah.
+     *
+     * Ye dono bookings ki fehrist ke Blade me inline likhe hue the. Customer
+     * Catering Balances par bhi status dikhana tha, aur wahan in ki naql bana
+     * lena sab se aasan raasta tha — aur bilkul wohi ghalti jo isi hafte punch
+     * grid me pakri gayi thi, jahan ek faisla aath jagah likha hone ki wajah
+     * se ek jagah badla aur baqi saat wahin reh gaye. Model hi vocabulary ka
+     * malik hai, is liye jawab yahan rehta hai.
+     */
+    public static function statusLabel(string $status): string
+    {
+        return ucwords(str_replace('_', ' ', $status));
+    }
+
+    /** Bootstrap ka rang — wohi jo bookings ki fehrist pehle se dikhati hai. */
+    public static function statusBadge(string $status): string
+    {
+        return match ($status) {
+            self::STATUS_CONFIRMED, self::STATUS_PRODUCTION_READY, self::STATUS_RELEASED => 'success',
+            self::STATUS_QUOTED => 'info',
+            self::STATUS_COMPLETED, self::STATUS_CLOSED => 'dark',
+            self::STATUS_CANCELLED => 'danger',
+            default => 'secondary',
+        };
+    }
+
+    /**
      * CATERING-EDIT-AFTER-RELEASE-1 (1 Oct) — kya is booking ka SAUDA abhi
      * badla ja sakta hai.
      *

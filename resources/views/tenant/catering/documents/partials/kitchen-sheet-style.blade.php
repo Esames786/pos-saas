@@ -252,10 +252,20 @@
     .sup-tag {
         display: inline-block; background: #111827; color: #fff;
         font-size: 11px; font-weight: bold; letter-spacing: .04em;
-        padding: 0 5px; border-radius: 2px; border: 1px solid #111827;
-        white-space: nowrap;
+        padding: 1px 5px; border-radius: 2px; border: 1px solid #111827;
+        text-align: center; line-height: 1.25;
         -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
+    /* KITCHEN-SHEET-STACKED-TAG-1 (4 Oct) — malik: "party ke neeche 15 KG
+       aaye, lekin isi tarah dark me." Is liye `nowrap` dabbe se UTHA kar
+       us ke dono hisson par daala gaya: dabba ab do satron ka hai, magar
+       "15 KG" khud beech me se nahi tootta.
+
+       Bulandi ka khatra yaad rahe — row ki bulandi us ke sab se lambe
+       khane se banti hai (dekho neeche `td.done` par likhi hui baat: 18px
+       ka tick box akela hi safhe se do satrein kha gaya tha). Isi liye is
+       badlav ke baad safhe dobara naape gaye, andaza nahi lagaya gaya. */
+    .sup-tag .sup-lbl, .sup-tag .sup-qty { display: block; white-space: nowrap; }
     .supply-line { font-size: 11px; font-weight: bold; white-space: nowrap; line-height: 1.3; }
     /* Tick box apne khaane me. 12px — 18px par ye AKELA hi har row ko lamba
        kar deta tha, kyunke row ki bulandi us ke sab se lambe khane se banti

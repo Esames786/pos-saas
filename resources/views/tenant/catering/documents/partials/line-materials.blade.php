@@ -112,7 +112,7 @@
                  kehne ko kuch nahi. --}}
             <div class="supply-line" dir="ltr">{{ $part[1] }}</div>
         @else
-            <div class="supply-line"><span class="sup-tag" dir="ltr">{{ $part[0] }} <span dir="ltr">{{ $part[1] }}</span></span></div>
+            <div class="supply-line"><span class="sup-tag" dir="ltr"><span class="sup-lbl">{{ $part[0] }}</span><span class="sup-qty" dir="ltr">{{ $part[1] }}</span></span></div>
         @endif
     @endforeach
 @else
