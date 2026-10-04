@@ -49,9 +49,9 @@ class CateringCustomerBalanceService
      *
      * @return Collection<int, array>
      */
-    public function rows(?int $branchId = null, ?string $search = null): Collection
+    public function rows(?int $branchId = null, ?string $search = null, array $statuses = []): Collection
     {
-        $events = $this->eventsQuery($branchId)
+        $events = $this->eventsQuery($branchId, $statuses)
             ->whereNotNull('customer_id')
             ->get();
 
@@ -73,6 +73,16 @@ class CateringCustomerBalanceService
                     'phone' => $customer?->phone,
                     'events' => $forCustomer->count(),
                     'last_event_date' => $forCustomer->max('event_date'),
+                    // CATERING-BALANCES-STATUS-FILTER-1 — ek graahak ke kai
+                    // event ho sakte hain aur har ek apni haalat me, is liye
+                    // yahan EK status nahi likha ja sakta. Ginti likhi jati
+                    // hai: "2 Confirmed · 1 Draft". Ek hi status chun lena
+                    // (misal sab se naya) baqi bookings ko chhupa deta.
+                    'status_counts' => $forCustomer->groupBy('status')
+                        ->map->count()
+                        ->sortKeysUsing(fn ($a, $b) => array_search($a, CateringEvent::STATUSES, true)
+                            <=> array_search($b, CateringEvent::STATUSES, true))
+                        ->all(),
                 ] + $totals;
             })
             ->when($search, fn (Collection $rows) => $rows->filter(
@@ -94,9 +104,9 @@ class CateringCustomerBalanceService
      *
      * @return array{count: int, balance: float, credit: float}
      */
-    public function unlinked(?int $branchId = null): array
+    public function unlinked(?int $branchId = null, array $statuses = []): array
     {
-        $events = $this->eventsQuery($branchId)->whereNull('customer_id')->get();
+        $events = $this->eventsQuery($branchId, $statuses)->whereNull('customer_id')->get();
         $totals = $this->totals($events);
 
         return [
@@ -111,9 +121,9 @@ class CateringCustomerBalanceService
      *
      * @return array{customer: Customer, events: Collection, totals: array}
      */
-    public function forCustomer(Customer $customer, ?int $branchId = null): array
+    public function forCustomer(Customer $customer, ?int $branchId = null, array $statuses = []): array
     {
-        $events = $this->eventsQuery($branchId)
+        $events = $this->eventsQuery($branchId, $statuses)
             ->where('customer_id', $customer->id)
             ->orderByDesc('event_date')
             ->get()
@@ -190,7 +200,7 @@ class CateringCustomerBalanceService
      * Ek hi jagah rakhi gayi hai taake fehrist, unlinked aur tafseel teenon
      * BILKUL wohi data dekhen — warna teen screenein teen adad keh sakti hain.
      */
-    private function eventsQuery(?int $branchId)
+    private function eventsQuery(?int $branchId, array $statuses = [])
     {
         return CateringEvent::query()
             ->with([
@@ -199,7 +209,17 @@ class CateringCustomerBalanceService
             ])
             ->withSum('advances', 'amount')
             ->withSum('refunds', 'amount')
-            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId));
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            // CATERING-BALANCES-STATUS-FILTER-1 — filter EVENTS par lagta hai,
+            // graahak par nahi. Jis graahak ka koi event is haalat me nahi wo
+            // fehrist se khud nikal jata hai; aur jo bachte hain, un ka paisa
+            // SIRF in events ka hota hai.
+            //
+            // Ye baat chhupayi nahi ja sakti: "Balance 9,59,597" parhne wala
+            // samajhta hai ke graahak par itna baqi hai, jabke filter lage
+            // hone par wo sirf chhante hue hisse ka hota hai. Is liye screen
+            // filter lagte hi ye saaf likhti hai.
+            ->when($statuses !== [], fn ($q) => $q->whereIn('status', $statuses));
     }
 
     /**
