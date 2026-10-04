@@ -80,11 +80,16 @@ Tests
 
 ## 4. Online vs Edge differences noticed
 
-1. **Online does not require the approver to hold the action's permission** — any active manager-PIN holder approves any
-   action (original Cloud semantics, unchanged here; the coordinator's brief asked for self-approval + deactivated only
-   on the Cloud). Edge now requires both. Pinned as a documented difference in
-   `CloudManagerApprovalEligibilityMySqlTest::test_approver_lacking_action_permission_is_accepted_online_but_refused_on_edge_documented_difference`
-   — tightening Online is an owner decision.
+1. **Closed by the coordinator (owner §1: "approver must still possess the permission required for the action being
+   approved")** — the Cloud creator `ManagerApprovalService::createApprovalForAuthenticatedManager` now refuses an approver
+   who lacks the action's permission with the SAME message as the Edge (`This user is not authorized to approve that
+   action.`), driven by ONE map `ManagerApprovalService::ACTION_PERMISSIONS` (the Edge's `MANAGER_ACTION_PERMISSIONS` is an
+   alias of it). A Cloud action type not in the map carries no extra permission requirement (the Edge fails closed on it).
+   Test: `CloudManagerApprovalEligibilityMySqlTest::test_approver_lacking_action_permission_is_refused` (void refused
+   without `tenant.pos.void-kot-item`, manual discount refused without `tenant.pos.store`, both accepted once granted, map
+   identity asserted). Online behaviour change: a manager-PIN holder without the action's permission can no longer approve
+   that action on the Online POS — the Cashier (Counter) template does not grant PINs, and real managers hold these
+   permissions through their role.
 2. Online identifies the approver by the PIN alone (the requesting cashier never enters an employee code), so "wrong
    credential" and "no eligibility" collapse into one generic `Invalid manager PIN.`; Edge distinguishes them in the
    audit `detail` but keeps the generic message for credential failures.
@@ -115,4 +120,5 @@ Tests
   service the controller wraps (422 `{ok:false, message}` for every exception, unchanged).
 * No UI change: the shared cashier view keeps showing `message` from the 422; the Edge "Manager Approval" prompt does
   not pre-hide the cashier's own code (the server rule is the authority, as required).
-* Owner decision pending: whether Online should also require the approver to hold the action's permission (§4.1).
+* ~~Owner decision pending: whether Online should also require the approver to hold the action's permission~~ — done on the
+  Cloud as well (§4.1), per the owner's §1 rule list.

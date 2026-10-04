@@ -1323,13 +1323,7 @@ class EdgeLocalPosService
      * EdgeLocalAuthService::verifyManager). tenant.pos.void-kot-item is no longer a blanket approver marker: it is
      * required only where the action itself is a KOT void. Unknown actions fail closed.
      */
-    private const MANAGER_ACTION_PERMISSIONS = [
-        'manual_discount' => 'tenant.pos.store',                 // the discount lands on a POS sale
-        'void_kot_item' => 'tenant.pos.void-kot-item',           // KotCancellationService demands it of the requester too
-        'void_kot_items' => 'tenant.pos.void-kot-item',
-        'cancel_held_order' => 'tenant.held-sales.cancel',       // EdgeLocalHeldSalesController@cancelHeldSale gate
-        'sales_return' => 'tenant.sales-returns.store',          // F1 RETURN-MANAGER-APPROVAL: the return itself
-    ];
+    private const MANAGER_ACTION_PERMISSIONS = \App\Services\Sales\ManagerApprovalService::ACTION_PERMISSIONS; // ONE map, Cloud + Edge
 
     /**
      * Manager re-auth on the appliance: the manager authenticates with THEIR OWN Edge-local credential

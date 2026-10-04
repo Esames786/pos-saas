@@ -64,6 +64,13 @@ class SalesReturnManagerApprovalMySqlTest extends MySqlTenantTestCase
             'user_id' => $this->managerId, 'pin_hash' => bcrypt('4321'),
             'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
+        // Phase 3 (owner §1): the approver must hold the permission the approved action needs — the return itself.
+        // Spatie manages its own relation + cache rows, so grant through the model (raw model_has_permissions rows are not seen).
+        DB::connection('tenant')->table('cache')->where('key', 'like', '%spatie.permission.cache%')->delete();
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        User::on('tenant')->findOrFail($this->managerId)->givePermissionTo(
+            \Spatie\Permission\Models\Permission::on('tenant')->firstOrCreate(['name' => 'tenant.sales-returns.store', 'guard_name' => 'tenant'])
+        );
 
         $product = $this->makeProduct($this->makeCategory(['name' => 'Food', 'slug' => 'f-' . Str::random(4)]));
         $this->saleId = $this->makeSale($this->branchId, [

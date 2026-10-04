@@ -41,6 +41,9 @@ class CloudManagerApprovalEligibilityMySqlTest extends MySqlTenantTestCase
         DB::connection('tenant')->table('manager_pins')->insert([
             'user_id' => $this->managerId, 'pin_hash' => Hash::make('2468'), 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
+        // Owner §1 (Cloud too): the approver must hold the permission the approved ACTION needs — the manager of these
+        // tests approves KOT voids, so they hold the void permission (ManagerApprovalService::ACTION_PERMISSIONS).
+        $this->grant($this->managerId, 'tenant.pos.void-kot-item');
     }
 
     private function svc(): ManagerApprovalService
@@ -53,13 +56,14 @@ class CloudManagerApprovalEligibilityMySqlTest extends MySqlTenantTestCase
         return ['sales_order_id' => $this->saleId, 'sales_order_line_id' => 7, 'quantity' => 1];
     }
 
+    /** Spatie manages its own relation + cache rows: grant through the model (a raw model_has_permissions row is not seen). */
     private function grant(int $userId, string $permission): void
     {
-        $c = DB::connection('tenant');
-        $permId = (int) ($c->table('permissions')->where('name', $permission)->where('guard_name', 'tenant')->value('id')
-            ?: $c->table('permissions')->insertGetId(['name' => $permission, 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now()]));
-        $c->table('model_has_permissions')->insertOrIgnore(['permission_id' => $permId, 'model_type' => User::class, 'model_id' => $userId]);
+        DB::connection('tenant')->table('cache')->where('key', 'like', '%spatie.permission.cache%')->delete();
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        User::on('tenant')->findOrFail($userId)->givePermissionTo(
+            \Spatie\Permission\Models\Permission::on('tenant')->firstOrCreate(['name' => $permission, 'guard_name' => 'tenant'])
+        );
     }
 
     /** Owner case 1 — a valid manager (active PIN, active user) approves another cashier's request. */
@@ -100,16 +104,39 @@ class CloudManagerApprovalEligibilityMySqlTest extends MySqlTenantTestCase
     }
 
     /**
-     * Owner case 3 — ONLINE-vs-EDGE DIFFERENCE, documented: Online requires NO action permission of the approver (any
-     * active manager-PIN holder approves any action — the original Cloud semantics, unchanged by Phase 3), whereas the
-     * Edge additionally requires the permission the action needs (EdgeLocalPosService::MANAGER_ACTION_PERMISSIONS).
-     * Tightening Online is an owner decision; this test pins the current Online behaviour so a change is deliberate.
+     * Owner case 3 — the approver must ALSO hold the permission the approved action needs, on the Cloud as on the Edge
+     * (ONE map: ManagerApprovalService::ACTION_PERMISSIONS). A manager PIN is identity, not authority over the action.
      */
-    public function test_approver_lacking_action_permission_is_accepted_online_but_refused_on_edge_documented_difference(): void
+    public function test_approver_lacking_action_permission_is_refused(): void
     {
-        $this->assertFalse(User::on('tenant')->find($this->managerId)->can('tenant.pos.void-kot-item'), 'the Online manager holds no void permission');
-        $approval = $this->svc()->verifyPin('2468', 'void_kot_item', $this->cashierId, $this->payload());
-        $this->assertSame($this->managerId, (int) $approval->approved_by_user_id, 'Online: PIN identity is sufficient (documented difference)');
+        $c = DB::connection('tenant');
+        $c->table('model_has_permissions')->where('model_id', $this->managerId)->delete();
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->assertFalse(User::on('tenant')->find($this->managerId)->can('tenant.pos.void-kot-item'), 'the manager holds no void permission');
+
+        foreach (['void_kot_item', 'void_kot_items'] as $action) {
+            try {
+                $this->svc()->verifyPin('2468', $action, $this->cashierId, $this->payload());
+                $this->fail("a manager without the action permission must not approve [{$action}]");
+            } catch (\RuntimeException $e) {
+                $this->assertSame(ManagerApprovalService::NOT_AUTHORIZED_FOR_ACTION, $e->getMessage());
+            }
+        }
+        $this->assertSame(0, ManagerApproval::on('tenant')->count(), 'nothing minted');
+
+        // the SAME manager approves a manual discount only with tenant.pos.store, and the void again once re-granted
+        try {
+            $this->svc()->verifyPin('2468', 'manual_discount', $this->cashierId, $this->payload());
+            $this->fail('manual_discount needs tenant.pos.store');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(ManagerApprovalService::NOT_AUTHORIZED_FOR_ACTION, $e->getMessage());
+        }
+        $this->grant($this->managerId, 'tenant.pos.store');
+        $this->assertSame($this->managerId, (int) $this->svc()->verifyPin('2468', 'manual_discount', $this->cashierId, $this->payload())->approved_by_user_id);
+        $this->grant($this->managerId, 'tenant.pos.void-kot-item');
+        $this->assertSame($this->managerId, (int) $this->svc()->verifyPin('2468', 'void_kot_item', $this->cashierId, $this->payload())->approved_by_user_id);
+        // the map is ONE for both runtimes
+        $this->assertSame(ManagerApprovalService::ACTION_PERMISSIONS, (new \ReflectionClass(\App\Services\Edge\EdgeLocalPosService::class))->getConstant('MANAGER_ACTION_PERMISSIONS'));
     }
 
     /** Owner case 4 — the manager's own PIN cannot approve the manager's own request (server-side refusal). */
