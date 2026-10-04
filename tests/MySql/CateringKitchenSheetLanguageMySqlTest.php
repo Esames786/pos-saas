@@ -219,8 +219,15 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
         // Poora tukra EK gehre dabbe me — malik: "[PARTY 18 KG] ese pora
         // background dark". Naap phir bhi apne LTR khaane me, warna Urdu
         // safhe par "KG 84" ulta chhapta hai.
-        $this->assertStringContainsString('<span class="sup-tag" dir="ltr">PARTY <span dir="ltr">84 KG</span></span>', $html,
-            'label aur naap ek hi gehre dabbe me hon');
+        //
+        // KITCHEN-SHEET-STACKED-TAG-1 (4 Oct): malik ne tarteeb badlwai —
+        // "party ke neeche 15 KG aaye, lekin isi tarah dark me". Is liye ab
+        // label aur naap DO alag block hain. Jo baat NAHI badli, aur jo is
+        // jaanch ki asal baat hai, wo ye hai: dono ek hi gehre dabbe ke
+        // ANDAR hain, aur naap par apna `dir="ltr"` qayam hai.
+        $this->assertStringContainsString(
+            '<span class="sup-tag" dir="ltr"><span class="sup-lbl">PARTY</span><span class="sup-qty" dir="ltr">84 KG</span></span>',
+            $html, 'label aur naap ek hi gehre dabbe me hon — label upar, naap neeche');
 
         // KITCHEN-SHEET-SUPPLY-TAG-1 (29 Sep): label ab Latin me hai, Urdu
         // parche par bhi — malik ki misaal bhi Latin me thi aur purane
@@ -266,7 +273,15 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
             't' => fn ($en, $ur) => $ur,
         ])->render();
 
-        $this->assertStringContainsString('<span class="sup-tag" dir="ltr">PARTY <span dir="ltr">18 KG</span></span>', $html);
+        $this->assertStringContainsString(
+            '<span class="sup-tag" dir="ltr"><span class="sup-lbl">PARTY</span><span class="sup-qty" dir="ltr">18 KG</span></span>',
+            $html);
+
+        // Aur purani ek-satar wali shakl WAPAS na aaye. Ulti jaanch is liye
+        // ke seedhi jaanch us din bhi hari rehti jis din dono shaklein saath
+        // chhapne lagen.
+        $this->assertStringNotContainsString('dir="ltr">PARTY <span', $html,
+            'label aur naap ek hi satar me wapas jur gaye');
     }
 
     /**
