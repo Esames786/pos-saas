@@ -6,7 +6,7 @@
 
 @if($eventNotFound ?? false)
     {{-- Said out loud, because an empty table looks exactly like a filter that worked. --}}
-    <div class="alert alert-warning">No event <strong>{{ $filters['event_no'] }}</strong> found.</div>
+    <div class="alert alert-warning">No event matching <strong>{{ $filters['event_no'] }}</strong> found.</div>
 @endif
 
         <div class="page-header">
@@ -51,13 +51,12 @@
                         <label class="form-label mb-1">To</label>
                         <input type="date" name="date_to" class="form-control" value="{{ $filters['date_to'] ?? '' }}">
                     </div>
-                    {{-- JOURNAL-EVENT-REF-1: EXACT event number. The number is the key; a partial
-                         like 0002 would match dozens of events. --}}
+                    {{-- JOURNAL-EVENT-REF-1: full or partial event number (owner's call, 2026-10-04). --}}
                     <div class="col-sm-2">
                         <label class="form-label mb-1">Event #</label>
                         <input type="text" name="event_no" class="form-control"
                                placeholder="EV-…" value="{{ $filters['event_no'] ?? '' }}">
-                        <div class="form-text">Every line of that event.</div>
+                        <div class="form-text">Full or part of the number.</div>
                     </div>
                     <div class="col-sm-1">
                         <button type="submit" class="btn btn-primary w-100">Go</button>

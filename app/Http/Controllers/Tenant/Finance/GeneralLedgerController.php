@@ -29,7 +29,7 @@ class GeneralLedgerController extends Controller
 
         $account = $accountId ? Account::find($accountId) : null;
 
-        // JOURNAL-EVENT-REF-1: an exact Event # narrows the ledger to that event's whole trail.
+        // JOURNAL-EVENT-REF-1: an Event # (whole or partial) narrows the ledger to the matching events' trails.
         // With no account chosen that is every line of the event across all accounts; the running
         // balance stays account-only, as it always was.
         $eventNo = trim((string) $request->input('event_no', ''));
