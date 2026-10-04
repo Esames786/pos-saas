@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Tenant\Finance;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\Account;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\CashBankAccount;
 use App\Models\Tenant\CashBankAccountTransaction;
 use App\Models\Tenant\ExpenseCategory;
 use App\Models\Tenant\ExpenseVoucher;
+use App\Models\Tenant\ExpenseVoucherLine;
 use App\Services\Finance\ExpenseService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -22,8 +24,90 @@ class ExpenseVoucherController extends Controller
 
     public function index(Request $request)
     {
-        $query = ExpenseVoucher::query()->with(['branch', 'cashBankAccount']);
+        // EXPENSE-LIST-CATEGORY-FILTER-1: "how much went to 6810-2 Supervisor Fee from 1 to 10 Oct?"
+        // had no screen that could answer it. Dates, Category (the account) and Sub-category (the
+        // expense category) now narrow the list, and a total under it answers the question.
+        $request->validate([
+            'date_from' => ['nullable', 'date'],
+            'date_to'   => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
 
+        $categories = ExpenseCategory::query()->with('account:id,code,name')
+            ->orderBy('code')->orderBy('name')->get(['id', 'account_id', 'code', 'name', 'is_active']);
+
+        // Category = the account the LINE was posted to, not the one its category points at today:
+        // syncLines() copies it on save, and if a category is later re-linked, old vouchers must
+        // still show — and filter by — the account their journal actually hit. So the dropdown
+        // offers every account any line or any category uses.
+        $accountIds = ExpenseVoucherLine::query()->whereNotNull('account_id')->distinct()->pluck('account_id')
+            ->merge($categories->pluck('account_id'))->filter()->unique()->values();
+        $accounts = Account::whereIn('id', $accountIds)->orderBy('code')->get(['id', 'code', 'name']);
+
+        // An id nobody has (a stale bookmark, a hand-typed URL) is ignored, not an error.
+        $accountId  = $accounts->contains('id', (int) $request->input('account_id')) ? (int) $request->input('account_id') : null;
+        $categoryId = $categories->contains('id', (int) $request->input('expense_category_id')) ? (int) $request->input('expense_category_id') : null;
+        $byCategory = $accountId !== null || $categoryId !== null;
+
+        $lineFilter = function ($q) use ($accountId, $categoryId) {
+            if ($accountId !== null) {
+                $q->where('account_id', $accountId);
+            }
+            if ($categoryId !== null) {
+                $q->where('expense_category_id', $categoryId);
+            }
+        };
+
+        $query = ExpenseVoucher::query();
+        $this->applyListFilters($query, $request);
+        if ($byCategory) {
+            $query->whereHas('lines', $lineFilter);
+        }
+
+        // Counts per status straight from the database — what the filters match, not what the
+        // page happens to show.
+        $statusCounts = (clone $query)->reorder()->selectRaw('status, COUNT(*) as n')->groupBy('status')
+            ->pluck('n', 'status')->map(fn ($n) => (int) $n);
+
+        // The TOTAL is posted money only: a void was reversed and a draft was never paid. It is
+        // summed by the database over every matching line, never from the rendered rows — the list
+        // stops at 500 vouchers and a page total would silently drop the rest. line_total (tax
+        // included) is what posting debits to the line's account, so it agrees with the ledger.
+        $totalQuery = ExpenseVoucherLine::query()
+            ->whereHas('voucher', function ($v) use ($request) {
+                $this->applyListFilters($v, $request);
+                $v->where('status', 'posted');
+            });
+        $lineFilter($totalQuery);
+        $postedTotal = (float) $totalQuery->sum('line_total');
+
+        $vouchers = $query
+            ->with(['branch', 'cashBankAccount', 'lines.category:id,code,name', 'lines.account:id,code,name'])
+            // A voucher can hold several categories (EXP-20261002-0006 = 500 stationery + 11,920
+            // marketing). Filtered by one, the row shows that category's share beside the voucher
+            // total, so nobody thinks the voucher shrank.
+            ->withSum(['lines as matched_amount' => $lineFilter], 'line_total')
+            ->orderByDesc('expense_date')->orderByDesc('id')->limit(500)->get();
+
+        return view('tenant.finance.expenses.index', [
+            'vouchers'     => $vouchers,
+            'branches'     => Branch::orderBy('name')->get(['id', 'name']),
+            'statuses'     => ExpenseVoucher::STATUSES,
+            'accounts'     => $accounts,
+            'categories'   => $categories,
+            'byCategory'   => $byCategory,
+            'statusCounts' => $statusCounts,
+            'postedTotal'  => $postedTotal,
+            'filters'      => $request->only(['status', 'branch_id', 'q', 'date_from', 'date_to'])
+                + ['account_id' => $accountId, 'expense_category_id' => $categoryId],
+        ]);
+    }
+
+    /**
+     * Status, Branch, Search and the dates — shared by the list, its counts and its total, so the
+     * three can never disagree about which vouchers the filters match.
+     */
+    private function applyListFilters($query, Request $request): void
+    {
         if ($request->filled('status') && in_array($request->status, ExpenseVoucher::STATUSES, true)) {
             $query->where('status', $request->status);
         }
@@ -39,12 +123,13 @@ class ExpenseVoucherController extends Controller
             });
         }
 
-        return view('tenant.finance.expenses.index', [
-            'vouchers' => $query->orderByDesc('expense_date')->orderByDesc('id')->limit(500)->get(),
-            'branches' => Branch::orderBy('name')->get(['id', 'name']),
-            'statuses' => ExpenseVoucher::STATUSES,
-            'filters'  => $request->only(['status', 'branch_id', 'q']),
-        ]);
+        // expense_date — the Date column the list shows. payment_date is not a filter.
+        if ($request->filled('date_from')) {
+            $query->whereDate('expense_date', '>=', $request->input('date_from'));
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('expense_date', '<=', $request->input('date_to'));
+        }
     }
 
     public function create()
