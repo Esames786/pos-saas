@@ -8,6 +8,7 @@ use App\Models\Tenant\CateringProductionRelease;
 use App\Models\Tenant\CateringSetting;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\PrintJob;
+use App\Services\Catering\CateringProductionReleaseService;
 use App\Services\Printing\PrintJobFactory;
 use Illuminate\Database\QueryException;
 use RuntimeException;
@@ -84,6 +85,55 @@ class CateringDocumentQueueService
             referenceId: (int) $release->id,
             referenceNo: $release->release_no,
             branchId: $release->event?->branch_id,
+            userId: $userId,
+            isReprint: $isReprint,
+        );
+    }
+
+    /**
+     * Kitchen sheet, EVENT se — wohi parcha jo preview safhe par dikhta hai.
+     *
+     * Ye `queueKitchenSheet()` se alag is liye hai ke release se PEHLE bhi
+     * parcha chhapta hai, aur us waqt wo ek PREVIEW hota hai jo kahin mehfooz
+     * nahi — us ka koi id hi nahi hota. Preview safha khud yehi faisla karta
+     * hai (jaari shuda release, warna preview), aur yahan wohi faisla dohraya
+     * jata hai taake jo screen par dikhe wohi printer par jaye.
+     *
+     * Reference EVENT par rakha jata hai, release par nahi: preview ka koi id
+     * nahi hota, aur idempotency ko kisi aise adad par khara karna jo mojood
+     * hi na ho, do kaghaz nikalwa deta.
+     */
+    public function queueKitchenSheetForEvent(
+        CateringEvent $event,
+        Printer $printer,
+        ?int $userId = null,
+        bool $isReprint = false,
+    ): PrintJob {
+        $event->loadMissing(['productionReleases.lines', 'productionReleases.event']);
+
+        $release = $event->productionReleases
+            ->where('status', 'released')
+            ->sortByDesc('released_at')
+            ->first()
+            ?? app(CateringProductionReleaseService::class)->preview($event);
+
+        if (! $release->relationLoaded('event')) {
+            $release->setRelation('event', $event);
+        }
+
+        return $this->queue(
+            kind: self::KIND_KITCHEN_SHEET,
+            printer: $printer,
+            html: view('tenant.catering.documents.kitchen-sheet', [
+                'release' => $release,
+                'lang' => $this->language(),
+                'businessName' => $this->businessName(),
+            ])->render(),
+            paper: CateringSetting::tenantDefault()->kitchen_sheet_paper ?: 'a5_portrait',
+            referenceType: 'catering_event',
+            referenceId: (int) $event->id,
+            referenceNo: $event->event_no,
+            branchId: $event->branch_id,
             userId: $userId,
             isReprint: $isReprint,
         );

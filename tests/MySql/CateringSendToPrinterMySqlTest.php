@@ -193,11 +193,11 @@ class CateringSendToPrinterMySqlTest extends MySqlTenantTestCase
         [$agent, $token] = $this->pairedAgent('Office PC');
 
         // PURANA agent — koi caps nahi bhejta.
-        $old = $this->pendingFor($agent, $token, '');
+        $old = $this->pendingFor($agent, $token, null);
         $this->assertCount(0, $old, 'purane agent ko document job nahi milni chahiye');
 
         // NAYA agent — probe zinda hai.
-        $new = $this->pendingFor($agent, $token, '?caps=document');
+        $new = $this->pendingFor($agent, $token, 'document');
         $this->assertCount(1, $new, 'naye agent ko milni chahiye — warna pehra bemani hai');
         $this->assertSame(CateringDocumentQueueService::DOCUMENT_TYPE, $new[0]['document_type']);
         $this->assertSame('HP LaserJet P2055dn', $new[0]['printer']['windows_printer_name']);
@@ -216,7 +216,7 @@ class CateringSendToPrinterMySqlTest extends MySqlTenantTestCase
 
         [$agent, $token] = $this->pairedAgent('Kitchen PC');
 
-        $this->assertCount(1, $this->pendingFor($agent, $token, ''),
+        $this->assertCount(1, $this->pendingFor($agent, $token, null),
             'purana thermal raasta bina kisi caps ke chalta rehna chahiye');
     }
 
@@ -244,6 +244,101 @@ class CateringSendToPrinterMySqlTest extends MySqlTenantTestCase
             $event->currentEstimate()->first(),
             $this->windowsPrinter(['windows_printer_name' => null])
         );
+    }
+
+    /**
+     * DONO CHALEIN — purana haath wala Print, aur naya Send to network.
+     *
+     * Malik: "old manual print aur send to network dono work karain."
+     *
+     * Ye pehra sirf naye button ka nahi, PURANE ka hai. Nayi cheez lagate waqt
+     * purani ko hata dena sab se aam ghalti hai, aur yahan wo khaas tor par
+     * mehnga hoti: jis din network wala raasta ruke — agent band, PC off,
+     * printer ka naam badla — us din haath wala Print hi wo cheez hai jo kaam
+     * chalati hai. Wo bhi na ho to kaghaz nikalne ka koi raasta hi nahi bachta.
+     *
+     * Aakhri jaanch ULTI hai aur sab se ahem: kagaz ka koi khaana HONA HI NAHI
+     * chahiye. Malik ki asal shikayat yehi thi — "bar bar A4 / A5 select karna
+     * parta hai." Agar kal kisi ne wo chunao wapas laga diya, to feature apna
+     * maqsad kho dega aur dekhne me theek lagta rahega.
+     */
+    public function test_both_the_manual_print_and_send_to_network_are_offered(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $this->windowsPrinter();
+
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'SN'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        $controller = app(\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class);
+        $req = fn () => \Illuminate\Http\Request::create('/x', 'GET', ['ids' => [$event->id]]);
+
+        foreach ([
+            'quotations' => $controller->quotations($req(), app(\App\Services\Catering\CateringFinancialPositionService::class)),
+            'kitchen sheets' => $controller->kitchenSheets($req()),
+            'address labels' => $controller->addressSheet($req()),
+        ] as $name => $response) {
+            $html = $response->render();
+
+            $this->assertStringContainsString('window.print()', $html,
+                "{$name}: haath wala Print button rehna chahiye");
+            $this->assertStringContainsString('Send to network', $html,
+                "{$name}: network wala button bhi hona chahiye");
+            $this->assertStringContainsString('name="printer_id"', $html,
+                "{$name}: printer chunne ka khaana");
+            $this->assertStringNotContainsString('name="paper', $html,
+                "{$name}: kagaz ka koi khaana NAHI — document khud jaanta hai");
+        }
+    }
+
+    /**
+     * JO KAGHAZ PRINTER KO JATA HAI US ME TOOLBAR NAHI HONA CHAHIYE.
+     *
+     * Ye masla asal me pesh aaya tha. Preview ke safhe par "Send to network"
+     * ka control lagaya, aur wohi document `CateringDocumentQueueService` bhi
+     * render karti hai — agent ke liye HTML jama karte waqt. Us raaste par
+     * `ids` hoti hi nahi, aur natija do kharabiyan thin:
+     *
+     *   • chhapne wale kaghaz par "No A4/A5 printer yet" likha nikal aata
+     *   • `@error` ko `$errors` chahiye, jo request ke bahar mojood nahi —
+     *     500 (`CateringKitchenSheetPreviewMySqlTest` ne yehi pakra)
+     *
+     * Ab partial `ids` ke baghair kuch nikalta hi nahi. Pehra yahan is liye
+     * hai ke ye kharabi dikhti nahi — kaghaz nikal aata hai, bas us par ek
+     * fazool satar hoti hai, aur koi shikayat tab tak nahi aati jab tak graahak
+     * usay na parh le.
+     *
+     * `window.print()` par yahan jaanch JAAN-BOOJH KAR NAHI hai, aur pehli
+     * koshish me maine ghalti se laga di thi: quotation ke document ka apna
+     * print-bar us me hota hai, magar wo `@media print { display: none }` ke
+     * peeche hai — aur Chrome `--print-to-pdf` print media hi lagata hai, is
+     * liye kaghaz par wo kabhi nahi aata. Us par rok lagana ek be-zarar cheez
+     * ko kharabi samajh lena hota.
+     */
+    public function test_the_queued_document_carries_no_toolbar(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $printer = $this->windowsPrinter();
+
+        foreach ([
+            'quotation' => fn () => $this->queue->queueQuotation($event->currentEstimate()->first(), $printer),
+            'kitchen sheet' => fn () => $this->queue->queueKitchenSheetForEvent($event, $printer),
+            'address label' => fn () => $this->queue->queueAddressSheet($event, $printer),
+        ] as $name => $make) {
+            $html = (string) $make()->raw_payload;
+
+            $this->assertStringNotContainsString('Send to network', $html,
+                "{$name}: bheja hua kaghaz toolbar nahi le kar ja sakta");
+            $this->assertStringNotContainsString('No A4/A5 printer', $html,
+                "{$name}: aur na hi koi mashwara jo graahak ke liye hai hi nahi");
+            $this->assertNotSame('', trim($html), "{$name}: magar kaghaz khali bhi na ho");
+        }
     }
 
     /** Do baar dabane se do kaghaz nahi — wohi job wapas aati hai. */
@@ -274,11 +369,14 @@ class CateringSendToPrinterMySqlTest extends MySqlTenantTestCase
      * hota: pehra asli soorat me `caps` ko parhta hai ya nahi, ye sirf poora
      * raasta chala kar hi maloom hota hai.
      */
-    private function pendingFor(\App\Models\Tenant\PrintAgent $agent, string $token, string $query): array
+    private function pendingFor(\App\Models\Tenant\PrintAgent $agent, string $token, ?string $caps): array
     {
-        $request = \Illuminate\Http\Request::create('/api/print-agent/pending'.$query, 'GET');
+        $request = \Illuminate\Http\Request::create('/api/print-agent/pending', 'GET');
         $request->headers->set('X-Print-Agent-Code', $agent->agent_code);
         $request->headers->set('X-Print-Agent-Token', $token);
+        if ($caps !== null) {
+            $request->headers->set('X-Print-Agent-Caps', $caps);
+        }
 
         $response = app(\App\Http\Controllers\Tenant\Api\PrintAgentApiController::class)->pending($request);
 

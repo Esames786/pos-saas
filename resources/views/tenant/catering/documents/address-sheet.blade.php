@@ -82,9 +82,10 @@
 </head>
 <body>
     <div class="toolbar">
-        <button onclick="window.print()" style="padding:6px 18px;font-size:14px;cursor:pointer">
+        <button onclick="window.print()" class="doc-btn">
             Print {{ $events->count() }} {{ \Illuminate\Support\Str::plural('label', $events->count()) }}
         </button>
+            @include('tenant.catering.documents.partials.send-to-network', ['kind' => 'address_sheet'])
         <div style="color:#6b7280;font-size:12px;margin-top:4px">
             {{ $businessName }} · printed {{ app(\App\Support\TenantClock::class)->now()->format('d M Y g:i A') }}
             · cut along the dashed lines

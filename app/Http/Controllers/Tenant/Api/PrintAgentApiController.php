@@ -133,15 +133,23 @@ class PrintAgentApiController extends Controller
     /**
      * CATERING-SEND-TO-PRINTER-1 — kya ye agent A4/A5 document chhap sakta hai?
      *
-     * Agent khud batata hai: `GET /api/print-agent/pending?caps=document`.
+     * Agent khud batata hai, HEADER me: `X-Print-Agent-Caps: document`.
      * Jo agent ye nahi bhejta use document job milti hi nahi — aur ye default
      * jaan-boojh kar "nahi" hai. Purane agents ko kuch install kiye baghair
      * mehfooz rakhne ka yehi tareeqa hai; agar default "haan" hota to ek purana
      * agent chup chaap aisa kaam utha leta jo wo kar hi nahi sakta.
+     *
+     * Pehle ye query param tha (`?caps=document`), aur agent ke apne isolation
+     * test ne usi waqt pakar liya: us ka naqli server
+     * `url.endsWith('/api/print-agent/pending')` par match karta tha, aur query
+     * lagte hi tickets milna band ho gaye. Sabaq sirf test ka nahi — URL
+     * badalna wo cheez hai jise raaste me baithi har cheez dekhti hai. Agent ki
+     * salahiyat resource ka hissa hai hi nahi, wo CLIENT ke baare me maloomat
+     * hai; us ki jagah header hai aur URL jyon ka tyon rehta hai.
      */
     private function agentHandlesDocuments(Request $request): bool
     {
-        $caps = array_map('trim', explode(',', (string) $request->query('caps', '')));
+        $caps = array_map('trim', explode(',', (string) $request->header('X-Print-Agent-Caps', '')));
 
         return in_array('document', $caps, true);
     }

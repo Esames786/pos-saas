@@ -193,26 +193,6 @@ class CateringDocumentController extends Controller
                 ->queueEstimate($cateringEstimate, $printer, $lang, $request->user()?->id, $reprint));
     }
 
-    /**
-     * CATERING-SEND-TO-PRINTER-1 — kitchen sheet seedha printer par.
-     *
-     * Ye SIRF A4/A5 (windows) printer par jata hai, aur jaan-boojh kar: kitchen
-     * sheet ka poora matlab us ki Urdu aur us ka layout hai. Thermal par wo
-     * dono mojood hi nahi ho sakte, is liye wahan ye peshkash hoti hi nahi —
-     * is ke liye alag thermal "production ticket" pehle se mojood hai.
-     */
-    public function printKitchenSheet(Request $request, CateringProductionRelease $cateringProductionRelease)
-    {
-        return $this->queueDocument($request, fn (Printer $printer, string $lang, bool $reprint) => app(CateringDocumentQueueService::class)
-            ->queueKitchenSheet($cateringProductionRelease, $printer, $request->user()?->id, $reprint));
-    }
-
-    /** Address sheet — delivery ki fehrist, hamesha A4. */
-    public function printAddressSheet(Request $request, CateringEvent $cateringEvent)
-    {
-        return $this->queueDocument($request, fn (Printer $printer, string $lang, bool $reprint) => app(CateringDocumentQueueService::class)
-            ->queueAddressSheet($cateringEvent, $printer, $request->user()?->id, $reprint));
-    }
 
     public function printFinalInvoice(Request $request, CateringFinalInvoice $cateringFinalInvoice)
     {

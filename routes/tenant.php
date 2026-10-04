@@ -986,18 +986,16 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::post('/catering/documents/estimate/{cateringEstimate}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printEstimate'])->name('tenant.catering.documents.estimate-print');
                     Route::post('/catering/documents/final-invoice/{cateringFinalInvoice}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printFinalInvoice'])->name('tenant.catering.documents.final-invoice-print');
 
-                    // CATERING-SEND-TO-PRINTER-1 (5 Oct) — kitchen sheet aur
-                    // address sheet seedha A4/A5 printer par.
-                    //
-                    // Ye dono SIRF `windows` qisam ke printer par jate hain:
-                    // kitchen sheet ka poora matlab us ki Urdu aur layout hai,
-                    // aur thermal par dono mojood hi nahi ho sakte.
+                    // CATERING-SEND-TO-PRINTER-1 (5 Oct) — "Send to network",
+                    // wahin se jahan se operator Print dabata hai: preview ka
+                    // safha. EK route teenon kaghazon ke liye — teen alag routes
+                    // ka matlab teen alag permissions hota, jo har tenant par
+                    // har role ko haath se deni partin.
                     //
                     // 🚨 NAYA ROUTE = NAYI PERMISSION. `deploy.sh` ye sirf Owner
                     // ko degi; Manager/custom roles ko additively deni paregi,
                     // phir `system:clear-tenant-permission-cache`.
-                    Route::post('/catering/documents/kitchen-sheet/{cateringProductionRelease}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printKitchenSheet'])->name('tenant.catering.documents.kitchen-sheet-print');
-                    Route::post('/catering/documents/address-sheet/{cateringEvent}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printAddressSheet'])->name('tenant.catering.documents.address-sheet-print');
+                    Route::post('/catering/documents/bulk/print', [\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class, 'printToNetwork'])->name('tenant.catering.documents.bulk-print');
 
                     // CATERING-CUSTOMER-BALANCES-1 (28 Sep) — graahak ka hisaab,
                     // booking ke bahar se. Read-only: paisa yahan se nahi liya
