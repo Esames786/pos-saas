@@ -75,6 +75,8 @@ class Shift extends Model
             'cash_variance' => 'decimal:2',
             'opened_at' => 'datetime',
             'closed_at' => 'datetime',
+            // POS-REMINDER-PAUSE-1: set = this terminal's Reminder slips are paused until the shift closes.
+            'reminders_paused_at' => 'datetime',
             'business_date' => 'date:Y-m-d',
         ];
     }
@@ -87,6 +89,11 @@ class Shift extends Model
     public function terminal()
     {
         return $this->belongsTo(Terminal::class);
+    }
+
+    public function remindersPausedBy()
+    {
+        return $this->belongsTo(User::class, 'reminders_paused_by_user_id');
     }
 
     public function openedBy()
