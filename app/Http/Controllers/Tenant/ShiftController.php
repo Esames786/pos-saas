@@ -10,6 +10,7 @@ use App\Exceptions\ShiftException;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
+use App\Services\Printing\ReminderPauseService;
 use App\Services\Sales\ShiftService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -215,7 +216,38 @@ class ShiftController extends Controller
             'opened_at'      => $shift ? app(\App\Support\TenantClock::class)->format($shift->opened_at, 'd M H:i', $shift->timezone_name) : null,
             'server_epoch_ms' => (int) round(microtime(true) * 1000),
             'open_url'       => url('/shifts/open'),
+            // POS-REMINDER-PAUSE-1: the Reminder switch rides on the badge the POS already polls
+            // (terminal change + every 5 min), so another counter's toggle shows up here too.
+            'reminder'       => app(ReminderPauseService::class)->statusFor($terminal, auth('tenant')->user()),
         ]);
+    }
+
+    /**
+     * POS-REMINDER-PAUSE-1 — pause / resume this terminal's Reminder slips until its shift closes.
+     *
+     * `tenant.api.pos.*` is exempt from route permissions, so the permission is checked here, the
+     * same way Quick Report Send does it.
+     */
+    public function posReminderPause(Request $request, ReminderPauseService $pause)
+    {
+        $data = $request->validate([
+            'terminal_id' => ['required', 'integer'],
+            'paused'      => ['required', 'boolean'],
+        ]);
+
+        $user = auth('tenant')->user();
+        abort_unless($user?->can(ReminderPauseService::PERMISSION), 403, 'You are not allowed to pause Reminder slips.');
+
+        $terminal = Terminal::findOrFail($data['terminal_id']);
+        app(\App\Services\Security\UserDataScope::class)->assertPosSelection($user, (int) $terminal->branch_id, (int) $terminal->id);
+
+        try {
+            $pause->setPaused($terminal, $user, (bool) $data['paused']);
+        } catch (ShiftException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['reminder' => $pause->statusFor($terminal, $user)]);
     }
 
     public function show(Shift $shift)

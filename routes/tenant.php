@@ -594,6 +594,9 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/api/pos/table-board', [POSController::class, 'tableBoard'])->name('tenant.api.pos.table-board');
                 Route::get('/api/pos/recent-sales', [POSController::class, 'recentSales'])->name('tenant.api.pos.recent-sales');
                 Route::get('/api/pos/shift-status', [ShiftController::class, 'posStatus'])->name('tenant.api.pos.shift-status');
+                // POS-REMINDER-PAUSE-1: pause/resume this terminal's Reminder slips until its shift closes.
+                // Exempt prefix (tenant.api.pos) — the controller checks tenant.pos.pause-reminders.
+                Route::post('/api/pos/reminder-pause', [ShiftController::class, 'posReminderPause'])->name('tenant.api.pos.reminder-pause');
                 // SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: server-authoritative clock resync source for
                 // the live header/POS clock (protects a long-running session from server time drift).
                 Route::get('/api/server-time', fn () => response()->json([

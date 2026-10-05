@@ -92,6 +92,11 @@ class PosScreenRendersHttpMySqlTest extends MySqlTenantTestCase
 
         $this->assertSame(200, $res->getStatusCode(),
             'the POS screen must load; got ' . $res->getStatusCode() . ' — ' . $this->whyRefused($res));
+
+        // POS-REMINDER-PAUSE-1: the Reminder switch sits in the context row and talks to its endpoint.
+        $html = $res->getContent();
+        $this->assertStringContainsString('id="pos-reminder-toggle"', $html);
+        $this->assertStringContainsString('/api/pos/reminder-pause', $html);
     }
 
     /**
