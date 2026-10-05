@@ -163,3 +163,90 @@ MSYS_NO_PATHCONV=1 POS_SHOT_PASS="$(tr -d '\r\n' < /c/Users/Dell/BingooEdgeLab/s
 ```
 Options: `--only W03,W05`, `--out <dir>`, `--headed`, `--settle <ms>`, `--customer-query <text>`. README section added in
 `tools/edge-browser-proof/README.md`.
+
+## Harness v2 (Team P, 4 Oct 2026) — real 17/17 verdicts: every verdict = the HTTP outcome + a DOM confirmation
+
+Scope: ONLY `tools/edge-browser-proof/shared-pos-workflows.mjs` (+ its README section) changed. Nothing under `app/`, `resources/`,
+`routes/`, `tests/` was edited by this team; nothing committed. Loopback instances only (EDGE `127.0.0.1:8095` dev Branch Server on
+`bingoo_edge_devtest_local`, re-seeded with `tools/edge-dev-instance/seed.sh` before the final run; ONLINE `edgehomelab.localhost:9704`
+disposable clone `pos_devonline_tenant_edge`). `:9701/:9702/:9703`, the LAB appliance and production were not touched; secrets were
+read from `C:\Users\Dell\BingooEdgeLab\secrets\{cashier,approver}.pass` into the environment and never printed.
+
+### H1. Harness defects fixed (what was wrong → what the verdict checks now)
+
+| # | Defect in the v1 harness | v2 rule |
+|---|---|---|
+| 1 | W14 (Online) `form button[type=submit]` picked a hidden `layouts.app` chrome form → click timeout although the split page was 200 and filled | the button is located INSIDE `form[action*="split-bill"]` (same on both runtimes); the form's native `confirm()` is auto-accepted; verdict = split POST < 400 AND window.top back on the POS AND both parts listed (open-orders 200 with ≥ 2 orders AND the rendered "Held Orders - Table …" cards) |
+| 2 | W16 (Online) same chrome-form problem on `/shifts/{id}/close` | button inside `form[action*="/close"]`; verdict = close POST (route `shiftCloseStore`) 302 off the close page, no `.alert-danger` refusal, POS badge "No open shift" |
+| 3 | W16 could never pass as sequenced: the SHARED `ShiftService` refuses "Settle all open work — N held order(s)" and the run leaves held orders (W06/W07/W14 + W08's hold) | new pre-step `settleOpenWork()` THROUGH THE UI: each held order in the Held list → Recall → Review & Pay → cash → complete; W07's KOT order → Cancel from the held list (Swal reason select → approver prompt: Edge = DEVMGR1 code + credential, Online = manager PIN, via the shared `managerApprove` helper); tables opened with nothing on them → board "Close Table" + confirm. Every action is its own step with the HTTP status; orders left by earlier runs are tagged `created_this_run=false`. Then "open work cleared" = held list empty AND no `[data-session-id]` tile on the board. No DB access. |
+| 4a | W06 "table session closed after settle" was checked but the settle was never performed (the harness clicked Continue Table, slept 800 ms, missed the "Open Orders Found" popup, found an empty cart and gave up) | after the merge probe: Continue Table on the merged session → wait for the `open-orders` GET → "Open Orders Found" → click the check → cart rows > 0 → Review & Pay → cash → complete; repeated while the session still lists checks (2 rounds: the merged second-table check, then the original). Verdict = each settle 200 AND the session tile gone AND the moved-to table offering Open Table + Reserve again |
+| 4b | W06/W07 "KOT job queued: null" on Online — the KOT path was matched with `endsWith('/kot')`, true for Edge `/sales/{sale}/kot` but never for Online `/printing/jobs/kot/{sale}`; on Edge the fact was read from the HTTP log, which carries no `jobs` | the KOT POST is matched by a regex built from the runtime's own `kotQueue` route template, armed BEFORE the Hold click (auto-KOT terminals fire it without a prompt) and awaited for the full response window when a KOT is expected; the fact is read from the response's `jobs` (Edge `{jobs, message, reminder}`, Online `{jobs, reminder}`): PASS = 2xx AND ≥ 1 job; the detail records job_id / job_no / status / printer / line count |
+| 5 | W07 "line removed from cart: cart_rows 1" — the cart legitimately keeps the other line | the voided line is checked BY PRODUCT NAME (read from the row of the "Cancel kitchen item" button before the void): gone afterwards, every other line still present, count − 1; the re-hold must answer 2xx for the SAME order with `lines.length` = remaining cart lines (Edge answers `void_print_jobs`, Online `cancel_kot_jobs` — recorded) |
+| 6 | W13 "board shows the table reserved" failed on Edge although the screenshot showed "F4 Reserved · Proof Guest · Details" — the harness read the board 900 ms after the reserve POST, before the view's `refreshTableBoard()` re-render had come back from the single-threaded dev server | poll (≤ 10 s) for the tile of that table id with status chip "Reserved" AND the `[data-reservation-details]` control (the detail records the tile: chip, reserved name, controls); after the unreserve, poll for Open Table + Reserve again |
+| 7 | other heuristics that disagreed with the request log | W02: the shift badge / "Open shift" link are polled (≤ 15 s / 10 s) instead of read once (an empty badge right after a re-seed was a timing miss while the page 200 / POST 302 / "Shift open" were real); W14 held-orders list: 45 s response window + rendered cards (the 20 s `waitForResponse` timed out on the dev server while the cards were already on screen) |
+
+### H2. Verdicts — final full runs (both runtimes, one harness version)
+
+Final runs on the Stage B tree (HEAD 180af6d, 6 Oct 2026; coordinator re-run after the second session cut) — one harness version:
+
+| W | Edge (127.0.0.1:8095, fresh seed) | Online (disposable clone :9704) |
+|---|---|---|
+| W01 | PASS | PASS |
+| W02 | PASS | PASS |
+| W03 / W03M | PASS / PASS | PASS / PASS |
+| W04 | PASS | PASS |
+| W05 | PASS | PASS |
+| W06 (incl. KOT round 2, move, merge, settle after merge) | PASS | PASS |
+| W07 | PASS | PASS |
+| W08 | PASS | PASS (re-run `proof-final\online-w08-w16` after the clone approver received `tenant.pos.store` / `tenant.held-sales.cancel` / `tenant.sales-returns.store` — the Phase 3 §1 rule now requires the approver to hold the action's permission on the Cloud too; the clone's approver had only `tenant.pos.void-kot-item`, like the LAB seed) |
+| W09 | PASS | PASS |
+| W10 | PASS | PASS |
+| W11 | PASS | PASS |
+| W12 | PASS | PASS |
+| W13 | PASS | PASS |
+| W14 | PASS | PASS |
+| W15 | EXPECTED-DIFFERENCE (customerCreate off: disabled + hint) | PASS |
+| W16 | PASS | PASS (re-run `proof-final\online-w16-clearall` with `--clear-all-open-work`: the held order + empty table an EARLIER run left behind were cleared through the UI first — the clone cannot be reset) |
+| W17 | PASS | PASS |
+
+Totals: EDGE 17/17 PASS (+ W15 expected difference) · ONLINE 17/17 PASS. Evidence: `C:\Users\Dell\BingooEdgeLab\evidence\phase3\proof-final\{edge,online,online-w08-w16,online-w16-clearall}\`.
+
+### H3. Findings (not harness matters; reported, not worked around)
+
+**F1 — Edge approver eligibility now needs `users.may_approve_pos` (another team's Phase 3 change); a dev DB seeded before that
+column existed refuses every approval.** Development run `…\proof-dev\edge-dev1`, W07: request
+`POST /edge/local/pos/manager-approvals/verify` (JSON `manager_employee_code=DEVMGR1`, `manager_credential=…`,
+`action_type=void_kot_item`, `payload={…}`) → **422** `{"ok":false,"message":"This user is not an approving manager (no active
+manager PIN on the Cloud)."}` (`EdgeLocalAuthService::verifyManager` → `EdgeUserAuthz::mayApprovePos` reads `users.may_approve_pos`,
+added by the untracked migration `database/migrations/edge/2026_10_04_000001_add_may_approve_pos_to_users_on_edge.php`; the running
+dev DB had no such column; `manager_pins` = 0 rows there, as always). After `tools/edge-dev-instance/seed.sh` (which applies the
+migration and marks DEVMGR1 `may_approve_pos = 1`, DEVCASH1 `0`) the same request answers **200** `{ok:true, approval_id, approval_no,
+approval_uuid}` for the W07 void and the W16 held-order cancel. Online (same action, PIN): 200 `{ok, approval_id, approval_no}`.
+Consequence for the LAB: an appliance whose bootstrap predates v8 (no `may_approve_pos`) has NO eligible approver until the next
+bootstrap / config refresh — a pre-update checklist item, not a code defect.
+
+**F2 — response-shape difference on the hold-after-void:** Edge `POST /edge/local/pos/held-sales` answers `{void_print_jobs: [], sale_id,
+sale_no, sale_uuid, status, is_draft, grand_total, restaurant_table_session_id, lines}`; Online `POST /held-sales` answers `{sale_id,
+sale_no, is_draft, restaurant_table_session_id, lines}` — no `cancel_kot_jobs` key on the hold path (Online emits `cancel_kot_jobs` only
+from `HeldSaleController::cancel`, which the shared view reads in `submitHeldOrderCancellation`). The view tolerates both. Recorded, no action.
+
+**F3 — dev-server latency is a proof-tool concern, not a product one:** the single-threaded `php artisan serve` Edge instance answered the
+first KOT of a fresh sale and the table `open-orders` GET in > 6 s / > 20 s while the browser kept polling `print-jobs`; v2 waits on the
+actual responses with wider bounded windows (30 s KOT, 45 s open-orders) instead of fixed sleeps.
+
+### H4. Evidence, re-run, row counts
+
+Final runs: `C:\Users\Dell\BingooEdgeLab\evidence\phase3\proof-dev\edge\` and `…\proof-dev\online\` (`report.json` + one PNG per step;
+every POS request/response status + `ok/code/message`, toasts, popups, console errors). Development passes that led to the fixes:
+`…\proof-dev\edge-dev1` (KOT null on round 1 + F1 refusal), `…\proof-dev\edge-dev2-w16` (fresh seed: W06/W07/W14/W16 PASS, W02 badge
+timing), `…\proof-dev\online-dev1` (W06/W07/W13/W14 PASS), `…\proof-dev\online-dev2-w16` (W16 PASS: 1 cancel + 9 pre-existing settles).
+Re-run (Git Bash, from `tools/edge-browser-proof`; `node` = `D:/laragon2/bin/nodejs/node-v20.20.1-win-x64/node.exe`; secrets from the files, never typed):
+```
+bash tools/edge-dev-instance/seed.sh   # clean Edge dev DB (refuses any other DB; :8095 keeps running)
+MSYS_NO_PATHCONV=1 POS_SHOT_PASS=CashierPass1 POS_MGR_PASS=MgrPass1 node shared-pos-workflows.mjs --mode edge --base-url http://127.0.0.1:8095 --user DEVCASH1 --manager-user DEVMGR1 --out 'C:\Users\Dell\BingooEdgeLab\evidence\phase3\proof-dev\edge'
+MSYS_NO_PATHCONV=1 POS_SHOT_PASS="$(tr -d '\r\n' < /c/Users/Dell/BingooEdgeLab/secrets/cashier.pass)" POS_MGR_PASS="$(tr -d '\r\n' < /c/Users/Dell/BingooEdgeLab/secrets/approver.pass)" node shared-pos-workflows.mjs --mode online --base-url http://edgehomelab.localhost:9704 --user lab.cashier@edgehomelab.test --out 'C:\Users\Dell\BingooEdgeLab\evidence\phase3\proof-dev\online'
+```
+(`--only W01,W16` proves the shift-close pre-step alone; W01 is always needed for the login.)
+
+Row counts after the final runs (6 Oct 2026): `pos_lab_tenant_edge.sales_orders` **5** (unchanged — the LAB tenant was never touched);
+`pos_devonline_tenant_edge.sales_orders` 35 (0 held, 0 open shifts after W16); `bingoo_edge_devtest_local.sales_orders` 12 (fresh seed + the Edge run).
