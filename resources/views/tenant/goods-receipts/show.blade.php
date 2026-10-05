@@ -131,6 +131,30 @@ The stock it brought in will be taken back out. The receipt stays on record as v
                 </tr>
             @endforeach
             </tbody>
+            {{-- GRN-CHARGES-VISIBLE-1: the receipt's own total, charge included, where the eye ends up. --}}
+            @php
+                $grnGoods = $goodsReceipt->lines->sum('line_total');
+                $grnCharges = (float) ($goodsReceipt->extra_charges ?? 0);
+            @endphp
+            <tfoot class="table-light">
+                <tr>
+                    <td colspan="6" class="text-end">Goods</td>
+                    <td>{{ number_format($grnGoods, 2) }}</td>
+                </tr>
+                @if($grnCharges > 0)
+                <tr>
+                    <td colspan="6" class="text-end">
+                        Extra Charges
+                        @if($goodsReceipt->extra_charges_note)<span class="text-muted">&mdash; {{ $goodsReceipt->extra_charges_note }}</span>@endif
+                    </td>
+                    <td>{{ number_format($grnCharges, 2) }}</td>
+                </tr>
+                @endif
+                <tr class="fw-bold">
+                    <td colspan="6" class="text-end">Total</td>
+                    <td id="grn-total">{{ number_format($grnGoods + $grnCharges, 2) }}</td>
+                </tr>
+            </tfoot>
         </table>
     </div>
 </div>
