@@ -12,13 +12,43 @@
     <div class="text-end">
         {{-- ?v= busts any cached copy: a shop that downloaded before was being handed the OLD
              installer by its browser, so a shipped printing fix never reached the counter. --}}
-        <a href="{{ url('/print/agents/download/windows') . '?version=' . $agentVersion . '&v=' . $agentVersion }}" class="btn btn-outline-primary">
+        {{-- AGENT-VERSION-TRUTH-1 (4 Oct) — button wohi pesh kare jo wo DE sakta hai.
+
+             Pehle link hamesha `?version={$agentVersion}` maangta tha, yani wo
+             version jo SOURCE me likhi hai. Shelf par wo build na hone par
+             controller chup chaap purani file de deta tha — aur us par nayi
+             version ka naam bhi laga deta tha. Natija: screen ne 2.6.0 ka ailan
+             kiya, client ke PC par setup khula, aur us ke sar par 2.5.0 likha
+             tha. --}}
+        @php $stn = $shippedVersion ?? null; @endphp
+        <a href="{{ url('/print/agents/download/windows') . ($stn ? '?version='.$stn.'&v='.$stn : '') }}"
+           class="btn btn-outline-primary">
             <i class="ti ti-brand-windows me-1"></i>Download Windows Agent
         </a>
         <div class="small text-muted mt-1">
-            Latest version <strong>{{ $agentVersion }}</strong> — the agent prints this in its log on start;
-            if it shows anything older, the download was cached.
+            @if($stn)
+                Latest build <strong>{{ $stn }}</strong> — the agent prints this in its log on start;
+                if it shows anything older, the download was cached.
+            @else
+                No installer is on the shelf yet.
+            @endif
         </div>
+
+        {{-- Jab source aur shelf alag hon, wo farq LIKHA jata hai. Yehi khamoshi
+             thi jis ne galat installer client ke PC tak pahunchaya. --}}
+        @if($stn !== $agentVersion)
+            <div class="alert alert-warning py-2 px-3 mt-2 small text-start">
+                <i class="ti ti-alert-triangle me-1"></i>
+                The code on this server is <strong>{{ $agentVersion }}</strong>, but the newest
+                installer on the shelf is <strong>{{ $stn ?? 'none' }}</strong>. The installer is
+                built separately, so until it is rebuilt this button gives
+                {{ $stn ?? 'nothing' }} — not {{ $agentVersion }}.
+                <a class="ms-1" href="{{ url('/print/agents/download/windows') . '?raw=1&v=' . $agentVersion }}">
+                    Download {{ $agentVersion }} as a plain .exe instead
+                </a>
+                <span class="text-muted">(then run <code>install-service.ps1</code> beside it).</span>
+            </div>
+        @endif
         @if(!empty($agentBuilds) && count($agentBuilds) > 1)
         {{-- Version history: keep the previous compatible builds available so a shop can roll back if
              a new build misbehaves. The counter's current agent keeps running until it reinstalls. --}}
