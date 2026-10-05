@@ -558,13 +558,52 @@ async function printDocumentOnWindows(job) {
             throw new Error('Chrome ne PDF banayi hi nahi.');
         }
 
-        await runExe(tool.exe, tool.args(pdfPath, targetName), 120000);
+        if (tool) {
+            await runExe(tool.exe, tool.args(pdfPath, targetName), 120000);
+        } else {
+            // Koi maaruf utility nahi mili — Windows ka apna "PrintTo" aazmao.
+            //
+            // Ye is liye hai ke malik ko us PC par kuch install na karna pare.
+            // Jahan koi bhi PDF handler `printto` darj karta ho (Acrobat, aur
+            // aksar Edge), wahan ye bina kisi nayi cheez ke chal jata hai.
+            //
+            // Bharosa iss par poora NAHI kiya ja sakta: har Windows par wo verb
+            // darj nahi hota. Is liye ye aakhri koshish hai, pehli nahi — aur
+            // nakami par neeche saaf likha hai ke karna kya hai.
+            await printViaWindowsVerb(pdfPath, targetName);
+        }
     } finally {
         // Asthai files har soorat me jati hain — kamyabi par bhi, nakami par bhi.
         for (const f of [htmlPath, pdfPath]) {
             try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* chhor do */ }
         }
     }
+}
+
+/**
+ * Windows ka apna "PrintTo" — jo bhi app PDF ka handler hai, usi se.
+ *
+ * `-Wait` lazmi hai: us ke baghair PowerShell foran laut aata hai aur hum
+ * neeche wali `finally` me PDF mita dete hain — spool hone se PEHLE. Natija
+ * aadha chhapa hua kaghaz, ya kuch bhi nahi.
+ *
+ * Us ke baad bhi thora thehrna parta hai, kyunke kuch handler spooler ko kaam
+ * dene ke baad apne aap band ho jate hain. Teen second us ka sasta ilaj hai.
+ */
+function printViaWindowsVerb(pdfFile, printerName) {
+    const ps = [
+        '-NoProfile', '-NonInteractive', '-Command',
+        `$p = Start-Process -FilePath '${pdfFile.replace(/'/g, "''")}' -Verb PrintTo `
+        + `-ArgumentList '"${printerName.replace(/'/g, "''")}"' -PassThru -ErrorAction Stop; `
+        + '$p | Wait-Process -Timeout 90 -ErrorAction SilentlyContinue; Start-Sleep -Seconds 3',
+    ];
+
+    return runExe('powershell.exe', ps, 120000).catch((err) => {
+        throw new Error(
+            'PDF ko printer par bhejne ka koi raasta nahi mila. Is PC par SumatraPDF install karein '
+            + '(ya SumatraPDF.exe agent ke folder me rakh dein). Asli wajah: ' + err.message
+        );
+    });
 }
 
 async function markPrinted(jobId) {

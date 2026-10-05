@@ -31,7 +31,30 @@ class PrintAgentController extends Controller
             // The installable builds on the shelf (latest first) so a shop can roll back if a new
             // build misbehaves — the current agent (old version) keeps running regardless.
             'agentBuilds'  => $this->availableAgentBuilds(),
+            // AGENT-VERSION-TRUTH-1 (4 Oct) — jo wo WAQAI de sakti hai.
+            //
+            // `agentVersion` source file se parhi jati hai; installer alag se
+            // banta hai. Jis din dono bichhar gaye, screen ne 2.6.0 ka ailan
+            // kiya aur haath me 2.5.0 diya — aur wo galat installer client ke
+            // PC tak pahunch gaya. Ab screen wohi pesh karti hai jo shelf par
+            // waqai mojood hai, aur farq ho to saaf keh deti hai.
+            'shippedVersion' => $this->shippedVersion(),
         ]);
+    }
+
+    /**
+     * Shelf par sab se nayi build — yani wo version jo is screen se WAQAI mil
+     * sakta hai. Shelf khali ho to `null`.
+     *
+     * Ye `agentVersion()` se jaan-boojh kar ALAG hai: wo batata hai ke source
+     * kya kehta hai, ye batata hai ke haath me kya aayega. Dono ko ek samajh
+     * lena hi wo ghalti thi jo client ke PC tak pahunchi.
+     */
+    public function shippedVersion(): ?string
+    {
+        $builds = $this->availableAgentBuilds();
+
+        return $builds === [] ? null : (string) ($builds[0]['version'] ?? null);
     }
 
     /** The compatible agent builds on the download shelf, latest first (kept to the most recent 3). */
@@ -249,9 +272,35 @@ class PrintAgentController extends Controller
             }
         }
 
+        // AGENT-VERSION-TRUTH-1 — seedha binary, bina installer ke.
+        //
+        // Ye us surat ke liye hai jab shelf par naya Setup.exe na ho (Inno Setup
+        // har machine par nahi hota) magar binary ban chuka ho. Saath wali
+        // `install-service.ps1` chala kar wohi kaam ho jata hai jo installer
+        // karta hai.
+        if ($request->query('raw') === '1') {
+            $rawExe = $base . '/dist/BingooPrintAgent.exe';
+            if (is_file($rawExe)) {
+                $response = response()->download($rawExe, 'BingooPrintAgent-'.$this->agentVersion().'.exe');
+                $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+                $response->headers->set('X-Agent-Version', $this->agentVersion());
+
+                return $response;
+            }
+        }
+
         $setupExe = $base . '/dist/BingooPrintAgent-Setup.exe';
         if (is_file($setupExe)) {
-            return $this->serveAgentExe($setupExe, $this->agentVersion());
+            // 4 Oct: yahan pehle `$this->agentVersion()` jata tha — yani is
+            // FILE par SOURCE ki version ka thappa lag jata tha. Natija: shelf
+            // par 2.6.0 na hone par ye purani 2.5.0 wali file
+            // "BingooPrintAgent-Setup-2.6.0.exe" ban kar aur `X-Agent-Version:
+            // 2.6.0` le kar client ke PC par pahunch gayi. Setup ke sar par
+            // 2.5.0 likha tha, aur wo ek hi jagah thi jahan sach bacha tha.
+            //
+            // Is file ki version hum JAANTE hi nahi — us ka naam shelf par hota
+            // hai, is par nahi. Is liye ab koi thappa nahi lagta.
+            return $this->serveAgentExe($setupExe, 'unknown');
         }
 
         // Fallback: script bundle.

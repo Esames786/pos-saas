@@ -8,9 +8,19 @@
 ; Unsigned builds trigger SmartScreen — sign OutputDir\BingooPrintAgent-Setup.exe
 ; with the code-signing certificate for a clean client experience.
 
+; ⚠️ AppVersion KO print-agent.js KE `AGENT_VERSION` KE BARAABAR RAKHO.
+;
+; 4 Oct: malik ne client ke PC par installer download kiya aur setup ke sar par
+; "2.5.0" likha dekha — jabke screen "Latest version 2.6.0" ka ailan kar rahi
+; thi. Wajah yehi do adad thay: screen version `print-agent.js` se parhti hai,
+; aur setup ka sar YAHAN se aata hai. Ek badla, doosra wahin reh gaya, aur kisi
+; ne kuch nahi kaha — jab tak wo galat installer client ke PC par na pahunch
+; gaya.
+;
+; Ab `tools/print-agent/test/version-match-test.js` dono ko mila kar dekhta hai.
 [Setup]
 AppName=Bingoo Print Agent
-AppVersion=2.5.0
+AppVersion=2.6.0
 AppPublisher=Bingoo POS
 DefaultDirName={commonpf}\BingooPrintAgent
 DefaultGroupName=Bingoo Print Agent
