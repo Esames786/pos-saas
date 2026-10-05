@@ -41,8 +41,11 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
     // on a branch_server (this file is not loaded on Cloud), and every name is on the explicit allowlist.
     // Cash quick_sale/takeaway only; the service refuses everything else. activation_ready stays false.
     Route::prefix('pos')->name('pos.')->middleware(['edge.auth', 'edge.branch'])->group(function () {
-        // EDGE-CASHIER-UI-1 — the browser cashier POS page itself (the Online operator surface, Edge-executed).
-        Route::get('/', [EdgeLocalPosController::class, 'screen'])->name('screen');
+        // PHASE 3 STAGE A (owner §3/§4, 4 Oct 2026) — THE cashier page: `tenant.pos.index` (the ONE shared Online view) rendered
+        // through layouts.pos + the Edge runtime (EdgePosRuntimeFactory). The route NAME stays `edge.local.pos.screen` (login
+        // landing, status page, allowlist, proof tools). The old Edge page (resources/views/edge/pos/**) is NO LONGER a runtime
+        // path; its Blade files are deleted in Stage B.
+        Route::get('/', [EdgeLocalPosController::class, 'sharedScreen'])->name('screen');
         Route::get('/terminals', [EdgeLocalPosController::class, 'terminals'])->name('terminals');
         Route::post('/terminal/select', [EdgeLocalPosController::class, 'selectTerminal'])->name('terminal.select');
         Route::get('/shift', [EdgeLocalShiftController::class, 'shiftStatus'])->name('shift.status');
@@ -161,7 +164,7 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
 
         // ═══════════════ W-B (next release, shared cashier view) — Edge runtime adapter routes; each also in config/edge.php
         //                 route_allowlist and the URI census (tests/Feature/Edge/EdgeBranchServerRegistrationTest) ═══════════════
-        // THE shared page: tenant.pos.index rendered with the Edge runtime (Phase 2 side by side; `edge.local.pos.screen` = fallback).
+        // Phase 2 alias of THE page (same action as `edge.local.pos.screen` since Stage A; Stage B decides whether it stays or redirects).
         Route::get('/shared', [EdgeLocalPosController::class, 'sharedScreen'])->name('shared');
         // Canonical JSON twins of Online endpoints the shared page calls (§3.2).
         Route::get('/server-time', [EdgeLocalPosController::class, 'serverTime'])->name('server-time');                                 // /api/server-time

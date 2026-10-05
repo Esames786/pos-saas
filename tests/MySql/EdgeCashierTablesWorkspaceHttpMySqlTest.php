@@ -185,7 +185,7 @@ class EdgeCashierTablesWorkspaceHttpMySqlTest extends MySqlTenantTestCase
 
         // Settling the last check closes the session and frees the table (shared custody rule) — held stayed local until now.
         $this->assertSame(0, DB::connection('tenant')->table('edge_sync_outbox')->count(), 'held checks never reach the outbox');
-        $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", ['client_uuid' => (string) Str::uuid(),
+        $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 250]]])->assertOk()->assertJsonPath('status', 'paid');
         $this->assertSame('available', DB::connection('tenant')->table('restaurant_tables')->where('id', $this->t1)->value('status'));
         // A closed session cannot request the bill.
@@ -243,7 +243,7 @@ class EdgeCashierTablesWorkspaceHttpMySqlTest extends MySqlTenantTestCase
         // Split the source first so it carries a PAID round (fiscal history) + an open check.
         $split = $this->postJson("/edge/local/pos/held-sales/{$srcSale}/split", ['lines' => [['sales_order_line_id' => $srcLine, 'quantity' => 1]]])->assertStatus(201);
         $paidChild = (int) $split->json('child.id');
-        $this->postJson("/edge/local/pos/held-sales/{$paidChild}/settle", ['client_uuid' => (string) Str::uuid(),
+        $this->postJson("/edge/local/pos/held-sales/{$paidChild}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]]])->assertOk();
         $this->postJson("/edge/local/pos/restaurant/table-sessions/{$srcSession}/bill-requested")->assertOk();
         $kotBefore = DB::connection('tenant')->table('kot_batches')->count();
@@ -273,9 +273,9 @@ class EdgeCashierTablesWorkspaceHttpMySqlTest extends MySqlTenantTestCase
         // Two checks now live on the target: each pays on its own; the table frees with the LAST one.
         $tile = $this->tableOnBoard($this->t2);
         $this->assertCount(2, $tile['session']['held_orders']);
-        $this->postJson("/edge/local/pos/held-sales/{$srcSale}/settle", ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]]])->assertOk();
+        $this->postJson("/edge/local/pos/held-sales/{$srcSale}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]]])->assertOk();
         $this->assertSame('bill_requested', DB::connection('tenant')->table('restaurant_tables')->where('id', $this->t2)->value('status'));
-        $this->postJson("/edge/local/pos/held-sales/{$dstSale}/settle", ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]]])->assertOk();
+        $this->postJson("/edge/local/pos/held-sales/{$dstSale}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]]])->assertOk();
         $this->assertSame('available', DB::connection('tenant')->table('restaurant_tables')->where('id', $this->t2)->value('status'));
 
         // A source with no open check cannot be merged (Online rule).
@@ -290,7 +290,7 @@ class EdgeCashierTablesWorkspaceHttpMySqlTest extends MySqlTenantTestCase
         [$sessionId, $saleId, $lineId] = $this->openHoldAndKot($this->t1, $this->waiterA, 2);
         $split = $this->postJson("/edge/local/pos/held-sales/{$saleId}/split", ['lines' => [['sales_order_line_id' => $lineId, 'quantity' => 1]]])->assertStatus(201);
         $child = (int) $split->json('child.id');
-        $this->postJson("/edge/local/pos/held-sales/{$child}/settle", ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]]])->assertOk();
+        $this->postJson("/edge/local/pos/held-sales/{$child}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]]])->assertOk();
         $line = DB::connection('tenant')->table('sales_order_lines')->where('sales_order_id', $saleId)->first();
         $this->postJson('/edge/local/pos/held-sales', ['held_sale_id' => $saleId, 'order_type' => 'dine_in', 'restaurant_table_session_id' => $sessionId,
             'lines' => [['sales_order_line_id' => $line->id, 'product_id' => $this->productP, 'quantity' => 1], ['product_id' => $this->productQ, 'quantity' => 2]]])->assertOk();
@@ -369,7 +369,7 @@ class EdgeCashierTablesWorkspaceHttpMySqlTest extends MySqlTenantTestCase
         $this->getJson("/edge/local/pos/held-sales/{$saleId}")->assertOk()->assertJsonPath('held_sale.dead_session', null);
         // A bill on a live session is refused (use Move instead) and the check is payable again.
         $this->postJson("/edge/local/pos/held-sales/{$saleId}/reattach-table", ['restaurant_table_id' => $this->t2])->assertStatus(422);
-        $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]]])->assertOk();
+        $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]]])->assertOk();
         $this->assertSame('available', DB::connection('tenant')->table('restaurant_tables')->where('id', $this->t1)->value('status'));
         $this->assertNotSame($liveSession, $newSession);
     }

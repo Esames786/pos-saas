@@ -216,6 +216,7 @@ class EdgeCashierDineInHttpMySqlTest extends MySqlTenantTestCase
         // check's OWN shift took the cash; the session closes and the table frees.
         $settle = $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", [
             'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 350, 'tendered_amount' => 400]],
         ]);
         $settle->assertStatus(200)->assertJsonPath('status', 'paid')->assertJsonPath('change_amount', 50);
@@ -239,8 +240,9 @@ class EdgeCashierDineInHttpMySqlTest extends MySqlTenantTestCase
         // 1. The REAL page still loads and its payload carries the product — flagged hidden — so Recall can read the line.
         $html = $this->get('/edge/local/pos')->assertOk()->getContent();
         $this->assertStringContainsString('"name":"Hidden Later Karahi"', $html);
-        $this->assertMatchesRegularExpression('/"name":"Hidden Later Karahi".{0,120}"hidden":true/s', $html);
-        $this->assertMatchesRegularExpression('/"name":"Visible Naan".{0,120}"hidden":false/s', $html);
+        // Online payload key: pos_grid_visible (the tile is withheld from the grid; Recall can still read the line).
+        $this->assertMatchesRegularExpression('/"name":"Hidden Later Karahi".{0,600}?"pos_grid_visible":false/s', $html);
+        $this->assertMatchesRegularExpression('/"name":"Visible Naan".{0,600}?"pos_grid_visible":true/s', $html);
 
         // 2. Recall detail still returns the line.
         $this->getJson("/edge/local/pos/held-sales/{$saleId}")->assertOk()->assertJsonPath('held_sale.lines.0.product_id', $this->productP);
@@ -261,6 +263,7 @@ class EdgeCashierDineInHttpMySqlTest extends MySqlTenantTestCase
         // 4. The bill is still payable.
         $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", [
             'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 250]],
         ])->assertOk()->assertJsonPath('status', 'paid');
     }

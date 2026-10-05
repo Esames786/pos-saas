@@ -272,7 +272,8 @@ class EdgeLocalHeldSalesController extends Controller
         // accepted here and consumed inside the settle transaction (EdgeLocalPosService::settleHeldSale).
         $data = $request->validate([
             'client_uuid' => ['required', 'string', 'max:36'],
-            // Online Direct Pay print intents (tenant.pos.store `in:print,skip`) — the same rule as the Edge Direct Pay endpoint.
+            // Online Direct Pay print intents (tenant.pos.store `in:print,skip`); BOTH are REQUIRED below with Online's own
+            // `printing` refusal (Phase 3 Stage A — the shared view always sends them).
             'kot_print_intent' => ['nullable', 'in:print,skip'],
             'receipt_print_intent' => ['nullable', 'in:print,skip'],
             'payments' => ['required', 'array', 'min:1'],
@@ -286,6 +287,13 @@ class EdgeLocalHeldSalesController extends Controller
             'promo_code' => ['nullable', 'string', 'max:50'],
             'tip_amount' => ['nullable', 'numeric', 'min:0'],
         ]);
+        // Online SalesOrderController::store on tenant.pos.store: a Direct Pay settle without BOTH intents is refused with the
+        // SAME 422 shape ({message, errors.printing}) BEFORE any authority/terminal work — the printing decision is part of the sale.
+        if (! isset($data['kot_print_intent']) || ! isset($data['receipt_print_intent'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'printing' => 'Choose the Direct Pay KOT and Receipt intent before completing the sale.',
+            ]);
+        }
         $terminal = $this->selectedTerminal($request);
         if ($terminal instanceof JsonResponse) {
             return $terminal;

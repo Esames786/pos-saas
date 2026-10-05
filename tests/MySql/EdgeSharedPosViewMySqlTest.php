@@ -18,7 +18,8 @@ use Tests\MySql\Support\TenantFixtures;
  * close / list / detail, sales-return create / list / detail, split bill) from the SAME tenant views.
  *
  * Proven over the REAL branch_server routes:
- *   - GET /edge/local/pos/shared = 200 `tenant.pos.index`, POS_RUNTIME.mode = edge, the closed W-A page-data contract;
+ *   - GET /edge/local/pos/shared (Phase 2 alias; since Phase 3 Stage A the same action answers GET /edge/local/pos) = 200
+ *     `tenant.pos.index`, POS_RUNTIME.mode = edge, the closed W-A page-data contract;
  *   - the page carries NO Cloud path (/pos, /api/pos, /printing, /restaurant, /held-sales, /shifts, /sales-returns, …) —
  *     only /edge/local/… — and NO Internet asset (fonts.googleapis / http(s):// src|href);
  *   - every non-null POS_RUNTIME.routes value resolves to a registered, ALLOWLISTED edge.local.* route;
@@ -353,12 +354,12 @@ class EdgeSharedPosViewMySqlTest extends MySqlTenantTestCase
         $heldId = (int) $held->json('sale_id');
         $lineId = (int) $held->json('lines.0.id');
         $split = $this->post("/edge/local/pos/held-sales/{$heldId}/split-bill", ['lines' => [['sales_order_line_id' => $lineId, 'quantity' => 1]]])->assertOk();
-        $this->assertStringContainsString('window.top.location.href="/edge/local/pos/shared?held_sale_id=' . $heldId, $split->getContent());
+        $this->assertStringContainsString('window.top.location.href="/edge/local/pos?held_sale_id=' . $heldId, $split->getContent());
         $this->assertSame(2, DB::connection('tenant')->table('sales_orders')->where('restaurant_table_session_id', $sessionId)->where('status', 'held')->count());
 
         // Pay both checks so the shift can close, then the close page → the SHARED close, redirect to the shift detail.
         foreach (DB::connection('tenant')->table('sales_orders')->where('restaurant_table_session_id', $sessionId)->where('status', 'held')->get() as $check) {
-            $this->postJson("/edge/local/pos/held-sales/{$check->id}/settle", ['client_uuid' => (string) Str::uuid(),
+            $this->postJson("/edge/local/pos/held-sales/{$check->id}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
                 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => (float) $check->grand_total, 'tendered_amount' => (float) $check->grand_total]]])->assertOk();
         }
         $paid = (int) DB::connection('tenant')->table('sales_orders')->where('restaurant_table_session_id', $sessionId)->where('status', 'paid')->value('id');

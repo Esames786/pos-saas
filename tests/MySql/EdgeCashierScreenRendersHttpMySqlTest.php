@@ -89,20 +89,24 @@ class EdgeCashierScreenRendersHttpMySqlTest extends MySqlTenantTestCase
         $res = $this->get('/edge/local/pos');
         $res->assertOk();
 
+        // PHASE 3 STAGE A: THE Online cashier view (tenant.pos.index) through the shared layout + the Edge runtime.
+        $res->assertViewIs('tenant.pos.index');
+
         $html = $res->getContent();
-        // The Online operator surface — not an "offline lite" screen.
-        $this->assertStringContainsString('<h1>POS</h1>', $html);
+        // The Online operator surface — the SAME Blade the Cloud renders, not an "offline lite" screen.
+        $this->assertStringContainsString('<h1 class="h3 mb-0">Restaurant POS</h1>', $html);
         $this->assertStringContainsString('View Tables', $html);
         $this->assertStringContainsString('Review &amp; Pay', $html);
         $this->assertStringContainsString('Preview Bill', $html);
-        // Real data flowed through the view-model into the page.
+        // Real data flowed through the Online page-data contract into the page.
         $this->assertStringContainsString('Counter One', $html);   // the assigned terminal
         $this->assertStringContainsString('Chicken Tikka', $html);  // a grid product
         $this->assertStringContainsString('Family Deal', $html);    // a deal (Deals tab)
-        // The bootstrap JSON the JS reads must be present and default-terminal-aware.
-        $this->assertStringContainsString('edge-pos-data', $html);
-        $this->assertStringContainsString('"defaultTerminalId":' . $this->terminalId, $html);
-        $this->assertStringContainsString('"operationalStockReady":true', $html);
+        // The runtime island the shared JS reads (mode, routes, capabilities) precedes every page script; the assigned
+        // terminal drives the Online default-terminal rule; the accepted baseline is the stock the tile shows.
+        $this->assertStringContainsString('window.POS_RUNTIME = {"mode":"edge"', $html);
+        $this->assertStringContainsString("var userDefault = String({$this->terminalId} || '')", $html);
+        $this->assertStringContainsString('"stock_by_branch":{"' . $this->branchId . '":10}', $html, 'operational stock of the accepted baseline');
     }
 
     /** DEFAULT-TERMINAL + TERMINAL-SWITCH-AUTH parity: a pinned operator (no change-terminal permission)
@@ -117,7 +121,9 @@ class EdgeCashierScreenRendersHttpMySqlTest extends MySqlTenantTestCase
         // The page only presents the assigned terminal for a user without change-terminal permission.
         $this->assertStringContainsString('Counter One', $html);
         $this->assertStringNotContainsString('Counter Two', $html);
-        $this->assertStringContainsString('"canChangeTerminal":false', $html);
+        // The shared view has no page flag: the gate IS the scoped terminal list (X2, UserDataScope::terminalsForPos) plus the
+        // server's denyUnlessMayOperateTerminal; the runtime reports the session-held terminal selection.
+        $this->assertStringContainsString('"terminal_selection":"session"', $html);
 
         // Sanity: the other terminal really exists on the branch (it is withheld by policy, not absence).
         $this->assertSame($this->branchId, (int) DB::connection('tenant')->table('terminals')->where('id', $other)->value('branch_id'));

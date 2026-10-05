@@ -36,6 +36,14 @@ class EdgeCashierControlCensusHttpMySqlTest extends MySqlTenantTestCase
     use TenantFixtures;
     use EdgeLocalRuntimeFixture;
 
+    /**
+     * PHASE 3 STAGE A (4 Oct 2026): GET /edge/local/pos now renders the shared view itself, so this census would compare the
+     * Online view with itself. Its value lives in the replacement gate (Team R): tests/MySql/EdgeSharedPosRegressionGateMySqlTest
+     * (render half) + tests/Feature/Edge/EdgeSharedPosRegressionStaticGateTest (static half); mapping per assertion category
+     * in docs/status/edge-phase3-census-replacement.md §2. The class and its fixture are DELETED in Stage B (owner go), not here.
+     */
+    private const SUPERSEDED_BY = 'tests/MySql/EdgeSharedPosRegressionGateMySqlTest + tests/Feature/Edge/EdgeSharedPosRegressionStaticGateTest (docs/status/edge-phase3-census-replacement.md)';
+
     private const FIXTURE = 'tests/Fixtures/edge/online-pos-control-census.json';
     private const STATES = ['present', 'equivalent', 'partial', 'planned', 'online_required'];
 
@@ -45,6 +53,8 @@ class EdgeCashierControlCensusHttpMySqlTest extends MySqlTenantTestCase
 
     protected function setUp(): void
     {
+        $this->markTestSkipped('Phase 3 Stage A: /edge/local/pos renders the shared view; the W0 census is superseded by ' . self::SUPERSEDED_BY . ' and is deleted in Stage B.');
+        // -ignore-next-line unreachable until Stage B removes the class
         putenv('APP_ROLE=branch_server');
         $_ENV['APP_ROLE'] = $_SERVER['APP_ROLE'] = 'branch_server';
         $key = 'base64:' . base64_encode(random_bytes(32));

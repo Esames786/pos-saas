@@ -22,8 +22,8 @@ use Throwable;
  */
 class EdgePosRuntimeFactory
 {
-    /** The shared cashier page (Phase 2: side by side with the old page; `/edge/local/pos` keeps the fallback until cutover). */
-    public const SHARED_PAGE = '/edge/local/pos/shared';
+    /** THE cashier page (Phase 3 Stage A: `edge.local.pos.screen` renders the shared view; `/edge/local/pos/shared` is a Phase 2 alias). */
+    public const SHARED_PAGE = '/edge/local/pos';
 
     public const ASSET_BASE = '/edge/local/assets';
 

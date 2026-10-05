@@ -4,6 +4,7 @@ namespace Tests\MySql;
 
 use App\Http\Controllers\Edge\EdgeLocalAssetController;
 use App\Models\Tenant\User;
+use App\Services\Edge\EdgePosRuntimeFactory;
 use App\Services\Security\UserDataScope;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -12,15 +13,20 @@ use Tests\MySql\Support\EdgeLocalRuntimeFixture;
 use Tests\MySql\Support\TenantFixtures;
 
 /**
- * W1 (Team 1) — the cashier SHELL in the Online layout, over the real branch_server route → middleware → controller →
- * view-model → Blade (GET /edge/local/pos), plus the JSON endpoints the shell itself drives (GET /shift for the shift
- * badge, the 401 that sends the operator back to the Edge login).
+ * W1 (Team 1) — the cashier SHELL over the real branch_server route → middleware → controller → view-model → Blade
+ * (GET /edge/local/pos), plus the JSON endpoints the shell itself drives (GET /shift for the shift badge, the 401 that
+ * sends the operator back to the Edge login).
+ *
+ * PHASE 3 STAGE A (4 Oct 2026): GET /edge/local/pos renders THE shared Online cashier view (`tenant.pos.index` through
+ * layouts.pos + EdgePosRuntimeFactory). Every assertion below targets the shared view's own markup and script: the Online
+ * ids, the shared runtime-status slot (`#pos-runtime-slot`, owner A5), the hidden Edge chrome (`#pos-edge-chrome`), the
+ * `POS_RUNTIME` island and `POS.route(...)` keys. What the OLD Edge page proved with its own ids/CSS/JS (the Edge nav
+ * strip, the hand-written stylesheet, the W1 script contract) is retired here and listed in
+ * docs/status/edge-phase3-stage-a-route-swap.md; geometry equality with Online is the regression gate's job
+ * (EdgeSharedPosRegressionGateMySqlTest).
  *
  * Audit records: A1/E-01 header + navigation, A2 order-type tabs, A33/E-06 Branch & Terminal context, A35 touch
- * sizes, A36/E-08 states (toast/confirm/spinner/401-419), A41/R1.1 shift badge, A32 calculator, A34 shortcuts,
- * A43 deep links, E-09 responsive rules, E-10 offline assets + favicon. What a server-render test can prove is proved
- * here (markup, ids, gating, the stylesheet's rules, the script contract); the executed behaviour is proven in the
- * browser (docs/status/edge-w1-team1-report.md BROWSER_ACCEPTANCE_STEP per record).
+ * sizes, A36/E-08 states (401/419), A41/R1.1 shift badge, A32 calculator, A34 shortcuts, A43 deep links, E-10 offline assets.
  */
 class EdgeCashierShellHttpMySqlTest extends MySqlTenantTestCase
 {
@@ -75,103 +81,132 @@ class EdgeCashierShellHttpMySqlTest extends MySqlTenantTestCase
         parent::tearDown();
     }
 
-    private function page(): string
+    private function page(string $query = ''): string
     {
-        return $this->get('/edge/local/pos')->assertOk()->getContent();
+        return $this->get('/edge/local/pos' . $query)->assertOk()->assertViewIs('tenant.pos.index')->getContent();
     }
 
-    // ── A1 / E-01: Online POS header structure; Edge entry points in the compact strip ──
-    public function test_header_follows_the_online_pos_layout_with_edge_links_in_a_secondary_strip(): void
+    /** The opening tag of the element carrying this id (attributes may span lines). */
+    private function tag(string $html, string $id, string $element = '[a-z]+'): string
+    {
+        $this->assertSame(1, preg_match('/<' . $element . '\b[^>]*\sid="' . preg_quote($id, '/') . '"[^>]*>/', $html, $m), "#{$id} is on the page");
+
+        return $m[0];
+    }
+
+    // ── A1 / E-01: the Online POS title row, the SHARED runtime-status slot in it, and the zero-geometry Edge chrome ──
+    public function test_header_is_the_online_pos_title_row_with_the_shared_runtime_slot_and_the_hidden_edge_chrome(): void
     {
         $html = $this->page();
-        foreach (['pos-header', 'pos-title-row', 'pos-sidebar-toggle', 'view-tables-btn', 'pos-session-bar', 'pos-session-details', 'pos-session-table-no',
+        foreach (['pos-sidebar-toggle', 'view-tables-btn', 'pos-session-bar', 'pos-session-details', 'pos-session-table-no',
             'pos-session-no', 'pos-session-waiter', 'pos-session-guests', 'pos-session-open-check', 'pos-session-actions', 'mode-tabs-wrapper',
             'pos-customer-slot', 'pos-customer-chip', 'chip-cust-name', 'chip-cust-phone', 'chip-cust-address', 'chip-cust-clear', 'pos-customer-btn',
             'order-controls-row', 'ctx-branch-name', 'ctx-terminal-name', 'pos-shift-status', 'pos-shift-badge', 'pos-shift-detail', 'pos-shift-open-link',
-            'no-terminal-warning', 'shift-btn', 'held-orders-btn', 'completed-orders-btn', 'last-print-btn', 'edge-nav', 'edge-nav-links', 'sync-chip',
-            'health-link', 'logout-btn'] as $id) {
-            $this->assertStringContainsString('id="' . $id . '"', $html, "header control #{$id}");
+            'no-terminal-warning', 'held-orders-btn', 'completed-orders-btn', 'last-print-btn',
+            // the shared runtime-status slot (owner A5: same box in both runtimes) + the hidden Edge chrome slot (W-B)
+            'pos-runtime-slot', 'pos-runtime-state', 'pos-runtime-sub', 'pos-runtime-pending',
+            'pos-edge-chrome', 'pos-edge-chrome-data', 'pos-edge-logout-form', 'main-content'] as $id) {
+            $this->assertStringContainsString('id="' . $id . '"', $html, "control #{$id}");
         }
-        $this->assertStringContainsString('<h1>POS</h1>', $html);
-        $this->assertStringContainsString('<span class="pos-title-pre">Restaurant</span>', $html, 'Online title reads "Restaurant POS"');
-        $this->assertStringContainsString('<strong id="ctx-branch-name">Shell Branch</strong>', $html);
+        $this->assertStringContainsString('<h1 class="h3 mb-0">Restaurant POS</h1>', $html, 'the Online title');
+        $this->assertStringContainsString('window.POS_RUNTIME = {"mode":"edge"', $html, 'the runtime island precedes every page script');
+        $this->assertStringContainsString('"identity":{"branch_id":' . $this->branchId . ',"branch_name":"Shell Branch","branch_selectable":false', $html);
 
-        // The Edge-only links sit INSIDE the secondary strip (after the Online controls of the title row), never between them.
-        $nav = strpos($html, 'id="edge-nav"');
-        foreach (['id="health-link"', 'id="logout-btn"', 'id="sync-chip"'] as $needle) {
-            $this->assertGreaterThan($nav, strpos($html, $needle), "{$needle} lives in the Edge strip");
-        }
-        $this->assertLessThan($nav, strpos($html, 'id="view-tables-btn"'));
-        $this->assertLessThan(strpos($html, 'id="mode-tabs-wrapper"'), $nav, 'the strip is on the title row, above the mode tabs');
-        // Finance links only with their permission (the census user of the render test holds none here).
-        $this->assertStringNotContainsString('id="suppliers-link"', $html);
-        $this->assertStringNotContainsString('id="journal-link"', $html);
+        // The bound branch is the selected (and only) option of the Online branch select — disabled with the capability hint,
+        // and a hidden carrier keeps branch_id in the payload (a disabled select does not post).
+        $select = $this->tag($html, 'branch_id', 'select');
+        $this->assertStringContainsString(' disabled', $select);
+        $this->assertStringContainsString('title="' . EdgePosRuntimeFactory::LABELS['branchSelect'] . '"', $select);
+        $this->assertMatchesRegularExpression('/<option value="' . $this->branchId . '"[^>]*\sselected>\s*Shell Branch\s*<\/option>/', $html);
+        $this->assertStringContainsString('<input type="hidden" name="branch_id" value="' . $this->branchId . '">', $html);
+
+        // The status slot sits on the title row (before the mode tabs), carries the runtime mode and a business label from
+        // POS_RUNTIME.authority; the Edge chrome is OUTSIDE #main-content and renders nothing visible.
+        $slot = strpos($html, 'id="pos-runtime-slot"');
+        $this->assertLessThan(strpos($html, 'id="mode-tabs-wrapper"'), $slot, 'the slot is on the title row, above the mode tabs');
+        $this->assertStringContainsString('data-runtime-mode="edge"', $html);
+        $this->assertMatchesRegularExpression('/<span class="badge [^"]*" id="pos-runtime-state">[A-Z][A-Z ]+<\/span>/', $html, 'a business authority label, never empty');
+        $this->assertLessThan(strpos($html, 'id="main-content"'), strpos($html, 'id="pos-edge-chrome"'));
+        $this->assertMatchesRegularExpression('/<div id="pos-edge-chrome" hidden aria-hidden="true" style="display:none"/', $html);
+        $this->assertStringContainsString('<form id="pos-edge-logout-form" method="POST" action="/edge/local/logout"', $html);
     }
 
-    // ── A2: order-type TABS of the user's allowed set (hidden select keeps the payload contract) ──
+    // ── A2: order-type TABS of the user's allowed set (the hidden Online select keeps the payload contract) ──
     public function test_order_type_is_a_tab_row_of_the_users_allowed_types(): void
     {
         DB::connection('tenant')->table('users')->where('id', $this->userId)->update(['allowed_order_types' => json_encode(['takeaway', 'delivery']), 'default_order_type' => 'delivery']);
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
         $html = $this->page();
 
-        $this->assertMatchesRegularExpression('/class="mode-tab active" aria-selected="true" data-mode-tab="delivery">Delivery</', $html);
-        $this->assertMatchesRegularExpression('/class="mode-tab " aria-selected="false" data-mode-tab="takeaway">Takeaway</', $html);
+        $this->assertMatchesRegularExpression('/class="mode-tab active" data-mode-tab="delivery">Delivery</', $html);
+        $this->assertMatchesRegularExpression('/class="mode-tab " data-mode-tab="takeaway">Takeaway</', $html);
         $this->assertStringNotContainsString('data-mode-tab="dine_in"', $html, 'a type the user may not run is not offered');
         $this->assertStringNotContainsString('data-mode-tab="quick_sale"', $html);
-        $this->assertMatchesRegularExpression('/<select id="order-type" hidden/', $html);
-        // Switching with items asks first and clears the order (Online applyModeTab) — the script contract:
-        $this->assertStringContainsString("'Start a fresh ' + label + ' order?'", $html);
-        $this->assertStringContainsString('function resetOrderForModeSwitch()', $html);
-        $this->assertStringContainsString("u.searchParams.set('mode', mode)", $html);
+        $this->assertMatchesRegularExpression('/<div class="d-none">\s*<select id="order_type" name="order_type">/', $html, 'the Online select is kept hidden for the payload');
+        // Switching with items asks first and clears the order (Online applyModeTab); a recalled check locks the tabs.
+        $this->assertStringContainsString("title: 'Start a fresh ' + button.textContent.trim() + ' order?'", $html);
+        $this->assertStringContainsString('function applyModeTab(button, confirmed)', $html);
+        $this->assertStringContainsString("POS.route('posIndex') + '?branch_id=' + newBranch + '&mode=' + newType", $html, 'mode deep link through the runtime route');
         $this->assertStringContainsString("classList.add('pos-controls-locked')", $html, 'a recalled check locks the tabs');
     }
 
-    // ── A33 / E-06: Branch & Terminal context — bound branch (no selector), terminal in the Online dialog, Change gated ──
+    // ── A33 / E-06: Branch & Terminal — bound branch (disabled select + hint), terminal in the Online dialog, list scoped by UserDataScope ──
     public function test_branch_and_terminal_context_dialog_and_change_gate(): void
     {
         // W-E: the seeded cashier holds the full catalogue template (incl. change-terminal) — model the pinned operator explicitly.
         $this->revokeEdgePermission($this->userId, UserDataScope::CHANGE_TERMINAL_PERMISSION);
         $html = $this->page();
         $this->assertStringContainsString('id="posContextModal"', $html);
-        $this->assertStringContainsString('<select id="terminal"', $html);
-        $this->assertStringContainsString('the branch cannot be changed here', $html);
-        $this->assertStringNotContainsString('id="branch_id"', $html, 'the appliance is bound to one branch — no branch selector');
-        $this->assertStringNotContainsString('id="pos-context-change-btn"', $html, 'Change needs the change-terminal permission (Online @can)');
+        $this->assertStringContainsString('<select id="terminal_id" name="terminal_id"', $html);
+        $this->assertStringContainsString(EdgePosRuntimeFactory::LABELS['branchSelect'], $html, 'the appliance is bound to one branch — the select is disabled with the hint');
+        $this->assertStringContainsString(' disabled', $this->tag($html, 'branch_id', 'select'));
+        // X2 (Online UserDataScope::terminalsForPos): a pinned operator is offered ONLY his assigned terminal.
+        $this->assertStringContainsString('>Counter One &mdash; Shell Branch</option>', $html);
+        $this->assertStringNotContainsString('Counter Two', $html, 'Change needs the change-terminal permission — the other counter is not offered');
+        $this->assertStringContainsString('"terminal_selection":"session"', $html);
 
         $this->grantEdgePermission($this->userId, UserDataScope::CHANGE_TERMINAL_PERMISSION);
         $html = $this->page();
-        $this->assertStringContainsString('id="pos-context-change-btn"', $html);
-        $this->assertStringContainsString('"canChangeTerminal":true', $html);
+        $this->assertStringContainsString('>Counter One &mdash; Shell Branch</option>', $html);
+        $this->assertStringContainsString('>Counter Two &mdash; Shell Branch</option>', $html, 'change-terminal → every counter of the bound branch');
+        $this->assertStringContainsString('data-bs-target="#posContextModal" title="Change branch or terminal"', $html);
     }
 
-    // ── A44/R3.1/R5.1 gating of the header entry points by the Online permission ──
+    // ── A44/R3.1/R5.1 gating of the header entry points by the Online permission (@can) ──
     public function test_return_and_quick_report_buttons_follow_the_online_permission(): void
     {
-        // W-E: the seeded cashier holds the full catalogue template — model the operator without Return / Quick Report explicitly.
+        // W-E: the seeded cashier holds the full catalogue template — model the operator without Return / Quick Report explicitly
+        // (the Online button is @can('tenant.sales-returns.create'); the posting permission is revoked with it).
+        $this->revokeEdgePermission($this->userId, 'tenant.sales-returns.create');
         $this->revokeEdgePermission($this->userId, 'tenant.sales-returns.store');
         $this->revokeEdgePermission($this->userId, 'tenant.pos.quick-report-send');
         $html = $this->page();
-        $this->assertMatchesRegularExpression('/id="pos-return-btn"[^>]*hidden data-denied="1"/', $html, 'no return permission → hidden, never wired');
-        $this->assertMatchesRegularExpression('/id="pos-quick-report-btn"[^>]*hidden data-denied="1"/', $html);
+        $this->assertStringNotContainsString('id="pos-return-btn"', $html, 'no return permission → not rendered (Online @can), never wired');
+        $this->assertStringNotContainsString('id="pos-quick-report-btn"', $html);
+        $this->assertStringNotContainsString('id="posReturnModal"', $html);
 
+        $this->grantEdgePermission($this->userId, 'tenant.sales-returns.create');
         $this->grantEdgePermission($this->userId, 'tenant.sales-returns.store');
         $this->grantEdgePermission($this->userId, 'tenant.pos.quick-report-send');
         $html = $this->page();
-        $this->assertDoesNotMatchRegularExpression('/id="pos-return-btn"[^>]*data-denied/', $html);
-        $this->assertDoesNotMatchRegularExpression('/id="pos-quick-report-btn"[^>]*data-denied/', $html);
-        $this->assertStringContainsString('"canSalesReturn":true', $html);
-        $this->assertStringContainsString("w1Wire('pos-return-btn'", $html);
+        $return = $this->tag($html, 'pos-return-btn', 'button');
+        $this->assertStringNotContainsString('disabled', $return, 'salesReturn capability is ON on the Branch Server');
+        $this->assertStringContainsString('data-return-url="/edge/local/pos/sales-returns/create?embed=1"', $return, 'the Return window opens the Edge return page (same tenant view)');
+        $this->assertStringNotContainsString('disabled', $this->tag($html, 'pos-quick-report-btn', 'button'));
+        $this->assertStringContainsString('"salesReturn":true', $html);
+        $this->assertStringContainsString('"quickReport":true', $html);
     }
 
     // ── A41 / R1.1: the shift badge polls GET /shift (terminal-scoped; amounts already stripped by W0b) ──
     public function test_shift_badge_endpoint_and_page_contract(): void
     {
         $html = $this->page();
-        $this->assertStringContainsString("api('GET', '/shift', undefined, { quiet: true })", $html);
+        $this->assertStringContainsString("fetch(POS.route('shiftStatus') + '?terminal_id=' + encodeURIComponent(tid)", $html);
+        $this->assertStringContainsString('"shiftStatus":"\/edge\/local\/pos\/shift"', $html, 'the runtime route the badge polls');
         $this->assertStringContainsString("'No open shift'", $html);
         $this->assertStringContainsString("'Shift open'", $html);
-        $this->assertStringContainsString('setInterval(refreshShiftStatus, 300000)', $html, 'Online 5-minute resync');
+        $this->assertStringContainsString('setInterval(function () { refreshShiftStatus(); }, 300000)', $html, 'Online 5-minute resync');
+        $this->assertStringContainsString('<a href="/edge/local/pos/shifts/open" id="pos-shift-open-link"', $html, 'Open shift → the SAME tenant shift page on the Edge route');
 
         $this->getJson('/edge/local/pos/shift')->assertStatus(422);                   // no terminal yet → badge stays hidden
         $this->postJson('/edge/local/pos/terminal/select', ['terminal_id' => $this->terminalId])->assertOk();
@@ -182,16 +217,16 @@ class EdgeCashierShellHttpMySqlTest extends MySqlTenantTestCase
         $this->assertNotNull($s->json('shift.opened_at'));
     }
 
-    // ── A36 / E-08: states — severity toast, confirm, busy buttons, loading bar, 401/419 → Edge login ──
+    // ── A36 / E-08: states — the shared transport sends 401/419 to the Edge login; the shared overlay / loader are on the page ──
     public function test_states_and_session_expiry_contract(): void
     {
         $html = $this->page();
-        foreach (['id="toast"', 'id="edge-loading"', 'id="edge-confirm"', 'function toast(msg, level)', 'function toastError(msg)', 'function confirmDialog(o)',
-            'function showSpinner()', 'function hideSpinner()', 'function setButtonBusy(button, busy, label)', 'function showInlineError(target, msg)',
-            'function showInlineToast(target, msg, level)', 'res.status === 401 || res.status === 419', "const LOGIN_URL = '" . url('/edge/local/login') . "'"] as $needle) {
+        foreach (['id="global-loader"', 'id="pos-runtime-overlay"', 'id="pos-runtime-overlay-close"', 'sweetalert2.all.min.js',
+            'res.status === 401 || res.status === 419', 'window.location.href = transport.unauthenticated_redirect',
+            '"transport":{"csrf_header":"X-CSRF-TOKEN","body":"json","unauthenticated_redirect":"\/edge\/local\/login"}'] as $needle) {
             $this->assertStringContainsString($needle, $html, $needle);
         }
-        // The endpoint the page hits after the session is gone answers 401 JSON (not a login HTML page) → the script redirects.
+        // The endpoint the page hits after the session is gone answers 401 JSON (not a login HTML page) → the transport redirects.
         Auth::guard('tenant')->logout();
         $this->getJson('/edge/local/pos/shift')->assertStatus(401);
         $this->get('/edge/local/pos')->assertRedirect('/edge/local/login');
@@ -204,26 +239,30 @@ class EdgeCashierShellHttpMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('id="calculator-panel"', $html);
         $this->assertStringContainsString('id="calculator_heading"', $html);
         $this->assertStringContainsString('id="calc-display"', $html);
-        $this->assertStringContainsString("b.id = 'toggle-calc-btn'", $html);
+        $this->assertStringContainsString('id="toggle-calc-btn"', $html);
         $this->assertSame(17, preg_match_all('/<button type="button" data-key="/', $html), '16 keys + "=" (Online keypad)');
-        foreach (["k === 'f'", "k === 'h'", "k === 'l'", "k === 'p'", "k === 'Enter'", "k === 'm'", "e.key === 'Escape'"] as $key) {
+        foreach (["event.key === 'f'", "event.key === 'h'", "event.key === 'l'", "event.key === 'p'", "event.key === 'Enter'", "event.key === 'm'"] as $key) {
             $this->assertStringContainsString($key, $html, "shortcut {$key}");
         }
-        foreach (["q.get('mode')", "q.get('held_sale_id')", "q.get('table_session_id')", "q.get('customer_id')", 'await loadHeld(heldId)', 'startCheckOnSession(table)'] as $needle) {
-            $this->assertStringContainsString($needle, $html, $needle);
-        }
+        // Deep links are resolved server-side (the same query keys as Online) and carried in the form / the recall island.
+        $this->assertStringContainsString('<input type="hidden" name="held_sale_id"', $html);
+        $this->assertStringContainsString('id="restaurant_table_session_id"', $html);
+        $this->assertStringContainsString('preload held sale (page-load recall via ?held_sale_id=)', $html);
+        $this->assertStringContainsString('const heldSale   = ', $html);
+        $this->assertMatchesRegularExpression('/class="mode-tab active" data-mode-tab="takeaway">Takeaway</', $this->page('?mode=takeaway'));
     }
 
-    // ── A35 / E-09 / page-wide look: Online sizes + breakpoints; E-10: no external asset, inline icon ──
-    public function test_online_sizes_breakpoints_and_offline_assets(): void
+    // ── E-10: the Online stylesheet set, served locally; no external asset; the Online favicon through the asset route ──
+    public function test_the_page_links_the_online_stylesheet_set_locally_and_no_external_asset(): void
     {
+        config(['edge.route_allowlist' => array_values(array_unique(array_merge((array) config('edge.route_allowlist'), [EdgeLocalAssetController::ROUTE_NAME])))]);
         $html = $this->page();
-        foreach (['grid-template-columns:minmax(0,1fr) 500px', 'repeat(auto-fill,minmax(170px,1fr))', 'min-height:148px', 'min-height:44px', '.actions button { min-height:42px',
-            '@media (min-width: 1200px) and (min-height: 720px)', '@media (max-width: 1199px)', '@media (max-width: 991.98px)', '@media (max-width: 800px)', '--bg:#F7F7F7', '--primary:#CAA23F'] as $rule) {
-            $this->assertStringContainsString($rule, $html, "stylesheet carries {$rule}");
+        foreach (['css/bootstrap.min.css', 'css/style.css', 'css/fonts-local.css', 'css/a11y-custom.css', 'plugins/tabler-icons/tabler-icons.min.css'] as $css) {
+            $this->assertStringContainsString('<link rel="stylesheet" href="' . EdgePosRuntimeFactory::ASSET_BASE . '/' . $css . '">', $html, $css);
         }
-        $this->assertStringContainsString('<link rel="icon" href="data:image/svg+xml,', $html, 'inline icon → no /favicon.ico 404');
-        // Every src/href is same-origin (url() renders the appliance's own host) or a data: URI — never a CDN / other host.
+        $this->assertStringContainsString('<link rel="shortcut icon" type="image/x-icon" href="' . EdgePosRuntimeFactory::ASSET_BASE . '/img/favicon.png">', $html);
+        $this->get(EdgePosRuntimeFactory::ASSET_BASE . '/img/favicon.png')->assertOk();
+        // Every src/href is same-origin or relative — never a CDN / other host.
         preg_match_all('/(?:src|href)\s*=\s*["\']\s*((?:https?:)?\/\/[^"\']*)/i', $html, $m);
         $foreign = array_values(array_filter($m[1], fn ($u) => ! str_starts_with($u, url('/') . '/') && $u !== url('/')));
         $this->assertSame([], $foreign, 'no external/CDN asset or link');
@@ -275,18 +314,14 @@ class EdgeCashierShellHttpMySqlTest extends MySqlTenantTestCase
         }
     }
 
-    // ── E-10: the packaged Bootstrap / SweetAlert2 / Tabler load through the local asset route once it is allowlisted ──
-    public function test_local_assets_are_linked_only_when_the_asset_route_is_allowed(): void
+    // ── E-10: the packaged Bootstrap / SweetAlert2 / Tabler load through the local asset route (allowlisted on the appliance) ──
+    public function test_local_assets_are_linked_through_the_allowlisted_asset_route(): void
     {
-        $allowed = EdgeLocalAssetController::available();
-        $html = $this->page();
-        $this->assertSame($allowed, str_contains($html, '/edge/local/assets/css/bootstrap.min.css'), 'no link that would 404');
-
         config(['edge.route_allowlist' => array_values(array_unique(array_merge((array) config('edge.route_allowlist'), [EdgeLocalAssetController::ROUTE_NAME])))]);
         $this->assertTrue(EdgeLocalAssetController::available());
         $html = $this->page();
         foreach (['css/bootstrap.min.css', 'plugins/tabler-icons/tabler-icons.min.css', 'js/bootstrap.bundle.min.js', 'plugins/sweetalert/sweetalert2.all.min.js'] as $asset) {
-            $this->assertStringContainsString(url('/edge/local/assets/' . $asset), $html, $asset);
+            $this->assertStringContainsString(EdgePosRuntimeFactory::ASSET_BASE . '/' . $asset, $html, $asset);
             $this->get('/edge/local/assets/' . $asset)->assertOk();
         }
         // The login page too (unauthenticated).

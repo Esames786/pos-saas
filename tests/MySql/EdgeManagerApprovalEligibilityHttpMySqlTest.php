@@ -270,7 +270,7 @@ class EdgeManagerApprovalEligibilityHttpMySqlTest extends MySqlTenantTestCase
         $saleId = $this->holdCheck();
         $uuid = (string) Str::uuid();
         $approvalId = (int) $this->verify($this->managerCode, 'MgrPass1', 'manual_discount', $this->discountPayload($saleId, $uuid))->assertStatus(200)->json('approval_id');
-        $body = ['client_uuid' => $uuid, 'discount_type' => 'fixed', 'discount_value' => 20, 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 180, 'tendered_amount' => 180]], 'manager_approval_id' => $approvalId];
+        $body = ['client_uuid' => $uuid, 'discount_type' => 'fixed', 'discount_value' => 20, 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 180, 'tendered_amount' => 180]], 'manager_approval_id' => $approvalId];
 
         $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", $body)->assertOk()->assertJsonPath('grand_total', 180);
         $row = DB::connection('tenant')->table('manager_approvals')->find($approvalId);

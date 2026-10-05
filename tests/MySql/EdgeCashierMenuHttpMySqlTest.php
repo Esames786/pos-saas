@@ -162,12 +162,31 @@ class EdgeCashierMenuHttpMySqlTest extends MySqlTenantTestCase
         parent::tearDown();
     }
 
+    /**
+     * Phase 3 Stage A: the page-data contract as the SHARED view receives it (W-A PosPageData: the Online POSController::index
+     * variable set, built from the synced book + the accepted baseline), keyed the way these assertions read it.
+     * `stock` = stock_by_branch[bound branch] (the operational on-hand the sale refuses on); variants carry Online's selling_price.
+     */
     private function vm(): array
     {
-        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
-        $this->assertSame(1, preg_match('#<script id="edge-pos-data" type="application/json">(.*?)</script>#s', $html, $m));
+        $res = $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index');
+        $products = collect($res->viewData('productsPayload'))->map(function (array $p) {
+            $p['stock'] = $p['stock_by_branch'][$this->branchId] ?? null;
+            $p['stock_kind'] = $p['is_stock_tracked'] ? 'tracked' : 'untracked';
+            $p['variants'] = collect($p['variants'])->map(fn (array $v) => $v + ['price' => $v['selling_price'], 'stock' => $v['stock_by_branch'][$this->branchId] ?? null])->all();
 
-        return json_decode(html_entity_decode($m[1]), true, 512, JSON_THROW_ON_ERROR);
+            return $p;
+        })->values()->all();
+
+        return [
+            'products' => $products,
+            'combos' => collect($res->viewData('combosPayload'))->map(fn ($c) => (array) $c)->values()->all(),
+            'categories' => collect($res->viewData('categories'))->toArray(),
+            'pillCategoryIds' => $res->viewData('pillCategoryIds'),
+            'contentCategoryIds' => $res->viewData('contentCategoryIds'),
+            'hasUncategorizedCombos' => (bool) $res->viewData('hasUncategorizedCombos'),
+            'allowNegativeStock' => (bool) collect($res->viewData('branches'))->firstWhere('id', $this->branchId)?->allow_negative_stock,
+        ];
     }
 
     private function sale(array $lines, array $extra = [], ?float $pay = null): \Illuminate\Testing\TestResponse
@@ -208,21 +227,20 @@ class EdgeCashierMenuHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame('kg', $p[$this->mutton]['unit_code']);
         $this->assertFalse($p[$this->tikka]['allow_decimal_qty']);
         // A5 product barcode; A8 variants with their own price / stock / barcodes; default variant prices the tile
-        $this->assertSame(['8903001'], $p[$this->drink]['barcodes']);
+        $this->assertSame(['8903001'], collect($p[$this->drink]['barcodes'])->values()->all()); // Online builds it as a Collection (JSON: array)
         $variants = collect($p[$this->karahi]['variants'])->keyBy('name');
         $this->assertEquals(650.0, $variants['Half']['price']);
         $this->assertEquals(1200.0, $variants['Full']['price']);
         $this->assertContains('8901002', $variants['Full']['barcodes']);
         $this->assertEquals(20.0, $variants['Full']['stock']);
-        $this->assertEquals(650.0, $p[$this->karahi]['price']);
-        $this->assertSame($this->half, $p[$this->karahi]['default_variant_id']);
+        $this->assertEquals(650.0, $p[$this->karahi]['price'], 'the tile carries the DEFAULT variant price (the Online payload has no default_variant_id key)');
         // A7 modifier groups with active options (a group attached to ANOTHER product is not offered here)
         $groups = collect($p[$this->tikka]['modifier_groups'])->keyBy('name');
         $this->assertSame(['Spice Level', 'Extras'], collect($p[$this->tikka]['modifier_groups'])->pluck('name')->all());
         $this->assertSame(1, $groups['Spice Level']['min_select']);
         $this->assertSame(1, $groups['Spice Level']['max_select']);
         $this->assertCount(3, $groups['Extras']['modifiers']);
-        $this->assertSame([], $p[$this->karahi]['modifier_groups']);
+        $this->assertSame([], collect($p[$this->karahi]['modifier_groups'])->all()); // Online builds it as a Collection (JSON: [])
         // A9 deal components travel for the availability badge
         $deal = collect($vm['combos'])->firstWhere('id', $this->comboId);
         $this->assertSame('FAMILY', $deal['code']);

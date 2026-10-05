@@ -213,6 +213,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         $clientUuid = (string) Str::uuid();
         $settle = $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", [
             'client_uuid' => $clientUuid,
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 350, 'tendered_amount' => 400]],
         ]);
         $settle->assertOk()->assertJsonPath('status', 'paid')->assertJsonPath('sale_uuid', $saleUuid)
@@ -230,6 +231,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         // settle replay: same client_uuid → same sale, stock NOT consumed twice.
         $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", [
             'client_uuid' => $clientUuid,
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 350, 'tendered_amount' => 400]],
         ])->assertOk()->assertJsonPath('sale_id', $saleId);
         $this->assertSame(17.0, $this->edgeOnHand($this->baselineId, $this->productId));
@@ -459,6 +461,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
 
         $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", [
             'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
         ])->assertOk()->assertJsonPath('status', 'paid');
         $this->assertSame(19.0, $this->edgeOnHand($this->baselineId, $this->productId));

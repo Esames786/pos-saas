@@ -80,13 +80,15 @@ class EdgeSupplierFinanceHttpMySqlTest extends MySqlTenantTestCase
 
     public function test_the_real_pages_carry_the_online_supplier_finance_ux(): void
     {
-        // Cashier header: the entry points follow the Online permissions.
-        $pos = $this->get('/edge/local/pos')->assertOk()->getContent();
-        $this->assertStringContainsString('id="suppliers-link"', $pos);
-        $this->assertStringContainsString('id="journal-link"', $pos);
+        // Phase 3 Stage A: the POS page is the shared Online view (no Edge nav strip — owner A5, zero Edge-only layout); the
+        // finance screens stay their own pages, reached by URL / from each other's nav, and link back to THE POS page.
+        $pos = $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index')->getContent();
+        $this->assertStringNotContainsString('/edge/local/pos/suppliers', $pos);
+        $this->assertStringNotContainsString('/edge/local/pos/finance/journal', $pos);
 
         // Suppliers → Supplier Ledger → Record Payment (Online form semantics).
         $html = $this->get('/edge/local/pos/suppliers')->assertOk()->getContent();
+        $this->assertStringContainsString('href="' . url('/edge/local/pos') . '">POS</a>', $html, 'the finance page links back to THE POS page');
         foreach (['Supplier Ledger', 'Record Payment', 'Against Bill', '(optional)', 'No specific bill (general payment)', 'Pay From (Cash/Bank)', 'Select the Cash/Bank account (required)',
             'Payment Method', 'Reference No', 'Notes', 'PENDING SYNC', 'Current Payable (Cloud official)', 'Available payable', '/suppliers/payments', "/suppliers/' + id + '/ledger", 'Dr Accounts Payable / Cr'] as $needle) {
             $this->assertStringContainsString($needle, $html, "the Suppliers page must carry {$needle}");
@@ -163,9 +165,7 @@ class EdgeSupplierFinanceHttpMySqlTest extends MySqlTenantTestCase
     public function test_a_normal_cashier_never_gains_supplier_payment_or_manual_journal(): void
     {
         $this->actingAs(User::on('tenant')->find($this->cashierId), 'tenant');
-        $pos = $this->get('/edge/local/pos')->assertOk()->getContent();
-        $this->assertStringNotContainsString('id="suppliers-link"', $pos);
-        $this->assertStringNotContainsString('id="journal-link"', $pos);
+        $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index'); // the cashier still has the POS
         $this->get('/edge/local/pos/suppliers')->assertStatus(403);
         $this->getJson('/edge/local/pos/suppliers/options')->assertStatus(403);
         $this->getJson('/edge/local/pos/suppliers/' . $this->supplierAId . '/ledger')->assertStatus(403);

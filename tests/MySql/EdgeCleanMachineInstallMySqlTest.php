@@ -392,8 +392,8 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
             $this->assertMatchesRegularExpression('#/edge/local/(pos|status)$#', (string) $post['location']);
             $pos = $this->http('GET', $base . '/edge/local/pos', null, true, $jar);
             $this->assertSame(200, $pos['status'], substr($pos['body'], 0, 400));
-            $this->assertStringContainsString('Cashier POS', $pos['body']);
-            $this->assertStringContainsString('id="health-link"', $pos['body']);
+            $this->assertStringContainsString('Restaurant POS', $pos['body']);           // Phase 3 Stage A: THE shared Online cashier view
+            $this->assertStringContainsString('id="pos-runtime-slot"', $pos['body']);    // … with the shared runtime-status slot
             $page = $this->http('GET', $base . '/edge/local/pos/health', null, true, $jar);
             $this->assertSame(200, $page['status'], substr($page['body'], 0, 400));
             $this->assertStringContainsString('Branch Server status', $page['body']);

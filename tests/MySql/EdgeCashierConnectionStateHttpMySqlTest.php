@@ -121,10 +121,16 @@ class EdgeCashierConnectionStateHttpMySqlTest extends MySqlTenantTestCase
 
     public function test_the_real_cashier_page_renders_the_connection_chip(): void
     {
-        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
-        $this->assertStringContainsString('id="sync-chip"', $html);
-        $this->assertStringContainsString('s.connection', $html, 'the page reads the business connection state from the sync summary');
-        $this->assertStringContainsString("'INTERNET CONNECTION LOST'", $html);
-        $this->assertStringContainsString("'LOCAL MODE ACTIVE'", $html);
+        // Phase 3 Stage A: the SHARED runtime-status slot (owner A5) shows the business authority / connection words from
+        // POS_RUNTIME.authority (EdgePosRuntimeFactory::authorityBlock — the same words as the sync summary); the hidden Edge
+        // chrome points the slot's live refresh at the sync summary. Nothing else about the lease reaches the page.
+        $html = $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index')->getContent();
+        $this->assertStringContainsString('id="pos-runtime-slot"', $html);
+        $this->assertStringContainsString('id="pos-runtime-state"', $html);
+        $this->assertStringContainsString('id="pos-runtime-pending"', $html);
+        $this->assertStringContainsString('data-sync-url="/edge/local/pos/sync/summary"', $html);
+        $this->assertMatchesRegularExpression('/"authority":\{"state":"[a-z_]+","label":"[A-Z ]+","sub_label":(?:"[A-Z ]*"|null),"can_mutate":(?:true|false),"tone":"[a-z]+","pending_sync":\d+,"needs_attention":\d+,"connection":"[a-z_]+","connection_label":"[A-Z ]+"/', $html);
+        $this->assertStringContainsString('function setAuthority(a)', $html, 'the shared runtime JS repaints the slot from the authority block');
+        $this->assertDoesNotMatchRegularExpression('/"(lease_id|lease_epoch|baseline_id|lease_hash)"/', $html, 'no lease identifiers on the cashier page');
     }
 }

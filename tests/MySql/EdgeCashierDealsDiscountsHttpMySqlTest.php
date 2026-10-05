@@ -213,7 +213,7 @@ class EdgeCashierDealsDiscountsHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame(['Chicken Karahi' => 1.0, 'Roghni Naan' => 2.0], $delta, 'round 2 sends only the second deal\'s components');
 
         // Settle: stock for the components of BOTH deals, once.
-        $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", ['client_uuid' => (string) Str::uuid(), 'payments' => $this->cash(440)])->assertOk()->assertJsonPath('status', 'paid');
+        $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'payments' => $this->cash(440)])->assertOk()->assertJsonPath('status', 'paid');
         $this->assertSame(48.0, $this->edgeOnHand($this->baselineId, $this->karahi));
         $this->assertSame(46.0, $this->edgeOnHand($this->baselineId, $this->naan));
     }
@@ -337,9 +337,9 @@ class EdgeCashierDealsDiscountsHttpMySqlTest extends MySqlTenantTestCase
         $this->postJson("/edge/local/pos/held-sales/{$parentId}/kot")->assertOk()->assertJsonPath('batch', null);
 
         // Each pays on its own; the table frees only when the LAST check settles; stock exactly once overall.
-        $this->postJson("/edge/local/pos/held-sales/{$childId}/settle", ['client_uuid' => (string) Str::uuid(), 'payments' => $this->cash(200)])->assertOk()->assertJsonPath('status', 'paid');
+        $this->postJson("/edge/local/pos/held-sales/{$childId}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'payments' => $this->cash(200)])->assertOk()->assertJsonPath('status', 'paid');
         $this->assertSame('open', DB::connection('tenant')->table('restaurant_table_sessions')->where('id', $sessionId)->value('status'), 'the parent check still holds the table');
-        $this->postJson("/edge/local/pos/held-sales/{$parentId}/settle", ['client_uuid' => (string) Str::uuid(), 'payments' => $this->cash(200)])->assertOk()->assertJsonPath('status', 'paid');
+        $this->postJson("/edge/local/pos/held-sales/{$parentId}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'payments' => $this->cash(200)])->assertOk()->assertJsonPath('status', 'paid');
         $this->assertSame('closed', DB::connection('tenant')->table('restaurant_table_sessions')->where('id', $sessionId)->value('status'));
         $this->assertSame('available', DB::connection('tenant')->table('restaurant_tables')->where('id', $this->tableId)->value('status'));
         $this->assertSame(47.0, $this->edgeOnHand($this->baselineId, $this->karahi), '3 Karahi consumed once across both checks');

@@ -249,12 +249,12 @@ class EdgeCashierOrderLifecycleHttpMySqlTest extends MySqlTenantTestCase
         $html = $this->get('/edge/local/pos')->assertOk()->getContent();
         foreach ([
             'tableWorkspaceModal', 'table-workspace-back', 'table-workspace-board', 'table-board-body', 'table-workspace-open', 'open-table-form',
-            'restaurant_waiter_id', 'waiter-roster', 'guest_count', 'table_notes', 'open-table-submit', 'table-workspace-held', 'table-workspace-held-body',
+            'restaurant_waiter_id', 'guest_count', 'table_notes', 'open-table-submit', 'table-workspace-held', 'table-workspace-held-body',
             'table-workspace-move', 'table-workspace-move-body', 'table-workspace-split', 'table-workspace-split-body', 'table-workspace-manage',
             'pos-session-bar', 'pos-session-details', 'pos-session-table-no', 'pos-session-no', 'pos-session-waiter', 'pos-session-guests',
             'pos-session-open-check', 'pos-session-actions', 'pos-session-bill-preview', 'pos-session-request-bill-form',
             'heldSalesModal', 'held-type-filters', 'held-sales-modal-body', 'completedOrdersModal', 'recent-type-filters', 'completed-orders-modal-body',
-            'completed-orders-btn', 'deadSessionModal', 'dead-table-pick', 'dead-move', 'dead-reopen',
+            'completed-orders-btn', // deadSessionModal / dead-table-pick / dead-move / dead-reopen render only with a dead session (`@if(! empty($deadSession))`, Online rule)
             'changeOrderModal', 'co-type-btns', 'co-order-type', 'co-table-wrap', 'co-table-session', 'co-terminal', 'co-branch', 'co-apply-btn', 'edit-order-btn',
             'clear-cart-btn', 'start-fresh-btn', 'start-fresh-label', 'new-sale-btn', 'recalled-order-bar', 'recalled-order-no', 'pos-draft-badge',
             'reserveTableModal', 'reserve-customer-search', 'reserve-customer-suggest', 'reserve-customer-chip', 'reserve-customer-name', 'reserve-customer-clear',
@@ -262,9 +262,15 @@ class EdgeCashierOrderLifecycleHttpMySqlTest extends MySqlTenantTestCase
         ] as $id) {
             $this->assertTrue(str_contains($html, 'id="' . $id . '"') || str_contains($html, "'" . $id . "'"), "W3 control #{$id} is missing from the cashier page");
         }
-        foreach (['function openTableWorkspace', 'function openHeldOrders', 'function openCompletedOrders', 'function openChangeOrder', 'function clearCart',
-            'function newSale', 'function voidSentLine', 'function renderSessionBar', 'function requestBill', 'function moveTable', 'function mergeTables',
-            'function viewTables', 'function recallList', "'/recent-sales'", "'/bill-requested'", "'/reattach-table'", 'await fireKot(id)', 'function kotAfterHold', "handlePrintJobs(r.jobs, 'CANCEL KOT')", 'openLastPrint(id, no)', "tablePayload('here')"] as $needle) {
+        // Online renders the waiter roster only when the branch has waiters (`@if($waiters->isNotEmpty())`); the select is always there.
+        $this->assertTrue(str_contains($html, 'id="waiter-roster"') || str_contains($html, 'id="restaurant_waiter_id"'), 'waiter picker missing');
+        // Phase 3 Stage A: the SHARED page script (Online's) runs the W3 workflows through the runtime routes.
+        foreach (['function openTableWorkspace', 'function loadHeldSales', 'function loadRecentSales', 'function coLoadTableSessions', 'function clearCart',
+            'function updateStartFreshLabel', 'function showVoidReasonModal', 'function applyTableSession', 'function postTableOperation', 'function showTableMove',
+            'function refreshTableBoard', 'function recallHeldSale', 'function fireKotSilently', 'function handleKotAfterSale', 'function openRecentPrints',
+            "POS.route('recentSales')", "POS.route('tableBillRequested'", "POS.route('heldCancel'", "POS.route('tableMove'", "POS.route('tableSessions')",
+            'data-board-url="/edge/local/pos/restaurant/board/html"',
+            '"heldReattach":"\/edge\/local\/pos\/held-sales\/{sale}\/reattach-table"', '"tableMerge":"\/edge\/local\/pos\/restaurant\/table-sessions\/{session}\/merge"'] as $needle) {
             $this->assertStringContainsString($needle, $html);
         }
     }

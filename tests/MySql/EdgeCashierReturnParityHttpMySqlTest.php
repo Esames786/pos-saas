@@ -160,10 +160,11 @@ class EdgeCashierReturnParityHttpMySqlTest extends MySqlTenantTestCase
     public function test_return_routes_refuse_without_the_permission_and_the_page_hides_the_entry(): void
     {
         $sale = $this->cashSale(1);
-        $this->assertStringContainsString('"canSalesReturn":true', $this->get('/edge/local/pos')->assertOk()->getContent());
+        $this->assertStringContainsString('id="pos-return-btn"', $this->get('/edge/local/pos')->assertOk()->getContent());
         $this->revoke('tenant.sales-returns.store');
+        $this->revoke('tenant.sales-returns.create'); // the shared view's Return button is Online's @can('tenant.sales-returns.create')
         $html = $this->get('/edge/local/pos')->assertOk()->getContent();
-        $this->assertStringContainsString('"canSalesReturn":false', $html, 'the page flag hides the Return entry (Online @can)');
+        $this->assertStringNotContainsString('id="pos-return-btn"', $html, 'the Return entry is not rendered (Online @can)');
         $this->getJson('/edge/local/pos/returns/search?q=')->assertForbidden();
         $this->getJson('/edge/local/pos/returns/sales/' . $sale['sale_id'])->assertForbidden();
         $this->postJson('/edge/local/pos/returns', ['sales_order_id' => $sale['sale_id'], 'refund_method' => 'cash', 'lines' => [['sales_order_line_id' => 1, 'quantity' => 1]]])->assertForbidden();

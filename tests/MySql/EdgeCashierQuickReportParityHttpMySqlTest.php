@@ -149,7 +149,9 @@ class EdgeCashierQuickReportParityHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1, DB::table('pos_quick_report_settings')->where('user_id', $this->userId)->count());
 
         $html = $this->get('/edge/local/pos')->assertOk()->getContent();
-        foreach (['quickReportModalLabel', "'qr-save'", 'qr-panel-items', 'qr-all-items', 'qr-item-picker', 'qr-item-search', 'qr-item-suggest', 'qr-item-chips', 'qr-panel-waiters', 'qr-panel-order_types', "'qr-print'", 'id="qr-branch"', '/quick-report/save-settings', '/quick-report/settings', 'w.print()'] as $needle) {
+        foreach (['quickReportModalLabel', "'qr-save'", 'qr-panel-items', 'qr-all-items', 'qr-item-picker', 'qr-item-search', 'qr-item-suggest', 'qr-item-chips', 'qr-panel-waiters', 'qr-panel-order_types', "'qr-print'", 'id="qr-branch"',
+            // Phase 3 Stage A: the shared page reaches the Edge endpoints through the runtime routes.
+            "POS.route('quickReportSave')", "POS.route('quickReportSettings')", '"quickReportSave":"\/edge\/local\/pos\/quick-report\/save-settings"', '"quickReportSettings":"\/edge\/local\/pos\/quick-report\/settings"', 'w.print()'] as $needle) {
             $this->assertStringContainsString($needle, $html, "the Quick Report dialog must carry {$needle}");
         }
 

@@ -609,8 +609,12 @@ class EdgeCashierPrintingParityHttpMySqlTest extends MySqlTenantTestCase
         foreach (['id="print-pref-panel"', 'id="auto-kot-toggle"', 'id="auto-receipt-toggle"', 'id="kot-status-hint"', 'id="receipt-status-hint"', 'id="print-terminal-label"',
             'id="printHereModal"', 'id="print-here-frame"', 'id="print-here-print-btn"', 'id="lastPrintModal"', 'id="last-print-sale-no"', 'id="last-print-modal-body"',
             'id="reprint-all-kot-btn"', 'id="reprint-receipt-btn"', 'id="send-network-receipt-btn"', 'id="print-bill-preview-btn"', 'id="bill-preview-frame"',
-            'function printPrefsHtml()', 'function readPrintPrefs()', 'async function printBillPreview(payload)', 'function openPrintHere(job)',
-            'async function openLastPrint(saleId', 'async function openKotReminder(saleId)', "'/print-preferences'", "'/reminders/confirm'"] as $needle) {
+            // Phase 3 Stage A: the SHARED page script (Online's) drives printing through the runtime routes.
+            'function processDirectPayPrinting', 'function promptPrintHere', 'function openRecentPrints', 'function reprintSale', 'function billPreview',
+            'function refreshPrintPanel', 'function handleReminderPlan', 'const terminalPrintConfig = ', 'const receiptLayouts = ',
+            "POS.route('kotQueue'", "POS.route('receiptQueue'", "POS.route('reminderConfirm'", "POS.route('reminderReprint'", "POS.route('printRetry'",
+            "POS.route('printDocument'", "POS.route('printJobsForSale'", "POS.route('billPreview')", "POS.route('printingRetry'",
+            '"printPreferences":"\/edge\/local\/pos\/print-preferences"', '"reminderConfirm":"\/edge\/local\/pos\/sales\/{sale}\/reminders\/confirm"'] as $needle) {
             $this->assertStringContainsString($needle, $html, "W5 control/interface missing: {$needle}");
         }
     }

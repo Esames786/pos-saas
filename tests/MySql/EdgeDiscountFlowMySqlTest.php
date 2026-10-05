@@ -142,7 +142,8 @@ class EdgeDiscountFlowMySqlTest extends MySqlTenantTestCase
 
     private function settle(int $saleId, array $body)
     {
-        return $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", $body);
+        // Phase 3 Stage A: the shared page always sends both print intents (the Edge settle requires them like Online).
+        return $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", $body + ['kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip']);
     }
 
     private function sale(int $id): object

@@ -75,10 +75,22 @@ class EdgeCashierReturnHttpMySqlTest extends MySqlTenantTestCase
 
     public function test_the_page_carries_the_return_entry_point_and_the_online_return_ux(): void
     {
-        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
-        $this->assertStringContainsString('id="pos-return-btn"', $html); // W1 adopted the Online id (was #returns-btn)
-        foreach (['/returns/search', '/returns/sales/', "'/returns'", 'rt-step', 'qty_step', 'outstanding_delivery', 'needs_manager_approval', 'sales_return', 'needs the Online POS'] as $needle) {
-            $this->assertStringContainsString($needle, $html, "the real cashier page must carry {$needle}");
+        $html = $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index')->getContent();
+        $this->assertStringContainsString('id="pos-return-btn"', $html); // the Online id
+        // Phase 3 Stage A: the Return window opens the SAME tenant return page (Online UX) on the Edge route, inside the POS.
+        $this->assertStringContainsString('data-return-url="/edge/local/pos/sales-returns/create?embed=1"', $html);
+        $this->assertStringContainsString('id="pos-return-frame"', $html);
+        $this->assertStringContainsString('"salesReturnSearch":"\/edge\/local\/pos\/returns\/search"', $html, 'the runtime route the return page searches paid sales with');
+        // The refund block renders once a paid sale is selected (`?sales_order_id=`), exactly as on Online's /sales-returns/create.
+        $sale = $this->cashSale(1);
+        $saleId = (int) $this->getJson('/edge/local/pos/returns/search?q=' . urlencode(substr((string) $sale['sale_no'], 0, 8)))->assertOk()->json('sales.0.id');
+        // The manager-approval prompt renders only when the branch requires it (sales_return_approval_mode), same rule as Online.
+        DB::table('branches')->where('id', $this->branchId)->update(['sales_return_approval_mode' => \App\Models\Tenant\Branch::SALES_RETURN_MANAGER_REQUIRED]);
+        $page = $this->get('/edge/local/pos/sales-returns/create?embed=1&sales_order_id=' . $saleId)->assertOk()->assertViewIs('tenant.sales-returns.create')->getContent();
+        foreach (['id="refund_method"', 'id="refund_amount"', "title: 'Manager approval'", "action_type: 'sales_return'",
+            'action="/edge/local/pos/sales-returns"', '"\/edge\/local\/pos\/returns\/search"', '"\/edge\/local\/pos\/manager-approvals\/verify"',
+            \App\Services\Edge\EdgePosRuntimeFactory::LABELS['refundOnlineRequired']] as $needle) {
+            $this->assertStringContainsString($needle, $page, "the real return page must carry {$needle}");
         }
     }
 

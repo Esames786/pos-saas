@@ -45,7 +45,7 @@ final class PosPermissionCatalog
         // ── CASHIER — every permission a counter cashier's Edge workflows check at runtime ──────────────────────────
         'tenant.pos.index' => [
             'groups' => ['cashier'],
-            'edge' => 'EdgeLocalPosController@screen (abort_unless) + EdgeLocalAuthController post-login landing',
+            'edge' => 'EdgeLocalPosController@sharedScreen (abort_unless; GET /edge/local/pos renders the shared tenant.pos.index since Phase 3 Stage A) + EdgeLocalAuthController post-login landing',
             'online' => 'GET /pos — POSController@index',
         ],
         'tenant.pos.store' => [

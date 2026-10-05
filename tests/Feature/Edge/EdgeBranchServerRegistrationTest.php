@@ -117,7 +117,7 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/restaurant/tables/{table}/reservation',
             'edge/local/pos/restaurant/tables/{table}/reserve',
             'edge/local/pos/restaurant/tables/{table}/unreserve',
-            // EDGE-CASHIER-UI-1/2 (deliberately approved): the browser cashier page + Recall reads.
+            // EDGE-CASHIER-UI-1/2 (deliberately approved): THE cashier page (tenant.pos.index + the Edge runtime since Phase 3 Stage A) + Recall reads.
             'edge/local/pos',
             'edge/local/pos/held-sales/{sale}',
             'edge/local/pos/void-reasons',
@@ -190,7 +190,7 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/bill-preview/document',
             'edge/local/pos/print-preferences',
             // ── W-B (next release) — the ONE shared cashier view + canonical JSON twins + the separate screens (same tenant views) ──
-            'edge/local/pos/shared',
+            'edge/local/pos/shared',            // Phase 2 alias of edge/local/pos (same action; Stage B decides)
             'edge/local/pos/server-time',
             'edge/local/pos/totals/quote',
             'edge/local/pos/promotions/quote',

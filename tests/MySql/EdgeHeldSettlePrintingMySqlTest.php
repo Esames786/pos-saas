@@ -221,9 +221,9 @@ class EdgeHeldSettlePrintingMySqlTest extends MySqlTenantTestCase
         $this->assertSame($receiptBefore, $this->jobs($saleId, 'receipt')->pluck('id')->all());
     }
 
-    // ── 3. skip/skip, absent intents, invalid intent ─────────────────────────────────────────────────────────
+    // ── 3. skip/skip, absent intents (refused like Online since Phase 3 Stage A), invalid intent ──────────────
 
-    public function test_skip_intents_print_nothing_absent_intents_keep_the_old_contract_and_an_invalid_intent_is_422(): void
+    public function test_skip_intents_print_nothing_absent_intents_are_refused_like_online_and_an_invalid_intent_is_422(): void
     {
         // skip / skip → configured, nothing queued (Online: kot skipped, receipt skipped).
         $skipId = $this->holdCheck();
@@ -236,10 +236,15 @@ class EdgeHeldSettlePrintingMySqlTest extends MySqlTenantTestCase
         $this->assertSame('skipped', $printing['state']['receipt_status']);
         $this->assertSame(0, PrintJob::on('tenant')->where('reference_id', $skipId)->count());
 
-        // Intents absent (the old Edge page / an API caller) → no orchestration, no state: byte-identical old behaviour.
+        // Intents absent → REFUSED (Phase 3 Stage A: the shared page always sends both; Online SalesOrderController::store on
+        // tenant.pos.store answers the SAME 422 — {message, errors.printing}). One missing intent is refused too. Nothing changes.
         $plainId = $this->holdCheck();
-        $this->settle($plainId, $this->settleBody((string) Str::uuid(), null, null))->assertOk()
-            ->assertJsonPath('printing', null)->assertJsonPath('print_intents', null)->assertJsonPath('idempotent_replay', false);
+        foreach ([[null, null], ['print', null], [null, 'skip']] as [$kot, $receipt]) {
+            $this->settle($plainId, $this->settleBody((string) Str::uuid(), $kot, $receipt))->assertStatus(422)
+                ->assertJsonPath('message', 'Choose the Direct Pay KOT and Receipt intent before completing the sale.')
+                ->assertJsonPath('errors.printing.0', 'Choose the Direct Pay KOT and Receipt intent before completing the sale.');
+        }
+        $this->assertSame('held', DB::connection('tenant')->table('sales_orders')->where('id', $plainId)->value('status'), 'a refused settle changes nothing');
         $this->assertNull($this->printState($plainId));
         $this->assertSame(0, PrintJob::on('tenant')->where('reference_id', $plainId)->count());
 

@@ -208,7 +208,7 @@ class EdgeW6ContractEnvelopeHttpMySqlTest extends MySqlTenantTestCase
         $lineId = (int) DB::connection('tenant')->table('sales_order_lines')->where('sales_order_id', $held['sale_id'])->value('id');
         $this->postJson('/edge/local/pos/held-sales', ['held_sale_id' => $held['sale_id'], 'order_type' => 'takeaway',
             'lines' => [['sales_order_line_id' => $lineId, 'product_id' => $this->naan, 'quantity' => 3]]])->assertOk();
-        $this->postJson("/edge/local/pos/held-sales/{$held['sale_id']}/settle", ['client_uuid' => (string) Str::uuid(),
+        $this->postJson("/edge/local/pos/held-sales/{$held['sale_id']}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashId, 'amount' => 120, 'tendered_amount' => 120]]])->assertOk();
         $settledEnv = $this->envelopeFor((int) $held['sale_id']);
         $this->assertSame('birthday table', $settledEnv['notes']);

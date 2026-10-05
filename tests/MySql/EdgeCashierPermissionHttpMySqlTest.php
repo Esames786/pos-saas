@@ -99,8 +99,8 @@ class EdgeCashierPermissionHttpMySqlTest extends MySqlTenantTestCase
     public function test_restricted_operator_can_build_preview_and_hold_but_not_take_payment(): void
     {
         // The page tells the button what Online tells it: no Complete Sale for this operator.
-        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
-        $this->assertStringContainsString('"canCompleteSale":false', $html);
+        $html = $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index')->getContent();
+        $this->assertStringNotContainsString('id="complete-sale-btn"', $html, 'no Complete Sale for this operator (Online @can tenant.pos.store)');
         $this->assertStringContainsString('a counter will close the bill', $html, 'the Online hint is on the page');
 
         // Preview Bill and Hold work — the operator can build the order and park it.
@@ -119,6 +119,7 @@ class EdgeCashierPermissionHttpMySqlTest extends MySqlTenantTestCase
         ])->assertStatus(403);
         $this->postJson("/edge/local/pos/held-sales/{$held}/settle", [
             'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
         ])->assertStatus(403);
         $this->assertSame(0, DB::connection('tenant')->table('sales_orders')->where('status', 'paid')->count());
@@ -126,9 +127,10 @@ class EdgeCashierPermissionHttpMySqlTest extends MySqlTenantTestCase
 
         // A counter holding the synced permission closes the same held check.
         $this->grantCompleteSale();
-        $this->assertStringContainsString('"canCompleteSale":true', $this->get('/edge/local/pos')->assertOk()->getContent());
+        $this->assertStringContainsString('id="complete-sale-btn"', $this->get('/edge/local/pos')->assertOk()->getContent());
         $this->postJson("/edge/local/pos/held-sales/{$held}/settle", [
             'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
         ])->assertOk()->assertJsonPath('status', 'paid');
     }

@@ -278,7 +278,7 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
         $split = $this->assertWorkflowOk($this->postJson("/edge/local/pos/held-sales/{$h1}/split", ['lines' => [['sales_order_line_id' => $l1, 'quantity' => 1]]]), 'split bill');
         $child = (int) $split->json('child.id');
         foreach ([$child => 100, $h1 => 100, $h3 => 100] as $id => $amount) {
-            $this->assertWorkflowOk($this->postJson("/edge/local/pos/held-sales/{$id}/settle", ['client_uuid' => (string) Str::uuid(),
+            $this->assertWorkflowOk($this->postJson("/edge/local/pos/held-sales/{$id}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
                 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => $amount]]]), "settle held #{$id}");
         }
         $this->assertSame('available', DB::connection('tenant')->table('restaurant_tables')->where('id', $this->tables['T2'])->value('status'), 'the last check freed the table');
@@ -292,10 +292,10 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
         DB::connection('tenant')->table('restaurant_table_sessions')->where('id', $s5)->update(['status' => 'closed', 'closed_at' => now(), 'closed_by_user_id' => $this->userId]);
         DB::connection('tenant')->table('restaurant_tables')->where('id', $this->tables['T5'])->update(['status' => 'available']);
         $this->assertWorkflowOk($this->postJson("/edge/local/pos/held-sales/{$h5}/reattach-table", ['restaurant_table_id' => $this->tables['T5']]), 'reattach table');
-        $this->assertWorkflowOk($this->postJson("/edge/local/pos/held-sales/{$h5}/settle", ['client_uuid' => (string) Str::uuid(),
+        $this->assertWorkflowOk($this->postJson("/edge/local/pos/held-sales/{$h5}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]]]), 'settle reattached');
         // settle the voided takeaway check too, so the shift can close clean.
-        $this->assertWorkflowOk($this->postJson("/edge/local/pos/held-sales/{$voidSale}/settle", ['client_uuid' => (string) Str::uuid(),
+        $this->assertWorkflowOk($this->postJson("/edge/local/pos/held-sales/{$voidSale}/settle", ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]]]), 'settle voided check');
 
         // Customer search (synced customer book).

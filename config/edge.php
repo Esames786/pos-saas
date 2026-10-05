@@ -220,7 +220,7 @@ return [
         'edge.local.auth.logout',
         'edge.local.auth.status',
         // EDGE-LOCAL-POS-1 — the branch-local POS surface (each name deliberate; edge.auth + edge.branch).
-        'edge.local.pos.screen',
+        'edge.local.pos.screen',                          // THE cashier page = tenant.pos.index + the Edge runtime (Phase 3 Stage A)
         'edge.local.pos.terminals',
         'edge.local.pos.terminal.select',
         'edge.local.pos.shift.status',
@@ -313,7 +313,7 @@ return [
         'edge.local.pos.bill-preview.document',
         'edge.local.pos.print-preferences',
         // ── W-B (next release — ONE shared cashier view; each name deliberate; mirrors routes/edge_runtime.php W-B) ──
-        'edge.local.pos.shared',                          // tenant.pos.index + the Edge runtime (Phase 2 beside edge.local.pos.screen)
+        'edge.local.pos.shared',                          // Phase 2 alias of edge.local.pos.screen (same action; Stage B decides)
         'edge.local.pos.server-time',                     // Online /api/server-time twin
         'edge.local.pos.totals.quote',                    // Online /api/pos/totals/quote twin (O16)
         'edge.local.pos.promotions.quote',                // Online /api/pos/promotions/quote twin (O17)

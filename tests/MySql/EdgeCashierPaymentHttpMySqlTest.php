@@ -107,19 +107,19 @@ class EdgeCashierPaymentHttpMySqlTest extends MySqlTenantTestCase
 
     public function test_the_payment_method_list_follows_online_and_only_cash_is_taken(): void
     {
-        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
-        preg_match('#<script id="edge-pos-data" type="application/json">(.*?)</script>#s', $html, $m);
-        $vm = json_decode($m[1], true, 512, JSON_THROW_ON_ERROR);
-        $methods = collect($vm['tenderMethods']);
-        $this->assertSame('Cash', $methods->first()['name'], 'cash first, like the Online select');
-        $this->assertTrue($methods->firstWhere('id', $this->cashId)['offline']);
-        $card = $methods->firstWhere('id', $this->cardId);
-        $bank = $methods->firstWhere('id', $this->bankId);
-        $this->assertFalse($card['offline']);
-        $this->assertSame('Card / provider payments run on the Online POS (accepted Cloud-only).', $card['hint']);
-        $this->assertFalse($bank['offline']);
-        $this->assertStringStartsWith('Awaiting owner decision', $bank['hint']);
-        $this->assertTrue($vm['tipsSyncable'], 'W6: the sync contract carries tips');
+        // Phase 3 Stage A: the SHARED Online payment modal; the Edge runtime capability `nonCashTender` (off) renders every
+        // non-cash option disabled in place (owner A5) and carries the business hint in POS_RUNTIME.labels.
+        $res = $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index');
+        $html = $res->getContent();
+        $methods = collect($res->viewData('paymentMethods'));
+        $this->assertSame('Cash', $methods->first()->name, 'cash first, like the Online select');
+        $this->assertMatchesRegularExpression('/<option value="' . $this->cashId . '" data-type="cash" selected\s*>Cash<\/option>/', $html);
+        $this->assertMatchesRegularExpression('/<option value="' . $this->cardId . '" data-type="card"\s+disabled>Card<\/option>/', $html, 'card = ONLINE_REQUIRED');
+        $this->assertMatchesRegularExpression('/<option value="' . $this->bankId . '" data-type="bank_transfer"\s+disabled>Bank Transfer<\/option>/', $html, 'manual methods await the owner decision');
+        $this->assertStringContainsString('"nonCashTender":false', $html);
+        $this->assertStringContainsString('"nonCashTender":' . json_encode(\App\Services\Edge\EdgePosRuntimeFactory::LABELS['nonCashTender'], 15), $html, 'the hint the page shows');
+        $this->assertStringContainsString('"tips":true', $html, 'tips are quoted (held / preview)');
+        $this->assertStringContainsString('"tipOnPaidSale":false', $html, 'a paid-sale tip is refused until the sync contract carries it');
         foreach (['payment_method_id', 'tendered_amount', 'quick-cash-buttons', 'transaction_ref', 'change-view', 'short-tender-row', 'short-tender-message',
                   'discount-shortfall-btn', 'promo-code-input', 'apply-promo-btn', 'remove-promo-btn', 'promo-feedback', 'manual-discount-panel',
                   'manual-discount-type', 'manual-discount-value', 'apply-discount-btn', 'remove-discount-btn', 'manual-discount-feedback',
