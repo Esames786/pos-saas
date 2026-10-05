@@ -113,7 +113,7 @@ class EdgeCashierPermissionHttpMySqlTest extends MySqlTenantTestCase
 
         // Taking payment is refused SERVER-SIDE on both payment endpoints — the hidden button is not the guard.
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
         ])->assertStatus(403);

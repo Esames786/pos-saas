@@ -118,7 +118,7 @@ class EdgeSharedPosRecipeAvailabilityMySqlTest extends MySqlTenantTestCase
     /** productsPayload of the shared page, keyed by product id. */
     private function payload(): array
     {
-        $response = $this->get('/edge/local/pos/shared')->assertOk();
+        $response = $this->get('/edge/local/pos')->assertOk();
         $products = null;
         $response->assertViewHas('productsPayload', function ($p) use (&$products) {
             $products = collect($p)->keyBy('id')->all();
@@ -184,7 +184,7 @@ class EdgeSharedPosRecipeAvailabilityMySqlTest extends MySqlTenantTestCase
         $this->postJson('/edge/local/pos/shift/open', ['opening_cash' => 0])->assertStatus(201);
         $cash = (int) DB::connection('tenant')->table('payment_methods')->value('id');
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->naan, 'quantity' => 10]],
             'payments' => [['payment_method_id' => $cash, 'amount' => 500, 'tendered_amount' => 500]],
         ])->assertStatus(201);

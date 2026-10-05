@@ -313,7 +313,7 @@ return [
         'edge.local.pos.bill-preview.document',
         'edge.local.pos.print-preferences',
         // ── W-B (next release — ONE shared cashier view; each name deliberate; mirrors routes/edge_runtime.php W-B) ──
-        'edge.local.pos.shared',                          // Phase 2 alias of edge.local.pos.screen (same action; Stage B decides)
+        'edge.local.pos.shared',                          // Phase 2 alias of edge.local.pos.screen — Stage B: a 301 redirect to /edge/local/pos
         'edge.local.pos.server-time',                     // Online /api/server-time twin
         'edge.local.pos.totals.quote',                    // Online /api/pos/totals/quote twin (O16)
         'edge.local.pos.promotions.quote',                // Online /api/pos/promotions/quote twin (O17)

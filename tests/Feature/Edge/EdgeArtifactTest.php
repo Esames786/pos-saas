@@ -167,11 +167,28 @@ class EdgeArtifactTest extends TestCase
         // Sanity: real runtime files are present.
         $this->assertContains('composer.json', $plan);
         $this->assertContains('artisan', $plan);
-        // The ACTUAL cashier product ships in the restricted artifact: the browser cashier page, the Quick
-        // Report front-end + the canonical report engine/thermal Blade it reuses, and the canonical print
-        // documents Print Here renders — while the Cloud report/catering controllers stay physically out.
+        // The ACTUAL cashier product ships in the restricted artifact: the ONE shared cashier view (Phase 3: the Online
+        // `tenant.pos.index` through `layouts.pos` + its partials/scripts, and the secondary tenant screens the Edge renders
+        // — shift open/close/list/detail, sales-return create/list/detail, split bill), the login page, the Quick Report
+        // front-end + the canonical report engine/thermal Blade it reuses, and the canonical print documents Print Here
+        // renders — while the Cloud report/catering controllers stay physically out. The old Edge page is deleted (Stage B).
+        $this->assertNotContains('resources/views/edge/pos/index.blade.php', $plan, 'Stage B: the old Edge cashier page is deleted');
+        $sharedViewFiles = array_map(
+            fn ($f) => str_replace('\\', '/', substr($f, strlen(base_path()) + 1)),
+            array_merge(glob(resource_path('views/tenant/pos/partials/*.blade.php')) ?: [], glob(resource_path('views/tenant/pos/js/*.blade.php')) ?: [])
+        );
+        $this->assertGreaterThanOrEqual(6, count($sharedViewFiles), 'the shared view\'s partials + runtime script exist');
+        foreach (array_merge([
+            'resources/views/tenant/pos/index.blade.php', 'resources/views/layouts/pos.blade.php',
+            'resources/views/tenant/shifts/open.blade.php', 'resources/views/tenant/shifts/close.blade.php',
+            'resources/views/tenant/shifts/index.blade.php', 'resources/views/tenant/shifts/show.blade.php',
+            'resources/views/tenant/sales-returns/create.blade.php', 'resources/views/tenant/sales-returns/index.blade.php',
+            'resources/views/tenant/sales-returns/show.blade.php', 'resources/views/tenant/sales-orders/split-bill.blade.php',
+        ], $sharedViewFiles) as $must) {
+            $this->assertContains($must, $plan, "the shared cashier view must ship: {$must}");
+        }
         foreach ([
-            'resources/views/edge/pos/index.blade.php', 'resources/views/edge/auth/login.blade.php',
+            'resources/views/edge/auth/login.blade.php', 'resources/views/edge/health.blade.php',
             'app/Http/Controllers/Edge/EdgeLocalPosController.php', 'app/Http/Controllers/Edge/EdgeQuickReportController.php',
             'app/Services/Reports/SalesReportEngine.php', 'app/Services/Reports/SalesReportDocumentService.php',
             'resources/views/tenant/reports/center/print.blade.php',

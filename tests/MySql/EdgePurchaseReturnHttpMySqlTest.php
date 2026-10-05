@@ -85,10 +85,11 @@ class EdgePurchaseReturnHttpMySqlTest extends MySqlTenantTestCase
 
     public function test_the_real_page_carries_the_online_purchase_return_ux(): void
     {
-        // Phase 3 Stage A: the POS page is the shared Online view (no Edge nav strip); the purchase-return screen stays its own
-        // page and links back to THE POS page.
+        // Phase 3 Stage A/B: the POS page is the shared Online view (no Edge nav strip); the purchase-return screen stays its own
+        // page, offered by the Edge MENU behind #pos-sidebar-toggle (Stage B, runtime-driven: this operator holds the permission
+        // the Edge route enforces) and links back to THE POS page.
         $pos = $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index')->getContent();
-        $this->assertStringNotContainsString('/edge/local/pos/purchase-returns', $pos);
+        $this->assertStringContainsString('id="pos-edge-menu-purchase-returns" href="/edge/local/pos/purchase-returns"', $pos);
         $html = $this->get('/edge/local/pos/purchase-returns')->assertOk()->getContent();
         $this->assertStringContainsString('href="' . url('/edge/local/pos') . '">POS</a>', $html, 'the finance page links back to THE POS page');
         foreach (['Purchase Returns', 'Source GRN', 'Received Lines', 'Already Returned', 'Returnable', 'Return Qty', 'Unit Cost', 'Line Total', 'Header reason', 'Return Date', 'Return Total',
@@ -130,13 +131,16 @@ class EdgePurchaseReturnHttpMySqlTest extends MySqlTenantTestCase
     public function test_permissions_are_canonical_a_cashier_gets_nothing_and_a_store_only_user_cannot_post(): void
     {
         $this->actingAs(User::on('tenant')->find($this->cashierId), 'tenant');
-        $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index'); // the cashier still has the POS
+        $pos = $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index')->getContent(); // the cashier still has the POS …
+        $this->assertStringNotContainsString('/edge/local/pos/purchase-returns', $pos);                       // … but the Edge menu offers no purchase-return entry
         $this->get('/edge/local/pos/purchase-returns')->assertStatus(403);
         $this->getJson('/edge/local/pos/purchase-returns/options')->assertStatus(403);
         $this->getJson('/edge/local/pos/purchase-returns/grns/' . $this->prGrnId)->assertStatus(403);
         $this->postJson('/edge/local/pos/purchase-returns', ['cloud_grn_id' => $this->prGrnId, 'reason_code' => 'damaged', 'lines' => [['cloud_grn_line_id' => $this->prGrnLineId, 'quantity' => 1]]])->assertStatus(403);
 
         $this->actingAs(User::on('tenant')->find($this->storeOnlyId), 'tenant');
+        $this->assertStringContainsString('id="pos-edge-menu-purchase-returns" href="/edge/local/pos/purchase-returns"',
+            $this->get('/edge/local/pos')->assertOk()->getContent(), 'store-only user gets the menu entry (requireView = store OR post)');
         $this->get('/edge/local/pos/purchase-returns')->assertOk(); // store-only user reaches the screen …
         $this->getJson('/edge/local/pos/purchase-returns/options')->assertOk()->assertJsonPath('permissions.can_post', false); // … but cannot post
         $this->postJson('/edge/local/pos/purchase-returns', ['cloud_grn_id' => $this->prGrnId, 'reason_code' => 'damaged', 'lines' => [['cloud_grn_line_id' => $this->prGrnLineId, 'quantity' => 1]]])->assertStatus(403);

@@ -178,7 +178,7 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
 
     private function cashSale(float $qty = 3): array
     {
-        return $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+        return $this->postJson('/edge/local/pos/sales', ['kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productP, 'quantity' => $qty]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100 * $qty]]])->assertStatus(201)->json();
     }
@@ -341,7 +341,7 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
         $db->table('restaurant_table_sessions')->where('id', $deadSession)->update(['status' => 'closed', 'closed_at' => now(), 'closed_by_user_id' => $this->userId]);
         $db->table('restaurant_tables')->where('id', $this->tables['T3'])->update(['status' => 'available']);
 
-        $sale = fn () => $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+        $sale = fn () => $this->postJson('/edge/local/pos/sales', ['kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productQ, 'quantity' => 1]], 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 50]]]);
 
         // permission => [probe, the 403 carries `permission`, reprobe (defaults to probe)]

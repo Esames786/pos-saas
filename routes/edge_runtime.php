@@ -43,8 +43,8 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
     Route::prefix('pos')->name('pos.')->middleware(['edge.auth', 'edge.branch'])->group(function () {
         // PHASE 3 STAGE A (owner §3/§4, 4 Oct 2026) — THE cashier page: `tenant.pos.index` (the ONE shared Online view) rendered
         // through layouts.pos + the Edge runtime (EdgePosRuntimeFactory). The route NAME stays `edge.local.pos.screen` (login
-        // landing, status page, allowlist, proof tools). The old Edge page (resources/views/edge/pos/**) is NO LONGER a runtime
-        // path; its Blade files are deleted in Stage B.
+        // landing, status page, allowlist, proof tools). STAGE B (6 Oct 2026): the old Edge page (resources/views/edge/pos/**)
+        // and EdgeLocalPosController::screen() are DELETED — nothing else renders a cashier page on the appliance.
         Route::get('/', [EdgeLocalPosController::class, 'sharedScreen'])->name('screen');
         Route::get('/terminals', [EdgeLocalPosController::class, 'terminals'])->name('terminals');
         Route::post('/terminal/select', [EdgeLocalPosController::class, 'selectTerminal'])->name('terminal.select');
@@ -164,8 +164,9 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
 
         // ═══════════════ W-B (next release, shared cashier view) — Edge runtime adapter routes; each also in config/edge.php
         //                 route_allowlist and the URI census (tests/Feature/Edge/EdgeBranchServerRegistrationTest) ═══════════════
-        // Phase 2 alias of THE page (same action as `edge.local.pos.screen` since Stage A; Stage B decides whether it stays or redirects).
-        Route::get('/shared', [EdgeLocalPosController::class, 'sharedScreen'])->name('shared');
+        // Phase 2 alias of THE page — STAGE B decision: a 301 to /edge/local/pos (query string preserved); the name stays on the
+        // allowlist + URI census as a redirect so an old bookmark / proof-tool default still lands on the ONE cashier page.
+        Route::get('/shared', [EdgeLocalPosController::class, 'sharedAlias'])->name('shared');
         // Canonical JSON twins of Online endpoints the shared page calls (§3.2).
         Route::get('/server-time', [EdgeLocalPosController::class, 'serverTime'])->name('server-time');                                 // /api/server-time
         Route::post('/totals/quote', [EdgeLocalPosController::class, 'totalsQuote'])->name('totals.quote');                           // /api/pos/totals/quote (O16)

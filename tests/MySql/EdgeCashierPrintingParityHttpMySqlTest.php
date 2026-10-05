@@ -425,14 +425,18 @@ class EdgeCashierPrintingParityHttpMySqlTest extends MySqlTenantTestCase
         DB::connection('tenant')->table('terminal_printer_settings')->insert(['terminal_id' => $this->terminalA, 'receipt_printer_id' => $receipt, 'kot_printer_id' => null,
             'auto_print_receipt' => 1, 'auto_print_kot' => 1, 'created_at' => now(), 'updated_at' => now()]);
 
-        $paid = $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+        $paid = $this->postJson('/edge/local/pos/sales', ['kot_print_intent' => 'print', 'receipt_print_intent' => 'print', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->burger, 'quantity' => 2]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 800, 'tendered_amount' => 1000]]])->assertStatus(201);
         $saleId = (int) $paid->json('sale_id');
         $sale = SalesOrder::on('tenant')->findOrFail($saleId);
         $svc = app(EdgeLocalPrintDirectPayService::class);
 
-        $this->assertNull($svc->afterPaidSale($sale, null, null), 'no intent pair → no orchestration (Online)');
+        // Stage B: the post itself carried print/print (intents are REQUIRED now, like Online), so the controller already orchestrated
+        // once — the persisted state is queued/queued and every service call below is the exactly-once replay of the stored jobs.
+        $this->assertSame('queued', $sale->direct_pay_print_state['kot_status'] ?? null, 'the post orchestrated the KOT once');
+        $this->assertSame('queued', $sale->direct_pay_print_state['receipt_status'] ?? null, 'the post orchestrated the receipt once');
+        $this->assertSame(1, $this->jobsOf($saleId, 'kot')->count() + 0, 'one KOT job from the post');
         $printing = $svc->afterPaidSale($sale, 'print', 'print');
         $this->assertSame('queued', $printing['state']['kot_status']);
         $this->assertSame('queued', $printing['state']['receipt_status']);
@@ -455,11 +459,18 @@ class EdgeCashierPrintingParityHttpMySqlTest extends MySqlTenantTestCase
         // the page's own ensure-once receipt after payment returns the SAME bill.
         $this->postJson("/edge/local/pos/sales/{$saleId}/receipt")->assertStatus(201)->assertJsonPath('id', (int) $printing['receipt']['job_id']);
 
-        // "skip" intents print nothing; a sale without intents cannot be retried (Online message).
-        $skipSale = SalesOrder::on('tenant')->findOrFail((int) $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+        // "skip" intents print nothing. Stage B (owner §5.2): a Direct Pay WITHOUT both intents is refused up front with Online's
+        // 422 {message, errors.printing} — "no intent" is no longer a reachable sale state over HTTP; retrying a skip/skip sale resumes
+        // the SKIPPED state and queues nothing.
+        $skipSale = SalesOrder::on('tenant')->findOrFail((int) $this->postJson('/edge/local/pos/sales', ['kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->drink, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 150, 'tendered_amount' => 150]]])->assertStatus(201)->json('sale_id'));
-        $this->postJson("/edge/local/pos/sales/{$skipSale->id}/printing/retry")->assertStatus(422)->assertJsonPath('message', 'This sale has no Direct Pay print intent.');
+        $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'lines' => [['product_id' => $this->drink, 'quantity' => 1]],
+            'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 150, 'tendered_amount' => 150]]])->assertStatus(422)
+            ->assertJsonPath('message', 'Choose the Direct Pay KOT and Receipt intent before completing the sale.')
+            ->assertJsonPath('errors.printing.0', 'Choose the Direct Pay KOT and Receipt intent before completing the sale.');
+        $this->postJson("/edge/local/pos/sales/{$skipSale->id}/printing/retry")->assertOk()->assertJsonPath('printing.state.kot_status', 'skipped')->assertJsonPath('printing.kot_jobs', []);
         $skipped = $svc->afterPaidSale($skipSale, 'skip', 'skip');
         $this->assertSame('skipped', $skipped['state']['kot_status']);
         $this->assertSame([], $skipped['kot_jobs']);
@@ -515,7 +526,7 @@ class EdgeCashierPrintingParityHttpMySqlTest extends MySqlTenantTestCase
         $printer = $this->networkPrinter('Dead Printer', 'receipt', $this->freePort()); // nothing listens → connect refused
         DB::connection('tenant')->table('terminal_printer_settings')->insert(['terminal_id' => $this->terminalA, 'receipt_printer_id' => $printer, 'kot_printer_id' => null,
             'auto_print_receipt' => 1, 'auto_print_kot' => 0, 'created_at' => now(), 'updated_at' => now()]);
-        $saleId = (int) $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+        $saleId = (int) $this->postJson('/edge/local/pos/sales', ['kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->drink, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 150, 'tendered_amount' => 150]]])->assertStatus(201)->json('sale_id');
         $jobId = (int) $this->postJson("/edge/local/pos/sales/{$saleId}/receipt")->assertStatus(201)->json('id');

@@ -80,11 +80,13 @@ class EdgeSupplierFinanceHttpMySqlTest extends MySqlTenantTestCase
 
     public function test_the_real_pages_carry_the_online_supplier_finance_ux(): void
     {
-        // Phase 3 Stage A: the POS page is the shared Online view (no Edge nav strip — owner A5, zero Edge-only layout); the
-        // finance screens stay their own pages, reached by URL / from each other's nav, and link back to THE POS page.
+        // Phase 3 Stage A/B: the POS page is the shared Online view (no Edge nav strip — owner A5, zero Edge-only layout); the
+        // finance screens stay their own pages, offered by the Edge MENU behind #pos-sidebar-toggle (Stage B, runtime-driven: this
+        // operator holds the finance permissions → both entries, as `POS_RUNTIME.routes`), and they link back to THE POS page.
         $pos = $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index')->getContent();
-        $this->assertStringNotContainsString('/edge/local/pos/suppliers', $pos);
-        $this->assertStringNotContainsString('/edge/local/pos/finance/journal', $pos);
+        $this->assertStringContainsString('id="pos-edge-menu-supplier-finance" href="/edge/local/pos/suppliers"', $pos);
+        $this->assertStringContainsString('id="pos-edge-menu-finance-journal" href="/edge/local/pos/finance/journal"', $pos);
+        $this->assertStringContainsString('"supplierFinancePage":"\/edge\/local\/pos\/suppliers"', $pos);
 
         // Suppliers → Supplier Ledger → Record Payment (Online form semantics).
         $html = $this->get('/edge/local/pos/suppliers')->assertOk()->getContent();
@@ -165,7 +167,10 @@ class EdgeSupplierFinanceHttpMySqlTest extends MySqlTenantTestCase
     public function test_a_normal_cashier_never_gains_supplier_payment_or_manual_journal(): void
     {
         $this->actingAs(User::on('tenant')->find($this->cashierId), 'tenant');
-        $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index'); // the cashier still has the POS
+        $pos = $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index')->getContent(); // the cashier still has the POS …
+        $this->assertStringNotContainsString('/edge/local/pos/suppliers', $pos);                                 // … but the Edge menu offers no finance entry
+        $this->assertStringNotContainsString('/edge/local/pos/finance/journal', $pos);
+        $this->assertStringContainsString('id="pos-edge-menu-status" href="/edge/local/pos/health"', $pos);
         $this->get('/edge/local/pos/suppliers')->assertStatus(403);
         $this->getJson('/edge/local/pos/suppliers/options')->assertStatus(403);
         $this->getJson('/edge/local/pos/suppliers/' . $this->supplierAId . '/ledger')->assertStatus(403);

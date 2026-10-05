@@ -55,6 +55,47 @@ class EdgeChromePartialTest extends TestCase
         $this->assertStringContainsString("console.error('Sidebar element not found')", $theme);
     }
 
+    /**
+     * Phase 3 Stage B (owner §5.1) — the Branch Server menu: a Bootstrap offcanvas (position:fixed, hidden until opened → zero
+     * geometry in the flow) in the chrome slot, opened by the SHARED #pos-sidebar-toggle through a script (the button's own
+     * attributes are never touched — the skeleton gate compares them). Entries are runtime-driven: a null route renders no entry.
+     */
+    public function test_the_edge_chrome_carries_a_runtime_driven_offcanvas_menu_behind_the_shared_sidebar_toggle(): void
+    {
+        $c = $this->edgeRuntime();
+        $with = fn (array $routes) => new PosRuntime(mode: $c->mode, routes: array_merge($c->routes, $routes), capabilities: $c->capabilities, identity: array_merge($c->identity, ['branch_name' => 'Chrome Branch']),
+            authority: $c->authority, assets: $c->assets, transport: $c->transport, managerCredential: $c->managerCredential, labels: $c->labels, chromeView: $c->chromeView);
+
+        // A cashier without finance permissions: Health + Logout only.
+        $html = view('tenant.pos.partials.pos-chrome-edge', ['posRuntime' => $with(['supplierFinancePage' => null, 'financeJournalPage' => null, 'purchaseReturnsPage' => null])])->render();
+        $this->assertStringContainsString('<div class="offcanvas offcanvas-start" tabindex="-1" id="pos-edge-menu"', $html);
+        $this->assertStringContainsString('id="pos-edge-menu-status" href="/edge/local/health"', $html);
+        $this->assertStringContainsString('<button type="submit" class="btn btn-outline-danger mt-auto" id="pos-edge-menu-logout" form="pos-edge-logout-form">', $html);
+        $this->assertStringContainsString('Chrome Branch', $html);
+        $this->assertStringContainsString('LOCAL MODE · MANUAL SWITCH', $html);
+        foreach (['pos-edge-menu-supplier-finance', 'pos-edge-menu-finance-journal', 'pos-edge-menu-purchase-returns'] as $absent) {
+            $this->assertStringNotContainsString($absent, $html, "{$absent} must not render for a null route");
+        }
+        // The menu is outside the display:none island (it must be able to open) but carries no `.sidebar`, no `<ul`, no Cloud chrome.
+        $this->assertLessThan(strpos($html, 'id="pos-edge-menu"'), strpos($html, '</div>'), 'the offcanvas follows the hidden island, not inside it');
+        $this->assertSame(1, preg_match_all('/class="sidebar"/', $html));
+        $this->assertDoesNotMatchRegularExpression('/sidebar-inner|sidebar-menu|<ul/', $html);
+        // Opened by the shared toggle through a listener; the toggle's attributes are not rewritten server-side.
+        $this->assertStringContainsString("document.getElementById('pos-sidebar-toggle')", $html);
+        $this->assertStringContainsString('window.bootstrap && window.bootstrap.Offcanvas', $html);
+        $this->assertStringNotContainsString('data-bs-toggle="offcanvas"', $html, 'no data-bs-toggle on any control — the toggle button stays Online\'s');
+
+        // An operator with every finance permission: the three entries, in the runtime's paths, and the data island carries them.
+        $html = view('tenant.pos.partials.pos-chrome-edge', ['posRuntime' => $with(['supplierFinancePage' => '/edge/local/pos/suppliers', 'financeJournalPage' => '/edge/local/pos/finance/journal', 'purchaseReturnsPage' => '/edge/local/pos/purchase-returns'])])->render();
+        $this->assertStringContainsString('id="pos-edge-menu-supplier-finance" href="/edge/local/pos/suppliers"', $html);
+        $this->assertStringContainsString('id="pos-edge-menu-finance-journal" href="/edge/local/pos/finance/journal"', $html);
+        $this->assertStringContainsString('id="pos-edge-menu-purchase-returns" href="/edge/local/pos/purchase-returns"', $html);
+        preg_match('/<script type="application\/json" id="pos-edge-chrome-data">(.*?)<\/script>/s', $html, $m);
+        $island = json_decode($m[1], true);
+        $this->assertSame('/edge/local/pos/suppliers', $island['routes']['supplierFinancePage']);
+        $this->assertSame(['pos-edge-menu-status', 'pos-edge-menu-supplier-finance', 'pos-edge-menu-finance-journal', 'pos-edge-menu-purchase-returns'], array_column($island['menu'], 'id'));
+    }
+
     public function test_the_split_bill_script_guards_the_tendered_field_it_does_not_render(): void
     {
         $src = file_get_contents(resource_path('views/tenant/sales-orders/split-bill.blade.php'));

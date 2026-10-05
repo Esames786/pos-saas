@@ -190,7 +190,7 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/bill-preview/document',
             'edge/local/pos/print-preferences',
             // ── W-B (next release) — the ONE shared cashier view + canonical JSON twins + the separate screens (same tenant views) ──
-            'edge/local/pos/shared',            // Phase 2 alias of edge/local/pos (same action; Stage B decides)
+            'edge/local/pos/shared',            // Phase 2 alias of edge/local/pos — Stage B: a 301 redirect to it
             'edge/local/pos/server-time',
             'edge/local/pos/totals/quote',
             'edge/local/pos/promotions/quote',

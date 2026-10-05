@@ -240,7 +240,7 @@ class EdgeSharedPosContractMySqlTest extends MySqlTenantTestCase
         $quote(['product_id' => $this->karahi, 'quantity' => 1, 'modifiers' => [['modifier_id' => 999999, 'name' => 'Ghost']]])->assertOk()->assertJsonPath('subtotal', 100);
         $quote(['product_id' => $this->karahi, 'quantity' => 1, 'modifiers' => [['modifier_id' => $mild], ['modifier_id' => $hot]]])->assertOk()->assertJsonPath('subtotal', 120);
         // …the STORE and Preview Bill stay strict: the required group is enforced where the kitchen/money is.
-        $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+        $this->postJson('/edge/local/pos/sales', ['kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->karahi, 'quantity' => 1]], 'payments' => $this->cash(100)])
             ->assertStatus(422)->assertJsonPath('message', 'Select at least 1 option for Spice Level on Chicken Karahi.');
         $this->postJson('/edge/local/pos/preview-bill', ['order_type' => 'takeaway', 'lines' => [['product_id' => $this->karahi, 'quantity' => 1]]])
@@ -283,7 +283,7 @@ class EdgeSharedPosContractMySqlTest extends MySqlTenantTestCase
         $this->getJson('/edge/local/pos/returns/search?q=SO')->assertOk()->assertJsonStructure(['sales', 'results', 'pagination']);
 
         // A paid sale + its receipt job → print job aliases (job_id, printer_id, created_at_human; path-only preview_url).
-        $sale = $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+        $sale = $this->postJson('/edge/local/pos/sales', ['kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->naan, 'quantity' => 1]], 'payments' => $this->cash(50)])->assertStatus(201);
         $saleId = (int) $sale->json('sale_id');
         $job = $this->postJson("/edge/local/pos/sales/{$saleId}/receipt")->assertStatus(201);
@@ -318,6 +318,30 @@ class EdgeSharedPosContractMySqlTest extends MySqlTenantTestCase
         }
         $this->assertSame('zafar@example.test', $c['email']);
         $this->assertSame('Old Town', $c['legacy_address']);
+        // Stage B (gap B of the same-dataset comparison): like Online Ajax\CustomerLookupController, an EMPTY or one-character
+        // query lists the first 20 ACTIVE customers ordered by name (the shared customer modal opens populated on both runtimes);
+        // the former Edge-only 2-character floor is gone. Limit 20 + name order kept; a retired customer is never offered.
+        $book = [];
+        foreach (range(1, 21) as $n) {
+            $book[] = ['customer_uuid' => (string) Str::ulid(), 'code' => sprintf('BK%02d', $n), 'name' => sprintf('Book %02d', $n), 'phone' => '0300-00000' . $n, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()];
+        }
+        $book[] = ['customer_uuid' => (string) Str::ulid(), 'code' => 'BK99', 'name' => 'Aaa Retired', 'phone' => '0300-9', 'status' => 'inactive', 'created_at' => now(), 'updated_at' => now()];
+        DB::connection('tenant')->table('customers')->insert($book);
+        $empty = $this->getJson('/edge/local/pos/customers?q=')->assertOk()->json('customers');
+        $this->assertCount(20, $empty, 'the 20-row limit holds on an empty query');
+        $this->assertSame('Book 01', $empty[0]['name'], 'name order; the inactive "Aaa Retired" is never offered');
+        $this->assertSame(array_column($empty, 'name'), collect(array_column($empty, 'name'))->sort()->values()->all());
+        $this->assertCount(20, $this->getJson('/edge/local/pos/customers')->assertOk()->json('customers'), 'no q at all = the same list');
+        // a ONE-character query SEARCHES (name / phone / code, like the longer ones): the rows whose name, phone or code carries a "Z"
+        // — Mr Zafar by name, plus any active row whose code happens to carry the letter (the setUp codes are random) — never the whole book.
+        $oneChar = array_column($this->getJson('/edge/local/pos/customers?q=Z')->assertOk()->json('customers'), 'name');
+        $expectedZ = DB::connection('tenant')->table('customers')->where('status', 'active')
+            ->where(fn ($w) => $w->where('name', 'like', '%Z%')->orWhere('phone', 'like', '%Z%')->orWhere('code', 'like', '%Z%'))
+            ->orderBy('name')->limit(20)->pluck('name')->all();
+        $this->assertSame($expectedZ, $oneChar, 'a ONE-character query searches');
+        $this->assertContains('Mr Zafar', $oneChar);
+        $this->assertNotContains('Book 01', $oneChar, 'a one-character query is a search, not the empty-query listing');
+        $this->assertSame(['Mr Zafar'], array_column($this->getJson('/edge/local/pos/customers?id=' . $this->customerId)->assertOk()->json('customers'), 'name'), '?id= still pins the exact customer');
         $this->assertSame('House 1', $c['addresses'][0]['address']);
         $this->assertSame(26, strlen((string) $c['customer_uuid']));
     }

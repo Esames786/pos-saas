@@ -161,7 +161,7 @@ class EdgeSharedPosGapFixesMySqlTest extends MySqlTenantTestCase
             $this->formLine(['key' => 'k2', 'product_id' => $this->drink, 'quantity' => 1, 'modifiers' => []]),
         ];
         $res = $this->formPost('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'branch_id' => (string) $this->branchId,
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'branch_id' => (string) $this->branchId,
             'discount_type' => 'none', 'discount_value' => '0',
             'lines' => $lines,
             'payments' => [['payment_method_id' => (string) $this->cashMethodId, 'amount' => '700', 'tendered_amount' => '700']],
@@ -177,14 +177,14 @@ class EdgeSharedPosGapFixesMySqlTest extends MySqlTenantTestCase
 
         // The old Edge page's ARRAY form keeps working (postJson).
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->tikka, 'quantity' => 1, 'modifiers' => [['modifier_group_id' => $this->extrasGroup, 'modifier_id' => $this->cheeseOption]]]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 300, 'tendered_amount' => 300]],
         ])->assertStatus(201)->assertJsonPath('grand_total', 300);
 
         // An undecodable modifiers string = no options (Online normalizeLineModifiers decodes to []), never a 422.
         $this->formPost('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => (string) $this->drink, 'quantity' => '1', 'modifiers' => 'not-json']],
             'payments' => [['payment_method_id' => (string) $this->cashMethodId, 'amount' => '100', 'tendered_amount' => '100']],
         ])->assertStatus(201)->assertJsonPath('grand_total', 100);
@@ -199,7 +199,7 @@ class EdgeSharedPosGapFixesMySqlTest extends MySqlTenantTestCase
             $this->formLine(['key' => 'd1:component:2', 'parent_key' => 'd1', 'line_kind' => 'component', 'combo_id' => $this->comboId, 'product_id' => $this->naan, 'quantity' => 4, 'unit_price' => 0]),
         ];
         $res = $this->formPost('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => $lines,
             'payments' => [['payment_method_id' => (string) $this->cashMethodId, 'amount' => '800', 'tendered_amount' => '800']],
         ]);
@@ -298,7 +298,7 @@ class EdgeSharedPosGapFixesMySqlTest extends MySqlTenantTestCase
 
     public function test_e3_customer_quick_add_and_add_address_render_disabled_with_the_capability_hint_on_edge(): void
     {
-        $html = $this->get('/edge/local/pos/shared')->assertOk()->getContent();
+        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
 
         $quick = \App\Services\Edge\EdgePosRuntimeFactory::LABELS['customerCreate'];
         $addr = \App\Services\Edge\EdgePosRuntimeFactory::LABELS['customerAddressCreate'];
@@ -319,13 +319,13 @@ class EdgeSharedPosGapFixesMySqlTest extends MySqlTenantTestCase
     public function test_x2_terminal_offer_follows_online_assignment_then_pin_rule_on_the_shared_page(): void
     {
         // (a) change-terminal held, no assignments (the dev seed's DEVCASH1): EVERY counter is offered — as on Online (P7 is expected).
-        $html = $this->get('/edge/local/pos/shared')->assertOk()->getContent();
+        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
         $this->assertStringContainsString('Counter One', $html);
         $this->assertStringContainsString('Counter Two', $html);
 
         // (b) terminal-ASSIGNED operator (terminal_user) with change-terminal: only the assigned counter (Online terminalsForPos).
         DB::connection('tenant')->table('terminal_user')->insert(['terminal_id' => $this->terminalId, 'user_id' => $this->userId, 'is_default' => 1, 'created_at' => now(), 'updated_at' => now()]);
-        $html = $this->get('/edge/local/pos/shared')->assertOk()->getContent();
+        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
         $this->assertMatchesRegularExpression('/<option value="' . $this->terminalId . '"[^>]*>Counter One/', $html);
         $this->assertDoesNotMatchRegularExpression('/<option value="' . $this->terminal2Id . '"[^>]*>Counter Two/', $html, 'an assigned operator never sees an unassigned counter (Online UserDataScope::terminalsForPos)');
         DB::connection('tenant')->table('terminal_user')->where('user_id', $this->userId)->delete();
@@ -334,7 +334,7 @@ class EdgeSharedPosGapFixesMySqlTest extends MySqlTenantTestCase
         $this->revokeEdgePermission($this->userId, 'tenant.pos.change-terminal');
         DB::connection('tenant')->table('users')->where('id', $this->userId)->update(['default_terminal_id' => $this->terminal2Id]);
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
-        $html = $this->get('/edge/local/pos/shared')->assertOk()->getContent();
+        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
         $this->assertMatchesRegularExpression('/<option value="' . $this->terminal2Id . '"[^>]*>Counter Two/', $html);
         $this->assertDoesNotMatchRegularExpression('/<option value="' . $this->terminalId . '"[^>]*>Counter One/', $html);
     }

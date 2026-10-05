@@ -784,8 +784,13 @@ class EdgeBootstrapService
             // W6 v7: which groups apply to which SELLABLE product (Online resolves options through this pivot).
             'product_modifier_group' => $rows($conn->table('product_modifier_group')->whereIn('product_id', $pid)->whereIn('modifier_group_id', $groupIds ?: [0]),
                 ['id', 'product_id', 'modifier_group_id', 'sort_order']),
+            // PHASE 3 STAGE B (gap A of the same-dataset comparison): `category_id` ships — the shared cashier view derives its pill set
+            // from it (POS-COMBO-CATEGORY-1: a combo filed to a category gives that category a pill; only an UNCATEGORISED combo shows the
+            // legacy flat "Deals" pill), so without the column an appliance rendered a different pill set than the Online POS on the same
+            // data. Categories export every active row of the branch/shared tree above, so the FK is coherent. Same list for the config
+            // refresh (refreshPackage → buildSections); bootstrap schema stays v8 (unreleased cycle) — the applier upserts the row as is.
             'combos' => $rows($conn->table('combos')->where('branch_id', $b)->whereIn('id', $cid),
-                ['id', 'branch_id', 'code', 'name', 'price', 'sort_order', 'status', 'description']),
+                ['id', 'branch_id', 'category_id', 'code', 'name', 'price', 'sort_order', 'status', 'description']),
             'combo_components' => $rows($conn->table('combo_components')->whereIn('combo_id', $cid),
                 ['id', 'combo_id', 'product_id', 'product_variant_id', 'quantity', 'sort_order']),
             // W6 v7: every active method — non-cash rows are DISPLAY-ONLY (Online lists them; Edge shows them disabled). The

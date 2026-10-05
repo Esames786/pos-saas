@@ -53,6 +53,10 @@ final class PosRuntime implements JsonSerializable
         'shiftIndexPage', 'shiftShowPage', 'shiftOpenStore', 'shiftCloseStore', 'shiftCloseBranchPage',
         'salesReturnShowPage', 'salesReturnSearch', 'salesReturnStore', 'splitBillStore',
         'voidReasons', 'printPreferences', 'printMarkPrinted', 'printDismiss', 'heldKot',
+        // Phase 3 Stage B (owner §5.1 — Edge entry points): the Branch Server's own operator screens, offered by the Edge menu
+        // behind #pos-sidebar-toggle (pos-chrome-edge). Cloud: null (the Cloud sidebar carries its own menu); Edge: null when
+        // the operator lacks the permission the Edge route enforces.
+        'supplierFinancePage', 'financeJournalPage', 'purchaseReturnsPage',
     ];
 
     /** Every capability flag the shared view may ask for. Factories MUST define all of them. */

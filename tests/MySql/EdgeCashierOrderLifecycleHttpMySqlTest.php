@@ -113,7 +113,7 @@ class EdgeCashierOrderLifecycleHttpMySqlTest extends MySqlTenantTestCase
     private function quickSale(float $amount = 100): int
     {
         return (int) $this->postJson('/edge/local/pos/sales', [
-            'client_uuid' => (string) Str::uuid(), 'order_type' => 'takeaway',
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'client_uuid' => (string) Str::uuid(), 'order_type' => 'takeaway',
             'lines' => [['product_id' => $this->productP, 'quantity' => $amount / 100]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => $amount, 'tendered_amount' => $amount]],
         ])->assertStatus(201)->json('sale_id');

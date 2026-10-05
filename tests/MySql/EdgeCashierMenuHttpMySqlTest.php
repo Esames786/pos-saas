@@ -192,7 +192,7 @@ class EdgeCashierMenuHttpMySqlTest extends MySqlTenantTestCase
     private function sale(array $lines, array $extra = [], ?float $pay = null): \Illuminate\Testing\TestResponse
     {
         return $this->postJson('/edge/local/pos/sales', array_merge([
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'lines' => $lines,
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'lines' => $lines,
             'payments' => [['payment_method_id' => $this->cashId, 'amount' => $pay ?? 100000, 'tendered_amount' => $pay ?? 100000]],
         ], $extra));
     }

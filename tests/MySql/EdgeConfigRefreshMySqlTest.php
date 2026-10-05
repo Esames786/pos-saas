@@ -284,6 +284,7 @@ class EdgeConfigRefreshMySqlTest extends MySqlTenantTestCase
             $conn->table('products')->where('id', $i['burger'])->update(['name' => 'Big Burger', 'default_selling_price' => 550]);
             $conn->table('product_branch_prices')->where('id', $i['price'])->update(['selling_price' => 550]);
             $conn->table('combo_components')->where('id', $i['component'])->update(['quantity' => 2]);
+            $conn->table('combos')->where('id', $i['combo'])->update(['category_id' => $i['cat']]); // Stage B gap A: filing a deal to a category reaches the appliance
             $conn->table('recipe_ingredients')->where('id', $i['ingredient'])->update(['quantity' => 180]);
             $conn->table('modifiers')->where('id', $i['modifier'])->update(['price_delta' => 75]);
             $conn->table('printers')->where('id', $i['printer_k'])->update(['ip_address' => '10.0.0.99']);
@@ -336,6 +337,7 @@ class EdgeConfigRefreshMySqlTest extends MySqlTenantTestCase
         $this->assertSame('Big Burger', $conn->table('products')->where('id', $i['burger'])->value('name'));
         $this->assertSame(550.0, (float) $conn->table('product_branch_prices')->where('id', $i['price'])->value('selling_price'));
         $this->assertSame(2.0, (float) $conn->table('combo_components')->where('id', $i['component'])->value('quantity'));
+        $this->assertSame((int) $i['cat'], (int) $conn->table('combos')->where('id', $i['combo'])->value('category_id'), 'gap A: combos.category_id travels in the refresh and the applier upserts it');
         $this->assertSame(180.0, (float) $conn->table('recipe_ingredients')->where('id', $i['ingredient'])->value('quantity'));
         $this->assertSame(75.0, (float) $conn->table('modifiers')->where('id', $i['modifier'])->value('price_delta'));
         $this->assertSame('10.0.0.99', $conn->table('printers')->where('id', $i['printer_k'])->value('ip_address'));

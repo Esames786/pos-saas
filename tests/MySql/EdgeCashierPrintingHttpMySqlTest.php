@@ -101,7 +101,7 @@ class EdgeCashierPrintingHttpMySqlTest extends MySqlTenantTestCase
     private function paidTakeaway(): array
     {
         $sale = $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productP, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100, 'tendered_amount' => 100]],
         ])->assertStatus(201);

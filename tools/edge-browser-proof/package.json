@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "W7 browser-executing proof of the Edge cashier page (Playwright on the installed Edge/Chrome; no browser download)",
+  "description": "Browser-executing proofs of the ONE shared cashier view in both runtimes (Playwright on the installed Edge/Chrome; no browser download): paired reference screenshots, Edge-vs-Online geometry comparison, workflow proof. (The W7 DOM-census tool of the old Edge page, edge-pos-proof.mjs, was deleted in Phase 3 Stage B.)",
   "scripts": {
-    "proof": "node edge-pos-proof.mjs"
+    "shots": "node pos-reference-shots.mjs",
+    "geometry": "node geometry-compare.mjs",
+    "workflows": "node shared-pos-workflows.mjs"
   },
   "dependencies": {
     "playwright": "^1.63.0"

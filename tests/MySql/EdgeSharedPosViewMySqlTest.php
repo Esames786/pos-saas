@@ -18,8 +18,8 @@ use Tests\MySql\Support\TenantFixtures;
  * close / list / detail, sales-return create / list / detail, split bill) from the SAME tenant views.
  *
  * Proven over the REAL branch_server routes:
- *   - GET /edge/local/pos/shared (Phase 2 alias; since Phase 3 Stage A the same action answers GET /edge/local/pos) = 200
- *     `tenant.pos.index`, POS_RUNTIME.mode = edge, the closed W-A page-data contract;
+ *   - GET /edge/local/pos (THE cashier page since Phase 3 Stage A; the Phase 2 alias /edge/local/pos/shared is a 301 to it
+ *     since Stage B) = 200 `tenant.pos.index`, POS_RUNTIME.mode = edge, the closed W-A page-data contract;
  *   - the page carries NO Cloud path (/pos, /api/pos, /printing, /restaurant, /held-sales, /shifts, /sales-returns, …) —
  *     only /edge/local/… — and NO Internet asset (fonts.googleapis / http(s):// src|href);
  *   - every non-null POS_RUNTIME.routes value resolves to a registered, ALLOWLISTED edge.local.* route;
@@ -155,7 +155,7 @@ class EdgeSharedPosViewMySqlTest extends MySqlTenantTestCase
     public function test_the_shared_page_renders_tenant_pos_index_with_the_edge_runtime_and_no_cloud_or_internet_url(): void
     {
         $this->openShift();
-        $response = $this->get('/edge/local/pos/shared')->assertOk()->assertViewIs('tenant.pos.index');
+        $response = $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index');
         $html = $response->getContent();
 
         $rt = $this->runtimeFrom($html);
@@ -226,7 +226,7 @@ class EdgeSharedPosViewMySqlTest extends MySqlTenantTestCase
             'customer_phone' => '0300-1', 'reserved_for' => now()->addHour(), 'note' => 'window seat', 'status' => 'active',
             'reserved_by_user_id' => $this->userId, 'reserved_at' => now(), 'created_at' => now(), 'updated_at' => now(),
         ]);
-        $response = $this->get('/edge/local/pos/shared')->assertOk();
+        $response = $this->get('/edge/local/pos')->assertOk();
         foreach (array_keys(PosPageData::KEYS) as $key) {
             $response->assertViewHas($key);
         }
@@ -268,21 +268,21 @@ class EdgeSharedPosViewMySqlTest extends MySqlTenantTestCase
         $heldId = (int) $this->postJson('/edge/local/pos/held-sales', ['order_type' => 'dine_in', 'restaurant_table_session_id' => $sessionId,
             'lines' => [['product_id' => $this->karahi, 'quantity' => 1]]])->assertStatus(201)->json('sale_id');
 
-        $this->get("/edge/local/pos/shared?held_sale_id={$heldId}")->assertOk()
+        $this->get("/edge/local/pos?held_sale_id={$heldId}")->assertOk()
             ->assertViewHas('heldSale', fn ($s) => (int) $s?->id === $heldId)
             ->assertViewHas('tableSession', fn ($s) => (int) $s?->id === $sessionId)
             ->assertViewHas('activeMode', 'dine_in')
             ->assertViewHas('deadSession', null);
-        $this->get("/edge/local/pos/shared?table_session_id={$sessionId}")->assertOk()->assertViewHas('activeMode', 'dine_in');
-        $this->get('/edge/local/pos/shared?mode=takeaway')->assertOk()->assertViewHas('activeMode', 'takeaway')->assertViewHas('heldSale', null);
+        $this->get("/edge/local/pos?table_session_id={$sessionId}")->assertOk()->assertViewHas('activeMode', 'dine_in');
+        $this->get('/edge/local/pos?mode=takeaway')->assertOk()->assertViewHas('activeMode', 'takeaway')->assertViewHas('heldSale', null);
 
         // a held bill whose session died → the dead-session facts in Online's display format
         DB::connection('tenant')->table('restaurant_table_sessions')->where('id', $sessionId)->update(['status' => 'closed', 'closed_at' => now()]);
-        $this->get("/edge/local/pos/shared?held_sale_id={$heldId}")->assertOk()
+        $this->get("/edge/local/pos?held_sale_id={$heldId}")->assertOk()
             ->assertViewHas('deadSession', fn ($d) => is_array($d) && $d['sale_id'] === $heldId && $d['table_no'] === 'T1' && $d['can_reopen'] === true);
 
         $this->revokeEdgePermission($this->userId, 'tenant.pos.index');
-        $this->get('/edge/local/pos/shared')->assertForbidden();
+        $this->get('/edge/local/pos')->assertForbidden();
     }
 
     public function test_the_separate_screens_render_the_same_tenant_views_through_the_shared_layout(): void
@@ -291,7 +291,7 @@ class EdgeSharedPosViewMySqlTest extends MySqlTenantTestCase
         $sessionId = (int) $this->postJson("/edge/local/pos/restaurant/tables/{$this->tableId}/open", ['guest_count' => 2])->assertStatus(201)->json('session_id');
         $heldId = (int) $this->postJson('/edge/local/pos/held-sales', ['order_type' => 'dine_in', 'restaurant_table_session_id' => $sessionId,
             'lines' => [['product_id' => $this->karahi, 'quantity' => 2], ['product_id' => $this->naan, 'quantity' => 2]]])->assertStatus(201)->json('sale_id');
-        $paid = $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+        $paid = $this->postJson('/edge/local/pos/sales', ['kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->naan, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 50, 'tendered_amount' => 50]]])->assertStatus(201)->json('sale_id');
 
@@ -381,5 +381,100 @@ class EdgeSharedPosViewMySqlTest extends MySqlTenantTestCase
             ->assertRedirect("/edge/local/pos/shared/shifts/{$shiftId}")->assertSessionHas('status');
         $this->assertSame('closed', DB::connection('tenant')->table('shifts')->where('id', $shiftId)->value('status'));
         $this->get("/edge/local/pos/shifts/{$shiftId}/close")->assertNotFound(); // a closed shift has no close page (Online abort 404)
+    }
+
+    /** Stage B: the Phase 2 alias is a permanent redirect to THE page (query preserved); the `/shared/…` secondary screens are untouched. */
+    public function test_the_phase_2_alias_is_a_permanent_redirect_to_the_canonical_page(): void
+    {
+        $this->get('/edge/local/pos/shared')->assertStatus(301)->assertRedirect('/edge/local/pos');
+        $this->get('/edge/local/pos/shared?mode=takeaway&held_sale_id=9')->assertStatus(301)->assertRedirect('/edge/local/pos?mode=takeaway&held_sale_id=9');
+        $this->get('/edge/local/pos/shared/shifts')->assertOk()->assertViewIs('tenant.shifts.index');
+        $this->assertSame('edge.local.pos.shared', Route::getRoutes()->match(\Illuminate\Http\Request::create('/edge/local/pos/shared'))->getName(), 'the name stays on the allowlist / URI census as a redirect');
+    }
+
+    /**
+     * Stage B (gap A of the same-dataset comparison): a combo FILED to a product-less category yields the ONLINE pill set — the
+     * real category pill, no legacy flat "Deals" pill. The rule is POSController::index's verbatim (content ids = grid-visible
+     * products' categories ∪ combos' categories; a parent gets a pill when it or a child carries content); it is re-derived here
+     * from the page data the Edge provider hands the view, and the rendered pill strip is asserted on top.
+     */
+    public function test_a_categorised_combo_yields_the_online_pill_set_and_no_legacy_deals_pill(): void
+    {
+        $karahiCat = (int) DB::connection('tenant')->table('products')->where('id', $this->karahi)->value('category_id');
+        $emptyCat = $this->makeCategory(['name' => 'Empty Shelf', 'is_active' => 1, 'sort_order' => 8]);
+        $dealsCat = $this->makeCategory(['name' => 'Deals', 'is_active' => 1, 'sort_order' => 9]);
+
+        // Before: the Family Deal is uncategorised → the legacy flat pill, and no "Deals" category pill (it has no content).
+        $before = $this->get('/edge/local/pos')->assertOk();
+        $this->assertTrue((bool) $before->viewData('hasUncategorizedCombos'));
+        $this->assertNotContains($dealsCat, $before->viewData('pillCategoryIds'));
+        $this->assertStringContainsString('data-parent-category="__deals__"', $before->getContent());
+
+        // After: the deal is filed to "Deals" (what the bootstrap / config refresh now carry as combos.category_id).
+        DB::connection('tenant')->table('combos')->where('code', 'FAM')->update(['category_id' => $dealsCat]);
+        $res = $this->get('/edge/local/pos')->assertOk();
+        $this->assertFalse((bool) $res->viewData('hasUncategorizedCombos'), 'every combo is filed → the legacy flat Deals pill hides (POS-COMBO-CATEGORY-1)');
+        $this->assertStringNotContainsString('data-parent-category="__deals__"', $res->getContent());
+        $this->assertContains($dealsCat, $res->viewData('contentCategoryIds'));
+        $this->assertSame([$karahiCat, $dealsCat], $res->viewData('pillCategoryIds'), 'Karahi (products) + Deals (the combo); never the empty shelf');
+        $this->assertStringContainsString('data-parent-category="' . $dealsCat . '">', $res->getContent());
+        $this->assertStringNotContainsString('data-parent-category="' . $emptyCat . '"', $res->getContent());
+
+        // The Online rule, re-derived from the same page data (POSController::index :404-423), equals what Edge handed the view.
+        $content = collect($res->viewData('productsPayload'))->filter(fn ($p) => ($p['pos_grid_visible'] ?? true))->pluck('category_id')
+            ->merge(collect($res->viewData('combosPayload'))->pluck('category_id'))->filter()->map(fn ($id) => (int) $id)->unique();
+        $online = collect($res->viewData('categories'))->filter(fn ($parent) => collect([$parent->id])->merge($parent->children->pluck('id'))
+            ->map(fn ($id) => (int) $id)->intersect($content)->isNotEmpty())->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $this->assertSame($online, $res->viewData('pillCategoryIds'));
+        $this->assertEqualsCanonicalizing($content->values()->all(), $res->viewData('contentCategoryIds'));
+    }
+
+    /**
+     * Stage B (owner §5.1 — Edge entry points): the Branch Server menu behind the SHARED #pos-sidebar-toggle — a Bootstrap offcanvas
+     * in the chrome slot (outside #main-content, zero geometry until opened) listing Health / status, the finance screens this
+     * operator is PERMITTED to open (runtime routes, null without the permission the Edge route enforces) and Logout (the CSRF form).
+     * Online's rendering is untouched (the partial is Edge-only; the toggle button keeps its exact Online attributes).
+     */
+    public function test_the_edge_menu_offers_health_logout_and_only_the_permitted_finance_screens(): void
+    {
+        $toggle = '<button type="button" class="btn btn-outline-secondary" id="pos-sidebar-toggle" title="Show navigation" aria-label="Show navigation">';
+        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
+        $this->assertStringContainsString($toggle, $html, 'the toggle is byte-identical to Online (the menu hooks it by script, never by attribute)');
+        $this->assertLessThan(strpos($html, 'id="main-content"'), strpos($html, 'id="pos-edge-menu"'), 'the menu lives in the chrome slot, outside the page content');
+        $this->assertStringContainsString('class="offcanvas offcanvas-start" tabindex="-1" id="pos-edge-menu"', $html);
+        $this->assertStringContainsString('id="pos-edge-menu-status" href="/edge/local/pos/health"', $html);
+        $this->assertStringContainsString('id="pos-edge-menu-logout" form="pos-edge-logout-form"', $html);
+        $this->assertStringContainsString('<form id="pos-edge-logout-form" method="POST" action="/edge/local/logout"', $html);
+        $this->assertStringContainsString('Shared View Branch', $html);
+        $rt = $this->runtimeFrom($html);
+        foreach (['supplierFinancePage' => '/edge/local/pos/suppliers', 'financeJournalPage' => '/edge/local/pos/finance/journal', 'purchaseReturnsPage' => '/edge/local/pos/purchase-returns'] as $key => $path) {
+            $this->assertNull($rt['routes'][$key], "{$key}: a cashier without the finance permission gets no route");
+            $this->assertStringNotContainsString($path, $html, "{$path} must not be offered without the permission");
+        }
+        $this->assertSame([], $this->cloudPathsIn($html));
+
+        // Each finance entry follows the permission the Edge route enforces (requireAny / requireView), one by one.
+        $this->grantEdgePermission($this->userId, \App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_LEDGER);
+        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
+        $this->assertStringContainsString('id="pos-edge-menu-supplier-finance" href="/edge/local/pos/suppliers"', $html);
+        $this->assertStringNotContainsString('/edge/local/pos/finance/journal', $html);
+        $this->assertStringNotContainsString('/edge/local/pos/purchase-returns', $html);
+        $this->assertSame('/edge/local/pos/suppliers', $this->runtimeFrom($html)['routes']['supplierFinancePage']);
+
+        $this->grantEdgePermission($this->userId, \App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_JOURNAL);
+        $this->grantEdgePermission($this->userId, \App\Services\Edge\EdgeLocalPurchaseReturnService::PERM_STORE);
+        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
+        $this->assertStringContainsString('id="pos-edge-menu-finance-journal" href="/edge/local/pos/finance/journal"', $html);
+        $this->assertStringContainsString('id="pos-edge-menu-purchase-returns" href="/edge/local/pos/purchase-returns"', $html);
+        $this->assertStringContainsString($toggle, $html);
+        // every menu href is an allowlisted edge.local.* route (the render gate's test_e proves the same for the full page)
+        preg_match_all('/id="pos-edge-menu-[a-z-]+" href="([^"]+)"/', $html, $m);
+        $this->assertCount(4, $m[1]);
+        foreach ($m[1] as $href) {
+            $this->assertNotNull($this->allowlistedRouteFor($href), "{$href} is not an allowlisted Edge route");
+        }
+        // the Cloud sidebar is never imported; the theme hook stays the only `.sidebar`
+        $this->assertDoesNotMatchRegularExpression('#<div class="sidebar[\s"]#', $html);
+        $this->assertSame(1, preg_match_all('/class="sidebar"/', $html));
     }
 }

@@ -17,11 +17,15 @@ use Tests\TestCase;
 class EdgeBladeCompileGateTest extends TestCase
 {
     /**
-     * The cashier page is ONE inline script. `php -l` proves the PHP the Blade compiles to, never the JavaScript
+     * Each Edge operator page is ONE inline script. `php -l` proves the PHP the Blade compiles to, never the JavaScript
      * the browser runs — a stray brace there breaks every workflow on the till with no server error at all. When a
      * Node runtime is available (Laragon ships one), the extracted script must pass `node --check`.
+     *
+     * Phase 3 Stage B: the old cashier page (views/edge/pos/index.blade.php + its `@include('edge.pos.js.*')` fragments) is
+     * deleted; the SHARED cashier view's scripts are checked by tests/Feature/Pos/SharedPosViewRenderTest
+     * (every inline script of the rendered page). Only the finance operator pages remain on this convention.
      */
-    public function test_the_cashier_page_script_parses_as_javascript(): void
+    public function test_the_edge_operator_page_scripts_parse_as_javascript(): void
     {
         $candidates = array_filter(array_merge(
             glob('D:/laragon2/bin/nodejs/*/node.exe') ?: [],
@@ -35,24 +39,16 @@ class EdgeBladeCompileGateTest extends TestCase
             $this->markTestSkipped('no Node runtime available to syntax-check the cashier script');
         }
 
-        // The cashier page plus every other Edge operator page built on the same single-inline-script convention
-        // (F2: the Suppliers / Supplier Ledger / Record Payment page and the General Journal page).
-        $pages = ['views/edge/pos/index.blade.php', 'views/edge/finance/suppliers.blade.php', 'views/edge/finance/journal.blade.php', 'views/edge/finance/purchase-returns.blade.php'];
+        // The Edge operator pages built on the single-inline-script convention (F2: the Suppliers / Supplier Ledger /
+        // Record Payment page and the General Journal page; F3: Purchase Returns).
+        $pages = ['views/edge/finance/suppliers.blade.php', 'views/edge/finance/journal.blade.php', 'views/edge/finance/purchase-returns.blade.php'];
+        $this->assertFileDoesNotExist(resource_path('views/edge/pos/index.blade.php'), 'Stage B: the old Edge cashier page is deleted — the shared view is the only cashier page');
         foreach ($pages as $page) {
             $html = file_get_contents(resource_path($page));
             $start = strpos($html, "<script>\n    (function");
             $end = strrpos($html, '</script>');
             $this->assertNotFalse($start, "{$page} must carry its inline script");
             $js = substr($html, $start + 8, $end - $start - 8);
-            // W0 (20 Sep 2026): the cashier shell concatenates one Blade fragment per feature area INSIDE its IIFE —
-            // resolve every `@include('edge.pos.js.<name>')` to that fragment's text (minus Blade comments), exactly
-            // as Blade composes the script at runtime, so node checks the whole page script and not a directive.
-            $js = preg_replace_callback('/^\s*@include\(\'edge\.pos\.js\.([a-z0-9_-]+)\'\)\s*$/m', function (array $m) {
-                $fragment = file_get_contents(resource_path('views/edge/pos/js/' . $m[1] . '.blade.php'));
-                $this->assertNotFalse($fragment, "missing js fragment {$m[1]}");
-
-                return preg_replace('/\{\{--[\s\S]*?--\}\}/', '', $fragment);
-            }, $js);
             $js = preg_replace('/@json\(.*\);/', 'null;', $js);            // server-injected JSON literal → a JS literal
             $js = preg_replace('/\{\{[\s\S]*?\}\}/', 'X', $js);
 

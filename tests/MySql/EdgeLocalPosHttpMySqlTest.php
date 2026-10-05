@@ -101,7 +101,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
         // 4. the REAL HTTP cash sale.
         $clientUuid = (string) Str::uuid();
         $payload = [
-            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => $clientUuid,
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => $clientUuid,
             'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200, 'tendered_amount' => 500]],
         ];
@@ -132,6 +132,17 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
         $card = $this->makePaymentMethod(['method_type' => 'card']);
         $this->postJson('/edge/local/pos/sales', array_merge($payload, ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $card, 'amount' => 200]]]))->assertStatus(422);
         $this->postJson('/edge/local/pos/sales', array_merge($payload, ['lines' => [['product_id' => $this->productId, 'quantity' => 3]], 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 300]]]))->assertStatus(409);
+
+        // 7. PHASE 3 STAGE B (owner §5.2) — Online tenant.pos.store: a Direct Pay without BOTH print intents is refused with the
+        //    SAME 422 shape ({message, errors.printing}), before any terminal/authority work; no sale row, no stock movement.
+        foreach ([['kot_print_intent' => null], ['receipt_print_intent' => null], ['kot_print_intent' => null, 'receipt_print_intent' => null]] as $missing) {
+            $this->postJson('/edge/local/pos/sales', array_merge($payload, ['client_uuid' => (string) Str::uuid()], $missing))->assertStatus(422)
+                ->assertJsonPath('message', 'Choose the Direct Pay KOT and Receipt intent before completing the sale.')
+                ->assertJsonPath('errors.printing.0', 'Choose the Direct Pay KOT and Receipt intent before completing the sale.');
+        }
+        $this->postJson('/edge/local/pos/sales', array_merge($payload, ['client_uuid' => (string) Str::uuid(), 'kot_print_intent' => 'maybe']))->assertStatus(422)->assertJsonValidationErrors(['kot_print_intent']);
+        $this->assertSame(1, SalesOrder::on('tenant')->count(), 'a refused intent-less Direct Pay creates no sale');
+        $this->assertSame(8.0, $this->edgeOnHand($this->baselineId, $this->productId), 'and moves no stock');
     }
 
     public function test_cross_branch_terminal_cannot_be_selected_over_http(): void
@@ -226,7 +237,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
 
         // one cash sale: APPLIED 100, tendered 500 → expected_cash grows by the APPLIED amount only.
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100, 'tendered_amount' => 500]],
         ])->assertStatus(201)->assertJsonPath('change_amount', 400);
@@ -248,7 +259,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
 
         // after close: no open shift → a new sale is refused (mandatory-open-shift), and re-close refused.
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
         ])->assertStatus(422);
@@ -263,7 +274,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
         $this->postJson('/edge/local/pos/shift/open', ['opening_cash' => 0])->assertStatus(201);
 
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
         ])->assertStatus(201)->assertJsonPath('status', 'paid');
@@ -274,7 +285,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
             ->update(['allowed_order_types' => json_encode(['quick_sale'])]);
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
         ])->assertStatus(422);
@@ -300,7 +311,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
         $this->postJson('/edge/local/pos/terminal/select', ['terminal_id' => $this->terminalId])->assertOk();
         $this->postJson('/edge/local/pos/shift/open', ['opening_cash' => 0])->assertStatus(201);
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200, 'tendered_amount' => 200]],
         ])->assertStatus(201)->assertJsonPath('status', 'paid');

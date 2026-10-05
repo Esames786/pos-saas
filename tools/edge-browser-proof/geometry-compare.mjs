@@ -3,7 +3,7 @@
 //   measure:  node geometry-compare.mjs --mode edge  --base-url http://127.0.0.1:8095 --user DEVCASH1 --out <dir>
 //             node geometry-compare.mjs --mode cloud --base-url http://edgehomelab.localhost:9704 --user lab.cashier@edgehomelab.test --out <dir>
 //             (password ONLY in env POS_SHOT_PASS — never argv, never printed; --path overrides the POS page:
-//              Edge default /edge/local/pos/shared, Cloud default /pos; --settle <ms> default 6000; --channel msedge)
+//              Edge default /edge/local/pos (the Phase 2 alias /edge/local/pos/shared is a 301 to it since Stage B), Cloud default /pos; --settle <ms> default 6000; --channel msedge)
 //   compare:  node geometry-compare.mjs --compare --a <edgeDir>/report.json --b <onlineDir>/report.json --out <compare.json> [--tolerance 1]
 //
 // For every state (main, category, customer modal, context modal, held orders, recent orders, recent prints, quick report,
@@ -163,7 +163,7 @@ if (!['cloud', 'edge'].includes(mode) || !base || !user || !pass) {
   process.exit(2);
 }
 if (!ALLOWED_HOSTS.includes(new URL(base).hostname.toLowerCase())) { console.error('refusing a non-loopback base url'); process.exit(2); }
-const posPath = String(args.path || (mode === 'cloud' ? '/pos' : '/edge/local/pos/shared'));
+const posPath = String(args.path || (mode === 'cloud' ? '/pos' : '/edge/local/pos'));
 const out = path.resolve(String(args.out || `./evidence/phase3/geometry/${mode}`));
 fs.mkdirSync(out, { recursive: true });
 const report = { mode, base, user, path: posPath, settle_ms: settle, started_at: new Date().toISOString(), viewports: {}, errors: [], blocked_hosts: [] };

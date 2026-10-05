@@ -319,7 +319,7 @@ class EdgeDiscountFlowMySqlTest extends MySqlTenantTestCase
         $dpApproval = $this->approve(['sales_order_id' => 0, 'branch_id' => $this->branchId, 'client_uuid' => $dpUuid, 'discount_type' => 'fixed', 'discount_value' => 50, 'discount_amount' => 50]);
         $this->assertNull($this->consumedAt($dpApproval));
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => $dpUuid, 'discount_type' => 'fixed', 'discount_value' => 50,
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => $dpUuid, 'discount_type' => 'fixed', 'discount_value' => 50,
             'manager_approval_id' => $dpApproval,
             'lines' => [['product_id' => $this->karahi, 'quantity' => 2]],
             'payments' => $this->cash(150),
@@ -329,7 +329,7 @@ class EdgeDiscountFlowMySqlTest extends MySqlTenantTestCase
         // Direct Pay refuses a fixed discount bigger than the bill (never a silent clamp).
         $this->autoApprove();
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'discount_type' => 'fixed', 'discount_value' => 250,
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'discount_type' => 'fixed', 'discount_value' => 250,
             'lines' => [['product_id' => $this->karahi, 'quantity' => 2]],
             'payments' => $this->cash(1),
         ])->assertStatus(422)->assertJsonPath('errors.discount_value.0', 'The discount cannot be more than the bill subtotal.');

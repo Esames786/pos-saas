@@ -68,8 +68,9 @@ class EdgeLocalPosController extends Controller
      * POS-RUNTIME-1 — render THE Online cashier page (`tenant.pos.index`, the same Blade the Cloud renders) from the local
      * database, with the Edge runtime adapter. The variable set is EXACTLY what Online POSController::index passes (names and
      * shapes), built from the bound branch only; everything that legitimately differs travels in `$posRuntime`
-     * (EdgePosRuntimeFactory). Phase 2 route: `edge.local.pos.shared` (the old page stays on `edge.local.pos.screen`
-     * until cutover).
+     * (EdgePosRuntimeFactory). Route: `edge.local.pos.screen` (GET /edge/local/pos) since Phase 3 Stage A; the Phase 2
+     * alias `edge.local.pos.shared` is a 301 to it (sharedAlias). The old Edge page (resources/views/edge/pos/**) and its
+     * `screen()` delegate were deleted in Stage B — there is ONE cashier view.
      */
     public function sharedScreen(Request $request): View
     {
@@ -574,19 +575,21 @@ class EdgeLocalPosController extends Controller
     }
 
     /**
-     * PHASE 3 STAGE A (4 Oct 2026) — `edge.local.pos.screen` (GET /edge/local/pos) routes straight to sharedScreen(); this
-     * method only delegates so any remaining caller of the OLD name renders the same shared view. The old Edge page's
-     * view-model (`edge.pos.index`, `#edge-pos-data`) is no longer built anywhere; this delegate (0 callers) goes with
-     * resources/views/edge/pos/** in Stage B. menuPayload() below is NOT old-page-only: sharedMenu() builds the Online tile
-     * payload from it (W2 synced book + accepted baseline).
+     * PHASE 3 STAGE B (6 Oct 2026) — the Phase 2 alias `edge.local.pos.shared` (GET /edge/local/pos/shared): a permanent
+     * redirect to THE cashier page, query string preserved (the W-B deep links `?held_sale_id=` / `?table_session_id=` /
+     * `?mode=` keep working for any bookmark or proof tool that still names the alias). Nothing renders under it any more.
      */
-    public function screen(Request $request): View
+    public function sharedAlias(Request $request): \Illuminate\Http\RedirectResponse
     {
-        return $this->sharedScreen($request);
+        // The RAW query string (Symfony's getQueryString() would re-sort the parameters) — the deep link reaches THE page byte for byte.
+        $query = (string) $request->server->get('QUERY_STRING', '');
+
+        return redirect()->to(\App\Services\Edge\EdgePosRuntimeFactory::SHARED_PAGE . ($query !== '' ? '?' . $query : ''), 301);
     }
 
     /**
      * W2 — the Online tile payload (POSController@index productsPayload) built from the SYNCED menu on the appliance:
+     * (NOT old-page-only — sharedMenu() builds the Online tile payload from it; the old Edge page is deleted, Stage B.)
      * sku / image / unit + measurable flags (A6) / tax / branch-resolved price (the SAME SalePricingService rule the sale
      * charges) / product + variant barcodes (A5) / variants with their own price, sku, barcodes and stock (A8) / modifier
      * groups with active options (A7) / stock from the Edge OPERATIONAL balances of the accepted baseline (A4 — the stock
@@ -834,6 +837,15 @@ class EdgeLocalPosController extends Controller
             'vehicle_number' => ['nullable', 'string', 'max:50', 'required_if:order_type,quick_sale'],
             'restaurant_waiter_id' => ['nullable', 'integer', 'required_if:order_type,quick_sale'],
         ]);
+        // PHASE 3 STAGE B (owner §5.2): Online SalesOrderController::store on tenant.pos.store refuses a Direct Pay without BOTH
+        // intents with the SAME 422 shape ({message, errors.printing}) BEFORE any terminal/authority work — the printing
+        // decision is part of the sale (the held settle enforces the identical rule since Stage A). An INVALID value still
+        // answers errors.kot_print_intent / errors.receipt_print_intent through the `in:` rules above, like Online validateSale.
+        if (! isset($data['kot_print_intent']) || ! isset($data['receipt_print_intent'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'printing' => 'Choose the Direct Pay KOT and Receipt intent before completing the sale.',
+            ]);
+        }
         // W-G3 (G1): the shared view's multipart shape (JSON-string modifiers, deal component rows) → Online's normalised lines.
         $data['lines'] = $this->normalizeSharedLines($data['lines']);
         $terminal = $this->selectedTerminal($request);
@@ -894,17 +906,19 @@ class EdgeLocalPosController extends Controller
     /**
      * CUSTOMER-UX parity: customers are looked up on demand (never the whole book in the page) from the SYNCED
      * customer book, with their saved addresses (ADDRESS-ATTACH: picking one attaches it to the order).
+     *
+     * PHASE 3 STAGE B (gap B of the same-dataset comparison): Online `Ajax\CustomerLookupController` lists the first 20
+     * ACTIVE customers ordered by name for an empty / one-character query, so the shared customer modal opens populated on
+     * both runtimes — the former 2-character floor (an Edge-only "Start typing…" state) is gone. Limit 20 + name order kept.
      */
     public function customers(Request $request): JsonResponse
     {
         $q = trim((string) $request->input('q', ''));
         $id = (int) $request->input('id', 0);
-        if ($id <= 0 && mb_strlen($q) < 2) {
-            return response()->json(['customers' => []]);
-        }
         // Team 1 request: `?id=N` = the exact customer (the Online `/pos?customer_id=` deep link preselects one).
         $rows = \App\Models\Tenant\Customer::on('tenant')->where('status', 'active')
-            ->when($id > 0, fn ($w) => $w->whereKey($id), fn ($w) => $w->where(fn ($x) => $x->where('name', 'like', "%{$q}%")->orWhere('phone', 'like', "%{$q}%")->orWhere('code', 'like', "%{$q}%")))
+            ->when($id > 0, fn ($w) => $w->whereKey($id))
+            ->when($id <= 0 && $q !== '', fn ($w) => $w->where(fn ($x) => $x->where('name', 'like', "%{$q}%")->orWhere('phone', 'like', "%{$q}%")->orWhere('code', 'like', "%{$q}%")))
             ->orderBy('name')->limit(20)->get(['id', 'customer_uuid', 'name', 'phone', 'email', 'address']);
         $addresses = \App\Models\Tenant\CustomerAddress::on('tenant')->whereIn('customer_id', $rows->pluck('id'))
             ->orderByDesc('is_default')->orderBy('id')->get(['id', 'customer_id', 'label', 'address', 'is_default'])->groupBy('customer_id');

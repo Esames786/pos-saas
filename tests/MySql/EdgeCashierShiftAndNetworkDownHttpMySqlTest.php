@@ -91,7 +91,7 @@ class EdgeCashierShiftAndNetworkDownHttpMySqlTest extends MySqlTenantTestCase
     private function cashSale(float $qty = 1): void
     {
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => $qty]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100 * $qty, 'tendered_amount' => 100 * $qty]],
         ])->assertStatus(201);

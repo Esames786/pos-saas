@@ -221,7 +221,7 @@ class EdgeCashierRouteGatesHttpMySqlTest extends MySqlTenantTestCase
         $this->postJson('/edge/local/pos/terminal/select', ['terminal_id' => $this->terminalA])->assertOk();
         $this->postJson('/edge/local/pos/shift/open', ['opening_cash' => 0])->assertStatus(201);
         $sale = $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100, 'tendered_amount' => 100]],
         ])->assertStatus(201);

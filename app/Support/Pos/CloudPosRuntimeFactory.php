@@ -115,6 +115,10 @@ final class CloudPosRuntimeFactory
             'printMarkPrinted' => '/printing/jobs/{job}/mark-printed',
             'printDismiss' => '/printing/jobs/{job}/dismiss',
             'heldKot' => null,                                 // Online queues a held order's KOT through kotQueue
+            // Phase 3 Stage B — Edge-only operator screens (the Edge menu); the Cloud sidebar carries its own menu.
+            'supplierFinancePage' => null,
+            'financeJournalPage' => null,
+            'purchaseReturnsPage' => null,
         ]);
 
         return new PosRuntime(

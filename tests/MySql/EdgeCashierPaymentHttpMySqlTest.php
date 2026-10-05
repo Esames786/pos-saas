@@ -99,7 +99,7 @@ class EdgeCashierPaymentHttpMySqlTest extends MySqlTenantTestCase
     private function payload(array $extra = [], int $method = 0, float $amount = 250, ?float $tendered = 500): array
     {
         return array_merge([
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $method ?: $this->cashId, 'amount' => $amount, 'tendered_amount' => $tendered]],
         ], $extra);
@@ -206,7 +206,9 @@ class EdgeCashierPaymentHttpMySqlTest extends MySqlTenantTestCase
 
     public function test_customer_lookup_answers_from_the_synced_book_with_saved_addresses(): void
     {
-        $this->assertSame([], $this->getJson('/edge/local/pos/customers?q=A')->assertOk()->json('customers'));
+        // Stage B (gap B): like Online /ajax/customers a ONE-character (or empty) query SEARCHES — no Edge-only 2-character floor.
+        $this->assertSame(['Ahmed Raza'], array_column($this->getJson('/edge/local/pos/customers?q=A')->assertOk()->json('customers'), 'name'));
+        $this->assertSame(['Ahmed Raza'], array_column($this->getJson('/edge/local/pos/customers?q=')->assertOk()->json('customers'), 'name'), 'an empty query lists the active book (first 20, by name)');
         $r = $this->getJson('/edge/local/pos/customers?q=0300123')->assertOk()->json('customers');
         $this->assertCount(1, $r);
         $this->assertSame('Ahmed Raza', $r[0]['name']);

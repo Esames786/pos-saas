@@ -140,7 +140,7 @@ class EdgeCashierDealsDiscountsHttpMySqlTest extends MySqlTenantTestCase
 
         // TAKEAWAY: 2 × Family Deal (220) — the client names the deal + quantity only.
         $sale = $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
             'lines' => [['combo_id' => $this->comboId, 'quantity' => 2]],
             'payments' => $this->cash(440),
         ])->assertStatus(201)->assertJsonPath('grand_total', 440);
@@ -222,7 +222,7 @@ class EdgeCashierDealsDiscountsHttpMySqlTest extends MySqlTenantTestCase
     {
         $clientUuid = (string) Str::uuid();
         $payload = [
-            'order_type' => 'takeaway', 'client_uuid' => $clientUuid,
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => $clientUuid,
             'discount_type' => 'fixed', 'discount_value' => 50,
             'lines' => [['product_id' => $this->karahi, 'quantity' => 2]],
             'payments' => $this->cash(150),
@@ -254,7 +254,7 @@ class EdgeCashierDealsDiscountsHttpMySqlTest extends MySqlTenantTestCase
     public function test_synced_promotion_code_applies_through_the_shared_promotion_service_and_travels_in_the_envelope(): void
     {
         $sale = $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'promo_code' => 'SAVE10',
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'promo_code' => 'SAVE10',
             'lines' => [['product_id' => $this->karahi, 'quantity' => 2]],
             'payments' => $this->cash(180),
         ])->assertStatus(201)->assertJsonPath('grand_total', 180);
@@ -270,7 +270,7 @@ class EdgeCashierDealsDiscountsHttpMySqlTest extends MySqlTenantTestCase
 
     public function test_delivery_follows_online_channel_customer_and_charge_rules(): void
     {
-        $base = ['order_type' => 'delivery', 'lines' => [['product_id' => $this->karahi, 'quantity' => 1]]];
+        $base = ['kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'delivery', 'lines' => [['product_id' => $this->karahi, 'quantity' => 1]]];
 
         // No channel → refused. Own delivery without a customer → refused.
         $this->postJson('/edge/local/pos/sales', $base + ['client_uuid' => (string) Str::uuid(), 'payments' => $this->cash(250)])->assertStatus(422);

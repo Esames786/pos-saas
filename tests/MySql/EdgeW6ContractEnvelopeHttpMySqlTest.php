@@ -109,7 +109,7 @@ class EdgeW6ContractEnvelopeHttpMySqlTest extends MySqlTenantTestCase
     private function payload(array $lines, array $extra = [], float $pay = 100000): array
     {
         return array_merge([
-            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'lines' => $lines,
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'lines' => $lines,
             'payments' => [['payment_method_id' => $this->cashId, 'amount' => $pay, 'tendered_amount' => $pay]],
         ], $extra);
     }

@@ -100,7 +100,7 @@ class EdgeCashierReturnParityHttpMySqlTest extends MySqlTenantTestCase
 
     private function cashSale(float $qty = 3): array
     {
-        return $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'lines' => [['product_id' => $this->productId, 'quantity' => $qty]], 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100 * $qty]]])->assertStatus(201)->json();
+        return $this->postJson('/edge/local/pos/sales', ['kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(), 'lines' => [['product_id' => $this->productId, 'quantity' => $qty]], 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100 * $qty]]])->assertStatus(201)->json();
     }
 
     private function approve(array $payload): \Illuminate\Testing\TestResponse

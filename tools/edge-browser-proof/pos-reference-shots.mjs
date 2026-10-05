@@ -3,7 +3,7 @@
 //        [--email lab.cashier@edgehomelab.test] (password in env POS_SHOT_PASS)             ← Online: tenant e-mail login
 //   node pos-reference-shots.mjs --base-url https://desktop-0024epm.local:8443 --mode edge --user LAB2C5D --ignore-tls --out …
 //        (password in env POS_SHOT_PASS)                                                    ← Edge: employee-code login
-//   [--path /edge/local/pos/shared]  the POS page opened after login (Edge default /edge/local/pos, Cloud default /pos)
+//   [--path /edge/local/pos]  the POS page opened after login (Edge default /edge/local/pos, Cloud default /pos)
 // States captured (same list in both modes, same viewport): main POS, categories tab, customer modal, context modal,
 // held orders, recent orders, recent prints, quick report, table workspace, review & pay (cart with 2 lines), qty entry,
 // modifier entry. Missing states are recorded as skipped, never faked. Output: <out>/<viewport>/<state>.png + report.json.
@@ -20,7 +20,7 @@ for (let i = 0; i < argv.length; i++) {
 }
 const base = (args['base-url'] || '').replace(/\/$/, '');
 const mode = args.mode || 'cloud';
-// --path: the POS page to open after login (default /pos on Cloud, /edge/local/pos on Edge; W-B: /edge/local/pos/shared).
+// --path: the POS page to open after login (default /pos on Cloud, /edge/local/pos on Edge; the Phase 2 alias /edge/local/pos/shared is a 301 to it since Stage B).
 const posPath = args.path || (mode === 'cloud' ? '/pos' : '/edge/local/pos');
 const out = path.resolve(args.out || `./evidence/phase2/${mode}-${Date.now()}`);
 const pass = process.env.POS_SHOT_PASS || '';

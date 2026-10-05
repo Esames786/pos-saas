@@ -16,10 +16,10 @@ use Tests\MySql\Support\TenantFixtures;
 /**
  * PHASE 3 — THE SHARED-VIEW REGRESSION GATE (replaces the W0 control census, owner directive 4 Oct 2026).
  *
- * The W0 census (EdgeCashierControlCensusHttpMySqlTest + tests/Fixtures/edge/online-pos-control-census.json) compared the
- * OLD separately-styled Edge page against the Online view, id by id. With ONE shared cashier Blade (`tenant.pos.index`
- * through `layouts.pos`) that comparison is replaced — not retired — by rendering BOTH runtimes in the SAME test run, from
- * the SAME tenant database, and proving:
+ * The W0 census (EdgeCashierControlCensusHttpMySqlTest + tests/Fixtures/edge/online-pos-control-census.json, both DELETED in
+ * Stage B — their 276 ids are frozen in tests/Fixtures/edge/shared-pos-required-ids.json) compared the OLD separately-styled
+ * Edge page against the Online view, id by id. With ONE shared cashier Blade (`tenant.pos.index` through `layouts.pos`) that
+ * comparison is replaced — not retired — by rendering BOTH runtimes in the SAME test run, from the SAME tenant database, and proving:
  *
  *   (a) SAME BLADE   — both responses are `tenant.pos.index` through `layouts.pos` (view identity + POS_RUNTIME island),
  *                      and the normalised DOM skeleton of the page content (tags, ids, classes, element order, kept
@@ -48,7 +48,12 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
     use TenantFixtures;
     use EdgeLocalRuntimeFixture;
 
-    private const CENSUS_FIXTURE = 'tests/Fixtures/edge/online-pos-control-census.json';
+    /**
+     * STAGE B (6 Oct 2026): the W0 census fixture + EdgeCashierControlCensusHttpMySqlTest are deleted. The 276 control ids it
+     * registered (by state: present / equivalent / online_required) live on as the FROZEN required-id set of the shared view
+     * — a plain id list, deliberately NOT a sha1 pin of any view (test_a's skeleton equality guards drift).
+     */
+    private const CENSUS_FIXTURE = 'tests/Fixtures/edge/shared-pos-required-ids.json';
 
     /** Attributes whose VALUE may legitimately differ between the two runtimes (never geometry). */
     public const RUNTIME_ATTRIBUTES = [
@@ -90,8 +95,9 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
     public const JS_GATED_CAPABILITIES = ['changeRider' => 'salesOrderShow'];
 
     /**
-     * The OLD Edge page's own control ids (resources/views/edge/pos/** minus the shared views) — frozen so the check
-     * survives the later deletion of that folder; the static half re-derives the list while the folder exists.
+     * The OLD Edge page's own control ids (resources/views/edge/pos/** minus the shared views) — frozen BEFORE the folder was
+     * deleted (Stage B, 6 Oct 2026); this list is now the only reference to the old page. Neither render nor the shared
+     * sources may ever carry one of them.
      */
     public const OLD_EDGE_ONLY_IDS = [
         'edge-pos-data', 'cart-lines', 't-grand', 't-subtotal', 't-items', 't-quote-note',
@@ -144,6 +150,15 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
         $categoryId = $this->makeCategory(['name' => 'Karahi']);
         $this->karahi = $this->makeProduct($categoryId, ['name' => 'Chicken Karahi', 'inventory_consumption_method' => 'stock_item', 'is_stock_tracked' => 1, 'is_sellable' => 1, 'is_pos_visible' => 1, 'status' => 'active', 'default_selling_price' => 100]);
         $this->naan = $this->makeProduct($categoryId, ['name' => 'Roghni Naan', 'inventory_consumption_method' => 'stock_item', 'is_stock_tracked' => 1, 'is_sellable' => 1, 'is_pos_visible' => 1, 'status' => 'active', 'default_selling_price' => 50]);
+        // Stage B (gap A of the same-dataset comparison): a combo FILED to a product-less category — that category's pill exists
+        // only because of the combo's category_id, so a runtime that lost the column would render a different pill set and fail
+        // the skeleton equality below (the pills are server-rendered from $pillCategoryIds on both runtimes).
+        $dealsCat = $this->makeCategory(['name' => 'Deals', 'is_active' => 1, 'sort_order' => 9]);
+        $comboId = (int) DB::connection('tenant')->table('combos')->insertGetId(['branch_id' => $this->branchId, 'category_id' => $dealsCat, 'code' => 'FAM', 'name' => 'Family Deal', 'price' => 220, 'sort_order' => 0, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        DB::connection('tenant')->table('combo_components')->insert([
+            ['combo_id' => $comboId, 'product_id' => $this->karahi, 'quantity' => 1, 'sort_order' => 0, 'created_at' => now(), 'updated_at' => now()],
+            ['combo_id' => $comboId, 'product_id' => $this->naan, 'quantity' => 2, 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+        ]);
         $this->cashMethodId = $this->makePaymentMethod(['method_type' => 'cash', 'name' => 'Cash']);
         $this->cardMethodId = $this->makePaymentMethod(['method_type' => 'card', 'name' => 'Card']);
         DB::connection('tenant')->table('delivery_channels')->insert(['name' => 'Own Riders', 'type' => 'own', 'is_active' => 1, 'sort_order' => 0, 'created_at' => now(), 'updated_at' => now()]);
@@ -425,17 +440,16 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
     }
 
     /**
-     * (d) the OLD Edge page: while the fallback route is still in place (Phase 2) `/edge/local/pos` renders `edge.pos.index`
-     * and nothing else does; once the cutover lands (strict mode) `/edge/local/pos` renders `tenant.pos.index` too and NO
-     * edge.local.* route renders a Blade under resources/views/edge/pos/**. Strict mode engages automatically when the
-     * `edge.local.pos.screen` route no longer points at EdgeLocalPosController::screen or the old view file is gone, and
-     * can be FORCED with EDGE_POS_CUTOVER_STRICT=1 (fails until the cutover lands).
+     * (d) the OLD Edge page — STAGE B: STRICT is the ONLY mode. The old folder is deleted, `/edge/local/pos` renders
+     * `tenant.pos.index`, NO edge.local.* route renders a Blade under resources/views/edge/pos/**, and the Phase 2 alias
+     * `/edge/local/pos/shared` is a 301 to the canonical page (query string preserved). EDGE_POS_CUTOVER_STRICT is a no-op.
      */
-    public function test_d_the_old_edge_page_is_the_only_fallback_now_and_disappears_under_strict_cutover(): void
+    public function test_d_no_old_edge_page_renders_anywhere_and_the_alias_redirects_to_the_canonical_page(): void
     {
         $screen = Route::getRoutes()->getByName('edge.local.pos.screen');
-        $this->assertNotNull($screen, 'edge.local.pos.screen (GET /edge/local/pos) must exist in both phases');
-        $strict = $this->strictCutover();
+        $this->assertNotNull($screen, 'edge.local.pos.screen (GET /edge/local/pos) must exist');
+        $this->assertTrue($this->strictCutover(), 'strict is the only mode since Stage B');
+        $this->assertDirectoryDoesNotExist(resource_path('views/edge/pos'), 'Stage B deleted resources/views/edge/pos/**');
 
         $renders = [];
         foreach (Route::getRoutes()->getRoutes() as $route) {
@@ -454,16 +468,12 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
             }
         }
 
-        if ($strict) {
-            $this->assertSame([], $renders, 'STRICT cutover: no edge.local.* route may render a Blade under resources/views/edge/pos/**: ' . json_encode($renders));
-            $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index');
-        } else {
-            $this->assertSame(['edge.local.pos.screen' => ['edge.pos.index']], $renders,
-                'Phase 2: ONLY the fallback route edge.local.pos.screen may render the old page, and only edge.pos.index');
-            $this->get('/edge/local/pos')->assertOk()->assertViewIs('edge.pos.index');
-        }
-        // In both phases the shared page is THE cashier view.
-        $this->get('/edge/local/pos/shared')->assertOk()->assertViewIs('tenant.pos.index');
+        $this->assertSame([], $renders, 'STRICT cutover: no edge.local.* route may render a Blade under resources/views/edge/pos/**: ' . json_encode($renders));
+        $this->assertStringEndsWith('@sharedScreen', $screen->getActionName());
+        $this->get('/edge/local/pos')->assertOk()->assertViewIs('tenant.pos.index');
+        // The Phase 2 alias is a permanent redirect to THE page; deep-link queries survive it.
+        $this->get('/edge/local/pos/shared')->assertStatus(301)->assertRedirect('/edge/local/pos');
+        $this->get('/edge/local/pos/shared?mode=takeaway&held_sale_id=7')->assertStatus(301)->assertRedirect('/edge/local/pos?mode=takeaway&held_sale_id=7');
     }
 
     // ───────────────────────────── renders ─────────────────────────────
@@ -515,7 +525,7 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
 
     private function renderEdge(string $query = ''): string
     {
-        $r = $this->get('/edge/local/pos/shared' . $query);
+        $r = $this->get('/edge/local/pos' . $query);
         $this->assertSame(200, $r->getStatusCode(), "Edge render {$query}: " . Str::limit(strip_tags((string) $r->getContent()), 300));
         $r->assertViewIs('tenant.pos.index');
 
@@ -791,10 +801,11 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
     private function censusRows(): array
     {
         $fixture = json_decode(file_get_contents(base_path(self::CENSUS_FIXTURE)), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertArrayNotHasKey('online_view_sha1', $fixture, 'the required-id fixture must never pin a view hash');
         $rows = [];
-        foreach ($fixture['groups'] as $g) {
-            foreach ($g['ids'] as $id) {
-                $rows[$id] = $g['overrides'][$id]['state'] ?? $g['state'];
+        foreach ($fixture['ids'] as $state => $ids) {
+            foreach ($ids as $id) {
+                $rows[$id] = $state;
             }
         }
 
@@ -832,17 +843,13 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
         return null;
     }
 
-    /** Strict "no old Edge page" mode: forced by EDGE_POS_CUTOVER_STRICT=1, or automatic once the fallback is gone. */
+    /**
+     * Strict "no old Edge page" mode — since Stage B the ONLY mode (the Phase 2 fallback route + old view are gone); the former
+     * forcing variable EDGE_POS_CUTOVER_STRICT=1 is accepted and ignored. Same rule as the static half.
+     */
     private function strictCutover(): bool
     {
-        if (filter_var(getenv('EDGE_POS_CUTOVER_STRICT') ?: '0', FILTER_VALIDATE_BOOL)) {
-            return true;
-        }
-        $screen = Route::getRoutes()->getByName('edge.local.pos.screen');
-        $fallbackRouted = $screen && str_ends_with($screen->getActionName(), '@screen');
-        $oldViewExists = is_file(resource_path('views/edge/pos/index.blade.php'));
-
-        return ! ($fallbackRouted && $oldViewExists);
+        return true;
     }
 
     /** Source text of one controller method (for the static "which route renders which Blade" scan). */

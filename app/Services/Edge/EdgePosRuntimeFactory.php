@@ -189,11 +189,17 @@ class EdgePosRuntimeFactory
      * terminal is chosen per SESSION on a Branch Server (terminals / terminalSelect) and a few Edge twins with no Online
      * key yet (see the W-B report — requested additions to PosRuntime::ROUTE_KEYS).
      *
+     * Phase 3 Stage B (owner §5.1): the three Edge operator-screen keys are per OPERATOR — null unless the authenticated
+     * Edge user holds the permission the Edge route itself enforces (the screen still refuses server-side; the menu only
+     * stops offering an entry that would 403). Same "null = not available" convention as a capability-off route.
+     *
      * @return array<string, string|null>
      */
     public function routes(): array
     {
         $p = '/edge/local/pos';
+        $user = auth('tenant')->user();
+        $may = fn (array $permissions): bool => $user !== null && collect($permissions)->contains(fn (string $perm) => $user->can($perm));
 
         return [
             // page + navigation
@@ -284,6 +290,13 @@ class EdgePosRuntimeFactory
             'printMarkPrinted' => $p . '/print-jobs/{job}/printed',
             'printDismiss' => $p . '/print-jobs/{job}/dismiss',
             'heldKot' => $p . '/held-sales/{sale}/kot',
+
+            // ── Stage B (owner §5.1) — the Branch Server's own operator screens, offered by the Edge menu behind #pos-sidebar-toggle
+            //    (pos-chrome-edge). Gated on the SAME permission each Edge route enforces (EdgeLocalSupplierFinanceController::requireAny,
+            //    EdgeLocalPurchaseReturnController::requireView); Cloud: null. ──
+            'supplierFinancePage' => $may([EdgeLocalSupplierFinanceService::PERM_LEDGER, EdgeLocalSupplierFinanceService::PERM_PAYMENT]) ? $p . '/suppliers' : null,
+            'financeJournalPage' => $may([EdgeLocalSupplierFinanceService::PERM_JOURNAL]) ? $p . '/finance/journal' : null,
+            'purchaseReturnsPage' => $may([EdgeLocalPurchaseReturnService::PERM_STORE, EdgeLocalPurchaseReturnService::PERM_POST]) ? $p . '/purchase-returns' : null,
         ];
     }
 

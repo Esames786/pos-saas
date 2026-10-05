@@ -15,12 +15,12 @@ use Tests\TestCase;
  *
  *   - the capability → control map the render gate asserts is COMPLETE against the view source (every `$posRuntime->can()` /
  *     `POS.can()` site is covered; every capability the Edge factory turns OFF has a gate in the view);
- *   - the OLD Edge page's own ids (resources/views/edge/pos/**) never appear in the shared view sources, and the frozen list
- *     the render gate carries matches the folder while it still exists;
+ *   - the OLD Edge page's own ids (the deleted resources/views/edge/pos/**, frozen in Gate::OLD_EDGE_ONLY_IDS) never appear
+ *     in the shared view sources;
  *   - the shared view carries NO runtime branch (no isEdge() / app.role / mode === 'edge' — one markup, runtime via PosRuntime);
- *   - (d) static "no old Edge page" scan: Phase 2 = only EdgeLocalPosController::screen on the fallback route renders
- *     `edge.pos.index`; STRICT (automatic once the fallback is gone, or forced with EDGE_POS_CUTOVER_STRICT=1) = nothing
- *     under app/ or routes/ renders, includes or extends a Blade under resources/views/edge/pos/**.
+ *   - (d) static "no old Edge page" scan — STAGE B (6 Oct 2026): STRICT is the ONLY mode. The old folder is deleted and
+ *     nothing under app/ or routes/ may render, include or extend a Blade under resources/views/edge/pos/**; the folder must
+ *     not come back. EDGE_POS_CUTOVER_STRICT (the Phase 2 forcing switch) is accepted and ignored — a no-op.
  */
 class EdgeSharedPosRegressionStaticGateTest extends TestCase
 {
@@ -77,6 +77,7 @@ class EdgeSharedPosRegressionStaticGateTest extends TestCase
 
     public function test_the_shared_view_carries_no_runtime_branch_and_none_of_the_old_edge_page_ids(): void
     {
+        $this->assertNotEmpty(Gate::OLD_EDGE_ONLY_IDS, 'the frozen list is the only reference to the old page now that the folder is deleted');
         foreach ($this->sharedViewSources() as $file => $src) {
             foreach (['isEdge(', "config('app.role')", 'isBranchServer(', "mode === 'edge'", "mode==='edge'", 'MODE_EDGE'] as $needle) {
                 $this->assertStringNotContainsString($needle, $src, "{$file}: the shared view must not branch on the runtime ({$needle}) — PosRuntime carries every difference");
@@ -85,24 +86,17 @@ class EdgeSharedPosRegressionStaticGateTest extends TestCase
                 $this->assertStringNotContainsString('id="' . $id . '"', $src, "{$file}: the OLD Edge page id #{$id} reappeared in the shared view");
             }
         }
-        // While the old folder exists: every id it defines that the shared views do not is in the frozen list (or a new
-        // old-page id was added — which must not happen any more), and the frozen list is a subset of that derived set.
-        $oldDir = resource_path('views/edge/pos');
-        if (is_dir($oldDir)) {
-            $oldIds = $this->idsIn(array_merge(glob($oldDir . '/*.blade.php') ?: [], glob($oldDir . '/partials/*.blade.php') ?: []));
-            $sharedIds = $this->idsIn(array_keys($this->sharedViewSources()));
-            $derived = array_values(array_diff($oldIds, $sharedIds));
-            sort($derived);
-            $this->assertSame([], array_values(array_diff(Gate::OLD_EDGE_ONLY_IDS, $derived)), 'frozen OLD_EDGE_ONLY_IDS entries that the old folder no longer defines (or the shared view now defines!)');
-            $this->assertGreaterThanOrEqual(count(Gate::OLD_EDGE_ONLY_IDS), count($derived));
-        } else {
-            $this->addToAssertionCount(1); // the folder is gone (post-cutover): the frozen list is the only reference
-        }
     }
 
-    /** (d) static: which app code / routes render, include or extend a Blade under resources/views/edge/pos/**. */
-    public function test_no_old_edge_page_blade_is_rendered_outside_the_phase_2_fallback_and_none_under_strict_cutover(): void
+    /**
+     * (d) static, STRICT (the only mode since Stage B): the old folder stays deleted, and nothing under app/ or routes/ renders,
+     * includes or extends a Blade under resources/views/edge/pos/**; GET /edge/local/pos routes to the shared view.
+     */
+    public function test_no_old_edge_page_blade_exists_or_is_rendered_anywhere(): void
     {
+        $this->assertTrue(self::strictCutover(), 'EDGE_POS_CUTOVER_STRICT is a no-op: strict is the only mode');
+        $this->assertDirectoryDoesNotExist(resource_path('views/edge/pos'), 'Stage B deleted resources/views/edge/pos/** — it must not come back');
+
         $refs = [];
         foreach ($this->phpFiles([app_path(), base_path('routes')]) as $file) {
             foreach (file($file) as $n => $line) {
@@ -111,48 +105,30 @@ class EdgeSharedPosRegressionStaticGateTest extends TestCase
                 }
             }
         }
-        // Shared views (tenant/pos/**, layouts/pos) never include the old page's fragments.
+        $this->assertSame([], $refs, "STRICT cutover: nothing under app/ or routes/ may render a Blade under resources/views/edge/pos/**:\n - " . implode("\n - ", $refs));
+        // Shared views (tenant/pos/**, layouts/pos) never include an old-page fragment either.
         foreach ($this->sharedViewSources() as $file => $src) {
             $this->assertDoesNotMatchRegularExpression("/@(?:include|extends|includeIf|each)\(\s*['\"]edge\.pos\./", $src, "{$file} includes an old Edge page fragment");
         }
-
-        $strict = self::strictCutover();
-        if ($strict) {
-            $this->assertSame([], $refs, "STRICT cutover: nothing under app/ or routes/ may render a Blade under resources/views/edge/pos/**:\n - " . implode("\n - ", $refs));
-            $screen = Route::getRoutes()->getByName('edge.local.pos.screen');
-            if ($screen) {
-                $this->assertStringNotContainsString('@screen', $screen->getActionName(), 'STRICT: GET /edge/local/pos must not route to the old page');
-            }
-        } else {
-            $this->assertCount(1, $refs, "Phase 2: ONLY EdgeLocalPosController::screen may render the old page:\n - " . implode("\n - ", $refs));
-            $this->assertStringStartsWith('app/Http/Controllers/Edge/EdgeLocalPosController.php:', $refs[0]);
-            $this->assertStringEndsWith(' edge.pos.index', $refs[0]);
+        // No Blade anywhere under resources/views references the old namespace.
+        foreach ($this->bladeFiles(resource_path('views')) as $file) {
+            $this->assertStringNotContainsString("'edge.pos.", file_get_contents($file), "{$file} references the deleted edge.pos.* views");
         }
+
+        $screen = Route::getRoutes()->getByName('edge.local.pos.screen');
+        if ($screen) {
+            $this->assertStringEndsWith('@sharedScreen', $screen->getActionName(), 'GET /edge/local/pos renders the shared view (EdgeLocalPosController::sharedScreen)');
+        }
+        $this->assertFalse(method_exists(\App\Http\Controllers\Edge\EdgeLocalPosController::class, 'screen'), 'the old-page delegate EdgeLocalPosController::screen() is deleted (Stage B)');
     }
 
-    /** The strict switch — identical rule to the render gate (documented in docs/status/edge-phase3-census-replacement.md). */
+    /**
+     * The strict switch — identical rule to the render gate. Since Stage B strict is the ONLY mode: the Phase 2 fallback
+     * (route + old view) no longer exists, and the forcing variable EDGE_POS_CUTOVER_STRICT=1 is a documented no-op.
+     */
     public static function strictCutover(): bool
     {
-        if (filter_var(getenv('EDGE_POS_CUTOVER_STRICT') ?: '0', FILTER_VALIDATE_BOOL)) {
-            return true;
-        }
-        $routes = file_get_contents(base_path('routes/edge_runtime.php'));
-        $fallbackRouted = (bool) preg_match("/\[EdgeLocalPosController::class,\s*'screen'\]\)->name\('screen'\)/", $routes);
-        $oldViewExists = is_file(resource_path('views/edge/pos/index.blade.php'));
-
-        return ! ($fallbackRouted && $oldViewExists);
-    }
-
-    /** @return string[] unique element ids defined (id="…") in the given Blade files */
-    private function idsIn(array $files): array
-    {
-        $ids = [];
-        foreach ($files as $f) {
-            preg_match_all('/\sid="([A-Za-z0-9_-]+)"/', file_get_contents($f), $m);
-            $ids = array_merge($ids, $m[1]);
-        }
-
-        return array_values(array_unique($ids));
+        return true;
     }
 
     /** @return string[] */
@@ -164,6 +140,20 @@ class EdgeSharedPosRegressionStaticGateTest extends TestCase
                 if ($f->isFile() && str_ends_with($f->getFilename(), '.php')) {
                     $out[] = $f->getPathname();
                 }
+            }
+        }
+        sort($out);
+
+        return $out;
+    }
+
+    /** @return string[] every *.blade.php under $dir */
+    private function bladeFiles(string $dir): array
+    {
+        $out = [];
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)) as $f) {
+            if ($f->isFile() && str_ends_with($f->getFilename(), '.blade.php')) {
+                $out[] = str_replace('\\', '/', $f->getPathname());
             }
         }
         sort($out);

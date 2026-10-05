@@ -43,6 +43,8 @@ class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
     private int $cheeseModifier;
     private int $cardId;
     private int $d500;
+    private int $dealsCat;
+    private int $combo;
     private object $svc;
 
     private static bool $edgeReady = false;
@@ -89,7 +91,7 @@ class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
     private function seedCloudSource(): void
     {
         $this->cleanTenant([
-            'product_modifier_group', 'modifiers', 'modifier_groups', 'cash_count_lines', 'currency_denominations', 'currencies',
+            'combo_components', 'combos', 'product_modifier_group', 'modifiers', 'modifier_groups', 'cash_count_lines', 'currency_denominations', 'currencies',
             'payment_methods', 'recipe_ingredients', 'recipes', 'unit_conversions',
             'product_branch_prices', 'product_variants', 'products', 'categories', 'units',
             'branch_user', 'model_has_roles', 'roles', 'users', 'terminals', 'branches',
@@ -109,6 +111,10 @@ class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
         $this->cheeseModifier = $c->table('modifiers')->insertGetId(['modifier_group_id' => $this->globalGroup, 'name' => 'Extra Cheese', 'price_delta' => 30, 'linked_product_id' => $this->cheese, 'consume_stock' => 1, 'linked_quantity' => 50, 'linked_unit_id' => $g, 'is_default' => 0, 'sort_order' => 1, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
         $c->table('modifiers')->insert(['modifier_group_id' => $this->branchBGroup, 'name' => 'B option', 'price_delta' => 5, 'linked_product_id' => null, 'consume_stock' => 0, 'linked_quantity' => null, 'is_default' => 0, 'sort_order' => 1, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
         $c->table('product_modifier_group')->insert(['product_id' => $this->tikka, 'modifier_group_id' => $this->globalGroup, 'sort_order' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        // Stage B (gap A): a deal FILED to a product-less "Deals" category — the shared view's pill set depends on combos.category_id.
+        $this->dealsCat = $c->table('categories')->insertGetId(['name' => 'Deals', 'code' => 'DL', 'slug' => 'deals', 'is_active' => 1, 'sort_order' => 2, 'created_at' => $now, 'updated_at' => $now]);
+        $this->combo = $c->table('combos')->insertGetId(['branch_id' => $this->branchId, 'category_id' => $this->dealsCat, 'code' => 'FAM', 'name' => 'Family Deal', 'price' => 600, 'sort_order' => 1, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $c->table('combo_components')->insert(['combo_id' => $this->combo, 'product_id' => $this->tikka, 'quantity' => 2, 'sort_order' => 1, 'created_at' => $now, 'updated_at' => $now]);
         $pkr = $c->table('currencies')->insertGetId(['code' => 'PKR', 'name' => 'Pakistani Rupee', 'symbol' => 'Rs', 'decimal_places' => 0, 'is_default' => 1, 'is_active' => 1, 'created_at' => $now, 'updated_at' => $now]);
         $c->table('currency_denominations')->insert(['currency_id' => $pkr, 'denomination_value' => 1000, 'denomination_type' => 'note', 'is_active' => 1, 'created_at' => $now, 'updated_at' => $now]);
         $this->d500 = $c->table('currency_denominations')->insertGetId(['currency_id' => $pkr, 'denomination_value' => 500, 'denomination_type' => 'note', 'is_active' => 1, 'created_at' => $now, 'updated_at' => $now]);
@@ -184,6 +190,11 @@ class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
         $this->assertEqualsCanonicalizing(['cash', 'card'], array_column($s['payment_methods'], 'method_type'), 'every ACTIVE method; the inactive one never ships');
         $this->assertSame(['cash'], $s['restrictions'][0]['allowed_payment_types'], 'the offline tender rule is unchanged (cash only)');
         $this->assertSame('Demo Foods', $s['tenant'][0]['business_name']);
+        // Stage B (gap A of the same-dataset comparison): a combo ships WITH its category_id — the shared view renders the real
+        // "Deals" category pill from it; without the column the appliance fell back to the legacy flat Deals pill (a different
+        // pill set than the Online POS on the same data). The category itself ships (active, shared tree) so the FK is coherent.
+        $this->assertSame([[$this->combo, $this->dealsCat]], array_map(fn ($r) => [(int) $r['id'], (int) $r['category_id']], $s['combos']));
+        $this->assertContains($this->dealsCat, array_map(fn ($r) => (int) $r['id'], $s['categories']));
 
         // the watermark covers the new sections: a new product↔group link mints a new config revision
         $before = $this->svc->watermark(Branch::on('tenant')->find($this->branchId));
@@ -253,6 +264,7 @@ class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
         $this->assertSame(1, $c->table('currencies')->where('is_default', 1)->count());
         $this->assertSame(2, $c->table('currency_denominations')->count());
         $this->assertSame(['cash', 'card'], $c->table('payment_methods')->orderBy('id')->pluck('method_type')->all());
+        $this->assertSame($this->dealsCat, (int) $c->table('combos')->where('id', $this->combo)->value('category_id'), 'gap A: the appliance menu carries the combo category');
     }
 
     public function test_a_refresh_deactivates_a_removed_denomination_deletes_a_removed_link_and_follows_the_business_name(): void

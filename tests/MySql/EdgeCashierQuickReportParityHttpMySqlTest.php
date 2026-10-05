@@ -91,7 +91,7 @@ class EdgeCashierQuickReportParityHttpMySqlTest extends MySqlTenantTestCase
     private function trade(): string
     {
         foreach ([[$this->productP, 100], [$this->productQ, 50]] as [$pid, $amt]) {
-            $this->postJson('/edge/local/pos/sales', ['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            $this->postJson('/edge/local/pos/sales', ['kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip', 'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
                 'lines' => [['product_id' => $pid, 'quantity' => 1]], 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => $amt]]])->assertStatus(201);
         }
 
