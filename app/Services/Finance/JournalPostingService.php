@@ -127,7 +127,9 @@ class JournalPostingService
             }
 
             $lines = [
-                ['account_code' => '2100', 'branch_id' => $payment->branch_id, 'description' => 'Accounts Payable', 'debit' => (float) $payment->amount, 'credit' => 0],
+                // AP-SUPPLIER-DIMENSION-1: the AP line names its supplier (see postPurchaseBill).
+                ['account_code' => '2100', 'branch_id' => $payment->branch_id, 'description' => 'Accounts Payable', 'debit' => (float) $payment->amount, 'credit' => 0,
+                    'counterparty_type' => 'supplier', 'supplier_id' => $payment->supplier_id],
                 ['account_id' => $creditAccountId, 'branch_id' => $payment->branch_id, 'description' => 'Supplier payment '.$payment->payment_no, 'debit' => 0, 'credit' => (float) $payment->amount],
             ];
 
@@ -163,7 +165,8 @@ class JournalPostingService
 
             $lines = [
                 ['account_code' => '3300', 'description' => 'Opening balance - '.$supplier->name, 'debit' => $opening, 'credit' => 0],
-                ['account_code' => '2100', 'description' => 'Supplier opening - '.$supplier->name, 'debit' => 0, 'credit' => $opening],
+                ['account_code' => '2100', 'description' => 'Supplier opening - '.$supplier->name, 'debit' => 0, 'credit' => $opening,
+                    'counterparty_type' => 'supplier', 'supplier_id' => $supplier->id],
             ];
 
             return $this->journal->post(
@@ -658,7 +661,12 @@ class JournalPostingService
 
             $lines = [
                 ['account_code' => '1400', 'branch_id' => $bill->branch_id, 'description' => 'Inventory Asset', 'debit' => $amount, 'credit' => 0],
-                ['account_code' => '2100', 'branch_id' => $bill->branch_id, 'description' => 'Purchase bill '.$bill->bill_no, 'debit' => 0, 'credit' => $amount],
+                // AP-SUPPLIER-DIMENSION-1: the AP line names its supplier, so 2100 can be read by supplier
+                // straight from the GL (Trial Balance party detail). Only the manual-journal screen mirrors
+                // supplier-tagged AP lines into supplier_ledgers; this posting never calls that, so the
+                // bill's own supplier-ledger row is not doubled.
+                ['account_code' => '2100', 'branch_id' => $bill->branch_id, 'description' => 'Purchase bill '.$bill->bill_no, 'debit' => 0, 'credit' => $amount,
+                    'counterparty_type' => 'supplier', 'supplier_id' => $bill->supplier_id],
             ];
 
             return $this->journal->post(
@@ -693,7 +701,8 @@ class JournalPostingService
             }
 
             $lines = [
-                ['account_code' => '2100', 'branch_id' => $return->branch_id, 'description' => 'Purchase return '.$return->return_no, 'debit' => $amount, 'credit' => 0],
+                ['account_code' => '2100', 'branch_id' => $return->branch_id, 'description' => 'Purchase return '.$return->return_no, 'debit' => $amount, 'credit' => 0,
+                    'counterparty_type' => 'supplier', 'supplier_id' => $return->supplier_id],
                 ['account_code' => '1400', 'branch_id' => $return->branch_id, 'description' => 'Inventory Asset', 'debit' => 0, 'credit' => $amount],
             ];
 
