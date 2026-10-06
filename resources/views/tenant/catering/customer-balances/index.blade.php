@@ -73,6 +73,22 @@
                         @endforeach
                     </select>
                 </div>
+                {{-- CATERING-BALANCES-DATE-FILTER-1 — malik: "add dates here,
+                     From / TO".
+
+                     Muddat EVENT KI TAREEKH par lagti hai, paisa aane ki tareekh
+                     par nahi. Is screen par sawal "is mahine ki bookings" hota
+                     hai; October ki booking ka advance September me aa chuka ho
+                     sakta hai, aur usay October ke bahar rakhna adadon ko tor
+                     deta. --}}
+                <div class="col-6 col-sm-3 col-md-2">
+                    <label class="form-label fs-13 mb-1">Event from</label>
+                    <input type="date" name="from" value="{{ $from }}" class="form-control" max="{{ $to }}">
+                </div>
+                <div class="col-6 col-sm-3 col-md-2">
+                    <label class="form-label fs-13 mb-1">Event to</label>
+                    <input type="date" name="to" value="{{ $to }}" class="form-control" min="{{ $from }}">
+                </div>
                 <div class="col-sm-3 col-md-2">
                     <button class="btn btn-primary w-100">Go</button>
                 </div>
@@ -82,14 +98,32 @@
                  ka poora hisaab nahi, sirf in bookings ka hai. Ye baat chhupayi
                  nahi ja sakti — warna "Balance 9,59,597" parhne wala samajhta
                  hai ke graahak par itna baqi hai. --}}
-            @if($status !== '')
+            @if($status !== '' || $from || $to)
+                @php
+                    $d = fn ($x) => \Carbon\Carbon::parse($x)->format('d M Y');
+                    $window = $from && $to ? $d($from).' – '.$d($to)
+                        : ($from ? 'on or after '.$d($from) : ($to ? 'on or before '.$d($to) : null));
+                @endphp
                 <div class="alert alert-info d-flex align-items-start gap-2 py-2 px-3 fs-13">
                     <i class="ti ti-filter mt-1"></i>
                     <div>
                         Showing only
-                        <strong>{{ $status === 'open' ? 'still open' : \App\Models\Tenant\CateringEvent::statusLabel($status) }}</strong>
-                        bookings. <strong>Billed, Received, Balance and Credit below count these bookings only</strong> —
+                        @if($status !== '')
+                            <strong>{{ $status === 'open' ? 'still open' : \App\Models\Tenant\CateringEvent::statusLabel($status) }}</strong>
+                        @endif
+                        @if($window)
+                            bookings with an <strong>event date {{ $window }}</strong>.
+                        @else
+                            bookings.
+                        @endif
+                        <strong>Billed, Received, Balance and Credit below count these bookings only</strong> —
                         they are not the customer's full position.
+                        @if($window)
+                            {{-- Ye baat likhna zaroori hai: muddat BOOKING ki tareekh par
+                                 lagti hai, paisa aane ki tareekh par nahi. In do ko ek
+                                 samajh lena "Received" ko ghalat parh lena hai. --}}
+                            Received counts every payment made against those bookings, whenever it was taken.
+                        @endif
                         <a href="{{ url('/catering/customer-balances') }}" class="ms-1">Clear filter</a>
                     </div>
                 </div>
@@ -117,8 +151,9 @@
                                          ke graahak dekh kar click kiya, wahi
                                          bookings tafseel me bhi milni chahiyen,
                                          warna adad badal jate hain. --}}
+                                    @php($carry = array_filter(['status' => $status, 'from' => $from, 'to' => $to]))
                                     <a href="{{ url('/catering/customer-balances/'.$row['customer_id'])
-                                        .($status !== '' ? '?status='.$status : '') }}"
+                                        .($carry ? '?'.http_build_query($carry) : '') }}"
                                        class="fw-semibold text-decoration-none">{{ $row['name'] }}</a>
                                     @if($row['last_event_date'])
                                         <div class="text-muted fs-12">
