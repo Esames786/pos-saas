@@ -68,6 +68,12 @@ class PurchasingService
         $landed = $this->landedUnitCosts($grn);
 
         foreach ($grn->lines as $line) {
+            // GRN-NON-STOCK-1: a purchase-only line records what was bought and what it cost, and
+            // touches no stock. Its share of the extra charges stays with it, into cost at the bill.
+            if ($line->affects_stock === false) {
+                continue;
+            }
+
             $product = $line->product;
             $variant = $line->variant;
             $branch  = $grn->branch;
