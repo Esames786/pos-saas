@@ -25,8 +25,12 @@
                     @endforeach
                     <input type="hidden" name="date_from" value="{{ $from }}">
                     <input type="hidden" name="date_to" value="{{ $to }}">
+                    <input type="hidden" name="parties" value="{{ $showParties ? 1 : 0 }}">
                     <button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>CSV</button>
                 </form>
+                {{-- Part 2: Print — the same figures as a paged A4 PDF. --}}
+                <a href="{{ url('/finance/trial-balance') . '?' . http_build_query(['date_from' => $from, 'date_to' => $to, 'branch_ids' => $selectedBranchIds, 'parties' => $showParties ? 1 : 0, 'format' => 'pdf']) }}"
+                   target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm ms-1" id="tb-print"><i class="ti ti-printer me-1"></i>Print</a>
             </div>
         </div>
 
@@ -43,6 +47,14 @@
                         <input type="date" name="date_to" class="form-control" value="{{ $to }}">
                     </div>
                     @include('tenant.finance.partials.branch-multiselect', ['branches' => $branches, 'selectedBranchIds' => $selectedBranchIds])
+                    <div class="col-sm-2">
+                        {{-- Unticked sends the hidden 0; ticked, the later 1 wins. Default on. --}}
+                        <input type="hidden" name="parties" value="0">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="parties" value="1" id="tb-parties" @checked($showParties)>
+                            <label class="form-check-label" for="tb-parties">Show party detail</label>
+                        </div>
+                    </div>
                     <div class="col-sm-2">
                         <button type="submit" class="btn btn-primary w-100">Apply</button>
                     </div>
@@ -85,6 +97,18 @@
                                 <td class="text-end">{{ $r['period_credit'] > 0 ? number_format($r['period_credit'], 2) : '' }}</td>
                                 <td class="text-end fw-semibold">{{ $sided($r['closing_debit'], $r['closing_credit']) }}</td>
                             </tr>
+                            {{-- Part 2: who makes up this account. These always add up to the row above. --}}
+                            @foreach($parties[$r['account_id']] ?? [] as $p)
+                            <tr class="tb-party small">
+                                <td></td>
+                                <td class="ps-4 text-muted">{{ $p['label'] }}</td>
+                                <td></td>
+                                <td class="text-end text-muted">{{ $sided($p['opening_debit'], $p['opening_credit']) }}</td>
+                                <td class="text-end text-muted">{{ $p['period_debit'] > 0 ? number_format($p['period_debit'], 2) : '' }}</td>
+                                <td class="text-end text-muted">{{ $p['period_credit'] > 0 ? number_format($p['period_credit'], 2) : '' }}</td>
+                                <td class="text-end text-muted">{{ $sided($p['closing_debit'], $p['closing_credit']) }}</td>
+                            </tr>
+                            @endforeach
                             @empty
                             <tr><td colspan="7" class="text-center text-muted py-4">No posted journal activity up to {{ $to }}.</td></tr>
                             @endforelse

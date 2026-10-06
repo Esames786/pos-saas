@@ -576,11 +576,16 @@ class SupplierFinanceDirectMySqlTest extends MySqlTenantTestCase
         $entry = JournalEntry::where('source_type', 'purchase_bill')->where('source_id', $bill->id)->first();
         $this->assertNotNull($entry, 'bill ka GL pehle jaise post hota hai');
 
-        // Bill ki AP satar par counterparty nahi — system ke banaye journals par shart nahi.
+        // AP-SUPPLIER-DIMENSION-1 (6 Oct): bill ki AP satar ab apna supplier batati hai, taake 2100
+        // GL se supplier-wise parha ja sake (Trial Balance party detail). Ye pehle null thi — us waqt
+        // ki halat darj thi, koi hifazat nahi. Asal hifazat upar hai aur qaim hai: subledger par bill
+        // ki BILKUL EK satar (->sole()), kyunke AP satrein subledger me sirf Manual Journal ki screen
+        // utarti hai, ye posting nahi.
         $apLine = JournalLine::where('journal_entry_id', $entry->id)
             ->where('account_id', $this->accId('2100'))->first();
         $this->assertNotNull($apLine);
-        $this->assertNull($apLine->counterparty_type, 'system journal be-shanakht reh sakta hai — kuch nahi toota');
+        $this->assertSame('supplier', $apLine->counterparty_type);
+        $this->assertSame($this->supplierId, (int) $apLine->supplier_id);
     }
 
     public function test_purchase_return_ka_bartaao_waisa_hi_hai(): void
