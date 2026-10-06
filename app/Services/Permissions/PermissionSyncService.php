@@ -112,6 +112,10 @@ class PermissionSyncService
         // Receivables aging is a finance/accounting report, not a generic
         // reports-module report — gate it behind the finance module (FIN-6A).
         'tenant.reports.sales.receivables' => 'tenant.finance',
+        // PAYABLES-FINANCE-GATE-1: its other half. Supplier aging is the same kind of accounting
+        // report, but was left on the generic reports module — so Kashif Kitchen (finance, no
+        // reports) could open the Supplier Ledger, GL and Trial Balance yet not what it owes by age.
+        'tenant.reports.purchases.payables' => 'tenant.finance',
         // Manufacturing customer lookup exposes manufacturing data — gate it with
         // the manufacturing module, not the fail-open generic tenant.ajax prefix.
         'tenant.ajax.manufacturing-customers' => 'tenant.manufacturing',
