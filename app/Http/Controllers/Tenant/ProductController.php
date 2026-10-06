@@ -24,6 +24,11 @@ class ProductController extends Controller
         $query = Product::with(['category', 'unit', 'defaultVariant'])->latest();
         $this->applyContextFilter($query, $context, $request);
 
+        // PRODUCT-ROLE-FILTER-1: offer only the roles this list can actually hold (the catalog never
+        // shows raw materials, the kitchen list never shows sale items) — read before the other filters.
+        $kindsHere = (clone $query)->reorder()->distinct()->pluck('product_kind')
+            ->map(fn ($k) => $k ?: Product::KIND_SALE_ITEM)->unique()->values()->all();
+
         if ($request->filled('search')) {
             $search = trim($request->search);
             $query->where(function ($q) use ($search) {
@@ -48,12 +53,64 @@ class ProductController extends Controller
             $query->where('status', $request->status);
         }
 
+        // PRODUCT-ROLE-FILTER-1 — Role / Visibility, as the badges on each row read. Roles: ANY ticked
+        // (an item has one role). The rest: ALL ticked — "Purchasable + Sellable" means both.
+        $chosenRoles = $this->pickedFrom($request->input('roles', []), array_keys(Product::KINDS));
+        $chosenFlags = $this->pickedFrom($request->input('flags', []), array_keys(self::FLAG_FILTERS));
+        if ($chosenRoles) {
+            $query->where(function ($q) use ($chosenRoles) {
+                $q->whereIn('product_kind', $chosenRoles);
+                if (in_array(Product::KIND_SALE_ITEM, $chosenRoles, true)) {
+                    $q->orWhereNull('product_kind');   // an unset role reads as Sale Item on the badge
+                }
+            });
+        }
+        foreach ($chosenFlags as $flag) {
+            match ($flag) {
+                'purchasable'       => $query->where('is_purchasable', true),
+                'sellable'          => $query->where('is_sellable', true),
+                // Same rule as Product::isPosVisible(), which draws the badge.
+                'pos_visible'       => $query->where('status', 'active')->where('is_sellable', true)->where('is_pos_visible', true),
+                'hidden_from_pos'   => $query->where(fn ($q) => $q->where('status', '!=', 'active')->orWhere('is_sellable', false)->orWhere('is_pos_visible', false)),
+                'stock_tracked'     => $query->where('is_stock_tracked', true),
+                'not_stock_tracked' => $query->where('is_stock_tracked', false),
+                'service'           => $query->where(fn ($q) => $q->where('product_type', 'service')->orWhere('product_kind', Product::KIND_SERVICE)),
+                'recipe'            => $query->where('inventory_consumption_method', 'recipe'),
+            };
+        }
+
         return view('tenant.products.index', [
             'products'    => $query->paginate(15)->withQueryString(),
             'categories'  => Category::where('is_active', true)->orderBy('name')->get(),
             'context'     => $context,
             'contextBase' => $this->contextBaseUrl($request, $context),
+            'roleOptions' => collect(Product::KINDS)
+                ->filter(fn ($label, $kind) => in_array($kind, $kindsHere, true) || in_array($kind, $chosenRoles, true))->all(),
+            'flagOptions' => self::FLAG_FILTERS,
+            'chosenRoles' => $chosenRoles,
+            'chosenFlags' => $chosenFlags,
         ]);
+    }
+
+    /** PRODUCT-ROLE-FILTER-1: the visibility/behaviour filters, named as their badges are. */
+    private const FLAG_FILTERS = [
+        'purchasable'       => 'Purchasable',
+        'sellable'          => 'Sellable',
+        'pos_visible'       => 'POS Visible',
+        'hidden_from_pos'   => 'Hidden from POS',
+        'stock_tracked'     => 'Stock Tracked',
+        'not_stock_tracked' => 'Not Stock Tracked',
+        'service'           => 'Service Item',
+        'recipe'            => 'Recipe Item',
+    ];
+
+    /** A ticked list (or a single value from an old link), kept to the known values only. */
+    private function pickedFrom($raw, array $allowed): array
+    {
+        return collect(is_array($raw) ? $raw : [$raw])
+            ->map(fn ($v) => is_string($v) ? trim($v) : $v)
+            ->filter(fn ($v) => in_array($v, $allowed, true))
+            ->unique()->values()->all();
     }
 
     public function create(Request $request)
