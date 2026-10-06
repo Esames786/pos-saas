@@ -89,6 +89,21 @@ class TrialBalancePartyMySqlTest extends MySqlTenantTestCase
         view()->share('errors', new ViewErrorBag);
     }
 
+    protected function tearDown(): void
+    {
+        // The command test registers this DB as a tenant in the SHARED master DB. Left behind, it
+        // breaks every later test that registers the same DB (unique tenant_databases.db_database).
+        try {
+            $master = DB::connection('master');
+            $master->table('tenant_databases')->where('db_database', $this->tenantDb)
+                ->whereIn('tenant_id', $master->table('tenants')->where('tenant_code', 'like', 'aptest%')->pluck('id'))->delete();
+            $master->table('tenants')->where('tenant_code', 'like', 'aptest%')->delete();
+        } catch (\Throwable) {
+            // best effort; never mask the real outcome
+        }
+        parent::tearDown();
+    }
+
     private function bill(string $no, int $supplier, float $amount, string $date): int
     {
         $bill = PurchaseBill::create(['bill_no' => $no, 'supplier_id' => $supplier, 'branch_id' => $this->branchId, 'bill_date' => $date, 'subtotal' => $amount, 'grand_total' => $amount, 'balance_due' => $amount, 'status' => 'posted']);
