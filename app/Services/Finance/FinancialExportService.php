@@ -244,6 +244,10 @@ class FinancialExportService
         $results->truncated      = $totalCount > $limit;
         $results->total_count    = $totalCount;
         $results->returned_count = $results->count();
+        // GL-TOTALS-1: totals over EVERY matching line, not just the ones returned — past the limit a
+        // total summed from the page would quietly leave lines out.
+        $results->total_debit    = round((float) (clone $query)->sum('journal_lines.debit'), 4);
+        $results->total_credit   = round((float) (clone $query)->sum('journal_lines.credit'), 4);
 
         return $results;
     }
