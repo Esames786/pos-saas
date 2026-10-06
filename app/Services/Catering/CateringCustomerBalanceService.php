@@ -49,9 +49,9 @@ class CateringCustomerBalanceService
      *
      * @return Collection<int, array>
      */
-    public function rows(?int $branchId = null, ?string $search = null, array $statuses = []): Collection
+    public function rows(?int $branchId = null, ?string $search = null, array $statuses = [], ?string $from = null, ?string $to = null): Collection
     {
-        $events = $this->eventsQuery($branchId, $statuses)
+        $events = $this->eventsQuery($branchId, $statuses, $from, $to)
             ->whereNotNull('customer_id')
             ->get();
 
@@ -104,9 +104,9 @@ class CateringCustomerBalanceService
      *
      * @return array{count: int, balance: float, credit: float}
      */
-    public function unlinked(?int $branchId = null, array $statuses = []): array
+    public function unlinked(?int $branchId = null, array $statuses = [], ?string $from = null, ?string $to = null): array
     {
-        $events = $this->eventsQuery($branchId, $statuses)->whereNull('customer_id')->get();
+        $events = $this->eventsQuery($branchId, $statuses, $from, $to)->whereNull('customer_id')->get();
         $totals = $this->totals($events);
 
         return [
@@ -121,9 +121,9 @@ class CateringCustomerBalanceService
      *
      * @return array{customer: Customer, events: Collection, totals: array}
      */
-    public function forCustomer(Customer $customer, ?int $branchId = null, array $statuses = []): array
+    public function forCustomer(Customer $customer, ?int $branchId = null, array $statuses = [], ?string $from = null, ?string $to = null): array
     {
-        $events = $this->eventsQuery($branchId, $statuses)
+        $events = $this->eventsQuery($branchId, $statuses, $from, $to)
             ->where('customer_id', $customer->id)
             ->orderByDesc('event_date')
             ->get()
@@ -200,7 +200,7 @@ class CateringCustomerBalanceService
      * Ek hi jagah rakhi gayi hai taake fehrist, unlinked aur tafseel teenon
      * BILKUL wohi data dekhen — warna teen screenein teen adad keh sakti hain.
      */
-    private function eventsQuery(?int $branchId, array $statuses = [])
+    private function eventsQuery(?int $branchId, array $statuses = [], ?string $from = null, ?string $to = null)
     {
         return CateringEvent::query()
             ->with([
@@ -219,7 +219,17 @@ class CateringCustomerBalanceService
             // samajhta hai ke graahak par itna baqi hai, jabke filter lage
             // hone par wo sirf chhante hue hisse ka hota hai. Is liye screen
             // filter lagte hi ye saaf likhti hai.
-            ->when($statuses !== [], fn ($q) => $q->whereIn('status', $statuses));
+            ->when($statuses !== [], fn ($q) => $q->whereIn('status', $statuses))
+            // CATERING-BALANCES-DATE-FILTER-1 — muddat EVENT KI TAREEKH par
+            // lagti hai, paisa aane ki tareekh par nahi. Malik is screen par
+            // "is mahine ki bookings" poochhta hai, "is mahine aaya paisa"
+            // nahi — aur ye farq adadon me nazar aata hai: ek October ki
+            // booking ka advance September me aa chuka ho sakta hai.
+            //
+            // Yani "Received" wo paisa hai jo IN bookings ke against aaya,
+            // chahe jab bhi aaya ho. Screen ye baat likh kar batati hai.
+            ->when($from !== null, fn ($q) => $q->whereDate('event_date', '>=', $from))
+            ->when($to !== null, fn ($q) => $q->whereDate('event_date', '<=', $to));
     }
 
     /**

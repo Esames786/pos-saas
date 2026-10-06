@@ -41,13 +41,25 @@
          kehna lazmi hai: tafseel ka safha wo jagah hai jahan log paisa lete
          aur refund karte hain, aur adhura total dekh kar faisla karna yahan
          sab se mehnga parta hai. --}}
-    @if(($status ?? '') !== '')
+    @if(($status ?? '') !== '' || ($from ?? null) || ($to ?? null))
+        @php
+            $d = fn ($x) => \Carbon\Carbon::parse($x)->format('d M Y');
+            $window = ($from ?? null) && ($to ?? null) ? $d($from).' – '.$d($to)
+                : (($from ?? null) ? 'on or after '.$d($from) : (($to ?? null) ? 'on or before '.$d($to) : null));
+        @endphp
         <div class="alert alert-info d-flex align-items-start gap-2 py-2 px-3 fs-13">
             <i class="ti ti-filter mt-1"></i>
             <div>
                 Filtered to
-                <strong>{{ $status === 'open' ? 'still open' : \App\Models\Tenant\CateringEvent::statusLabel($status) }}</strong>
-                bookings — the figures below cover these only, not this customer's full position.
+                @if(($status ?? '') !== '')
+                    <strong>{{ $status === 'open' ? 'still open' : \App\Models\Tenant\CateringEvent::statusLabel($status) }}</strong>
+                @endif
+                @if($window)
+                    bookings with an <strong>event date {{ $window }}</strong> —
+                @else
+                    bookings —
+                @endif
+                the figures below cover these only, not this customer's full position.
                 <a href="{{ url('/catering/customer-balances/'.$customer->id) }}" class="ms-1">Show all bookings</a>
             </div>
         </div>
