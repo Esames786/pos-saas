@@ -503,8 +503,17 @@ class ProductController extends Controller
             return '/catering/materials';
         }
 
-        return $this->productContext($request) === 'manufacturing'
-            ? '/manufacturing/products'
-            : '/products/' . $product->id;
+        $context = $this->productContext($request);
+        if ($context !== 'manufacturing') {
+            return '/products/' . $product->id;
+        }
+
+        // PRODUCT-FORM-AREA-1: the manufacturing screen can now save a Restaurant type too (picked
+        // above the cards). Landing on a list that never shows it reads as "my product vanished" —
+        // open the product instead. The list's OWN filter decides, not a second copy of it.
+        $listed = Product::query()->whereKey($product->id);
+        $this->applyContextFilter($listed, $context, $request);
+
+        return $listed->exists() ? '/manufacturing/products' : '/products/' . $product->id;
     }
 }
