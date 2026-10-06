@@ -6,14 +6,20 @@ use App\Http\Controllers\Concerns\NormalizesBranchIds;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Services\Finance\FinancialExportService;
+use App\Services\Finance\TrialBalancePartyService;
 use App\Support\CsvStreamer;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Illuminate\Http\Request;
 
 class TrialBalanceController extends Controller
 {
     use NormalizesBranchIds;
 
-    public function __construct(private FinancialExportService $exportService) {}
+    public function __construct(
+        private FinancialExportService $exportService,
+        private TrialBalancePartyService $partyService,
+    ) {}
 
     /**
      * TRIAL-BALANCE-PERIOD-1 — From/To with Opening · Debit · Credit · Balance per account.
@@ -39,8 +45,18 @@ class TrialBalanceController extends Controller
 
         $tb = $this->exportService->trialBalancePeriod($from, $to, $branchIds);
 
+        // Part 2: the parties under each control account. Default ON; the screen, the CSV and the PDF
+        // all take them from this one call, so the three can never disagree.
+        $showParties = $request->input('parties', '1') !== '0';
+        $parties = $showParties
+            ? $this->partyService->partiesFor($from, $to, $branchIds, array_column($tb['rows'], 'account_id'))
+            : [];
+
         if ($request->boolean('export_csv')) {
-            return $this->csv($tb, $from, $to, $branchIds);
+            return $this->csv($tb, $parties, $from, $to, $branchIds);
+        }
+        if ($request->query('format') === 'pdf') {
+            return $this->pdf($tb, $parties, $from, $to, $branchIds);
         }
 
         return view('tenant.finance.trial-balance.index', [
@@ -51,6 +67,8 @@ class TrialBalanceController extends Controller
             'to'                => $to,
             'branches'          => Branch::orderBy('name')->get(['id', 'name']),
             'selectedBranchIds' => $branchIds ?? [],
+            'parties'           => $parties,
+            'showParties'       => $showParties,
         ]);
     }
 
@@ -68,11 +86,16 @@ class TrialBalanceController extends Controller
         return $fmt(0.0);
     }
 
-    private function csv(array $tb, string $from, string $to, ?array $branchIds)
+    private function branchLabel(?array $branchIds): string
     {
-        $branchLabel = $branchIds
+        return $branchIds
             ? Branch::whereIn('id', $branchIds)->orderBy('name')->pluck('name')->implode(', ')
             : 'All Branches';
+    }
+
+    private function csv(array $tb, array $parties, string $from, string $to, ?array $branchIds)
+    {
+        $branchLabel = $this->branchLabel($branchIds);
 
         $header = CsvStreamer::financeHeader('Trial Balance', [
             'From'   => $from,
@@ -80,7 +103,7 @@ class TrialBalanceController extends Controller
             'Branch' => $branchLabel,
         ]);
 
-        return CsvStreamer::download('trial-balance-' . $from . '-to-' . $to . '.csv', $header, function ($fp) use ($tb) {
+        return CsvStreamer::download('trial-balance-' . $from . '-to-' . $to . '.csv', $header, function ($fp) use ($tb, $parties) {
             $n = fn (float $v) => number_format($v, 2, '.', '');
             fputcsv($fp, ['Code', 'Account', 'Type', 'Opening', 'Debit', 'Credit', 'Balance']);
             foreach ($tb['rows'] as $r) {
@@ -90,6 +113,14 @@ class TrialBalanceController extends Controller
                     $n($r['period_debit']), $n($r['period_credit']),
                     self::sided($r['closing_debit'], $r['closing_credit'], false),
                 ]);
+                foreach ($parties[$r['account_id']] ?? [] as $p) {
+                    fputcsv($fp, [
+                        '', '    ' . $p['label'], 'Party',
+                        self::sided($p['opening_debit'], $p['opening_credit'], false),
+                        $n($p['period_debit']), $n($p['period_credit']),
+                        self::sided($p['closing_debit'], $p['closing_credit'], false),
+                    ]);
+                }
             }
             $t = $tb['totals'];
             fputcsv($fp, [
@@ -100,5 +131,41 @@ class TrialBalanceController extends Controller
             ]);
             fputcsv($fp, ['', '', 'Difference', '', '', '', $n($tb['difference'])]);
         });
+    }
+    /**
+     * Part 2 — Print. A4 portrait, column headings on every page, "Page X of Y", the totals block
+     * kept on one page, signature lines. Dompdf, as the Sales Report PDF already uses.
+     */
+    private function pdf(array $tb, array $parties, string $from, string $to, ?array $branchIds)
+    {
+        $html = view('tenant.finance.trial-balance.print', [
+            'rows'        => $tb['rows'],
+            'totals'      => $tb['totals'],
+            'difference'  => $tb['difference'],
+            'parties'     => $parties,
+            'from'        => $from,
+            'to'          => $to,
+            'branchLabel' => $this->branchLabel($branchIds),
+            'company'     => app()->bound('tenant') ? (app('tenant')->business_name ?? '') : '',
+        ])->render();
+
+        $options = new Options;
+        $options->set('defaultFont', 'DejaVu Sans');
+        $options->set('isRemoteEnabled', false);
+        $options->set('isPhpEnabled', false);
+
+        $dompdf = new Dompdf($options);
+        $dompdf->setPaper('a4', 'portrait');
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->render();
+
+        $canvas = $dompdf->getCanvas();
+        $font = $dompdf->getFontMetrics()->getFont('DejaVu Sans');
+        $canvas->page_text($canvas->get_width() - 110, $canvas->get_height() - 28, 'Page {PAGE_NUM} of {PAGE_COUNT}', $font, 8, [0.35, 0.35, 0.35]);
+
+        return response($dompdf->output(), 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="trial-balance-' . $from . '-to-' . $to . '.pdf"',
+        ]);
     }
 }
