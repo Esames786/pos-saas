@@ -913,6 +913,18 @@
                                 </a>
                             </li>
                         @endcan
+                        {{-- PAYABLES-FINANCE-GATE-1: the report is a finance one now. Where the Reports
+                             menu exists it keeps its old place there; without it, this is the only way in. --}}
+                        @if(! $hasModule('reports'))
+                        @can('tenant.reports.purchases.payables')
+                            @php $a = $isIn('reports/purchases/payables*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/reports/purchases/payables') }}" class="{{ $a ? 'active' : '' }}" id="finance-payables-link">
+                                    <i class="ti ti-file-invoice fs-16 me-2"></i><span>Payables Aging</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @endif
                         @can('tenant.finance.profit-loss.index')
                             @php $a = $isIn('finance/profit-loss*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -1210,6 +1222,8 @@
                                 </a>
                             </li>
                         @endcan
+                        {{-- PAYABLES-FINANCE-GATE-1: gated by finance now, like Receivables below. --}}
+                        @if($hasModule('finance'))
                         @can('tenant.reports.purchases.payables')
                             @php $a = $isIn('reports/purchases*') && !$isIn('reports/purchases/returns'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -1218,6 +1232,7 @@
                                 </a>
                             </li>
                         @endcan
+                        @endif
                         @can('tenant.reports.purchases.returns')
                             @php $a = $isIn('reports/purchases/returns'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
