@@ -44,6 +44,9 @@ class ProvisionTrialWorkspaceJob implements ShouldQueue
         public string $loginUrl,
         public string $businessName,
         public string $ownerEmail,
+        // WEBSITE-I18N-GEO-1 P3: the signup's language, for the failure email (the tenant row may be gone
+        // by then). Optional, so a job queued before this field existed still runs.
+        public ?string $locale = null,
     ) {}
 
     public function handle(SelfSignupService $signup): void
@@ -77,14 +80,15 @@ class ProvisionTrialWorkspaceJob implements ShouldQueue
         if ($tenant && $tenant->status === 'active') {
             return;
         }
+        $locale = $tenant?->locale ?: ($this->locale ?: 'en');
         DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
         $signup->discardFailedTrial($tenant);
 
         try {
-            Mail::to($this->ownerEmail)->send(new TrialWorkspaceFailedMail(
+            Mail::to($this->ownerEmail)->locale($locale)->send(new TrialWorkspaceFailedMail(
                 brand: config('saas.brand_name', 'Bingoo'),
                 businessName: $this->businessName,
-                tryAgainUrl: url('/start-trial'),
+                tryAgainUrl: \App\Support\PublicLocale::url('/start-trial', $locale),
                 supportEmail: config('saas.contact.support_email', 'support@bingoopos.com'),
             ));
         } catch (Throwable $mailError) {

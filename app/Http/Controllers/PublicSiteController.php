@@ -256,7 +256,7 @@ class PublicSiteController extends Controller
             ];
         }
 
-        return view('public.start-trial', compact('plans', 'selectedPlan', 'enterpriseRequested', 'selectedBilling', 'planPrices', 'perBranch', 'checkout'));
+        return view('public.start-trial', compact('plans', 'selectedPlan', 'enterpriseRequested', 'selectedBilling', 'planPrices', 'perBranch', 'checkout', 'market'));
     }
 
     public function contact()
@@ -436,7 +436,7 @@ class PublicSiteController extends Controller
         // The "we are setting it up" email goes on the queue FIRST: one worker serves the queue,
         // so behind a minute-long build it would arrive a minute late. Never blocks the signup.
         try {
-            Mail::to($tenant->owner_email)->queue(new TrialWorkspacePreparingMail(
+            Mail::to($tenant->owner_email)->locale(PublicLocale::current())->queue(new TrialWorkspacePreparingMail(
                 brand: $brand,
                 businessName: $tenant->business_name,
                 workspaceAddress: $domain,
@@ -450,7 +450,7 @@ class PublicSiteController extends Controller
         // Only the password HASH goes on the queue — the payload is a row in the `jobs` table.
         try {
             ProvisionTrialWorkspaceJob::dispatch(
-                $tenant->id, Hash::make($data['password']), $loginUrl, $tenant->business_name, $tenant->owner_email,
+                $tenant->id, Hash::make($data['password']), $loginUrl, $tenant->business_name, $tenant->owner_email, PublicLocale::current(),
             );
         } catch (Throwable $e) {
             report($e);

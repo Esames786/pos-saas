@@ -53,7 +53,8 @@ class SendTrialReadyMailJob implements ShouldQueue
         }
 
         $trialEnds = $tenant->subscription?->trial_ends_at;
-        Mail::to($tenant->owner_email)->send(new TrialWorkspaceCreatedMail(
+        // WEBSITE-I18N-GEO-1 P3: in the language the signup form was filled in.
+        Mail::to($tenant->owner_email)->locale($tenant->locale ?: 'en')->send(new TrialWorkspaceCreatedMail(
             brand: config('saas.brand_name', 'Bingoo'),
             businessName: $tenant->business_name,
             loginUrl: $this->loginUrl,

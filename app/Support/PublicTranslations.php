@@ -18,12 +18,19 @@ final class PublicTranslations
     public const VIEW_PATHS = [
         'resources/views/layouts/public.blade.php',
         'resources/views/public',
+        // The trial emails a signup receives, in the language it signed up in (WEBSITE-I18N-GEO-1 P3).
+        'resources/views/emails/trial-workspace-preparing.blade.php',
+        'resources/views/emails/trial-workspace-created.blade.php',
+        'resources/views/emails/trial-workspace-failed.blade.php',
     ];
 
     /** PHP files whose user-facing sentences are shown on the public site (validation, errors). */
     public const PHP_PATHS = [
         'app/Http/Requests/Public/StartTrialRequest.php',
         'app/Http/Controllers/PublicSiteController.php',
+        'app/Mail/TrialWorkspacePreparingMail.php',
+        'app/Mail/TrialWorkspaceCreatedMail.php',
+        'app/Mail/TrialWorkspaceFailedMail.php',
     ];
 
     /**

@@ -153,6 +153,11 @@
                                 <input type="text" name="website" tabindex="-1" autocomplete="off" value="{{ old('website') }}">
                             </div>
                             <input type="hidden" name="currency_code" value="{{ old('currency_code', $pbq['currency'] ?? $defaultCurrency) }}">
+                            {{-- WEBSITE-I18N-GEO-1 P3: the market this page priced (every market, not only per-branch:
+                                 an Arabic visitor who picked Pakistan must not be signed up as Saudi), and the
+                                 visitor's own clock, used only where the market has no single timezone. --}}
+                            <input type="hidden" name="market" value="{{ old('market', $market) }}">
+                            <input type="hidden" name="timezone" id="visitorTimezone" value="{{ old('timezone') }}">
 
                             {{-- Business details --}}
                             <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;"><i class="ti ti-building me-1"></i>{{ __('Business details') }}</h6>
@@ -223,7 +228,6 @@
                             @if($pb)
                                 {{-- WEBSITE-I18N-GEO-1 P2: what was chosen in the plan builder. Posted as counts only; the
                                      server prices them again from the plan. --}}
-                                <input type="hidden" name="market" value="{{ $pb['market'] }}">
                                 <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;"><i class="ti ti-building-store me-1"></i>{{ __('Branches and terminals') }}</h6>
                                 <div class="row g-3 mb-4">
                                     <div class="col-md-6">
@@ -304,6 +308,12 @@
             .replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') || 'your-subdomain';
         preview.textContent = code + '.{{ $baseDomain }}/login';
     });
+})();
+
+// WEBSITE-I18N-GEO-1 P3: the visitor's timezone, for markets that span several (the US).
+(function () {
+    var tz = document.getElementById('visitorTimezone');
+    try { if (tz && !tz.value && window.Intl) tz.value = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
 })();
 
 // CLOUD-BILLING-2: show the price for the chosen cycle and plan, here and in the summary card. Display only —
