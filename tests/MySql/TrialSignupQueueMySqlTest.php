@@ -197,6 +197,22 @@ class TrialSignupQueueMySqlTest extends MySqlTenantTestCase
         Queue::assertNotPushed(SendTrialReadyMailJob::class);
     }
 
+    public function test_a_build_killed_by_its_timeout_is_still_removed(): void
+    {
+        // A timeout kills handle() mid-build: the service's own clean-up never runs. Only failed() does.
+        Mail::fake();
+        $code = $this->newCode();
+        $tenant = $this->pendingTenant($code);
+        DB::connection('master')->statement('CREATE DATABASE `pos_tenant_' . $code . '`');
+
+        (new ProvisionTrialWorkspaceJob($tenant->id, Hash::make(self::PASSWORD), 'https://x.example.test/login', 'Trial Test Kitchen', $code . '@example.test'))
+            ->failed(new \Illuminate\Queue\TimeoutExceededException('ProvisionTrialWorkspaceJob has timed out.'));
+
+        $this->assertNull(Tenant::find($tenant->id));
+        $this->assertFalse($this->databaseExists($code));
+        Mail::assertSent(TrialWorkspaceFailedMail::class, fn ($m) => $m->hasTo($code . '@example.test'));
+    }
+
     public function test_failed_never_removes_a_workspace_that_finished(): void
     {
         Mail::fake();
