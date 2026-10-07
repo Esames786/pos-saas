@@ -141,7 +141,14 @@
             </div>
             {{-- PRODUCT-ROLE-FILTER-1: Role / Visibility, named exactly as the badges in the list.
                  Roles: any ticked. The rest: all ticked. Nothing ticked = everything. --}}
-            @php $chosenCount = count($chosenRoles) + count($chosenFlags); @endphp
+            @php
+                // Any caller that renders this list without the filter (CateringViewRender does) gets an empty one.
+                $chosenRoles = $chosenRoles ?? [];
+                $chosenFlags = $chosenFlags ?? [];
+                $roleOptions = $roleOptions ?? [];
+                $flagOptions = $flagOptions ?? [];
+                $chosenCount = count($chosenRoles) + count($chosenFlags);
+            @endphp
             <div class="col-md-4">
                 <label class="form-label">
                     Role / Visibility
