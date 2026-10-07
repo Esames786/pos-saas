@@ -209,3 +209,38 @@ Phase 1–3 is ke baghair chal sakte hain; trial khatam hone se pehle iska hal c
 - Purane English URLs.
 - Login ke andar ka `/locale/{x}` switch.
 - Koi tenant ka data, koi deploy — jab tak aap na kahein.
+
+---
+
+## 9. Market ki qeematein (web research, 2026-10-07) — faisla #1 ke liye
+
+Sab **mahana, saalana billing ke hisaab se, VAT ke baghair** jahan likha tha. Competitors **har branch/location** ka paisa lete hain;
+hamare do plan kai branches **saath** dete hain.
+
+| Competitor | Mulk | Qeemat / mahina | Note |
+|---|---|---|---|
+| Foodics Starter / Basic / Advanced | Saudi | SAR 392 / 742 / 1,133 (monthly billing: 423 / 801 / 1,224) | restaurant; foodics.com/pricing (page par currency nahi likhi) |
+| Foodics Starter / Basic / Advanced | UAE | AED 199 / 375 / 556 | foodics.com/foodics-pricing-uae |
+| Rewaa Basic / Advanced | Saudi | SAR 3,449 / 5,939 saal (≈ 287 / 495) | retail; 1 branch, 1000 / 3000 SKU, sirf saalana, VAT alag |
+| Marn | Saudi | SAR ~149 se | qeemat published nahi |
+| Snad Basic / Pro | Saudi | SAR 149 / 399 | POS + accounting + inventory |
+| Ari POS / TajerGo | UAE | AED 249 / 499 per branch | |
+| Square Plus / Premium | US | USD 49 / 149 per location | retail + restaurant ek hi plan |
+| Toast Point of Sale | US | USD 69 per location | KDS/online ke saath asal kharcha 200–400 |
+| Lightspeed Retail Basic / Core / Plus | US | USD 89 / 149 / 289 | |
+| Shopify POS Pro | US | USD 79 (saalana) / 89 | |
+| Loyverse | — | muft + USD 25 / store (advanced inventory) | |
+
+### Hamare plans ke barabar market average → mashwara
+
+| Plan (hamare limits) | SAR | AED | USD |
+|---|---|---|---|
+| Retail Starter (1 branch, 1 terminal) | avg 195 → **199** | avg 224 → **199** | avg 72 → **69** |
+| Inventory Store (2 branch, 3 terminal) | 1 branch 447, do = 894 → **549** | 1 branch ~400, do = 800 → **499** | 1 location 149, do = 298 → **169** |
+| Restaurant Starter (1 branch, 2 terminal) | avg 230 → **229** | avg 224 → **219** | avg 59 → **59** |
+| Restaurant Pro (3 branch, 6 terminal) | 1 branch ~570, teen = 1,710 → **899** | 1 branch ~477, teen = 1,430 → **849** | 1 location ~175, teen = 525 → **299** |
+
+- Ek-branch plans: market average ko gol kar diya.
+- Kai-branch plans: average × branches **nahi** rakha. Customer pehle headline number milata hai — Restaurant Pro par SAR 1,710 Foodics ke 742 ke saamne doguna mehnga lagta, halaan ke us me teen branches hain.
+- Yearly = mahana × 10 (PKR jaisa).
+- ⚠️ Saudi ke sab competitors **ZATCA (e-invoicing) Phase 2** ke saath hain; hamare paas abhi nahi (owner ne 09-28 ko chhoda). VAT-registered Saudi business ke liye ye rukawat hai — ya qeemat neeche rakho, ya ZATCA pehle.
