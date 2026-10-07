@@ -86,11 +86,11 @@ final class PublicTranslations
         }
     }
 
-    /** [[key, line], …] for every __('…') / __("…") / @lang('…') in a source. */
+    /** [[key, line], …] for every __('…') / __("…") / @lang('…') / trans_choice('…') in a source. */
     public static function extract(string $source): array
     {
         $out = [];
-        $pattern = '/(?:\b__|@lang)\(\s*(?:\'((?:[^\'\\\\]|\\\\.)*)\'|"((?:[^"\\\\]|\\\\.)*)")/u';
+        $pattern = '/(?:\b__|@lang|\btrans_choice)\(\s*(?:\'((?:[^\'\\\\]|\\\\.)*)\'|"((?:[^"\\\\]|\\\\.)*)")/u';
         if (preg_match_all($pattern, $source, $m, PREG_OFFSET_CAPTURE | PREG_SET_ORDER)) {
             foreach ($m as $match) {
                 $single = $match[1][0] ?? '';
@@ -106,10 +106,18 @@ final class PublicTranslations
         return $out;
     }
 
-    /** Sentences that live in config but are shown on the public site (the tagline, the demo cards). */
+    /** Sentences that live in config but are shown on the public site (tagline, markets, modules, demo cards). */
     public static function configKeys(): array
     {
         $keys = array_filter([(string) config('saas.brand_tagline', '')]);
+        foreach ((array) config('saas.markets', []) as $market) {
+            if (! empty($market['name'])) {
+                $keys[] = $market['name'];
+            }
+        }
+        foreach ((array) config('saas.module_labels', []) as $label) {
+            $keys[] = $label;
+        }
         foreach ((array) config('saas.demos.cards', []) as $card) {
             foreach (['title', 'badge', 'description'] as $field) {
                 if (! empty($card[$field]) && is_string($card[$field])) {

@@ -323,10 +323,13 @@ Sab mahana, saalana billing ke hisaab se, VAT ke baghair jahan likha tha.
 | Phase | Commit | Saboot |
 |---|---|---|
 | P0 yearly | `bf7362da` | `TrialBillingPeriodMySqlTest` 7 green; 5 sabotage, har ek sahi test laal |
-| P1 Arabic | (is ke saath) | `PublicSiteLanguageMySqlTest` 10 green; 7 sabotage, har ek sahi test laal; 20 safhe HTTP kernel se 200; Arabic safhon par koi English jumla nahi |
+| P1 Arabic | `ac89d47b` | `PublicSiteLanguageMySqlTest` 10 green; 7 sabotage, har ek sahi test laal; 20 safhe HTTP kernel se 200; Arabic safhon par koi English jumla nahi |
+| P2 markets + per-branch | (is ke saath) | `MarketPricingMySqlTest` 9 green (MD §2.6 ki misaal SAR 20,826 server aur browser dono me); 7 sabotage pakde (`@once` wala bekaar nikla — include gayab karne wala pakda); headless Chrome me builder + checkout ke clicks |
 
 Design se farq (soch samajh kar):
 - **Plan ka naam/description:** `plans.translations` column ki jagah `__($plan->name)` — Arabic `ar.json` me, khaali ho to English. `php artisan lang:audit ar --plans` DB ke plan texts bhi jaanchta hai.
 - **FBR wale hisse:** markets (P2) aane tak "default zaban = Pakistan site" — Arabic safhon par FBR nahi dikhta.
 - **`trial-success` safha aur welcome email:** TRIAL-SIGNUP-QUEUE-1 (`f95e5a53`) inhein dobara likh raha hai; un ke merge ke baad tarjuma.
 - Arabic legal safhon ka "English version" link `hreflang="en"` se nishan zad — test har doosre andaruni link ko Arabic par rehne par majboor karta hai.
+
+**P2 ke baad:** checkout per-branch choice (branches, extra terminals, market) post karta hai magar abhi koi save nahi karta — **P2 akele deploy NAHI**. P3 (subscription me branches/currency/snapshot, tenant timezone/locale, `featureLimit()` per-branch) TRIAL-SIGNUP-QUEUE-1 ke `createPendingTrial()` ke upar banega. Deploy tarteeb: pehle signup-queue, phir P0–P3. Central admin me qeematon ka grid abhi nahi bana — qeematein `plan_prices` me (migration se).

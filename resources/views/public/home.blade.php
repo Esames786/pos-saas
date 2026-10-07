@@ -497,11 +497,19 @@
                         @if($badge[1])<span class="plan-badge {{ $badge[0] }} mb-2 align-self-start">{{ $badge[1] }}</span>@endif
                         <h5 class="fw-bold mb-1">{{ __($plan->name) }}</h5>
                         <p class="text-muted small flex-grow-1">{{ __((string) $plan->public_description) }}</p>
-                        <div class="plan-price"><bdi>{{ $plan->currency_code }} {{ number_format((float)($plan->monthly_price ?? $plan->price), 0) }}</bdi></div>
-                        <div class="text-muted small mb-1">{{ __('per month') }}</div>
-                        @if($plan->yearly_price)<div class="text-muted small mb-2">{{ __('or :amount / year', ['amount' => $plan->currency_code . ' ' . number_format((float)$plan->yearly_price, 0)]) }}</div>@endif
+                        {{-- WEBSITE-I18N-GEO-1 P2: the visitor's market — PKR bundle, or one branch's price. --}}
+                        @php $q = $previewPrices[$plan->code] ?? null; @endphp
+                        @if($q && $q['pricing'] === 'per_branch')
+                            <div class="plan-price">{{ \App\Support\PublicMoney::format($q['monthly_total'], $q['currency']) }}</div>
+                            <div class="text-muted small mb-1">{{ __('per branch / month') }}</div>
+                            <div class="text-muted small mb-2">{{ __('or :amount / year', ['amount' => \App\Support\PublicMoney::format($q['yearly_total'], $q['currency'])]) }}</div>
+                        @else
+                            <div class="plan-price"><bdi>{{ $plan->currency_code }} {{ number_format((float)($plan->monthly_price ?? $plan->price), 0) }}</bdi></div>
+                            <div class="text-muted small mb-1">{{ __('per month') }}</div>
+                            @if($plan->yearly_price)<div class="text-muted small mb-2">{{ __('or :amount / year', ['amount' => $plan->currency_code . ' ' . number_format((float)$plan->yearly_price, 0)]) }}</div>@endif
+                        @endif
                         @if($plan->trial_days)<div class="text-success small mb-3"><i class="ti ti-check me-1"></i>{{ __(':days-day free trial', ['days' => $plan->trial_days]) }}</div>@endif
-                        <a href="{{ $lurl('/start-trial?plan=' . $plan->code) }}" class="btn {{ $popular?'btn-primary':'btn-outline-primary' }} mt-auto">{{ __('Start Trial') }}</a>
+                        <a href="{{ $lurl('/start-trial?plan=' . $plan->code . ($q ? '&market=' . $q['market'] : '')) }}" class="btn {{ $popular?'btn-primary':'btn-outline-primary' }} mt-auto">{{ __('Start Trial') }}</a>
                     </div>
                 </div>
             @endforeach

@@ -50,6 +50,58 @@ return [
     ],
     'public_locales_enabled' => array_values(array_filter(array_map('trim', explode(',', env('SAAS_PUBLIC_LOCALES', 'en,ar'))))),
 
+    /*
+     * WEBSITE-I18N-GEO-1 P2 — who sees which price (docs/plans/website-i18n-geo-pricing-2026-10-07.md §2).
+     * Pakistan keeps its BUNDLE plans (branches included). The Gulf and the US pay PER BRANCH.
+     * Prices live in master.plan_prices, one row per plan and currency; this only says which currency
+     * and model a market uses, its VAT (shown "+ VAT", never added to the price), and its timezone for
+     * a new workspace (null = the visitor's browser decides).
+     */
+    'markets' => [
+        'pk' => ['name' => 'Pakistan',             'currency' => 'PKR', 'pricing' => 'bundle',     'vat' => null, 'timezone' => 'Asia/Karachi'],
+        'sa' => ['name' => 'Saudi Arabia',         'currency' => 'SAR', 'pricing' => 'per_branch', 'vat' => 15,   'timezone' => 'Asia/Riyadh'],
+        'ae' => ['name' => 'United Arab Emirates', 'currency' => 'AED', 'pricing' => 'per_branch', 'vat' => 5,    'timezone' => 'Asia/Dubai'],
+        'qa' => ['name' => 'Qatar',                'currency' => 'QAR', 'pricing' => 'per_branch', 'vat' => null, 'timezone' => 'Asia/Qatar'],
+        'us' => ['name' => 'United States & other countries', 'currency' => 'USD', 'pricing' => 'per_branch', 'vat' => null, 'timezone' => null],
+    ],
+    // Until the visitor's country is known (P4): the market a language opens on.
+    'default_market' => env('SAAS_DEFAULT_MARKET', 'pk'),
+    'market_by_locale' => ['en' => 'pk', 'ar' => 'sa'],
+    // Per-branch markets: from N branches, P% off the whole plan. 11+ is Enterprise (Contact Sales).
+    'branch_discounts' => [3 => 10, 6 => 15],
+    'max_self_service_branches' => 10,
+    // The plan builder: business × level → plan code.
+    'plan_builder' => [
+        'restaurant' => ['starter' => 'restaurant_starter', 'pro' => 'restaurant_pro'],
+        'retail'     => ['starter' => 'retail_starter',     'pro' => 'inventory_store'],
+    ],
+    // How a currency is written: English "SAR 549" / "$169", Arabic "549 ر.س" / "$169".
+    'currency_labels' => [
+        'PKR' => ['en' => 'PKR', 'ar' => 'روبية'],
+        'SAR' => ['en' => 'SAR', 'ar' => 'ر.س'],
+        'AED' => ['en' => 'AED', 'ar' => 'د.إ'],
+        'QAR' => ['en' => 'QAR', 'ar' => 'ر.ق'],
+        'USD' => ['en' => '$',   'ar' => '$', 'prefix' => true],
+    ],
+    // A module's name on a per-branch plan card (only modules listed here are shown).
+    'module_labels' => [
+        'pos' => 'POS',
+        'catalog' => 'Catalog',
+        'restaurant' => 'Restaurant Tables',
+        'printing' => 'KOT Printing',
+        'kitchen_display' => 'Kitchen Display',
+        'kitchen_inventory' => 'Kitchen Inventory',
+        'inventory' => 'Inventory',
+        'purchasing' => 'Purchasing',
+        'stock_count' => 'Stock Count',
+        'reports' => 'Reports',
+        'sales_controls' => 'Sales Controls',
+        'finance' => 'Finance & Accounting',
+        'multi_branch' => 'Multi Branch',
+        'users_roles' => 'Users & Roles',
+        'customer_payments' => 'Customer payments',
+    ],
+
     'reserved_subdomains' => [
         'www',
         'app',

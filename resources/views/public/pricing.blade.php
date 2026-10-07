@@ -61,12 +61,21 @@
             <div class="col-lg-5">
                 <div class="hero-glow-card p-4 reveal">
                     <div class="text-white-50 small text-uppercase mb-2" style="letter-spacing:2px;">{{ __('Plans at a glance') }}</div>
-                    @foreach($selfServicePlans->take(2) as $p)
-                        <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid rgba(255,255,255,.12);">
-                            <span class="text-white fw-semibold">{{ __($p->name) }}</span>
-                            <span style="color:#e9c869;font-weight:700;"><bdi>{{ $p->currency_code }} {{ number_format((float)($p->monthly_price ?? $p->price),0) }}</bdi><small class="text-white-50">/{{ __('mo') }}</small></span>
-                        </div>
-                    @endforeach
+                    @if($perBranch)
+                        @foreach(array_slice($perBranch['plans'], 0, 2, true) as $p)
+                            <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid rgba(255,255,255,.12);">
+                                <span class="text-white fw-semibold">{{ __($p['name']) }}</span>
+                                <span style="color:#e9c869;font-weight:700;">{{ \App\Support\PublicMoney::format($p['quote']['monthly_total'], $perBranch['currency']) }}<small class="text-white-50"> {{ __('per branch / month') }}</small></span>
+                            </div>
+                        @endforeach
+                    @else
+                        @foreach($selfServicePlans->take(2) as $p)
+                            <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid rgba(255,255,255,.12);">
+                                <span class="text-white fw-semibold">{{ __($p->name) }}</span>
+                                <span style="color:#e9c869;font-weight:700;"><bdi>{{ $p->currency_code }} {{ number_format((float)($p->monthly_price ?? $p->price),0) }}</bdi><small class="text-white-50">/{{ __('mo') }}</small></span>
+                            </div>
+                        @endforeach
+                    @endif
                     @foreach($customPlans as $p)
                         <div class="d-flex justify-content-between align-items-center py-2">
                             <span class="text-white fw-semibold">{{ __($p->name) }}</span>
@@ -79,16 +88,29 @@
     </div>
 </section>
 
-{{-- TOGGLE --}}
+{{-- TOGGLE + MARKET (WEBSITE-I18N-GEO-1 P2) --}}
 <section class="section-pad pb-0">
-    <div class="container text-center">
+    <div class="container d-flex flex-wrap justify-content-center align-items-center gap-3">
         <div class="bill-toggle reveal">
             <button id="btnMonthly" class="active" type="button">{{ __('Monthly') }}</button>
             <button id="btnYearly" type="button">{{ __('Yearly') }} <span class="badge bg-success-subtle text-success ms-1">{{ __('2 months free') }}</span></button>
         </div>
+        {{-- A plain GET form: works without JS, and the choice is remembered (bingoo_market). --}}
+        <form method="GET" action="{{ $lurl('/pricing') }}" class="d-flex align-items-center gap-2 small" id="market-picker">
+            <label for="market" class="text-muted">{{ __('Prices for') }}</label>
+            <select name="market" id="market" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+                @foreach($markets as $code => $m)
+                    <option value="{{ $code }}" @selected($code === $market)>{{ __($m['name']) }} ({{ $m['currency'] }})</option>
+                @endforeach
+            </select>
+            <noscript><button type="submit" class="btn btn-sm btn-outline-primary">{{ __('Show') }}</button></noscript>
+        </form>
     </div>
 </section>
 
+@if($perBranch)
+    @include('public.partials.pricing-per-branch')
+@else
 {{-- PLAN CARDS --}}
 <section class="section-pad">
     <div class="container">
@@ -152,6 +174,7 @@
         <p class="text-muted small text-center mt-4">{{ __('Product limits are plan guidance and may be adjusted for custom deployments.') }}</p>
     </div>
 </section>
+@endif
 
 {{-- DEMO PREVIEW (live) --}}
 <section id="demo-preview" class="section-pad" style="background:#f8faff;">
@@ -299,6 +322,7 @@
                             </tr>
                         @endforeach
                     @endforeach
+                    @if(! $perBranch)
                     <tr class="cmp-group"><td colspan="{{ count($comparePlans)+1 }}">{{ __('Limits') }}</td></tr>
                     @foreach($limitRows as $key => $label)
                         <tr>
@@ -308,6 +332,7 @@
                             @endforeach
                         </tr>
                     @endforeach
+                    @endif
                 </tbody>
             </table>
         </div>
@@ -384,6 +409,7 @@
 
 @endsection
 
+@if(! $perBranch)
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -402,3 +428,4 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 @endpush
+@endif

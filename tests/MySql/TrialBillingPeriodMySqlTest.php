@@ -92,7 +92,7 @@ class TrialBillingPeriodMySqlTest extends MySqlTenantTestCase
     public function test_pricing_trial_links_carry_the_cycle(): void
     {
         $plan = $this->plan();
-        $html = app(PublicSiteController::class)->pricing()->render();
+        $html = app(PublicSiteController::class)->pricing(Request::create('/pricing'))->render();
 
         $this->assertStringContainsString('/start-trial?plan=' . $plan->code . '&amp;billing=monthly" data-trial-cta data-plan="' . $plan->code . '"', $html);
         $this->assertStringContainsString("setCtaBilling('yearly')", $html, 'the Yearly button rewrites the links');
@@ -101,7 +101,7 @@ class TrialBillingPeriodMySqlTest extends MySqlTenantTestCase
     public function test_every_script_on_both_pages_parses(): void
     {
         $plan = $this->plan();
-        foreach (['pricing' => app(PublicSiteController::class)->pricing()->render(), 'checkout' => $this->checkout($plan, 'yearly')->render()] as $page => $html) {
+        foreach (['pricing' => app(PublicSiteController::class)->pricing(Request::create('/pricing'))->render(), 'checkout' => $this->checkout($plan, 'yearly')->render()] as $page => $html) {
             $this->assertScriptsParse($page, $html);
         }
     }

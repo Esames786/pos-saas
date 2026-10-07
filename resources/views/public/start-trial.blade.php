@@ -14,7 +14,15 @@
     $billingChoice = old('billing_period', $selectedBilling ?? 'monthly') === 'yearly' ? 'yearly' : 'monthly';
     $money = fn ($n) => number_format((float) $n, 0);
     $perMonthOfYear = fn ($plan) => $money($planPrices[$plan->id]['yearly'] / 12);
+    // WEBSITE-I18N-GEO-1 P2: a per-branch market (Saudi Arabia, UAE, Qatar, US) — $checkout holds the
+    // server's quote for the chosen plan, branches and extra terminals.
+    $pb = $checkout ?? null;
+    $pbq = $pb['quote'] ?? null;
+    $pbMoney = fn ($n) => \App\Support\PublicMoney::format((float) $n, $pbq['currency'] ?? 'PKR');
 @endphp
+@if($pb)
+    @include('public.partials.branch-quote-js')
+@endif
 
 {{-- HERO --}}
 <section class="public-hero-premium" style="padding:4rem 0 2.5rem;position:relative;overflow:hidden;">
@@ -64,7 +72,25 @@
             <div class="col-lg-4">
                 <div class="gradient-card p-4 mb-4 reveal">
                     <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;">{{ __('Selected plan') }}</h6>
-                    @if($selectedPlan)
+                    @if($selectedPlan && $pbq)
+                        <h4 class="fw-bold mb-1" id="pbPlanName">{{ __($selectedPlan->name) }}</h4>
+                        <p class="text-muted small mb-2">{{ __((string) $selectedPlan->public_description) }}</p>
+                        <div class="plan-price" id="pbTotal">{{ $pbMoney($pbq['total']) }}</div>
+                        <div class="text-muted small mb-2" id="pbPer">{{ $billingChoice === 'yearly' ? __('per year') : __('per month') }}@if($pbq['vat_percent']) · {{ __('+ :percent% VAT', ['percent' => $pbq['vat_percent']]) }}@endif</div>
+                        <ul class="list-unstyled small text-muted mb-2" id="pbLines">
+                            <li>{{ __('Branches') }}: {{ $pbq['branches'] }} × {{ $pbMoney($pbq['unit']) }}</li>
+                            @if($pbq['extra_terminals'])<li>{{ __('Extra terminals') }}: {{ $pbq['extra_terminals'] }} × {{ $pbMoney($pbq['extra_terminal_unit']) }}</li>@endif
+                            @if($pbq['discount_percent'])<li class="text-success">{{ __('Multi-branch discount (:percent%)', ['percent' => $pbq['discount_percent']]) }}: {{ $pbMoney(-$pbq['discount']) }}</li>@endif
+                        </ul>
+                        @if($selectedPlan->trial_days)
+                            <span class="badge bg-success-subtle text-success mb-3">{{ __(':days-day free trial', ['days' => $selectedPlan->trial_days]) }}</span>
+                        @endif
+                        <ul class="list-unstyled small text-muted mb-0" id="pbIncludes">
+                            <li class="mb-1"><i class="ti ti-building-store me-2 text-primary"></i>{{ __('Branches: :count', ['count' => $pbq['branches']]) }}</li>
+                            <li class="mb-1"><i class="ti ti-device-desktop me-2 text-primary"></i>{{ __('Terminals: :count', ['count' => $pbq['terminals']]) }}</li>
+                            <li class="mb-1"><i class="ti ti-users me-2 text-primary"></i>{{ __('Users: :count', ['count' => $pbq['users']]) }}</li>
+                        </ul>
+                    @elseif($selectedPlan)
                         {{-- CLOUD-BILLING-2: this card follows the cycle and the plan picked in the form. It used to
                              say "per month" even when the visitor had chosen Yearly on the pricing page. --}}
                         <h4 class="fw-bold mb-1" id="selPlanName">{{ __($selectedPlan->name) }}</h4>
@@ -126,7 +152,7 @@
                                 <label>Website</label>
                                 <input type="text" name="website" tabindex="-1" autocomplete="off" value="{{ old('website') }}">
                             </div>
-                            <input type="hidden" name="currency_code" value="{{ old('currency_code', $defaultCurrency) }}">
+                            <input type="hidden" name="currency_code" value="{{ old('currency_code', $pbq['currency'] ?? $defaultCurrency) }}">
 
                             {{-- Business details --}}
                             <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;"><i class="ti ti-building me-1"></i>{{ __('Business details') }}</h6>
@@ -194,10 +220,29 @@
                                 @endforeach
                             </div>
 
+                            @if($pb)
+                                {{-- WEBSITE-I18N-GEO-1 P2: what was chosen in the plan builder. Posted as counts only; the
+                                     server prices them again from the plan. --}}
+                                <input type="hidden" name="market" value="{{ $pb['market'] }}">
+                                <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;"><i class="ti ti-building-store me-1"></i>{{ __('Branches and terminals') }}</h6>
+                                <div class="row g-3 mb-4">
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="pbBranches">{{ __('Branches') }}</label>
+                                        <input type="number" class="form-control" id="pbBranches" name="branches" min="1" max="{{ $perBranch['builder']['maxBranches'] }}" value="{{ old('branches', $pb['branches']) }}" dir="ltr">
+                                        <small class="text-muted">{{ __('More than :count branches?', ['count' => $perBranch['builder']['maxBranches']]) }} <a href="{{ $lurl('/contact?plan=enterprise') }}">{{ __('Contact Sales') }}</a></small>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="pbExtra">{{ __('Extra terminals') }}</label>
+                                        <input type="number" class="form-control" id="pbExtra" name="extra_terminals" min="0" max="99" value="{{ old('extra_terminals', $pb['extra_terminals']) }}" dir="ltr">
+                                    </div>
+                                </div>
+                            @endif
+
                             {{-- Plan --}}
                             <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;"><i class="ti ti-stack-2 me-1"></i>{{ __('Choose your plan') }}</h6>
                             <div class="row g-3 mb-3">
                                 @foreach($plans as $plan)
+                                    @continue($pb && ! isset($perBranch['plans'][$plan->code]))
                                     @php $checked = old('plan_id', $selectedPlan?->id) == $plan->id; @endphp
                                     <div class="col-md-6">
                                         <label class="plan-card d-block p-3 h-100 {{ $plan->code==='restaurant_pro' ? 'plan-card-popular' : '' }}" style="cursor:pointer;">
@@ -211,6 +256,9 @@
                                                 <span class="form-check-label fw-semibold">{{ __($plan->name) }}</span>
                                             </div>
                                             <div class="text-muted small mt-1">{{ __((string) $plan->public_description) }}</div>
+                                            @if($pb)
+                                                <div class="mt-2"><span class="fw-bold">{{ $pbMoney($perBranch['plans'][$plan->code]['quote']['unit']) }}</span> <small class="text-muted">{{ __('per branch / month') }}</small></div>
+                                            @else
                                             <div class="mt-2">
                                                 <span class="plan-price-monthly" @if($billingChoice !== 'monthly') hidden @endif>
                                                     <span class="fw-bold"><bdi>{{ $plan->currency_code }} {{ $money($planPrices[$plan->id]['monthly']) }}</bdi></span>
@@ -227,6 +275,7 @@
                                                 {{ __(':users users', ['users' => $limitLabel($feature($plan,'user_limit'))]) }} ·
                                                 {{ __(':modules modules', ['modules' => $plan->enabledModules->count()]) }}
                                             </div>
+                                            @endif
                                         </label>
                                     </div>
                                 @endforeach
@@ -285,5 +334,34 @@
     }
     document.querySelectorAll('.billing-radio, .plan-radio').forEach(function (r) { r.addEventListener('change', apply); });
 })();
+
+@if($pb)
+// WEBSITE-I18N-GEO-1 P2: the per-branch summary, from the same arithmetic as the pricing page's builder.
+(function () {
+    var D = @json($perBranch['builder']), Q = window.BingooQuote;
+    var byId = {};
+    Object.keys(D.plans).forEach(function (code) { byId[String(D.plans[code].id)] = D.plans[code]; });
+    function val(id, min, max) { var n = parseInt((document.getElementById(id) || {}).value, 10); return Math.max(min, Math.min(max, isNaN(n) ? min : n)); }
+    function set(id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html; }
+    function apply() {
+        var radio = document.querySelector('input[name="plan_id"]:checked');
+        var p = radio ? byId[radio.value] : null;
+        if (!p) return;
+        var yearly = (document.querySelector('input[name="billing_period"]:checked') || {}).value === 'yearly';
+        var b = val('pbBranches', 1, D.maxBranches), x = val('pbExtra', 0, 99), q = Q.quote(D, p, b, x), e = Q.esc;
+        set('pbPlanName', e(p.name));
+        set('pbTotal', e(Q.money(D, yearly ? q.year : q.month)));
+        set('pbPer', e(Q.t(D, yearly ? 'per year' : 'per month')) + (D.vat ? ' · ' + e(Q.t(D, '+ :percent% VAT', { percent: D.vat })) : ''));
+        set('pbLines', '<li>' + e(Q.t(D, 'Branches')) + ': ' + b + ' × ' + e(Q.money(D, p.unit)) + '</li>'
+            + (x ? '<li>' + e(Q.t(D, 'Extra terminals')) + ': ' + x + ' × ' + e(Q.money(D, p.extra)) + '</li>' : '')
+            + (q.pct ? '<li class="text-success">' + e(Q.t(D, 'Multi-branch discount (:percent%)', { percent: q.pct })) + ': ' + e(Q.money(D, q.disc, true)) + '</li>' : ''));
+        set('pbIncludes', ['Branches: :count', 'Terminals: :count', 'Users: :count'].map(function (k, i) {
+            return '<li class="mb-1">' + e(Q.t(D, k, { count: [b, q.terminals, q.users][i] })) + '</li>';
+        }).join(''));
+    }
+    ['pbBranches', 'pbExtra'].forEach(function (id) { var el = document.getElementById(id); if (el) el.addEventListener('input', apply); });
+    document.querySelectorAll('.billing-radio, .plan-radio').forEach(function (r) { r.addEventListener('change', apply); });
+})();
+@endif
 </script>
 @endpush
