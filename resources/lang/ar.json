@@ -760,5 +760,6 @@
     "Business": "النشاط التجاري",
     "Your login URL": "رابط الدخول الخاص بك",
     "Go to your login": "اذهب إلى صفحة الدخول",
-    "Reminder: sign in with the password you created during signup.": "تذكير: سجّل الدخول بكلمة المرور التي أنشأتها عند التسجيل."
+    "Reminder: sign in with the password you created during signup.": "تذكير: سجّل الدخول بكلمة المرور التي أنشأتها عند التسجيل.",
+    "IP Geolocation by DB-IP": "تحديد الموقع الجغرافي بواسطة DB-IP"
 }

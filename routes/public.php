@@ -42,10 +42,12 @@ $publicPages = function () {
 Route::domain(config('tenancy.central_domain'))
     ->middleware(['central.only'])
     ->group(function () use ($publicPages) {
-        Route::middleware('public.locale:' . PublicLocale::default())->name('public.')->group($publicPages);
+        // P4: public.suggest runs after public.locale — it sends a first-time Saudi visitor to /ar/… and
+        // remembers a language picked in the switcher (?lang=).
+        Route::middleware(['public.locale:' . PublicLocale::default(), 'public.suggest'])->name('public.')->group($publicPages);
 
         foreach (PublicLocale::prefixed() as $locale) {
-            Route::prefix($locale)->middleware('public.locale:' . $locale)->name('public.' . $locale . '.')->group($publicPages);
+            Route::prefix($locale)->middleware(['public.locale:' . $locale, 'public.suggest'])->name('public.' . $locale . '.')->group($publicPages);
         }
 
         // WHATSAPP-REPORT-CHANNEL-1: the first hop of a report link. The approved template button

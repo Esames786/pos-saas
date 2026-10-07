@@ -18,6 +18,9 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // Requires OS cron on the server: * * * * * php /path/to/artisan schedule:run
     Schedule::command('saas:subscriptions-expire')->dailyAt('00:10');
 
+    // WEBSITE-I18N-GEO-1 P4: the public website's country database (DB-IP Lite), refreshed monthly.
+    Schedule::command('geoip:update')->monthlyOn(4, '03:40')->withoutOverlapping();
+
     // Nightly public-demo reset (15D-8): restore the five industry demos to clean sample data.
     // Registered only; it does nothing until OS cron runs `php artisan schedule:run`.
     if (config('saas.demos.enabled', true)) {

@@ -530,7 +530,7 @@
                 {{-- WEBSITE-I18N-GEO-1: this page in the other language(s), each named in its own script. --}}
                 @foreach($switchTo as $code => $href)
                     @continue($code === $locale)
-                    <li class="nav-item"><a class="nav-link lang-switch" id="lang-switch-{{ $code }}" href="{{ $href }}" hreflang="{{ $code }}" lang="{{ $code }}">{{ $locales[$code]['native'] ?? $code }}</a></li>
+                    <li class="nav-item"><a class="nav-link lang-switch" id="lang-switch-{{ $code }}" href="{{ $href . (str_contains($href, '?') ? '&' : '?') . 'lang=' . $code }}" hreflang="{{ $code }}" lang="{{ $code }}">{{ $locales[$code]['native'] ?? $code }}</a></li>
                 @endforeach
                 <li class="nav-item"><a class="btn btn-light btn-sm px-3" href="{{ $lurl('/start-trial') }}">{{ __('Start Trial') }}</a></li>
             </ul>
@@ -561,7 +561,9 @@
         </div>
         <hr style="border-color:#1e293b;">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <small>&copy; {{ date('Y') }} {{ $brandName }}. {{ __('All rights reserved.') }}</small>
+            <small>&copy; {{ date('Y') }} {{ $brandName }}. {{ __('All rights reserved.') }}
+                {{-- CC BY 4.0 attribution for the country database (WEBSITE-I18N-GEO-1 P4). --}}
+                <span class="d-block" style="font-size:.72rem;opacity:.7;"><a href="https://db-ip.com" class="text-decoration-none" style="color:#94a3b8;" rel="noopener">{{ __('IP Geolocation by DB-IP') }}</a></span></small>
             <div class="d-flex flex-wrap gap-3">
                 <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/terms') }}">{{ __('Terms') }}</a>
                 <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/privacy') }}">{{ __('Privacy') }}</a>

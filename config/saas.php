@@ -67,6 +67,22 @@ return [
     // Until the visitor's country is known (P4): the market a language opens on.
     'default_market' => env('SAAS_DEFAULT_MARKET', 'pk'),
     'market_by_locale' => ['en' => 'pk', 'ar' => 'sa'],
+    // P4: once the visitor's country is known it picks the market (their own choice still wins).
+    'country_markets' => ['PK' => 'pk', 'SA' => 'sa', 'AE' => 'ae', 'QA' => 'qa', 'US' => 'us'],
+    // Any other KNOWN country. An unknown country (no database, a private address) keeps the language default.
+    'other_countries_market' => env('SAAS_OTHER_COUNTRIES_MARKET', 'us'),
+    // WEBSITE-I18N-GEO-1 P4 — the visitor's country, from a database file on this server (no outside call).
+    'geoip' => [
+        'path' => env('SAAS_GEOIP_PATH', storage_path('app/geoip/dbip-country-lite.mmdb')),
+        // DB-IP "IP to Country Lite", CC BY 4.0 (credited in the site footer); refreshed by geoip:update.
+        'download_url' => env('SAAS_GEOIP_URL', 'https://download.db-ip.com/free/dbip-country-lite-{Y}-{m}.mmdb.gz'),
+        // Only if the site is ever put behind Cloudflare: then its CF-IPCountry header is the answer.
+        'trust_cloudflare_header' => (bool) env('SAAS_GEOIP_TRUST_CLOUDFLARE', false),
+        // A first visit from these opens in Arabic …
+        'arabic_countries' => ['SA'],
+        // … and from these only when the browser itself asks for Arabic first (many read the web in English).
+        'arabic_if_browser_prefers' => ['AE', 'QA', 'KW', 'BH', 'OM', 'EG', 'JO'],
+    ],
     // Per-branch markets: from N branches, P% off the whole plan. 11+ is Enterprise (Contact Sales).
     'branch_discounts' => [3 => 10, 6 => 15],
     'max_self_service_branches' => 10,

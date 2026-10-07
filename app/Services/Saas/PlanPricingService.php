@@ -46,7 +46,10 @@ class PlanPricingService
         return $byLocale[$locale] ?? (string) config('saas.default_market', 'pk');
     }
 
-    /** The market a page shows: ?market= (the currency picker) → the remembered choice → the language's. */
+    /**
+     * The market a page shows: ?market= (the currency picker) → the remembered choice → the visitor's
+     * country (P4) → the language's default.
+     */
     public function resolveMarket(Request $request): string
     {
         foreach ([$request->query('market'), $request->cookie('bingoo_market')] as $candidate) {
@@ -56,7 +59,18 @@ class PlanPricingService
             }
         }
 
-        return $this->defaultMarket();
+        return $this->marketForCountry(app(VisitorCountry::class)->of($request)) ?? $this->defaultMarket();
+    }
+
+    /** A known country's market (an unlisted country gets the "other countries" market); null when unknown. */
+    public function marketForCountry(?string $country): ?string
+    {
+        if (! $country) {
+            return null;
+        }
+        $market = ((array) config('saas.country_markets', []))[$country] ?? config('saas.other_countries_market');
+
+        return $this->isMarket($market) ? $market : null;
     }
 
     public function price(Plan $plan, string $currency): ?PlanPrice
