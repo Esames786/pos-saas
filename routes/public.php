@@ -30,6 +30,11 @@ Route::domain(config('tenancy.central_domain'))
 
         Route::get('/trial/success', [PublicSiteController::class, 'trialSuccess'])->name('public.trial.success');
 
+        // TRIAL-SIGNUP-QUEUE-1: the success page polls this while the workspace is built (session-scoped).
+        Route::get('/trial/status', [PublicSiteController::class, 'trialStatus'])
+            ->middleware('throttle:60,1')
+            ->name('public.trial.status');
+
         Route::get('/contact', [PublicSiteController::class, 'contact'])->name('public.contact');
 
         // Legal / policy pages (PRD-4)

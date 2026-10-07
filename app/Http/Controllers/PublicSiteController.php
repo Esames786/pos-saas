@@ -3,10 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Public\StartTrialRequest;
+use App\Jobs\Saas\ProvisionTrialWorkspaceJob;
+use App\Mail\TrialWorkspacePreparingMail;
 use App\Models\Master\Plan;
 use App\Models\Master\Tenant;
 use App\Services\Saas\SelfSignupService;
+use App\Services\Saas\TrialHttpsProbe;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 class PublicSiteController extends Controller
@@ -152,11 +158,45 @@ class PublicSiteController extends Controller
     {
         if ($this->comingSoonMode()) return $this->comingSoon();
 
-        if (! session('trial_login_url')) {
+        $signup = session('trial_signup');
+        if (! $signup) {
             return redirect(url('/pricing'));
         }
 
-        return view('public.trial-success');
+        return view('public.trial-success', ['signup' => $signup]);
+    }
+
+    /**
+     * TRIAL-SIGNUP-QUEUE-1 — what the success page polls while the workspace is built.
+     *
+     * Only ever about the signup in THIS session; there is no id in the URL to guess.
+     * preparing → securing (built, HTTPS not on its address yet) → ready, or failed.
+     */
+    public function trialStatus(TrialHttpsProbe $probe)
+    {
+        $signup = session('trial_signup');
+        if (! $signup) {
+            return response()->json(['state' => 'unknown'], 404);
+        }
+
+        $tenant = Tenant::find($signup['tenant_id']);
+        if (! $tenant) {
+            return response()->json(['state' => 'failed']);   // a failed build removes the tenant
+        }
+        if ($tenant->status !== 'active') {
+            return response()->json(['state' => 'preparing']);
+        }
+
+        $loginUrl = $signup['login_url'];
+        if (str_starts_with($loginUrl, 'https://')) {
+            $secure = Cache::remember('trial-https:' . $tenant->id, 15,
+                fn () => $probe->serves((string) parse_url($loginUrl, PHP_URL_HOST)));
+            if (! $secure) {
+                return response()->json(['state' => 'securing']);
+            }
+        }
+
+        return response()->json(['state' => 'ready', 'login_url' => $loginUrl]);
     }
 
     public function trialStore(StartTrialRequest $request, SelfSignupService $signup)
@@ -164,45 +204,64 @@ class PublicSiteController extends Controller
         if ($this->comingSoonMode()) return $this->comingSoon();
 
         $data = $request->signupData();
+        $couldNotStart = fn () => back()
+            ->withInput($request->except(['password', 'password_confirmation']))
+            ->withErrors([
+                'signup' => 'We could not create your trial right now. Please try again or contact support.',
+            ]);
 
+        // TRIAL-SIGNUP-QUEUE-1: only the master rows here — about a second. The database, the
+        // migrations and the owner are built by ProvisionTrialWorkspaceJob on the queue worker.
+        // (Measured 7 Oct: doing it all in this request held the browser for 70 seconds.)
         try {
-            $tenant = $signup->registerTrial($data);
+            $tenant = $signup->createPendingTrial($data);
         } catch (Throwable $e) {
             report($e);
 
-            return back()
-                ->withInput($request->except(['password', 'password_confirmation']))
-                ->withErrors([
-                    'signup' => 'We could not create your trial right now. Please try again or contact support.',
-                ]);
+            return $couldNotStart();
         }
 
-        $domain = $tenant->domains->first()?->domain;
+        $domain = $tenant->domains()->where('is_primary', true)->value('domain');
         $scheme = $request->secure() ? 'https' : 'http';
         $loginUrl = $scheme . '://' . $domain . '/login';
+        $brand = config('saas.brand_name', 'Bingoo');
+        $supportEmail = config('saas.contact.support_email', 'support@bingoopos.com');
 
-        // Workspace-ready email (PRD-5) — additive; never block signup if mail fails.
+        // The "we are setting it up" email goes on the queue FIRST: one worker serves the queue,
+        // so behind a minute-long build it would arrive a minute late. Never blocks the signup.
         try {
-            $trialEnds = $tenant->subscription?->trial_ends_at;
-            \Illuminate\Support\Facades\Mail::to($tenant->owner_email)->send(
-                new \App\Mail\TrialWorkspaceCreatedMail(
-                    brand: config('saas.brand_name', 'Bingoo'),
-                    businessName: $tenant->business_name,
-                    loginUrl: $loginUrl,
-                    ownerEmail: $tenant->owner_email,
-                    trialEnds: $trialEnds ? \Illuminate\Support\Carbon::parse($trialEnds)->format('F j, Y') : null,
-                    supportEmail: config('saas.contact.support_email', 'support@bingoopos.com'),
-                )
+            Mail::to($tenant->owner_email)->queue(new TrialWorkspacePreparingMail(
+                brand: $brand,
+                businessName: $tenant->business_name,
+                workspaceAddress: $domain,
+                ownerEmail: $tenant->owner_email,
+                supportEmail: $supportEmail,
+            ));
+        } catch (Throwable $e) {
+            report($e);
+        }
+
+        // Only the password HASH goes on the queue — the payload is a row in the `jobs` table.
+        try {
+            ProvisionTrialWorkspaceJob::dispatch(
+                $tenant->id, Hash::make($data['password']), $loginUrl, $tenant->business_name, $tenant->owner_email,
             );
         } catch (Throwable $e) {
             report($e);
+            $signup->discardFailedTrial($tenant);   // nothing will ever build it — free the address
+
+            return $couldNotStart();
         }
 
-        return redirect(url('/trial/success'))->with([
-            'trial_login_url'     => $loginUrl,
-            'trial_owner_email'   => $tenant->owner_email,
-            'trial_business_name' => $tenant->business_name,
+        session()->put('trial_signup', [
+            'tenant_id'     => $tenant->id,
+            'login_url'     => $loginUrl,
+            'address'       => $domain,
+            'owner_email'   => $tenant->owner_email,
+            'business_name' => $tenant->business_name,
         ]);
+
+        return redirect(url('/trial/success'));
     }
 
     private function publicPlans()
