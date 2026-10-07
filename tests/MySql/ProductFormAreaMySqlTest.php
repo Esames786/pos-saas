@@ -16,6 +16,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\ViewErrorBag;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\MySql\Support\ParsesInlineScripts;
 use Tests\MySql\Support\TenantFixtures;
 
 /**
@@ -31,6 +32,7 @@ use Tests\MySql\Support\TenantFixtures;
  */
 class ProductFormAreaMySqlTest extends MySqlTenantTestCase
 {
+    use ParsesInlineScripts;
     use TenantFixtures;
 
     private int $categoryId;
@@ -155,7 +157,6 @@ class ProductFormAreaMySqlTest extends MySqlTenantTestCase
 
     public function test_every_script_on_the_form_parses(): void
     {
-        $node = $this->nodeBinary();
         $pages = [
             'catalog create'      => $this->create(),
             'catalog edit'        => $this->edit(['product_kind' => 'sale_item']),
@@ -164,22 +165,7 @@ class ProductFormAreaMySqlTest extends MySqlTenantTestCase
         ];
 
         foreach ($pages as $page => $html) {
-            preg_match_all('#<script([^>]*)>(.*?)</script>#s', $html, $m, PREG_SET_ORDER);
-            // Inline JavaScript only: no src, and no data type such as application/json.
-            $scripts = array_filter($m, fn ($s) => ! str_contains($s[1], 'src=')
-                && (! preg_match('/type="([^"]+)"/', $s[1], $t) || in_array($t[1], ['text/javascript', 'module'], true)));
-            $this->assertTrue(collect($scripts)->contains(fn ($s) => str_contains($s[2], 'var MODES')),
-                "{$page}: the form's own script was not found — this check would prove nothing");
-
-            foreach ($scripts as $i => $script) {
-                $tmp = tempnam(sys_get_temp_dir(), 'pform');
-                file_put_contents($tmp . '.js', $script[2]);
-                $out = [];
-                exec(escapeshellarg($node) . ' --check ' . escapeshellarg($tmp . '.js') . ' 2>&1', $out, $code);
-                @unlink($tmp . '.js');
-                @unlink($tmp);
-                $this->assertSame(0, $code, "{$page}: inline script #{$i} does not parse — the whole block is dead in the browser:\n" . implode("\n", $out));
-            }
+            $this->assertInlineScriptsParse($html, $page, 'var MODES');
         }
     }
 
@@ -284,21 +270,5 @@ class ProductFormAreaMySqlTest extends MySqlTenantTestCase
 
         [$path] = $save(['product_kind' => 'raw_material', 'is_purchasable' => 1, 'is_stock_tracked' => 1]);
         $this->assertSame('/manufacturing/products', $path);
-    }
-
-    private function nodeBinary(): string
-    {
-        $candidates = array_filter([
-            getenv('NODE_BINARY') ?: null,
-            trim((string) @shell_exec(PHP_OS_FAMILY === 'Windows' ? 'where node 2>NUL' : 'command -v node 2>/dev/null')) ?: null,
-            ...glob('D:/laragon2/bin/nodejs/*/node.exe') ?: [],
-        ]);
-        foreach ($candidates as $candidate) {
-            $candidate = strtok($candidate, "\r\n");
-            if ($candidate && is_file($candidate)) {
-                return $candidate;
-            }
-        }
-        $this->markTestSkipped('node not found (set NODE_BINARY) — the form\'s scripts cannot be parse-checked here.');
     }
 }

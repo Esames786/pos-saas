@@ -25,6 +25,11 @@ $publicPages = function () {
 
     Route::get('/trial/success', [PublicSiteController::class, 'trialSuccess'])->name('trial.success');
 
+    // TRIAL-SIGNUP-QUEUE-1: the success page polls this while the workspace is built (session-scoped).
+    Route::get('/trial/status', [PublicSiteController::class, 'trialStatus'])
+        ->middleware('throttle:60,1')
+        ->name('trial.status');
+
     Route::get('/contact', [PublicSiteController::class, 'contact'])->name('contact');
 
     // Legal / policy pages (PRD-4)
