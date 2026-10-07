@@ -761,5 +761,11 @@
     "Your login URL": "رابط الدخول الخاص بك",
     "Go to your login": "اذهب إلى صفحة الدخول",
     "Reminder: sign in with the password you created during signup.": "تذكير: سجّل الدخول بكلمة المرور التي أنشأتها عند التسجيل.",
-    "IP Geolocation by DB-IP": "تحديد الموقع الجغرافي بواسطة DB-IP"
+    "IP Geolocation by DB-IP": "تحديد الموقع الجغرافي بواسطة DB-IP",
+    "Cookies on this site": "ملفات تعريف الارتباط في هذا الموقع",
+    "We use necessary cookies to run the site and remember your language. With your permission we also use Google Analytics to learn which pages help visitors. Nothing from Google loads until you choose.": "نستخدم ملفات تعريف الارتباط اللازمة لتشغيل الموقع وتذكّر لغتك. وبإذنك نستخدم أيضاً Google Analytics لمعرفة الصفحات التي تفيد الزوار. ولا يُحمَّل أي شيء من Google قبل أن تختار.",
+    "Cookie details": "تفاصيل ملفات تعريف الارتباط",
+    "Necessary only": "الضرورية فقط",
+    "Allow analytics": "السماح بالتحليلات",
+    "Cookie settings": "إعدادات ملفات تعريف الارتباط"
 }

@@ -62,6 +62,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/edge/*',
         ]);
 
+        // WEBSITE-I18N-GEO-1 P5: the public site's cookie banner writes and reads this answer in the
+        // browser, so it stays plain text (it holds only "v1.a1" / "v1.a0").
+        $middleware->encryptCookies(except: [\App\Support\CookieConsent::COOKIE]);
+
         $middleware->redirectGuestsTo('/login');
 
         $middleware->alias([

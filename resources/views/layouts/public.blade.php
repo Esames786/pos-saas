@@ -570,6 +570,9 @@
                 <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/refund-policy') }}">{{ __('Refund Policy') }}</a>
                 <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/support-policy') }}">{{ __('Support Policy') }}</a>
                 <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/contact') }}">{{ __('Contact') }}</a>
+                @if (\App\Support\CookieConsent::ga4Id())
+                    <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/privacy') }}#cookies" data-cookie-settings>{{ __('Cookie settings') }}</a>
+                @endif
             </div>
         </div>
     </div>
@@ -648,6 +651,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
+@include('public.partials.cookie-consent')
 @stack('scripts')
 </body>
 </html>

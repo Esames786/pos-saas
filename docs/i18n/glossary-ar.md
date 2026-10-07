@@ -12,6 +12,8 @@ Digits: Western (0-9) everywhere — prices, counts, dates.
 | Bingoo / Bingoo POS | بينجو | The brand. "Bingoo POS" in a sentence is just بينجو. Logo and receipt mock-ups stay in Latin. |
 | POS / point of sale | نقاط البيع / نقطة البيع | "POS plan" = باقة نقاط البيع |
 | cloud POS | نظام نقاط بيع سحابي | |
+| cookie | ملف تعريف الارتباط (ج: ملفات تعريف الارتباط) | The full term, as Saudi government sites use it — not كوكيز. |
+| analytics | التحليلات | "Allow analytics" = السماح بالتحليلات |
 | counter / checkout (the place) | الكاشير | plural الكاشيرات |
 | checkout (the act) | الدفع | "barcode checkout" = الدفع بالباركود |
 | terminal | جهاز نقطة البيع | short form جهاز; plural أجهزة نقاط البيع |

@@ -336,3 +336,28 @@ Design se farq (soch samajh kar):
 
 ### P3 (branch `feat/website-geo-signup-20261008`)
 TRIAL-SIGNUP-QUEUE-1 merge (`8fdeb0e2`) ke upar. Signup server par dobara qeemat lagata hai aur subscription me pricing model, currency, branches, extra terminals aur quote ki copy rakhta hai; tenant me zaban aur timezone (market ka, USA me browser ka, warna Asia/Karachi). Pehli branch usi timezone par (pehle hamesha Karachi); owner ki nayi branch ka default pehli branch ka timezone. `featureLimit()` per-branch. Trial emails + success page signup ki zaban me. `MarketSignupMySqlTest` 7 (asal provisioning), 129 related green, 7 sabotage pakde. **Deploy: pehle TRIAL-SIGNUP-QUEUE-1, phir ye branch.**
+
+### P4 — mulk (`95ac2b4d`, isi branch par)
+Mulk IP se, **server par rakhi file** se: DB-IP "IP to Country Lite" (CC BY 4.0, footer me credit), `maxmind-db/reader`. Bahar kisi service ko call nahi.
+File `storage/app/geoip/dbip-country-lite.mmdb` — `geoip:update` (mahine ki 4 tareekh 03:40, scheduler); `deploy.sh` ka naya qadam `[8b/9]` sirf tab chalata hai jab file maujood na ho. Download pehle aazmaya jata hai (8.8.8.8 → mulk), phir ek rename me purani ki jagah — kharab download kabhi purani file nahi mitata.
+- **Zaban:** Saudi se pehli dafa → `/ar/…` (302, query wahi, `bingoo_lang` cookie). UAE, Qatar, Kuwait, Bahrain, Oman, Egypt, Jordan → sirf jab browser khud Arabic pehle maange. Switcher `?lang=` bhejta hai = visitor ki pasand, 12 mahine yaad, hamesha jeetti hai. POST kabhi redirect nahi.
+- **Qeemat:** `?market=` → `bingoo_market` cookie → mulk (PK→PKR bundle, SA/AE/QA/US apni currency, **baqi duniya → USD**) → zaban ka default.
+- **Bots ka koi mulk nahi** (Google, Bing, WhatsApp/Facebook preview, headless): na redirect, na mulk ki qeemat. Google zyada tar America se crawl karta hai — warna English pricing safha dollars me index hota aur Pakistan ke search results me USD dikhta.
+- Cloudflare ka `CF-IPCountry` sirf `SAAS_GEOIP_TRUST_CLOUDFLARE=true` par (koi bhi ye header bhej sakta hai).
+- `VisitorCountryMySqlTest` 8 green; 14 sabotage (har qaida jaan-boojh kar tor kar), **13 pakde**. Na pakda: private-IP filter hatana — file khud 127.0.0.1 / 192.168.x / 10.x / ::1 par kuch nahi lautati, filter sirf bekaar lookup bachata hai.
+
+Design se farq:
+- §6 me "mulk na pata ho → USD" tha; bana hai **"→ zaban ka default"** (English = PKR, Arabic = SAR). File na ho, ya local/private address ho, to Pakistan ka visitor aaj jaisa safha dekhe, dollars nahi.
+- `geoip2/geoip2` ki jagah sirf `maxmind-db/reader` — wahi file reader, kam dependency.
+
+### P5 — cookie ka sawal (isi branch par)
+- **Measurement ID nahi → koi sawal nahi:** na banner, na Google ka script. Site ki apni cookies (session, form token, zaban, currency, jawab) sab zaroori hain, ijazat nahi chahiye — bina wajah sawal poochna khud ek dhoka hai.
+- `SAAS_GA4_ID=G-…` lagte hi banner (visitor ki zaban me): **"Necessary only"** aur **"Allow analytics"** barabar size ke. "Allow" se pehle Google ka koi script safhe par **nahi** (consent mode "basic" — Google ko koi request nahi jati). Jawab `bingoo_consent` = `v1.a1` / `v1.a0`, 12 mahine; `v1` is liye ke kal koi ad pixel aaye to purani "haan" us ki haan na bane.
+- Footer me "Cookie settings" (sirf jab ID ho) — jawab badalna; "haan" ke baad "na" → Google ki `_ga*` cookies saaf + reload.
+- Privacy safha (en + ar) me naya hissa **10. Cookies and your country** (`#cookies`): har cookie ka naam aur muddat, GA sirf ijazat se, aur IP se mulk ka andaza (server ki file, address kahin nahi jata).
+- `bingoo_consent` Laravel ki encryption se bahar (`bootstrap/app.php`), warna JS ka likha "haan" server kabhi parh na sakta.
+- `CookieConsentMySqlTest` 4 green; 8 sabotage (encryption, bina ijazat script, "na" ka button, koi bhi ID, kachra jawab, Arabic jumla, privacy hissa, include) — sab pakde. Headless Chrome en/ar × 1280/390: click se pehle Google script 0, "Allow" ke baad 1, consent default `ad_*` denied; dono button barabar; footer link banner dobara kholta hai.
+- **Deploy ke baad banner tab tak nazar NAHI aayega jab tak prod `.env` me `SAAS_GA4_ID` na ho** (owner GA4 property banaye: Admin → Data streams → Measurement ID), phir `sudo -u www-data php artisan config:cache`.
+- Ad pixels (Snapchat / Meta / TikTok) — owner ka faisla (§12 sawal 6); aaye to `v2` aur "Marketing" ka alag khaana.
+
+**Deploy (sab ke liye):** pehle TRIAL-SIGNUP-QUEUE-1, phir `feat/website-geo-signup-20261008` (P2–P5). P4 me `deploy.sh` badla hai → deploy **do dafa**. Deploy sirf owner ke kehne par.

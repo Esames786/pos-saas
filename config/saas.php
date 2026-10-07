@@ -83,6 +83,11 @@ return [
         // … and from these only when the browser itself asks for Arabic first (many read the web in English).
         'arabic_if_browser_prefers' => ['AE', 'QA', 'KW', 'BH', 'OM', 'EG', 'JO'],
     ],
+    // WEBSITE-I18N-GEO-1 P5 — website analytics, only after the visitor says yes (the cookie banner).
+    // Empty = no analytics and no banner: the site's own cookies are all necessary and need no consent.
+    'analytics' => [
+        'ga4_id' => env('SAAS_GA4_ID'),   // "G-XXXXXXXXXX": Google Analytics → Admin → Data streams
+    ],
     // Per-branch markets: from N branches, P% off the whole plan. 11+ is Enterprise (Contact Sales).
     'branch_discounts' => [3 => 10, 6 => 15],
     'max_self_service_branches' => 10,

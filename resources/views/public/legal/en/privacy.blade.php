@@ -32,5 +32,10 @@
 <h2 class="h5 fw-bold mt-4 mb-2">9. Access and correction</h2>
 <p class="text-muted">You can access and correct most data directly within your workspace. For other requests regarding your account information, contact us using the details below.</p>
 
-<h2 class="h5 fw-bold mt-4 mb-2">10. Contact</h2>
+<h2 class="h5 fw-bold mt-4 mb-2" id="cookies">10. Cookies and your country</h2>
+<p class="text-muted">This website sets only the cookies it needs to work: your session and a security token for forms, the language and currency you chose (<code>bingoo_lang</code>, <code>bingoo_market</code>, 12 months) and your answer to the cookie question (<code>bingoo_consent</code>, 12 months). These need no permission.</p>
+<p class="text-muted">Analytics cookies (Google Analytics: <code>_ga</code>, <code>_ga_*</code>) are set only if you choose “Allow analytics”. They show us which pages help visitors, not who you are, and are not used for advertising. You can change your answer at any time with “Cookie settings” at the bottom of every page.</p>
+<p class="text-muted">To open the site in the right language and currency, we estimate your country from your internet address using a database kept on our own server (<a href="https://db-ip.com" rel="noopener">IP Geolocation by DB-IP</a>). Your address is not sent to anyone for this and is not stored for it. A language or currency you choose yourself always wins.</p>
+
+<h2 class="h5 fw-bold mt-4 mb-2">11. Contact</h2>
 <p class="text-muted mb-0">Privacy questions: <a href="mailto:{{ $support }}">{{ $support }}</a>. See also our <a href="{{ $lurl('/terms') }}">Terms of Service</a>.</p>
