@@ -7,6 +7,7 @@ use App\Models\Master\Plan;
 use App\Models\Master\Tenant;
 use App\Services\Saas\BillingPeriodResolver;
 use App\Services\Saas\SelfSignupService;
+use App\Support\PublicLocale;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -95,6 +96,34 @@ class PublicSiteController extends Controller
         ]);
     }
 
+    /**
+     * WEBSITE-I18N-GEO-1 — every public page in every enabled language, each listing its siblings
+     * (xhtml:link hreflang), so a search engine indexes the Arabic pages as Arabic and not as copies.
+     */
+    public function sitemap()
+    {
+        $paths = ['/', '/pricing', '/features', '/demos', '/start-trial', '/contact', '/terms', '/privacy', '/refund-policy', '/support-policy'];
+        $locales = array_keys(PublicLocale::all());
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "
+"
+            . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">' . "
+";
+        foreach ($paths as $path) {
+            foreach ($locales as $locale) {
+                $xml .= '  <url><loc>' . e(PublicLocale::url($path, $locale)) . '</loc>';
+                foreach ($locales as $alt) {
+                    $xml .= '<xhtml:link rel="alternate" hreflang="' . $alt . '" href="' . e(PublicLocale::url($path, $alt)) . '"/>';
+                }
+                $xml .= '<xhtml:link rel="alternate" hreflang="x-default" href="' . e(PublicLocale::url($path, PublicLocale::default())) . '"/></url>' . "
+";
+            }
+        }
+
+        return response($xml . '</urlset>' . "
+", 200, ['Content-Type' => 'application/xml; charset=UTF-8']);
+    }
+
     // ── Legal / policy pages (PRD-4) ────────────────────────────────────────
 
     public function terms()
@@ -164,7 +193,7 @@ class PublicSiteController extends Controller
         if ($this->comingSoonMode()) return $this->comingSoon();
 
         if (! session('trial_login_url')) {
-            return redirect(url('/pricing'));
+            return redirect(PublicLocale::url('/pricing'));
         }
 
         return view('public.trial-success');
@@ -184,7 +213,7 @@ class PublicSiteController extends Controller
             return back()
                 ->withInput($request->except(['password', 'password_confirmation']))
                 ->withErrors([
-                    'signup' => 'We could not create your trial right now. Please try again or contact support.',
+                    'signup' => __('We could not create your trial right now. Please try again or contact support.'),
                 ]);
         }
 
@@ -209,7 +238,8 @@ class PublicSiteController extends Controller
             report($e);
         }
 
-        return redirect(url('/trial/success'))->with([
+        // WEBSITE-I18N-GEO-1: back to the success page in the language the form was filled in.
+        return redirect(PublicLocale::url('/trial/success'))->with([
             'trial_login_url'     => $loginUrl,
             'trial_owner_email'   => $tenant->owner_email,
             'trial_business_name' => $tenant->business_name,

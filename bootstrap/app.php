@@ -66,6 +66,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'central.only' => CentralOnly::class,
+            'public.locale' => \App\Http\Middleware\SetPublicLocale::class,
             'tenant.only' => TenantOnly::class,
             'route.permission' => EnsureRoutePermission::class,
             'tenant.subscription.access' => EnsureTenantSubscriptionAccess::class,

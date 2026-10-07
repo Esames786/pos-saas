@@ -80,7 +80,7 @@ class TrialBillingPeriodMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('<span id="selPlanAmount">80,000</span>', $yearly);
         $this->assertStringContainsString('<div class="text-muted small mb-1" id="selPlanPer">per year</div>', $yearly);
         $this->assertMatchesRegularExpression('/name="billing_period" value="yearly"\s+checked/', $yearly);
-        $this->assertStringContainsString('PKR 6,667</span> a month', $yearly, 'the monthly equivalent of a year');
+        $this->assertStringContainsString('<bdi id="selPlanMonthlyEq">PKR 6,667</bdi> a month', $yearly, 'the monthly equivalent of a year');
         $this->assertMatchesRegularExpression('/<span class="plan-price-monthly"\s+hidden\s*>/', $yearly, 'the plan list follows the cycle too');
 
         $monthly = $this->checkout($plan, null)->render();

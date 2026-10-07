@@ -41,6 +41,15 @@ return [
 
     'enabled_locales' => array_values(array_filter(array_map('trim', explode(',', env('SAAS_ENABLED_LOCALES', 'en,ur'))))),
 
+    // WEBSITE-I18N-GEO-1: languages of the PUBLIC website (bingoopos.com) — separate from enabled_locales
+    // above, which is the back office. The first enabled one keeps the plain URLs (/pricing); every other
+    // lives under its own prefix (/ar/pricing). Turning a language off removes its URLs.
+    'public_locales' => [
+        'en' => ['native' => 'English', 'dir' => 'ltr', 'og' => 'en_US'],
+        'ar' => ['native' => 'العربية', 'dir' => 'rtl', 'og' => 'ar_SA'],
+    ],
+    'public_locales_enabled' => array_values(array_filter(array_map('trim', explode(',', env('SAAS_PUBLIC_LOCALES', 'en,ar'))))),
+
     'reserved_subdomains' => [
         'www',
         'app',

@@ -44,7 +44,7 @@ class StartTrialRequest extends FormRequest
                     $domain = $value . '.' . config('tenancy.tenant_base_domain');
 
                     if (TenantDomain::where('domain', $domain)->exists()) {
-                        $fail('This subdomain is already taken.');
+                        $fail(__('This subdomain is already taken.'));
                     }
                 },
             ],
@@ -71,10 +71,10 @@ class StartTrialRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'tenant_code.not_in' => 'This subdomain is reserved. Please choose another.',
-            'tenant_code.unique' => 'This subdomain is already taken.',
-            'plan_id.exists'     => 'Please choose an available self-service plan.',
-            'website.size'       => 'Signup could not be completed.',
+            'tenant_code.not_in' => __('This subdomain is reserved. Please choose another.'),
+            'tenant_code.unique' => __('This subdomain is already taken.'),
+            'plan_id.exists'     => __('Please choose an available self-service plan.'),
+            'website.size'       => __('Signup could not be completed.'),
         ];
     }
 
