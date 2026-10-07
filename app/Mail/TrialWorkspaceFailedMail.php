@@ -24,7 +24,7 @@ class TrialWorkspaceFailedMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'Your ' . $this->brand . ' workspace could not be created');
+        return new Envelope(subject: __('Your :brand workspace could not be created', ['brand' => $this->brand]));
     }
 
     public function content(): Content

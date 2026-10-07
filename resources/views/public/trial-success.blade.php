@@ -1,7 +1,7 @@
 @extends('layouts.public')
 
-@section('title', 'Setting Up Your Trial')
-@section('meta_description', 'Your Bingoo POS cloud trial workspace is being set up.')
+@section('title', __('Setting Up Your Trial'))
+@section('meta_description', __('Your Bingoo POS cloud trial workspace is being set up.'))
 
 @section('content')
 {{-- TRIAL-SIGNUP-QUEUE-1: the workspace is built on the queue. This page shows where it is and
@@ -11,62 +11,60 @@
         <div class="row justify-content-center">
             <div class="col-lg-7">
                 <div class="card border-0 shadow-sm text-center" id="trial-status" data-state="preparing"
-                     data-status-url="{{ url('/trial/status') }}">
+                     data-status-url="{{ $lurl('/trial/status') }}">
                     <div class="card-body p-5">
 
                         <div data-show="preparing securing">
                             <div class="spinner-border text-warning mb-3" role="status" style="width:3rem;height:3rem;">
-                                <span class="visually-hidden">Working</span>
+                                <span class="visually-hidden">{{ __('Working') }}</span>
                             </div>
-                            <h1 class="fw-bold mb-2" data-show="preparing">Setting up your workspace…</h1>
-                            <h1 class="fw-bold mb-2" data-show="securing">Securing your address…</h1>
+                            <h1 class="fw-bold mb-2" data-show="preparing">{{ __('Setting up your workspace…') }}</h1>
+                            <h1 class="fw-bold mb-2" data-show="securing">{{ __('Securing your address…') }}</h1>
                             <p class="text-muted mb-1" data-show="preparing">
-                                We are creating the workspace for {{ $signup['business_name'] }}. This usually takes a minute or two.
+                                {{ __('We are creating the workspace for :business. This usually takes a minute or two.', ['business' => $signup['business_name']]) }}
                             </p>
                             <p class="text-muted mb-1" data-show="securing">
-                                Your workspace is built. We are switching on HTTPS for its address, so your browser trusts it.
+                                {{ __('Your workspace is built. We are switching on HTTPS for its address, so your browser trusts it.') }}
                             </p>
                             <p class="text-muted small mb-4">
-                                We have emailed <strong>{{ $signup['owner_email'] }}</strong>, and we will email your login link
-                                the moment it is ready. You can close this page.
+                                {{ __('We have emailed :email, and we will email your login link the moment it is ready. You can close this page.', ['email' => $signup['owner_email']]) }}
                             </p>
                         </div>
 
                         <div data-show="ready">
                             <i class="ti ti-circle-check mb-3" style="font-size:3.5rem;color:#16a34a;"></i>
-                            <h1 class="fw-bold mb-2">Your cloud POS trial is ready.</h1>
-                            <p class="text-muted mb-4">Welcome aboard, {{ $signup['business_name'] }}! Sign in below to start selling.</p>
+                            <h1 class="fw-bold mb-2">{{ __('Your cloud POS trial is ready.') }}</h1>
+                            <p class="text-muted mb-4">{{ __('Welcome aboard, :business! Sign in below to start selling.', ['business' => $signup['business_name']]) }}</p>
                         </div>
 
                         <div data-show="failed">
                             <i class="ti ti-alert-triangle mb-3" style="font-size:3.5rem;color:#dc2626;"></i>
-                            <h1 class="fw-bold mb-2">We could not create your workspace.</h1>
+                            <h1 class="fw-bold mb-2">{{ __('We could not create your workspace.') }}</h1>
                             <p class="text-muted mb-4">
-                                Nothing was charged and the unfinished workspace was removed, so you can try again with the same details.
-                                If it happens again, write to
+                                {{ __('Nothing was charged and the unfinished workspace was removed, so you can try again with the same details. If it happens again, write to') }}
                                 <a href="mailto:{{ config('saas.contact.support_email', 'support@bingoopos.com') }}">{{ config('saas.contact.support_email', 'support@bingoopos.com') }}</a>.
                             </p>
-                            <a href="{{ url('/start-trial') }}" class="btn btn-primary btn-lg px-4">Try again</a>
+                            <a href="{{ $lurl('/start-trial') }}" class="btn btn-primary btn-lg px-4">{{ __('Try again') }}</a>
                         </div>
 
                         <div class="bg-light rounded p-4 text-start my-4" data-show="preparing securing ready">
                             <div class="mb-3">
-                                <small class="text-muted d-block">Business</small>
+                                <small class="text-muted d-block">{{ __('Business') }}</small>
                                 <span class="fw-semibold">{{ $signup['business_name'] }}</span>
                             </div>
                             <div class="mb-3">
-                                <small class="text-muted d-block">Your login URL</small>
-                                <code>{{ $signup['login_url'] }}</code>
+                                <small class="text-muted d-block">{{ __('Your login URL') }}</small>
+                                <code dir="ltr">{{ $signup['login_url'] }}</code>
                             </div>
                             <div>
-                                <small class="text-muted d-block">Owner email</small>
+                                <small class="text-muted d-block">{{ __('Owner email') }}</small>
                                 <span class="fw-semibold">{{ $signup['owner_email'] }}</span>
                             </div>
                         </div>
 
                         <div data-show="ready">
-                            <a href="{{ $signup['login_url'] }}" class="btn btn-primary btn-lg px-4" id="trial-login-link">Go to your login</a>
-                            <p class="text-muted small mt-4 mb-0">Reminder: sign in with the password you created during signup.</p>
+                            <a href="{{ $signup['login_url'] }}" class="btn btn-primary btn-lg px-4" id="trial-login-link">{{ __('Go to your login') }}</a>
+                            <p class="text-muted small mt-4 mb-0">{{ __('Reminder: sign in with the password you created during signup.') }}</p>
                         </div>
 
                     </div>

@@ -8,6 +8,7 @@ use App\Models\Master\Tenant;
 use App\Models\Master\TenantDomain;
 use App\Services\Tenancy\TenancyManager;
 use App\Services\Tenancy\TenantProvisioner;
+use App\Support\PublicLocale;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
@@ -55,13 +56,42 @@ class SelfSignupService
         $trialDays   = (int) ($plan->trial_days ?: config('saas.default_trial_days', 14));
         $trialEndsAt = $trialDays > 0 ? now()->addDays($trialDays) : null;
 
-        return DB::connection('master')->transaction(function () use ($data, $plan, $tenantCode, $domain, $trialEndsAt) {
+        // WEBSITE-I18N-GEO-1 P3: the market prices the plan (bundle in Pakistan, per branch in the Gulf and
+        // the US) — from the plan and the counts, never from an amount or a currency the browser sent.
+        // The quote is kept on the subscription, so a later price change never touches this customer.
+        $pricing = app(PlanPricingService::class);
+        $market = $pricing->isMarket($data['market'] ?? null) ? $data['market'] : $pricing->defaultMarket();
+        $quote = $pricing->quote($plan->loadMissing(['features', 'prices']), $market,
+            (int) ($data['branches'] ?? 1), (int) ($data['extra_terminals'] ?? 0), $data['billing_period'] ?? 'monthly');
+        $perBranch = ($quote['pricing'] ?? null) === 'per_branch';
+        // The business's clock: the market's timezone; for a market spanning many (the US) the visitor's own
+        // browser zone; else Asia/Karachi, as every workspace had before.
+        $timezone = $pricing->market($market)['timezone'] ?? null;
+        if (! $timezone && in_array($data['timezone'] ?? null, timezone_identifiers_list(), true)) {
+            $timezone = $data['timezone'];
+        }
+        $extra = [
+            'currency' => $quote['currency'] ?? ($data['currency_code'] ?? 'PKR'),
+            'timezone' => $timezone ?: 'Asia/Karachi',
+            'locale'   => PublicLocale::current(),
+            'subscription' => $quote ? [
+                'pricing_model'      => $quote['pricing'],
+                'currency_code'      => $quote['currency'],
+                'branches_purchased' => $perBranch ? $quote['branches'] : null,
+                'extra_terminals'    => $perBranch ? $quote['extra_terminals'] : 0,
+                'price_snapshot'     => $quote,
+            ] : [],
+        ];
+
+        return DB::connection('master')->transaction(function () use ($data, $plan, $tenantCode, $domain, $trialEndsAt, $extra) {
             $tenant = Tenant::create([
                 'tenant_code'   => $tenantCode,
                 'business_name' => $data['business_name'],
                 'owner_name'    => $data['owner_name'],
                 'owner_email'   => $data['owner_email'],
-                'currency_code' => $data['currency_code'] ?? 'PKR',
+                'currency_code' => $extra['currency'],
+                'locale'        => $extra['locale'],
+                'timezone'      => $extra['timezone'],
                 'status'        => 'pending',
                 'trial_ends_at' => $trialEndsAt,
             ]);
@@ -73,10 +103,11 @@ class SelfSignupService
                 'status'     => 'pending',
             ]);
 
-            Subscription::create([
+            Subscription::create($extra['subscription'] + [
                 'tenant_id'              => $tenant->id,
                 'plan_id'                => $plan->id,
                 'status'                 => 'trial',
+                'billing_period'         => ($data['billing_period'] ?? 'monthly') === 'yearly' ? 'yearly' : 'monthly',
                 'trial_ends_at'          => $trialEndsAt,
                 'current_period_ends_at' => null,
             ]);

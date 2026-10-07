@@ -203,7 +203,9 @@ class TenantProvisioner
             'address'       => 'Main Branch Address',
             'phone'         => null,
             'email'         => null,
-            'timezone'      => 'Asia/Karachi',
+            // WEBSITE-I18N-GEO-1 P3: the business's timezone from signup (a Saudi shop runs on Asia/Riyadh);
+            // every tenant from before has none and keeps Asia/Karachi.
+            'timezone'      => $tenant->timezone ?: 'Asia/Karachi',
             'status'        => 'active',
         ]);
 

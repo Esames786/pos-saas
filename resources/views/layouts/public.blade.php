@@ -8,10 +8,18 @@
     // and {{ }} escapes again on output — decode here to avoid double-encoding.
     $pageTitle = trim(html_entity_decode($__env->yieldContent('title'), ENT_QUOTES));
     $metaTitle = $pageTitle ? $pageTitle . ' | ' . $brandName : $brandName;
-    $metaDescription = trim(html_entity_decode($__env->yieldContent('meta_description'), ENT_QUOTES)) ?: 'Run sales, inventory, restaurant tables, KOT, kitchen display, purchasing, reports, and multi-branch operations from one cloud POS platform.';
+    $metaDescription = trim(html_entity_decode($__env->yieldContent('meta_description'), ENT_QUOTES)) ?: __('Run sales, inventory, restaurant tables, KOT, kitchen display, purchasing, reports, and multi-branch operations from one cloud POS platform.');
+
+    // WEBSITE-I18N-GEO-1: the page's language comes from its URL (/ar/… = Arabic). $switchTo keeps the
+    // query so ?plan=…&billing=yearly survives a language switch; hreflang names the bare page.
+    $locales = \App\Support\PublicLocale::all();
+    $locale = \App\Support\PublicLocale::current();
+    $rtl = \App\Support\PublicLocale::isRtl();
+    $switchTo = \App\Support\PublicLocale::alternates();
+    $hreflang = \App\Support\PublicLocale::alternates(null, false);
 @endphp
 <!DOCTYPE html>
-<html lang="{{ app()->getLocale() }}" dir="{{ in_array(app()->getLocale(), ['ar', 'ur']) ? 'rtl' : 'ltr' }}">
+<html lang="{{ $locale }}" dir="{{ $rtl ? 'rtl' : 'ltr' }}">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -21,6 +29,10 @@
     <meta name="description" content="{{ $metaDescription }}">
     <meta name="robots" content="index,follow">
     <link rel="canonical" href="{{ url()->current() }}">
+    @foreach($hreflang as $code => $href)
+        <link rel="alternate" hreflang="{{ $code }}" href="{{ $href }}">
+    @endforeach
+    <link rel="alternate" hreflang="x-default" href="{{ $hreflang[\App\Support\PublicLocale::default()] ?? url('/') }}">
 
     <meta property="og:type" content="website">
     <meta property="og:title" content="{{ $metaTitle }}">
@@ -28,6 +40,10 @@
     <meta property="og:image" content="{{ asset($ogImage) }}">
     <meta property="og:url" content="{{ url()->current() }}">
     <meta property="og:site_name" content="{{ $brandName }}">
+    <meta property="og:locale" content="{{ $locales[$locale]['og'] ?? 'en_US' }}">
+    @foreach($locales as $code => $meta)
+        @if($code !== $locale)<meta property="og:locale:alternate" content="{{ $meta['og'] ?? $code }}">@endif
+    @endforeach
 
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ $metaTitle }}">
@@ -35,7 +51,13 @@
     <meta name="twitter:image" content="{{ asset($ogImage) }}">
 
     <link rel="icon" type="image/png" href="{{ asset('images/bingoo_new/bingoo-footer-icon.png') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/bootstrap.min.css') }}">
+    {{-- Bootstrap's own RTL build flips me-*/ms-*/text-end/float for Arabic. --}}
+    <link rel="stylesheet" href="{{ asset($rtl ? 'assets/css/bootstrap.rtl.min.css' : 'assets/css/bootstrap.min.css') }}">
+    @if($locale === 'ar')
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap">
+    @endif
     <link rel="stylesheet" href="{{ asset('assets/plugins/tabler-icons/tabler-icons.min.css') }}">
     <style>
         :root {
@@ -46,6 +68,11 @@
             --brand-mint: #10b981;
         }
         html { scroll-behavior: smooth; }
+        /* WEBSITE-I18N-GEO-1: the Arabic face, and arrows that point the way the text runs. */
+        html[lang="ar"] body { font-family:"IBM Plex Sans Arabic","Segoe UI",Tahoma,sans-serif; }
+        html[lang="ar"] .hero-badge, html[lang="ar"] .trust-item { letter-spacing:0; }
+        [dir="rtl"] .dir-arrow, [dir="rtl"] .ti-arrow-right, [dir="rtl"] .ti-chevron-right { display:inline-block; transform:scaleX(-1); }
+        .lang-switch { border:1px solid rgba(245,200,90,.45); border-radius:999px; padding:.3rem .85rem !important; }
         body { background:#f7f8fb; color:#1f2937; }
         .navbar-public {
             position: sticky;
@@ -179,7 +206,7 @@
         .image-card:hover img { transform:scale(1.05); }
         .image-card .card-body { padding:1.5rem; }
         .image-card .badge-tag {
-            position:absolute;top:12px;left:12px;
+            position:absolute;top:12px;inset-inline-start:12px;
             background:rgba(15,23,42,.82);backdrop-filter:blur(8px);
             color:#93c5fd;border-radius:8px;padding:.3rem .7rem;
             font-size:.75rem;font-weight:700;letter-spacing:.5px;
@@ -305,7 +332,7 @@
         .float-card-delay { animation:floatY 6.5s ease-in-out infinite .8s; }
 
         /* hero module thumbnail rail — shows breadth beyond restaurant */
-        .hero-modrail { position:absolute; left:-24px; top:22%; flex-direction:column; gap:.55rem; z-index:11; }
+        .hero-modrail { position:absolute; inset-inline-start:-24px; top:22%; flex-direction:column; gap:.55rem; z-index:11; }
         .hero-modrail-cap {
             font-size:.58rem; font-weight:800; letter-spacing:.6px; text-transform:uppercase;
             color:#0f172a; background:linear-gradient(135deg,#e9c869,#caa23f);
@@ -383,7 +410,7 @@
         .star-rating i { color:var(--brand-gold); font-size:.95rem; }
 
         .sticky-trial-cta {
-            position:fixed; right:22px; bottom:22px; z-index:1050;
+            position:fixed; inset-inline-end:22px; bottom:22px; z-index:1050;
             display:none; box-shadow:0 18px 45px rgba(37,99,235,.35);
         }
         .sticky-trial-cta.is-visible { display:inline-flex; }
@@ -391,7 +418,7 @@
         /* responsive polish */
         @media (max-width:768px) {
             .floating-card { display:none !important; }
-            .sticky-trial-cta { left:16px; right:16px; justify-content:center; }
+            .sticky-trial-cta { inset-inline:16px; justify-content:center; }
             .mega-glow { width:240px; height:240px; }
         }
 
@@ -486,7 +513,7 @@
 <body>
 <nav class="navbar navbar-expand-lg navbar-public py-3">
     <div class="container">
-        <a class="navbar-brand d-flex align-items-center" href="{{ url('/') }}">
+        <a class="navbar-brand d-flex align-items-center" href="{{ $lurl('/') }}">
             <img src="{{ asset($brandLogo) }}" alt="{{ $brandName }}" style="height:46px;width:auto;">
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#publicNav">
@@ -494,13 +521,18 @@
         </button>
         <div class="collapse navbar-collapse" id="publicNav">
             <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
-                <li class="nav-item"><a class="nav-link" href="{{ url('/') }}">Home</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url('/features') }}">Features</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url('/pricing') }}">Pricing</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url('/demos') }}">Demos</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url('/contact') }}">Contact Sales</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url('/login') }}">Admin Login</a></li>
-                <li class="nav-item"><a class="btn btn-light btn-sm px-3" href="{{ url('/start-trial') }}">Start Trial</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ $lurl('/') }}">{{ __('Home') }}</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ $lurl('/features') }}">{{ __('Features') }}</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ $lurl('/pricing') }}">{{ __('Pricing') }}</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ $lurl('/demos') }}">{{ __('Demos') }}</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ $lurl('/contact') }}">{{ __('Contact Sales') }}</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url('/login') }}">{{ __('Admin Login') }}</a></li>
+                {{-- WEBSITE-I18N-GEO-1: this page in the other language(s), each named in its own script. --}}
+                @foreach($switchTo as $code => $href)
+                    @continue($code === $locale)
+                    <li class="nav-item"><a class="nav-link lang-switch" id="lang-switch-{{ $code }}" href="{{ $href . (str_contains($href, '?') ? '&' : '?') . 'lang=' . $code }}" hreflang="{{ $code }}" lang="{{ $code }}">{{ $locales[$code]['native'] ?? $code }}</a></li>
+                @endforeach
+                <li class="nav-item"><a class="btn btn-light btn-sm px-3" href="{{ $lurl('/start-trial') }}">{{ __('Start Trial') }}</a></li>
             </ul>
         </div>
     </div>
@@ -508,8 +540,8 @@
 
 @yield('content')
 
-<a href="{{ url('/start-trial') }}" class="btn btn-primary btn-lg sticky-trial-cta align-items-center gap-2">
-    <i class="ti ti-rocket"></i> Start Free Trial
+<a href="{{ $lurl('/start-trial') }}" class="btn btn-primary btn-lg sticky-trial-cta align-items-center gap-2">
+    <i class="ti ti-rocket"></i> {{ __('Start Free Trial') }}
 </a>
 
 <footer class="public-footer section-pad mt-5">
@@ -517,25 +549,30 @@
         <div class="row gy-3">
             <div class="col-md-6">
                 <img src="{{ asset($brandLogo) }}" alt="{{ $brandName }}" style="height:48px;width:auto;" class="mb-2">
-                <p class="mb-0">{{ $brandTagline }}</p>
+                <p class="mb-0">{{ __($brandTagline) }}</p>
             </div>
             <div class="col-md-6 text-md-end">
-                <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ url('/features') }}">Features</a>
-                <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ url('/pricing') }}">Pricing</a>
-                <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ url('/demos') }}">Demos</a>
-                <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ url('/contact') }}">Contact Sales</a>
-                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/start-trial') }}">Start Trial</a>
+                <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ $lurl('/features') }}">{{ __('Features') }}</a>
+                <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ $lurl('/pricing') }}">{{ __('Pricing') }}</a>
+                <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ $lurl('/demos') }}">{{ __('Demos') }}</a>
+                <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ $lurl('/contact') }}">{{ __('Contact Sales') }}</a>
+                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/start-trial') }}">{{ __('Start Trial') }}</a>
             </div>
         </div>
         <hr style="border-color:#1e293b;">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <small>&copy; {{ date('Y') }} {{ $brandName }}. All rights reserved.</small>
+            <small>&copy; {{ date('Y') }} {{ $brandName }}. {{ __('All rights reserved.') }}
+                {{-- CC BY 4.0 attribution for the country database (WEBSITE-I18N-GEO-1 P4). --}}
+                <span class="d-block" style="font-size:.72rem;opacity:.7;"><a href="https://db-ip.com" class="text-decoration-none" style="color:#94a3b8;" rel="noopener">{{ __('IP Geolocation by DB-IP') }}</a></span></small>
             <div class="d-flex flex-wrap gap-3">
-                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/terms') }}">Terms</a>
-                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/privacy') }}">Privacy</a>
-                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/refund-policy') }}">Refund Policy</a>
-                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/support-policy') }}">Support Policy</a>
-                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/contact') }}">Contact</a>
+                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/terms') }}">{{ __('Terms') }}</a>
+                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/privacy') }}">{{ __('Privacy') }}</a>
+                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/refund-policy') }}">{{ __('Refund Policy') }}</a>
+                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/support-policy') }}">{{ __('Support Policy') }}</a>
+                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/contact') }}">{{ __('Contact') }}</a>
+                @if (\App\Support\CookieConsent::ga4Id())
+                    <a class="text-decoration-none" style="color:#94a3b8;" href="{{ $lurl('/privacy') }}#cookies" data-cookie-settings>{{ __('Cookie settings') }}</a>
+                @endif
             </div>
         </div>
     </div>
@@ -614,6 +651,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
+@include('public.partials.cookie-consent')
 @stack('scripts')
 </body>
 </html>
