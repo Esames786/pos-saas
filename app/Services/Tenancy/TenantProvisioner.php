@@ -24,7 +24,11 @@ class TenantProvisioner
         protected TenancyManager $tenancyManager
     ) {}
 
-    public function provisionTenant(Tenant $tenant, string $ownerPassword): Tenant
+    /**
+     * @param bool $passwordIsHashed TRIAL-SIGNUP-QUEUE-1: the queued trial signup hashes the password in the
+     *        request and hands the worker only the hash — the queue payload sits in the `jobs` table.
+     */
+    public function provisionTenant(Tenant $tenant, string $ownerPassword, bool $passwordIsHashed = false): Tenant
     {
         // Provisioning (117 migrations + base seed) takes longer than PHP-FPM's
         // max_execution_time (30s) — the request was being killed mid-provision,
@@ -74,7 +78,7 @@ class TenantProvisioner
                 '--force'    => true,
             ]);
 
-            $this->seedTenantBaseData($tenant, $ownerPassword);
+            $this->seedTenantBaseData($tenant, $ownerPassword, $passwordIsHashed);
 
             $tenant->database->update(['migration_status' => 'completed']);
 
@@ -157,7 +161,7 @@ class TenantProvisioner
         return $this->provisionTenant($tenant, 'password');
     }
 
-    protected function seedTenantBaseData(Tenant $tenant, string $ownerPassword): void
+    protected function seedTenantBaseData(Tenant $tenant, string $ownerPassword, bool $passwordIsHashed = false): void
     {
         DB::connection('tenant')->table('languages')->updateOrInsert(
             ['code' => 'en'],
@@ -207,7 +211,7 @@ class TenantProvisioner
             ['email' => $tenant->owner_email ?: 'owner@' . $tenant->tenant_code . '.local'],
             [
                 'name'     => $tenant->owner_name ?: 'Owner',
-                'password' => Hash::make($ownerPassword),
+                'password' => $passwordIsHashed ? $ownerPassword : Hash::make($ownerPassword),
                 'status'   => 'active',
                 'locale'   => 'en',
             ]
