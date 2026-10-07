@@ -23,6 +23,9 @@ class StartTrialRequest extends FormRequest
                 ->replaceMatches('/\s+/', '-')
                 ->toString(),
             'owner_email' => Str::of((string) $this->input('owner_email'))->lower()->trim()->toString(),
+            // CLOUD-BILLING-2: anything but an explicit "yearly" is monthly. Only the cycle is taken from the
+            // client; the amount is always recomputed from the plan (BillingPeriodResolver).
+            'billing_period' => strtolower(trim((string) $this->input('billing_period'))) === 'yearly' ? 'yearly' : 'monthly',
         ]);
     }
 
@@ -59,6 +62,7 @@ class StartTrialRequest extends FormRequest
                 }),
             ],
             'currency_code' => ['nullable', 'string', 'size:3'],
+            'billing_period' => ['required', 'in:monthly,yearly'],
             // Honeypot: real users never see/fill this; bots usually do.
             'website' => ['nullable', 'size:0'],
         ];

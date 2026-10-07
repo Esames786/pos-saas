@@ -9,6 +9,11 @@
     $defaultCurrency = config('saas.default_currency', 'PKR');
     $feature = fn($plan, $key) => optional($plan->features->firstWhere('feature_key', $key))->feature_value;
     $limitLabel = fn($v) => ($v === null || $v === '') ? 'Unlimited' : $v;
+    // CLOUD-BILLING-2: the cycle this page opens on (?billing=, or the value posted back). Amounts come
+    // from $planPrices (the controller's resolver), never from arithmetic here.
+    $billingChoice = old('billing_period', $selectedBilling ?? 'monthly') === 'yearly' ? 'yearly' : 'monthly';
+    $money = fn ($n) => number_format((float) $n, 0);
+    $perMonthOfYear = fn ($plan) => $money($planPrices[$plan->id]['yearly'] / 12);
 @endphp
 
 {{-- HERO --}}
@@ -61,17 +66,22 @@
                 <div class="gradient-card p-4 mb-4 reveal">
                     <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;">Selected plan</h6>
                     @if($selectedPlan)
-                        <h4 class="fw-bold mb-1">{{ $selectedPlan->name }}</h4>
-                        <p class="text-muted small mb-2">{{ $selectedPlan->public_description }}</p>
-                        <div class="plan-price">{{ $selectedPlan->currency_code }} {{ number_format((float)($selectedPlan->monthly_price ?? $selectedPlan->price),0) }}</div>
-                        <div class="text-muted small mb-2">per month</div>
+                        {{-- CLOUD-BILLING-2: this card follows the cycle and the plan picked in the form. It used to
+                             say "per month" even when the visitor had chosen Yearly on the pricing page. --}}
+                        <h4 class="fw-bold mb-1" id="selPlanName">{{ $selectedPlan->name }}</h4>
+                        <p class="text-muted small mb-2" id="selPlanDesc">{{ $selectedPlan->public_description }}</p>
+                        <div class="plan-price"><span id="selPlanCurrency">{{ $selectedPlan->currency_code }}</span> <span id="selPlanAmount">{{ $money($planPrices[$selectedPlan->id][$billingChoice]) }}</span></div>
+                        <div class="text-muted small mb-1" id="selPlanPer">{{ $billingChoice === 'yearly' ? 'per year' : 'per month' }}</div>
+                        <div class="small text-success mb-2" id="selPlanSaving" @if($billingChoice !== 'yearly') hidden @endif>
+                            2 months free · <span id="selPlanMonthlyEq">{{ $selectedPlan->currency_code }} {{ $perMonthOfYear($selectedPlan) }}</span> a month
+                        </div>
                         @if($selectedPlan->trial_days)
                             <span class="badge bg-success-subtle text-success mb-3">{{ $selectedPlan->trial_days }}-day free trial</span>
                         @endif
                         <ul class="list-unstyled small text-muted mb-0">
-                            <li class="mb-1"><i class="ti ti-building-store me-2 text-primary"></i>{{ $limitLabel($feature($selectedPlan,'branch_limit')) }} branches</li>
-                            <li class="mb-1"><i class="ti ti-users me-2 text-primary"></i>{{ $limitLabel($feature($selectedPlan,'user_limit')) }} users</li>
-                            <li class="mb-1"><i class="ti ti-stack-2 me-2 text-primary"></i>{{ $selectedPlan->enabledModules->count() }} modules included</li>
+                            <li class="mb-1"><i class="ti ti-building-store me-2 text-primary"></i><span id="selPlanBranches">{{ $limitLabel($feature($selectedPlan,'branch_limit')) }}</span> branches</li>
+                            <li class="mb-1"><i class="ti ti-users me-2 text-primary"></i><span id="selPlanUsers">{{ $limitLabel($feature($selectedPlan,'user_limit')) }}</span> users</li>
+                            <li class="mb-1"><i class="ti ti-stack-2 me-2 text-primary"></i><span id="selPlanModules">{{ $selectedPlan->enabledModules->count() }}</span> modules included</li>
                             @if($selectedPlan->enabledModules->pluck('key')->contains('finance'))
                                 <li class="mb-1"><i class="ti ti-report-money me-2 text-primary"></i>Includes Finance &amp; Accounting (GL, P&amp;L, Balance Sheet)</li>
                             @endif
@@ -166,6 +176,23 @@
                             </div>
                             <p class="text-muted small mb-4"><i class="ti ti-eye-off me-1"></i>Your password is never shown on the success page.</p>
 
+                            {{-- Billing cycle (CLOUD-BILLING-2) — posts billing_period only; the server prices it.
+                                 Pre-selected from ?billing=, so it works without JS. --}}
+                            <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;"><i class="ti ti-calendar me-1"></i>Billing cycle</h6>
+                            <div class="row g-3 mb-4" id="billingCycle">
+                                @foreach(['monthly' => ['Monthly', 'Billed every month'], 'yearly' => ['Yearly', '2 months free — 10 months\' price, billed once for 12 months']] as $cycle => [$label, $sub])
+                                    <div class="col-md-6">
+                                        <label class="plan-card d-block p-3 h-100" style="cursor:pointer;">
+                                            <div class="form-check">
+                                                <input class="form-check-input billing-radio" type="radio" name="billing_period" value="{{ $cycle }}" @checked($billingChoice === $cycle) required>
+                                                <span class="form-check-label fw-semibold">{{ $label }}</span>
+                                            </div>
+                                            <div class="text-muted small mt-1">{{ $sub }}</div>
+                                        </label>
+                                    </div>
+                                @endforeach
+                            </div>
+
                             {{-- Plan --}}
                             <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;"><i class="ti ti-stack-2 me-1"></i>Choose your plan</h6>
                             <div class="row g-3 mb-3">
@@ -174,13 +201,24 @@
                                     <div class="col-md-6">
                                         <label class="plan-card d-block p-3 h-100 {{ $plan->code==='restaurant_pro' ? 'plan-card-popular' : '' }}" style="cursor:pointer;">
                                             <div class="form-check">
-                                                <input class="form-check-input" type="radio" name="plan_id" value="{{ $plan->id }}" {{ $checked ? 'checked' : '' }} required>
+                                                <input class="form-check-input plan-radio" type="radio" name="plan_id" value="{{ $plan->id }}" {{ $checked ? 'checked' : '' }} required
+                                                       data-name="{{ $plan->name }}" data-desc="{{ $plan->public_description }}" data-currency="{{ $plan->currency_code }}"
+                                                       data-monthly="{{ $money($planPrices[$plan->id]['monthly']) }}" data-yearly="{{ $money($planPrices[$plan->id]['yearly']) }}"
+                                                       data-yearly-month="{{ $perMonthOfYear($plan) }}"
+                                                       data-branches="{{ $limitLabel($feature($plan,'branch_limit')) }}" data-users="{{ $limitLabel($feature($plan,'user_limit')) }}"
+                                                       data-modules="{{ $plan->enabledModules->count() }}">
                                                 <span class="form-check-label fw-semibold">{{ $plan->name }}</span>
                                             </div>
                                             <div class="text-muted small mt-1">{{ $plan->public_description }}</div>
                                             <div class="mt-2">
-                                                <span class="fw-bold">{{ $plan->currency_code }} {{ number_format((float)($plan->monthly_price ?? $plan->price),0) }}</span>
-                                                <small class="text-muted">/ month</small>
+                                                <span class="plan-price-monthly" @if($billingChoice !== 'monthly') hidden @endif>
+                                                    <span class="fw-bold">{{ $plan->currency_code }} {{ $money($planPrices[$plan->id]['monthly']) }}</span>
+                                                    <small class="text-muted">/ month</small>
+                                                </span>
+                                                <span class="plan-price-yearly" @if($billingChoice !== 'yearly') hidden @endif>
+                                                    <span class="fw-bold">{{ $plan->currency_code }} {{ $money($planPrices[$plan->id]['yearly']) }}</span>
+                                                    <small class="text-muted">/ year</small>
+                                                </span>
                                                 @if($plan->trial_days)<small class="text-success ms-2">{{ $plan->trial_days }}-day trial</small>@endif
                                             </div>
                                             <div class="small text-muted mt-1">
@@ -216,6 +254,34 @@
             .replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') || 'your-subdomain';
         preview.textContent = code + '.{{ $baseDomain }}/login';
     });
+})();
+
+// CLOUD-BILLING-2: show the price for the chosen cycle and plan, here and in the summary card. Display only —
+// the server prices the subscription from the plan and the posted billing_period.
+(function () {
+    function checked(name) { return document.querySelector('input[name="' + name + '"]:checked'); }
+    function set(id, text) { var el = document.getElementById(id); if (el) el.textContent = text; }
+    function apply() {
+        var cycle = (checked('billing_period') || {}).value === 'yearly' ? 'yearly' : 'monthly';
+        var yearly = cycle === 'yearly';
+        document.querySelectorAll('.plan-price-monthly').forEach(function (el) { el.hidden = yearly; });
+        document.querySelectorAll('.plan-price-yearly').forEach(function (el) { el.hidden = !yearly; });
+        var plan = checked('plan_id');
+        if (!plan) return;
+        var d = plan.dataset;
+        set('selPlanName', d.name);
+        set('selPlanDesc', d.desc);
+        set('selPlanCurrency', d.currency);
+        set('selPlanAmount', yearly ? d.yearly : d.monthly);
+        set('selPlanPer', yearly ? 'per year' : 'per month');
+        set('selPlanMonthlyEq', d.currency + ' ' + d.yearlyMonth);
+        set('selPlanBranches', d.branches);
+        set('selPlanUsers', d.users);
+        set('selPlanModules', d.modules);
+        var saving = document.getElementById('selPlanSaving');
+        if (saving) saving.hidden = !yearly;
+    }
+    document.querySelectorAll('.billing-radio, .plan-radio').forEach(function (r) { r.addEventListener('change', apply); });
 })();
 </script>
 @endpush

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Public\StartTrialRequest;
 use App\Models\Master\Plan;
 use App\Models\Master\Tenant;
+use App\Services\Saas\BillingPeriodResolver;
 use App\Services\Saas\SelfSignupService;
 use Illuminate\Http\Request;
 use Throwable;
@@ -72,7 +73,17 @@ class PublicSiteController extends Controller
 
         $enterpriseRequested = $request->query('plan') === 'enterprise';
 
-        return view('public.start-trial', compact('plans', 'selectedPlan', 'enterpriseRequested'));
+        // CLOUD-BILLING-2: ?billing=yearly (from the pricing toggle, or typed) chooses the cycle the
+        // form opens on. It only chooses monthly vs yearly — the amounts come from the plan, through the
+        // same resolver that prices the invoice. Before this the page always said "per month".
+        $resolver = app(BillingPeriodResolver::class);
+        $selectedBilling = $resolver->normalize(strtolower((string) $request->query('billing')));
+        $planPrices = $plans->mapWithKeys(fn ($plan) => [$plan->id => [
+            'monthly' => $resolver->invoiceAmount($plan, 'monthly') ?? (float) $plan->price,
+            'yearly'  => $resolver->invoiceAmount($plan, 'yearly') ?? (float) $plan->price * BillingPeriodResolver::YEARLY_PRICE_MONTHS,
+        ]])->all();
+
+        return view('public.start-trial', compact('plans', 'selectedPlan', 'enterpriseRequested', 'selectedBilling', 'planPrices'));
     }
 
     public function contact()
