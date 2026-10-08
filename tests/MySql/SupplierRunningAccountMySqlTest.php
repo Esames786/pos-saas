@@ -202,12 +202,13 @@ class SupplierRunningAccountMySqlTest extends MySqlTenantTestCase
     public function test_switching_on_records_old_payments_once_and_settles_general_ones(): void
     {
         // Before the switch, the way kashifkitchen is today: a bill-wise payment and a general one.
+        // The bill-wise one paid the NEWER bill — oldest-first alone would wrongly move it to the older.
         $b1 = $this->bill(1000, '2026-10-01');
         $b2 = $this->bill(2000, '2026-10-02');
-        $this->pay(300, $b1->id);
-        $this->pay(1200);   // FAISAL's case: lowers the ledger, settles no bill
-        $this->assertSame(1500.0, $this->balance());
-        $this->assertSame(2700.0, round(array_sum(array_column($this->bills(), 1)), 2), 'bills say 1,200 more than the ledger');
+        $billWise = $this->pay(300, $b2->id);
+        $this->pay(200);   // FAISAL's case: lowers the ledger, settles no bill
+        $this->assertSame(2500.0, $this->balance());
+        $this->assertSame(2700.0, round(array_sum(array_column($this->bills(), 1)), 2), 'bills say 200 more than the ledger');
 
         $tenantCode = $this->registerTenant();
         $books = fn () => [DB::table('journal_lines')->count(), DB::table('journal_lines')->sum('debit'),
@@ -224,8 +225,9 @@ class SupplierRunningAccountMySqlTest extends MySqlTenantTestCase
         $this->assertSame(0, Artisan::call('finance:supplier-running-account', ['tenant_code' => $tenantCode, '--enable' => true, '--yes' => true]));
         DB::setDefaultConnection('tenant');
         $this->assertTrue(PurchasingSetting::supplierRunningAccount());
-        $this->assertSame([1000.0, 0.0, 'paid'], $this->bills()[$b1->id], '300 bill-wise + 700 of the general payment');
-        $this->assertSame([500.0, 1500.0, 'partial'], $this->bills()[$b2->id]);
+        $this->assertSame([200.0, 800.0, 'partial'], $this->bills()[$b1->id], 'the general 200 settles the oldest bill');
+        $this->assertSame([300.0, 1700.0, 'partial'], $this->bills()[$b2->id], 'the 300 stays on the bill it was paid against');
+        $this->assertSame([$b2->id], SupplierCreditAllocation::where('source_type', 'payment')->where('source_id', $billWise->id)->pluck('purchase_bill_id')->all());
         $this->assertSame($this->balance(), round(array_sum(array_column($this->bills(), 1)), 2), 'bills due = the ledger');
         $this->assertSame($before, $books(), 'journals and supplier ledgers untouched');
 
