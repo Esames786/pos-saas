@@ -74,13 +74,20 @@
                              table 1 sat like that from 13:18 on 31 Aug.
                              Only shown while the session carries NO order at all. The moment
                              anything is punched this disappears, and the controller refuses a close
-                             over an open order regardless of what this template does. --}}
-                        @php $hasAnyOrder = $session->salesOrders->isNotEmpty(); @endphp
-                        @if(! $hasAnyOrder)
+                             over an open order regardless of what this template does.
+                             CANCEL-PAID-FREES-TABLE-1 — also shown when every bill on it is already
+                             PAID: nothing is left to collect, yet without this the only way out was
+                             the standalone board. A running (held) bill still hides it. --}}
+                        @php
+                            $hasRunningOrder = $session->salesOrders->whereIn('status', ['held', 'draft'])->isNotEmpty();
+                            $allPaid = ! $hasRunningOrder && $session->salesOrders->isNotEmpty();
+                        @endphp
+                        @if(! $hasRunningOrder)
                             @can('tenant.restaurant.table-sessions.close')
                                 <button type="button" class="btn btn-sm btn-outline-danger w-100 mb-1"
                                         data-table-close="{{ $session->id }}"
-                                        data-table-no="{{ $table->table_no }}">Close Table</button>
+                                        data-table-no="{{ $table->table_no }}"
+                                        @if($allPaid) data-table-paid="1" @endif>Close Table</button>
                             @endcan
                         @endif
                         @php $firstHeld = $session->salesOrders->where('status', 'held')->first(); @endphp
