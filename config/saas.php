@@ -88,6 +88,13 @@ return [
     'analytics' => [
         'ga4_id' => env('SAAS_GA4_ID'),   // "G-XXXXXXXXXX": Google Analytics → Admin → Data streams
     ],
+    // RECAPTCHA-TRIAL-1 — Google reCAPTCHA v2 checkbox on the public Start Trial form.
+    // Both keys empty = off (no box, no check): local development and tests never call Google.
+    'recaptcha' => [
+        'site_key' => env('SAAS_RECAPTCHA_SITE_KEY'),
+        'secret_key' => env('SAAS_RECAPTCHA_SECRET_KEY'),
+        'verify_url' => 'https://www.google.com/recaptcha/api/siteverify',
+    ],
     // Per-branch markets: from N branches, P% off the whole plan. 11+ is Enterprise (Contact Sales).
     'branch_discounts' => [3 => 10, 6 => 15],
     'max_self_service_branches' => 10,

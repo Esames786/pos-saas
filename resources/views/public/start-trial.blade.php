@@ -286,6 +286,29 @@
                             </div>
                             <small class="text-muted d-block mb-4">{{ __('Looking for Enterprise or a custom rollout?') }} <a href="{{ $lurl('/contact?plan=enterprise') }}">{{ __('Contact Sales') }}</a>.</small>
 
+                            {{-- RECAPTCHA-TRIAL-1: Google's "I'm not a robot" box, only when both keys are configured.
+                                 Its script loads on this page alone, in the page's language. --}}
+                            @php($recaptchaKey = \App\Services\Saas\Recaptcha::siteKey())
+                            @if ($recaptchaKey)
+                                <div class="recaptcha-box mb-4">
+                                    <div class="g-recaptcha" data-sitekey="{{ $recaptchaKey }}"></div>
+                                </div>
+                                @push('scripts')
+                                    <script src="https://www.google.com/recaptcha/api.js?hl={{ app()->getLocale() }}" async defer></script>
+                                @endpush
+                                @push('styles')
+                                    <style>
+                                        /* Google draws the box at a fixed 304px; inside the card's padding a small phone
+                                           has less, so it is scaled (not clipped) below 420px. */
+                                        .recaptcha-box { display:flex; justify-content:center; min-height:78px; }
+                                        @media (max-width: 420px) {
+                                            .recaptcha-box { min-height:68px; }
+                                            .recaptcha-box .g-recaptcha { transform:scale(.86); transform-origin:top center; }
+                                        }
+                                    </style>
+                                @endpush
+                            @endif
+
                             <button type="submit" class="btn btn-primary btn-lg w-100"><i class="ti ti-rocket me-2"></i>{{ __('Create my trial account') }}</button>
                         </form>
                     </div>

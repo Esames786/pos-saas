@@ -361,3 +361,13 @@ Design se farq:
 - Ad pixels (Snapchat / Meta / TikTok) — owner ka faisla (§12 sawal 6); aaye to `v2` aur "Marketing" ka alag khaana.
 
 **Deploy (sab ke liye):** pehle TRIAL-SIGNUP-QUEUE-1, phir `feat/website-geo-signup-20261008` (P2–P5). P4 me `deploy.sh` badla hai → deploy **do dafa**. Deploy sirf owner ke kehne par.
+
+✅ **LIVE 8 Oct:** TRIAL-SIGNUP-QUEUE-1 `d4c976d4`, phir ye kaam `b5e939ac` (GA4 `G-VCR6HCCSVC` prod `.env` me).
+
+### RECAPTCHA-TRIAL-1 (owner ki farmaish, 8 Oct — branch `feat/recaptcha-trial-20261008`)
+- Google reCAPTCHA v2 ("I'm not a robot") **sirf Start Trial** par — Contact Sales par form hai hi nahi; staff login par roz ki takleef, wahan throttle pehle se.
+- Box page ki zaban me (`hl=en|ar`), Google ka script sirf usi safhe par; chhote phone par scale (304px box).
+- Server: `Recaptcha::passes()` → Google `siteverify` (secret, token, remoteip). Tick nahi / Google "na" / Google na mile = signup ruka, `warning` log me Google ki wajah. **Hamari secret ghalat (`invalid-input-secret`) = signup chalta hai + `ERROR` log** — ek typo raat bhar darwaza band na kare (secret sirf asli tick se sabit hoti hai; nakli token par Google pehle token hi radd karta hai, sahi/ghalat secret dono par wahi jawab).
+- Dono keys (`SAAS_RECAPTCHA_SITE_KEY` / `_SECRET_KEY`) khaali = band, aaj jaisa. Token signup service tak nahi jata (`signupData()`).
+- Privacy en/ar §10 me reCAPTCHA + `_GRECAPTCHA`.
+- `RecaptchaTrialMySqlTest` 8 green; 12 sabotage, sab pakde; website/signup 60 green; 472 views lint saaf.

@@ -27,6 +27,7 @@ final class PublicTranslations
     /** PHP files whose user-facing sentences are shown on the public site (validation, errors). */
     public const PHP_PATHS = [
         'app/Http/Requests/Public/StartTrialRequest.php',
+        'app/Rules/RecaptchaPassed.php',
         'app/Http/Controllers/PublicSiteController.php',
         'app/Mail/TrialWorkspacePreparingMail.php',
         'app/Mail/TrialWorkspaceCreatedMail.php',

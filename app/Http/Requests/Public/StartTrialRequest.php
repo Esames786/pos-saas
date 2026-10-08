@@ -3,7 +3,10 @@
 namespace App\Http\Requests\Public;
 
 use App\Models\Master\TenantDomain;
+use App\Rules\RecaptchaPassed;
+use App\Services\Saas\Recaptcha;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -35,6 +38,8 @@ class StartTrialRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // RECAPTCHA-TRIAL-1: only when both keys are configured (Recaptcha::enabled()).
+            ...(Recaptcha::enabled() ? ['g-recaptcha-response' => ['bail', 'required', 'string', new RecaptchaPassed]] : []),
             'business_name' => ['required', 'string', 'max:255'],
             'tenant_code' => [
                 'required',
@@ -83,11 +88,13 @@ class StartTrialRequest extends FormRequest
             'tenant_code.unique' => __('This subdomain is already taken.'),
             'plan_id.exists'     => __('Please choose an available self-service plan.'),
             'website.size'       => __('Signup could not be completed.'),
+            'g-recaptcha-response.required' => __('Please tick “I’m not a robot” and try again.'),
         ];
     }
 
     public function signupData(): array
     {
-        return $this->validated();
+        // The reCAPTCHA token is spent here; it has no business in the signup or any queued job.
+        return Arr::except($this->validated(), ['g-recaptcha-response']);
     }
 }
