@@ -172,6 +172,39 @@ class CateringFinalInvoiceService
             throw new RuntimeException("Event {$event->event_no} ({$event->status}) is not in a closable state.");
         }
 
+        // CATERING-CLOSE-AFTER-EVENT-1 (8 Oct) — malik: "event close nahi
+        // ho sakti jab tak event ka din guzar na jaye."
+        //
+        // `closed` ka matlab "paisa pura ho gaya" nahi, "is booking par ab koi
+        // kaam baqi nahi" hai. Aakhri adaygi aksar event se PEHLE aa jati hai,
+        // jabke khana abhi jana hota hai — aur band ho jane par wo booking
+        // chalti hui fehrist se nikal jati hai aur kisi ko pata nahi chalta ke
+        // us par kaam baqi tha.
+        //
+        // Prod par ye do baar ho chuka tha jab ye pehra nahi tha:
+        // EV-20260909-0002 (event 15 Oct) aur EV-20261004-0157 (event 9 Oct)
+        // dono apne din se pehle band kar di gayi thin.
+        //
+        // Tareekh TenantClock se — server ke waqt se nahi. Karachi me raat 2
+        // baje server ka "kal" dukandar ka "aaj" hota hai.
+        //
+        // ⚠️ MUQABLA TAREEKH KI STRING PAR, LAMHON PAR NAHI. Pehli koshish me
+        // maine `event_date->startOfDay()` ko `TenantClock::now()->startOfDay()`
+        // se mila diya tha — aur test foran laal ho gaya. Wajah: `event_date`
+        // ek DATE hai (UTC ki aadhi raat), jabke TenantClock ki aadhi raat
+        // Karachi ki hoti hai, yani 19:00 UTC pichhle din. Natija ye tha ke
+        // event ka apna din bhi "abhi aaya hi nahi" nikalta.
+        //
+        // Do alag timezone ke lamhe milana isi project me pehle bhi kaat chuka
+        // hai. Jab sawal "kaun sa DIN" ho, to din hi milao.
+        $today = app(\App\Support\TenantClock::class)->now()->toDateString();
+        if ($event->event_date && $event->event_date->toDateString() > $today) {
+            throw new RuntimeException(
+                "Event {$event->event_no} ka din ({$event->event_date->format('d M Y')}) abhi aaya hi nahi — "
+                .'event ke baad hi band kiya ja sakta hai.'
+            );
+        }
+
         $position = app(CateringFinancialPositionService::class)->position($event);
 
         if ($position['balance_due'] > 0) {
