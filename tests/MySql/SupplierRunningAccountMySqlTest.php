@@ -165,6 +165,21 @@ class SupplierRunningAccountMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1500.0, $this->balance());
     }
 
+    public function test_a_new_bill_takes_only_the_real_advance_when_part_of_a_payment_went_to_an_opening(): void
+    {
+        // Prod, khatribiryani "Kashif kitchen": payments beyond the bills by 365,310, of which 168,000
+        // paid an opening balance (no bill) — the real advance was 197,310.
+        $this->on();
+        app(\App\Services\Purchasing\PurchasingService::class)->postSupplierLedger(
+            Supplier::find($this->supplierId), 'opening_balance', 'debit', 1000, 'opening', 0, 'OPENING');
+        $this->pay(1500);
+        $this->assertSame(-500.0, $this->balance(), '1,000 opening paid, 500 ahead');
+
+        $bill = $this->bill(800, '2026-10-06');
+        $this->assertSame([500.0, 300.0, 'partial'], $this->bills()[$bill->id], 'only the 500 really paid ahead — not the 1,500 no bill took');
+        $this->assertSame(300.0, $this->balance());
+    }
+
     public function test_a_general_payment_settles_the_oldest_bills_first(): void
     {
         $this->on();

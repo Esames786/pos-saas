@@ -62,16 +62,24 @@ class SupplierRunningAccountService
      */
     public function applyCreditToBill(PurchaseBill $bill): float
     {
-        Supplier::whereKey($bill->supplier_id)->lockForUpdate()->first();
+        $supplier = Supplier::whereKey($bill->supplier_id)->lockForUpdate()->first();
         $paid = 0.0;
+
+        // Only what the LEDGER says we had paid ahead may pay this bill. Unallocated credit can be
+        // larger: part of a payment may have gone to an opening balance or a journal debit, which no
+        // bill carries (prod, khatribiryani "Kashif kitchen": 365,310 unallocated, 197,310 real
+        // advance, 168,000 opening). The ledger already holds this bill, so the advance before it is
+        // grand_total − current_balance.
+        $advance = max(0.0, round((float) $bill->grand_total - (float) ($supplier?->current_balance ?? 0), 4));
 
         foreach ($this->unallocatedCredits((int) $bill->supplier_id) as $credit) {
             $bill->refresh();
             $due = (float) $bill->balance_due;
-            if ($due <= self::CENT) {
+            $room = round($advance - $paid, 4);
+            if ($due <= self::CENT || $room <= self::CENT) {
                 break;
             }
-            $take = min($credit['remaining'], $due);
+            $take = min($credit['remaining'], $due, $room);
             $this->allocate($credit['type'], $credit['id'], $bill, $take);
             $paid = round($paid + $take, 4);
         }
