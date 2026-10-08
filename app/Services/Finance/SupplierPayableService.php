@@ -114,6 +114,13 @@ class SupplierPayableService
      */
     private function assertNoSupplierAdvance(int $supplierId): void
     {
+        // SUPPLIER-RUNNING-ACCOUNT-1: the owner decided (8 Oct, kashifkitchen) — on account, the
+        // advance kept in 2100, no separate account. Their tenant's switch lets the balance go below
+        // zero; every other tenant keeps this refusal word for word.
+        if (\App\Models\Tenant\PurchasingSetting::supplierRunningAccount()) {
+            return;
+        }
+
         $balance = (float) Supplier::whereKey($supplierId)->value('current_balance');
 
         // Paisa 4 decimal par rakha jata hai; epsilon rounding ko manfi na parhne de.
