@@ -247,13 +247,14 @@
         // otherwise this business refuses it, so say that before Save too.
         if (advWarn) {
             var after = supBal==null ? null : supBal - amt;
-            var over = after != null && after < -0.005;
+            var over = after != null && amt > 0.005 && after < -0.005;   // only when THIS payment pays something
             advWarn.classList.toggle('d-none', !over);
             if (over) {
                 var name = supplier.options[supplier.selectedIndex].text.replace(/\s*\(.*\)\s*$/, '').trim();
                 document.getElementById('advance-warn-text').textContent = running
                     ? 'After this payment, ' + name + ' will be ' + fmt(-after) + ' in advance. It is used on their next bills.'
-                    : 'This is more than ' + name + ' is owed (' + fmt(supBal) + '). Paying beyond the balance is not allowed for this business.';
+                    : (supBal > 0.005 ? 'This is more than ' + name + ' is owed (' + fmt(supBal) + ').' : name + ' is owed nothing (' + money(supBal) + ').')
+                      + ' Paying beyond the balance is not allowed for this business.';
                 advWarn.className = 'alert py-2 px-3 mt-2 mb-0 small ' + (running ? 'alert-warning' : 'alert-danger');
             }
         }
