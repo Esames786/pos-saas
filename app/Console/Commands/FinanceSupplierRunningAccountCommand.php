@@ -166,8 +166,10 @@ class FinanceSupplierRunningAccountCommand extends Command
             // Bills minus unused credit must equal the ledger; an opening or a manual journal line has no bill.
             $matches = abs(($dueAfter - $credit) - $ledger) < 0.01;
             $rows[] = [$supplier->name, number_format($ledger, 2), number_format($dueBefore, 2), number_format($dueAfter, 2),
-                number_format($credit, 2), $matches ? 'yes' : 'NO — opening / journal entries'];
+                number_format(max(0.0, -$ledger), 2), number_format($credit, 2), $matches ? 'yes' : 'NO — opening / journal entries'];
         }
-        $this->table(['Supplier', 'Ledger', 'Bills due before', 'Bills due after', 'Advance (unused credit)', 'Bills − advance = ledger'], $rows);
+        // Advance = what the ledger says we paid ahead — the most a new bill may take. Unused credit can
+        // be more: part of a payment went to an opening balance or a journal debit, which no bill carries.
+        $this->table(['Supplier', 'Ledger', 'Bills due before', 'Bills due after', 'Advance (ledger)', 'Unused credit', 'Bills − unused credit = ledger'], $rows);
     }
 }
