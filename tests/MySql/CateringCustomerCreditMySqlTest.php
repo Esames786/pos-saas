@@ -324,6 +324,12 @@ class CateringCustomerCreditMySqlTest extends MySqlTenantTestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessageMatches('/owes the customer/i');
 
+        // CATERING-CLOSE-AFTER-EVENT-1 (8 Oct) — close ab event ke din se
+        // pehle nahi hota. Ye booking mustaqbil ki tareekh par banti hai, is
+        // liye band karne se pehle us ka din guzaar diya jata hai. Fixture ki
+        // tareekh global badalna theek nahi hota: isi file ke doosre test
+        // "aane wali booking" par khare hain.
+        $event->forceFill(['event_date' => now()->subDay()->toDateString()])->save();
         app(CateringFinalInvoiceService::class)->close($event->refresh());
     }
 

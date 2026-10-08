@@ -426,6 +426,13 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
             $this->assertStringContainsString('already has a final invoice', $e->getMessage());
         }
 
+        // CATERING-CLOSE-AFTER-EVENT-1 (8 Oct) — close par ab ek aur pehra hai:
+        // event ka din guzar chuka ho. Wo pehra PEHLE bolta hai, is liye yahan
+        // tareekh peechhe kar di jati hai — warna neeche wala hissa "38,500
+        // baqi hai" ke bajaye "din abhi aaya hi nahi" sunta, aur wo cheez
+        // jaanchne se reh jati jis ke liye ye test likha gaya tha.
+        $event->forceFill(['event_date' => now()->subDay()->toDateString()])->save();
+
         // Outstanding balance blocks closure.
         try {
             $invoices->close($event->refresh());
