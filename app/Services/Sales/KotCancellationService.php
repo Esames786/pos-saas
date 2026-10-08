@@ -90,6 +90,14 @@ class KotCancellationService
      *
      * Runs inside the caller's transaction and locks the session, so two counters cancelling at once
      * cannot both decide the table is free. A table someone else already closed is left alone.
+     *
+     * CANCEL-PAID-FREES-TABLE-1 (8 Oct) — only a RUNNING bill (held / draft) keeps the table. A PAID one
+     * used to count too, and nothing else ever closes such a session: payment frees the table only when
+     * no other held bill is left, so a bill paid on one counter while another counter's order was still
+     * open handed the table to this method — which then refused because of that very paid bill. Kashif
+     * Food's tables 19 and 20 sat "Occupied" with their already-paid totals, Continue opened an empty
+     * cart, and the POS board offered no Close. Same rule as payment now: nothing left to collect = free.
+     * A session that took money closes as `closed`; one that never did, as `cancelled`.
      */
     private function releaseTableIfNothingLeft(SalesOrder $sale, int $requestingUserId): void
     {
@@ -105,16 +113,23 @@ class KotCancellationService
             return;
         }
 
-        $stillLive = SalesOrder::where('restaurant_table_session_id', $session->id)
-            ->whereIn('status', ['held', 'draft', 'paid', 'partially_returned'])
+        // A LOCKING read, as in SalesService::closeRestaurantTableSession — a hold committing on another
+        // counter at this moment serialises behind it instead of slipping past the check.
+        $stillRunning = SalesOrder::where('restaurant_table_session_id', $session->id)
+            ->whereIn('status', ['held', 'draft'])
+            ->lockForUpdate()
             ->exists();
 
-        if ($stillLive) {
+        if ($stillRunning) {
             return;
         }
 
+        $tookMoney = SalesOrder::where('restaurant_table_session_id', $session->id)
+            ->whereIn('status', ['paid', 'partially_returned', 'returned'])
+            ->exists();
+
         $session->update([
-            'status' => 'cancelled',
+            'status' => $tookMoney ? 'closed' : 'cancelled',
             'closed_by_user_id' => $requestingUserId,
             'closed_at' => now(),
         ]);
