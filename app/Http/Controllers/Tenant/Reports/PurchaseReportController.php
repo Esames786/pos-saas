@@ -92,8 +92,16 @@ class PurchaseReportController extends Controller
             }, 'supplier-payables-aging-' . now()->format('Y-m-d') . '.csv', ['Content-Type' => 'text/csv']);
         }
 
+        // SUPPLIER-RUNNING-ACCOUNT-1: suppliers paid ahead owe us goods, not the other way round —
+        // listed apart so they never hide inside the "due" totals.
+        $advances = Supplier::query()
+            ->where('current_balance', '<', 0)
+            ->when(! empty($filters['supplier_id']), fn ($q) => $q->whereKey($filters['supplier_id']))
+            ->orderBy('current_balance')
+            ->get(['id', 'name', 'current_balance']);
+
         return view('tenant.reports.purchases.payables', array_merge(
-            compact('rows', 'totals', 'filters'),
+            compact('rows', 'totals', 'filters', 'advances'),
             ['asOf' => $aging['as_of']],
             $this->sharedViewData()
         ));

@@ -55,7 +55,8 @@ class TenantResetTransactionsCommand extends Command
         'customer_ledgers', 'customer_payments', 'supplier_ledgers', 'supplier_payments',
         'expense_voucher_lines', 'expense_vouchers', 'opening_balance_lines', 'opening_balance_batches',
         'department_handovers',
-        // purchasing
+        // purchasing (SUPPLIER-RUNNING-ACCOUNT-1: which credit settled which bill — goes with them)
+        'supplier_credit_allocations',
         'purchase_bill_lines', 'purchase_bills', 'goods_receipt_lines', 'goods_receipts',
         'purchase_return_lines', 'purchase_returns', 'purchase_order_lines', 'purchase_orders',
         // stock transactions
@@ -226,6 +227,8 @@ class TenantResetTransactionsCommand extends Command
         'recipes', 'recipe_ingredients', 'promotions', 'promotion_targets',
         'departments', 'department_category_maps', 'department_product_overrides',
         'service_charge_settings', 'manufacturing_posting_settings',
+        // SUPPLIER-RUNNING-ACCOUNT-1: the owner's choice to pay suppliers on account — configuration.
+        'purchasing_settings',
         'manufacturing_boms', 'manufacturing_bom_lines', 'manufacturing_customers',
         'expense_categories', 'cash_bank_accounts', 'branch_user', 'terminal_user',
         'model_has_roles', 'model_has_permissions', 'role_has_permissions',

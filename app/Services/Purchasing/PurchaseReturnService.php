@@ -242,6 +242,17 @@ class PurchaseReturnService
                 $userId
             );
 
+            // SUPPLIER-RUNNING-ACCOUNT-1: a return is credit too — it settles its own bill (through its
+            // GRN) first, then the oldest open bills; otherwise the bills would keep saying more is owed
+            // than the ledger.
+            $runningAccount = app(SupplierRunningAccountService::class);
+            if ($runningAccount->enabled()) {
+                $runningAccount->settleCredit(
+                    (int) $doc->supplier_id, \App\Models\Tenant\SupplierCreditAllocation::SOURCE_RETURN,
+                    (int) $doc->id, (float) $doc->grand_total, $doc->goodsReceipt?->bill?->id,
+                );
+            }
+
             $doc->update([
                 'status'    => 'posted',
                 'posted_by' => $userId,
