@@ -6305,7 +6305,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (move) { showTableMove(move.dataset.tableMove, move.dataset.sourceTableId); return; }
             // TABLE-CLOSE-EMPTY-1
             var closeTable = event.target.closest('[data-table-close]');
-            if (closeTable) { closeEmptyTable(closeTable.dataset.tableClose, closeTable.dataset.tableNo); return; }
+            if (closeTable) { closeEmptyTable(closeTable.dataset.tableClose, closeTable.dataset.tableNo, closeTable.dataset.tablePaid === '1'); return; }
             // TABLE-RESERVATION-1
             var reserve = event.target.closest('[data-table-reserve]');
             if (reserve) { openReserveModal(reserve.dataset.tableReserve, reserve.dataset.tableNo); return; }
@@ -6343,13 +6343,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /**
      * TABLE-CLOSE-EMPTY-1 — free a table opened by mistake, from the board itself.
-     * The button only renders on a session with no orders, and the server refuses a close over an
-     * open order anyway, so this can never discard someone's running check.
+     * The button only renders on a session with no RUNNING order (none, or every bill paid —
+     * CANCEL-PAID-FREES-TABLE-1), and the server refuses a close over an open order anyway, so this
+     * can never discard someone's running check.
      */
-    function closeEmptyTable(sessionId, tableNo) {
+    function closeEmptyTable(sessionId, tableNo, allPaid) {
         Swal.fire({
             title: 'Close table ' + (tableNo || '') + '?',
-            text: 'Nothing has been ordered on it. The table becomes available again.',
+            text: allPaid
+                ? 'Every bill on it is already paid. The table becomes available again — no payment changes.'
+                : 'Nothing has been ordered on it. The table becomes available again.',
             icon: 'question',
             showCancelButton: true,
             confirmButtonText: 'Close table',
@@ -6364,7 +6367,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 },
                 body: JSON.stringify({ status: 'closed' }),
             })
-            .then(function () { if (typeof refreshTableBoard === 'function') refreshTableBoard(); })
+            .then(function (r) { return r.json().catch(function () { return { ok: r.ok }; }); })
+            .then(function (res) {
+                // A refusal (another counter punched an order since the board drew) used to read as
+                // success: the board refreshed, the table stayed Occupied, and nobody saw why.
+                if (res && res.ok === false) {
+                    Swal.fire({ icon: 'warning', title: 'Table not closed', text: res.message || 'This table has an open order.' });
+                }
+                if (typeof refreshTableBoard === 'function') refreshTableBoard();
+            })
             .catch(function () {
                 Swal.fire({ icon: 'error', title: 'Could not close', text: 'Try again, or close it from Restaurant → Board.' });
             });
