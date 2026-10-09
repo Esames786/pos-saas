@@ -37,12 +37,26 @@ sweep kuch nahi karta. Ye shayad onboarding ke waqt "activate kar do" ke liye aa
 
 ## 2. Chaar tenants ki shartein (malik ne 09-10 ko batayin)
 
-| tenant | mahana | cycle | account chalu hua | pehla asli karobar | ab tak paid |
-|---|---|---|---|---|---|
-| **khatribiryani** | 25,000 | **20 tareekh** | 09-08-2026 09:33 | pehla order **11-08** | Aug + Sep (**2**) |
-| **kashifkitchen** | 25,000 | **20 tareekh**, shuru **20-09** | 15-08-2026 09:55 | pehla catering event **08-09** | **1** |
-| **kashiffood** | 35,000 | **1 tareekh** (ab) | 24-08-2026 10:48 | pehla order **30-08** | 2 × 35,000 |
-| **tawakalkashif** | 20,000 | **20 tareekh** | 05-09-2026 23:31 | pehla order **06-09** | *malik ne nahi bataya* |
+| tenant | mahana | **invoice banegi** | adaegi (pehle bataya) | account chalu hua | pehla asli karobar | ab tak paid |
+|---|---|---|---|---|---|---|
+| **khatribiryani** | 25,000 | **15** | 20 | 09-08-2026 09:33 | pehla order **11-08** | Aug + Sep (**2**) |
+| **kashifkitchen** | 25,000 | **20** | 20 | 15-08-2026 09:55 | pehla catering event **08-09** | **1** |
+| **kashiffood** | 35,000 | **25** | 1 (agle mahine) | 24-08-2026 10:48 | pehla order **30-08** | 2 × 35,000 |
+| **tawakalkashif** | 20,000 | **10** | 20 | 05-09-2026 23:31 | pehla order **06-09** | *malik ne nahi bataya* |
+
+⚠️ **"invoice banegi" wale din malik ne 09-10 ko alag se bheje** (15 / 20 / 25 / 10) aur ye un
+tareekhon se mukhtalif hain jo usi din pehle batayi gayi thin (20 / 20 / 1 / 20). Dono mil kar aik
+maqool shakl bante hain — **invoice adaegi se kuch din pehle bana karti hai**:
+
+```
+khatribiryani   15 ko bane  →  20 ko adaegi   (5 din)
+kashifkitchen   20 ko bane  →  20 ko adaegi   (usi din)
+kashiffood      25 ko bane  →   1 ko adaegi   (~6 din, agla mahina)
+tawakalkashif   10 ko bane  →  20 ko adaegi   (10 din)
+```
+
+**Ye abhi tasdeeq-talab hai (section 9, sawal 5).** Agar ghalat samjha to har tenant ka invoice ghalat
+din banega — aur jab wo khud-kar ho jaye to ghalti har mahine dohraegi.
 
 `kashifkitchen` par account chalu hone aur asli kaam me **24 din** ka farq tha — malik ne faisla kar
 diya ke billing **20 September** se shuru hogi, yani asli istemal se. Likh liya gaya.
@@ -176,7 +190,8 @@ Qeemat ye hai ke mahine me **do screenshot aur do verification** — malik ne ye
 ### P1 — Sach system me daalo (sirf data, koi code nahi)
 
 - charon par `price_snapshot` = 25,000 / 25,000 / 20,000 / 35,000
-- `billing_cycle_day` = 20 / 20 / 20 / 1 *(naya column — abhi koi jagah nahi hai)*
+- `invoice_day` = 15 / 20 / 25 / 10 (khatri / kashifkitchen / kashiffood / tawakal) *(naya column)*
+- `payment_due_day` = 20 / 20 / 1 / 20 — **agar sawal 5 ka jawab "do alag cheezein" hai**
 - `current_period_ends_at` ko asal agle cycle par laao (1–5 saal nahi)
 - **Koi invoice nahi banegi is qadam me.** Pehle aankRe theek, phir paisa.
 
@@ -249,6 +264,11 @@ Kami: roz ka cron jo due tenants ke invoice khole.
 3. **20 tareekh wala invoice kis muddat ka hai** — **aage** wale mahine ka (20 Oct – 19 Nov) ya
    **peechhe** wale ka (20 Sep – 19 Oct)? Ye har invoice ki muddat tay karta hai.
 4. Adhoore pehle mahine par **pro-rata** ya poora mahina? (khatri 9 Aug ko chala, pehla invoice 20 Aug)
+5. **Invoice banne ka din aur adaegi ka din — kya ye waqai do alag cheezein hain?** Malik ne 09-10 ko
+   do set bheje: pehle 20/20/1/20, phir "ye wo tareekhein hain jab auto invoice banni chahiye"
+   15/20/25/10. Agar dono sahi hain to invoice adaegi se 0–10 din pehle banti hai (section 2 ka
+   naqsha). Agar naya set purane ki jagah leta hai to invoice aur adaegi dono usi din hain. **Is ke
+   baghair cron ka din tay nahi ho sakta.**
 
 ---
 
