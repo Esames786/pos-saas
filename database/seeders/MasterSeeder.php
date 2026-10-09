@@ -178,6 +178,14 @@ class MasterSeeder extends Seeder
             'central.modules.update',
             'central.tenants.subscription.update',
 
+            // SAAS-BILLING-WHATSAPP-1 — WhatsApp ke paise ka safha. Apna permission, invoices wala
+            // nahi: is par har tenant ki raqam AUR hamara margin likha hai.
+            // ⚠️ Naya CENTRAL route sirf yahan likhne se nahi chalta — deploy.sh seeder nahi chalata
+            // (wo sirf system:routes-sync karta hai, jo catalog bharta hai, permission nahi). Prod
+            // par alag se ADDITIVE grant chalana paRta hai: givePermissionTo(), kabhi
+            // syncPermissions() nahi.
+            'central.whatsapp-usage.index',
+
             'central.invoices.index',
             'central.tenants.invoices.create',
             'central.tenants.invoices.store',
