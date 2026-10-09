@@ -20,7 +20,7 @@
 ; Ab `tools/print-agent/test/version-match-test.js` dono ko mila kar dekhta hai.
 [Setup]
 AppName=Bingoo Print Agent
-AppVersion=2.6.0
+AppVersion=2.6.1
 AppPublisher=Bingoo POS
 DefaultDirName={commonpf}\BingooPrintAgent
 DefaultGroupName=Bingoo Print Agent

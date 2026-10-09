@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.6.0';
+const AGENT_VERSION = '2.6.1';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -538,26 +538,70 @@ async function printDocumentOnWindows(job) {
     const stamp    = `${job.job_no || job.id}-${Date.now()}`.replace(/[^A-Za-z0-9._-]/g, '-');
     const htmlPath = path.join(os.tmpdir(), `bingoo-${stamp}.html`);
     const pdfPath  = path.join(os.tmpdir(), `bingoo-${stamp}.pdf`);
+    const profileDir = path.join(os.tmpdir(), `bingoo-chrome-${stamp}`);
 
     try {
         fs.writeFileSync(htmlPath, job.raw_payload || '', 'utf8');
 
         // Kagaz ka size HTML ke apne `@page` me pehle se hai aur Chrome usi ko
         // maanta hai. Yahan dobara likhna do jagah do jawab bana deta.
-        await runExe(chrome, [
-            '--headless=new',
+        // DO HEADLESS SOORTEIN, kyunke `--headless=new` sirf Chrome 109+ samajhta
+        // hai; us se purane Chrome par wo flag bemani hai aur PDF nahi banti.
+        //
+        // 9 Oct, Kashif Kitchen: dono jobs "Chrome ne PDF banayi hi nahi" par
+        // rukin. Pehla andaza — default profile ka taala, kyunke us PC par Chrome
+        // khula tha — ALAG se jaanch kar GHALAT nikla: 19 Chrome process chalte
+        // hue bhi purana tareeqa PDF bana leta hai. Is liye ab andaze par ek hal
+        // nahi bheja ja raha. Dono soortein aazmayi jati hain, aur na chale to
+        // Chrome ki APNI shikayat aur us ka version error me jata hai — taake
+        // agli nakami khud apni wajah bata de.
+        //
+        // `--user-data-dir` phir bhi rakha gaya: nuqsan nahi deta, aur jis din
+        // agent Windows SERVICE ki tarah chalega us din lazmi hoga — SYSTEM ke
+        // paas apna Chrome profile hota hi nahi.
+        const chromeArgs = (headlessFlag) => [
+            headlessFlag,
             '--disable-gpu',
             '--no-sandbox',
+            '--user-data-dir=' + profileDir,
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--no-first-run',
             '--no-pdf-header-footer',
             '--print-background',          // is ke baghair parcha jhoot bolta hai
-            `--print-to-pdf=${pdfPath}`,
-            `file:///${htmlPath.replace(/\\/g, '/')}`,
-        ], 60000);
+            '--print-to-pdf=' + pdfPath,
+            'file:///' + htmlPath.replace(/\\/g, '/'),
+        ];
 
-        if (!fs.existsSync(pdfPath) || fs.statSync(pdfPath).size === 0) {
-            throw new Error('Chrome ne PDF banayi hi nahi.');
+        const madePdf = () => fs.existsSync(pdfPath) && fs.statSync(pdfPath).size > 0;
+        const tried = [];
+
+        for (const flag of ['--headless=new', '--headless']) {
+            try {
+                await runExe(chrome, chromeArgs(flag), 60000);
+            } catch (err) {
+                tried.push(flag + ': ' + err.message);
+            }
+            if (madePdf()) { break; }
+            tried.push(flag + ': PDF nahi bani');
+            try { if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); } } catch { /* chhor do */ }
         }
 
+        if (!madePdf()) {
+            // Chrome ka version bhi saath — akela "PDF nahi bani" ek poora chakkar
+            // khaa gaya tha, kyunke us se ye pata hi nahi chalta tha ke kyun.
+            let version = 'maloom nahi';
+            try {
+                version = require('child_process')
+                    .execFileSync(chrome, ['--version'], { timeout: 15000, windowsHide: true })
+                    .toString().trim();
+            } catch { /* chhor do */ }
+
+            throw new Error(
+                'Chrome ne PDF banayi hi nahi. Browser: ' + chrome + ' (' + version + '). '
+                + 'Koshishein: ' + tried.join(' | ')
+            );
+        }
         if (tool) {
             await runExe(tool.exe, tool.args(pdfPath, targetName), 120000);
         } else {
@@ -577,6 +621,10 @@ async function printDocumentOnWindows(job) {
         for (const f of [htmlPath, pdfPath]) {
             try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* chhor do */ }
         }
+        // Aur wo asthai Chrome profile bhi. Ye chhorte jana ek khamosh kharabi
+        // hoti: har parche par kuch MB `temp` me jama hote rehte aur mahinon
+        // baad disk bhar jati, bina kisi ko wajah bataye.
+        try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch { /* chhor do */ }
     }
 }
 
