@@ -128,6 +128,22 @@ class BillingBackfillPaidInvoicesCommand extends Command
             }
 
             DB::connection('master')->transaction(function () use ($billing, $p, &$made) {
+                // 🚨 Subscription ka period PEHLE mehfooz karo.
+                //
+                // 9 Oct 2026 ko isi jagah charon live tenants band ho gaye thay. recordPayment()
+                // chup-chaap refreshInvoicePaymentState() ko bulata hai, wo status 'paid' karta hai,
+                // aur phir activateSubscriptionFromPaidInvoice() subscription ka
+                // current_period_ends_at us INVOICE ke period_end par rakh deta hai. Guzre mahine ka
+                // invoice darj karne ka matlab hua ke period guzre mahine par chala gaya — aur har
+                // tenant ko "Your subscription is not active" mil gaya.
+                //
+                // Wo silsila yahan rokna theek nahi (wo nayi adaegiyon ke liye sahi hai), is liye
+                // qeemat wapis rakh di jati hai. Guzra hisaab darj karna aaj ki service ko nahi
+                // hilana chahiye.
+                $sub = $p['tenant']->subscription;
+                $periodBefore = $sub?->current_period_ends_at;
+                $statusBefore = $sub?->status;
+
                 $invoice = $billing->createInvoice($p['tenant'], [
                     'invoice_type' => 'subscription',
                     'status' => 'issued',
@@ -148,6 +164,14 @@ class BillingBackfillPaidInvoicesCommand extends Command
                     'status' => 'verified',
                     'notes' => 'Peechhe se darj — adaegi system ke bahar hui thi.',
                 ]);
+
+                // ...aur wapis rakho.
+                if ($sub) {
+                    $sub->fresh()->update([
+                        'current_period_ends_at' => $periodBefore,
+                        'status' => $statusBefore,
+                    ]);
+                }
 
                 $made++;
             });
