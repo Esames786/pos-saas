@@ -86,4 +86,24 @@ class ReportShareLinkMySqlTest extends MySqlTenantTestCase
         $this->get('http://not-'.$tenant->tenant_code.'.'.config('tenancy.tenant_base_domain').'/r/'.$this->token)
             ->assertNotFound();
     }
+
+    public function test_the_full_report_opens_in_the_browser_instead_of_downloading(): void
+    {
+        // Malik ne kaha: client chahta hai ke poori report KHUL jaye, Downloads me gir kar gum na ho.
+        //
+        // Yahan DO cheezein milti hain aur dono ka theek hona zaroori hai: header `inline` kahe, AUR
+        // safhe ke link par `download` attribute na ho. Wo attribute header par bhaari paRta hai, to
+        // sirf header badal dena kuch nahi badalta — aur wo bilkul yehi ghalti thi jo pehle ho rahi
+        // thi. Is liye guard dono ko dekhta hai.
+        $controller = file_get_contents(base_path('app/Http/Controllers/ReportShareController.php'));
+
+        $this->assertStringContainsString("'Content-Disposition' => 'inline;", $controller);
+        $this->assertStringNotContainsString("'Content-Disposition' => 'attachment;", $controller);
+
+        $view = file_get_contents(base_path('resources/views/reports/shared.blade.php'));
+
+        $this->assertStringNotContainsString('download>', $view, 'Link par download attribute wapis aa gaya.');
+        $this->assertStringNotContainsString('download }}', $view);
+        $this->assertStringContainsString('target="_blank"', $view);
+    }
 }

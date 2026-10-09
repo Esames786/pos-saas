@@ -48,10 +48,13 @@
     </div>
     @endif
 
-    <a class="btn" href="{{ $pdfUrl }}" download>Download full PDF</a>
+    {{-- `download` attribute JAAN BOOJH KAR nahi hai: wo Content-Disposition: inline par bhaari
+         paRta hai aur file phir bhi Downloads me gir jati hai. target=_blank is liye ke ye khulasa
+         ka safha khula rahe — malik aksar dono dekhte hain. --}}
+    <a class="btn" href="{{ $pdfUrl }}" target="_blank" rel="noopener">Open full report</a>
 
     <div class="note">
-        This link opens only for a short time and then stops working. The full report is in the PDF.
+        This link opens only for a short time and then stops working. The full report is in the PDF — your browser will open it; save it from there if you need a copy.
     </div>
 
 </div>
