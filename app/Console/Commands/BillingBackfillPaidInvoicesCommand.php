@@ -48,6 +48,7 @@ class BillingBackfillPaidInvoicesCommand extends Command
     ];
 
     protected $signature = 'billing:backfill-paid-invoices
+        {--set-terms : Sirf rate aur invoice_day likho (invoice nahi banao)}
         {--yes : Likho. Is ke baghair sirf dikhata hai}';
 
     protected $description = 'Guzre, adaegi-shuda subscription invoice record me laata hai (default: dry run).';
@@ -55,6 +56,41 @@ class BillingBackfillPaidInvoicesCommand extends Command
     public function handle(SubscriptionBillingService $billing): int
     {
         $write = (bool) $this->option('yes');
+
+        // Rate aur invoice ka din subscription par likh do. Ye wohi aankRe hain jo HISTORY me upar
+        // likhe hain — doosri jagah nahi rakhe gaye, warna dono kisi din alag ho jate aur invoice us
+        // rate par banta jo malik ne kabhi nahi kaha.
+        if ($this->option('set-terms')) {
+            foreach (self::HISTORY as $code => $h) {
+                $tenant = Tenant::where('tenant_code', $code)->first();
+                $sub = $tenant?->subscription;
+                if (! $sub) {
+                    $this->warn("  {$code}: subscription nahi mila.");
+
+                    continue;
+                }
+                $this->line(sprintf(
+                    '  %-16s rate %s → %s   invoice_day %s → %d',
+                    $code,
+                    $sub->price_snapshot ?: '(khaali)', number_format((float) $h['fee'], 2),
+                    $sub->invoice_day ?: '(khaali)', $h['invoice_day'],
+                ));
+                if ($write) {
+                    // current_period_ends_at ko HAATH NAHI lagana. 9 Oct 2026 ko wohi hilne se
+                    // charon live tenants band ho gaye thay.
+                    $sub->update(['price_snapshot' => $h['fee'], 'invoice_day' => $h['invoice_day']]);
+                }
+            }
+            if (! $write) {
+                $this->newLine();
+                $this->warn('Ye sirf dikhaya gaya hai. Likhne ke liye --yes lagayein.');
+            } else {
+                $this->info('Terms likh diye gaye.');
+            }
+
+            return self::SUCCESS;
+        }
+
         $plan = [];
         $total = 0.0;
 
