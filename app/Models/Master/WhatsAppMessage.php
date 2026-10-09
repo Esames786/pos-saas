@@ -30,18 +30,23 @@ class WhatsAppMessage extends Model
     ];
 
     /**
-     * Sirf wo rows jin ka paisa liya ja sakta hai.
+     * Wo rows jin ka paisa liya jata hai: HAR bheja gaya message.
      *
-     * DELIVERED, accepted nahi. 8/9 October ki raat malik ka card decline hua: humne 14 message
-     * bheje, Meta ne sab "accepted" kaha, aur Meta ke apne aankRon ke mutabiq khatri ke saat me se
-     * sirf AIK pohancha aur kashiffood ka poora bucket ghayab tha. Accepted par bill karte to tenant
-     * us cheez ka paisa deta jo kabhi nahi aayi — aur kisi ko pata bhi na chalta.
+     * Malik ka faisla (09-10-2026): charge bhejne par hai, pohanchne par nahi. Maine delivered par
+     * rakhne ki tajweez di thi — Meta khud sirf delivered par leta hai (84 bheje, 78 ka bill) — magar
+     * ye qeemat ka faisla hai, taknik ka nahi, aur wo malik ka hai.
      *
-     * Meta khud bhi sirf delivered par leta hai.
+     * `status` phir bhi likha jata hai aur ahem hai: usi se pata chala ke kashiffood ka aik number
+     * HAR raat fail hota hai. Wo maloomat hai, bill ki shart nahi.
+     *
+     * ⚠️ Aik soorat jis par malik ko kabhi faisla karna paR sakta hai: agar Meta darkhwast hi radd
+     * kar de (ghalat number ki shakl, ya 8/9 Oct jaisi roak), to message qatar me gaya hi nahi — phir
+     * bhi is usool par us ka bill banega. Us din ye alag karna ho to `status = 'failed'` wali rows
+     * nikalni hongi.
      */
     public function scopeBillable($q)
     {
-        return $q->whereIn('status', ['delivered', 'read']);
+        return $q;
     }
 
     public function tenant(): BelongsTo
