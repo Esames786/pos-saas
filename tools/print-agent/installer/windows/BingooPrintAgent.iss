@@ -35,7 +35,8 @@ WizardStyle=modern
 
 [Files]
 Source: "..\..\dist\BingooPrintAgent.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "install-service.ps1";   DestDir: "{app}"; Flags: ignoreversion
+Source: "install-autostart-user.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "install-service.ps1";       DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall-service.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Dirs]
@@ -50,9 +51,21 @@ Name: "{group}\Agent Status";               Filename: "{app}\BingooPrintAgent.ex
 Filename: "{app}\BingooPrintAgent.exe"; \
   Parameters: "setup --server ""{code:GetServerUrl}"" --code ""{code:GetPairingCode}"" --no-start"; \
   StatusMsg: "Pairing with Bingoo POS..."; Flags: runhidden waituntilterminated
-; 2) Register + start the auto-start service (survives reboot).
+; 2) Register + start the auto-start task (survives reboot).
+;
+;    install-autostart-user.ps1 — SOCH SAMAJH KAR, install-service.ps1 nahi.
+;
+;    install-service.ps1 task ko SYSTEM + RunLevel Highest par banata hai.
+;    9 Oct ko Kashif Kitchen par yehi A4/A5 document printing ko maar gaya:
+;    Chromium ELEVATED process se chalne par PDF banane se inkar kar deta hai.
+;    Chrome ek second me exit 0 de kar nikal jata tha, bina PDF, bina shikayat.
+;    Edge ne bhi wohi kiya. Wohi command aam (non-admin) PowerShell me chalai
+;    to PDF foran ban gayi — 12,409 bytes.
+;
+;    Ye nakami KHAMOSH hai: thermal parchi chalti rehti hai aur sirf document
+;    rukte hain, is liye koi shikayat bhi der se aati hai.
 Filename: "powershell.exe"; \
-  Parameters: "-ExecutionPolicy Bypass -File ""{app}\install-service.ps1"""; \
+  Parameters: "-ExecutionPolicy Bypass -File ""{app}\install-autostart-user.ps1"""; \
   StatusMsg: "Setting up auto-start..."; Flags: runhidden waituntilterminated
 
 [UninstallRun]

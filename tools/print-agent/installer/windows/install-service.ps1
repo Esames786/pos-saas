@@ -1,4 +1,20 @@
-# Bingoo Print Agent — Windows auto-start installer
+# !! KHABARDAR - YE SCRIPT A4/A5 DOCUMENT PRINTING TOR DETI HAI !!
+#
+# Ye task SYSTEM + RunLevel Highest par banati hai. Chromium ELEVATED process
+# se chalne par kaam karne se inkar kar deta hai, is liye HTML se PDF banti hi
+# nahi aur quotation / kitchen sheet / address sheet kuch nahi chhapte.
+#
+# 9 Oct 2026, Kashif Kitchen: isi ne poora din liya. Chrome ek second me exit 0
+# de kar nikal jata tha - bina PDF, bina shikayat. Edge ne bhi wohi kiya. Wohi
+# command aam (non-admin) PowerShell me chalai to PDF foran ban gayi.
+#
+# Nakami KHAMOSH hai: thermal parchi chalti rehti hai, sirf document rukte hain.
+#
+# ISTEMAL KARO: install-autostart-user.ps1  (RunLevel Limited)
+# Ye file sirf us soorat ke liye bachai gayi hai jahan koi user kabhi login hi
+# na karta ho AUR sirf thermal parchi chahiye ho.
+
+# Bingoo Print Agent - Windows auto-start installer
 # Run as Administrator AFTER pairing succeeded (print-agent setup).
 # Registers a Scheduled Task that starts the agent at boot and restarts it on failure.
 # Works for both the packaged BingooPrintAgent.exe and the node script mode.
