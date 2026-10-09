@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Central\DashboardController;
 use App\Http\Controllers\Central\InvoiceController;
+use App\Http\Controllers\Central\WhatsAppUsageController;
 use App\Http\Controllers\Central\ModuleController;
 use App\Http\Controllers\Central\PlanController;
 use App\Http\Controllers\Central\RouteCatalogController;
@@ -90,6 +91,14 @@ Route::domain(config('tenancy.central_domain'))
                 Route::put('/modules/{module}', [ModuleController::class, 'update'])->name('central.modules.update');
 
                 // Billing — subscription invoices + manual payments
+                // SAAS-BILLING-WHATSAPP-1 — WhatsApp ke paise aik safhe par. Apna alag permission
+                // (`central.whatsapp-usage.index`) rakhta hai, invoices wala nahi: is par har tenant
+                // ki raqam aur hamara MARGIN likha hai, aur wo har us shakhs ko nahi dikhna chahiye
+                // jo invoice dekh sakta hai.
+                // ⚠️ deploy.sh nayi permission sirf Owner/super ko deta hai — kisi aur ko chahiye to
+                // alag se additive grant chalana paRega.
+                Route::get('/whatsapp-usage', [WhatsAppUsageController::class, 'index'])->name('central.whatsapp-usage.index');
+
                 Route::get('/invoices', [InvoiceController::class, 'index'])->name('central.invoices.index');
                 Route::get('/tenants/{tenant}/invoices/create', [InvoiceController::class, 'create'])->name('central.tenants.invoices.create');
                 Route::post('/tenants/{tenant}/invoices', [InvoiceController::class, 'store'])->name('central.tenants.invoices.store');

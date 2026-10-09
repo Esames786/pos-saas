@@ -127,6 +127,20 @@ class SubscriptionBillingService
             return;
         }
 
+        // 🚨 Sirf wo invoice jo MUDDAT khareedta hai. 9 Oct 2026 ko yahin se charon live tenants
+        // band ho gaye thay: guzre mahine ka invoice paid hua aur is ne subscription ka period usi
+        // guzre mahine par rakh diya, jis se har tenant ko "Your subscription is not active" mila.
+        //
+        // Wo to backfill ki ghalti thi, magar yeh jaal khula hua tha: WhatsApp usage ki `addon`
+        // invoice bhi kisi din paid hogi — aur tab yehi code October ki usage invoice se period
+        // 31 October par rakh deta, aur 1 November ko sab dobara band ho jate. Us din na koi
+        // backfill chal rahi hoti aur na kisi ko wajah samajh aati.
+        //
+        // Usage kisi muddat ka haq nahi khareedti; wo us cheez ka bill hai jo kharch ho chuki.
+        if (! $invoice->extendsSubscriptionPeriod()) {
+            return;
+        }
+
         $subscription->update([
             'status'                 => 'active',
             'plan_id'                => $invoice->plan_id ?: $subscription->plan_id,
