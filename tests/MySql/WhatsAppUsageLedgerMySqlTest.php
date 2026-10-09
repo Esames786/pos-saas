@@ -228,4 +228,120 @@ class WhatsAppUsageLedgerMySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString("\$d['delivered'] * \$rate", $body);
         $this->assertStringNotContainsString('$tDel * $rate', $body);
     }
+
+    public function test_running_the_invoice_twice_does_not_double_the_bill(): void
+    {
+        $this->okUnique();
+        app(WhatsAppChannel::class)->send($this->delivery(), ['923328252838', '923331279246']);
+
+        DB::connection('master')->table('subscription_invoices')->where('invoice_type', 'addon')->delete();
+
+        $this->artisan('billing:whatsapp-invoice', ['--yes' => true])->assertSuccessful();
+
+        $invoices = DB::connection('master')->table('subscription_invoices')->where('invoice_type', 'addon')->get();
+        $this->assertCount(1, $invoices, 'Aik mahine ki aik hi invoice honi chahiye.');
+        $this->assertSame('19.70', number_format((float) $invoices->first()->total_amount, 2));
+        $this->assertSame('draft', $invoices->first()->status);
+
+        // Dobara chalao. Raqam waisi hi rehni chahiye. Agar total purane total me JORHA jata (bajaye
+        // juRi hui rows se dobara nikalne ke) to har chalane par bill barhta jata — aur koi ise
+        // pakaR nahi sakta tha, kyunke raqam hamesha "maqool" lagti.
+        $this->artisan('billing:whatsapp-invoice', ['--yes' => true])->assertSuccessful();
+
+        $after = DB::connection('master')->table('subscription_invoices')->where('invoice_type', 'addon')->get();
+        $this->assertCount(1, $after);
+        $this->assertSame('19.70', number_format((float) $after->first()->total_amount, 2));
+
+        // Aur har row apne invoice se bandhi honi chahiye — warna kal "ye raqam kahan se aayi" ka
+        // jawab nahi diya ja sakta.
+        $this->assertSame(0, WhatsAppMessage::whereNull('invoice_id')->count());
+    }
+
+    public function test_the_whatsapp_money_page_has_its_own_permission(): void
+    {
+        // Is safhe par har tenant ki raqam AUR hamara margin likha hai. Wo har us shakhs ko nahi
+        // dikhna chahiye jo invoice dekh sakta hai — is liye apna alag permission, invoices wala
+        // nahi.
+        $routes = file_get_contents(base_path('routes/central.php'));
+
+        $this->assertStringContainsString("->name('central.whatsapp-usage.index')", $routes);
+        $this->assertStringNotContainsString(
+            "Route::get('/whatsapp-usage', [WhatsAppUsageController::class, 'index'])->name('central.invoices.index')",
+            $routes,
+        );
+
+        $sidebar = file_get_contents(base_path('resources/views/partials/sidebar.blade.php'));
+        $this->assertStringContainsString("@can('central.whatsapp-usage.index')", $sidebar);
+    }
+
+    public function test_paying_a_usage_invoice_never_moves_the_subscription_period(): void
+    {
+        // Ye wo jaal hai jo 9 October 2026 ko CHAAR live tenants band kar chuka hai. Us din wajah
+        // backfill thi, magar chot ka raasta yehi tha: koi bhi invoice paid ho to
+        // activateSubscriptionFromPaidInvoice() subscription ka period us INVOICE ke period_end par
+        // rakh deta tha — chaahe wo invoice guzre mahine ki usage ka ho.
+        //
+        // WhatsApp ki addon invoice har mahine banegi aur paid hogi. Bina is shart ke, October ki
+        // usage invoice paid hone par period 31 October ban jata aur 1 November ko sab dobara band
+        // ho jate — us din na koi backfill chal rahi hoti, aur kisi ko wajah samajh na aati.
+        //
+        // Usage kisi muddat ka haq nahi khareedti; wo us cheez ka bill hai jo kharch ho chuki.
+        $tenant = Tenant::first();
+        $sub = DB::connection('master')->table('subscriptions')->where('tenant_id', $tenant->id)->first();
+        if (! $sub) {
+            // Skip NAHI karna. Ye guard us masle ka hai jis ne prod par chaar tenants band kiye
+            // thay; jo guard chup chaap skip ho jaye wo kuch sabit nahi karta, aur agli dafa bhi
+            // khamoshi se guzar jayega. Nahi hai to bana lo.
+            $id = DB::connection('master')->table('subscriptions')->insertGetId([
+                'tenant_id' => $tenant->id,
+                'plan_id' => DB::connection('master')->table('plans')->value('id'),
+                'status' => 'active',
+                'currency_code' => 'PKR',
+                'billing_period' => 'monthly',
+                'current_period_ends_at' => '2027-01-01 00:00:00',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $sub = DB::connection('master')->table('subscriptions')->find($id);
+        }
+
+        $future = '2027-12-31 00:00:00';
+        DB::connection('master')->table('subscriptions')->where('id', $sub->id)
+            ->update(['current_period_ends_at' => $future, 'status' => 'active']);
+
+        $billing = app(\App\Services\Saas\SubscriptionBillingService::class);
+
+        $addon = $billing->createInvoice($tenant, [
+            'invoice_type' => 'addon',
+            'status' => 'issued',
+            'subtotal' => 925.90,
+            'period_start' => '2026-10-01',
+            'period_end' => '2026-10-31',
+        ]);
+        $billing->recordPayment($addon, ['amount' => 925.90, 'status' => 'verified']);
+
+        $after = DB::connection('master')->table('subscriptions')->where('id', $sub->id)->first();
+        $this->assertSame(
+            $future,
+            (string) $after->current_period_ends_at,
+            'Usage ki invoice ne subscription ka period hila diya — yehi 9 Oct ko sab band kar gaya tha.',
+        );
+
+        // Aur ulta bhi sach rehna chahiye: asal subscription ki invoice period BARHATI hai, warna
+        // nayi adaegiyan kaam karna chhoR dengi.
+        $plan = $billing->createInvoice($tenant, [
+            'invoice_type' => 'subscription',
+            'status' => 'issued',
+            'subtotal' => 25000,
+            'period_start' => '2028-01-01',
+            'period_end' => '2028-01-31',
+        ]);
+        $billing->recordPayment($plan, ['amount' => 25000, 'status' => 'verified']);
+
+        $after2 = DB::connection('master')->table('subscriptions')->where('id', $sub->id)->first();
+        $this->assertStringStartsWith('2028-01-31', (string) $after2->current_period_ends_at);
+
+        DB::connection('master')->table('subscriptions')->where('id', $sub->id)
+            ->update(['current_period_ends_at' => $sub->current_period_ends_at, 'status' => $sub->status]);
+    }
 }
