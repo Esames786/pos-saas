@@ -14,6 +14,8 @@ class Subscription extends Model
         'plan_id',
         'status',
         'billing_period',
+        // SAAS-BILLING-AUTO-1 — kis tareekh ko is tenant ka mahana invoice khud banta hai.
+        'invoice_day',
         // WEBSITE-I18N-GEO-1 P3: what a per-branch signup bought, and the quote it was sold at.
         'pricing_model',
         'currency_code',

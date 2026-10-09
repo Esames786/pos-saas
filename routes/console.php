@@ -59,7 +59,16 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // nahi juRi, sirf us din ki nahi. To agla run pichhla kaam bhi kar deta hai.
     Schedule::command('billing:whatsapp-invoice --yes')
         ->timezone('Asia/Karachi')->dailyAt('03:30')->withoutOverlapping();
-    // PRINT-AUTOCLOSE-STUCK-1 — jo parchi ek ghante se atki rahe, khud band ho jaye.
+
+    // SAAS-BILLING-AUTO-1 — har tenant ka mahana invoice us ke APNE din par. Roz chalti hai aur sirf
+    // un subscriptions ko dekhti hai jin ka invoice_day aaj hai (khatri 15, kashifkitchen 20,
+    // kashiffood 25, tawakal 10). Is se pehle koi generator tha hi nahi, yani 105,000/mah ka hisaab
+    // har mahine haath se banta — aur jo cheez haath se banti hai wo kisi mahine bhool jati hai.
+    //
+    // 06:00 Karachi: din shuru hone par bana ho, raat ke kisi lamhe me nahi. Dobara banne ka khatra
+    // nahi — aik tenant ke aik mahine ka aik hi invoice banta hai.
+    Schedule::command('billing:generate-monthly-invoices --yes')
+        ->timezone('Asia/Karachi')->dailyAt('06:00')->withoutOverlapping();    // PRINT-AUTOCLOSE-STUCK-1 — jo parchi ek ghante se atki rahe, khud band ho jaye.
     //
     // Zaroorat: The Kashif Foods par teen Report Center ki parchiyan galti se DOOSRI branch
     // ki printer par bhej di gayi thin. Wahan se pahunch hi nahi sakti thin, aur defer
