@@ -76,6 +76,37 @@ class PrintAgentController extends Controller
         return array_slice(array_reverse(array_values($builds)), 0, 3);
     }
 
+    /**
+     * `dist/BingooPrintAgent-Setup.exe` ki version — MAAN kar nahi, SABIT kar ke.
+     *
+     * Us file ke naam me version nahi hoti, is liye 4 Oct tak us par source ki
+     * version ka thappa lag jata tha. Natija: 2.5.0 wali file
+     * "BingooPrintAgent-Setup-2.6.0.exe" ban kar client ke PC tak pahunch gayi,
+     * aur setup ke sar par 2.5.0 likha tha — wo ek hi jagah thi jahan sach bacha
+     * tha. Us ke baad is par "unknown" likha jane laga: jhoot se behtar, magar
+     * client ko "BingooPrintAgent-Setup-unknown.exe" dena bhi koi jawab nahi.
+     *
+     * Ab faisla saboot par hota hai. Shelf par har build apne version ke naam se
+     * pada hai. Agar ye file un me se kisi ke saath BYTE-BA-BYTE barabar hai, to
+     * wo wohi build hai — is me andaza hai hi nahi. Kisi se na mile to "unknown"
+     * hi rehta hai, kyunke tab hum waqai nahi jaante.
+     */
+    private function setupExeVersion(string $path): string
+    {
+        $hash = @hash_file('sha256', $path);
+        if ($hash === false) {
+            return 'unknown';
+        }
+
+        foreach ($this->availableAgentBuilds() as $build) {
+            $shelf = base_path('tools/print-agent/dist/releases/BingooPrintAgent-Setup-' . $build['version'] . '.exe');
+            if (is_file($shelf) && hash_file('sha256', $shelf) === $hash) {
+                return (string) $build['version'];
+            }
+        }
+
+        return 'unknown';
+    }
     /** Serve one agent build, version-stamped in the filename and never cacheable. */
     private function serveAgentExe(string $path, string $version)
     {
@@ -300,7 +331,7 @@ class PrintAgentController extends Controller
             //
             // Is file ki version hum JAANTE hi nahi — us ka naam shelf par hota
             // hai, is par nahi. Is liye ab koi thappa nahi lagta.
-            return $this->serveAgentExe($setupExe, 'unknown');
+            return $this->serveAgentExe($setupExe, $this->setupExeVersion($setupExe));
         }
 
         // Fallback: script bundle.
