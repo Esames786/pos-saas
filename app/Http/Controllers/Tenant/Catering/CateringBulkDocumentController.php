@@ -170,10 +170,10 @@ class CateringBulkDocumentController extends Controller
         $releases = collect();
         $skipped = [];
         foreach ($events as $event) {
-            $release = $event->productionReleases
-                ->where('status', 'released')
-                ->sortByDesc('released_at')
-                ->first();
+            // CATERING-SHEET-ALWAYS-CURRENT-1 — parcha hamesha aaj ki quotation
+            // se. Kaun sa release number us par chhapega ye `sheetFor()` tay
+            // karta hai; wo faisla yahan DOBARA nahi likha ja raha.
+            $release = $previews->sheetFor($event);
 
             if ($release) {
                 $releases->push($release);

@@ -111,11 +111,11 @@ class CateringDocumentQueueService
     ): PrintJob {
         $event->loadMissing(['productionReleases.lines', 'productionReleases.event']);
 
-        $release = $event->productionReleases
-            ->where('status', 'released')
-            ->sortByDesc('released_at')
-            ->first()
-            ?? app(CateringProductionReleaseService::class)->preview($event);
+        // CATERING-SHEET-ALWAYS-CURRENT-1 — parcha hamesha aaj ki quotation se.
+        // `sheetFor()` khud hi preview par gir jata hai jab booking kabhi
+        // release hui hi na ho, is liye yahan doosri shart ki zaroorat nahi.
+        $releases = app(CateringProductionReleaseService::class);
+        $release = $releases->sheetFor($event) ?? $releases->preview($event);
 
         if (! $release->relationLoaded('event')) {
             $release->setRelation('event', $event);
