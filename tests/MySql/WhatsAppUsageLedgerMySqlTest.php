@@ -191,4 +191,23 @@ class WhatsAppUsageLedgerMySqlTest extends MySqlTenantTestCase
         // pehchanta hai, aur bill delivered par banta hai.
         $this->assertSame('wamid.HBgMOTIzMzI4MjUyODM4', WhatsAppMessage::first()->wamid);
     }
+
+    public function test_the_backfill_reads_the_clock_the_sender_actually_uses(): void
+    {
+        // Ye prod par TOOT chuka hai. Maine backfill me tenant ka timezone `tenants.timezone` se
+        // liya tha. Wo column prod par KHAALI hai, to app.timezone (UTC) lag gaya, to schedule ke
+        // 00:30 aur 02:30 seedha 00:30/02:30 UTC ban gaye — jabke asal buckets 19:30 aur 21:30 UTC
+        // hain. Nateeja: koi bucket kisi tenant par match hi nahi kiya aur poora hisaab sifar aaya.
+        //
+        // Sahi jawab wahi hai jo BHEJNE WALA khud istemal karta hai — ReportScheduleService::
+        // timezone() (active branch ka business timezone). Ginti usi ghari se honi chahiye jis se
+        // bhejna hua, warna dono kisi din chup-chaap alag ho jate hain.
+        //
+        // Guard matn par hai, chalne par nahi: command saaray master tenants par ghoomti hai, jo
+        // test ke mahaul me asli shakl nahi banta. Jo cheez TOOTI thi wo yehi do satrein hain.
+        $body = file_get_contents(base_path('app/Console/Commands/WhatsAppBackfillUsageCommand.php'));
+
+        $this->assertStringContainsString('ReportScheduleService::class)->timezone()', $body);
+        $this->assertStringNotContainsString('$tenant->timezone', $body);
+    }
 }
