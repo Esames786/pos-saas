@@ -34,14 +34,17 @@ class BillingBackfillPaidInvoicesCommand extends Command
      * `invoice_day` = us mahine ki wo tareekh jab invoice banta hai.
      * `pay_day` = wo tareekh jab adaegi hoti hai.
      *
-     * tawakalkashif jaan boojh kar SHAAMIL NAHI: malik ne shart to batayi (20,000, har 20) magar ye
-     * nahi bataya ke ab tak kitne invoice diye. Andaazay se adaegi darj karna us tenant ke khate me
-     * wo paisa likhna hota jo shayad aaya hi na ho.
+     * kashiffood 24 August ko chala — August sirf 8 din ka bana. Malik ne tay kiya: POORA mahina,
+     * pro-rata nahi. Aur un ki do adaegiyan August aur September ki hain (1 Sep aur 1 Oct ko di
+     * gayin), October ki nahi — wo invoice to 25 October ko banega, jo abhi aaya hi nahi. Mera pehla
+     * andaaza wohi tha aur dry run me saaf dikh gaya ke wo mustaqbil ka invoice "paid" likhne ja
+     * raha hai.
      */
     private const HISTORY = [
         'khatribiryani' => ['fee' => 25000, 'invoice_day' => 15, 'pay_day' => 20, 'periods' => ['2026-08', '2026-09']],
         'kashifkitchen' => ['fee' => 25000, 'invoice_day' => 20, 'pay_day' => 20, 'periods' => ['2026-09']],
-        'kashiffood' => ['fee' => 35000, 'invoice_day' => 25, 'pay_day' => 1, 'periods' => ['2026-09', '2026-10']],
+        'kashiffood' => ['fee' => 35000, 'invoice_day' => 25, 'pay_day' => 1, 'periods' => ['2026-08', '2026-09']],
+        'tawakalkashif' => ['fee' => 20000, 'invoice_day' => 10, 'pay_day' => 20, 'periods' => ['2026-09']],
     ];
 
     protected $signature = 'billing:backfill-paid-invoices
@@ -110,7 +113,6 @@ class BillingBackfillPaidInvoicesCommand extends Command
         $this->newLine();
         $this->info('KUL naya: PKR '.number_format($total, 2));
         $this->newLine();
-        $this->warn('tawakalkashif SHAAMIL NAHI — malik ne nahi bataya ke us ne ab tak kitne invoice diye.');
 
         if (! $write) {
             $this->newLine();
