@@ -77,20 +77,48 @@ class PrintAgentDownloadTruthMySqlTest extends MySqlTenantTestCase
     }
 
     /**
-     * SAB SE AHEM. Jis file ki version hum nahi jaante, us par thappa na lage.
+     * SAB SE AHEM. Thappa SIRF saboot se lage — source ki version se kabhi nahi.
      *
-     * Ye jaanch ULTI soorat par kaat-ti hai: agar koi kal `agentVersion()` wapas
-     * laga de, to download us file ko "2.6.0" kehne lagega jo 2.5.0 hai — aur
-     * ye ghalti screen par kahin nazar nahi aati.
+     * 4 Oct ko naam `agentVersion()` se aata tha, yani "SOURCE kya kehti hai" —
+     * aur isi ne 2.5.0 wali file par "2.6.0" likh kar client ke PC tak pahuncha
+     * diya. Us ke baad kuch arsa yahan `'unknown'` likha gaya: jhoot se behtar,
+     * magar client ko "BingooPrintAgent-Setup-unknown.exe" thamana bhi koi
+     * jawab nahi tha.
+     *
+     * Ab faisla BYTES par hota hai. Shelf par har build apne version ke naam se
+     * pari hai; jo file un me se kisi ke barabar nikle, wo wohi build hai. Is
+     * me andaza hai hi nahi — aur jis ka koi jora na mile wo "unknown" hi
+     * rehti hai, kyunke tab hum waqai nahi jaante.
+     *
+     * Ye test source ka MATN nahi, RAWAIYYA parakhta hai: barabar, ghair-barabar,
+     * aur wo purani satar jo wapas nahi aani chahiye.
      */
-    public function test_the_fallback_installer_is_never_stamped_with_the_source_version(): void
+    public function test_the_fallback_installer_is_stamped_only_from_proof(): void
     {
+        $controller = app(PrintAgentController::class);
+        $method = new \ReflectionMethod($controller, 'setupExeVersion');
+        $method->setAccessible(true);
+
+        $this->fakeBuild('9.9.9');
+        $shelfFile = $this->shelf.'/BingooPrintAgent-Setup-9.9.9.exe';
+
+        // (a) Bytes shelf wali build ke barabar -> wohi version.
+        $same = $this->dist.'/truth-test-same.exe';
+        copy($shelfFile, $same);
+        $this->made[] = $same;
+        $this->assertSame('9.9.9', $method->invoke($controller, $same),
+            'jo file shelf wali build ke BYTE-BA-BYTE barabar hai, wo wohi build hai');
+
+        // (b) Bytes kisi se na milein -> "unknown".
+        $other = $this->dist.'/truth-test-other.exe';
+        file_put_contents($other, 'kisi bhi shelf build se na milne wali file');
+        $this->made[] = $other;
+        $this->assertSame('unknown', $method->invoke($controller, $other),
+            'jis file ka koi jora shelf par nahi, us par thappa nahi lagna chahiye');
+
+        // (c) Aur wo satar kabhi wapas na aaye jis ne ye sab kiya tha.
         $src = file_get_contents(base_path('app/Http/Controllers/Tenant/PrintAgentController.php'));
         $code = preg_replace(['/\/\*.*?\*\//s', '/\/\/[^\n]*/'], '', $src);
-
-        $this->assertStringContainsString("serveAgentExe(\$setupExe, 'unknown')", $code,
-            'bina naam wali Setup.exe par koi version ka thappa nahi lagna chahiye — '
-            .'us ki version hum jaante hi nahi');
         $this->assertStringNotContainsString('serveAgentExe($setupExe, $this->agentVersion())', $code,
             'yehi wo satar thi jis ne 2.5.0 ko "2.6.0" bana kar client ke PC par bheja');
     }

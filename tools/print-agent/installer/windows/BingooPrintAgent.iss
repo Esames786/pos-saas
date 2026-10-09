@@ -20,7 +20,7 @@
 ; Ab `tools/print-agent/test/version-match-test.js` dono ko mila kar dekhta hai.
 [Setup]
 AppName=Bingoo Print Agent
-AppVersion=2.6.2
+AppVersion=2.6.4
 AppPublisher=Bingoo POS
 DefaultDirName={commonpf}\BingooPrintAgent
 DefaultGroupName=Bingoo Print Agent
@@ -35,6 +35,13 @@ WizardStyle=modern
 
 [Files]
 Source: "..\..\dist\BingooPrintAgent.exe"; DestDir: "{app}"; Flags: ignoreversion
+; SumatraPDF - PDF ko printer tak pahunchane ke liye. Windows me command line se
+; PDF chhapne ka koi tareeqa nahi: "printto" verb sirf tab hota hai jab koi PDF
+; reader use register kare, aur Edge aur Chrome dono nahi karte. 10 Oct 2026 ko
+; asli HP Laser MFP par poora silsila theek chala aur bas isi qadam par ruka.
+; Alag program hai, bina badla hua, GPLv3 - tafseel THIRD-PARTY-NOTICE.txt me.
+Source: "SumatraPDF.exe";           DestDir: "{app}"; Flags: ignoreversion
+Source: "THIRD-PARTY-NOTICE.txt";   DestDir: "{app}"; Flags: ignoreversion
 Source: "install-autostart-user.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install-service.ps1";       DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall-service.ps1"; DestDir: "{app}"; Flags: ignoreversion

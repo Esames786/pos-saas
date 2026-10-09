@@ -25,6 +25,10 @@ Thumbs.db
 
 # Print agent build intermediates (only the wizard Setup.exe is committed for the download)
 /tools/print-agent/dist/BingooPrintAgent.exe
+# SumatraPDF local test ke liye dist me rakhi jati hai; JO SHIP HOTI HAI wo
+# installer/windows/SumatraPDF.exe hai (wo git me hai).
+/tools/print-agent/dist/SumatraPDF.exe
+/tools/print-agent/dist/SumatraPDF-settings.txt
 /tools/print-agent/installer/windows/output/
 /tools/print-agent/node_modules/
 
