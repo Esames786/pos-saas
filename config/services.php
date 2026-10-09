@@ -15,9 +15,18 @@ return [
         'base_url'        => env('WHATSAPP_BASE_URL', 'https://graph.facebook.com'),
         'version'         => env('WHATSAPP_API_VERSION', 'v25.0'),
         'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+        // WABA id sirf analytics ke liye: bhejne me phone_number_id chalta hai, magar ginti ke
+        // aankRe WhatsApp Business Account par milte hain, number par nahi.
+        'waba_id'         => env('WHATSAPP_WABA_ID'),
         'token'           => env('WHATSAPP_TOKEN'),
         'template'        => env('WHATSAPP_TEMPLATE', 'daily_sales_report'),
         'language'        => env('WHATSAPP_TEMPLATE_LANG', 'en'),
+
+        // Tenant se per message kitna liya jata hai, aur hamein kitna paRta hai. DONO har usage row
+        // par likhe jate hain, wahan se parhe nahi jate — rate badle to purane invoice nahi hilne
+        // chahiyen, aur margin naapa jana chahiye, farz nahi kiya jana.
+        'rate_pkr'        => env('WHATSAPP_RATE_PKR', 9.85),
+        'cost_pkr'        => env('WHATSAPP_COST_PKR', 5.95),
     ],
 
 
