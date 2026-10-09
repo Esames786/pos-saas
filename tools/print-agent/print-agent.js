@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.6.3';
+const AGENT_VERSION = '2.6.4';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
