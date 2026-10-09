@@ -183,6 +183,61 @@ Qeemat ye hai ke mahine me **do screenshot aur do verification** — malik ne ye
 - WhatsApp usage hamesha **guzre** mahine ka (arrears) — jo kharch ho chuka
 - Plan **aane wale** mahine ka (advance) — malik ki mojooda aadat yehi hai
 
+### WhatsApp ki invoice **khuli** rehti hai aur roz barhti hai
+
+Malik ne kaha: *"jab se tenant ka WhatsApp add howa tab se us ki aik separate invoice ban gayi aur
+usme data add hota rahe"* — aur saath me *"ya jo bhi best solution ho"*. Ye wo behtar shakl hai:
+
+```
+WhatsApp ON hua        →  us period ki aik DRAFT invoice khul gayi (invoice_type = addon)
+har raat report ke baad →  us invoice me US DIN ki AIK LINE juR gayi, total barh gaya
+                           (tenant roz dekh sakta hai ke ab tak kitna bana)
+invoice_day aaya       →  wo invoice BAND (draft → issued), due date lagi,
+                           aur agle period ki NAYI draft khul gayi
+tenant ne screenshot bheja → verify → paid
+```
+
+Yani **data roz, invoice mahine me aik.** Do ghaltiyan is se bachti hain:
+
+- **Aik invoice jo kabhi band na ho, kabhi qabil-e-adaegi nahi hoti.** Na due date, na overdue, na
+  "ye dena hai" ka lamha. Aur agar adaegi ke baad bhi barhti rahe to `paid_amount` kabhi
+  `total_amount` ke barabar nahi aayega — hisaab hamesha adhoora dikhega.
+- **Har din ki alag invoice** = mahine me 30 invoice per tenant — yehi wo "bht sari invoice" hai jis se
+  malik bachna chahte hain.
+
+`status = draft` enum me **pehle se mojood** hai aur `createInvoice()` use sahara deta hai
+(`$status = ($data['status'] ?? 'issued') === 'draft' ? 'draft' : 'issued'`). Nayi haalat banane ki
+zaroorat nahi.
+
+### 🔴 Peechhe se WhatsApp ka bill banana MUMKIN NAHI hai
+
+Malik ne kaha "jab se WhatsApp add howa tab se". Ye ho nahi sakta, aur wajah data ki nahi, Meta ki hai:
+
+1. Guzre dinon ka **per-message record kahin hai hi nahi** (yehi to P4 bana raha hai).
+2. **Meta tenant ke hisaab se toR kar de hi nahi sakta** — saaray tenants aik hi phone number
+   (`923182784982`) se jate hain. Meta ko tenant ka pata hi nahi.
+
+To purana bill sirf **andaaza** ho sakta hai — aur nayi billing ki shuruaat andaazay se karna wo cheez
+hai jo baad me jhagRa banti hai.
+
+**Kitne ka maamla hai:** Meta ke meter par ab tak kul **97 messages** (dono tenants mila kar) = 97 ×
+9.85 = **PKR 955**. Poore do mahine ka. Is ke liye aik mutnaza aankRa banana faida ka sauda nahi.
+
+**Mashwara: WhatsApp ka meter us din se shuru ho jis din register zinda ho (P4).** PKR 955 chhoR dein.
+
+### Tenant ke dashboard par
+
+Abhi tenant ke dashboard par billing ka kuch nahi (sirf plan ki maloomat). Do cheezein aani chahiyen,
+aur **nazar me alag dikhni chahiyen**:
+
+| | kya | haalat |
+|---|---|---|
+| **Dena hai** | `issued` / `overdue` invoice — ginti, raqam, aur "adaegi" ka link | qabil-e-adaegi |
+| **Ban raha hai** | is period ka chalta hua WhatsApp usage | abhi dena nahi |
+
+Agar ye dono aik jaise dikhein to log ya ghalat wali ki adaegi karenge ya be-waja ghabrayenge. Jo
+cheez abhi deni nahi, us par "due" ka lafz nahi aana chahiye.
+
 ---
 
 ## 7. Kaam ki tarteeb
@@ -221,18 +276,24 @@ Kami: roz ka cron jo due tenants ke invoice khole.
 - webhook `sent / delivered / read / failed` bhar de
 - **aadhi nakami ab chup nahi rahegi** — ye wohi khala hai jo 3 baar bataya gaya
 
-### P5 — WhatsApp ki alag mahana invoice
+### P5 — WhatsApp ki khuli invoice jo roz barhti hai
 
 - `subscription_invoice_lines` (nayi table): `date`, `description`, `qty`, `unit_price`, `amount`
 - **har din ki aik line** — malik ne yehi maanga ("per day ki cost")
+- WhatsApp ON hote hi us period ki **`draft`** invoice khul jaye (`invoice_type = addon`)
+- raat ka kaam report bhejne ke baad us din ki line joRe aur total nikale
+- `invoice_day` par `draft → issued` + agle period ki nayi draft
 - sirf `status = delivered` wali rows ginein
 - `rate_charged` usage row se, settings se nahi — purane invoice kabhi na badlein
+- **peechhe ka bill nahi banega** (section 6: Meta tenant ke hisaab se toR nahi sakta; kul PKR 955)
 
 ### P6 — Screens
 
 - **Bingoo ka main account:** rate ki setting, har tenant ka chalta hua balance, screenshot dekh kar
   verify (`verifyPayment()` pehle se mojood)
-- **Tenant:** `/billing` pehle se hai; us me is mahine ka chalta hua WhatsApp usage dikhana hai
+- **Tenant `/billing`:** pehle se hai; us me is period ka chalta hua WhatsApp usage dikhana hai
+- **Tenant dashboard:** "dena hai" (issued/overdue) aur "ban raha hai" (chalta hua usage) — do alag
+  cheezein, alag shakl me. Abhi dashboard par billing ka kuch nahi hai.
 
 ---
 
