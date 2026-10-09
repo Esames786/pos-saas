@@ -233,6 +233,61 @@
             </div>
         </div>
 
+        {{-- SAAS-BILLING-WHATSAPP-1 — platform ke paise.
+
+             Gate wohi permission hai jo /billing kholne deti hai. Dashboard har user ke saamne
+             khulta hai — counter par khaRa banda bhi — aur "aap par itna baqi hai" har kisi ke parhne
+             ki cheez nahi. Yehi ghalti WhatsApp ki settings wali card par ho chuki hai.
+
+             Do khanay JAAN BOOJH KAR alag shakl me: "Dena hai" par rang aur link hai, "Ban raha hai"
+             saada hai aur us par DUE ka lafz tak nahi aata — kyunke wo abhi deni nahi. Dono ko aik
+             jaisa dikhana logon se ghalat wali ki adaegi karwata hai. --}}
+        @can('tenant.billing.index')
+        @if(($billing['due'] ?? 0) > 0 || ($billing['accruing'] ?? 0) > 0)
+            <div class="row g-3 mb-4">
+                @if(($billing['due'] ?? 0) > 0)
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm h-100 border-start border-4 border-warning">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <span class="text-muted small">
+                                            <i class="ti ti-file-invoice me-1"></i>Dena hai
+                                        </span>
+                                        <div class="fs-4 fw-semibold">PKR {{ number_format($billing['due'], 2) }}</div>
+                                        <div class="text-muted small">
+                                            {{ $billing['dueCount'] }} invoice baqi
+                                        </div>
+                                    </div>
+                                    <a href="{{ url('/billing') }}" class="btn btn-sm btn-warning">
+                                        Dekhein
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @endif
+
+                @if(($billing['accruing'] ?? 0) > 0)
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-body">
+                                <span class="text-muted small">
+                                    <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp — is mahine ab tak
+                                </span>
+                                <div class="fs-4 fw-semibold">PKR {{ number_format($billing['accruing'], 2) }}</div>
+                                <div class="text-muted small">
+                                    {{ $billing['accruingMessages'] }} report messages · abhi dena nahi,
+                                    mahina khatam hone par bill banega
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @endif
+            </div>
+        @endif
+        @endcan
+
         {{-- Bottom row: Top Products + 7-day sales.
              DASHBOARD-DETAILS-1: both cards read the whole branch, so a counter operator does not
              get them. The controller already returns empty collections without the permission —

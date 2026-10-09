@@ -48,6 +48,17 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // never double-send. Cloud-only (Edge CLI boundary default-denies the command anyway).
     Schedule::command('reports:dispatch-scheduled')->everyFifteenMinutes()->withoutOverlapping();
 
+    // SAAS-BILLING-WHATSAPP-1 — raat ki report jane ke baad us din ka usage invoice me joR do.
+    //
+    // Rozana 03:30 Karachi: khatri 00:30 par bhejta hai aur kashiffood 02:30 par, to us waqt tak
+    // dono ki rows likhi ja chuki hoti hain. Timezone yahan SAAF likha hai, app ki default par nahi
+    // chhoRa — prod par app timezone UTC hai, aur us par "03:30" ka matlab 08:30 Karachi hota, yani
+    // subah ka aadha din bill ke baghair guzar jata.
+    //
+    // Aik din ka na chalna kuch nahi bigaRta: command har us row ko uthati hai jo kisi invoice se
+    // nahi juRi, sirf us din ki nahi. To agla run pichhla kaam bhi kar deta hai.
+    Schedule::command('billing:whatsapp-invoice --yes')
+        ->timezone('Asia/Karachi')->dailyAt('03:30')->withoutOverlapping();
     // PRINT-AUTOCLOSE-STUCK-1 — jo parchi ek ghante se atki rahe, khud band ho jaye.
     //
     // Zaroorat: The Kashif Foods par teen Report Center ki parchiyan galti se DOOSRI branch
