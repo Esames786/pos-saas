@@ -216,7 +216,12 @@ class WhatsAppBackfillUsageCommand extends Command
                 continue;
             }
 
-            $tz = $tenant->timezone ?: config('app.timezone');
+            // Timezone WAHIN se jo bhejne wala khud istemal karta hai (ReportScheduleService::
+            // timezone() → active branch ka business timezone). `tenants.timezone` par bharosa nahi
+            // kiya ja sakta: prod par wo khaali hai, aur khaali par app.timezone (UTC) lag jata tha
+            // — jis se buckets 19:30/21:30 ke bajaye 00:30/02:30 nikalte aur koi bucket kisi tenant
+            // par match hi nahi karta tha. Dry run ne yehi pakRa.
+            $tz = app(\App\Services\Reports\ReportScheduleService::class)->timezone();
 
             foreach (DB::connection('tenant')->table('report_schedules')->where('is_active', true)->get() as $s) {
                 $utc = CarbonImmutable::parse('today '.$s->send_time, $tz)->setTimezone('UTC')->format('H:i');
