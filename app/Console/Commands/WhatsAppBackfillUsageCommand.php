@@ -118,16 +118,19 @@ class WhatsAppBackfillUsageCommand extends Command
                     '  %s  bheje=%-3d pohanche=%-3d %s  PKR %s',
                     $date, $d['sent'], $d['delivered'],
                     $lost > 0 ? "(nakaam {$lost})" : '            ',
-                    number_format($d['delivered'] * $rate, 2),
+                    // Raqam BHEJE gaye par. Malik ka faisla: charge bhejne par hai, pohanchne par
+                    // nahi. 'pohanche' upar dikhaya jata hai kyunke wo maloomat hai — isi se
+                    // kashiffood ka rozana fail hone wala number pakRa gaya.
+                    number_format($d['sent'] * $rate, 2),
                 ));
             }
-            $amount = $tDel * $rate;
-            $grandBillable += $tDel;
+            $amount = $tSent * $rate;
+            $grandBillable += $tSent;
             $grandAmount += $amount;
             $this->line(sprintf(
                 '  --- bheje %d, pohanche %d, nakaam %d → qabil-e-wasooli PKR %s (laagat %s)',
                 $tSent, $tDel, $tSent - $tDel,
-                number_format($amount, 2), number_format($tDel * $cost, 2),
+                number_format($amount, 2), number_format($tSent * $cost, 2),
             ));
             $this->newLine();
         }
