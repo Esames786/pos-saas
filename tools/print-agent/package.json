@@ -1,6 +1,6 @@
 {
   "name": "bingoo-print-agent",
-  "version": "2.6.2",
+  "version": "2.6.3",
   "type": "commonjs",
   "bin": {
     "pos-test-agent": "./pos-test-agent.js",

@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.6.2';
+const AGENT_VERSION = '2.6.3';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -577,6 +577,41 @@ function isElevated() {
     return null;   // pata nahi chala — aur "pata nahi" ko "haan" nahi banaya jata
 }
 /**
+ * PDF ko kisi KHAAS printer par bhejne wali utility.
+ *
+ * Tarteeb soch kar hai: SumatraPDF sab se halka aur bharosemand hai aur agent
+ * ke saath rakha ja sakta hai; PDFtoPrinter doosra aam hal hai; Acrobat aakhir
+ * me, kyunke wo dheema hai aur kabhi kabhi window khol deta hai.
+ */
+function findPdfPrinter() {
+    const options = [
+        { exe: process.env.BINGOO_PDF_PRINTER, args: (f, p) => ['-print-to', p, '-silent', f] },
+        { exe: path.join(exeDir(), 'SumatraPDF.exe'), args: (f, p) => ['-print-to', p, '-silent', '-exit-when-done', f] },
+        { exe: 'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe', args: (f, p) => ['-print-to', p, '-silent', '-exit-when-done', f] },
+        { exe: path.join(exeDir(), 'PDFtoPrinter.exe'), args: (f, p) => [f, p] },
+        { exe: 'C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe', args: (f, p) => ['/t', f, p] },
+        { exe: 'C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe', args: (f, p) => ['/t', f, p] },
+    ].filter((o) => o.exe);
+
+    return options.find((o) => { try { return fs.existsSync(o.exe); } catch { return false; } }) || null;
+}
+
+function runExe(exe, args, timeoutMs) {
+    return new Promise((resolve, reject) => {
+        execFile(exe, args, { timeout: timeoutMs, windowsHide: true }, (err, _stdout, stderr) => {
+            if (err) {
+                reject(new Error(
+                    `${path.basename(exe)}: ${err.message}${stderr ? ' — ' + String(stderr).slice(0, 200) : ''}`
+                ));
+
+                return;
+            }
+            resolve();
+        });
+    });
+}
+
+/**
  * Ek A4/A5 document chhapo. Kagaz ka size server se aata hai — operator ko
  * kabhi chunna nahi parta, aur yehi is poore kaam ki wajah thi.
  */
@@ -591,6 +626,18 @@ async function printDocumentOnWindows(job) {
     const browsers = findBrowsers();
     if (browsers.length === 0) {
         throw new Error('Chrome ya Edge is PC par nahi mila — document ka PDF usi se banta hai.');
+    }
+
+    // Printer ka wajood PEHLE — chhapne ki koshish se bhi pehle, aur PDF banane
+    // se bhi pehle. Ghalat naam par 60 second Chrome chalana aur phir nakam hona
+    // bekaar hai, aur 10 Oct tak us ka natija "chhap gaya" nikalta tha.
+    const known = windowsPrinterExists(targetName);
+    if (known && ! known.found) {
+        throw new Error(
+            'Is PC par "' + targetName + '" naam ka koi printer nahi hai. '
+            + 'Mojood printer: ' + known.list.join(', ') + '. '
+            + 'Printers screen par bilkul wohi naam likhein jo yahan hai.'
+        );
     }
 
     const tool = findPdfPrinter();
@@ -725,19 +772,71 @@ async function printDocumentOnWindows(job) {
  * dene ke baad apne aap band ho jate hain. Teen second us ka sasta ilaj hai.
  */
 function printViaWindowsVerb(pdfFile, printerName) {
+    // `exit 1` JAAN BUJH KAR, aur yehi is function ki sab se ahem satar hai.
+    //
+    // 10 Oct: end-to-end test ne pakra ke agent ek aise printer par "chhap gaya"
+    // keh raha tha jo mojood hi nahi tha. Wajah yahan thi: `Start-Process -Verb
+    // PrintTo` THROW karta hai ("No application is associated with the specified
+    // file for this operation") magar `powershell.exe -Command` us ke bawajood
+    // EXIT 0 deta hai. `runExe` exit code dekhta hai, is liye nakami kamyabi ban
+    // kar lauti — job DB me "printed" lag jati aur kisi ko kabhi pata na chalta
+    // ke kaghaz nikla hi nahi.
+    //
+    // Chup-chaap jhooti kamyabi us nakami se BADTAR hai jo saaf nazar aaye.
+    const q = (v) => String(v).replace(/'/g, "''");
     const ps = [
         '-NoProfile', '-NonInteractive', '-Command',
-        `$p = Start-Process -FilePath '${pdfFile.replace(/'/g, "''")}' -Verb PrintTo `
-        + `-ArgumentList '"${printerName.replace(/'/g, "''")}"' -PassThru -ErrorAction Stop; `
-        + '$p | Wait-Process -Timeout 90 -ErrorAction SilentlyContinue; Start-Sleep -Seconds 3',
+        "$ErrorActionPreference = 'Stop'; "
+        + 'try { '
+        + `$p = Start-Process -FilePath '${q(pdfFile)}' -Verb PrintTo `
+        + `-ArgumentList '"${q(printerName)}"' -PassThru -ErrorAction Stop; `
+        + '$p | Wait-Process -Timeout 90 -ErrorAction SilentlyContinue; '
+        + 'Start-Sleep -Seconds 3; '
+        + '} catch { Write-Error $_.Exception.Message; exit 1 }',
     ];
 
     return runExe('powershell.exe', ps, 120000).catch((err) => {
         throw new Error(
-            'PDF ko printer par bhejne ka koi raasta nahi mila. Is PC par SumatraPDF install karein '
-            + '(ya SumatraPDF.exe agent ke folder me rakh dein). Asli wajah: ' + err.message
+            'PDF ban gayi magar printer tak nahi pahunchi. Is PC par PDF chhapne wala koi program '
+            + 'nahi hai: SumatraPDF install karein, ya SumatraPDF.exe agent ke folder me rakh dein. '
+            + 'Asli wajah: ' + err.message
         );
     });
+}
+
+/**
+ * Printer WAQAI mojood hai? Chhapne se PEHLE, har baar.
+ *
+ * 10 Oct, end-to-end test: agent ne ek aise printer par "chhap gaya" kaha jo
+ * kisi machine par hai hi nahi. Us waqt tak chhapne se pehle koi jaanch thi hi
+ * nahi — naam seedha Windows ko thama diya jata tha.
+ *
+ * Ye jaanch sab se sasti aur sab se zyada kaam ki hai: printer ka naam galat
+ * likha hona sab se aam ghalti hai (`HP LaserJet P2055dn` ki jagah `HP LaserJet
+ * P2055`), aur us ki nishani aur koi nahi hoti. Ab error me mojood printers ki
+ * fehrist bhi jati hai, taake malik ko dhoondna na pare.
+ *
+ * Jaanch KHUD na chal sake to raasta rokti NAHI — `null` lauta kar aage jane
+ * deti hai. Ek na-chalne wali jaanch ki wajah se parchi rokna us masle se bara
+ * masla hai jo wo batati.
+ */
+function windowsPrinterExists(name) {
+    try {
+        const out = require('child_process').execFileSync('powershell.exe', [
+            '-NoProfile', '-NonInteractive', '-Command',
+            '(Get-Printer -ErrorAction Stop | Select-Object -ExpandProperty Name) -join "`n"',
+        ], { timeout: 20000, windowsHide: true }).toString();
+
+        const list = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        if (list.length === 0) { return null; }
+
+        return {
+            found: list.some((p) => p.toLowerCase() === String(name).toLowerCase()),
+            list,
+        };
+    } catch {
+        return null;
+    }
 }
 
 async function markPrinted(jobId) {
