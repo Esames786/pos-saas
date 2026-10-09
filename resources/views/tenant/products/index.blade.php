@@ -139,6 +139,42 @@
                     <option value="inactive" @selected(request('status') === 'inactive')>Inactive</option>
                 </select>
             </div>
+            {{-- PRODUCT-ROLE-FILTER-1: Role / Visibility, named exactly as the badges in the list.
+                 Roles: any ticked. The rest: all ticked. Nothing ticked = everything. --}}
+            @php
+                // Any caller that renders this list without the filter (CateringViewRender does) gets an empty one.
+                $chosenRoles = $chosenRoles ?? [];
+                $chosenFlags = $chosenFlags ?? [];
+                $roleOptions = $roleOptions ?? [];
+                $flagOptions = $flagOptions ?? [];
+                $chosenCount = count($chosenRoles) + count($chosenFlags);
+            @endphp
+            <div class="col-md-4">
+                <label class="form-label">
+                    Role / Visibility
+                    <span class="text-muted small">@if($chosenCount) ({{ $chosenCount }} chosen) @else (all) @endif</span>
+                </label>
+                <div class="border rounded p-2 d-flex flex-wrap gap-3" id="role-visibility-filter" style="max-height:150px; overflow-y:auto;">
+                    <div>
+                        <div class="small fw-semibold text-muted">Role <span class="fw-normal">(any)</span></div>
+                        @foreach($roleOptions as $kind => $label)
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="roles[]" value="{{ $kind }}" id="role-{{ $kind }}" @checked(in_array($kind, $chosenRoles, true))>
+                                <label class="form-check-label small" for="role-{{ $kind }}">{{ $label }}</label>
+                            </div>
+                        @endforeach
+                    </div>
+                    <div>
+                        <div class="small fw-semibold text-muted">Is <span class="fw-normal">(all ticked)</span></div>
+                        @foreach($flagOptions as $flag => $label)
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="flags[]" value="{{ $flag }}" id="flag-{{ $flag }}" @checked(in_array($flag, $chosenFlags, true))>
+                                <label class="form-check-label small" for="flag-{{ $flag }}">{{ $label }}</label>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
             @if($isManufacturing)
                 <div class="col-md-2">
                     <div class="form-check mt-4">

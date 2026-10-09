@@ -262,13 +262,63 @@ class DashboardController extends Controller
         // render hone wala calendar fragment bhi bilkul yehi jawab paye.
         $maySeeAmounts = $this->maySeeAmounts($selectedBranch);
 
+        // SAAS-BILLING-WHATSAPP-1 — paise ki do alag cheezein, jaan boojh kar alag.
+        //
+        // "Dena hai" = jo invoice jari ho chuka aur baqi hai. "Ban raha hai" = is mahine ka chalta
+        // hua WhatsApp kharcha, jo abhi DRAFT hai aur dena nahi. Dono ko aik jaisa dikhana logon ko
+        // ya ghalat wali ki adaegi karwata hai ya be-waja ghabrata hai.
+        $billing = $this->billingSummary();
+
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
             'cashToday', 'cardToday', 'openShifts', 'failedPrints',
             'lowStockCount', 'expiryCount', 'topProducts', 'salesWindowRows', 'salesWindowKeys', 'windowDays',
             'todayBusinessDate', 'openBills',
             'cateringCalendar', 'cateringKpis', 'cateringNextSeven',
-            'maySeeAmounts'
+            'maySeeAmounts', 'billing'
         ));
+    }
+
+    /**
+     * Platform ke paise: kya dena hai, aur kya ban raha hai.
+     *
+     * Master connection par, kyunke ye Bingoo ka tenant se hisaab hai, tenant ka apna karobar nahi.
+     * Nakami nigal li jati hai: ye dashboard har roz har user ke saamne khulta hai, aur billing ke
+     * aik sawal par poora safha gira dena us se kahin bura hai ke ye khana na dikhe.
+     *
+     * @return array<string, mixed>
+     */
+    private function billingSummary(): array
+    {
+        $empty = ['due' => 0.0, 'dueCount' => 0, 'accruing' => 0.0, 'accruingMessages' => 0];
+
+        try {
+            if (! app()->bound('tenant')) {
+                return $empty;
+            }
+            $tenantId = app('tenant')->id;
+
+            $due = \App\Models\Master\SubscriptionInvoice::where('tenant_id', $tenantId)
+                ->whereIn('status', ['issued', 'partially_paid', 'overdue'])
+                ->where('balance_amount', '>', 0);
+
+            $draft = \App\Models\Master\SubscriptionInvoice::where('tenant_id', $tenantId)
+                ->where('invoice_type', 'addon')
+                ->where('status', 'draft')
+                ->first();
+
+            return [
+                'due' => (float) (clone $due)->sum('balance_amount'),
+                'dueCount' => (int) (clone $due)->count(),
+                'accruing' => (float) ($draft?->total_amount ?? 0),
+                'accruingMessages' => $draft
+                    ? \App\Models\Master\WhatsAppMessage::where('invoice_id', $draft->id)->count()
+                    : 0,
+            ];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $empty;
+        }
     }
 }

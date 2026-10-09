@@ -131,6 +131,15 @@
                                     </a>
                                 </li>
                             @endcan
+                            @can('central.whatsapp-usage.index')
+                                @php $a = $isIn('whatsapp-usage*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/whatsapp-usage') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-brand-whatsapp fs-16 me-2"></i>
+                                        <span>WhatsApp Usage</span>
+                                    </a>
+                                </li>
+                            @endcan
                             @can('central.subscription-requests.index')
                                 @php $a = $isIn('subscription-requests*'); @endphp
                                 <li class="{{ $a ? 'active' : '' }}">

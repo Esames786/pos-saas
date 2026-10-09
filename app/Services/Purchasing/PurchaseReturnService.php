@@ -156,8 +156,11 @@ class PurchaseReturnService
             }
         }
 
-        // Every line (sourced or standalone): official branch stock must cover it.
-        $byProductVariant = $return->lines->groupBy(fn ($l) => $l->product_id . '-' . ($l->product_variant_id ?: 0));
+        // Every line (sourced or standalone): official branch stock must cover it — except a
+        // purchase-only line (GRN-NON-STOCK-1), which never entered stock and takes none out.
+        $byProductVariant = $return->lines
+            ->filter(fn ($l) => \App\Services\Finance\JournalPostingService::returnLineAffectsStock($l))
+            ->groupBy(fn ($l) => $l->product_id . '-' . ($l->product_variant_id ?: 0));
         foreach ($byProductVariant as $lines) {
             $first = $lines->first();
             $onHand = (float) StockBalance::query()
@@ -201,6 +204,11 @@ class PurchaseReturnService
 
             foreach ($doc->lines as $line) {
                 $product = Product::findOrFail($line->product_id);
+                // GRN-NON-STOCK-1: what never entered stock does not leave it. The GL takes the same
+                // line back out of cost instead (JournalPostingService::postPurchaseReturn).
+                if (! \App\Services\Finance\JournalPostingService::returnLineAffectsStock($line, $product)) {
+                    continue;
+                }
                 $variant = $this->inventoryService->resolveVariant($product, $line->product_variant_id);
 
                 // FEFO out — oldest-expiry batches leave first. The stored line
@@ -233,6 +241,17 @@ class PurchaseReturnService
                 $doc->notes,
                 $userId
             );
+
+            // SUPPLIER-RUNNING-ACCOUNT-1: a return is credit too — it settles its own bill (through its
+            // GRN) first, then the oldest open bills; otherwise the bills would keep saying more is owed
+            // than the ledger.
+            $runningAccount = app(SupplierRunningAccountService::class);
+            if ($runningAccount->enabled()) {
+                $runningAccount->settleCredit(
+                    (int) $doc->supplier_id, \App\Models\Tenant\SupplierCreditAllocation::SOURCE_RETURN,
+                    (int) $doc->id, (float) $doc->grand_total, $doc->goodsReceipt?->bill?->id,
+                );
+            }
 
             $doc->update([
                 'status'    => 'posted',

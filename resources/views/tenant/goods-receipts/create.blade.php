@@ -119,7 +119,7 @@
                 'showDiscountTax' => false,
                 'showNotes'       => true,
                 'prefillLines'    => $prefillLines ?? [],
-                'stockEffect'     => 'Stock effect: posting this GRN will INCREASE the selected branch stock by the received quantity.',
+                'stockEffect'     => 'Stock effect: posting this GRN will INCREASE the selected branch stock by the received quantity. Items that do not track stock are recorded as a purchase only — no stock, their cost goes to expense at the bill.',
                 'extraChargesInput'     => 'extra_charges',
                 'extraChargesNoteInput' => 'extra_charges_note',
             ])

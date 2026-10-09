@@ -137,18 +137,58 @@ class CancelFreesTableMySqlTest extends MySqlTenantTestCase
         $this->assertSame('available', $this->tableStatus($tableId), 'now nothing is left, so the table is free.');
     }
 
-    /** A PAID bill on the session counts as live — the table belongs to it until it is closed. */
-    public function test_a_paid_bill_on_the_session_keeps_the_table(): void
+    /**
+     * CANCEL-PAID-FREES-TABLE-1 — a PAID bill no longer pins the table.
+     *
+     * Kashif Food, 8 Oct, tables 19 and 20: a bill was paid on one counter while another counter's
+     * order on the same table was still held, so payment rightly left the table open. That order was
+     * then voided — and the table stayed "Occupied" for good, because this rule counted the paid bill
+     * as live. Nothing is left to collect, so the table is free; the session closes as `closed`
+     * (it took money), not `cancelled`.
+     */
+    public function test_voiding_the_last_running_bill_frees_a_table_whose_other_bill_is_paid(): void
+    {
+        [$tableId, $sessionId] = $this->occupiedTable();
+        $paid = $this->heldSale($sessionId, $tableId, 3420);
+        DB::connection('tenant')->table('sales_orders')->where('id', $paid->id)->update(['status' => 'paid']);
+        $held = $this->heldSale($sessionId, $tableId, 400);
+
+        $this->cancel($held);
+
+        $session = RestaurantTableSession::on('tenant')->find($sessionId);
+        $this->assertSame('available', $this->tableStatus($tableId), 'nothing left to collect — the table is free.');
+        $this->assertSame('closed', (string) $session->status, 'it took money, so it closes as paid, not cancelled.');
+        $this->assertNotNull($session->closed_at);
+        $this->assertSame('paid', (string) SalesOrder::on('tenant')->find($paid->id)->status, 'the paid bill is untouched.');
+    }
+
+    /** …but a table with a RUNNING bill is never touched, paid bills or not. */
+    public function test_a_running_bill_still_keeps_the_table_even_beside_a_paid_one(): void
     {
         [$tableId, $sessionId] = $this->occupiedTable();
         $paid = $this->heldSale($sessionId, $tableId, 900);
         DB::connection('tenant')->table('sales_orders')->where('id', $paid->id)->update(['status' => 'paid']);
+        $this->heldSale($sessionId, $tableId, 1200);            // still being served
+        $voided = $this->heldSale($sessionId, $tableId, 550);
+
+        $this->cancel($voided);
+
+        $this->assertSame('occupied', $this->tableStatus($tableId), 'a held bill is still running on it.');
+        $this->assertSame('open', (string) RestaurantTableSession::on('tenant')->find($sessionId)->status);
+    }
+
+    /** A saved DRAFT is a running check too. */
+    public function test_a_draft_still_keeps_the_table(): void
+    {
+        [$tableId, $sessionId] = $this->occupiedTable();
+        $draft = $this->heldSale($sessionId, $tableId, 700);
+        DB::connection('tenant')->table('sales_orders')->where('id', $draft->id)->update(['status' => 'draft']);
         $held = $this->heldSale($sessionId, $tableId, 550);
 
         $this->cancel($held);
 
-        $this->assertSame('occupied', $this->tableStatus($tableId),
-            'a paid bill still belongs to this table — closing it is the waiter\'s job, not a cancel\'s.');
+        $this->assertSame('occupied', $this->tableStatus($tableId));
+        $this->assertSame('open', (string) RestaurantTableSession::on('tenant')->find($sessionId)->status);
     }
 
     /** No session at all (takeaway / delivery / quick sale) — nothing to release, and no error. */

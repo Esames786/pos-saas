@@ -15,6 +15,12 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // WEBSITE-I18N-GEO-1: public pages build every link in the page's own language — /pricing in
+        // English, /ar/pricing in Arabic. $lurl('/pricing') in any public view.
+        \Illuminate\Support\Facades\View::composer(['layouts.public', 'public.*'], function ($view) {
+            $view->with('lurl', fn (string $path = '/') => \App\Support\PublicLocale::url($path));
+        });
+
         // EDGE-RUNTIME-BOUNDARY-1: fail closed on a misconfigured Branch Server. A branch appliance
         // that cannot describe its own runtime must NOT silently boot as the full Cloud SaaS. Only
         // enforced for the HTTP/CLI runtime (not during migrations/config caching, where config may

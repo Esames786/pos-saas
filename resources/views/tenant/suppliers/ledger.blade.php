@@ -8,7 +8,7 @@
         <h1 class="mb-1">Supplier Ledger</h1>
         <p class="fw-medium">
             {{ $supplier->name }} &mdash; Current Balance:
-            <strong>{{ number_format($supplier->current_balance, 2) }}</strong>
+            <strong>{{ \App\Services\Purchasing\SupplierRunningAccountService::balanceLabel((float) $supplier->current_balance) }}</strong>
         </p>
     </div>
     <div class="action-toolbar">
@@ -44,7 +44,7 @@
                     <td>{{ \Illuminate\Support\Str::limit($ledger->notes ?: '—', 60) }}</td>
                     <td>{{ $ledger->direction === 'debit'  ? number_format($ledger->amount, 2) : '—' }}</td>
                     <td>{{ $ledger->direction === 'credit' ? number_format($ledger->amount, 2) : '—' }}</td>
-                    <td>{{ number_format($ledger->balance_after, 2) }}</td>
+                    <td>{{ \App\Services\Purchasing\SupplierRunningAccountService::balanceLabel((float) $ledger->balance_after) }}</td>
                     <td>{{ $ledger->createdBy?->name ?? '—' }}</td>
                 </tr>
             @empty

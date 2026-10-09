@@ -121,6 +121,8 @@ The stock it brought in will be taken back out. The receipt stays on record as v
                     <td>
                         <code>{{ $line->product?->sku }}</code>
                         <small class="d-block">{{ $line->product?->name }}</small>
+                        {{-- GRN-NON-STOCK-1: bought, not stocked — its cost goes to 5100 at the bill. --}}
+                        @if($line->affects_stock === false)<span class="badge bg-light text-dark border">Purchase only — no stock</span>@endif
                     </td>
                     <td>{{ $line->variant?->name ?? '—' }}</td>
                     <td>{{ $line->batch_no ?: '—' }}</td>

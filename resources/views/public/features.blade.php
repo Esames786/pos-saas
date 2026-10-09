@@ -1,17 +1,21 @@
 @extends('layouts.public')
 
-@section('title', 'Features')
-@section('meta_description', 'Explore Bingoo POS features: retail checkout, restaurant service, kitchen operations, inventory, purchasing, reports, SaaS billing, and FBR-ready workflows.')
+@section('title', __('Features'))
+@section('meta_description', __('Explore Bingoo POS features: retail checkout, restaurant service, kitchen operations, inventory, purchasing, reports, SaaS billing, and FBR-ready workflows.'))
 
 @section('content')
+@php
+    // WEBSITE-I18N-GEO-1: FBR is Pakistan's; until markets arrive (P2) it shows on default-language pages only.
+    $pakistanSite = app()->getLocale() === \App\Support\PublicLocale::default();
+@endphp
 
 {{-- HERO --}}
 <section class="public-hero-premium" style="padding:4rem 0 2.5rem;position:relative;overflow:hidden;">
-    <div class="mega-glow" style="top:-90px;right:-30px;background:#caa23f;"></div>
+    <div class="mega-glow" style="top:-90px;inset-inline-end:-30px;background:#caa23f;"></div>
     <div class="container text-center" style="position:relative;z-index:2;">
-        <span class="hero-badge mb-3"><i class="ti ti-stars"></i> Everything in one platform</span>
-        <h1 class="fw-bold mb-2" style="font-size:2.3rem;">Built for the whole operation</h1>
-        <p class="lead mb-0 mx-auto" style="color:#cbd5e1;max-width:760px;">From the front counter to the kitchen to the back office — one connected cloud POS.</p>
+        <span class="hero-badge mb-3"><i class="ti ti-stars"></i> {{ __('Everything in one platform') }}</span>
+        <h1 class="fw-bold mb-2" style="font-size:2.3rem;">{{ __('Built for the whole operation') }}</h1>
+        <p class="lead mb-0 mx-auto" style="color:#cbd5e1;max-width:760px;">{{ __('From the front counter to the kitchen to the back office — one connected cloud POS.') }}</p>
     </div>
 </section>
 
@@ -19,10 +23,11 @@
 <div class="trust-strip py-3" style="position:sticky;top:64px;z-index:1020;">
     <div class="container">
         <div class="d-flex flex-wrap justify-content-center gap-2">
-            @foreach([
-                ['#retail','Retail Checkout'],['#restaurant','Restaurant Service'],['#kitchen','Kitchen Operations'],
-                ['#inventory','Inventory & Purchasing'],['#reports','Reports & Controls'],['#finance','Finance & Accounting'],['#saas','SaaS Billing & Team Access'],['#fbr','FBR-ready Workflows'],
-            ] as [$anchor,$label])
+            @foreach(array_filter([
+                ['#retail', __('Retail Checkout')], ['#restaurant', __('Restaurant Service')], ['#kitchen', __('Kitchen Operations')],
+                ['#inventory', __('Inventory & Purchasing')], ['#reports', __('Reports & Controls')], ['#finance', __('Finance & Accounting')],
+                ['#saas', __('SaaS Billing & Team Access')], $pakistanSite ? ['#fbr', __('FBR-ready Workflows')] : null,
+            ]) as [$anchor,$label])
                 <a href="{{ $anchor }}" class="marquee-chip text-decoration-none">{{ $label }}</a>
             @endforeach
         </div>
@@ -32,27 +37,27 @@
 @php
     // [id, category, title, image, imageRight, [capabilities], businessValue]
     $spotlights = [
-        ['retail','Retail Checkout','Fast, accurate checkout at every counter','images/data/retailers.webp',false,
-            ['Barcode scanning & product search','Held sales & multi-payment checkout','Sales returns & customer ledger','Promotions & price controls'],
-            'Move queues faster and keep stock accurate in real time.'],
-        ['restaurant','Restaurant Service','Run dine-in, takeaway, and delivery','images/data/restaurant.png',true,
-            ['Floors, tables & waiters','Split bills & service charges','Dine-in / takeaway / delivery order types','Live table board'],
-            'One flow from seating the guest to closing the day.'],
-        ['kitchen','Kitchen Operations','Send orders to the kitchen without paper','images/data/kitchen_display.png',false,
-            ['Kitchen Display System (KDS)','KOT routing by category & station','Prep / ready / served states','Recipes, productions & wastage'],
-            'Faster turnaround and fewer missed or wrong orders.'],
-        ['inventory','Inventory & Purchasing','Know your stock before it runs out','images/data/inventory.jpg',true,
-            ['Stock balances & valuation','Purchase orders, GRNs & bills','Suppliers & supplier payments','Stock counts, transfers & low-stock alerts'],
-            'Control what you buy, hold, and sell across branches.'],
-        ['reports','Reports & Controls','See the whole business in real time','images/data/dashbaord.png',false,
-            ['Sales, shifts & daily closings','Inventory & purchase reporting','Restaurant & kitchen reports','Manager approvals & audit logs'],
-            'Make decisions from live, branch-level numbers.'],
-        ['finance','Finance & Accounting','Audit-ready books, built in','images/data/dashbaord.png',true,
-            ['Chart of accounts, cash &amp; bank accounts','Expenses, supplier &amp; customer payments','Double-entry general ledger that auto-posts from sales, purchases &amp; expenses','Trial Balance, P&amp;L, Branch-wise P&amp;L, Balance Sheet + CSV export'],
-            'Run your accounting inside your POS — included on Restaurant Pro & Enterprise.'],
-        ['saas','SaaS Billing & Team Access','Plans, billing, and role-based access','images/data/pos2.png',false,
-            ['Plans, modules & usage limits','Invoices & payment proofs','Plan upgrade requests','Owner / Manager / Cashier roles'],
-            'Scale your subscription and team safely as you grow.'],
+        ['retail', __('Retail Checkout'), __('Fast, accurate checkout at every counter'), 'images/data/retailers.webp', false,
+            [__('Barcode scanning & product search'), __('Held sales & multi-payment checkout'), __('Sales returns & customer ledger'), __('Promotions & price controls')],
+            __('Move queues faster and keep stock accurate in real time.')],
+        ['restaurant', __('Restaurant Service'), __('Run dine-in, takeaway, and delivery'), 'images/data/restaurant.png', true,
+            [__('Floors, tables & waiters'), __('Split bills & service charges'), __('Dine-in / takeaway / delivery order types'), __('Live table board')],
+            __('One flow from seating the guest to closing the day.')],
+        ['kitchen', __('Kitchen Operations'), __('Send orders to the kitchen without paper'), 'images/data/kitchen_display.png', false,
+            [__('Kitchen Display System (KDS)'), __('KOT routing by category & station'), __('Prep / ready / served states'), __('Recipes, productions & wastage')],
+            __('Faster turnaround and fewer missed or wrong orders.')],
+        ['inventory', __('Inventory & Purchasing'), __('Know your stock before it runs out'), 'images/data/inventory.jpg', true,
+            [__('Stock balances & valuation'), __('Purchase orders, GRNs & bills'), __('Suppliers & supplier payments'), __('Stock counts, transfers & low-stock alerts')],
+            __('Control what you buy, hold, and sell across branches.')],
+        ['reports', __('Reports & Controls'), __('See the whole business in real time'), 'images/data/dashbaord.png', false,
+            [__('Sales, shifts & daily closings'), __('Inventory & purchase reporting'), __('Restaurant & kitchen reports'), __('Manager approvals & audit logs')],
+            __('Make decisions from live, branch-level numbers.')],
+        ['finance', __('Finance & Accounting'), __('Audit-ready books, built in'), 'images/data/dashbaord.png', true,
+            [__('Chart of accounts, cash & bank accounts'), __('Expenses, supplier & customer payments'), __('Double-entry general ledger that auto-posts from sales, purchases & expenses'), __('Trial Balance, P&L, Branch-wise P&L, Balance Sheet + CSV export')],
+            __('Run your accounting inside your POS — included on Restaurant Pro & Enterprise.')],
+        ['saas', __('SaaS Billing & Team Access'), __('Plans, billing, and role-based access'), 'images/data/pos2.png', false,
+            [__('Plans, modules & usage limits'), __('Invoices & payment proofs'), __('Plan upgrade requests'), __('Owner / Manager / Cashier roles')],
+            __('Scale your subscription and team safely as you grow.')],
     ];
 @endphp
 
@@ -74,7 +79,7 @@
                         @endforeach
                     </ul>
                     <p class="fw-semibold text-dark mb-4">{{ $s[6] }}</p>
-                    <a href="{{ url('/start-trial') }}" class="btn btn-primary">Start Free Trial</a>
+                    <a href="{{ $lurl('/start-trial') }}" class="btn btn-primary">{{ __('Start Free Trial') }}</a>
                 </div>
             </div>
         </div>
@@ -85,32 +90,28 @@
 <section id="finance-erp" class="section-pad" style="background:#f8faff;">
     <div class="container">
         <div class="text-center mb-5 reveal">
-            <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold px-3 py-2 mb-3 d-inline-block">ERP / Finance</span>
-            <h2 class="fw-bold">Finance &amp; Supply Chain ERP</h2>
-            <p class="text-muted mx-auto" style="max-width:760px;">Accounting-led operations today, with an ERP/manufacturing roadmap you can grow into.</p>
+            <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold px-3 py-2 mb-3 d-inline-block">{{ __('ERP / Finance') }}</span>
+            <h2 class="fw-bold">{{ __('Finance & Supply Chain ERP') }}</h2>
+            <p class="text-muted mx-auto" style="max-width:760px;">{{ __('Accounting-led operations today, with an ERP/manufacturing roadmap you can grow into.') }}</p>
         </div>
         <div class="row g-4 reveal">
             <div class="col-lg-6">
                 <div class="gradient-card p-4 h-100">
-                    <h5 class="fw-bold mb-3"><i class="ti ti-calculator me-2 text-primary"></i>Accounts Department <span class="badge bg-success ms-1">Available Now</span></h5>
+                    <h5 class="fw-bold mb-3"><i class="ti ti-calculator me-2 text-primary"></i>{{ __('Accounts Department') }} <span class="badge bg-success ms-1">{{ __('Available Now') }}</span></h5>
                     <ul class="list-unstyled mb-0 text-muted">
-                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Journal Entries &amp; General Ledger</li>
-                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Trial Balance</li>
-                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Profit &amp; Loss</li>
-                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Balance Sheet</li>
-                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>AR / AP Aging</li>
+                        @foreach([__('Journal Entries & General Ledger'), __('Trial Balance'), __('Profit & Loss'), __('Balance Sheet'), __('AR / AP Aging')] as $item)
+                            <li class="mb-2"><i class="ti ti-check text-success me-2"></i>{{ $item }}</li>
+                        @endforeach
                     </ul>
                 </div>
             </div>
             <div class="col-lg-6">
                 <div class="gradient-card p-4 h-100">
-                    <h5 class="fw-bold mb-3"><i class="ti ti-truck-delivery me-2 text-primary"></i>Supply Chain Foundation <span class="badge bg-success ms-1">Available Now</span></h5>
+                    <h5 class="fw-bold mb-3"><i class="ti ti-truck-delivery me-2 text-primary"></i>{{ __('Supply Chain Foundation') }} <span class="badge bg-success ms-1">{{ __('Available Now') }}</span></h5>
                     <ul class="list-unstyled mb-0 text-muted">
-                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Purchase Orders</li>
-                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>GRN (Goods Receipt)</li>
-                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Inventory stock movement</li>
-                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Suppliers and customers</li>
-                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Sales returns</li>
+                        @foreach([__('Purchase Orders'), __('GRN (Goods Receipt)'), __('Inventory stock movement'), __('Suppliers and customers'), __('Sales returns')] as $item)
+                            <li class="mb-2"><i class="ti ti-check text-success me-2"></i>{{ $item }}</li>
+                        @endforeach
                     </ul>
                 </div>
             </div>
@@ -118,50 +119,51 @@
 
         <div class="mt-4 p-4 rounded-4 reveal" style="background:#0f172a;color:#e2e8f0;">
             <div class="d-flex align-items-center gap-2 mb-3">
-                <span class="badge bg-warning text-dark">Coming Soon</span>
-                <strong>Planned ERP Extensions</strong>
+                <span class="badge bg-warning text-dark">{{ __('Coming Soon') }}</span>
+                <strong>{{ __('Planned ERP Extensions') }}</strong>
             </div>
             <div class="d-flex flex-wrap gap-2">
-                @foreach(['Quotation','Purchase Requisition','Purchase Returns','BOM','MRC','WIP','Finished Goods','Scrap / Rejections','Production Reporting'] as $soon)
+                @foreach([__('Quotation'), __('Purchase Requisition'), __('Purchase Returns'), __('BOM'), __('MRC'), __('WIP'), __('Finished Goods'), __('Scrap / Rejections'), __('Production Reporting')] as $soon)
                     <span class="marquee-chip"><i class="ti ti-clock-hour-4"></i>{{ $soon }}</span>
                 @endforeach
             </div>
-            <p class="small mb-0 mt-3" style="color:#94a3b8;">Manufacturing/production modules are a planned ERP extension, customizable per business — not yet live.</p>
+            <p class="small mb-0 mt-3" style="color:#94a3b8;">{{ __('Manufacturing/production modules are a planned ERP extension, customizable per business — not yet live.') }}</p>
         </div>
 
         <div class="text-center mt-4 reveal">
-            <a href="{{ url('/demos') }}#finance" class="btn btn-primary"><i class="ti ti-player-play me-1"></i>Open Finance ERP Demo</a>
+            <a href="{{ $lurl('/demos') }}#finance" class="btn btn-primary"><i class="ti ti-player-play me-1"></i>{{ __('Open Finance ERP Demo') }}</a>
         </div>
     </div>
 </section>
 
-{{-- FBR-READY WORKFLOWS --}}
+{{-- FBR-READY WORKFLOWS (Pakistan site only) --}}
+@if($pakistanSite)
 <section id="fbr" class="section-pad bg-white">
     <div class="container">
         <div class="fbr-section p-5 reveal">
             <div class="row align-items-center g-4">
                 <div class="col-lg-7">
                     <span class="badge mb-3 d-inline-block" style="background:rgba(245,200,90,.15);color:#e9c869;border:1px solid rgba(245,200,90,.3);padding:.4rem 1rem;border-radius:8px;">
-                        <i class="ti ti-flag me-1"></i>Pakistan Compliance
+                        <i class="ti ti-flag me-1"></i>{{ __('Pakistan Compliance') }}
                     </span>
-                    <h2 class="fw-bold text-white mb-3">FBR-ready Workflows</h2>
-                    <p style="color:#94a3b8;" class="mb-4">For eligible Pakistan businesses, Bingoo POS is being designed with FBR-ready invoice workflows and tax configuration.</p>
-                    <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>Branch tax registration number fields</span></div>
-                    <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>Taxable products and per-line tax amounts</span></div>
-                    <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>Receipt tax number & footer configuration</span></div>
-                    <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>Future invoice sync and QR workflow planning</span></div>
-                    <a href="{{ url('/contact?topic=fbr') }}" class="btn btn-success btn-lg px-4 mt-2">Ask about FBR setup &rarr;</a>
-                    <p class="mt-3 mb-0" style="color:#fbbf24;font-size:.8rem;">Not an official FBR certification claim. Final compliance depends on business setup and official FBR requirements.</p>
+                    <h2 class="fw-bold text-white mb-3">{{ __('FBR-ready Workflows') }}</h2>
+                    <p style="color:#94a3b8;" class="mb-4">{{ __('For eligible Pakistan businesses, Bingoo POS is being designed with FBR-ready invoice workflows and tax configuration.') }}</p>
+                    <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>{{ __('Branch tax registration number fields') }}</span></div>
+                    <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>{{ __('Taxable products and per-line tax amounts') }}</span></div>
+                    <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>{{ __('Receipt tax number and footer configuration') }}</span></div>
+                    <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>{{ __('Future invoice sync and QR workflow planning') }}</span></div>
+                    <a href="{{ $lurl('/contact?topic=fbr') }}" class="btn btn-success btn-lg px-4 mt-2">{{ __('Ask about FBR setup') }} <span class="dir-arrow">&rarr;</span></a>
+                    <p class="mt-3 mb-0" style="color:#fbbf24;font-size:.8rem;">{{ __('Not an official FBR certification claim. Final compliance depends on business setup and official FBR requirements.') }}</p>
                 </div>
                 <div class="col-lg-5">
                     <div class="receipt-mock mx-auto" style="max-width:260px;">
                         <div class="text-center fw-bold">BINGOO POS</div>
-                        <div class="text-center" style="font-size:.7rem;color:#64748b;">Tax Invoice</div>
+                        <div class="text-center" style="font-size:.7rem;color:#64748b;">{{ __('Tax Invoice') }}</div>
                         <hr>
                         <div class="r-row"><span>NTN</span><span>XXXXXXX-X</span></div>
-                        <div class="r-row"><span>Sales tax</span><span>340</span></div>
-                        <div class="r-row fw-bold"><span>Total</span><span>2,340</span></div>
-                        <div class="r-row" style="color:#a87f24;"><span>FBR sync</span><span>Planned</span></div>
+                        <div class="r-row"><span>{{ __('Sales tax') }}</span><span>340</span></div>
+                        <div class="r-row fw-bold"><span>{{ __('Total') }}</span><span>2,340</span></div>
+                        <div class="r-row" style="color:#a87f24;"><span>{{ __('FBR sync') }}</span><span>{{ __('Planned') }}</span></div>
                         <div class="d-flex justify-content-center mt-2"><div class="qr-mock"></div></div>
                     </div>
                 </div>
@@ -169,19 +171,20 @@
         </div>
     </div>
 </section>
+@endif
 
 {{-- FEATURE MATRIX SUMMARY --}}
 <section class="section-pad" style="background:#f8faff;">
     <div class="container">
         <div class="text-center mb-5 reveal">
-            <h2 class="fw-bold">Every module, in one platform</h2>
-            <p class="text-muted">No stitching separate tools together.</p>
+            <h2 class="fw-bold">{{ __('Every module, in one platform') }}</h2>
+            <p class="text-muted">{{ __('No stitching separate tools together.') }}</p>
         </div>
         @php $modules = [
-            ['ti-barcode','POS & Sales'],['ti-stack-2','Catalog'],['ti-package','Inventory'],['ti-truck-delivery','Purchasing'],
-            ['ti-transfer','Stock Count & Transfers'],['ti-armchair','Restaurant'],['ti-device-desktop','Kitchen Display'],
-            ['ti-chef-hat','Kitchen Inventory'],['ti-printer','Printing'],['ti-chart-bar','Reports'],['ti-adjustments','Sales Controls'],
-            ['ti-building-store','Multi Branch'],['ti-users','Users & Roles'],['ti-report-money','Finance & Accounting'],
+            ['ti-barcode', __('POS & Sales')], ['ti-stack-2', __('Catalog')], ['ti-package', __('Inventory')], ['ti-truck-delivery', __('Purchasing')],
+            ['ti-transfer', __('Stock Count & Transfers')], ['ti-armchair', __('Restaurant')], ['ti-device-desktop', __('Kitchen Display')],
+            ['ti-chef-hat', __('Kitchen Inventory')], ['ti-printer', __('Printing')], ['ti-chart-bar', __('Reports')], ['ti-adjustments', __('Sales Controls')],
+            ['ti-building-store', __('Multi Branch')], ['ti-users', __('Users & Roles')], ['ti-report-money', __('Finance & Accounting')],
         ]; @endphp
         <div class="row g-3">
             @foreach($modules as [$ico,$name])
@@ -199,13 +202,13 @@
 {{-- FINAL CTA --}}
 <section class="public-hero-premium section-pad">
     <div class="container text-center reveal" style="max-width:680px;">
-        <h2 class="fw-bold text-white mb-3" style="font-size:2.2rem;">See the workflows in action.</h2>
-        <p class="mb-4" style="color:#cbd5e1;">Start a 30-day trial or talk to our team for a guided walkthrough.</p>
+        <h2 class="fw-bold text-white mb-3" style="font-size:2.2rem;">{{ __('See the workflows in action.') }}</h2>
+        <p class="mb-4" style="color:#cbd5e1;">{{ __('Start a 30-day trial or talk to our team for a guided walkthrough.') }}</p>
         <div class="d-flex flex-wrap justify-content-center gap-3">
-            <a href="{{ url('/start-trial') }}" class="btn btn-light btn-lg px-5">Start Trial</a>
-            <a href="{{ url('/demos') }}" class="btn btn-outline-light btn-lg px-5">Try Live Demo</a>
-            <a href="{{ url('/pricing') }}" class="btn btn-outline-light btn-lg px-5">View Pricing</a>
-            <a href="{{ url('/contact') }}" class="btn btn-outline-light btn-lg px-5">Book Demo</a>
+            <a href="{{ $lurl('/start-trial') }}" class="btn btn-light btn-lg px-5">{{ __('Start Trial') }}</a>
+            <a href="{{ $lurl('/demos') }}" class="btn btn-outline-light btn-lg px-5">{{ __('Try Live Demo') }}</a>
+            <a href="{{ $lurl('/pricing') }}" class="btn btn-outline-light btn-lg px-5">{{ __('View Pricing') }}</a>
+            <a href="{{ $lurl('/contact') }}" class="btn btn-outline-light btn-lg px-5">{{ __('Book Demo') }}</a>
         </div>
     </div>
 </section>

@@ -13,6 +13,15 @@ class Subscription extends Model
         'tenant_id',
         'plan_id',
         'status',
+        'billing_period',
+        // SAAS-BILLING-AUTO-1 — kis tareekh ko is tenant ka mahana invoice khud banta hai.
+        'invoice_day',
+        // WEBSITE-I18N-GEO-1 P3: what a per-branch signup bought, and the quote it was sold at.
+        'pricing_model',
+        'currency_code',
+        'branches_purchased',
+        'extra_terminals',
+        'price_snapshot',
         'trial_ends_at',
         'current_period_ends_at',
         'gateway_code',
@@ -25,6 +34,9 @@ class Subscription extends Model
         return [
             'trial_ends_at' => 'datetime',
             'current_period_ends_at' => 'datetime',
+            'branches_purchased' => 'integer',
+            'extra_terminals' => 'integer',
+            'price_snapshot' => 'array',
         ];
     }
 

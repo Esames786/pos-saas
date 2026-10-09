@@ -178,6 +178,14 @@ class MasterSeeder extends Seeder
             'central.modules.update',
             'central.tenants.subscription.update',
 
+            // SAAS-BILLING-WHATSAPP-1 — WhatsApp ke paise ka safha. Apna permission, invoices wala
+            // nahi: is par har tenant ki raqam AUR hamara margin likha hai.
+            // ⚠️ Naya CENTRAL route sirf yahan likhne se nahi chalta — deploy.sh seeder nahi chalata
+            // (wo sirf system:routes-sync karta hai, jo catalog bharta hai, permission nahi). Prod
+            // par alag se ADDITIVE grant chalana paRta hai: givePermissionTo(), kabhi
+            // syncPermissions() nahi.
+            'central.whatsapp-usage.index',
+
             'central.invoices.index',
             'central.tenants.invoices.create',
             'central.tenants.invoices.store',
@@ -670,6 +678,43 @@ class MasterSeeder extends Seeder
 
             $this->syncPlanModules($plan, $entry['modules']);
             $this->syncPlanFeatures($plan, $entry['features']);
+        }
+
+        $this->seedMarketPrices();
+    }
+
+    /**
+     * WEBSITE-I18N-GEO-1 — each public plan's price per market (master.plan_prices) and what one branch
+     * brings in a per-branch market. The 2026_10_08_000001 migration does the same for a database that
+     * already had its plans; this covers a fresh one, where the plans only appear here, after migrations.
+     * Only what is MISSING is written — an owner's later price change is never overwritten by a deploy.
+     */
+    private function seedMarketPrices(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::connection('master')->hasTable('plan_prices')) {
+            return;
+        }
+        $perBranch = [   // monthly, per branch — docs/plans/website-i18n-geo-pricing-2026-10-07.md §2.4
+            'retail_starter'     => ['SAR' => 189, 'AED' => 199, 'QAR' => 199, 'USD' => 69, 'terminals_per_branch' => 1, 'users_per_branch' => 3],
+            'inventory_store'    => ['SAR' => 399, 'AED' => 399, 'QAR' => 399, 'USD' => 139, 'terminals_per_branch' => 2, 'users_per_branch' => 5],
+            'restaurant_starter' => ['SAR' => 219, 'AED' => 219, 'QAR' => 199, 'USD' => 59, 'terminals_per_branch' => 2, 'users_per_branch' => 8],
+            'restaurant_pro'     => ['SAR' => 549, 'AED' => 469, 'QAR' => 469, 'USD' => 169, 'terminals_per_branch' => 3, 'users_per_branch' => 10],
+        ];
+        $extraTerminal = ['SAR' => 59, 'AED' => 59, 'QAR' => 59, 'USD' => 19];
+
+        foreach (Plan::whereIn('code', array_keys($perBranch))->get() as $plan) {
+            $row = $perBranch[$plan->code];
+            if ($plan->monthly_price !== null) {
+                \App\Models\Master\PlanPrice::firstOrCreate(['plan_id' => $plan->id, 'currency_code' => 'PKR'],
+                    ['pricing_model' => 'bundle', 'monthly_price' => $plan->monthly_price, 'yearly_price' => $plan->yearly_price, 'is_active' => true]);
+            }
+            foreach ($extraTerminal as $currency => $extra) {
+                \App\Models\Master\PlanPrice::firstOrCreate(['plan_id' => $plan->id, 'currency_code' => $currency],
+                    ['pricing_model' => 'per_branch', 'monthly_price' => $row[$currency], 'extra_terminal_monthly' => $extra, 'is_active' => true]);
+            }
+            foreach (['terminals_per_branch', 'users_per_branch'] as $key) {
+                PlanFeature::firstOrCreate(['plan_id' => $plan->id, 'feature_key' => $key], ['feature_value' => (string) $row[$key]]);
+            }
         }
     }
 

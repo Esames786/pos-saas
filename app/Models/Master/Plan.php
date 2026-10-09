@@ -45,6 +45,12 @@ class Plan extends Model
         return $this->hasMany(PlanFeature::class);
     }
 
+    /** WEBSITE-I18N-GEO-1 P2: the plan's price per currency (read through PlanPricingService). */
+    public function prices(): HasMany
+    {
+        return $this->hasMany(PlanPrice::class);
+    }
+
     public function planModules(): HasMany
     {
         return $this->hasMany(PlanModule::class);

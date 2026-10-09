@@ -7,6 +7,7 @@ use App\Models\Tenant\CashBankAccountTransaction;
 use App\Models\Tenant\CustomerPayment;
 use App\Models\Tenant\ExpenseVoucher;
 use App\Models\Tenant\JournalEntry;
+use App\Models\Tenant\Product;
 use App\Models\Tenant\PurchaseBill;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesReturn;
@@ -659,15 +660,35 @@ class JournalPostingService
                 return null;
             }
 
-            $lines = [
-                ['account_code' => '1400', 'branch_id' => $bill->branch_id, 'description' => 'Inventory Asset', 'debit' => $amount, 'credit' => 0],
+            // GRN-NON-STOCK-1: the part of the bill bought as purchase-only (no stock) is a cost now,
+            // not inventory — 1400 would never be relieved, since a sale only takes COGS out of stock
+            // it holds. Split by the receipt's own line values; charges, discount and tax follow the
+            // same proportion, exactly as the GRN spread the charges into the stocked lines' cost.
+            $bill->loadMissing('goodsReceipt.lines');
+            $toCost = self::nonStockShare(
+                ($bill->goodsReceipt?->lines ?? collect())->map(fn ($l) => [
+                    'value' => (float) $l->quantity_received * (float) $l->unit_cost,
+                    'stock' => $l->affects_stock !== false,
+                ])->all(),
+                $amount
+            );
+            $toStock = round($amount - $toCost, 4);
+
+            $lines = [];
+            if ($toStock > 0) {
+                $lines[] = ['account_code' => '1400', 'branch_id' => $bill->branch_id, 'description' => 'Inventory Asset', 'debit' => $toStock, 'credit' => 0];
+            }
+            if ($toCost > 0) {
+                $lines[] = ['account_code' => '5100', 'branch_id' => $bill->branch_id, 'description' => 'Purchased without stock '.$bill->bill_no, 'debit' => $toCost, 'credit' => 0];
+            }
+            $lines = array_merge($lines, [
                 // AP-SUPPLIER-DIMENSION-1: the AP line names its supplier, so 2100 can be read by supplier
                 // straight from the GL (Trial Balance party detail). Only the manual-journal screen mirrors
                 // supplier-tagged AP lines into supplier_ledgers; this posting never calls that, so the
                 // bill's own supplier-ledger row is not doubled.
                 ['account_code' => '2100', 'branch_id' => $bill->branch_id, 'description' => 'Purchase bill '.$bill->bill_no, 'debit' => 0, 'credit' => $amount,
                     'counterparty_type' => 'supplier', 'supplier_id' => $bill->supplier_id],
-            ];
+            ]);
 
             return $this->journal->post(
                 'purchase_bill',
@@ -700,11 +721,24 @@ class JournalPostingService
                 return null;
             }
 
+            // GRN-NON-STOCK-1: a returned purchase-only line comes back out of cost, not inventory.
+            $return->loadMissing('lines');
+            $fromCost = self::nonStockShare($return->lines->map(fn ($l) => [
+                'value' => (float) $l->quantity * (float) $l->unit_cost,
+                'stock' => self::returnLineAffectsStock($l),
+            ])->all(), $amount);
+            $fromStock = round($amount - $fromCost, 4);
+
             $lines = [
                 ['account_code' => '2100', 'branch_id' => $return->branch_id, 'description' => 'Purchase return '.$return->return_no, 'debit' => $amount, 'credit' => 0,
                     'counterparty_type' => 'supplier', 'supplier_id' => $return->supplier_id],
-                ['account_code' => '1400', 'branch_id' => $return->branch_id, 'description' => 'Inventory Asset', 'debit' => 0, 'credit' => $amount],
             ];
+            if ($fromStock > 0) {
+                $lines[] = ['account_code' => '1400', 'branch_id' => $return->branch_id, 'description' => 'Inventory Asset', 'debit' => 0, 'credit' => $fromStock];
+            }
+            if ($fromCost > 0) {
+                $lines[] = ['account_code' => '5100', 'branch_id' => $return->branch_id, 'description' => 'Returned, bought without stock '.$return->return_no, 'debit' => 0, 'credit' => $fromCost];
+            }
 
             return $this->journal->post(
                 'purchase_return',
@@ -727,6 +761,36 @@ class JournalPostingService
 
             return null;
         }
+    }
+
+    /**
+     * GRN-NON-STOCK-1 — how much of $amount belongs to purchase-only lines, by their share of the
+     * document's value. With no value to split by, all-or-nothing on whether every line is non-stock.
+     *
+     * @param  list<array{value: float, stock: bool}>  $lines
+     */
+    public static function nonStockShare(array $lines, float $amount): float
+    {
+        $total = array_sum(array_column($lines, 'value'));
+        $nonStock = array_sum(array_map(fn ($l) => $l['stock'] ? 0.0 : $l['value'], $lines));
+        if ($total <= 0) {
+            return $lines && ! in_array(true, array_column($lines, 'stock'), true) ? $amount : 0.0;
+        }
+
+        return round($amount * $nonStock / $total, 4);
+    }
+
+    /** Did a purchase-return line's goods ever enter stock? Its GRN line says; else the product. */
+    public static function returnLineAffectsStock($line, ?Product $product = null): bool
+    {
+        if (($line->source_line_type ?? null) === 'goods_receipt_line' && $line->source_line_id) {
+            $flag = \App\Models\Tenant\GoodsReceiptLine::whereKey($line->source_line_id)->value('affects_stock');
+            if ($flag !== null) {
+                return (bool) $flag;
+            }
+        }
+
+        return (bool) ($product ?? Product::find($line->product_id))?->is_stock_tracked;
     }
 
     /** Reverse the posted journal for an event (used by void flows). Idempotent; safe. */
