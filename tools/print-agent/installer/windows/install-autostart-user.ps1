@@ -47,8 +47,25 @@ $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New
             -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries `
             -ExecutionTimeLimit (New-TimeSpan -Days 3650)
 
+# RunLevel LIMITED - aur ye sab se ahem satar hai.
+#
+# 9 Oct ko yahan pehle 'Highest' likha tha, aur usi ne Kashif Kitchen par poora
+# din kha liya. Chromium ELEVATED process se chalne par kaam karne se inkar kar
+# deta hai: Chrome ek second me exit 0 de kar nikal jata, bina PDF banaye aur
+# bina kisi shikayat ke. Edge ne bhi bilkul wohi kiya. Browser naye thay
+# (Chrome 154, Edge 155), koi policy nahi thi, --user-data-dir bhi ja raha tha.
+#
+# Sabit aise hua: WOHI command, WOHI PC, browser khule hue - sirf aam (non-admin)
+# PowerShell me - aur PDF foran ban gayi, 12,409 bytes.
+#
+# Is script ko chalane ke liye Administrator chahiye (task banana admin ka kaam
+# hai), magar TASK khud aam darje par chalta hai. Dono alag cheezein hain, aur
+# yehi farq poore document printing ko zinda rakhta hai.
+#
+# Agent ab khud bhi pehchanta hai: elevated chalne par shuru me warning deta hai
+# aur document ki nakami par ise pehla sabab bana kar likhta hai.
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
-             -LogonType Interactive -RunLevel Highest
+             -LogonType Interactive -RunLevel Limited
 
 try { Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction Stop } catch { }
 Register-ScheduledTask -TaskName $task -Action $action -Trigger $trigger -Settings $settings -Principal $principal | Out-Null

@@ -54,14 +54,14 @@ const load = (name) => {
     return fn(sandbox.fs, sandbox.os, sandbox.path, sandbox.process, sandbox.require, sandbox.exeDir);
 };
 
-const findChrome = load('findChrome');
+const findBrowsers = load('findBrowsers');
 
 let passed = 0;
 const ok = (label) => { console.log(`  ✓ ${label}`); passed++; };
 
 console.log('\n── Chrome HTML se PDF banata hai, aur kagaz document ka hota hai');
 
-const chrome = findChrome();
+const chrome = findBrowsers()[0];
 if (!chrome) {
     console.log('  ! Chrome/Edge is machine par nahi — ye hissa skip (CI par normal hai)');
 } else {

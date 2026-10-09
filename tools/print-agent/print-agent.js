@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.6.1';
+const AGENT_VERSION = '2.6.2';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -468,8 +468,20 @@ function sendToNetworkPrinter(ip, port, payload) {
 
 const { execFile } = require('child_process');
 
-/** Chrome jahan jahan hota hai — pehla jo mile. */
-function findChrome() {
+/**
+ * Har wo browser jo is PC par mojood hai — tarteeb se, saare ke saare.
+ *
+ * Pehle sirf PEHLA mila browser lauta kar bas kar dia jata tha. 9 Oct ko Kashif
+ * Kitchen par us ki qeemat chukani pari: wahan ka Chrome har command ko pehle se
+ * khuli Chrome ko thama kar khud nikal jata tha ("Opening in existing browser
+ * session"), aur USI PC par Edge bhi mojood tha jo kaam kar sakta tha — magar
+ * agent wahan tak pahunchta hi nahi tha, kyunke "Chrome mil gaya" tha.
+ *
+ * Ab sab lautte hain aur bari bari aazmaye jate hain. `BINGOO_CHROME` phir bhi
+ * sab se pehle: jahan malik ne jaan bujh kar koi browser chuna ho, wahan hamara
+ * andaza us par bhaari na pare.
+ */
+function findBrowsers() {
     const candidates = [
         process.env.BINGOO_CHROME,
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -478,44 +490,92 @@ function findChrome() {
         'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
     ].filter(Boolean);
 
-    return candidates.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || null;
+    const seen = new Set();
+    const found = [];
+    for (const p of candidates) {
+        const key = String(p).toLowerCase();
+        if (seen.has(key)) { continue; }
+        seen.add(key);
+        try { if (fs.existsSync(p)) { found.push(p); } } catch { /* chhor do */ }
+    }
+
+    return found;
 }
 
 /**
- * PDF ko kisi KHAAS printer par bhejne wali utility.
+ * Browser ka version — FILE SYSTEM se, command se nahi.
  *
- * Tarteeb soch kar hai: SumatraPDF sab se halka aur bharosemand hai aur agent
- * ke saath rakha ja sakta hai; PDFtoPrinter doosra aam hal hai; Acrobat aakhir
- * me, kyunke wo dheema hai aur kabhi kabhi window khol deta hai.
+ * `chrome.exe --version` Windows par bharosemand nahi: Chrome GUI app hai,
+ * console se judta hi nahi. 9 Oct ko us ne version ke bajaye "Opening in
+ * existing browser session." lauta diya — wo jumla error me chhap kar hi asal
+ * wajah tak le gaya, magar version phir bhi na mila.
+ *
+ * Chrome aur Edge dono apne Application folder me version ke naam ka folder
+ * rakhte hain (jaise `155.0.8059.40`). Wohi sach hai, aur wo kisi chalte hue
+ * process par mun'hasir nahi.
  */
-function findPdfPrinter() {
-    const options = [
-        { exe: process.env.BINGOO_PDF_PRINTER, args: (f, p) => ['-print-to', p, '-silent', f] },
-        { exe: path.join(exeDir(), 'SumatraPDF.exe'), args: (f, p) => ['-print-to', p, '-silent', '-exit-when-done', f] },
-        { exe: 'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe', args: (f, p) => ['-print-to', p, '-silent', '-exit-when-done', f] },
-        { exe: path.join(exeDir(), 'PDFtoPrinter.exe'), args: (f, p) => [f, p] },
-        { exe: 'C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe', args: (f, p) => ['/t', f, p] },
-        { exe: 'C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe', args: (f, p) => ['/t', f, p] },
-    ].filter((o) => o.exe);
+function browserVersion(exe) {
+    try {
+        const v = fs.readdirSync(path.dirname(exe))
+            .filter((n) => /^\d+\.\d+\.\d+\.\d+$/.test(n))
+            .sort()
+            .pop();
+        if (v) { return v; }
+    } catch { /* chhor do */ }
 
-    return options.find((o) => { try { return fs.existsSync(o.exe); } catch { return false; } }) || null;
+    return 'version maloom nahi';
 }
 
-function runExe(exe, args, timeoutMs) {
-    return new Promise((resolve, reject) => {
-        execFile(exe, args, { timeout: timeoutMs, windowsHide: true }, (err, _stdout, stderr) => {
-            if (err) {
-                reject(new Error(
-                    `${path.basename(exe)}: ${err.message}${stderr ? ' — ' + String(stderr).slice(0, 200) : ''}`
-                ));
+/**
+ * Kya ye agent ADMINISTRATOR ke taur par chal raha hai?
+ *
+ * ── 9 OCTOBER, POORA DIN ─────────────────────────────────────────────────
+ *
+ * Kashif Kitchen par catering ke document chhap hi nahi rahe thay. Chrome
+ * `--headless=new` par ek second me `exit 0` de kar nikal jata tha, bina PDF
+ * banaye aur bina kisi shikayat ke. Edge ne bhi bilkul wohi kiya. Browser naye
+ * thay (Chrome 154, Edge 155), koi enterprise policy nahi thi, `--user-data-dir`
+ * bhi diya ja raha tha.
+ *
+ * Asal wajah: agent shuru se ADMINISTRATOR par chal raha tha — pehle "Administrator:
+ * Windows PowerShell" me, phir scheduled task `RunLevel Highest` par. Chromium
+ * elevated process se chalne par kaam karne se inkar kar deta hai.
+ *
+ * Sabit aise hua: WOHI command, WOHI PC, browser khule hue, sirf aam (non-admin)
+ * PowerShell me — aur PDF foran ban gayi (12,409 bytes).
+ *
+ * Ye jaanch is liye hai ke agli baar ye poora din dobara na lage. Elevated hone
+ * par agent shuru me hi saaf keh dega, aur document ki nakami par ise sab se
+ * pehla mumkina sabab bana kar pesh karega.
+ *
+ * ── IS JAANCH KI HADD, SAAF SAAF ─────────────────────────────────────────
+ *
+ * Likhte waqt ye Medium (`S-1-16-8192`) par aazmai gayi aur us ne theek `false`
+ * kaha — aur PowerShell ke apne `IsInRole(Administrator)` ne bhi wohi kaha. High
+ * (`S-1-16-12288`) wali shakh asal machine par nahi aazmai ja saki, kyunke us ke
+ * liye khud elevated hona parta. Wo SID Windows ka tay-shuda adad hai, magar
+ * yahan likha ja raha hai ke wo shakh JAANCHI NAHI GAYI.
+ *
+ * Isi liye ye kabhi kisi kaam ko ROKTI nahi — sirf batati hai. Galat "haan" se
+ * bhi koi parchi nahi rukegi.
+ */
+function isElevated() {
+    try {
+        // Poora raasta jaan bujh kar: kisi PC ke PATH par koi aur `whoami` ho
+        // sakta hai (mere apne machine par Git ka Unix wala saamne aa gaya tha,
+        // aur jaanch chup chaap "pata nahi" dene lagi thi).
+        const exe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'whoami.exe');
+        const out = require('child_process')
+            .execFileSync(exe, ['/groups', '/fo', 'csv'], { timeout: 10000, windowsHide: true })
+            .toString();
 
-                return;
-            }
-            resolve();
-        });
-    });
+        if (out.includes('S-1-16-12288')) { return true; }   // High   = elevated
+        if (out.includes('S-1-16-16384')) { return true; }   // System = elevated
+        if (out.includes('S-1-16-8192'))  { return false; }  // Medium = aam user
+    } catch { /* chhor do */ }
+
+    return null;   // pata nahi chala — aur "pata nahi" ko "haan" nahi banaya jata
 }
-
 /**
  * Ek A4/A5 document chhapo. Kagaz ka size server se aata hai — operator ko
  * kabhi chunna nahi parta, aur yehi is poore kaam ki wajah thi.
@@ -528,8 +588,8 @@ async function printDocumentOnWindows(job) {
         throw new Error('Is printer par Windows wala naam likha hi nahi — agent usi naam se printer pehchanta hai.');
     }
 
-    const chrome = findChrome();
-    if (!chrome) {
+    const browsers = findBrowsers();
+    if (browsers.length === 0) {
         throw new Error('Chrome ya Edge is PC par nahi mila — document ka PDF usi se banta hai.');
     }
 
@@ -545,25 +605,32 @@ async function printDocumentOnWindows(job) {
 
         // Kagaz ka size HTML ke apne `@page` me pehle se hai aur Chrome usi ko
         // maanta hai. Yahan dobara likhna do jagah do jawab bana deta.
-        // DO HEADLESS SOORTEIN, kyunke `--headless=new` sirf Chrome 109+ samajhta
-        // hai; us se purane Chrome par wo flag bemani hai aur PDF nahi banti.
+        // HAR BROWSER, HAR HEADLESS SOORAT — jab tak PDF na ban jaye.
         //
-        // 9 Oct, Kashif Kitchen: dono jobs "Chrome ne PDF banayi hi nahi" par
-        // rukin. Pehla andaza — default profile ka taala, kyunke us PC par Chrome
-        // khula tha — ALAG se jaanch kar GHALAT nikla: 19 Chrome process chalte
-        // hue bhi purana tareeqa PDF bana leta hai. Is liye ab andaze par ek hal
-        // nahi bheja ja raha. Dono soortein aazmayi jati hain, aur na chale to
-        // Chrome ki APNI shikayat aur us ka version error me jata hai — taake
-        // agli nakami khud apni wajah bata de.
+        // Do alag cheezein yahan ikattha hui hain, aur dono ki qeemat chukai ja
+        // chuki hai:
         //
-        // `--user-data-dir` phir bhi rakha gaya: nuqsan nahi deta, aur jis din
-        // agent Windows SERVICE ki tarah chalega us din lazmi hoga — SYSTEM ke
-        // paas apna Chrome profile hota hi nahi.
-        const chromeArgs = (headlessFlag) => [
+        //   1. Do headless soortein. `--headless=new` sirf Chrome 109+ samajhta
+        //      hai; us se purane par wo flag bemani hai aur PDF banti hi nahi.
+        //
+        //   2. Har browser. 9 Oct, Kashif Kitchen: Chrome ne `--headless=new`
+        //      par chup chaap 0 lauta diya aur kuch na banaya, aur purane
+        //      `--headless` par non-zero de kar mar gaya — bina kisi shikayat
+        //      ke. Wajah error me khud nikli: `--version` ne version ke bajaye
+        //      "Opening in existing browser session." kaha, yani us PC ka
+        //      chrome.exe har command pehle se khuli Chrome ko thama kar nikal
+        //      jata tha. USI PC par Edge bhi mojood tha — magar agent kabhi us
+        //      tak pahunchta hi nahi tha.
+        //
+        // Us se pehle ek aur andaza — default profile ka taala — ALAG se jaanch
+        // kar GHALAT nikla tha: 19 Chrome process chalte hue bhi PDF ban jati
+        // hai. Is liye `--user-data-dir` yahan "hal" ke taur par nahi, sirf is
+        // liye hai ke nuqsan nahi deta aur service mode me lazmi hoga.
+        const chromeArgs = (headlessFlag, prof) => [
             headlessFlag,
             '--disable-gpu',
             '--no-sandbox',
-            '--user-data-dir=' + profileDir,
+            '--user-data-dir=' + prof,
             '--disable-extensions',
             '--disable-background-networking',
             '--no-first-run',
@@ -575,30 +642,49 @@ async function printDocumentOnWindows(job) {
 
         const madePdf = () => fs.existsSync(pdfPath) && fs.statSync(pdfPath).size > 0;
         const tried = [];
+        let attempt = 0;
 
-        for (const flag of ['--headless=new', '--headless']) {
-            try {
-                await runExe(chrome, chromeArgs(flag), 60000);
-            } catch (err) {
-                tried.push(flag + ': ' + err.message);
+        outer:
+        for (const browser of browsers) {
+            for (const flag of ['--headless=new', '--headless']) {
+                attempt += 1;
+
+                // Har koshish ki apni profile — warna Chrome aur Edge ek hi
+                // folder par larein ge.
+                const prof  = path.join(profileDir, String(attempt));
+                const label = path.basename(browser) + ' ' + flag;
+
+                // Pehli koshish ko poora waqt, baad walon ko aadha: chaar
+                // koshishein mil kar ek nakaam parchi ko chaar minute ka na
+                // bana dein.
+                try {
+                    await runExe(browser, chromeArgs(flag, prof), attempt === 1 ? 60000 : 30000);
+                } catch (err) {
+                    tried.push(label + ': ' + err.message);
+                }
+                if (madePdf()) { break outer; }
+                tried.push(label + ': PDF nahi bani');
+                try { if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); } } catch { /* chhor do */ }
             }
-            if (madePdf()) { break; }
-            tried.push(flag + ': PDF nahi bani');
-            try { if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); } } catch { /* chhor do */ }
         }
 
         if (!madePdf()) {
-            // Chrome ka version bhi saath — akela "PDF nahi bani" ek poora chakkar
-            // khaa gaya tha, kyunke us se ye pata hi nahi chalta tha ke kyun.
-            let version = 'maloom nahi';
-            try {
-                version = require('child_process')
-                    .execFileSync(chrome, ['--version'], { timeout: 15000, windowsHide: true })
-                    .toString().trim();
-            } catch { /* chhor do */ }
+            // Har browser ka naam aur version saath jaata hai. Akela "PDF nahi
+            // bani" ek poora chakkar khaa gaya tha, kyunke us se ye pata hi
+            // nahi chalta tha ke kyun.
+            const seen = browsers.map((b) => b + ' (' + browserVersion(b) + ')');
+
+            // Elevation pehle, kyunke 9 Oct ko yehi wajah thi aur yehi aakhir me
+            // pata chali. Jab tak ye satar yahan nahi thi, error ki har baat
+            // sach thi magar kisi ne asal sabab ki taraf ishara nahi kiya.
+            const elevated = isElevated() === true
+                ? 'AGENT ADMINISTRATOR PAR CHAL RAHA HAI — Chrome aise kaam karne se inkar karta hai. '
+                  + 'Scheduled task ko RunLevel Limited par daalein (Highest par nahi). '
+                : '';
 
             throw new Error(
-                'Chrome ne PDF banayi hi nahi. Browser: ' + chrome + ' (' + version + '). '
+                elevated
+                + 'Kisi bhi browser se PDF nahi bani. Mojood: ' + seen.join(', ') + '. '
                 + 'Koshishein: ' + tried.join(' | ')
             );
         }
@@ -1091,6 +1177,20 @@ function run(config) {
     log(`Agent:   ${CONFIG.agentCode}`);
     log(`Config:  ${CONFIG.source || 'file'}`);
     log(`Polling: every ${CONFIG.pollMs}ms`);
+
+    // Shuru me hi keh do. 9 Oct ko Kashif Kitchen par A4/A5 document is liye
+    // nahi chhap rahe thay ke agent ADMINISTRATOR par chal raha tha — Chromium
+    // elevated process se PDF banane se inkar kar deta hai. Us din ye teen
+    // satrein mojood hoti to ghanton ki talash pehli nazar me khatam ho jati.
+    //
+    // Sirf ittila hai — kisi kaam ko rokti nahi. Thermal parchi elevated par
+    // bhi theek chhapti hai, aur ek ghalat warning par parchi rok dena us
+    // masle se bara masla ban jata jo ye batati hai.
+    if (isElevated() === true) {
+        log('WARNING: ye agent ADMINISTRATOR par chal raha hai. Thermal parchi to chhapegi,');
+        log('         magar A4/A5 document NAHI - Chrome elevated par PDF nahi banata.');
+        log('         Scheduled task ko RunLevel Limited par daalein (Highest par nahi).');
+    }
 
     setInterval(tick, CONFIG.pollMs);
     // Hold the printers awake so a kitchen ticket is never the thing that wakes one.
