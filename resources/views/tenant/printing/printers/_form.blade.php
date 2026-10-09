@@ -19,7 +19,10 @@
 <div class="col-md-6">
     <label class="form-label required">Type</label>
     <select name="printer_type" class="form-select" required>
-        @foreach(['browser' => 'Browser (print dialog)', 'network' => 'Network (IP/Port)', 'usb' => 'USB'] as $val => $label)
+        {{-- PRINTER-FORM-PARITY-1 — fehrist model se, yahan haath se nahi.
+             Haath se likhi list DB ke enum se bichhar gayi thi aur Save par
+             `windows` printer chup chaap `browser` ban gaya. --}}
+        @foreach(\App\Models\Tenant\Printer::TYPES as $val => $label)
             <option value="{{ $val }}" @selected(old('printer_type', $p?->printer_type) === $val)>{{ $label }}</option>
         @endforeach
     </select>
@@ -27,7 +30,7 @@
 <div class="col-md-6">
     <label class="form-label required">Role</label>
     <select name="print_role" class="form-select" required>
-        @foreach(['receipt' => 'Receipt', 'kot' => 'KOT', 'both' => 'Both'] as $val => $label)
+        @foreach(\App\Models\Tenant\Printer::ROLES as $val => $label)
             <option value="{{ $val }}" @selected(old('print_role', $p?->print_role) === $val)>{{ $label }}</option>
         @endforeach
     </select>
@@ -35,10 +38,15 @@
 <div class="col-md-6">
     <label class="form-label required">Paper Size</label>
     <select name="paper_size" class="form-select" required>
-        @foreach(['58mm', '80mm', 'A4'] as $size)
+        @foreach(\App\Models\Tenant\Printer::PAPER_SIZES as $size)
             <option value="{{ $size }}" @selected(old('paper_size', $p?->paper_size) === $size)>{{ $size }}</option>
         @endforeach
     </select>
+</div>
+<div class="col-md-6">
+    <label class="form-label">Windows Printer Name</label>
+    <input type="text" name="windows_printer_name" value="{{ old('windows_printer_name', $p?->windows_printer_name) }}" class="form-control" maxlength="255" placeholder="HP LaserJet P2055dn">
+    <div class="form-text">Type = <strong>Windows printer</strong> ke liye lazmi — agent isi NAAM se printer pehchanta hai, IP se nahi. Bilkul wohi likhein jo us PC ke <em>Printers &amp; scanners</em> me hai.</div>
 </div>
 <div class="col-md-6">
     <label class="form-label">IP Address</label>
