@@ -107,22 +107,23 @@ class WhatsAppUsageLedgerMySqlTest extends MySqlTenantTestCase
         $this->assertNotNull(WhatsAppMessage::where('status', 'failed')->value('failure_reason'));
     }
 
-    public function test_nothing_is_billable_until_meta_says_it_arrived(): void
+    public function test_the_bill_follows_sending_but_the_outcome_is_still_recorded(): void
     {
-        Http::fake(['graph.facebook.com/*' => Http::response(
-            ['messages' => [['id' => 'wamid.ACCEPTED']]], 200,
-        )]);
+        $this->okUnique();
 
-        app(WhatsAppChannel::class)->send($this->delivery(), ['923328252838']);
+        app(WhatsAppChannel::class)->send($this->delivery(), ['923328252838', '923331279246']);
 
-        // 8/9 October: malik ka card decline hua, humne 14 bheje, Meta ne sab "accepted" kaha aur
-        // Meta ke apne aankRon me khatri ka sirf AIK pohancha, kashiffood ka poora bucket ghayab.
-        // Agar accepted par bill banta to tenant us cheez ka paisa deta jo kabhi nahi aayi.
+        // Malik ka faisla: charge BHEJNE par hai, pohanchne par nahi. Maine delivered par rakhne ki
+        // tajweez di thi (Meta khud sirf delivered par leta hai) — magar qeemat ka faisla malik ka
+        // hai, mera nahi.
+        $this->assertSame(2, WhatsAppMessage::billable()->count());
+
+        // Magar nateeja phir bhi likha jata hai, aur ye be-kaar nahi: isi se pata chala ke
+        // kashiffood ka aik number HAR raat fail hota hai. Maloomat hai, bill ki shart nahi.
         $this->assertSame('accepted', WhatsAppMessage::first()->status);
-        $this->assertSame(0, WhatsAppMessage::billable()->count());
 
-        WhatsAppMessage::query()->update(['status' => 'delivered']);
-        $this->assertSame(1, WhatsAppMessage::billable()->count());
+        WhatsAppMessage::query()->limit(1)->update(['status' => 'failed']);
+        $this->assertSame(2, WhatsAppMessage::billable()->count(), 'Nakaam row bill se nikal gayi.');
     }
 
     public function test_the_rate_is_frozen_on_the_row_not_looked_up_later(): void
