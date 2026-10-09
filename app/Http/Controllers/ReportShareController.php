@@ -82,7 +82,14 @@ class ReportShareController extends Controller
             (array) json_decode($link->sections, true),
         ), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="sales-report-'.$link->label.'.pdf"',
+            // INLINE, attachment nahi: malik chahte hain ke report khul jaye, phone ya laptop ke
+            // apne PDF viewer me, bajaye is ke ke pehle Downloads me gire aur phir usay dhoondna
+            // paRe. Jise mehfooz karni ho wo viewer ke apne download ke button se kar sakta hai —
+            // yani dekhna aasan ho gaya aur mehfooz karna waisa hi raha.
+            //
+            // Sirf yahan badalna kaafi nahi tha: shared.blade.php ke link par `download` attribute
+            // bhi laga hua tha, aur wo is header par bhaari paRta hai.
+            'Content-Disposition' => 'inline; filename="sales-report-'.$link->label.'.pdf"',
             'Cache-Control' => 'no-store, private',
             'X-Robots-Tag' => 'noindex, nofollow',
         ]);
