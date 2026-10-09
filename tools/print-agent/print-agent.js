@@ -678,7 +678,7 @@ async function printDocumentOnWindows(job) {
             // pata chali. Jab tak ye satar yahan nahi thi, error ki har baat
             // sach thi magar kisi ne asal sabab ki taraf ishara nahi kiya.
             const elevated = isElevated() === true
-                ? 'AGENT ADMINISTRATOR PAR CHAL RAHA HAI — Chrome aise kaam karne se inkar karta hai. '
+                ? 'AGENT ADMINISTRATOR PAR CHAL RAHA HAI - Chrome aise kaam karne se inkar karta hai. '
                   + 'Scheduled task ko RunLevel Limited par daalein (Highest par nahi). '
                 : '';
 
