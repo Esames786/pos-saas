@@ -106,4 +106,24 @@ class ReportShareLinkMySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString('download }}', $view);
         $this->assertStringContainsString('target="_blank"', $view);
     }
+
+    public function test_the_link_goes_straight_to_the_report_with_no_page_in_between(): void
+    {
+        // Malik: "ye screen b na open ho, direct pdf open ho". Pehle link par aik khulasa ka safha
+        // aata tha aur us par button — do qadam. Aur wo safha kehta bhi wohi tha jo WhatsApp ke
+        // paigham me pehle se likha hota hai (template v2 me poora OVERALL block), yani aik hi baat
+        // teesri dafa.
+        $c = file_get_contents(base_path('app/Http/Controllers/ReportShareController.php'));
+
+        // show() ab khud kuch render nahi karta — dono raaste aik hi jagah se jawab dete hain.
+        $this->assertStringNotContainsString("view('reports.shared'", $c, 'Khulasa ka safha wapis aa gaya.');
+        $this->assertStringContainsString('return $this->render($token);', $c);
+
+        // Aur nishan: markOpened() ab US jagah hai jahan se DONO raaste guzarte hain. Pehle wo sirf
+        // safhe par tha; agar wahin reh jata to seedhe PDF wala har open chup-chaap guzar jata —
+        // aur ye nishan isi liye hai ke koi anjaan parhne wala pakRa ja sake.
+        $this->assertSame(1, substr_count($c, '$this->links->markOpened('), 'markOpened ek se zyada jagah se bulaya ja raha hai.');
+        $render = substr($c, strpos($c, 'private function render(string $token)'));
+        $this->assertStringContainsString('$this->links->markOpened($token)', $render);
+    }
 }
