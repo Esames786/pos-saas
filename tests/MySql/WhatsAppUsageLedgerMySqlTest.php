@@ -211,4 +211,21 @@ class WhatsAppUsageLedgerMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('ReportScheduleService::class)->timezone()', $body);
         $this->assertStringNotContainsString('$tenant->timezone', $body);
     }
+
+    public function test_the_backfill_counts_money_the_same_way_the_bill_does(): void
+    {
+        // Ye TOOT chuka tha. Maine billable() ko "har bheja gaya message" kar diya (malik ka faisla)
+        // magar backfill command apne khulasay me ab bhi `delivered` se zarb de rahi thi. Nateeja:
+        // command 87 / PKR 856.95 keh rahi thi aur register 94 / PKR 925.90 — aur ye farq prod par
+        // nazar aaya, kisi test par nahi.
+        //
+        // Do jagah paisa ginna aur dono ka alag jawab dena us se bura hai ke aik hi ghalat ho:
+        // ghalat jawab theek ho jata hai, do jawab ka matlab hai kisi ko bharosa nahi rahta.
+        $body = file_get_contents(base_path('app/Console/Commands/WhatsAppBackfillUsageCommand.php'));
+
+        $this->assertStringContainsString("\$d['sent'] * \$rate", $body);
+        $this->assertStringContainsString('$amount = $tSent * $rate;', $body);
+        $this->assertStringNotContainsString("\$d['delivered'] * \$rate", $body);
+        $this->assertStringNotContainsString('$tDel * $rate', $body);
+    }
 }
