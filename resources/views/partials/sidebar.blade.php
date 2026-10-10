@@ -805,7 +805,7 @@
 
                 {{-- ── FINANCE ─────────────────────────────────────────────────── --}}
                 @if($hasModule('finance'))
-                @canany(['tenant.finance.accounts.index','tenant.finance.cash-bank-accounts.index','tenant.finance.expense-categories.index','tenant.finance.expenses.index','tenant.finance.customer-payments.index','tenant.finance.opening-balances.index','tenant.finance.journal-entries.index','tenant.finance.manual-journals.index','tenant.finance.general-ledger.index','tenant.finance.trial-balance.index','tenant.finance.profit-loss.index','tenant.finance.branch-profit-loss.index','tenant.finance.balance-sheet.index','tenant.finance.export.index'])
+                @canany(['tenant.finance.accounts.index','tenant.finance.cash-bank-accounts.index','tenant.finance.expense-categories.index','tenant.finance.expenses.index','tenant.finance.customer-payments.index','tenant.finance.opening-balances.index','tenant.finance.journal-entries.index','tenant.finance.manual-journals.index','tenant.finance.general-ledger.index','tenant.finance.trial-balance.index','tenant.finance.profit-loss.index','tenant.finance.branch-profit-loss.index','tenant.finance.balance-sheet.index','tenant.finance.export.index','tenant.reports.cash-book.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-calculator fs-16 me-2"></i>
@@ -829,6 +829,17 @@
                                 </a>
                             </li>
                         @endcan
+                        {{-- CASH-BOOK-REPORT-1: in the Reports menu where that exists; without it, here beside Cash & Bank. --}}
+                        @if(! $hasModule('reports'))
+                        @can('tenant.reports.cash-book.index')
+                            @php $a = $isIn('reports/cash-book*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/reports/cash-book') }}" class="{{ $a ? 'active' : '' }}" id="finance-cash-book-link">
+                                    <i class="ti ti-notebook fs-16 me-2"></i><span>Cash Book</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @endif
                         @can('tenant.finance.expense-categories.index')
                             @php $a = $isIn('finance/expense-categories*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -1172,7 +1183,7 @@
 
                 {{-- ── REPORTS ─────────────────────────────────────────────────── --}}
                 @if($hasModule('reports'))
-                @canany(['tenant.reports.center.index','tenant.reports.sales.summary','tenant.reports.sales.channels','tenant.reports.sales.riders','tenant.reports.sales.receivables','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.inventory.negative-stock','tenant.reports.purchases.payables','tenant.reports.purchases.returns','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.departments.sales','tenant.reports.departments.consumption-exceptions','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
+                @canany(['tenant.reports.cash-book.index','tenant.reports.center.index','tenant.reports.sales.summary','tenant.reports.sales.channels','tenant.reports.sales.riders','tenant.reports.sales.receivables','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.inventory.negative-stock','tenant.reports.purchases.payables','tenant.reports.purchases.returns','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.departments.sales','tenant.reports.departments.consumption-exceptions','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-chart-bar fs-16 me-2"></i>
@@ -1238,6 +1249,17 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/reports/purchases/payables') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-file-invoice fs-16 me-2"></i><span>Purchase Reports</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @endif
+                        {{-- CASH-BOOK-REPORT-1: a finance report, gated like Payables. --}}
+                        @if($hasModule('finance'))
+                        @can('tenant.reports.cash-book.index')
+                            @php $a = $isIn('reports/cash-book*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/reports/cash-book') }}" class="{{ $a ? 'active' : '' }}" id="reports-cash-book-link">
+                                    <i class="ti ti-notebook fs-16 me-2"></i><span>Cash Book</span>
                                 </a>
                             </li>
                         @endcan

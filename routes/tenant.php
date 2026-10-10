@@ -767,6 +767,8 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/reports/purchases/summary', [PurchaseReportController::class, 'summary'])->name('tenant.reports.purchases.summary');
                 Route::get('/reports/purchases/suppliers', [PurchaseReportController::class, 'suppliers'])->name('tenant.reports.purchases.suppliers');
                 Route::get('/reports/purchases/payables', [PurchaseReportController::class, 'payables'])->name('tenant.reports.purchases.payables');
+                // CASH-BOOK-REPORT-1: money in / out / balance per cash drawer and bank (CSV + print via ?format=).
+                Route::get('/reports/cash-book', [\App\Http\Controllers\Tenant\Reports\CashBookController::class, 'index'])->name('tenant.reports.cash-book.index');
                 Route::get('/reports/purchases/returns', [PurchaseReportController::class, 'returns'])->name('tenant.reports.purchases.returns');
                 Route::get('/reports/restaurant/tables', [RestaurantReportController::class, 'tables'])->name('tenant.reports.restaurant.tables');
                 Route::get('/reports/restaurant/waiters', [RestaurantReportController::class, 'waiters'])->name('tenant.reports.restaurant.waiters');
