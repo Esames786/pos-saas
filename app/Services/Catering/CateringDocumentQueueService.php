@@ -58,6 +58,9 @@ class CateringDocumentQueueService
     /** Final invoice — A4, aur wo kisi setting se nahi badalta. */
     public const KIND_FINAL_INVOICE = 'final_invoice';
 
+    /** Proforma — event se pehle wala bill. Wohi kaghaz jo invoice ka: A4. */
+    public const KIND_PROFORMA = 'proforma';
+
     public const KINDS = [self::KIND_KITCHEN_SHEET, self::KIND_QUOTATION, self::KIND_ADDRESS_SHEET];
 
     /** `print_jobs.document_type` — POS ke `receipt`/`kot` se bilkul alag lane. */
@@ -92,7 +95,7 @@ class CateringDocumentQueueService
             // gayi. Malik ne 11 Oct ko poochha tha: "normal aur fully paid dono
             // me A4 aayega?" Us sawal ka jawab parhne wale ko DIKHNA chahiye,
             // kisi `default` me chhupa nahi hona chahiye.
-            self::KIND_FINAL_INVOICE => 'a4_portrait',
+            self::KIND_FINAL_INVOICE, self::KIND_PROFORMA => 'a4_portrait',
             default => 'a4_portrait',
         };
     }
@@ -260,6 +263,47 @@ class CateringDocumentQueueService
             referenceId: (int) $invoice->id,
             referenceNo: $invoice->invoice_no,
             branchId: $invoice->event?->branch_id,
+            userId: $userId,
+            isReprint: $isReprint,
+        );
+    }
+
+    /**
+     * Proforma — event se pehle wala bill, maujooda order se.
+     *
+     * WOHI view jo asli invoice chalati hai, aur wohi kaghaz (A4). Do view ya
+     * do naap rakhne par ek din unhen milate rehna bhool jata hai aur graahak
+     * ke do kaghaz alag dikhne lagte hain. Kaghaz khud farq bata deta hai,
+     * kyunke `$invoice->exists` jhoot hai.
+     *
+     * EVENT leti hai, invoice nahi — proforma kahin mehfooz hoti hi nahi. Isi
+     * liye ye bulk endpoint par theek baithti hai: wahan `ids[]` hamesha event
+     * ki hoti hain. Is ka apna route BANAYA NAHI gaya, kyunke naya route naya
+     * permission maangta hai jo har role par alag se dena parta — aur yahan us
+     * ki zaroorat hi nahi thi.
+     */
+    public function queueProformaInvoice(
+        CateringEvent $event,
+        Printer $printer,
+        string $lang = 'en',
+        ?int $userId = null,
+        bool $isReprint = false,
+    ): PrintJob {
+        $proforma = app(CateringFinalInvoiceService::class)->proforma($event);
+
+        return $this->queue(
+            kind: self::KIND_PROFORMA,
+            printer: $printer,
+            html: view('tenant.catering.documents.final-invoice', [
+                'invoice' => $proforma,
+                'lang' => $lang,
+                'businessName' => $this->businessName(),
+            ])->render(),
+            paper: self::paperFor(self::KIND_PROFORMA),
+            referenceType: 'catering_event',
+            referenceId: (int) $event->id,
+            referenceNo: 'PROFORMA-'.$event->event_no,
+            branchId: $event->branch_id,
             userId: $userId,
             isReprint: $isReprint,
         );

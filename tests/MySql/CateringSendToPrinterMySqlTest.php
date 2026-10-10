@@ -584,6 +584,118 @@ class CateringSendToPrinterMySqlTest extends MySqlTenantTestCase
             'invoice ka kagaz A4 hona chahiye, aur wo job ke saath jana chahiye — '
             .'warna agent printer ko naap batata hi nahi aur wo apni default utha leta hai');
     }
+    /**
+     * INVOICE AUR PROFORMA KE DOCUMENT SAFHON PAR BHI "SEND TO NETWORK".
+     *
+     * Malik (11 Oct): "invoice ki bhi setting add karo... send to network
+     * daalo", aur phir "proforma me bhi laga dena".
+     *
+     * Dono wohi view chalate hain (`final-invoice`), magar raaste alag hain:
+     *
+     *   invoice   -> apna route, kyunke us ka apna permission hai aur wo
+     *                reprint ki ginti rakhta hai
+     *   proforma  -> bulk ka raasta (`kind` + `ids[]`), kyunke wo kahin
+     *                mehfooz hoti hi nahi aur `ids[]` hamesha EVENT ki hoti
+     *                hai. Is ka apna route BANAYA NAHI gaya: naya route naya
+     *                permission maangta hai jo har role par alag se dena
+     *                parta, aur yahan us ki zaroorat hi nahi thi.
+     *
+     * Dono A4 par chhapte hain, aur wo kabhi badalta nahi — invoice ka kaghaz
+     * us ke bharne se nahi badalta.
+     */
+    public function test_the_invoice_and_proforma_pages_offer_send_to_network(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $this->windowsPrinter(['name' => 'Office A4']);
+
+        $this->estimates->markSent($event->currentEstimate->refresh());
+        $this->estimates->confirmEvent($event->refresh());
+        DB::connection('tenant')->table('catering_events')->where('id', $event->id)
+            ->update(['event_date' => now()->subDays(2)->toDateString()]);
+
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 50000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->makePaymentMethod(),
+        ]);
+        $invoice = app(\App\Services\Catering\CateringFinalInvoiceService::class)->issue($event->refresh());
+
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'ID'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        $c = app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class);
+        $req = fn () => \Illuminate\Http\Request::create('/x', 'GET');
+
+        foreach ([
+            ['invoice', $c->finalInvoice($req(), $invoice), '/final-invoice/'.$invoice->id.'/print'],
+            ['proforma', $c->proformaInvoice($req(), $event->refresh()), '/catering/documents/bulk/print'],
+        ] as [$name, $view, $expectedAction]) {
+            $html = $view->render();
+
+            $this->assertStringContainsString('Send to network', $html,
+                "{$name}: network wala button hona chahiye");
+            $this->assertStringContainsString('name="printer_id"', $html,
+                "{$name}: printer chunne ka khaana");
+            $this->assertStringContainsString('window.print()', $html,
+                "{$name}: purana Print button bhi rehna chahiye");
+            $this->assertStringContainsString($expectedAction, $html,
+                "{$name}: form sahi raaste par jana chahiye");
+
+            // Dono A4. Invoice ka kaghaz us ke bharne se nahi badalta.
+            preg_match('/doc-paper[^>]*>\s*([A-Z0-9]+)\s*</', $html, $m);
+            $this->assertSame('A4', $m[1] ?? null, "{$name}: kagaz A4 hona chahiye");
+
+            $this->assertStringNotContainsString('name="paper', $html,
+                "{$name}: kagaz ka koi khaana NAHI");
+        }
+    }
+
+    /**
+     * AUR JO KAGHAZ PRINTER KO JATA HAI, US ME TOOLBAR NA HO.
+     *
+     * Yehi view `CateringDocumentQueueService` bhi render karti hai — agent ko
+     * bhejne ke liye HTML jamate waqt. Us raaste par na `ids` hoti hain na
+     * `sendAction`, is liye partial kuch nikalti hi nahi. Pehra yahan is liye
+     * hai ke ye kharabi DIKHTI nahi: kaghaz nikal aata hai, bas us par ek
+     * fazool toolbar hota hai, aur shikayat tab aati hai jab graahak use parh
+     * le.
+     */
+    public function test_the_queued_invoice_and_proforma_carry_no_toolbar(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $printer = $this->windowsPrinter();
+
+        $this->estimates->markSent($event->currentEstimate->refresh());
+        $this->estimates->confirmEvent($event->refresh());
+        DB::connection('tenant')->table('catering_events')->where('id', $event->id)
+            ->update(['event_date' => now()->subDays(2)->toDateString()]);
+
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 50000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->makePaymentMethod(),
+        ]);
+        $invoice = app(\App\Services\Catering\CateringFinalInvoiceService::class)->issue($event->refresh());
+
+        foreach ([
+            'invoice' => fn () => $this->queue->queueFinalInvoice($invoice, $printer),
+            'proforma' => fn () => $this->queue->queueProformaInvoice($event->refresh(), $printer),
+        ] as $name => $make) {
+            $html = (string) $make()->raw_payload;
+
+            $this->assertStringNotContainsString('Send to network', $html,
+                "{$name}: bheja hua kaghaz toolbar nahi le kar ja sakta");
+            $this->assertStringContainsString('<', $html,
+                "{$name}: aur wo HTML ho — ESC/POS bytes nahi");
+            $this->assertNotSame('', trim($html), "{$name}: kaghaz khali bhi na ho");
+        }
+    }
     /** Do baar dabane se do kaghaz nahi — wohi job wapas aati hai. */
     public function test_queueing_the_same_document_twice_returns_the_same_job(): void
     {

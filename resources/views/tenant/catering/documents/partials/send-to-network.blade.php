@@ -69,21 +69,40 @@
      mojood hi nahi hota (yehi 500 test ne pakra).
 
      CSS upar hai, is shart se BAHAR: wo purane Print button par bhi lagti hai. --}}
-@isset($ids)
+@if(isset($ids) || isset($sendAction))
 @php
     $stnPrinters = collect($printers ?? []);
-    $stnIds = collect($ids)->filter()->values();
+    // `?? []` zaroori: invoice wale raaste par `ids` hoti hi nahi (wahan apna
+    // `sendAction` hota hai), aur us surat me ye satar warna girti thi.
+    $stnIds = collect($ids ?? [])->filter()->values();
     $stnPaper = \App\Services\Catering\CateringDocumentQueueService::paperLabel($kind);
+
+    // CATERING-SEND-INVOICE-DOC-1 — ek alag raasta bhi.
+    //
+    // Quotation / kitchen sheet / address sheet bulk endpoint par jaate hain
+    // (`kind` + `ids[]`). Final invoice ka apna raasta hai, kyunke us ka
+    // apna permission hai aur wo `reprint` ki ginti bhi rakhta hai. Do alag
+    // control banane se ye saada toolbar do jagah likha jata — aur ek din
+    // dono alag ho jate.
+    $stnAction = $sendAction ?? url('/catering/documents/bulk/print');
+    $stnExtra = $sendExtra ?? [];
+    $stnPermission = $sendPermission ?? 'tenant.catering.documents.bulk-print';
 @endphp
 
-@can('tenant.catering.documents.bulk-print')
-    @if($stnPrinters->isNotEmpty() && $stnIds->isNotEmpty())
-        <form method="POST" action="{{ url('/catering/documents/bulk/print') }}" class="doc-toolbar-row">
+@can($stnPermission)
+    @if($stnPrinters->isNotEmpty() && (isset($sendAction) || $stnIds->isNotEmpty()))
+        <form method="POST" action="{{ $stnAction }}" class="doc-toolbar-row">
             @csrf
-            <input type="hidden" name="kind" value="{{ $kind }}">
-            @foreach($stnIds as $id)
-                <input type="hidden" name="ids[]" value="{{ $id }}">
-            @endforeach
+            @if(isset($sendAction))
+                @foreach($stnExtra as $k => $v)
+                    <input type="hidden" name="{{ $k }}" value="{{ $v }}">
+                @endforeach
+            @else
+                <input type="hidden" name="kind" value="{{ $kind }}">
+                @foreach($stnIds as $id)
+                    <input type="hidden" name="ids[]" value="{{ $id }}">
+                @endforeach
+            @endif
 
             {{-- KAGHAZ KA SIZE YAHAN LIKHA HAI, aur ye jaan bujh kar hai.
 
@@ -148,4 +167,4 @@
 @if(isset($errors) && $errors->has('print'))
     <div class="doc-flash doc-flash-bad">{{ $errors->first('print') }}</div>
 @endif
-@endisset
+@endif
