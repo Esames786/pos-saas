@@ -46,7 +46,27 @@
                     <td>{{ ucfirst($p->printer_type) }}</td>
                     <td>{{ ucfirst($p->print_role) }}</td>
                     <td>{{ $p->supports_reminder ? 'Capable' : 'No' }}</td>
-                    <td>{{ $p->paper_size }}</td>
+                    {{-- THERMAL KE LIYE YE ASLI HADD HAI, DOCUMENT KE LIYE SIRF EK DEFAULT.
+
+                         Malik (11 Oct): "yahan A5/A4 kyun aa raha hai jab dono printer
+                         dono nikal sakte hain?" Theek shikayat thi — dono HP A4 aur A5
+                         dono chhapte hain, aur kagaz ka faisla DOCUMENT karta hai
+                         (kitchen sheet A5, quotation/address A4). Is khane ko un dono
+                         ke liye ek jaisa dikhana ek jhoota wada tha.
+
+                         58mm/80mm wale thermal printer par ye waqai hadd hai — wahan
+                         kagaz ki chaurai machine ki hai, parche ki nahi. Is liye hataya
+                         nahi ja sakta; farq likhna parta hai. --}}
+                    <td>
+                        @if($p->printer_type === \App\Models\Tenant\Printer::TYPE_WINDOWS)
+                            <span title="Ye printer A4 aur A5 dono chhapta hai. Har parche ka kagaz us document se tay hota hai — kitchen sheet A5, quotation aur address sheet A4. Ye sirf itna tay karta hai ke Send to network par kaun sa printer pehle se chuna aaye.">
+                                {{ $p->paper_size }}
+                                <small class="text-muted">&middot; sirf default</small>
+                            </span>
+                        @else
+                            {{ $p->paper_size }}
+                        @endif
+                    </td>
                     <td>
                         @if($p->ip_address)
                             {{ $p->ip_address }}:{{ $p->port }}

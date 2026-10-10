@@ -42,6 +42,12 @@
             <option value="{{ $size }}" @selected(old('paper_size', $p?->paper_size) === $size)>{{ $size }}</option>
         @endforeach
     </select>
+    {{-- Document printer par ye koi hadd nahi. Dekho index.blade.php ka note. --}}
+    <div class="form-text">
+        Thermal parchi par ye asli naap hai. <strong>Windows (A4/A5) printer par ye sirf default hai</strong> —
+        kagaz har parche ka apna hota hai (kitchen sheet A5, quotation aur address sheet A4),
+        aur ye sirf tay karta hai ke Send to network par kaun sa printer pehle se chuna aaye.
+    </div>
 </div>
 <div class="col-md-6">
     <label class="form-label">Windows Printer Name</label>
