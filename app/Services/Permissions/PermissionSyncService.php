@@ -116,6 +116,8 @@ class PermissionSyncService
         // report, but was left on the generic reports module — so Kashif Kitchen (finance, no
         // reports) could open the Supplier Ledger, GL and Trial Balance yet not what it owes by age.
         'tenant.reports.purchases.payables' => 'tenant.finance',
+        // CASH-BOOK-REPORT-1: the cash book is an accounting report too — wherever finance is on.
+        'tenant.reports.cash-book.index' => 'tenant.finance',
         // Manufacturing customer lookup exposes manufacturing data — gate it with
         // the manufacturing module, not the fail-open generic tenant.ajax prefix.
         'tenant.ajax.manufacturing-customers' => 'tenant.manufacturing',
