@@ -173,25 +173,31 @@ class CashBookService
     private function describe(Collection $rows): Collection
     {
         $c = DB::connection('tenant');
-        $ids = fn (string ...$types) => $rows->whereIn('reference_type', $types)->pluck('reference_id')->filter()->unique()->values()->all();
+        // Each document table is read only when this page holds rows of its kind — a restaurant page of
+        // sale receipts never touches catering, and a tenant without a table is never asked for it.
+        $load = function (array $types, callable $query) use ($rows) {
+            $ids = $rows->whereIn('reference_type', $types)->pluck('reference_id')->filter()->unique()->values()->all();
 
-        $sales = $c->table('sale_payments as sp')->join('sales_orders as o', 'o.id', '=', 'sp.sales_order_id')
-            ->whereIn('sp.id', $ids('sale_payment') ?: [0])->get(['sp.id', 'o.id as order_id', 'o.sale_no', 'o.customer_name'])->keyBy('id');
-        $returns = $c->table('sales_returns')->whereIn('id', $ids('sales_return', 'sales_return_delivery') ?: [0])->get(['id', 'return_no'])->keyBy('id');
-        $expenses = $c->table('expense_vouchers as v')
+            return $ids ? $query($ids)->keyBy('id') : collect();
+        };
+
+        $sales = $load(['sale_payment'], fn ($ids) => $c->table('sale_payments as sp')->join('sales_orders as o', 'o.id', '=', 'sp.sales_order_id')
+            ->whereIn('sp.id', $ids)->get(['sp.id', 'o.id as order_id', 'o.sale_no', 'o.customer_name']));
+        $returns = $load(['sales_return', 'sales_return_delivery'], fn ($ids) => $c->table('sales_returns')->whereIn('id', $ids)->get(['id', 'return_no']));
+        $expenses = $load(['expense_voucher'], fn ($ids) => $c->table('expense_vouchers as v')
             // The voucher's first line names what the money was for (category + description).
             ->leftJoin('expense_voucher_lines as l', fn ($j) => $j->on('l.expense_voucher_id', '=', 'v.id')
                 ->whereRaw('l.id = (SELECT MIN(x.id) FROM expense_voucher_lines x WHERE x.expense_voucher_id = v.id)'))
             ->leftJoin('expense_categories as ec', 'ec.id', '=', 'l.expense_category_id')
-            ->whereIn('v.id', $ids('expense_voucher') ?: [0])
-            ->get(['v.id', 'v.voucher_no', 'v.payee_name', 'ec.name as category', 'l.description'])->keyBy('id');
-        $supplierPayments = $c->table('supplier_payments as p')->leftJoin('suppliers as s', 's.id', '=', 'p.supplier_id')
-            ->whereIn('p.id', $ids('supplier_payment') ?: [0])->get(['p.id', 'p.payment_no', 's.name as supplier'])->keyBy('id');
-        $advances = $c->table('catering_advances as a')->join('catering_events as e', 'e.id', '=', 'a.catering_event_id')
-            ->whereIn('a.id', $ids('catering_advance') ?: [0])->get(['a.id', 'e.id as event_id', 'e.event_no', 'e.customer_name'])->keyBy('id');
-        $refunds = $c->table('catering_refunds as r')->join('catering_events as e', 'e.id', '=', 'r.catering_event_id')
-            ->whereIn('r.id', $ids('catering_refund') ?: [0])->get(['r.id', 'r.refund_no', 'e.id as event_id', 'e.event_no', 'e.customer_name'])->keyBy('id');
-        $journals = $c->table('journal_entries')->whereIn('id', $ids('manual_journal') ?: [0])->get(['id', 'entry_no', 'description'])->keyBy('id');
+            ->whereIn('v.id', $ids)
+            ->get(['v.id', 'v.voucher_no', 'v.payee_name', 'ec.name as category', 'l.description']));
+        $supplierPayments = $load(['supplier_payment'], fn ($ids) => $c->table('supplier_payments as p')->leftJoin('suppliers as s', 's.id', '=', 'p.supplier_id')
+            ->whereIn('p.id', $ids)->get(['p.id', 'p.payment_no', 's.name as supplier']));
+        $advances = $load(['catering_advance'], fn ($ids) => $c->table('catering_advances as a')->join('catering_events as e', 'e.id', '=', 'a.catering_event_id')
+            ->whereIn('a.id', $ids)->get(['a.id', 'e.id as event_id', 'e.event_no', 'e.customer_name']));
+        $refunds = $load(['catering_refund'], fn ($ids) => $c->table('catering_refunds as r')->join('catering_events as e', 'e.id', '=', 'r.catering_event_id')
+            ->whereIn('r.id', $ids)->get(['r.id', 'r.refund_no', 'e.id as event_id', 'e.event_no', 'e.customer_name']));
+        $journals = $load(['manual_journal'], fn ($ids) => $c->table('journal_entries')->whereIn('id', $ids)->get(['id', 'entry_no', 'description']));
 
         return $rows->map(function ($r) use ($sales, $returns, $expenses, $supplierPayments, $advances, $refunds, $journals) {
             [$ref, $party, $url, $route] = [null, null, null, null];
