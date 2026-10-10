@@ -49,40 +49,55 @@ class ReportShareController extends Controller
         ));
     }
 
-    /** TENANT: the page itself — figures first, download started, button always there. */
+    /** TENANT: link par click — seedha poori report. */
     public function show(Request $request, string $token)
     {
-        $link = $this->claim($token);
-
-        $data = $this->document->data(
-            (array) json_decode($link->filters, true),
-            (array) json_decode($link->sections, true),
-            true,
-        );
-
-        $this->links->markOpened($token);
-
-        return response()
-            ->view('reports.shared', $data + [
-                'businessName' => app('tenant')->business_name,
-                'periodLabel' => $link->label,
-                'pdfUrl' => url('/r/'.$token.'/pdf'),
-            ])
-            ->header('Cache-Control', 'no-store, private')
-            ->header('X-Robots-Tag', 'noindex, nofollow');
+        // Link par click karte hi SEEDHA poori report. Pehle yahan aik khulasa ka safha aata tha
+        // (net sales, orders, cash) aur us par "Open full report" ka button hota tha — do qadam,
+        // jabke malik ko aik hi cheez chahiye thi.
+        //
+        // Aur ab wo safha kehta bhi wohi tha jo message me pehle se likha hota hai: template v2 me
+        // poora OVERALL + CASH FROM SALES block WhatsApp ke paigham me hi aa jata hai. Yani wo safha
+        // aik hi baat teesri dafa dohra raha tha, aur beech me khaRa tha.
+        //
+        // `reports.shared` wala view jaan boojh kar rakha hai, mitaya nahi: wapis chahiye to ye
+        // method hi badalna hai, aur kuch nahi.
+        return $this->render($token);
     }
 
-    /** TENANT: the PDF — same token, same expiry, so the file is no more open than the page. */
+    /** TENANT: wohi report, purana pata — pehle bheje gaye links tootne nahi chahiyen. */
     public function pdf(Request $request, string $token)
     {
+        return $this->render($token);
+    }
+
+    /**
+     * Token se poori report — dono raaston ka aik hi jawab.
+     *
+     * `markOpened()` YAHAN hai, kisi aik route par nahi. Pehle wo sirf khulasa ke safhe par chalta
+     * tha aur PDF par nahi; ab jab link seedha PDF deta hai, agar nishan wahin reh jata to har open
+     * chup-chaap guzar jata — aur ye nishan isi liye hai ke koi anjaan parhne wala pakRa ja sake.
+     */
+    private function render(string $token)
+    {
         $link = $this->claim($token);
+
+        $this->links->markOpened($token);
 
         return response($this->document->pdf(
             (array) json_decode($link->filters, true),
             (array) json_decode($link->sections, true),
         ), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="sales-report-'.$link->label.'.pdf"',
+            // INLINE, attachment nahi: malik chahte hain ke report khul jaye, phone ya laptop ke
+            // apne PDF viewer me, bajaye is ke ke pehle Downloads me gire aur phir usay dhoondna
+            // paRe. Jise mehfooz karni ho wo viewer ke apne download ke button se kar sakta hai —
+            // yani dekhna aasan ho gaya aur mehfooz karna waisa hi raha.
+            //
+            // (Jab beech me khulasa ka safha tha, sirf ye header badalna kaafi NAHI hota tha: us ke
+            // link par `download` attribute bhi laga hota hai jo is header par bhaari paRta hai.
+            // Ab safha beech me nahi, magar baat yaad rakhne ki hai.)
+            'Content-Disposition' => 'inline; filename="sales-report-'.$link->label.'.pdf"',
             'Cache-Control' => 'no-store, private',
             'X-Robots-Tag' => 'noindex, nofollow',
         ]);
