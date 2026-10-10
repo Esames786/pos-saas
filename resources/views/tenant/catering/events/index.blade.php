@@ -95,8 +95,22 @@
             <div class="col-12 col-md-6 col-lg-2">
                 <select name="status" class="form-select">
                     <option value="">All Statuses</option>
-                    @foreach(\App\Models\Tenant\CateringEvent::STATUSES as $s)
-                        <option value="{{ $s }}" @selected($status === $s)>{{ ucwords(str_replace('_', ' ', $s)) }}</option>
+                    {{-- CATERING-CONFIRMED-IS-A-GROUP-1 (11 Oct) — malik:
+                         "confirm se le kar closed tak saare wo status hain jo
+                         actually confirm bookings hoti hain… in ko alag se show
+                         na karo."
+
+                         Is liye fehrist `FILTER_STATUSES` se banti hai, `STATUSES`
+                         se nahi: production_ready/released/completed/closed ab
+                         "Confirmed" ke andar aa jate hain. Satar par badge phir
+                         bhi ASAL status dikhata hai — wo khabar chhupani nahi
+                         thi, sirf chunna aasan karna tha. --}}
+                    @foreach(\App\Models\Tenant\CateringEvent::FILTER_STATUSES as $s)
+                        <option value="{{ $s }}" @selected($status === $s)>
+                            {{ $s === \App\Models\Tenant\CateringEvent::STATUS_CONFIRMED
+                                ? 'Confirmed (confirmed → closed)'
+                                : ucwords(str_replace('_', ' ', $s)) }}
+                        </option>
                     @endforeach
                 </select>
             </div>

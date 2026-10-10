@@ -55,6 +55,40 @@ class CateringEvent extends Model
         self::STATUS_CONFIRMED,
     ];
 
+    /**
+     * "Booking pakki ho chuki hai" — CATERING-CONFIRMED-IS-A-GROUP-1 (11 Oct).
+     *
+     * Malik: "confirm se le kar closed tak saare wo status hain jo actually
+     * confirm bookings hoti hain… confirm ka matlab ye saare confirm hi hain."
+     *
+     * Ye ek KAAROBARI tareef hai, kisi ek screen ka filter nahi. Graahak ne
+     * haan kar di — us ke baad `production_ready`, `released`, `completed`,
+     * `closed` sirf ye batate hain ke kaam kitna aage barha, na ke ye ke
+     * booking pakki hai ya nahi. Operator ke liye wo sab "confirm" hain.
+     *
+     * `cancelled` is me NAHI: wo booking pakki thi aur phir toot gayi.
+     *
+     * 🚨 Ye `OPEN_STATUSES` ka ulta nahi hai aur us ki jagah bhi nahi leta.
+     * Wo alag sawal ka jawab hai — "is par kaam BAQI hai?" — aur usi liye
+     * us me `confirmed` hai magar `released` nahi.
+     */
+    public const CONFIRMED_STATUSES = [
+        self::STATUS_CONFIRMED,
+        self::STATUS_PRODUCTION_READY,
+        self::STATUS_RELEASED,
+        self::STATUS_COMPLETED,
+        self::STATUS_CLOSED,
+    ];
+
+    /** Filter ki fehrist me jo chunne layak hain — group ke andar wale alag se nahi. */
+    public const FILTER_STATUSES = [
+        self::STATUS_INQUIRY,
+        self::STATUS_DRAFT,
+        self::STATUS_QUOTED,
+        self::STATUS_CONFIRMED,
+        self::STATUS_CANCELLED,
+    ];
+
     protected $fillable = [
         'event_no',
         'branch_id',

@@ -45,6 +45,14 @@ class CateringCustomerBalanceController extends Controller
             return ['open', CateringEvent::OPEN_STATUSES];
         }
 
+        // CATERING-CONFIRMED-IS-A-GROUP-1 — yahan bhi wohi tareef. Agar sirf
+        // bookings ki fehrist par lagti aur yahan nahi, to ek hi lafz do
+        // screenon par do alag jawab deta — aur farq paison wali screen par
+        // khulta.
+        if ($asked === CateringEvent::STATUS_CONFIRMED) {
+            return [$asked, CateringEvent::CONFIRMED_STATUSES];
+        }
+
         return in_array($asked, CateringEvent::STATUSES, true)
             ? [$asked, [$asked]]
             : ['', []];
