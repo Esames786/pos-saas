@@ -39,7 +39,10 @@ class CateringBulkDocumentController extends Controller
      */
     private function documentPrinters()
     {
-        return \App\Models\Tenant\Printer::documentCapable()->orderBy('name')->get(['id', 'name']);
+        // `paper_size` bhi: wo printer ko ROKTA nahi — kagaz document se
+        // aata hai — magar Send-to-network us se tay karta hai ke KAUN SA
+        // printer pehle se chuna hua aaye. Dekho send-to-network.blade.php.
+        return \App\Models\Tenant\Printer::documentCapable()->orderBy('name')->get(['id', 'name', 'paper_size']);
     }
 
     /**

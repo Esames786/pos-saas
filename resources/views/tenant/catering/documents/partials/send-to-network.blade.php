@@ -73,6 +73,7 @@
 @php
     $stnPrinters = collect($printers ?? []);
     $stnIds = collect($ids)->filter()->values();
+    $stnPaper = \App\Services\Catering\CateringDocumentQueueService::paperLabel($kind);
 @endphp
 
 @can('tenant.catering.documents.bulk-print')
@@ -98,11 +99,33 @@
                  Do jagah likhne par ek din dono alag ho jate aur screen jhoot
                  bolne lagti. --}}
             <span class="doc-paper" title="Kaghaz ka size document se tay hota hai, printer se nahi">
-                {{ \App\Services\Catering\CateringDocumentQueueService::paperLabel($kind) }}
+                {{ $stnPaper }}
             </span>
             <select name="printer_id" class="doc-select" required>
+                {{-- JIS KAGAZ KA DOCUMENT HAI, USI NAAP KA PRINTER PEHLE SE CHUNA HO.
+
+                     Malik (10 Oct): "kitchen sheet par A4 likha hai magar printer A5
+                     aa raha hai — ye confusing lag raha hai." Theek shikayat thi, aur
+                     screen WAQAI apne aap ko jhutla rahi thi: chip "A4" kehti aur us
+                     ke saath "Office - HP M127fn (A5)" chuna hua nazar aata.
+
+                     Wajah mamooli thi: fehrist sirf NAAM ke hisaab se tarteeb me hai,
+                     is liye "M127fn" hamesha "P2055dn" se pehle aa jata aur browser
+                     pehla option khud chun leta — document se us ka koi taaluq hi nahi
+                     tha.
+
+                     `paper_size` yahan sirf PEHLA CHUNAO tay karta hai, rokta kisi ko
+                     nahi: dono printer fehrist me rehte hain aur dono dono naap chhap
+                     sakte hain. Isi liye duplicate rows banane ki zaroorat nahi pari —
+                     wo har cheez do guni kar deti (do health check, do jagah naam
+                     theek karna) aur masla phir bhi screen ka hi rehta.
+
+                     Kisi printer ka naap na mile to koi `selected` nahi lagta aur
+                     browser pehla chun leta hai — yani purana rawaiyya, jo kabhi
+                     galat jawab nahi deta kyunke kagaz document se jata hai. --}}
                 @foreach($stnPrinters as $p)
-                    <option value="{{ $p->id }}">{{ $p->name }}</option>
+                    <option value="{{ $p->id }}"
+                        @selected(strtoupper((string) ($p->paper_size ?? '')) === $stnPaper)>{{ $p->name }}</option>
                 @endforeach
             </select>
             <button type="submit" class="doc-btn doc-btn-primary">Send to network</button>

@@ -342,6 +342,73 @@ class CateringSendToPrinterMySqlTest extends MySqlTenantTestCase
     }
 
     /**
+     * JIS KAGAZ KA DOCUMENT HAI, USI NAAP KA PRINTER PEHLE SE CHUNA HO.
+     *
+     * Malik (10 Oct): "kitchen sheet par A4 likha hai magar printer A5 aa raha
+     * hai — confusing lag raha hai. A4 ke waqt A4 printer aaye, A5 ke waqt A5."
+     *
+     * Screen WAQAI apne aap ko jhutla rahi thi: chip "A4" kehti aur us ke saath
+     * "Office — HP M127fn (A5)" chuna hua nazar aata. Wajah mamooli thi —
+     * fehrist sirf NAAM ke hisaab se tarteeb me hai, is liye "M127fn" hamesha
+     * "P2055dn" se pehle aa jata aur browser pehla option khud chun leta;
+     * document se us ka koi taaluq hi nahi tha.
+     *
+     * Duplicate printer rows banane ki zaroorat nahi pari — wo har cheez do
+     * guni kar deti (do health check, do jagah naam theek karna) aur masla phir
+     * bhi screen ka hi rehta.
+     *
+     * AHEM: `paper_size` yahan sirf PEHLA CHUNAO tay karta hai, kisi ko ROKTA
+     * nahi. Dono printer fehrist me rehte hain, aur HP ke dono A4/A5 chhap
+     * sakte hain. Kagaz ka faisla ab bhi document ka hai.
+     */
+    public function test_the_printer_matching_the_document_paper_is_preselected(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+
+        $a4 = $this->windowsPrinter(['name' => 'Zebra A4 wala', 'paper_size' => 'A4']);
+        $a5 = $this->windowsPrinter(['name' => 'Alpha A5 wala', 'paper_size' => 'A5',
+            'windows_printer_name' => 'HP LaserJet Pro MFP M127fn']);
+
+        // Naam JAAN BUJH KAR aise rakhe hain ke harf ki tarteeb me A5 wala PEHLE
+        // aaye ("Alpha" < "Zebra"). Us ke baghair ye test kaamyab lagta rehta
+        // chahe `selected` laga ho ya na laga ho — yani kuch sabit hi na karta.
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'PS'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        $c = app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class);
+        $req = fn () => \Illuminate\Http\Request::create('/x', 'GET');
+
+        foreach ([
+            ['quotation', $c->estimate($req(), $event->currentEstimate()->first()), $a4, $a5],
+            ['kitchen sheet', $c->kitchenSheetPreview($req(), $event), $a5, $a4],
+        ] as [$name, $view, $expected, $other]) {
+            $html = $view->render();
+
+            $this->assertMatchesRegularExpression(
+                '/<option value="'.$expected->id.'"\s[^>]*selected/',
+                $html,
+                "{$name}: us printer par `selected` hona chahiye jis ka naap document se milta hai "
+                ."({$expected->name})"
+            );
+            $this->assertDoesNotMatchRegularExpression(
+                '/<option value="'.$other->id.'"\s[^>]*selected/',
+                $html,
+                "{$name}: doosre printer par `selected` nahi hona chahiye ({$other->name})"
+            );
+
+            // Magar wo doosra printer fehrist se GAYAB bhi na ho — rokna maqsad
+            // nahi tha, sirf pehla chunao theek karna tha.
+            $this->assertStringContainsString('value="'.$other->id.'"', $html,
+                "{$name}: doosra printer chunne ke liye mojood rehna chahiye");
+        }
+    }
+
+    /**
      * CATERING-SEND-SINGLE-1 — control SINGLE safhon par bhi, sirf bulk par nahi.
      *
      * Malik (10 Oct): "event ki edit wali screen se quotation print karta hoon
