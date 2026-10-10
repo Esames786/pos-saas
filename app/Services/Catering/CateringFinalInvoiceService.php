@@ -29,6 +29,7 @@ class CateringFinalInvoiceService
         private readonly CateringNumberService $numbers,
         private readonly CateringMailService $mail,
         private readonly \App\Services\Finance\JournalPostingService $journalPosting,
+        private readonly \App\Services\Finance\JournalService $journal,
         private readonly CateringDocumentLock $locks,
     ) {}
 
@@ -167,6 +168,92 @@ class CateringFinalInvoiceService
      * @param  \Illuminate\Support\Collection<int, \App\Models\Tenant\CateringAdvance>  $advances
      * @return array<string, mixed>
      */
+    /**
+     * Bill void — aur us ke saath booking wapas khul jaye.
+     *
+     * CATERING-INVOICE-VOID-1 (10 Oct). Malik: "jo order ab complete ho gaye
+     * hain before date, un ki invoices ko proforma mein change karna hoga taake
+     * wo order edit ho sake."
+     *
+     * Ab tak is ka koi raasta tha hi nahi — model ke comment me likha tha ke
+     * "void/reversal policy is a future finance design", yani jaan boojh kar
+     * baad ke liye chhora gaya aur banaya kabhi nahi gaya.
+     *
+     * ── KYA HOTA HAI ───────────────────────────────────────────────────────
+     *
+     * 1. Bill ki DONO journal entries ulti post hoti hain. Reversal entry banti
+     *    hai, purani entry mitai nahi jati — khaton me dono nazar aati hain.
+     * 2. Bill ke row par nishan lagta hai. Row MITAYA NAHI jata: numbered
+     *    dastavez mitana qatar me sooraakh aur gawahi ka nuqsan dono hai.
+     * 3. Booking wapas khul jati hai, taake order edit ho sake.
+     *
+     * Advance ka kya hota hai? `applyCateringAdvance` ne Dr 2300 / Cr 1300 kiya
+     * tha; us ka ulta Cr 2300 / Dr 1300 hai — yani graahak ka paisa wapas us ke
+     * naam par liability ban jata hai, bilkul bill se pehle wali halat. Advance
+     * ka apna row chhua tak nahi jata.
+     *
+     * 🚨 GL KI NAKAMI NIGLI NAHI JATI. `JournalPostingService::reverseForSource()`
+     * nakami par `report()` kar ke `null` de deta hai — un translators ke liye
+     * theek hai jo safe-null hain, magar YAHAN nahi: bill void ho jaye aur us ki
+     * entry khaton me khari rahe to kitaabein jhoot bolne lagti hain, khamoshi
+     * se. Is liye reversal `JournalService` se seedha liya ja raha hai (jo
+     * throw karta hai), aur poora kaam ek hi transaction me hai.
+     */
+    public function void(CateringFinalInvoice $invoice, string $reason, ?int $userId = null): CateringFinalInvoice
+    {
+        $reason = trim($reason);
+
+        if ($reason === '') {
+            throw new RuntimeException('A void needs a reason — six months from now nobody remembers why.');
+        }
+
+        if ($invoice->isVoided()) {
+            return $invoice;   // dobara chalane par kuch na ho
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($invoice, $reason, $userId) {
+            $event = $invoice->event()->first();
+
+            foreach (['catering_final_invoice', 'catering_advance_application'] as $source) {
+                $entry = $this->journal->findPostedForSource($source, $invoice->id);
+
+                if (! $entry) {
+                    // `catering_advance_application` tab nahi banti jab koi
+                    // advance hi na aaya ho — wo jaiz hai. Invoice ki apni entry
+                    // ka na milna jaiz NAHI, aur neeche us par pehra hai.
+                    continue;
+                }
+
+                $this->journal->reverse($entry, $reason, $userId);
+            }
+
+            if ($invoice->journal_entry_id && ! $this->journal->findPostedForSource('catering_final_invoice', $invoice->id)) {
+                throw new RuntimeException(
+                    "Invoice {$invoice->invoice_no} ki journal entry mili hi nahi — void rok diya gaya."
+                );
+            }
+
+            $invoice->forceFill([
+                'voided_at' => now(),
+                'voided_by_user_id' => $userId,
+                'void_reason' => $reason,
+            ])->save();
+
+            // Booking wapas khul jaye. `released` wahan rakha ja raha hai jahan
+            // kitchen ko parcha ja chuka tha — us haqeeqat ko void badalta nahi.
+            if ($event) {
+                $event->forceFill([
+                    'status' => $event->productionReleases()->exists()
+                        ? CateringEvent::STATUS_RELEASED
+                        : CateringEvent::STATUS_CONFIRMED,
+                    'closed_at' => null,
+                ])->save();
+            }
+
+            return $invoice->refresh();
+        });
+    }
+
     /**
      * Proforma — wohi bill, magar jama hua nahi.
      *
