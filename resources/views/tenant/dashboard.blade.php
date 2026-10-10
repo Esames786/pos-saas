@@ -367,6 +367,50 @@
                 </div>
             </div>
         </div>
+
+        {{-- DASHBOARD-CATEGORY-TODAY-1 — every category that sold today, biggest first. Same figures
+             as the Report Center's Categories section for today (the controller asks that engine). --}}
+        <div class="row g-3 mt-1">
+            <div class="col-lg-5">
+                <div class="card border-0 shadow-sm h-100" id="dashboard-category-today">
+                    <div class="card-header bg-white border-0 pb-0">
+                        <h6 class="mb-0">Sales by Category Today</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        @if(empty($categoriesToday))
+                            <p class="text-muted text-center py-4 small mb-0">No sales today.</p>
+                        @else
+                        <table class="table table-sm mb-0">
+                            <caption class="visually-hidden">Quantity and sales of every category today</caption>
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">Category</th>
+                                    <th scope="col" class="text-end">Qty</th>
+                                    <th scope="col" class="text-end">Sales</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($categoriesToday as $cat)
+                                <tr>
+                                    <td>{{ $cat['name'] }}</td>
+                                    <td class="text-end">{{ $fig($cat['net_qty']) }}</td>
+                                    <td class="text-end">{{ $fig($cat['net_value']) }}</td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                            <tfoot class="table-light fw-semibold">
+                                <tr>
+                                    <td>Total</td>
+                                    <td class="text-end">{{ $fig(array_sum(array_column($categoriesToday, 'net_qty'))) }}</td>
+                                    <td class="text-end" id="dashboard-category-total">{{ $fig(array_sum(array_column($categoriesToday, 'net_value'))) }}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
         @endcan
 
 @endsection
