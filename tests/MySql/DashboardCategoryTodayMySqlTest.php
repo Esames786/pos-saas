@@ -152,6 +152,7 @@ class DashboardCategoryTodayMySqlTest extends MySqlTenantTestCase
 
         $html = $view->render();
         $this->assertStringContainsString('Sales by Category Today', $html);
+        $this->assertStringContainsString('Items total', $html, 'the footer says it is items only — the Net Sales tile also carries bill-level charges');
         $this->assertMatchesRegularExpression('/id="dashboard-category-total">\s*4,860\.00/', $html);
     }
 

@@ -400,7 +400,10 @@
                             </tbody>
                             <tfoot class="table-light fw-semibold">
                                 <tr>
-                                    <td>Total</td>
+                                    {{-- Items only: delivery and other bill-level charges belong to no category,
+                                         so this sits a little under the Net Sales tile (Kashif Food 10 Oct:
+                                         1,037,450 against 1,043,086.50). The label says so before anyone asks. --}}
+                                    <td title="Bill-level charges such as delivery are not in any category">Items total</td>
                                     <td class="text-end">{{ $fig(array_sum(array_column($categoriesToday, 'net_qty'))) }}</td>
                                     <td class="text-end" id="dashboard-category-total">{{ $fig(array_sum(array_column($categoriesToday, 'net_value'))) }}</td>
                                 </tr>
