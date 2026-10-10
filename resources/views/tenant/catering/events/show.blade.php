@@ -1252,7 +1252,38 @@
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
         <h5 class="mb-0">Billing &amp; Closure</h5>
         <div class="d-flex gap-2">
-            @if(! $invoice && $current && ! $current->isDraft() && in_array($event->status, ['confirmed', 'production_ready', 'released']))
+            {{-- CATERING-NOTHING-FREEZES-BEFORE-EVENT-1 (10 Oct) — event ka din
+                 guzre baghair bill nahi banta. Button chhupane ke BAJAYE wajah
+                 likhi ja rahi hai: chup chaap gayab button operator ko ye
+                 sochne par majboor karta hai ke kuch toota hua hai.
+
+                 Hadd `event_date < aaj` hai (event ke din bhi nahi) — wohi jo
+                 service lagati hai. Yahan sirf dikhane ka faisla hai; rokta
+                 service hi hai, kyunke screen par chhupa hua button kisi ko
+                 POST karne se nahi rokta. --}}
+            {{-- BLOCK form, inline `@php(...)` NAHI: Blade `@php(` se aage pehle
+                 `@endphp` tak sab nigal jata hai, aur is file me agla block 400
+                 satar neeche hai. Yehi ghalti 9 Oct ko ek baar ho chuki hai —
+                 safha 500 dene laga tha aur lint ne nahi pakra tha. --}}
+            @php $eventDayPassed = $event->event_date && $event->event_date->toDateString() < app(\App\Support\TenantClock::class)->now()->toDateString(); @endphp
+            @if(! $invoice && $current && ! $current->isDraft() && ! $eventDayPassed)
+                <span class="badge bg-info-transparent text-info fs-12" data-bs-toggle="tooltip"
+                      title="Event guzarne ke baad hi final invoice banta hai. Us se pehle order badla ja sakta hai aur Proforma chhapi ja sakti hai.">
+                    <i class="ti ti-lock-open me-1"></i>Final invoice event ke baad
+                </span>
+                @can('tenant.catering.documents.proforma-invoice')
+                    {{-- Proforma yahan, usi jagah jahan operator asli bill dhoondta
+                         hai. Alag kone me rakhne par wo mil hi nahi pata aur log
+                         bill banane ki koshish karte rehte hain. --}}
+                    <div class="btn-group btn-group-sm">
+                        <a target="_blank" class="btn btn-outline-secondary"
+                           href="{{ url('/catering/documents/proforma-invoice/'.$event->id.'?lang=en') }}"><i class="ti ti-file-invoice me-1"></i>Proforma</a>
+                        <a target="_blank" class="btn btn-outline-secondary"
+                           href="{{ url('/catering/documents/proforma-invoice/'.$event->id.'?lang=ur') }}">اردو</a>
+                    </div>
+                @endcan
+            @endif
+            @if(! $invoice && $current && ! $current->isDraft() && $eventDayPassed && in_array($event->status, ['confirmed', 'production_ready', 'released']))
                 @can('tenant.catering.final-invoices.store')
                     <form method="POST" action="{{ url('/catering/events/' . $event->id . '/final-invoice') }}">
                         @csrf

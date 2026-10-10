@@ -84,6 +84,28 @@
 @include("tenant.catering.documents.partials.pdf-overrides")
 </head>
 <body>
+{{-- CATERING-PROFORMA-1 (10 Oct) — ye kaghaz khud kehta hai ke wo final
+     nahi hai.
+
+     Shart `! $invoice->exists` hai, koi alag jhanda nahi: jo bill database
+     me MEHFOOZ HI NAHI HUA wo proforma hai — aur ye baat ghalat ho hi nahi
+     sakti. Ek alag $proforma variable har naye caller par dobara sahi
+     likhna parta, aur ek din koi usay bhool jata. Bilkul yehi dalil kitchen
+     sheet ke preview par pehle se likhi hui hai.
+
+     Border aur weight se banaya gaya hai, background se nahi: browser print
+     par background rang gira dete hain. --}}
+@if(! $invoice->exists)
+    <div style="border:2px dashed #b45309; color:#b45309; font-weight:bold;
+                padding:6px 10px; margin-bottom:10px; text-align:center;
+                letter-spacing:.04em; font-size:{{ $isUr ? '15px' : '12px' }}">
+        {{ $t('PROFORMA — NOT A FINAL INVOICE', 'عارضی رسید — یہ حتمی بل نہیں') }}
+        <span style="font-weight:normal">
+            {{ $t('Figures follow the current order and can still change. The final invoice is issued after the event.',
+                  'اعداد موجودہ آرڈر کے مطابق ہیں اور بدل سکتے ہیں۔ حتمی بل تقریب کے بعد بنتا ہے۔') }}
+        </span>
+    </div>
+@endif
 <div class="print-bar"><button onclick="window.print()" style="padding: 8px 18px; cursor: pointer;">Print</button></div>
 
 <div class="doc-header">
@@ -92,7 +114,7 @@
         <div class="brand-sub">{{ $t('Catering & Events', 'کیٹرنگ اینڈ ایونٹس') }}</div>
     </div>
     <div class="doc-title">
-        <h2>{{ $t('FINAL INVOICE', 'حتمی رسید') }}</h2>
+        <h2>{{ $invoice->exists ? $t('FINAL INVOICE', 'حتمی رسید') : $t('PROFORMA INVOICE', 'عارضی رسید') }}</h2>
         <div><strong>{{ $invoice->invoice_no }}</strong></div>
         <div style="color:#6b7280;">{{ $t('Event', 'تقریب') }}: {{ $s['event_no'] ?? '' }} / Q{{ $s['estimate_version'] ?? '' }}</div>
         <div style="color:#6b7280;">{{ $t('Issued', 'اجراء') }}: {{ $invoice->issued_at->format('d M Y') }}</div>

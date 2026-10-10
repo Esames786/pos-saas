@@ -93,7 +93,11 @@ class CateringCustomerCreditMySqlTest extends MySqlTenantTestCase
             'branch_id' => $this->branchId,
             'customer_name' => 'Credit Test Customer',
             'booking_date' => now()->toDateString(),
-            'event_date' => now()->addDays(5)->toDateString(),
+            // CATERING-NOTHING-FREEZES-BEFORE-EVENT-1 (10 Oct) — ye fixture
+            // pehle AANE WALI tareekh ka event banata tha aur phir us ka bill
+            // bana deta tha. Wo surat asal duniya me mumkin hi nahi: bill event
+            // guzarne ke baad banta hai. Fixture ab sach bol raha hai.
+            'event_date' => now()->subDays(5)->toDateString(),
             'pax' => 300,
         ]);
         $this->estimates->saveDraftLines($event->currentEstimate, [
