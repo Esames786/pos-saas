@@ -341,4 +341,77 @@ class CateringInvoiceVoidMySqlTest extends MySqlTenantTestCase
 
         $stored->forceFill(['grand_total' => 1])->save();
     }
+
+    /**
+     * 🚨 BILL KE BAAD AAYA PAISA — void ruk jaye.
+     *
+     * Ye jaanch prod ki ek ASAL booking se aayi hai, farziye se nahi.
+     * EV-20260909-0002 par 4,89,605 DO receipts me aaya, dono bill ke BAAD —
+     * yani `settlement`, aur un ka GL seedha Cr 1300 (AR) par gaya.
+     *
+     * Void bill ki entry ulti karta hai, yani AR se bill ki raqam nikal jati
+     * hai. Us bill ke khilaf aayi settlement receipts ka Cr 1300 wahin reh jata
+     * hai, aur AR MANFI ho jata hai — khate kehne lagte hain ke graahak ne itna
+     * zyada de diya.
+     *
+     * Aur ye KHAMOSHI SE hota: `tb_diff` sifar hi rehta, kyunke dono taraf
+     * barabar hai. Is liye neeche AR ka apna asar naapa ja raha hai.
+     */
+    public function test_an_invoice_paid_after_issue_is_refused(): void
+    {
+        [$event, $invoice] = $this->invoicedBooking(0);   // bill ke waqt koi advance nahi
+
+        // Ab paisa aaya — bill ban chuka hai, is liye ye `settlement` hoga.
+        $receipt = app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 12000,
+            'payment_method_id' => $this->paymentMethodId,
+            'received_date' => now()->toDateString(),
+        ]);
+        $this->assertSame(\App\Models\Tenant\CateringAdvance::POSTING_SETTLEMENT, $receipt->posting_type,
+            'bill ke baad aaya paisa settlement hona chahiye — warna ye test us surat ko chhoo hi nahi raha');
+
+        $arPehle = $this->accountMovement('1300');
+
+        try {
+            $this->invoices->void($invoice->refresh(), 'test');
+            $this->fail('settlement receipts ke saath void nahi hona chahiye — AR manfi ho jata');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('settlement', $e->getMessage());
+        }
+
+        $this->assertEqualsWithDelta($arPehle, $this->accountMovement('1300'), 0.01,
+            'aur khaton me kuch hila tak na ho');
+        $this->assertNull(CateringFinalInvoice::withVoided()->first()->voided_at,
+            'bill par nishan bhi na lage — aadha kaam sab se bura hai');
+    }
+
+    /**
+     * Probe zinda hai: pehra hata do to AR waqai manfi ho jata hai.
+     *
+     * Ye jaanch khud pehre ko nahi, us KHARABI ko naapti hai jis se pehra bacha
+     * raha hai. Is ke baghair upar wala test sirf ek paighaam ki jaanch hota.
+     */
+    public function test_and_that_refusal_is_what_keeps_receivables_from_going_negative(): void
+    {
+        [$event, $invoice] = $this->invoicedBooking(0);
+
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 12000,
+            'payment_method_id' => $this->paymentMethodId,
+            'received_date' => now()->toDateString(),
+        ]);
+
+        // Bill poora bhar gaya, to AR sifar par hona chahiye.
+        $this->assertEqualsWithDelta(0.0, $this->accountMovement('1300'), 0.01);
+
+        // Ab SIRF GL ulta karo — wohi jo void karta, magar pehre ke baghair.
+        $entry = app(\App\Services\Finance\JournalService::class)
+            ->findPostedForSource('catering_final_invoice', $invoice->id);
+        app(\App\Services\Finance\JournalService::class)->reverse($entry, 'pehre ke baghair');
+
+        $this->assertLessThan(-1000, $this->accountMovement('1300'),
+            'bill ki entry ulti karte hi AR manfi ho jata hai — YEHI wo kharabi hai jise pehra rokta hai');
+        $this->assertEqualsWithDelta(0.0, $this->trialBalance(), 0.01,
+            'aur tb_diff ko khabar tak nahi — isi liye ye kharabi khamosh hai');
+    }
 }

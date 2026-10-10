@@ -211,6 +211,38 @@ class CateringFinalInvoiceService
             return $invoice;   // dobara chalane par kuch na ho
         }
 
+        // 🚨 BILL KE BAAD AAYA PAISA — yahan ruk jao.
+        //
+        // Receipt ka GL us ke `posting_type` par chalta hai:
+        //   • `advance`    (bill se PEHLE)  → Cr 2300 Customer Advances
+        //   • `settlement` (bill ke BAAD)   → Cr 1300 AR, seedha
+        //
+        // Void bill ki entry ulti karta hai, yani AR se bill ki raqam nikal
+        // jati hai. Agar us bill ke khilaf `settlement` receipts aa chuki hon
+        // to un ka Cr 1300 wahin reh jata hai aur AR MANFI ho jata hai —
+        // khate kehne lagte hain ke graahak ne itna zyada de diya.
+        //
+        // Prod par ye farziya nahi: EV-20260909-0002 par 4,89,605 do
+        // `settlement` receipts me aaya hai. Us ko void karna AR ko
+        // -4,89,605 kar deta, aur `tb_diff` ko khabar tak na hoti kyunke
+        // dono taraf barabar rehta hai.
+        //
+        // Is ka sahi ilaj ye hai ke aisi receipts wapas `advance` me badli
+        // jayen (Dr 1300 / Cr 2300 ka ek durusti posting). Wo abhi banaya
+        // nahi gaya, aur banaye baghair ye raasta BAND rehna chahiye: aadha
+        // kaam khaton me chup chaap ghalat adad chhorta hai.
+        $settlements = $invoice->event()->first()?->advances()
+            ->where('posting_type', \App\Models\Tenant\CateringAdvance::POSTING_SETTLEMENT)
+            ->count() ?? 0;
+
+        if ($settlements > 0) {
+            throw new RuntimeException(
+                "Invoice {$invoice->invoice_no} ke khilaf {$settlements} receipt bill ke BAAD aayi hain "
+                .'(settlement). Inhen pehle advance me badalna hoga, warna void AR ko manfi kar dega. '
+                .'Ye raasta abhi banaya nahi gaya — malik se poochho.'
+            );
+        }
+
         return DB::connection('tenant')->transaction(function () use ($invoice, $reason, $userId) {
             $event = $invoice->event()->first();
 
