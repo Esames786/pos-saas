@@ -120,4 +120,51 @@ assert.ok(
 );
 ok('ye sirf batati hai, kisi parchi ko rokti nahi');
 
-console.log(`\n✅ ALL PASSED (${passed} assertions) · elevation guard\n`);
+/* ── KAGHAZ KA NAAP PRINTER TAK PAHUNCHE ──────────────────────────────────
+ *
+ * 10/11 Oct: kitchen sheet A5 par bheji jati thi aur A4 par nikalti thi. Malik
+ * ne theek pakra. Hamari taraf sab durust tha — job me `a5_portrait`, HTML me
+ * `@page { size: A5 portrait }`, aur PDF ka MediaBox waqai 420x595 pt (= A5).
+ *
+ * Kami AAGE thi: SumatraPDF ko kagaz ka naap bataya hi nahi jata tha, is liye
+ * Windows printer ki APNI default (aam tor par A4) lag jati thi.
+ *
+ * Qeematein andaze se nahi li gayin: SumatraPDF 3.5.2 ki binary me paper ki
+ * fehrist dekhi gayi aur `-print-settings` ke chunao bhi; phir asli PDF ke
+ * saath chala kar dekha ke wo exit 0 deta hai.
+ */
+{
+    const settingsFor = (() => {
+        const start = agent.indexOf('function printSettingsFor(');
+        const end = agent.indexOf('\n}', start) + 2;
+
+        return new Function(`${agent.slice(start, end)}; return printSettingsFor;`)();
+    })();
+
+    const say = (paper) => settingsFor({ payload: { paper } });
+
+    assert.strictEqual(say('a5_portrait'), 'paper=A5,portrait,noscale',
+        'A5 ke parche par printer ko A5 hi kehna chahiye');
+    assert.strictEqual(say('a4_portrait'), 'paper=A4,portrait,noscale');
+    assert.strictEqual(say('a4_landscape'), 'paper=A4,landscape,noscale');
+    ok('kagaz ka naap printer tak jata hai (paper=A5 / A4)');
+
+    // Na-pehchana kagaz koi setting na bheje. Ek na-samjhi ki wajah se parchi
+    // rokna us masle se bara masla hai jo wo batati.
+    assert.strictEqual(say('koora'), null, 'na-pehchana kagaz koi setting na bheje');
+    assert.strictEqual(say(''), null);
+    assert.strictEqual(settingsFor({}), null, 'payload hi na ho to bhi na gire');
+    ok('na-samjha kagaz koi setting nahi bhejta - purana rawaiyya chalta hai');
+
+    // `-print-settings` SIRF SumatraPDF samajhta hai. PDFtoPrinter ya Acrobat
+    // ko dena unhein tor deta - aur wo nakami theek us PC par hoti jahan
+    // SumatraPDF mojood hi na ho, yani sab se bure waqt par.
+    const pdfBlock = agent.slice(agent.indexOf('function findPdfPrinter('),
+        agent.indexOf('function runExe('));
+    assert.ok(/PDFtoPrinter\.exe'\), args: \(f, p\) => \[f, p\]/.test(pdfBlock),
+        'PDFtoPrinter ko print-settings nahi milni chahiye');
+    assert.ok(!/AcroRd32[^\n]*print-settings/.test(pdfBlock),
+        'Acrobat ko bhi nahi');
+    ok('print-settings sirf SumatraPDF ko jati hai');
+}
+console.log(`\n✅ ALL PASSED (${passed} assertions) · elevation + paper\n`);

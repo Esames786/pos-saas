@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.6.4';
+const AGENT_VERSION = '2.6.5';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -583,11 +583,55 @@ function isElevated() {
  * ke saath rakha ja sakta hai; PDFtoPrinter doosra aam hal hai; Acrobat aakhir
  * me, kyunke wo dheema hai aur kabhi kabhi window khol deta hai.
  */
+/**
+ * Job ka kagaz SumatraPDF ki zubaan me — aur ye satar hi wo cheez thi jo kam thi.
+ *
+ * ── 10/11 OCTOBER ─────────────────────────────────────────────────────────
+ *
+ * Kitchen sheet A5 par bheji ja rahi thi aur A4 par nikal rahi thi. Malik ne
+ * theek pakra. Jaanch par hamari taraf sab durust nikla: job me `a5_portrait`
+ * tha aur HTML me `@page { size: A5 portrait }` — yani PDF waqai A5 ki banti
+ * thi.
+ *
+ * Kami aage thi: SumatraPDF ko printer ke liye kagaz ka naap bataya hi nahi
+ * jata tha, is liye Windows printer ki APNI default (A4) lag jati thi. Natija
+ * — A5 ka naqsha A4 ke kaghaz par.
+ *
+ * `-print-settings paper=A5` DEVMODE me `DM_PAPERSIZE` set karta hai, yani
+ * printer ko kehta hai ke kaun sa kaghaz uthana hai. `noscale` is liye ke
+ * content ko sheet par fit karne ke chakkar me khincha na jaye — naap wohi rahe
+ * jo document ka hai.
+ *
+ * Qeematein andaze se nahi li gayin: SumatraPDF 3.5.2 ki binary me paper ki
+ * fehrist dekhi gayi (A3/A5/letter/legal wagaira null-terminated table me) aur
+ * `-print-settings` ke chunao bhi (noscale, portrait, landscape, bin=, paper=).
+ *
+ * Na-pehchana kagaz ho to `null` — yani koi setting nahi jati aur purana
+ * rawaiyya chalta hai. Ek na-samjhi ki wajah se parchi rokna us masle se bara
+ * masla hai jo wo batati.
+ */
+function printSettingsFor(job) {
+    const paper = String(((job || {}).payload || {}).paper || '').toLowerCase();
+    const m = paper.match(/^(a3|a4|a5|a6|letter|legal)(?:[_-](portrait|landscape))?$/);
+    if (!m) { return null; }
+
+    const parts = ['paper=' + (m[1].length === 2 ? m[1].toUpperCase() : m[1])];
+    if (m[2]) { parts.push(m[2]); }
+    parts.push('noscale');
+
+    return parts.join(',');
+}
 function findPdfPrinter() {
+    const sumatraArgs = (f, p, settings) => (settings
+        ? ['-print-to', p, '-print-settings', settings, '-silent', '-exit-when-done', f]
+        : ['-print-to', p, '-silent', '-exit-when-done', f]);
+
     const options = [
         { exe: process.env.BINGOO_PDF_PRINTER, args: (f, p) => ['-print-to', p, '-silent', f] },
-        { exe: path.join(exeDir(), 'SumatraPDF.exe'), args: (f, p) => ['-print-to', p, '-silent', '-exit-when-done', f] },
-        { exe: 'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe', args: (f, p) => ['-print-to', p, '-silent', '-exit-when-done', f] },
+        // `-print-settings` SIRF SumatraPDF samajhta hai. PDFtoPrinter aur
+        // Acrobat ko ye dena un ko tor deta, is liye wo satrein waisi hi hain.
+        { exe: path.join(exeDir(), 'SumatraPDF.exe'), args: sumatraArgs },
+        { exe: 'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe', args: sumatraArgs },
         { exe: path.join(exeDir(), 'PDFtoPrinter.exe'), args: (f, p) => [f, p] },
         { exe: 'C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe', args: (f, p) => ['/t', f, p] },
         { exe: 'C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe', args: (f, p) => ['/t', f, p] },
@@ -736,7 +780,9 @@ async function printDocumentOnWindows(job) {
             );
         }
         if (tool) {
-            await runExe(tool.exe, tool.args(pdfPath, targetName), 120000);
+            // Kagaz ka naap printer tak pahunchana — warna wo apni default
+            // (aam tor par A4) uthata hai aur A5 ka parcha A4 par nikalta hai.
+            await runExe(tool.exe, tool.args(pdfPath, targetName, printSettingsFor(job)), 120000);
         } else {
             // Koi maaruf utility nahi mili — Windows ka apna "PrintTo" aazmao.
             //
