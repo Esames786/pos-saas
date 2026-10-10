@@ -55,6 +55,9 @@ class CateringDocumentQueueService
 
     public const KIND_ADDRESS_SHEET = 'address_sheet';
 
+    /** Final invoice — A4, aur wo kisi setting se nahi badalta. */
+    public const KIND_FINAL_INVOICE = 'final_invoice';
+
     public const KINDS = [self::KIND_KITCHEN_SHEET, self::KIND_QUOTATION, self::KIND_ADDRESS_SHEET];
 
     /** `print_jobs.document_type` — POS ke `receipt`/`kot` se bilkul alag lane. */
@@ -84,6 +87,12 @@ class CateringDocumentQueueService
             // Address sheet ka kaghaz setting se NAHI aata: wo document ke code
             // me A4 tay hai, aur use kahin aur se badalne dena do sach bana
             // deta — screen par kuch, kaghaz par kuch.
+            //
+            // Final invoice YAHAN SAAF likhi hui hai, `default` par chhori nahi
+            // gayi. Malik ne 11 Oct ko poochha tha: "normal aur fully paid dono
+            // me A4 aayega?" Us sawal ka jawab parhne wale ko DIKHNA chahiye,
+            // kisi `default` me chhupa nahi hona chahiye.
+            self::KIND_FINAL_INVOICE => 'a4_portrait',
             default => 'a4_portrait',
         };
     }
@@ -204,6 +213,53 @@ class CateringDocumentQueueService
             referenceId: (int) $estimate->id,
             referenceNo: $estimate->event?->event_no.' / Q'.$estimate->version_no,
             branchId: $estimate->event?->branch_id,
+            userId: $userId,
+            isReprint: $isReprint,
+        );
+    }
+
+    /**
+     * Final invoice — A4 par, poora document, agent ke Chrome se.
+     *
+     * ── 11 OCTOBER: YE METHOD KYUN BANI ──────────────────────────────────
+     *
+     * `printFinalInvoice()` HAR printer ke liye `CateringDocumentPrintService`
+     * bulata tha, jo `raw_payload` me ESC/POS bytes bharta hai (wo THERMAL
+     * parchi ke liye bana tha) aur printer ki qisam dekhta hi nahi.
+     *
+     * Agent us job ko `printer_type === 'windows'` dekh kar document ke raaste
+     * par bhejta hai: raw_payload ko `.html` me likh kar Chrome ko deta hai.
+     * Chrome un control bytes ko matn samajh kar chhap deta hai — A4 ke kaghaz
+     * par koora. Test ne ye code parh kar nahi, CHALA KAR dikhaya: payload
+     * `1d2111 1b4501 ... 1d564200` nikla, yani GS! / ESC E / GS V.
+     *
+     * Quotation par ye branch PEHLE SE mojood thi (`printEstimate()` me).
+     * Invoice ko wo kabhi di hi nahi gayi — ek jagah kiya, doosri reh gayi.
+     *
+     * Thermal ka purana raasta waisa hi hai: wahan ESC/POS hi theek hai.
+     */
+    public function queueFinalInvoice(
+        \App\Models\Tenant\CateringFinalInvoice $invoice,
+        Printer $printer,
+        string $lang = 'en',
+        ?int $userId = null,
+        bool $isReprint = false,
+    ): PrintJob {
+        $invoice->loadMissing(['event']);
+
+        return $this->queue(
+            kind: self::KIND_FINAL_INVOICE,
+            printer: $printer,
+            html: view('tenant.catering.documents.final-invoice', [
+                'invoice' => $invoice,
+                'lang' => $lang,
+                'businessName' => $this->businessName(),
+            ])->render(),
+            paper: self::paperFor(self::KIND_FINAL_INVOICE),
+            referenceType: 'catering_final_invoice',
+            referenceId: (int) $invoice->id,
+            referenceNo: $invoice->invoice_no,
+            branchId: $invoice->event?->branch_id,
             userId: $userId,
             isReprint: $isReprint,
         );

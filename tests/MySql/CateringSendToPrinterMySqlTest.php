@@ -511,6 +511,79 @@ class CateringSendToPrinterMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /**
+     * A4 PRINTER PAR INVOICE KA PARCHA HTML HO, ESC/POS BYTES NAHI.
+     *
+     * ── 11 OCTOBER, ASAL KHARABI ──────────────────────────────────────────
+     *
+     * Event ke safhe par "Send invoice to printer" ka dropdown HAR active
+     * printer dikhata hai — dono A4/A5 laser bhi. Magar us ka raasta
+     * `CateringDocumentPrintService` hai, jo `raw_payload` me ESC/POS bytes
+     * bharta hai (wo thermal parchi ke liye bana tha), aur us me printer ki
+     * qisam dekhi hi nahi jati.
+     *
+     * Agent us job ko `printer_type === 'windows'` dekh kar document ke raaste
+     * par bhejta hai: raw_payload ko `.html` file me likhta hai aur Chrome ko
+     * deta hai. Chrome un control bytes ko matn samajh kar chhap deta hai.
+     * Natija — A4 ke kaghaz par koora.
+     *
+     * Ye nakami KHAMOSH hai: job "printed" lagti hai, agent khush hai, aur
+     * sirf graahak ke haath me aaya kaghaz sach bolta hai.
+     */
+    public function test_an_invoice_sent_to_an_a4_printer_carries_html_not_escpos(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $printer = $this->windowsPrinter();
+
+        $this->estimates->markSent($event->currentEstimate->refresh());
+        $this->estimates->confirmEvent($event->refresh());
+
+        // Event ka din guzar chuka ho — CATERING-CLOSE-AFTER-EVENT-1 ka pehra
+        // us se pehle final invoice banne hi nahi deta, aur ye test invoice ke
+        // PARCHE ke baare me hai, us pehre ke baare me nahi.
+        DB::connection("tenant")->table("catering_events")->where("id", $event->id)
+            ->update(["event_date" => now()->subDays(2)->toDateString()]);
+
+        $paymentMethodId = $this->makePaymentMethod();
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 50000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $paymentMethodId,
+        ]);
+        $invoice = app(\App\Services\Catering\CateringFinalInvoiceService::class)->issue($event->refresh());
+
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'IV'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class)->printFinalInvoice(
+            \Illuminate\Http\Request::create('/x', 'POST', ['printer_id' => $printer->id, 'lang' => 'en']),
+            $invoice
+        );
+
+        $job = \App\Models\Tenant\PrintJob::on('tenant')
+            ->where('printer_id', $printer->id)->orderByDesc('id')->first();
+
+        $this->assertNotNull($job, 'invoice ki job banni chahiye thi');
+
+        $html = (string) $job->raw_payload;
+        $this->assertStringContainsString('<', $html,
+            'A4 printer par jo parcha jata hai wo HTML hona chahiye — agent use Chrome se PDF banata hai');
+        $this->assertStringNotContainsString("\x1b@", $html,
+            'ESC/POS ka reset byte (ESC @) A4 ke parche me nahi hona chahiye — '
+            .'Chrome use matn samajh kar chhap deta hai aur kaghaz par koora aata hai');
+        $this->assertStringNotContainsString("\x1dV", $html,
+            'aur na hi cut command (GS V)');
+
+        // Aur kagaz A4 ho — invoice kabhi A5 par nahi jati.
+        $payload = is_array($job->payload) ? $job->payload : (array) json_decode((string) $job->payload, true);
+        $this->assertStringStartsWith('a4', (string) ($payload['paper'] ?? ''),
+            'invoice ka kagaz A4 hona chahiye, aur wo job ke saath jana chahiye — '
+            .'warna agent printer ko naap batata hi nahi aur wo apni default utha leta hai');
+    }
     /** Do baar dabane se do kaghaz nahi — wohi job wapas aati hai. */
     public function test_queueing_the_same_document_twice_returns_the_same_job(): void
     {

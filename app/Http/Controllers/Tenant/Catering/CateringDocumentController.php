@@ -265,8 +265,19 @@ class CateringDocumentController extends Controller
 
     public function printFinalInvoice(Request $request, CateringFinalInvoice $cateringFinalInvoice)
     {
-        return $this->queueDocument($request, fn (Printer $printer, string $lang, bool $reprint) => app(CateringDocumentPrintService::class)
-            ->queueFinalInvoice($cateringFinalInvoice, $printer, $lang, $request->user()?->id, $reprint));
+        // WOHI BRANCH JO `printEstimate()` PAR PEHLE SE HAI.
+        //
+        // 11 Oct tak yahan har printer ke liye `CateringDocumentPrintService`
+        // bulaya jata tha, jo ESC/POS bytes banata hai. A4 printer chunne par
+        // agent un bytes ko HTML samajh kar Chrome ko deta aur kaghaz par koora
+        // aata. Quotation par ye theek tha; invoice par kabhi kiya hi nahi gaya.
+        return $this->queueDocument($request, fn (Printer $printer, string $lang, bool $reprint) => $printer->printer_type === Printer::TYPE_WINDOWS
+            // A4 par poora document — Urdu samet, agent ke Chrome se.
+            ? app(CateringDocumentQueueService::class)
+                ->queueFinalInvoice($cateringFinalInvoice, $printer, $lang, $request->user()?->id, $reprint)
+            // Thermal par wohi purani English slip — ek harf nahi badla.
+            : app(CateringDocumentPrintService::class)
+                ->queueFinalInvoice($cateringFinalInvoice, $printer, $lang, $request->user()?->id, $reprint));
     }
 
     /** Shared validation, printer resolution and honest failure for both documents. */

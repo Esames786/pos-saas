@@ -268,6 +268,7 @@
                 @include('tenant.catering.partials.document-print', [
                     'action' => url('/catering/documents/estimate/' . $current->id . '/print'),
                     'label' => 'Print Quotation',
+                    'kind' => \App\Services\Catering\CateringDocumentQueueService::KIND_QUOTATION,
                     'printers' => $printers ?? collect(),
                     'permission' => 'tenant.catering.documents.estimate-print',
                 ])
@@ -1318,6 +1319,7 @@
                     @include('tenant.catering.partials.document-print', [
                         'action' => url('/catering/documents/final-invoice/' . $invoice->id . '/print'),
                         'label' => 'Send invoice to printer',
+                        'kind' => \App\Services\Catering\CateringDocumentQueueService::KIND_FINAL_INVOICE,
                         'printers' => $printers ?? collect(),
                         'permission' => 'tenant.catering.documents.final-invoice-print',
                     ])
