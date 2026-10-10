@@ -4,6 +4,14 @@
      including page. --}}
 <div class="print-bar">
     <button onclick="window.print()" style="padding: 8px 18px; cursor: pointer;">Print</button>
+    {{-- CATERING-SEND-SINGLE-1 — THEEK WAHIN jahan Print hai.
+
+         Partial khud `@isset($ids)` par khari hai. Yehi safha
+         `CateringDocumentQueueService` bhi render karta hai (agent ko
+         bhejne ke liye HTML jamate waqt) aur `?format=pdf` bhi — un
+         dono me `ids` hoti hi nahi, is liye wahan kuch nikalta nahi.
+         Warna chhapne wale kaghaz par toolbar bhi chhap jata. --}}
+    @include('tenant.catering.documents.partials.send-to-network', ['kind' => 'kitchen_sheet'])
 </div>
 
 <div class="doc-meta">

@@ -44,6 +44,11 @@
     .doc-btn:hover, .doc-select:hover { border-color: #9ca3af; }
     .doc-btn-primary { background: #111827; border-color: #111827; color: #fff; }
     .doc-btn-primary:hover { background: #374151; border-color: #374151; }
+    .doc-paper {
+        display: inline-flex; align-items: center; font-family: Arial, Helvetica, sans-serif;
+        font-size: 12px; font-weight: 700; letter-spacing: .04em; padding: 0 12px;
+        border: 1px solid #d1d5db; border-radius: 5px; background: #f3f4f6; color: #374151;
+    }
     .doc-note { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #6b7280; }
     .doc-flash {
         font-family: Arial, Helvetica, sans-serif; font-size: 13px; border-radius: 5px;
@@ -79,6 +84,22 @@
                 <input type="hidden" name="ids[]" value="{{ $id }}">
             @endforeach
 
+            {{-- KAGHAZ KA SIZE YAHAN LIKHA HAI, aur ye jaan bujh kar hai.
+
+                 Malik (10 Oct): "dono printer A4 bhi chhap sakte hain aur A5
+                 bhi. Kitchen sheet hamesha A5, baqi sab A4." Qaida pehle se
+                 THEEK chal raha tha — size document se aata hai, printer se
+                 nahi — magar screen par kahin likha nahi tha. Operator ko
+                 printer ke naam par jana parta tha ("… (A4)"), aur wo naam
+                 jhoot bolta hai: usi printer par kitchen sheet bhejo to A5 hi
+                 nikalti hai.
+
+                 Ye label SERVICE se aata hai, yahan dobara nahi likha ja raha.
+                 Do jagah likhne par ek din dono alag ho jate aur screen jhoot
+                 bolne lagti. --}}
+            <span class="doc-paper" title="Kaghaz ka size document se tay hota hai, printer se nahi">
+                {{ \App\Services\Catering\CateringDocumentQueueService::paperLabel($kind) }}
+            </span>
             <select name="printer_id" class="doc-select" required>
                 @foreach($stnPrinters as $p)
                     <option value="{{ $p->id }}">{{ $p->name }}</option>

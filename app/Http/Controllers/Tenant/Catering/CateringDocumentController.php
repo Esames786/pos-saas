@@ -26,6 +26,21 @@ use Illuminate\Http\Request;
 class CateringDocumentController extends Controller
 {
     /** Customer-facing A4 estimate. */
+    /**
+     * Wo printer jo A4/A5 document chhap sakte hain — aur koi nahi.
+     *
+     * `CateringBulkDocumentController` me bhi bilkul yehi satar thi. Ek hi
+     * jagah rakhna behtar hota, magar wo doosra controller hai; yahan us ka
+     * naam liya ja raha hai taake agli baar koi dhoondne par dono dekh le.
+     *
+     * `documentCapable()` scope hi wo shart hai jo A4 laser ko ESC/POS bytes
+     * se bachati hai — fehrist yahan haath se banana us hifazat ko tor deta.
+     */
+    private function documentPrinters()
+    {
+        return \App\Models\Tenant\Printer::documentCapable()->orderBy('name')->get(['id', 'name']);
+    }
+
     public function estimate(Request $request, CateringEstimate $cateringEstimate)
     {
         $cateringEstimate->load(['event.customer', 'lines']);
@@ -64,6 +79,21 @@ class CateringDocumentController extends Controller
                 $cateringEstimate->event->event_no.'-Q'.$cateringEstimate->version_no);
         }
 
+        // CATERING-SEND-SINGLE-1 — "Send to network" yahan bhi, bulk ki tarah.
+        //
+        // Malik (10 Oct): "event ki edit wali screen se quotation print karta
+        // hoon to wahan koi printer chunne ka option aata hi nahi." Theek
+        // shikayat thi: ye control sirf TEEN bulk safhon par laga tha, aur
+        // rozmarra ka kaam inhi single safhon se hota hai.
+        //
+        // Ye do qeematein SIRF is raaste par jaati hain. PDF wale raaste ko
+        // (upar) aur `CateringDocumentQueueService` ko — jo YEHI view render
+        // kar ke agent ke liye HTML jamata hai — nahi miltin. Partial khud
+        // `@isset($ids)` par khari hai, is liye wahan kuch nikalta hi nahi:
+        // warna chhapne wale kaghaz par toolbar bhi chhap jata.
+        $data['ids'] = array_filter([$cateringEstimate->event?->id]);
+        $data['printers'] = $this->documentPrinters();
+
         return view('tenant.catering.documents.estimate', $data);
     }
 
@@ -77,6 +107,9 @@ class CateringDocumentController extends Controller
             'release' => $cateringProductionRelease,
             'lang' => $lang,
             'businessName' => $this->businessName(),
+            // CATERING-SEND-SINGLE-1 — dekho `estimate()` ka note.
+            'ids' => array_filter([$cateringProductionRelease->event?->id]),
+            'printers' => $this->documentPrinters(),
         ]);
     }
 
@@ -98,6 +131,12 @@ class CateringDocumentController extends Controller
             'release' => app(CateringProductionReleaseService::class)->preview($cateringEvent),
             'lang' => $this->language($request),
             'businessName' => $this->businessName(),
+            // CATERING-SEND-SINGLE-1 — preview se bhi bheja ja sakta hai.
+            // Qatai mehfooz: `queueKitchenSheetForEvent()` EVENT leti hai,
+            // release nahi — is liye yahan se bhejne par bhi koi release
+            // nahi banti aur koi number kharch nahi hota.
+            'ids' => [$cateringEvent->id],
+            'printers' => $this->documentPrinters(),
             // Koi `preview` jhanda nahi bheja ja raha: kaghaz khud dekh leta
             // hai ke release mehfooz hui hai ya nahi (`$release->exists`). Ek
             // jhanda har naye caller par dobara sahi likhna parta — aur bulk

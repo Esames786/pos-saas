@@ -61,6 +61,39 @@ class CateringDocumentQueueService
     public const DOCUMENT_TYPE = 'catering_document';
 
     /**
+     * Kis document ka kaghaz kaun sa — EK hi jagah.
+     *
+     * Malik (10 Oct): "kitchen sheet hamesha A5 par, baqi quotation / invoice /
+     * address sab A4 par. Jo printer bhi chunoon, size wohi rehna chahiye."
+     *
+     * Ye qaida pehle se chal raha tha — teenon queue methods apna apna kaghaz
+     * yahin se uthate thay — magar wo faisla TEEN jagah likha tha, aur SCREEN
+     * par kahin likha hi nahi tha. Is liye operator ko printer ke naam par
+     * jana parta tha ("Office - HP P2055dn (A4)"), aur wo naam jhoot bolta
+     * hai: usi printer par kitchen sheet bhejo to wo A5 hi nikalti hai.
+     *
+     * Ab faisla yahan ek baar hota hai, aur Send-to-network wala control bhi
+     * YAHIN se parh kar operator ko dikhata hai. Do jagah do jawab nahi ho
+     * sakte, kyunke jagah ek hi hai.
+     */
+    public static function paperFor(string $kind): string
+    {
+        return match ($kind) {
+            self::KIND_KITCHEN_SHEET => CateringSetting::tenantDefault()->kitchen_sheet_paper ?: 'a5_portrait',
+            self::KIND_QUOTATION => CateringSetting::tenantDefault()->quotation_paper ?: 'a4_portrait',
+            // Address sheet ka kaghaz setting se NAHI aata: wo document ke code
+            // me A4 tay hai, aur use kahin aur se badalne dena do sach bana
+            // deta — screen par kuch, kaghaz par kuch.
+            default => 'a4_portrait',
+        };
+    }
+
+    /** Wohi faisla, operator ki zubaan me: "A4" ya "A5". */
+    public static function paperLabel(string $kind): string
+    {
+        return str_starts_with(self::paperFor($kind), 'a5') ? 'A5' : 'A4';
+    }
+    /**
      * Kitchen sheet — production release ka parcha. Kagaz tenant ki setting se
      * (`kitchen_sheet_paper`, aam tor par A5).
      */
@@ -80,7 +113,7 @@ class CateringDocumentQueueService
                 'lang' => $this->language(),
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: CateringSetting::tenantDefault()->kitchen_sheet_paper ?: 'a5_portrait',
+            paper: self::paperFor(self::KIND_KITCHEN_SHEET),
             referenceType: 'catering_production_release',
             referenceId: (int) $release->id,
             referenceNo: $release->release_no,
@@ -129,7 +162,7 @@ class CateringDocumentQueueService
                 'lang' => $this->language(),
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: CateringSetting::tenantDefault()->kitchen_sheet_paper ?: 'a5_portrait',
+            paper: self::paperFor(self::KIND_KITCHEN_SHEET),
             referenceType: 'catering_event',
             referenceId: (int) $event->id,
             referenceNo: $event->event_no,
@@ -166,7 +199,7 @@ class CateringDocumentQueueService
                 'advanceTotal' => $position['net_received'],
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: CateringSetting::tenantDefault()->quotation_paper ?: 'a4_portrait',
+            paper: self::paperFor(self::KIND_QUOTATION),
             referenceType: 'catering_estimate',
             referenceId: (int) $estimate->id,
             referenceNo: $estimate->event?->event_no.' / Q'.$estimate->version_no,
@@ -194,7 +227,7 @@ class CateringDocumentQueueService
                 'events' => collect([$event]),
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: 'a4_portrait',
+            paper: self::paperFor(self::KIND_ADDRESS_SHEET),
             referenceType: 'catering_event',
             referenceId: (int) $event->id,
             referenceNo: $event->event_no,

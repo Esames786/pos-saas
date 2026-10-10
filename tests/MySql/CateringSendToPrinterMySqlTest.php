@@ -341,6 +341,109 @@ class CateringSendToPrinterMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /**
+     * CATERING-SEND-SINGLE-1 — control SINGLE safhon par bhi, sirf bulk par nahi.
+     *
+     * Malik (10 Oct): "event ki edit wali screen se quotation print karta hoon
+     * to wahan koi printer chunne ka option aata hi nahi."
+     *
+     * Theek shikayat thi. "Send to network" sirf TEEN bulk safhon par laga tha,
+     * jabke rozmarra ka kaam inhi single safhon se hota hai — ek booking kholo,
+     * quotation ya kitchen sheet kholo, chhapo. Us raaste par control tha hi
+     * nahi, is liye operator ko browser ke print dialog me ja kar printer aur
+     * kagaz dono haath se chunne parte — yani bilkul wohi takleef jis ko mitane
+     * ke liye ye poora feature bana tha.
+     */
+    public function test_the_single_document_screens_also_offer_send_to_network(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $this->windowsPrinter(['name' => 'Office A4']);
+        $this->windowsPrinter(['name' => 'Office A5', 'paper_size' => 'A5',
+            'windows_printer_name' => 'HP LaserJet Pro MFP M127fn']);
+
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'SG'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        $c = app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class);
+        $req = fn () => \Illuminate\Http\Request::create('/x', 'GET');
+
+        foreach ([
+            ['quotation', $c->estimate($req(), $event->currentEstimate()->first())],
+            ['kitchen sheet', $c->kitchenSheetPreview($req(), $event)],
+        ] as [$name, $view]) {
+            $html = $view->render();
+
+            $this->assertStringContainsString('window.print()', $html,
+                "{$name}: haath wala Print button rehna chahiye — naya control purane ko hataata nahi");
+            $this->assertStringContainsString('Send to network', $html,
+                "{$name}: single safhe par bhi network wala button hona chahiye");
+            $this->assertStringContainsString('name="printer_id"', $html,
+                "{$name}: printer chunne ka khaana");
+
+            // DONO printer aayein. Malik ki shart: kaghaz ka size printer se
+            // aata hi nahi, is liye har document par dono chunne ke qabil hon.
+            $this->assertStringContainsString('Office A4', $html, "{$name}: pehla printer");
+            $this->assertStringContainsString('Office A5', $html, "{$name}: doosra printer bhi");
+
+            $this->assertStringNotContainsString('name="paper', $html,
+                "{$name}: kagaz ka koi khaana NAHI — document khud jaanta hai");
+        }
+    }
+
+    /**
+     * KAGHAZ KA SIZE DOCUMENT SE AATA HAI, PRINTER SE NAHI — aur screen wohi kahe.
+     *
+     * Malik (10 Oct): "dono printer A4 bhi chhap sakte hain aur A5 bhi. Kitchen
+     * sheet hamesha A5, baqi sab A4."
+     *
+     * Qaida PEHLE SE theek chal raha tha — `queueKitchenSheetForEvent()` kagaz
+     * `kitchen_sheet_paper` se uthati hai — magar screen par kahin likha nahi
+     * tha. Operator ko printer ke NAAM par jana parta tha ("Office — HP P2055dn
+     * (A4)"), aur wo naam jhoot bolta hai: usi printer par kitchen sheet bhejo
+     * to wo A5 hi nikalti hai.
+     *
+     * Ye test dono simton par khara hai: label wohi ho jo JOB me jata hai, aur
+     * printer ke naam se mutaasir na ho.
+     */
+    public function test_the_paper_label_on_screen_matches_the_job_not_the_printer_name(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+
+        // Printer ka naam JAAN BUJH KAR jhoota: "(A4)" likha hai magar is par
+        // kitchen sheet A5 hi jayegi. Agar kabhi label printer se aane lage to
+        // ye test wohi ghalti pakdega.
+        $printer = $this->windowsPrinter(['name' => 'Office — HP P2055dn (A4)']);
+
+        $svc = \App\Services\Catering\CateringDocumentQueueService::class;
+
+        $this->assertSame('A5', $svc::paperLabel($svc::KIND_KITCHEN_SHEET), 'kitchen sheet hamesha A5');
+        $this->assertSame('A4', $svc::paperLabel($svc::KIND_QUOTATION), 'quotation A4');
+        $this->assertSame('A4', $svc::paperLabel($svc::KIND_ADDRESS_SHEET), 'address sheet A4');
+
+        // Aur ab asal natija: JOB me kya gaya. Label aur job ek hi jagah se
+        // aate hain, aur yahan dono mila kar dekhe jate hain.
+        foreach ([
+            [$svc::KIND_KITCHEN_SHEET, fn () => $this->queue->queueKitchenSheetForEvent($event, $printer)],
+            [$svc::KIND_QUOTATION, fn () => $this->queue->queueQuotation($event->currentEstimate()->first(), $printer)],
+            [$svc::KIND_ADDRESS_SHEET, fn () => $this->queue->queueAddressSheet($event, $printer)],
+        ] as [$kind, $make]) {
+            $job = $make();
+            $payload = is_array($job->payload) ? $job->payload : (array) json_decode((string) $job->payload, true);
+            $paper = (string) ($payload['paper'] ?? '');
+
+            $this->assertStringStartsWith(
+                strtolower($svc::paperLabel($kind)), $paper,
+                "{$kind}: screen ka label (".$svc::paperLabel($kind).") aur job ka kagaz ({$paper}) ek hone chahiyein"
+            );
+        }
+    }
+
     /** Do baar dabane se do kaghaz nahi — wohi job wapas aati hai. */
     public function test_queueing_the_same_document_twice_returns_the_same_job(): void
     {
