@@ -352,6 +352,24 @@
                                              Ye raasta kuch MEHFOOZ NAHI karta: na release banti
                                              hai, na number kharch hota hai, na status hilta hai.
                                              Kaghaz khud oopar likhta hai ke wo jaari nahi hua. --}}
+                                        @can('tenant.catering.documents.proforma-invoice')
+                                            {{-- CATERING-PROFORMA-1 — kitchen sheet ke preview ke
+                                                 saath, kyunke dono ek hi qism ke hain: maujooda
+                                                 order se bante hain aur kuch mehfooz nahi karte. --}}
+                                            <li class="px-3 py-1">
+                                                <div class="fs-13 mb-1">
+                                                    <i class="ti ti-file-invoice me-2"></i>Proforma Invoice
+                                                    <span class="badge bg-warning-subtle text-warning-emphasis fs-11">not final</span>
+                                                </div>
+                                                <div class="fs-12 text-muted mb-1">Event se pehle — maujooda order se</div>
+                                                <div class="btn-group btn-group-sm w-100" role="group" aria-label="Proforma language">
+                                                    <a class="btn btn-outline-secondary" target="_blank"
+                                                       href="{{ url('/catering/documents/proforma-invoice/' . $event->id . '?lang=en') }}">EN</a>
+                                                    <a class="btn btn-outline-secondary" target="_blank"
+                                                       href="{{ url('/catering/documents/proforma-invoice/' . $event->id . '?lang=ur') }}">اردو</a>
+                                                </div>
+                                            </li>
+                                        @endcan
                                         @can('tenant.catering.documents.kitchen-sheet-preview')
                                             <li class="px-3 py-1">
                                                 <div class="fs-13 mb-1">

@@ -106,6 +106,33 @@ class CateringDocumentController extends Controller
     }
 
     /** CATERING-V1-CLOSURE-1 (§5): A4 final invoice from the immutable snapshot. */
+    /**
+     * CATERING-PROFORMA-1 — event se pehle wala bill, maujooda order se.
+     *
+     * WOHI view jo asli bill chalata hai. Do view rakhne par ek din unhen
+     * milate rehna bhool jata hai aur graahak ke do kaghaz alag dikhne lagte
+     * hain. Kaghaz khud farq bata deta hai, kyunke `$invoice->exists` jhoot
+     * hai — wohi shart jo kitchen sheet ke preview par lagti hai.
+     */
+    public function proformaInvoice(Request $request, \App\Models\Tenant\CateringEvent $cateringEvent)
+    {
+        $lang = $this->language($request);
+        $proforma = app(\App\Services\Catering\CateringFinalInvoiceService::class)->proforma($cateringEvent);
+
+        $data = [
+            'invoice' => $proforma,
+            'lang' => $lang,
+            'businessName' => $this->businessName(),
+        ];
+
+        if ($request->query('format') === 'pdf') {
+            return $this->asPdf('tenant.catering.documents.final-invoice', $data, $lang,
+                'PROFORMA-'.$cateringEvent->event_no);
+        }
+
+        return view('tenant.catering.documents.final-invoice', $data);
+    }
+
     public function finalInvoice(Request $request, \App\Models\Tenant\CateringFinalInvoice $cateringFinalInvoice)
     {
         $cateringFinalInvoice->load('event');

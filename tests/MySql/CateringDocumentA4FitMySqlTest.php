@@ -191,7 +191,11 @@ class CateringDocumentA4FitMySqlTest extends MySqlTenantTestCase
             'customer_name' => 'MR. Fazal Mairaj',
             'customer_phone' => '03452291667',
             'booking_date' => now()->toDateString(),
-            'event_date' => now()->addDays(3)->toDateString(),
+            // CATERING-NOTHING-FREEZES-BEFORE-EVENT-1 (10 Oct) — ye fixture
+            // pehle AANE WALI tareekh ka event banata tha aur phir us ka bill
+            // bana deta tha. Wo surat asal duniya me mumkin hi nahi: bill event
+            // guzarne ke baad banta hai. Fixture ab sach bol raha hai.
+            'event_date' => now()->subDays(3)->toDateString(),
             'service_time' => '20:00',
             'pax' => 75,
         ]);

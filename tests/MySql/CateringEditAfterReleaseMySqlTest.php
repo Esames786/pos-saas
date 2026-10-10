@@ -90,7 +90,11 @@ class CateringEditAfterReleaseMySqlTest extends MySqlTenantTestCase
             'customer_name' => 'MR. ADNAN',
             'customer_phone' => '03008274731',
             'booking_date' => now()->toDateString(),
-            'event_date' => now()->addDays(2)->toDateString(),
+            // CATERING-NOTHING-FREEZES-BEFORE-EVENT-1 (10 Oct) — ye fixture
+            // pehle AANE WALI tareekh ka event banata tha aur phir us ka bill
+            // bana deta tha. Wo surat asal duniya me mumkin hi nahi: bill event
+            // guzarne ke baad banta hai. Fixture ab sach bol raha hai.
+            'event_date' => now()->subDays(2)->toDateString(),
             'pax' => 100,
         ]);
         $this->estimates->saveDraftLines($event->currentEstimate, [

@@ -153,21 +153,28 @@ class CateringCloseAfterEventMySqlTest extends MySqlTenantTestCase
     /** QAIDA 2 — event ka din aaye baghair close nahi. */
     public function test_a_booking_cannot_be_closed_before_its_event_day(): void
     {
+        // CATERING-NOTHING-FREEZES-BEFORE-EVENT-1 (10 Oct) — ye test pehle
+        // kehta tha "bill to ban sakta hai, rok sirf CLOSE par hai". Wohi
+        // soch masla thi: bill bante hi booking `completed` ho jati hai aur
+        // order edit karne ka raasta band ho jata hai. Malik ne 9 Oct ko isi
+        // par ungli rakhi (EV-20261009-0219).
+        //
+        // Ab rok PEHLE lagti hai: event se pehle bill banta hi nahi, is liye
+        // "close" tak baat pahunchti hi nahi. Is test ka sawal wahi hai —
+        // din se pehle kuch jamta to nahi — magar jawab ab zyada sakht hai.
         $event = $this->booking(100000, now()->addDays(7)->toDateString());
         $this->pay($event, 100000);
-        $this->invoices->issue($event->refresh());
-
-        $this->assertSame(CateringEvent::STATUS_COMPLETED, $event->fresh()->status,
-            'bill to ban sakta hai — rok sirf CLOSE par hai');
 
         try {
-            $this->invoices->close($event->refresh());
-            $this->fail('event se pehle close nahi hona chahiye tha');
+            $this->invoices->issue($event->refresh());
+            $this->fail('event se pehle bill nahi banna chahiye tha');
         } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('din', $e->getMessage());
+            $this->assertStringContainsString('guzra nahi', $e->getMessage());
         }
 
-        $this->assertSame(CateringEvent::STATUS_COMPLETED, $event->fresh()->status);
+        $this->assertNull($event->fresh()->finalInvoice()->first(), 'koi bill bana hi na ho');
+        $this->assertTrue($event->fresh()->isCommerciallyOpen(),
+            'aur booking khuli rahe — yehi malik ka asal matlab tha: order edit hota rahe');
     }
 
     /** Aur probe zinda hai: din guzar jane par close ho jati hai. */
@@ -183,15 +190,28 @@ class CateringCloseAfterEventMySqlTest extends MySqlTenantTestCase
     }
 
     /** Event ke USI din bhi band ho sakti hai — "guzar jaye" ka matlab "aa jaye" hai. */
-    public function test_the_event_day_itself_counts_as_arrived(): void
+    /**
+     * HADD ULAT GAYI — aur ye jaan boojh kar hai.
+     *
+     * Is test ka purana naam `test_the_event_day_itself_counts_as_arrived` tha
+     * aur us me likha tha: "jis din event hai usi din khana ja chuka hota hai
+     * — us din rokna fazool hai." Wo dalil 8 Oct ko likhi gayi thi.
+     *
+     * 10 Oct ko malik ne wo faisla ULAT diya: "aaj 10 hai, aaj complete nahi
+     * hone dena tha." Wajah sahi hai — event ke din khana ABHI ja raha hota
+     * hai, rakam badal sakti hai, aur us din kuch jamana jaldbazi hai.
+     *
+     * Purani dalil yahan likhi chhori ja rahi hai, mitai nahi: jis din koi
+     * ise wapas badalne lage, use dono taraf ki baat nazar aani chahiye.
+     */
+    public function test_not_even_the_event_day_itself_counts(): void
     {
         $event = $this->booking(50000, app(\App\Support\TenantClock::class)->now()->toDateString());
         $this->pay($event, 50000);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('guzra nahi');
+
         $this->invoices->issue($event->refresh());
-
-        $this->invoices->close($event->refresh());
-
-        $this->assertSame(CateringEvent::STATUS_CLOSED, $event->fresh()->status,
-            'jis din event hai usi din khana ja chuka hota hai — us din rokna fazool hai');
     }
 }
