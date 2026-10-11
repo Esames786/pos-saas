@@ -234,6 +234,22 @@ class CateringConfirmedIsAGroupMySqlTest extends MySqlTenantTestCase
                 "[{$blade}] par poori fehrist nahi — warna group ke andar wale alag se nazar aate hain");
         }
 
+        // Aur wazahat DONO screenon par ho — EK jagah se. Pehli koshish me
+        // maine "confirmed → closed" sirf bookings ki screen par likhi thi, aur
+        // Balances par sirf "Confirmed" raha — wahan parhne wale ko pata hi na
+        // chalta ke us me closed bhi shamil hai.
+        $this->assertStringContainsString('closed',
+            CateringEvent::filterLabel(CateringEvent::STATUS_CONFIRMED),
+            'Confirmed ka label khud bataye ke us me kya kya hai');
+
+        foreach ([
+            'views/tenant/catering/events/index.blade.php',
+            'views/tenant/catering/customer-balances/index.blade.php',
+        ] as $blade) {
+            $this->assertStringContainsString('filterLabel($s)', file_get_contents(resource_path($blade)),
+                "[{$blade}] label sanjhe qaide se le — warna ek screen wazahat kare aur doosri na kare");
+        }
+
         // Aur satar par badge ab bhi ASAL status dikhaye: ye khabar chhupani
         // nahi thi, sirf chunna aasan karna tha.
         $this->assertSame('Released',

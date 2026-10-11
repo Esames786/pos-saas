@@ -80,6 +80,23 @@ class CateringEvent extends Model
         self::STATUS_CLOSED,
     ];
 
+    /**
+     * Filter ki fehrist par is status ka naam.
+     *
+     * EK jagah, kyunke ye fehrist DO screenon par hai. Pehli koshish me
+     * maine wazahat ("confirmed → closed") sirf bookings ki screen par likhi
+     * thi; Customer Balances par sirf "Confirmed" likha raha aur wahan parhne
+     * wale ko pata hi na chalta ke us me closed bhi shamil hai.
+     */
+    public static function filterLabel(string $status): string
+    {
+        if ($status === self::STATUS_CONFIRMED) {
+            return 'Confirmed (confirmed → closed)';
+        }
+
+        return self::statusLabel($status);
+    }
+
     /** Filter ki fehrist me jo chunne layak hain — group ke andar wale alag se nahi. */
     public const FILTER_STATUSES = [
         self::STATUS_INQUIRY,
