@@ -15,7 +15,15 @@
 </div>
 
 <div class="doc-meta">
-    <span>{{ $businessName }} — {{ $t('KITCHEN / SERVICE SHEET', 'کچن شیٹ') }}</span>
+    {{-- Sar ki satar hata di gayi: karobar ka naam (letterhead par pehle se)
+         aur "KITCHEN / SERVICE SHEET" ka unwan — dono. Malik ne 11 Oct ko
+         parche par nishan laga kar kaha ke ye hata dein.
+
+         Ab is khane me sirf chhapne ka waqt rehta hai (aur jaari-shuda parche
+         par release number). Khaali span is liye rakha gaya hai ke `doc-meta`
+         `justify-content: space-between` par khara hai — us ke baghair waqt
+         baen taraf khisak jata. --}}
+    <span></span>
     {{-- KITCHEN-SHEET-OWN-BARE-1 (2 Oct) — client: "preview wali line hata
          do, us ki jagah print time likh do."
 
@@ -33,7 +41,9 @@
          jo waqt, miqdaar, maal aur PARTY ke dabbe par pehle pakri ja chuki
          hai — ab paanchwin jagah. Jahan bhi RTL safhe par adad aur harf
          saath likhe jayen, unhe apna LTR khaana chahiye. --}}
-    <span dir="ltr">{{ $release->exists ? $release->release_no.' · ' : '' }}{{ $t('Printed', 'چھپا') }} {{ app(\App\Support\TenantClock::class)->now()->format('d M Y g:i A') }}</span>
+    @include('tenant.catering.documents.partials.printed-at', [
+        'paPrefix' => $release->exists ? $release->release_no.' · ' : '',
+    ])
 </div>
 
 {{-- KITCHEN-SHEET-PREVIEW-1 — is parche ka sab se ahem hissa.
@@ -69,14 +79,20 @@
         <span>{{ $t('check the current quotation', 'موجودہ کوٹیشن دیکھ لیں') }}</span>
     </div>
 @endif
-@if(! $release->exists)
-    {{-- EK hi satar. A5 par ye band TEEN satrein kha raha tha — yani teen
-         khane. Kaam wohi karta hai: nazar aata hai aur nazarandaz nahi hota. --}}
-    <div class="preview-band">
-        <strong>{{ $t('PREVIEW — PRODUCTION NOT RELEASED YET', 'پیش نظر — پروڈکشن جاری نہیں ہوئی') }}</strong>
-        <span>{{ $t('figures can still change', 'اعداد ابھی بدل سکتے ہیں') }}</span>
-    </div>
-@endif
+{{-- PREVIEW WALA BAND HATA DIYA GAYA — malik ka faisla, 11 October.
+
+     Wo band is liye lagaya gaya tha ke bawarchi-khane ke paas DO SACH na ho
+     jayen: ek preview deewar par laga rahe aur asli parcha baad me aaye, aur
+     dono ek jaise dikhein. Malik ne dekh kar kaha: hata do.
+
+     Wo khatra khatm nahi hua, bas ab us ki nishani CHHOTI hai: jaari-shuda
+     parche par upar RELEASE NUMBER chhapta hai, preview par nahi
+     (`printed-at` ka `paPrefix` dekho). Jo farq pehle poori satar se saaf
+     tha, wo ab ek adad ke hone ya na hone se bata chalta hai.
+
+     Doosra band — "QUOTATION CHANGED AFTER THIS SHEET" — JAAN BUJH KAR rakha
+     gaya hai. Wo alag baat kehta hai (parcha nikalne ke BAAD sauda badla) aur
+     malik ne us par nishan nahi lagaya tha. --}}
 
 {{-- KITCHEN-SHEET-A5-1 (27 Sep, doosra daur) — sar purane software ki
      tarteeb par.

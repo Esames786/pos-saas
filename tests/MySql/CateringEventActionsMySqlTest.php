@@ -410,10 +410,15 @@ class CateringEventActionsMySqlTest extends MySqlTenantTestCase
             ->kitchenSheets(Request::create('/catering/documents/bulk/kitchen-sheets', 'GET', ['ids' => [$event->id]]))
             ->render();
 
-        $this->assertStringContainsString('KITCHEN / SERVICE SHEET', $html,
+        // 11 Oct: malik ne parche par nishan laga kar PREVIEW wala band aur
+        // "KITCHEN / SERVICE SHEET" ka unwan hatwa diya. Un ke bajaye ab wo
+        // cheez parkhi jati hai jo us faisle ke BAAD bhi preview aur asli
+        // parche me farq batati hai: RELEASE NUMBER. Jaari-shuda parche par wo
+        // hota hai, preview par nahi.
+        $this->assertStringContainsString('SERVE', $html,
             'release se pehle bhi parcha banna chahiye');
-        $this->assertStringContainsString('<div class="preview-band">', $html,
-            'aur parcha khud kehna chahiye ke production jaari nahi hui');
+        $this->assertDoesNotMatchRegularExpression('/PR-\d/', $html,
+            'aur us par release number nahi hona chahiye');
     }
 
     public function test_an_explicit_urdu_name_is_never_overwritten_by_the_product_book(): void

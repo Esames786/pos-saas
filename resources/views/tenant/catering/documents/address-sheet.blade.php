@@ -40,6 +40,7 @@
         width: 210mm; min-height: 297mm; margin: 12px auto; padding: 12mm;
         background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.18);
     }
+    .sheet-printed { color: #6b7280; font-size: 10px; margin: 0 0 4mm 2mm; }
     @media print {
         html { background: #fff; }
         body { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
@@ -87,9 +88,19 @@
         </button>
             @include('tenant.catering.documents.partials.send-to-network', ['kind' => 'address_sheet'])
         <div style="color:#6b7280;font-size:12px;margin-top:4px">
-            {{ $businessName }} · printed {{ app(\App\Support\TenantClock::class)->now()->format('d M Y g:i A') }}
-            · cut along the dashed lines
+            cut along the dashed lines
         </div>
+    </div>
+
+    {{-- CHHAPNE KA WAQT, KAGHAZ PAR — toolbar me nahi.
+
+         Pehle ye satar upar wale toolbar ke andar thi, aur toolbar par
+         `@media print { display: none }` lagta hai — yani wo waqt SCREEN par
+         to dikhta tha magar chhape hue kaghaz par kabhi nahi aaya. Malik ne
+         jab kaha ke "printed time sab par aana chahiye" to address sheet us
+         fehrist me pehle se gin li gayi thi, halanke wo wahan thi hi nahi. --}}
+    <div class="sheet-printed">
+        @include('tenant.catering.documents.partials.printed-at')
     </div>
 
     @forelse($events as $event)

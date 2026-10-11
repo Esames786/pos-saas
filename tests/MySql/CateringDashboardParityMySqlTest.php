@@ -311,11 +311,16 @@ class CateringDashboardParityMySqlTest extends MySqlTenantTestCase
             Request::create('/x', 'GET', ['ids' => [$a->id]])
         )->render();
 
-        $this->assertStringContainsString('KITCHEN / SERVICE SHEET', $html,
+        // 11 Oct: malik ne parche par nishan laga kar PREVIEW wala band aur
+        // "KITCHEN / SERVICE SHEET" ka unwan hatwa diya. Un ke bajaye ab wo
+        // cheez parkhi jati hai jo us faisle ke BAAD bhi preview aur asli
+        // parche me farq batati hai: RELEASE NUMBER. Jaari-shuda parche par wo
+        // hota hai, preview par nahi.
+        $this->assertStringContainsString('SERVE', $html,
             'release se pehle bhi parcha banna chahiye — yehi maanga gaya tha');
-        $this->assertStringContainsString('<div class="preview-band">', $html,
-            'aur parcha khud kahe ke production abhi jaari nahi hui');
-        $this->assertStringContainsString('PRODUCTION NOT RELEASED YET', $html);
+        $this->assertDoesNotMatchRegularExpression('/PR-\d/', $html,
+            'aur us par release number nahi hona chahiye — yehi ab batata hai ke '
+            .'production jaari nahi hui');
     }
 
     /**

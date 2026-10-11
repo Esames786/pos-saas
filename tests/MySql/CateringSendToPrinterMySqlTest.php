@@ -784,6 +784,123 @@ class CateringSendToPrinterMySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString('type="checkbox" name="reprint"', $html,
             'aur us par koi khaana nahi hona chahiye — malik ne saaf mana kiya tha');
     }
+    /**
+     * HAR PARCHE PAR CHHAPNE KA WAQT, AUR KISI PAR KAROBAR KA NAAM NAHI.
+     *
+     * Malik (11 Oct), do farmaishein ek saath:
+     *
+     *   "ye printed time tamam quotation, invoice, address, proforma sab pe
+     *    aana chahiye"
+     *
+     *   "ye Kashif Kitchen hata do, jahan jahan print par naam aa raha hai —
+     *    branch ya company ka"
+     *
+     * Parche apne chhape hue letterhead par nikalte hain, jis par naam pehle se
+     * mojood hai. Us ke theek upar doosra naam chhapna us kaghaz ko kharab
+     * karta hai.
+     *
+     * ── YE TEST US HTML PAR CHALTA HAI JO PRINTER KO JATA HAI ─────────────
+     *
+     * Screen par dekh lena kaafi nahi hota. Address sheet is ki misaal hai: us
+     * par chhapne ka waqt PEHLE SE likha tha — magar toolbar ke andar, jis par
+     * `@media print { display: none }` lagta hai. Yani wo waqt screen par to
+     * nazar aata tha aur kaghaz par kabhi nahi aaya. Agar ye test screen ka
+     * HTML dekhta to wo kharabi pakri hi na jati.
+     *
+     * `queue*()` wohi HTML jamati hai jo agent Chrome ko deta hai — yani ye
+     * theek wo kaghaz hai jo graahak ke haath me jayega.
+     */
+    public function test_every_printed_document_carries_the_time_and_no_business_name(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $printer = $this->windowsPrinter();
+
+        $this->estimates->markSent($event->currentEstimate->refresh());
+        $this->estimates->confirmEvent($event->refresh());
+        DB::connection('tenant')->table('catering_events')->where('id', $event->id)
+            ->update(['event_date' => now()->subDays(2)->toDateString()]);
+
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 50000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->makePaymentMethod(),
+        ]);
+        $invoice = app(\App\Services\Catering\CateringFinalInvoiceService::class)->issue($event->refresh());
+
+        foreach ([
+            'quotation' => fn () => $this->queue->queueQuotation($event->currentEstimate()->first(), $printer),
+            'kitchen sheet' => fn () => $this->queue->queueKitchenSheetForEvent($event->refresh(), $printer),
+            'address sheet' => fn () => $this->queue->queueAddressSheet($event->refresh(), $printer),
+            'invoice' => fn () => $this->queue->queueFinalInvoice($invoice, $printer),
+            'proforma' => fn () => $this->queue->queueProformaInvoice($event->refresh(), $printer),
+        ] as $name => $make) {
+            $html = (string) $make()->raw_payload;
+
+            $this->assertStringContainsString('Printed', $html,
+                "{$name}: chhapne ka waqt KAGHAZ par hona chahiye — screen par hona kaafi nahi, "
+                .'address sheet par wo toolbar me tha aur print par chhup jata tha');
+
+            // Waqt bhi ho, sirf lafz nahi. (TenantClock ka `d M Y g:i A`.)
+            $this->assertMatchesRegularExpression('/Printed\s+\d{2} [A-Z][a-z]{2} \d{4} \d{1,2}:\d{2} (AM|PM)/', $html,
+                "{$name}: sirf lafz 'Printed' kaafi nahi — us ke saath asal waqt bhi hona chahiye");
+
+            // Aur karobar ka naam kahin na ho.
+            $this->assertStringNotContainsString('class="brand"', $html,
+                "{$name}: karobar ka naam parche par nahi hona chahiye — letterhead par wo pehle se hai");
+            $this->assertStringNotContainsString('Catering & Events', $html,
+                "{$name}: aur na hi us ke neeche wali satar");
+        }
+    }
+    /**
+     * KITCHEN SHEET KA SAR: PREVIEW ka band aur unwan dono hat gaye.
+     *
+     * Malik (11 Oct), parche par nishan laga kar: "preview wala box aur Kashif
+     * Kitchen / SERVICE SHEET ka header hatana hai, baqi theek hai."
+     *
+     * ── EK KHATRA JO UTHAYA GAYA THA, AUR AB CHHOTA HO GAYA ──────────────
+     *
+     * Wo band is liye lagaya gaya tha ke bawarchi-khane ke paas DO SACH na ho
+     * jayen: ek preview deewar par laga rahe, asli parcha baad me aaye, aur
+     * dono ek jaise dikhein. Malik ko ye bata diya gaya; faisla un ka hai.
+     *
+     * Farq ab bhi mojood hai, bas chhota: jaari-shuda parche par upar RELEASE
+     * NUMBER chhapta hai, preview par nahi. Yehi test wo farq bhi parakhta
+     * hai — warna wo chup chaap khatm ho jata aur phir koi nishani na bachti.
+     *
+     * "QUOTATION CHANGED AFTER THIS SHEET" wala band JAAN BUJH KAR rakha gaya:
+     * wo alag baat kehta hai (parcha nikalne ke BAAD sauda badla) aur malik ne
+     * us par nishan nahi lagaya tha.
+     */
+    public function test_the_kitchen_sheet_header_is_bare_but_the_release_number_still_marks_a_released_sheet(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $printer = $this->windowsPrinter();
+
+        // (a) PREVIEW — koi release nahi bani.
+        $preview = (string) $this->queue->queueKitchenSheetForEvent($event, $printer)->raw_payload;
+
+        $this->assertStringNotContainsString('PRODUCTION NOT RELEASED', $preview,
+            'PREVIEW ka band hata diya gaya tha');
+        $this->assertStringNotContainsString('KITCHEN / SERVICE SHEET', $preview,
+            'sar ka unwan bhi hata diya gaya tha');
+        $this->assertStringContainsString('Printed', $preview,
+            'magar chhapne ka waqt rehna chahiye');
+
+        // (b) JAARI-SHUDA — ab release number parche par aana chahiye. Yehi ab
+        //     wo akela farq hai jis se bawarchi khana preview aur asli parche me
+        //     tameez kar sakta hai.
+        $this->estimates->markSent($event->currentEstimate->refresh());
+        $release = app(\App\Services\Catering\CateringProductionReleaseService::class)->release($event->refresh());
+        $released = (string) $this->queue->queueKitchenSheet($release, $printer)->raw_payload;
+
+        $this->assertStringContainsString((string) $release->release_no, $released,
+            'jaari-shuda parche par RELEASE NUMBER hona chahiye — PREVIEW ka band hatne ke baad '
+            .'yehi akeli nishani bachi hai jo preview aur asli parche me farq batati hai');
+        $this->assertStringNotContainsString((string) $release->release_no, $preview,
+            'aur preview par wo number nahi hona chahiye, warna farq hi mit jata');
+    }
     /** Do baar dabane se do kaghaz nahi — wohi job wapas aati hai. */
     public function test_queueing_the_same_document_twice_returns_the_same_job(): void
     {
