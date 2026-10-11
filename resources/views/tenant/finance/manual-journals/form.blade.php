@@ -1,5 +1,9 @@
 @php
     $accountsByType = $accounts->groupBy('type');
+    // MANUAL-JOURNAL-CASH-LINE-GUARD-1 — kaunse khaate group heads hain (chune nahi ja sakte), aur
+    // kaunse khaate kisi drawer/bank se jude hain (sirf unhi satron par Cash/Bank khulta hai).
+    $groupIds     = $groupAccountIds ?? [];
+    $drawerGlIds  = $cashBankAccounts->pluck('account_id')->filter()->map(fn ($id) => (int) $id)->unique()->all();
     $rows = old('lines', [
         ['account_id' => '', 'cash_bank_account_id' => '', 'description' => '', 'debit' => '', 'credit' => ''],
         ['account_id' => '', 'cash_bank_account_id' => '', 'description' => '', 'debit' => '', 'credit' => ''],
@@ -36,8 +40,10 @@
             (Dr Bank / Cr Owner Capital), inter-account transfers (Dr Account A / Cr Account B),
             depreciation, accruals, or any correction not covered by a specific workflow.
             <br>
-            <strong>Tip:</strong> Select a <em>Cash/Bank Account</em> on any cash or bank line to keep
-            the operational balance in sync. Total debits must equal total credits before posting.
+            <strong>Tip:</strong> Choose the drawer or bank on the cash line itself — e.g. 1110 on Credit
+            when money goes out. An owner drawing of 5,000 in cash is <em>Dr Drawing 5,000 / Cr 1110 Main
+            Cash Drawer 5,000</em>, with the drawer picked on the 1110 line. Total debits must equal total
+            credits before posting.
         </div>
     </div>
 
@@ -55,9 +61,11 @@
                     </div>
                     <div class="col-md-5 mb-3">
                         <label class="form-label required" for="description">Description / Memo</label>
+                        {{-- R5 — "." ya "-" narration nahi; server bhi yahi shart lagata hai. --}}
                         <input type="text" id="description" name="description" class="form-control"
-                            placeholder="e.g. Purchase of office furniture, Depreciation – June 2026"
-                            value="{{ old('description') }}" required maxlength="500">
+                            placeholder="e.g. Owner drawing - cash, Purchase of office furniture"
+                            value="{{ old('description') }}" required minlength="3" maxlength="500"
+                            pattern=".*[\p{L}\p{N}].*" title="Write what this entry is for — at least 3 characters, not just a dot or a dash.">
                     </div>
                     <div class="col-md-3 mb-3">
                         <label class="form-label" for="reference_no">Reference No <small class="text-muted">(optional)</small></label>
@@ -90,7 +98,8 @@
                         <thead class="thead-light">
                             <tr>
                                 <th scope="col" style="width:24%">Account <span class="text-danger">*</span></th>
-                                <th scope="col" style="width:16%">Cash/Bank Account <small class="text-muted">(opt)</small></th>
+                                {{-- R4 — sirf cash/bank ke khaate wali satar par khulta hai, aur wahan lazmi hai. --}}
+                                <th scope="col" style="width:16%">Cash/Bank Account <small class="text-muted">(cash lines)</small></th>
                                 {{-- SUPPLIER-FINANCE-DIRECT-1 — Accounts Payable ki satar be-shanakht nahi ho sakti.
                                      Ye khaana sirf tab zinda hota hai jab satar ka account AP (ya uski nasl) ho. --}}
                                 <th scope="col" style="width:18%">Supplier <small class="text-muted">(AP lines)</small></th>
@@ -109,23 +118,32 @@
                                         @foreach($accountsByType as $type => $typeAccounts)
                                             <optgroup label="{{ ucfirst($type) }}">
                                                 @foreach($typeAccounts as $a)
-                                                    <option value="{{ $a->id }}" {{ (int) ($row['account_id'] ?? 0) === $a->id ? 'selected' : '' }}>
-                                                        {{ $a->code }} — {{ $a->name }}
+                                                    {{-- R3 — group head dikhta hai magar chuna nahi ja sakta. --}}
+                                                    <option value="{{ $a->id }}" {{ (int) ($row['account_id'] ?? 0) === $a->id ? 'selected' : '' }}
+                                                        @disabled(in_array($a->id, $groupIds, true))>
+                                                        {{ $a->code }} — {{ $a->name }}{{ in_array($a->id, $groupIds, true) ? ' (group)' : '' }}
                                                     </option>
                                                 @endforeach
                                             </optgroup>
                                         @endforeach
                                     </select>
+                                    @error("lines.$i.account_id") <div class="text-danger small mt-1">{{ $message }}</div> @enderror
                                 </td>
                                 <td>
-                                    <select name="lines[{{ $i }}][cash_bank_account_id]" class="form-select form-select-sm">
-                                        <option value="">— None —</option>
+                                    {{-- R4 — satar ka khaata hi ye picker chalata hai (syncCashCell): cash/bank ke
+                                         khaate par sirf usi se jude drawer, warna band. Band control submit nahi hota. --}}
+                                    <select name="lines[{{ $i }}][cash_bank_account_id]" class="form-select form-select-sm mj-cash"
+                                        @disabled(! in_array((int) ($row['account_id'] ?? 0), $drawerGlIds, true))>
+                                        <option value="">— Cash/Bank —</option>
                                         @foreach($cashBankAccounts as $cb)
-                                            <option value="{{ $cb->id }}" {{ (int) ($row['cash_bank_account_id'] ?? 0) === $cb->id ? 'selected' : '' }}>
+                                            <option value="{{ $cb->id }}" data-gl="{{ $cb->account_id }}" data-name="{{ $cb->name }}"
+                                                {{ (int) ($row['cash_bank_account_id'] ?? 0) === $cb->id ? 'selected' : '' }}>
                                                 {{ $cb->code }} — {{ $cb->name }}
                                             </option>
                                         @endforeach
                                     </select>
+                                    <div class="mj-cash-preview small fw-semibold mt-1" hidden></div>
+                                    @error("lines.$i.cash_bank_account_id") <div class="text-danger small mt-1">{{ $message }}</div> @enderror
                                 </td>
                                 <td>
                                     {{-- counterparty_type select ke saath hidden input se jata hai: AP ki satar par
@@ -197,6 +215,10 @@
         </div>
     </form>
 
+    {{-- B3 — ek click, ek entry: button pehle click par band, aur form ka one-time token
+         (route par prevent.duplicate.submit) doosri request ko controller tak pahunchne nahi deta. --}}
+    @include('tenant.catering.partials.submit-guard')
+
     {{-- Row template --}}
     <template id="rowTemplate">
         <tr>
@@ -206,19 +228,20 @@
                     @foreach($accountsByType as $type => $typeAccounts)
                         <optgroup label="{{ ucfirst($type) }}">
                             @foreach($typeAccounts as $a)
-                                <option value="{{ $a->id }}">{{ $a->code }} — {{ $a->name }}</option>
+                                <option value="{{ $a->id }}" @disabled(in_array($a->id, $groupIds, true))>{{ $a->code }} — {{ $a->name }}{{ in_array($a->id, $groupIds, true) ? ' (group)' : '' }}</option>
                             @endforeach
                         </optgroup>
                     @endforeach
                 </select>
             </td>
             <td>
-                <select name="lines[__I__][cash_bank_account_id]" class="form-select form-select-sm">
-                    <option value="">— None —</option>
+                <select name="lines[__I__][cash_bank_account_id]" class="form-select form-select-sm mj-cash" disabled>
+                    <option value="">— Cash/Bank —</option>
                     @foreach($cashBankAccounts as $cb)
-                        <option value="{{ $cb->id }}">{{ $cb->code }} — {{ $cb->name }}</option>
+                        <option value="{{ $cb->id }}" data-gl="{{ $cb->account_id }}" data-name="{{ $cb->name }}">{{ $cb->code }} — {{ $cb->name }}</option>
                     @endforeach
                 </select>
+                <div class="mj-cash-preview small fw-semibold mt-1" hidden></div>
             </td>
             <td>
                 <input type="hidden" name="lines[__I__][counterparty_type]" value="supplier" class="mj-cpt" disabled>
@@ -270,6 +293,70 @@ document.addEventListener('DOMContentLoaded', function () {
         rows.querySelectorAll('tr').forEach(syncSupplierCell);
     }
 
+    // MANUAL-JOURNAL-CASH-LINE-GUARD-1 (R4) — satar ka khaata hi Cash/Bank ka picker chalata hai.
+    // Cash/bank ke khaate (jaise 1110) par sirf usi se jude drawer dikhte hain, ek ho to khud chuna
+    // jata hai; kisi aur khaate (jaise Drawing) par picker band — wahi ghalti jis se ek live tenant
+    // ki drawings Cash Book me "In" ban gayi thin. Server bhi yahi shart lagata hai; ye sirf asaani hai.
+    function syncCashCell(tr) {
+        var acc = tr.querySelector('select[name*="[account_id]"]');
+        var cb  = tr.querySelector('.mj-cash');
+        if (!acc || !cb) return;
+
+        var gl = acc.value, matches = [];
+        Array.prototype.forEach.call(cb.options, function (opt) {
+            if (!opt.value) return;
+            var ok = gl !== '' && opt.getAttribute('data-gl') === gl;
+            opt.hidden = !ok;
+            opt.disabled = !ok;
+            if (ok) matches.push(opt);
+        });
+
+        var placeholder = cb.options[0];
+        if (!matches.length) {
+            cb.value = '';
+            cb.disabled = true;
+            cb.required = false;
+            placeholder.textContent = gl ? '— not a cash/bank line —' : '— Cash/Bank —';
+        } else {
+            cb.disabled = false;
+            cb.required = true;
+            var current = cb.options[cb.selectedIndex];
+            if (!current || !current.value || current.disabled) {
+                cb.value = matches.length === 1 ? matches[0].value : '';
+            }
+            placeholder.textContent = '— choose drawer / bank —';
+        }
+        syncCashPreview(tr);
+    }
+
+    // Har cash satar ke neeche: "Cash Book: OUT 5,000 from Cash in Hand" — wohi jo post hone par
+    // Cash Book me utrega (debit = andar, credit = bahar).
+    function syncCashPreview(tr) {
+        var cb  = tr.querySelector('.mj-cash');
+        var out = tr.querySelector('.mj-cash-preview');
+        if (!cb || !out) return;
+
+        var d = parseFloat(tr.querySelector('.mj-debit').value) || 0;
+        var c = parseFloat(tr.querySelector('.mj-credit').value) || 0;
+        var opt = cb.options[cb.selectedIndex];
+
+        if (cb.disabled || !opt || !opt.value || (d <= 0 && c <= 0) || (d > 0 && c > 0)) {
+            out.textContent = '';
+            out.hidden = true;
+            return;
+        }
+
+        var isIn = d > 0;
+        var amount = (isIn ? d : c).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        out.textContent = 'Cash Book: ' + (isIn ? 'IN ' : 'OUT ') + amount + (isIn ? ' to ' : ' from ') + opt.getAttribute('data-name');
+        out.className = 'mj-cash-preview small fw-semibold mt-1 ' + (isIn ? 'text-success' : 'text-danger');
+        out.hidden = false;
+    }
+
+    function syncAllCashCells() {
+        rows.querySelectorAll('tr').forEach(syncCashCell);
+    }
+
     function recalc() {
         var d = 0, c = 0;
         rows.querySelectorAll('.mj-debit').forEach(function (el)  { d += parseFloat(el.value) || 0; });
@@ -289,6 +376,7 @@ document.addEventListener('DOMContentLoaded', function () {
     addBtn.addEventListener('click', function () {
         rows.insertAdjacentHTML('beforeend', tpl.innerHTML.replace(/__I__/g, idx++));
         syncAllSupplierCells();
+        syncAllCashCells();
         recalc();
     });
 
@@ -303,6 +391,7 @@ document.addEventListener('DOMContentLoaded', function () {
     rows.addEventListener('input', function (e) {
         if (e.target.classList.contains('mj-debit') || e.target.classList.contains('mj-credit')) {
             recalc();
+            syncCashPreview(e.target.closest('tr'));
         }
     });
 
@@ -312,12 +401,17 @@ document.addEventListener('DOMContentLoaded', function () {
     rows.addEventListener('change', function (e) {
         if (e.target.name && e.target.name.indexOf('[account_id]') !== -1) {
             syncSupplierCell(e.target.closest('tr'));
+            syncCashCell(e.target.closest('tr'));
+        }
+        if (e.target.classList.contains('mj-cash')) {
+            syncCashPreview(e.target.closest('tr'));
         }
     });
 
     // Load par ek bar: validation fail hone ke baad form purani qeematein wapas dikhata hai,
     // aur us soorat me AP wali satar ka picker pehle se khula hona chahiye.
     syncAllSupplierCells();
+    syncAllCashCells();
     recalc();
 });
 </script>
