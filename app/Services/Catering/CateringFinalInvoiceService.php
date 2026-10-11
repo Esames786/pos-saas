@@ -243,6 +243,19 @@ class CateringFinalInvoiceService
             );
         }
 
+        return $this->voidInvoiceRow($invoice, $reason, $userId);
+    }
+
+    /**
+     * Bill ka apna hissa — bina settlement wale pehre ke.
+     *
+     * Ye jaan boojh kar private hai. Wo pehra `void()` par lagta hai kyunke
+     * akela bill ulta karna AR ko manfi kar deta hai. `voidEntireBooking()`
+     * use jaaiz taur par paar karta hai — wo receipts bhi usi saans me ulti
+     * karta hai, is liye AR wapas sifar par aa jata hai.
+     */
+    private function voidInvoiceRow(CateringFinalInvoice $invoice, string $reason, ?int $userId): CateringFinalInvoice
+    {
         return DB::connection('tenant')->transaction(function () use ($invoice, $reason, $userId) {
             $event = $invoice->event()->first();
 
@@ -286,6 +299,72 @@ class CateringFinalInvoiceService
         });
     }
 
+    /**
+     * Ek test booking ko khaton se POORI TARAH nikal dena.
+     *
+     * CATERING-VOID-ENTIRE-BOOKING-1 (11 Oct). Malik: "ye wala order cancel
+     * kardo, ye test entry thi — aur jo bhi paisa khate mein hai usay void
+     * kardo taake khaton mein na aaye."
+     *
+     * ── YE EK GAANTH THI ──────────────────────────────────────────────────
+     *
+     * Do raaste pehle se mojood the aur dono ek doosre ka intezar kar rahe the:
+     *   • receipt void kehta hai "invoice ban chuki hai — pehle wo hatao"
+     *   • invoice void kehta hai "settlement receipts hain — pehle wo hatao"
+     *
+     * Is liye ye ek hi saans ka kaam hai, aur TARTEEB ahem hai: pehle bill, phir
+     * receipts. Bill void hote hi `notVoided` global scope use nazar se hata
+     * deta hai, aur receipt ka apna pehra khud-ba-khud guzar jata hai — yani
+     * use paar nahi kiya ja raha, usay SACH kar diya jata hai.
+     *
+     * Naya hisaab yahan NAHI likha gaya: bill ka hissa `voidInvoiceRow()` karta
+     * hai aur receipts `CateringAdvanceService::void()` — wohi raaste jo akele
+     * bhi chalte hain. Yahan sirf tarteeb hai.
+     *
+     * 🚨 SAB KUCH EK TRANSACTION ME. Aadha kaam — bill ulta aur receipts khari —
+     * AR ko manfi chhor deta hai, aur ye khamosh hota hai: `tb_diff` phir bhi
+     * sifar rehta hai.
+     *
+     * @return array<string, mixed> kya kya hua, dikhane ke liye
+     */
+    public function voidEntireBooking(CateringEvent $event, string $reason, ?int $userId = null): array
+    {
+        $reason = trim($reason);
+
+        if ($reason === '') {
+            throw new RuntimeException('A void needs a reason — six months from now nobody remembers why.');
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($event, $reason, $userId) {
+            $kiya = ['invoice' => null, 'receipts' => [], 'cancelled' => false];
+
+            // 1) Bill — pehle, taake receipts ka pehra sach ho jaye.
+            $invoice = CateringFinalInvoice::where('catering_event_id', $event->id)->first();
+
+            if ($invoice) {
+                $this->voidInvoiceRow($invoice, $reason, $userId);
+                $kiya['invoice'] = $invoice->invoice_no;
+            }
+
+            // 2) Har receipt — wohi raasta jo akela bhi chalta hai, is liye
+            //    cash/bank aur GL dono usi tarah wapas hote hain.
+            $advances = app(\App\Services\Catering\CateringAdvanceService::class);
+
+            foreach ($event->advances()->get() as $receipt) {
+                $advances->void($receipt, $reason, $userId);
+                $kiya['receipts'][] = (float) $receipt->amount;
+            }
+
+            // 3) Aur booking khud. `cancelEvent()` completed/closed par inkaar
+            //    karta hai — magar bill void hote hi booking wapas khul chuki
+            //    hoti hai, is liye wo pehra yahan aarahe me guzar jata hai.
+            app(\App\Services\Catering\CateringEstimateService::class)
+                ->cancelEvent($event->refresh(), $reason, $userId);
+            $kiya['cancelled'] = true;
+
+            return $kiya;
+        });
+    }
     /**
      * Proforma — wohi bill, magar jama hua nahi.
      *

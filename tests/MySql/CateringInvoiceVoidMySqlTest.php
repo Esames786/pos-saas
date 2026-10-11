@@ -414,4 +414,100 @@ class CateringInvoiceVoidMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta(0.0, $this->trialBalance(), 0.01,
             'aur tb_diff ko khabar tak nahi — isi liye ye kharabi khamosh hai');
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Poori booking khaton se nikalna — CATERING-VOID-ENTIRE-BOOKING-1.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Test entry khaton se POORI TARAH nikal jaye.
+     *
+     * Ye fixture prod ki asal shakl hai, farziya nahi — EV-20260909-0002:
+     * bill ban gaya, aur phir us ke BAAD paisa aaya (settlement). Us booking par
+     * khaton me 4,89,605 ki aamdani aur utna hi paisa khara hai jo asal me aaya
+     * hi nahi tha.
+     *
+     * Do raaste mojood the aur dono ek doosre ka intezar kar rahe the: receipt
+     * void kehta tha "pehle invoice hatao", invoice void kehta tha "pehle
+     * receipts hatao". Yahan tarteeb us gaanth ko kholti hai.
+     *
+     * Jaanch `tb_diff` par NAHI — wo aadhe kaam par bhi sifar rehta hai. HAR
+     * mutaalliq khaata alag naapa ja raha hai.
+     */
+    public function test_a_test_booking_can_be_taken_out_of_the_books_entirely(): void
+    {
+        [$event, $invoice] = $this->invoicedBooking(0);   // bill ke waqt koi paisa nahi
+
+        // Aur phir bill ke BAAD paisa — yani settlement, bilkul prod ki tarah.
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 12000,
+            'payment_method_id' => $this->paymentMethodId,
+            'received_date' => now()->toDateString(),
+        ]);
+
+        // Pehle ki halat: aamdani aur paisa dono khaton me hain.
+        $this->assertNotEqualsWithDelta(0.0, $this->accountMovement('4160'), 0.01, 'aamdani darj hui');
+        $this->assertEqualsWithDelta(0.0, $this->accountMovement('1300'), 0.01, 'AR barabar hai');
+
+        app(\App\Services\Catering\CateringFinalInvoiceService::class)
+            ->voidEntireBooking($event->refresh(), 'test entry thi');
+
+        // Har mutaalliq khaata sifar par — yani booking ka khaton me koi nishan nahi.
+        foreach (['4160' => 'Revenue', '4130' => 'Service', '1300' => 'AR', '1110' => 'Cash'] as $code => $naam) {
+            $this->assertEqualsWithDelta(0.0, $this->accountMovement($code), 0.01,
+                "[{$code} {$naam}] par is booking ka koi asar baqi na rahe");
+        }
+        $this->assertEqualsWithDelta(0.0, $this->trialBalance(), 0.01, 'aur khate barabar rahein');
+
+        // Booking cancel, bill void, receipt void.
+        $this->assertTrue($event->fresh()->isCancelled(), 'booking cancel honi chahiye');
+        $this->assertNotNull(CateringFinalInvoice::withVoided()->first()->voided_at, 'bill void');
+        $this->assertSame(0, $event->fresh()->advances()->count(), 'koi chalti hui receipt baqi na rahe');
+    }
+
+    /**
+     * Probe zinda hai: receipt ka GL bhi WAQAI ulta hua.
+     *
+     * Ye alag jaanch is liye hai ke yahan ek khamosh bug mojood tha — receipt ka
+     * GL `catering_settlement` ke naam se posta hai, magar void use
+     * `catering_advance` ke naam se dhoondta tha aur kuch na milne par CHUP CHAAP
+     * guzar jata tha (`reverseForSource` nakami nigal jata hai). Us surat me
+     * receipt ka row void ho jata, cash/bank wapas ho jata, aur journal entry
+     * khari reh jati.
+     */
+    public function test_the_receipt_journal_entry_is_actually_reversed(): void
+    {
+        [$event, ] = $this->invoicedBooking(0);
+
+        $receipt = app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 12000,
+            'payment_method_id' => $this->paymentMethodId,
+            'received_date' => now()->toDateString(),
+        ]);
+
+        $posted = DB::connection('tenant')->table('journal_entries')
+            ->where('source_type', 'catering_settlement')->where('source_id', $receipt->id)->first();
+        $this->assertNotNull($posted,
+            'receipt ki entry `catering_settlement` ke naam se honi chahiye — warna ye jaanch us bug ko chhoo hi nahi rahi');
+
+        app(\App\Services\Catering\CateringFinalInvoiceService::class)
+            ->voidEntireBooking($event->refresh(), 'test entry thi');
+
+        $this->assertTrue(
+            DB::connection('tenant')->table('journal_entries')->where('reversed_entry_id', $posted->id)->exists(),
+            'receipt ki apni entry bhi ulti honi chahiye — warna AR ghalat reh jata hai'
+        );
+    }
+
+    /** Bina wajah ke poori booking bhi nahi nikalti. */
+    public function test_taking_a_booking_out_also_needs_a_reason(): void
+    {
+        [$event, ] = $this->invoicedBooking();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('needs a reason');
+
+        app(\App\Services\Catering\CateringFinalInvoiceService::class)
+            ->voidEntireBooking($event, '  ');
+    }
 }

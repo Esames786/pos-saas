@@ -179,7 +179,26 @@ class CateringAdvanceService
 
         // GL ulti — idempotent, aur transaction ke BAHAR bilkul us namoone ki
         // tarah jo expense voucher par chalta hai.
-        $entry = $this->journalPosting->reverseForSource('catering_advance', $advance->id, $reason, $userId);
+        // 🚨 SOURCE TYPE RECEIPT KI APNI QISM SE AATA HAI.
+        //
+        // Posting ke waqt `postCateringReceipt()` do naam istemaal karta hai:
+        // bill se PEHLE aaya paisa `catering_advance`, aur bill ke BAAD aaya
+        // `catering_settlement`. Yahan pehle sirf `catering_advance` likha
+        // hua tha — yani settlement wali receipt par `reverseForSource()` ko
+        // kuch milta hi nahi, aur wo KHAMOSHI SE null de kar guzar jata
+        // (`reverseForSource` nakami nigal jata hai). Nateeja: receipt ka row
+        // void ho jata, cash/bank wapas ho jata, magar us ki journal entry
+        // khari reh jati — aur AR ghalat ho jata.
+        //
+        // Aaj ye khamosh kharabi pakri nahi jati kyunke upar wala pehra
+        // settlement receipt ko void hone hi nahi deta. Magar
+        // `voidEntireBooking()` us pehre ko jaaiz taur par paar karta hai,
+        // aur wahan ye bug zinda ho jata.
+        $sourceType = $advance->posting_type === CateringAdvance::POSTING_SETTLEMENT
+            ? 'catering_settlement'
+            : 'catering_advance';
+
+        $entry = $this->journalPosting->reverseForSource($sourceType, $advance->id, $reason, $userId);
         if ($entry) {
             CateringAdvance::withoutGlobalScope('notVoided')
                 ->whereKey($advance->id)->update(['void_journal_entry_id' => $entry->id]);
