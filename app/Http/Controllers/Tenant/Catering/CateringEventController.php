@@ -92,7 +92,18 @@ class CateringEventController extends Controller
         };
 
         if ($status && in_array($status, CateringEvent::STATUSES, true)) {
-            $query->where('status', $status);
+            // CATERING-CONFIRMED-IS-A-GROUP-1 — "Confirmed" ek GROUP hai.
+            // Malik: "confirm ka matlab ye saare confirm hi hain." Graahak ki
+            // haan ke baad `released`/`completed`/`closed` sirf ye batate hain
+            // ke kaam kitna aage barha — booking pakki to tabhi ho gayi thi.
+            //
+            // Tareef model me hai, yahan DOBARA nahi likhi ja rahi: Customer
+            // Balances par bhi yehi filter hai, aur do jagah do fehristen
+            // rakhne ka matlab hai ke ek din "Confirmed" do screenon par do
+            // alag jawab dega.
+            $query->whereIn('status', $status === CateringEvent::STATUS_CONFIRMED
+                ? CateringEvent::CONFIRMED_STATUSES
+                : [$status]);
         }
 
         $events = $query->paginate(25)->withQueryString();

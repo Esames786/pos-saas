@@ -68,7 +68,11 @@
                     <select name="status" class="form-select">
                         <option value="">All statuses</option>
                         <option value="open" @selected($status === 'open')>Still open (inquiry → confirmed)</option>
-                        @foreach(\App\Models\Tenant\CateringEvent::STATUSES as $s)
+                        {{-- Wohi fehrist jo bookings ki screen par hai — dekho
+                             CATERING-CONFIRMED-IS-A-GROUP-1. Do jagah do alag
+                             fehristen rakhne ka matlab hai ke ek din "Confirmed"
+                             do screenon par do alag jawab dega. --}}
+                        @foreach(\App\Models\Tenant\CateringEvent::FILTER_STATUSES as $s)
                             <option value="{{ $s }}" @selected($status === $s)>{{ \App\Models\Tenant\CateringEvent::statusLabel($s) }}</option>
                         @endforeach
                     </select>

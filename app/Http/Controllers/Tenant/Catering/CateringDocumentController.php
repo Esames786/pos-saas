@@ -172,6 +172,16 @@ class CateringDocumentController extends Controller
                 'PROFORMA-'.$cateringEvent->event_no);
         }
 
+        // CATERING-SEND-INVOICE-DOC-1 — proforma bulk ke raaste par jati hai
+        // (`kind` + `ids[]`), kyunke wo kahin mehfooz nahi hoti aur `ids[]`
+        // hamesha EVENT ki id hoti hai. Asli invoice ka apna raasta hai.
+        //
+        // Ye qeematein SIRF is raaste par: PDF ko nahi (upar), aur queue service
+        // ko nahi, jo YEHI view render kar ke agent ke liye HTML jamati hai.
+        $data['sendKind'] = \App\Services\Catering\CateringDocumentQueueService::KIND_PROFORMA;
+        $data['ids'] = [$cateringEvent->id];
+        $data['printers'] = $this->documentPrinters();
+
         return view('tenant.catering.documents.final-invoice', $data);
     }
 
@@ -190,6 +200,17 @@ class CateringDocumentController extends Controller
             return $this->asPdf('tenant.catering.documents.final-invoice', $data, $lang,
                 $cateringFinalInvoice->invoice_no);
         }
+
+        // CATERING-SEND-INVOICE-DOC-1 — dekho `estimate()` ka note. Ye qeematein
+        // SIRF is raaste par jaati hain: PDF ko nahi (upar), aur queue service ko
+        // nahi, jo YEHI view render kar ke agent ke liye HTML jamati hai.
+        //
+        // Invoice ka apna raasta hai, bulk endpoint nahi: us ka apna permission
+        // hai aur wo reprint ki ginti bhi rakhta hai.
+        $data['sendAction'] = url('/catering/documents/final-invoice/'.$cateringFinalInvoice->id.'/print');
+        $data['sendExtra'] = ['lang' => $lang];
+        $data['sendPermission'] = 'tenant.catering.documents.final-invoice-print';
+        $data['printers'] = $this->documentPrinters();
 
         return view('tenant.catering.documents.final-invoice', $data);
     }

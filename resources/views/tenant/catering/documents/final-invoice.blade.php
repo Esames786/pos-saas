@@ -106,7 +106,18 @@
         </span>
     </div>
 @endif
-<div class="print-bar"><button onclick="window.print()" style="padding: 8px 18px; cursor: pointer;">Print</button></div>
+<div class="print-bar">
+    <button onclick="window.print()" style="padding: 8px 18px; cursor: pointer;">Print</button>
+    {{-- CATERING-SEND-INVOICE-DOC-1 — THEEK WAHIN jahan Print hai.
+
+         Partial `$sendAction` par khari hai, aur wo SIRF controller ke screen
+         wale raaste se aati hai. `?format=pdf` ko aur
+         `CateringDocumentQueueService` ko (jo YEHI view render kar ke agent ke
+         liye HTML jamati hai) wo nahi milti — warna chhapne wale kaghaz par
+         toolbar bhi chhap jata. Proforma ko bhi nahi: us ki koi invoice hi nahi
+         hoti, is liye bhejne ko kuch hai hi nahi. --}}
+    @include('tenant.catering.documents.partials.send-to-network', ['kind' => $sendKind ?? \App\Services\Catering\CateringDocumentQueueService::KIND_FINAL_INVOICE])
+</div>
 
 <div class="doc-header">
     <div>

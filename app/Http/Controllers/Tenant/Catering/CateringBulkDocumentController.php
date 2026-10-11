@@ -64,7 +64,7 @@ class CateringBulkDocumentController extends Controller
     public function printToNetwork(Request $request)
     {
         $data = $request->validate([
-            'kind' => ['required', 'string', 'in:quotation,kitchen_sheet,address_sheet'],
+            'kind' => ['required', 'string', 'in:quotation,kitchen_sheet,address_sheet,proforma'],
             'printer_id' => ['required', 'integer', 'exists:printers,id'],
             'ids' => ['required', 'array', 'min:1', 'max:'.self::MAX_SELECTION],
             'ids.*' => ['integer'],
@@ -98,6 +98,11 @@ class CateringBulkDocumentController extends Controller
                     ),
                     'kitchen_sheet' => $queue->queueKitchenSheetForEvent($event, $printer, $userId, $reprint),
                     'address_sheet' => $queue->queueAddressSheet($event, $printer, $userId, $reprint),
+                    // Proforma bhi yahin se: wo kahin mehfooz nahi hoti, is liye
+                    // us ka apna route/permission banane ki zaroorat nahi thi —
+                    // bulk ka `ids[]` hamesha EVENT ki id hoti hai, aur proforma
+                    // bhi event se hi banti hai.
+                    'proforma' => $queue->queueProformaInvoice($event, $printer, 'en', $userId, $reprint),
                 };
                 $queued++;
             } catch (\Throwable $e) {

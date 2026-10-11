@@ -194,9 +194,19 @@ class CateringBalancesStatusFilterMySqlTest extends MySqlTenantTestCase
      */
     public function test_the_screen_says_when_the_figures_are_only_part_of_the_picture(): void
     {
+        // CATERING-CONFIRMED-IS-A-GROUP-1 (11 Oct) — pehle yahan doosri
+        // booking `completed` thi. Malik ne tareef badal di: "confirm se le
+        // kar closed tak saare wo status hain jo actually confirm bookings
+        // hoti hain", yani ab `completed` bhi Confirmed ke andar aata hai
+        // aur filter par dono dikhti hain.
+        //
+        // Is test ka maqsad grouping nahi — TANBEEH hai: ke filter lagne par
+        // screen saaf kahe ke adad sirf chhante hue hisse ke hain. Wo maqsad
+        // qayam rakhne ke liye doosri booking ab `quoted` hai, jo group se
+        // WAQAI bahar hai.
         $phone = '03001110005';
         $this->booking($phone, 100000, CateringEvent::STATUS_CONFIRMED);
-        $this->booking($phone, 40000, CateringEvent::STATUS_COMPLETED);
+        $this->booking($phone, 40000, CateringEvent::STATUS_QUOTED);
 
         view()->share('errors', new \Illuminate\Support\ViewErrorBag);
         \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
