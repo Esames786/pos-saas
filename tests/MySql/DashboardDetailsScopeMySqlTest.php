@@ -282,4 +282,21 @@ class DashboardDetailsScopeMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
+
+    public function test_the_dashboard_markup_is_not_left_half_closed(): void
+    {
+        // Abhi abhi yehi ghalti hui: cards ki shakl badalte hue AIK </div> reh gaya. Blade us par
+        // shor nahi machata aur compile bhi kaamyab ho jata hai — safha bas tirha ho kar render hota
+        // hai, aur wo sirf aankh se pakRa jata hai.
+        //
+        // Ye file baar baar badalti hai (KPI cards, catering, billing), is liye ginti yahin rakhi.
+        // Nuqta ye nahi ke 74 kitna hai — nuqta ye hai ke khulne aur band hone wale barabar hon.
+        $html = file_get_contents(base_path('resources/views/tenant/dashboard.blade.php'));
+
+        $this->assertSame(
+            substr_count($html, '<div'),
+            substr_count($html, '</div>'),
+            'dashboard.blade.php me <div> aur </div> barabar nahi — koi khana adhoora band hua hai.',
+        );
+    }
 }
