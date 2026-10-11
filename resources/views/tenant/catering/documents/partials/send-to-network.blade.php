@@ -147,6 +147,27 @@
                         @selected(strtoupper((string) ($p->paper_size ?? '')) === $stnPaper)>{{ $p->name }}</option>
                 @endforeach
             </select>
+            {{-- HAR BAAR NAYA KAGHAZ — ye malik ka faisla hai, 11 October.
+
+                 Pehle ek document do baar queue nahi hota tha: wohi purani job
+                 lautti thi, taake ghalti se do kaghaz na nikal jayein. Us ki
+                 qeemat ye nikli ke malik kitchen sheet dobara bhejte rahe aur
+                 kuch hota hi nahi tha.
+
+                 Maine pehle yahan ek "Dobara chhapein" ka khaana lagaya tha.
+                 Malik ne saaf kaha: "jitni baar bhi bhejoon, POS thori hai."
+                 Baat durust hai — catering ka parcha POS ki parchi nahi: bawarchi
+                 khane ko teen copy chahiye to teen baar dabana hi us ka tareeqa
+                 hai, aur har baar ek khaane par nishan lagwana rozmarra ke kaam
+                 me rukawat hai.
+
+                 Is liye ab koi khaana nahi — ye hamesha ON hai, aur har dabana ek
+                 naya kaghaz deta hai. (Duplicate ki rok KHATM nahi hui; wo POS ke
+                 receipt/KOT par jaise thi waisi hai. Yahan sirf band hai.)
+
+                 Qeemat ye hai ke do baar dabane se do kaghaz nikalenge. Malik ko
+                 ye maloom hai aur yehi un ki farmaish thi. --}}
+            <input type="hidden" name="reprint" value="1">
             <button type="submit" class="doc-btn doc-btn-primary">Send to network</button>
         </form>
     @elseif($stnPrinters->isEmpty())
