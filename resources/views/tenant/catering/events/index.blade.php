@@ -106,11 +106,7 @@
                          bhi ASAL status dikhata hai — wo khabar chhupani nahi
                          thi, sirf chunna aasan karna tha. --}}
                     @foreach(\App\Models\Tenant\CateringEvent::FILTER_STATUSES as $s)
-                        <option value="{{ $s }}" @selected($status === $s)>
-                            {{ $s === \App\Models\Tenant\CateringEvent::STATUS_CONFIRMED
-                                ? 'Confirmed (confirmed → closed)'
-                                : ucwords(str_replace('_', ' ', $s)) }}
-                        </option>
+                        <option value="{{ $s }}" @selected($status === $s)>{{ \App\Models\Tenant\CateringEvent::filterLabel($s) }}</option>
                     @endforeach
                 </select>
             </div>

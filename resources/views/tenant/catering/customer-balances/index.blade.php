@@ -73,7 +73,7 @@
                              fehristen rakhne ka matlab hai ke ek din "Confirmed"
                              do screenon par do alag jawab dega. --}}
                         @foreach(\App\Models\Tenant\CateringEvent::FILTER_STATUSES as $s)
-                            <option value="{{ $s }}" @selected($status === $s)>{{ \App\Models\Tenant\CateringEvent::statusLabel($s) }}</option>
+                            <option value="{{ $s }}" @selected($status === $s)>{{ \App\Models\Tenant\CateringEvent::filterLabel($s) }}</option>
                         @endforeach
                     </select>
                 </div>
