@@ -88,11 +88,12 @@ class CateringBulkDocumentController extends Controller
         $userId = $request->user()?->id;
 
         $queued = 0;
+        $already = 0;
         $failed = [];
 
         foreach ($events as $event) {
             try {
-                match ($data['kind']) {
+                $job = match ($data['kind']) {
                     'quotation' => $queue->queueQuotation(
                         $event->currentEstimate()->firstOrFail(), $printer, $userId, $reprint
                     ),
@@ -104,7 +105,24 @@ class CateringBulkDocumentController extends Controller
                     // bhi event se hi banti hai.
                     'proforma' => $queue->queueProformaInvoice($event, $printer, 'en', $userId, $reprint),
                 };
-                $queued++;
+
+                // NAYA AUR PURANA ALAG GINO — aur ye farq operator ko DIKHE.
+                //
+                // Malik (11 Oct): "ek aur print bheja hai kitchen sheet ka,
+                // dekho gaya print?" Prod par koi nayi job bani hi nahi thi:
+                // us event ki kitchen sheet pehle hi ja kar chhap chuki thi,
+                // aur dobara dabane par wohi purani job lautti hai (ye jaan
+                // bujh kar hai, warna ghalti se do kaghaz nikal jate).
+                //
+                // Magar screen phir bhi "1 document queued" likh deti thi. Wo
+                // JHOOT tha: operator intezar karta rehta ke kaghaz aaye, aur
+                // kuch aata hi nahi. Sab se bura natija yehi hai — ek aisi
+                // nakami jo screen par kamyabi ki tarah dikhti hai.
+                //
+                // `wasRecentlyCreated` hi wo nishan hai: nayi job par sach,
+                // aur jo `logical_key` ki wajah se wapas uthai gayi us par
+                // jhoot.
+                $job->wasRecentlyCreated ? $queued++ : $already++;
             } catch (\Throwable $e) {
                 // Ek booking ka ruk jana baqi sab ko nahi rokta — magar chup
                 // chaap bhi nahi guzarta: operator ko jaan'na chahiye ke kis ka
@@ -113,9 +131,18 @@ class CateringBulkDocumentController extends Controller
             }
         }
 
-        $message = $queued.' '.\Illuminate\Support\Str::plural('document', $queued)
-            .' queued to '.$printer->name
-            .'. Kagaz ka size document se liya gaya — finance par kuch post nahi hua.';
+        $message = $queued > 0
+            ? $queued.' '.\Illuminate\Support\Str::plural('document', $queued)
+                .' queued to '.$printer->name
+                .'. Kagaz ka size document se liya gaya — finance par kuch post nahi hua.'
+            : '';
+
+        if ($already > 0) {
+            $message .= ($message === '' ? '' : ' ')
+                .$already.' '.\Illuminate\Support\Str::plural('document', $already)
+                .' pehle hi '.$printer->name.' par bheja ja chuka hai — naya kaghaz nahi nikla. '
+                .'Doosri copy chahiye to "Dobara chhapein" par nishan laga kar bhejein.';
+        }
 
         if ($failed !== []) {
             $message .= ' Nahi bheji ja sakin: '.implode(', ', $failed).'.';

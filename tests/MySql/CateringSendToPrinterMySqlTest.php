@@ -696,6 +696,94 @@ class CateringSendToPrinterMySqlTest extends MySqlTenantTestCase
             $this->assertNotSame('', trim($html), "{$name}: kaghaz khali bhi na ho");
         }
     }
+    /**
+     * JITNI BAAR BHEJO, UTNE KAGHAZ — malik ka faisla, 11 October.
+     *
+     * ── KYA HUA THA ───────────────────────────────────────────────────────
+     *
+     * Malik: "ek aur print bheja hai kitchen sheet ka, dekho gaya print?" Koi
+     * nayi job bani hi nahi thi — us event ki kitchen sheet pehle ja kar chhap
+     * chuki thi, aur dobara dabane par wohi purani job lautti thi.
+     *
+     * Maine pehle sirf PAIGHAM theek kiya aur ek "Dobara chhapein" ka khaana
+     * laga diya. Malik ne us par saaf kaha: "jitni baar bhi bhejoon, POS thori
+     * hai." Baat durust thi — catering ka parcha POS ki parchi nahi. Bawarchi
+     * khane ko teen copy chahiye to teen baar dabana hi us ka tareeqa hai, aur
+     * har baar ek khaane par nishan lagwana rozmarra ke kaam me rukawat hai.
+     *
+     * Is liye ab is toolbar par koi khaana nahi: har dabana ek naya kaghaz.
+     *
+     * AHEM: duplicate ki rok KHATM nahi hui. Wo POS ke receipt/KOT par jaise
+     * thi waisi hai — wahan dohri parchi asal masla hai. Yahan sirf band hai.
+     *
+     * Qeemat: do baar dabane se do kaghaz. Malik ko maloom hai; yehi farmaish
+     * thi.
+     */
+    public function test_every_press_queues_another_sheet(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $printer = $this->windowsPrinter();
+
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'RP'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        $controller = app(\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class);
+        $jobs = fn () => \App\Models\Tenant\PrintJob::on('tenant')->where('printer_id', $printer->id)->count();
+
+        // Toolbar ab HAMESHA `reprint` bhejta hai — wohi jo safhe par hidden hai.
+        $press = fn () => $controller->printToNetwork(
+            \Illuminate\Http\Request::create('/x', 'POST', [
+                'kind' => 'kitchen_sheet',
+                'ids' => [$event->id],
+                'printer_id' => $printer->id,
+                'reprint' => '1',
+            ])
+        );
+
+        foreach ([1, 2, 3] as $n) {
+            session()->forget('status');
+            $press();
+            $this->assertSame($n, $jobs(),
+                "{$n} baar dabane par {$n} kaghaz nikalne chahiyein — catering ka parcha POS ki parchi nahi");
+            $this->assertStringContainsString('queued to', (string) session('status'),
+                "{$n}: har baar screen ko kehna chahiye ke kaghaz bheja gaya");
+        }
+    }
+
+    /**
+     * AUR WO HIDDEN KHAANA SAFHE PAR MOJOOD HO.
+     *
+     * Us ke baghair upar wala raasta chup chaap band ho jata hai: screen wahi
+     * dikhti hai, button wahi hai, magar doosra kaghaz kabhi nahi nikalta —
+     * aur ye wohi shikayat thi jo 11 Oct ko aayi.
+     */
+    public function test_the_toolbar_always_asks_for_a_fresh_copy(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $this->windowsPrinter();
+
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'RB'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        $html = app(\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class)
+            ->kitchenSheets(\Illuminate\Http\Request::create('/x', 'GET', ['ids' => [$event->id]]))
+            ->render();
+
+        $this->assertStringContainsString('name="reprint" value="1"', $html,
+            'toolbar ko hamesha nayi copy maangni chahiye');
+        $this->assertStringNotContainsString('type="checkbox" name="reprint"', $html,
+            'aur us par koi khaana nahi hona chahiye — malik ne saaf mana kiya tha');
+    }
     /** Do baar dabane se do kaghaz nahi — wohi job wapas aati hai. */
     public function test_queueing_the_same_document_twice_returns_the_same_job(): void
     {
