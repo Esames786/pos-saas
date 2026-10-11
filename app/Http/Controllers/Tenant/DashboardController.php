@@ -207,6 +207,31 @@ class DashboardController extends Controller
             $selectedBranch ? \App\Models\Tenant\Branch::find($selectedBranch) : null
         );
 
+        // DASHBOARD-CATEGORY-TODAY-1 — maalik: "Top products ki list k bjae tmam category ki list
+        // ajae". Har category aaj kitni biki — Report Center ke Categories section ka WOHI hisaab
+        // (`byCategory()`), apna naya query nahi: deal apni category me (DEAL-CATEGORY-1), deal ke
+        // hisse dobara nahi gine jaate, returns ghatte hain, aur user ke terminal/order type ki hadd
+        // wahi jo report par lagti hai. Is liye ye card aur report ek din par hamesha ek hi raqam
+        // batate hain. Sirf jinhein Top Products dikhta hai (dashboard.details), unhi ke liye chalta hai.
+        $categoriesToday = [];
+        if ($maySeeDetails) {
+            $engine  = app(\App\Services\Reports\SalesReportEngine::class);
+            $filters = $engine->normalizeFilters([
+                'date_from'  => $todayBusinessDate,
+                'date_to'    => $todayBusinessDate,
+                'branch_ids' => $selectedBranch ? [$selectedBranch] : [],
+            ]);
+            // The dashboard's "All branches" means every branch the user may see — exactly what
+            // applyToSales() gives the Top Products card beside it — not the user's default branch.
+            $filters['_branch_filter_present'] = true;
+            $filters = $scope->applyToReportFilters($filters, $scopeUser);
+            $categoriesToday = collect($engine->byCategory($filters))
+                ->filter(fn ($row) => abs((float) $row['net_qty']) > 0.0001 || abs((float) $row['net_value']) > 0.004)
+                ->sortByDesc('net_value')
+                ->values()
+                ->all();
+        }
+
         // DASHBOARD-8DAY-1 — maalik: "yaha last 7 days nhi, last 8 days ana chahye". Wajah amli
         // hai: aaj ka din ADHOORA hota hai (17 Sep par 106 order jab baaqi dinon par ~400), is
         // liye 7 ka window sirf 6 MUKAMMAL din deta tha — aur hafte ka wohi din, jis se maalik
@@ -272,7 +297,7 @@ class DashboardController extends Controller
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
             'cashToday', 'cardToday', 'openShifts', 'failedPrints',
-            'lowStockCount', 'expiryCount', 'topProducts', 'salesWindowRows', 'salesWindowKeys', 'windowDays',
+            'lowStockCount', 'expiryCount', 'topProducts', 'categoriesToday', 'salesWindowRows', 'salesWindowKeys', 'windowDays',
             'todayBusinessDate', 'openBills',
             'cateringCalendar', 'cateringKpis', 'cateringNextSeven',
             'maySeeAmounts', 'billing'
