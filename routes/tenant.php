@@ -837,9 +837,12 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // Finance — Manual Journal Entries (Q2 feature)
                 Route::get('/finance/manual-journals', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'index'])->name('tenant.finance.manual-journals.index');
                 Route::get('/finance/manual-journals/create', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'create'])->name('tenant.finance.manual-journals.create');
-                Route::post('/finance/manual-journals', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'store'])->name('tenant.finance.manual-journals.store');
+                // MANUAL-JOURNAL-CASH-LINE-GUARD-1 (B3) — ek click, ek entry: form ka token pehli
+                // request le leti hai, doosri controller tak pahunchti hi nahi (JE-…-0021/0022 ek
+                // second ke farq se dono ban gaye thay).
+                Route::post('/finance/manual-journals', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'store'])->middleware('prevent.duplicate.submit')->name('tenant.finance.manual-journals.store');
                 Route::get('/finance/manual-journals/{manualJournal}', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'show'])->name('tenant.finance.manual-journals.show');
-                Route::post('/finance/manual-journals/{manualJournal}/reverse', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'reverse'])->name('tenant.finance.manual-journals.reverse');
+                Route::post('/finance/manual-journals/{manualJournal}/reverse', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'reverse'])->middleware('prevent.duplicate.submit')->name('tenant.finance.manual-journals.reverse');
 
                 // Finance — Opening Balances / Owner Capital (FIN-13)
                 Route::get('/finance/opening-balances', [OpeningBalanceController::class, 'index'])->name('tenant.finance.opening-balances.index');
