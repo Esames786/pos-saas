@@ -34,9 +34,14 @@
     <h1 class="mb-0">Catering Events &amp; Estimates</h1>
     <div class="d-flex gap-2 flex-wrap">
         {{-- CATERING-SIDEBAR-COLLAPSE-1 (22 Sep) — fehrist bhi kaam wali screen
-             hai. Is ki table ke das column hain (Event #, Customer, Date, Venue,
-             PAX, Quotation, Position, Status, Next Action, actions), aur khuli
-             navigation ke saath dahina kinara katt jata tha. Ab ye screen bhi
+             hai. Is ki table ke nau column hain (Event #, Customer, Date, Venue,
+             PAX, Quotation, Position, Status, actions), aur khuli
+             navigation ke saath dahina kinara katt jata tha.
+
+             (11 Oct — malik: "no need to show next action column". Wo column
+             hata diya gaya; us ke saath har satar par chalne wala
+             `CateringCalendarService::nextAction()` bhi. Wo method khud
+             barqarar hai — calendar us par chalta hai.) Ab ye screen bhi
              event wali screen ki tarah band navigation ke saath khulti hai, aur
              yehi button usay wapas laata hai. --}}
         @include('tenant.catering.partials.sidebar-collapse')
@@ -209,7 +214,6 @@
                         <th style="min-width:130px;">Quotation</th>
                         <th style="min-width:120px;" class="text-end">Position</th>
                         <th style="min-width:110px;">Status</th>
-                        <th style="min-width:160px;">Next Action</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -297,7 +301,6 @@
                             @php $ev = \App\Models\Tenant\CateringEvent::class; @endphp
                             <span class="badge bg-{{ $ev::statusBadge($event->status) }}">{{ $ev::statusLabel($event->status) }}</span>
                         </td>
-                        <td class="fs-12">{{ app(\App\Services\Catering\CateringCalendarService::class)->nextAction($event) }}</td>
                         {{-- KASHIF-EVENT-ACTIONS-1 — the actions an operator was
                              opening the booking to reach: its documents, its
                              production release, and the next lawful step in its
