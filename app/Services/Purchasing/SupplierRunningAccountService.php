@@ -167,11 +167,16 @@ class SupplierRunningAccountService
         ]);
     }
 
-    /** "Advance 50,000.00 (Dr)" for a supplier we have paid ahead; the plain amount otherwise. */
+    /**
+     * "Advance 50,000.00 (Dr)" for a supplier we have paid ahead; "32,770.00 Cr" for what we owe
+     * (SUPPLIER-LEDGER-DRCR-LABELS-1 — a creditor's balance says which side it is on); "0.00" when settled.
+     */
     public static function balanceLabel(float $balance): string
     {
-        return $balance < -self::CENT
-            ? 'Advance ' . number_format(abs($balance), 2) . ' (Dr)'
-            : number_format($balance, 2);
+        if ($balance < -self::CENT) {
+            return 'Advance ' . number_format(abs($balance), 2) . ' (Dr)';
+        }
+
+        return $balance > self::CENT ? number_format($balance, 2) . ' Cr' : number_format(0, 2);
     }
 }

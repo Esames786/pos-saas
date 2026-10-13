@@ -42,8 +42,11 @@
                     <td>{{ str_replace('_', ' ', ucfirst($ledger->entry_type)) }}</td>
                     <td>{{ $ledger->reference_no ?: '—' }}</td>
                     <td>{{ \Illuminate\Support\Str::limit($ledger->notes ?: '—', 60) }}</td>
-                    <td>{{ $ledger->direction === 'debit'  ? number_format($ledger->amount, 2) : '—' }}</td>
+                    {{-- SUPPLIER-LEDGER-DRCR-LABELS-1 — supplier_ledgers.direction payable ka AAINA hai:
+                         'debit' = payable barha = supplier ka khaata CREDIT (bill, opening);
+                         'credit' = payable ghata = supplier DEBIT (payment, return). Stored value nahi badla. --}}
                     <td>{{ $ledger->direction === 'credit' ? number_format($ledger->amount, 2) : '—' }}</td>
+                    <td>{{ $ledger->direction === 'debit'  ? number_format($ledger->amount, 2) : '—' }}</td>
                     <td>{{ \App\Services\Purchasing\SupplierRunningAccountService::balanceLabel((float) $ledger->balance_after) }}</td>
                     <td>{{ $ledger->createdBy?->name ?? '—' }}</td>
                 </tr>
