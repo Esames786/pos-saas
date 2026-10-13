@@ -994,6 +994,15 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::get('/catering/store-issues/requirements', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'requirements'])->name('tenant.catering.store-issues.requirements');
 
                     Route::post('/catering/events/{cateringEvent}/final-invoice', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'store'])->name('tenant.catering.final-invoices.store');
+                    // CATERING-VOID-BUTTON-1 (13 Oct) — poori booking khaton se
+                    // nikalne ka raasta. Ye sab se bara hathyar hai jo is module
+                    // me hai: ek ghalat click ek ASLI graahak ka bill aur us ki
+                    // adaygiyan khaton se nikal deta hai.
+                    //
+                    // 🚨 NAYA ROUTE = NAYI PERMISSION, aur ye jaan boojh kar SIRF
+                    // Owner ke paas rehni chahiye — deploy.sh ka default yahan
+                    // theek hai, is ko kisi aur role ko mat do.
+                    Route::post('/catering/events/{cateringEvent}/void-everything', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'voidEverything'])->name('tenant.catering.final-invoices.void-everything');
                     Route::post('/catering/events/{cateringEvent}/close', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'close'])->name('tenant.catering.events.close');
 
                     Route::get('/catering/documents/estimate/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'estimate'])->name('tenant.catering.documents.estimate');
