@@ -368,6 +368,9 @@ class CateringEventController extends Controller
 
         return view('tenant.catering.events.show', [
             'event' => $cateringEvent,
+            // CATERING-VOID-BUTTON-1 — dabba asal adad dikhata hai, aur wo
+            // adad wahin se aate hain jahan se asal kaam hota hai.
+            'voidPreview' => app(\App\Services\Catering\CateringFinalInvoiceService::class)->voidPreview($cateringEvent),
             'units' => $units,
             'branches' => $branches,
             'bookedDates' => $bookedDates,

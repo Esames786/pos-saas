@@ -1253,6 +1253,25 @@
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
         <h5 class="mb-0">Billing &amp; Closure</h5>
         <div class="d-flex gap-2">
+            {{-- CATERING-VOID-BUTTON-1 (13 Oct) — poori booking khaton se nikalna.
+
+                 Ye is module ka sab se bara hathyar hai, is liye teen rukawatein
+                 jaan boojh kar lagai gayi hain: sirf Owner; wajah likhna lazmi;
+                 aur tasdeeq ke liye booking ka NUMBER khud likhna parta hai.
+                 Sirf "OK" is liye kaafi nahi ke is kaam ka anjaam wapas nahi
+                 hota, aur ye screen un dozens bookings jaisi dikhti hai jo roz
+                 kholi jati hain.
+
+                 Button sirf tab jab khaton me waqai kuch hai — warna ye ek
+                 khatarnak button hai jo kuch karta hi nahi. --}}
+            @can('tenant.catering.final-invoices.void-everything')
+                @if(! $event->isCancelled() && ($voidPreview['entries'] ?? 0) > 0)
+                    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
+                            data-bs-target="#void-everything-modal">
+                        <i class="ti ti-trash me-1"></i>Cancel &amp; void all money
+                    </button>
+                @endif
+            @endcan
             {{-- CATERING-NOTHING-FREEZES-BEFORE-EVENT-1 (10 Oct) — event ka din
                  guzre baghair bill nahi banta. Button chhupane ke BAJAYE wajah
                  likhi ja rahi hai: chup chaap gayab button operator ko ye
@@ -1883,6 +1902,87 @@
 </div>
 @include('tenant.catering.events.partials.event-form-support')
 </div>{{-- /#event-workspace --}}
+
+{{-- CATERING-VOID-BUTTON-1 (13 Oct) — poori booking khaton se nikalne ka dabba.
+
+     Yahan jaan boojh kar koi "kya aap pakke hain?" wala aam sawal nahi hai. Wo
+     sawal log parhte hi nahi — wo bas Haan dabate hain. Is ke bajaye SACH likha
+     hai: kaun sa khaata kitna hilega, asal adad me, aur wo adad usi jagah se
+     aate hain jahan se asal kaam hota hai (`voidPreview()`).  --}}
+@can('tenant.catering.final-invoices.void-everything')
+    @if(! $event->isCancelled() && ($voidPreview['entries'] ?? 0) > 0)
+        <div class="modal fade" id="void-everything-modal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <form method="POST" action="{{ url('/catering/events/'.$event->id.'/void-everything') }}">
+                    @csrf
+                    <div class="modal-content">
+                        <div class="modal-header bg-danger-transparent">
+                            <h5 class="modal-title text-danger">
+                                <i class="ti ti-alert-triangle me-1"></i>Cancel booking &amp; void all money
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="fs-13 mb-2">
+                                <strong>{{ $event->event_no }}</strong> cancel ho jayegi
+                                @if($voidPreview['invoice_no'])
+                                    , bill <strong>{{ $voidPreview['invoice_no'] }}</strong> void
+                                @endif
+                                @if($voidPreview['receipts'] > 0)
+                                    , aur <strong>{{ $voidPreview['receipts'] }}</strong> receipt void.
+                                @else
+                                    .
+                                @endif
+                            </p>
+
+                            <div class="border rounded p-2 mb-3">
+                                <div class="fs-12 text-muted mb-1">Khaton se ye nikal jayega:</div>
+                                <table class="table table-sm mb-0 fs-13">
+                                    @foreach($voidPreview['accounts'] as $code => $khaata)
+                                        <tr>
+                                            <td class="text-muted" style="width:70px">{{ $code }}</td>
+                                            <td>{{ $khaata['name'] }}</td>
+                                            <td class="text-end fw-semibold {{ $khaata['delta'] < 0 ? 'text-danger' : 'text-success' }}">
+                                                {{ number_format($khaata['delta'], 2) }}
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </table>
+                            </div>
+
+                            <div class="fs-12 text-muted mb-3">
+                                {{ $voidPreview['entries'] }} ulti entries banengi. Purani entries
+                                <strong>mitengi nahi</strong> — dono tareekh me nazar aayengi.
+                                Ye wapas nahi hota.
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fs-13 mb-1">Wajah <span class="text-danger">*</span></label>
+                                <input type="text" name="reason" class="form-control" required maxlength="500"
+                                       placeholder="misal: test entry thi">
+                                <div class="fs-12 text-muted mt-1">Record par hamesha ke liye rehti hai.</div>
+                            </div>
+
+                            {{-- Number khud likhwana — "OK" se kaam nahi chalta. --}}
+                            <div>
+                                <label class="form-label fs-13 mb-1">
+                                    Tasdeeq ke liye <code>{{ $event->event_no }}</code> likhein
+                                    <span class="text-danger">*</span>
+                                </label>
+                                <input type="text" name="confirm_event_no" class="form-control" required
+                                       autocomplete="off" placeholder="{{ $event->event_no }}">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Rehne do</button>
+                            <button type="submit" class="btn btn-sm btn-danger">Khaton se nikal do</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endif
+@endcan
 @endsection
 
 @push('scripts')
