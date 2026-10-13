@@ -283,4 +283,69 @@ class CateringVoidButtonMySqlTest extends MySqlTenantTestCase
             'khaton me kuch hai hi nahi — yani button bhi nahi aana chahiye');
         $this->assertSame([], $preview['accounts']);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Customer ledger par bhi — CATERING-VOID-BUTTON-2.
+    //
+    // Maine mashwara diya tha ke fehrist par destructive button na ho: wahin
+    // ghalat click hota hai, kyunke aadmi satrein scan kar raha hota hai. Malik
+    // ne sun kar kaha laga do. Faisla un ka hai — magar jo rukavatein booking ki
+    // screen par hain, wo yahan bhi poori hain, aur neeche wohi jaancha ja raha
+    // hai.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Adad JSON me aayen — aur wohi jo asal kaam karega. */
+    public function test_the_preview_endpoint_returns_the_same_numbers(): void
+    {
+        $event = $this->invoicedBooking();
+
+        $json = app(CateringFinalInvoiceController::class)->voidPreview($event)->getData(true);
+        $direct = $this->invoices->voidPreview($event);
+
+        $this->assertSame($direct['entries'], $json['entries']);
+        $this->assertEqualsCanonicalizing(array_keys($direct['accounts']), array_keys($json['accounts']),
+            'endpoint wohi khaate de jo service deti hai');
+        $this->assertNotEmpty($json['accounts'], 'khali na ho — warna ye jaanch kuch jaanchti hi nahi');
+    }
+
+    /**
+     * Fehrist wale dabbe par wohi teen rukavatein hon.
+     *
+     * Agar yahan wajah ya number na maanga jaye to wo rukavat sirf ek screen par
+     * reh jati hai — aur operator wohi raasta chunta hai jahan rukavat kam ho.
+     */
+    public function test_the_ledger_modal_has_the_same_three_barriers(): void
+    {
+        $blade = file_get_contents(resource_path('views/tenant/catering/customer-balances/show.blade.php'));
+
+        $this->assertStringContainsString("@can('tenant.catering.final-invoices.void-everything')", $blade,
+            'button aur dabba dono permission ke peechhe');
+        $this->assertMatchesRegularExpression('/name="reason"[^>]*required/', $blade, 'wajah lazmi');
+        $this->assertStringContainsString('name="confirm_event_no"', $blade, 'booking ka number maanga jaye');
+        $this->assertStringContainsString('cbVoidAllForm', $blade);
+    }
+
+    /**
+     * ADAD AAYE BAGHAIR DABANE KA RAASTA BAND.
+     *
+     * Yehi wo cheez hai jis ki wajah se maine fehrist par button par aitraaz
+     * kiya tha: wahan aadmi us booking ko void kar sakta hai jise us ne dekha
+     * hi nahi. Submit button shuru me band hai aur sirf tab khulta hai jab adad
+     * saamne aa jayen — aur agar wo na aa saken to band hi rehta hai.
+     */
+    public function test_the_ledger_modal_will_not_submit_before_the_numbers_arrive(): void
+    {
+        $blade = file_get_contents(resource_path('views/tenant/catering/customer-balances/show.blade.php'));
+
+        $this->assertMatchesRegularExpression('/id="cbVoidSubmit"[^>]*disabled/', $blade,
+            'submit shuru me BAND ho');
+        $this->assertMatchesRegularExpression('/go\.disabled = false;/', $blade,
+            'aur sirf adad aane par khule');
+
+        // Aur nakami par band hi rahe: `catch` ke andar koi `disabled = false` na ho.
+        $catch = substr($blade, strpos($blade, '}).catch(function ()'));
+        $catch = substr($catch, 0, 400);
+        $this->assertStringNotContainsString('disabled = false', $catch,
+            'adad na aa saken to button band hi rehna chahiye — bina dekhe void nahi');
+    }
 }

@@ -36,6 +36,25 @@ class CateringFinalInvoiceController extends Controller
     }
 
     /**
+     * Dabbe ke liye adad — JSON me.
+     *
+     * CATERING-VOID-BUTTON-2 (13 Oct) — malik ne customer ledger par bhi ye
+     * option maanga. Maine mashwara diya tha ke wahan na ho (fehrist par
+     * destructive button wahi jagah hai jahan ghalat click hota hai), magar
+     * faisla un ka hai aur unhone kaha laga do.
+     *
+     * Us surat me ek cheez chhorni nahi chahiye: ADAD. Warna operator wo
+     * booking khaton se nikal raha hoga jise us ne dekha hi nahi — aur yehi wo
+     * khatra tha jis ki wajah se maine mana kiya tha. Is liye wahan bhi dabba
+     * wohi adad dikhata hai, bas wo yahan se aate hain jab dabba khulta hai.
+     */
+    public function voidPreview(CateringEvent $cateringEvent)
+    {
+        return response()->json(
+            app(\App\Services\Catering\CateringFinalInvoiceService::class)->voidPreview($cateringEvent)
+        );
+    }
+    /**
      * Poori booking khaton se nikal dena — test entry ya darj karne ki ghalti.
      *
      * CATERING-VOID-BUTTON-1 (13 Oct). Malik: "ye wala order cancel kardo, ye
