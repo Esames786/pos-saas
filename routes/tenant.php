@@ -440,6 +440,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     ->name('tenant.supplier-payments.store');
                 Route::get('/supplier-payments/{supplierPayment}', [SupplierPaymentController::class, 'show'])
                     ->name('tenant.supplier-payments.show');
+                // SUPPLIER-PAYMENT-VOID-1 — ghalat payment ulti karo. Ek click, ek void.
+                Route::post('/supplier-payments/{supplierPayment}/void', [SupplierPaymentController::class, 'void'])
+                    ->middleware('prevent.duplicate.submit')
+                    ->name('tenant.supplier-payments.void');
 
                 // Purchase Returns (PURCHASE-RETURNS-1) — completes the purchasing cycle.
                 Route::get('/purchase-returns', [\App\Http\Controllers\Tenant\PurchaseReturnController::class, 'index'])->name('tenant.purchase-returns.index');

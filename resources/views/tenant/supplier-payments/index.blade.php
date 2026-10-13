@@ -63,7 +63,7 @@
             <tbody>
             @forelse($payments as $payment)
                 <tr>
-                    <td><code>{{ $payment->payment_no }}</code></td>
+                    <td><code>{{ $payment->payment_no }}</code>@if($payment->voided_at) <span class="badge bg-secondary">Voided</span>@endif</td>
                     <td>{{ $payment->supplier?->name }}</td>
                     <td>{{ $payment->bill?->bill_no ?? '—' }}</td>
                     <td>{{ $payment->payment_date?->format('Y-m-d') }}</td>

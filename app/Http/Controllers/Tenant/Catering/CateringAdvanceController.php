@@ -139,7 +139,8 @@ class CateringAdvanceController extends Controller
             ? '/catering/customer-balances/'.$returnCustomer
             : '/catering/events/'.$eventId;
 
-        return redirect()->to($path)->with('status',
+        // CASH-BOOK-VOID-1: Cash Book se aaya void wapas Cash Book par.
+        return redirect()->to(\App\Support\CashBookReturn::from($request) ?? $path)->with('status',
             'Receipt ulti kar di gayi — journal reverse ho gayi aur cash/bank balance wapas adjust ho gaya.');
     }
 

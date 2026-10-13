@@ -167,6 +167,8 @@ class CashBookService
         'expense_payment' => 'Expense', 'expense_void_reversal' => 'Expense voided (back)',
         'supplier_payment' => 'Supplier payment', 'manual_journal' => 'Manual journal',
         'opening_balance' => 'Opening balance', 'dept_handover_payout' => 'Department handover',
+        'supplier_payment_void_reversal' => 'Supplier payment voided (back)',
+        'catering_advance_void_reversal' => 'Customer receipt voided', 'manual_journal_reversal' => 'Manual journal reversed',
     ];
 
     /** Who the money came from / went to, and a link to the document — loaded per type, in bulk. */
@@ -190,16 +192,19 @@ class CashBookService
                 ->whereRaw('l.id = (SELECT MIN(x.id) FROM expense_voucher_lines x WHERE x.expense_voucher_id = v.id)'))
             ->leftJoin('expense_categories as ec', 'ec.id', '=', 'l.expense_category_id')
             ->whereIn('v.id', $ids)
-            ->get(['v.id', 'v.voucher_no', 'v.payee_name', 'ec.name as category', 'l.description']));
+            ->get(['v.id', 'v.voucher_no', 'v.payee_name', 'v.status', 'ec.name as category', 'l.description']));
         $supplierPayments = $load(['supplier_payment'], fn ($ids) => $c->table('supplier_payments as p')->leftJoin('suppliers as s', 's.id', '=', 'p.supplier_id')
-            ->whereIn('p.id', $ids)->get(['p.id', 'p.payment_no', 's.name as supplier']));
+            ->whereIn('p.id', $ids)->get(['p.id', 'p.payment_no', 'p.voided_at', 's.name as supplier']));
         $advances = $load(['catering_advance'], fn ($ids) => $c->table('catering_advances as a')->join('catering_events as e', 'e.id', '=', 'a.catering_event_id')
-            ->whereIn('a.id', $ids)->get(['a.id', 'e.id as event_id', 'e.event_no', 'e.customer_name']));
+            ->whereIn('a.id', $ids)->get(['a.id', 'a.voided_at', 'e.id as event_id', 'e.event_no', 'e.customer_name']));
         $refunds = $load(['catering_refund'], fn ($ids) => $c->table('catering_refunds as r')->join('catering_events as e', 'e.id', '=', 'r.catering_event_id')
             ->whereIn('r.id', $ids)->get(['r.id', 'r.refund_no', 'e.id as event_id', 'e.event_no', 'e.customer_name']));
         $journals = $load(['manual_journal'], fn ($ids) => $c->table('journal_entries')->whereIn('id', $ids)->get(['id', 'entry_no', 'description']));
+        $reversedJournals = $journals->isNotEmpty()
+            ? $c->table('journal_entries')->whereIn('reversed_entry_id', $journals->keys())->pluck('reversed_entry_id')->flip()
+            : collect();
 
-        return $rows->map(function ($r) use ($sales, $returns, $expenses, $supplierPayments, $advances, $refunds, $journals) {
+        return $rows->map(function ($r) use ($sales, $returns, $expenses, $supplierPayments, $advances, $refunds, $journals, $reversedJournals) {
             [$ref, $party, $url, $route] = [null, null, null, null];
             $id = $r->reference_id;
             switch ($r->reference_type) {
@@ -247,8 +252,49 @@ class CashBookService
             $r->party = $party ?: $r->notes;
             $r->url = $url;
             $r->route = $route;
+            $r->void = $this->voidFor($r, $sales, $expenses, $supplierPayments, $advances, $journals, $reversedJournals);
 
             return $r;
         });
+    }
+
+    /**
+     * CASH-BOOK-VOID-1 — is satar ko kaise ulta karein: kis darwaze par, kis ijazat se, aur kya pehle hi
+     * ulta ho chuka. Sirf ASAL satrein; ulti satrein (…_reversal) aur jin ka void program me hai hi
+     * nahi (return, refund) null. Har void apne mojooda raaste par jata hai — yahan koi naya hisaab nahi.
+     *
+     * @return array{kind:string, action:?string, open:?string, can:string, voided:bool}|null
+     */
+    private function voidFor($r, $sales, $expenses, $supplierPayments, $advances, $journals, $reversedJournals): ?array
+    {
+        $id = $r->reference_id;
+        $make = fn (string $kind, ?string $action, string $can, bool $voided, ?string $open = null) =>
+            ['kind' => $kind, 'action' => $action, 'open' => $open, 'can' => $can, 'voided' => $voided];
+
+        switch ($r->transaction_type) {
+            case 'supplier_payment':
+                $p = $supplierPayments[$id] ?? null;
+
+                return $p ? $make('supplier_payment', '/supplier-payments/' . $id . '/void', 'tenant.supplier-payments.void', $p->voided_at !== null) : null;
+            case 'customer_payment':
+                $a = $r->reference_type === 'catering_advance' ? ($advances[$id] ?? null) : null;
+
+                return $a ? $make('catering_receipt', '/catering/advances/' . $id . '/void', 'tenant.catering.advances.void', $a->voided_at !== null) : null;
+            case 'expense_payment':
+                $e = $expenses[$id] ?? null;
+
+                return $e ? $make('expense', '/finance/expenses/' . $id . '/void', 'tenant.finance.expenses.void', $e->status === 'void') : null;
+            case 'manual_journal':
+                return isset($journals[$id])
+                    ? $make('manual_journal', '/finance/manual-journals/' . $id . '/reverse', 'tenant.finance.manual-journals.reverse', isset($reversedJournals[$id]))
+                    : null;
+            case 'sales_payment':
+                // POS ki sale manager ki manzoori ke saath apne safhe par cancel hoti hai — wahin le jao.
+                $s = $sales[$id] ?? null;
+
+                return $s ? $make('sale', null, 'tenant.sales-orders.cancel', false, '/sales-orders/' . $s->order_id) : null;
+        }
+
+        return null;
     }
 }

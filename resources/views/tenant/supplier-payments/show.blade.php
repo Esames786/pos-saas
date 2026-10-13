@@ -5,11 +5,34 @@
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">Supplier Payment</h1>
+        <h1 class="mb-1">Supplier Payment
+            @if($supplierPayment->isVoided())<span class="badge bg-secondary ms-1 fs-6 align-middle">Voided</span>@endif
+        </h1>
         <p class="fw-medium"><code>{{ $supplierPayment->payment_no }}</code></p>
     </div>
-    <a href="{{ url('/supplier-payments') }}" class="btn btn-light">Back</a>
+    <div class="d-flex gap-2">
+        {{-- SUPPLIER-PAYMENT-VOID-1 — ghalat payment ulti karo. Wajah lazmi; cash, supplier ka payable,
+             GL aur bill — chaaron ek saath wapas. --}}
+        @if(! $supplierPayment->isVoided())
+            @can('tenant.supplier-payments.void')
+                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#voidPaymentModal">Void</button>
+            @endcan
+        @endif
+        <a href="{{ url('/supplier-payments') }}" class="btn btn-light">Back</a>
+    </div>
 </div>
+
+@if($errors->any())
+    <div class="alert alert-danger">@foreach($errors->all() as $err)<div>{{ $err }}</div>@endforeach</div>
+@endif
+
+@if($supplierPayment->isVoided())
+    <div class="alert alert-warning" id="payment-voided-note">
+        Voided on {{ $supplierPayment->voided_at->format('Y-m-d H:i') }}
+        by {{ $supplierPayment->voidedBy?->name ?? '—' }} — {{ $supplierPayment->void_reason }}.
+        {{ number_format((float) $supplierPayment->amount, 2) }} went back into the cash/bank account and onto the supplier's balance.
+    </div>
+@endif
 
 <div class="card">
     <div class="card-header"><strong>Payment Details</strong></div>
@@ -81,4 +104,38 @@
         </dl>
     </div>
 </div>
+
+@if(! $supplierPayment->isVoided())
+    @can('tenant.supplier-payments.void')
+        <div class="modal fade" id="voidPaymentModal" tabindex="-1" aria-labelledby="voidPaymentTitle" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="POST" action="{{ url('/supplier-payments/' . $supplierPayment->id . '/void') }}">
+                        @csrf
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="voidPaymentTitle">Void payment {{ $supplierPayment->payment_no }}?</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="alert alert-warning small">
+                                {{ number_format((float) $supplierPayment->amount, 2) }} comes back into
+                                {{ $supplierPayment->cashBankAccount?->name ?? 'the cash/bank account' }} today,
+                                {{ $supplierPayment->supplier?->name }} owes it again, and any bill it paid opens again.
+                                The payment stays on record, marked voided.
+                            </div>
+                            <label for="void-payment-reason" class="form-label">Why is it being voided? <span class="text-danger">*</span></label>
+                            <textarea name="reason" id="void-payment-reason" class="form-control" rows="2" required minlength="3" maxlength="500"
+                                placeholder="e.g. entered twice, wrong amount, wrong supplier"></textarea>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-danger">Void payment</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        @include('tenant.catering.partials.submit-guard')
+    @endcan
+@endif
 @endsection
