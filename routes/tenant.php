@@ -1003,6 +1003,14 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     // Owner ke paas rehni chahiye — deploy.sh ka default yahan
                     // theek hai, is ko kisi aur role ko mat do.
                     Route::post('/catering/events/{cateringEvent}/void-everything', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'voidEverything'])->name('tenant.catering.final-invoices.void-everything');
+                    // Preview ALAG endpoint par, jaan boojh kar: customer ledger ek
+                    // graahak ki SAARI bookings dikhati hai, aur har satar ka hisaab
+                    // safhe par lagana us ko bhaari kar deta (ek booking par taqreeban
+                    // aath query). Ab wo sirf us waqt chalta hai jab dabba khulta hai.
+                    //
+                    // 🚨 Ye bhi SIRF Owner — void jaisa hi. Ye adad batata hai ke kis
+                    // khaate me kitna para hai; wo khabar bhi har kisi ki nahi.
+                    Route::get('/catering/events/{cateringEvent}/void-preview', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'voidPreview'])->name('tenant.catering.final-invoices.void-preview');
                     Route::post('/catering/events/{cateringEvent}/close', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'close'])->name('tenant.catering.events.close');
 
                     Route::get('/catering/documents/estimate/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'estimate'])->name('tenant.catering.documents.estimate');

@@ -189,6 +189,26 @@
                                                     data-credit="{{ $row['credit'] }}">Refund</button>
                                         @endif
                                     @endcan
+                                    {{-- CATERING-VOID-BUTTON-2 (13 Oct) — malik ne ye
+                                         option yahan bhi maanga. Maine mashwara diya tha
+                                         ke fehrist par destructive button na ho — wahin
+                                         ghalat click hota hai, kyunke aadmi satrein scan
+                                         kar raha hota hai, kisi ek booking par nahi. Malik
+                                         ne sun kar kaha laga do, aur faisla un ka hai.
+
+                                         Magar ADAD yahan bhi dikhte hain. Us ke baghair
+                                         operator wo booking khaton se nikal raha hota jise
+                                         us ne dekha hi nahi — aur yehi wo khatra tha jis
+                                         ki wajah se maine mana kiya tha. --}}
+                                    @can('tenant.catering.final-invoices.void-everything')
+                                        @if($event->status !== 'cancelled')
+                                            <button type="button" class="btn btn-sm btn-outline-danger js-void-all"
+                                                    data-event="{{ $event->id }}" data-no="{{ $event->event_no }}"
+                                                    title="Booking cancel kar ke us ka saara paisa khaton se nikal dena">
+                                                <i class="ti ti-trash"></i>
+                                            </button>
+                                        @endif
+                                    @endcan
                                 </td>
                             </tr>
                         @endforeach
@@ -439,6 +459,57 @@
     @include('tenant.catering.partials.advance-fix-modals', ['returnCustomer' => $customer->id])
 @endcanany
 
+{{-- CATERING-VOID-BUTTON-2 (13 Oct) — wohi dabba jo booking ki screen par hai,
+     wohi teen rukavatein: Owner, wajah lazmi, aur booking ka number khud likhna.
+
+     Adad yahan AJAX se aate hain, safhe par pehle se nahi: ye screen ek graahak
+     ki saari bookings dikhati hai aur har satar ka hisaab lagana safhe ko bhaari
+     kar deta (ek booking par taqreeban aath query). Ab wo sirf us waqt chalta
+     hai jab dabba khulta hai. --}}
+@can('tenant.catering.final-invoices.void-everything')
+    <div class="modal fade" id="cbVoidAllModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form method="POST" id="cbVoidAllForm">
+                @csrf
+                <div class="modal-content">
+                    <div class="modal-header bg-danger-transparent">
+                        <h5 class="modal-title text-danger">
+                            <i class="ti ti-alert-triangle me-1"></i>Cancel &amp; void all money —
+                            <span id="cbVoidNo"></span>
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="border rounded p-2 mb-3">
+                            <div class="fs-12 text-muted mb-1">Khaton se ye nikal jayega:</div>
+                            <table class="table table-sm mb-0 fs-13"><tbody id="cbVoidAccounts">
+                                <tr><td class="text-muted">adad laaye ja rahe hain…</td></tr>
+                            </tbody></table>
+                        </div>
+                        <div class="fs-12 text-muted mb-3" id="cbVoidNote"></div>
+
+                        <div class="mb-3">
+                            <label class="form-label fs-13 mb-1">Wajah <span class="text-danger">*</span></label>
+                            <input type="text" name="reason" class="form-control" required maxlength="500"
+                                   placeholder="misal: test entry thi">
+                        </div>
+                        <div>
+                            <label class="form-label fs-13 mb-1">
+                                Tasdeeq ke liye <code id="cbVoidNo2"></code> likhein
+                                <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" name="confirm_event_no" class="form-control" required autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Rehne do</button>
+                        <button type="submit" class="btn btn-sm btn-danger" id="cbVoidSubmit" disabled>Khaton se nikal do</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+@endcan
 @push('scripts')
 <script>
 // Har button apni booking ka id laata hai aur form ka action wahi banta hai.
@@ -488,6 +559,54 @@ document.querySelectorAll('.js-advance').forEach(function (btn) {
 
 document.getElementById('cbAdvAmount')?.addEventListener('input', cbSyncAdvance);
 
+document.querySelectorAll('.js-void-all').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var form = document.getElementById('cbVoidAllForm');
+        form.action = '/catering/events/' + btn.dataset.event + '/void-everything';
+        document.getElementById('cbVoidNo').textContent = btn.dataset.no;
+        document.getElementById('cbVoidNo2').textContent = btn.dataset.no;
+        form.reset();
+
+        var body = document.getElementById('cbVoidAccounts');
+        var note = document.getElementById('cbVoidNote');
+        var go = document.getElementById('cbVoidSubmit');
+
+        // Jab tak adad saamne na aa jayen, dabane ka raasta BAND. Warna ye
+        // dabba wohi cheez ban jata hai jis se bachne ke liye adad dikhaye ja
+        // rahe hain: bina dekhe void.
+        go.disabled = true;
+        body.innerHTML = '<tr><td class="text-muted">adad laaye ja rahe hain…</td></tr>';
+        note.textContent = '';
+
+        fetch('/catering/events/' + btn.dataset.event + '/void-preview', {
+            headers: {'Accept': 'application/json'}
+        }).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+          .then(function (d) {
+            var rows = Object.keys(d.accounts || {});
+            if (!rows.length) {
+                body.innerHTML = '<tr><td class="text-muted">Is booking se khaton me kuch nahi gaya.</td></tr>';
+                note.textContent = 'Booking cancel ho jayegi; khaton me koi tabdeeli nahi.';
+            } else {
+                body.innerHTML = rows.map(function (code) {
+                    var a = d.accounts[code];
+                    var cls = a.delta < 0 ? 'text-danger' : 'text-success';
+                    return '<tr><td class="text-muted" style="width:70px">' + code + '</td>'
+                         + '<td>' + a.name + '</td>'
+                         + '<td class="text-end fw-semibold ' + cls + '">'
+                         + a.delta.toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td></tr>';
+                }).join('');
+                note.textContent = d.entries + ' ulti entries banengi. Purani entries mitengi nahi. Ye wapas nahi hota.';
+            }
+            go.disabled = false;
+        }).catch(function () {
+            body.innerHTML = '<tr><td class="text-danger">Adad nahi aa sake — booking kholo aur wahan se karo.</td></tr>';
+            note.textContent = '';
+            // Jaan boojh kar band hi rehta hai: adad ke baghair ye kaam nahi.
+        });
+
+        new bootstrap.Modal(document.getElementById('cbVoidAllModal')).show();
+    });
+});
 document.querySelectorAll('.js-refund').forEach(function (btn) {
     btn.addEventListener('click', function () {
         var form = document.getElementById('cbRefundForm');
