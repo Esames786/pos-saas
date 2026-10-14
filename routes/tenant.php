@@ -121,6 +121,13 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
     Route::get('/r/{token}/pdf', [\App\Http\Controllers\ReportShareController::class, 'pdf'])
         ->where('token', '[A-Za-z0-9]{16,64}')->name('tenant.report.share.pdf');
 
+    // ONLINE-ORDERING-1: customer ki ordering website — public, login ke BAHAR (customer ka koi
+    // account nahi). Naam `tenant.` se shuru nahi, taake ye staff ki permission list me na aaye.
+    // Plan me module na ho to controller 404 deta hai.
+    Route::get('/order', [\App\Http\Controllers\Website\StorefrontController::class, 'home'])->name('website.order');
+    Route::get('/order/menu.json', [\App\Http\Controllers\Website\StorefrontController::class, 'menu'])
+        ->middleware('throttle:60,1')->name('website.order.menu');
+
         Route::get('/login', [AuthController::class, 'showLogin'])->name('tenant.login');
         Route::post('/login', [AuthController::class, 'login'])->name('tenant.login.post');
 
