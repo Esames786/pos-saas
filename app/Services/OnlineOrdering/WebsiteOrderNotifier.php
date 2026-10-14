@@ -98,6 +98,10 @@ class WebsiteOrderNotifier
         if (! $enabled || ! $template) {
             return;
         }
+        // WhatsApp lagaya hi nahi (token / number nahi) to bhejne ki koshish hi nahi hui — na row, na bill.
+        if (! config('services.whatsapp.token') || ! config('services.whatsapp.phone_number_id')) {
+            return;
+        }
 
         $to = self::international((string) $customerPhone);
         $row = [

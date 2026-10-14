@@ -315,7 +315,8 @@ class DashboardController extends Controller
      */
     private function billingSummary(): array
     {
-        $empty = ['due' => 0.0, 'dueCount' => 0, 'accruing' => 0.0, 'accruingMessages' => 0];
+        $empty = ['due' => 0.0, 'dueCount' => 0, 'accruing' => 0.0, 'accruingMessages' => 0,
+            'accruingWhatsApp' => 0.0, 'accruingWebsite' => 0.0, 'accruingOrders' => 0];
 
         try {
             if (! app()->bound('tenant')) {
@@ -332,6 +333,15 @@ class DashboardController extends Controller
                 ->where('status', 'draft')
                 ->first();
 
+            // ONLINE-ORDERING-1 (Phase 4b): usi invoice me website ka 1% — WhatsApp aur website alag dikhte hain.
+            // WhatsApp = total − website, taake lines se pehle wali invoice bhi poori WhatsApp gine.
+            $web = $draft
+                ? \App\Models\Master\SubscriptionInvoiceLine::where('invoice_id', $draft->id)
+                    ->where('line_type', \App\Models\Master\SubscriptionInvoiceLine::TYPE_WEBSITE)
+                    ->selectRaw('COALESCE(SUM(amount), 0) as amount, COALESCE(SUM(quantity), 0) as qty')->first()
+                : null;
+            $webAmount = round((float) ($web?->amount ?? 0), 2);
+
             return [
                 'due' => (float) (clone $due)->sum('balance_amount'),
                 'dueCount' => (int) (clone $due)->count(),
@@ -339,6 +349,9 @@ class DashboardController extends Controller
                 'accruingMessages' => $draft
                     ? \App\Models\Master\WhatsAppMessage::where('invoice_id', $draft->id)->count()
                     : 0,
+                'accruingWhatsApp' => round((float) ($draft?->total_amount ?? 0) - $webAmount, 2),
+                'accruingWebsite' => $webAmount,
+                'accruingOrders' => (int) ($web?->qty ?? 0),
             ];
         } catch (\Throwable $e) {
             report($e);

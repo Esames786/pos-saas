@@ -320,7 +320,9 @@ class WebsiteOrderService
     private function websiteChannelId(): int
     {
         return (int) (DeliveryChannel::whereRaw('LOWER(name) = ?', ['website'])->value('id')
-            ?? DeliveryChannel::create(['name' => 'Website', 'type' => 'own', 'commission_percent' => 0, 'is_active' => true, 'sort_order' => 50])->id);
+            ?? DeliveryChannel::create(['name' => 'Website', 'type' => 'own', 'is_active' => true, 'sort_order' => 50,
+                // Sirf tenant ki "By Channel" report ke liye (GL nahi) — Bingoo ka 1% wahan nazar aaye.
+                'commission_percent' => app(\App\Services\Saas\BillingRates::class)->websiteCommissionPercent()])->id);
     }
 
     private function rememberAddress(int $customerId, string $address): void

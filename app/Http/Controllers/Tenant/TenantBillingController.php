@@ -34,7 +34,7 @@ class TenantBillingController extends Controller
     {
         $this->ensureTenantInvoice($invoice);
 
-        $invoice->load(['plan', 'payments.gateway']);
+        $invoice->load(['plan', 'payments.gateway', 'lines']);
 
         return view('tenant.billing.show', [
             'invoice' => $invoice,

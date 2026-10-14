@@ -75,6 +75,15 @@ class WhatsAppUsageController extends Controller
             'rows' => $rows,
             'daily' => $daily,
             'invoices' => $invoices,
+            // ONLINE-ORDERING-1 (Phase 4b): website orders ka 1%, usi mahine ka — record `website_order_charges` se.
+            'website' => DB::connection('master')->table('website_order_charges as c')
+                ->join('tenants as t', 't.id', '=', 'c.tenant_id')
+                ->whereBetween('c.business_date', [$from, $to])
+                ->groupBy('t.id', 't.tenant_code', 't.business_name')
+                ->selectRaw("t.tenant_code, t.business_name, SUM(c.kind = 'sale') as orders, SUM(c.kind = 'return') as returns,
+                             SUM(c.net_amount) as net, SUM(c.amount) as amount")
+                ->orderByDesc('amount')
+                ->get(),
             'rate' => app(\App\Services\Saas\BillingRates::class)->whatsappRatePkr(),
             'totals' => [
                 'messages' => (int) $rows->sum('messages'),

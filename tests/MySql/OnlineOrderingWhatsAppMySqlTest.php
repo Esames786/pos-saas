@@ -140,6 +140,17 @@ class OnlineOrderingWhatsAppMySqlTest extends MySqlTenantTestCase
         $this->assertSame('failed', WhatsAppMessage::where('tenant_id', $this->tenantId)->latest('id')->first()->status);
     }
 
+    public function test_without_whatsapp_set_up_nothing_is_attempted_or_billed(): void
+    {
+        config()->set('services.whatsapp.token', '');
+        $this->fakeMeta();
+        $sale = $this->order();
+
+        $this->assertSame('held', $sale->status);
+        Http::assertNothingSent();
+        $this->assertSame(0, WhatsAppMessage::where('tenant_id', $this->tenantId)->count(), 'Koshish hi nahi hui — na row, na bill.');
+    }
+
     public function test_the_confirm_link_holds_the_order_once_and_the_kot_goes_by_the_pos_print_path(): void
     {
         $this->fakeMeta();

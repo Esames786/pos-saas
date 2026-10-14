@@ -64,6 +64,12 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     Schedule::command('billing:whatsapp-invoice --yes')
         ->timezone('Asia/Karachi')->dailyAt('03:30')->withoutOverlapping();
 
+    // ONLINE-ORDERING-1 (Phase 4b) — website orders ka 1%, usi usage invoice me. WhatsApp ke baad, taake
+    // aik raat me invoice dono hisson ke saath bane. Khule mahine roz dobara bante hain (cancel/return khud
+    // theek); band mahina nahi hilta.
+    Schedule::command('billing:website-commission --yes')
+        ->timezone('Asia/Karachi')->dailyAt('03:40')->withoutOverlapping();
+
     // SAAS-BILLING-AUTO-1 — har tenant ka mahana invoice us ke APNE din par. Roz chalti hai aur sirf
     // un subscriptions ko dekhti hai jin ka invoice_day aaj hai (khatri 15, kashifkitchen 20,
     // kashiffood 25, tawakal 10). Is se pehle koi generator tha hi nahi, yani 105,000/mah ka hisaab

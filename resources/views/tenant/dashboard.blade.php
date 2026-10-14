@@ -260,7 +260,20 @@
                     </div>
                 @endif
 
-                @if(($billing['accruing'] ?? 0) > 0)
+                @if(($billing['accruing'] ?? 0) > 0 && ($billing['accruingWebsite'] ?? 0) != 0)
+                    {{-- ONLINE-ORDERING-1 (Phase 4b): aik usage invoice, do hisse — WhatsApp aur website orders ka 1%. --}}
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+                            <span class="text-muted small"><i class="ti ti-receipt me-1"></i>Usage is mahine</span>
+                            <h5 class="mt-1 mb-0">{{ number_format($billing['accruing'], 2) }}</h5>
+                            <div class="small mt-1">WhatsApp {{ number_format($billing['accruingWhatsApp'], 2) }} · Website orders {{ number_format($billing['accruingWebsite'], 2) }}</div>
+                            <div class="text-muted small">
+                                {{ $billing['accruingMessages'] }} messages · {{ $billing['accruingOrders'] }} orders · bill mahine ke aakhir me
+                            </div>
+                        </div>
+                        </div>
+                    </div>
+                @elseif(($billing['accruing'] ?? 0) > 0)
                     <div class="col-md-3 col-sm-6">
                         <div class="card border-0 shadow-sm h-100"><div class="card-body">
                             <span class="text-muted small"><i class="ti ti-brand-whatsapp me-1"></i>WhatsApp is mahine</span>

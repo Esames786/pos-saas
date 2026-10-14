@@ -76,6 +76,7 @@ class InvoiceController extends Controller
             'plan',
             'payments.gateway',
             'payments.verifiedBy',
+            'lines',
         ]);
 
         return view('central.invoices.show', [
