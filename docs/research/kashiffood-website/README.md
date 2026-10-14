@@ -11,7 +11,7 @@ POS se chalein.
 | `README.md` (ye) | Layout, flow, settings, hamare system se farq, owner ki shartein, khule sawal |
 | `menu.md` | Purani website ka poora menu: category → item → sizes/qeemat → add-ons, website ki tarteeb me |
 | `compare.md` | **Website menu vs hamara POS menu**: har item × size ki POS se milaan, qeemat ka farq, POS-only items |
-| `images.md` | Owner ki download ki hui 142 tasveerein: kaun si kis product/category ki, size, aur kin products ki tasveer download me nahi |
+| `images.md` | Owner ki download ki hui 186 tasveerein: kaun si kis product/category ki, size, aur kin products ki tasveer download me nahi |
 | `data/menu-api.json` | Owner ki di hui purani website ki menu API (poori; 25 categories + "Popular Items") |
 | `data/compare.json` | `compare.md` ka machine-readable roop (har line ka POS product/deal id) |
 | `data/categories.json` | Har category: naam, sequence, layout, items (crawl se) |
@@ -52,7 +52,7 @@ products ki apni category se jore gaye (Platters 8, Midnight Deals 21).
 | Tax | Items "non_taxable"; checkout par tax nahi |
 | Contact | Phone, email, WhatsApp button (neeche daayen), Facebook, Instagram |
 | Menu | 26 categories, 156 products (Deals 20, Midnight Deals 21, Barbecue 12, Chinese 13 …); tafseel `menu.md` me |
-| Tasveerein | Owner ki 142 files: 104 kisi product/category ki, 4 banner slides (5120×1600), logo, icons. 76 products ki tasveer download me nahi (website tasveer scroll par load karti hai); un ke links `data/products.json` me hain |
+| Tasveerein | Owner ki 186 files: 152 kisi product/category ki, 4 banner slides (5120×1600), logo, icons. Sirf 4 dishes ki apni tasveer nahi: Chicken Corn Soup, Hot N Sour Soup, Ustad Special Roll, Chicken Balochi Boti (website par bhi nahi). Deals/Meals/Midnight par logo wali tasveer |
 
 **Delivery areas** ki poori list indolj ki signed API se aati hai, khuli nahi. Screenshots me ye naam nazar aate hain:
 Bahadurabad, Clifton Block 1–5, FB Area Block 2, 4, 5, 6, 7, 8, Scheme 33 … (list lambi hai, scroll hoti hai).
@@ -149,7 +149,7 @@ Pizza Fries, Beef Kebab Rolls, Beef Boti Rolls, Chicken Chow Mein, Deal 8 Serve 
 
 1. **Delivery fee** har area ki alag hai ya sab par 300?
 2. **Qeemat:** website par POS ki qeemat chale? Farq sirf 3 jagah hai: Al-Faham Half/Full (website 1,600/3,100, POS 1,650/3,200) aur Sting Can (180 vs 160). Midnight Deal 17 POS me banani hai ya hatani hai?
-3. **Tasveerein:** purani website wali tasveerein use kar lein? 104 owner ne de di hain; baqi 76 un ke links se utaar kar apne server par rakh lein?
+3. **Tasveerein:** owner ki di hui 152 tasveerein hi lagayein? 4 dishes (do soups, Ustad Special Roll, Chicken Balochi Boti) ki tasveer chahiye.
 4. **Domain:** `kashiffood.com` hamare server par aayega ya pehle subdomain (jaise `order.kashiffood.com`) par test?
 5. **Payment:** sirf Cash on Delivery, ya online payment bhi?
 6. **Dine-in / pickup:** website par pickup bhi rakhna hai? Dine-in?

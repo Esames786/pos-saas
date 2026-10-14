@@ -14,9 +14,16 @@ foreach (scandir($imgDir) as $f) {
     $files[$f] = ['file' => $f, 'kb' => (int) round(filesize("$imgDir/$f") / 1024), 'size' => $s ? "{$s[0]}x{$s[1]}" : '-', 'used_by' => []];
 }
 
+// The browser renames on save ("(3)" becomes "-3-"), so match on a key that ignores punctuation.
+$key = fn (?string $n) => $n === null ? null : strtolower(preg_replace('/[^a-z0-9]+/i', '', $n));
+$byKey = [];
+foreach ($files as $name => $x) {
+    $byKey[$key($name)] = $name;
+}
 $missing = [];
 foreach ($prods as $p) {
     $f = $base($p['photo']);
+    $f = $f !== null && ! isset($files[$f]) ? ($byKey[$key($f)] ?? $f) : $f;
     if (! $f || str_contains($f, 'placholde')) {
         $missing[] = [$p['name'], $p['category'], 'no photo (placeholder)'];
         continue;
@@ -30,6 +37,7 @@ foreach ($prods as $p) {
 foreach ($cats as $c) {
     foreach (['image' => 'Category banner', 'icon' => 'Category icon'] as $k => $label) {
         $f = $c[$k] ? basename((string) $c[$k]) : null;
+        $f = $f !== null && ! isset($files[$f]) ? ($byKey[$key($f)] ?? $f) : $f;
         if ($f && isset($files[$f])) {
             $files[$f]['used_by'][] = $label . ': ' . $c['name'];
         }

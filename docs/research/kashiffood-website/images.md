@@ -1,14 +1,14 @@
 # Purani website ki tasveerein
 
-Owner ne website se 142 files download kar ke di (14 Oct 2026). Repo me nahi rakhi gayin (taqreeban 54 MB);
+Owner ne website se 186 files download kar ke di (14 Oct 2026). Repo me nahi rakhi gayin (taqreeban 54 MB);
 asal files: `C:\Users\Dell\Downloads\kashiffood.com\Order Authentic Flavors _ Kashif Foods in Karachi _ Order Online\`.
 File ka naam wahi hai jo website ke image link me hai, is liye har tasveer apne product se jor di gayi hai. Machine-readable: `data/images.json`.
 
 | | Ginti |
 | --- | --- |
-| Product / category se judi tasveerein | 104 |
-| Baqi (banner, logo, icons, svg) | 38 |
-| Products jin ki tasveer download me nahi | 76 |
+| Product / category se judi tasveerein | 152 |
+| Baqi (banner, logo, icons, svg) | 34 |
+| Products jin ki tasveer download me nahi | 28 |
 
 ## Product aur category ki tasveerein
 
@@ -25,6 +25,7 @@ File ka naam wahi hai jo website ke image link me hai, is liye har tasveer apne 
 | `1767957430-CHCIKEN ZINGER BURGER_22_11zon.webp` | 800x800 | 1053 | Product: Chicken Zinger Burger (Burgers) |
 | `1767957568-CHICKEN NUGGETS_28_11zon.webp` | 800x800 | 972 | Product: Nuggets (Kids House ) |
 | `1767957594-CHICKEN ROLL_29_11zon.webp` | 800x800 | 1372 | Product: Chicken Chatni Roll (Rolls) |
+| `1767957785-CRISPY FRIED CHICKEN_33_11zon.webp` | 800x800 | 1246 | Product: Crispy Fried Chicken (Crispy Fried Chicken ) |
 | `1767957861-DRAGON BEEF_36_11zon.webp` | 800x800 | 1271 | Product: Dragon Beef With Fried Rice (Chinese ) |
 | `1767957894-DRUM STICKS_38_11zon.webp` | 800x800 | 1139 | Product: Crispy Fried Chicken (Kids House ) |
 | `1767957934-FISH GRILL_39_11zon.webp` | 800x800 | 1011 | Product: Bar-B-Que Fish Grill (Barbecue) |
@@ -34,17 +35,62 @@ File ka naam wahi hai jo website ke image link me hai, is liye har tasveer apne 
 | `1767961676-Chicken Malai Tikka_17_11zon.webp` | 800x800 | 665 | Product: Chicken Malai Tikka (Barbecue) |
 | `1767961733-Chicken Reshmi Kebab_22_11zon.webp` | 800x800 | 504 | Product: Chicken Reshmi Kebab (Barbecue) |
 | `1767961759-Beef Afghani Boti_2_11zon.webp` | 800x800 | 555 | Product: Beef Afghani Boti (Barbecue) |
+| `1767961795-Cajun Chicken_7_11zon.webp` | 800x800 | 734 | Product: Cajun Chicken (BBQ New Arrival ) |
+| `1767961808-Chicken Namkeen Boti_18_11zon.webp` | 800x800 | 517 | Product: Chicken Namkeen Boti (BBQ New Arrival ) |
+| `1767961823-Tandoori Chicken_62_11zon.webp` | 800x800 | 571 | Product: Tandoori Chicken (BBQ New Arrival ) |
+| `1767961846-Moroccan Kebab_46_11zon.webp` | 800x800 | 1174 | Product: Moroccan Kebab (BBQ New Arrival ) |
 | `1767961944-Chullu Kebab Platter_25_11zon.webp` | 800x800 | 701 | Product: Chullu Kebab Platter (Platters) |
+| `1767961974-Crispy Spicy Fried Chicken_28_11zon.webp` | 800x800 | 481 | Product: Crispy Spicy Fried Chicken (Crispy Fried Chicken ) |
+| `1767961990-Crispy Garlic Fried Chicken_27_11zon.webp` | 800x800 | 587 | Product: Crispy Garlic Fried Chicken (Crispy Fried Chicken ) |
 | `1767962051-Plain Fries_51_11zon.webp` | 800x800 | 545 | Product: Plain Fries (Fries) |
 | `1767962068-Masala Fries_43_11zon.webp` | 800x800 | 616 | Product: Masala Fries (Fries) |
 | `1767962086-Mayo Garlic Fries_44_11zon.webp` | 800x800 | 480 | Product: Mayo Garlic Fries (Fries) |
 | `1767962102-Pizza Fries_50_11zon.webp` | 800x800 | 760 | Product: Pizza Fries (Fries) |
 | `1767962240-Chicken Mac n Cheese Pasta_14_11zon.webp` | 800x800 | 673 | Product: Chicken Mac n Cheese Pasta (Pasta ) |
+| `1767962328-Water.webp` | 800x800 | 311 | Product: Mineral Water (Beverages) |
+| `1767962361-Gemini_Generated_Image_ctfbmvctfbmvctfb_11zon.webp` | 800x800 | 554 | Product: Soft Drink (Beverages) |
+| `1767962381-Sting Can_60_11zon.webp` | 800x800 | 268 | Product: Sting Can (Beverages) |
+| `1767962405-Fresh Salad_36_11zon.webp` | 800x800 | 549 | Product: Fresh Salad (Raita & Salad ) |
+| `1767962452-Singaporean Sauce_57_11zon.webp` | 800x800 | 713 | Product: Singaporean Sauce (Extras) |
+| `1767962463-Butter_6_11zon.webp` | 800x800 | 547 | Product: Butter (Extras) |
+| `1767962474-Bun_5_11zon.webp` | 800x800 | 575 | Product: Bun (Extras) |
+| `1767962486-Dinner Roll_30_11zon.webp` | 800x800 | 566 | Product: Dinner Roll (Extras) |
+| `1767962497-Coleslaw_26_11zon.webp` | 800x800 | 572 | Product: Coleslaw (Extras) |
+| `1767962510-Mayo Sauce_45_11zon.webp` | 800x800 | 917 | Product: Mayo Sauce (Extras) |
+| `1767962521-Paratha_49_11zon.webp` | 800x800 | 609 | Product: Paratha (Extras) |
 | `1767962530-Beef Boti Rolls_3_11zon.webp` | 800x800 | 566 | Product: Beef Boti Rolls (Rolls) |
 | `1767962540-Beef Kebab Rolls_4_11zon.webp` | 800x800 | 615 | Product: Beef Kebab Rolls (Rolls) |
 | `1767962550-Chicken Balochi Roll_8_11zon.webp` | 800x800 | 564 | Product: Chicken Balochi Roll (Rolls) |
 | `1767962560-Chicken Malai Boti Roll_15_11zon.webp` | 800x800 | 625 | Product: Chicken Malai Boti Roll (Rolls) |
 | `1767962571-Chicken Reshmi Kebab Roll_21_11zon.webp` | 800x800 | 639 | Product: Chicken Reshmi Kebab Roll (Rolls) |
+| `1767962817-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Pocket Friendly Deal 01 (Pocket Friendly Deal ) |
+| `1767962821-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Pocket Friendly Deal 02 (Pocket Friendly Deal ) |
+| `1767962832-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Family Deal 01 (Family Deals ) |
+| `1767962836-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Family Deal 02 (Family Deals ) |
+| `1767962839-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Family Deal 03 (Family Deals ) |
+| `1767962843-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Family Deal 04 (Family Deals ) |
+| `1767962874-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 1 Serve 1 (Deals) |
+| `1767962881-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 3 Serve 2 (Deals) |
+| `1767962886-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 5 Serve 2 (Deals) |
+| `1767962890-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 7 Serve 2 (Deals) |
+| `1767962894-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 9 Serve 2 (Deals) |
+| `1767962898-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 11 Serve 2 (Deals) |
+| `1767962902-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 13 Serve 2 (Deals) |
+| `1767962907-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 15 Serve 2 (Deals) |
+| `1767962911-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 17 Serve 4 (Deals) |
+| `1767962915-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 19 Serve 4 (Deals) |
+| `1767962919-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 2 Serve 2 (Deals) |
+| `1767962922-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 4 Serve 2 (Deals) |
+| `1767962927-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 6 Serve 2 (Deals) |
+| `1767962930-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 8 Serve 2 (Deals) |
+| `1767962935-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 10 Serve 2 (Deals) |
+| `1767962939-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 12 Serve 2 (Deals) |
+| `1767962943-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 14 Serve 2 (Deals) |
+| `1767962947-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 16 Serve 4 (Deals) |
+| `1767962951-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 18 Serve 4 (Deals) |
+| `1767962955-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Deal 20 Serve 6 (Deals) |
+| `1767962966-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Garlic Fried (Extras) |
+| `1767962970-Logo_11zon -3-.webp` | 800x800 | 377 | Product: Cheese (Extras) |
 | `1768035578-23.png` | 1400x400 | 43 | Category banner: Meals |
 | `1768899987-chicken-burger.jpeg` | 818x837 | 148 | Product: Chicken Burger (Burgers) |
 | `1768900800-Mushroom-Steak.jpg` | 756x756 | 139 | Product: Mushroom Steak (Steaks) |
@@ -52,6 +98,7 @@ File ka naam wahi hai jo website ke image link me hai, is liye har tasveer apne 
 | `1768901835-Mexican-Steak.jpg` | 756x756 | 162 | Product: Spicy Mexican Steak (Steaks) |
 | `1768902012-Red-Sauce-Pasta.jpg` | 756x756 | 143 | Product: Chicken Red Sauce Pasta (Pasta ) |
 | `1768902134-smoke-house.jpg` | 756x756 | 124 | Product: Smoke House (Smash Chicken Burgers) |
+| `1768902356-RAITA.jpg` | 157x157 | 7 | Product: Raita (Raita & Salad ) |
 | `1773349636-Singaporean-Khass.jpg` | 600x600 | 54 | Product: Singaporean Rice Khass (Singaporean Rice ) |
 | `1773349676-Singaporean.jpg` | 600x600 | 48 | Product: Singaporean Rice (Singaporean Rice ) |
 | `1773349786-Singaporean.jpg` | 600x600 | 48 | Product: Singaporean Rice Family Pack (Singaporean Rice ) |
@@ -102,6 +149,7 @@ File ka naam wahi hai jo website ke image link me hai, is liye har tasveer apne 
 | `1774652341-Schezwan-with-Fried-Rice.jpg` | 600x600 | 48 | Product: Schezwan With Fried Rice (Chinese ) |
 | `1774652369-Shashlik-with-Fried-Rice.jpg` | 600x600 | 44 | Product: Shashlik With Fried Rice (Chinese ) |
 | `1774652398-Manchurian-with-Fried-Rice.jpg` | 600x600 | 41 | Product: Manchurian With Fried Rice (Chinese ) |
+| `1774654495-Chicken-Adana-Kebab.jpg` | 600x600 | 53 | Product: Adana Kebab (BBQ New Arrival ) |
 | `1774654567-Chicken-Malai-Boti.jpg` | 600x600 | 53 | Product: Chicken Malai Boti (Barbecue) |
 | `1774654798-Tarragon-Steak.jpg` | 600x600 | 38 | Product: Tarragon Steak (Steaks) |
 | `1774654868-Chicken-Parmesan-Cheese-Pasta.jpg` | 600x600 | 31 | Product: Chicken Parmesan Cheese Pasta (Pasta ) |
@@ -123,11 +171,6 @@ File ka naam wahi hai jo website ke image link me hai, is liye har tasveer apne 
 
 | File | Size | KB |
 | --- | --- | --- |
-| `1767962832-Logo_11zon -3-.webp` | 800x800 | 377 |
-| `1767962836-Logo_11zon -3-.webp` | 800x800 | 377 |
-| `1767962839-Logo_11zon -3-.webp` | 800x800 | 377 |
-| `1767962843-Logo_11zon -3-.webp` | 800x800 | 377 |
-| `1767962930-Logo_11zon -3-.webp` | 800x800 | 377 |
 | `1767967320-419223039-702837458649085-5638199729379820459-n (1).jpg` | 400x400 | 37 |
 | `1767967320-419223039-702837458649085-5638199729379820459-n.jpg` | 400x400 | 37 |
 | `1773912966-Platter.png` | 3234x870 | 141 |
@@ -136,6 +179,7 @@ File ka naam wahi hai jo website ke image link me hai, is liye har tasveer apne 
 | `1773913478-Banner-3.png` | 5120x1600 | 6976 |
 | `1773913560-Banner-4.png` | 5120x1600 | 848 |
 | `1776680867-1767967320-419223039-702837458649085-563819972937.jpg` | 800x800 | 398 |
+| `1776684554-1767967320-419223039-702837458649085-563819972937.jpg` | 800x800 | 398 |
 | `Fire-icon.svg` | - | 2 |
 | `_favicon0r830bS6pJ3yLtBN.png` | 32x32 | 1 |
 | `image (1).svg` | - | 0 |
@@ -169,54 +213,8 @@ File ka naam wahi hai jo website ke image link me hai, is liye har tasveer apne 
 | Chicken Corn Soup | Soup  | 1767957318-CHCIKEN CORN SOUP_16_11zon.webp |
 | Hot N Sour Soup | Soup  | 1768649578-hot-n-sour-soup.jpg |
 | Chicken Balochi Boti | Barbecue | no photo (placeholder) |
-| Cajun Chicken | BBQ New Arrival  | 1767961795-Cajun Chicken_7_11zon.webp |
-| Chicken Namkeen Boti | BBQ New Arrival  | 1767961808-Chicken Namkeen Boti_18_11zon.webp |
-| Adana Kebab | BBQ New Arrival  | 1774654495-Chicken-Adana-Kebab.jpg |
-| Tandoori Chicken | BBQ New Arrival  | 1767961823-Tandoori Chicken_62_11zon.webp |
-| Moroccan Kebab | BBQ New Arrival  | 1767961846-Moroccan Kebab_46_11zon.webp |
-| Crispy Fried Chicken | Crispy Fried Chicken  | 1767957785-CRISPY FRIED CHICKEN_33_11zon.webp |
-| Crispy Spicy Fried Chicken | Crispy Fried Chicken  | 1767961974-Crispy Spicy Fried Chicken_28_11zon.webp |
-| Crispy Garlic Fried Chicken | Crispy Fried Chicken  | 1767961990-Crispy Garlic Fried Chicken_27_11zon.webp |
-| Pocket Friendly Deal 01 | Pocket Friendly Deal  | 1767962817-Logo_11zon (3).webp |
-| Pocket Friendly Deal 02 | Pocket Friendly Deal  | 1767962821-Logo_11zon (3).webp |
 | Meal 01 | Meals | 1767962825-Logo_11zon (3).webp |
 | Meal 02 | Meals | 1767962828-Logo_11zon (3).webp |
-| Family Deal 01 | Family Deals  | 1767962832-Logo_11zon (3).webp |
-| Family Deal 03 | Family Deals  | 1767962839-Logo_11zon (3).webp |
-| Family Deal 04 | Family Deals  | 1767962843-Logo_11zon (3).webp |
-| Deal 1 Serve 1 | Deals | 1767962874-Logo_11zon (3).webp |
-| Deal 3 Serve 2 | Deals | 1767962881-Logo_11zon (3).webp |
-| Deal 5 Serve 2 | Deals | 1767962886-Logo_11zon (3).webp |
-| Deal 7 Serve 2 | Deals | 1767962890-Logo_11zon (3).webp |
-| Deal 9 Serve 2 | Deals | 1767962894-Logo_11zon (3).webp |
-| Deal 11 Serve 2 | Deals | 1767962898-Logo_11zon (3).webp |
-| Deal 13 Serve 2 | Deals | 1767962902-Logo_11zon (3).webp |
-| Deal 15 Serve 2 | Deals | 1767962907-Logo_11zon (3).webp |
-| Deal 17 Serve 4 | Deals | 1767962911-Logo_11zon (3).webp |
-| Deal 19 Serve 4 | Deals | 1767962915-Logo_11zon (3).webp |
-| Deal 2 Serve 2 | Deals | 1767962919-Logo_11zon (3).webp |
-| Deal 4 Serve 2 | Deals | 1767962922-Logo_11zon (3).webp |
-| Deal 6 Serve 2 | Deals | 1767962927-Logo_11zon (3).webp |
-| Deal 8 Serve 2 | Deals | 1767962930-Logo_11zon (3).webp |
-| Deal 10 Serve 2 | Deals | 1767962935-Logo_11zon (3).webp |
-| Deal 12 Serve 2 | Deals | 1767962939-Logo_11zon (3).webp |
-| Deal 14 Serve 2 | Deals | 1767962943-Logo_11zon (3).webp |
-| Deal 16 Serve 4 | Deals | 1767962947-Logo_11zon (3).webp |
-| Deal 18 Serve 4 | Deals | 1767962951-Logo_11zon (3).webp |
-| Deal 20 Serve 6 | Deals | 1767962955-Logo_11zon (3).webp |
-| Mineral Water | Beverages | 1767962328-Water.webp |
-| Soft Drink | Beverages | 1767962361-Gemini_Generated_Image_ctfbmvctfbmvctfb_11zon.webp |
-| Sting Can | Beverages | 1767962381-Sting Can_60_11zon.webp |
-| Raita | Raita & Salad  | 1768902356-RAITA.jpg |
-| Fresh Salad | Raita & Salad  | 1767962405-Fresh Salad_36_11zon.webp |
-| Singaporean Sauce | Extras | 1767962452-Singaporean Sauce_57_11zon.webp |
-| Garlic Fried | Extras | 1767962966-Logo_11zon (3).webp |
-| Cheese | Extras | 1767962970-Logo_11zon (3).webp |
-| Bun | Extras | 1767962474-Bun_5_11zon.webp |
-| Dinner Roll | Extras | 1767962486-Dinner Roll_30_11zon.webp |
-| Coleslaw | Extras | 1767962497-Coleslaw_26_11zon.webp |
-| Mayo Sauce | Extras | 1767962510-Mayo Sauce_45_11zon.webp |
-| Paratha | Extras | 1767962521-Paratha_49_11zon.webp |
 | Midnight Deal 01 | Midnight Deals | 1767963001-Logo_11zon (3).webp |
 | Midnight Deal 02 | Midnight Deals | 1767963011-Logo_11zon (3).webp |
 | Midnight Deal 03 | Midnight Deals | 1767963016-Logo_11zon (3).webp |
@@ -240,5 +238,3 @@ File ka naam wahi hai jo website ke image link me hai, is liye har tasveer apne 
 | Midnight Deal 21 | Midnight Deals | 1767963139-Logo_11zon (3).webp |
 | Ustad Special Roll | Rolls | 1776680867-1767967320-419223039-702837458649085-5638199729379820459-n.jpg |
 | Soft Drink | Beverages | 1776684554-1767967320-419223039-702837458649085-5638199729379820459-n.jpg |
-| Family Deal 02 | Family Deals  | 1767962836-Logo_11zon (3).webp |
-| Butter | Extras | 1767962463-Butter_6_11zon.webp |
