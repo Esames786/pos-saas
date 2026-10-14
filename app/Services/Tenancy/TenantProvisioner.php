@@ -487,6 +487,7 @@ class TenantProvisioner
             'tenant.supplier-payments.create',
             'tenant.supplier-payments.store',
             'tenant.supplier-payments.show',
+            'tenant.supplier-payments.void',
 
             // Customers
             'tenant.customers.index',

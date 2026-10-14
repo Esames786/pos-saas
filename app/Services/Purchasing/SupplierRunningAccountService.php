@@ -102,7 +102,8 @@ class SupplierRunningAccountService
             ->mapWithKeys(fn ($r) => [$r->source_type . ':' . $r->source_id => (float) $r->total]);
 
         $credits = [];
-        foreach (SupplierPayment::where('supplier_id', $supplierId)->get(['id', 'payment_date', 'amount']) as $p) {
+        // SUPPLIER-PAYMENT-VOID-1: ulti ki gayi payment credit nahi rahi — us ka paisa drawer me wapas aa chuka.
+        foreach (SupplierPayment::where('supplier_id', $supplierId)->whereNull('voided_at')->get(['id', 'payment_date', 'amount']) as $p) {
             $credits[] = ['type' => SupplierCreditAllocation::SOURCE_PAYMENT, 'id' => (int) $p->id,
                 'date' => (string) $p->payment_date?->toDateString(), 'amount' => (float) $p->amount];
         }

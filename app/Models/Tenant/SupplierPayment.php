@@ -19,7 +19,19 @@ class SupplierPayment extends Model
     protected $casts = [
         'payment_date' => 'date',
         'cheque_date'  => 'date',
+        'voided_at'    => 'datetime',
     ];
+
+    /** SUPPLIER-PAYMENT-VOID-1 — ulti ki gayi payment ka row rehta hai, us par sirf nishan lagta hai. */
+    public function isVoided(): bool
+    {
+        return $this->voided_at !== null;
+    }
+
+    public function voidedBy()
+    {
+        return $this->belongsTo(User::class, 'voided_by_user_id');
+    }
 
     public function supplier()
     {

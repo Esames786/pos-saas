@@ -8,7 +8,7 @@ class Category extends Model
 {
     protected $connection = 'tenant';
 
-    protected $fillable = ['parent_id', 'branch_id', 'code', 'name', 'slug', 'sort_order', 'is_active'];
+    protected $fillable = ['parent_id', 'branch_id', 'code', 'name', 'slug', 'sort_order', 'is_active', 'cogs_account_id'];
 
     protected function casts(): array
     {
@@ -21,6 +21,12 @@ class Category extends Model
     public function parent()
     {
         return $this->belongsTo(Category::class, 'parent_id');
+    }
+
+    /** PNL-COST-BY-CATEGORY-1: where this category's purchase-only cost goes (NULL = parent's, else 5100). */
+    public function cogsAccount()
+    {
+        return $this->belongsTo(Account::class, 'cogs_account_id');
     }
 
     /**

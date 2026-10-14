@@ -248,7 +248,9 @@ class ExpenseVoucherController extends Controller
             return back()->withErrors(['voucher' => $e->getMessage()]);
         }
 
-        return redirect(url('/finance/expenses/' . $expenseVoucher->id))->with('status', 'Expense voucher voided — cash/bank balance restored.');
+        // CASH-BOOK-VOID-1: Cash Book se aaya void wapas Cash Book par.
+        return redirect(\App\Support\CashBookReturn::from($request) ?? url('/finance/expenses/' . $expenseVoucher->id))
+            ->with('status', 'Expense voucher ' . $expenseVoucher->voucher_no . ' voided — cash/bank balance restored.');
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
