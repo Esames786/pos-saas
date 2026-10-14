@@ -45,6 +45,8 @@ class Product extends Model
         'product_kind', 'is_pos_visible', 'can_be_bom_component',
         'can_be_bom_output', 'is_manufactured_finished_good',
         'purchase_unit_id', 'purchase_pack_size',
+        // ONLINE-ORDERING-1: website ki apni qeemat (null = POS ki qeemat).
+        'website_price',
     ];
 
     protected function casts(): array
@@ -68,6 +70,7 @@ class Product extends Model
             'can_be_bom_output' => 'boolean',
             'is_manufactured_finished_good' => 'boolean',
             'purchase_pack_size' => 'decimal:4',
+            'website_price' => 'decimal:2',
         ];
     }
 

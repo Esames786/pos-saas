@@ -24,8 +24,11 @@ class MasterSeeder extends Seeder
      * the all-modules enterprise plan. Access is granted per client through
      * plan-module administration (or a dedicated private plan), and an existing
      * explicit grant survives every reseed/deploy untouched.
+     *
+     * ONLINE-ORDERING-1: `online_ordering` bhi — pehle aik client (Kashif Food), phir jis ka
+     * plan kahe.
      */
-    public const ROLLOUT_GATED_MODULE_KEYS = ['catering'];
+    public const ROLLOUT_GATED_MODULE_KEYS = ['catering', 'online_ordering'];
 
     public function run(): void
     {
@@ -391,6 +394,17 @@ class MasterSeeder extends Seeder
                 'sort_order' => 150,
                 'is_core' => false,
             ],
+            [
+                // ONLINE-ORDERING-1: rollout-gated (upar ROLLOUT_GATED_MODULE_KEYS) — kisi plan
+                // par khud nahi lagta; plan administration se diya jata hai.
+                'key' => 'online_ordering',
+                'name' => 'Online Ordering',
+                'category' => 'Sales',
+                'description' => 'The restaurant\'s own ordering website: delivery areas and fees, website prices, website hours, and orders landing on the POS.',
+                'route_module_keys' => ['tenant.online-ordering'],
+                'sort_order' => 155,
+                'is_core' => false,
+            ],
         ];
 
         foreach ($modules as $module) {
@@ -447,7 +461,10 @@ class MasterSeeder extends Seeder
                 continue;
             }
 
-            foreach (Module::orderBy('sort_order')->get() as $module) {
+            // ONLINE-ORDERING-1: rollout-gated modules is purane loop me bhi na on hon na off —
+            // wohi usool jo syncPlanModules() me hai. Pehle ye har deploy par un ka flag false likh
+            // deta tha, to demo (standard) par diya gaya gated module agle deploy par chhin jata.
+            foreach (Module::whereNotIn('key', self::ROLLOUT_GATED_MODULE_KEYS)->orderBy('sort_order')->get() as $module) {
                 $enabled = in_array($module->key, $enabledKeys, true);
 
                 $limits = null;

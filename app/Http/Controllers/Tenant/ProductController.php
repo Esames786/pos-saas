@@ -291,6 +291,8 @@ class ProductController extends Controller
             'product_type'           => ['required', Rule::in(['simple', 'recipe', 'hybrid', 'service'])],
             'default_purchase_price' => ['nullable', 'numeric', 'min:0'],
             'default_selling_price'  => ['required', 'numeric', 'min:0'],
+            // ONLINE-ORDERING-1: website ki apni qeemat; khaali = POS ki qeemat.
+            'website_price'          => ['nullable', 'numeric', 'min:0'],
             // KITCHEN-RECIPE-COST-1 recipe-costing pack fields
             'purchase_unit_id'       => ['nullable', 'exists:units,id'],
             'purchase_pack_size'     => ['nullable', 'numeric', 'min:0'],
@@ -366,7 +368,7 @@ class ProductController extends Controller
             $consumptionMethod = 'none';
         }
 
-        return [
+        $fields = [
             'category_id'            => $data['category_id'] ?? null,
             'unit_id'                => $data['unit_id'] ?? null,
             'sku'                    => strtoupper(trim($data['sku'])),
@@ -399,6 +401,14 @@ class ProductController extends Controller
             'shelf_life_days'             => isset($data['shelf_life_days']) ? (int) $data['shelf_life_days'] : null,
             'default_wastage_percent'     => $data['default_wastage_percent'] ?? 0,
         ];
+
+        // ONLINE-ORDERING-1: khaana sirf "Online Ordering" wale plan par dikhta hai. Jahan form par
+        // khaana hi nahi, wahan save purani website price ko mitaye nahi — sirf aane par likho.
+        if ($request->exists('website_price')) {
+            $fields['website_price'] = (isset($data['website_price']) && $data['website_price'] !== '') ? $data['website_price'] : null;
+        }
+
+        return $fields;
     }
 
     private function productContext(Request $request): string

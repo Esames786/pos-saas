@@ -514,6 +514,11 @@ class TenantProvisioner
             'tenant.delivery-riders.store',
             'tenant.delivery-riders.update',
             'tenant.delivery-riders.destroy',
+            // ONLINE-ORDERING-1 — website settings + delivery areas (plan module se khulte hain).
+            'tenant.online-ordering.settings.edit',
+            'tenant.online-ordering.settings.update',
+            'tenant.online-ordering.areas.index',
+            'tenant.online-ordering.areas.update',
 
             // POS
             'tenant.pos.index',

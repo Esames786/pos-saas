@@ -414,6 +414,19 @@
                     <div class="form-help">Used when this product is sold in POS or Sales.</div>
                 </div>
 
+                {{-- ONLINE-ORDERING-1: only on a plan with Online Ordering. The POS price is never touched. --}}
+                @if(\App\Support\OnlineOrdering::enabledForTenant())
+                <div class="col-md-3 pf" data-pg="sell">
+                    <label for="website_price" class="form-label">Website Price</label>
+                    <input id="website_price" type="number" name="website_price"
+                           step="0.01" min="0"
+                           value="{{ old('website_price', $product?->website_price) }}"
+                           class="form-control @error('website_price') is-invalid @enderror" placeholder="Same as POS">
+                    @error('website_price') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    <div class="form-help">Price on your ordering website. Leave empty to use the selling price.</div>
+                </div>
+                @endif
+
                 <div class="col-md-2 pf" data-pg="tax" data-link="taxable">
                     <label for="tax_rate_percent" class="form-label">Tax Rate (%)</label>
                     <input id="tax_rate_percent" type="number" name="tax_rate_percent"

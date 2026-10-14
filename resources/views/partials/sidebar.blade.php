@@ -560,6 +560,39 @@
                 @endcanany
                 @endif
 
+                {{-- ── ONLINE ORDERING ─────────────────────────────────────────── --}}
+                {{-- ONLINE-ORDERING-1: plan module aur permission dono — Owner ke paas har
+                     permission hoti hai, plan faisla karta hai. --}}
+                @if($hasModule('online_ordering'))
+                @canany(['tenant.online-ordering.settings.edit','tenant.online-ordering.areas.index'])
+                <li class="submenu">
+                    <a href="javascript:void(0);">
+                        <i class="ti ti-world-www fs-16 me-2"></i>
+                        <span>Online Ordering</span>
+                        <span class="menu-arrow"></span>
+                    </a>
+                    <ul style="display:none;">
+                        @can('tenant.online-ordering.settings.edit')
+                            @php $a = $isIn('online-ordering/settings*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/online-ordering/settings') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-settings fs-16 me-2"></i><span>Website Settings</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.online-ordering.areas.index')
+                            @php $a = $isIn('online-ordering/areas*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/online-ordering/areas') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-map-pin fs-16 me-2"></i><span>Delivery Areas</span>
+                                </a>
+                            </li>
+                        @endcan
+                    </ul>
+                </li>
+                @endcanany
+                @endif
+
                 {{-- ── RESTAURANT ──────────────────────────────────────────────── --}}
                 @if($hasModule('restaurant') || $hasModule('kitchen_display'))
                 @canany(['tenant.restaurant.board','tenant.restaurant.floors.index','tenant.restaurant.tables.index','tenant.restaurant.waiters.index','tenant.held-sales.index','tenant.kitchen-display.index'])

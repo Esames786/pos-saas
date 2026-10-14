@@ -78,6 +78,9 @@ class ComboController extends Controller
             'code' => ['nullable', 'string', 'max:80', Rule::unique('combos', 'code')->ignore($combo?->id)],
             'name' => ['required', 'string', 'max:190'],
             'price' => ['required', 'numeric', 'min:0'],
+            // ONLINE-ORDERING-1: website ki apni qeemat; khaali = deal ki qeemat. Khaana sirf
+            // "Online Ordering" wale plan par aata hai — na aaye to key hi nahi, purani qeemat salamat.
+            'website_price' => ['nullable', 'numeric', 'min:0'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'status' => ['required', 'in:active,inactive'],
             'description' => ['nullable', 'string'],

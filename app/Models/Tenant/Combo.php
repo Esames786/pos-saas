@@ -14,6 +14,8 @@ class Combo extends Model
         'code',
         'name',
         'price',
+        // ONLINE-ORDERING-1: website ki apni qeemat (null = deal ki qeemat).
+        'website_price',
         'sort_order',
         'status',
         'description',
@@ -23,6 +25,7 @@ class Combo extends Model
     {
         return [
             'price' => 'decimal:2',
+            'website_price' => 'decimal:2',
             'sort_order' => 'integer',
         ];
     }

@@ -488,6 +488,13 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::put('/delivery/riders/{deliveryRider}', [DeliveryRiderController::class, 'update'])->name('tenant.delivery-riders.update');
                 Route::delete('/delivery/riders/{deliveryRider}', [DeliveryRiderController::class, 'destroy'])->name('tenant.delivery-riders.destroy');
 
+                // ONLINE-ORDERING-1 — apni ordering website (plan module `online_ordering`; route key
+                // `tenant.online-ordering` khud ban jata hai). Sirf Owner ko milta hai (deploy).
+                Route::get('/online-ordering/settings', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteSettingsController::class, 'edit'])->name('tenant.online-ordering.settings.edit');
+                Route::put('/online-ordering/settings', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteSettingsController::class, 'update'])->name('tenant.online-ordering.settings.update');
+                Route::get('/online-ordering/areas', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryAreaController::class, 'index'])->name('tenant.online-ordering.areas.index');
+                Route::put('/online-ordering/areas', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryAreaController::class, 'update'])->name('tenant.online-ordering.areas.update');
+
                 // POS
                 Route::get('/pos', [POSController::class, 'index'])->name('tenant.pos.index');
                 Route::post('/pos', [SalesOrderController::class, 'store'])->name('tenant.pos.store');
