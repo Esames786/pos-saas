@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
+use App\Services\Finance\NonStockCostAccounts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -36,6 +37,7 @@ class CategoryController extends Controller
             'title'    => 'Create Category',
             'parents'  => Category::where('is_active', true)->orderBy('name')->get(),
             'branches' => Branch::orderBy('name')->get(['id', 'name']),
+            'costAccounts' => NonStockCostAccounts::choices(),
         ]);
     }
 
@@ -59,6 +61,7 @@ class CategoryController extends Controller
             'title'    => 'Edit Category',
             'parents'  => Category::where('id', '!=', $category->id)->where('is_active', true)->orderBy('name')->get(),
             'branches' => Branch::orderBy('name')->get(['id', 'name']),
+            'costAccounts' => NonStockCostAccounts::choices(),
         ]);
     }
 
@@ -97,6 +100,10 @@ class CategoryController extends Controller
             'description'=> ['nullable', 'string'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'is_active'  => ['nullable', 'boolean'],
+            // PNL-COST-BY-CATEGORY-1: only a 5… expense account that can take postings (not a group head).
+            'cogs_account_id' => ['nullable', 'integer', Rule::in(NonStockCostAccounts::choices()->pluck('id')->all())],
+        ], [
+            'cogs_account_id.in' => 'Choose an active cost-of-sales account under 5000 (not a group head such as 5000 itself).',
         ]);
 
         $data['branch_id'] = $data['branch_id'] ?? null;
@@ -133,6 +140,7 @@ class CategoryController extends Controller
             'slug'       => $slug,
             'sort_order' => $data['sort_order'] ?? 0,
             'is_active'  => !empty($data['is_active']),
+            'cogs_account_id' => $data['cogs_account_id'] ?? null,
         ];
     }
 }
