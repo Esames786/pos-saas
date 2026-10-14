@@ -11,7 +11,11 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
-    public function register(): void {}
+    public function register(): void
+    {
+        // ONLINE-ORDERING-1: rates aik request/job me aik dafa parhe jayen; agle job me dobara.
+        $this->app->scoped(\App\Services\Saas\BillingRates::class);
+    }
 
     public function boot(): void
     {

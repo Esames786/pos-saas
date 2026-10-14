@@ -6,6 +6,7 @@ use App\Models\Master\Tenant;
 use App\Models\Master\WhatsAppMessage;
 use App\Services\Reports\SalesReportEngine;
 use App\Services\Reports\Sharing\ReportShareLinkService;
+use App\Services\Saas\BillingRates;
 use RuntimeException;
 
 /**
@@ -90,8 +91,9 @@ final class WhatsAppChannel implements ReportChannel
                 'to' => $number,
                 'usage_date' => $usageDate,
                 'sent_at' => now(),
-                'rate_charged' => (float) config('services.whatsapp.rate_pkr'),
-                'provider_cost' => (float) config('services.whatsapp.cost_pkr'),
+                // ONLINE-ORDERING-1: rate master ki Billing rates se (`.env` sirf sahara).
+                'rate_charged' => app(BillingRates::class)->whatsappRatePkr(),
+                'provider_cost' => app(BillingRates::class)->whatsappCostPkr(),
             ];
 
             try {

@@ -75,7 +75,7 @@ class WhatsAppUsageController extends Controller
             'rows' => $rows,
             'daily' => $daily,
             'invoices' => $invoices,
-            'rate' => (float) config('services.whatsapp.rate_pkr'),
+            'rate' => app(\App\Services\Saas\BillingRates::class)->whatsappRatePkr(),
             'totals' => [
                 'messages' => (int) $rows->sum('messages'),
                 'failed' => (int) $rows->sum('failed'),
