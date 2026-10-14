@@ -101,8 +101,19 @@ Owner ke sawal/faisle: "alag website product ya category screen to nahi ban rahe
   aur **sirf** website ke public raaste khole (`/`, menu, checkout, order status) — login/POS/admin kabhi
   nahi. `www` → bina-www par redirect.
 - Test ke liye website `kashiffood.bingoopos.com/order` par bhi (POS ke saath, login ke baghair public).
-- SSL: naya domain cert sync me (aaj HTTP-01 subdomains ke liye `/usr/local/bin/bingoo-cert-sync`) + web server
-  par `server_name kashiffood.com www.kashiffood.com`.
+- **Prod aaj (read-only, 15 Oct):** nginx ka aik hi site `bingoopos` — `server_name bingoopos.com *.bingoopos.com`,
+  root `/var/www/html/pos-saas/public`, aik cert `bingoopos.com` (HTTP-01, SAN list). `bingoo-cert-sync` master ke
+  active domains me se sirf `*.bingoopos.com` uthata hai, aur jo naam DNS par server ko point na kare usay
+  chhoR deta hai.
+- **SSL/nginx (mashwara):** har website domain ka **alag cert** (`--cert-name kashiffood.com`, `-d kashiffood.com
+  -d www.kashiffood.com`) aur alag nginx block (wohi root). Is tarah kisi client ki DNS ghalti `bingoopos.com` ke
+  cert ko kabhi na chhue. Pehli issue ke liye port 80 par aik default block jo `/.well-known/acme-challenge` serve
+  kare. cert-sync ko "website" qism ke domains ke liye aage barhana: DNS server par aaye → cert → nginx block →
+  `nginx -t` → reload.
+- **Cut-over:** test `kashiffood.bingoopos.com/order` par → platform admin me `kashiffood.com` "Website domain" →
+  client TTL kam kare aur sirf **A records** (apex + www) server IP par (nameservers/MX na badlen — email chalti
+  rahe) → cert-sync khud SSL + nginx → purani indolj site ke links (`/product/…`, `/category/…`) nayi pages par
+  301 redirect (Google ranking bache).
 - WhatsApp confirm link `https://bingoopos.com/o/{token}` (Meta template ka pakka base) → tenant ke website
   domain ke confirm page par redirect.
 
