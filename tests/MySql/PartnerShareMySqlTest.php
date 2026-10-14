@@ -165,6 +165,12 @@ class PartnerShareMySqlTest extends MySqlTenantTestCase
         $this->assertSame(2000.0, $b['partner_pays_total']);
         $this->assertSame(1200.0, $b['we_pay_total']);
         $this->assertSame(-800.0, $b['net'], 'negative = the partner owes us');
+
+        // A component is a 0.00 line, so the free-line rule alone would hide it. Counting free lines
+        // must still never rate the sandwich inside the platter — that is the deal rule, on its own.
+        SharePartner::whereKey($this->partnerId)->update(['count_free_lines' => true]);
+        $this->assertSame([['BBQ Sandwich', 400.0, 3.0, 1200.0]], $this->rows($this->block($this->share())['we_pay']),
+            'even counting free lines, a deal part is never a sale of its own');
     }
 
     public function test_the_rate_is_the_one_in_force_on_the_orders_day(): void
