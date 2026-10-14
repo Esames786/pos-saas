@@ -38,9 +38,9 @@ nikal jati hai; delivery channel **"Website"**. Bingoo: website ki **mahana kul 
 
 **Doosra round**
 - Rates **`.env` me nahi, master (platform admin) settings me**: WhatsApp fi message charge **aur** commission %.
-- Commission = **website ki mahana kul sale ka 1%, delivery waghera sab mila kar** (grand total). **Order-wise row nahi:
-  har tenant ki har mahine ki EK billing row**, jis me raqam barhti rehti hai. WhatsApp ki tarah har mahine **payable
-  invoice**. **WhatsApp ka kharcha alag, 1% alag** (do alag invoices).
+- Commission = **website ki mahana kul sale ka 1%, delivery waghera sab mila kar** (grand total). Har mahine **payable
+  invoice**. **WhatsApp ka kharcha alag, 1% alag.**
+- **Teesra round:** **ek invoice, kai child rows** — record bhi rahe, group bhi; WhatsApp par bhi yehi (§5b).
 - **Website ke rate alag** rakhne hain (website price). POS ki qeemat nahi chhedni.
 - Jo deal website par hai magar POS me nahi (**Midnight Deal 17**) wo POS me banani hai.
 - **Order status sirf system wale**: Draft, Held, Paid, Cancelled, Partially Returned, Returned. Koi naya status nahi.
@@ -108,8 +108,14 @@ nikal jati hai; delivery channel **"Website"**. Bingoo: website ki **mahana kul 
   to `.env` fallback (deploy aur pehli bharai ke beech kuch na toote). Fayda: rate badalne ke liye deploy /
   `config:cache` nahi.
 - `geo_areas`: country, state, city, area name, sort. Pehli bharai `webarea.json` (Karachi, 75; "FB Area Block 7" do dafa).
-- `website_commission_months` — **har tenant, har mahine EK row**: tenant_id, month, website_sales_total, order_count,
-  rate_percent, commission_amount, invoice_id, last_computed_at, closed_at. (Order-wise row nahi — owner ka faisla.)
+- `subscription_invoice_lines` (**naya — invoice ki child rows; aaj system me invoice lines hain hi nahi**): invoice_id,
+  line_type (`whatsapp_messages` / `website_commission` / `plan` / `manual`), usage_date (din), description, quantity
+  (messages ya orders), base_amount (commission ke liye us din ki sale), rate, rate_unit (`per_message` / `percent`),
+  amount (4 decimal; invoice ka total 2 par), timestamps. Unique (invoice_id, line_type, usage_date) — dobara banana
+  idempotent. Invoice total = **SUM(lines)**, hamesha.
+- `website_order_charges` (record, sirf drill-down ke liye): tenant_id, order uuid, order number, business_date,
+  grand_total, refunded, rate_percent, amount, invoice_id. Paid website order ki snapshot — tenant ka data baad me badle
+  tab bhi bill khud apni wazahat rakhta hai. WhatsApp ka record pehle se `whatsapp_messages` (invoice_id ke saath).
 - `plan_modules` me naya module `online_ordering`.
 
 **Tenant:**
@@ -129,19 +135,34 @@ nikal jati hai; delivery channel **"Website"**. Bingoo: website ki **mahana kul 
 
 - **Rate:** master `platform_settings.website_commission_percent` = 1. Platform admin screen se badle; chalte (khule) mahine
   par naya rate lagega, band mahine nahi hilte (rate row par likha).
-- **Raqam:** us mahine ke **website orders ki kul sale** (`grand_total`: items + delivery fee + tax waghera sab) × 1%.
-  Mashwara: sirf Paid (aur Partially Returned) orders; returns minus — yani net sale. Draft / Cancelled par kuch nahi.
-- **Row ek, raqam barhti rahe:** owner ki baat ke mutabiq mahine ki ek row. Mashwara: row ki raqam **har dafa tenant ke
-  website orders se dobara nikali jaye, us me joRi na jaye** (roz raat command + dashboard khulne par). JoRne me
-  retry par dugni, aur void/return par ghalat; dobara nikalne me hamesha sahi. Yehi sabaq WhatsApp invoice command ke
-  comment me likha hai.
-- **Invoice:** har mahine ki **alag** invoice "Website orders commission — Oct 2026": mahine bhar **draft** (barhti hai),
-  mahina khatam par **issued / payable** — bilkul WhatsApp invoice jaisi. WhatsApp ki invoice alag rehti hai.
-  Dhyan: `billing:whatsapp-invoice` invoice ko `tenant + invoice_type 'addon' + period_start` se dhoondta hai aur total
-  sirf WhatsApp rows se dobara nikalta hai — commission invoice ki pehchan alag honi chahiye aur WhatsApp ki dhoond tang.
-- **Dashboard:** "Website orders is mahine — Rs X · N orders · 1%" card, WhatsApp card ke saath, `tenant.billing.index`
-  ke peeche. Platform admin: WhatsApp Usage jaisa "Website commission" page (tenant-wise mahine).
-- Misaal: mahine ki website sale 4,21,350 → commission **4,213.50**. WhatsApp alag: 602 messages × 9.85 = 5,929.70.
+- **Raqam (tay, owner 14 Oct):** **sirf website orders** (poore restaurant ki sale nahi) ki mahana kul sale
+  (`grand_total`: items + delivery fee + tax waghera sab) × 1%. **Net sale** (owner: "jo best option ho"): Paid aur
+  Partially Returned orders, returns minus. Draft / Cancelled par kuch nahi. Return agle mahine ho aur pichhli invoice band
+  ho chuki ho, to us mahine ki line me minus (band invoice nahi hilti).
+- **Ek invoice, kai child rows (owner, 14 Oct, teesra round)** — "record bhi rahe, group bhi". Teen tah:
+  1. **Invoice** (parent): har tenant ki har mahine **ek usage invoice** (`invoice_type = addon`, jo aaj WhatsApp ki hai).
+     Mahine bhar `draft` (barhti hai), mahina khatam par `issued` / payable.
+  2. **Child rows** (`subscription_invoice_lines`, group): har service ki **har din ki ek line**. WhatsApp: "14 Oct ·
+     34 messages × 9.85". Website: "14 Oct · 10 orders · sale 14,050 · 1%". Invoice par service-wise subtotal.
+  3. **Record** (drill-down): line kholo to us din ke messages (`whatsapp_messages`) ya orders (`website_order_charges`).
+- **WhatsApp ka kharcha aur 1% alag rehte hain** — alag line_type, alag subtotal — magar **ek hi invoice** me. Mashwara
+  isliye: warna mahine me teen invoice (plan + WhatsApp + website) aur teen screenshot; ab do (plan + usage), jo owner ne
+  09-10 ko maana tha (plan aur usage alag). Alag invoice chahiye ho to sirf invoice dhoondne ki shart badalti hai.
+- **Raqam joRi nahi, dobara nikali jaye:** har raat WhatsApp builder sirf apni lines `whatsapp_messages` se dobara
+  banaye, commission builder sirf apni lines website orders se; phir invoice total = SUM(lines). Retry par dugna nahi,
+  void/return par khud sahi. Is se wo masla bhi khatam: aaj `billing:whatsapp-invoice` total ko sirf WhatsApp rows se
+  likhta hai — ek invoice me commission mit jata; lines ke saath har builder sirf apni lines chhuta hai.
+- **1% mahana kul par:** din ki lines 4 decimal par, invoice ka total 2 par round — to din ki lines ka jor = mahine ki
+  sale × 1% (paisa-paisa).
+- **Live WhatsApp invoices par asar (build ke waqt):** lines table bana kar maujooda WhatsApp invoices (Oct drafts:
+  khatri `INV-20261009-0281`, kashiffood `INV-20261009-2063`) ki din-wise lines un ke `whatsapp_messages` se bharni;
+  **saboot: har invoice ka SUM(lines) = purana total**, warna rukna. Phir `billing:whatsapp-invoice` total ko SUM(lines)
+  se likhe. Plan (subscription) invoice ko bhi ek "plan" line — har invoice ki shakl ek jaisi.
+- **Dashboard:** "Ban raha hai" card me usage invoice ka total, neeche do hisse: WhatsApp aur Website 1%.
+  `tenant.billing.index` ke peeche. Tenant ki `/billing` par invoice ki lines aur drill-down. Platform admin ka
+  `/whatsapp-usage` page "Usage" ban jaye (WhatsApp + website).
+- Misaal (Oct): WhatsApp 1,036 messages × 9.85 = **10,204.60**; website sale 4,21,350 × 1% = **4,213.50**; invoice
+  **14,418.10**.
 
 ## 6. Screens
 
@@ -155,7 +176,11 @@ Website Menu; product/deal form par "Website" hissa (show, website price).
 kitne minute se), **Hold** (rider chuno — lazmi), **Recall** (normal POS cart; save par rider lazmi), **Cancel**; link se
 Held hue orders "Rider baqi" ke saath. Held Orders list me mojooda tareeqa.
 
-**Platform admin:** Billing rates (WhatsApp fi message, WhatsApp laagat, website commission %); Website commission page.
+**Platform admin:** Billing rates (WhatsApp fi message, WhatsApp laagat, website commission %); `/whatsapp-usage` →
+"Usage" (WhatsApp + website 1%, din-wise, laagat/margin).
+
+**Tenant billing (`/billing`):** usage invoice ki din-wise lines (WhatsApp / Website 1% alag subtotal) + line kholne par
+record (messages / orders).
 
 ## 6b. Website ka design aur raftaar
 
@@ -195,7 +220,7 @@ Held hue orders "Rider baqi" ke saath. Held Orders list me mojooda tareeqa.
 | 1 | Platform "Billing rates" (WhatsApp rate `.env` se yahan), plan module, master areas, delivery zones, website settings (waqt, order type → terminal, auto-cancel, WhatsApp toggles), website price; Kashif Food: Deal 17 + website prices | Setup mukammal |
 | 2 | Website (purani tarteeb, animations, lazy loading, halki), area → branch, dobara aane wala customer, ETA, cart, checkout | Customer order de sake |
 | 3 | Draft POS me, ghanti, "Website orders" modal (Hold + rider, Recall, Cancel), auto-cancel, "Website" channel | Cashier order le sake |
-| 4 | WhatsApp (status-wise ikhtiyari) + confirm link → Held + KOT; mahana commission row + payable invoice + dashboard card | Poora safar, Bingoo ka hissa |
+| 4 | WhatsApp (status-wise ikhtiyari) + confirm link → Held + KOT; invoice lines (WhatsApp ki maujooda invoices samet, SUM = purana total ka saboot) + website commission lines + dashboard | Poora safar, Bingoo ka hissa |
 | 5 | kashiffood.com domain + SSL, tasveerein, SEO, go-live | Purani website band |
 | Baad me | Rider ke baad ka safar (on the way), online payment, pre-order | — |
 
