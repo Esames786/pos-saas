@@ -58,6 +58,11 @@ Route::domain(config('tenancy.central_domain'))
         Route::get('/r/{token}', [\App\Http\Controllers\ReportShareController::class, 'redirect'])
             ->where('token', '(?:\{\{1\}\})?[A-Za-z0-9]{16,64}')->name('report.share');
 
+        // ONLINE-ORDERING-1: WhatsApp "Confirm Order" button — aik pakka base sab tenants ke liye; link me
+        // tenant ka code (`kashiffood.<token>`) aur ye safha customer ko us tenant ke confirm safhe par bhejta hai.
+        Route::get('/o/{code}', [\App\Http\Controllers\Website\OrderLinkController::class, 'redirect'])
+            ->where('code', '(?:\{\{1\}\})?[a-z0-9-]+\.[A-Za-z0-9]{40}')->middleware('throttle:60,1')->name('order.confirm.link');
+
         // Every public page in every language, for search engines.
         Route::get('/sitemap.xml', [PublicSiteController::class, 'sitemap'])->name('public.sitemap');
     });

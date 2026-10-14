@@ -97,7 +97,7 @@ class WebsiteOrderService
         $phone = $this->localPhone((string) $in['customer']['phone']);
         $c = $in['customer'];
 
-        return DB::connection('tenant')->transaction(function () use ($in, $branch, $zone, $fee, $orderType, $terminalId, $shift, $lines, $itemNotes, $phone, $c) {
+        $sale = DB::connection('tenant')->transaction(function () use ($in, $branch, $zone, $fee, $orderType, $terminalId, $shift, $lines, $itemNotes, $phone, $c) {
             $customer = $this->customers->findOrCreateByPhone($phone, (string) $c['name']);
             $address = $orderType === 'delivery' ? trim(implode(', ', array_filter([$c['address'] ?? null, $c['landmark'] ?? null, $zone?->area_name]))) : null;
             if ($customer && $address) {
@@ -188,6 +188,11 @@ class WebsiteOrderService
 
             return $sale->fresh('lines');
         });
+
+        // "Order mila" + Confirm link (client ne on rakha ho to) — commit aur jawab ke baad.
+        WebsiteOrderNotifier::later('received', $sale->id);
+
+        return $sale;
     }
 
     /**

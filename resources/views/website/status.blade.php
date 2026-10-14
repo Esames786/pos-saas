@@ -52,6 +52,20 @@ h1 { margin:0; text-align:center; font:400 42px/1 "Allura",cursive; color:var(--
 <div class="wrap">
     <h1>{{ $businessName }}</h1>
 
+    @php
+        $outcomes = [
+            'confirmed' => 'Thank you — your order is confirmed and the kitchen has it.',
+            'already' => 'This order is already confirmed.',
+            'expired' => 'This confirm link has expired. The restaurant will call you to confirm your order.',
+            'later' => 'Thank you. We will confirm your order shortly.',
+            'cancelled' => 'This order was cancelled.',
+        ];
+        $outcome = session('confirm_outcome');
+    @endphp
+    @if($outcome && isset($outcomes[$outcome]))
+        <div class="card center" style="background:{{ $outcome === 'confirmed' ? '#EFFAF3' : '#FFF6DA' }}"><p style="margin:0;color:var(--ink)">{{ $outcomes[$outcome] }}</p></div>
+    @endif
+
     <div class="card center">
         <div class="tick {{ $step === 'cancelled' ? 'no' : 'ok' }}">{{ $step === 'cancelled' ? '×' : '✓' }}</div>
         <h2>{{ $labels[$step][0] }}</h2>

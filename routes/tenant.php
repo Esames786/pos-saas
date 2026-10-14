@@ -131,6 +131,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
         ->middleware('throttle:10,1')->name('website.order.checkout');
     Route::get('/order/status/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'status'])
         ->where('token', '[A-Za-z0-9]{40}')->name('website.order.status');
+    Route::get('/order/confirm/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'confirmPage'])
+        ->where('token', '[A-Za-z0-9]{40}')->name('website.order.confirm');
+    Route::post('/order/confirm/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'confirm'])
+        ->where('token', '[A-Za-z0-9]{40}')->middleware('throttle:20,1')->name('website.order.confirm.post');
 
         Route::get('/login', [AuthController::class, 'showLogin'])->name('tenant.login');
         Route::post('/login', [AuthController::class, 'login'])->name('tenant.login.post');

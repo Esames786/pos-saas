@@ -129,6 +129,66 @@ class StorefrontController extends Controller
         ], 201);
     }
 
+    /**
+     * WhatsApp ke "Confirm Order" button ka safha. GET kuch nahi badalta — sirf aik form jo browser khud
+     * POST kar deta hai. Link-preview bot ya scanner (jo script nahi chalate) order kabhi confirm nahi kar sakte;
+     * insaan ke phone par aik tap kaafi.
+     */
+    public function confirmPage(string $token)
+    {
+        abort_unless(OnlineOrdering::enabledForTenant(), 404);
+        $sale = \App\Models\Tenant\SalesOrder::where('web_token', $token)->where('order_source', 'website')->firstOrFail();
+
+        return response()->view('website.confirm', ['sale' => $sale, 'businessName' => app('tenant')->business_name, 'token' => $token])
+            ->header('Cache-Control', 'no-store')->header('X-Robots-Tag', 'noindex');
+    }
+
+    /**
+     * Customer ne confirm kiya: Draft → Held, aur KOT POS ke apne print raaste (PrintJobService::queueKot) se —
+     * jaise cashier ke Hold par. Link aik dafa ka (dobara = "pehle hi confirm"), 30 minute tak; cancel hua
+     * order confirm nahi hota. Rider baad me cashier POS ke Website orders se lagata hai.
+     */
+    public function confirm(string $token, \App\Services\Printing\PrintJobService $printing)
+    {
+        abort_unless(OnlineOrdering::enabledForTenant(), 404);
+
+        [$outcome, $saleId] = \Illuminate\Support\Facades\DB::connection('tenant')->transaction(function () use ($token) {
+            $sale = \App\Models\Tenant\SalesOrder::where('web_token', $token)->where('order_source', 'website')->lockForUpdate()->firstOrFail();
+
+            if ($sale->status === 'cancelled') {
+                return ['cancelled', $sale->id];
+            }
+            if ($sale->status !== 'held' || ! $sale->is_draft) {
+                return ['already', $sale->id];
+            }
+            if ($sale->created_at->lt(now()->subMinutes(self::CONFIRM_LINK_MINUTES))) {
+                return ['expired', $sale->id];
+            }
+            if (! \App\Models\Tenant\Shift::where('terminal_id', $sale->terminal_id)->where('status', 'open')->exists()) {
+                return ['later', $sale->id];   // counter band — cashier khud dekhega
+            }
+
+            $sale->update(['is_draft' => false]);
+
+            return ['confirmed', $sale->id];
+        });
+
+        if ($outcome === 'confirmed') {
+            try {
+                $sale = \App\Models\Tenant\SalesOrder::findOrFail($saleId);
+                $printing->queueKot(sale: $sale, printer: null, lineIds: [], terminalId: $sale->terminal_id ? (string) $sale->terminal_id : null);
+            } catch (\Throwable $e) {
+                // Printer ka masla order ko nahi rokta: order Held hai, cashier POS se KOT dobara bhej sakta hai.
+                report($e);
+            }
+        }
+
+        return redirect('/order/status/'.$token)->with('confirm_outcome', $outcome);
+    }
+
+    /** WhatsApp ka Confirm link kitni der chalta hai. */
+    public const CONFIRM_LINK_MINUTES = 30;
+
     /** Customer ka order-status safha (lamba random link; login nahi). */
     public function status(string $token)
     {
