@@ -88,11 +88,17 @@ class SalesOrder extends Model
         'delivery_rider_id',
         'delivery_address',
         'vehicle_number',
+        // ONLINE-ORDERING-1: website ka idempotency key, customer ka status/confirm link, aur website ki
+        // tafseel (POS kabhi nahi likhta, is liye recall/Hold/Pay ke baad bhi bachti hai).
+        'web_order_key',
+        'web_token',
+        'web_meta',
     ];
 
     protected function casts(): array
     {
         return [
+            'web_meta'              => 'array',
             'sale_date'             => 'datetime',
             'business_date'         => 'date:Y-m-d',
             'subtotal'              => 'decimal:2',

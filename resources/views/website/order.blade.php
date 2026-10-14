@@ -532,10 +532,44 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var box = $('cErr');
     box.hidden = !err.length; box.innerHTML = err.map(esc).join('<br>');
     if (err.length) { return; }
-    if (!D.endpoints.checkout) {
-      box.hidden = false; box.textContent = 'Online checkout is being set up. Please call us to order.';
-      return;
-    }
+
+    // One key per attempt: a double tap or a retry after a timeout gives the SAME order.
+    if (!S.pendingKey) { S.pendingKey = uuid(); save(); }
+    var btn = $('place');
+    btn.disabled = true; btn.textContent = 'Placing your order…';
+    var body = {
+      key: S.pendingKey, type: S.type, area: S.type === 'delivery' ? S.area : null, branch: S.type === 'pickup' ? branchOf() : null,
+      customer: { name: c.name, phone: c.phone, alt: c.alt || null, address: c.address || null, landmark: c.landmark || null,
+        lat: S.pin ? S.pin.lat : null, lng: S.pin ? S.pin.lng : null },
+      note: ($('cNote').value || '').trim() || null,
+      lines: S.cart.map(function (l) { return { option: l.option, qty: l.qty, addons: l.addons.map(function (a) { return a.id; }), note: l.note || null }; })
+    };
+    fetch(D.endpoints.checkout, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (res.ok) {
+          S.cart = []; S.pendingKey = null; S.lastOrder = res.j.status_url; save();
+          location.href = res.j.status_url;
+          return;
+        }
+        var msgs = res.j && res.j.errors ? Object.keys(res.j.errors).filter(function (k) { return k !== 'meta'; }).map(function (k) { return res.j.errors[k][0]; }) : [];
+        box.hidden = false; box.innerHTML = (msgs.length ? msgs : [res.j && res.j.message || 'Could not place the order. Please try again.']).map(esc).join('<br>');
+        btn.disabled = false; btn.textContent = 'Place order · ' + money(subtotal() + fee());
+        if (res.j && res.j.errors && res.j.errors.lines) { S.pendingKey = null; save(); }
+      })
+      .catch(function () {
+        box.hidden = false; box.textContent = 'No connection. Please check your internet and try again — you will not be charged twice.';
+        btn.disabled = false; btn.textContent = 'Place order · ' + money(subtotal() + fee());
+      });
+  }
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) { return crypto.randomUUID(); }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (ch) {
+      var r = Math.random() * 16 | 0; return (ch === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
   }
 
   $('forget').addEventListener('click', function () {

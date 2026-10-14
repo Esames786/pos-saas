@@ -127,6 +127,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
     Route::get('/order', [\App\Http\Controllers\Website\StorefrontController::class, 'home'])->name('website.order');
     Route::get('/order/menu.json', [\App\Http\Controllers\Website\StorefrontController::class, 'menu'])
         ->middleware('throttle:60,1')->name('website.order.menu');
+    Route::post('/order/checkout', [\App\Http\Controllers\Website\StorefrontController::class, 'checkout'])
+        ->middleware('throttle:10,1')->name('website.order.checkout');
+    Route::get('/order/status/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'status'])
+        ->where('token', '[A-Za-z0-9]{40}')->name('website.order.status');
 
         Route::get('/login', [AuthController::class, 'showLogin'])->name('tenant.login');
         Route::post('/login', [AuthController::class, 'login'])->name('tenant.login.post');

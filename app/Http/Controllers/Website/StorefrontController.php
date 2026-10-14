@@ -60,7 +60,7 @@ class StorefrontController extends Controller
             'branches' => $branches->map(fn ($b) => ['id' => $b->id, 'name' => $b->name, 'address' => $b->address])->values(),
             'menuBranch' => $branchId,
             'menu' => $this->present($menu->menu($branchId, $this->hhmm($clock, $branches->firstWhere('id', $branchId)))),
-            'endpoints' => ['menu' => url('/order/menu.json')],
+            'endpoints' => ['menu' => url('/order/menu.json'), 'checkout' => url('/order/checkout')],
         ];
 
         return response()
@@ -78,6 +78,76 @@ class StorefrontController extends Controller
 
         return response()->json(['branch' => $branch->id, 'menu' => $this->present($menu->menu($branch->id, $this->hhmm($clock, $branch)))])
             ->header('Cache-Control', 'no-store');
+    }
+
+    /**
+     * Order lagao: POS par draft (website order) — ghanti routed terminal par. Do dafa dabana = wohi order.
+     */
+    public function checkout(Request $request, \App\Services\OnlineOrdering\WebsiteOrderService $orders)
+    {
+        abort_unless(OnlineOrdering::enabledForTenant(), 404);
+
+        $data = $request->validate([
+            'key' => ['required', 'uuid'],
+            'type' => ['required', 'in:delivery,pickup'],
+            'area' => ['nullable', 'integer', 'required_if:type,delivery'],
+            'branch' => ['nullable', 'integer'],
+            'customer.name' => ['required', 'string', 'max:120'],
+            // Pakistan mobile: 0300…, 300…, 92300…, +92 300… — khaali jagah/dash chhoR kar.
+            'customer.phone' => ['required', 'string', 'max:20', function ($attr, $value, $fail) {
+                if (! preg_match('/^(92|0)?3\d{9}$/', preg_replace('/[\s\-+]/', '', (string) $value))) {
+                    $fail('Enter a valid mobile number, e.g. 0300 1234567.');
+                }
+            }],
+            'customer.alt' => ['nullable', 'string', 'max:20'],
+            'customer.address' => ['nullable', 'required_if:type,delivery', 'string', 'max:300'],
+            'customer.landmark' => ['nullable', 'string', 'max:150'],
+            'customer.lat' => ['nullable', 'numeric', 'between:-90,90'],
+            'customer.lng' => ['nullable', 'numeric', 'between:-180,180'],
+            'note' => ['nullable', 'string', 'max:300'],
+            'lines' => ['required', 'array', 'min:1', 'max:50'],
+            'lines.*.option' => ['required', 'string', 'regex:/^(product|combo):\d+$/'],
+            'lines.*.qty' => ['required', 'integer', 'min:1', 'max:50'],
+            'lines.*.addons' => ['nullable', 'array', 'max:20'],
+            'lines.*.addons.*' => ['integer'],
+            'lines.*.note' => ['nullable', 'string', 'max:200'],
+        ], [
+            'customer.address.required_if' => 'Enter your address.',
+            'area.required_if' => 'Choose your delivery area.',
+        ]);
+
+        try {
+            $sale = $orders->place($data);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            // Do request bilkul saath: doosra wohi order lautaye.
+            $sale = \App\Models\Tenant\SalesOrder::where('web_order_key', $data['key'])->firstOrFail();
+        }
+
+        return response()->json([
+            'order' => $sale->sale_no,
+            'status_url' => url('/order/status/'.$sale->web_token),
+        ], 201);
+    }
+
+    /** Customer ka order-status safha (lamba random link; login nahi). */
+    public function status(string $token)
+    {
+        abort_unless(OnlineOrdering::enabledForTenant(), 404);
+
+        $sale = \App\Models\Tenant\SalesOrder::with('lines')->where('web_token', $token)->where('order_source', 'website')->firstOrFail();
+        $settings = WebSetting::tenantDefault();
+
+        return response()->view('website.status', [
+            'sale' => $sale,
+            'businessName' => app('tenant')->business_name,
+            'phone' => $settings->contact_phone,
+            'step' => match (true) {
+                $sale->status === 'cancelled' => 'cancelled',
+                in_array($sale->status, ['paid', 'partially_returned', 'returned'], true) => 'completed',
+                $sale->status === 'held' && ! $sale->is_draft => 'confirmed',
+                default => 'received',
+            },
+        ])->header('Cache-Control', 'no-store');
     }
 
     private function hhmm(TenantClock $clock, ?Branch $branch): string
