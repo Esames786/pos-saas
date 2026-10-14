@@ -442,6 +442,16 @@
             </div>
             </div>
 
+            {{-- ONLINE-ORDERING-1: website placement — only on a plan with Online Ordering, and never
+                 changes the POS (name, price, photo, category stay as they are). Fields carry no pf class,
+                 so the card-type visibility script leaves this section alone. --}}
+            @if(\App\Support\OnlineOrdering::enabledForTenant())
+            <div class="psection">
+            <h5 class="mb-3 mt-4">Website</h5>
+            @include('tenant.partials.website-fields', array_merge(['model' => $product, 'kind' => 'product'], \App\Services\OnlineOrdering\WebsiteFields::formData()))
+            </div>
+            @endif
+
             {{-- ── Stock & Reorder ───────────────────────────────────────────── --}}
             <div class="psection">
             <h5 class="mb-3 mt-4">Stock &amp; Reorder</h5>

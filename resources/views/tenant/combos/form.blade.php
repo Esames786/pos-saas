@@ -20,7 +20,7 @@
 
     <div class="card">
         <div class="card-body">
-            <form method="POST" action="{{ $editing ? url('/combos/' . $combo->id) : url('/combos') }}">
+            <form method="POST" action="{{ $editing ? url('/combos/' . $combo->id) : url('/combos') }}" enctype="multipart/form-data">
                 @csrf
                 @if($editing) @method('PUT') @endif
 
@@ -88,6 +88,14 @@
                         <textarea id="description" name="description" rows="2" class="form-control">{{ old('description', $combo->description ?? '') }}</textarea>
                     </div>
                 </div>
+
+                {{-- ONLINE-ORDERING-1: website placement — only on a plan with Online Ordering; the POS deal does not change. --}}
+                @if(\App\Support\OnlineOrdering::enabledForTenant())
+                    <h6 class="mb-3">Website</h6>
+                    <div class="mb-4">
+                        @include('tenant.partials.website-fields', array_merge(['model' => $combo ?? null, 'kind' => 'combo'], \App\Services\OnlineOrdering\WebsiteFields::formData()))
+                    </div>
+                @endif
 
                 <div class="d-flex align-items-center justify-content-between mb-2">
                     <h6 class="mb-0">Components</h6>

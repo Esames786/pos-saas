@@ -133,6 +133,9 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $data = $this->validated($request);
+        // ONLINE-ORDERING-1: website hissa pehle validate — POS product adhoora save na ho.
+        $website = app(\App\Services\OnlineOrdering\WebsiteFields::class);
+        $website->validate($request);
         $data['image_path'] = $this->handleImageUpload($request);
 
         $product = DB::transaction(function () use ($data, $request) {
@@ -174,6 +177,8 @@ class ProductController extends Controller
             return $product;
         });
 
+        $website->apply($request, $product);
+
         return redirect($this->productRedirectUrl($request, $product))->with('status', 'Product created successfully.');
     }
 
@@ -207,6 +212,9 @@ class ProductController extends Controller
     public function update(Request $request, Product $product)
     {
         $data = $this->validated($request, $product);
+        // ONLINE-ORDERING-1: website hissa pehle validate — POS product adhoora save na ho.
+        $website = app(\App\Services\OnlineOrdering\WebsiteFields::class);
+        $website->validate($request);
 
         // POS-UX-1: replace / remove the product image.
         if ($request->boolean('remove_image') && $product->image_path) {
@@ -237,6 +245,8 @@ class ProductController extends Controller
                 ]);
             }
         });
+
+        $website->apply($request, $product);
 
         return redirect($this->productRedirectUrl($request, $product))->with('status', 'Product updated successfully.');
     }

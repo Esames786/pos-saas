@@ -28,14 +28,21 @@ class ComboController extends Controller
     public function store(Request $request)
     {
         $data = $this->validateCombo($request);
+        // ONLINE-ORDERING-1: website hissa pehle validate — deal adhoori save na ho.
+        $website = app(\App\Services\OnlineOrdering\WebsiteFields::class);
+        $website->validate($request);
 
-        DB::connection('tenant')->transaction(function () use ($data) {
+        $combo = DB::connection('tenant')->transaction(function () use ($data) {
             $components = $data['components'] ?? [];
             unset($data['components']);
 
             $combo = Combo::create($data);
             $this->syncComponents($combo, $components);
+
+            return $combo;
         });
+
+        $website->apply($request, $combo);
 
         return redirect(url('/combos'))->with('status', 'Combo created successfully.');
     }
@@ -51,6 +58,9 @@ class ComboController extends Controller
     public function update(Request $request, Combo $combo)
     {
         $data = $this->validateCombo($request, $combo);
+        // ONLINE-ORDERING-1: website hissa pehle validate — deal adhoori save na ho.
+        $website = app(\App\Services\OnlineOrdering\WebsiteFields::class);
+        $website->validate($request);
 
         DB::connection('tenant')->transaction(function () use ($combo, $data) {
             $components = $data['components'] ?? [];
@@ -59,6 +69,8 @@ class ComboController extends Controller
             $combo->update($data);
             $this->syncComponents($combo, $components);
         });
+
+        $website->apply($request, $combo);
 
         return redirect(url('/combos'))->with('status', 'Combo updated successfully.');
     }

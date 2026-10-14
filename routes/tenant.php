@@ -494,6 +494,8 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::put('/online-ordering/settings', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteSettingsController::class, 'update'])->name('tenant.online-ordering.settings.update');
                 Route::get('/online-ordering/areas', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryAreaController::class, 'index'])->name('tenant.online-ordering.areas.index');
                 Route::put('/online-ordering/areas', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryAreaController::class, 'update'])->name('tenant.online-ordering.areas.update');
+                // Sirf dekhna: menu jaisa customer dekhega. Badlav product/deal/category ke Website hisse se.
+                Route::get('/online-ordering/menu', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteMenuController::class, 'index'])->name('tenant.online-ordering.menu.index');
 
                 // POS
                 Route::get('/pos', [POSController::class, 'index'])->name('tenant.pos.index');

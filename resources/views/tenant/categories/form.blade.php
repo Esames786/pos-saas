@@ -117,6 +117,43 @@
                 </div>
             </div>
 
+            {{-- ONLINE-ORDERING-1: only on a plan with Online Ordering; the POS does not change. --}}
+            @if(\App\Support\OnlineOrdering::enabledForTenant())
+                <input type="hidden" name="_website" value="1">
+                <h5 class="mb-3 mt-4">Website</h5>
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <div class="form-check form-switch mt-4">
+                            <input type="checkbox" value="1" name="show_on_website" id="show_on_website" class="form-check-input"
+                                   @checked(old('show_on_website', $category?->show_on_website))>
+                            <label class="form-check-label" for="show_on_website">Show on website</label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="website_name" class="form-label">Name on website</label>
+                        <input id="website_name" type="text" name="website_name" maxlength="120" class="form-control"
+                               value="{{ old('website_name', $category?->website_name) }}" placeholder="{{ $category?->name ?: 'Same as name' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="website_sort_order" class="form-label">Website order</label>
+                        <input id="website_sort_order" type="number" min="0" name="website_sort_order" class="form-control"
+                               value="{{ old('website_sort_order', $category?->website_sort_order) }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="website_visible_from" class="form-label">Shown from</label>
+                        <input id="website_visible_from" type="time" name="website_visible_from" class="form-control @error('website_visible_from') is-invalid @enderror"
+                               value="{{ old('website_visible_from', $category?->website_visible_from ? substr($category->website_visible_from, 0, 5) : '') }}">
+                        @error('website_visible_from') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    </div>
+                    <div class="col-md-2">
+                        <label for="website_visible_to" class="form-label">Shown until</label>
+                        <input id="website_visible_to" type="time" name="website_visible_to" class="form-control"
+                               value="{{ old('website_visible_to', $category?->website_visible_to ? substr($category->website_visible_to, 0, 5) : '') }}">
+                    </div>
+                    <div class="col-12 form-text mt-0">Leave both times empty to show it all day. 00:00 → 04:00 shows it only after midnight.</div>
+                </div>
+            @endif
+
             <div class="mt-4 d-flex gap-2">
                 <button type="submit" class="btn btn-primary">Save Category</button>
                 <a href="{{ url('/categories') }}" class="btn btn-light">Cancel</a>

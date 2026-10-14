@@ -55,6 +55,57 @@ Owner ke sawal/faisle: "alag website product ya category screen to nahi ban rahe
   `online-ordering:import-areas kashiffood <webarea.json> --branch=MAIN` (pehle dry run) → Website Settings me
   Delivery terminal → Sting/Al-Faham website price. (**Midnight Deal 17 prod par bana diya 15 Oct: combo #76 `KF-MID-GARLICSHASH`**, #75 ki cheezein, Midnight, 1,550.)
 
+## 0c. Phase 2c/3 — website order POS par: code se nikli haqeeqatein (15 Oct, read-only trace)
+
+- **Likhne ka raasta:** draft/held sirf `HeldSaleController::store()` me likha jata hai (inline, HTTP + logged-in
+  user par mabni; koi service nahi). Status hamesha `held`, draft = `is_draft=true`. KOT **browser** bhejta hai
+  (Hold ke baad `/printing/jobs/kot/{sale}`), server nahi — server par bana draft KOT nahi bhejta; cashier ke Hold
+  par poori KOT jati hai (`kot_sent_quantity=0`).
+- **⚠ Mera pehla bayan ghalat tha:** "server Held par rider nullable leta hai" — sach ye hai ke
+  `validateDeliveryAttribution` **own channel ke delivery order par rider LAZMI** karta hai (Hold par bhi).
+  Faisla: POS ka code nahi badlega — cashier ka Hold/Pay waise hi rider maangega (malik ka usool). Sirf
+  website ka apna service (draft banana, aur WhatsApp link se auto-Held) bina rider ke likhta hai; rider phir
+  website modal se mojooda "rider badlo" endpoint (`tenant.sales-orders.rider.update`) se.
+- **Website order ka service:** `WebsiteOrderService` — POS draft jaisi HUBAHU rows (header + lines, deal =
+  `combo_header` poori qeemat + `component` 0 par, modifiers JSON `{modifier_group_id, modifier_group_name,
+  modifier_id, name, price_delta}`, `unit_price` me modifier shamil), routed terminal + us ki KHULI shift,
+  business_date shift ka, sale_no `HS-…`, `order_source='website'` (enum migration), channel "Website",
+  customer `CustomerDirectory::findOrCreateByPhone`, address snapshot. Guard test: **aik hi cart POS ke
+  HeldSaleController se aur website service se — line rows barabar** (ids/waqt chhoR kar).
+- **Recall par jo mit jata hai (POS ke 3 write paths):** re-Hold `notes`/`customer_email` null kar deta hai; Pay
+  `order_source` ko `pos` likh deta hai aur terminal/shift paying counter par le jata hai. Is liye: website ki
+  saari tafseel (pin, landmark, customer note, website token) **alag column `web_meta` (JSON)** me jise POS
+  kabhi nahi likhta; aur **Pay par `order_source='website'` bacha rahe** (SalesOrderController me aik shart +
+  test) — warna commission aur reports se website order gayab.
+- **Delivery fee:** branch par `delivery_charge_locked` ho to POS re-Hold/Pay par fee branch default se badal
+  deta hai → website order ki area fee mit jayegi. **Kashif Food (prod, 15 Oct): lock OFF**, default 0 — fee
+  har order par likhi jati hai (30 din: 3,008 delivery orders, 1,261 par fee). Is liye abhi exception ki zaroorat
+  nahi; lock wale tenant ke liye baad me.
+- **"Website" channel pehle se hai** Kashif Food par (id 3, `own`, 0%) — shayad aaj website (indolj) ke order
+  cashier haath se isi par daalte hain. Naya channel NAHI banana; naam "Website" wala dhoondo, na ho to banao.
+  Purane haath wale orders `order_source='pos'` hain → 1% commission sirf nayi website (`order_source='website'`) par.
+- Kashif Food: 9 active riders; terminal T1 ka naam hi "Delivery" hai.
+- **Idempotency:** held path par koi nahi, aur `client_uuid` Pay par overwrite hota hai → website ka apna
+  `web_order_key` (unique).
+- **Held list:** `terminal_id` ke baghair order terminal-bound cashier ko dikhta hi nahi → routed terminal par
+  stamp. Held/draft order shift band hone ko rokta hai (mojooda usool) → bina dekhe koi website order nahi rehta.
+- **Auto-cancel:** `KotCancellationService::cancelHeldOrder` ko requesting user chahiye → system/owner user.
+
+## 0d. Asli domain (malik, 15 Oct): kashiffood.com = sirf ordering website, POS bingoopos par
+
+- `tenant_domains` me **domain ki qism**: `app` (POS/admin, `*.bingoopos.com`) aur `website` (client ka apna
+  domain, jaise `kashiffood.com` + `www`). Central ke "Domains" box me aaj sirf `____.bingoopos.com` banta hai —
+  wahan "Website domain" (poora domain) ka option + DNS ki hidayat (A record → server IP).
+- Tenant routes `Route::domain('{subdomain}.bingoopos.com')` par hain, is liye `kashiffood.com` un se match nahi
+  karta. Website domain ke liye **alag route group** jo host se tenant pehchane (sirf `website` qism ke domain)
+  aur **sirf** website ke public raaste khole (`/`, menu, checkout, order status) — login/POS/admin kabhi
+  nahi. `www` → bina-www par redirect.
+- Test ke liye website `kashiffood.bingoopos.com/order` par bhi (POS ke saath, login ke baghair public).
+- SSL: naya domain cert sync me (aaj HTTP-01 subdomains ke liye `/usr/local/bin/bingoo-cert-sync`) + web server
+  par `server_name kashiffood.com www.kashiffood.com`.
+- WhatsApp confirm link `https://bingoopos.com/o/{token}` (Meta template ka pakka base) → tenant ke website
+  domain ke confirm page par redirect.
+
 ## 1. Ek line me
 
 Plan module "Online Ordering" wale tenant ki apni website: purani kashiffood.com jaisa menu aur safar (magar halki, tez

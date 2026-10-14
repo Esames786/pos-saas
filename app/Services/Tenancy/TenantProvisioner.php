@@ -519,6 +519,7 @@ class TenantProvisioner
             'tenant.online-ordering.settings.update',
             'tenant.online-ordering.areas.index',
             'tenant.online-ordering.areas.update',
+            'tenant.online-ordering.menu.index',
 
             // POS
             'tenant.pos.index',

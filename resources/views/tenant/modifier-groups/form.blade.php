@@ -104,6 +104,18 @@
                                     <label for="is-required" class="form-check-label">Required group</label>
                                 </div>
                             </div>
+                            {{-- ONLINE-ORDERING-1: only on a plan with Online Ordering. "Website only" never reaches the POS. --}}
+                            @if(\App\Support\OnlineOrdering::enabledForTenant())
+                                <div class="col-md-3">
+                                    <label class="form-label" for="channel">Show on</label>
+                                    <select name="channel" id="channel" class="form-select">
+                                        @foreach(\App\Models\Tenant\ModifierGroup::CHANNELS as $value => $label)
+                                            <option value="{{ $value }}" @selected(old('channel', $group->channel ?? 'pos') === $value)>{{ $label }}</option>
+                                        @endforeach
+                                    </select>
+                                    <div class="form-text">"Website only" never shows on the POS.</div>
+                                </div>
+                            @endif
                         </div>
                     </div>
                 </div>
