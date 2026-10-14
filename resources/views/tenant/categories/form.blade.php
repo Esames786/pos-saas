@@ -73,6 +73,24 @@
                     <div class="form-text">Leave on “All branches” unless this menu belongs to one branch only.</div>
                 </div>
 
+                {{-- PNL-COST-BY-CATEGORY-1: where this category's purchase-only (no stock) bills land on the P&L.
+                     Blank = the parent's account, or 5100 Product COGS — exactly what every category does today. --}}
+                <div class="col-md-4">
+                    <label for="cogs_account_id" class="form-label">Cost of Sales account</label>
+                    <select id="cogs_account_id" name="cogs_account_id"
+                            class="form-select @error('cogs_account_id') is-invalid @enderror">
+                        <option value="">— Same as parent / 5100 Product COGS —</option>
+                        @foreach($costAccounts as $acc)
+                            <option value="{{ $acc->id }}"
+                                    @selected((string) old('cogs_account_id', $category?->cogs_account_id) === (string) $acc->id)>
+                                {{ $acc->code }} — {{ $acc->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('cogs_account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    <div class="form-text">Bills for this category's no-stock items post here, so the P&amp;L shows them as their own line (e.g. 5110 Beverages). New bills only.</div>
+                </div>
+
                 <div class="col-md-8">
                     <label for="description" class="form-label">Description</label>
                     <textarea id="description" name="description" rows="3"

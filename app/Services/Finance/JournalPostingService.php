@@ -665,8 +665,9 @@ class JournalPostingService
             // it holds. Split by the receipt's own line values; charges, discount and tax follow the
             // same proportion, exactly as the GRN spread the charges into the stocked lines' cost.
             $bill->loadMissing('goodsReceipt.lines');
+            $grnLines = $bill->goodsReceipt?->lines ?? collect();
             $toCost = self::nonStockShare(
-                ($bill->goodsReceipt?->lines ?? collect())->map(fn ($l) => [
+                $grnLines->map(fn ($l) => [
                     'value' => (float) $l->quantity_received * (float) $l->unit_cost,
                     'stock' => $l->affects_stock !== false,
                 ])->all(),
@@ -674,12 +675,25 @@ class JournalPostingService
             );
             $toStock = round($amount - $toCost, 4);
 
+            // PNL-COST-BY-CATEGORY-1: the purchase-only share lands on each line's category cost
+            // account (5100 when unmapped — then this is the single 5100 line it always was).
+            $costAccounts = app(NonStockCostAccounts::class);
+            $lineAccount = $grnLines->mapWithKeys(fn ($l) => [$l->id => $l->affects_stock !== false ? null : $costAccounts->forProduct($l->product_id ? (int) $l->product_id : null)]);
+            $toCostByAccount = NonStockCostAccounts::split($grnLines->map(fn ($l) => [
+                'value'   => (float) $l->quantity_received * (float) $l->unit_cost,
+                'stock'   => $l->affects_stock !== false,
+                'account' => $lineAccount[$l->id],
+            ])->values()->all(), $toCost);
+
             $lines = [];
             if ($toStock > 0) {
                 $lines[] = ['account_code' => '1400', 'branch_id' => $bill->branch_id, 'description' => 'Inventory Asset', 'debit' => $toStock, 'credit' => 0];
             }
-            if ($toCost > 0) {
-                $lines[] = ['account_code' => '5100', 'branch_id' => $bill->branch_id, 'description' => 'Purchased without stock '.$bill->bill_no, 'debit' => $toCost, 'credit' => 0];
+            foreach ($toCostByAccount as $accountId => $part) {
+                if ($part > 0) {
+                    $lines[] = ($accountId ? ['account_id' => $accountId] : ['account_code' => NonStockCostAccounts::DEFAULT_CODE])
+                        + ['branch_id' => $bill->branch_id, 'description' => 'Purchased without stock '.$bill->bill_no, 'debit' => $part, 'credit' => 0];
+                }
             }
             $lines = array_merge($lines, [
                 // AP-SUPPLIER-DIMENSION-1: the AP line names its supplier, so 2100 can be read by supplier
@@ -690,7 +704,9 @@ class JournalPostingService
                     'counterparty_type' => 'supplier', 'supplier_id' => $bill->supplier_id],
             ]);
 
-            return $this->journal->post(
+            $alreadyPosted = $this->journal->findPostedForSource('purchase_bill', $bill->id) !== null;
+
+            $entry = $this->journal->post(
                 'purchase_bill',
                 $bill->id,
                 $bill->bill_no,
@@ -699,6 +715,17 @@ class JournalPostingService
                 $lines,
                 $userId
             );
+
+            // Remember, per purchase-only line, the account THIS posting debited — a return credits the
+            // same head even if the category is re-mapped later. Only on the first posting: a replay
+            // returns the existing entry, which was cut under whatever mapping held then.
+            if ($entry && ! $alreadyPosted) {
+                foreach ($lineAccount->filter() as $lineId => $accountId) {
+                    \App\Models\Tenant\GoodsReceiptLine::whereKey($lineId)->update(['cost_account_id' => $accountId]);
+                }
+            }
+
+            return $entry;
         } catch (Throwable $e) {
             report($e);
 
@@ -723,10 +750,15 @@ class JournalPostingService
 
             // GRN-NON-STOCK-1: a returned purchase-only line comes back out of cost, not inventory.
             $return->loadMissing('lines');
-            $fromCost = self::nonStockShare($return->lines->map(fn ($l) => [
+            $costAccounts = app(NonStockCostAccounts::class);
+            $returnLines = $return->lines->map(fn ($l) => [
                 'value' => (float) $l->quantity * (float) $l->unit_cost,
-                'stock' => self::returnLineAffectsStock($l),
-            ])->all(), $amount);
+                'stock' => $stock = self::returnLineAffectsStock($l),
+                // PNL-COST-BY-CATEGORY-1: back out of the account the BILL debited for this line.
+                'account' => $stock ? null : $costAccounts->forReturnLine($l),
+            ])->values()->all();
+            $fromCost = self::nonStockShare($returnLines, $amount);
+            $fromCostByAccount = NonStockCostAccounts::split($returnLines, $fromCost);
             $fromStock = round($amount - $fromCost, 4);
 
             $lines = [
@@ -736,8 +768,11 @@ class JournalPostingService
             if ($fromStock > 0) {
                 $lines[] = ['account_code' => '1400', 'branch_id' => $return->branch_id, 'description' => 'Inventory Asset', 'debit' => 0, 'credit' => $fromStock];
             }
-            if ($fromCost > 0) {
-                $lines[] = ['account_code' => '5100', 'branch_id' => $return->branch_id, 'description' => 'Returned, bought without stock '.$return->return_no, 'debit' => 0, 'credit' => $fromCost];
+            foreach ($fromCostByAccount as $accountId => $part) {
+                if ($part > 0) {
+                    $lines[] = ($accountId ? ['account_id' => $accountId] : ['account_code' => NonStockCostAccounts::DEFAULT_CODE])
+                        + ['branch_id' => $return->branch_id, 'description' => 'Returned, bought without stock '.$return->return_no, 'debit' => 0, 'credit' => $part];
+                }
             }
 
             return $this->journal->post(
