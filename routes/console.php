@@ -48,6 +48,10 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // never double-send. Cloud-only (Edge CLI boundary default-denies the command anyway).
     Schedule::command('reports:dispatch-scheduled')->everyFifteenMinutes()->withoutOverlapping();
 
+    // ONLINE-ORDERING-1: confirm na hue website orders (sirf Draft) client ki setting ke mutabiq cancel.
+    // Setting OFF (default) ho to kuch nahi karta. Held order kabhi nahi chhuta.
+    Schedule::command('online-ordering:auto-cancel')->everyMinute()->withoutOverlapping();
+
     // SAAS-BILLING-WHATSAPP-1 — raat ki report jane ke baad us din ka usage invoice me joR do.
     //
     // Rozana 03:30 Karachi: khatri 00:30 par bhejta hai aur kashiffood 02:30 par, to us waqt tak

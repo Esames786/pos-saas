@@ -616,6 +616,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // BILL-PREVIEW-PARITY-1: proforma of the current cart rendered from the REAL receipt template.
                 Route::post('/api/pos/bill-preview', [POSController::class, 'billPreview'])->name('tenant.api.pos.bill-preview');
                 Route::get('/api/pos/table-board', [POSController::class, 'tableBoard'])->name('tenant.api.pos.table-board');
+                // ONLINE-ORDERING-1: website orders ka inbox (ghanti) aur Hold (rider ke saath). Module na ho to
+                // khaali jawab; Hold ka haq wohi jo POS ke Hold ka (`tenant.held-sales.store`).
+                Route::get('/api/pos/website-orders', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteOrderInboxController::class, 'index'])->name('tenant.api.pos.website-orders');
+                Route::post('/api/pos/website-orders/{salesOrder}/hold', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteOrderInboxController::class, 'hold'])->name('tenant.api.pos.website-orders.hold');
                 Route::get('/api/pos/recent-sales', [POSController::class, 'recentSales'])->name('tenant.api.pos.recent-sales');
                 Route::get('/api/pos/shift-status', [ShiftController::class, 'posStatus'])->name('tenant.api.pos.shift-status');
                 // POS-REMINDER-PAUSE-1: pause/resume this terminal's Reminder slips until its shift closes.
