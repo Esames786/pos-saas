@@ -773,6 +773,12 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/reports/purchases/payables', [PurchaseReportController::class, 'payables'])->name('tenant.reports.purchases.payables');
                 // CASH-BOOK-REPORT-1: money in / out / balance per cash drawer and bank (CSV + print via ?format=).
                 Route::get('/reports/cash-book', [\App\Http\Controllers\Tenant\Reports\CashBookController::class, 'index'])->name('tenant.reports.cash-book.index');
+                // PARTNER-SHARE-1: the rate list behind the Report Center's "Partner Share" section.
+                Route::get('/reports/partner-share', [\App\Http\Controllers\Tenant\Reports\PartnerShareController::class, 'index'])->name('tenant.reports.partner-share.index');
+                Route::post('/reports/partner-share/partners', [\App\Http\Controllers\Tenant\Reports\PartnerShareController::class, 'storePartner'])->name('tenant.reports.partner-share.partners.store');
+                Route::put('/reports/partner-share/partners/{sharePartner}', [\App\Http\Controllers\Tenant\Reports\PartnerShareController::class, 'updatePartner'])->name('tenant.reports.partner-share.partners.update');
+                Route::post('/reports/partner-share/rates', [\App\Http\Controllers\Tenant\Reports\PartnerShareController::class, 'storeRate'])->name('tenant.reports.partner-share.rates.store');
+                Route::delete('/reports/partner-share/rates/{shareRate}', [\App\Http\Controllers\Tenant\Reports\PartnerShareController::class, 'destroyRate'])->name('tenant.reports.partner-share.rates.destroy');
                 Route::get('/reports/purchases/returns', [PurchaseReportController::class, 'returns'])->name('tenant.reports.purchases.returns');
                 Route::get('/reports/restaurant/tables', [RestaurantReportController::class, 'tables'])->name('tenant.reports.restaurant.tables');
                 Route::get('/reports/restaurant/waiters', [RestaurantReportController::class, 'waiters'])->name('tenant.reports.restaurant.waiters');

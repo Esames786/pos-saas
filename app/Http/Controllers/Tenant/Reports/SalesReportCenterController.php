@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Mail;
  */
 class SalesReportCenterController extends Controller
 {
-    public const SECTIONS = ['overview', 'categories', 'items', 'category_items', 'deals', 'waiters', 'order_types', 'order_type_combos', 'cancellations', 'detailed', 'cash_bank'];
+    public const SECTIONS = ['overview', 'categories', 'items', 'category_items', 'deals', 'waiters', 'order_types', 'order_type_combos', 'cancellations', 'detailed', 'cash_bank', 'partner_share'];
 
     /**
      * Per-section permission (Khatri #7): a role sees/prints/exports ONLY its assigned sections.
@@ -46,12 +46,15 @@ class SalesReportCenterController extends Controller
         // its own. This is about the TENANT selling deals at all, not about this period's takings:
         // a slow day still shows the section, correctly empty.
         $sellsDeals = \App\Models\Tenant\Combo::query()->exists();
+        // PARTNER-SHARE-1: same reasoning — offered only once a rate list exists.
+        $sharesDishes = \App\Models\Tenant\ShareRate::query()->exists();
 
         return array_values(array_filter(
             self::SECTIONS,
             fn ($s) => $user
                 && $user->can(self::sectionPermission($s))
                 && ($s !== 'deals' || $sellsDeals)
+                && ($s !== 'partner_share' || $sharesDishes)
         ));
     }
 
@@ -117,6 +120,7 @@ class SalesReportCenterController extends Controller
                 'departments' => ['departments' => $this->departments($filters)],
                 'detailed' => ['detailed' => $this->engine->detailedQuery($filters)->paginate(50)->withQueryString()],
                 'cash_bank' => ['cash_bank' => $this->engine->cashBank($filters)],
+                'partner_share' => ['partner_share' => $this->engine->partnerShare($filters)],
                 default => [],
             };
         }
@@ -257,6 +261,7 @@ class SalesReportCenterController extends Controller
             'combos' => $pick('order_type_combos', fn () => $this->engine->orderTypeCombos($filters)),
             'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
             'cashBank' => $pick('cash_bank', fn () => $this->engine->cashBank($filters)),
+            'partnerShare' => $pick('partner_share', fn () => $this->engine->partnerShare($filters)),
         ]);
     }
 
@@ -295,6 +300,7 @@ class SalesReportCenterController extends Controller
             'waiters' => $pick('waiters', fn () => $this->engine->byWaiter($filters)),
             'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
             'cashBank' => $pick('cash_bank', fn () => $this->engine->cashBank($filters)),
+            'partnerShare' => $pick('partner_share', fn () => $this->engine->partnerShare($filters)),
             'meta' => [
                 'business_name' => app()->bound('tenant') ? (app('tenant')->business_name ?? 'Sales Report') : 'Sales Report',
                 'label' => 'Z / End of Day',

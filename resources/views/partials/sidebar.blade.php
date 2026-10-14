@@ -1194,6 +1194,10 @@
                         @can('tenant.reports.center.index')
                             <li><a class="dropdown-item" href="{{ url('/reports/center') }}">Sales Report Center</a></li>
                         @endcan
+                        {{-- PARTNER-SHARE-1: the rate list behind the Report Center's Partner Share section. --}}
+                        @can('tenant.reports.partner-share.index')
+                            <li><a class="dropdown-item" href="{{ url('/reports/partner-share') }}" id="partner-share-rates-link">Partner Share Rates</a></li>
+                        @endcan
                         @can('tenant.reports.sales.summary')
                             @php $a = $isIn('reports/sales*') && !$isIn('reports/sales/receivables') && !$isIn('reports/sales/channels') && !$isIn('reports/sales/riders'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">

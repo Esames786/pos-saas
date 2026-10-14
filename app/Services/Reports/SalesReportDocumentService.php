@@ -41,6 +41,8 @@ class SalesReportDocumentService
             'combos' => $pick('order_type_combos', fn () => $this->engine->orderTypeCombos($filters)),
             'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
             'cashBank' => $pick('cash_bank', fn () => $this->engine->cashBank($filters)),
+            // PARTNER-SHARE-1: the nightly PDF carries it too when the section is ticked.
+            'partnerShare' => $pick('partner_share', fn () => $this->engine->partnerShare($filters)),
             'embedded' => $embedded,
         ];
     }

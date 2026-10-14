@@ -31,6 +31,7 @@ class SalesReportExporter
                 'cancellations' => $this->cancellationsCsv($filters),
                 'detailed' => $this->detailedCsv($filters),
                 'cash_bank' => $this->cashBankCsv($filters),
+                'partner_share' => $this->partnerShareCsv($filters),
                 default => '',
             };
         }
@@ -152,6 +153,25 @@ class SalesReportExporter
                         $item['gross'], $item['discount'], $item['tax'], $item['net'], $item['returns_amount'], $item['net_value']];
                 }
             }
+        }
+
+        return $this->csv($rows);
+    }
+
+    /** PARTNER-SHARE-1: one row per rated dish, per partner, per side, then each side's total and the net. */
+    private function partnerShareCsv(array $f): string
+    {
+        $rows = [['Partner', 'Who pays', 'Dish / Deal', 'Rate', 'Rate from', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Amount']];
+        foreach ($this->engine->partnerShare($f) as $p) {
+            foreach (['partner_pays' => $p['partner'] . ' pays us', 'we_pay' => 'We pay ' . $p['partner']] as $side => $label) {
+                foreach ($p[$side] as $r) {
+                    $rows[] = [$p['partner'], $label, $r['item'], $r['rate'], $r['effective_from'],
+                        $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['amount']];
+                }
+            }
+            $rows[] = [$p['partner'], $p['partner'] . ' pays us', 'TOTAL', '', '', '', '', '', $p['partner_pays_total']];
+            $rows[] = [$p['partner'], 'We pay ' . $p['partner'], 'TOTAL', '', '', '', '', '', $p['we_pay_total']];
+            $rows[] = [$p['partner'], $p['net'] >= 0 ? 'NET: we pay ' . $p['partner'] : 'NET: ' . $p['partner'] . ' pays us', '', '', '', '', '', '', abs($p['net'])];
         }
 
         return $this->csv($rows);
