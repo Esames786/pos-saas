@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\Master\Tenant;
+use App\Models\Master\TenantDomain;
 use Illuminate\Http\Request;
 
 /**
@@ -24,8 +25,11 @@ class OrderLinkController extends Controller
         $tenant = Tenant::where('tenant_code', $m[1])->where('status', 'active')->first();
         abort_unless($tenant, 404);
 
+        // Client ka apna website domain ho (kashiffood.com) to wahin; warna us ka bingoopos subdomain.
+        $site = TenantDomain::where('tenant_id', $tenant->id)->where('kind', TenantDomain::KIND_WEBSITE)
+            ->where('status', 'active')->orderBy('id')->value('domain');
         $port = $request->getPort();
-        $host = $tenant->tenant_code.'.'.config('tenancy.tenant_base_domain').(in_array($port, [80, 443], true) ? '' : ':'.$port);
+        $host = ($site ?: $tenant->tenant_code.'.'.config('tenancy.tenant_base_domain')).(in_array($port, [80, 443], true) ? '' : ':'.$port);
 
         return redirect()->away($request->getScheme().'://'.$host.'/order/confirm/'.$m[2]);
     }

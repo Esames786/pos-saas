@@ -14,15 +14,25 @@ class TenantDomainController extends Controller
         TenantDomain::create([
             'tenant_id'  => $tenant->id,
             'domain'     => $request->fullDomain(),
+            'kind'       => $request->kind(),
             'is_primary' => false,
             'status'     => $tenant->status === 'active' ? 'active' : 'pending',
         ]);
+
+        if ($request->kind() === TenantDomain::KIND_WEBSITE) {
+            return back()->with('status', 'Website domain added. Client DNS: A record for @ and www → this server\'s IP (do not change nameservers or MX). SSL is issued once DNS points here.');
+        }
 
         return back()->with('status', 'Domain added successfully.');
     }
 
     public function makePrimary(TenantDomain $domain)
     {
+        // ONLINE-ORDERING-1 (Phase 5): primary domain se POS/login ke links bante hain — website domain par wo nahi khulte.
+        if ($domain->isWebsite()) {
+            return back()->withErrors(['domain' => 'A website domain cannot be the primary domain (it opens only the ordering website).']);
+        }
+
         TenantDomain::where('tenant_id', $domain->tenant_id)->update(['is_primary' => false]);
 
         $domain->update(['is_primary' => true, 'status' => 'active']);

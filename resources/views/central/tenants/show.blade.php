@@ -198,6 +198,21 @@
                             <button class="btn btn-primary w-100">Add Domain</button>
                         </div>
                     </form>
+
+                    {{-- ONLINE-ORDERING-1 (Phase 5): client ka apna domain — sirf ordering website. --}}
+                    <form method="POST" action="{{ url('/tenants/' . $tenant->id . '/domains') }}" class="row g-2 mb-3">
+                        @csrf
+                        <input type="hidden" name="kind" value="website">
+                        <div class="col-md-8">
+                            <input type="text" name="website_domain" class="form-control" placeholder="kashiffood.com" value="{{ old('website_domain') }}">
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-outline-primary w-100">Add Website Domain</button>
+                        </div>
+                        <div class="col-12 form-text">
+                            Client's own domain — opens only the ordering website (no login or POS). Client's DNS: A record for <code>@</code> and <code>www</code> → this server's IP. Nameservers and MX stay as they are (email keeps working).
+                        </div>
+                    </form>
                 @endcan
 
                 <div class="table-responsive">
@@ -213,7 +228,12 @@
                         <tbody>
                         @forelse($tenant->domains as $domain)
                             <tr>
-                                <td>{{ $domain->domain }}</td>
+                                <td>
+                                    {{ $domain->domain }}
+                                    @if($domain->isWebsite())
+                                        <span class="badge bg-info-subtle text-info ms-1">Website</span>
+                                    @endif
+                                </td>
                                 <td>
                                     @if($domain->is_primary)
                                         <span class="badge bg-success">Primary</span>
@@ -223,7 +243,7 @@
                                 </td>
                                 <td>{{ ucfirst($domain->status) }}</td>
                                 <td class="text-end">
-                                    @if(!$domain->is_primary)
+                                    @if(!$domain->is_primary && !$domain->isWebsite())
                                         @can('central.tenant-domains.primary')
                                             <form method="POST" action="{{ url('/tenant-domains/' . $domain->id . '/primary') }}" class="d-inline">
                                                 @csrf

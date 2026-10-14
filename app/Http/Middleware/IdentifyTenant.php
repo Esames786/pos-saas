@@ -42,11 +42,27 @@ class IdentifyTenant
             ->where('status', 'active')
             ->first();
 
+        // ONLINE-ORDERING-1 (Phase 5): client ka website domain bina-www darj hota hai; www wala usi par.
+        if (! $domain && str_starts_with($host, 'www.')) {
+            $apex = substr($host, 4);
+            if (TenantDomain::where('domain', $apex)->where('kind', TenantDomain::KIND_WEBSITE)->where('status', 'active')->exists()) {
+                return redirect()->away($request->getScheme().'://'.substr($request->getHttpHost(), 4).$request->getRequestUri(), 301);
+            }
+        }
+
         if (!$domain || !$domain->tenant || $domain->tenant->status !== 'active') {
             abort(404, 'Tenant not found or inactive.');
         }
 
         app(TenancyManager::class)->activate($domain->tenant);
+
+        if ($domain->isWebsite()) {
+            // Sirf website ke raaste is host par khulte hain (`website.host`). Aur cookie isi host ki: ye
+            // bingoopos.com ka hissa nahi, `SESSION_DOMAIN` wala cookie browser rad kar deta — phir checkout
+            // ka CSRF kabhi na chalta.
+            $request->attributes->set('tenant_domain_kind', TenantDomain::KIND_WEBSITE);
+            config(['session.domain' => null]);
+        }
 
         return $next($request);
     }

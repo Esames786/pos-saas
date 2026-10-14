@@ -1,7 +1,7 @@
 # ONLINE-ORDERING-1 — Tenant ki apni ordering website (pehle Kashif Food)
 
-Date: 2026-10-14 (teen round ke faisle) · Status: **Phase 1 bana (branch `feat/online-ordering-20261014`,
-push/deploy NAHI)** · Research: `docs/research/kashiffood-website/`
+Date: 2026-10-14 (teen round ke faisle) · Status: **Phase 1–4b bane (branch `feat/online-ordering-20261014`,
+push/deploy NAHI; Phase 5 ka app hissa bhi bana, server hissa go-live par)** · Research: `docs/research/kashiffood-website/`
 
 ## 0. Phase 1 — jo bana (15 Oct)
 
@@ -116,6 +116,77 @@ Owner ke sawal/faisle: "alag website product ya category screen to nahi ban rahe
   301 redirect (Google ranking bache).
 - WhatsApp confirm link `https://bingoopos.com/o/{token}` (Meta template ka pakka base) → tenant ke website
   domain ke confirm page par redirect.
+
+## 0e. Phase 2b–4b — jo bana (15 Oct, local; push/deploy NAHI)
+
+- **Website (2b):** `/order` (tenant ke subdomain par, login ke baghair) — purani tarteeb, area popup, item popup,
+  cart drawer, lazy images, scroll par halki animation (`prefers-reduced-motion` ka khayal), dobara aane wale
+  customer ka naam/number/pata browser me yaad. Menu `/order/menu` (JSON, throttle).
+- **Checkout (2c):** server qeemat khud nikalta hai (browser ki qeemat kabhi nahi), area → branch → terminal,
+  min order, delivery fee / free above, waqt aur staffed shift ki jaanch, customer `findOrCreateByPhone`.
+  Order = POS ka **Draft** (status `held`, `is_draft`), `order_source = website`, "Website" channel (own).
+  Lines/totals POS ke apne "Save as draft" jaise — test: dono raaste se aik hi cart, line-by-line barabar. Pay
+  `order_source` website hi rakhta hai. Dobara bheja checkout (`web_order_key`) dugna order nahi banata.
+- **POS (3):** Held Orders ke saath "Website" button (sirf module par) + ghanti; modal sirf **receive**: naye
+  Draft, Hold (rider lazmi — POS ka apna server rule), Recall (normal cart), Cancel. `online-ordering:auto-cancel`
+  har minute — client ki minute setting, OFF = kabhi nahi; sirf Draft, KOT gaya ho to haath nahi.
+- **WhatsApp + confirm link (4):** teen template (`web_order_received` + Confirm button, `web_order_confirmed`,
+  `web_order_cancelled`), har aik client ke toggle se; har message aik dafa (`web_meta.wa`); jawab bhejne ke
+  BAAD (customer/cashier ka intezar nahi); fail ho to register me `failed`, order kabhi nahi rukta; WhatsApp
+  lagaya hi na ho (token nahi) to koshish hi nahi — na row, na bill. Bill usi `whatsapp_messages` register me
+  (`source = website`, master rate). "Confirmed" message dono raaston se: link se, ya cashier ka apna Hold.
+  Cancel message: POS cancel aur auto-cancel dono.
+- **Confirm link:** button `https://bingoopos.com/o/{tenant}.{token}` → central `/o/…` (Meta ka `{{1}}` saath
+  aaye to bhi) → tenant ka `/order/confirm/{token}`. GET kuch nahi badalta (bots/preview); safha khud POST karta
+  hai. 30 minute; aik dafa; order Draft → Held (`is_draft` false) aur KOT POS ke apne print raaste
+  (`PrintJobService::queueKot`) se routed terminal par. Shift band ho to "hum jald confirm karenge" — order
+  waisa hi Draft. Rider phir bhi cashier Hold/Recall par chunta hai (link se Held hue order par "Rider baqi").
+- **1% + invoice lines (4b):** master `subscription_invoice_lines` (invoice → har service ki har din ki aik
+  line) aur `website_order_charges` (record: paid website order apne business din par, return apne din par
+  minus — wohi ginti jo sales report ka net sale). Aik mahana usage invoice (`addon`, draft → mahina khatam par
+  issued) me WhatsApp aur Website orders alag lines/subtotal. Total = SUM(lines), har raat record se dobara
+  (`UsageInvoiceService::refresh`) — koi command doosre ki lines nahi mitata. Khula mahina order cancel/return
+  par khud theek; band mahina nahi hilta, us ke baad ka return agle mahine minus.
+  Commands: `billing:website-commission [--month] [--tenant] [--yes]` (raat 03:40 PKT, WhatsApp 03:30 ke baad),
+  `billing:usage-lines-backfill [--tenant] [--yes]` (purani WhatsApp invoices ki lines — har invoice ka
+  SUM(lines) = purana total, warna kuch nahi likhta; total nahi chhuta). Dashboard card "Usage is mahine":
+  WhatsApp + Website orders alag (website na ho to purana WhatsApp card bilkul waisa). Tenant `/billing` aur
+  platform admin invoice par "Charges" (service subtotal, khol kar din-wise). `/whatsapp-usage` par "Website
+  orders (1%)". Naya "Website" channel `commission_percent` = 1 (sirf "By Channel" report; GL nahi — trace kiya).
+- **Deploy ke qadam (jab malik kahe):** migrate (master: lines/charges/whatsapp source; tenant: website fields) →
+  `billing:usage-lines-backfill` (dry run → `--yes`; saboot table dekhein) → module on → Kashif Food setup
+  (0b ka aakhri bullet) → Meta par 3 template approve (section 10) **phir** toggles on. Prod ka purana "Website"
+  channel (#3, own) reuse hota hai — us ka commission % malik ki marzi (aaj ka qeemat chhuyi nahi).
+- **Abhi baqi:** server ka domain hissa (0f — go-live par), recall par website add-ons ka pencil, Edge bootstrap me
+  `modifier_groups.channel`, rider ke baad ka safar, pick-up order ke liye "confirmed" message ka apna template
+  (aaj ka template "delivery time" kehta hai — 99% orders delivery).
+
+## 0f. Phase 5 — client ka apna domain (bana 15 Oct, local; server ka hissa go-live par)
+
+- **App (bana, test):** `tenant_domains.kind` = `app` (POS/admin, aaj ke saare) | `website` (client ka domain).
+  Platform admin → tenant → Domains → **Add Website Domain** (jaisa bhi chipkayein — `https://www.KashifFood.com/menu`
+  → `kashiffood.com`; bingoopos.com ya us ka subdomain mana; website domain kabhi primary nahi, kyunke POS ke links
+  primary se bante hain).
+- `IdentifyTenant` (har request): website domain → `website.host` nishaan + session cookie usi host ka (warna prod ka
+  `.bingoopos.com` cookie browser rad karta aur checkout ka CSRF kabhi na chalta); `www.kashiffood.com` → 301
+  `kashiffood.com` (raasta + query saath).
+- Raaste: `routes/tenant.php` ke AAKHIR me domain se azad group `website.host` ke peeche — sirf `/` (website),
+  `/order` → `/`, `/order/menu.json`, checkout, status, confirm; purane indolj links `/product/…` `/category/…` → 301
+  `/`. Login/POS/admin/API client ke domain par 404. `bingoopos.com` aur `*.bingoopos.com` par kuch nahi badla
+  (test + `route:cache` ke saath curl se jaancha).
+- WhatsApp "Confirm Order" (`bingoopos.com/o/…`) ab client ke domain par le jata hai (ho to), warna subdomain.
+- **Server (go-live par, malik ki ijazat se — repo me nahi):**
+  1. Platform admin me `kashiffood.com` "Website domain" (status active).
+  2. Client DNS: sirf **A records** `@` aur `www` → `187.77.140.39` (TTL pehle kam); nameservers/MX nahi badalne.
+  3. `dig +short kashiffood.com` aur `www` = server IP — tab tak aage nahi.
+  4. Alag cert: `certbot certonly --webroot -w /var/www/html/pos-saas/public --cert-name kashiffood.com -d kashiffood.com -d www.kashiffood.com`
+     (bingoopos.com ka cert nahi chhuta).
+  5. Alag nginx block (`/etc/nginx/sites-available/website-kashiffood.com`): `server_name kashiffood.com www.kashiffood.com;`,
+     wohi `root` aur PHP-FPM block jo `bingoopos` site ka hai, cert `/etc/letsencrypt/live/kashiffood.com/`; 80 → 443.
+     `nginx -t` → reload.
+  6. Smoke: `https://kashiffood.com/` website; `/login` 404; `https://www.kashiffood.com/` → 301; `/product/x` → 301;
+     `https://kashiffood.bingoopos.com/login` waisa hi.
+  7. Baad me (ikhtiyari): `bingoo-cert-sync` ko website domains ke liye aage barhana (yahi 4–5 khud).
 
 ## 1. Ek line me
 
@@ -347,7 +418,7 @@ base URL hamara apna domain, aakhir me token: `https://bingoopos.com/o/{{1}}`. O
 1. **`web_order_received`** (Draft) — Body: `Hi {{1}}, thank you for ordering from {{2}}. Your order {{3}} for Rs {{4}}
    has been received. Please tap Confirm Order below so our kitchen can start preparing it. If you did not place this
    order, please ignore this message.` · Button (URL, dynamic): **Confirm Order** → `https://bingoopos.com/o/{{1}}`
-   · Samples: Ahmed · Kashif Foods · HS-1023 · 1,550 · button: `a8F3kQ`
+   · Samples: Ahmed · Kashif Foods · HS-1023 · 1,550 · button: `kashiffood.a8F3kQ…` (tenant code + 40 harf token)
 2. **`web_order_confirmed`** (Held) — Body: `Hi {{1}}, your order {{2}} from {{3}} is confirmed and our kitchen has
    started. Estimated delivery time is {{4}} minutes. For any help, call us at {{5}}. Thank you.` · Samples: Ahmed ·
    HS-1023 · Kashif Foods · 45 · 0300 0000000

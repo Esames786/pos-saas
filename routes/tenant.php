@@ -1243,3 +1243,27 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
             Route::post('/commands/{printAgentCommand}/result', [PrintAgentApiController::class, 'commandResult'])->name('tenant.api.print-agent.commands.result');
         });
     });
+
+// ONLINE-ORDERING-1 (Phase 5): client ka apna domain (jaise kashiffood.com) — SIRF ordering website.
+//
+// Kisi domain se bandha nahi (client ka domain pehle se maloom nahi), aur file ke AAKHIR me: bingoopos.com aur
+// *.bingoopos.com apne raaston par pehle hi mil jate hain, yahan tak sirf baqi host pohanchte hain. `website.host`:
+// IdentifyTenant ne host ko "website" qism ka pehchana ho, warna 404. Login, POS, admin yahan kabhi nahi.
+Route::middleware(['website.host'])->group(function () {
+    Route::get('/', [\App\Http\Controllers\Website\StorefrontController::class, 'home'])->name('website.domain.home');
+    Route::get('/order', fn () => redirect('/', 301))->name('website.domain.order');
+    Route::get('/order/menu.json', [\App\Http\Controllers\Website\StorefrontController::class, 'menu'])
+        ->middleware('throttle:60,1')->name('website.domain.menu');
+    Route::post('/order/checkout', [\App\Http\Controllers\Website\StorefrontController::class, 'checkout'])
+        ->middleware('throttle:10,1')->name('website.domain.checkout');
+    Route::get('/order/status/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'status'])
+        ->where('token', '[A-Za-z0-9]{40}')->name('website.domain.status');
+    Route::get('/order/confirm/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'confirmPage'])
+        ->where('token', '[A-Za-z0-9]{40}')->name('website.domain.confirm');
+    Route::post('/order/confirm/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'confirm'])
+        ->where('token', '[A-Za-z0-9]{40}')->middleware('throttle:20,1')->name('website.domain.confirm.post');
+
+    // Purani website (indolj) ke links jo Google me hain (`/product/…`, `/category/…`) — nayi website par, 301.
+    Route::get('/{legacy}', fn () => redirect('/', 301))
+        ->where('legacy', '(product|category)(/.*)?')->name('website.domain.legacy');
+});
