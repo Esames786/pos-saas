@@ -101,6 +101,7 @@ POS checkout, `stock_*`, journals / GL, departments, catering cost blocks. Repor
 2. Al-Faham Full / Half: K.Grill → K.Food maana hai, sahi?
 3. Fries, Midnight aur Deal 10 par asal dish wali raqam, sahi?
 4. Report kis kis ko dikhe: sirf Owner, ya Accounts bhi?
+5. Rate list kis tareekh se lagu ho (`effective_from`)? Pichhle mahine ka hisaab chahiye to 1 Sep jaisi tareekh.
 
 ## Baad me (abhi nahi)
 
