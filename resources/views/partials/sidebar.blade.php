@@ -140,6 +140,15 @@
                                     </a>
                                 </li>
                             @endcan
+                            @can('central.billing-rates.edit')
+                                @php $a = $isIn('billing-rates*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/billing-rates') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-receipt-tax fs-16 me-2"></i>
+                                        <span>Billing Rates</span>
+                                    </a>
+                                </li>
+                            @endcan
                             @can('central.subscription-requests.index')
                                 @php $a = $isIn('subscription-requests*'); @endphp
                                 <li class="{{ $a ? 'active' : '' }}">

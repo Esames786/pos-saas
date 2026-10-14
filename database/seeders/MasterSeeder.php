@@ -180,11 +180,14 @@ class MasterSeeder extends Seeder
 
             // SAAS-BILLING-WHATSAPP-1 — WhatsApp ke paise ka safha. Apna permission, invoices wala
             // nahi: is par har tenant ki raqam AUR hamara margin likha hai.
-            // ⚠️ Naya CENTRAL route sirf yahan likhne se nahi chalta — deploy.sh seeder nahi chalata
-            // (wo sirf system:routes-sync karta hai, jo catalog bharta hai, permission nahi). Prod
-            // par alag se ADDITIVE grant chalana paRta hai: givePermissionTo(), kabhi
-            // syncPermissions() nahi.
+            // Note (ONLINE-ORDERING-1, 14 Oct): deploy.sh ka step [3b] YE seeder har deploy par
+            // chalata hai, to naya central permission isi list me likhna kaafi hai — aur jo yahan
+            // NAHI likha, wo neeche ke syncPermissions() se Super Admin se har deploy par chhin jata hai.
             'central.whatsapp-usage.index',
+
+            // ONLINE-ORDERING-1 — Billing rates (WhatsApp fi message + website commission %).
+            'central.billing-rates.edit',
+            'central.billing-rates.update',
 
             'central.invoices.index',
             'central.tenants.invoices.create',
