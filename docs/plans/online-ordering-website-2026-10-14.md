@@ -1,161 +1,221 @@
 # ONLINE-ORDERING-1 — Tenant ki apni ordering website (pehle Kashif Food)
 
-Date: 2026-10-14 · Status: **plan, abhi kuch bana nahi** · Research: `docs/research/kashiffood-website/`
+Date: 2026-10-14 (do round ke faisle) · Status: **plan, abhi kuch bana nahi** · Research: `docs/research/kashiffood-website/`
 
 ## 1. Ek line me
 
-Plan module "Online Ordering" wale tenant ki apni website: purani kashiffood.com jaisa menu aur safar, magar menu,
-qeemat aur stock **POS se**; order POS me **draft** ban kar jure terminal par **ghanti** bajata hai; customer
-WhatsApp link se **confirm** kare to order **Held** me aa kar **KOT** nikal jati hai; delivery channel **"Website"**.
+Plan module "Online Ordering" wale tenant ki apni website: purani kashiffood.com jaisa menu aur safar (magar halki, tez
+aur animated), menu aur stock **POS se**, qeemat **website ki apni**; order POS me **Draft** ban kar order type ke jure
+terminal par **ghanti** bajata hai; customer WhatsApp link se confirm kare to order **Held** (= confirmed) ho kar **KOT**
+nikal jati hai; delivery channel **"Website"**. Bingoo: website ki **mahana kul sale ka 1%**, WhatsApp ke kharche se alag.
 
 ## 2. Poora safar (end to end)
 
-1. Customer website kholta hai → **Delivery / Pick-Up** chunta hai → delivery par **area** (aur chahe to "Use Current
-   Location") → area se **branch** tay → usi branch ka menu, usi branch ki qeemat, sirf wahan bikne wale items.
-2. Product popup (size, add-ons, note) → cart (area ki delivery fee, ETA) → checkout (naam, mobile, address, landmark,
-   location pin, Cash on Delivery) → **Place Order**.
-3. Server: order **POS draft** banta hai (`order_source = website`, delivery channel "Website", customer + address +
-   area + pin), branch ke **jure terminal** par **notification + ghanti**.
-4. Customer ko WhatsApp: "Order mila, total Rs …, **Confirm Order**" (link).
-5. Customer link dabaye → hamara chhota page "Order confirmed" → order **Held** me, **KOT** usi raaste se nikle jo POS
-   ka Hold use karta hai → WhatsApp "Confirmed, kitchen ne shuru kar diya, ETA 45 min".
-6. Customer link na dabaye (masalan 10 min) → POS par draft "Confirm nahi kiya" badge ke saath; cashier phone kar ke khud
-   recall → Hold kare, ya cancel kare (customer ko WhatsApp "cancelled").
-7. Rider lagaya (mojooda delivery rider) → (optional) WhatsApp "On the way" → payment POS par wahi jo aaj hai.
+1. Customer website kholta hai. **Pehli dafa:** Delivery / Pick-Up → area (aur chahe to "Use Current Location").
+   **Dobara aaya:** usi device par pichhla area aur address khud chuna hua, area popup nahi; "Deliver to … · change".
+2. Area se **branch** tay → usi branch ke bikne wale items, **website price** par. Har jagah **ETA** (area ka).
+3. Product popup (size, add-ons, note) → cart (area ki delivery fee, ETA) → checkout (naam, WhatsApp number, address,
+   landmark, location pin, Cash on Delivery) → **Place Order**.
+4. Server: POS **Draft** (`order_source = website`, order type Delivery / Takeaway, channel "Website", customer + address
+   + area + pin), **order type ke terminal** par ghanti + POS ka "Website orders" modal.
+5. WhatsApp (agar client ne on kiya): "Order mila, Rs …, **Confirm Order**" link.
+6. Customer link dabaye → order **Held** → KOT mojooda Hold raaste se → (on ho to) WhatsApp "Confirmed, ETA …".
+7. Link na dabaye → Draft hi rehta hai. Order taker phone kar ke modal se **Hold** karta hai (rider usi waqt chunta hai),
+   ya cancel. Client ne **auto-cancel** on kiya ho to N minute baad khud Cancelled (+ WhatsApp agar on).
+8. Rider: modal me **Hold** karte waqt, ya recall kar ke save karte waqt chunna lazmi (mojooda POS usool). Link se
+   auto-Held order par rider baad me isi modal se.
+9. Payment POS par wahi jo aaj (Cash on Delivery). Rider ke baad wala safar ("on the way" waghera) **baad me**.
 
-## 3. Faisle jo owner ne liye (14 Oct)
+## 3. Faisle (owner, 14 Oct)
 
+**Pehla round**
 - Items ki tarteeb purani website jaisi; website = plan module; pehle Kashif Food.
-- Client chune: website kis branch se; **area-wise** (area → branch) aur **branch-wise** (pickup par branch).
-- Website ka waqt client set kare.
-- Ek terminal se judi; naye order par wahan ghanti.
-- Order **draft** me aaye; cashier POS par hi recall → Held.
-- Delivery channel "Website" khud lage.
-- Customer ko WhatsApp; confirm link dabane par order khud Held + KOT.
-- POS ke product par **"Website price"** ka input (khaali = POS ki qeemat).
-- Delivery areas (owner ki di hui list, 75 areas, Karachi) **system ke master data** me.
-- Bingoo har website order par **1% commission** lega, WhatsApp (Rs 9.85/message) jaisa: rate wahin jahan WhatsApp ka
-  rate hai, dashboard par WhatsApp card ke saath "Website orders is mahine" card.
-- Owner ka andaza: 99% website orders Delivery honge, channel "Website".
+- Area-wise (area → branch) aur branch-wise (pickup par branch); client waqt set kare; terminal par ghanti.
+- Order **Draft** me, cashier POS se Held kare; delivery channel "Website" khud lage.
+- Customer ko WhatsApp; confirm link dabane par khud Held + KOT.
+- Product/deal par **"Website price"**; delivery areas (75, Karachi) system ke master data me.
+- Bingoo ka **1% commission**; dashboard par WhatsApp card ke saath card. ~99% orders Delivery honge.
 
-## 4. Mera mashwara (suggestions)
+**Doosra round**
+- Rates **`.env` me nahi, master (platform admin) settings me**: WhatsApp fi message charge **aur** commission %.
+- Commission = **website ki mahana kul sale ka 1%, delivery waghera sab mila kar** (grand total). **Order-wise row nahi:
+  har tenant ki har mahine ki EK billing row**, jis me raqam barhti rehti hai. WhatsApp ki tarah har mahine **payable
+  invoice**. **WhatsApp ka kharcha alag, 1% alag** (do alag invoices).
+- **Website ke rate alag** rakhne hain (website price). POS ki qeemat nahi chhedni.
+- Jo deal website par hai magar POS me nahi (**Midnight Deal 17**) wo POS me banani hai.
+- **Order status sirf system wale**: Draft, Held, Paid, Cancelled, Partially Returned, Returned. Koi naya status nahi.
+  **Held = confirmed.** Order akhir tak POS screen se hi manage hota hai; POS ka website modal sirf orders **receive** karta hai.
+- **Auto-cancel client ki setting**: minute ke saath; off ho to kabhi auto-cancel nahi (aksar order taker khud phone kar
+  ke Held karta hai).
+- **WhatsApp ikhtiyari service**: client khud chune kis status par message jaye; off kar sakta hai. Templates hum banayenge.
+- **Rider usi modal me**: Hold karte waqt ya recall kar ke save karte waqt (rider chunna waise bhi lazmi hai).
+- **Rider ke baad ka process abhi nahi**, baad me.
+- **Website**: pattern purana, magar UI/UX professional — scroll par animated tasveerein, lazy loading, achhi animations,
+  **halki (lightweight)**.
+- **Dobara aane wala customer**: address khud chuna ho (cookies ya behtar tareeqa — mashwara §4.12). **ETA** bhi dikhana.
 
-1. **WhatsApp kab:** draft par (confirm link ke saath) **aur** Held par (choti "confirmed" khabar). Baqi (on the way,
-   cancelled) settings me on/off. Har message ka paisa tenant ke khaate (`whatsapp_messages.rate_charged`) me jata hai,
-   jaise aaj reports ka.
-2. **Confirm link = phone ki tasdeeq:** sirf wohi confirm kar sakta hai jis ke WhatsApp par message gaya. Jhoote orders
-   ka ilaaj, OTP ka kharcha nahi.
-3. **Website khud band:** waqt se bahar **ya** jure terminal par shift band ho → website "Abhi band hai, … baje khulega".
-   (Mandatory shift ka usool: bina shift ke POS order nahi hota.)
-4. **Link ek dafa, 30 min:** dobara dabane par dobara KOT nahi (KOT idempotency pehle se); 30 min baad link "expired",
-   cashier se rabta.
-5. **Auto-Held ke waqt bhi cashier ko khabar:** ghanti + "W-1023 confirmed, KOT gayi" toast.
-6. **Website price:** product aur deal form par ek khaana; khaali ho to POS ki qeemat. Al-Faham/Sting ka farq isi se hal.
-7. **Sizes ek card me:** "Website menu" screen par kai POS products ko ek card ke sizes bana do (Chicken Biryani =
-   Sadi/Small/Large/Platter/Family Pack). Add-on = POS product line (Extra Chicken Pcs) ya "With Fries" wale product se badal.
-8. **Location:** area dropdown (fee isi se) + "Use Current Location" ka pin (lat/lng) order par; POS/rider ko Google Maps
-   link. Area ka khud andaza pin se baad me (areas ke coordinates chahiye).
-9. **Custom domain:** pehle `kashiffood.bingoopos.com/order` par test, phir `kashiffood.com` ka DNS hamare server par
-   (`tenant_domains` + cert sync).
-10. **Payment:** pehle sirf Cash on Delivery / on Pickup; online baad me.
-11. **Order kis terminal par: dono, ek setting me — "order type → terminal"** (har branch: Delivery → T1, Pick-Up →
-    "Delivery wala hi", optional backup terminal). Sirf order type: terminals ka aaj koi order type nahi, ghanti har terminal
-    par, do cashier ek draft. Sirf terminal: aaj chalega, kal Pick-Up/Delivery alag counter par nahi ho sakte. Draft ko dono
-    chahiye hi: drafts/Held/shift/ghanti terminal ke hisaab se, aur KOT printer aaj `category_printer_mappings`
-    (terminal_id + order_type) se chunta hai — website order Delivery + T1 = wohi printer, naya routing nahi. Main terminal
-    ki shift band → backup par ghanti; wo bhi band → website us order type ke liye "abhi band".
+## 4. Mashwara (suggestions)
 
-## 5. Data (naye tables)
+1. **WhatsApp kab (sab client ke toggle):** Draft par "order mila + Confirm link" (default on), Held par "confirmed"
+   (default on), Cancelled par "cancelled" (default on). "Received" off ho to confirm link bhi nahi jayega; phir har order
+   order taker phone se Held karega. Har message ka kharcha alag (master rate × messages, mojooda WhatsApp khaata).
+2. **Confirm link = phone ki tasdeeq:** sirf wohi confirm kar sakta hai jis ke WhatsApp par message gaya. OTP ka kharcha nahi.
+3. **Link ek dafa, 30 min:** dobara dabane par dobara KOT nahi (KOT idempotency pehle se). Link expire hone par order Draft
+   hi rehta hai; page kehta hai "restaurant aap ko call karega". Order Cancelled ho chuka ho to link kaam nahi karta.
+4. **Website khud band:** waqt se bahar **ya** us order type ke terminal (aur backup) par shift band → "Abhi band hai,
+   … baje khulega". Bina dekhe koi order nahi padta.
+5. **Order kis terminal par — "order type → terminal"** (har branch: Delivery → T1, Pick-Up → "Delivery wala hi",
+   optional backup). Sirf order type: terminals ka aaj koi order type nahi, ghanti har terminal par. Sirf terminal: kal
+   Pick-Up/Delivery alag counter par nahi ho sakte. Draft ko dono chahiye hi: drafts/Held/shift terminal ke hisaab se,
+   KOT printer `category_printer_mappings` (terminal_id + order_type) se, aur user scope
+   (`UserDataScope::deniesSale`, "another terminal or order type") bhi isi jore par chalta hai.
+6. **Rider:** "Website" channel `type = own` (warna rider assign hi nahi hota — `SalesOrderController` external channel
+   par rider rokta hai). POS form me own channel par rider `required` hai, server Held par rider `nullable` leta hai →
+   link se auto-Held bina rider ke theek; modal par "Rider baqi" nishan, cashier wahin chune.
+7. **Status ka customer wala naam (naya status nahi, sirf label):** Draft → "Order received, waiting for confirmation",
+   Held → "Confirmed, being prepared", Paid → "Completed", Cancelled → "Cancelled". Returns customer ko nahi dikhte.
+   Order number wohi jo system deta hai — naya number nahi.
+8. **Auto-cancel:** setting `Off` (default) / `N minute`. Sirf **Draft** website orders par; Held ko kabhi nahi chhuta.
+   Cancel = mojooda Cancelled status; WhatsApp "cancelled" agar on.
+9. **Website price:** product aur deal form par ek khaana; khaali = POS ki qeemat. Kashif Food ke liye pehle se bharna:
+   Grill Chicken Al-Fahom Half **1,600** (POS 1,650), Full **3,100** (POS 3,200), Sting Can **180** (POS 160).
+10. **Sizes ek card me:** "Website menu" par kai POS products ek card ke sizes (Chicken Biryani = Plain/Small/Large/
+    Platter/Family Pack). Add-on = POS product line (Extra Chicken Pcs) ya "With Fries" wale product se badal.
+11. **Location:** area dropdown (fee + branch isi se) + "Use Current Location" pin (lat/lng) + address + landmark;
+    POS/rider ko Google Maps link.
+12. **Dobara aane wala customer — mashwara: device par yaad, cookie banner nahi.** Browser ki apni storage
+    (localStorage) me: order type, area, naam, WhatsApp number, address, landmark, pin, pichhla order. Agli dafa area popup
+    nahi, header me "Deliver to Gulshan Block 2 · change", checkout bhara hua, "Pichhla order dobara" ka button.
+    - Ye zaroori (functional) storage hai, tracking nahi — is ke liye "Allow cookies" ka rok dene wala banner nahi chahiye;
+      neeche ek patli line: "Aap ka address isi device par yaad rakha jata hai · Bhool jao".
+    - **Phone number likh kar purana address server se bharna NAHI** — koi bhi kisi ka number likh kar us ka ghar ka
+      pata dekh leta. POS ki taraf customer phone se mojooda `customers` me milta hai (restaurant ka apna record).
+    - Agar baad me Meta Pixel / Google Ads tracking lagani ho, tab us ke liye alag consent.
+13. **ETA:** area ka ETA (`delivery_zones.eta_minutes`, warna settings ka default 45) — area list, header chip, cart,
+    checkout, "order mila" page, WhatsApp "confirmed". Mashwara: POS modal par **"Busy" button (+15 / +30 min)** rush ke
+    waqt, jo website par foran ETA badha de. Pick-Up par "ready in … min".
+14. **Website ka design aur raftaar:** §6b.
+15. **Custom domain:** pehle `kashiffood.bingoopos.com/order` par test, phir `kashiffood.com` ka DNS hamare server par
+    (`tenant_domains` + cert sync). **Payment:** pehle sirf Cash on Delivery / on Pickup.
+
+## 5. Data (naye tables / columns)
 
 **Master (sab tenants ke liye):**
-- `geo_areas`: country, state, city, area name, sort. Pehli bharai: owner ki `webarea.json` (Karachi, 75; "FB Area Block 7"
-  do dafa aaya hai — ek rakhna). Agla tenant sirf tick kare.
+- `platform_settings` (key → value, kis ne kab badla): `whatsapp_rate_pkr` (aaj prod `.env` me **9.85**),
+  `whatsapp_cost_pkr` (aaj 5.95), `website_commission_percent` (**1**). Platform admin ki "Billing rates" screen.
+  WhatsApp code aaj teen jagah `config('services.whatsapp.rate_pkr')` parhta hai — `WhatsAppChannel` (row likhte
+  waqt), `WhatsAppBackfillUsageCommand`, `Central\WhatsAppUsageController` — teeno setting se parhenge; setting khaali ho
+  to `.env` fallback (deploy aur pehli bharai ke beech kuch na toote). Fayda: rate badalne ke liye deploy /
+  `config:cache` nahi.
+- `geo_areas`: country, state, city, area name, sort. Pehli bharai `webarea.json` (Karachi, 75; "FB Area Block 7" do dafa).
+- `website_commission_months` — **har tenant, har mahine EK row**: tenant_id, month, website_sales_total, order_count,
+  rate_percent, commission_amount, invoice_id, last_computed_at, closed_at. (Order-wise row nahi — owner ka faisla.)
 - `plan_modules` me naya module `online_ordering`.
 
 **Tenant:**
-- `web_settings`: on/off, branch mode (single / area-wise), hours (din-wise), closed message, ETA,
-  banners, WhatsApp toggles, SEO texts, social links.
+- `web_settings`: on/off, branch mode (single / area-wise), hours (din-wise), closed message, default ETA, banners,
+  **auto_cancel_minutes** (null = off), **WhatsApp toggles** (received+link / confirmed / cancelled), SEO, social links.
 - `web_order_routes`: branch_id, order_type (delivery / takeaway), terminal_id, backup_terminal_id (nullable).
-- `delivery_zones`: geo_area_id, branch_id, fee, min_order, free_delivery_above, eta_minutes, is_active.
-  Kashif Food: 75 rows owner ki fees ke saath (50–400).
-- `web_menu_items`: card (naam, description, photo, tag Popular/Hot Selling, category, sort) → `web_menu_item_options`
-  (size label → POS product_id ya combo_id). Popular Items ki list.
-- `products.website_price`, `combos.website_price` (nullable), `products.show_on_website`.
-- `sales_orders`: `order_source = 'website'` (column hai magar **enum `['pos','manual']`** — `website` jodne ki
-  migration chahiye; Pick-Up = mojooda `order_type = 'takeaway'`), `web_order_no`, `web_status`
-  (received/confirmed/expired/cancelled), `web_confirm_token` (hash), `geo_area_id`, `delivery_lat/lng`.
-- `delivery_channels`: ek row "Website" (type own, commission 1%) khud. Ye field sirf tenant ki "By Channel" report
-  ke liye hai (`SalesReportService::byChannel`, `grand_total × percent`, GL nahi) — 1% likhne se client ki report aur
-  Bingoo ki bill ek hi raqam dikhayengi.
+- `delivery_zones`: geo_area_id, branch_id, fee, min_order, free_delivery_above, eta_minutes, is_active. Kashif Food: 75.
+- `web_menu_items` → `web_menu_item_options` (card → size → POS product_id / combo_id); Popular Items ki list.
+- `products.website_price`, `combos.website_price` (nullable), `products.show_on_website`, `combos.show_on_website`.
+- `sales_orders`: `order_source` me `website` (aaj **enum `['pos','manual']`** — migration chahiye), `web_confirm_token`
+  (hash) + `web_confirm_expires_at`, `geo_area_id`, `delivery_lat`, `delivery_lng`. **Koi `web_status` nahi** — status
+  wohi system wala. Pick-Up = mojooda `order_type = 'takeaway'`.
+- `delivery_channels`: ek row "Website", **`type = own`** (rider ke liye), commission_percent 1 (sirf tenant ki "By
+  Channel" report ke liye; GL nahi).
 
-**Master (Bingoo ki bill):**
-- `website_order_charges` (WhatsApp ke `whatsapp_messages` jaisa ledger): tenant_id, order uuid, web_order_no,
-  base_amount, rate_percent (row par likha), amount, usage_date (business date), status (billable / void), invoice_id.
+## 5b. Bingoo ka 1% commission (WhatsApp se alag)
 
-## 5b. Bingoo ka 1% commission
-
-- **Rate:** prod `.env` me WhatsApp ke saath: `WHATSAPP_RATE_PKR=9.85` (aaj) → nayi line
-  `WEBSITE_ORDER_COMMISSION_PERCENT=1`; `config/services.php` + `.env.example` me bhi. Rate har row par likha jata hai
-  (WhatsApp jaisa) — rate badle to purani bills nahi hilti.
-- **Kab:** order **paid** ho tab row. Draft / unconfirmed / cancelled par nahi. Paid ke baad void: bill band hone se pehle
-  row void; baad me to agle mahine minus.
-- **Kis par (mashwara):** `grand_total` (delivery fee samet) — channel report bhi isi par nikalti hai. Faisla owner ka;
-  doosra raasta sirf items.
-- **Kaun se:** sab `order_source = website` (Delivery + Pick-Up).
-- **Bill:** mahine ki **alag** draft invoice (draft → mahina khatam par issued), `billing:whatsapp-invoice` jaisa command.
-  WhatsApp wali invoice me nahi: wo command invoice ko `tenant_id + invoice_type 'addon' + period_start` se dhoondti hai
-  aur total sirf WhatsApp rows se dobara nikalti hai — ek invoice me commission mit jayega. Commission invoice ki pehchan
-  alag honi chahiye (aur WhatsApp command ki dhoond usi hisaab se tang).
-- **Dashboard:** "Website orders is mahine" card, WhatsApp card ke saath, `tenant.billing.index` ke peeche.
-  Platform admin: WhatsApp Usage jaisa "Website orders usage" page.
-- **Ek order (Rs 1,400) par Bingoo:** commission 14.00 + WhatsApp 2 × 9.85 = 19.70 → 33.70 (on-the-way ke saath 43.55).
-  Aam order par WhatsApp ka kharcha commission se zyada — owner ko batana; messages alag ya 1% me, pricing ka faisla.
+- **Rate:** master `platform_settings.website_commission_percent` = 1. Platform admin screen se badle; chalte (khule) mahine
+  par naya rate lagega, band mahine nahi hilte (rate row par likha).
+- **Raqam:** us mahine ke **website orders ki kul sale** (`grand_total`: items + delivery fee + tax waghera sab) × 1%.
+  Mashwara: sirf Paid (aur Partially Returned) orders; returns minus — yani net sale. Draft / Cancelled par kuch nahi.
+- **Row ek, raqam barhti rahe:** owner ki baat ke mutabiq mahine ki ek row. Mashwara: row ki raqam **har dafa tenant ke
+  website orders se dobara nikali jaye, us me joRi na jaye** (roz raat command + dashboard khulne par). JoRne me
+  retry par dugni, aur void/return par ghalat; dobara nikalne me hamesha sahi. Yehi sabaq WhatsApp invoice command ke
+  comment me likha hai.
+- **Invoice:** har mahine ki **alag** invoice "Website orders commission — Oct 2026": mahine bhar **draft** (barhti hai),
+  mahina khatam par **issued / payable** — bilkul WhatsApp invoice jaisi. WhatsApp ki invoice alag rehti hai.
+  Dhyan: `billing:whatsapp-invoice` invoice ko `tenant + invoice_type 'addon' + period_start` se dhoondta hai aur total
+  sirf WhatsApp rows se dobara nikalta hai — commission invoice ki pehchan alag honi chahiye aur WhatsApp ki dhoond tang.
+- **Dashboard:** "Website orders is mahine — Rs X · N orders · 1%" card, WhatsApp card ke saath, `tenant.billing.index`
+  ke peeche. Platform admin: WhatsApp Usage jaisa "Website commission" page (tenant-wise mahine).
+- Misaal: mahine ki website sale 4,21,350 → commission **4,213.50**. WhatsApp alag: 602 messages × 9.85 = 5,929.70.
 
 ## 6. Screens
 
-**Customer (public):** home (purani jaisi), area popup, product popup, cart, checkout, "order received — WhatsApp check
-karein", confirm page, order status page.
+**Customer (public):** home (purani tarteeb), area popup, product popup, cart, checkout, "order mila — WhatsApp dekhein",
+confirm page, order status page (system status ka customer wala label).
 
-**Tenant admin:** Settings → Website; Delivery Areas (master list, tick, branch, fee); Website Menu (cards, sizes,
-photos, order, Popular); product/deal form par "Website" hissa (show, price).
+**Tenant admin:** Settings → Website (waqt, order type → terminal, auto-cancel, WhatsApp toggles, ETA); Delivery Areas;
+Website Menu; product/deal form par "Website" hissa (show, website price).
 
-**POS:** ghanti + toast; Held Orders me "Website" tab/badge (Received / Confirmed / Expired); recall → Hold (mojooda);
-cancel → WhatsApp.
+**POS:** ghanti + toast; **"Website orders" modal** (sirf receive): naye Draft orders (customer, area, pin, items, total,
+kitne minute se), **Hold** (rider chuno — lazmi), **Recall** (normal POS cart; save par rider lazmi), **Cancel**; link se
+Held hue orders "Rider baqi" ke saath. Held Orders list me mojooda tareeqa.
+
+**Platform admin:** Billing rates (WhatsApp fi message, WhatsApp laagat, website commission %); Website commission page.
+
+## 6b. Website ka design aur raftaar
+
+- **Tarteeb purani:** header, banner slider, laal category bar, script wale category banners, cards, footer.
+- **Halki:** server-rendered Blade + thoda saada JavaScript (React/Next nahi). Budget: pehli load par CSS+JS ~150 KB se kam,
+  4G par ~2 second me menu nazar aaye. Fonts 2 se zyada nahi.
+- **Tasveerein:** upload par khud chhoti/badi WebP (400 / 800 px) + `srcset`; `loading="lazy"`; pehle dhundli chhoti
+  jhalak (blur placeholder) phir asal — jagah pehle se tay taake page na uchhle.
+- **Animations (sirf jahan maana ho):** scroll par cards ka halka fade-up (IntersectionObserver), banner slide, category
+  bar scroll ke saath chalti (scroll-spy), "Add to Cart" par cart icon ka bounce + ginti, popup ka smooth khulna, loading
+  par skeleton. `prefers-reduced-motion` par sab band.
+- **Mobile pehle:** zyada tar customer phone se; bara "Add" button, neeche chipka hua "View cart · Rs …" bar.
+- **SEO:** har category/product ka saaf URL, title, Google ke liye menu data; nishana Lighthouse 90+.
 
 ## 7. Kinare (edge cases)
 
-- Order ke beech qeemat badli: order wohi qeemat rakhta hai jis par customer ne dekha (draft me snapshot).
-- Item khatam (branch par `is_available` off / stock): website par "Sold out", checkout par dobara check.
-- Do dafa "Place Order": client UUID se ek hi order (POS ka idempotency pattern).
-- Branch band (shift band) jab customer confirm kare: auto-Held nahi; "Hum jald confirm karenge" + cashier ko khabar.
-- Area list se bahar: "Is area me delivery nahi" + pickup ka option.
+- Qeemat beech me badli: draft me website price ka snapshot.
+- Item khatam (branch par `is_available` off): "Sold out"; checkout par dobara check.
+- Do dafa "Place Order": client UUID se ek hi order (POS ka idempotency).
+- Confirm link dabaya magar terminal par shift band: auto-Held nahi; "Hum jald confirm karenge" + cashier ko khabar.
+- Auto-cancel aur cashier ka Hold ek saath: Hold jeete — auto-cancel sirf tab jab order abhi bhi Draft ho (row lock).
+- Area list se bahar: "Is area me delivery nahi" + Pick-Up ka option.
 
-## 8. Phases
+## 8. Menu ki tayyari (Kashif Food)
+
+- **Midnight Deal 17 POS me banani hai (abhi bani nahi):** naam "Garlic Rice With Shashlik Bar-B-Que (Midnight)",
+  category **Midnight**, qeemat **1,550**, andar ki cheezein **wohi jo POS deal #75** "Garlic Rice With Shashlik Bar-B-Que"
+  (Deals > Chinese Deals, 1,650) me hain. Website par baqi Midnight deals ki tarah "Midnight Deal 17" card isi se juRega.
+- Website price: Al-Fahom 1,600 / 3,100, Sting Can 180 (§4.9).
+- 4 tasveerein baqi: Chicken Corn Soup, Hot N Sour Soup, Ustad Special Roll, Chicken Balochi Boti.
+- "FB Area Block 7" ki fee: 200 ya 250.
+
+## 9. Phases
 
 | Phase | Kya | Nateeja |
 | --- | --- | --- |
-| 1 | Module, master areas, delivery zones, website settings, website price | Admin setup mukammal |
-| 2 | Public menu (purani tarteeb), area → branch, cart, checkout | Customer order de sake |
-| 3 | Draft on POS + ghanti + Held Orders tab + "Website" channel | Cashier order le sake |
-| 4 | WhatsApp received/confirm link/confirmed + auto-Held + KOT; 1% commission ledger + mahana bill + dashboard card | Poora safar, Bingoo ka hissa |
-| 5 | Custom domain kashiffood.com, tasveerein, SEO, go-live | Purani website band |
+| 1 | Platform "Billing rates" (WhatsApp rate `.env` se yahan), plan module, master areas, delivery zones, website settings (waqt, order type → terminal, auto-cancel, WhatsApp toggles), website price; Kashif Food: Deal 17 + website prices | Setup mukammal |
+| 2 | Website (purani tarteeb, animations, lazy loading, halki), area → branch, dobara aane wala customer, ETA, cart, checkout | Customer order de sake |
+| 3 | Draft POS me, ghanti, "Website orders" modal (Hold + rider, Recall, Cancel), auto-cancel, "Website" channel | Cashier order le sake |
+| 4 | WhatsApp (status-wise ikhtiyari) + confirm link → Held + KOT; mahana commission row + payable invoice + dashboard card | Poora safar, Bingoo ka hissa |
+| 5 | kashiffood.com domain + SSL, tasveerein, SEO, go-live | Purani website band |
+| Baad me | Rider ke baad ka safar (on the way), online payment, pre-order | — |
 
-## 9. WhatsApp templates (Meta par pehle approve)
+## 10. WhatsApp templates (Meta par pehle approve)
 
 Category **UTILITY**, language **English (en)**. Number ek (Bingoo ka), is liye karobar ka naam variable hai. Button ka
-base URL hamara apna domain, aakhir me token: `https://bingoopos.com/o/{{1}}`.
+base URL hamara apna domain, aakhir me token: `https://bingoopos.com/o/{{1}}`. Order number = system ka order number.
 
-1. **`web_order_received`** — Body: `Hi {{1}}, thank you for ordering from {{2}}. Your order {{3}} for Rs {{4}} has been
-   received. Please tap Confirm Order below so our kitchen can start preparing it. If you did not place this order,
-   please ignore this message.` · Button (URL, dynamic): **Confirm Order** → `https://bingoopos.com/o/{{1}}`
-   · Samples: Ahmed · Kashif Foods · W-1023 · 1,550 · button: `a8F3kQ`
-2. **`web_order_confirmed`** — Body: `Hi {{1}}, your order {{2}} from {{3}} is confirmed and our kitchen has started.
-   Estimated delivery time is {{4}} minutes. For any help, call us at {{5}}. Thank you.` · Samples: Ahmed · W-1023 · Kashif Foods · 45 ·
-   0300 0000000
-3. **`web_order_on_the_way`** — Body: `Good news {{1}}! Your order {{2}} from {{3}} is on its way and should reach you
-   shortly. Please keep Rs {{4}} ready for cash on delivery.` · Samples: Ahmed · W-1023 · Kashif Foods · 1,550
-4. **`web_order_cancelled`** — Body: `Hi {{1}}, we are sorry, your order {{2}} from {{3}} has been cancelled. For any help,
-   call us at {{4}}. Thank you.` · Samples: Ahmed · W-1023 · Kashif Foods · 0300 0000000
+1. **`web_order_received`** (Draft) — Body: `Hi {{1}}, thank you for ordering from {{2}}. Your order {{3}} for Rs {{4}}
+   has been received. Please tap Confirm Order below so our kitchen can start preparing it. If you did not place this
+   order, please ignore this message.` · Button (URL, dynamic): **Confirm Order** → `https://bingoopos.com/o/{{1}}`
+   · Samples: Ahmed · Kashif Foods · HS-1023 · 1,550 · button: `a8F3kQ`
+2. **`web_order_confirmed`** (Held) — Body: `Hi {{1}}, your order {{2}} from {{3}} is confirmed and our kitchen has
+   started. Estimated delivery time is {{4}} minutes. For any help, call us at {{5}}. Thank you.` · Samples: Ahmed ·
+   HS-1023 · Kashif Foods · 45 · 0300 0000000
+3. **`web_order_cancelled`** (Cancelled) — Body: `Hi {{1}}, we are sorry, your order {{2}} from {{3}} has been
+   cancelled. For any help, call us at {{4}}. Thank you.` · Samples: Ahmed · HS-1023 · Kashif Foods · 0300 0000000
+4. *(Baad me, rider process ke saath)* **`web_order_on_the_way`** — Body: `Good news {{1}}! Your order {{2}} from {{3}} is
+   on its way and should reach you shortly. Please keep Rs {{4}} ready for cash on delivery.` Abhi submit karna zaroori
+   nahi; chahein to saath approve karwa lein, istemal baad me.
 
 Meta ke qaaide jo upar maane gaye: body variable par khatam nahi hoti; do variable saath saath nahi; har variable ki sample;
 promotion nahi (sirf order ki khabar) taake UTILITY me approve ho.
