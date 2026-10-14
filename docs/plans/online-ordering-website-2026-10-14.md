@@ -1,6 +1,30 @@
 # ONLINE-ORDERING-1 — Tenant ki apni ordering website (pehle Kashif Food)
 
-Date: 2026-10-14 (do round ke faisle) · Status: **plan, abhi kuch bana nahi** · Research: `docs/research/kashiffood-website/`
+Date: 2026-10-14 (teen round ke faisle) · Status: **Phase 1 bana (branch `feat/online-ordering-20261014`,
+push/deploy NAHI)** · Research: `docs/research/kashiffood-website/`
+
+## 0. Phase 1 — jo bana (15 Oct)
+
+- Master `platform_settings` + `BillingRates` (WhatsApp rate/laagat, website commission %); WhatsApp ke teeno
+  parhne wale isi se; platform admin → **Billing Rates** screen. Pehli bharai `.env` ki maujooda qeemat se.
+- Master `geo_areas`: Karachi ke 74 areas (75 me "FB Area Block 7" do dafa tha).
+- Module `online_ordering` (kisi plan par khud nahi; `ROLLOUT_GATED_MODULE_KEYS`). MasterSeeder ka purana
+  quick_sale/standard loop aur teeno onboard commands ab gated modules ko na on karte na off.
+- Tenant: `web_settings`, `web_order_routes`, `delivery_zones`, `products/combos.website_price`.
+- Screens: **Online Ordering → Website Settings** (on/off, branch tareeqa, ETA, waqt, order type → terminal +
+  backup, auto-cancel, WhatsApp toggles, contact) aur **Delivery Areas** (master list, tick, branch, fee,
+  min order, free above, ETA). Website bina delivery terminal ke on nahi hoti.
+- Product + deal form par **Website Price** (sirf module wale plan par; khaana na ho to save purani qeemat
+  nahi mitata; POS qeemat kabhi nahi chhuti).
+- `online-ordering:import-areas {tenant} {file} --branch= [--yes]` — purani website ki area JSON se fees
+  (dry run default; duplicate par pehla rakhta hai aur batata hai).
+- Plan se farq: `show_on_website` NAHI banaya — website par kya dikhe ye Phase 2 ki Website Menu tay karegi;
+  do jagah faisla = do sach.
+- Tests: `OnlineOrderingSetupMySqlTest` (14), `BillingRatesScreenMySqlTest` (4), `WhatsAppUsageLedgerMySqlTest`
+  (13, rate wala hissa naya). Sabotage: 5 guards toR kar dekhe, har aik ne apna test laal kiya.
+- **Prod par activation ke qadam (jab malik kahe):** deploy → `kashif_restaurant` plan par module on →
+  `online-ordering:import-areas kashiffood <webarea.json> --branch=MAIN` (pehle dry run) → Website Settings me
+  Delivery terminal → Sting/Al-Faham website price → **Midnight Deal 17** (#75 ki cheezein, Midnight, 1,550).
 
 ## 1. Ek line me
 

@@ -267,6 +267,35 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
         $this->assertSame(0, DeliveryZone::count());
     }
 
+    public function test_the_area_import_is_a_dry_run_until_told_and_keeps_the_first_of_a_duplicate(): void
+    {
+        $file = tempnam(sys_get_temp_dir(), 'areas');
+        file_put_contents($file, json_encode(['details' => ['areas' => ['1' => [
+            ['area_name' => 'Gulshan e Iqbal - Block 2', 'city_name' => 'Karachi', 'fee' => '50.000', 'minimum' => '0', 'min_for_free_delivery' => '0', 'delivery_estimation' => '0'],
+            ['area_name' => 'FB Area  Block 7', 'city_name' => 'Karachi', 'fee' => '200.000', 'minimum' => '500', 'min_for_free_delivery' => '0', 'delivery_estimation' => '50'],
+            ['area_name' => 'FB Area Block 7', 'city_name' => 'Karachi', 'fee' => '250.000', 'minimum' => '0', 'min_for_free_delivery' => '0', 'delivery_estimation' => '0'],
+            ['area_name' => 'Nowhere Town', 'city_name' => 'Karachi', 'fee' => '10', 'minimum' => '0', 'min_for_free_delivery' => '0', 'delivery_estimation' => '0'],
+        ]]]]));
+
+        $this->artisan('online-ordering:import-areas', ['tenant_code' => 'oosetup', 'file' => $file, '--branch' => 'GUL'])
+            ->expectsOutputToContain('FB Area Block 7: 200 rakha, 250 chhoRa')
+            ->expectsOutputToContain('Master list me nahi (chhoRa): Karachi / Nowhere Town')
+            ->assertSuccessful();
+        $this->assertSame(0, DeliveryZone::count(), 'Dry run ne likh diya.');
+
+        $this->artisan('online-ordering:import-areas', ['tenant_code' => 'oosetup', 'file' => $file, '--branch' => 'GUL', '--yes' => true])
+            ->assertSuccessful();
+        @unlink($file);
+
+        $this->assertSame(2, DeliveryZone::count());
+        $fb = DeliveryZone::where('geo_area_id', $this->area('FB Area Block 7'))->sole();
+        $this->assertSame('200.00', $fb->fee);
+        $this->assertSame('500.00', $fb->min_order);
+        $this->assertSame(50, $fb->eta_minutes);
+        $this->assertSame($this->branchA, $fb->branch_id);
+        $this->assertNull(DeliveryZone::where('geo_area_id', $this->area('Gulshan e Iqbal - Block 2'))->sole()->min_order, '0 = koi minimum nahi.');
+    }
+
     // ── website price ────────────────────────────────────────────────────────────────────────
 
     public function test_website_price_is_offered_only_on_a_plan_with_the_module(): void
