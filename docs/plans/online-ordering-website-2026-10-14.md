@@ -18,13 +18,42 @@ push/deploy NAHI)** · Research: `docs/research/kashiffood-website/`
   nahi mitata; POS qeemat kabhi nahi chhuti).
 - `online-ordering:import-areas {tenant} {file} --branch= [--yes]` — purani website ki area JSON se fees
   (dry run default; duplicate par pehla rakhta hai aur batata hai).
-- Plan se farq: `show_on_website` NAHI banaya — website par kya dikhe ye Phase 2 ki Website Menu tay karegi;
-  do jagah faisla = do sach.
+- (Phase 1 me `show_on_website` nahi tha — Phase 2a ke faisle ke baad aaya, neeche.)
+
+## 0b. Phase 2a — website menu MOJOODA catalog se (owner, 15 Oct)
+
+Owner ke sawal/faisle: "alag website product ya category screen to nahi ban rahe? catalog ki screen pehle se hai";
+"live ke baad modifier web ki tarah add karoge to POS par reflection aayegi?"; "recall par modifier chalega?";
+**"bas mera POS kharab na ho is poore website ke process me"**.
+
+- **Koi nayi screen nahi.** Category, product aur deal ki mojooda screens par "Website" hissa (sirf module wale
+  plan par): show on website, card naam + size label (aik card naam = aik card ke sizes), website category
+  (khaali = POS category; POS ki tarteeb nahi badalti), tag, Popular Items, website order, **website photo aur
+  website description alag** (POS tile apni tasveer rakhta hai — product ki POS photo POS tile par dikhti hai,
+  website ki tasveerein waha daalne se counter badal jata), website price (Phase 1). Category: show on website,
+  website naam, tarteeb, waqt (Midnight 00:00–04:00).
+- **Add-ons = POS ke Modifier Groups**, har group par "Show on: POS only / Website only / POS + Website"
+  (`modifier_groups.channel`, default `pos` → har mojooda group waisa hi). "Website only" group POS ko bheja hi
+  nahi jata (`POSController` filter) — cashier ko koi naya popup nahi. Deal par group sirf website ke liye
+  (`combo_modifier_group`).
+- **Recall:** POS cart modifiers order line ke SAVED data se banata hai (product ke groups se nahi), server bhi
+  line ke modifiers waise hi save karta hai, KOT/bill par chhapte hain → website-only modifier recall/hold/KOT
+  par chalega. Kami: line ka "modifier edit" (pencil) sirf POS groups dikhata hai → Phase 3 me recall kiye
+  website order par website groups bhi dikhayenge.
+- Kashif Food POS me aaj sirf 1 modifier group: "Steak Side" (French Fries / Vegetable Rice, muft, 6 steaks),
+  30 din me 0 dafa use. Deals par POS modifier ka nizam nahi tha.
+- `online-ordering:import-menu {tenant} {menu} --map= --crawl= --images= [--yes]`: sirf `website_*`,
+  show_on_website, "Website only" groups aur pivots likhta hai; POS naam/qeemat/tasveer/category kabhi nahi.
+- **Read-only "Website Menu" preview** (edit nahi): menu jaisa customer dekhega + "POS par hai, website par nahi".
+- **POS safety rule:** har column ikhtiyari, default = aaj ka rawayya; POS par sirf aik server-side filter;
+  har commit se pehle POS ke saare tests (POS, held/recall, drafts, deals, modifiers, KOT/printing, sales,
+  shifts, tables, delivery, riders, reset — 664). Edge (live nahi) abhi nahi chhua: **Edge live karne se pehle
+  bootstrap me `modifier_groups.channel` bhejna zaroori**, warna Edge POS par website-only group dikhega.
 - Tests: `OnlineOrderingSetupMySqlTest` (14), `BillingRatesScreenMySqlTest` (4), `WhatsAppUsageLedgerMySqlTest`
   (13, rate wala hissa naya). Sabotage: 5 guards toR kar dekhe, har aik ne apna test laal kiya.
 - **Prod par activation ke qadam (jab malik kahe):** deploy → `kashif_restaurant` plan par module on →
   `online-ordering:import-areas kashiffood <webarea.json> --branch=MAIN` (pehle dry run) → Website Settings me
-  Delivery terminal → Sting/Al-Faham website price → **Midnight Deal 17** (#75 ki cheezein, Midnight, 1,550).
+  Delivery terminal → Sting/Al-Faham website price. (**Midnight Deal 17 prod par bana diya 15 Oct: combo #76 `KF-MID-GARLICSHASH`**, #75 ki cheezein, Midnight, 1,550.)
 
 ## 1. Ek line me
 

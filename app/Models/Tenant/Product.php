@@ -45,9 +45,14 @@ class Product extends Model
         'product_kind', 'is_pos_visible', 'can_be_bom_component',
         'can_be_bom_output', 'is_manufactured_finished_good',
         'purchase_unit_id', 'purchase_pack_size',
-        // ONLINE-ORDERING-1: website ki apni qeemat (null = POS ki qeemat).
+        // ONLINE-ORDERING-1: website ki apni qeemat (null = POS ki qeemat) aur website par jagah.
         'website_price',
+        'show_on_website', 'website_card_name', 'website_size_label', 'website_category_id',
+        'website_tag', 'website_popular', 'website_sort_order', 'website_image_path', 'website_description',
     ];
+
+    /** ONLINE-ORDERING-1 — website card ke tags. */
+    public const WEBSITE_TAGS = ['popular' => 'Popular', 'hot_selling' => 'Hot Selling', 'new' => 'New'];
 
     protected function casts(): array
     {
@@ -71,7 +76,16 @@ class Product extends Model
             'is_manufactured_finished_good' => 'boolean',
             'purchase_pack_size' => 'decimal:4',
             'website_price' => 'decimal:2',
+            'show_on_website' => 'boolean',
+            'website_popular' => 'boolean',
+            'website_sort_order' => 'integer',
         ];
+    }
+
+    /** ONLINE-ORDERING-1: website par kis category me (khaali = apni POS category). */
+    public function websiteCategory()
+    {
+        return $this->belongsTo(Category::class, 'website_category_id');
     }
 
     /* ── Role / visibility scopes ─────────────────────────────────────────── */
