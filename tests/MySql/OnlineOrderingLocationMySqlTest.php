@@ -269,6 +269,9 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
             ['type' => 'node', 'id' => 4, 'lat' => 24.9520, 'lon' => 67.1410, 'tags' => ['place' => 'neighbourhood', 'name' => 'Chappal Sun City']],            // parent
             ['type' => 'node', 'id' => 5, 'lat' => 24.9366, 'lon' => 67.1396, 'tags' => ['place' => 'neighbourhood', 'name' => 'Block 7']],                     // aam naam
             ['type' => 'node', 'id' => 6, 'lat' => 25.2000, 'lon' => 67.5000, 'tags' => ['place' => 'hamlet', 'name' => 'Mystery Goth']],                        // pata nahi
+            ['type' => 'node', 'id' => 7, 'lat' => 24.9512, 'lon' => 67.1440, 'tags' => ['place' => 'neighbourhood', 'name' => 'Al-Noor Society Scheme 33']],    // naam
+            // Pados: 800 m me New Rizvia (jana naam), Chappal Sun City aur Al-Noor — teeno Scheme 33.
+            ['type' => 'node', 'id' => 8, 'lat' => 24.9515, 'lon' => 67.1445, 'tags' => ['place' => 'neighbourhood', 'name' => 'Rufi Homes']],
         ];
         Http::fake(function (HttpRequest $r) use ($elements) {
             if (str_contains($r->url(), 'interpreter')) {
@@ -278,14 +281,14 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
             $lat = (float) ($q['lat'] ?? 0);
 
             return Http::response(match (true) {
-                abs($lat - 24.952) < 0.001 => ['address' => ['neighbourhood' => 'Chappal Sun City', 'suburb' => 'New Rizvia Society', 'town' => 'Gulshan-e-Iqbal Town']],
+                abs($lat - 24.952) < 0.0002 => ['address' => ['neighbourhood' => 'Chappal Sun City', 'suburb' => 'New Rizvia Society', 'town' => 'Gulshan-e-Iqbal Town']],
                 abs($lat - 24.9368) < 0.0003 => ['address' => ['neighbourhood' => 'Johar Complex', 'town' => 'Gulshan-e-Iqbal Town'], 'display_name' => 'Johar Complex, Karachi'],
                 default => ['address' => ['hamlet' => 'Mystery Goth', 'town' => 'Gadap Town']],
             });
         });
         $args = ['tenant_code' => 'ooloc', '--lat' => '24.93', '--lng' => '67.10', '--pause' => '0'];
 
-        $this->artisan('online-ordering:map-places', $args)->expectsOutputToContain('Pakke: 3 (naam 1 · hadd ke andar 1 · parent 1)')->assertSuccessful();
+        $this->artisan('online-ordering:map-places', $args)->expectsOutputToContain('Pakke: 5 (naam 2 · hadd ke andar 1 · parent 1 · pados 1)')->assertSuccessful();
         $this->assertNull($m->table('geo_areas')->where('city', self::CITY)->where('name', 'Gulistan e Johar - Block 7')->value('aliases'), 'Dry run ne likh diya.');
 
         $this->artisan('online-ordering:map-places', $args + ['--yes' => true])->assertSuccessful();
@@ -293,6 +296,7 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $johar = array_column(json_decode((string) $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Gulistan e Johar - Block 7')->value('aliases'), true), null, 'name');
         $this->assertArrayHasKey('Chappal Sun City', $scheme);
         $this->assertArrayHasKey('Aligarh Cooperative Housing Society SCHEME 33', $scheme);
+        $this->assertArrayHasKey('Rufi Homes', $scheme, 'Pados ki gawahi: 3 pakki Scheme 33 jagahen 800 m me.');
         $this->assertSame('osm', $scheme['Chappal Sun City']['src']);
         $this->assertEqualsWithDelta(24.952, $scheme['Chappal Sun City']['lat'], 0.0001);
         $this->assertSame(['Johar Complex'], array_keys($johar), '"Block 7" jaisa aam naam kabhi nahi; area ka apna naam bhi nahi.');

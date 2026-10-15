@@ -145,6 +145,7 @@ class AreaLocator
         $s = mb_strtolower($s);
         $s = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $s) ?? $s;
         $s = preg_replace('/(\d)(\p{L})/u', '$1 $2', $s) ?? $s;   // 13d → 13 d
+        $s = preg_replace('/(\p{L})(\d)/u', '$1 $2', $s) ?? $s;   // d1 → d 1 ("Block 13 D1" = "Block 13-D-1")
 
         return trim(preg_replace('/\s+/', ' ', $s) ?? $s);
     }

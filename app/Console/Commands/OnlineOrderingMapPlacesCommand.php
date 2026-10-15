@@ -33,6 +33,7 @@ class OnlineOrderingMapPlacesCommand extends Command
         {--radius=10 : Kitne km tak}
         {--pause=1100 : OSM pate ke sawalon ke beech (ms) — OSM ka qaida ~1/second}
         {--max-lookups=1500 : Zyada se zyada OSM pate ke sawal}
+        {--list : Har area ki sari jagahen dikhao}
         {--yes : Likho. Is ke baghair sirf dikhata hai}';
 
     protected $description = 'Aas paas ki societies OpenStreetMap se — har ek ka delivery area (sirf pakke), default: dry run.';
@@ -56,6 +57,11 @@ class OnlineOrderingMapPlacesCommand extends Command
     private const SPELLINGS = ['jauhar' => 'johar', 'jouhar' => 'johar', 'jowhar' => 'johar', 'federal b' => 'fb', 'f b' => 'fb',
         'extention' => 'extension', 'extn' => 'extension', 'ext' => 'extension',
         'gulshan e iqbal' => 'gulshan e iqbal', 'gulshan i iqbal' => 'gulshan e iqbal', 'gulistan i johar' => 'gulistan e johar'];
+
+    /** Pados ki gawahi: itne km ke andar, kam az kam itni pakki jagahen, sab aik area ki. */
+    private const NEAR_KM = 0.8;
+
+    private const NEAR_MIN = 3;
 
     private int $asked = 0;
 
@@ -105,7 +111,8 @@ class OnlineOrderingMapPlacesCommand extends Command
 
         $found = [];   // areaId => [normName => [name, lat, lng, how]]
         $unsure = [];
-        $how = ['name' => 0, 'inside' => 0, 'parent' => 0];
+        $unsureAt = [];
+        $how = ['name' => 0, 'inside' => 0, 'parent' => 0, 'nearby' => 0];
         foreach ($elements as $e) {
             $name = trim((string) $this->name($e));
             $centre = $this->centre($e);
@@ -123,7 +130,7 @@ class OnlineOrderingMapPlacesCommand extends Command
                 $by = 'parent';
             }
             if (! $areaId) {
-                $unsure[] = $name;
+                $unsureAt[] = ['name' => $name, 'centre' => $centre];
 
                 continue;
             }
@@ -133,6 +140,40 @@ class OnlineOrderingMapPlacesCommand extends Command
             }
             $found[$areaId][$key] = ['name' => $name, 'lat' => round($centre[0], 6), 'lng' => round($centre[1], 6), 'how' => $by];
             $how[$by]++;
+        }
+
+        // 4. Pados ki gawahi (malik: zyada jagahen khud): 800 m ke andar kam az kam 3 pakki jagahen (upar wale 3
+        //    qaidon se, ya pehle se jane naam) — aur SAB aik hi area ki — to ye bhi usi area ki. Pados me do areas hon
+        //    (Johar / Scheme 33 ki hadd) to nahi. Sirf aik dafa (is se mili jagah aage gawahi nahi deti).
+        $known = [];
+        foreach ($found as $areaId => $list) {
+            foreach ($list as $p) {
+                $known[] = [$p['lat'], $p['lng'], $areaId];
+            }
+        }
+        foreach ($geo as $g) {
+            foreach ($g->aliasList() as $a) {
+                if ($a['lat'] !== null) {
+                    $known[] = [$a['lat'], $a['lng'], $g->id];
+                }
+            }
+        }
+        foreach ($unsureAt as $u) {
+            $votes = [];
+            foreach ($known as [$la, $ln, $areaId]) {
+                if (AreaLocator::km($u['centre'][0], $u['centre'][1], $la, $ln) <= self::NEAR_KM) {
+                    $votes[] = $areaId;
+                }
+            }
+            $areas = array_values(array_unique($votes));
+            $key = implode(' ', self::tokens($u['name']));
+            if (count($votes) >= self::NEAR_MIN && count($areas) === 1 && ! isset($found[$areas[0]][$key])
+                && ! $this->isAreaName($key, $geo->get($areas[0]))) {
+                $found[$areas[0]][$key] = ['name' => $u['name'], 'lat' => round($u['centre'][0], 6), 'lng' => round($u['centre'][1], 6), 'how' => 'nearby'];
+                $how['nearby']++;
+            } else {
+                $unsure[] = $u['name'];
+            }
         }
 
         // Aik hi naam do areas me = shak — dono se nikal do.
@@ -288,9 +329,18 @@ class OnlineOrderingMapPlacesCommand extends Command
         return null;
     }
 
+    /** Area ka apna naam, kisi bhi tarteeb me ("Block 13 Gulistan-e-Johar" = "Gulistan e Johar - Block 13"). */
     private function isAreaName(string $key, ?GeoArea $g): bool
     {
-        return $g && $key === implode(' ', self::tokens($g->name));
+        if (! $g) {
+            return false;
+        }
+        $a = explode(' ', $key);
+        $b = self::tokens($g->name);
+        sort($a);
+        sort($b);
+
+        return $a === $b;
     }
 
     /** @return list<string> */
@@ -346,8 +396,15 @@ class OnlineOrderingMapPlacesCommand extends Command
         }
         usort($rows, fn ($a, $b) => $b[1] <=> $a[1]);
         $this->table(['Area', 'Places', 'Examples'], $rows);
-        $this->line(sprintf('Pakke: %d (naam %d · hadd ke andar %d · parent %d) · pata nahi: %d · OSM jagahen: %d · OSM se pate poochhe: %d',
-            array_sum($how), $how['name'], $how['inside'], $how['parent'], count($unsure), $total, $this->asked));
+        if ($this->option('list')) {
+            foreach ($found as $areaId => $list) {
+                if ($list) {
+                    $this->line('['.$geo->get($areaId)?->name.'] '.implode(' | ', array_map(fn ($p) => $p['name'].' ('.$p['how'].')', $list)));
+                }
+            }
+        }
+        $this->line(sprintf('Pakke: %d (naam %d · hadd ke andar %d · parent %d · pados %d) · pata nahi: %d · OSM jagahen: %d · OSM se pate poochhe: %d',
+            array_sum($how), $how['name'], $how['inside'], $how['parent'], $how['nearby'], count($unsure), $total, $this->asked));
         if ($this->failed > 0) {
             $this->warn("OSM se {$this->failed} pate nahi mile (mana / connection) — dobara chalayein, jo mil chuke wo cache se foran.");
         }
