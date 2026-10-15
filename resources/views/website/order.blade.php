@@ -638,11 +638,15 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     spyObs = new IntersectionObserver(function (es) {
       es.forEach(function (e) {
         if (!e.isIntersecting) { return; }
+        var any = false;
         document.querySelectorAll('#nav a').forEach(function (a) {
           var on = a.getAttribute('data-sec') === e.target.id;
           a.classList.toggle('on', on);
-          if (on) { moveInd(a); var t = $('nav'); t.scrollTo({ left: a.offsetLeft - t.clientWidth / 2 + a.clientWidth / 2, behavior: reduce ? 'auto' : 'smooth' }); }
+          if (on) { any = true; moveInd(a); var t = $('nav'); t.scrollTo({ left: a.offsetLeft - t.clientWidth / 2 + a.clientWidth / 2, behavior: reduce ? 'auto' : 'smooth' }); }
         });
+        // Popular (not in the bar) or the top of the page: no category is active — hide the pill, or the
+        // last one would keep a white pill with white text.
+        if (!any && $('catInd')) { $('catInd').classList.remove('on'); }
       });
     }, { rootMargin: '-80px 0px -65% 0px' });
     document.querySelectorAll('section.cat').forEach(function (s) { spyObs.observe(s); });

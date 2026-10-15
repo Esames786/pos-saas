@@ -414,19 +414,6 @@
                     <div class="form-help">Used when this product is sold in POS or Sales.</div>
                 </div>
 
-                {{-- ONLINE-ORDERING-1: only on a plan with Online Ordering. The POS price is never touched. --}}
-                @if(\App\Support\OnlineOrdering::enabledForTenant())
-                <div class="col-md-3 pf" data-pg="sell">
-                    <label for="website_price" class="form-label">Website Price</label>
-                    <input id="website_price" type="number" name="website_price"
-                           step="0.01" min="0"
-                           value="{{ old('website_price', $product?->website_price) }}"
-                           class="form-control @error('website_price') is-invalid @enderror" placeholder="Same as POS">
-                    @error('website_price') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                    <div class="form-help">Price on your ordering website. Leave empty to use the selling price.</div>
-                </div>
-                @endif
-
                 <div class="col-md-2 pf" data-pg="tax" data-link="taxable">
                     <label for="tax_rate_percent" class="form-label">Tax Rate (%)</label>
                     <input id="tax_rate_percent" type="number" name="tax_rate_percent"
@@ -441,16 +428,6 @@
                 </div>
             </div>
             </div>
-
-            {{-- ONLINE-ORDERING-1: website placement — only on a plan with Online Ordering, and never
-                 changes the POS (name, price, photo, category stay as they are). Fields carry no pf class,
-                 so the card-type visibility script leaves this section alone. --}}
-            @if(\App\Support\OnlineOrdering::enabledForTenant())
-            <div class="psection">
-            <h5 class="mb-3 mt-4">Website</h5>
-            @include('tenant.partials.website-fields', array_merge(['model' => $product, 'kind' => 'product'], \App\Services\OnlineOrdering\WebsiteFields::formData()))
-            </div>
-            @endif
 
             {{-- ── Stock & Reorder ───────────────────────────────────────────── --}}
             <div class="psection">
@@ -727,6 +704,12 @@
                 </div>
             </div>
             </div>
+
+            {{-- ONLINE-ORDERING-1: website placement in its own card at the bottom (owner) — only on a plan with
+                 Online Ordering, and never changes the POS. No pf class: the card-type script leaves it alone. --}}
+            @if(\App\Support\OnlineOrdering::enabledForTenant())
+                @include('tenant.partials.website-fields', array_merge(['model' => $product, 'kind' => 'product'], \App\Services\OnlineOrdering\WebsiteFields::formData()))
+            @endif
 
             <div class="mt-4 d-flex gap-2">
                 <button type="submit" class="btn btn-primary">Save Product</button>

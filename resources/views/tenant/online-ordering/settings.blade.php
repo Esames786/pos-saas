@@ -5,6 +5,15 @@
 @section('content')
 @php
     $hours = $settings->hours ?: \App\Models\Tenant\WebSetting::defaultHours();
+    $routeIds = function ($branchId, $type) use ($routes) {
+        $old = old("routes.$branchId.$type.terminal_ids");
+        if (is_array($old)) {
+            return array_map('intval', $old);
+        }
+        $r = $routes->get($branchId.'.'.$type);
+
+        return $r ? $r->ids() : [];
+    };
     $routeVal = function ($branchId, $type, $field) use ($routes) {
         $r = $routes->get($branchId.'.'.$type);
         return old("routes.$branchId.$type.$field", $r?->{$field});
@@ -119,31 +128,30 @@
     <div class="card mb-3">
         <div class="card-body">
             <h5 class="mb-1">Where website orders arrive</h5>
-            <p class="text-muted small mb-3">A new order lands as a Draft on this terminal and rings there. If its shift is closed, the backup rings instead; if both are closed, the website stops taking that order type.</p>
+            <p class="text-muted small mb-3">Tick one or more terminals. A new order rings on every ticked terminal and lands as a Draft on the first one (in this order) whose shift is open. If none of them has an open shift, the website stops taking that order type.</p>
             @forelse($branches as $b)
                 @php $bt = $terminals->get($b->id, collect()); @endphp
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-3" style="max-width: 760px;">
-                        <thead><tr><th style="width: 30%">{{ $b->name }}</th><th>Terminal</th><th>Backup terminal</th></tr></thead>
+                        <thead><tr><th style="width: 30%">{{ $b->name }}</th><th>Terminals</th></tr></thead>
                         <tbody>
                         @foreach(\App\Models\Tenant\WebOrderRoute::ORDER_TYPES as $type => $typeLabel)
                             <tr>
                                 <td>{{ $typeLabel }} orders</td>
                                 <td>
-                                    <select name="routes[{{ $b->id }}][{{ $type }}][terminal_id]" class="form-select form-select-sm">
-                                        <option value="">{{ $type === 'takeaway' ? '— Same as Delivery —' : '— Choose —' }}</option>
-                                        @foreach($bt as $t)
-                                            <option value="{{ $t->id }}" @selected((int) $routeVal($b->id, $type, 'terminal_id') === $t->id)>{{ $t->name }}</option>
-                                        @endforeach
-                                    </select>
-                                </td>
-                                <td>
-                                    <select name="routes[{{ $b->id }}][{{ $type }}][backup_terminal_id]" class="form-select form-select-sm">
-                                        <option value="">— None —</option>
-                                        @foreach($bt as $t)
-                                            <option value="{{ $t->id }}" @selected((int) $routeVal($b->id, $type, 'backup_terminal_id') === $t->id)>{{ $t->name }}</option>
-                                        @endforeach
-                                    </select>
+                                    @php $picked = $routeIds($b->id, $type); @endphp
+                                    <input type="hidden" name="routes[{{ $b->id }}][{{ $type }}][terminal_ids][]" value="">
+                                    <div class="d-flex flex-wrap gap-2">
+                                        @forelse($bt as $t)
+                                            <input type="checkbox" class="btn-check" id="rt-{{ $b->id }}-{{ $type }}-{{ $t->id }}" name="routes[{{ $b->id }}][{{ $type }}][terminal_ids][]" value="{{ $t->id }}" autocomplete="off" @checked(in_array($t->id, $picked, true))>
+                                            <label class="btn btn-sm btn-outline-primary" for="rt-{{ $b->id }}-{{ $type }}-{{ $t->id }}">{{ $t->name }}</label>
+                                        @empty
+                                            <span class="text-muted small">No active terminal in this branch.</span>
+                                        @endforelse
+                                    </div>
+                                    @if($type === 'takeaway')
+                                        <div class="form-text">None ticked = the same terminals as Delivery.</div>
+                                    @endif
                                 </td>
                             </tr>
                         @endforeach

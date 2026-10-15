@@ -20,7 +20,25 @@ class WebOrderRoute extends Model
     /** Website par jo order types milte hain (POS ke naam → customer ka naam). */
     public const ORDER_TYPES = ['delivery' => 'Delivery', 'takeaway' => 'Pick-Up'];
 
-    protected $fillable = ['branch_id', 'order_type', 'terminal_id', 'backup_terminal_id'];
+    protected $fillable = ['branch_id', 'order_type', 'terminal_id', 'backup_terminal_id', 'terminal_ids'];
+
+    protected function casts(): array
+    {
+        return ['terminal_ids' => 'array'];
+    }
+
+    /**
+     * Is order type ke terminals, tarteeb se (malik: multi-select). Ghanti sab par; draft pehle wale par jis ki
+     * shift khuli ho. Purani row (terminal_ids khaali) = [terminal, backup].
+     *
+     * @return list<int>
+     */
+    public function ids(): array
+    {
+        $ids = is_array($this->terminal_ids) && $this->terminal_ids !== [] ? $this->terminal_ids : [$this->terminal_id, $this->backup_terminal_id];
+
+        return array_values(array_unique(array_filter(array_map('intval', $ids))));
+    }
 
     public function branch(): BelongsTo
     {

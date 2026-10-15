@@ -29,6 +29,11 @@ use Illuminate\Support\Str;
  */
 class OnlineOrderingImportMenuCommand extends Command
 {
+    /** Malik (15 Oct): Midnight Deals raat 10 se 12 baje tak. */
+    private const MIDNIGHT_FROM = '22:00';
+
+    private const MIDNIGHT_TO = '00:00';
+
     protected $signature = 'online-ordering:import-menu
         {tenant_code}
         {menu : Purani website ki menu JSON (details → categories → items)}
@@ -87,8 +92,8 @@ class OnlineOrderingImportMenuCommand extends Command
                     $write && $target->save();
                 }
                 $this->report['categories'][] = sprintf('%-22s → %s%s', $wc['title'], $target->name,
-                    $created ? '  (nayi category — sirf website; POS par tab nahi)'.($wc['midnight'] ? ', waqt 00:00–04:00' : '')
-                        : ($wc['midnight'] ? '  (waqt category screen par lagayen, masalan 00:00–04:00)' : ''));
+                    $created ? '  (nayi category — sirf website; POS par tab nahi)'.($wc['midnight'] ? ', waqt '.self::MIDNIGHT_FROM.'–'.self::MIDNIGHT_TO : '')
+                        : ($wc['midnight'] ? '  (waqt category screen par lagayen, masalan '.self::MIDNIGHT_FROM.'–'.self::MIDNIGHT_TO.')' : ''));
 
                 foreach ($wc['items'] as $itemSeq => $item) {
                     $members = [];
@@ -239,8 +244,8 @@ class OnlineOrderingImportMenuCommand extends Command
         $category = new Category([
             'name' => $title, 'slug' => $slug, 'sort_order' => 900 + $seq, 'is_active' => true,
             'show_on_website' => true, 'website_sort_order' => $seq * 10,
-            'website_visible_from' => $wc['midnight'] ? '00:00' : null,
-            'website_visible_to' => $wc['midnight'] ? '04:00' : null,
+            'website_visible_from' => $wc['midnight'] ? self::MIDNIGHT_FROM : null,
+            'website_visible_to' => $wc['midnight'] ? self::MIDNIGHT_TO : null,
         ]);
         $write && $category->save();
         $created = true;

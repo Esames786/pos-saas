@@ -104,18 +104,19 @@ class WebsiteAvailability
     {
         $routes = WebOrderRoute::all()->groupBy('branch_id');
         $openTerminals = Shift::where('status', 'open')->pluck('terminal_id')->filter()->map(fn ($id) => (int) $id)->all();
-        $isOpen = fn (?int $a, ?int $b) => ($a && in_array($a, $openTerminals, true)) || ($b && in_array($b, $openTerminals, true));
+        // Kisi bhi chune terminal par shift khuli ho to wo order type khula (malik: multi-select).
+        $isOpen = fn (array $ids) => array_intersect($ids, $openTerminals) !== [];
 
         $out = [];
         foreach ($routes as $branchId => $rows) {
             $delivery = $rows->firstWhere('order_type', 'delivery');
             $pickup = $rows->firstWhere('order_type', 'takeaway');
-            $pickupMain = $pickup?->terminal_id ?: $delivery?->terminal_id;
-            $pickupBackup = $pickup?->terminal_id ? $pickup->backup_terminal_id : $delivery?->backup_terminal_id;
+            $deliveryIds = $delivery ? $delivery->ids() : [];
+            $pickupIds = ($pickup ? $pickup->ids() : []) ?: $deliveryIds;   // khaali = Delivery wale
 
             $out[(int) $branchId] = [
-                'delivery' => $delivery !== null && $isOpen($delivery->terminal_id, $delivery->backup_terminal_id),
-                'pickup' => $isOpen($pickupMain, $pickupBackup),
+                'delivery' => $isOpen($deliveryIds),
+                'pickup' => $isOpen($pickupIds),
             ];
         }
 

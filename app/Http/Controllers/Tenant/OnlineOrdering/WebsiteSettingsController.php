@@ -61,8 +61,8 @@ class WebsiteSettingsController extends Controller
             'wa_notify_cancelled' => ['nullable', 'boolean'],
             'contact_phone' => ['nullable', 'string', 'max:40'],
             'routes' => ['nullable', 'array'],
-            'routes.*.*.terminal_id' => ['nullable', 'integer'],
-            'routes.*.*.backup_terminal_id' => ['nullable', 'integer'],
+            'routes.*.*.terminal_ids' => ['nullable', 'array'],
+            'routes.*.*.terminal_ids.*' => ['nullable', 'integer'],
         ], [
             'default_branch_id.required_if' => 'Choose the branch the website takes orders for.',
             'auto_cancel_minutes.required_if' => 'Enter after how many minutes an unconfirmed order is cancelled, or turn auto-cancel off.',
@@ -83,7 +83,7 @@ class WebsiteSettingsController extends Controller
         $routes = $this->routes($data['routes'] ?? [], $branchIds);
 
         $enabled = $request->boolean('is_enabled');
-        if ($enabled && ! collect($routes)->contains(fn ($r) => $r['order_type'] === 'delivery' && $r['terminal_id'])) {
+        if ($enabled && ! collect($routes)->contains(fn ($r) => $r['order_type'] === 'delivery' && $r['terminal_ids'] !== [])) {
             // Bina terminal ke website kholna = order aaye aur kisi ko ghanti na baje.
             throw ValidationException::withMessages([
                 'is_enabled' => 'Choose the terminal that receives delivery orders before turning the website on.',
@@ -110,7 +110,8 @@ class WebsiteSettingsController extends Controller
             foreach ($routes as $route) {
                 WebOrderRoute::updateOrCreate(
                     ['branch_id' => $route['branch_id'], 'order_type' => $route['order_type']],
-                    ['terminal_id' => $route['terminal_id'], 'backup_terminal_id' => $route['backup_terminal_id']],
+                    // Pehle do purane khanon me bhi — jo bhi unhe parhe, waisa hi chale.
+                    ['terminal_ids' => $route['terminal_ids'], 'terminal_id' => $route['terminal_ids'][0] ?? null, 'backup_terminal_id' => $route['terminal_ids'][1] ?? null],
                 );
             }
         });
@@ -119,10 +120,10 @@ class WebsiteSettingsController extends Controller
     }
 
     /**
-     * routes[branch_id][order_type][terminal_id|backup_terminal_id] → saaf rows. Terminal usi branch ka
-     * ho, aur backup wohi na ho jo pehla hai.
+     * routes[branch_id][order_type][terminal_ids][] → saaf rows. Har terminal usi branch ka; tarteeb wohi jo
+     * screen par (pehla khula = draft wahin).
      *
-     * @return list<array{branch_id: int, order_type: string, terminal_id: ?int, backup_terminal_id: ?int}>
+     * @return list<array{branch_id: int, order_type: string, terminal_ids: list<int>}>
      */
     private function routes(array $input, array $branchIds): array
     {
@@ -134,23 +135,16 @@ class WebsiteSettingsController extends Controller
                 continue;
             }
             foreach (array_keys(WebOrderRoute::ORDER_TYPES) as $type) {
-                $primary = isset($types[$type]['terminal_id']) && $types[$type]['terminal_id'] !== '' ? (int) $types[$type]['terminal_id'] : null;
-                $backup = isset($types[$type]['backup_terminal_id']) && $types[$type]['backup_terminal_id'] !== '' ? (int) $types[$type]['backup_terminal_id'] : null;
-
-                foreach (['terminal_id' => $primary, 'backup_terminal_id' => $backup] as $field => $terminalId) {
-                    if ($terminalId !== null && (int) ($terminalBranch[$terminalId] ?? 0) !== (int) $branchId) {
+                $ids = array_values(array_unique(array_map('intval', array_filter((array) ($types[$type]['terminal_ids'] ?? []), fn ($v) => $v !== '' && $v !== null))));
+                foreach ($ids as $terminalId) {
+                    if ((int) ($terminalBranch[$terminalId] ?? 0) !== (int) $branchId) {
                         throw ValidationException::withMessages([
-                            "routes.$branchId.$type.$field" => 'Choose a terminal of the same branch.',
+                            "routes.$branchId.$type.terminal_ids" => 'Choose terminals of the same branch.',
                         ]);
                     }
                 }
-                if ($backup !== null && $backup === $primary) {
-                    throw ValidationException::withMessages([
-                        "routes.$branchId.$type.backup_terminal_id" => 'The backup terminal must be a different terminal.',
-                    ]);
-                }
 
-                $out[] = ['branch_id' => (int) $branchId, 'order_type' => $type, 'terminal_id' => $primary, 'backup_terminal_id' => $backup];
+                $out[] = ['branch_id' => (int) $branchId, 'order_type' => $type, 'terminal_ids' => $ids];
             }
         }
 

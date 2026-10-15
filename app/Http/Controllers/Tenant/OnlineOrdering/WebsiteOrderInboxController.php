@@ -36,9 +36,9 @@ class WebsiteOrderInboxController extends Controller
 
         $branchId = (int) $request->query('branch_id');
         $terminalId = (int) $request->query('terminal_id');
-        $routed = WebOrderRoute::where('branch_id', $branchId)
-            ->where(fn ($q) => $q->where('terminal_id', $terminalId)->orWhere('backup_terminal_id', $terminalId))
-            ->exists();
+        // Ghanti har us terminal par jo kisi order type ke liye chuna gaya (malik: multi-select).
+        $routed = $terminalId > 0 && WebOrderRoute::where('branch_id', $branchId)->get()
+            ->contains(fn (WebOrderRoute $r) => in_array($terminalId, $r->ids(), true));
 
         $user = auth('tenant')->user();
         $branch = Branch::find($branchId);

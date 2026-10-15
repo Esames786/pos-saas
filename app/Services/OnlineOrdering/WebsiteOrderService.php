@@ -298,19 +298,16 @@ class WebsiteOrderService
         return $out;
     }
 
-    /** Us order type ka terminal (asal, warna backup) jis par shift khuli ho — draft wahin, ghanti wahin. */
+    /** Us order type ke chune terminals me pehla jis par shift khuli ho — draft wahin (ghanti sab chune terminals par). */
     private function terminalFor(int $branchId, string $orderType): array
     {
         $routes = WebOrderRoute::where('branch_id', $branchId)->get()->keyBy('order_type');
-        $route = $routes->get($orderType);
-        $main = $route?->terminal_id;
-        $backup = $route?->backup_terminal_id;
-        if ($orderType === 'takeaway' && ! $main) {
-            $main = $routes->get('delivery')?->terminal_id;
-            $backup = $routes->get('delivery')?->backup_terminal_id;
+        $ids = $routes->get($orderType)?->ids() ?? [];
+        if ($orderType === 'takeaway' && $ids === []) {
+            $ids = $routes->get('delivery')?->ids() ?? [];   // Pick-Up khaali = Delivery wale terminals
         }
 
-        foreach (array_filter([$main, $backup]) as $terminalId) {
+        foreach ($ids as $terminalId) {
             $shift = Shift::where('terminal_id', $terminalId)->where('status', 'open')->latest('id')->first();
             if ($shift) {
                 return [$terminalId, $shift];

@@ -107,7 +107,7 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
         $html = $this->owner()->get($this->url('/online-ordering/settings'))->assertOk()->getContent();
         $this->assertStringContainsString('Where website orders arrive', $html);
         $this->assertStringContainsString('Counter One', $html);
-        $this->assertStringContainsString('— Same as Delivery —', $html);
+        $this->assertStringContainsString('None ticked = the same terminals as Delivery.', $html);
     }
 
     public function test_a_deploy_never_switches_the_module_on_or_off(): void
@@ -147,8 +147,9 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
             // confirmed aur cancelled ann-tick: kuch post nahi hota.
             'routes' => [
                 $this->branchA => [
-                    'delivery' => ['terminal_id' => $this->t1, 'backup_terminal_id' => $this->t2],
-                    'takeaway' => ['terminal_id' => '', 'backup_terminal_id' => ''],
+                    // Malik: multi-select — ghanti dono par, draft pehle khule par.
+                    'delivery' => ['terminal_ids' => [$this->t1, $this->t2]],
+                    'takeaway' => ['terminal_ids' => ['']],
                 ],
             ],
         ]))->assertRedirect()->assertSessionHasNoErrors();
@@ -162,9 +163,10 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
         $this->assertSame(['open' => '12:00', 'close' => '04:00', 'closed' => false], $s->hours['fri']);
 
         $delivery = WebOrderRoute::where('branch_id', $this->branchA)->where('order_type', 'delivery')->sole();
-        $this->assertSame($this->t1, $delivery->terminal_id);
+        $this->assertSame([$this->t1, $this->t2], $delivery->ids());
+        $this->assertSame($this->t1, $delivery->terminal_id, 'Purane khane bhi bhare (jo unhe parhe).');
         $this->assertSame($this->t2, $delivery->backup_terminal_id);
-        $this->assertNull(WebOrderRoute::where('branch_id', $this->branchA)->where('order_type', 'takeaway')->sole()->terminal_id);
+        $this->assertSame([], WebOrderRoute::where('branch_id', $this->branchA)->where('order_type', 'takeaway')->sole()->ids(), 'Pick-Up khaali = Delivery wale.');
 
         // Auto-cancel on: minute ke saath.
         $this->owner()->put($this->url('/online-ordering/settings'), $this->settingsInput([
@@ -182,15 +184,11 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
         $this->assertFalse(WebSetting::tenantDefault()->fresh()->is_enabled);
     }
 
-    public function test_a_terminal_of_another_branch_or_a_backup_equal_to_the_main_is_refused(): void
+    public function test_a_terminal_of_another_branch_is_refused(): void
     {
         $this->owner()->put($this->url('/online-ordering/settings'), $this->settingsInput([
-            'routes' => [$this->branchA => ['delivery' => ['terminal_id' => $this->t3]]],
-        ]))->assertSessionHasErrors("routes.{$this->branchA}.delivery.terminal_id");
-
-        $this->owner()->put($this->url('/online-ordering/settings'), $this->settingsInput([
-            'routes' => [$this->branchA => ['delivery' => ['terminal_id' => $this->t1, 'backup_terminal_id' => $this->t1]]],
-        ]))->assertSessionHasErrors("routes.{$this->branchA}.delivery.backup_terminal_id");
+            'routes' => [$this->branchA => ['delivery' => ['terminal_ids' => [$this->t1, $this->t3]]]],
+        ]))->assertSessionHasErrors("routes.{$this->branchA}.delivery.terminal_ids");
 
         $this->assertSame(0, WebOrderRoute::count());
     }

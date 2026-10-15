@@ -121,6 +121,10 @@ class OnlineOrderingInboxMySqlTest extends MySqlTenantTestCase
         $j2 = $this->cashier()->getJson($this->url('/api/pos/website-orders?branch_id='.$this->branchId.'&terminal_id='.$this->t2))->assertOk()->json();
         $this->assertFalse($j2['routed'], 'Doosre counter par ghanti nahi.');
 
+        // Malik: multi-select — dono chune terminals par ghanti.
+        WebOrderRoute::where('branch_id', $this->branchId)->update(['terminal_ids' => json_encode([$this->t1, $this->t2])]);
+        $this->assertTrue($this->cashier()->getJson($this->url('/api/pos/website-orders?branch_id='.$this->branchId.'&terminal_id='.$this->t2))->json('routed'));
+
         // Plan me module nahi: kuch nahi.
         $this->seedPlan(false);
         $this->cashier()->getJson($this->url('/api/pos/website-orders?branch_id='.$this->branchId.'&terminal_id='.$this->t1))

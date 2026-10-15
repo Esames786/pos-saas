@@ -74,28 +74,11 @@
                         <label class="form-label" for="sort_order">Sort Order</label>
                         <input id="sort_order" type="number" min="0" name="sort_order" class="form-control" value="{{ old('sort_order', $combo->sort_order ?? 0) }}">
                     </div>
-                    {{-- ONLINE-ORDERING-1: only on a plan with Online Ordering. The deal price is never touched. --}}
-                    @if(\App\Support\OnlineOrdering::enabledForTenant())
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label" for="website_price">Website Price</label>
-                            <input id="website_price" type="number" step="0.01" min="0" name="website_price" class="form-control"
-                                   value="{{ old('website_price', $combo->website_price ?? '') }}" placeholder="Same as combo price">
-                            <div class="form-text">Price on your ordering website. Leave empty to use the combo price.</div>
-                        </div>
-                    @endif
                     <div class="col-12 mb-3">
                         <label class="form-label" for="description">Description</label>
                         <textarea id="description" name="description" rows="2" class="form-control">{{ old('description', $combo->description ?? '') }}</textarea>
                     </div>
                 </div>
-
-                {{-- ONLINE-ORDERING-1: website placement — only on a plan with Online Ordering; the POS deal does not change. --}}
-                @if(\App\Support\OnlineOrdering::enabledForTenant())
-                    <h6 class="mb-3">Website</h6>
-                    <div class="mb-4">
-                        @include('tenant.partials.website-fields', array_merge(['model' => $combo ?? null, 'kind' => 'combo'], \App\Services\OnlineOrdering\WebsiteFields::formData()))
-                    </div>
-                @endif
 
                 <div class="d-flex align-items-center justify-content-between mb-2">
                     <h6 class="mb-0">Components</h6>
@@ -122,6 +105,13 @@
                         </tbody>
                     </table>
                 </div>
+
+                {{-- ONLINE-ORDERING-1: website placement in its own card at the bottom — only on a plan with Online Ordering; the POS deal does not change. --}}
+                @if(\App\Support\OnlineOrdering::enabledForTenant())
+                    <div class="mb-4">
+                        @include('tenant.partials.website-fields', array_merge(['model' => $combo ?? null, 'kind' => 'combo'], \App\Services\OnlineOrdering\WebsiteFields::formData()))
+                    </div>
+                @endif
 
                 <div class="d-flex gap-2">
                     <button class="btn btn-primary">{{ $editing ? 'Update Combo' : 'Create Combo' }}</button>
