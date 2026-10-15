@@ -48,13 +48,18 @@ class OnlineOrderingMapPlacesCommand extends Command
     private const GENERIC = ['block', 'sector', 'phase', 'society', 'societies', 'colony', 'town', 'garden', 'gardens', 'housing',
         'scheme', 'area', 'road', 'street', 'no', 'number', 'the', 'and', 'of', 'e', 'i', 'cooperative', 'co', 'operative', 'chs',
         'apartments', 'apartment', 'complex', 'plaza', 'square', 'tower', 'towers', 'residency', 'city', 'new', 'old', 'extension',
-        'karachi', 'west', 'east', 'north', 'south', 'main', 'flats', 'quarters', 'lines', 'ext'];
+        'karachi', 'west', 'east', 'north', 'south', 'main', 'flats', 'quarters', 'lines', 'ext',
+        // "Defence" / "DHA" akela har phase ka hai — kisi aik phase ka naam nahi.
+        'defence', 'defense', 'dha', 'authority'];
 
     /** Aik hi jagah ke mukhtalif hijje. */
     private const SPELLINGS = ['jauhar' => 'johar', 'jouhar' => 'johar', 'jowhar' => 'johar', 'federal b' => 'fb', 'f b' => 'fb',
+        'extention' => 'extension', 'extn' => 'extension', 'ext' => 'extension',
         'gulshan e iqbal' => 'gulshan e iqbal', 'gulshan i iqbal' => 'gulshan e iqbal', 'gulistan i johar' => 'gulistan e johar'];
 
     private int $asked = 0;
+
+    private int $failed = 0;
 
     public function handle(TenancyManager $tenancy, OpenStreetMap $osm): int
     {
@@ -257,7 +262,17 @@ class OnlineOrderingMapPlacesCommand extends Command
             }
             $this->asked++;
         }
-        $rev = $osm->reverse($p[0], $p[1]) ?? [];
+        $rev = $osm->reverse($p[0], $p[1]);
+        if ($rev === null) {
+            // OSM ne mana kiya / connection toota: thora ruk kar aik dafa aur. Phir bhi nahi = "jaanch nahi saka".
+            sleep(3);
+            $rev = $osm->reverse($p[0], $p[1]);
+            if ($rev === null) {
+                $this->failed++;
+
+                return null;
+            }
+        }
         $a = (array) ($rev['address'] ?? []);
         $ownKey = implode(' ', self::tokens($own));
         foreach (['neighbourhood', 'residential', 'quarter', 'suburb', 'hamlet'] as $k) {
@@ -333,6 +348,9 @@ class OnlineOrderingMapPlacesCommand extends Command
         $this->table(['Area', 'Places', 'Examples'], $rows);
         $this->line(sprintf('Pakke: %d (naam %d · hadd ke andar %d · parent %d) · pata nahi: %d · OSM jagahen: %d · OSM se pate poochhe: %d',
             array_sum($how), $how['name'], $how['inside'], $how['parent'], count($unsure), $total, $this->asked));
+        if ($this->failed > 0) {
+            $this->warn("OSM se {$this->failed} pate nahi mile (mana / connection) — dobara chalayein, jo mil chuke wo cache se foran.");
+        }
         if ($unsure) {
             $this->line('Pata nahi (khud nahi lagaye): '.implode(' | ', array_slice($unsure, 0, 40)).(count($unsure) > 40 ? ' …' : ''));
         }
