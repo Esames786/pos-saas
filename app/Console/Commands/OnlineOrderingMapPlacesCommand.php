@@ -121,6 +121,12 @@ class OnlineOrderingMapPlacesCommand extends Command
             }
             $areaId = $this->byName($name, $names);
             $by = 'name';
+            // "Block 13 A", "Phase 2", "Sector 5" — sirf apne naam se; hadd/parent/pados se kabhi nahi (13 A ≠ 13 D).
+            if (! $areaId && self::isSubdivision($name)) {
+                $unsure[] = $name;
+
+                continue;
+            }
             if (! $areaId) {
                 $areaId = $this->inside($centre, $polygons);
                 $by = 'inside';
@@ -153,7 +159,7 @@ class OnlineOrderingMapPlacesCommand extends Command
         }
         foreach ($geo as $g) {
             foreach ($g->aliasList() as $a) {
-                if ($a['lat'] !== null) {
+                if ($a['lat'] !== null && ! $a['point_only']) {   // gawah sirf pakki jagahen
                     $known[] = [$a['lat'], $a['lng'], $g->id];
                 }
             }
@@ -354,6 +360,12 @@ class OnlineOrderingMapPlacesCommand extends Command
         return array_values(array_filter(explode(' ', trim($n)), fn ($t) => $t !== ''));
     }
 
+    /** Kisi silsile ka hissa (Block / Phase / Sector N) — doosre number wale area ka nahi ho sakta. */
+    public static function isSubdivision(string $name): bool
+    {
+        return (bool) array_intersect(self::tokens($name), ['block', 'phase', 'sector']);
+    }
+
     /** "Block 7", "Society", "Sector 11 E" — akele kisi jagah ki pehchan nahi. */
     public static function distinctive(string $name): bool
     {
@@ -425,7 +437,9 @@ class OnlineOrderingMapPlacesCommand extends Command
             $have = array_map(fn ($a) => implode(' ', self::tokens((string) ($a['name'] ?? ''))), $aliases);
             foreach ($list as $key => $p) {
                 if (! in_array($key, $have, true)) {
-                    $aliases[] = ['name' => $p['name'], 'lat' => $p['lat'], 'lng' => $p['lng'], 'src' => 'osm'];
+                    // Pados ki gawahi = andaza: sirf nuqta (qareebi area), naam se "You are in" kabhi nahi.
+                    $aliases[] = ['name' => $p['name'], 'lat' => $p['lat'], 'lng' => $p['lng'], 'src' => 'osm']
+                        + ($p['how'] === 'nearby' ? ['point_only' => true] : []);
                     $have[] = $key;
                     $added++;
                 }

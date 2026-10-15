@@ -24,7 +24,9 @@ class GeoArea extends Model
     /**
      * Area ke andar ki jagahen (bara area, jaise Scheme 33): naam pate se milte hain, nuqte qareebi area me gine jate hain.
      *
-     * @return list<array{name: string, lat: ?float, lng: ?float}>
+     * `point_only`: pados ki gawahi se mili jagah — sirf qareebi-area ke hisaab me nuqta, naam se "pakka" kabhi nahi.
+     *
+     * @return list<array{name: string, lat: ?float, lng: ?float, point_only: bool}>
      */
     public function aliasList(): array
     {
@@ -32,6 +34,7 @@ class GeoArea extends Model
             'name' => trim((string) $a['name']),
             'lat' => isset($a['lat']) && $a['lat'] !== null ? (float) $a['lat'] : null,
             'lng' => isset($a['lng']) && $a['lng'] !== null ? (float) $a['lng'] : null,
+            'point_only' => ! empty($a['point_only']),
         ] : null, (array) ($this->aliases ?? []))));
     }
 }

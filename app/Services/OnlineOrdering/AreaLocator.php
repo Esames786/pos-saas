@@ -91,8 +91,9 @@ class AreaLocator
         $best = null;
         $bestLen = 0;
         foreach ($zones as $z) {
-            $names = array_merge([(string) $z->area_name], array_column($geo->get($z->geo_area_id)?->aliasList() ?? [], 'name'),
-                array_column($z->placeList(), 'name'));
+            // "Sirf nuqta" wale (pados ki gawahi) naam se pakka nahi karte — wo sirf qareebi area me ginte hain.
+            $aliases = array_filter($geo->get($z->geo_area_id)?->aliasList() ?? [], fn ($a) => ! $a['point_only']);
+            $names = array_merge([(string) $z->area_name], array_column($aliases, 'name'), array_column($z->placeList(), 'name'));
             foreach ($names as $name) {
                 $tokens = array_values(array_filter(explode(' ', self::norm($name))));
                 if ($tokens === []) {

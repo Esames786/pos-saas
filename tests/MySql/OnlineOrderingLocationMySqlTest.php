@@ -297,6 +297,8 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $this->assertArrayHasKey('Chappal Sun City', $scheme);
         $this->assertArrayHasKey('Aligarh Cooperative Housing Society SCHEME 33', $scheme);
         $this->assertArrayHasKey('Rufi Homes', $scheme, 'Pados ki gawahi: 3 pakki Scheme 33 jagahen 800 m me.');
+        $this->assertTrue($scheme['Rufi Homes']['point_only'], 'Pados = andaza: sirf nuqta, naam se pakka nahi.');
+        $this->assertArrayNotHasKey('point_only', $scheme['Chappal Sun City']);
         $this->assertSame('osm', $scheme['Chappal Sun City']['src']);
         $this->assertEqualsWithDelta(24.952, $scheme['Chappal Sun City']['lat'], 0.0001);
         $this->assertSame(['Johar Complex'], array_keys($johar), '"Block 7" jaisa aam naam kabhi nahi; area ka apna naam bhi nahi.');
@@ -309,6 +311,11 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $j = $this->locate(24.9368, 67.1398)->assertOk()->json();
         $this->assertSame($this->zone['Gulistan e Johar - Block 7'], $j['area']);
         $this->assertSame('name', $j['by']);
+
+        // "Rufi Homes" (sirf nuqta): wahan ka customer Scheme 33 paata hai, magar "Nearest area" — "You are in" nahi.
+        $j = $this->locate(24.9515, 67.1445)->assertOk()->json();
+        $this->assertSame($this->zone['Scheme 33'], $j['area']);
+        $this->assertSame('nearest', $j['by']);
     }
 
     public function test_society_points_come_from_openstreetmap_and_a_namesake_in_another_city_is_ignored(): void
