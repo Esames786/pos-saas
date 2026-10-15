@@ -9,9 +9,11 @@ use Illuminate\Support\Collection;
 /**
  * ONLINE-ORDERING-1 — customer ki location se delivery area (malik: "auto fetch scheme 33 ya qareebi area").
  *
- * 1. Naam: OpenStreetMap jagah ka naam deta hai (mohalla, block, town). Jis area ke naam ke SAARE lafz us me
- *    hon wo area — sab se lamba naam jeetta hai ("Clifton Block 5" > "Clifton").
- * 2. Qareebi: naam na mile to area ke markazi nuqte (`geo_areas.lat/lng`) se sab se qareebi — shehar ke andar (MAX_KM).
+ * 1. Naam: OpenStreetMap jagah ka naam deta hai (mohalla, block, town). Jis area ke naam — ya us ke andar ki
+ *    kisi society (`geo_areas.aliases`, jaise Scheme 33 → Gulzar-e-Hijri) — ke SAARE lafz us me hon wo area; sab
+ *    se lamba naam jeetta hai ("Clifton Block 5" > "Clifton").
+ * 2. Qareebi: naam na mile to area ke nuqton (markazi `lat/lng` + har alias ka apna) me se jo sab se qareeb ho —
+ *    shehar ke andar (MAX_KM). Bare area ka aik nuqta kafi nahi (Scheme 33 ka markaz 7 km door, Johar 3.6 km).
  * Dono na milen to kuch nahi — customer list se chunta hai. Aas paas ke areas hamesha saath (chunne me aasani).
  */
 class AreaLocator
@@ -30,18 +32,18 @@ class AreaLocator
     public function locate(float $lat, float $lng): array
     {
         $zones = DeliveryZone::where('is_active', true)->get(['id', 'area_name', 'geo_area_id']);
-        $points = GeoArea::whereIn('id', $zones->pluck('geo_area_id')->filter()->all())->whereNotNull('lat')
-            ->get(['id', 'lat', 'lng'])->keyBy('id');
+        $geo = GeoArea::whereIn('id', $zones->pluck('geo_area_id')->filter()->all())
+            ->get(['id', 'lat', 'lng', 'aliases'])->keyBy('id');
 
-        $distances = $zones->mapWithKeys(function (DeliveryZone $z) use ($points, $lat, $lng) {
-            $p = $points->get($z->geo_area_id);
+        $distances = $zones->mapWithKeys(function (DeliveryZone $z) use ($geo, $lat, $lng) {
+            $points = self::points($geo->get($z->geo_area_id));
 
-            return $p ? [$z->id => self::km($lat, $lng, (float) $p->lat, (float) $p->lng)] : [];
+            return $points ? [$z->id => min(array_map(fn ($p) => self::km($lat, $lng, $p[0], $p[1]), $points))] : [];
         })->sort();
 
         $osm = $this->osm->reverse($lat, $lng) ?? [];
         $address = (array) ($osm['address'] ?? []);
-        $byName = $this->byName($zones, $address, (string) ($osm['display_name'] ?? ''));
+        $byName = $this->byName($zones, $geo, $address, (string) ($osm['display_name'] ?? ''));
 
         $nearestId = $distances->keys()->first();
         $nearest = $nearestId !== null && $distances[$nearestId] <= self::MAX_KM ? $nearestId : null;
@@ -57,8 +59,24 @@ class AreaLocator
         ];
     }
 
-    /** Naam se: area ke saare lafz OSM ke pate me hon. */
-    private function byName(Collection $zones, array $address, string $display): ?int
+    /** @return list<array{0: float, 1: float}> area ka markaz + us ki societies ke nuqte */
+    private static function points(?GeoArea $g): array
+    {
+        if (! $g) {
+            return [];
+        }
+        $out = $g->lat !== null && $g->lng !== null ? [[(float) $g->lat, (float) $g->lng]] : [];
+        foreach ($g->aliasList() as $a) {
+            if ($a['lat'] !== null && $a['lng'] !== null) {
+                $out[] = [$a['lat'], $a['lng']];
+            }
+        }
+
+        return $out;
+    }
+
+    /** Naam se: area ke (ya us ki kisi society ke) naam ke saare lafz OSM ke pate me hon. */
+    private function byName(Collection $zones, Collection $geo, array $address, string $display): ?int
     {
         $parts = array_intersect_key($address, array_flip([
             'house_number', 'road', 'neighbourhood', 'quarter', 'suburb', 'hamlet', 'residential', 'village', 'town', 'city_district',
@@ -68,15 +86,18 @@ class AreaLocator
         $best = null;
         $bestLen = 0;
         foreach ($zones as $z) {
-            $tokens = array_values(array_filter(explode(' ', self::norm((string) $z->area_name))));
-            if ($tokens === []) {
-                continue;
-            }
-            $all = collect($tokens)->every(fn ($t) => str_contains($hay, ' '.$t.' '));
-            $len = strlen(implode(' ', $tokens));
-            if ($all && $len > $bestLen) {
-                $best = $z->id;
-                $bestLen = $len;
+            $names = array_merge([(string) $z->area_name], array_column($geo->get($z->geo_area_id)?->aliasList() ?? [], 'name'));
+            foreach ($names as $name) {
+                $tokens = array_values(array_filter(explode(' ', self::norm($name))));
+                if ($tokens === []) {
+                    continue;
+                }
+                $all = collect($tokens)->every(fn ($t) => str_contains($hay, ' '.$t.' '));
+                $len = strlen(implode(' ', $tokens));
+                if ($all && $len > $bestLen) {
+                    $best = $z->id;
+                    $bestLen = $len;
+                }
             }
         }
 

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Master\GeoArea;
+use App\Services\OnlineOrdering\AreaLocator;
 use App\Services\OnlineOrdering\OpenStreetMap;
 use Illuminate\Console\Command;
 
@@ -33,10 +34,21 @@ class OnlineOrderingGeocodeAreasCommand extends Command
 
         if ($areas->isEmpty()) {
             $this->info('Har area ka nuqta pehle se hai.');
+        } else {
+            $this->centres($areas, $osm);
+        }
+        $this->aliases($osm, $areas->isNotEmpty());
 
-            return self::SUCCESS;
+        if (! $this->option('yes')) {
+            $this->warn('Ye sirf dikhaya gaya hai. Likhne ke liye --yes lagayein.');
         }
 
+        return self::SUCCESS;
+    }
+
+    /** @param  \Illuminate\Support\Collection<int, GeoArea>  $areas */
+    private function centres($areas, OpenStreetMap $osm): void
+    {
         $found = 0;
         $guessed = [];
         $missing = [];
@@ -72,11 +84,54 @@ class OnlineOrderingGeocodeAreasCommand extends Command
 
         $this->newLine();
         $this->info("Mile: {$found} / {$areas->count()}".($guessed ? ' · andaza: '.count($guessed) : '').($missing ? ' · nahi mile: '.count($missing) : ''));
-        if (! $this->option('yes')) {
-            $this->warn('Ye sirf dikhaya gaya hai. Likhne ke liye --yes lagayein.');
+    }
+
+    /**
+     * Bare area ki societies (`aliases`, jaise Scheme 33 → Gulzar-e-Hijri) ke apne nuqte — sirf khaali (ya --force).
+     * Area ke markaz se shehar ki hadd (MAX_KM) se door mila nuqta = kisi aur shehar ka hum-naam, chhoR diya.
+     */
+    private function aliases(OpenStreetMap $osm, bool $waitFirst): void
+    {
+        $rows = GeoArea::query()->whereNotNull('aliases')
+            ->when($this->option('city'), fn ($q, $city) => $q->where('city', $city))
+            ->orderBy('city')->orderBy('name')->get();
+
+        $found = 0;
+        $asked = 0;
+        $wait = $waitFirst;
+        foreach ($rows as $area) {
+            $cc = self::COUNTRY_CODES[mb_strtolower((string) $area->country)] ?? null;
+            $list = $area->aliasList();
+            $changed = false;
+            foreach ($list as $k => $a) {
+                if ($a['lat'] !== null && ! $this->option('force')) {
+                    continue;
+                }
+                $asked++;
+                if ($wait) {
+                    usleep(1100000);   // OSM: ~1 request/second
+                }
+                $wait = true;
+                $hit = $osm->search($a['name'].', '.$area->city.', '.$area->country, $cc);
+                if ($hit && $area->lat !== null && AreaLocator::km((float) $area->lat, (float) $area->lng, $hit['lat'], $hit['lng']) > AreaLocator::MAX_KM) {
+                    $hit = null;
+                }
+                $this->line(sprintf('  %-34s %s', $area->name.' › '.$a['name'], $hit ? sprintf('%.5f, %.5f', $hit['lat'], $hit['lng']) : '—'));
+                if ($hit) {
+                    $list[$k]['lat'] = $hit['lat'];
+                    $list[$k]['lng'] = $hit['lng'];
+                    $changed = true;
+                    $found++;
+                }
+            }
+            if ($changed && $this->option('yes')) {
+                $area->update(['aliases' => $list]);
+            }
         }
 
-        return self::SUCCESS;
+        if ($asked > 0) {
+            $this->info("Societies: {$found} / {$asked}");
+        }
     }
 
     /** @return list<string> pehle poora naam, phir "Block N, baqi", phir bina block (andaza). */

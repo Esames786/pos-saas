@@ -154,6 +154,69 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         Http::assertSent(fn (HttpRequest $r) => str_contains(urldecode($r->url()), 'q=Block 5, Clifton, '.self::CITY));
     }
 
+    public function test_a_society_inside_a_big_area_finds_that_area_by_name_and_by_its_own_point(): void
+    {
+        // UAT (15 Oct): Gulshan-e-Kaneez Fatima (Scheme 33) went to "Gulistan e Johar - Block 4" — OSM never says
+        // "Scheme 33", and Scheme 33's one centre (Super Highway side) was farther than the Johar block's.
+        $m = DB::connection('master');
+        $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->update(['aliases' => json_encode([
+            ['name' => 'Gulshan-e-Kaneez Fatima', 'lat' => null, 'lng' => null],
+            ['name' => 'Gulzar-e-Hijri', 'lat' => 24.9550, 'lng' => 67.1150],
+        ])]);
+        $named = true;
+        Http::fake(function () use (&$named) {
+            return Http::response($named
+                ? ['address' => ['neighbourhood' => 'Rufi Society', 'suburb' => 'Gulshan-e-Kaneez Fatima Society', 'town' => 'Gulshan-e-Iqbal Town'],
+                    'display_name' => 'Rufi Society, Gulshan-e-Kaneez Fatima Society, Gulshan-e-Iqbal Town, Karachi']
+                : ['address' => ['town' => 'Gulshan-e-Iqbal Town'], 'display_name' => 'Gulshan-e-Iqbal Town, Karachi']);
+        });
+
+        // 1. By name — the society is in the address (its alias has no point, so this is the name path).
+        $j = $this->locate(24.956, 67.116)->assertOk()->json();
+        $this->assertSame($this->zone['Scheme 33'], $j['area'], 'Society ka naam = us ka bara area.');
+        $this->assertSame('name', $j['by']);
+
+        // 2. By its own point — the address names no society, but Gulzar-e-Hijri's point is right there
+        //    (the Johar block is ~3 km away, Scheme 33's centre ~7 km).
+        $named = false;
+        $j = $this->locate(24.9540, 67.1140)->assertOk()->json();
+        $this->assertSame($this->zone['Scheme 33'], $j['area'], 'Society ka nuqta bhi area ka nuqta.');
+        $this->assertSame('nearest', $j['by']);
+        $this->assertLessThan(1.0, $j['km']);
+
+        // 3. Without the societies it was the bug: the Johar block wins.
+        $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->update(['aliases' => null]);
+        $this->assertSame($this->zone['Gulistan e Johar - Block 7'], $this->locate(24.9540, 67.1140)->json('area'));
+    }
+
+    public function test_society_points_come_from_openstreetmap_and_a_namesake_in_another_city_is_ignored(): void
+    {
+        $m = DB::connection('master');
+        $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->update(['aliases' => json_encode([
+            ['name' => 'Gulzar-e-Hijri', 'lat' => null, 'lng' => null],
+            ['name' => 'Saadi Town', 'lat' => null, 'lng' => null],
+        ])]);
+        Http::fake(function (HttpRequest $r) {
+            parse_str((string) parse_url($r->url(), PHP_URL_QUERY), $q);
+            $query = (string) ($q['q'] ?? '');
+
+            return match (true) {
+                str_starts_with($query, 'Gulzar-e-Hijri,') => Http::response([['lat' => '24.9551', 'lon' => '67.1149', 'display_name' => 'Gulzar-e-Hijri']]),
+                str_starts_with($query, 'Saadi Town,') => Http::response([['lat' => '31.5204', 'lon' => '74.3587', 'display_name' => 'Saadi Town, Lahore']]),
+                default => Http::response([]),
+            };
+        });
+
+        $this->artisan('online-ordering:geocode-areas', ['--city' => self::CITY])->expectsOutputToContain('Societies: 1 / 2')->assertSuccessful();
+        $this->assertNull(json_decode((string) $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->value('aliases'), true)[0]['lat'], 'Dry run ne likh diya.');
+
+        $this->artisan('online-ordering:geocode-areas', ['--city' => self::CITY, '--yes' => true])->assertSuccessful();
+        $aliases = json_decode((string) $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->value('aliases'), true);
+        $this->assertEqualsWithDelta(24.9551, (float) $aliases[0]['lat'], 0.00001);
+        $this->assertNull($aliases[1]['lat'], 'Doosre shehar ka hum-naam (Lahore) nahi liya.');
+        Http::assertSent(fn (HttpRequest $r) => str_contains(urldecode($r->url()), 'q=Gulzar-e-Hijri, '.self::CITY));
+    }
+
     // ── helpers ──
 
     private function osm(array $address, string $display): void
