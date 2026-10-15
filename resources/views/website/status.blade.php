@@ -26,7 +26,13 @@ h1 { margin:0; text-align:center; font:400 42px/1 "Allura",cursive; color:var(--
 .center p { margin:0; color:var(--muted); }
 .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; font-size:12px; text-align:center; }
 .steps span { padding:6px 4px; border-radius:8px; background:#F2F2F2; color:var(--muted); }
-.steps span.on { background:#E6F5EC; color:var(--ok); font-weight:700; }
+.steps span.on { background:#E6F5EC; color:var(--ok); font-weight:700; animation:fill .5s ease both; }
+.steps span.on:nth-child(2) { animation-delay:.25s; } .steps span.on:nth-child(3) { animation-delay:.5s; }
+@keyframes fill { from { background:#F2F2F2; color:var(--muted); transform:scale(.96); } }
+.tick { animation:pop .5s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes pop { from { transform:scale(.4); opacity:0; } 70% { transform:scale(1.08); } }
+#confetti { position:fixed; inset:0; pointer-events:none; z-index:10; }
+@media (prefers-reduced-motion: reduce) { .steps span.on, .tick { animation:none; } }
 .row { display:flex; justify-content:space-between; gap:12px; font-size:14px; }
 .row small { display:block; color:var(--muted); }
 .tot { border-top:1px solid var(--line); padding-top:10px; display:grid; gap:6px; }
@@ -111,5 +117,25 @@ h1 { margin:0; text-align:center; font:400 42px/1 "Allura",cursive; color:var(--
     @endif
     <a class="btn p" href="{{ url('/order') }}">Back to menu</a>
 </div>
+@if(session('confirm_outcome') === 'confirmed')
+<canvas id="confetti" aria-hidden="true"></canvas>
+<script>
+(function () {
+  'use strict';
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { return; }
+  var c = document.getElementById('confetti'), x = c.getContext('2d');
+  var W = c.width = innerWidth, H = c.height = innerHeight, colors = ['#A60D12', '#FFCB2F', '#1E7A4C', '#F7EBDD', '#E8545A'];
+  var bits = Array.from({ length: 140 }, function () {
+    return { x: W / 2, y: H * 0.35, vx: (Math.random() - 0.5) * 12, vy: -Math.random() * 12 - 4, r: Math.random() * 6 + 3, c: colors[Math.floor(Math.random() * colors.length)], a: Math.random() * 6, s: (Math.random() - 0.5) * 0.3 };
+  });
+  var t0 = performance.now();
+  (function frame(t) {
+    x.clearRect(0, 0, W, H);
+    bits.forEach(function (b) { b.vy += 0.32; b.x += b.vx; b.y += b.vy; b.a += b.s; x.save(); x.translate(b.x, b.y); x.rotate(b.a); x.fillStyle = b.c; x.fillRect(-b.r / 2, -b.r / 4, b.r, b.r / 2); x.restore(); });
+    if (t - t0 < 2600) { requestAnimationFrame(frame); } else { c.remove(); }
+  })(t0);
+})();
+</script>
+@endif
 </body>
 </html>

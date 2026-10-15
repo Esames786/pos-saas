@@ -10,6 +10,12 @@
 @if(! empty($payload['banners'][0]))
 <link rel="preload" as="image" href="{{ $payload['banners'][0]['src'] }}" imagesrcset="{{ $payload['banners'][0]['sm'] }} 960w, {{ $payload['banners'][0]['src'] }} 1920w" imagesizes="100vw">
 @endif
+@if(! empty($payload['installable']))
+<link rel="manifest" href="{{ url('/order/manifest.webmanifest') }}">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+@if(! empty($payload['business']['logo']))<link rel="apple-touch-icon" href="{{ $payload['business']['logo'] }}">@endif
+@endif
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Allura&display=swap">
@@ -81,6 +87,14 @@ svg { flex:none; }
 .cats a { flex:none; color:#fff; text-decoration:none; font-size:13px; font-weight:700; padding:8px 18px; border-radius:999px; white-space:nowrap; transition:background .25s, color .25s; }
 .cats a:hover { background:rgba(255,255,255,.14); }
 .cats a.on { background:#fff; color:var(--brand); }
+/* the white pill glides to the active category */
+.cats .track { position:relative; }
+.cats .ind { position:absolute; left:0; top:12px; height:calc(100% - 24px); width:0; border-radius:999px; background:#fff; opacity:0; transition:transform .45s var(--ease), width .45s var(--ease), opacity .2s; pointer-events:none; }
+.cats .ind.on { opacity:1; }
+.cats .track.has-ind a { position:relative; z-index:1; }
+.cats .track.has-ind a.on { background:transparent; }
+.cats a .lv { display:inline-block; width:7px; height:7px; border-radius:50%; background:#3BE37C; margin-left:6px; vertical-align:middle; box-shadow:0 0 0 0 rgba(59,227,124,.7); animation:live 1.6s infinite; }
+@keyframes live { 70% { box-shadow:0 0 0 7px rgba(59,227,124,0); } }
 .carr { position:absolute; top:50%; transform:translateY(-50%); z-index:2; width:32px; height:32px; border-radius:50%; border:0; background:rgba(255,255,255,.85); color:var(--brand); display:grid; place-items:center; transition:opacity .2s, transform .2s; }
 .carr:hover { transform:translateY(-50%) scale(1.08); }
 .carr.l { left:6px; } .carr.r { right:6px; }
@@ -149,7 +163,30 @@ html.anim .banner.seen .leaf.b { transform:rotate(168deg); }
 .step button:hover { background:var(--brand-soft); }
 .step b { min-width:20px; text-align:center; font-size:14px; }
 html.anim .rv { opacity:0; transform:translateY(18px); }
-html.anim .rv.seen { opacity:1; transform:none; transition:opacity .6s ease, transform .6s var(--ease); }
+html.anim .rv.seen { opacity:1; transform:none; transition:opacity .6s ease var(--d,0ms), transform .6s var(--ease) var(--d,0ms); }
+.slide.on img { animation:kb 9s ease-out both; }
+@keyframes kb { from { transform:scale(1); } to { transform:scale(1.07); } }
+.roll { animation:roll .4s var(--ease); }
+@keyframes roll { from { transform:translateY(-70%); opacity:0; } }
+.flyer { position:fixed; z-index:70; border-radius:50%; object-fit:cover; pointer-events:none; box-shadow:0 10px 24px rgba(0,0,0,.25); background:var(--brand); }
+/* order again + live strip + install */
+.again { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:22px; padding:16px 18px; border-radius:20px; background:linear-gradient(120deg,#FFF6EC,#FDECEC); border:1px solid #F4DCCB; animation:fade .5s ease; }
+.again .ic { width:46px; height:46px; border-radius:14px; background:#fff; display:grid; place-items:center; color:var(--brand); box-shadow:0 4px 12px rgba(0,0,0,.06); }
+.again .tx { flex:1; min-width:200px; }
+.again b { display:block; font-size:16px; }
+.again small { color:var(--muted); }
+.again .big { width:auto; padding:11px 20px; }
+.live { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:16px; padding:12px 16px; border-radius:16px; color:#fff; background:linear-gradient(110deg,#1B1035,#3D1A5C 60%,#7E090D); box-shadow:0 10px 24px rgba(27,16,53,.25); animation:fade .5s ease; }
+.live .moon { font-size:22px; }
+.live b { font-size:15px; }
+.live small { display:block; opacity:.85; }
+.live button { margin-left:auto; border:0; background:#fff; color:#3D1A5C; border-radius:999px; padding:8px 16px; font-weight:700; }
+.live.soon { background:linear-gradient(110deg,#2A2140,#4A3B66); }
+.install { border:0; background:var(--brand-soft); color:var(--brand); border-radius:999px; padding:8px 14px; font-weight:700; font-size:13px; display:flex; align-items:center; gap:6px; }
+.freebar { background:#fff; border:1px solid #F0EAE4; border-radius:14px; padding:10px 12px; font-size:13px; display:grid; gap:8px; }
+.freebar .track { height:8px; border-radius:999px; background:#F3E8E0; overflow:hidden; }
+.freebar .fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#E8545A,var(--brand)); transition:width .6s var(--ease); }
+.freebar.done { background:#EFFAF3; border-color:#BFE5CF; color:var(--ok); font-weight:600; }
 
 /* ── floating buttons + view cart ── */
 .fab { position:fixed; z-index:26; border:0; display:grid; place-items:center; box-shadow:var(--shadow-lg); transition:transform .25s var(--ease), opacity .25s; }
@@ -333,6 +370,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       <a class="chip phone" id="phoneChip" href="#" hidden><span class="ic"><svg width="16" height="16"><use href="#i-phone"/></svg></span><span id="phoneText"></span></a>
     </div>
     <a class="logo" href="#top" id="logoMark" aria-label="{{ $businessName }}"></a>
+    <button class="install" id="installBtn" type="button" hidden><svg width="14" height="14" aria-hidden="true"><use href="#i-up"/></svg>Install app</button>
     <button class="cartbtn" id="cartBtn" type="button" aria-label="Open cart"><svg width="24" height="24"><use href="#i-cart"/></svg><span class="n" id="cartCount">0</span></button>
   </div>
 </header>
@@ -351,6 +389,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   <form class="sbox" id="sform" role="search"><input id="q" type="search" autocomplete="off" placeholder="Search for Chicken Biryani…" aria-label="Search the menu"><button type="submit" id="qBtn" aria-label="Search"><svg width="18" height="18"><use href="#i-right"/></svg></button></form>
   <div class="status"><span class="pill" id="statusPill"></span><span class="pill" id="etaPill"></span></div>
 </div>
+<div class="wrap" id="liveBox"></div>
 
 <main class="wrap" id="menu" aria-live="polite"></main>
 
@@ -474,12 +513,29 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     return D.status.open && (S.type === 'pickup' ? !!b.pickup : !!b.delivery);
   }
   function etaMin() { var a = area(); return S.type === 'pickup' ? D.settings.pickupEta : (a ? a.eta : D.settings.eta); }
+  // The restaurant's clock (not the phone's): server time at load + the branch's UTC offset.
+  var skew = D.clock ? D.clock.epoch - Date.now() : 0;
+  function shopNow() { return new Date(Date.now() + skew + (D.clock ? D.clock.offset : 0) * 60000); }
+  function shopMin() { var t = shopNow(); return t.getUTCHours() * 60 + t.getUTCMinutes(); }
+  function toMin(h) { var p = String(h || '0:0').split(':'); return (+p[0]) * 60 + (+p[1] || 0); }
+  function inWin(from, to, m) { return from < to ? (m >= from && m < to) : (m >= from || m < to); }
+  function dur(min) { return min >= 60 ? Math.floor(min / 60) + 'h ' + (min % 60) + 'm' : min + ' min'; }
+  function clock12(h) { var m = toMin(h), hh = Math.floor(m / 60) % 24, mm = m % 60; return ((hh % 12) || 12) + ':' + (mm < 10 ? '0' : '') + mm + ' ' + (hh < 12 ? 'AM' : 'PM'); }
+  function minutesToClose() {
+    if (!D.hours) { return null; }
+    var days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'], t = shopNow(), m = shopMin();
+    var today = D.hours[days[t.getUTCDay()]] || {}, yday = D.hours[days[(t.getUTCDay() + 6) % 7]] || {};
+    if (yday.open && yday.close && !yday.closed && toMin(yday.open) > toMin(yday.close) && m < toMin(yday.close)) { return toMin(yday.close) - m; }
+    if (today.open && today.close && !today.closed && inWin(toMin(today.open), toMin(today.close), m)) { return (toMin(today.close) - m + 1440) % 1440; }
+    return null;
+  }
 
   function paintStatus() {
     var p = $('statusPill');
     var open = branchOpen();
     p.className = 'pill ' + (open ? 'open' : 'closed');
-    p.textContent = open ? 'Open now' : 'Closed';
+    var left = open ? minutesToClose() : null;
+    p.textContent = open ? (left !== null && left <= 60 ? 'Open · closes in ' + dur(left) : 'Open now') : (D.status.opens_at ? 'Closed · opens ' + D.status.opens_at : 'Closed');
     $('etaPill').textContent = S.type === 'pickup' ? 'Ready in ' + D.settings.pickupEta + ' min' : 'Delivery in ' + etaMin() + ' min';
     var msg = !D.status.open ? D.status.message : (!open ? (S.type === 'pickup' ? 'Pick-up is not available right now.' : 'Delivery is not available right now.') : '');
     $('notice').hidden = !msg;
@@ -520,12 +576,13 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   function priceHtml(card) { return '<span class="price">' + (card.options.length > 1 ? '<small>From</small>' : '') + money(card.from) + '</span>'; }
   function tagHtml(card) { return card.tag ? '<span class="tag">' + (card.tag === 'hot_selling' ? 'Hot Selling' : card.tag === 'new' ? 'New' : 'Popular') + '</span>' : ''; }
   function cardHtml(card, ci, ii) {
-    return '<div class="card rv" role="button" tabindex="0" data-c="' + ci + '" data-i="' + ii + '" data-name="' + esc(card.name.toLowerCase() + ' ' + (card.description || '').toLowerCase()) + '">' + tagHtml(card) +
+    var words = card.name + ' ' + (card.description || '');
+    return '<div class="card rv" style="--d:' + (ii % 3) * 80 + 'ms" role="button" tabindex="0" data-c="' + ci + '" data-i="' + ii + '" data-name="' + esc(words.toLowerCase()) + '" data-sk="' + esc(skel(words)) + '">' + tagHtml(card) +
       '<span class="txt"><h3>' + esc(card.name) + '</h3><p>' + esc(card.description || '') + '</p>' + priceHtml(card) + '</span>' +
       '<span style="position:relative">' + picHtml(card.thumb) + actHtml(card, ci, ii) + '</span></div>';
   }
   function popularHtml(card, ci, ii, eager) {
-    return '<div class="pcard rv" role="button" tabindex="0" data-c="' + ci + '" data-i="' + ii + '">' + tagHtml(card) +
+    return '<div class="pcard rv" style="--d:' + (ii % 4) * 80 + 'ms" role="button" tabindex="0" data-c="' + ci + '" data-i="' + ii + '">' + tagHtml(card) +
       '<span style="position:relative">' + picHtml(card.img || card.thumb, eager) + actHtml(card, ci, ii) + '</span>' +
       '<h3>' + esc(card.name) + '</h3>' + priceHtml(card) + '</div>';
   }
@@ -536,8 +593,11 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var nav = [], html = [];
     var popular = [];
     menu.forEach(function (c, ci) { c.items.forEach(function (it, ii) { if (it.popular) { popular.push([ci, ii]); } }); });
+    // Best sellers first when "Popular" comes from real sales.
+    popular.sort(function (x, y) { var a = menu[x[0]].items[x[1]].rank, b = menu[y[0]].items[y[1]].rank; return (a === null || a === undefined ? 99 : a) - (b === null || b === undefined ? 99 : b); });
+    html.push('<div id="again"></div>');
     if (popular.length) {
-      html.push('<section class="cat" id="sec-popular" data-popular><div class="phead">' + icon('flame', 34) + '<div><h2>Popular Items</h2><small>Most ordered right now</small></div></div><div class="pgrid">' +
+      html.push('<section class="cat" id="sec-popular" data-popular><div class="phead">' + icon('flame', 34) + '<div><h2>Popular Items</h2><small>' + (D.popularAuto ? 'Most ordered this week' : 'Most ordered right now') + '</small></div></div><div class="pgrid">' +
         popular.slice(0, 8).map(function (p, n) { return popularHtml(menu[p[0]].items[p[1]], p[0], p[1], n < 4); }).join('') + '</div></section>');
     }
     menu.forEach(function (c, ci) {
@@ -547,12 +607,14 @@ label.f span.req::after { content:" *"; color:var(--brand); }
         c.items.map(function (it, ii) { return cardHtml(it, ci, ii); }).join('') + '</div></section>');
     });
     html.push('<p class="noresult" id="noResult" hidden></p>');
-    $('nav').innerHTML = nav.join('');
+    $('nav').innerHTML = '<span class="ind" id="catInd" aria-hidden="true"></span>' + nav.join('');
     $('menu').innerHTML = menu.length ? html.join('') : '<p class="empty">The menu is being prepared. Please check back soon.</p>';
     observe();
     catArrows();
     applySearch();
     placeholders();
+    paintAgain();
+    paintLive();
   }
   // Repaint only the "+" / quantity controls after a cart change — the menu itself stays put.
   function paintSteppers() {
@@ -579,12 +641,22 @@ label.f span.req::after { content:" *"; color:var(--brand); }
         document.querySelectorAll('#nav a').forEach(function (a) {
           var on = a.getAttribute('data-sec') === e.target.id;
           a.classList.toggle('on', on);
-          if (on) { var t = $('nav'); t.scrollTo({ left: a.offsetLeft - t.clientWidth / 2 + a.clientWidth / 2, behavior: reduce ? 'auto' : 'smooth' }); }
+          if (on) { moveInd(a); var t = $('nav'); t.scrollTo({ left: a.offsetLeft - t.clientWidth / 2 + a.clientWidth / 2, behavior: reduce ? 'auto' : 'smooth' }); }
         });
       });
     }, { rootMargin: '-80px 0px -65% 0px' });
     document.querySelectorAll('section.cat').forEach(function (s) { spyObs.observe(s); });
   }
+
+  function moveInd(a) {
+    var ind = $('catInd');
+    if (!ind || !a) { return; }
+    ind.style.width = a.offsetWidth + 'px';
+    ind.style.transform = 'translateX(' + a.offsetLeft + 'px)';
+    ind.classList.add('on');
+    $('nav').classList.add('has-ind');
+  }
+  window.addEventListener('resize', function () { moveInd(document.querySelector('#nav a.on')); });
 
   // ── category bar arrows (owner: "category next button") ──
   function catArrows() {
@@ -598,16 +670,28 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   $('catR').addEventListener('click', function () { $('nav').scrollBy({ left: $('nav').clientWidth * 0.6, behavior: 'smooth' }); });
 
   // ── live search (results while typing, grouped by section) ──
+  // Forgiving spelling: "biriyani", "brayani" and "burgr" find Biryani and Burger (consonant skeleton per word).
+  function skel(s) {
+    return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter(Boolean)
+      .map(function (w) { return w.charAt(0) + w.slice(1).replace(/[aeiouyh]/g, '').replace(/(.)\1+/g, '$1'); }).join(' ');
+  }
+  function fuzzy(card, q) {
+    if (card.getAttribute('data-name').indexOf(q) !== -1) { return true; }
+    var have = (card.getAttribute('data-sk') || '').split(' ');
+    var want = skel(q).split(' ').filter(function (w) { return w.length >= 2; });
+    return want.length > 0 && want.every(function (w) { return have.some(function (h) { return h.indexOf(w) === 0; }); });
+  }
   function applySearch() {
     var q = ($('q').value || '').trim().toLowerCase();
     var any = false;
     document.querySelectorAll('#menu section.cat').forEach(function (sec) {
       if (sec.hasAttribute('data-popular')) { sec.hidden = !!q; return; }
       var hits = 0;
-      sec.querySelectorAll('.card').forEach(function (c) { var on = !q || c.getAttribute('data-name').indexOf(q) !== -1; c.hidden = !on; if (on) { hits++; c.classList.add('seen'); } });
+      sec.querySelectorAll('.card').forEach(function (c) { var on = !q || fuzzy(c, q); c.hidden = !on; if (on) { hits++; c.classList.add('seen'); } });
       sec.hidden = !!q && !hits;
       if (hits) { any = true; }
     });
+    var ag = $('again'); if (ag) { ag.hidden = !!q; }
     var nr = $('noResult');
     if (nr) { nr.hidden = !q || any; nr.textContent = 'Nothing matches “' + q + '”. Try another name.'; }
   }
@@ -637,12 +721,36 @@ label.f span.req::after { content:" *"; color:var(--brand); }
 
   // ── card taps: details, "+" and the quantity control ──
   function at(code) { var p = code.split(':'); return { card: menu[+p[0]].items[+p[1]] }; }
-  function addSimple(card) {
+  // The item's picture flies into the cart; a light tap on phones.
+  function fly(fromEl) {
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) { /* not allowed */ } }
+    if (reduce || !fromEl || !fromEl.getBoundingClientRect || !Element.prototype.animate) { bumpCart(); return; }
+    var target = [$('fcart'), $('cartBtn')].filter(function (el) { var r = el.getBoundingClientRect(); return r.width && r.top >= 0 && r.bottom <= innerHeight && !el.classList.contains('off'); })[0] || $('cartBtn');
+    var a = fromEl.getBoundingClientRect(), b = target.getBoundingClientRect();
+    if (!a.width) { bumpCart(); return; }
+    var src = fromEl.tagName === 'IMG' ? fromEl : fromEl.querySelector('img');
+    var f = document.createElement(src ? 'img' : 'div');
+    if (src) { f.src = src.currentSrc || src.src; f.alt = ''; }
+    f.className = 'flyer';
+    var size = Math.min(a.width, a.height, 110);
+    f.style.left = (a.left + a.width / 2 - size / 2) + 'px'; f.style.top = (a.top + a.height / 2 - size / 2) + 'px';
+    f.style.width = size + 'px'; f.style.height = size + 'px';
+    document.body.appendChild(f);
+    var dx = b.left + b.width / 2 - (a.left + a.width / 2), dy = b.top + b.height / 2 - (a.top + a.height / 2);
+    var anim = f.animate([
+      { transform: 'translate(0,0) scale(1)', opacity: 1 },
+      { transform: 'translate(' + dx * 0.45 + 'px,' + (dy * 0.45 - 90) + 'px) scale(.55)', opacity: 0.95, offset: 0.5 },
+      { transform: 'translate(' + dx + 'px,' + dy + 'px) scale(.12)', opacity: 0.4 }
+    ], { duration: 720, easing: 'cubic-bezier(.5,0,.25,1)' });
+    anim.onfinish = function () { f.remove(); bumpCart(); };
+  }
+  function addSimple(card, fromEl) {
     var o = card.options[0];
     var key = o.id + '||';
     var ex = S.cart.find(function (l) { return l.key === key; });
     if (ex) { ex.qty = Math.min(50, ex.qty + 1); } else { S.cart.push({ key: key, option: o.id, name: card.name, label: o.label, unit: o.price, qty: 1, addons: [], note: '' }); }
-    save(); paintCart(); bumpCart();
+    fly(fromEl);
+    save(); paintCart();
   }
   function minusCard(card) {
     var ids = card.options.map(function (o) { return o.id; });
@@ -656,7 +764,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   }
   $('menu').addEventListener('click', function (e) {
     var plus = e.target.closest('[data-plus]'), minus = e.target.closest('[data-minus]');
-    if (plus) { var c = at(plus.getAttribute('data-plus')).card; if (simple(c)) { addSimple(c); } else { openItem(c); } return; }
+    if (plus) { var c = at(plus.getAttribute('data-plus')).card; var holder = plus.closest('[data-c]'); if (simple(c)) { addSimple(c, holder && holder.querySelector('.ph')); } else { openItem(c); } return; }
     if (minus) { minusCard(at(minus.getAttribute('data-minus')).card); return; }
     var b = e.target.closest('[data-c]');
     if (b) { openItem(menu[+b.getAttribute('data-c')].items[+b.getAttribute('data-i')]); }
@@ -858,9 +966,15 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     if (ex) { ex.qty = Math.min(50, ex.qty + curQty); } else {
       S.cart.push({ key: key, option: o.id, name: cur.name, label: o.label, unit: o.price + adds.reduce(function (s, a) { return s + a.price; }, 0), qty: curQty, addons: adds, note: note });
     }
+    var heroPic = $('itemBody').querySelector('.hero-img') || $('addBtn');
+    var rect = heroPic.getBoundingClientRect();
     save();
     if (backToCart) { openCart(); } else { hide(); }
-    paintCart(); bumpCart();
+    paintCart();
+    // fly from where the picture was (the sheet is closing)
+    var ghost = document.createElement('div'); ghost.style.cssText = 'position:fixed;left:' + rect.left + 'px;top:' + rect.top + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;pointer-events:none';
+    if (heroPic.tagName === 'IMG') { var gi = document.createElement('img'); gi.src = heroPic.currentSrc || heroPic.src; ghost.appendChild(gi); }
+    document.body.appendChild(ghost); fly(ghost); setTimeout(function () { ghost.remove(); }, 50);
   });
 
   // ── cart ──
@@ -877,9 +991,9 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   }
   function paintCart() {
     var n = count();
-    $('cartCount').textContent = n;
-    $('fcartCount').textContent = n;
-    $('barCount').textContent = n;
+    if (String(n) !== $('cartCount').textContent) {
+      ['cartCount', 'fcartCount', 'barCount'].forEach(function (id) { var el = $(id); el.textContent = n; el.classList.remove('roll'); void el.offsetWidth; el.classList.add('roll'); });
+    }
     $('barTotal').textContent = money(subtotal());
     paintBar();
     onScroll();
@@ -922,6 +1036,11 @@ label.f span.req::after { content:" *"; color:var(--brand); }
         (l.note ? '<small>“' + esc(l.note) + '”</small>' : '') + '<div class="pr"><span>' + money(l.unit) + '</span></div></div>' +
         '<span class="step"><button type="button" data-q="' + i + '" data-d="-1" aria-label="' + (l.qty === 1 ? 'Remove' : 'One less') + '">' + icon(l.qty === 1 ? 'trash' : 'minus') + '</button><b>' + l.qty + '</b><button type="button" data-q="' + i + '" data-d="1" aria-label="One more">' + icon('plus') + '</button></span></div>';
     });
+    if (S.type === 'delivery' && a && a.freeAbove) {
+      var pct = Math.min(100, Math.round(subtotal() / a.freeAbove * 100));
+      h.push(subtotal() >= a.freeAbove ? '<div class="freebar done">🎉 Free delivery unlocked</div>'
+        : '<div class="freebar"><span>Add <b>' + money(a.freeAbove - subtotal()) + '</b> more for <b>free delivery</b></span><span class="track"><span class="fill" style="width:' + pct + '%"></span></span></div>');
+    }
     h.push('<button type="button" class="addmore" id="addMore">' + icon('plus') + 'Add more items</button>');
     h.push(upsells());
     var sub = subtotal(), f = fee();
@@ -931,7 +1050,6 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var warns = [];
     if (S.type === 'delivery' && !a) { warns.push('Choose your delivery area to see the delivery fee.'); }
     if (a && a.min && sub < a.min) { warns.push('Minimum order for ' + esc(a.name) + ' is ' + money(a.min) + '.'); }
-    if (a && a.freeAbove && sub < a.freeAbove) { warns.push('Free delivery above ' + money(a.freeAbove) + '.'); }
     if (!branchOpen()) { warns.push(esc(D.status.message || 'We are not taking orders right now.')); }
     $('cartBody').innerHTML = h.join('') + warns.map(function (w) { return '<div class="warn">' + w + '</div>'; }).join('');
     var blocked = !branchOpen() || (S.type === 'delivery' && !a) || (a && a.min && sub < a.min);
@@ -944,7 +1062,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var rail = e.target.closest('[data-rail]');
     if (rail) { $('rail').scrollBy({ left: +rail.getAttribute('data-rail') * 200, behavior: 'smooth' }); return; }
     var up = e.target.closest('[data-up]');
-    if (up) { var c = at(up.getAttribute('data-up')).card; if (simple(c)) { addSimple(c); } else { openItem(c, true); } return; }
+    if (up) { var c = at(up.getAttribute('data-up')).card; if (simple(c)) { addSimple(c, up.querySelector('.ph')); } else { openItem(c, true); } return; }
     var b = e.target.closest('[data-q]');
     if (!b) { return; }
     var l = S.cart[+b.getAttribute('data-q')];
@@ -1049,6 +1167,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (res.ok) {
+          S.last = { lines: S.cart.slice(0, 30), at: Date.now() };
           S.cart = []; S.pendingKey = null; S.lastOrder = res.j.status_url; save();
           location.href = res.j.status_url;
           return;
@@ -1067,6 +1186,88 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     if (window.crypto && crypto.randomUUID) { return crypto.randomUUID(); }
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (ch) {
       var r = Math.random() * 16 | 0; return (ch === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  // ── order again: last order at today's prices; missing items are left out (and said so) ──
+  function againLines() {
+    if (!S.last || !S.last.lines) { return { lines: [], missing: 0 }; }
+    var missing = 0;
+    var lines = S.last.lines.map(function (l) {
+      var ref = byOption[l.option];
+      var o = ref ? ref.card.options.filter(function (x) { return x.id === l.option; })[0] : null;
+      if (!o) { missing++; return null; }
+      var adds = [], ok = true;
+      (l.addons || []).forEach(function (a) {
+        var g = (o.addons || []).filter(function (x) { return x.id === a.g; })[0];
+        var m = g ? g.options.filter(function (x) { return x.id === a.id; })[0] : null;
+        if (m) { adds.push({ g: g.id, id: m.id, name: m.name, price: m.price }); } else { ok = false; }
+      });
+      if (!ok) { missing++; return null; }
+      return { key: l.key, option: o.id, name: ref.card.name, label: o.label, unit: o.price + adds.reduce(function (s, a) { return s + a.price; }, 0), qty: l.qty, addons: adds, note: l.note || '' };
+    }).filter(Boolean);
+    return { lines: lines, missing: missing };
+  }
+  function paintAgain() {
+    var box = $('again');
+    if (!box) { return; }
+    var g = againLines();
+    if (!g.lines.length || S.cart.length) { box.innerHTML = ''; return; }
+    var total = g.lines.reduce(function (s, l) { return s + l.unit * l.qty; }, 0);
+    var list = g.lines.slice(0, 3).map(function (l) { return l.qty + '× ' + esc(l.name) + (l.label ? ' (' + esc(l.label) + ')' : ''); }).join(', ') + (g.lines.length > 3 ? ' +' + (g.lines.length - 3) + ' more' : '');
+    box.innerHTML = '<div class="again"><span class="ic">' + icon('bag', 22) + '</span><span class="tx"><b>Order again</b><small>' + list + ' · ' + money(total) + (g.missing ? ' · some items from last time are not available' : '') + '</small></span>' +
+      '<button type="button" class="big" id="againBtn">Add to cart ' + icon('right', 16) + '</button></div>';
+    $('againBtn').addEventListener('click', function () {
+      g.lines.forEach(function (l) { var ex = S.cart.filter(function (x) { return x.key === l.key; })[0]; if (ex) { ex.qty = Math.min(50, ex.qty + l.qty); } else { S.cart.push(l); } });
+      fly(box.querySelector('.ic'));
+      save(); paintCart(); paintAgain(); openCart();
+    });
+  }
+
+  // ── Midnight Deals (any time-windowed section): live strip with countdown, or "starts at" ──
+  var liveSeen = {};
+  function paintLive() {
+    var box = $('liveBox'), m = shopMin(), out = '', refresh = false;
+    (D.windows || []).forEach(function (w) {
+      var from = toMin(w.from), to = toMin(w.to), live = inWin(from, to, m);
+      var link = document.querySelector('#nav a[data-sec="sec-' + w.id + '"]');
+      if (link && !link.querySelector('.lv') && live) { link.insertAdjacentHTML('beforeend', '<i class="lv" aria-label="live"></i>'); }
+      if (live) {
+        if (!document.getElementById('sec-' + w.id)) { refresh = refresh || !liveSeen[w.id]; }
+        liveSeen[w.id] = true;
+        out += '<div class="live"><span class="moon" aria-hidden="true">🌙</span><span><b>' + esc(w.name) + ' — live now</b><small>Ends in ' + dur((to - m + 1440) % 1440) + ' · until ' + clock12(w.to) + '</small></span>' +
+          '<button type="button" data-live="' + w.id + '">See deals</button></div>';
+      } else {
+        if (liveSeen[w.id] && document.getElementById('sec-' + w.id)) { refresh = true; }
+        liveSeen[w.id] = false;
+        var wait = (from - m + 1440) % 1440;
+        if (wait <= 240) { out += '<div class="live soon"><span class="moon" aria-hidden="true">🌙</span><span><b>' + esc(w.name) + ' start at ' + clock12(w.from) + '</b><small>In ' + dur(wait) + '</small></span></div>'; }
+      }
+    });
+    box.innerHTML = out;
+    // A window opened (or closed) while the page was open — fetch the menu for the new time.
+    if (refresh) {
+      fetch(D.endpoints.menu + '?branch=' + menuBranch, { headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function (j) { menu = j.menu; renderMenu(); paintCart(); }).catch(function () { /* keep */ });
+    }
+  }
+  $('liveBox').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-live]');
+    var sec = b && document.getElementById('sec-' + b.getAttribute('data-live'));
+    if (sec) { sec.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' }); }
+  });
+  setInterval(function () { paintLive(); paintStatus(); }, 30000);
+
+  // ── install as an app (only on the restaurant's own domain) ──
+  var installEvt = null;
+  if (D.installable && 'serviceWorker' in navigator) {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () { /* fine without */ }); });
+    window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEvt = e; $('installBtn').hidden = false; });
+    $('installBtn').addEventListener('click', function () {
+      if (!installEvt) { return; }
+      installEvt.prompt();
+      installEvt.userChoice.then(function () { installEvt = null; $('installBtn').hidden = true; });
     });
   }
 

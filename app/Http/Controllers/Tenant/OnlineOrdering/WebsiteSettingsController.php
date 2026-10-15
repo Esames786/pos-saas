@@ -177,6 +177,7 @@ class WebsiteSettingsController extends Controller
             'instagram_url' => ['nullable', 'url', 'max:255'],
             'about_text' => ['nullable', 'string', 'max:2000'],
             'upsell_category_id' => ['nullable', 'integer', 'exists:tenant.categories,id'],
+            'popular_auto' => ['nullable', 'boolean'],
         ]);
 
         $settings = WebSetting::tenantDefault();
@@ -191,6 +192,7 @@ class WebsiteSettingsController extends Controller
             'instagram_url' => $data['instagram_url'] ?? null,
             'about_text' => $data['about_text'] ?? null,
             'upsell_category_id' => $data['upsell_category_id'] ?? null,
+            'popular_auto' => $request->boolean('popular_auto'),
         ]);
         if ($request->boolean('remove_logo')) {
             $branding->removeLogo($settings);

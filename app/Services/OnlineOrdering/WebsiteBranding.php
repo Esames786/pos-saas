@@ -17,14 +17,15 @@ class WebsiteBranding
     public function setLogo(WebSetting $settings, string $sourcePath, string $tenantCode): void
     {
         $paths = $this->images->storeWidths($sourcePath, $tenantCode, 'logo', [320], 85);
+        $this->images->storeSquarePngs($sourcePath, self::iconBase($paths[320]), [192, 512]);
         $old = $settings->logo_path;
         $settings->update(['logo_path' => $paths[320]]);
-        $this->images->deleteFiles([$old]);
+        $this->images->deleteFiles(self::logoFiles($old));
     }
 
     public function removeLogo(WebSetting $settings): void
     {
-        $this->images->deleteFiles([$settings->logo_path]);
+        $this->images->deleteFiles(self::logoFiles($settings->logo_path));
         $settings->update(['logo_path' => null]);
     }
 
@@ -65,6 +66,18 @@ class WebsiteBranding
         $item = array_splice($banners, $from, 1);
         array_splice($banners, $to, 0, $item);
         $settings->update(['banners' => $banners]);
+    }
+
+    /** logo-abc-320.webp → logo-abc (us ke app icons logo-abc-192.png / -512.png). */
+    public static function iconBase(string $logoPath): string
+    {
+        return (string) preg_replace('/-320\.webp$/', '', $logoPath);
+    }
+
+    /** @return list<string|null> */
+    private static function logoFiles(?string $logoPath): array
+    {
+        return $logoPath ? [$logoPath, self::iconBase($logoPath).'-192.png', self::iconBase($logoPath).'-512.png'] : [];
     }
 
     /** Customer ke page ke liye: urls. */

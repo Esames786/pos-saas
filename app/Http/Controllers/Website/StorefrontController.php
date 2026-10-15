@@ -68,7 +68,15 @@ class StorefrontController extends Controller
             ])->values(),
             'branches' => $branches->map(fn ($b) => ['id' => $b->id, 'name' => $b->name, 'address' => $b->address])->values(),
             'menuBranch' => $branchId,
-            'menu' => $this->present($menu->menu($branchId, $this->hhmm($clock, $branches->firstWhere('id', $branchId)))),
+            'menu' => $this->present($this->best($settings, $menu->menu($branchId, $this->hhmm($clock, $branches->firstWhere('id', $branchId))), $branchId)),
+            'popularAuto' => (bool) ($settings->popular_auto ?? true),
+            // Restaurant ki ghari ("closes in 20 min", Midnight Deals ka countdown) — customer ke phone ki ghari nahi.
+            'clock' => ['epoch' => (int) floor(microtime(true) * 1000), 'offset' => $this->offsetMinutes($clock, $branches->firstWhere('id', $branchId))],
+            'hours' => $settings->hours ?: WebSetting::defaultHours(),
+            'windows' => \App\Models\Tenant\Category::where('show_on_website', true)->where('is_active', true)->whereNotNull('website_visible_from')->whereNotNull('website_visible_to')
+                ->get()->map(fn ($c) => ['id' => $c->id, 'name' => $c->website_name ?: $c->name, 'from' => substr((string) $c->website_visible_from, 0, 5), 'to' => substr((string) $c->website_visible_to, 0, 5)])->values(),
+            // "Add to home screen" sirf client ke apne domain par (wahan poora origin website hai — POS nahi).
+            'installable' => $request->attributes->get('tenant_domain_kind') === \App\Models\Master\TenantDomain::KIND_WEBSITE,
             'endpoints' => ['menu' => url('/order/menu.json'), 'checkout' => url('/order/checkout'), 'locate' => url('/order/locate')],
             'banners' => WebsiteBranding::bannerUrls($settings),
             'upsellCategory' => $settings->upsell_category_id,
@@ -99,7 +107,7 @@ class StorefrontController extends Controller
         $branch = Branch::where('status', 'active')->find((int) $request->query('branch'));
         abort_unless($branch, 404);
 
-        return response()->json(['branch' => $branch->id, 'menu' => $this->present($menu->menu($branch->id, $this->hhmm($clock, $branch)))])
+        return response()->json(['branch' => $branch->id, 'menu' => $this->present($this->best(WebSetting::tenantDefault(), $menu->menu($branch->id, $this->hhmm($clock, $branch)), $branch->id))])
             ->header('Cache-Control', 'no-store');
     }
 
@@ -258,6 +266,7 @@ class StorefrontController extends Controller
                 'thumb' => $url($card['image_path'] && str_starts_with($card['image_path'], 'web-menu/') ? WebImageService::thumb($card['image_path']) : $card['image_path']),
                 'tag' => $card['tag'],
                 'popular' => $card['popular'],
+                'rank' => $card['popular_rank'] ?? null,
                 'from' => $card['from_price'],
                 'options' => array_map(fn ($o) => [
                     'id' => $o['kind'].':'.$o['pos_id'],
@@ -276,5 +285,62 @@ class StorefrontController extends Controller
         $intl = $raw ? \App\Services\OnlineOrdering\WebsiteOrderNotifier::international((string) $raw) : '';
 
         return preg_match('/^923\d{9}$/', $intl) ? $intl : null;
+    }
+    /** "Popular Items" asli bikri se jab setting on ho (default). */
+    private function best(WebSetting $settings, array $menu, int $branchId): array
+    {
+        return ($settings->popular_auto ?? true) ? app(\App\Services\OnlineOrdering\WebBestSellers::class)->apply($menu, $branchId) : $menu;
+    }
+
+    private function offsetMinutes(TenantClock $clock, ?Branch $branch): int
+    {
+        return (int) round(\Carbon\CarbonImmutable::now($clock->businessTimezone($branch))->utcOffset());
+    }
+
+    /** "Add to home screen" ka manifest — naam, logo, rang tenant ke. */
+    public function manifest()
+    {
+        abort_unless(OnlineOrdering::enabledForTenant(), 404);
+        $settings = WebSetting::tenantDefault();
+        $name = (string) app('tenant')->business_name;
+        $icons = [];
+        if ($settings->logo_path) {
+            $base = \App\Services\OnlineOrdering\WebsiteBranding::iconBase($settings->logo_path);
+            foreach ([192, 512] as $size) {
+                if (\Illuminate\Support\Facades\Storage::disk('public')->exists($base.'-'.$size.'.png')) {
+                    $icons[] = ['src' => asset('storage/'.$base.'-'.$size.'.png'), 'sizes' => $size.'x'.$size, 'type' => 'image/png', 'purpose' => 'any'];
+                }
+            }
+        }
+
+        return response()->json([
+            'name' => $name, 'short_name' => mb_substr($name, 0, 12),
+            'start_url' => url('/').'/?source=app', 'scope' => url('/').'/', 'display' => 'standalone',
+            'background_color' => '#FFFFFF', 'theme_color' => '#A60D12', 'icons' => $icons,
+        ])->header('Content-Type', 'application/manifest+json')->header('Cache-Control', 'public, max-age=3600');
+    }
+
+    /**
+     * Service worker — sirf menu ki tasveerein aur fonts yaad rakhta hai (dobara kholne par foran). Orders,
+     * checkout, status: kabhi nahi chhuta — seedha server. Sirf client ke apne domain par register hota hai.
+     */
+    public function serviceWorker()
+    {
+        $js = <<<'JS'
+const CACHE = 'web-img-v1';
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', (e) => {
+  const r = e.request;
+  if (r.method !== 'GET') { return; }
+  const u = new URL(r.url);
+  const img = u.origin === location.origin && /^\/storage\/web-(menu|site)\//.test(u.pathname);
+  const font = /fonts\.(googleapis|gstatic)\.com$/.test(u.hostname);
+  if (!img && !font) { return; }
+  e.respondWith(caches.open(CACHE).then((c) => c.match(r).then((hit) => hit || fetch(r).then((res) => { if (res.ok || res.type === 'opaque') { c.put(r, res.clone()); } return res; }))));
+});
+JS;
+
+        return response($js, 200, ['Content-Type' => 'application/javascript', 'Cache-Control' => 'no-cache', 'Service-Worker-Allowed' => '/']);
     }
 }

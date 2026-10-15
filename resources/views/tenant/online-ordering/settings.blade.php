@@ -283,6 +283,13 @@
                     <div class="form-text">Items from this category are suggested in the cart, e.g. Raita &amp; Salad.</div>
                 </div>
                 <div class="col-md-12">
+                    <div class="form-check form-switch">
+                        <input type="checkbox" value="1" name="popular_auto" id="popular-auto" class="form-check-input" {{ old('popular_auto', $settings->popular_auto ?? true) ? 'checked' : '' }}>
+                        <label class="form-check-label" for="popular-auto">"Popular Items" = your best sellers of the last 7 days (automatic)</label>
+                    </div>
+                    <div class="form-text">Off = the items you tick as "Popular" on the product and deal screens.</div>
+                </div>
+                <div class="col-md-12">
                     <label class="form-label" for="contact-address">Address (footer)</label>
                     <input type="text" name="contact_address" id="contact-address" class="form-control" maxlength="255" value="{{ old('contact_address', $settings->contact_address) }}">
                 </div>

@@ -129,6 +129,7 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
         ->middleware('throttle:60,1')->name('website.order.menu');
     Route::get('/order/locate', [\App\Http\Controllers\Website\StorefrontController::class, 'locate'])
         ->middleware('throttle:20,1')->name('website.order.locate');
+    Route::get('/order/manifest.webmanifest', [\App\Http\Controllers\Website\StorefrontController::class, 'manifest'])->name('website.order.manifest');
     Route::post('/order/checkout', [\App\Http\Controllers\Website\StorefrontController::class, 'checkout'])
         ->middleware('throttle:10,1')->name('website.order.checkout');
     Route::get('/order/status/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'status'])
@@ -1258,6 +1259,9 @@ Route::middleware(['website.host'])->group(function () {
         ->middleware('throttle:60,1')->name('website.domain.menu');
     Route::get('/order/locate', [\App\Http\Controllers\Website\StorefrontController::class, 'locate'])
         ->middleware('throttle:20,1')->name('website.domain.locate');
+    Route::get('/order/manifest.webmanifest', [\App\Http\Controllers\Website\StorefrontController::class, 'manifest'])->name('website.domain.manifest');
+    // "Add to home screen": sirf client ke domain par — wahan poora origin website hai, POS nahi.
+    Route::get('/sw.js', [\App\Http\Controllers\Website\StorefrontController::class, 'serviceWorker'])->name('website.domain.sw');
     Route::post('/order/checkout', [\App\Http\Controllers\Website\StorefrontController::class, 'checkout'])
         ->middleware('throttle:10,1')->name('website.domain.checkout');
     Route::get('/order/status/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'status'])

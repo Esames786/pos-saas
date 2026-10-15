@@ -74,6 +74,35 @@ class WebImageService
         return $out;
     }
 
+    /**
+     * App icon ("Add to home screen"): chaukor PNG, beech se kata. Path diye gaye naam par, masalan
+     * logo-abc-192.png — logo ke saath bante aur mit-te hain.
+     *
+     * @param  list<int>  $sizes
+     */
+    public function storeSquarePngs(string $sourcePath, string $basePath, array $sizes): void
+    {
+        $bytes = @file_get_contents($sourcePath);
+        $src = $bytes !== false ? @imagecreatefromstring($bytes) : false;
+        if (! $src) {
+            return;
+        }
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $side = min($w, $h);
+        foreach ($sizes as $size) {
+            $dst = imagecreatetruecolor($size, $size);
+            imagealphablending($dst, false);
+            imagesavealpha($dst, true);
+            imagecopyresampled($dst, $src, 0, 0, (int) (($w - $side) / 2), (int) (($h - $side) / 2), $size, $size, $side, $side);
+            ob_start();
+            imagepng($dst, null, 8);
+            Storage::disk('public')->put($basePath.'-'.$size.'.png', (string) ob_get_clean());
+            imagedestroy($dst);
+        }
+        imagedestroy($src);
+    }
+
     /** @param  list<string|null>  $paths */
     public function deleteFiles(array $paths): void
     {
