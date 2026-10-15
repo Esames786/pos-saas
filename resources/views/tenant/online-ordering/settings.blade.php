@@ -216,4 +216,93 @@
         <button class="btn btn-primary">Save website settings</button>
     @endcan
 </form>
+
+{{-- ONLINE-ORDERING-1: website ki shakl — logo, banner slides, footer, cart ka "Popular with your order". --}}
+@php $banners = array_values((array) ($settings->banners ?? [])); @endphp
+<form method="POST" action="{{ url('/online-ordering/settings') }}" enctype="multipart/form-data" class="mt-4" id="branding">
+    @csrf
+    @method('PUT')
+    <input type="hidden" name="section" value="branding">
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="mb-1">Website look</h5>
+            <p class="text-muted small mb-3">Logo, banner slides and the footer of your ordering website. Pictures are made small automatically so the site stays fast.</p>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label" for="logo">Logo</label>
+                    @if($settings->logo_path)
+                        <div class="d-flex align-items-center gap-3 mb-2">
+                            <img src="{{ asset('storage/'.$settings->logo_path) }}" alt="Current logo" style="width:64px;height:64px;object-fit:cover;border-radius:50%">
+                            <div class="form-check">
+                                <input type="checkbox" value="1" name="remove_logo" id="remove-logo" class="form-check-input">
+                                <label class="form-check-label" for="remove-logo">Remove</label>
+                            </div>
+                        </div>
+                    @endif
+                    <input type="file" name="logo" id="logo" class="form-control" accept="image/png,image/jpeg,image/webp">
+                    <div class="form-text">Square picture. Also shown on items that have no photo.</div>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label" for="banners">Banner slides <span class="text-muted">({{ count($banners) }} of {{ \App\Services\OnlineOrdering\WebsiteBranding::MAX_BANNERS }})</span></label>
+                    @if($banners)
+                        <div class="d-flex flex-wrap gap-2 mb-2">
+                            @foreach($banners as $i => $b)
+                                <div class="border rounded p-1 text-center" style="width:180px">
+                                    <img src="{{ asset('storage/'.($b['sm'] ?? $b['path'])) }}" alt="Banner {{ $i + 1 }}" style="width:100%;aspect-ratio:16/5;object-fit:cover;border-radius:4px">
+                                    <div class="d-flex justify-content-between align-items-center mt-1 small">
+                                        <span class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-secondary" name="move_banner" value="{{ $i }}:up" {{ $i === 0 ? 'disabled' : '' }} aria-label="Move left">&lsaquo;</button>
+                                            <button class="btn btn-outline-secondary" name="move_banner" value="{{ $i }}:down" {{ $i === count($banners) - 1 ? 'disabled' : '' }} aria-label="Move right">&rsaquo;</button>
+                                        </span>
+                                        <label class="form-check-label"><input type="checkbox" class="form-check-input me-1" name="remove_banners[]" value="{{ $i }}">Remove</label>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+                    <input type="file" name="banners[]" id="banners" class="form-control" accept="image/png,image/jpeg,image/webp" multiple>
+                    <div class="form-text">Wide pictures (about 3.2 : 1, e.g. 1920 × 600). They slide on top of the menu.</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="whatsapp-number">WhatsApp button number</label>
+                    <input type="text" name="whatsapp_number" id="whatsapp-number" class="form-control" maxlength="40" value="{{ old('whatsapp_number', $settings->whatsapp_number) }}" placeholder="0321 0000000">
+                    <div class="form-text">Green chat button on the website. Empty = no button.</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="contact-email">Email</label>
+                    <input type="email" name="contact_email" id="contact-email" class="form-control" maxlength="150" value="{{ old('contact_email', $settings->contact_email) }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="upsell-category">"Popular with your order" in the cart</label>
+                    <select name="upsell_category_id" id="upsell-category" class="form-select">
+                        <option value="">— None —</option>
+                        @foreach($categories as $c)
+                            <option value="{{ $c->id }}" {{ (int) old('upsell_category_id', $settings->upsell_category_id) === $c->id ? 'selected' : '' }}>{{ $c->name }}</option>
+                        @endforeach
+                    </select>
+                    <div class="form-text">Items from this category are suggested in the cart, e.g. Raita &amp; Salad.</div>
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label" for="contact-address">Address (footer)</label>
+                    <input type="text" name="contact_address" id="contact-address" class="form-control" maxlength="255" value="{{ old('contact_address', $settings->contact_address) }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="facebook-url">Facebook page</label>
+                    <input type="url" name="facebook_url" id="facebook-url" class="form-control" maxlength="255" value="{{ old('facebook_url', $settings->facebook_url) }}" placeholder="https://facebook.com/…">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="instagram-url">Instagram</label>
+                    <input type="url" name="instagram_url" id="instagram-url" class="form-control" maxlength="255" value="{{ old('instagram_url', $settings->instagram_url) }}" placeholder="https://instagram.com/…">
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label" for="about-text">About text (footer, helps Google)</label>
+                    <textarea name="about_text" id="about-text" class="form-control" rows="3" maxlength="2000">{{ old('about_text', $settings->about_text) }}</textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+    @can('tenant.online-ordering.settings.update')
+        <button class="btn btn-primary">Save website look</button>
+    @endcan
+</form>
 @endsection

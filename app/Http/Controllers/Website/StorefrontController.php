@@ -10,6 +10,7 @@ use App\Models\Tenant\WebSetting;
 use App\Services\OnlineOrdering\WebImageService;
 use App\Services\OnlineOrdering\WebMenuService;
 use App\Services\OnlineOrdering\WebsiteAvailability;
+use App\Services\OnlineOrdering\WebsiteBranding;
 use App\Support\OnlineOrdering;
 use App\Support\TenantClock;
 use Carbon\CarbonImmutable;
@@ -42,7 +43,15 @@ class StorefrontController extends Controller
             'business' => [
                 'name' => $tenant->business_name,
                 'phone' => $settings->contact_phone,
-                'logo' => ($logo = ReceiptLayoutSetting::whereNotNull('logo_path')->value('logo_path')) ? asset('storage/'.$logo) : null,
+                // Website ka apna logo (Website Settings → Website look), warna receipt wala.
+                'logo' => $settings->logo_path ? asset('storage/'.$settings->logo_path)
+                    : (($logo = ReceiptLayoutSetting::whereNotNull('logo_path')->value('logo_path')) ? asset('storage/'.$logo) : null),
+                'whatsapp' => $this->whatsapp($settings),
+                'email' => $settings->contact_email,
+                'address' => $settings->contact_address,
+                'facebook' => $settings->facebook_url,
+                'instagram' => $settings->instagram_url,
+                'about' => $settings->about_text,
             ],
             'status' => $availability->status($settings),
             'settings' => [
@@ -61,6 +70,8 @@ class StorefrontController extends Controller
             'menuBranch' => $branchId,
             'menu' => $this->present($menu->menu($branchId, $this->hhmm($clock, $branches->firstWhere('id', $branchId)))),
             'endpoints' => ['menu' => url('/order/menu.json'), 'checkout' => url('/order/checkout'), 'locate' => url('/order/locate')],
+            'banners' => WebsiteBranding::bannerUrls($settings),
+            'upsellCategory' => $settings->upsell_category_id,
         ];
 
         return response()
@@ -256,5 +267,14 @@ class StorefrontController extends Controller
                 ], $card['options']),
             ], $c['items']),
         ], $menu);
+    }
+
+    /** WhatsApp button: apna number, warna contact number agar mobile ho (03…). wa.me ko 92… chahiye. */
+    private function whatsapp(WebSetting $settings): ?string
+    {
+        $raw = $settings->whatsapp_number ?: $settings->contact_phone;
+        $intl = $raw ? \App\Services\OnlineOrdering\WebsiteOrderNotifier::international((string) $raw) : '';
+
+        return preg_match('/^923\d{9}$/', $intl) ? $intl : null;
     }
 }

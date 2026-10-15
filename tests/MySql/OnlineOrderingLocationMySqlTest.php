@@ -92,9 +92,9 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $this->assertSame('nearest', $j['by']);
         $this->assertSame($this->zone['Scheme 33'], $j['nearby'][0], 'Qareebi areas list ke upar.');
 
-        // Malik: list me na ho to 5 km ke andar ka qareebi area — 4.5 km par haan, 5.6 km par nahi.
-        $this->assertSame($this->zone['Scheme 33'], $this->locate(24.9992 + 4.5 / 111.2, 67.1720)->json('area'));
-        $this->assertNull($this->locate(24.9992 + 5.6 / 111.2, 67.1720)->json('area'));
+        // Malik: poora Karachi — naam na mile to qareebi area, door ho tab bhi (30 km); sirf doosra shehar (60 km) nahi.
+        $this->assertSame($this->zone['Scheme 33'], $this->locate(24.9992 + 30 / 111.2, 67.1720)->json('area'));
+        $this->assertNull($this->locate(24.9992 + 60 / 111.2, 67.1720)->json('area'));
 
         // Shehar se bahar: koi area nahi chuna jata — customer khud chunta hai.
         $far = $this->locate(25.6, 68.3)->assertOk()->json();

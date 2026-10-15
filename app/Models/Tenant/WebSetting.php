@@ -23,6 +23,9 @@ class WebSetting extends Model
         'is_enabled', 'branch_mode', 'default_branch_id', 'default_eta_minutes', 'pickup_eta_minutes',
         'hours', 'closed_message', 'auto_cancel_minutes',
         'wa_notify_received', 'wa_notify_confirmed', 'wa_notify_cancelled', 'contact_phone',
+        // Website ki shakl (logo, banners, footer, cart ka "Popular with your order").
+        'logo_path', 'banners', 'whatsapp_number', 'contact_email', 'contact_address', 'facebook_url', 'instagram_url',
+        'about_text', 'upsell_category_id',
     ];
 
     protected function casts(): array
@@ -36,6 +39,8 @@ class WebSetting extends Model
             'wa_notify_received' => 'boolean',
             'wa_notify_confirmed' => 'boolean',
             'wa_notify_cancelled' => 'boolean',
+            'banners' => 'array',
+            'upsell_category_id' => 'integer',
         ];
     }
 

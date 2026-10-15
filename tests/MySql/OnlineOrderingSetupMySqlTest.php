@@ -13,7 +13,9 @@ use App\Services\Permissions\PermissionSyncService;
 use App\Services\Saas\TenantSubscriptionAccessService;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\MySql\Support\ParsesInlineScripts;
 
@@ -351,6 +353,77 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────────
+
+    public function test_the_website_look_saves_logo_banners_and_footer_without_touching_the_other_settings(): void
+    {
+        // Malik: purani website jaisi — logo, banners, WhatsApp, footer, cart ka "Popular with your order".
+        Storage::fake('public');
+        WebSetting::tenantDefault()->update(['contact_phone' => '0321 1111111', 'default_eta_minutes' => 50]);
+        $raita = \App\Models\Tenant\Category::create(['name' => 'Raita & Salad', 'slug' => 'rs-'.uniqid(), 'sort_order' => 1, 'is_active' => true]);
+
+        $this->owner()->put($this->url('/online-ordering/settings'), [
+            'section' => 'branding',
+            'logo' => UploadedFile::fake()->image('logo.png', 600, 600),
+            'banners' => [UploadedFile::fake()->image('b1.png', 3200, 1000), UploadedFile::fake()->image('b2.jpg', 3200, 1000)],
+            'whatsapp_number' => '0321 2222222', 'contact_email' => 'hello@example.test', 'facebook_url' => 'https://facebook.com/x',
+            'about_text' => 'Desi food since 1990.', 'upsell_category_id' => $raita->id,
+        ])->assertRedirect('/online-ordering/settings#branding')->assertSessionHasNoErrors();
+
+        $s = WebSetting::tenantDefault()->fresh();
+        Storage::disk('public')->assertExists($s->logo_path);
+        $this->assertCount(2, $s->banners);
+        $this->assertSame(1920, getimagesizefromstring(Storage::disk('public')->get($s->banners[0]['path']))[0], 'Bara banner 1920 tak chhota.');
+        $this->assertSame(960, getimagesizefromstring(Storage::disk('public')->get($s->banners[0]['sm']))[0], 'Mobile ke liye 960.');
+        $this->assertSame($raita->id, $s->upsell_category_id);
+        $this->assertSame('0321 1111111', $s->contact_phone, 'Website look ka form doosri settings nahi chhuta.');
+        $this->assertSame(50, $s->default_eta_minutes);
+
+        // Customer ka page sab saath laata hai.
+        $html = $this->get($this->url('/order'))->assertOk()->getContent();
+        $this->assertSame(1, preg_match('/var D = (\{.*?\});\n/s', $html, $m));
+        $d = json_decode($m[1], true);
+        $this->assertCount(2, $d['banners']);
+        $this->assertStringContainsString('/storage/web-site/', $d['business']['logo']);
+        $this->assertSame('923212222222', $d['business']['whatsapp']);
+        $this->assertSame($raita->id, $d['upsellCategory']);
+        $this->assertSame('Desi food since 1990.', $d['business']['about']);
+        $this->assertStringContainsString('id="catR"', $html, 'Category bar ka aage wala teer.');
+        $this->assertInlineScriptsParse($html, 'order page with branding', 'renderMenu');
+
+        // Tarteeb badlo, phir aik hatao — file bhi jati hai.
+        $first = $s->banners[0]['path'];
+        $this->owner()->put($this->url('/online-ordering/settings'), ['section' => 'branding', 'move_banner' => '0:down'])->assertSessionHasNoErrors();
+        $this->assertSame($first, WebSetting::tenantDefault()->fresh()->banners[1]['path']);
+        $this->owner()->put($this->url('/online-ordering/settings'), ['section' => 'branding', 'remove_banners' => [1]])->assertSessionHasNoErrors();
+        $this->assertCount(1, WebSetting::tenantDefault()->fresh()->banners);
+        Storage::disk('public')->assertMissing($first);
+    }
+
+    public function test_the_branding_import_is_a_dry_run_until_told(): void
+    {
+        Storage::fake('public');
+        $dir = sys_get_temp_dir().'/oobrand-'.uniqid();
+        mkdir($dir);
+        foreach (['logo.png' => [500, 500], 'b1.png' => [2000, 625], 'b2.png' => [2000, 625]] as $name => [$w, $h]) {
+            $img = imagecreatetruecolor($w, $h);
+            imagepng($img, $dir.'/'.$name);
+            imagedestroy($img);
+        }
+        \App\Models\Tenant\Category::create(['name' => 'Raita & Salad', 'slug' => 'rs-'.uniqid(), 'sort_order' => 1, 'is_active' => true]);
+        $args = ['tenant_code' => 'oosetup', '--logo' => $dir.'/logo.png', '--banner' => [$dir.'/b1.png', $dir.'/b2.png'], '--upsell' => 'Raita & Salad'];
+
+        $this->artisan('online-ordering:import-branding', $args)->expectsOutputToContain('sirf dikhaya')->assertSuccessful();
+        $this->assertNull(WebSetting::tenantDefault()->fresh()->logo_path, 'Dry run ne likh diya.');
+
+        $this->artisan('online-ordering:import-branding', $args + ['--yes' => true])->assertSuccessful();
+        $s = WebSetting::tenantDefault()->fresh();
+        $this->assertNotNull($s->logo_path);
+        $this->assertCount(2, $s->banners);
+        $this->assertNotNull($s->upsell_category_id);
+
+        array_map('unlink', glob($dir.'/*'));
+        rmdir($dir);
+    }
 
     private function owner()
     {

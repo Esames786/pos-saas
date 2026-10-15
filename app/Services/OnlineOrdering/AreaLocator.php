@@ -11,12 +11,16 @@ use Illuminate\Support\Collection;
  *
  * 1. Naam: OpenStreetMap jagah ka naam deta hai (mohalla, block, town). Jis area ke naam ke SAARE lafz us me
  *    hon wo area — sab se lamba naam jeetta hai ("Clifton Block 5" > "Clifton").
- * 2. Qareebi: naam na mile to area ke markazi nuqte (`geo_areas.lat/lng`) se sab se qareebi, MAX_KM ke andar.
+ * 2. Qareebi: naam na mile to area ke markazi nuqte (`geo_areas.lat/lng`) se sab se qareebi — shehar ke andar (MAX_KM).
  * Dono na milen to kuch nahi — customer list se chunta hai. Aas paas ke areas hamesha saath (chunne me aasani).
  */
 class AreaLocator
 {
-    public const MAX_KM = 5.0;   // malik: naam na mile to 5 km ke andar ka qareebi area
+    /**
+     * Malik (15 Oct): "poora Karachi allowed hai, km range ki zaroorat nahi" — naam na mile to qareebi area, chahe
+     * kitna door. Sirf shehar ki hadd: is se door phone (doosra shehar / ghalat GPS) par koi area khud nahi chuna jata.
+     */
+    public const MAX_KM = 50.0;
 
     public function __construct(private readonly OpenStreetMap $osm) {}
 
@@ -49,7 +53,7 @@ class AreaLocator
             'km' => $areaId !== null && isset($distances[$areaId]) ? round($distances[$areaId], 1) : null,
             'place' => $this->place($address),
             'street' => $this->street($address),
-            'nearby' => $distances->filter(fn ($km) => $km <= self::MAX_KM * 2)->keys()->take(5)->values()->all(),
+            'nearby' => $distances->filter(fn ($km) => $km <= self::MAX_KM)->keys()->take(5)->values()->all(),
         ];
     }
 

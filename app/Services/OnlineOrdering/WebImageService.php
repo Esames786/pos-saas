@@ -43,6 +43,46 @@ class WebImageService
         return $base.'.webp';
     }
 
+    /**
+     * Banner / logo: diye gaye chaurai ke WebP (masalan banner 1920 + 960, logo 320). Purani website ke banner
+     * 5120×1600 aur 5–7 MB the — customer ko ~150 KB jata hai.
+     *
+     * @param  list<int>  $widths
+     * @return array<int, string> chaurai => path
+     */
+    public function storeWidths(string $sourcePath, string $tenantCode, string $name, array $widths, int $quality = 74): array
+    {
+        $bytes = @file_get_contents($sourcePath);
+        $src = $bytes !== false ? @imagecreatefromstring($bytes) : false;
+        if (! $src) {
+            throw new RuntimeException('Tasveer parhi nahi ja saki: '.basename($sourcePath));
+        }
+        $base = 'web-site/'.Str::slug($tenantCode).'/'.Str::slug(Str::limit($name, 40, '')).'-'.Str::lower(Str::random(8));
+        $out = [];
+        foreach ($widths as $width) {
+            $img = $this->fit($src, $width);
+            ob_start();
+            imagewebp($img, null, $quality);
+            Storage::disk('public')->put($path = $base.'-'.$width.'.webp', (string) ob_get_clean());
+            if ($img !== $src) {
+                imagedestroy($img);
+            }
+            $out[$width] = $path;
+        }
+        imagedestroy($src);
+
+        return $out;
+    }
+
+    /** @param  list<string|null>  $paths */
+    public function deleteFiles(array $paths): void
+    {
+        $paths = array_values(array_filter($paths));
+        if ($paths) {
+            Storage::disk('public')->delete($paths);
+        }
+    }
+
     public function delete(?string $path): void
     {
         if ($path) {

@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Tenant\OnlineOrdering;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\Category;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\WebOrderRoute;
 use App\Models\Tenant\WebSetting;
+use App\Services\OnlineOrdering\WebsiteBranding;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -28,11 +30,17 @@ class WebsiteSettingsController extends Controller
             'branches' => $branches,
             'terminals' => Terminal::where('status', 'active')->orderBy('name')->get()->groupBy('branch_id'),
             'routes' => WebOrderRoute::all()->keyBy(fn ($r) => $r->branch_id.'.'.$r->order_type),
+            'categories' => Category::where('is_active', true)->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
     public function update(Request $request)
     {
+        // Website ki shakl (logo, banners, footer) ka apna form — wohi save ka haq, alag permission nahi.
+        if ($request->input('section') === 'branding') {
+            return $this->updateBranding($request);
+        }
+
         $branchIds = Branch::where('status', 'active')->pluck('id')->all();
 
         $data = $request->validate([
@@ -147,5 +155,58 @@ class WebsiteSettingsController extends Controller
         }
 
         return $out;
+    }
+    /**
+     * Malik: purani website jaisi — logo, banner slides, WhatsApp, footer, cart me "Popular with your order".
+     * Tasveerein chhoti WebP me (WebsiteBranding).
+     */
+    private function updateBranding(Request $request)
+    {
+        $data = $request->validate([
+            'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'remove_logo' => ['nullable', 'boolean'],
+            'banners' => ['nullable', 'array', 'max:'.WebsiteBranding::MAX_BANNERS],
+            'banners.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:20480'],
+            'remove_banners' => ['nullable', 'array'],
+            'remove_banners.*' => ['integer', 'min:0'],
+            'move_banner' => ['nullable', 'regex:/^\d+:(up|down)$/'],
+            'whatsapp_number' => ['nullable', 'string', 'max:40'],
+            'contact_email' => ['nullable', 'email', 'max:150'],
+            'contact_address' => ['nullable', 'string', 'max:255'],
+            'facebook_url' => ['nullable', 'url', 'max:255'],
+            'instagram_url' => ['nullable', 'url', 'max:255'],
+            'about_text' => ['nullable', 'string', 'max:2000'],
+            'upsell_category_id' => ['nullable', 'integer', 'exists:tenant.categories,id'],
+        ]);
+
+        $settings = WebSetting::tenantDefault();
+        $branding = app(WebsiteBranding::class);
+        $code = (string) app('tenant')->tenant_code;
+
+        $settings->update([
+            'whatsapp_number' => $data['whatsapp_number'] ?? null,
+            'contact_email' => $data['contact_email'] ?? null,
+            'contact_address' => $data['contact_address'] ?? null,
+            'facebook_url' => $data['facebook_url'] ?? null,
+            'instagram_url' => $data['instagram_url'] ?? null,
+            'about_text' => $data['about_text'] ?? null,
+            'upsell_category_id' => $data['upsell_category_id'] ?? null,
+        ]);
+        if ($request->boolean('remove_logo')) {
+            $branding->removeLogo($settings);
+        }
+        if ($request->hasFile('logo')) {
+            $branding->setLogo($settings, $request->file('logo')->getRealPath(), $code);
+        }
+        $branding->removeBanners($settings, array_map('intval', $data['remove_banners'] ?? []));
+        foreach ($request->file('banners', []) as $file) {
+            $branding->addBanner($settings->fresh(), $file->getRealPath(), $code);
+        }
+        if (! empty($data['move_banner'])) {
+            [$i, $dir] = explode(':', $data['move_banner']);
+            $branding->moveBanner($settings->fresh(), (int) $i, (int) $i + ($dir === 'up' ? -1 : 1));
+        }
+
+        return redirect('/online-ordering/settings#branding')->with('status', 'Website look saved.');
     }
 }
