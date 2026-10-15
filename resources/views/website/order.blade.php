@@ -51,11 +51,22 @@ svg { flex:none; }
 .chip small { display:block; font-size:9px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); line-height:1.1; }
 .chip b { display:block; font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:190px; }
 .chip.phone { text-decoration:none; color:inherit; font-weight:700; font-size:13px; }
-@media (max-width:720px) { .chip.phone { display:none; } .chip b { max-width:100%; } .chip > svg { display:none; } .chip { padding-right:10px; } }
+/* right side mirrors the chips: install + cart keep to their half too */
+.acts { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex:1; min-width:0; max-width:calc(50% - 64px); }
+@media (max-width:720px) {
+  .chip.phone { display:none; } .chip b { max-width:100%; } .chip > svg { display:none; }
+  /* phone (owner, 15 Oct): the area name gets the room — smaller icon, tighter padding, halves sized to the 76px logo */
+  .chips, .acts { max-width:calc(50% - 46px); }
+  .chip { gap:7px; padding:5px 10px 5px 5px; }
+  .chip .ic { width:28px; height:28px; }
+  .chip b { font-size:12.5px; }
+}
 .logo { position:absolute; left:50%; top:8px; transform:translateX(-50%); width:104px; height:104px; border-radius:50%; background:var(--brand); box-shadow:0 6px 18px rgba(166,13,18,.35); display:grid; place-items:center; overflow:hidden; color:var(--cream); font:italic 700 40px Georgia,serif; text-decoration:none; z-index:2; transition:transform .3s var(--ease); }
 .logo:hover { transform:translateX(-50%) scale(1.04); }
 .logo img { width:100%; height:100%; object-fit:cover; }
 @media (max-width:720px) { .logo { width:76px; height:76px; top:6px; font-size:30px; } }
+/* small phones (360px): a slightly smaller logo leaves room for the area name */
+@media (max-width:380px) { .logo { width:66px; height:66px; } .chips, .acts { max-width:calc(50% - 40px); } .top .cartbtn { width:42px; height:42px; } }
 .cartbtn { position:relative; border:0; background:#fff; width:46px; height:46px; border-radius:50%; display:grid; place-items:center; transition:background .2s; flex:none; }
 .cartbtn:hover { background:#F6F6F6; }
 .cartbtn .n, .fcart .n { position:absolute; top:2px; right:0; background:var(--brand); color:#fff; border-radius:999px; min-width:18px; height:18px; display:grid; place-items:center; font-size:10.5px; font-weight:700; padding:0 5px; }
@@ -76,7 +87,8 @@ svg { flex:none; }
 .dots { position:absolute; left:0; right:0; bottom:16px; z-index:3; display:flex; justify-content:center; gap:7px; }
 .dots button { width:9px; height:9px; border-radius:999px; border:0; padding:0; background:rgba(20,20,20,.55); transition:width .35s var(--ease), background .3s; }
 .dots button.on { width:38px; background:#fff; }
-@media (max-width:720px) { .hero { padding-top:46px; } .slider { border-radius:16px; } .sarrow { width:34px; height:34px; } .dots { bottom:8px; } }
+/* phone: the 76px logo overhangs the header by ~10px, so a small gap is enough; banners are swiped (arrows hid the banner text) */
+@media (max-width:720px) { .hero { padding-top:20px; } .slider { border-radius:16px; } .sarrow { display:none; } .dots { bottom:8px; } }
 .plain-hero { background:var(--cream); border-radius:28px; padding:34px 20px; text-align:center; font:400 clamp(44px,7vw,84px)/1 "Allura",cursive; color:var(--brand); }
 
 /* ── category bar ── */
@@ -99,6 +111,11 @@ svg { flex:none; }
 .carr:hover { transform:translateY(-50%) scale(1.08); }
 .carr.l { left:6px; } .carr.r { right:6px; }
 .carr.off { opacity:0; pointer-events:none; }
+/* names fade out under an arrow instead of showing through it */
+.cats .track.fr { -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 58px),transparent calc(100% - 12px)); mask-image:linear-gradient(90deg,#000 calc(100% - 58px),transparent calc(100% - 12px)); }
+.cats .track.fl { -webkit-mask-image:linear-gradient(90deg,transparent 12px,#000 58px); mask-image:linear-gradient(90deg,transparent 12px,#000 58px); }
+.cats .track.fl.fr { -webkit-mask-image:linear-gradient(90deg,transparent 12px,#000 58px,#000 calc(100% - 58px),transparent calc(100% - 12px)); mask-image:linear-gradient(90deg,transparent 12px,#000 58px,#000 calc(100% - 58px),transparent calc(100% - 12px)); }
+@media (max-width:720px) { .cats .track { padding:10px 12px; } .cats a { padding:8px 14px; } .carr { width:30px; height:30px; } }
 
 /* ── search + status ── */
 .finder { padding-top:22px; padding-bottom:6px; display:grid; justify-items:center; gap:10px; }
@@ -182,7 +199,9 @@ html.anim .rv.seen { opacity:1; transform:none; transition:opacity .6s ease var(
 .live small { display:block; opacity:.85; }
 .live button { margin-left:auto; border:0; background:#fff; color:#3D1A5C; border-radius:999px; padding:8px 16px; font-weight:700; }
 .live.soon { background:linear-gradient(110deg,#2A2140,#4A3B66); }
-.install { border:0; background:var(--brand-soft); color:var(--brand); border-radius:999px; padding:8px 14px; font-weight:700; font-size:13px; display:flex; align-items:center; gap:6px; }
+.install { border:0; background:var(--brand-soft); color:var(--brand); border-radius:999px; padding:8px 14px; font-weight:700; font-size:13px; display:flex; align-items:center; gap:6px; white-space:nowrap; flex:none; }
+/* phone: icon only (owner) — the label stays for screen readers via aria-label */
+@media (max-width:720px) { .install { width:40px; height:40px; padding:0; justify-content:center; border-radius:50%; } .install span { display:none; } }
 .freebar { background:#fff; border:1px solid #F0EAE4; border-radius:14px; padding:10px 12px; font-size:13px; display:grid; gap:8px; }
 .freebar .track { height:8px; border-radius:999px; background:#F3E8E0; overflow:hidden; }
 .freebar .fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#E8545A,var(--brand)); transition:width .6s var(--ease); }
@@ -194,14 +213,25 @@ html.anim .rv.seen { opacity:1; transform:none; transition:opacity .6s ease var(
 .fab.search { left:16px; bottom:calc(20px + env(safe-area-inset-bottom)); width:50px; height:50px; border-radius:14px; background:var(--brand); color:#fff; }
 .fab.wa { right:18px; bottom:calc(96px + env(safe-area-inset-bottom)); width:58px; height:58px; border-radius:50%; background:var(--wa); color:#fff; text-decoration:none; }
 .fab.up { right:22px; bottom:calc(20px + env(safe-area-inset-bottom)); width:48px; height:48px; border-radius:14px; background:var(--brand); color:#fff; }
-.fab.up.off { opacity:0; pointer-events:none; transform:translateY(10px); }
+.fab.up.off, .fab.search.off { opacity:0; pointer-events:none; transform:translateY(10px); }
 .fcart { position:fixed; right:18px; top:92px; z-index:26; width:56px; height:56px; border-radius:50%; border:0; background:var(--brand); color:#fff; display:grid; place-items:center; box-shadow:0 10px 26px rgba(166,13,18,.4); transition:opacity .3s, transform .3s var(--ease); }
 .fcart .n { background:#fff; color:var(--brand); top:-2px; right:-2px; }
 .fcart.off { opacity:0; pointer-events:none; transform:scale(.7); }
 .bar { position:fixed; left:50%; bottom:calc(18px + env(safe-area-inset-bottom)); z-index:27; transform:translate(-50%, 140%); display:flex; align-items:center; gap:18px; background:var(--brand); color:#fff; border:0; border-radius:999px; padding:9px 22px 9px 9px; font-weight:700; box-shadow:0 12px 30px rgba(166,13,18,.4); transition:transform .45s var(--ease); white-space:nowrap; }
 .bar.show { transform:translate(-50%, 0); }
 .bar .cnt { width:36px; height:36px; border-radius:50%; background:#fff; color:var(--brand); display:grid; place-items:center; font-weight:800; }
-@media (max-width:560px) { .bar { gap:10px; padding-right:16px; font-size:14px; } .fab.search { bottom:calc(84px + env(safe-area-inset-bottom)); } .fab.wa { bottom:calc(150px + env(safe-area-inset-bottom)); width:50px; height:50px; } .fab.up { bottom:calc(84px + env(safe-area-inset-bottom)); } .fcart { top:auto; bottom:calc(214px + env(safe-area-inset-bottom)); width:50px; height:50px; } }
+/* phone: buttons sit low and small; they lift only while the View Cart pill is up (body.bar-on). The floating
+   bag is dropped — the View Cart pill already shows whenever the cart has something. */
+@media (max-width:560px) {
+  .bar { gap:10px; padding-right:16px; font-size:14px; }
+  .fab.search { left:14px; bottom:calc(16px + env(safe-area-inset-bottom)); width:46px; height:46px; }
+  .fab.up { right:14px; bottom:calc(16px + env(safe-area-inset-bottom)); width:46px; height:46px; }
+  .fab.wa { right:14px; bottom:calc(72px + env(safe-area-inset-bottom)); width:46px; height:46px; }
+  .fab.wa svg { width:26px; height:26px; }
+  body.bar-on .fab.search, body.bar-on .fab.up { bottom:calc(80px + env(safe-area-inset-bottom)); }
+  body.bar-on .fab.wa { bottom:calc(136px + env(safe-area-inset-bottom)); }
+  .fcart { display:none; }
+}
 
 /* ── footer ── */
 footer { margin-top:56px; background:#FBF7F2; border-top:1px solid #F1E7DA; font-size:13.5px; color:#4A4A4A; }
@@ -347,6 +377,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   <symbol id="i-right" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6"/></symbol>
   <symbol id="i-chev-l" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="m15 5-7 7 7 7"/></symbol>
   <symbol id="i-chev-r" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></symbol>
   <symbol id="i-up" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m5 15 7-7 7 7"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-minus" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M5 12h14"/></symbol>
@@ -370,8 +401,10 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       <a class="chip phone" id="phoneChip" href="#" hidden><span class="ic"><svg width="16" height="16"><use href="#i-phone"/></svg></span><span id="phoneText"></span></a>
     </div>
     <a class="logo" href="#top" id="logoMark" aria-label="{{ $businessName }}"></a>
-    <button class="install" id="installBtn" type="button" hidden><svg width="14" height="14" aria-hidden="true"><use href="#i-up"/></svg>Install app</button>
-    <button class="cartbtn" id="cartBtn" type="button" aria-label="Open cart"><svg width="24" height="24"><use href="#i-cart"/></svg><span class="n" id="cartCount">0</span></button>
+    <div class="acts">
+      <button class="install" id="installBtn" type="button" aria-label="Install app" title="Install app" hidden><svg width="16" height="16" aria-hidden="true"><use href="#i-dl"/></svg><span>Install app</span></button>
+      <button class="cartbtn" id="cartBtn" type="button" aria-label="Open cart"><svg width="24" height="24"><use href="#i-cart"/></svg><span class="n" id="cartCount">0</span></button>
+    </div>
   </div>
 </header>
 
@@ -665,8 +698,11 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   // ── category bar arrows (owner: "category next button") ──
   function catArrows() {
     var t = $('nav');
-    $('catL').classList.toggle('off', t.scrollLeft < 8);
-    $('catR').classList.toggle('off', t.scrollLeft + t.clientWidth >= t.scrollWidth - 8);
+    var atStart = t.scrollLeft < 8, atEnd = t.scrollLeft + t.clientWidth >= t.scrollWidth - 8;
+    $('catL').classList.toggle('off', atStart);
+    $('catR').classList.toggle('off', atEnd);
+    t.classList.toggle('fl', !atStart);
+    t.classList.toggle('fr', !atEnd);
   }
   $('nav').addEventListener('scroll', catArrows, { passive: true });
   window.addEventListener('resize', catArrows);
@@ -783,13 +819,16 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var y = window.scrollY || 0;
     $('fabUp').classList.toggle('off', y < 600);
     $('fcart').classList.toggle('off', y < headerEl.offsetHeight + 40 || !S.cart.length);
+    // The search button brings the search box back — no need while the box itself is on screen.
+    $('fabSearch').classList.toggle('off', $('sform').getBoundingClientRect().bottom > 60);
   }
   window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
   $('fabUp').addEventListener('click', function () { window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' }); });
 
   // ── sheets ──
   var openSheet = null;
-  function show(id) { hide(); openSheet = $(id); openSheet.classList.add('show'); $('veil').classList.add('show'); document.body.style.overflow = 'hidden'; $('bar').classList.remove('show'); }
+  function show(id) { hide(); openSheet = $(id); openSheet.classList.add('show'); $('veil').classList.add('show'); document.body.style.overflow = 'hidden'; $('bar').classList.remove('show'); document.body.classList.remove('bar-on'); }
   function hide() { if (openSheet) { openSheet.classList.remove('show'); } openSheet = null; $('veil').classList.remove('show'); document.body.style.overflow = ''; paintBar(); }
   $('veil').addEventListener('click', hide);
   document.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', hide); });
@@ -992,6 +1031,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   function paintBar() {
     var n = count();
     $('bar').classList.toggle('show', n > 0 && !openSheet);
+    document.body.classList.toggle('bar-on', n > 0 && !openSheet);   // phone: floating buttons step up over the pill
   }
   function paintCart() {
     var n = count();
