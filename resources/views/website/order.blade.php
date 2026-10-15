@@ -906,7 +906,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
 
   // ── area / order type: pick in the list, confirm with Select (like the old site) ──
   var pending = null;
-  function renderAreas() {
+  function renderAreas(smooth) {
     var q = ($('areaSearch').value || '').toLowerCase();
     var pickup = S.type === 'pickup';
     $('areaSheet').classList.toggle('locked', !chosen());   // no close button until something is chosen
@@ -929,11 +929,23 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       $('branchCard').innerHTML = '<span class="bic">' + icon('pin', 18) + '</span><span><b>Branch location</b><br>' + esc(br.address || br.name) +
         (br.directions ? '<br><a href="' + esc(br.directions) + '" target="_blank" rel="noopener">Get directions ↗</a>' : '') + '</span>';
     }
-    var on = $('areaList').querySelector('.on');
-    if (on) { $('areaList').scrollTop = on.offsetTop - $('areaList').clientHeight / 2 + on.clientHeight / 2; }
+    requestAnimationFrame(function () { scrollToChosen(smooth === true); });
     $('areaSelect').disabled = cur === null || cur === undefined;
   }
-  function openAreas() { pending = null; userPicked = false; $('areaSearch').value = ''; renderAreas(); show('areaSheet'); }
+  // Owner (16 Oct): the chosen / found area is scrolled into the middle of the list. Measured against the list
+  // itself (not the page) and only once the window is visible — a hidden window has no positions yet.
+  function scrollToChosen(smooth) {
+    var list = $('areaList'), on = list.querySelector('.on');
+    if (!on) { return; }
+    var lr = list.getBoundingClientRect(), or = on.getBoundingClientRect();
+    if (!lr.height) { return; }
+    var top = list.scrollTop + (or.top - lr.top) - (list.clientHeight - on.offsetHeight) / 2;
+    if (smooth && !reduce && list.scrollTo) { list.scrollTo({ top: top, behavior: 'smooth' }); } else { list.scrollTop = top; }
+  }
+  function openAreas() {
+    pending = null; userPicked = false; $('areaSearch').value = ''; renderAreas(); show('areaSheet');
+    requestAnimationFrame(function () { scrollToChosen(false); });
+  }
   $('where').addEventListener('click', openAreas);
   $('tDelivery').addEventListener('click', function () { S.type = 'delivery'; pending = null; renderAreas(); });
   $('tPickup').addEventListener('click', function () { S.type = 'pickup'; pending = null; renderAreas(); });
@@ -975,9 +987,9 @@ label.f span.req::after { content:" *"; color:var(--brand); }
         return '<button type="button" class="pk" data-pick="' + o.id + '">' + esc(o.name) + '</button>';
       }).join('') + '</span>' : '') + '</span>');
     $('gpsText').querySelectorAll('[data-pick]').forEach(function (b) {
-      b.addEventListener('click', function () { pending = +b.dataset.pick; userPicked = true; renderAreas(); });
+      b.addEventListener('click', function () { pending = +b.dataset.pick; userPicked = true; renderAreas(true); });
     });
-    renderAreas();
+    renderAreas(true);   // glide to the found area
     paintStatus();
   }
   function gpsMsg(html) { $('gpsText').innerHTML = html; $('gpsPin').hidden = false; }
