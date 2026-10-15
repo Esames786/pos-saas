@@ -298,6 +298,10 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .alist button.on em { color:#FFDADB; }
 .alist .near { color:var(--brand); font-weight:700; }
 .alist button.on .near { color:#fff; }
+.pin .picks { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:7px; }
+.pin .picks small { width:100%; color:var(--muted); }
+.pin .pk { border:1px solid #E3E3E3; background:#fff; border-radius:999px; padding:4px 10px; font:inherit; font-size:12px; font-weight:600; color:var(--ink); transition:border-color .2s, color .2s; }
+.pin .pk:hover { border-color:var(--brand); color:var(--brand); }
 .pin .go { margin-left:auto; border:0; background:var(--brand); color:#fff; border-radius:999px; padding:5px 12px; font-weight:600; font-size:12px; white-space:nowrap; }
 
 /* item sheet */
@@ -898,8 +902,20 @@ label.f span.req::after { content:" *"; color:var(--brand); }
             var a = j.area ? D.areas.find(function (x) { return x.id === j.area; }) : null;
             if (a) {
               S.type = 'delivery'; pending = a.id;
-              gpsMsg('<span>You are in <b>' + esc(a.name) + '</b>' + (j.place ? '<br><small>' + esc(j.place) + '</small>' : '') + '</span><button type="button" class="go" id="gpsGo">Continue</button>');
+              // Matched by name = sure ("You are in"). Only by distance = a guess near area borders (Johar / Scheme 33):
+              // say "Nearest area" and offer the next closest areas as one-tap choices.
+              var sure = j.by === 'name';
+              var others = sure ? [] : nearby.filter(function (id) { return id !== a.id; }).slice(0, 3)
+                .map(function (id) { return D.areas.find(function (x) { return x.id === id; }); }).filter(Boolean);
+              gpsMsg('<span>' + (sure ? 'You are in' : 'Nearest area:') + ' <b>' + esc(a.name) + '</b>' + (j.place ? '<br><small>' + esc(j.place) + '</small>' : '') +
+                (others.length ? '<span class="picks"><small>Not right? Tap yours:</small>' + others.map(function (o) {
+                  return '<button type="button" class="pk" data-pick="' + o.id + '">' + esc(o.name) + '</button>';
+                }).join('') + '</span>' : '') +
+                '</span><button type="button" class="go" id="gpsGo">Continue</button>');
               $('gpsGo').addEventListener('click', function () { $('areaSelect').click(); });
+              $('gpsText').querySelectorAll('[data-pick]').forEach(function (b) {
+                b.addEventListener('click', function () { pending = +b.dataset.pick; renderAreas(); $('areaSelect').click(); });
+              });
             } else {
               gpsMsg((j.place ? 'You are near <b>' + esc(j.place) + '</b>. ' : '') + (nearby.length ? 'Areas near you are at the top — pick yours.' : 'Choose your area below.'));
             }

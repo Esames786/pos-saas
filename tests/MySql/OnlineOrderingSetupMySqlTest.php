@@ -13,8 +13,10 @@ use App\Services\Permissions\PermissionSyncService;
 use App\Services\Saas\TenantSubscriptionAccessService;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\MySql\Support\ParsesInlineScripts;
@@ -238,6 +240,59 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
         $this->assertFalse($z->is_active);
         $this->assertSame('300.00', $z->fee);
         $this->assertTrue(DeliveryZone::where('geo_area_id', $gulshan)->sole()->is_active, 'Jo post hi nahi hua wo nahi chhua.');
+    }
+
+    public function test_places_inside_an_area_are_saved_with_their_map_point(): void
+    {
+        // Malik (15 Oct): Chappal Sun City jaisi societies restaurant khud likhe — har baar developer nahi.
+        $scheme = $this->area('Scheme 33');
+        $m = DB::connection('master');
+        $was = $m->table('geo_areas')->where('id', $scheme)->first(['lat', 'lng']);
+        $m->table('geo_areas')->where('id', $scheme)->update(['lat' => 24.9992, 'lng' => 67.1720]);
+        try {
+            Http::fake(function (HttpRequest $r) {
+                parse_str((string) parse_url($r->url(), PHP_URL_QUERY), $q);
+                $query = (string) ($q['q'] ?? '');
+
+                return match (true) {
+                    str_starts_with($query, 'Chappal Sun City,') => Http::response([['lat' => '24.9521', 'lon' => '67.1412', 'display_name' => 'Chappal Sun City']]),
+                    str_starts_with($query, 'Faraway Town,') => Http::response([['lat' => '31.5204', 'lon' => '74.3587', 'display_name' => 'Faraway Town, Lahore']]),
+                    default => Http::response([]),
+                };
+            });
+
+            $this->owner()->put($this->url('/online-ordering/areas'), ['city' => 'Karachi', 'zones' => [
+                $scheme => ['serve' => '1', 'branch_id' => $this->branchA, 'fee' => '300',
+                    'places' => "Chappal Sun City, New Rizvia Society ,  chappal sun city\nFaraway Town"],
+            ]])->assertRedirect()->assertSessionHasNoErrors();
+
+            $places = DeliveryZone::where('geo_area_id', $scheme)->sole()->placeList();
+            $this->assertSame(['Chappal Sun City', 'New Rizvia Society', 'Faraway Town'], array_column($places, 'name'), 'Dohraya naam aik dafa.');
+            $this->assertEqualsWithDelta(24.9521, $places[0]['lat'], 0.00001);
+            $this->assertNull($places[1]['lat'], 'Map par na mila — naam phir bhi kaam karta hai.');
+            $this->assertNull($places[2]['lat'], 'Doosre shehar ka hum-naam nahi liya.');
+
+            $html = $this->owner()->get($this->url('/online-ordering/areas'))->assertOk()->getContent();
+            $this->assertStringContainsString('value="Chappal Sun City, New Rizvia Society, Faraway Town"', $html);
+            $this->assertInlineScriptsParse($html, 'delivery areas with places', 'serve-all');
+
+            // Dobara save: mila hua nuqta rehta hai, us ka naam dobara nahi poochha jata.
+            $this->owner()->put($this->url('/online-ordering/areas'), ['city' => 'Karachi', 'zones' => [
+                $scheme => ['serve' => '1', 'branch_id' => $this->branchA, 'fee' => '300', 'places' => 'Chappal Sun City, New Rizvia Society'],
+            ]])->assertSessionHasNoErrors();
+            $places = DeliveryZone::where('geo_area_id', $scheme)->sole()->placeList();
+            $this->assertSame(['Chappal Sun City', 'New Rizvia Society'], array_column($places, 'name'));
+            $this->assertEqualsWithDelta(24.9521, $places[0]['lat'], 0.00001);
+            $this->assertCount(1, Http::recorded(fn (HttpRequest $r) => str_contains(urldecode($r->url()), 'q=Chappal Sun City')));
+
+            // Form me places ka khana hi na ho (purana form): list nahi chhuti.
+            $this->owner()->put($this->url('/online-ordering/areas'), ['city' => 'Karachi', 'zones' => [
+                $scheme => ['serve' => '1', 'branch_id' => $this->branchA, 'fee' => '300'],
+            ]])->assertSessionHasNoErrors();
+            $this->assertCount(2, DeliveryZone::where('geo_area_id', $scheme)->sole()->placeList());
+        } finally {
+            $m->table('geo_areas')->where('id', $scheme)->update(['lat' => $was->lat, 'lng' => $was->lng]);
+        }
     }
 
     public function test_one_branch_mode_puts_every_area_on_the_website_branch(): void

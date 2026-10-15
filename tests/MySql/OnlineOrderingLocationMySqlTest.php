@@ -189,6 +189,43 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $this->assertSame($this->zone['Gulistan e Johar - Block 7'], $this->locate(24.9540, 67.1140)->json('area'));
     }
 
+    public function test_places_the_restaurant_writes_find_their_area_by_name_and_by_point(): void
+    {
+        // UAT (15 Oct): Chappal Sun City (Scheme 33; OSM "Chappal Sun City, New Rizvia Society") went to Johar —
+        // the Johar block's point was nearer than any Scheme 33 point. The restaurant's own place list fixes it.
+        DeliveryZone::whereKey($this->zone['Scheme 33'])->update(['places' => json_encode([
+            ['name' => 'Chappal Sun City', 'lat' => null, 'lng' => null],
+            ['name' => 'Safoora Point', 'lat' => 24.9480, 'lng' => 67.1450],
+        ])]);
+        $named = true;
+        Http::fake(function () use (&$named) {
+            return Http::response($named
+                ? ['address' => ['neighbourhood' => 'Chappal Sun City', 'suburb' => 'New Rizvia Society', 'town' => 'Gulshan-e-Iqbal Town'],
+                    'display_name' => 'Chappal Sun City, New Rizvia Society, Gulshan-e-Iqbal Town, Karachi']
+                : ['address' => ['town' => 'Gulshan-e-Iqbal Town'], 'display_name' => 'Gulshan-e-Iqbal Town, Karachi']);
+        });
+
+        $j = $this->locate(24.952, 67.141)->assertOk()->json();
+        $this->assertSame($this->zone['Scheme 33'], $j['area'], 'Restaurant ka likha naam pate me = us ka area.');
+        $this->assertSame('name', $j['by']);
+
+        $named = false;
+        $j = $this->locate(24.9475, 67.1452)->assertOk()->json();
+        $this->assertSame($this->zone['Scheme 33'], $j['area'], 'Likhi jagah ka nuqta bhi area ka nuqta.');
+        $this->assertSame('nearest', $j['by']);
+
+        DeliveryZone::whereKey($this->zone['Scheme 33'])->update(['places' => null]);
+        $this->assertSame($this->zone['Gulistan e Johar - Block 7'], $this->locate(24.9475, 67.1452)->json('area'), 'Bina list wahi purani ghalti.');
+    }
+
+    public function test_a_guess_by_distance_says_nearest_and_offers_the_next_areas(): void
+    {
+        $html = $this->get($this->url('/order'))->assertOk()->getContent();
+        $this->assertStringContainsString("(sure ? 'You are in' : 'Nearest area:')", $html);
+        $this->assertStringContainsString('data-pick', $html);
+        $this->assertInlineScriptsParse($html, 'order page with nearest-area picks', 'data-pick');
+    }
+
     public function test_society_points_come_from_openstreetmap_and_a_namesake_in_another_city_is_ignored(): void
     {
         $m = DB::connection('master');

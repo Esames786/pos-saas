@@ -16,6 +16,14 @@ class OpenStreetMap
 {
     private const BASE = 'https://nominatim.openstreetmap.org';
 
+    private const COUNTRY_CODES = ['pakistan' => 'pk', 'saudi arabia' => 'sa', 'united arab emirates' => 'ae', 'qatar' => 'qa'];
+
+    /** "Pakistan" → "pk" (search sirf usi mulk me). */
+    public static function countryCode(?string $country): ?string
+    {
+        return self::COUNTRY_CODES[mb_strtolower((string) $country)] ?? null;
+    }
+
     /** @return array<string, mixed>|null Nominatim ka reverse jawab (address details samet). */
     public function reverse(float $lat, float $lng): ?array
     {

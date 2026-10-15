@@ -67,6 +67,7 @@
                     <th class="text-end">Min. order</th>
                     <th class="text-end">Free above</th>
                     <th class="text-end">Time (min)</th>
+                    <th style="min-width: 220px">Places inside this area <i class="ti ti-info-circle text-muted" title="Societies or neighbourhoods inside this area, comma separated (e.g. Chappal Sun City, New Rizvia Society). When a customer taps “Use my current location”, these names pick this area."></i></th>
                 </tr>
                 </thead>
                 <tbody>
@@ -78,7 +79,12 @@
                     @endphp
                     <tr>
                         <td><input type="checkbox" value="1" name="zones[{{ $area->id }}][serve]" class="form-check-input js-serve" {{ $serving ? 'checked' : '' }}></td>
-                        <td>{{ $area->name }}</td>
+                        <td>
+                            {{ $area->name }}
+                            @if($known = $area->aliasList())
+                                <div class="small text-muted">Also finds: {{ implode(', ', array_column($known, 'name')) }}</div>
+                            @endif
+                        </td>
                         @unless($single)
                             <td>
                                 <select name="zones[{{ $area->id }}][branch_id]" class="form-select form-select-sm">
@@ -92,6 +98,7 @@
                         <td><input type="number" step="1" min="0" name="zones[{{ $area->id }}][min_order]" class="form-control form-control-sm text-end" style="width: 110px; margin-left: auto;" value="{{ old("$key.min_order", $z?->min_order !== null ? (float) $z->min_order : '') }}"></td>
                         <td><input type="number" step="1" min="0" name="zones[{{ $area->id }}][free_delivery_above]" class="form-control form-control-sm text-end" style="width: 110px; margin-left: auto;" value="{{ old("$key.free_delivery_above", $z?->free_delivery_above !== null ? (float) $z->free_delivery_above : '') }}"></td>
                         <td><input type="number" step="1" min="5" max="240" name="zones[{{ $area->id }}][eta_minutes]" class="form-control form-control-sm text-end" style="width: 90px; margin-left: auto;" value="{{ old("$key.eta_minutes", $z?->eta_minutes) }}" placeholder="{{ $settings->default_eta_minutes }}"></td>
+                        <td><input type="text" maxlength="1000" name="zones[{{ $area->id }}][places]" class="form-control form-control-sm" value="{{ old("$key.places", implode(', ', array_column($z?->placeList() ?? [], 'name'))) }}" placeholder="e.g. Chappal Sun City"></td>
                     </tr>
                 @endforeach
                 </tbody>
@@ -100,7 +107,7 @@
         @can('tenant.online-ordering.areas.update')
             <div class="card-footer">
                 <button class="btn btn-primary">Save delivery areas</button>
-                <span class="text-muted small ms-2">Unticking an area stops deliveries there but keeps its fee for later.</span>
+                <span class="text-muted small ms-2">Unticking an area stops deliveries there but keeps its fee for later. New place names are looked up on the map when you save (a few seconds).</span>
             </div>
         @endcan
     </div>

@@ -17,7 +17,7 @@ class DeliveryZone extends Model
 
     protected $fillable = [
         'geo_area_id', 'area_name', 'city', 'branch_id', 'fee', 'min_order',
-        'free_delivery_above', 'eta_minutes', 'is_active',
+        'free_delivery_above', 'eta_minutes', 'is_active', 'places',
     ];
 
     protected function casts(): array
@@ -29,7 +29,22 @@ class DeliveryZone extends Model
             'free_delivery_above' => 'decimal:2',
             'eta_minutes' => 'integer',
             'is_active' => 'boolean',
+            'places' => 'array',
         ];
+    }
+
+    /**
+     * "Places inside this area" — restaurant ki likhi societies (naam + OSM ka nuqta, agar mila).
+     *
+     * @return list<array{name: string, lat: ?float, lng: ?float}>
+     */
+    public function placeList(): array
+    {
+        return array_values(array_filter(array_map(fn ($p) => is_array($p) && trim((string) ($p['name'] ?? '')) !== '' ? [
+            'name' => trim((string) $p['name']),
+            'lat' => isset($p['lat']) && $p['lat'] !== null ? (float) $p['lat'] : null,
+            'lng' => isset($p['lng']) && $p['lng'] !== null ? (float) $p['lng'] : null,
+        ] : null, (array) ($this->places ?? []))));
     }
 
     public function branch(): BelongsTo

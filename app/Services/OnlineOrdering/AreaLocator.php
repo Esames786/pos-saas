@@ -10,8 +10,8 @@ use Illuminate\Support\Collection;
  * ONLINE-ORDERING-1 — customer ki location se delivery area (malik: "auto fetch scheme 33 ya qareebi area").
  *
  * 1. Naam: OpenStreetMap jagah ka naam deta hai (mohalla, block, town). Jis area ke naam — ya us ke andar ki
- *    kisi society (`geo_areas.aliases`, jaise Scheme 33 → Gulzar-e-Hijri) — ke SAARE lafz us me hon wo area; sab
- *    se lamba naam jeetta hai ("Clifton Block 5" > "Clifton").
+ *    kisi society (`geo_areas.aliases`, jaise Scheme 33 → Gulzar-e-Hijri, aur restaurant ki apni likhi
+ *    `delivery_zones.places`) — ke SAARE lafz us me hon wo area; sab se lamba naam jeetta hai.
  * 2. Qareebi: naam na mile to area ke nuqton (markazi `lat/lng` + har alias ka apna) me se jo sab se qareeb ho —
  *    shehar ke andar (MAX_KM). Bare area ka aik nuqta kafi nahi (Scheme 33 ka markaz 7 km door, Johar 3.6 km).
  * Dono na milen to kuch nahi — customer list se chunta hai. Aas paas ke areas hamesha saath (chunne me aasani).
@@ -31,12 +31,12 @@ class AreaLocator
      */
     public function locate(float $lat, float $lng): array
     {
-        $zones = DeliveryZone::where('is_active', true)->get(['id', 'area_name', 'geo_area_id']);
+        $zones = DeliveryZone::where('is_active', true)->get(['id', 'area_name', 'geo_area_id', 'places']);
         $geo = GeoArea::whereIn('id', $zones->pluck('geo_area_id')->filter()->all())
             ->get(['id', 'lat', 'lng', 'aliases'])->keyBy('id');
 
         $distances = $zones->mapWithKeys(function (DeliveryZone $z) use ($geo, $lat, $lng) {
-            $points = self::points($geo->get($z->geo_area_id));
+            $points = self::points($geo->get($z->geo_area_id), $z);
 
             return $points ? [$z->id => min(array_map(fn ($p) => self::km($lat, $lng, $p[0], $p[1]), $points))] : [];
         })->sort();
@@ -59,14 +59,11 @@ class AreaLocator
         ];
     }
 
-    /** @return list<array{0: float, 1: float}> area ka markaz + us ki societies ke nuqte */
-    private static function points(?GeoArea $g): array
+    /** @return list<array{0: float, 1: float}> area ka markaz + us ki societies ke nuqte (master + restaurant ki likhi) */
+    private static function points(?GeoArea $g, DeliveryZone $z): array
     {
-        if (! $g) {
-            return [];
-        }
-        $out = $g->lat !== null && $g->lng !== null ? [[(float) $g->lat, (float) $g->lng]] : [];
-        foreach ($g->aliasList() as $a) {
+        $out = $g && $g->lat !== null && $g->lng !== null ? [[(float) $g->lat, (float) $g->lng]] : [];
+        foreach (array_merge($g?->aliasList() ?? [], $z->placeList()) as $a) {
             if ($a['lat'] !== null && $a['lng'] !== null) {
                 $out[] = [$a['lat'], $a['lng']];
             }
@@ -86,7 +83,8 @@ class AreaLocator
         $best = null;
         $bestLen = 0;
         foreach ($zones as $z) {
-            $names = array_merge([(string) $z->area_name], array_column($geo->get($z->geo_area_id)?->aliasList() ?? [], 'name'));
+            $names = array_merge([(string) $z->area_name], array_column($geo->get($z->geo_area_id)?->aliasList() ?? [], 'name'),
+                array_column($z->placeList(), 'name'));
             foreach ($names as $name) {
                 $tokens = array_values(array_filter(explode(' ', self::norm($name))));
                 if ($tokens === []) {
