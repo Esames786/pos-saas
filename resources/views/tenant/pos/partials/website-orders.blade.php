@@ -14,13 +14,14 @@
     #webOrdersModal .wo-chev { display: inline-block; transition: transform .15s ease; }
     #webOrdersModal .wo-row.open .wo-chev { transform: rotate(90deg); }
     #webOrdersModal .wo-num { font-variant-numeric: tabular-nums; }
+    #webOrdersModal .wo-row > td { padding-top: .7rem; padding-bottom: .7rem; }
     @media (prefers-reduced-motion: reduce) { #webOrdersModal .wo-chev { transition: none; } }
 </style>
 <div class="modal fade" id="webOrdersModal" tabindex="-1" aria-labelledby="webOrdersModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header py-2">
-                <h2 class="modal-title h6 mb-0" id="webOrdersModalLabel"><i class="ti ti-world-www me-2"></i>Website orders</h2>
+            <div class="modal-header">
+                <h2 class="modal-title h5 mb-0" id="webOrdersModalLabel"><i class="ti ti-world-www me-2"></i>Website orders</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="px-3 py-2 d-flex gap-1 flex-wrap border-bottom" id="web-orders-tabs" role="tablist">
@@ -29,7 +30,7 @@
                 <button type="button" class="btn btn-sm btn-outline-dark" data-wo-tab="paid">Paid today <span class="badge bg-secondary ms-1" data-wo-count="paid">0</span></button>
                 <button type="button" class="btn btn-sm btn-outline-dark" data-wo-tab="cancelled">Cancelled today <span class="badge bg-secondary ms-1" data-wo-count="cancelled">0</span></button>
             </div>
-            <div class="modal-body p-0" id="web-orders-body"><p class="text-muted p-3 mb-0">Loading…</p></div>
+            <div class="modal-body p-0" id="web-orders-body" style="min-height:55vh"><p class="text-muted p-3 mb-0">Loading…</p></div>
         </div>
     </div>
 </div>
@@ -206,7 +207,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
         var live = tab === 'new' || tab === 'confirmed';
-        body.innerHTML = '<div class="table-responsive"><table class="table table-sm align-middle mb-0">' +
+        body.innerHTML = '<div class="table-responsive"><table class="table table-hover align-middle mb-0">' +
             '<thead class="table-light"><tr><th class="ps-3">Order</th><th>Customer</th><th class="text-end">Total</th><th>Status</th><th>Items</th><th></th></tr></thead><tbody>' +
             rows.map(function (o) {
                 var isOpen = !!expanded[o.id];

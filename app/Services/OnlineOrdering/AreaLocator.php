@@ -16,7 +16,7 @@ use Illuminate\Support\Collection;
  */
 class AreaLocator
 {
-    public const MAX_KM = 4.0;
+    public const MAX_KM = 5.0;   // malik: naam na mile to 5 km ke andar ka qareebi area
 
     public function __construct(private readonly OpenStreetMap $osm) {}
 

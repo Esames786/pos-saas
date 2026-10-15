@@ -161,7 +161,7 @@ Owner ke sawal/faisle: "alag website product ya category screen to nahi ban rahe
   Paid today / Cancelled today; Recall bina screen reload (Held Orders wala `recallHeldSale`). Website: area list me delivery
   charges nahi (cart/checkout me dikhte hain); pehli dafa location khud maangi jati hai, "Use my current location" dobara
   maangta hai (Block ho to allow karne ka tareeqa); OpenStreetMap (hamare server se, cache) naam se area, warna qareebi
-  (`geo_areas.lat/lng`, 4 km); checkout par OSM map + draggable pin; "Cash on delivery" saaf (order par `web_meta.payment = cash`
+  (`geo_areas.lat/lng`, 5 km — malik); checkout par OSM map + draggable pin; "Cash on delivery" saaf (order par `web_meta.payment = cash`
   + Cash payment method, notes me CASH ON DELIVERY). Menu import: jis section ki POS category nahi (Deals, Family Deals, Meals,
   Midnight Deals…) wo ab chhoRa nahi jata — usi naam ki category, warna nayi "sirf website" (POS par tab nahi).
 - **Go-live ke naye qadam:** `online-ordering:geocode-areas --city=Karachi` (dry run → `--yes`, ~1 request/second) aur
