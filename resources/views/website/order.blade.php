@@ -90,8 +90,11 @@ svg { flex:none; }
 .cartbtn .n, .fcart .n { position:absolute; top:2px; right:0; background:var(--brand); color:#fff; border-radius:999px; min-width:18px; height:18px; display:grid; place-items:center; font-size:10.5px; font-weight:700; padding:0 5px; }
 .bump { animation:bump .5s var(--ease); }
 @keyframes bump { 30% { transform:scale(1.18); } 60% { transform:scale(.94); } }
-.notice { background:#FDF0F0; color:var(--brand-dark); border-bottom:1px solid #F3C9CB; font-size:14px; text-align:center; }
-.notice .wrap { padding-top:10px; padding-bottom:10px; }
+/* Closed / not taking orders: a full-width red bar ABOVE the header, like the old site — the round logo
+   hangs below the header, so it never covers this text. */
+.notice { position:relative; z-index:31; background:#E3242B; color:#fff; font-size:15px; font-weight:600; text-align:center; letter-spacing:.01em; }
+.notice .wrap { padding-top:12px; padding-bottom:12px; }
+@media (max-width:720px) { .notice { font-size:13.5px; } .notice .wrap { padding-top:10px; padding-bottom:10px; } }
 
 /* ── banner slider ── */
 .hero { padding-top:26px; }
@@ -426,6 +429,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   <symbol id="i-leaf" viewBox="0 0 200 200"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M20 190C70 140 120 90 190 15"/><path d="M45 163c-6-22-4-40 8-56M45 163c22-2 38-10 50-24"/><path d="M70 137c-5-24-2-42 11-58M70 137c24-2 40-11 53-26"/><path d="M96 110c-4-24 0-42 13-57M96 110c24-3 40-12 52-28"/><path d="M122 83c-3-22 1-38 13-52M122 83c22-3 37-12 48-27"/><path d="M148 57c-2-18 2-31 12-42M148 57c18-3 30-10 39-22"/></g></symbol>
 </svg>
 
+<div class="notice" id="notice" role="status" hidden><div class="wrap" id="noticeText"></div></div>
+
 <header class="top">
   <div class="wrap">
     <div class="chips">
@@ -440,7 +445,6 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   </div>
 </header>
 
-<div class="notice" id="notice" hidden><div class="wrap" id="noticeText"></div></div>
 
 <div class="hero" id="top"><div class="wide" id="heroBox"></div></div>
 
