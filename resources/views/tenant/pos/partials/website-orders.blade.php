@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var notes = (o.item_notes || []).map(function (n) { return '<div>📝 ' + esc(n.item) + ': ' + esc(n.note) + '</div>'; }).join('');
         var who = '<div class="fw-semibold"><i class="ti ti-cash me-1"></i>' + esc(o.payment || 'Cash on delivery') + '</div>' +
             '<div><i class="ti ti-phone me-1"></i><a href="tel:' + esc(o.phone) + '">' + esc(o.phone) + '</a>' + (o.alt_phone ? ' · ' + esc(o.alt_phone) : '') + '</div>' +
-            (o.address ? '<div><i class="ti ti-map-pin me-1"></i>' + esc(o.address) + (o.map ? ' · <a href="' + esc(o.map) + '" target="_blank" rel="noopener">Map</a>' : '') + '</div>' : '') +
+            (o.address ? '<div><i class="ti ti-map-pin me-1"></i>' + esc(o.address) + (o.map ? ' · <a href="' + esc(o.map) + '" target="_blank" rel="noopener" data-map>Map</a>' : '') + '</div>' : '') +
             (o.note ? '<div>💬 ' + esc(o.note) + '</div>' : '') + notes;
         var actions = '';
         if (o.status === 'new' || o.status === 'confirmed') {
@@ -253,6 +253,17 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     body.addEventListener('click', function (e) {
+        // Map opens in a small window over the POS (owner), not a new tab; the same window is reused.
+        var mapLink = e.target.closest('[data-map]');
+        if (mapLink) {
+            e.preventDefault();
+            var w = 760, h = 560;
+            var left = Math.max(0, (window.screenX || 0) + ((window.outerWidth || screen.width) - w) / 2);
+            var top = Math.max(0, (window.screenY || 0) + ((window.outerHeight || screen.height) - h) / 2);
+            var win = window.open(mapLink.href, 'pos-website-map', 'popup=yes,width=' + w + ',height=' + h + ',left=' + Math.round(left) + ',top=' + Math.round(top));
+            if (win) { win.focus(); } else { window.open(mapLink.href, '_blank', 'noopener'); }   // pop-ups blocked: a tab as before
+            return;
+        }
         var rc = e.target.closest('[data-recall]');
         if (rc) { recall(+rc.dataset.recall, rc.dataset.type, rc); return; }
         var cancel = e.target.closest('[data-cancel]');
