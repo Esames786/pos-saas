@@ -28,7 +28,7 @@ class OpenStreetMap
     public function reverse(float $lat, float $lng): ?array
     {
         // ~100 m ka khana: aik gali ke customer aik hi jawab, aur service par bojh nahi.
-        $key = sprintf('osm:rev:%.3f:%.3f', $lat, $lng);
+        $key = self::reverseKey($lat, $lng);
         try {
             if (is_array($hit = Cache::get($key))) {
                 return $hit;
@@ -45,6 +45,12 @@ class OpenStreetMap
         }
 
         return $res;
+    }
+
+    /** Reverse jawab ka cache key (~100 m ka khana). */
+    public static function reverseKey(float $lat, float $lng): string
+    {
+        return sprintf('osm:rev:%.3f:%.3f', $lat, $lng);
     }
 
     /** @return array{lat: float, lng: float, label: string}|null */
