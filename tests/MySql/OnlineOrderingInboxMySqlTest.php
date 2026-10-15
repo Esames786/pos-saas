@@ -112,7 +112,8 @@ class OnlineOrderingInboxMySqlTest extends MySqlTenantTestCase
         $row = $j['orders'][0];
         $this->assertTrue($row['is_draft']);
         $this->assertSame('new', $row['status']);
-        $this->assertSame(['new' => 1, 'confirmed' => 0, 'paid' => 0, 'cancelled' => 0, 'no_rider' => 0], $j['counts']);
+        $this->assertSame(['new' => 1, 'to_check' => 1, 'confirmed' => 0, 'paid' => 0, 'cancelled' => 0, 'no_rider' => 0], $j['counts']);
+        $this->assertFalse($row['verified'], 'Admin ne abhi Confirm nahi kiya.');
         $this->assertTrue($row['needs_rider']);
         $this->assertSame('Gulshan Block 2', $row['area']);
         $this->assertSame('Midnight Deal', $row['items'][0]['name'], 'Deal ka naam, components nahi.');
@@ -153,6 +154,37 @@ class OnlineOrderingInboxMySqlTest extends MySqlTenantTestCase
         $this->grant(['tenant.pos.index']);
         $this->cashier()->postJson($this->url('/api/pos/website-orders/'.$other->id.'/hold'), ['delivery_rider_id' => $rider->id])->assertForbidden();
         $this->assertTrue($other->fresh()->is_draft);
+    }
+
+    public function test_the_admin_confirm_marks_the_order_keeps_it_a_draft_and_needs_the_right_to_hold(): void
+    {
+        // Malik (15 Oct): admin ka "Confirm" = bhejne se pehle control; order Draft hi rehta hai (customer ka tap Held karta hai).
+        config()->set('services.whatsapp.token', null);
+        $sale = $this->webOrder();
+        $q = '/api/pos/website-orders?branch_id='.$this->branchId.'&terminal_id='.$this->t1;
+
+        $this->cashier()->postJson($this->url('/api/pos/website-orders/'.$sale->id.'/verify'))->assertOk()
+            ->assertJson(['already' => false, 'whatsapp' => 'off']);
+        $j = $this->cashier()->getJson($this->url($q))->assertOk()->json();
+        $row = collect($j['orders'])->firstWhere('id', $sale->id);
+        $this->assertTrue($row['verified']);
+        $this->assertSame('new', $row['status'], 'Customer ke tap tak New hi.');
+        $this->assertTrue($sale->fresh()->is_draft);
+        $this->assertSame(1, $j['counts']['new']);
+        $this->assertSame(0, $j['counts']['to_check'], 'Confirm ho gaya — ghanti/badge isay nahi ginte.');
+        $this->assertFalse($j['wa_received'], 'WhatsApp laga nahi — POS par Confirm button nahi.');
+
+        // Dobara: kuch nahi. Held order: Confirm nahi.
+        $this->cashier()->postJson($this->url('/api/pos/website-orders/'.$sale->id.'/verify'))->assertOk()->assertJson(['already' => true]);
+        $sale->update(['is_draft' => false]);
+        $this->cashier()->postJson($this->url('/api/pos/website-orders/'.$sale->id.'/verify'))->assertStatus(422);
+
+        // Hold ka haq nahi to Confirm bhi nahi.
+        $other = $this->webOrder();
+        DB::connection('tenant')->table('model_has_permissions')->where('model_id', $this->userId)->delete();
+        $this->grant(['tenant.pos.index']);
+        $this->cashier()->postJson($this->url('/api/pos/website-orders/'.$other->id.'/verify'))->assertForbidden();
+        $this->assertNull(data_get($other->fresh()->web_meta, 'verified'));
     }
 
     public function test_an_order_already_confirmed_only_takes_a_rider_and_sends_no_second_kot(): void

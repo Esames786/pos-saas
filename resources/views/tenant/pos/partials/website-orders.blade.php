@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var val = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
     var ago = function (m) { return m < 60 ? m + ' min' : Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; };
 
-    var open = [], closed = { paid: null, cancelled: null }, counts = {}, routed = false;
+    var open = [], closed = { paid: null, cancelled: null }, counts = {}, routed = false, waReceived = false;
     var tab = null, expanded = {}, pickedRider = {}, seen = {}, primed = false, lastRing = 0;
 
     // ── bell (no sound file: two short tones). The cashier has clicked the POS by now, so audio may play.
@@ -95,12 +95,14 @@ document.addEventListener('DOMContentLoaded', function () {
             var el = tabsEl.querySelector('[data-wo-count="' + k + '"]');
             if (el) { el.textContent = counts[k] || 0; }
         });
-        // Badge = what still needs the cashier: new orders + confirmed ones without a rider.
-        var todo = (counts.new || 0) + (counts.no_rider || 0);
+        // Badge = what still needs the cashier: new orders nobody has confirmed yet + confirmed ones without a
+        // rider. (A new order waiting on the customer's WhatsApp tap needs nobody right now.)
+        var check = counts.to_check !== undefined ? counts.to_check : (counts.new || 0);
+        var todo = check + (counts.no_rider || 0);
         badge.hidden = !todo;
         badge.textContent = todo;
-        btn.classList.toggle('btn-danger', (counts.new || 0) > 0);
-        btn.classList.toggle('btn-outline-danger', !(counts.new || 0));
+        btn.classList.toggle('btn-danger', check > 0);
+        btn.classList.toggle('btn-outline-danger', !check);
     }
 
     function poll() {
@@ -111,10 +113,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 open = j.orders || [];
                 counts = j.counts || {};
                 routed = !!j.routed;
+                waReceived = !!j.wa_received;
                 btn.closest('.col-auto').hidden = !(routed || open.length);
                 showCounts();
 
-                var drafts = open.filter(function (o) { return o.status === 'new'; });
+                // Ring for orders nobody has confirmed yet (one waiting on the customer's tap needs no one).
+                var drafts = open.filter(function (o) { return o.status === 'new' && !o.verified; });
                 var fresh = drafts.filter(function (o) { return !seen[o.id]; });
                 open.forEach(function (o) { seen[o.id] = true; });
                 if (routed && primed && fresh.length) {
@@ -166,10 +170,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function statusBadge(o) {
-        if (o.status === 'new') { return '<span class="badge bg-warning text-dark">New</span>'; }
+        if (o.status === 'new') {
+            if (!o.verified) { return '<span class="badge bg-warning text-dark">New</span>'; }
+            return o.wa_received === 'failed' ? '<span class="badge bg-danger">WhatsApp failed</span>'
+                : '<span class="badge bg-info text-dark">Waiting for customer</span>';
+        }
         if (o.status === 'confirmed') {
             return o.missing_rider ? '<span class="badge bg-danger">Rider needed</span>'
-                : '<span class="badge bg-success">' + (o.rider ? esc(o.rider) : 'Confirmed') + '</span>';
+                : '<span class="badge bg-success">Confirmed</span>' + (o.rider ? '<div class="small text-muted">Rider: ' + esc(o.rider) + '</div>' : '');
         }
         if (o.status === 'cancelled') { return '<span class="badge bg-secondary">' + (o.cancelled_by === 'auto' ? 'Auto-cancelled' : 'Cancelled') + '</span>'; }
         return '<span class="badge bg-success">Paid</span>';
@@ -187,10 +195,25 @@ document.addEventListener('DOMContentLoaded', function () {
             (o.note ? '<div>💬 ' + esc(o.note) + '</div>' : '') + notes;
         var actions = '';
         if (o.status === 'new' || o.status === 'confirmed') {
+            // Owner, 15 Oct: the admin checks the order and presses Confirm — only then does the customer get the
+            // "Order received" WhatsApp with its Confirm Order button. Hold & send to kitchen stays for phone confirms.
+            var canVerify = o.status === 'new' && !o.verified && waReceived;
+            var verifyBtn = canVerify
+                ? '<button type="button" class="btn btn-sm btn-primary" data-verify="' + o.id + '"><i class="ti ti-brand-whatsapp me-1"></i>Confirm &amp; send WhatsApp</button>'
+                : '';
             var main = o.status === 'new'
-                ? '<button type="button" class="btn btn-sm btn-success" data-hold="' + o.id + '"><i class="ti ti-chef-hat me-1"></i>Hold &amp; send to kitchen</button>'
+                ? '<button type="button" class="btn btn-sm ' + (canVerify ? 'btn-outline-success' : 'btn-success') + '" data-hold="' + o.id + '"><i class="ti ti-chef-hat me-1"></i>Hold &amp; send to kitchen</button>'
                 : (o.needs_rider ? '<button type="button" class="btn btn-sm btn-success" data-hold="' + o.id + '">Save rider</button>' : '');
-            actions = '<div class="d-flex flex-wrap gap-2 align-items-center mt-2">' + (o.needs_rider ? riderSelect(o) : '') + main +
+            var hint = '';
+            if (o.status === 'new' && o.verified) {
+                hint = o.wa_received === 'failed'
+                    ? '<div class="small text-danger mt-2">The WhatsApp message could not be sent. Call the customer, then press Hold &amp; send to kitchen.</div>'
+                    : '<div class="small text-muted mt-2">Confirmed' + (o.verified_by ? ' by ' + esc(o.verified_by) : '') + ' · WhatsApp sent ' + ago(o.verified_minutes || 0) +
+                        ' ago — waiting for the customer to tap Confirm Order. If they don’t, call them and press Hold &amp; send to kitchen.</div>';
+            } else if (o.status === 'new' && !waReceived) {
+                hint = '<div class="small text-muted mt-2">The “Order received” WhatsApp is off in Website Settings — call the customer, then press Hold &amp; send to kitchen.</div>';
+            }
+            actions = hint + '<div class="d-flex flex-wrap gap-2 align-items-center mt-2">' + verifyBtn + (o.needs_rider ? riderSelect(o) : '') + main +
                 '<button type="button" class="btn btn-sm btn-outline-danger" data-cancel="' + o.id + '" data-no="' + esc(o.sale_no) + '">Cancel</button></div>';
         }
         return '<tr class="wo-detail"><td colspan="6" class="small px-3 pb-3 pt-1">' +
@@ -270,6 +293,27 @@ document.addEventListener('DOMContentLoaded', function () {
         if (cancel && bridge().cancelHeldSaleFromModal) {
             bridge().cancelHeldSaleFromModal(+cancel.dataset.cancel, cancel.dataset.no, cancel);
             setTimeout(poll, 1500);
+            return;
+        }
+        var verify = e.target.closest('[data-verify]');
+        if (verify) {
+            if (verify.disabled) { return; }
+            verify.disabled = true;
+            fetch(HOLD + verify.dataset.verify + '/verify', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF }
+            }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }).then(function (res) {
+                verify.disabled = false;
+                if (!bridge().toast) { poll(); return; }
+                if (!res.ok) {
+                    bridge().toast('error', esc(res.j.message || 'Could not confirm this order.'));
+                } else if (res.j.whatsapp === 'sending') {
+                    bridge().toast('success', 'Confirmed ' + esc(res.j.sale_no) + ' — the customer gets a WhatsApp to confirm.');
+                } else {
+                    bridge().toast('warning', 'Confirmed ' + esc(res.j.sale_no) + ', but no WhatsApp was sent (it is off, or no phone). Call the customer.');
+                }
+                poll();
+            }).catch(function () { verify.disabled = false; });
             return;
         }
         var hold = e.target.closest('[data-hold]');

@@ -44,7 +44,7 @@ h1 { margin:0; text-align:center; font:400 42px/1 "Allura",cursive; color:var(--
 <body>
 @php
     $labels = [
-        'received' => ['Order received', 'We have your order. You will get a WhatsApp message to confirm it — or we will call you.'],
+        'received' => ['Order received', 'We have your order. The restaurant will check it and send you a WhatsApp message to confirm it — or call you.'],
         'confirmed' => ['Order confirmed', 'The kitchen has started on your order.'],
         'completed' => ['Order completed', 'Thank you for ordering with us.'],
         'cancelled' => ['Order cancelled', 'This order has been cancelled. Please call us if this is a mistake.'],
@@ -64,6 +64,7 @@ h1 { margin:0; text-align:center; font:400 42px/1 "Allura",cursive; color:var(--
             'already' => 'This order is already confirmed.',
             'expired' => 'This confirm link has expired. The restaurant will call you to confirm your order.',
             'later' => 'Thank you. We will confirm your order shortly.',
+            'pending' => 'The restaurant is still checking your order. You will get a WhatsApp message to confirm it shortly.',
             'cancelled' => 'This order was cancelled.',
         ];
         $outcome = session('confirm_outcome');

@@ -193,8 +193,8 @@ class WebsiteOrderService
             return $sale->fresh('lines');
         });
 
-        // "Order mila" + Confirm link (client ne on rakha ho to) — commit aur jawab ke baad.
-        WebsiteOrderNotifier::later('received', $sale->id);
+        // Malik (15 Oct): yahan koi WhatsApp nahi. "Order mila" + Confirm link tab jata hai jab POS par admin order
+        // dekh kar "Confirm" dabaye (WebsiteOrderInboxController::verify) — bhejne se pehle aik control.
 
         return $sale;
     }

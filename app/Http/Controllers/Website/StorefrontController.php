@@ -194,7 +194,13 @@ class StorefrontController extends Controller
             if ($sale->status !== 'held' || ! $sale->is_draft) {
                 return ['already', $sale->id];
             }
-            if ($sale->created_at->lt(now()->subMinutes(self::CONFIRM_LINK_MINUTES))) {
+            // Malik (15 Oct): pehle admin POS par "Confirm" karta hai, tab customer ka link chalta hai — aur 30
+            // minute usi waqt se (jab WhatsApp gaya), order ke waqt se nahi.
+            $sentAt = \App\Http\Controllers\Tenant\OnlineOrdering\WebsiteOrderInboxController::verifiedAt($sale);
+            if (! $sentAt) {
+                return ['pending', $sale->id];
+            }
+            if (\Illuminate\Support\Carbon::parse($sentAt)->lt(now()->subMinutes(self::CONFIRM_LINK_MINUTES))) {
                 return ['expired', $sale->id];
             }
             if (! \App\Models\Tenant\Shift::where('terminal_id', $sale->terminal_id)->where('status', 'open')->exists()) {

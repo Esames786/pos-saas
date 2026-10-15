@@ -104,6 +104,11 @@ class OnlineOrderingWhatsAppMySqlTest extends MySqlTenantTestCase
         $this->fakeMeta();
         $sale = $this->order();
 
+        // Malik (15 Oct): order aate hi koi WhatsApp nahi — pehle admin POS par dekh kar "Confirm" kare.
+        Http::assertNothingSent();
+        $this->verify($sale)->assertOk()->assertJson(['already' => false, 'whatsapp' => 'sending']);
+        $this->assertTrue($sale->fresh()->is_draft, 'Admin ka Confirm order ko Held nahi karta — customer ka tap karta hai.');
+
         Http::assertSentCount(1);
         Http::assertSent(function (HttpRequest $r) use ($sale) {
             $b = $r->data();
@@ -121,7 +126,8 @@ class OnlineOrderingWhatsAppMySqlTest extends MySqlTenantTestCase
         $this->assertSame('9.8500', $row->rate_charged, 'Usi rate par jo WhatsApp ka hai (yahan .env sahara).');
         $this->assertSame('accepted', $row->status);
 
-        // Dobara bhejne ki koshish: aik hi.
+        // Dobara Confirm / dobara bhejne ki koshish: aik hi.
+        $this->verify($sale)->assertOk()->assertJson(['already' => true]);
         app(WebsiteOrderNotifier::class)->send('received', $sale->id);
         Http::assertSentCount(1);
     }
@@ -130,14 +136,18 @@ class OnlineOrderingWhatsAppMySqlTest extends MySqlTenantTestCase
     {
         WebSetting::tenantDefault()->update(['wa_notify_received' => false]);
         $this->fakeMeta();
-        $this->order();
+        $this->verify($this->order())->assertOk()->assertJson(['whatsapp' => 'off']);
         Http::assertNothingSent();
 
         WebSetting::tenantDefault()->update(['wa_notify_received' => true]);
         $this->metaRejects = true;
         $sale = $this->order();
+        $this->verify($sale)->assertOk();
+        $sale->refresh();
         $this->assertSame('held', $sale->status, 'WhatsApp fail ho, order phir bhi bana.');
+        $this->assertTrue($sale->is_draft);
         $this->assertSame('failed', WhatsAppMessage::where('tenant_id', $this->tenantId)->latest('id')->first()->status);
+        $this->assertTrue((bool) data_get($sale->web_meta, 'wa.received.failed'), 'POS par "WhatsApp failed" dikhe.');
     }
 
     public function test_without_whatsapp_set_up_nothing_is_attempted_or_billed(): void
@@ -145,6 +155,7 @@ class OnlineOrderingWhatsAppMySqlTest extends MySqlTenantTestCase
         config()->set('services.whatsapp.token', '');
         $this->fakeMeta();
         $sale = $this->order();
+        $this->verify($sale)->assertOk()->assertJson(['whatsapp' => 'off']);
 
         $this->assertSame('held', $sale->status);
         Http::assertNothingSent();
@@ -159,6 +170,11 @@ class OnlineOrderingWhatsAppMySqlTest extends MySqlTenantTestCase
         $print = Mockery::mock(PrintJobService::class);
         $print->shouldReceive('queueKot')->once()->withArgs(fn ($sale2) => (int) $sale2->id === $sale->id)->andReturn([]);
         $this->app->instance(PrintJobService::class, $print);
+
+        // Admin ke Confirm se pehle link kuch nahi karta (malik: pehle admin ka control).
+        $this->post($this->url('/order/confirm/'.$sale->web_token))->assertRedirect()->assertSessionHas('confirm_outcome', 'pending');
+        $this->assertTrue($sale->fresh()->is_draft);
+        $this->verify($sale)->assertOk();
 
         // GET kuch nahi badalta (bots, previews).
         $this->get($this->url('/order/confirm/'.$sale->web_token))->assertOk()->assertSee('confirm-form', false);
@@ -179,10 +195,28 @@ class OnlineOrderingWhatsAppMySqlTest extends MySqlTenantTestCase
     {
         $this->fakeMeta();
         $sale = $this->order();
-        SalesOrder::whereKey($sale->id)->update(['created_at' => now()->subMinutes(31)]);
+        $this->verify($sale)->assertOk();
+        $meta = $sale->fresh()->web_meta;
+        $meta['verified']['at'] = now()->subMinutes(31)->toIso8601String();
+        SalesOrder::whereKey($sale->id)->update(['web_meta' => json_encode($meta)]);
 
-        $this->post($this->url('/order/confirm/'.$sale->web_token))->assertRedirect();
+        $this->post($this->url('/order/confirm/'.$sale->web_token))->assertRedirect()->assertSessionHas('confirm_outcome', 'expired');
         $this->assertTrue($sale->fresh()->is_draft, '30 minute baad link nahi chalta — cashier call karega.');
+    }
+
+    public function test_the_thirty_minutes_start_when_the_admin_confirms_not_when_the_customer_ordered(): void
+    {
+        $this->fakeMeta();
+        $print = Mockery::mock(PrintJobService::class);
+        $print->shouldReceive('queueKot')->once()->andReturn([]);
+        $this->app->instance(PrintJobService::class, $print);
+
+        $sale = $this->order();
+        SalesOrder::whereKey($sale->id)->update(['created_at' => now()->subMinutes(45)]);   // admin ne der se dekha
+        $this->verify($sale)->assertOk();
+
+        $this->post($this->url('/order/confirm/'.$sale->web_token))->assertRedirect()->assertSessionHas('confirm_outcome', 'confirmed');
+        $this->assertFalse($sale->fresh()->is_draft);
     }
 
     public function test_the_cashiers_own_hold_and_a_cancel_also_tell_the_customer(): void
@@ -238,6 +272,19 @@ class OnlineOrderingWhatsAppMySqlTest extends MySqlTenantTestCase
     }
 
     // ── helpers ──
+
+    /** POS par admin ka "Confirm" — asal raaste (HTTP, Hold wala haq). */
+    private function verify(SalesOrder $sale)
+    {
+        foreach (['tenant.pos.index', 'tenant.held-sales.store'] as $p) {
+            \Spatie\Permission\Models\Permission::findOrCreate($p, 'tenant');
+        }
+        $user = User::on('tenant')->find($this->userId);
+        $user->givePermissionTo(['tenant.pos.index', 'tenant.held-sales.store']);
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+
+        return $this->actingAs($user, 'tenant')->postJson($this->url('/api/pos/website-orders/'.$sale->id.'/verify'));
+    }
 
     private function order(string $type = 'delivery'): SalesOrder
     {

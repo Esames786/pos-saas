@@ -627,6 +627,8 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // khaali jawab; Hold ka haq wohi jo POS ke Hold ka (`tenant.held-sales.store`).
                 Route::get('/api/pos/website-orders', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteOrderInboxController::class, 'index'])->name('tenant.api.pos.website-orders');
                 Route::post('/api/pos/website-orders/{salesOrder}/hold', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteOrderInboxController::class, 'hold'])->name('tenant.api.pos.website-orders.hold');
+                // Admin ka "Confirm" (customer ko WhatsApp is ke baad) — wohi haq jo Hold ka.
+                Route::post('/api/pos/website-orders/{salesOrder}/verify', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteOrderInboxController::class, 'verify'])->name('tenant.api.pos.website-orders.verify');
                 Route::get('/api/pos/recent-sales', [POSController::class, 'recentSales'])->name('tenant.api.pos.recent-sales');
                 Route::get('/api/pos/shift-status', [ShiftController::class, 'posStatus'])->name('tenant.api.pos.shift-status');
                 // POS-REMINDER-PAUSE-1: pause/resume this terminal's Reminder slips until its shift closes.
