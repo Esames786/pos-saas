@@ -22,6 +22,13 @@ return [
         'template'        => env('WHATSAPP_TEMPLATE', 'daily_sales_report'),
         'language'        => env('WHATSAPP_TEMPLATE_LANG', 'en'),
 
+        // ONLINE-ORDERING-1: website order messages — Meta par jis naam se approve hue (naam badla nahi ja sakta).
+        'web_templates'   => [
+            'received'  => env('WHATSAPP_WEB_TPL_RECEIVED', 'web_order_received'),
+            'confirmed' => env('WHATSAPP_WEB_TPL_CONFIRMED', 'web_order_confirmed'),
+            'cancelled' => env('WHATSAPP_WEB_TPL_CANCELLED', 'web_order_cancelled'),
+        ],
+
         // Tenant se per message kitna liya jata hai, aur hamein kitna paRta hai. DONO har usage row
         // par likhe jate hain, wahan se parhe nahi jate — rate badle to purane invoice nahi hilne
         // chahiyen, aur margin naapa jana chahiye, farz nahi kiya jana.

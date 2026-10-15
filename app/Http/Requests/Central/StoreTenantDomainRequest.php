@@ -60,10 +60,11 @@ class StoreTenantDomainRequest extends FormRequest
                 $validator->errors()->add('subdomain', 'This subdomain is already used.');
             }
 
-            // Website domain hamara apna (bingoopos.com ya us ka subdomain) nahi ho sakta — wo POS ke hain.
+            // Website domain bingoopos.com khud ya central nahi ho sakta. Us ka subdomain chalta hai (UAT, jaise
+            // kashiffoodweb.bingoopos.com) — wahan sirf website khulti hai (TenantOnly).
             $base = (string) config('tenancy.tenant_base_domain');
             if ($this->kind() === TenantDomain::KIND_WEBSITE
-                && ($domain === $base || str_ends_with($domain, '.'.$base) || $domain === config('tenancy.central_domain'))) {
+                && ($domain === $base || $domain === config('tenancy.central_domain'))) {
                 $validator->errors()->add('website_domain', 'Website domain must be the client\'s own domain, not '.$base.'.');
             }
         });

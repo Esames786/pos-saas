@@ -179,10 +179,14 @@ class OnlineOrderingWebsiteDomainMySqlTest extends MySqlTenantTestCase
         $this->assertSame('website', $row->kind);
         $this->assertFalse((bool) $row->is_primary);
 
-        // Hamara apna domain website domain nahi ban sakta.
+        // bingoopos.com khud website domain nahi ban sakta; us ka subdomain (UAT) chalta hai.
         $this->actingAs($admin, 'central')->post($central.'/tenants/'.$this->tenantId.'/domains', [
-            'kind' => 'website', 'website_domain' => 'shop.'.config('tenancy.tenant_base_domain'),
+            'kind' => 'website', 'website_domain' => config('tenancy.tenant_base_domain'),
         ])->assertSessionHasErrors('website_domain');
+        $this->actingAs($admin, 'central')->post($central.'/tenants/'.$this->tenantId.'/domains', [
+            'kind' => 'website', 'website_domain' => 'oositeuat.'.config('tenancy.tenant_base_domain'),
+        ])->assertSessionHasNoErrors();
+        $this->assertSame('website', TenantDomain::where('domain', 'oositeuat.'.config('tenancy.tenant_base_domain'))->value('kind'));
 
         // Purana subdomain wala form waisa hi.
         $this->actingAs($admin, 'central')->post($central.'/tenants/'.$this->tenantId.'/domains', ['subdomain' => 'oosite-two'])
@@ -192,6 +196,28 @@ class OnlineOrderingWebsiteDomainMySqlTest extends MySqlTenantTestCase
         // Website domain primary nahi banta — POS ke links usi se bante hain.
         $this->actingAs($admin, 'central')->post($central.'/tenant-domains/'.$row->id.'/primary')->assertSessionHasErrors('domain');
         $this->assertFalse((bool) $row->fresh()->is_primary);
+    }
+
+    public function test_a_website_domain_under_bingoopos_opens_only_the_website(): void
+    {
+        // UAT (malik): kashiffoodweb.bingoopos.com = sirf website, POS kashiffood.bingoopos.com par hi.
+        $uat = 'oositeweb.'.config('tenancy.tenant_base_domain');
+        DB::connection('master')->table('tenant_domains')->insert(['tenant_id' => $this->tenantId, 'domain' => $uat, 'kind' => 'website',
+            'is_primary' => 0, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        app()->forgetInstance('tenant');
+
+        $this->get('http://'.$uat.'/')->assertRedirect('/order');
+        $this->get('http://'.$uat.'/order')->assertOk()->assertSee('Website Foods');
+        $this->get('http://'.$uat.'/order/menu.json?branch='.$this->branchId)->assertOk();
+        foreach (['/login', '/dashboard', '/pos', '/api/pos/website-orders', '/billing', '/r/'.str_repeat('a', 32)] as $path) {
+            $this->get('http://'.$uat.$path)->assertNotFound();
+        }
+        $this->get('http://'.$uat.'/sw.js')->assertOk();
+
+        // POS ka apna subdomain waisa hi.
+        $this->get('http://'.$this->appHost.'/login')->assertOk();
+        $res = $this->get('http://'.$this->appHost.'/')->assertStatus(302);
+        $this->assertStringNotContainsString('/order', (string) $res->headers->get('Location'), 'POS subdomain kabhi website par nahi bhejta.');
     }
 
     // ── helpers ──

@@ -62,6 +62,19 @@ class IdentifyTenant
             // ka CSRF kabhi na chalta.
             $request->attributes->set('tenant_domain_kind', TenantDomain::KIND_WEBSITE);
             config(['session.domain' => null]);
+
+            // UAT jaisa website address jo khud *.bingoopos.com hai (kashiffoodweb.bingoopos.com): tenant ke
+            // raaste bhi us host se milte hain, aur login wale raaste routing se pehle login par bhej dete. Yahan,
+            // routing se pehle, sirf website: khali address → menu; /order… aur /sw.js ke siwa sab 404.
+            if (str_ends_with($host, '.'.config('tenancy.tenant_base_domain'))) {
+                $path = '/'.ltrim($request->path(), '/');
+                if ($path === '/') {
+                    return redirect('/order');
+                }
+                if (! preg_match('#^/(order(/.*)?|sw\.js)$#', $path)) {
+                    abort(404);
+                }
+            }
         }
 
         return $next($request);

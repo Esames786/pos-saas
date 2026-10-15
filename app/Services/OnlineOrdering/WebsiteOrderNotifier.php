@@ -82,15 +82,15 @@ class WebsiteOrderNotifier
         $total = number_format((float) $sale->grand_total, 0);
 
         [$enabled, $template, $components] = match ($event) {
-            'received' => [$settings->wa_notify_received, self::TEMPLATE_RECEIVED, [
+            'received' => [$settings->wa_notify_received, self::template('received'), [
                 $this->body([$name, $business, $sale->sale_no, $total]),
                 ['type' => 'button', 'sub_type' => 'url', 'index' => '0',
                     'parameters' => [['type' => 'text', 'text' => self::linkCode($tenant->tenant_code, (string) $sale->web_token)]]],
             ]],
-            'confirmed' => [$settings->wa_notify_confirmed, self::TEMPLATE_CONFIRMED, [
+            'confirmed' => [$settings->wa_notify_confirmed, self::template('confirmed'), [
                 $this->body([$name, $sale->sale_no, $business, (string) (data_get($sale->web_meta, 'eta_minutes') ?: $settings->default_eta_minutes), $phone]),
             ]],
-            'cancelled' => [$settings->wa_notify_cancelled, self::TEMPLATE_CANCELLED, [
+            'cancelled' => [$settings->wa_notify_cancelled, self::template('cancelled'), [
                 $this->body([$name, $sale->sale_no, $business, $phone]),
             ]],
             default => [false, null, []],
@@ -125,6 +125,14 @@ class WebsiteOrderNotifier
         $meta = $sale->web_meta ?: [];
         $meta['wa'] = ($meta['wa'] ?? []) + [$event => $mark];
         SalesOrder::whereKey($sale->id)->update(['web_meta' => json_encode($meta)]);
+    }
+
+    /** Meta par approve hua naam (config `services.whatsapp.web_templates`), warna yahan wala. */
+    public static function template(string $event): string
+    {
+        $default = ['received' => self::TEMPLATE_RECEIVED, 'confirmed' => self::TEMPLATE_CONFIRMED, 'cancelled' => self::TEMPLATE_CANCELLED][$event];
+
+        return (string) (config('services.whatsapp.web_templates.'.$event) ?: $default);
     }
 
     /** Button ka hissa: `bingoopos.com/o/{tenant}.{token}` — central link tenant tak le jata hai. */
