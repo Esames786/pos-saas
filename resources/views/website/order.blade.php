@@ -359,7 +359,15 @@ label.f span.req::after { content:" *"; color:var(--brand); }
 .cartsheet .hd h2 { display:flex; align-items:center; gap:10px; }
 .cartsheet .hd .x { background:rgba(255,255,255,.18); color:#fff; }
 .cartsheet .bd { background:#FBF9F7; }
-.citem { display:grid; grid-template-columns:64px minmax(0,1fr) auto; gap:12px; align-items:center; background:#fff; border:1px solid #F0EAE4; border-radius:16px; padding:10px; animation:fade .3s ease; }
+.citem { position:relative; display:grid; grid-template-columns:64px minmax(0,1fr) auto; gap:12px; align-items:center; background:#fff; border:1px solid #F0EAE4; border-radius:16px; padding:10px; animation:fade .3s ease; }
+/* "Remove X from your cart?" — a small popup over the line itself */
+.citem .rmask { position:absolute; inset:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:10px 14px; border-radius:inherit; background:rgba(255,255,255,.97); box-shadow:0 0 0 2px var(--brand-soft) inset; font-size:13.5px; animation:fade .2s ease; }
+.citem .rmask b { color:var(--ink); }
+.citem .rbtns { display:flex; gap:8px; margin-left:auto; }
+.citem .rbtns button { border:0; border-radius:999px; padding:7px 14px; font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+.citem .rbtns .keep { background:#F2F2F2; color:var(--ink); }
+.citem .rbtns .rm { background:var(--brand); color:#fff; }
+.citem .rbtns button:focus-visible { outline:3px solid #F3C9CB; outline-offset:2px; }
 .citem .th { width:64px; height:64px; border-radius:50%; overflow:hidden; background:var(--brand); }
 .citem .th img { width:100%; height:100%; object-fit:cover; }
 .citem b { display:block; font-size:14px; line-height:1.25; }
@@ -1173,7 +1181,11 @@ label.f span.req::after { content:" *"; color:var(--brand); }
         '<div><b>' + esc(l.name) + '</b>' + (l.label ? '<span class="chipr">' + esc(l.label) + '</span>' : '') +
         (l.addons.length ? '<small>' + l.addons.map(function (x) { return esc(x.name); }).join(', ') + '</small>' : '') +
         (l.note ? '<small>“' + esc(l.note) + '”</small>' : '') + '<div class="pr"><span>' + money(l.unit) + '</span></div></div>' +
-        '<span class="step"><button type="button" data-q="' + i + '" data-d="-1" aria-label="' + (l.qty === 1 ? 'Remove' : 'One less') + '">' + icon(l.qty === 1 ? 'trash' : 'minus') + '</button><b>' + l.qty + '</b><button type="button" data-q="' + i + '" data-d="1" aria-label="One more">' + icon('plus') + '</button></span></div>';
+        '<span class="step"><button type="button" data-q="' + i + '" data-d="-1" aria-label="' + (l.qty === 1 ? 'Remove' : 'One less') + '">' + icon(l.qty === 1 ? 'trash' : 'minus') + '</button><b>' + l.qty + '</b><button type="button" data-q="' + i + '" data-d="1" aria-label="One more">' + icon('plus') + '</button></span>' +
+        // Owner (16 Oct): removing an item completely asks first — a small popup on the line itself.
+        (askRemove === i ? '<div class="rmask" role="alertdialog" aria-label="Remove item"><span>Remove <b>' + esc(l.name) + '</b> from your cart?</span>' +
+          '<span class="rbtns"><button type="button" class="keep" data-keep>Keep</button><button type="button" class="rm" data-rm="' + i + '">Remove</button></span></div>' : '') +
+        '</div>';
     });
     if (S.type === 'delivery' && a && a.freeAbove) {
       var pct = Math.min(100, Math.round(subtotal() / a.freeAbove * 100));
@@ -1202,14 +1214,20 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     if (rail) { $('rail').scrollBy({ left: +rail.getAttribute('data-rail') * 200, behavior: 'smooth' }); return; }
     var up = e.target.closest('[data-up]');
     if (up) { var c = at(up.getAttribute('data-up')).card; if (simple(c)) { addSimple(c, up.querySelector('.ph')); } else { openItem(c, true); } return; }
+    if (e.target.closest('[data-keep]')) { askRemove = null; renderCart(); return; }
+    var rm = e.target.closest('[data-rm]');
+    if (rm) { S.cart.splice(+rm.getAttribute('data-rm'), 1); askRemove = null; save(); paintCart(); renderCart(); return; }
     var b = e.target.closest('[data-q]');
     if (!b) { return; }
-    var l = S.cart[+b.getAttribute('data-q')];
-    l.qty += +b.getAttribute('data-d');
-    if (l.qty <= 0) { S.cart.splice(+b.getAttribute('data-q'), 1); }
+    var qi = +b.getAttribute('data-q'), l = S.cart[qi], d = +b.getAttribute('data-d');
+    // The last one goes only after "Remove" in the small popup.
+    if (d < 0 && l.qty <= 1) { askRemove = qi; renderCart(); var k = $('cartBody').querySelector('[data-rm]'); if (k) { k.focus(); } return; }
+    askRemove = null;
+    l.qty += d;
     save(); paintCart(); renderCart();
   });
-  function openCart() { renderCart(); show('cartSheet'); }
+  var askRemove = null;   // cart line waiting for "Remove?" — see the cart's click handler
+  function openCart() { askRemove = null; renderCart(); show('cartSheet'); }
   $('cartBtn').addEventListener('click', openCart);
   $('fcart').addEventListener('click', openCart);
   $('bar').addEventListener('click', openCart);
