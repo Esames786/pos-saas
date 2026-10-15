@@ -244,9 +244,12 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $html = $this->get($this->url('/order'))->assertOk()->getContent();
         $this->assertStringContainsString("(sure ? 'You are in' : 'Nearest area:')", $html);
         $this->assertStringContainsString('data-pick', $html);
-        // Malik: Continue nahi — mila area khud chuna jata hai (customer ne khud na chuna ho to); jagah dikhti hai.
-        $this->assertStringContainsString('if (a && !userPicked) {', $html);
-        $this->assertStringContainsString('applyLocated(a, j);', $html);
+        // Malik: mila area window me pehle se chuna (customer ne khud na chuna ho to) — window khud band NAHI hoti
+        // (16 Oct), customer Select dabata hai; jagah dikhti hai.
+        $this->assertStringContainsString("if (!userPicked) { S.type = 'delivery'; pending = a.id; }", $html);
+        $this->assertStringContainsString('showLocated(a, j);', $html);
+        $this->assertStringNotContainsString('applyLocated', $html);
+        $this->assertStringNotContainsString('id="gpsGo"', $html, 'Continue button nahi — neeche ka Select hi.');
         $this->assertStringContainsString('id="placeLine"', $html);
         $this->assertStringContainsString('place: S.pin && S.place ? S.place : null', $html);
         $this->assertInlineScriptsParse($html, 'order page with nearest-area picks', 'data-pick');

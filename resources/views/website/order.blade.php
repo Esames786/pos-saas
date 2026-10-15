@@ -947,12 +947,26 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   var nearby = [], locating = false, userPicked = false;
   function nearRank(id) { var i = nearby.indexOf(id); return i === -1 ? 99 : i; }
   // Owner (15 Oct): no Continue — the found area is chosen straight away; the customer can still Change it.
-  function applyLocated(a, j) {
-    S.type = 'delivery'; S.area = a.id; S.placeArea = a.id; S.placeSure = j.by === 'name';
-    pending = null; save();
-    if (openSheet === $('areaSheet')) { hide(); }
-    switchBranch(); paintStatus();
-    if (step === 'checkout' && openSheet === $('cartSheet')) { keepFields(); renderCheckout(); }
+  // Owner (16 Oct): the found area is PRE-SELECTED in the area window — nothing closes by itself; the customer
+  // presses Select (or taps another area first). Outside the window (e.g. sharing the pin at checkout) the
+  // area the customer chose is never changed.
+  function showLocated(a, j) {
+    S.placeArea = a.id; S.placeSure = j.by === 'name'; save();
+    if (openSheet !== $('areaSheet')) { paintStatus(); return; }
+    if (!userPicked) { S.type = 'delivery'; pending = a.id; }
+    var sure = j.by === 'name';
+    // Not sure (only by distance) = offer the next closest areas; the customer picked by hand = offer the found one.
+    var others = (userPicked && pending !== a.id ? [a] : []).concat(sure ? [] : nearby.filter(function (id) { return id !== a.id; }).slice(0, 3)
+      .map(function (id) { return D.areas.find(function (x) { return x.id === id; }); }).filter(Boolean));
+    gpsMsg('<span>' + (sure ? 'You are in' : 'Nearest area:') + ' <b>' + esc(a.name) + '</b>' + (j.place ? '<br><small>' + esc(j.place) + '</small>' : '') +
+      (others.length ? '<span class="picks"><small>' + (userPicked && pending !== a.id ? 'Tap to use it:' : 'Not right? Tap yours:') + '</small>' + others.map(function (o) {
+        return '<button type="button" class="pk" data-pick="' + o.id + '">' + esc(o.name) + '</button>';
+      }).join('') + '</span>' : '') + '</span>');
+    $('gpsText').querySelectorAll('[data-pick]').forEach(function (b) {
+      b.addEventListener('click', function () { pending = +b.dataset.pick; userPicked = true; renderAreas(); });
+    });
+    renderAreas();
+    paintStatus();
   }
   function gpsMsg(html) { $('gpsText').innerHTML = html; $('gpsPin').hidden = false; }
   function locateMe(auto, done) {
@@ -974,26 +988,9 @@ label.f span.req::after { content:" *"; color:var(--brand); }
             S.place = j.label || j.place || null;   // goes with the order's address (staff + rider see it)
             save();
             var a = j.area ? D.areas.find(function (x) { return x.id === j.area; }) : null;
-            if (a && !userPicked) {
-              applyLocated(a, j);
-              return;
-            }
             if (a) {
-              S.type = 'delivery'; pending = a.id;
-              // Matched by name = sure ("You are in"). Only by distance = a guess near area borders (Johar / Scheme 33):
-              // say "Nearest area" and offer the next closest areas as one-tap choices.
-              var sure = j.by === 'name';
-              var others = sure ? [] : nearby.filter(function (id) { return id !== a.id; }).slice(0, 3)
-                .map(function (id) { return D.areas.find(function (x) { return x.id === id; }); }).filter(Boolean);
-              gpsMsg('<span>' + (sure ? 'You are in' : 'Nearest area:') + ' <b>' + esc(a.name) + '</b>' + (j.place ? '<br><small>' + esc(j.place) + '</small>' : '') +
-                (others.length ? '<span class="picks"><small>Not right? Tap yours:</small>' + others.map(function (o) {
-                  return '<button type="button" class="pk" data-pick="' + o.id + '">' + esc(o.name) + '</button>';
-                }).join('') + '</span>' : '') +
-                '</span><button type="button" class="go" id="gpsGo">Continue</button>');
-              $('gpsGo').addEventListener('click', function () { $('areaSelect').click(); });
-              $('gpsText').querySelectorAll('[data-pick]').forEach(function (b) {
-                b.addEventListener('click', function () { pending = +b.dataset.pick; renderAreas(); $('areaSelect').click(); });
-              });
+              showLocated(a, j);
+              return;
             } else {
               gpsMsg((j.place ? 'You are near <b>' + esc(j.place) + '</b>. ' : '') + (nearby.length ? 'Areas near you are at the top — pick yours.' : 'Choose your area below.'));
             }
