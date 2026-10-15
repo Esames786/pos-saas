@@ -218,6 +218,26 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $this->assertSame($this->zone['Gulistan e Johar - Block 7'], $this->locate(24.9475, 67.1452)->json('area'), 'Bina list wahi purani ghalti.');
     }
 
+    public function test_a_big_government_town_name_is_not_a_sure_match(): void
+    {
+        // UAT (15 Oct): Dow Hospital Nazimabad → "You are in Liaquatabad". OSM files Nazimabad under "Liaquatabad
+        // Town" (a whole district); the restaurant has no Nazimabad area. Nearest is fine — "sure by name" is not.
+        $geo = DB::connection('master')->table('geo_areas')->insertGetId(['country' => 'Pakistan', 'state' => 'Sindh', 'city' => self::CITY,
+            'name' => 'Liaquatabad', 'lat' => 24.9100, 'lng' => 67.0450, 'sort_order' => 9, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $liaquatabad = DeliveryZone::create(['geo_area_id' => $geo, 'area_name' => 'Liaquatabad', 'city' => 'Karachi',
+            'branch_id' => $this->branchId, 'fee' => 250, 'is_active' => true])->id;
+        Http::fake(['nominatim.openstreetmap.org/*' => Http::response([
+            'name' => 'Dow University Hospital - Nazimabad',
+            'address' => ['road' => 'Nawab Siddique Ali Khan Road', 'neighbourhood' => 'Nazimabad Block 2', 'suburb' => 'Nazimabad 2',
+                'town' => 'Liaquatabad Town', 'city_district' => 'Nazimabad District', 'city' => 'Karachi Division'],
+            'display_name' => 'Dow University Hospital - Nazimabad, Nawab Siddique Ali Khan Road, Nazimabad Block 2, Liaquatabad Town, Karachi',
+        ])]);
+
+        $j = $this->locate(24.9067, 67.0318)->assertOk()->json();
+        $this->assertSame($liaquatabad, $j['area'], 'Qareebi area wahi.');
+        $this->assertSame('nearest', $j['by'], 'Magar andaza — "Nearest area", "You are in" nahi.');
+    }
+
     public function test_a_guess_by_distance_says_nearest_and_offers_the_next_areas(): void
     {
         $html = $this->get($this->url('/order'))->assertOk()->getContent();

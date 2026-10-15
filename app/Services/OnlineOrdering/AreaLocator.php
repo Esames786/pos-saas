@@ -24,6 +24,10 @@ class AreaLocator
      */
     public const MAX_KM = 50.0;
 
+    /** OSM pate ke sarkari/bare hisse — naam milane me nahi ginte (town = "Liaquatabad Town" jaise poore zile). */
+    private const ADMIN_PARTS = ['town', 'city_district', 'district', 'county', 'state_district', 'state', 'region',
+        'city', 'municipality', 'postcode', 'country', 'country_code'];
+
     public function __construct(private readonly OpenStreetMap $osm) {}
 
     /**
@@ -43,7 +47,7 @@ class AreaLocator
 
         $osm = $this->osm->reverse($lat, $lng) ?? [];
         $address = (array) ($osm['address'] ?? []);
-        $byName = $this->byName($zones, $geo, $address, (string) ($osm['display_name'] ?? ''));
+        $byName = $this->byName($zones, $geo, $address, (string) ($osm['name'] ?? ''));
 
         $nearestId = $distances->keys()->first();
         $nearest = $nearestId !== null && $distances[$nearestId] <= self::MAX_KM ? $nearestId : null;
@@ -73,12 +77,14 @@ class AreaLocator
     }
 
     /** Naam se: area ke (ya us ki kisi society ke) naam ke saare lafz OSM ke pate me hon. */
-    private function byName(Collection $zones, Collection $geo, array $address, string $display): ?int
+    private function byName(Collection $zones, Collection $geo, array $address, string $placeName): ?int
     {
-        $parts = array_intersect_key($address, array_flip([
-            'house_number', 'road', 'neighbourhood', 'quarter', 'suburb', 'hamlet', 'residential', 'village', 'town', 'city_district',
-        ]));
-        $hay = ' '.self::norm(implode(' ', $parts).' '.$display).' ';
+        // Sirf jagah ke apne naam (gali, mohalla, society, imarat). Bare sarkari hisse nahi: Nazimabad ka pata
+        // "Liaquatabad Town" me aata hai, Clifton ka "Saddar Town" me — un se "Liaquatabad"/"Saddar" area PAKKA
+        // nahi hota (UAT: Dow Hospital Nazimabad "You are in Liaquatabad"). Wahan qareebi area (andaza) chalta hai.
+        $parts = array_filter($address, fn ($v, $k) => is_string($v) && ! in_array($k, self::ADMIN_PARTS, true)
+            && ! str_starts_with((string) $k, 'ISO3166'), ARRAY_FILTER_USE_BOTH);
+        $hay = ' '.self::norm(implode(' ', $parts).' '.$placeName).' ';
 
         $best = null;
         $bestLen = 0;
