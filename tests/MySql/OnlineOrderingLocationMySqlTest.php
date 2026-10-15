@@ -208,6 +208,7 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $j = $this->locate(24.952, 67.141)->assertOk()->json();
         $this->assertSame($this->zone['Scheme 33'], $j['area'], 'Restaurant ka likha naam pate me = us ka area.');
         $this->assertSame('name', $j['by']);
+        $this->assertSame('Chappal Sun City, New Rizvia Society', $j['label'], 'Customer ko dikhe aur pate ke saath jure — sarkari town nahi.');
 
         $named = false;
         $j = $this->locate(24.9475, 67.1452)->assertOk()->json();
@@ -243,6 +244,11 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $html = $this->get($this->url('/order'))->assertOk()->getContent();
         $this->assertStringContainsString("(sure ? 'You are in' : 'Nearest area:')", $html);
         $this->assertStringContainsString('data-pick', $html);
+        // Malik: Continue nahi — mila area khud chuna jata hai (customer ne khud na chuna ho to); jagah dikhti hai.
+        $this->assertStringContainsString('if (a && !userPicked) {', $html);
+        $this->assertStringContainsString('applyLocated(a, j);', $html);
+        $this->assertStringContainsString('id="placeLine"', $html);
+        $this->assertStringContainsString('place: S.pin && S.place ? S.place : null', $html);
         $this->assertInlineScriptsParse($html, 'order page with nearest-area picks', 'data-pick');
     }
 

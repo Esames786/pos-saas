@@ -238,7 +238,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     '<td class="ps-3 text-nowrap"><i class="ti ti-chevron-right wo-chev me-1 text-muted"></i><strong>' + esc(o.sale_no) + '</strong>' +
                         '<div class="small text-muted ps-3">' + (o.order_type === 'takeaway' ? 'Pick-Up' : 'Delivery') + ' · ' + (live ? ago(o.minutes) + ' ago' : esc(o.time)) + '</div></td>' +
                     '<td><div class="text-truncate" style="max-width:200px">' + esc(o.customer) + '</div>' +
-                        '<div class="small text-muted text-truncate" style="max-width:200px">' + esc(o.area || o.address || '') + '</div></td>' +
+                        '<div class="small text-muted text-truncate" style="max-width:240px" title="' + esc(o.place || '') + '">' + esc(o.area || o.address || '') +
+                            (o.place ? ' · 📍 ' + esc(o.place) : '') + '</div></td>' +
                     '<td class="text-end fw-semibold wo-num text-nowrap">' + money(o.total) + '</td>' +
                     '<td>' + statusBadge(o) + '</td>' +
                     '<td class="small text-muted text-nowrap">' + o.items.length + '</td>' +

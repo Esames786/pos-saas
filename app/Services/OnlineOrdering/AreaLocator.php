@@ -59,6 +59,8 @@ class AreaLocator
             'km' => $areaId !== null && isset($distances[$areaId]) ? round($distances[$areaId], 1) : null,
             'place' => $this->place($address),
             'street' => $this->street($address),
+            // Customer ko dikhane aur order ke pate ke saath jorne ke liye: gali, mohalla/society, bari society.
+            'label' => $this->label($address),
             'nearby' => $distances->filter(fn ($km) => $km <= self::MAX_KM)->keys()->take(5)->values()->all(),
         ];
     }
@@ -113,6 +115,18 @@ class AreaLocator
         $bits = array_values(array_unique(array_filter([
             $a['neighbourhood'] ?? $a['residential'] ?? $a['quarter'] ?? null,
             $a['suburb'] ?? $a['hamlet'] ?? $a['town'] ?? null,
+        ])));
+
+        return $bits ? implode(', ', $bits) : null;
+    }
+
+    /** "Zuhra Nagar Road, City Villas, Usmani Town" — sarkari town/zila nahi. */
+    private function label(array $a): ?string
+    {
+        $bits = array_values(array_unique(array_filter([
+            $a['road'] ?? null,
+            $a['neighbourhood'] ?? $a['residential'] ?? $a['quarter'] ?? null,
+            $a['suburb'] ?? $a['hamlet'] ?? null,
         ])));
 
         return $bits ? implode(', ', $bits) : null;

@@ -279,6 +279,9 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .area .band .lg { position:absolute; left:50%; bottom:-34px; transform:translateX(-50%); width:78px; height:78px; border-radius:18px; background:var(--brand); border:4px solid #fff; box-shadow:0 6px 18px rgba(0,0,0,.18); overflow:hidden; display:grid; place-items:center; color:var(--cream); font:italic 700 30px Georgia,serif; }
 .area .band .lg img { width:100%; height:100%; object-fit:cover; }
 .area .band .x { position:absolute; right:12px; top:12px; background:rgba(255,255,255,.2); color:#fff; }
+.sheet.area.locked .band .x { display:none; }
+.sheet.area.nudge { animation:nudge .35s ease; }
+@keyframes nudge { 25% { margin-left:-8px; } 75% { margin-left:8px; } }
 .area .bd { padding-top:46px; gap:12px; }
 .area h2 { margin:0; text-align:center; font-size:16px; font-weight:700; }
 .seg { display:flex; background:#F2F2F2; border-radius:999px; padding:4px; }
@@ -298,6 +301,9 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .alist button.on em { color:#FFDADB; }
 .alist .near { color:var(--brand); font-weight:700; }
 .alist button.on .near { color:#fff; }
+.placeline { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center; max-width:min(100%, 560px); font-size:12.5px; color:var(--muted); text-align:center; animation:fade .3s ease; }
+.placeline b { color:var(--ink); }
+.placeline button { border:0; background:none; color:var(--brand); font:inherit; font-weight:700; padding:2px 4px; text-decoration:underline; text-underline-offset:2px; }
 .pin .picks { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:7px; }
 .pin .picks small { width:100%; color:var(--muted); }
 .pin .pk { border:1px solid #E3E3E3; background:#fff; border-radius:999px; padding:4px 10px; font:inherit; font-size:12px; font-weight:600; color:var(--ink); transition:border-color .2s, color .2s; }
@@ -425,6 +431,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
 <div class="wrap finder">
   <form class="sbox" id="sform" role="search"><input id="q" type="search" autocomplete="off" placeholder="Search for Chicken Biryani…" aria-label="Search the menu"><button type="submit" id="qBtn" aria-label="Search"><svg width="18" height="18"><use href="#i-right"/></svg></button></form>
   <div class="status"><span class="pill" id="statusPill"></span><span class="pill" id="etaPill"></span></div>
+  <div class="placeline" id="placeLine" hidden></div>
 </div>
 <div class="wrap" id="liveBox"></div>
 
@@ -585,6 +592,19 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       var a = area();
       $('whereName').textContent = a ? a.name : 'Choose your area';
     }
+    paintPlace();
+  }
+
+  // Owner (15 Oct): the place found from the customer's location ("Chappal Sun City, New Rizvia Society") is shown
+  // with the area it picked, with Change right there. Hidden once the customer picks another area by hand.
+  function paintPlace() {
+    var el = $('placeLine'), a = area();
+    var on = S.type === 'delivery' && !!a && !!S.place && S.placeArea === a.id;
+    el.hidden = !on;
+    if (!on) { return; }
+    el.innerHTML = '<span>📍 ' + (S.placeSure ? 'Delivering to' : 'Nearest area:') + ' <b>' + esc(a.name) + '</b> · ' + esc(S.place) + '</span>' +
+      '<button type="button" id="placeChange">Change</button>';
+    $('placeChange').addEventListener('click', openAreas);
   }
 
   // ── menu ──
@@ -834,15 +854,25 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   var openSheet = null;
   function show(id) { hide(); openSheet = $(id); openSheet.classList.add('show'); $('veil').classList.add('show'); document.body.style.overflow = 'hidden'; $('bar').classList.remove('show'); document.body.classList.remove('bar-on'); }
   function hide() { if (openSheet) { openSheet.classList.remove('show'); } openSheet = null; $('veil').classList.remove('show'); document.body.style.overflow = ''; paintBar(); }
-  $('veil').addEventListener('click', hide);
-  document.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', hide); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hide(); } });
+  // Owner (15 Oct): the area window cannot be closed until an area (or a pick-up branch) is chosen.
+  function chosen() { return S.type === 'pickup' ? !!S.branch : !!area(); }
+  function dismiss() {
+    if (openSheet === $('areaSheet') && !chosen()) {
+      var s = $('areaSheet'); s.classList.remove('nudge'); void s.offsetWidth; s.classList.add('nudge');
+      return;
+    }
+    hide();
+  }
+  $('veil').addEventListener('click', dismiss);
+  document.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', dismiss); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { dismiss(); } });
 
   // ── area / order type: pick in the list, confirm with Select (like the old site) ──
   var pending = null;
   function renderAreas() {
     var q = ($('areaSearch').value || '').toLowerCase();
     var pickup = S.type === 'pickup';
+    $('areaSheet').classList.toggle('locked', !chosen());   // no close button until something is chosen
     $('tDelivery').classList.toggle('on', !pickup);
     $('tPickup').classList.toggle('on', pickup);
     $('areaSearch').hidden = pickup;
@@ -858,7 +888,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     if (on) { $('areaList').scrollTop = on.offsetTop - $('areaList').clientHeight / 2 + on.clientHeight / 2; }
     $('areaSelect').disabled = cur === null || cur === undefined;
   }
-  function openAreas() { pending = null; $('areaSearch').value = ''; renderAreas(); show('areaSheet'); }
+  function openAreas() { pending = null; userPicked = false; $('areaSearch').value = ''; renderAreas(); show('areaSheet'); }
   $('where').addEventListener('click', openAreas);
   $('tDelivery').addEventListener('click', function () { S.type = 'delivery'; pending = null; renderAreas(); });
   $('tPickup').addEventListener('click', function () { S.type = 'pickup'; pending = null; renderAreas(); });
@@ -867,6 +897,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var b = e.target.closest('button');
     if (!b) { return; }
     pending = +(b.getAttribute('data-a') || b.getAttribute('data-b'));
+    userPicked = true;   // a location answer arriving now must not override the customer's own pick
     renderAreas();
   });
   $('areaList').addEventListener('dblclick', function () { $('areaSelect').click(); });
@@ -880,8 +911,16 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   // Owner: location is asked for as soon as the site opens; if it was not given then, tapping
   // "Use my current location" asks again. OpenStreetMap (through our server) names the place; the area
   // whose name matches — or the nearest one anywhere in the city — is picked, and nearby areas move up.
-  var nearby = [], locating = false;
+  var nearby = [], locating = false, userPicked = false;
   function nearRank(id) { var i = nearby.indexOf(id); return i === -1 ? 99 : i; }
+  // Owner (15 Oct): no Continue — the found area is chosen straight away; the customer can still Change it.
+  function applyLocated(a, j) {
+    S.type = 'delivery'; S.area = a.id; S.placeArea = a.id; S.placeSure = j.by === 'name';
+    pending = null; save();
+    if (openSheet === $('areaSheet')) { hide(); }
+    switchBranch(); paintStatus();
+    if (step === 'checkout' && openSheet === $('cartSheet')) { keepFields(); renderCheckout(); }
+  }
   function gpsMsg(html) { $('gpsText').innerHTML = html; $('gpsPin').hidden = false; }
   function locateMe(auto, done) {
     if (!navigator.geolocation) { if (!auto) { gpsMsg('This browser cannot share your location. Choose your area below.'); } return; }
@@ -898,8 +937,14 @@ label.f span.req::after { content:" *"; color:var(--brand); }
           .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
           .then(function (j) {
             nearby = j.nearby || [];
-            S.placeHint = j.street || j.place || null; save();
+            S.placeHint = j.street || j.place || null;
+            S.place = j.label || j.place || null;   // goes with the order's address (staff + rider see it)
+            save();
             var a = j.area ? D.areas.find(function (x) { return x.id === j.area; }) : null;
+            if (a && !userPicked) {
+              applyLocated(a, j);
+              return;
+            }
             if (a) {
               S.type = 'delivery'; pending = a.id;
               // Matched by name = sure ("You are in"). Only by distance = a guess near area borders (Johar / Scheme 33):
@@ -1141,7 +1186,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var c = S.customer || {}, a = area();
     $('cartTitleText').textContent = 'Checkout';
     $('cartBody').innerHTML =
-      '<div class="pin"><span class="dot"></span><span>' + (S.type === 'pickup' ? 'Pick-Up order' : 'Delivery to <b>' + esc(a ? a.name : '') + '</b>') + '</span></div>' +
+      '<div class="pin"><span class="dot"></span><span>' + (S.type === 'pickup' ? 'Pick-Up order' : 'Delivery to <b>' + esc(a ? a.name : '') + '</b>' +
+        (S.place && S.pin ? '<br><small>📍 ' + esc(S.place) + '</small>' : '')) + '</span></div>' +
       '<label class="f"><span class="req">Full name</span><input class="in" id="cName" autocomplete="name" maxlength="120" value="' + esc(c.name || '') + '"></label>' +
       '<label class="f"><span class="req">WhatsApp number</span><input class="in" id="cPhone" inputmode="tel" autocomplete="tel" placeholder="03xx xxxxxxx" maxlength="20" value="' + esc(c.phone || '') + '"></label>' +
       '<label class="f">Another number (optional)<input class="in" id="cAlt" inputmode="tel" maxlength="20" value="' + esc(c.alt || '') + '"></label>' +
@@ -1215,7 +1261,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var body = {
       key: S.pendingKey, type: S.type, area: S.type === 'delivery' ? S.area : null, branch: S.type === 'pickup' ? branchOf() : null,
       customer: { name: c.name, phone: c.phone, alt: c.alt || null, address: c.address || null, landmark: c.landmark || null,
-        lat: S.pin ? S.pin.lat : null, lng: S.pin ? S.pin.lng : null },
+        lat: S.pin ? S.pin.lat : null, lng: S.pin ? S.pin.lng : null, place: S.pin && S.place ? S.place : null },
       note: ($('cNote').value || '').trim() || null,
       payment: 'cash',
       lines: S.cart.map(function (l) { return { option: l.option, qty: l.qty, addons: l.addons.map(function (a) { return a.id; }), note: l.note || null }; })
@@ -1333,7 +1379,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
 
   $('forget').addEventListener('click', function () {
     try { localStorage.removeItem(KEY); } catch (e) { /* nothing stored */ }
-    S = { type: 'delivery', area: null, branch: null, cart: [], customer: {}, pin: null, placeHint: null };
+    S = { type: 'delivery', area: null, branch: null, cart: [], customer: {}, pin: null, placeHint: null, place: null, placeArea: null };
     nearby = [];
     paintStatus(); paintCart();
   });

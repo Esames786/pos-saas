@@ -100,7 +100,11 @@ class WebsiteOrderService
 
         $sale = DB::connection('tenant')->transaction(function () use ($in, $branch, $zone, $fee, $orderType, $terminalId, $shift, $lines, $itemNotes, $phone, $c) {
             $customer = $this->customers->findOrCreateByPhone($phone, (string) $c['name']);
-            $address = $orderType === 'delivery' ? trim(implode(', ', array_filter([$c['address'] ?? null, $c['landmark'] ?? null, $zone?->area_name]))) : null;
+            // Malik (15 Oct): location se mili jagah ("Chappal Sun City, New Rizvia Society") bhi pate ke saath —
+            // cashier aur rider ko dikhe. Jo hissa customer pehle hi likh chuka, dobara nahi.
+            $address = $orderType === 'delivery'
+                ? $this->joinAddress([$c['address'] ?? null, $c['landmark'] ?? null, ...explode(',', (string) ($c['place'] ?? '')), $zone?->area_name])
+                : null;
             if ($customer && $address) {
                 $this->rememberAddress($customer->id, $address);
             }
@@ -154,6 +158,7 @@ class WebsiteOrderService
                     'area' => $zone?->area_name, 'area_id' => $zone?->id,
                     'address' => $c['address'] ?? null, 'landmark' => $c['landmark'] ?? null,
                     'lat' => $c['lat'] ?? null, 'lng' => $c['lng'] ?? null,
+                    'place' => $orderType === 'delivery' ? (trim((string) ($c['place'] ?? '')) ?: null) : null,
                     'alt_phone' => $c['alt'] ?? null, 'note' => $in['note'] ?? null, 'item_notes' => $itemNotes,
                     'eta_minutes' => $orderType === 'delivery' ? ($zone?->eta_minutes ?: WebSetting::tenantDefault()->default_eta_minutes) : WebSetting::tenantDefault()->pickup_eta_minutes,
                     'placed_at' => now()->toIso8601String(),
@@ -339,12 +344,30 @@ class WebsiteOrderService
         }
     }
 
+    /** "House 12, Park, Chappal Sun City, New Rizvia Society, Scheme 33" — khaali aur pehle se likha hissa chhoR kar. */
+    private function joinAddress(array $parts): ?string
+    {
+        $out = [];
+        foreach ($parts as $p) {
+            $p = trim((string) $p);
+            $have = mb_strtolower(implode(', ', $out));
+            if ($p !== '' && ! str_contains($have, mb_strtolower($p))) {
+                $out[] = $p;
+            }
+        }
+
+        return $out ? implode(', ', $out) : null;
+    }
+
     /** POS ke Held/Draft list me cashier ko seedha dikhne wala note (asal tafseel web_meta me). */
     private function readableNote(array $c, ?string $note, array $itemNotes, string $orderType = 'delivery'): string
     {
         $parts = ['WEBSITE ORDER', $orderType === 'takeaway' ? 'CASH ON PICK-UP' : 'CASH ON DELIVERY'];
         if (! empty($c['landmark'])) {
             $parts[] = 'Landmark: '.$c['landmark'];
+        }
+        if ($orderType !== 'takeaway' && ! empty($c['place'])) {
+            $parts[] = 'Location: '.$c['place'];
         }
         if (! empty($c['alt'])) {
             $parts[] = 'Alt phone: '.$c['alt'];

@@ -217,6 +217,8 @@ class WebsiteOrderInboxController extends Controller
             'phone' => $s->customer_phone,
             'alt_phone' => $meta['alt_phone'] ?? null,
             'area' => $meta['area'] ?? null,
+            // Customer ki location se mili jagah (malik: POS par bhi dikhe).
+            'place' => $meta['place'] ?? null,
             'address' => $s->delivery_address,
             'landmark' => $meta['landmark'] ?? null,
             'map' => (! empty($meta['lat']) && ! empty($meta['lng'])) ? 'https://maps.google.com/?q='.$meta['lat'].','.$meta['lng'] : null,

@@ -186,6 +186,28 @@ class OnlineOrderingCheckoutMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1, DB::connection('tenant')->table('customer_addresses')->where('customer_id', $sale->customer_id)->count(), 'Address dobara nahi juRta.');
     }
 
+    public function test_the_place_found_from_the_location_goes_with_the_address(): void
+    {
+        // Malik (15 Oct): location se mili jagah pate ke saath — cashier aur rider ko dikhe; dohraya hissa nahi.
+        $this->openShift();
+        $zone = DeliveryZone::create(['geo_area_id' => 990003, 'area_name' => 'Scheme 33', 'city' => 'Karachi',
+            'branch_id' => $this->branchId, 'fee' => 300, 'is_active' => true]);
+
+        $res = $this->checkout(['type' => 'delivery', 'area' => $zone->id, 'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => 1]],
+            'customer' => ['name' => 'Test Customer', 'phone' => '03001234567', 'address' => 'House 7, Street 2, New Rizvia Society',
+                'landmark' => 'Near Dow', 'lat' => 24.952, 'lng' => 67.141, 'place' => 'Chappal Sun City, New Rizvia Society']]);
+        $this->assertSame(201, $res->status(), (string) $res->getContent());
+        $sale = SalesOrder::where('sale_no', $res->json('order'))->sole();
+
+        $this->assertSame('House 7, Street 2, New Rizvia Society, Near Dow, Chappal Sun City, Scheme 33', $sale->delivery_address);
+        $this->assertSame('Chappal Sun City, New Rizvia Society', $sale->web_meta['place']);
+        $this->assertStringContainsString('Location: Chappal Sun City, New Rizvia Society', $sale->notes);
+
+        $this->checkout(['type' => 'delivery', 'area' => $zone->id, 'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => 1]],
+            'customer' => ['name' => 'Test Customer', 'phone' => '03001234567', 'address' => 'House 7', 'place' => str_repeat('x', 201)]])
+            ->assertStatus(422)->assertJsonValidationErrors('customer.place');
+    }
+
     public function test_the_server_prices_the_order_and_refuses_what_is_not_on_sale(): void
     {
         $this->openShift();
