@@ -24,6 +24,8 @@ use Spatie\Permission\PermissionRegistrar;
  */
 class OnlineOrderingMenuMySqlTest extends MySqlTenantTestCase
 {
+    use \Tests\MySql\Support\ParsesInlineScripts;
+
     private string $host;
 
     private int $tenantId;
@@ -181,6 +183,15 @@ class OnlineOrderingMenuMySqlTest extends MySqlTenantTestCase
         $this->assertTrue($p->show_on_website);
         $this->assertSame('Hot Wings', $p->website_card_name);
         $this->assertSame('Chicken Hot Wings 8 Pcs', $p->name);
+
+        // Malik (15 Oct): "Size on card" dropdown — chalte sizes (yahan "8 Pcs") + aam sizes, aur "New size…".
+        $html = $this->owner()->get($this->url('/products/'.$p->id.'/edit'))->assertOk()->getContent();
+        $this->assertStringContainsString('id="website_size_pick"', $html);
+        $this->assertMatchesRegularExpression('#<option value="8 Pcs"\s+selected#', $html, 'Is product ka size chuna hua.');
+        $this->assertStringContainsString('<option value="Large"', $html);
+        $this->assertStringContainsString('value="__new"', $html);
+        $this->assertStringContainsString('name="website_size_label"', $html, 'Form wohi naam bhejta hai — save waisa hi.');
+        $this->assertInlineScriptsParse($html, 'product form with size dropdown', 'website_size_pick');
     }
 
     public function test_without_the_module_no_website_section_appears_anywhere(): void

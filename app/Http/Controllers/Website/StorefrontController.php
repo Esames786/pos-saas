@@ -11,6 +11,7 @@ use App\Services\OnlineOrdering\WebImageService;
 use App\Services\OnlineOrdering\WebMenuService;
 use App\Services\OnlineOrdering\WebsiteAvailability;
 use App\Services\OnlineOrdering\WebsiteBranding;
+use App\Services\OnlineOrdering\WebsiteSeo;
 use App\Support\OnlineOrdering;
 use App\Support\TenantClock;
 use Carbon\CarbonImmutable;
@@ -80,10 +81,26 @@ class StorefrontController extends Controller
             'endpoints' => ['menu' => url('/order/menu.json'), 'checkout' => url('/order/checkout'), 'locate' => url('/order/locate')],
             'banners' => WebsiteBranding::bannerUrls($settings),
             'upsellCategory' => $settings->upsell_category_id,
+            // Footer ke links — sirf jab restaurant ne text likha ho.
+            'pages' => [
+                'privacy' => trim((string) $settings->privacy_policy) !== '' ? WebsiteSeo::path($request, 'privacy-policy') : null,
+                'faqs' => $settings->faqList() !== [] ? WebsiteSeo::path($request, 'faqs') : null,
+            ],
+        ];
+        // Pick-up: branch ka pata + "Get directions" (Google Maps, naam aur pate se — koi nuqta lagana nahi parta).
+        $payload['branches'] = $branches->map(fn ($b) => ['id' => $b->id, 'name' => $b->name, 'address' => $b->address,
+            'directions' => 'https://www.google.com/maps/search/?api=1&query='.rawurlencode(trim($tenant->business_name.' '.$b->name.', '.$b->address))])->values();
+
+        $canonical = WebsiteSeo::canonical($request);
+        $seo = WebsiteSeo::meta($settings, (string) $tenant->business_name) + [
+            'canonical' => $canonical,
+            'indexable' => WebsiteSeo::onOwnDomain($request),
+            'image' => $payload['banners'][0]['src'] ?? $payload['business']['logo'],
+            'ld' => WebsiteSeo::restaurantLd($settings, (string) $tenant->business_name, $canonical, $payload['business']['logo'], $payload['banners']),
         ];
 
         return response()
-            ->view('website.order', ['payload' => $payload, 'businessName' => $tenant->business_name])
+            ->view('website.order', ['payload' => $payload, 'businessName' => $tenant->business_name, 'seo' => $seo])
             ->header('Cache-Control', 'no-store');
     }
 

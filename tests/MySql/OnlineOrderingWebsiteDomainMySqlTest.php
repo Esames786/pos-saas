@@ -222,6 +222,111 @@ class OnlineOrderingWebsiteDomainMySqlTest extends MySqlTenantTestCase
 
     // ── helpers ──
 
+    public function test_robots_txt_is_per_host_and_the_platform_one_is_unchanged(): void
+    {
+        $platform = \App\Http\Controllers\Website\WebsitePagesController::PLATFORM_ROBOTS;
+        $this->assertSame("User-agent: *\nDisallow:\n\n# WEBSITE-I18N-GEO-1: every public page in every language (English + Arabic).\nSitemap: https://bingoopos.com/sitemap.xml\n",
+            $platform, 'Purani public/robots.txt lafz ba lafz.');
+
+        $this->assertSame($platform, $this->get('http://'.config('tenancy.central_domain').'/robots.txt')->assertOk()->getContent(), 'bingoopos.com waisa hi.');
+        app()->forgetInstance('tenant');
+        $this->assertSame($platform, $this->get('http://'.$this->appHost.'/robots.txt')->assertOk()->getContent(), 'POS subdomain waisa hi.');
+        app()->forgetInstance('tenant');
+
+        $own = $this->get('http://'.self::SITE.'/robots.txt')->assertOk();
+        $this->assertStringContainsString('text/plain', (string) $own->headers->get('Content-Type'));
+        $this->assertStringContainsString("Allow: /\n", $own->getContent());
+        $this->assertStringContainsString('Sitemap: http://'.self::SITE.'/sitemap.xml', $own->getContent());
+        app()->forgetInstance('tenant');
+
+        // UAT jaisa *.bingoopos.com website pata: Google se chhupa.
+        $uat = 'oositeseo.'.config('tenancy.tenant_base_domain');
+        DB::connection('master')->table('tenant_domains')->where('domain', $uat)->delete();
+        DB::connection('master')->table('tenant_domains')->insert(['tenant_id' => $this->tenantId, 'domain' => $uat, 'kind' => 'website',
+            'is_primary' => 0, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertSame("User-agent: *\nDisallow: /\n", $this->get('http://'.$uat.'/robots.txt')->assertOk()->getContent());
+    }
+
+    public function test_seo_privacy_policy_and_faqs_are_the_restaurants_own(): void
+    {
+        $site = 'http://'.self::SITE;
+
+        // Kuch likha nahi: safhe nahi, sitemap me sirf menu.
+        $this->get($site.'/privacy-policy')->assertNotFound();
+        $this->get($site.'/faqs')->assertNotFound();
+        $this->assertSame(1, substr_count($this->get($site.'/sitemap.xml')->assertOk()->getContent(), '<url>'));
+        app()->forgetInstance('tenant');
+
+        // Website Settings → "SEO & pages" (asal form ka raasta).
+        foreach (['tenant.online-ordering.settings.edit', 'tenant.online-ordering.settings.update'] as $p) {
+            Permission::findOrCreate($p, 'tenant');
+        }
+        $owner = \App\Models\Tenant\User::on('tenant')->find($this->userId);
+        $owner->givePermissionTo(['tenant.online-ordering.settings.edit', 'tenant.online-ordering.settings.update']);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->actingAs($owner, 'tenant')->put('http://'.$this->appHost.'/online-ordering/settings', [
+            'section' => 'seo',
+            'seo_title' => 'Website Foods — Biryani & BBQ in Karachi',
+            'seo_description' => 'Order biryani and BBQ online. Cash on delivery.',
+            'seo_keywords' => 'biryani, bbq, karachi',
+            // Rich text editor ka HTML (malik: "rich text editable") — script/onclick saaf ho jate hain.
+            'privacy_policy' => '<p>We protect your privacy.</p><h2>Information We Collect</h2><p>We collect <strong>only</strong>:</p>'
+                .'<ul><li>Your name</li><li>Your phone number</li></ul><script>alert(1)</script><p onclick="steal()">Contact us.</p>',
+            'faqs' => [
+                ['category' => 'Ordering', 'q' => 'How do I place an order?', 'a' => '<p>Add items and <strong>check out</strong>.</p>'],
+                ['category' => 'Delivery', 'q' => '', 'a' => 'Empty question — dropped.'],
+                ['category' => 'Delivery', 'q' => 'How long does delivery take?', 'a' => '30–45 minutes.'],
+            ],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertCount(2, WebSetting::tenantDefault()->faqList(), 'Khaali sawal wali line nahi bachi.');
+        app()->forgetInstance('tenant');
+
+        $this->assertStringNotContainsString('<script', (string) WebSetting::tenantDefault()->privacy_policy, 'Save se pehle saaf.');
+        $privacy = $this->get($site.'/privacy-policy')->assertOk()->getContent();
+        $this->assertStringContainsString('<h2>Information We Collect</h2>', $privacy);
+        $this->assertStringContainsString('<p>We collect <strong>only</strong>:</p>', $privacy);
+        $this->assertStringContainsString('<li>Your phone number</li>', $privacy);
+        $this->assertStringNotContainsString('alert(1)', $privacy);
+        $this->assertStringNotContainsString('onclick', $privacy);
+        $this->assertStringContainsString('content="index, follow"', $privacy);
+        app()->forgetInstance('tenant');
+
+        $faqs = $this->get($site.'/faqs')->assertOk()->getContent();
+        $this->assertStringContainsString('How long does delivery take?', $faqs);
+        $this->assertStringContainsString('"@type":"FAQPage"', $faqs);
+        $this->assertStringContainsString('<strong>check out</strong>', $faqs, 'Jawab bhi rich text.');
+        $this->assertStringContainsString('"text":"Add items and check out."', $faqs, 'Google ko saada text.');
+        $this->assertStringNotContainsString('Empty question', $faqs);
+        app()->forgetInstance('tenant');
+
+        // Purani website ke /pages/… links.
+        $this->get($site.'/pages/faqs')->assertStatus(301)->assertRedirect('/faqs');
+        $this->get($site.'/pages/privacy-policy')->assertStatus(301)->assertRedirect('/privacy-policy');
+        $this->get($site.'/pages/contact-us')->assertStatus(301)->assertRedirect('/');
+        $this->assertSame(3, substr_count($this->get($site.'/sitemap.xml')->assertOk()->getContent(), '<url>'));
+        app()->forgetInstance('tenant');
+
+        // Menu ka safha: apne domain par Google ke liye sab kuch.
+        $home = $this->get($site.'/')->assertOk()->getContent();
+        $this->assertStringContainsString('<title>Website Foods — Biryani &amp; BBQ in Karachi</title>', $home);
+        $this->assertStringContainsString('<meta name="description" content="Order biryani and BBQ online. Cash on delivery.">', $home);
+        $this->assertStringContainsString('<meta name="keywords" content="biryani, bbq, karachi">', $home);
+        $this->assertStringContainsString('content="index, follow, max-image-preview:large"', $home);
+        $this->assertStringContainsString('<link rel="canonical" href="https://'.self::SITE.'/">', $home);
+        $this->assertStringContainsString('<meta property="og:title"', $home);
+        $this->assertStringContainsString('"@type":"Restaurant"', $home);
+        $this->assertStringContainsString('"privacy":"\/privacy-policy"', $home);
+        app()->forgetInstance('tenant');
+
+        // Wohi website POS ke subdomain par: noindex, aur Google ko asal domain batao; safhe /order/… par.
+        $app = $this->get('http://'.$this->appHost.'/order')->assertOk()->getContent();
+        $this->assertStringContainsString('content="noindex, follow"', $app);
+        $this->assertStringContainsString('<link rel="canonical" href="https://'.self::SITE.'/">', $app);
+        $this->assertStringContainsString('"faqs":"\/order\/faqs"', $app);
+        app()->forgetInstance('tenant');
+        $this->get('http://'.$this->appHost.'/order/faqs')->assertOk()->assertSee('noindex, follow', false);
+    }
+
     private function admin(array $permissions): CentralUser
     {
         $user = CentralUser::create(['name' => 'Domain Admin', 'email' => 'dom'.uniqid().'@example.test',

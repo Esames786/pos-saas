@@ -4,8 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<title>{{ $businessName }} — Order Online</title>
-<meta name="description" content="Order online from {{ $businessName }}. Delivery and pick-up.">
+{{-- ONLINE-ORDERING-1: SEO per restaurant (Website Settings → "SEO & pages"). Google indexes only the restaurant's
+     own domain; on *.bingoopos.com (POS subdomain, UAT) the same page is noindex and points to the own domain. --}}
+<title>{{ $seo['title'] }}</title>
+<meta name="description" content="{{ $seo['description'] }}">
+@if($seo['keywords'])<meta name="keywords" content="{{ $seo['keywords'] }}">@endif
+<meta name="robots" content="{{ $seo['indexable'] ? 'index, follow, max-image-preview:large' : 'noindex, follow' }}">
+<link rel="canonical" href="{{ $seo['canonical'] }}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{ $businessName }}">
+<meta property="og:title" content="{{ $seo['title'] }}">
+<meta property="og:description" content="{{ $seo['description'] }}">
+<meta property="og:url" content="{{ $seo['canonical'] }}">
+@if($seo['image'])<meta property="og:image" content="{{ $seo['image'] }}">@endif
+<meta property="og:locale" content="en_PK">
+<meta name="twitter:card" content="{{ $seo['image'] ? 'summary_large_image' : 'summary' }}">
+<meta name="twitter:title" content="{{ $seo['title'] }}">
+<meta name="twitter:description" content="{{ $seo['description'] }}">
+@if($seo['image'])<meta name="twitter:image" content="{{ $seo['image'] }}">@endif
+@if(! empty($payload['business']['logo']))<link rel="icon" href="{{ $payload['business']['logo'] }}">@endif
+<script type="application/ld+json">{!! json_encode($seo['ld'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!}</script>
 <meta name="theme-color" content="#A60D12">
 @if(! empty($payload['banners'][0]))
 <link rel="preload" as="image" href="{{ $payload['banners'][0]['src'] }}" imagesrcset="{{ $payload['banners'][0]['sm'] }} 960w, {{ $payload['banners'][0]['src'] }} 1920w" imagesizes="100vw">
@@ -301,6 +319,10 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .alist button.on em { color:#FFDADB; }
 .alist .near { color:var(--brand); font-weight:700; }
 .alist button.on .near { color:#fff; }
+.alist .ask { margin:4px 4px 8px; font-size:13px; color:var(--muted); text-align:center; }
+.bcard { display:flex; gap:12px; align-items:flex-start; margin-top:10px; padding:12px 14px; border-radius:14px; background:var(--brand-soft); border:1px solid #F3C9CB; font-size:13px; line-height:1.5; animation:fade .3s ease; }
+.bcard .bic { width:34px; height:34px; border-radius:10px; background:#F7D9DA; color:var(--brand); display:grid; place-items:center; flex:none; }
+.bcard a { color:var(--brand); font-weight:600; text-decoration:none; }
 .placeline { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center; max-width:min(100%, 560px); font-size:12.5px; color:var(--muted); text-align:center; animation:fade .3s ease; }
 .placeline b { color:var(--ink); }
 .placeline button { border:0; background:none; color:var(--brand); font:inherit; font-weight:700; padding:2px 4px; text-decoration:underline; text-underline-offset:2px; }
@@ -456,6 +478,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     <div class="pin" id="gpsPin" hidden><span class="dot"></span><span id="gpsText"></span></div>
     <input class="asearch" id="areaSearch" type="search" placeholder="Search your area" autocomplete="off" aria-label="Search your area">
     <div class="alist" id="areaList" role="listbox" aria-label="Delivery areas"></div>
+    <div class="bcard" id="branchCard" hidden></div>
   </div>
   <div class="ft"><button class="big" type="button" id="areaSelect">Select</button></div>
 </div>
@@ -514,7 +537,9 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     $('foot').innerHTML =
       '<div><div class="flogo">' + logoHtml() + '</div><h4>' + esc(b.name) + '</h4>' + (b.about ? '<p>' + esc(b.about) + '</p>' : '<p>Order online for delivery or pick-up.</p>') + '</div>' +
       '<div><h4>Contact</h4><ul>' + (li.join('') || '<li>—</li>') + '</ul>' + (soc ? '<h4 style="margin-top:14px">Follow us</h4><div class="soc">' + soc + '</div>' : '') + '</div>' +
-      '<div class="fine"><span>Your area, address and cart are remembered on this device · <button type="button" id="forget">Forget</button></span><span>Online ordering by Bingoo</span></div>';
+      '<div class="fine"><span>Your area, address and cart are remembered on this device · <button type="button" id="forget">Forget</button></span>' +
+        '<span>' + ((D.pages || {}).privacy ? '<a href="' + esc(D.pages.privacy) + '">Privacy Policy</a> · ' : '') +
+        ((D.pages || {}).faqs ? '<a href="' + esc(D.pages.faqs) + '">FAQs</a> · ' : '') + 'Online ordering by Bingoo</span></div>';
   })();
 
   // ── banners: first slide right away, the rest load once the page has settled ──
@@ -883,7 +908,15 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       : D.areas.filter(function (a) { return !q || a.name.toLowerCase().indexOf(q) !== -1; })
           .sort(function (x, y) { return q ? 0 : nearRank(x.id) - nearRank(y.id); })
           .map(function (a) { return '<button type="button" role="option" data-a="' + a.id + '" class="' + (cur === a.id ? 'on' : '') + '" aria-selected="' + (cur === a.id) + '"><span>' + esc(a.name) + '</span><em>' + (nearby.indexOf(a.id) !== -1 ? '<span class="near">Near you</span> · ' : '') + a.eta + ' min</em></button>'; });
-    $('areaList').innerHTML = rows.length ? rows.join('') : '<p class="empty">' + (pickup ? 'Pick-up is not available.' : 'We do not deliver to this area yet. Try Pick-Up.') + '</p>';
+    $('areaList').innerHTML = (pickup && rows.length ? '<p class="ask">Which outlet would you like to pick-up from?</p>' : '') +
+      (rows.length ? rows.join('') : '<p class="empty">' + (pickup ? 'Pick-up is not available.' : 'We do not deliver to this area yet. Try Pick-Up.') + '</p>');
+    // Pick-up (like the old site): the chosen outlet's address with "Get directions".
+    var br = pickup ? D.branches.find(function (b) { return b.id === cur; }) : null;
+    $('branchCard').hidden = !br;
+    if (br) {
+      $('branchCard').innerHTML = '<span class="bic">' + icon('pin', 18) + '</span><span><b>Branch location</b><br>' + esc(br.address || br.name) +
+        (br.directions ? '<br><a href="' + esc(br.directions) + '" target="_blank" rel="noopener">Get directions ↗</a>' : '') + '</span>';
+    }
     var on = $('areaList').querySelector('.on');
     if (on) { $('areaList').scrollTop = on.offsetTop - $('areaList').clientHeight / 2 + on.clientHeight / 2; }
     $('areaSelect').disabled = cur === null || cur === undefined;

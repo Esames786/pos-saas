@@ -138,6 +138,9 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
         ->where('token', '[A-Za-z0-9]{40}')->name('website.order.confirm');
     Route::post('/order/confirm/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'confirm'])
         ->where('token', '[A-Za-z0-9]{40}')->middleware('throttle:20,1')->name('website.order.confirm.post');
+    // Website ke safhe — restaurant ka apna likha text (Website Settings → "SEO & pages"); khaali ho to 404.
+    Route::get('/order/privacy-policy', [\App\Http\Controllers\Website\WebsitePagesController::class, 'privacy'])->name('website.order.privacy');
+    Route::get('/order/faqs', [\App\Http\Controllers\Website\WebsitePagesController::class, 'faqs'])->name('website.order.faqs');
 
         Route::get('/login', [AuthController::class, 'showLogin'])->name('tenant.login');
         Route::post('/login', [AuthController::class, 'login'])->name('tenant.login.post');
@@ -1249,6 +1252,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
         });
     });
 
+// ONLINE-ORDERING-1: robots.txt har host ka apna (public/robots.txt hata di — wo har host par aik hi thi).
+// bingoopos.com + POS subdomains: wohi purana text; restaurant ka domain: Google ko ijazat + sitemap; UAT: chhupa.
+Route::get('/robots.txt', [\App\Http\Controllers\Website\WebsitePagesController::class, 'robots'])->name('website.robots');
+
 // ONLINE-ORDERING-1 (Phase 5): client ka apna domain (jaise kashiffood.com) — SIRF ordering website.
 //
 // Kisi domain se bandha nahi (client ka domain pehle se maloom nahi), aur file ke AAKHIR me: bingoopos.com aur
@@ -1273,7 +1280,15 @@ Route::middleware(['website.host'])->group(function () {
     Route::post('/order/confirm/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'confirm'])
         ->where('token', '[A-Za-z0-9]{40}')->middleware('throttle:20,1')->name('website.domain.confirm.post');
 
-    // Purani website (indolj) ke links jo Google me hain (`/product/…`, `/category/…`) — nayi website par, 301.
+    // Safhe + Google ki sitemap — restaurant ka apna text (malik: "sab dynamic").
+    Route::get('/privacy-policy', [\App\Http\Controllers\Website\WebsitePagesController::class, 'privacy'])->name('website.domain.privacy');
+    Route::get('/faqs', [\App\Http\Controllers\Website\WebsitePagesController::class, 'faqs'])->name('website.domain.faqs');
+    Route::get('/sitemap.xml', [\App\Http\Controllers\Website\WebsitePagesController::class, 'sitemap'])->name('website.domain.sitemap');
+
+    // Purani website (indolj) ke links jo Google me hain (`/product/…`, `/category/…`, `/pages/faqs`) — nayi website par, 301.
+    Route::get('/pages/{page}', fn (string $page) => redirect(match ($page) {
+        'privacy-policy' => '/privacy-policy', 'faqs' => '/faqs', default => '/',
+    }, 301))->where('page', '[A-Za-z0-9\-]+')->name('website.domain.legacy-pages');
     Route::get('/{legacy}', fn () => redirect('/', 301))
         ->where('legacy', '(product|category)(/.*)?')->name('website.domain.legacy');
 });

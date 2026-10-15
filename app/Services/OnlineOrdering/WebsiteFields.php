@@ -95,7 +95,25 @@ class WebsiteFields
             'websiteCategories' => Category::orderBy('name')->get(['id', 'name', 'parent_id']),
             'websiteAddonGroups' => ModifierGroup::whereIn('channel', ['website', 'both'])->where('status', 'active')
                 ->orderBy('name')->get(['id', 'name', 'channel']),
+            'websiteSizeLabels' => self::sizeLabels(),
         ];
+    }
+
+    /**
+     * "Size on card" ki dropdown (malik, 15 Oct): jo sizes pehle se chal rahe hain (sab se zyada wale upar), phir
+     * aam sizes — dropdown se chunne par har jagah aik hi likhai ("Half" vs "half" vs "Half Kg" nahi).
+     *
+     * @return list<string>
+     */
+    public static function sizeLabels(): array
+    {
+        $used = collect(\Illuminate\Support\Facades\DB::connection('tenant')->table('products')->whereNotNull('website_size_label')->pluck('website_size_label'))
+            ->merge(\Illuminate\Support\Facades\DB::connection('tenant')->table('combos')->whereNotNull('website_size_label')->pluck('website_size_label'))
+            ->map(fn ($l) => trim((string) $l))->filter()
+            ->countBy()->sortDesc()->keys();
+        $common = ['Regular', 'Small', 'Medium', 'Large', 'Half', 'Full', 'Single', 'Double', '1 Person', '2 Persons', '4 Persons', '6 Persons'];
+
+        return $used->merge($common)->unique(fn ($l) => mb_strtolower($l))->values()->all();
     }
 
     private function blank(?string $v): ?string

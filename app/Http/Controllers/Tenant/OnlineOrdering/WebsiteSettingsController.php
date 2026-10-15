@@ -9,6 +9,7 @@ use App\Models\Tenant\Terminal;
 use App\Models\Tenant\WebOrderRoute;
 use App\Models\Tenant\WebSetting;
 use App\Services\OnlineOrdering\WebsiteBranding;
+use App\Support\SafeHtml;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -39,6 +40,10 @@ class WebsiteSettingsController extends Controller
         // Website ki shakl (logo, banners, footer) ka apna form — wohi save ka haq, alag permission nahi.
         if ($request->input('section') === 'branding') {
             return $this->updateBranding($request);
+        }
+        // SEO + Privacy Policy + FAQs (malik: "sab dynamic, tenant ke against") — wohi haq.
+        if ($request->input('section') === 'seo') {
+            return $this->updateSeo($request);
         }
 
         $branchIds = Branch::where('status', 'active')->pluck('id')->all();
@@ -204,5 +209,42 @@ class WebsiteSettingsController extends Controller
         }
 
         return redirect('/online-ordering/settings#branding')->with('status', 'Website look saved.');
+    }
+
+    /** Google ka title/description/keywords, Privacy Policy ka text aur FAQs (khaali sawal wali line chhoR di jati hai). */
+    private function updateSeo(Request $request)
+    {
+        $data = $request->validate([
+            'seo_title' => ['nullable', 'string', 'max:120'],
+            'seo_description' => ['nullable', 'string', 'max:300'],
+            'seo_keywords' => ['nullable', 'string', 'max:300'],
+            'privacy_policy' => ['nullable', 'string', 'max:40000'],
+            'faqs' => ['nullable', 'array', 'max:60'],
+            'faqs.*.category' => ['nullable', 'string', 'max:60'],
+            'faqs.*.q' => ['nullable', 'string', 'max:200'],
+            'faqs.*.a' => ['nullable', 'string', 'max:4000'],
+        ]);
+
+        // Editor ka rich text — save se pehle saaf (sirf likhai ki formatting; script/links ke chaal nahi).
+        $rich = function (?string $v): ?string {
+            $html = \App\Http\Controllers\Website\WebsitePagesController::html((string) $v);
+
+            return SafeHtml::text($html) === '' ? null : $html;
+        };
+        $faqs = array_values(array_filter(array_map(fn ($f) => [
+            'category' => trim((string) ($f['category'] ?? '')),
+            'q' => trim((string) ($f['q'] ?? '')),
+            'a' => (string) $rich($f['a'] ?? null),
+        ], (array) ($data['faqs'] ?? [])), fn ($f) => $f['q'] !== ''));
+
+        WebSetting::tenantDefault()->update([
+            'seo_title' => trim((string) ($data['seo_title'] ?? '')) ?: null,
+            'seo_description' => trim((string) ($data['seo_description'] ?? '')) ?: null,
+            'seo_keywords' => trim((string) ($data['seo_keywords'] ?? '')) ?: null,
+            'privacy_policy' => $rich($data['privacy_policy'] ?? null),
+            'faqs' => $faqs ?: null,
+        ]);
+
+        return redirect('/online-ordering/settings#seo')->with('status', 'SEO and pages saved.');
     }
 }

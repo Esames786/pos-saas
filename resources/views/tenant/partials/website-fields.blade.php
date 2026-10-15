@@ -43,11 +43,39 @@
                        value="{{ old('website_card_name', $wm?->website_card_name) }}" placeholder="{{ $wm?->name ?: 'Same as name' }}">
                 <div class="form-text">Items with the same card name become one card with sizes.</div>
             </div>
+            {{-- Owner (15 Oct): a dropdown of the sizes already in use (+ common ones); "New size…" for anything else.
+                 The text box keeps the name the form posts, so saving is unchanged. --}}
+            @php
+                $sizeNow = (string) old('website_size_label', $wm?->website_size_label);
+                $sizeList = $websiteSizeLabels ?? [];
+                $sizeOther = $sizeNow !== '' && ! in_array(mb_strtolower($sizeNow), array_map('mb_strtolower', $sizeList), true);
+            @endphp
             <div class="col-md-2">
-                <label class="form-label" for="website_size_label">Size on card</label>
-                <input type="text" name="website_size_label" id="website_size_label" class="form-control" maxlength="80"
-                       value="{{ old('website_size_label', $wm?->website_size_label) }}" placeholder="e.g. Large">
+                <label class="form-label" for="website_size_pick">Size on card</label>
+                <select id="website_size_pick" class="form-select" aria-describedby="website_size_help">
+                    <option value="">— No size —</option>
+                    @foreach($sizeList as $label)
+                        <option value="{{ $label }}" @selected(! $sizeOther && mb_strtolower($label) === mb_strtolower($sizeNow))>{{ $label }}</option>
+                    @endforeach
+                    <option value="__new" @selected($sizeOther)>+ New size…</option>
+                </select>
+                <input type="text" name="website_size_label" id="website_size_label" class="form-control mt-1" maxlength="80"
+                       value="{{ $sizeNow }}" placeholder="Type the new size" @if(! $sizeOther) hidden @endif>
+                <div class="form-text" id="website_size_help">Shown on the card's size buttons.</div>
             </div>
+            <script>
+            (function () {
+                'use strict';
+                var pick = document.getElementById('website_size_pick'), box = document.getElementById('website_size_label');
+                if (!pick || !box) { return; }
+                pick.addEventListener('change', function () {
+                    var other = pick.value === '__new';
+                    box.hidden = !other;
+                    box.value = other ? '' : pick.value;
+                    if (other) { box.focus(); }
+                });
+            })();
+            </script>
             <div class="col-md-4">
                 <label class="form-label" for="website_category_id">Website category</label>
                 <select name="website_category_id" id="website_category_id" class="form-select">

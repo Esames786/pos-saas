@@ -320,4 +320,130 @@
         <button class="btn btn-primary">Save website look</button>
     @endcan
 </form>
+
+{{-- ONLINE-ORDERING-1: SEO + website pages, the restaurant's own (owner: "sab dynamic, tenant ke against"). --}}
+@php
+    $faqRows = old('faqs', $settings->faqList());
+    $faqRows = $faqRows ?: [['category' => '', 'q' => '', 'a' => '']];
+@endphp
+<form method="POST" action="{{ url('/online-ordering/settings') }}" class="mt-4" id="seo">
+    @csrf
+    @method('PUT')
+    <input type="hidden" name="section" value="seo">
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="mb-1">SEO &amp; pages</h5>
+            <p class="text-muted small mb-3">What Google shows for your website, and your Privacy Policy and FAQs pages. Empty page = no page and no link in the footer.</p>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="seo-title">Google title</label>
+                    <input type="text" name="seo_title" id="seo-title" class="form-control" maxlength="120" value="{{ old('seo_title', $settings->seo_title) }}" placeholder="{{ app('tenant')->business_name }} — Order Online">
+                    <div class="form-text">About 50–60 letters. Empty = “{{ app('tenant')->business_name }} — Order Online”.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="seo-keywords">Keywords</label>
+                    <input type="text" name="seo_keywords" id="seo-keywords" class="form-control" maxlength="300" value="{{ old('seo_keywords', $settings->seo_keywords) }}" placeholder="biryani, bbq, karachi, food delivery">
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label" for="seo-description">Google description</label>
+                    <textarea name="seo_description" id="seo-description" class="form-control" rows="2" maxlength="300" placeholder="Order online from {{ app('tenant')->business_name }}. Delivery and pick-up.">{{ old('seo_description', $settings->seo_description) }}</textarea>
+                    <div class="form-text">About 150 letters. Also shown when your link is shared on WhatsApp or Facebook.</div>
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label" for="privacy-policy">Privacy Policy</label>
+                    <textarea name="privacy_policy" id="privacy-policy" class="form-control js-rich" data-rich="full" rows="8" maxlength="40000">{{ old('privacy_policy', \App\Http\Controllers\Website\WebsitePagesController::html((string) $settings->privacy_policy)) }}</textarea>
+                    <div class="form-text">Headings, bold, lists and links — shown on your website exactly like this.</div>
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">FAQs</label>
+                    <div id="faq-rows" class="d-grid gap-2">
+                        @foreach($faqRows as $i => $f)
+                            <div class="border rounded p-2 js-faq">
+                                <div class="row g-2">
+                                    <div class="col-md-3"><input type="text" class="form-control form-control-sm" name="faqs[{{ $i }}][category]" maxlength="60" value="{{ $f['category'] ?? '' }}" placeholder="Group, e.g. Delivery" aria-label="Group"></div>
+                                    <div class="col-md-8"><input type="text" class="form-control form-control-sm" name="faqs[{{ $i }}][q]" maxlength="200" value="{{ $f['q'] ?? '' }}" placeholder="Question" aria-label="Question"></div>
+                                    <div class="col-md-1 text-end"><button type="button" class="btn btn-sm btn-outline-danger js-faq-del" aria-label="Remove question"><i class="ti ti-trash"></i></button></div>
+                                    <div class="col-md-12"><textarea class="form-control form-control-sm js-rich" data-rich="mini" name="faqs[{{ $i }}][a]" rows="2" maxlength="4000" placeholder="Answer" aria-label="Answer">{{ \App\Http\Controllers\Website\WebsitePagesController::html((string) ($f['a'] ?? '')) }}</textarea></div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                    <template id="faq-template">
+                        <div class="border rounded p-2 js-faq">
+                            <div class="row g-2">
+                                <div class="col-md-3"><input type="text" class="form-control form-control-sm" name="faqs[__I__][category]" maxlength="60" placeholder="Group, e.g. Delivery" aria-label="Group"></div>
+                                <div class="col-md-8"><input type="text" class="form-control form-control-sm" name="faqs[__I__][q]" maxlength="200" placeholder="Question" aria-label="Question"></div>
+                                <div class="col-md-1 text-end"><button type="button" class="btn btn-sm btn-outline-danger js-faq-del" aria-label="Remove question"><i class="ti ti-trash"></i></button></div>
+                                <div class="col-md-12"><textarea class="form-control form-control-sm js-rich" data-rich="mini" name="faqs[__I__][a]" rows="2" maxlength="4000" placeholder="Answer" aria-label="Answer"></textarea></div>
+                            </div>
+                        </div>
+                    </template>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="faq-add"><i class="ti ti-plus me-1"></i>Add question</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @can('tenant.online-ordering.settings.update')
+        <button class="btn btn-primary">Save SEO &amp; pages</button>
+    @endcan
+</form>
+{{-- Rich text (owner: "rich text editable"): Quill turns each .js-rich textarea into an editor and writes the HTML
+     back into it. Without Quill (offline) the plain textarea still works; the server cleans whatever arrives. --}}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css">
+<style>
+    #seo .ql-container { font-family: inherit; font-size: 14px; }
+    #seo .rich-full .ql-editor { min-height: 220px; }
+    #seo .rich-mini .ql-editor { min-height: 70px; }
+    #seo .ql-toolbar.ql-snow { border-radius: .375rem .375rem 0 0; }
+    #seo .ql-container.ql-snow { border-radius: 0 0 .375rem .375rem; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
+<script>
+(function () {
+    'use strict';
+    var form = document.getElementById('seo');
+    var box = document.getElementById('faq-rows'), add = document.getElementById('faq-add'), tpl = document.getElementById('faq-template');
+    if (!form || !box || !add || !tpl) { return; }
+    var TOOLBARS = {
+        full: [[{ header: [2, 3, false] }], ['bold', 'italic', 'underline'], [{ list: 'ordered' }, { list: 'bullet' }], ['link', 'blockquote'], ['clean']],
+        mini: [['bold', 'italic', 'underline'], [{ list: 'ordered' }, { list: 'bullet' }], ['link'], ['clean']]
+    };
+    function rich(ta) {
+        if (!window.Quill || ta.dataset.ready) { return; }
+        ta.dataset.ready = '1';
+        var kind = ta.dataset.rich === 'full' ? 'full' : 'mini';
+        var wrap = document.createElement('div');
+        wrap.className = 'rich-' + kind;
+        var ed = document.createElement('div');
+        wrap.appendChild(ed);
+        ta.parentNode.insertBefore(wrap, ta);
+        ta.hidden = true;
+        var q = new Quill(ed, { theme: 'snow', placeholder: ta.getAttribute('placeholder') || '', modules: { toolbar: TOOLBARS[kind] } });
+        if (ta.value.trim()) { q.clipboard.dangerouslyPasteHTML(ta.value); }
+        var sync = function () { ta.value = q.getText().trim() ? q.root.innerHTML : ''; };
+        q.on('text-change', sync);
+        sync();
+    }
+    form.querySelectorAll('.js-rich').forEach(rich);
+
+    var next = box.querySelectorAll('.js-faq').length;
+    add.addEventListener('click', function () {
+        var holder = document.createElement('div');
+        holder.innerHTML = tpl.innerHTML.replace(/__I__/g, String(next++));
+        var row = holder.firstElementChild;
+        box.appendChild(row);
+        row.querySelectorAll('.js-rich').forEach(rich);
+        row.querySelector('input[name$="[q]"]').focus();
+    });
+    box.addEventListener('click', function (e) {
+        var del = e.target.closest('.js-faq-del');
+        if (!del) { return; }
+        var row = del.closest('.js-faq');
+        if (box.querySelectorAll('.js-faq').length > 1) { row.remove(); return; }
+        row.querySelectorAll('input').forEach(function (el) { el.value = ''; });
+        row.querySelectorAll('.ql-editor').forEach(function (el) { el.innerHTML = ''; });
+        row.querySelectorAll('textarea').forEach(function (el) { el.value = ''; });
+    });
+})();
+</script>
 @endsection

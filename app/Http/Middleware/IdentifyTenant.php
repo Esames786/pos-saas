@@ -65,13 +65,13 @@ class IdentifyTenant
 
             // UAT jaisa website address jo khud *.bingoopos.com hai (kashiffoodweb.bingoopos.com): tenant ke
             // raaste bhi us host se milte hain, aur login wale raaste routing se pehle login par bhej dete. Yahan,
-            // routing se pehle, sirf website: khali address → menu; /order… aur /sw.js ke siwa sab 404.
+            // routing se pehle, sirf website: khali address → menu; /order…, /sw.js aur /robots.txt ke siwa sab 404.
             if (str_ends_with($host, '.'.config('tenancy.tenant_base_domain'))) {
                 $path = '/'.ltrim($request->path(), '/');
                 if ($path === '/') {
                     return redirect('/order');
                 }
-                if (! preg_match('#^/(order(/.*)?|sw\.js)$#', $path)) {
+                if (! preg_match('#^/(order(/.*)?|sw\.js|robots\.txt)$#', $path)) {
                     abort(404);
                 }
             }

@@ -26,6 +26,8 @@ class WebSetting extends Model
         // Website ki shakl (logo, banners, footer, cart ka "Popular with your order").
         'logo_path', 'banners', 'whatsapp_number', 'contact_email', 'contact_address', 'facebook_url', 'instagram_url',
         'about_text', 'upsell_category_id', 'popular_auto',
+        // SEO aur website ke safhe (Privacy Policy, FAQs) — har restaurant ke apne.
+        'seo_title', 'seo_description', 'seo_keywords', 'privacy_policy', 'faqs',
     ];
 
     protected function casts(): array
@@ -42,7 +44,18 @@ class WebSetting extends Model
             'banners' => 'array',
             'upsell_category_id' => 'integer',
             'popular_auto' => 'boolean',
+            'faqs' => 'array',
         ];
+    }
+
+    /** @return list<array{category: string, q: string, a: string}> */
+    public function faqList(): array
+    {
+        return array_values(array_filter(array_map(fn ($f) => is_array($f) && trim((string) ($f['q'] ?? '')) !== '' ? [
+            'category' => trim((string) ($f['category'] ?? '')) ?: 'General',
+            'q' => trim((string) $f['q']),
+            'a' => trim((string) ($f['a'] ?? '')),
+        ] : null, (array) ($this->faqs ?? []))));
     }
 
     /**
