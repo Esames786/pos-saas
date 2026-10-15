@@ -1,17 +1,35 @@
 {{--
     ONLINE-ORDERING-1 (Phase 3) — website orders on the POS: a bell, a badge and a "receive only" modal.
     Included only on a plan with Online Ordering. Self-contained: it reuses the POS's own KOT-after-Hold,
-    cancel and toast through window.posWebBridge, so a website order is held, printed and cancelled
-    exactly like any counter order.
+    cancel, toast and Held-Orders recall through window.posWebBridge, so a website order is held, printed,
+    recalled and cancelled exactly like any counter order.
+
+    Owner, 15 Oct: compact rows (details open on tap), status-wise tabs, and Recall without reloading the
+    screen — the same in-place recall the Held Orders list uses.
 --}}
+<style>
+    #webOrdersModal .wo-row { cursor: pointer; }
+    #webOrdersModal .wo-row:hover, #webOrdersModal .wo-row.open { background: var(--bs-tertiary-bg, #f8f9fa); }
+    #webOrdersModal .wo-detail > td { background: var(--bs-tertiary-bg, #f8f9fa); border-top: 0; }
+    #webOrdersModal .wo-chev { display: inline-block; transition: transform .15s ease; }
+    #webOrdersModal .wo-row.open .wo-chev { transform: rotate(90deg); }
+    #webOrdersModal .wo-num { font-variant-numeric: tabular-nums; }
+    @media (prefers-reduced-motion: reduce) { #webOrdersModal .wo-chev { transition: none; } }
+</style>
 <div class="modal fade" id="webOrdersModal" tabindex="-1" aria-labelledby="webOrdersModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title h5" id="webOrdersModalLabel"><i class="ti ti-world-www me-2"></i>Website orders</h2>
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0" id="webOrdersModalLabel"><i class="ti ti-world-www me-2"></i>Website orders</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body" id="web-orders-body"><p class="text-muted mb-0">Loading…</p></div>
+            <div class="px-3 py-2 d-flex gap-1 flex-wrap border-bottom" id="web-orders-tabs" role="tablist">
+                <button type="button" class="btn btn-sm btn-dark" data-wo-tab="new">New <span class="badge bg-warning text-dark ms-1" data-wo-count="new">0</span></button>
+                <button type="button" class="btn btn-sm btn-outline-dark" data-wo-tab="confirmed">Confirmed <span class="badge bg-secondary ms-1" data-wo-count="confirmed">0</span></button>
+                <button type="button" class="btn btn-sm btn-outline-dark" data-wo-tab="paid">Paid today <span class="badge bg-secondary ms-1" data-wo-count="paid">0</span></button>
+                <button type="button" class="btn btn-sm btn-outline-dark" data-wo-tab="cancelled">Cancelled today <span class="badge bg-secondary ms-1" data-wo-count="cancelled">0</span></button>
+            </div>
+            <div class="modal-body p-0" id="web-orders-body"><p class="text-muted p-3 mb-0">Loading…</p></div>
         </div>
     </div>
 </div>
@@ -23,10 +41,12 @@ document.addEventListener('DOMContentLoaded', function () {
     var badge = document.getElementById('web-orders-badge');
     var modalEl = document.getElementById('webOrdersModal');
     var body = document.getElementById('web-orders-body');
-    if (!btn || !modalEl || !body) { return; }
+    var tabsEl = document.getElementById('web-orders-tabs');
+    if (!btn || !modalEl || !body || !tabsEl) { return; }
 
     var LIST = '{{ url('/api/pos/website-orders') }}';
     var HOLD = '{{ url('/api/pos/website-orders') }}/';
+    var HELD = '{{ url('/api/pos/held-sales') }}';
     var POS = '{{ url('/pos') }}';
     var CSRF = '{{ csrf_token() }}';
     var bridge = function () { return window.posWebBridge || {}; };
@@ -37,8 +57,10 @@ document.addEventListener('DOMContentLoaded', function () {
     };
     var money = function (n) { return 'Rs ' + Math.round(Number(n) || 0).toLocaleString('en-PK'); };
     var val = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
+    var ago = function (m) { return m < 60 ? m + ' min' : Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; };
 
-    var orders = [], routed = false, seen = {}, primed = false, lastRing = 0;
+    var open = [], closed = { paid: null, cancelled: null }, counts = {}, routed = false;
+    var tab = null, expanded = {}, pickedRider = {}, seen = {}, primed = false, lastRing = 0;
 
     // ── bell (no sound file: two short tones). The cashier has clicked the POS by now, so audio may play.
     var ctx = null;
@@ -63,112 +85,223 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     document.addEventListener('pointerdown', function () { if (ctx && ctx.state === 'suspended') { ctx.resume(); } }, { passive: true });
 
-    function poll() {
-        var branch = val('branch_id');
-        if (!branch) { return; }
-        fetch(LIST + '?branch_id=' + encodeURIComponent(branch) + '&terminal_id=' + encodeURIComponent(val('terminal_id')), {
-            headers: { Accept: 'application/json' }, credentials: 'same-origin'
-        }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
-            if (!j || !j.enabled) { btn.closest('.col-auto').hidden = true; return; }
-            orders = j.orders || [];
-            routed = !!j.routed;
-            btn.closest('.col-auto').hidden = !(routed || orders.length);
-            badge.hidden = !orders.length;
-            badge.textContent = orders.length;
-            btn.classList.toggle('btn-danger', orders.some(function (o) { return o.is_draft; }));
-            btn.classList.toggle('btn-outline-danger', !orders.some(function (o) { return o.is_draft; }));
+    function query(extra) {
+        return LIST + '?branch_id=' + encodeURIComponent(val('branch_id')) + '&terminal_id=' + encodeURIComponent(val('terminal_id')) + (extra || '');
+    }
 
-            var fresh = orders.filter(function (o) { return o.is_draft && !seen[o.id]; });
-            orders.forEach(function (o) { seen[o.id] = true; });
-            var waiting = orders.some(function (o) { return o.is_draft; });
-            if (routed && primed && fresh.length) {
-                ring();
-                var o = fresh[fresh.length - 1];
-                if (bridge().toast) { bridge().toast('info', 'New website order ' + esc(o.sale_no) + ' · ' + money(o.total)); }
-            } else if (routed && waiting && !modalEl.classList.contains('show') && Date.now() - lastRing > 60000) {
-                ring();   // still waiting: remind every minute until someone opens it
-            }
-            primed = true;
-            if (modalEl.classList.contains('show')) { render(); }
-        }).catch(function () { /* offline: try again next tick */ });
+    function showCounts() {
+        ['new', 'confirmed', 'paid', 'cancelled'].forEach(function (k) {
+            var el = tabsEl.querySelector('[data-wo-count="' + k + '"]');
+            if (el) { el.textContent = counts[k] || 0; }
+        });
+        // Badge = what still needs the cashier: new orders + confirmed ones without a rider.
+        var todo = (counts.new || 0) + (counts.no_rider || 0);
+        badge.hidden = !todo;
+        badge.textContent = todo;
+        btn.classList.toggle('btn-danger', (counts.new || 0) > 0);
+        btn.classList.toggle('btn-outline-danger', !(counts.new || 0));
+    }
+
+    function poll() {
+        if (!val('branch_id')) { return; }
+        fetch(query(), { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+                if (!j || !j.enabled) { btn.closest('.col-auto').hidden = true; return; }
+                open = j.orders || [];
+                counts = j.counts || {};
+                routed = !!j.routed;
+                btn.closest('.col-auto').hidden = !(routed || open.length);
+                showCounts();
+
+                var drafts = open.filter(function (o) { return o.status === 'new'; });
+                var fresh = drafts.filter(function (o) { return !seen[o.id]; });
+                open.forEach(function (o) { seen[o.id] = true; });
+                if (routed && primed && fresh.length) {
+                    ring();
+                    var o = fresh[fresh.length - 1];
+                    if (bridge().toast) { bridge().toast('info', 'New website order ' + esc(o.sale_no) + ' · ' + money(o.total)); }
+                } else if (routed && drafts.length && !modalEl.classList.contains('show') && Date.now() - lastRing > 60000) {
+                    ring();   // still waiting: remind every minute until someone opens it
+                }
+                primed = true;
+                if (modalEl.classList.contains('show') && (tab === 'new' || tab === 'confirmed')) { render(); }
+            }).catch(function () { /* offline: try again next tick */ });
+    }
+
+    function loadClosed(which) {
+        body.innerHTML = '<p class="text-muted p-3 mb-0">Loading…</p>';
+        fetch(query('&tab=' + which), { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+                closed[which] = j && j.orders ? j.orders : [];
+                if (j && j.counts) { counts = j.counts; showCounts(); }
+                if (tab === which) { render(); }
+            }).catch(function () { body.innerHTML = '<div class="alert alert-danger m-3">Could not load orders.</div>'; });
+    }
+
+    function setTab(next) {
+        tab = next;
+        tabsEl.querySelectorAll('[data-wo-tab]').forEach(function (b) {
+            var on = b.dataset.woTab === next;
+            b.classList.toggle('btn-dark', on);
+            b.classList.toggle('btn-outline-dark', !on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        if (next === 'paid' || next === 'cancelled') { loadClosed(next); } else { render(); }
     }
 
     function riderSelect(o) {
         var src = document.getElementById('delivery_rider_id');
         var branch = val('branch_id');
+        var current = pickedRider[o.id] !== undefined ? pickedRider[o.id] : String(o.rider_id || '');
         var opts = '<option value="">— Rider —</option>';
         if (src) {
             Array.prototype.forEach.call(src.options, function (op) {
                 if (!op.value) { return; }
                 if (op.dataset.branch && branch && op.dataset.branch !== branch) { return; }
-                opts += '<option value="' + esc(op.value) + '"' + (String(o.rider_id) === op.value ? ' selected' : '') + '>' + esc(op.text) + '</option>';
+                opts += '<option value="' + esc(op.value) + '"' + (current === op.value ? ' selected' : '') + '>' + esc(op.text) + '</option>';
             });
         }
-        return '<select class="form-select form-select-sm" data-rider="' + o.id + '" style="max-width:180px">' + opts + '</select>';
+        return '<select class="form-select form-select-sm" data-rider="' + o.id + '" style="max-width:170px">' + opts + '</select>';
+    }
+
+    function statusBadge(o) {
+        if (o.status === 'new') { return '<span class="badge bg-warning text-dark">New</span>'; }
+        if (o.status === 'confirmed') {
+            return o.missing_rider ? '<span class="badge bg-danger">Rider needed</span>'
+                : '<span class="badge bg-success">' + (o.rider ? esc(o.rider) : 'Confirmed') + '</span>';
+        }
+        if (o.status === 'cancelled') { return '<span class="badge bg-secondary">' + (o.cancelled_by === 'auto' ? 'Auto-cancelled' : 'Cancelled') + '</span>'; }
+        return '<span class="badge bg-success">Paid</span>';
+    }
+
+    function detail(o) {
+        var items = o.items.map(function (i) {
+            return '<li>' + (i.qty % 1 ? i.qty : Math.round(i.qty)) + ' × ' + esc(i.name) +
+                (i.modifiers && i.modifiers.length ? ' <span class="text-muted">(' + i.modifiers.map(esc).join(', ') + ')</span>' : '') + '</li>';
+        }).join('');
+        var notes = (o.item_notes || []).map(function (n) { return '<div>📝 ' + esc(n.item) + ': ' + esc(n.note) + '</div>'; }).join('');
+        var who = '<div class="fw-semibold"><i class="ti ti-cash me-1"></i>' + esc(o.payment || 'Cash on delivery') + '</div>' +
+            '<div><i class="ti ti-phone me-1"></i><a href="tel:' + esc(o.phone) + '">' + esc(o.phone) + '</a>' + (o.alt_phone ? ' · ' + esc(o.alt_phone) : '') + '</div>' +
+            (o.address ? '<div><i class="ti ti-map-pin me-1"></i>' + esc(o.address) + (o.map ? ' · <a href="' + esc(o.map) + '" target="_blank" rel="noopener">Map</a>' : '') + '</div>' : '') +
+            (o.note ? '<div>💬 ' + esc(o.note) + '</div>' : '') + notes;
+        var actions = '';
+        if (o.status === 'new' || o.status === 'confirmed') {
+            var main = o.status === 'new'
+                ? '<button type="button" class="btn btn-sm btn-success" data-hold="' + o.id + '"><i class="ti ti-chef-hat me-1"></i>Hold &amp; send to kitchen</button>'
+                : (o.needs_rider ? '<button type="button" class="btn btn-sm btn-success" data-hold="' + o.id + '">Save rider</button>' : '');
+            actions = '<div class="d-flex flex-wrap gap-2 align-items-center mt-2">' + (o.needs_rider ? riderSelect(o) : '') + main +
+                '<button type="button" class="btn btn-sm btn-outline-danger" data-cancel="' + o.id + '" data-no="' + esc(o.sale_no) + '">Cancel</button></div>';
+        }
+        return '<tr class="wo-detail"><td colspan="6" class="small px-3 pb-3 pt-1">' +
+            '<div class="row g-2"><div class="col-md-6"><ul class="mb-0 ps-3">' + items + '</ul></div><div class="col-md-6">' + who + '</div></div>' +
+            actions + '</td></tr>';
     }
 
     function render() {
-        if (!orders.length) { body.innerHTML = '<p class="text-muted mb-0">No website orders waiting.</p>'; return; }
-        body.innerHTML = orders.map(function (o) {
-            var items = o.items.map(function (i) {
-                return '<li>' + (i.qty % 1 ? i.qty : Math.round(i.qty)) + ' × ' + esc(i.name) +
-                    (i.modifiers && i.modifiers.length ? ' <span class="text-muted">(' + i.modifiers.map(esc).join(', ') + ')</span>' : '') + '</li>';
-            }).join('');
-            var notes = (o.item_notes || []).map(function (n) { return '<div class="small">📝 ' + esc(n.item) + ': ' + esc(n.note) + '</div>'; }).join('');
-            var head = '<div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">' +
-                '<div><strong>' + esc(o.sale_no) + '</strong> <span class="badge ' + (o.is_draft ? 'bg-warning text-dark' : 'bg-success') + '">' +
-                (o.is_draft ? 'New · not confirmed' : 'Confirmed · rider needed') + '</span> ' +
-                '<span class="badge bg-light text-dark border">' + (o.order_type === 'takeaway' ? 'Pick-Up' : 'Delivery') + '</span>' +
-                '<div class="small text-muted">' + o.minutes + ' min ago</div></div>' +
-                '<div class="fs-5 fw-semibold">' + money(o.total) + '</div></div>';
-            var who = '<div class="small mt-2"><i class="ti ti-user me-1"></i>' + esc(o.customer) +
-                ' · <a href="tel:' + esc(o.phone) + '">' + esc(o.phone) + '</a>' + (o.alt_phone ? ' · ' + esc(o.alt_phone) : '') +
-                (o.address ? '<div><i class="ti ti-map-pin me-1"></i>' + esc(o.address) + (o.map ? ' · <a href="' + esc(o.map) + '" target="_blank" rel="noopener">Map</a>' : '') + '</div>' : '') +
-                (o.note ? '<div>💬 ' + esc(o.note) + '</div>' : '') + notes + '</div>';
-            var actions = '<div class="d-flex flex-wrap gap-2 align-items-center mt-2">' + (o.needs_rider ? riderSelect(o) : '') +
-                (o.is_draft
-                    ? '<button type="button" class="btn btn-sm btn-success" data-hold="' + o.id + '"><i class="ti ti-chef-hat me-1"></i>Hold &amp; send to kitchen</button>' +
-                      '<a class="btn btn-sm btn-outline-secondary" href="' + POS + '?held_sale_id=' + o.id + '">Recall</a>' +
-                      '<button type="button" class="btn btn-sm btn-outline-danger" data-cancel="' + o.id + '" data-no="' + esc(o.sale_no) + '">Cancel</button>'
-                    : '<button type="button" class="btn btn-sm btn-success" data-hold="' + o.id + '">Save rider</button>') +
-                '</div>';
-            return '<div class="border rounded-3 p-3 mb-3' + (o.is_draft ? ' border-warning' : '') + '">' + head +
-                '<ul class="small mb-0 mt-2 ps-3">' + items + '</ul>' + who + actions + '</div>';
-        }).join('');
+        var rows = (tab === 'paid' || tab === 'cancelled') ? (closed[tab] || [])
+            : open.filter(function (o) { return o.status === tab; });
+        if (!rows.length) {
+            var empty = { new: 'No new website orders.', confirmed: 'No confirmed orders waiting for payment.', paid: 'No paid website orders today.', cancelled: 'No cancelled website orders today.' };
+            body.innerHTML = '<p class="text-muted text-center py-4 mb-0">' + empty[tab] + '</p>';
+            return;
+        }
+        var live = tab === 'new' || tab === 'confirmed';
+        body.innerHTML = '<div class="table-responsive"><table class="table table-sm align-middle mb-0">' +
+            '<thead class="table-light"><tr><th class="ps-3">Order</th><th>Customer</th><th class="text-end">Total</th><th>Status</th><th>Items</th><th></th></tr></thead><tbody>' +
+            rows.map(function (o) {
+                var isOpen = !!expanded[o.id];
+                return '<tr class="wo-row' + (isOpen ? ' open' : '') + '" data-toggle-row="' + o.id + '" aria-expanded="' + isOpen + '">' +
+                    '<td class="ps-3 text-nowrap"><i class="ti ti-chevron-right wo-chev me-1 text-muted"></i><strong>' + esc(o.sale_no) + '</strong>' +
+                        '<div class="small text-muted ps-3">' + (o.order_type === 'takeaway' ? 'Pick-Up' : 'Delivery') + ' · ' + (live ? ago(o.minutes) + ' ago' : esc(o.time)) + '</div></td>' +
+                    '<td><div class="text-truncate" style="max-width:200px">' + esc(o.customer) + '</div>' +
+                        '<div class="small text-muted text-truncate" style="max-width:200px">' + esc(o.area || o.address || '') + '</div></td>' +
+                    '<td class="text-end fw-semibold wo-num text-nowrap">' + money(o.total) + '</td>' +
+                    '<td>' + statusBadge(o) + '</td>' +
+                    '<td class="small text-muted text-nowrap">' + o.items.length + '</td>' +
+                    '<td class="text-end pe-3">' + (live ? '<button type="button" class="btn btn-sm btn-primary" data-recall="' + o.id + '" data-type="' + esc(o.order_type) + '">Recall</button>' : '') + '</td>' +
+                    '</tr>' + (isOpen ? detail(o) : '');
+            }).join('') + '</tbody></table></div>';
     }
 
+    // Recall in place — the SAME path as the Held Orders list (no page reload). The order is taken from
+    // the Held Orders API, so the cart is rebuilt from exactly what that list would hand over. Only if it
+    // cannot be found there (older than that list's 50) does it fall back to the page-load recall.
+    function recall(id, type, el) {
+        el.disabled = true;
+        var fallback = function () { window.location = POS + '?held_sale_id=' + id; };
+        fetch(HELD + '?branch_id=' + encodeURIComponent(val('branch_id')) + (type ? '&order_type=' + encodeURIComponent(type) : ''), {
+            headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF }, credentials: 'same-origin'
+        }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+            var sale = d && d.sales ? d.sales.find(function (s) { return Number(s.id) === id; }) : null;
+            if (!sale || !bridge().recallHeldSale) { fallback(); return; }
+            var m = bootstrap.Modal.getInstance(modalEl);
+            if (m) { m.hide(); }
+            el.disabled = false;
+            bridge().recallHeldSale(sale);
+        }).catch(fallback);
+    }
+
+    tabsEl.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-wo-tab]');
+        if (b) { setTab(b.dataset.woTab); }
+    });
+
+    body.addEventListener('change', function (e) {
+        var sel = e.target.closest('[data-rider]');
+        if (sel) { pickedRider[sel.dataset.rider] = sel.value; }
+    });
+
     body.addEventListener('click', function (e) {
-        var hold = e.target.closest('[data-hold]');
+        var rc = e.target.closest('[data-recall]');
+        if (rc) { recall(+rc.dataset.recall, rc.dataset.type, rc); return; }
         var cancel = e.target.closest('[data-cancel]');
         if (cancel && bridge().cancelHeldSaleFromModal) {
             bridge().cancelHeldSaleFromModal(+cancel.dataset.cancel, cancel.dataset.no, cancel);
             setTimeout(poll, 1500);
             return;
         }
-        if (!hold || hold.disabled) { return; }
-        var id = +hold.dataset.hold;
-        var sel = body.querySelector('[data-rider="' + id + '"]');
-        hold.disabled = true;
-        fetch(HOLD + id + '/hold', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
-            body: JSON.stringify({ delivery_rider_id: sel && sel.value ? +sel.value : null })
-        }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }).then(function (res) {
-            hold.disabled = false;
-            if (!res.ok) {
-                if (bridge().toast) { bridge().toast('error', esc(res.j.message || 'Could not hold this order.')); }
-                return;
-            }
-            if (res.j.send_kot && bridge().handleKotAfterSale) {
-                bridge().handleKotAfterSale(res.j.sale_id, res.j.sale_no, res.j.terminal_id);
-            } else if (bridge().toast) {
-                bridge().toast('success', 'Rider saved for ' + esc(res.j.sale_no));
-            }
-            poll();
-        }).catch(function () { hold.disabled = false; });
+        var hold = e.target.closest('[data-hold]');
+        if (hold) {
+            if (hold.disabled) { return; }
+            var id = +hold.dataset.hold;
+            var sel = body.querySelector('[data-rider="' + id + '"]');
+            hold.disabled = true;
+            fetch(HOLD + id + '/hold', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
+                body: JSON.stringify({ delivery_rider_id: sel && sel.value ? +sel.value : null })
+            }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }).then(function (res) {
+                hold.disabled = false;
+                if (!res.ok) {
+                    if (bridge().toast) { bridge().toast('error', esc(res.j.message || 'Could not hold this order.')); }
+                    return;
+                }
+                delete pickedRider[id];
+                if (res.j.send_kot && bridge().handleKotAfterSale) {
+                    bridge().handleKotAfterSale(res.j.sale_id, res.j.sale_no, res.j.terminal_id);
+                } else if (bridge().toast) {
+                    bridge().toast('success', 'Rider saved for ' + esc(res.j.sale_no));
+                }
+                poll();
+            }).catch(function () { hold.disabled = false; });
+            return;
+        }
+        // Anywhere else on a row (not a control): open or close its details.
+        if (e.target.closest('button, select, a, input')) { return; }
+        var row = e.target.closest('[data-toggle-row]');
+        if (row) {
+            var rid = row.dataset.toggleRow;
+            expanded[rid] = !expanded[rid];
+            render();
+        }
     });
 
-    btn.addEventListener('click', function () { render(); new bootstrap.Modal(modalEl).show(); });
+    btn.addEventListener('click', function () {
+        // Open on New when something is waiting, otherwise where the cashier last was.
+        var start = (counts.new || 0) > 0 ? 'new' : (tab || ((counts.confirmed || 0) > 0 ? 'confirmed' : 'new'));
+        setTab(start);
+        new bootstrap.Modal(modalEl).show();
+    });
     ['branch_id', 'terminal_id'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) { el.addEventListener('change', function () { primed = false; seen = {}; poll(); }); }

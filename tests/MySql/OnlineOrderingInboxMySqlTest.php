@@ -111,6 +111,8 @@ class OnlineOrderingInboxMySqlTest extends MySqlTenantTestCase
         $this->assertSame([$sale->id], array_column($j['orders'], 'id'));
         $row = $j['orders'][0];
         $this->assertTrue($row['is_draft']);
+        $this->assertSame('new', $row['status']);
+        $this->assertSame(['new' => 1, 'confirmed' => 0, 'paid' => 0, 'cancelled' => 0, 'no_rider' => 0], $j['counts']);
         $this->assertTrue($row['needs_rider']);
         $this->assertSame('Gulshan Block 2', $row['area']);
         $this->assertSame('Midnight Deal', $row['items'][0]['name'], 'Deal ka naam, components nahi.');
@@ -155,14 +157,51 @@ class OnlineOrderingInboxMySqlTest extends MySqlTenantTestCase
         $sale->update(['is_draft' => false]);   // WhatsApp link se Held (Phase 4) — rider baqi
         $rider = DeliveryRider::create(['branch_id' => $this->branchId, 'name' => 'Rider Two', 'phone' => '03000000001', 'status' => 'active']);
 
-        $row = collect($this->cashier()->getJson($this->url('/api/pos/website-orders?branch_id='.$this->branchId.'&terminal_id='.$this->t1))->json('orders'))->firstWhere('id', $sale->id);
+        $j = $this->cashier()->getJson($this->url('/api/pos/website-orders?branch_id='.$this->branchId.'&terminal_id='.$this->t1))->json();
+        $row = collect($j['orders'])->firstWhere('id', $sale->id);
         $this->assertFalse($row['is_draft']);
+        $this->assertSame('confirmed', $row['status']);
+        $this->assertTrue($row['missing_rider']);
+        $this->assertSame(1, $j['counts']['no_rider'], 'Badge me ginti: rider baqi.');
 
         $res = $this->cashier()->postJson($this->url('/api/pos/website-orders/'.$sale->id.'/hold'), ['delivery_rider_id' => $rider->id])->assertOk();
         $this->assertFalse($res->json('send_kot'), 'KOT pehle ja chuki — dobara nahi.');
 
-        $list = $this->cashier()->getJson($this->url('/api/pos/website-orders?branch_id='.$this->branchId.'&terminal_id='.$this->t1))->json('orders');
-        $this->assertSame([], $list, 'Rider lag gaya to inbox se nikal jata hai.');
+        $j = $this->cashier()->getJson($this->url('/api/pos/website-orders?branch_id='.$this->branchId.'&terminal_id='.$this->t1))->json();
+        $row = collect($j['orders'])->firstWhere('id', $sale->id);
+        $this->assertSame('confirmed', $row['status'], 'Paid hone tak Confirmed tab me.');
+        $this->assertFalse($row['missing_rider']);
+        $this->assertSame('Rider Two', $row['rider']);
+        $this->assertSame(0, $j['counts']['no_rider'], 'Rider lag gaya — badge se nikal gaya.');
+    }
+
+    public function test_paid_and_cancelled_orders_have_their_own_tabs_for_today(): void
+    {
+        $new = $this->webOrder();
+        $paid = $this->webOrder();
+        $cancelled = $this->webOrder();
+        $counter = $this->webOrder();
+        SalesOrder::whereKey($paid->id)->update(['status' => 'paid', 'is_draft' => false]);
+        SalesOrder::whereKey($cancelled->id)->update(['status' => 'cancelled']);
+        SalesOrder::whereKey($counter->id)->update(['status' => 'paid', 'order_source' => 'pos']);
+        $q = '/api/pos/website-orders?branch_id='.$this->branchId.'&terminal_id='.$this->t1;
+
+        $j = $this->cashier()->getJson($this->url($q))->assertOk()->json();
+        $this->assertSame([$new->id], array_column($j['orders'], 'id'), 'Poll sirf khule (New + Confirmed).');
+        $this->assertSame(1, $j['counts']['paid']);
+        $this->assertSame(1, $j['counts']['cancelled']);
+
+        $paidTab = $this->cashier()->getJson($this->url($q.'&tab=paid'))->assertOk()->json();
+        $this->assertSame('paid', $paidTab['tab']);
+        $this->assertSame([$paid->id], array_column($paidTab['orders'], 'id'), 'Counter ka order website tab me nahi.');
+        $this->assertSame('paid', $paidTab['orders'][0]['status']);
+
+        $cancelTab = $this->cashier()->getJson($this->url($q.'&tab=cancelled'))->assertOk()->json();
+        $this->assertSame([$cancelled->id], array_column($cancelTab['orders'], 'id'));
+
+        // Kal ka paid order aaj ke tab me nahi.
+        SalesOrder::whereKey($paid->id)->update(['business_date' => now()->subDays(2)->toDateString()]);
+        $this->assertSame([], $this->cashier()->getJson($this->url($q.'&tab=paid'))->json('orders'));
     }
 
     public function test_auto_cancel_only_takes_old_drafts_and_never_a_held_order(): void
@@ -191,6 +230,9 @@ class OnlineOrderingInboxMySqlTest extends MySqlTenantTestCase
         $html = $this->cashier()->get($this->url('/pos'))->assertOk()->getContent();
         $this->assertStringContainsString('id="web-orders-btn"', $html);
         $this->assertStringContainsString('window.posWebBridge', $html);
+        // Recall bina reload — Held Orders wala hi raasta bridge par.
+        $this->assertStringContainsString('recallHeldSale: recallHeldSale', $html);
+        $this->assertStringContainsString('bridge().recallHeldSale(sale)', $html);
         $this->assertInlineScriptsParse($html, 'POS with website inbox', 'web-orders-btn');
 
         $this->seedPlan(false);

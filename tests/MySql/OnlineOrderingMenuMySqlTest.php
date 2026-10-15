@@ -350,6 +350,40 @@ class OnlineOrderingMenuMySqlTest extends MySqlTenantTestCase
         rmdir($dir);
     }
 
+    public function test_a_website_section_with_no_pos_category_still_comes_across(): void
+    {
+        // Malik: "deals waghera missing" — import un sections ko chhoR deta tha jin ki POS me category nahi.
+        $deal = Combo::create(['name' => 'Deal 1 (Serve 1)', 'price' => 875, 'status' => 'active']);   // POS par koi category nahi
+        $menu = ['details' => [
+            '12' => ['title' => 'Family Deals', 'categoryDetail' => ['sequence' => 4], 'sortedItemKeys' => ['a'], 'items' => ['a' => [
+                'item_id' => '950', 'item_name' => 'Family Deal 01', 'item_description' => '', 'item_tag_name' => '', 'photo' => '',
+                'prices' => [['size' => null, 'price' => 875]], 'addon_item' => false,
+            ]]],
+        ]];
+        $map = ['rows' => [['cat' => 'Family Deals', 'name' => 'Family Deal 01', 'size' => '', 'pos' => ['kind' => 'combo', 'name' => 'Deal 1 (Serve 1)', 'category' => 'Deals']]]];
+        $dir = sys_get_temp_dir().'/oomenu-deal-'.uniqid();
+        mkdir($dir);
+        file_put_contents($menuFile = $dir.'/menu.json', json_encode($menu));
+        file_put_contents($mapFile = $dir.'/map.json', json_encode($map));
+        $args = ['tenant_code' => 'oomenu', 'menu' => $menuFile, '--map' => $mapFile];
+
+        $this->artisan('online-ordering:import-menu', $args)->expectsOutputToContain('nayi category')->assertSuccessful();
+        $this->assertSame(0, Category::where('name', 'Family Deals')->count(), 'Dry run ne category bana di.');
+
+        $this->artisan('online-ordering:import-menu', $args + ['--yes' => true])->assertSuccessful();
+        $this->artisan('online-ordering:import-menu', $args + ['--yes' => true])->assertSuccessful();   // dobara: aik hi category
+
+        $cat = Category::where('name', 'Family Deals')->sole();
+        $this->assertTrue($cat->show_on_website);
+        $deal->refresh();
+        $this->assertTrue($deal->show_on_website);
+        $this->assertSame($cat->id, (int) $deal->website_category_id);
+        $this->assertNull($deal->category_id, 'POS par deal ki category waisi hi (koi naya POS tab nahi).');
+
+        array_map('unlink', glob($dir.'/*'));
+        rmdir($dir);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────────────────────
 
     private function owner()

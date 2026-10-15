@@ -127,6 +127,8 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
     Route::get('/order', [\App\Http\Controllers\Website\StorefrontController::class, 'home'])->name('website.order');
     Route::get('/order/menu.json', [\App\Http\Controllers\Website\StorefrontController::class, 'menu'])
         ->middleware('throttle:60,1')->name('website.order.menu');
+    Route::get('/order/locate', [\App\Http\Controllers\Website\StorefrontController::class, 'locate'])
+        ->middleware('throttle:20,1')->name('website.order.locate');
     Route::post('/order/checkout', [\App\Http\Controllers\Website\StorefrontController::class, 'checkout'])
         ->middleware('throttle:10,1')->name('website.order.checkout');
     Route::get('/order/status/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'status'])
@@ -1254,6 +1256,8 @@ Route::middleware(['website.host'])->group(function () {
     Route::get('/order', fn () => redirect('/', 301))->name('website.domain.order');
     Route::get('/order/menu.json', [\App\Http\Controllers\Website\StorefrontController::class, 'menu'])
         ->middleware('throttle:60,1')->name('website.domain.menu');
+    Route::get('/order/locate', [\App\Http\Controllers\Website\StorefrontController::class, 'locate'])
+        ->middleware('throttle:20,1')->name('website.domain.locate');
     Route::post('/order/checkout', [\App\Http\Controllers\Website\StorefrontController::class, 'checkout'])
         ->middleware('throttle:10,1')->name('website.domain.checkout');
     Route::get('/order/status/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'status'])

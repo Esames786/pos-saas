@@ -157,6 +157,15 @@ Owner ke sawal/faisle: "alag website product ya category screen to nahi ban rahe
   `billing:usage-lines-backfill` (dry run → `--yes`; saboot table dekhein) → module on → Kashif Food setup
   (0b ka aakhri bullet) → Meta par 3 template approve (section 10) **phir** toggles on. Prod ka purana "Website"
   channel (#3, own) reuse hota hai — us ka commission % malik ki marzi (aaj ka qeemat chhuyi nahi).
+- **15 Oct, malik ke round 2 ke baad:** POS "Website orders" chhota — har order aik line (tap par detail), tabs New / Confirmed /
+  Paid today / Cancelled today; Recall bina screen reload (Held Orders wala `recallHeldSale`). Website: area list me delivery
+  charges nahi (cart/checkout me dikhte hain); pehli dafa location khud maangi jati hai, "Use my current location" dobara
+  maangta hai (Block ho to allow karne ka tareeqa); OpenStreetMap (hamare server se, cache) naam se area, warna qareebi
+  (`geo_areas.lat/lng`, 4 km); checkout par OSM map + draggable pin; "Cash on delivery" saaf (order par `web_meta.payment = cash`
+  + Cash payment method, notes me CASH ON DELIVERY). Menu import: jis section ki POS category nahi (Deals, Family Deals, Meals,
+  Midnight Deals…) wo ab chhoRa nahi jata — usi naam ki category, warna nayi "sirf website" (POS par tab nahi).
+- **Go-live ke naye qadam:** `online-ordering:geocode-areas --city=Karachi` (dry run → `--yes`, ~1 request/second) aur
+  `online-ordering:import-menu` prod ke catalog par (pehle dry run — deals ab saath aate hain).
 - **Abhi baqi:** server ka domain hissa (0f — go-live par), recall par website add-ons ka pencil, Edge bootstrap me
   `modifier_groups.channel`, rider ke baad ka safar, pick-up order ke liye "confirmed" message ka apna template
   (aaj ka template "delivery time" kehta hai — 99% orders delivery).

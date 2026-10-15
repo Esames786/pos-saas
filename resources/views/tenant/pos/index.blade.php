@@ -6929,7 +6929,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ONLINE-ORDERING-1: the website-orders inbox (its own script block) reuses the POS's OWN KOT-after-Hold,
     // cancel and toast — so a website order is held, printed and cancelled exactly like a counter order.
-    window.posWebBridge = { handleKotAfterSale: handleKotAfterSale, cancelHeldSaleFromModal: cancelHeldSaleFromModal, toast: toast };
+    window.posWebBridge = { handleKotAfterSale: handleKotAfterSale, cancelHeldSaleFromModal: cancelHeldSaleFromModal, toast: toast, recallHeldSale: recallHeldSale };
 });
 </script>
 @if(\App\Support\OnlineOrdering::enabledForTenant())

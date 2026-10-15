@@ -11,6 +11,7 @@ use App\Services\OnlineOrdering\WebImageService;
 use App\Services\Tenancy\TenancyManager;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * ONLINE-ORDERING-1 — purani ordering website ka menu MOJOODA catalog ke website-khaanon me bharo.
@@ -69,22 +70,15 @@ class OnlineOrderingImportMenuCommand extends Command
         $run = function () use ($categories, $popularIds, $byLine, $images, $tenant, $write) {
             $usedCategory = [];
             foreach ($categories as $seq => $wc) {
-                $target = $this->targetCategory($wc, $byLine);
-                if (! $target) {
-                    $this->report['categories'][] = sprintf('%-22s → (POS category nahi mili, chhoRi)', $wc['title']);
-                    // Report sach bataye: is category ki har line "nahi juRi" me gine.
-                    foreach ($wc['items'] as $item) {
-                        foreach ($item['prices'] as $pr) {
-                            $this->report['unlinked'][] = trim("{$wc['title']} / {$item['name']} ".($pr['size'] ?? '').' (category nahi mili)');
-                        }
-                    }
-
-                    continue;
-                }
-                if (isset($usedCategory[$target->id])) {
-                    $this->report['merged'][] = "{$wc['title']} → {$target->name} (pehle se \"{$usedCategory[$target->id]}\" ki jagah; dono aik category me)";
+                // POS me is naam ki category na mile (Family Deals, Meals…) to bhi section website par aaye —
+                // pehle yahan poora section chhoR diya jata tha (deals gayab).
+                $created = false;
+                $target = $this->targetCategory($wc, $byLine) ?? $this->websiteOnlyCategory($wc, $seq, $write, $created);
+                $slot = $target->id ?? "new:{$wc['title']}";
+                if (isset($usedCategory[$slot])) {
+                    $this->report['merged'][] = "{$wc['title']} → {$target->name} (pehle se \"{$usedCategory[$slot]}\" ki jagah; dono aik category me)";
                 } else {
-                    $usedCategory[$target->id] = $wc['title'];
+                    $usedCategory[$slot] = $wc['title'];
                     $target->fill([
                         'show_on_website' => true,
                         'website_name' => strcasecmp($target->name, $wc['title']) === 0 ? null : $wc['title'],
@@ -93,7 +87,8 @@ class OnlineOrderingImportMenuCommand extends Command
                     $write && $target->save();
                 }
                 $this->report['categories'][] = sprintf('%-22s → %s%s', $wc['title'], $target->name,
-                    $wc['midnight'] ? '  (waqt category screen par lagayen, masalan 00:00–04:00)' : '');
+                    $created ? '  (nayi category — sirf website; POS par tab nahi)'.($wc['midnight'] ? ', waqt 00:00–04:00' : '')
+                        : ($wc['midnight'] ? '  (waqt category screen par lagayen, masalan 00:00–04:00)' : ''));
 
                 foreach ($wc['items'] as $itemSeq => $item) {
                     $members = [];
@@ -222,6 +217,35 @@ class OnlineOrderingImportMenuCommand extends Command
         $pick = count($leaves) > 1 && count($parents) === 1 && reset($parents) !== null ? reset($parents) : array_key_first($leaves);
 
         return Category::whereRaw('LOWER(name) = ?', [mb_strtolower($pick)])->orderByDesc('is_active')->first();
+    }
+
+    /**
+     * Purani website ka section jis ki POS me koi category nahi: mojooda catalog me usi naam ki category, warna
+     * nayi — "Show on website" ke saath. POS par us ka tab nahi aata (POS sirf un categories ka tab dikhata hai
+     * jin me POS ka koi item ho); malik category screen ke "Website" hisse se badal sakte hain.
+     */
+    private function websiteOnlyCategory(array $wc, int $seq, bool $write, bool &$created): Category
+    {
+        $title = trim(html_entity_decode((string) $wc['title'], ENT_QUOTES | ENT_HTML5));
+        $found = Category::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($title)])->orderByDesc('is_active')->first();
+        if ($found) {
+            return $found;
+        }
+
+        $slug = Str::slug($title) ?: 'website-'.$seq;
+        if (Category::where('slug', $slug)->exists()) {
+            $slug .= '-web';
+        }
+        $category = new Category([
+            'name' => $title, 'slug' => $slug, 'sort_order' => 900 + $seq, 'is_active' => true,
+            'show_on_website' => true, 'website_sort_order' => $seq * 10,
+            'website_visible_from' => $wc['midnight'] ? '00:00' : null,
+            'website_visible_to' => $wc['midnight'] ? '04:00' : null,
+        ]);
+        $write && $category->save();
+        $created = true;
+
+        return $category;
     }
 
     private function findPos(string $kind, string $name): Product|Combo|null

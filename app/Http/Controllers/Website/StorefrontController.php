@@ -60,12 +60,24 @@ class StorefrontController extends Controller
             'branches' => $branches->map(fn ($b) => ['id' => $b->id, 'name' => $b->name, 'address' => $b->address])->values(),
             'menuBranch' => $branchId,
             'menu' => $this->present($menu->menu($branchId, $this->hhmm($clock, $branches->firstWhere('id', $branchId)))),
-            'endpoints' => ['menu' => url('/order/menu.json'), 'checkout' => url('/order/checkout')],
+            'endpoints' => ['menu' => url('/order/menu.json'), 'checkout' => url('/order/checkout'), 'locate' => url('/order/locate')],
         ];
 
         return response()
             ->view('website.order', ['payload' => $payload, 'businessName' => $tenant->business_name])
             ->header('Cache-Control', 'no-store');
+    }
+
+    /**
+     * "Use my current location" → delivery area (OpenStreetMap se naam, warna qareebi area) + jagah ka naam aur
+     * gali (pate ka ishara). Browser OSM ko seedha nahi bulata — hamara server, cache ke saath.
+     */
+    public function locate(Request $request, \App\Services\OnlineOrdering\AreaLocator $locator)
+    {
+        abort_unless(OnlineOrdering::enabledForTenant(), 404);
+        $data = $request->validate(['lat' => ['required', 'numeric', 'between:-90,90'], 'lng' => ['required', 'numeric', 'between:-180,180']]);
+
+        return response()->json($locator->locate((float) $data['lat'], (float) $data['lng']))->header('Cache-Control', 'no-store');
     }
 
     /** Aik branch ka menu (area badalne par jab branch badle). */
@@ -105,6 +117,8 @@ class StorefrontController extends Controller
             'customer.lat' => ['nullable', 'numeric', 'between:-90,90'],
             'customer.lng' => ['nullable', 'numeric', 'between:-180,180'],
             'note' => ['nullable', 'string', 'max:300'],
+            // Malik: "cash on delivery — hamare system ka Cash payment type". Abhi sirf yehi.
+            'payment' => ['nullable', 'in:cash'],
             'lines' => ['required', 'array', 'min:1', 'max:50'],
             'lines.*.option' => ['required', 'string', 'regex:/^(product|combo):\d+$/'],
             'lines.*.qty' => ['required', 'integer', 'min:1', 'max:50'],

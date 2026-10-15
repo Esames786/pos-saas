@@ -145,6 +145,8 @@ class OnlineOrderingCheckoutMySqlTest extends MySqlTenantTestCase
     public function test_a_delivery_order_takes_the_area_fee_the_customer_and_the_existing_website_channel(): void
     {
         $this->openShift();
+        $card = $this->makePaymentMethod(['method_type' => 'card', 'name' => 'Card']);
+        $cash = $this->makePaymentMethod(['method_type' => 'cash', 'name' => 'Cash', 'is_cash_drawer' => 1]);
         $existing = DeliveryChannel::create(['name' => 'Website', 'type' => 'own', 'commission_percent' => 0, 'is_active' => true, 'sort_order' => 3]);
         $zone = DeliveryZone::create(['geo_area_id' => 990001, 'area_name' => 'Gulshan Block 2', 'city' => 'Karachi',
             'branch_id' => $this->branchId, 'fee' => 50, 'free_delivery_above' => 5000, 'eta_minutes' => 40, 'is_active' => true]);
@@ -167,6 +169,13 @@ class OnlineOrderingCheckoutMySqlTest extends MySqlTenantTestCase
         $this->assertSame(40, $sale->web_meta['eta_minutes']);
         $this->assertStringContainsString('WEBSITE ORDER', $sale->notes);
         $this->assertStringContainsString('maps.google.com', $sale->notes);
+        // Malik: cash on delivery = system ka Cash payment type — order par likha, parchi/notes me bhi.
+        $this->assertSame('cash', $sale->web_meta['payment']);
+        $this->assertSame($cash, (int) $sale->web_meta['payment_method_id']);
+        $this->assertNotSame($card, (int) $sale->web_meta['payment_method_id']);
+        $this->assertStringContainsString('CASH ON DELIVERY', $sale->notes);
+        $this->checkout(['type' => 'delivery', 'area' => $zone->id, 'payment' => 'card', 'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => 1]]])
+            ->assertStatus(422)->assertJsonValidationErrors('payment');
 
         // Wohi customer dobara: naya customer nahi; "itne se upar free" par fee 0.
         $res2 = $this->checkout(['type' => 'delivery', 'area' => $zone->id, 'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => 4]],

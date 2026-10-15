@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Tenant\OnlineOrdering;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\Branch;
 use App\Models\Tenant\DeliveryRider;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\WebOrderRoute;
+use App\Services\Reports\SalesReportEngine;
 use App\Services\Security\UserDataScope;
 use App\Support\OnlineOrdering;
+use App\Support\TenantClock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -15,8 +18,10 @@ use Illuminate\Support\Facades\DB;
  * ONLINE-ORDERING-1 (Phase 3) — POS ka "Website orders" modal: sirf RECEIVE (malik: "POS pe jo order
  * modal hoga wahan to bs order receive hore hon gay").
  *
- * - index: is branch ke website orders jo cashier ka intezar kar rahe hain — naye (Draft) aur link se
- *   Held hue jin par rider baqi hai. Ghanti isi ki ginti par bajti hai.
+ * - index: status-wise tabs (malik, 15 Oct: "proper status wise tabs") — New (Draft), Confirmed (Held, Paid
+ *   hone tak), Paid aur Cancelled (aaj ka business din). Har 15 second ki poll sirf New + Confirmed laati hai
+ *   aur baqi do ki ginti; Paid/Cancelled ki list tab khulne par (`?tab=`). Badge = jin par kaam baqi: naye +
+ *   confirmed jin par rider nahi. Ghanti sirf naye (Draft) par.
  * - hold: Draft → Held (rider ke saath; own channel par rider lazmi — POS ka Hold bhi yehi maangta hai),
  *   ya Held order par rider lagao. KOT POS ka browser apne mojooda raaste se bhejta hai, bilkul normal
  *   Hold ki tarah. Cancel aur Recall POS ke apne mojooda raaste hain — yahan nahi.
@@ -36,17 +41,47 @@ class WebsiteOrderInboxController extends Controller
             ->exists();
 
         $user = auth('tenant')->user();
-        $query = SalesOrder::with(['lines', 'deliveryRider:id,name', 'deliveryChannel:id,type'])
-            ->where('order_source', 'website')->where('status', 'held')->where('branch_id', $branchId)
-            ->where(fn ($q) => $q->where('is_draft', true)
-                ->orWhere(fn ($h) => $h->where('order_type', 'delivery')->whereNull('delivery_rider_id')))
-            ->orderBy('created_at');
-        app(UserDataScope::class)->applyToSales($query, $user);
+        $branch = Branch::find($branchId);
+        $today = app(TenantClock::class)->currentBusinessDate($branch);
+        $base = function () use ($branchId, $user) {
+            $q = SalesOrder::query()->where('order_source', 'website')->where('branch_id', $branchId);
+            app(UserDataScope::class)->applyToSales($q, $user);
+
+            return $q;
+        };
+        $closed = [
+            'paid' => fn () => $base()->whereIn('status', SalesReportEngine::POPULATION),
+            'cancelled' => fn () => $base()->where('status', 'cancelled'),
+        ];
+        $onToday = fn ($q) => $q->whereRaw('COALESCE(business_date, DATE(sale_date)) = ?', [$today]);
+
+        $tab = (string) $request->query('tab', '');
+        if (isset($closed[$tab])) {
+            $list = $onToday($closed[$tab]())->latest('updated_at');
+        } else {
+            // New + Confirmed: khule orders, din ki qaid nahi — jab tak Paid/Cancel na hon.
+            $list = $base()->where('status', 'held')->orderByDesc('is_draft')->orderBy('created_at');
+        }
+        $orders = $list->with(['lines', 'deliveryRider:id,name', 'deliveryChannel:id,type'])->limit(50)->get()
+            ->map(fn (SalesOrder $s) => $this->row($s))->values();
+
+        $open = $base()->where('status', 'held');
+        $counts = [
+            'new' => (clone $open)->where('is_draft', true)->count(),
+            'confirmed' => (clone $open)->where('is_draft', false)->count(),
+            'paid' => $onToday($closed['paid']())->count(),
+            'cancelled' => $onToday($closed['cancelled']())->count(),
+            'no_rider' => (clone $open)->where('is_draft', false)->where('order_type', 'delivery')->whereNull('delivery_rider_id')
+                ->whereHas('deliveryChannel', fn ($c) => $c->where('type', 'own'))->count(),
+        ];
 
         return response()->json([
             'enabled' => true,
             'routed' => $routed,
-            'orders' => $query->limit(50)->get()->map(fn (SalesOrder $s) => $this->row($s))->values(),
+            'tab' => isset($closed[$tab]) ? $tab : 'open',
+            'business_date' => $today,
+            'counts' => $counts,
+            'orders' => $orders,
         ]);
     }
 
@@ -94,9 +129,17 @@ class WebsiteOrderInboxController extends Controller
     {
         $meta = $s->web_meta ?: [];
 
+        $status = match (true) {
+            $s->status === 'held' => $s->is_draft ? 'new' : 'confirmed',
+            $s->status === 'cancelled' => 'cancelled',
+            default => 'paid',
+        };
+        $needsRider = $s->order_type === 'delivery' && (bool) $s->deliveryChannel?->isOwn();
+
         return [
             'id' => $s->id,
             'sale_no' => $s->sale_no,
+            'status' => $status,
             'is_draft' => (bool) $s->is_draft,
             'order_type' => $s->order_type,
             'minutes' => (int) floor($s->created_at->diffInMinutes(now(), true)),
@@ -112,7 +155,11 @@ class WebsiteOrderInboxController extends Controller
             'total' => (float) $s->grand_total,
             'rider_id' => $s->delivery_rider_id,
             'rider' => $s->deliveryRider?->name,
-            'needs_rider' => $s->order_type === 'delivery' && (bool) $s->deliveryChannel?->isOwn(),
+            'needs_rider' => $needsRider,
+            'missing_rider' => $status === 'confirmed' && $needsRider && ! $s->delivery_rider_id,
+            'cancelled_by' => $meta['cancelled_by'] ?? null,
+            'payment' => ($meta['payment'] ?? 'cash') === 'cash' ? ($s->order_type === 'takeaway' ? 'Cash on pick-up' : 'Cash on delivery') : (string) $meta['payment'],
+            'time' => $s->created_at->format('h:i A'),
             'items' => $s->lines->where('line_kind', '!=', 'component')->map(fn ($l) => [
                 'name' => $l->product_name,
                 'qty' => (float) $l->quantity,

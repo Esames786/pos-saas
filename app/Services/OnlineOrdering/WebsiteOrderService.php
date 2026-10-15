@@ -7,6 +7,7 @@ use App\Models\Tenant\Combo;
 use App\Models\Tenant\CustomerAddress;
 use App\Models\Tenant\DeliveryChannel;
 use App\Models\Tenant\DeliveryZone;
+use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
@@ -146,7 +147,7 @@ class WebsiteOrderService
                 'is_draft' => true,
                 'inventory_posted' => false,
                 'created_by_user_id' => null,
-                'notes' => $this->readableNote($c, $in['note'] ?? null, $itemNotes),
+                'notes' => $this->readableNote($c, $in['note'] ?? null, $itemNotes, $orderType),
                 'web_order_key' => $in['key'],
                 'web_token' => Str::random(40),
                 'web_meta' => [
@@ -156,6 +157,9 @@ class WebsiteOrderService
                     'alt_phone' => $c['alt'] ?? null, 'note' => $in['note'] ?? null, 'item_notes' => $itemNotes,
                     'eta_minutes' => $orderType === 'delivery' ? ($zone?->eta_minutes ?: WebSetting::tenantDefault()->default_eta_minutes) : WebSetting::tenantDefault()->pickup_eta_minutes,
                     'placed_at' => now()->toIso8601String(),
+                    // Cash on delivery / pick-up = system ka Cash payment type (Pay par cashier yehi lagaye).
+                    'payment' => 'cash',
+                    'payment_method_id' => PaymentMethod::where('method_type', 'cash')->where('is_active', true)->orderByDesc('is_cash_drawer')->orderBy('id')->value('id'),
                 ],
             ]);
 
@@ -339,9 +343,9 @@ class WebsiteOrderService
     }
 
     /** POS ke Held/Draft list me cashier ko seedha dikhne wala note (asal tafseel web_meta me). */
-    private function readableNote(array $c, ?string $note, array $itemNotes): string
+    private function readableNote(array $c, ?string $note, array $itemNotes, string $orderType = 'delivery'): string
     {
-        $parts = ['WEBSITE ORDER'];
+        $parts = ['WEBSITE ORDER', $orderType === 'takeaway' ? 'CASH ON PICK-UP' : 'CASH ON DELIVERY'];
         if (! empty($c['landmark'])) {
             $parts[] = 'Landmark: '.$c['landmark'];
         }

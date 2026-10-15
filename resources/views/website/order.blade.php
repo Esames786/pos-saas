@@ -140,6 +140,17 @@ label.f span.req::after { content:" *"; color:var(--brand); }
 .warn { background:#FFF6DA; border:1px solid #F3DC92; color:#6A4D00; border-radius:12px; padding:10px 12px; font-size:13px; }
 .pin { display:flex; gap:10px; align-items:center; background:#F7F7F7; border-radius:12px; padding:10px 12px; font-size:13px; }
 .pin .dot { width:10px; height:10px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 4px #F3C9CB; flex:none; }
+/* ONLINE-ORDERING-1: location result, "near you", payment, map pin */
+.pin .go { margin-left:auto; border:0; background:var(--brand); color:#fff; border-radius:999px; padding:6px 12px; font-weight:600; font-size:12.5px; white-space:nowrap; }
+.list .near { color:var(--brand); font-weight:600; }
+.pay { display:grid; gap:8px; }
+.pay h4 { margin:0; font-size:14px; }
+.pay .opt b { display:block; font-size:14.5px; }
+.pay .opt small { color:var(--muted); font-size:12.5px; }
+.pay .cash { font-size:22px; line-height:1; }
+.map { height:200px; border-radius:12px; overflow:hidden; border:1px solid var(--line); background:#F2F2F2; }
+.maphint { margin:-4px 0 0; font-size:12px; color:var(--muted); }
+.sharepin { border:1.5px dashed var(--brand); background:#fff; color:var(--brand); border-radius:12px; padding:10px; font-weight:600; width:100%; }
 .empty { text-align:center; color:var(--muted); padding:30px 10px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }
 </style>
@@ -329,7 +340,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var rows = pickup
       ? D.branches.map(function (b) { return '<button type="button" data-b="' + b.id + '" class="' + (branchOf() === b.id ? 'on' : '') + '"><span>' + esc(b.name) + (b.address ? '<br><em>' + esc(b.address) + '</em>' : '') + '</span><em>Ready in ' + D.settings.pickupEta + ' min</em></button>'; })
       : D.areas.filter(function (a) { return !q || a.name.toLowerCase().indexOf(q) !== -1; })
-          .map(function (a) { return '<button type="button" data-a="' + a.id + '" class="' + (S.area === a.id ? 'on' : '') + '"><span>' + esc(a.name) + '</span><em>' + (a.fee > 0 ? money(a.fee) : 'Free') + ' · ' + a.eta + ' min</em></button>'; });
+          .sort(function (x, y) { return q ? 0 : nearRank(x.id) - nearRank(y.id); })
+          .map(function (a) { return '<button type="button" data-a="' + a.id + '" class="' + (S.area === a.id ? 'on' : '') + '"><span>' + esc(a.name) + '</span><em>' + (nearby.indexOf(a.id) !== -1 ? '<span class="near">Near you</span> · ' : '') + a.eta + ' min</em></button>'; });
     $('areaList').innerHTML = rows.length ? rows.join('') : '<p class="empty">' + (pickup ? 'Pick-up is not available.' : 'We do not deliver to this area yet. Try Pick-Up.') + '</p>';
   }
   $('where').addEventListener('click', function () { renderAreas(); show('areaSheet'); });
@@ -343,14 +355,60 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     if (b.hasAttribute('data-b')) { S.type = 'pickup'; S.branch = +b.getAttribute('data-b'); }
     save(); hide(); switchBranch();
   });
-  $('gps').addEventListener('click', function () {
-    if (!navigator.geolocation) { return; }
-    $('gpsText').textContent = 'Finding your location…'; $('gpsPin').hidden = false;
-    navigator.geolocation.getCurrentPosition(function (p) {
-      S.pin = { lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6) }; save();
-      $('gpsText').textContent = 'Location pinned (' + S.pin.lat + ', ' + S.pin.lng + '). Now choose your area below.';
-    }, function () { $('gpsText').textContent = 'Could not get your location. Choose your area below.'; }, { enableHighAccuracy: true, timeout: 10000 });
-  });
+  // Owner: location is asked for as soon as the site opens; if it was not given then, tapping
+  // "Use my current location" asks again. OpenStreetMap (through our server) names the place; the area
+  // whose name matches — or the nearest one — is chosen, and nearby areas move to the top of the list.
+  var nearby = [], locating = false;
+  function nearRank(id) { var i = nearby.indexOf(id); return i === -1 ? 99 : i; }
+  function gpsMsg(html) { $('gpsText').innerHTML = html; $('gpsPin').hidden = false; }
+  function locateMe(auto, done) {
+    if (!navigator.geolocation) { if (!auto) { gpsMsg('This browser cannot share your location. Choose your area below.'); } return; }
+    if (locating) { return; }
+    var ask = function () {
+      locating = true;
+      gpsMsg('Finding your location…');
+      navigator.geolocation.getCurrentPosition(function (p) {
+        locating = false;
+        S.pin = { lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6) }; save();
+        gpsMsg('Location found — matching your area…');
+        if (done) { done(); }
+        fetch(D.endpoints.locate + '?lat=' + S.pin.lat + '&lng=' + S.pin.lng, { headers: { Accept: 'application/json' } })
+          .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+          .then(function (j) {
+            nearby = j.nearby || [];
+            S.placeHint = j.street || j.place || null; save();
+            var a = j.area ? D.areas.find(function (x) { return x.id === j.area; }) : null;
+            if (a) {
+              S.type = 'delivery'; S.area = a.id; save();
+              gpsMsg('<span>You are in <b>' + esc(a.name) + '</b>' + (j.place ? '<br><small>' + esc(j.place) + '</small>' : '') + '</span><button type="button" class="go" data-close>Continue</button>');
+              $('gpsText').querySelector('[data-close]').addEventListener('click', hide);
+              switchBranch();
+            } else {
+              gpsMsg((j.place ? 'You are near <b>' + esc(j.place) + '</b>. ' : '') + (nearby.length ? 'Areas near you are at the top — pick yours.' : 'Choose your area below.'));
+            }
+            renderAreas();
+          }).catch(function () { gpsMsg('Location saved. Choose your area below.'); });
+      }, function (err) {
+        locating = false;
+        if (err.code === 1) {
+          gpsMsg(auto ? 'Tap <b>Use my current location</b> to find your area, or choose it below.'
+            : 'Location is blocked for this site. Tap the icon next to the web address → <b>Location → Allow</b>, then try again — or choose your area below.');
+        } else {
+          gpsMsg('Could not get your location right now. Try again, or choose your area below.');
+        }
+      }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+    };
+    // A tap after "Block" cannot bring the browser's question back — say how to allow it instead.
+    if (!auto && navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'geolocation' }).then(function (st) {
+        if (st.state === 'denied') { gpsMsg('Location is blocked for this site. Tap the icon next to the web address → <b>Location → Allow</b>, then try again — or choose your area below.'); return; }
+        ask();
+      }, ask);
+      return;
+    }
+    ask();
+  }
+  $('gps').addEventListener('click', function () { locateMe(false); });
 
   function switchBranch() {
     var want = branchOf();
@@ -508,16 +566,53 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       '<label class="f"><span class="req">WhatsApp number</span><input class="in" id="cPhone" inputmode="tel" autocomplete="tel" placeholder="03xx xxxxxxx" maxlength="20" value="' + esc(c.phone || '') + '"></label>' +
       '<label class="f">Another number (optional)<input class="in" id="cAlt" inputmode="tel" maxlength="20" value="' + esc(c.alt || '') + '"></label>' +
       (S.type === 'delivery'
-        ? '<label class="f"><span class="req">House / street / flat</span><input class="in" id="cAddr" autocomplete="street-address" maxlength="300" value="' + esc(c.address || '') + '"></label>' +
+        ? '<label class="f"><span class="req">House / street / flat</span><input class="in" id="cAddr" autocomplete="street-address" maxlength="300" value="' + esc(c.address || '') + '"' + (S.placeHint ? ' placeholder="e.g. House no., ' + esc(S.placeHint) + '"' : '') + '></label>' +
           '<label class="f">Nearest landmark<input class="in" id="cLand" maxlength="150" value="' + esc(c.landmark || '') + '"></label>' +
-          (S.pin ? '<div class="pin"><span class="dot"></span><span>Location pinned · the rider gets a map link</span></div>' : '')
+          (S.pin ? '<div class="map" id="cMap" role="img" aria-label="Your location on the map"></div><p class="maphint">Drag the pin to your door — the rider gets this location.</p>'
+            : '<button type="button" class="sharepin" id="sharePin">📍 Share my location (helps the rider find you)</button>')
         : '') +
       '<label class="f">Note for the restaurant<textarea id="cNote" rows="2" maxlength="300"></textarea></label>' +
-      '<div class="pin"><span class="dot"></span><span>Payment: <b>Cash on ' + (S.type === 'pickup' ? 'pick-up' : 'delivery') + '</b></span></div>' +
+      '<div class="pay"><h4>Payment</h4><label class="opt on"><span class="cash" aria-hidden="true">💵</span><span><b>Cash on ' + (S.type === 'pickup' ? 'pick-up' : 'delivery') + '</b><small>' +
+        (S.type === 'pickup' ? 'Pay in cash at the counter when you collect your order.' : 'Pay the rider in cash when your order arrives.') +
+        '</small></span><input type="radio" name="pay" value="cash" checked aria-label="Cash"></label></div>' +
       '<div class="warn" id="cErr" hidden></div>';
-    $('cartFoot').innerHTML = '<button class="big" type="button" id="place">Place order · ' + money(subtotal() + fee()) + '</button><button class="ghost" type="button" id="backCart">Back to cart</button>';
+    $('cartFoot').innerHTML = '<button class="big" type="button" id="place">Place order · ' + money(subtotal() + fee()) + ' · Cash</button><button class="ghost" type="button" id="backCart">Back to cart</button>';
     $('backCart').addEventListener('click', renderCart);
     $('place').addEventListener('click', placeOrder);
+    if ($('sharePin')) {
+      $('sharePin').addEventListener('click', function () { keepFields(); locateMe(false, function () { if (step === 'checkout') { keepFields(); renderCheckout(); } }); $('sharePin').textContent = 'Finding your location…'; });
+    }
+    showMap();
+  }
+  // Typed but not yet placed: kept when the checkout redraws (e.g. after sharing the location).
+  function keepFields() {
+    if (!$('cName')) { return; }
+    S.customer = Object.assign({}, S.customer || {}, { name: $('cName').value.trim(), phone: $('cPhone').value.trim(), alt: $('cAlt').value.trim(),
+      address: $('cAddr') ? $('cAddr').value.trim() : (S.customer || {}).address, landmark: $('cLand') ? $('cLand').value.trim() : (S.customer || {}).landmark });
+    save();
+  }
+  // OpenStreetMap map with a draggable pin — loaded only when the checkout needs it (keeps the site light).
+  function loadLeaflet(cb) {
+    if (window.L) { cb(); return; }
+    if (!document.getElementById('leafletCss')) {
+      var css = document.createElement('link'); css.id = 'leafletCss'; css.rel = 'stylesheet';
+      css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'; document.head.appendChild(css);
+    }
+    var sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    sc.onload = cb; sc.onerror = function () { var m = $('cMap'); if (m) { m.hidden = true; } }; document.head.appendChild(sc);
+  }
+  function showMap() {
+    var el = $('cMap');
+    if (!el || !S.pin) { return; }
+    loadLeaflet(function () {
+      if (!window.L || !document.body.contains(el)) { return; }
+      var map = L.map(el, { scrollWheelZoom: false }).setView([S.pin.lat, S.pin.lng], 17);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+      var mk = L.marker([S.pin.lat, S.pin.lng], { draggable: true, autoPan: true }).addTo(map);
+      mk.on('dragend', function () { var ll = mk.getLatLng(); S.pin = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) }; save(); });
+      map.on('click', function (e) { mk.setLatLng(e.latlng); S.pin = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) }; save(); });
+      setTimeout(function () { map.invalidateSize(); }, 250);
+    });
   }
   function placeOrder() {
     var c = {
@@ -542,6 +637,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       customer: { name: c.name, phone: c.phone, alt: c.alt || null, address: c.address || null, landmark: c.landmark || null,
         lat: S.pin ? S.pin.lat : null, lng: S.pin ? S.pin.lng : null },
       note: ($('cNote').value || '').trim() || null,
+      payment: 'cash',
       lines: S.cart.map(function (l) { return { option: l.option, qty: l.qty, addons: l.addons.map(function (a) { return a.id; }), note: l.note || null }; })
     };
     fetch(D.endpoints.checkout, {
@@ -574,7 +670,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
 
   $('forget').addEventListener('click', function () {
     try { localStorage.removeItem(KEY); } catch (e) { /* nothing stored */ }
-    S = { type: 'delivery', area: null, branch: null, cart: [], customer: {}, pin: null };
+    S = { type: 'delivery', area: null, branch: null, cart: [], customer: {}, pin: null, placeHint: null };
+    nearby = [];
     paintStatus(); paintCart();
   });
 
@@ -585,7 +682,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   if (S.area && !area()) { S.area = null; }
   renderMenu(); paintStatus(); paintCart();
   if (branchOf() !== menuBranch) { switchBranch(); }
-  if (S.type === 'delivery' && !S.area && D.areas.length) { renderAreas(); show('areaSheet'); }
+  if (S.type === 'delivery' && !S.area && D.areas.length) { renderAreas(); show('areaSheet'); locateMe(true); }
 })();
 </script>
 </body>
