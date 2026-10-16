@@ -255,27 +255,50 @@ class CateringKitchenSheetPreviewMySqlTest extends MySqlTenantTestCase
     }
 
     /**
-     * DONO waqt, aur har ek par apna naam. Ek waqt akela chhapne par bawarchi
-     * ko pata hi nahi chalta ke ye khana nikalne ka waqt hai ya khane ka.
+     * KITCHEN-SHEET-ONE-TIME-1 (16 Oct) — paer par waqt ki sirf EK satar.
+     *
+     * Pehle ye test ULTA tha: wo zor deta tha ke DONO waqt apne naam ke saath
+     * chhapein, is daleel par ke ek akela waqt bawarchi ko ye nahi batata ke
+     * khana nikalne ka waqt hai ya khane ka. Malik ne asli parche dekh kar
+     * is ke khilaf faisla diya — amal me dono waqt amooman EK hi hote hain,
+     * is liye parche par ek hi cheez do baar aa rahi thi.
+     *
+     * Naya usool: DEPARTURE pehle. Wo darj ho to sirf wohi chhapta hai aur
+     * SERVE bilkul nahi aata — chahe SERVE alag waqt par hi kyun na ho.
+     * Purani daleel ka wazan yahin likha hai taake aage koi use dobara
+     * "bug" samajh kar na palat de.
      */
-    public function test_both_the_service_and_dispatch_times_print_with_their_names(): void
+    public function test_only_the_dispatch_time_prints_when_both_are_set(): void
     {
         $this->event->forceFill(['service_time' => '21:00', 'dispatch_time' => '19:30'])->save();
 
         $html = $this->render(true);
 
-        $this->assertStringContainsString('SERVE', $html);
-        $this->assertStringContainsString('9:00 PM', $html);
-        $this->assertStringContainsString('DEPARTURE', $html);
+        // Nange lafz par nahi, LABEL ke markup par parkho. `kitchen-sheet-style`
+        // ke CSS comment me "SERVE" ka lafz mojood hai aur wo style ke saath
+        // document me chala jata hai — nanga `assertStringNotContainsString`
+        // is liye hamesha red deta hai, chahe paer bilkul theek ho.
+        $this->assertStringContainsString('>DEPARTURE<', $html);
         $this->assertStringContainsString('7:30 PM', $html);
+        $this->assertStringNotContainsString('>SERVE<', $html,
+            'departure darj ho to serve ka lafz paer par nahi aana chahiye');
+        $this->assertStringNotContainsString('9:00 PM', $html,
+            'aur na us ka waqt');
     }
 
-    /** Jo waqt darj hi nahi, us ki satar nahi chhapni chahiye. */
-    public function test_a_missing_dispatch_time_prints_nothing(): void
+    /**
+     * Departure darj na ho to SERVE hi wo ek satar hai — warna parche par
+     * waqt ka koi nishan hi na bachta.
+     */
+    public function test_the_service_time_prints_when_there_is_no_dispatch_time(): void
     {
         $this->event->forceFill(['service_time' => '21:00', 'dispatch_time' => null])->save();
 
-        $this->assertStringNotContainsString('DEPARTURE', $this->render(true));
+        $html = $this->render(true);
+
+        $this->assertStringContainsString('>SERVE<', $html);
+        $this->assertStringContainsString('9:00 PM', $html);
+        $this->assertStringNotContainsString('>DEPARTURE<', $html);
     }
 
     /**
@@ -396,6 +419,45 @@ class CateringKitchenSheetPreviewMySqlTest extends MySqlTenantTestCase
 
         $this->assertStringNotContainsString('chhoot gayin', $html);
         $this->assertStringContainsString('MR. HARIS', $html);
+    }
+
+    /**
+     * KITCHEN-SHEET-FOOT-BOTTOM-2 (16 Oct) — bulk safhe par bhi paer tal par.
+     *
+     * Malik: "footer footer ki jagah aaye, chahe list me ek item ho ya bees."
+     * 27 September wala hal sirf TANHA parche par chal raha tha: wahan paer
+     * `body` ka seedha beta hai aur `body` khara flex hai, is liye paer ka
+     * `margin-top: auto` bachi hui jagah kha jata hai. Bulk safhe par har
+     * parcha `.bulk-doc` me lipta hai, aur ek aam block ke andar us lafz ka
+     * matlab SIFAR hai.
+     *
+     * Chrome se naapa gaya (asli raasta, asli PDF): tanha parche par paer
+     * 95% neeche tha, bulk safhe par 22% — aur client isi safhe se chhapta
+     * hai. Hal ke baad teen parchon wale safhe par 95% / 99% / 96%.
+     *
+     * YE TEST KYA KAR SAKTA HAI AUR KYA NAHI: PHP se kaghaz ka layout nahi
+     * naapa ja sakta, CSS yahan chalti hi nahi. Is liye ye test wo TEEN
+     * lafz pakadta hai jin ke baghair paer neeche ja hi nahi sakta — agar
+     * koi unhe hata de to yahan red hoga. Asli paimaish upar likhi hai aur
+     * wo Chrome se hoti hai.
+     */
+    public function test_each_sheet_on_the_bulk_page_is_a_full_page_column_so_the_footer_sits_at_the_bottom(): void
+    {
+        $html = $this->bulkHtml([$this->event->id]);
+
+        $css = substr($html, 0, (int) strpos($html, '</head>'));
+        $rule = substr($css, (int) strpos($css, '.bulk-doc {'));
+        $rule = substr($rule, 0, (int) strpos($rule, '}') + 1);
+
+        $this->assertStringContainsString('display: flex', $rule,
+            'har parcha khud flex banna chahiye, warna paer ka margin-top:auto bekaar hai');
+        $this->assertStringContainsString('flex-direction: column', $rule,
+            'aur khara, warna bachi hui jagah paer ke upar nahi jati');
+        $this->assertStringContainsString('min-height: calc(', $rule,
+            'aur poore safhe jitna ooncha, warna "neeche" ka koi matlab hi nahi');
+
+        $this->assertStringContainsString('<div class="foot"', $html,
+            'aur paer safhe par mojood ho — warna upar wali teen shartein khali hain');
     }
 
     /** @param  list<int>  $eventIds */

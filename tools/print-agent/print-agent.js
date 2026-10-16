@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.6.5';
+const AGENT_VERSION = '2.6.6';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -107,6 +107,70 @@ function configCandidates() {
 
 function preferredConfigPath() {
     return configCandidates()[0];
+}
+
+function lockPath() {
+    return path.join(path.dirname(preferredConfigPath()), 'agent.lock');
+}
+
+/* ── Ek waqt me ek hi agent ─────────────────────────────────────────────
+ *
+ * AGENT-SINGLE-INSTANCE-1 (16 Oct). Pehle ye pehra tha hi nahi, aur do
+ * copies ka chalna aasan tha: task khud agent chalata hai, aur user ko
+ * nazar na aaye to wo exe par dobara click kar deta hai.
+ *
+ * Do copies ka nuqsan khamosh hai. Dono EK hi agent ke credentials se
+ * server se baat karti hain, is liye server unhe alag nahi kar sakta —
+ * ek hi parchi dono ko mil sakti hai aur DO BAAR chhap sakti hai.
+ *
+ * Pehra ek lock file se hai jis me chalne wale ki PID likhi hoti hai.
+ * Sirf "file mojood hai" kaafi nahi: bijli jane par file reh jati hai aur
+ * phir agent kabhi chalta hi nahi. Is liye PID ko parkha jata hai — aur
+ * Windows par uska NAAM bhi, kyun ki PID dobara kisi aur program ko mil
+ * sakti hai aur tab ye pehra bila wajah agent ko rok deta.
+ */
+function processLooksLikeAgent(pid) {
+    if (process.platform !== 'win32') {
+        try { process.kill(pid, 0); return true; } catch (err) { return err.code === 'EPERM'; }
+    }
+    try {
+        const out = require('child_process').execFileSync(
+            'tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'],
+            { encoding: 'utf8', timeout: 10000, windowsHide: true },
+        );
+        const name = (out.split(',')[0] || '').replace(/"/g, '').toLowerCase();
+        return name.includes('bingooprintagent') || name === 'node.exe';
+    } catch {
+        // tasklist hi na chale to pehre ko shak ka faida mat do: chalne do.
+        return false;
+    }
+}
+
+function anotherAgentIsRunning() {
+    let raw;
+    try { raw = fs.readFileSync(lockPath(), 'utf8'); } catch { return null; }
+
+    let pid = 0;
+    try { pid = Number(JSON.parse(raw).pid) || 0; } catch { return null; }
+    if (!pid || pid === process.pid) { return null; }
+
+    return processLooksLikeAgent(pid) ? pid : null;
+}
+
+function claimSingleInstanceLock() {
+    const file = lockPath();
+    try { fs.mkdirSync(path.dirname(file), { recursive: true }); } catch { /* chhor do */ }
+    try {
+        fs.writeFileSync(file, JSON.stringify({
+            pid: process.pid, version: AGENT_VERSION, startedAt: new Date().toISOString(),
+        }));
+    } catch { return; }
+
+    const drop = () => { try { fs.unlinkSync(file); } catch { /* chhor do */ } };
+    process.on('exit', drop);
+    for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+        process.on(sig, () => { drop(); process.exit(0); });
+    }
 }
 
 function logPath() {
@@ -1315,6 +1379,17 @@ async function commandTick() {
 }
 
 function run(config) {
+    // Pehle ye dekho ke ek agent pehle se chal to nahi raha — dekho
+    // `anotherAgentIsRunning` ka note. Yahan exit 0 hai, nakami nahi:
+    // kaam ho raha hai, bas is copy ki zaroorat nahi.
+    const other = anotherAgentIsRunning();
+    if (other) {
+        console.log(`Bingoo Print Agent pehle se chal raha hai (PID ${other}). Ye copy band ki ja rahi hai.`);
+        console.log('Halat dekhne ko:  BingooPrintAgent.exe status');
+        process.exit(0);
+    }
+    claimSingleInstanceLock();
+
     CONFIG = config;
     log('Bingoo POS Local Print Agent started.');
     log(`Version: ${AGENT_VERSION}`);
@@ -1416,6 +1491,11 @@ module.exports = {
     _printerHealth: printerHealth,
     _setConfig: (cfg) => { CONFIG = cfg; },
     _resetHealth: () => printerHealth.clear(),
+    // AGENT-SINGLE-INSTANCE-1 — pehra test se chalaya ja sake.
+    lockPath,
+    anotherAgentIsRunning,
+    claimSingleInstanceLock,
+    processLooksLikeAgent,
     CB_FAILURE_THRESHOLD,
     CB_COOLDOWN_MS,
 };
