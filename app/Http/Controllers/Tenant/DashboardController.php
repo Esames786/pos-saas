@@ -316,7 +316,8 @@ class DashboardController extends Controller
     private function billingSummary(): array
     {
         $empty = ['due' => 0.0, 'dueCount' => 0, 'accruing' => 0.0, 'accruingMessages' => 0,
-            'accruingWhatsApp' => 0.0, 'accruingWebsite' => 0.0, 'accruingOrders' => 0];
+            'accruingWhatsApp' => 0.0, 'accruingWebsite' => 0.0, 'accruingOrders' => 0,
+            'invoices' => [], 'total' => 0.0, 'accruingPeriod' => null];
 
         try {
             if (! app()->bound('tenant')) {
@@ -342,10 +343,39 @@ class DashboardController extends Controller
                 : null;
             $webAmount = round((float) ($web?->amount ?? 0), 2);
 
+            // DASHBOARD-BILLING-ONE-BOX-1 — khud invoice ki satrein, taake modal un ko dikha sake.
+            // Dashboard par sirf AIK aankRa hai (kul); kya kya mila kar wo bana, wo khulne par nazar
+            // aata hai. Sirf jama likh dena aur tafseel na dena wo soorat hai jahan log raqam par
+            // bharosa nahi karte aur phone uthate hain.
+            $rows = (clone $due)->orderBy('due_date')->get()->map(fn ($i) => [
+                'no' => $i->invoice_no,
+                'type' => $i->invoice_type,
+                'period' => $i->period_start && $i->period_end
+                    ? \Carbon\CarbonImmutable::parse($i->period_start)->format('d M').' – '
+                        .\Carbon\CarbonImmutable::parse($i->period_end)->format('d M Y')
+                    : null,
+                'due_date' => $i->due_date ? \Carbon\CarbonImmutable::parse($i->due_date)->format('d M Y') : null,
+                'overdue' => $i->due_date && \Carbon\CarbonImmutable::parse($i->due_date)->isPast(),
+                'balance' => (float) $i->balance_amount,
+                'url' => url('/billing/invoices/'.$i->id),
+            ])->all();
+
+            $dueTotal = (float) (clone $due)->sum('balance_amount');
+            $accruingTotal = (float) ($draft?->total_amount ?? 0);
+
             return [
-                'due' => (float) (clone $due)->sum('balance_amount'),
+                'due' => $dueTotal,
                 'dueCount' => (int) (clone $due)->count(),
-                'accruing' => (float) ($draft?->total_amount ?? 0),
+                'invoices' => $rows,
+                // Kul = jo abhi dena hai + jo is mahine ban raha hai. Dono aik hi number me jama
+                // hote hain kyunke malik ne yehi maanga, magar modal me ye DO alag hisson me rehte
+                // hain — accruing abhi qabil-e-adaegi nahi, aur us par "due" likhna ghalat hota.
+                'total' => round($dueTotal + $accruingTotal, 2),
+                'accruingPeriod' => $draft && $draft->period_start && $draft->period_end
+                    ? \Carbon\CarbonImmutable::parse($draft->period_start)->format('d M').' – '
+                        .\Carbon\CarbonImmutable::parse($draft->period_end)->format('d M Y')
+                    : null,
+                'accruing' => $accruingTotal,
                 'accruingMessages' => $draft
                     ? \App\Models\Master\WhatsAppMessage::where('invoice_id', $draft->id)->count()
                     : 0,
