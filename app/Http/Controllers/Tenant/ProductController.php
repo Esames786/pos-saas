@@ -89,6 +89,7 @@ class ProductController extends Controller
             'flagOptions' => self::FLAG_FILTERS,
             'chosenRoles' => $chosenRoles,
             'chosenFlags' => $chosenFlags,
+            'listsEveryKind' => $context === 'catalog' && ! $this->materialsHaveTheirOwnList(),
         ]);
     }
 
@@ -478,6 +479,13 @@ class ProductController extends Controller
             return;
         }
 
+        // PRODUCT-LIST-EVERY-KIND-1 — the catalog hides ingredients and factory items because they
+        // have a list of their own. A restaurant plan has neither list, yet its Add screen offers
+        // "Ingredient / Raw Material": Khatri's ICE-BERG saved fine and then could be found nowhere.
+        if (! $this->materialsHaveTheirOwnList()) {
+            return;
+        }
+
         $query->where(function ($q) {
             $q->where('is_pos_visible', true)
                 ->orWhere('is_sellable', true)
@@ -498,6 +506,24 @@ class ProductController extends Controller
                     Product::KIND_FINISHED_GOOD,
                 ]);
         });
+    }
+
+    /**
+     * Can this user open Manufacturing Products or Catering Materials? Plan AND role, as the form's
+     * areas and the sidebar decide. With no tenant bound (only the test harness) the plan is unknown:
+     * yes, so the catalog keeps hiding them as it always did.
+     */
+    private function materialsHaveTheirOwnList(): bool
+    {
+        $subscription = app()->bound('tenant') ? app('tenant')->subscription : null;
+        if (! $subscription) {
+            return true;
+        }
+        $modules = $subscription->loadMissing('plan.enabledModules')->plan?->enabledModules->pluck('key')->all() ?? [];
+        $user = auth()->user();
+
+        return (in_array('manufacturing', $modules, true) && (bool) $user?->can('tenant.manufacturing.products.index'))
+            || (in_array('catering', $modules, true) && (bool) $user?->can('tenant.catering.materials.index'));
     }
 
     private function isCateringMaterials(Request $request): bool
