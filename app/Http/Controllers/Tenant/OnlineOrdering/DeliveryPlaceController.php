@@ -9,6 +9,7 @@ use App\Models\Tenant\DeliveryZone;
 use App\Models\Tenant\DeliveryZonePlace;
 use App\Services\OnlineOrdering\AreaLocator;
 use App\Services\OnlineOrdering\DeliveryPlaces;
+use App\Services\OnlineOrdering\MapPoint;
 use App\Services\OnlineOrdering\OpenStreetMap;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -106,7 +107,7 @@ class DeliveryPlaceController extends Controller
             throw ValidationException::withMessages(['name' => "“{$platform->name}” is already on the map list. Find it below and use Move."]);
         }
 
-        [$lat, $lng] = $this->point($data['location'] ?? null);
+        [$lat, $lng] = MapPoint::parse($data['location'] ?? null);
         if ($lat === null && $geo) {
             $hit = $osm->search($name.', '.$geo->city.', '.$geo->country, OpenStreetMap::countryCode($geo->country));
             if ($hit && ($geo->lat === null || AreaLocator::km((float) $geo->lat, (float) $geo->lng, $hit['lat'], $hit['lng']) <= AreaLocator::MAX_KM)) {
@@ -178,19 +179,5 @@ class DeliveryPlaceController extends Controller
         $geoIds = DeliveryZone::whereNotNull('geo_area_id')->pluck('geo_area_id')->all();
 
         return GeoAreaPlace::whereIn('geo_area_id', $geoIds)->findOrFail($id);
-    }
-
-    /** "24.9521, 67.1412" ya Google Maps ka link (…@24.95,67.14… / ?q=24.95,67.14) → [lat, lng]. */
-    private function point(?string $raw): array
-    {
-        if (preg_match('/(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})/', (string) $raw, $m)) {
-            $lat = (float) $m[1];
-            $lng = (float) $m[2];
-            if (abs($lat) <= 90 && abs($lng) <= 180) {
-                return [$lat, $lng];
-            }
-        }
-
-        return [null, null];
     }
 }

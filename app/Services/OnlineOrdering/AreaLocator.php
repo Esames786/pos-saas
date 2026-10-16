@@ -40,11 +40,13 @@ class AreaLocator
      */
     public function locate(float $lat, float $lng): array
     {
-        $zones = DeliveryZone::where('is_active', true)->get(['id', 'area_name', 'geo_area_id']);
+        $allZones = DeliveryZone::get(['id', 'area_name', 'geo_area_id', 'is_active']);
+        $zones = $allZones->where('is_active', true)->values();
         $geo = GeoArea::whereIn('id', $zones->pluck('geo_area_id')->filter()->all())
-            ->get(['id', 'lat', 'lng'])->keyBy('id');
+            ->get(['id', 'lat', 'lng', 'state'])->keyBy('id');
         // Jagahen (societies) asal tables se: platform + restaurant ki apni, restaurant ke faislon ke saath.
-        $places = app(DeliveryPlaces::class)->all()->whereIn('zone_id', $zones->pluck('id')->all())->groupBy('zone_id');
+        $allPlaces = app(DeliveryPlaces::class)->all()->groupBy('zone_id');
+        $places = $allPlaces->only($zones->pluck('id')->all());
 
         $distances = $zones->mapWithKeys(function (DeliveryZone $z) use ($geo, $places, $lat, $lng) {
             $points = self::points($geo->get($z->geo_area_id), $places->get($z->id, collect()));
@@ -54,6 +56,19 @@ class AreaLocator
 
         $osm = $this->osm->reverse($lat, $lng) ?? [];
         $address = (array) ($osm['address'] ?? []);
+
+        // Malik (16 Oct): "branch Karachi ki hai to Karachi se bahar delivery nahi" — OSM ka suba (state) hamare
+        // areas ke suba se na mile (Hub = Balochistan) to koi area nahi.
+        $state = trim((string) ($address['state'] ?? ''));
+        $ourStates = $geo->pluck('state')->filter()->map(fn ($x) => self::norm((string) $x))->unique();
+        if ($state !== '' && $ourStates->isNotEmpty() && ! $ourStates->contains(self::norm($state))) {
+            return array_replace($this->none($address), ['outside' => $state]);
+        }
+        // Naam se kisi BAND kiye area ka nikla = wahan delivery nahi (pados ka area khud nahi chunte).
+        $closed = $this->byName($allZones, $allPlaces, $address, (string) ($osm['name'] ?? ''));
+        if ($closed !== null && ! $allZones->firstWhere('id', $closed)?->is_active) {
+            return array_replace($this->none($address), ['closed' => $allZones->firstWhere('id', $closed)->area_name]);
+        }
         $byName = $this->byName($zones, $places, $address, (string) ($osm['name'] ?? ''));
 
         $nearestId = $distances->keys()->first();
@@ -73,7 +88,16 @@ class AreaLocator
             'nearby' => $distances->filter(fn ($km) => $km <= self::MAX_KM)->keys()->take(5)->values()->all(),
             // Malik (16 Oct): "chhote area recommend karo" — pin ke aas paas ki jagahen (society), har ek apne area ke saath.
             'near_places' => $this->nearPlaces($places->flatten(1), $lat, $lng),
+            'closed' => null,
+            'outside' => null,
         ];
+    }
+
+    /** Koi area nahi (shehar / suba se bahar, ya band area) — jagah ka naam phir bhi (customer ko batane ke liye). */
+    private function none(array $address): array
+    {
+        return ['area' => null, 'by' => null, 'km' => null, 'place' => $this->place($address), 'street' => $this->street($address),
+            'label' => $this->label($address), 'broad' => null, 'nearby' => [], 'near_places' => [], 'closed' => null, 'outside' => null];
     }
 
     /**

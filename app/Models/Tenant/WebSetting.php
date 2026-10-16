@@ -28,6 +28,8 @@ class WebSetting extends Model
         'about_text', 'upsell_category_id', 'popular_auto',
         // SEO aur website ke safhe (Privacy Policy, FAQs) — har restaurant ke apne.
         'seo_title', 'seo_description', 'seo_keywords', 'privacy_policy', 'faqs',
+        // DELIVERY-RADIUS-1: area (har area ki fee) | distance (branch se doori ke bands).
+        'delivery_fee_mode',
     ];
 
     protected function casts(): array

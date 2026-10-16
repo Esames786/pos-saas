@@ -249,6 +249,56 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
         $this->assertTrue(DeliveryZone::where('geo_area_id', $gulshan)->sole()->is_active, 'Jo post hi nahi hua wo nahi chhua.');
     }
 
+    public function test_the_areas_page_saves_the_distance_fee_bands_branch_point_and_mode(): void
+    {
+        [$scheme] = $this->servedZones();
+        $put = fn (array $extra) => $this->owner()->put($this->url('/online-ordering/areas'), ['city' => 'Karachi'] + $extra);
+
+        // Nuqta aur bands ke baghair doori wala tareeqa nahi.
+        $put(['fee_mode' => 'distance'])->assertSessionHasErrors('fee_mode');
+        $this->assertSame('area', WebSetting::tenantDefault()->delivery_fee_mode);
+
+        $put(['fee_mode' => 'distance',
+            'branches' => [$this->branchA => ['location' => 'https://www.google.com/maps/place/X/@24.923007,67.089347,17z', 'map_url' => 'https://share.google/example']],
+            'bands' => [$this->branchA => [['up_to_km' => '18', 'fee' => '400'], ['up_to_km' => '1', 'fee' => '50'], ['up_to_km' => '', 'fee' => '']]],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame('distance', WebSetting::tenantDefault()->delivery_fee_mode);
+        $loc = \App\Models\Tenant\WebBranchSetting::where('branch_id', $this->branchA)->sole();
+        $this->assertEqualsWithDelta(24.923007, $loc->lat, 0.000001);
+        $this->assertSame('https://share.google/example', $loc->map_url);
+        $this->assertSame([[1.0, 50.0], [18.0, 400.0]], \App\Models\Tenant\DeliveryFeeBand::where('branch_id', $this->branchA)->orderBy('up_to_km')
+            ->get()->map(fn ($b) => [$b->up_to_km, $b->fee])->all());
+
+        // Page: bands wapas, har area ke markaz ki fee ka andaza (Scheme 33 ka markaz 11.9 km), Active switch.
+        $m = DB::connection('master');
+        $was = $m->table('geo_areas')->where('id', $this->area('Scheme 33'))->first(['lat', 'lng']);
+        $m->table('geo_areas')->where('id', $this->area('Scheme 33'))->update(['lat' => 24.9992, 'lng' => 67.1720]);
+        try {
+            $html = $this->owner()->get($this->url('/online-ordering/areas'))->assertOk()->getContent();
+        } finally {
+            $m->table('geo_areas')->where('id', $this->area('Scheme 33'))->update(['lat' => $was->lat, 'lng' => $was->lng]);
+        }
+        $this->assertStringContainsString('name="bands['.$this->branchA.'][1][up_to_km]" value="18"', $html);
+        $this->assertStringContainsString('by distance Rs 400 · 11.9 km', $html, 'Area ke markaz ki doori se band.');
+        $this->assertStringContainsString('>Active<', $html);
+        $this->assertInlineScriptsParse($html, 'delivery areas with bands', 'js-add-band');
+
+        // Galat: aadha band, dohraya km, nuqta jo samajh na aaye — kuch nahi badla.
+        $put(['bands' => [$this->branchA => [['up_to_km' => '5', 'fee' => '']]]])->assertSessionHasErrors('bands.'.$this->branchA);
+        $put(['bands' => [$this->branchA => [['up_to_km' => '5', 'fee' => '1'], ['up_to_km' => '5.0', 'fee' => '2']]]])->assertSessionHasErrors('bands.'.$this->branchA);
+        $put(['branches' => [$this->branchA => ['location' => 'https://maps.app.goo.gl/abc']]])->assertSessionHasErrors('branches.'.$this->branchA.'.location');
+        $this->assertSame(2, \App\Models\Tenant\DeliveryFeeBand::count());
+
+        // Purana form (fee ka hissa hi nahi): kuch nahi chhuta.
+        $put(['zones' => [$this->area('Scheme 33') => ['serve' => '1', 'branch_id' => $this->branchA, 'fee' => '300']]])->assertSessionHasNoErrors();
+        $this->assertSame('distance', WebSetting::tenantDefault()->delivery_fee_mode);
+        $this->assertSame(2, \App\Models\Tenant\DeliveryFeeBand::count());
+
+        $put(['fee_mode' => 'area'])->assertSessionHasNoErrors();
+        $this->assertSame('area', WebSetting::tenantDefault()->delivery_fee_mode);
+        $this->assertSame($scheme, DeliveryZone::where('geo_area_id', $this->area('Scheme 33'))->value('id'));
+    }
+
     // ── delivery places ──────────────────────────────────────────────────────────────────────
 
     public function test_the_places_page_lists_map_places_and_adds_the_restaurants_own_with_a_map_point(): void
@@ -275,6 +325,8 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
             $html = $this->owner()->get($this->url('/online-ordering/places'))->assertOk()->getContent();
             $this->assertStringContainsString('Oosetup Garden', $html, 'Map (platform) ki jagah apne area ke saath.');
             $this->assertStringContainsString('From map', $html);
+            $this->assertInlineScriptsParse($html, 'delivery places', 'js-zone-pick');
+            $this->assertSame(1, substr_count($html, '<template id="zone-options">'), 'Areas ki list aik dafa, har row me nahi.');
             $this->assertStringContainsString('/online-ordering/places?zone='.$scheme,
                 $this->owner()->get($this->url('/online-ordering/areas'))->assertOk()->getContent(), 'Areas page se har area ki jagahen.');
             $this->assertStringContainsString('/online-ordering/places', $this->owner()->get($this->url('/products'))->getContent(), 'Menu me.');
@@ -711,7 +763,7 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
     {
         DB::setDefaultConnection('tenant');
         $this->cleanTenant([
-            'delivery_zone_places', 'delivery_zones', 'web_order_routes', 'web_settings', 'combo_components', 'combos',
+            'delivery_fee_bands', 'web_branch_settings', 'delivery_zone_places', 'delivery_zones', 'web_order_routes', 'web_settings', 'combo_components', 'combos',
             'product_branch_prices', 'product_variants', 'products', 'terminals',
             'model_has_roles', 'users', 'branches',
         ]);

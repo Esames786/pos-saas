@@ -347,6 +347,24 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         Http::assertSent(fn (HttpRequest $r) => str_contains(urldecode($r->url()), 'q=Gulzar-e-Hijri, '.self::CITY));
     }
 
+    public function test_outside_the_province_or_in_a_switched_off_area_there_is_no_area(): void
+    {
+        // Malik (16 Oct): "branch Karachi ki hai to Karachi se bahar delivery nahi"; band area me bhi nahi.
+        $address = ['suburb' => 'Hub Chowki', 'state' => 'Balochistan'];
+        Http::fake(function () use (&$address) {
+            return Http::response(['address' => $address, 'display_name' => implode(', ', $address)]);
+        });
+        $j = $this->locate(24.9990, 67.1700)->assertOk()->json();
+        $this->assertSame([null, 'Balochistan', []], [$j['area'], $j['outside'], $j['nearby']]);
+
+        $address = ['neighbourhood' => 'Clifton Block 5', 'state' => 'Sindh'];
+        $this->assertSame($this->zone['Clifton Block 5'], $this->locate(24.8205, 67.0285)->json('area'), 'Apna suba: theek.');
+
+        DeliveryZone::whereKey($this->zone['Clifton Block 5'])->update(['is_active' => false]);
+        $j = $this->locate(24.8206, 67.0284)->json();
+        $this->assertSame([null, 'Clifton Block 5'], [$j['area'], $j['closed']], 'Band area: pados ka area khud nahi.');
+    }
+
     public function test_a_restaurant_can_move_or_hide_a_map_place_for_itself(): void
     {
         // Platform (map) ki jagah sab restaurants ki — restaurant apne liye doosre area me daal / chhupa sakta hai.

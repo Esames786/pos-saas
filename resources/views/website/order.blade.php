@@ -1039,6 +1039,13 @@ label.f span.req::after { content:" *"; color:var(--brand); }
             // Goes with the order's address as "near …" (the map names the nearest place it knows).
             S.place = S.placeApprox ? (j.broad || null) : (j.label || j.place || null);
             save();
+            // Owner (16 Oct): no delivery outside the city, nor to an area the restaurant has switched off.
+            if (j.outside || j.closed) {
+              gpsMsg(j.closed ? 'Sorry — we don\'t deliver to <b>' + esc(j.closed) + '</b> right now. You can choose <b>Pick-Up</b>.'
+                : 'We deliver only inside ' + esc((D.areas[0] || {}).city || 'our city') + '. Your location shows <b>' + esc(j.outside) + '</b> — you can choose <b>Pick-Up</b>.');
+              renderAreas();
+              return;
+            }
             var a = j.area ? D.areas.find(function (x) { return x.id === j.area; }) : null;
             if (a) {
               showLocated(a, j);
@@ -1165,10 +1172,24 @@ label.f span.req::after { content:" *"; color:var(--brand); }
 
   // ── cart ──
   function subtotal() { return S.cart.reduce(function (s, l) { return s + l.unit * l.qty; }, 0); }
+  // Owner (16 Oct): the delivery fee by distance from the branch — the same bands the checkout charges (the server
+  // works it out again; this only shows it). From the customer's pin, else from the middle of their area.
+  function km(a1, o1, a2, o2) {
+    var r = Math.PI / 180, h = Math.pow(Math.sin((a2 - a1) * r / 2), 2) + Math.cos(a1 * r) * Math.cos(a2 * r) * Math.pow(Math.sin((o2 - o1) * r / 2), 2);
+    return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  function quote(a) {
+    var dv = D.delivery || {}, br = dv.mode === 'distance' && dv.branches ? dv.branches[a.branch] : null;
+    var p = S.pin || (a.lat != null && a.lng != null ? { lat: a.lat, lng: a.lng } : null);
+    if (!br || !p) { return { ok: true, fee: a.fee, km: null }; }
+    var d = km(br.lat, br.lng, p.lat, p.lng), band = br.bands.find(function (b) { return d <= b[0]; });
+    return { ok: !!band, fee: band ? band[1] : 0, km: Math.round(d * 10) / 10, max: br.bands[br.bands.length - 1][0] };
+  }
+  function tooFar(q) { return 'We deliver up to ' + q.max + ' km from our branch — your location is ' + q.km + ' km away. Please choose Pick-Up.'; }
   function fee() {
     if (S.type === 'pickup') { return 0; }
     var a = area(); if (!a) { return 0; }
-    return (a.freeAbove !== null && subtotal() >= a.freeAbove) ? 0 : a.fee;
+    return (a.freeAbove !== null && subtotal() >= a.freeAbove) ? 0 : quote(a).fee;
   }
   function count() { return S.cart.reduce(function (s, l) { return s + l.qty; }, 0); }
   function paintBar() {
@@ -1234,16 +1255,17 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     }
     h.push('<button type="button" class="addmore" id="addMore">' + icon('plus') + 'Add more items</button>');
     h.push(upsells());
-    var sub = subtotal(), f = fee();
+    var sub = subtotal(), f = fee(), q = S.type === 'delivery' && a ? quote(a) : null;
     h.push('<div class="totals"><div>' + icon('calc', 18) + '<span>Total</span><b>' + money(sub) + '</b></div>' +
-      (S.type === 'delivery' ? '<div>' + icon('truck', 18) + '<span>Delivery Fee' + (a ? ' <small style="color:var(--muted)">(' + esc(a.name) + ')</small>' : '') + '</span><b>' + (a ? (f > 0 ? money(f) : 'Free') : '—') + '</b></div>' : '') +
+      (S.type === 'delivery' ? '<div>' + icon('truck', 18) + '<span>Delivery Fee' + (a ? ' <small style="color:var(--muted)">(' + esc(a.name) + (q && q.km !== null ? ' · ' + q.km + ' km' : '') + ')</small>' : '') + '</span><b>' + (a ? (q && !q.ok ? '—' : f > 0 ? money(f) : 'Free') : '—') + '</b></div>' : '') +
       '<div class="gt"><span></span><span>Grand Total</span><b>' + money(sub + f) + '</b></div></div>');
     var warns = [];
     if (S.type === 'delivery' && !a) { warns.push('Choose your delivery area to see the delivery fee.'); }
     if (a && a.min && sub < a.min) { warns.push('Minimum order for ' + esc(a.name) + ' is ' + money(a.min) + '.'); }
+    if (q && !q.ok) { warns.push(esc(tooFar(q))); }
     if (!branchOpen()) { warns.push(esc(D.status.message || 'We are not taking orders right now.')); }
     $('cartBody').innerHTML = h.join('') + warns.map(function (w) { return '<div class="warn">' + w + '</div>'; }).join('');
-    var blocked = !branchOpen() || (S.type === 'delivery' && !a) || (a && a.min && sub < a.min);
+    var blocked = !branchOpen() || (S.type === 'delivery' && !a) || (a && a.min && sub < a.min) || (q && !q.ok);
     $('cartFoot').innerHTML = '<button class="big" type="button" id="toCheckout"' + (blocked ? ' disabled' : '') + '>Checkout ' + icon('right', 18) + '</button>' +
       '<p class="eta">' + esc(etaText()) + '</p>';
     $('toCheckout').addEventListener('click', renderCheckout);
@@ -1279,7 +1301,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     $('cartTitleText').textContent = 'Checkout';
     $('cartBody').innerHTML =
       '<div class="pin"><span class="dot"></span><span>' + (S.type === 'pickup' ? 'Pick-Up order' : 'Delivery to <b>' + esc(a ? a.name : '') + '</b>' +
-        (S.place && S.pin ? '<br><small>📍 near ' + esc(S.place) + '</small>' : '')) + '</span></div>' +
+        (S.place && S.pin ? '<br><small>📍 near ' + esc(S.place) + '</small>' : '') + '<br><small id="cFee"></small>') + '</span></div>' +
       '<label class="f"><span class="req">Full name</span><input class="in" id="cName" autocomplete="name" maxlength="120" value="' + esc(c.name || '') + '"></label>' +
       '<label class="f"><span class="req">WhatsApp number</span><input class="in" id="cPhone" inputmode="tel" autocomplete="tel" placeholder="03xx xxxxxxx" maxlength="20" value="' + esc(c.phone || '') + '"></label>' +
       '<label class="f">Another number (optional)<input class="in" id="cAlt" inputmode="tel" maxlength="20" value="' + esc(c.alt || '') + '"></label>' +
@@ -1297,10 +1319,19 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     $('cartFoot').innerHTML = '<button class="big" type="button" id="place">Place order · ' + money(subtotal() + fee()) + ' · Cash</button><button class="ghost" type="button" id="backCart">Back to cart</button>';
     $('backCart').addEventListener('click', renderCart);
     $('place').addEventListener('click', placeOrder);
+    paintPlace();
     if ($('sharePin')) {
       $('sharePin').addEventListener('click', function () { keepFields(); locateMe(false, function () { if (step === 'checkout') { keepFields(); renderCheckout(); } }); $('sharePin').textContent = 'Finding your location…'; });
     }
     showMap();
+  }
+  // The fee follows the pin: dragging it to the door can change the distance band.
+  function paintPlace() {
+    if (!$('place')) { return; }
+    var a = area(), q = S.type === 'delivery' && a ? quote(a) : null, f = fee();
+    $('place').textContent = 'Place order · ' + money(subtotal() + f) + ' · Cash';
+    $('place').disabled = !!(q && !q.ok);
+    if ($('cFee')) { $('cFee').textContent = q ? (q.ok ? 'Delivery fee ' + (f > 0 ? money(f) : 'free') + (q.km !== null ? ' · ' + q.km + ' km from our branch' : '') : tooFar(q)) : ''; }
   }
   // Typed but not yet placed: kept when the checkout redraws (e.g. after sharing the location).
   function keepFields() {
@@ -1327,8 +1358,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       var map = L.map(el, { scrollWheelZoom: false }).setView([S.pin.lat, S.pin.lng], 17);
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
       var mk = L.marker([S.pin.lat, S.pin.lng], { draggable: true, autoPan: true }).addTo(map);
-      mk.on('dragend', function () { var ll = mk.getLatLng(); S.pin = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) }; save(); });
-      map.on('click', function (e) { mk.setLatLng(e.latlng); S.pin = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) }; save(); });
+      mk.on('dragend', function () { var ll = mk.getLatLng(); S.pin = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) }; save(); paintPlace(); });
+      map.on('click', function (e) { mk.setLatLng(e.latlng); S.pin = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) }; save(); paintPlace(); });
       setTimeout(function () { map.invalidateSize(); }, 300);
     });
   }

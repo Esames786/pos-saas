@@ -8,12 +8,14 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
 use App\Models\Tenant\Combo;
 use App\Models\Tenant\DeliveryChannel;
+use App\Models\Tenant\DeliveryFeeBand;
 use App\Models\Tenant\DeliveryZone;
 use App\Models\Tenant\ModifierGroup;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\User;
+use App\Models\Tenant\WebBranchSetting;
 use App\Models\Tenant\WebOrderRoute;
 use App\Models\Tenant\WebSetting;
 use App\Services\Permissions\PermissionSyncService;
@@ -69,7 +71,7 @@ class OnlineOrderingCheckoutMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection('tenant');
         $this->cleanTenant([
             'customer_addresses', 'customers', 'sale_payments', 'sales_order_lines', 'sales_orders', 'shifts', 'web_order_routes', 'web_settings',
-            'delivery_zone_places', 'delivery_zones', 'combo_modifier_group', 'product_modifier_group', 'modifiers', 'modifier_groups', 'combo_components',
+            'delivery_fee_bands', 'web_branch_settings', 'delivery_zone_places', 'delivery_zones', 'combo_modifier_group', 'product_modifier_group', 'modifiers', 'modifier_groups', 'combo_components',
             'combos', 'product_branch_prices', 'product_variants', 'products', 'categories', 'delivery_channels', 'payment_methods',
             'terminals', 'users', 'branches',
         ]);
@@ -208,6 +210,61 @@ class OnlineOrderingCheckoutMySqlTest extends MySqlTenantTestCase
         $this->checkout(['type' => 'delivery', 'area' => $zone->id, 'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => 1]],
             'customer' => ['name' => 'Test Customer', 'phone' => '03001234567', 'address' => 'House 7', 'place' => str_repeat('x', 201)]])
             ->assertStatus(422)->assertJsonValidationErrors('customer.place');
+    }
+
+    public function test_by_distance_the_fee_comes_from_the_pin_and_too_far_is_refused(): void
+    {
+        // Malik (16 Oct): "rates radius ke hisaab se" — branch se seedhi doori ka band; Karachi se bahar delivery nahi.
+        $this->openShift();
+        $m = DB::connection('master');
+        $geo = $m->table('geo_areas')->insertGetId(['country' => 'Pakistan', 'state' => 'Sindh', 'city' => 'OocheckCity', 'name' => 'Scheme 33',
+            'lat' => 24.9992, 'lng' => 67.1720, 'sort_order' => 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        try {
+            $zone = DeliveryZone::create(['geo_area_id' => $geo, 'area_name' => 'Scheme 33', 'city' => 'Karachi',
+                'branch_id' => $this->branchId, 'fee' => 300, 'free_delivery_above' => 5000, 'is_active' => true]);
+            WebBranchSetting::create(['branch_id' => $this->branchId, 'lat' => 24.923007, 'lng' => 67.089347]);
+            foreach ([[1, 50], [2, 100], [3, 150], [5, 200], [7, 250], [10, 300], [18, 400]] as [$km, $fee]) {
+                DeliveryFeeBand::create(['branch_id' => $this->branchId, 'up_to_km' => $km, 'fee' => $fee]);
+            }
+            $order = fn (array $customer, int $qty = 1) => $this->checkout(['type' => 'delivery', 'area' => $zone->id,
+                'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => $qty]],
+                'customer' => $customer + ['name' => 'Test Customer', 'phone' => '03001234567', 'address' => 'House 7']]);
+            $chappal = ['lat' => 24.952, 'lng' => 67.141];
+
+            // Pehle jaisa (area ki fee) jab tak malik doori wala tareeqa on na kare — pin ho tab bhi.
+            $sale = SalesOrder::where('sale_no', $order($chappal)->assertCreated()->json('order'))->sole();
+            $this->assertSame(['300.00', 'area'], [$sale->delivery_charge_amount, $sale->web_meta['fee_from']]);
+
+            WebSetting::tenantDefault()->update(['delivery_fee_mode' => 'distance']);
+
+            // Chappal Sun City 6.1 km → 5–7 km band.
+            $sale = SalesOrder::where('sale_no', $order($chappal)->assertCreated()->json('order'))->sole();
+            $this->assertSame('250.00', $sale->delivery_charge_amount);
+            $this->assertSame([6.1, 'pin'], [$sale->web_meta['distance_km'], $sale->web_meta['fee_from']]);
+            $this->assertStringContainsString('Distance: 6.1 km', $sale->notes);
+            $this->assertEqualsWithDelta((float) $sale->subtotal + 250, (float) $sale->grand_total, 0.001, 'Fee total me.');
+
+            // Pin nahi: area ke markaz (11.9 km) se.
+            $sale = SalesOrder::where('sale_no', $order([])->assertCreated()->json('order'))->sole();
+            $this->assertSame(['400.00', 'centre'], [$sale->delivery_charge_amount, $sale->web_meta['fee_from']]);
+
+            // "Itne se upar free" ab bhi area ka.
+            $sale = SalesOrder::where('sale_no', $order($chappal, 4)->assertCreated()->json('order'))->sole();
+            $this->assertSame('0.00', $sale->delivery_charge_amount);
+
+            // Aakhri band (18 km) se door (Hub, ~25 km) — delivery nahi; order bana hi nahi.
+            $before = SalesOrder::count();
+            $res = $order(['lat' => 25.05, 'lng' => 66.88])->assertStatus(422)->assertJsonValidationErrors('distance');
+            $this->assertStringContainsString('up to 18 km', $res->json('errors.distance.0'));
+            $this->assertSame($before, SalesOrder::count());
+
+            // Branch ka nuqta na ho to area ki fee — kabhi muft nahi.
+            WebBranchSetting::query()->update(['lat' => null, 'lng' => null]);
+            $sale = SalesOrder::where('sale_no', $order($chappal)->assertCreated()->json('order'))->sole();
+            $this->assertSame(['300.00', 'area'], [$sale->delivery_charge_amount, $sale->web_meta['fee_from']]);
+        } finally {
+            $m->table('geo_areas')->where('id', $geo)->delete();
+        }
     }
 
     public function test_the_server_prices_the_order_and_refuses_what_is_not_on_sale(): void

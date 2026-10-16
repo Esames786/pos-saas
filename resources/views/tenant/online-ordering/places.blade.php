@@ -148,10 +148,9 @@
                             <form method="POST" action="{{ url('/online-ordering/places/'.$r['origin'].'/'.$r['id']) }}" class="d-inline-flex gap-1 align-items-center">
                                 @csrf @method('PUT')
                                 <input type="hidden" name="action" value="move">
-                                <select name="zone_id" class="form-select form-select-sm" style="width: 190px" aria-label="Move {{ $r['name'] }} to another area" required>
-                                    @foreach($zones->where('is_active', true) as $z)
-                                        <option value="{{ $z->id }}" @selected($z->id === $r['zone_id'])>{{ $z->area_name }}</option>
-                                    @endforeach
+                                {{-- Only the current area here; the full list is filled in when the box is opened (page stays light). --}}
+                                <select name="zone_id" class="form-select form-select-sm js-zone-pick" style="width: 190px" aria-label="Move {{ $r['name'] }} to another area" required>
+                                    <option value="{{ $r['zone_id'] }}" selected>{{ $zoneNames[$r['zone_id']] ?? '—' }}</option>
                                 </select>
                                 <button class="btn btn-sm btn-outline-primary">Move</button>
                             </form>
@@ -186,4 +185,20 @@
         <div class="card-footer">{{ $rows->links() }}</div>
     @endif
 </div>
+<template id="zone-options">@foreach($zones->where('is_active', true) as $z)<option value="{{ $z->id }}">{{ $z->area_name }}</option>@endforeach</template>
+<script>
+(function () {
+    var all = document.getElementById('zone-options');
+    document.querySelectorAll('.js-zone-pick').forEach(function (sel) {
+        function fill() {
+            if (sel.dataset.filled) { return; }
+            var cur = sel.value;
+            sel.innerHTML = all.innerHTML;
+            sel.value = cur;
+            sel.dataset.filled = '1';
+        }
+        ['focus', 'mousedown', 'touchstart'].forEach(function (ev) { sel.addEventListener(ev, fill); });
+    });
+})();
+</script>
 @endsection

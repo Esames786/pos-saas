@@ -258,6 +258,8 @@ class TenantResetTransactionsCommand extends Command
         // ONLINE-ORDERING-1: the ordering website's setup — hours, which terminal rings,
         // delivery areas and fees, deal add-ons. Configuration, not sales: kept.
         'web_settings', 'web_order_routes', 'delivery_zones', 'combo_modifier_group',
+        // Societies inside the areas, the branch's map point and the distance fee bands — setup too.
+        'delivery_zone_places', 'web_branch_settings', 'delivery_fee_bands',
     ];
 
     /** Tenant tables this command has no opinion about — surfaced as a warning. */
