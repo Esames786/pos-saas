@@ -194,6 +194,36 @@ class OnlineOrderingMenuMySqlTest extends MySqlTenantTestCase
         $this->assertInlineScriptsParse($html, 'product form with size dropdown', 'website_size_pick');
     }
 
+    public function test_the_product_form_shows_website_choices_in_plain_words_and_keeps_pos_groups(): void
+    {
+        // Malik (16 Oct): "White / Brown kahan use ho raha hai — human friendly nahi". Ab product ke Website card me.
+        $cat = $this->category('Steaks');
+        $this->owner()->post($this->url('/products'), $this->productInput($cat->id))->assertSessionHasNoErrors();
+        $p = Product::where('sku', 'WINGS-8')->sole();
+        $sauce = ModifierGroup::create(['name' => 'Select Your Preference', 'min_select' => 1, 'max_select' => 1, 'is_required' => true, 'status' => 'active', 'channel' => 'website', 'sort_order' => 0]);
+        $sauce->modifiers()->create(['name' => 'White', 'price_delta' => 0, 'sort_order' => 0, 'status' => 'active']);
+        $sauce->modifiers()->create(['name' => 'Brown', 'price_delta' => 0, 'sort_order' => 1, 'status' => 'active']);
+        $fries = ModifierGroup::create(['name' => 'Add Ons', 'min_select' => 0, 'max_select' => 2, 'is_required' => false, 'status' => 'active', 'channel' => 'website', 'sort_order' => 0]);
+        $fries->modifiers()->create(['name' => 'Add Fries', 'price_delta' => 150, 'sort_order' => 0, 'status' => 'active']);
+        $pos = ModifierGroup::create(['name' => 'Steak Side', 'min_select' => 0, 'max_select' => 2, 'is_required' => false, 'status' => 'active', 'channel' => 'pos', 'sort_order' => 0]);
+        $p->modifierGroups()->sync([$sauce->id => ['sort_order' => 0], $pos->id => ['sort_order' => 1]]);
+
+        $html = $this->owner()->get($this->url('/products/'.$p->id.'/edit'))->assertOk()->getContent();
+        $this->assertStringContainsString('Choices the customer makes on the website', $html);
+        $this->assertStringContainsString('Customer must choose 1', $html);
+        $this->assertStringContainsString('White · Brown', $html);
+        $this->assertStringContainsString('Add Fries (+Rs 150)', $html);
+        $this->assertStringContainsString('Optional — customer may add up to 2', $html);
+        $this->assertStringNotContainsString('Steak Side', $html, 'POS ka group yahan nahi — wo product ke modifier panel par.');
+        $this->assertMatchesRegularExpression('#value="'.$sauce->id.'" id="wag-'.$sauce->id.'"\s+checked#', $html);
+
+        // White/Brown hata kar Add Fries lagao — POS ka "Steak Side" waisa hi.
+        $this->owner()->put($this->url('/products/'.$p->id), $this->productInput($cat->id) + [
+            '_website' => '1', 'show_on_website' => '1', '_website_addons' => '1', 'website_addon_groups' => [$fries->id],
+        ])->assertSessionHasNoErrors();
+        $this->assertEqualsCanonicalizing([$pos->id, $fries->id], $p->fresh()->modifierGroups->pluck('id')->all());
+    }
+
     public function test_without_the_module_no_website_section_appears_anywhere(): void
     {
         $this->seedPlan(withModule: false);

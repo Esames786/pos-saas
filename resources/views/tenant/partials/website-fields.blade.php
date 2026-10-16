@@ -9,7 +9,10 @@
 --}}
 @php
     $wm = $model;
-    $selectedGroups = $kind === 'combo' && $wm && $wm->exists ? $wm->modifierGroups->pluck('id')->all() : [];
+    $selectedGroups = $wm && $wm->exists ? $wm->modifierGroups->pluck('id')->all() : [];
+    // Products manage only "Website only" groups here (POS groups stay on the product's modifier panel); deals both.
+    $choiceGroups = collect($websiteAddonGroups ?? [])->filter(fn ($g) => $kind === 'combo' || $g->channel === 'website')
+        ->sortBy(fn ($g) => in_array($g->id, old('website_addon_groups', $selectedGroups)) ? 0 : 1)->values();
     $onWebsite = (bool) old('show_on_website', $wm?->show_on_website);
     $websiteErrors = $errors->hasAny(['website_price', 'website_card_name', 'website_size_label', 'website_category_id', 'website_tag', 'website_sort_order', 'website_image', 'website_description']);
 @endphp
@@ -124,23 +127,29 @@
                 <textarea name="website_description" id="website_description" rows="2" class="form-control" maxlength="1000"
                           placeholder="e.g. 8 pcs spicy wings">{{ old('website_description', $wm?->website_description) }}</textarea>
             </div>
-            @if($kind === 'combo')
-                <input type="hidden" name="_website_addons" value="1">
-                <div class="col-12">
-                    <label class="form-label">Website add-ons</label>
-                    @forelse($websiteAddonGroups as $g)
-                        <div class="form-check form-check-inline">
-                            <input type="checkbox" class="form-check-input" name="website_addon_groups[]" value="{{ $g->id }}" id="wag-{{ $g->id }}"
-                                   {{ in_array($g->id, old('website_addon_groups', $selectedGroups)) ? 'checked' : '' }}>
-                            <label class="form-check-label" for="wag-{{ $g->id }}">{{ $g->name }}
-                                <span class="text-muted small">({{ \App\Models\Tenant\ModifierGroup::CHANNELS[$g->channel] ?? $g->channel }})</span></label>
-                        </div>
-                    @empty
-                        <div class="text-muted small">No add-on group is set to show on the website. Create one under Modifier Groups with "Show on: Website only".</div>
-                    @endforelse
-                    <div class="form-text">Customers choose these on the website (e.g. which drink). The POS deal does not change.</div>
-                </div>
-            @endif
+            {{-- Owner (16 Oct: "not human friendly"): every choice spelled out — what the customer is asked, which
+                 options, what they cost. Ticked ones first. --}}
+            <input type="hidden" name="_website_addons" value="1">
+            <div class="col-12">
+                <label class="form-label mb-1">Choices the customer makes on the website</label>
+                <div class="form-text mt-0 mb-2">Ticked = when a customer adds this {{ $kind === 'combo' ? 'deal' : 'item' }} on the website, they are asked this. The choice prints on the KOT under the item (e.g. “+ White”) and any price is added to the item. The POS is not affected.</div>
+                @forelse($choiceGroups as $g)
+                    @php $on = in_array($g->id, old('website_addon_groups', $selectedGroups)); @endphp
+                    <label class="d-flex gap-2 align-items-start border rounded px-3 py-2 mb-2 {{ $on ? 'border-primary bg-primary-subtle' : '' }}" for="wag-{{ $g->id }}" style="cursor:pointer">
+                        <input type="checkbox" class="form-check-input mt-1" name="website_addon_groups[]" value="{{ $g->id }}" id="wag-{{ $g->id }}" @checked($on)>
+                        <span>
+                            <strong>{{ $g->name }}</strong>
+                            <span class="text-muted small">· {{ \App\Services\OnlineOrdering\WebsiteFields::ruleText($g) }}@if($g->channel === 'both') · also on POS @endif</span><br>
+                            <span class="small">
+                                {{ $g->modifiers->map(fn ($m) => $m->name.((float) $m->price_delta > 0 ? ' (+Rs '.number_format((float) $m->price_delta).')' : ''))->implode(' · ') ?: '—' }}
+                                @if($g->modifiers->every(fn ($m) => (float) $m->price_delta <= 0)) <span class="text-muted">(free)</span> @endif
+                            </span>
+                        </span>
+                    </label>
+                @empty
+                    <div class="text-muted small">No website choice exists yet. Create one under Catalog → Modifiers with “Show on: Website only”.</div>
+                @endforelse
+            </div>
         </div>
     </div>
 </div>

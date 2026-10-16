@@ -86,6 +86,31 @@ class WebsiteFields
                 ->whereIn('id', $data['website_addon_groups'] ?? [])->pluck('id')->all();
             $model->modifierGroups()->sync(collect($allowed)->mapWithKeys(fn ($id, $i) => [$id => ['sort_order' => $i]])->all());
         }
+
+        // Product (malik, 16 Oct: "human friendly" — pehle ye sirf product ke doosre safhe par tha): yahan sirf
+        // "Website only" groups badalte hain; POS / "POS + Website" groups product ke modifier panel se — wo yahan
+        // nahi chhute.
+        if ($model instanceof Product && $request->has('_website_addons')) {
+            $websiteIds = ModifierGroup::where('channel', 'website')->pluck('id')->all();
+            $keep = $model->modifierGroups()->get()->reject(fn ($g) => in_array($g->id, $websiteIds, true))
+                ->mapWithKeys(fn ($g) => [$g->id => ['sort_order' => (int) ($g->pivot->sort_order ?? 0)]])->all();
+            $chosen = array_values(array_intersect($websiteIds, array_map('intval', $data['website_addon_groups'] ?? [])));
+            $model->modifierGroups()->sync($keep + collect($chosen)->mapWithKeys(fn ($id, $i) => [$id => ['sort_order' => 100 + $i]])->all());
+        }
+    }
+
+    /**
+     * Group ka qaida aam alfaaz me — "Customer must choose 1", "Optional — up to 2".
+     */
+    public static function ruleText(ModifierGroup $g): string
+    {
+        $min = (int) $g->min_select;
+        $max = $g->max_select !== null ? (int) $g->max_select : null;
+        if ($min >= 1) {
+            return $max !== null && $max > $min ? "Customer must choose {$min}–{$max}" : "Customer must choose {$min}";
+        }
+
+        return $max !== null ? "Optional — customer may add up to {$max}" : 'Optional — any number';
     }
 
     /** Form ke liye: POS categories aur deal par lag sakne wale add-on groups. */
@@ -94,7 +119,8 @@ class WebsiteFields
         return [
             'websiteCategories' => Category::orderBy('name')->get(['id', 'name', 'parent_id']),
             'websiteAddonGroups' => ModifierGroup::whereIn('channel', ['website', 'both'])->where('status', 'active')
-                ->orderBy('name')->get(['id', 'name', 'channel']),
+                ->with(['modifiers' => fn ($q) => $q->where('status', 'active')->orderBy('sort_order')])
+                ->orderBy('name')->get(['id', 'name', 'channel', 'min_select', 'max_select']),
             'websiteSizeLabels' => self::sizeLabels(),
         ];
     }
