@@ -86,7 +86,9 @@
             This list is for manufacturing raw materials, BOM components, BOM outputs, and manufactured finished goods. Shared kitchen or restaurant stock items stay hidden unless you include them.
         @else
             This list is for items sold in POS, restaurant, sales, or kitchen recipes.
-            @if($materialsHome)
+            @if($listsEveryKind ?? false)
+                Ingredients and packing materials are listed here too — filter by Role to see only them.
+            @elseif($materialsHome)
                 Raw materials are managed under {!! $materialsHome !!}.
             @endif
         @endif
