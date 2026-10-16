@@ -303,15 +303,20 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .sheet.area.locked .band .x { display:none; }
 .sheet.area.nudge { animation:nudge .35s ease; }
 @keyframes nudge { 25% { margin-left:-8px; } 75% { margin-left:8px; } }
-.area .bd { padding-top:46px; gap:12px; }
+.area .bd { padding-top:46px; gap:12px; display:flex; flex-direction:column; min-height:0; }
+/* The area list takes the room that is left but never less than ~4 rows (owner, 16 Oct: the found-place box had squeezed it to one cut row). */
+.area .bd > * { flex:none; }
+.area .bd > .alist { flex:1 1 auto; min-height:150px; }
+.orpick { margin:0; font-size:12px; color:var(--muted); text-align:center; }
 .area h2 { margin:0; text-align:center; font-size:16px; font-weight:700; }
 .seg { display:flex; background:#F2F2F2; border-radius:999px; padding:4px; }
 .seg button { flex:1; border:0; background:none; border-radius:999px; padding:8px; font-weight:600; font-size:14px; color:var(--muted); transition:background .25s, color .25s; }
 .seg button.on { background:var(--brand); color:#fff; box-shadow:0 4px 12px rgba(166,13,18,.25); }
 .gps { border:1.5px solid #F0C5C7; background:#fff; color:var(--brand); border-radius:12px; padding:9px 12px; font-weight:600; font-size:13.5px; display:flex; align-items:center; justify-content:center; gap:8px; transition:background .2s; }
 .gps:hover { background:var(--brand-soft); }
-.pin { display:flex; gap:10px; align-items:center; background:#F7F7F7; border-radius:12px; padding:9px 12px; font-size:12.5px; animation:fade .3s ease; }
-.pin .dot { width:9px; height:9px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 4px #F3C9CB; flex:none; animation:pulse 1.6s infinite; }
+.pin { display:flex; gap:10px; align-items:flex-start; background:#F7F7F7; border-radius:12px; padding:9px 12px; font-size:12.5px; animation:fade .3s ease; }
+.pin .dot { width:9px; height:9px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 4px #F3C9CB; flex:none; margin-top:4px; animation:pulse 1.6s infinite; }
+#gpsText { flex:1; min-width:0; }
 @keyframes pulse { 50% { box-shadow:0 0 0 7px rgba(243,201,203,.4); } }
 .asearch { width:100%; border:1px solid #E2E2E2; border-radius:12px; padding:9px 12px; font:inherit; font-size:13.5px; }
 .alist { border:1px solid var(--line); border-radius:14px; max-height:236px; overflow-y:auto; padding:6px; display:grid; gap:2px; scroll-behavior:smooth; }
@@ -336,6 +341,9 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .pin .pk:hover { border-color:var(--brand); color:var(--brand); }
 .pin .pk em { font-style:normal; font-weight:500; color:var(--muted); }
 .pin .pk.on { border-color:var(--brand); color:var(--brand); background:#FFF5F5; }
+.pin .nl { display:block; margin-top:8px; color:var(--muted); }
+.pin .picks.row { flex-wrap:nowrap; overflow-x:auto; margin-top:5px; padding-bottom:4px; scrollbar-width:thin; -webkit-overflow-scrolling:touch; }
+.pin .picks.row .pk { flex:none; white-space:nowrap; }
 .pin .go { margin-left:auto; border:0; background:var(--brand); color:#fff; border-radius:999px; padding:5px 12px; font-weight:600; font-size:12px; white-space:nowrap; }
 
 /* item sheet */
@@ -491,6 +499,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     <div class="seg" role="tablist"><button type="button" id="tDelivery" class="on">Delivery</button><button type="button" id="tPickup">Pick-Up</button></div>
     <button class="gps" type="button" id="gps"><svg width="16" height="16"><use href="#i-loc"/></svg>Use my current location</button>
     <div class="pin" id="gpsPin" hidden><span class="dot"></span><span id="gpsText"></span></div>
+    <p class="orpick" id="orPick" hidden>Not right? Search or pick your area from the list below.</p>
     <input class="asearch" id="areaSearch" type="search" placeholder="Search your area" autocomplete="off" aria-label="Search your area">
     <div class="alist" id="areaList" role="listbox" aria-label="Delivery areas"></div>
     <div class="bcard" id="branchCard" hidden></div>
@@ -917,6 +926,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     $('tDelivery').classList.toggle('on', !pickup);
     $('tPickup').classList.toggle('on', pickup);
     $('areaSearch').hidden = pickup;
+    $('orPick').hidden = pickup || $('gpsPin').hidden;   // after a location answer: the list is still there to choose from
     $('gps').hidden = pickup;
     var cur = pending !== null ? pending : (pickup ? branchOf() : S.area);
     var rows = pickup
@@ -995,7 +1005,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       (others.length ? '<span class="picks"><small>' + (userPicked && pending !== a.id ? 'Tap to use it:' : 'Not right? Tap yours:') + '</small>' + others.map(function (o) {
         return '<button type="button" class="pk" data-pick="' + o.id + '">' + esc(o.name) + '</button>';
       }).join('') + '</span>' : '') +
-      (near.length ? '<span class="picks"><small>Recommended near you — tap your society:</small>' + near.map(function (p, i) {
+      (near.length ? '<small class="nl">Recommended near you — tap your society:</small><span class="picks row">' + near.map(function (p, i) {
         var za = D.areas.find(function (x) { return x.id === p.zone; });
         return '<button type="button" class="pk' + (S.place === p.name ? ' on' : '') + '" data-near="' + i + '" aria-pressed="' + (S.place === p.name) + '">' + esc(p.name) + ' <em>· ' + esc(za.name) + '</em></button>';
       }).join('') + '</span>' : '') + '</span>');
