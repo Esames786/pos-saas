@@ -154,6 +154,8 @@ class StorefrontController extends Controller
             'customer.lng' => ['nullable', 'numeric', 'between:-180,180'],
             // Location se mili jagah ("Chappal Sun City, New Rizvia Society") — pate ke saath jurti hai (malik).
             'customer.place' => ['nullable', 'string', 'max:200'],
+            // Phone/computer ki location kitni pakki (metre) — staff ko pata ho pin par kitna bharosa.
+            'customer.acc' => ['nullable', 'integer', 'min:0', 'max:1000000'],
             'note' => ['nullable', 'string', 'max:300'],
             // Malik: "cash on delivery — hamare system ka Cash payment type". Abhi sirf yehi.
             'payment' => ['nullable', 'in:cash'],

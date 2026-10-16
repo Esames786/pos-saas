@@ -102,8 +102,13 @@ class WebsiteOrderService
             $customer = $this->customers->findOrCreateByPhone($phone, (string) $c['name']);
             // Malik (15 Oct): location se mili jagah ("Chappal Sun City, New Rizvia Society") bhi pate ke saath —
             // cashier aur rider ko dikhe. Jo hissa customer pehle hi likh chuka, dobara nahi.
+            // "near …": map wahan ki sab se qareebi naam wali jagah batata hai — customer ki society shayad bilkul wohi na ho.
+            $placeParts = array_values(array_filter(array_map('trim', explode(',', (string) ($c['place'] ?? '')))));
+            if ($placeParts) {
+                $placeParts[0] = 'near '.$placeParts[0];
+            }
             $address = $orderType === 'delivery'
-                ? $this->joinAddress([$c['address'] ?? null, $c['landmark'] ?? null, ...explode(',', (string) ($c['place'] ?? '')), $zone?->area_name])
+                ? $this->joinAddress([$c['address'] ?? null, $c['landmark'] ?? null, ...$placeParts, $zone?->area_name])
                 : null;
             if ($customer && $address) {
                 $this->rememberAddress($customer->id, $address);
@@ -159,6 +164,7 @@ class WebsiteOrderService
                     'address' => $c['address'] ?? null, 'landmark' => $c['landmark'] ?? null,
                     'lat' => $c['lat'] ?? null, 'lng' => $c['lng'] ?? null,
                     'place' => $orderType === 'delivery' ? (trim((string) ($c['place'] ?? '')) ?: null) : null,
+                    'place_accuracy_m' => isset($c['acc']) ? (int) $c['acc'] : null,
                     'alt_phone' => $c['alt'] ?? null, 'note' => $in['note'] ?? null, 'item_notes' => $itemNotes,
                     'eta_minutes' => $orderType === 'delivery' ? ($zone?->eta_minutes ?: WebSetting::tenantDefault()->default_eta_minutes) : WebSetting::tenantDefault()->pickup_eta_minutes,
                     'placed_at' => now()->toIso8601String(),
@@ -367,7 +373,7 @@ class WebsiteOrderService
             $parts[] = 'Landmark: '.$c['landmark'];
         }
         if ($orderType !== 'takeaway' && ! empty($c['place'])) {
-            $parts[] = 'Location: '.$c['place'];
+            $parts[] = 'Location: near '.$c['place'].(! empty($c['acc']) ? ' (GPS ±'.(int) $c['acc'].' m)' : '');
         }
         if (! empty($c['alt'])) {
             $parts[] = 'Alt phone: '.$c['alt'];

@@ -331,6 +331,7 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .placeline button { border:0; background:none; color:var(--brand); font:inherit; font-weight:700; padding:2px 4px; text-decoration:underline; text-underline-offset:2px; }
 .pin .picks { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:7px; }
 .pin .picks small { width:100%; color:var(--muted); }
+.pin small.approx { color:#9A5B00; }
 .pin .pk { border:1px solid #E3E3E3; background:#fff; border-radius:999px; padding:4px 10px; font:inherit; font-size:12px; font-weight:600; color:var(--ink); transition:border-color .2s, color .2s; }
 .pin .pk:hover { border-color:var(--brand); color:var(--brand); }
 .pin .go { margin-left:auto; border:0; background:var(--brand); color:#fff; border-radius:999px; padding:5px 12px; font-weight:600; font-size:12px; white-space:nowrap; }
@@ -639,7 +640,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var on = S.type === 'delivery' && !!a && !!S.place && S.placeArea === a.id;
     el.hidden = !on;
     if (!on) { return; }
-    el.innerHTML = '<span>📍 ' + (S.placeSure ? 'Delivering to' : 'Nearest area:') + ' <b>' + esc(a.name) + '</b> · ' + esc(S.place) + '</span>' +
+    el.innerHTML = '<span>📍 ' + (S.placeSure ? 'Delivering to' : 'Nearest area:') + ' <b>' + esc(a.name) + '</b> · near ' + esc(S.place) +
+      (S.placeApprox ? ' <small>(approximate location)</small>' : '') + '</span>' +
       '<button type="button" id="placeChange">Change</button>';
     $('placeChange').addEventListener('click', openAreas);
   }
@@ -969,6 +971,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   // "Use my current location" asks again. OpenStreetMap (through our server) names the place; the area
   // whose name matches — or the nearest one anywhere in the city — is picked, and nearby areas move up.
   var nearby = [], locating = false, userPicked = false;
+  var APPROX_M = 200;   // device accuracy worse than this = "approximate" (laptop / desktop / weak signal)
+  function accText() { var m = S.pinAcc || 0; return '±' + (m >= 1000 ? (Math.round(m / 100) / 10) + ' km' : Math.round(m / 10) * 10 + ' m'); }
   function nearRank(id) { var i = nearby.indexOf(id); return i === -1 ? 99 : i; }
   // Owner (15 Oct): no Continue — the found area is chosen straight away; the customer can still Change it.
   // Owner (16 Oct): the found area is PRE-SELECTED in the area window — nothing closes by itself; the customer
@@ -982,7 +986,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     // Not sure (only by distance) = offer the next closest areas; the customer picked by hand = offer the found one.
     var others = (userPicked && pending !== a.id ? [a] : []).concat(sure ? [] : nearby.filter(function (id) { return id !== a.id; }).slice(0, 3)
       .map(function (id) { return D.areas.find(function (x) { return x.id === id; }); }).filter(Boolean));
-    gpsMsg('<span>' + (sure ? 'You are in' : 'Nearest area:') + ' <b>' + esc(a.name) + '</b>' + (j.place ? '<br><small>' + esc(j.place) + '</small>' : '') +
+    gpsMsg('<span>' + (sure ? 'You are in' : 'Nearest area:') + ' <b>' + esc(a.name) + '</b>' + (S.place ? '<br><small>near ' + esc(S.place) + '</small>' : '') +
+      (S.placeApprox ? '<br><small class="approx">Your location is approximate (' + accText() + ') — please check the area.</small>' : '') +
       (others.length ? '<span class="picks"><small>' + (userPicked && pending !== a.id ? 'Tap to use it:' : 'Not right? Tap yours:') + '</small>' + others.map(function (o) {
         return '<button type="button" class="pk" data-pick="' + o.id + '">' + esc(o.name) + '</button>';
       }).join('') + '</span>' : '') + '</span>');
@@ -1001,15 +1006,21 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       gpsMsg('Finding your location…');
       navigator.geolocation.getCurrentPosition(function (p) {
         locating = false;
-        S.pin = { lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6) }; save();
+        S.pin = { lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6) };
+        // How sure the device is (metres). Phones with GPS: ~5–50 m. Laptops/desktops guess from Wi-Fi/IP: often
+        // hundreds of metres or more — then only the big society is shown and attached, never the small one.
+        S.pinAcc = Math.round(p.coords.accuracy || 0) || null;
+        save();
         gpsMsg('Location found — matching your area…');
         if (done) { done(); }
         fetch(D.endpoints.locate + '?lat=' + S.pin.lat + '&lng=' + S.pin.lng, { headers: { Accept: 'application/json' } })
           .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
           .then(function (j) {
             nearby = j.nearby || [];
-            S.placeHint = j.street || j.place || null;
-            S.place = j.label || j.place || null;   // goes with the order's address (staff + rider see it)
+            S.placeApprox = !!(S.pinAcc && S.pinAcc > APPROX_M);
+            S.placeHint = S.placeApprox ? (j.broad || null) : (j.street || j.place || null);
+            // Goes with the order's address as "near …" (the map names the nearest place it knows).
+            S.place = S.placeApprox ? (j.broad || null) : (j.label || j.place || null);
             save();
             var a = j.area ? D.areas.find(function (x) { return x.id === j.area; }) : null;
             if (a) {
@@ -1251,7 +1262,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     $('cartTitleText').textContent = 'Checkout';
     $('cartBody').innerHTML =
       '<div class="pin"><span class="dot"></span><span>' + (S.type === 'pickup' ? 'Pick-Up order' : 'Delivery to <b>' + esc(a ? a.name : '') + '</b>' +
-        (S.place && S.pin ? '<br><small>📍 ' + esc(S.place) + '</small>' : '')) + '</span></div>' +
+        (S.place && S.pin ? '<br><small>📍 near ' + esc(S.place) + '</small>' : '')) + '</span></div>' +
       '<label class="f"><span class="req">Full name</span><input class="in" id="cName" autocomplete="name" maxlength="120" value="' + esc(c.name || '') + '"></label>' +
       '<label class="f"><span class="req">WhatsApp number</span><input class="in" id="cPhone" inputmode="tel" autocomplete="tel" placeholder="03xx xxxxxxx" maxlength="20" value="' + esc(c.phone || '') + '"></label>' +
       '<label class="f">Another number (optional)<input class="in" id="cAlt" inputmode="tel" maxlength="20" value="' + esc(c.alt || '') + '"></label>' +
@@ -1325,7 +1336,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var body = {
       key: S.pendingKey, type: S.type, area: S.type === 'delivery' ? S.area : null, branch: S.type === 'pickup' ? branchOf() : null,
       customer: { name: c.name, phone: c.phone, alt: c.alt || null, address: c.address || null, landmark: c.landmark || null,
-        lat: S.pin ? S.pin.lat : null, lng: S.pin ? S.pin.lng : null, place: S.pin && S.place ? S.place : null },
+        lat: S.pin ? S.pin.lat : null, lng: S.pin ? S.pin.lng : null, place: S.pin && S.place ? S.place : null,
+        acc: S.pin && S.pinAcc ? S.pinAcc : null },
       note: ($('cNote').value || '').trim() || null,
       payment: 'cash',
       lines: S.cart.map(function (l) { return { option: l.option, qty: l.qty, addons: l.addons.map(function (a) { return a.id; }), note: l.note || null }; })

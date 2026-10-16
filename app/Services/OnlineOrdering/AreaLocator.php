@@ -61,6 +61,8 @@ class AreaLocator
             'street' => $this->street($address),
             // Customer ko dikhane aur order ke pate ke saath jorne ke liye: gali, mohalla/society, bari society.
             'label' => $this->label($address),
+            // Sirf bari society (suburb) — jab phone/computer ki location mota andaza ho to chhota mohalla nahi dikhate.
+            'broad' => trim((string) ($address['suburb'] ?? $address['hamlet'] ?? $address['quarter'] ?? '')) ?: null,
             'nearby' => $distances->filter(fn ($km) => $km <= self::MAX_KM)->keys()->take(5)->values()->all(),
         ];
     }

@@ -195,13 +195,15 @@ class OnlineOrderingCheckoutMySqlTest extends MySqlTenantTestCase
 
         $res = $this->checkout(['type' => 'delivery', 'area' => $zone->id, 'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => 1]],
             'customer' => ['name' => 'Test Customer', 'phone' => '03001234567', 'address' => 'House 7, Street 2, New Rizvia Society',
-                'landmark' => 'Near Dow', 'lat' => 24.952, 'lng' => 67.141, 'place' => 'Chappal Sun City, New Rizvia Society']]);
+                'landmark' => 'Near Dow', 'lat' => 24.952, 'lng' => 67.141, 'place' => 'Chappal Sun City, New Rizvia Society', 'acc' => 35]]);
         $this->assertSame(201, $res->status(), (string) $res->getContent());
         $sale = SalesOrder::where('sale_no', $res->json('order'))->sole();
 
-        $this->assertSame('House 7, Street 2, New Rizvia Society, Near Dow, Chappal Sun City, Scheme 33', $sale->delivery_address);
+        // "near": map sab se qareebi naam wali jagah batata hai — rider ko wohi likha milta hai.
+        $this->assertSame('House 7, Street 2, New Rizvia Society, Near Dow, near Chappal Sun City, Scheme 33', $sale->delivery_address);
+        $this->assertSame(35, $sale->web_meta['place_accuracy_m']);
         $this->assertSame('Chappal Sun City, New Rizvia Society', $sale->web_meta['place']);
-        $this->assertStringContainsString('Location: Chappal Sun City, New Rizvia Society', $sale->notes);
+        $this->assertStringContainsString('Location: near Chappal Sun City, New Rizvia Society (GPS ±35 m)', $sale->notes);
 
         $this->checkout(['type' => 'delivery', 'area' => $zone->id, 'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => 1]],
             'customer' => ['name' => 'Test Customer', 'phone' => '03001234567', 'address' => 'House 7', 'place' => str_repeat('x', 201)]])
