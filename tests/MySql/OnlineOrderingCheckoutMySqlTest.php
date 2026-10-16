@@ -69,7 +69,7 @@ class OnlineOrderingCheckoutMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection('tenant');
         $this->cleanTenant([
             'customer_addresses', 'customers', 'sale_payments', 'sales_order_lines', 'sales_orders', 'shifts', 'web_order_routes', 'web_settings',
-            'delivery_zones', 'combo_modifier_group', 'product_modifier_group', 'modifiers', 'modifier_groups', 'combo_components',
+            'delivery_zone_places', 'delivery_zones', 'combo_modifier_group', 'product_modifier_group', 'modifiers', 'modifier_groups', 'combo_components',
             'combos', 'product_branch_prices', 'product_variants', 'products', 'categories', 'delivery_channels', 'payment_methods',
             'terminals', 'users', 'branches',
         ]);

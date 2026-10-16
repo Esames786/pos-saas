@@ -224,7 +224,7 @@ class OnlineOrderingStorefrontMySqlTest extends MySqlTenantTestCase
     {
         DB::setDefaultConnection('tenant');
         $this->cleanTenant([
-            'shifts', 'web_order_routes', 'web_settings', 'delivery_zones',
+            'shifts', 'web_order_routes', 'web_settings', 'delivery_zone_places', 'delivery_zones',
             'combo_modifier_group', 'product_modifier_group', 'modifiers', 'modifier_groups',
             'combo_components', 'combos', 'product_branch_prices', 'product_variants', 'products', 'categories',
             'terminals', 'model_has_roles', 'users', 'branches',

@@ -564,7 +564,7 @@
                 {{-- ONLINE-ORDERING-1: plan module aur permission dono — Owner ke paas har
                      permission hoti hai, plan faisla karta hai. --}}
                 @if($hasModule('online_ordering'))
-                @canany(['tenant.online-ordering.settings.edit','tenant.online-ordering.areas.index','tenant.online-ordering.menu.index'])
+                @canany(['tenant.online-ordering.settings.edit','tenant.online-ordering.areas.index','tenant.online-ordering.places.index','tenant.online-ordering.menu.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-world-www fs-16 me-2"></i>
@@ -585,6 +585,14 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/online-ordering/areas') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-map-pin fs-16 me-2"></i><span>Delivery Areas</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.online-ordering.places.index')
+                            @php $a = $isIn('online-ordering/places*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/online-ordering/places') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-building-community fs-16 me-2"></i><span>Delivery Places</span>
                                 </a>
                             </li>
                         @endcan

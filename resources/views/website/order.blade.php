@@ -334,6 +334,8 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .pin small.approx { color:#9A5B00; }
 .pin .pk { border:1px solid #E3E3E3; background:#fff; border-radius:999px; padding:4px 10px; font:inherit; font-size:12px; font-weight:600; color:var(--ink); transition:border-color .2s, color .2s; }
 .pin .pk:hover { border-color:var(--brand); color:var(--brand); }
+.pin .pk em { font-style:normal; font-weight:500; color:var(--muted); }
+.pin .pk.on { border-color:var(--brand); color:var(--brand); background:#FFF5F5; }
 .pin .go { margin-left:auto; border:0; background:var(--brand); color:#fff; border-radius:999px; padding:5px 12px; font-weight:600; font-size:12px; white-space:nowrap; }
 
 /* item sheet */
@@ -973,7 +975,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   var nearby = [], locating = false, userPicked = false;
   var APPROX_M = 200;   // device accuracy worse than this = "approximate" (laptop / desktop / weak signal)
   function accText() { var m = S.pinAcc || 0; return '±' + (m >= 1000 ? (Math.round(m / 100) / 10) + ' km' : Math.round(m / 10) * 10 + ' m'); }
-  function nearRank(id) { var i = nearby.indexOf(id); return i === -1 ? 99 : i; }
+  // The found area leads the list (so it opens at the top), then the others by distance.
+  function nearRank(id) { if (id === S.placeArea) { return -1; } var i = nearby.indexOf(id); return i === -1 ? 99 : i; }
   // Owner (15 Oct): no Continue — the found area is chosen straight away; the customer can still Change it.
   // Owner (16 Oct): the found area is PRE-SELECTED in the area window — nothing closes by itself; the customer
   // presses Select (or taps another area first). Outside the window (e.g. sharing the pin at checkout) the
@@ -983,6 +986,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     if (openSheet !== $('areaSheet')) { paintStatus(); return; }
     if (!userPicked) { S.type = 'delivery'; pending = a.id; }
     var sure = j.by === 'name';
+    var near = (j.near_places || []).filter(function (p) { return D.areas.some(function (x) { return x.id === p.zone; }); }).slice(0, 5);
     // Not sure (only by distance) = offer the next closest areas; the customer picked by hand = offer the found one.
     var others = (userPicked && pending !== a.id ? [a] : []).concat(sure ? [] : nearby.filter(function (id) { return id !== a.id; }).slice(0, 3)
       .map(function (id) { return D.areas.find(function (x) { return x.id === id; }); }).filter(Boolean));
@@ -990,9 +994,22 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       (S.placeApprox ? '<br><small class="approx">Your location is approximate (' + accText() + ') — please check the area.</small>' : '') +
       (others.length ? '<span class="picks"><small>' + (userPicked && pending !== a.id ? 'Tap to use it:' : 'Not right? Tap yours:') + '</small>' + others.map(function (o) {
         return '<button type="button" class="pk" data-pick="' + o.id + '">' + esc(o.name) + '</button>';
+      }).join('') + '</span>' : '') +
+      (near.length ? '<span class="picks"><small>Recommended near you — tap your society:</small>' + near.map(function (p, i) {
+        var za = D.areas.find(function (x) { return x.id === p.zone; });
+        return '<button type="button" class="pk' + (S.place === p.name ? ' on' : '') + '" data-near="' + i + '" aria-pressed="' + (S.place === p.name) + '">' + esc(p.name) + ' <em>· ' + esc(za.name) + '</em></button>';
       }).join('') + '</span>' : '') + '</span>');
     $('gpsText').querySelectorAll('[data-pick]').forEach(function (b) {
       b.addEventListener('click', function () { pending = +b.dataset.pick; userPicked = true; renderAreas(true); });
+    });
+    // Owner (16 Oct): small places (societies) near the pin, each with its delivery area — the customer taps theirs;
+    // the area (and its fee) comes from that place, and the society goes with the address as "near …".
+    $('gpsText').querySelectorAll('[data-near]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var p = near[+b.dataset.near];
+        pending = p.zone; userPicked = true; S.place = p.name; save();
+        showLocated(D.areas.find(function (x) { return x.id === p.zone; }), Object.assign({}, j, { by: 'name' }));
+      });
     });
     renderAreas(true);   // glide to the found area
     paintStatus();

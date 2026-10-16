@@ -4,6 +4,7 @@ namespace App\Models\Tenant;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * ONLINE-ORDERING-1 — restaurant jo area serve karta hai: kis branch se, kitni fee, kitni der.
@@ -17,7 +18,7 @@ class DeliveryZone extends Model
 
     protected $fillable = [
         'geo_area_id', 'area_name', 'city', 'branch_id', 'fee', 'min_order',
-        'free_delivery_above', 'eta_minutes', 'is_active', 'places',
+        'free_delivery_above', 'eta_minutes', 'is_active',
     ];
 
     protected function casts(): array
@@ -29,22 +30,13 @@ class DeliveryZone extends Model
             'free_delivery_above' => 'decimal:2',
             'eta_minutes' => 'integer',
             'is_active' => 'boolean',
-            'places' => 'array',
         ];
     }
 
-    /**
-     * "Places inside this area" — restaurant ki likhi societies (naam + OSM ka nuqta, agar mila).
-     *
-     * @return list<array{name: string, lat: ?float, lng: ?float}>
-     */
-    public function placeList(): array
+    /** Is area ki jagahen (societies) — Delivery Places. Platform (map) wali `DeliveryPlaces` se milti hain. */
+    public function placeRows(): HasMany
     {
-        return array_values(array_filter(array_map(fn ($p) => is_array($p) && trim((string) ($p['name'] ?? '')) !== '' ? [
-            'name' => trim((string) $p['name']),
-            'lat' => isset($p['lat']) && $p['lat'] !== null ? (float) $p['lat'] : null,
-            'lng' => isset($p['lng']) && $p['lng'] !== null ? (float) $p['lng'] : null,
-        ] : null, (array) ($this->places ?? []))));
+        return $this->hasMany(DeliveryZonePlace::class);
     }
 
     public function branch(): BelongsTo

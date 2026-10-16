@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Master\GeoArea;
+use App\Models\Master\GeoAreaPlace;
 use App\Services\OnlineOrdering\AreaLocator;
 use App\Services\OnlineOrdering\OpenStreetMap;
 use Illuminate\Console\Command;
@@ -87,45 +88,40 @@ class OnlineOrderingGeocodeAreasCommand extends Command
     }
 
     /**
-     * Bare area ki societies (`aliases`, jaise Scheme 33 → Gulzar-e-Hijri) ke apne nuqte — sirf khaali (ya --force).
+     * Area ki jagahon (geo_area_places — Scheme 33 → Gulzar-e-Hijri…) ke apne nuqte — sirf khaali (ya --force).
      * Area ke markaz se shehar ki hadd (MAX_KM) se door mila nuqta = kisi aur shehar ka hum-naam, chhoR diya.
      */
     private function aliases(OpenStreetMap $osm, bool $waitFirst): void
     {
-        $rows = GeoArea::query()->whereNotNull('aliases')
+        $rows = GeoAreaPlace::with('geoArea')
             ->when($this->option('city'), fn ($q, $city) => $q->where('city', $city))
+            ->when(! $this->option('force'), fn ($q) => $q->whereNull('lat'))
             ->orderBy('city')->orderBy('name')->get();
 
         $found = 0;
         $asked = 0;
         $wait = $waitFirst;
-        foreach ($rows as $area) {
-            $cc = self::COUNTRY_CODES[mb_strtolower((string) $area->country)] ?? null;
-            $list = $area->aliasList();
-            $changed = false;
-            foreach ($list as $k => $a) {
-                if ($a['lat'] !== null && ! $this->option('force')) {
-                    continue;
-                }
-                $asked++;
-                if ($wait) {
-                    usleep(1100000);   // OSM: ~1 request/second
-                }
-                $wait = true;
-                $hit = $osm->search($a['name'].', '.$area->city.', '.$area->country, $cc);
-                if ($hit && $area->lat !== null && AreaLocator::km((float) $area->lat, (float) $area->lng, $hit['lat'], $hit['lng']) > AreaLocator::MAX_KM) {
-                    $hit = null;
-                }
-                $this->line(sprintf('  %-34s %s', $area->name.' › '.$a['name'], $hit ? sprintf('%.5f, %.5f', $hit['lat'], $hit['lng']) : '—'));
-                if ($hit) {
-                    $list[$k]['lat'] = $hit['lat'];
-                    $list[$k]['lng'] = $hit['lng'];
-                    $changed = true;
-                    $found++;
-                }
+        foreach ($rows as $place) {
+            $area = $place->geoArea;
+            if (! $area) {
+                continue;
             }
-            if ($changed && $this->option('yes')) {
-                $area->update(['aliases' => $list]);
+            $cc = self::COUNTRY_CODES[mb_strtolower((string) $area->country)] ?? null;
+            $asked++;
+            if ($wait) {
+                usleep(1100000);   // OSM: ~1 request/second
+            }
+            $wait = true;
+            $hit = $osm->search($place->name.', '.$area->city.', '.$area->country, $cc);
+            if ($hit && $area->lat !== null && AreaLocator::km((float) $area->lat, (float) $area->lng, $hit['lat'], $hit['lng']) > AreaLocator::MAX_KM) {
+                $hit = null;
+            }
+            $this->line(sprintf('  %-34s %s', $area->name.' › '.$place->name, $hit ? sprintf('%.5f, %.5f', $hit['lat'], $hit['lng']) : '—'));
+            if ($hit) {
+                $found++;
+                if ($this->option('yes')) {
+                    $place->update(['lat' => $hit['lat'], 'lng' => $hit['lng']]);
+                }
             }
         }
 

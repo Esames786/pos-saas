@@ -515,6 +515,13 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::put('/online-ordering/settings', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteSettingsController::class, 'update'])->name('tenant.online-ordering.settings.update');
                 Route::get('/online-ordering/areas', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryAreaController::class, 'index'])->name('tenant.online-ordering.areas.index');
                 Route::put('/online-ordering/areas', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryAreaController::class, 'update'])->name('tenant.online-ordering.areas.update');
+                // Har area ki jagahen (societies) — asal table me (malik, 16 Oct). Platform ki jagah: move / hide; apni: + remove.
+                Route::get('/online-ordering/places', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryPlaceController::class, 'index'])->name('tenant.online-ordering.places.index');
+                Route::post('/online-ordering/places', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryPlaceController::class, 'store'])->name('tenant.online-ordering.places.store');
+                Route::put('/online-ordering/places/{origin}/{id}', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryPlaceController::class, 'update'])
+                    ->whereIn('origin', ['platform', 'restaurant'])->whereNumber('id')->name('tenant.online-ordering.places.update');
+                Route::delete('/online-ordering/places/{origin}/{id}', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryPlaceController::class, 'destroy'])
+                    ->whereIn('origin', ['platform', 'restaurant'])->whereNumber('id')->name('tenant.online-ordering.places.destroy');
                 // Sirf dekhna: menu jaisa customer dekhega. Badlav product/deal/category ke Website hisse se.
                 Route::get('/online-ordering/menu', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteMenuController::class, 'index'])->name('tenant.online-ordering.menu.index');
 

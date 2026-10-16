@@ -62,7 +62,7 @@ class OnlineOrderingInboxMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection('tenant');
         $this->cleanTenant([
             'customer_addresses', 'customers', 'sales_order_lines', 'sales_orders', 'shifts', 'web_order_routes', 'web_settings',
-            'delivery_zones', 'delivery_riders', 'delivery_channels', 'combo_modifier_group', 'product_modifier_group', 'modifiers',
+            'delivery_zone_places', 'delivery_zones', 'delivery_riders', 'delivery_channels', 'combo_modifier_group', 'product_modifier_group', 'modifiers',
             'modifier_groups', 'combo_components', 'combos', 'product_branch_prices', 'product_variants', 'products', 'categories',
             'model_has_permissions', 'model_has_roles', 'terminals', 'users', 'branches',
         ]);

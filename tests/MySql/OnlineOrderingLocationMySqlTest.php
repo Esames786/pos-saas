@@ -3,6 +3,7 @@
 namespace Tests\MySql;
 
 use App\Models\Tenant\DeliveryZone;
+use App\Models\Tenant\DeliveryZonePlace;
 use App\Models\Tenant\WebSetting;
 use App\Services\Permissions\PermissionSyncService;
 use Illuminate\Http\Client\Request as HttpRequest;
@@ -39,7 +40,7 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         app(PermissionSyncService::class)->syncRouteCatalog();
 
         DB::setDefaultConnection('tenant');
-        $this->cleanTenant(['web_order_routes', 'web_settings', 'delivery_zones', 'terminals', 'branches']);
+        $this->cleanTenant(['web_order_routes', 'web_settings', 'delivery_zone_places', 'delivery_zones', 'terminals', 'branches']);
         $this->branchId = $this->makeBranch();
         WebSetting::tenantDefault()->update(['is_enabled' => true, 'default_branch_id' => $this->branchId]);
 
@@ -158,11 +159,8 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
     {
         // UAT (15 Oct): Gulshan-e-Kaneez Fatima (Scheme 33) went to "Gulistan e Johar - Block 4" — OSM never says
         // "Scheme 33", and Scheme 33's one centre (Super Highway side) was farther than the Johar block's.
-        $m = DB::connection('master');
-        $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->update(['aliases' => json_encode([
-            ['name' => 'Gulshan-e-Kaneez Fatima', 'lat' => null, 'lng' => null],
-            ['name' => 'Gulzar-e-Hijri', 'lat' => 24.9550, 'lng' => 67.1150],
-        ])]);
+        $this->platformPlace('Scheme 33', 'Gulshan-e-Kaneez Fatima', null, null);
+        $this->platformPlace('Scheme 33', 'Gulzar-e-Hijri', 24.9550, 67.1150);
         $named = true;
         Http::fake(function () use (&$named) {
             return Http::response($named
@@ -185,7 +183,7 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $this->assertLessThan(1.0, $j['km']);
 
         // 3. Without the societies it was the bug: the Johar block wins.
-        $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->update(['aliases' => null]);
+        DB::connection('master')->table('geo_area_places')->where('city', self::CITY)->delete();
         $this->assertSame($this->zone['Gulistan e Johar - Block 7'], $this->locate(24.9540, 67.1140)->json('area'));
     }
 
@@ -193,10 +191,8 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
     {
         // UAT (15 Oct): Chappal Sun City (Scheme 33; OSM "Chappal Sun City, New Rizvia Society") went to Johar —
         // the Johar block's point was nearer than any Scheme 33 point. The restaurant's own place list fixes it.
-        DeliveryZone::whereKey($this->zone['Scheme 33'])->update(['places' => json_encode([
-            ['name' => 'Chappal Sun City', 'lat' => null, 'lng' => null],
-            ['name' => 'Safoora Point', 'lat' => 24.9480, 'lng' => 67.1450],
-        ])]);
+        $this->ownPlace('Scheme 33', 'Chappal Sun City', null, null);
+        $this->ownPlace('Scheme 33', 'Safoora Point', 24.9480, 67.1450);
         $named = true;
         Http::fake(function () use (&$named) {
             return Http::response($named
@@ -216,7 +212,11 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $this->assertSame($this->zone['Scheme 33'], $j['area'], 'Likhi jagah ka nuqta bhi area ka nuqta.');
         $this->assertSame('nearest', $j['by']);
 
-        DeliveryZone::whereKey($this->zone['Scheme 33'])->update(['places' => null]);
+        // Malik (16 Oct): "chhote area recommend karo" — pin ke aas paas ki jagahen, apne area ke saath.
+        $this->assertSame('Safoora Point', $j['near_places'][0]['name']);
+        $this->assertSame($this->zone['Scheme 33'], $j['near_places'][0]['zone']);
+
+        DeliveryZonePlace::query()->delete();
         $this->assertSame($this->zone['Gulistan e Johar - Block 7'], $this->locate(24.9475, 67.1452)->json('area'), 'Bina list wahi purani ghalti.');
     }
 
@@ -263,8 +263,7 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
     {
         // Malik (15 Oct): "10 km ke radius mai jo b societies hain open street say data le kar map karlo".
         $m = DB::connection('master');
-        $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')
-            ->update(['aliases' => json_encode([['name' => 'New Rizvia Society', 'lat' => 24.9507, 'lng' => 67.1475]])]);
+        $this->platformPlace('Scheme 33', 'New Rizvia Society', 24.9507, 67.1475);
         $square = fn (float $a, float $b, float $c, float $d) => [['lat' => $a, 'lon' => $b], ['lat' => $a, 'lon' => $d], ['lat' => $c, 'lon' => $d], ['lat' => $c, 'lon' => $b], ['lat' => $a, 'lon' => $b]];
         $elements = [
             ['type' => 'way', 'id' => 1, 'tags' => ['place' => 'neighbourhood', 'name' => 'Gulistan e Johar Block 7'], 'geometry' => $square(24.930, 67.133, 24.942, 67.145)],
@@ -293,20 +292,20 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         $args = ['tenant_code' => 'ooloc', '--lat' => '24.93', '--lng' => '67.10', '--pause' => '0'];
 
         $this->artisan('online-ordering:map-places', $args)->expectsOutputToContain('Pakke: 5 (naam 2 · hadd ke andar 1 · parent 1 · pados 1)')->assertSuccessful();
-        $this->assertNull($m->table('geo_areas')->where('city', self::CITY)->where('name', 'Gulistan e Johar - Block 7')->value('aliases'), 'Dry run ne likh diya.');
+        $this->assertSame([], $this->platformPlaces('Gulistan e Johar - Block 7'), 'Dry run ne likh diya.');
 
         $this->artisan('online-ordering:map-places', $args + ['--yes' => true])->assertSuccessful();
-        $scheme = array_column(json_decode((string) $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->value('aliases'), true), null, 'name');
-        $johar = array_column(json_decode((string) $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Gulistan e Johar - Block 7')->value('aliases'), true), null, 'name');
+        $scheme = $this->platformPlaces('Scheme 33');
+        $johar = $this->platformPlaces('Gulistan e Johar - Block 7');
         $this->assertArrayHasKey('Chappal Sun City', $scheme);
         $this->assertArrayHasKey('Aligarh Cooperative Housing Society SCHEME 33', $scheme);
         $this->assertArrayHasKey('Rufi Homes', $scheme, 'Pados ki gawahi: 3 pakki Scheme 33 jagahen 800 m me.');
-        $this->assertTrue($scheme['Rufi Homes']['point_only'], 'Pados = andaza: sirf nuqta, naam se pakka nahi.');
-        $this->assertArrayNotHasKey('point_only', $scheme['Chappal Sun City']);
-        $this->assertSame('osm', $scheme['Chappal Sun City']['src']);
-        $this->assertEqualsWithDelta(24.952, $scheme['Chappal Sun City']['lat'], 0.0001);
+        $this->assertSame('nearby', $scheme['Rufi Homes']['kind'], 'Pados = andaza: sirf nuqta, naam se pakka nahi.');
+        $this->assertSame('sure', $scheme['Chappal Sun City']['kind']);
+        $this->assertSame('osm', $scheme['Chappal Sun City']['source']);
+        $this->assertEqualsWithDelta(24.952, (float) $scheme['Chappal Sun City']['lat'], 0.0001);
         $this->assertSame(['Johar Complex'], array_keys($johar), '"Block 7" jaisa aam naam kabhi nahi; area ka apna naam bhi nahi.');
-        $this->assertStringNotContainsString('Mystery', (string) $m->table('geo_areas')->where('city', self::CITY)->pluck('aliases')->implode(' '));
+        $this->assertSame(0, $m->table('geo_area_places')->where('city', self::CITY)->where('name', 'like', '%Mystery%')->count());
 
         // Dobara: kuch naya nahi.
         $this->artisan('online-ordering:map-places', $args + ['--yes' => true])->expectsOutputToContain('Likh diya: 0 naye naam')->assertSuccessful();
@@ -325,10 +324,8 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
     public function test_society_points_come_from_openstreetmap_and_a_namesake_in_another_city_is_ignored(): void
     {
         $m = DB::connection('master');
-        $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->update(['aliases' => json_encode([
-            ['name' => 'Gulzar-e-Hijri', 'lat' => null, 'lng' => null],
-            ['name' => 'Saadi Town', 'lat' => null, 'lng' => null],
-        ])]);
+        $this->platformPlace('Scheme 33', 'Gulzar-e-Hijri', null, null);
+        $this->platformPlace('Scheme 33', 'Saadi Town', null, null);
         Http::fake(function (HttpRequest $r) {
             parse_str((string) parse_url($r->url(), PHP_URL_QUERY), $q);
             $query = (string) ($q['q'] ?? '');
@@ -341,16 +338,80 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         });
 
         $this->artisan('online-ordering:geocode-areas', ['--city' => self::CITY])->expectsOutputToContain('Societies: 1 / 2')->assertSuccessful();
-        $this->assertNull(json_decode((string) $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->value('aliases'), true)[0]['lat'], 'Dry run ne likh diya.');
+        $this->assertNull($this->platformPlaces('Scheme 33')['Gulzar-e-Hijri']['lat'], 'Dry run ne likh diya.');
 
         $this->artisan('online-ordering:geocode-areas', ['--city' => self::CITY, '--yes' => true])->assertSuccessful();
-        $aliases = json_decode((string) $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->value('aliases'), true);
-        $this->assertEqualsWithDelta(24.9551, (float) $aliases[0]['lat'], 0.00001);
-        $this->assertNull($aliases[1]['lat'], 'Doosre shehar ka hum-naam (Lahore) nahi liya.');
+        $places = $this->platformPlaces('Scheme 33');
+        $this->assertEqualsWithDelta(24.9551, (float) $places['Gulzar-e-Hijri']['lat'], 0.00001);
+        $this->assertNull($places['Saadi Town']['lat'], 'Doosre shehar ka hum-naam (Lahore) nahi liya.');
         Http::assertSent(fn (HttpRequest $r) => str_contains(urldecode($r->url()), 'q=Gulzar-e-Hijri, '.self::CITY));
     }
 
+    public function test_a_restaurant_can_move_or_hide_a_map_place_for_itself(): void
+    {
+        // Platform (map) ki jagah sab restaurants ki — restaurant apne liye doosre area me daal / chhupa sakta hai.
+        $this->platformPlace('Scheme 33', 'Chappal Sun City', null, null);
+        $p = \App\Models\Master\GeoAreaPlace::where('city', self::CITY)->where('name', 'Chappal Sun City')->firstOrFail();
+        Http::fake(['nominatim.openstreetmap.org/*' => Http::response(['address' => ['neighbourhood' => 'Chappal Sun City', 'town' => 'Gulshan-e-Iqbal Town'], 'display_name' => 'Chappal Sun City'])]);
+        $this->assertSame($this->zone['Scheme 33'], $this->locate(24.952, 67.141)->json('area'));
+
+        $places = app(\App\Services\OnlineOrdering\DeliveryPlaces::class);
+        $places->overridePlatform($p, $this->zone['Gulistan e Johar - Block 7'], 'active');
+        $j = $this->locate(24.952, 67.141)->json();
+        $this->assertSame([$this->zone['Gulistan e Johar - Block 7'], 'name'], [$j['area'], $j['by']], 'Is restaurant ke liye doosre area me.');
+
+        $places->overridePlatform($p, $this->zone['Gulistan e Johar - Block 7'], 'hidden');
+        $this->assertNotSame('name', $this->locate(24.952, 67.141)->json('by'), 'Chhupi jagah naam se nahi milti.');
+
+        $places->overridePlatform($p, $this->zone['Scheme 33'], 'active');
+        $this->assertSame(0, DeliveryZonePlace::count(), 'Wapas apni jagah = koi override nahi.');
+        $this->assertSame($this->zone['Scheme 33'], $this->locate(24.952, 67.141)->json('area'));
+    }
+
+    public function test_old_aliases_move_into_the_places_table(): void
+    {
+        // Purani geo_areas.aliases json → geo_area_places (migration ka data hissa dobara chala kar; insertOrIgnore).
+        $m = DB::connection('master');
+        $m->table('geo_areas')->where('city', self::CITY)->where('name', 'Scheme 33')->update(['aliases' => json_encode([
+            ['name' => 'Old Society', 'lat' => 24.95, 'lng' => 67.12, 'src' => 'osm'],
+            ['name' => 'Old Guess', 'lat' => 24.96, 'lng' => 67.13, 'src' => 'osm', 'point_only' => true],
+            ['name' => 'Old Curated', 'lat' => null, 'lng' => null],
+        ])]);
+        (require base_path('database/migrations/2026_10_16_000004_create_geo_area_places_table.php'))->up();
+        (require base_path('database/migrations/2026_10_16_000004_create_geo_area_places_table.php'))->up();   // dobara: kuch nahi badla
+
+        $p = $this->platformPlaces('Scheme 33');
+        $this->assertSame(['osm', 'sure'], [$p['Old Society']['source'], $p['Old Society']['kind']]);
+        $this->assertSame('nearby', $p['Old Guess']['kind']);
+        $this->assertSame('platform', $p['Old Curated']['source']);
+        $this->assertCount(3, $p);
+    }
+
     // ── helpers ──
+
+    /** Platform jagah (geo_area_places) is test shehar ke kisi area me. */
+    private function platformPlace(string $area, string $name, ?float $lat, ?float $lng, string $kind = 'sure'): void
+    {
+        $m = DB::connection('master');
+        $m->table('geo_area_places')->insert(['geo_area_id' => (int) $m->table('geo_areas')->where('city', self::CITY)->where('name', $area)->value('id'),
+            'city' => self::CITY, 'name' => $name, 'name_key' => \App\Services\OnlineOrdering\AreaLocator::norm($name), 'lat' => $lat, 'lng' => $lng,
+            'source' => 'platform', 'kind' => $kind, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    /** @return array<string, array<string, mixed>> naam => row */
+    private function platformPlaces(string $area): array
+    {
+        return DB::connection('master')->table('geo_area_places as p')->join('geo_areas as g', 'g.id', '=', 'p.geo_area_id')
+            ->where('g.city', self::CITY)->where('g.name', $area)->get(['p.*'])->mapWithKeys(fn ($r) => [$r->name => (array) $r])->all();
+    }
+
+    /** Restaurant ki apni jagah (delivery_zone_places). */
+    private function ownPlace(string $area, string $name, ?float $lat, ?float $lng): void
+    {
+        DeliveryZonePlace::create(['delivery_zone_id' => $this->zone[$area], 'name' => $name,
+            'name_key' => \App\Services\OnlineOrdering\AreaLocator::norm($name), 'lat' => $lat, 'lng' => $lng,
+            'source' => 'manual', 'kind' => 'sure', 'status' => 'active']);
+    }
 
     private function osm(array $address, string $display): void
     {

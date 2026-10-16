@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Master\GeoArea;
+use App\Models\Master\GeoAreaPlace;
 use App\Models\Master\Tenant;
 use App\Models\Tenant\DeliveryZone;
 use App\Services\OnlineOrdering\AreaLocator;
@@ -22,7 +23,7 @@ use Illuminate\Support\Facades\Http;
  *   3. jagah ka OSM "parent" (suburb) kisi area ka jana pehchana naam (Chappal Sun City → New Rizvia Society →
  *      Scheme 33).
  * Baqi "pata nahi" — report me, khud nahi. "Block 7", "Society" jaise aam naam kabhi nahi (har jagah milte).
- * Likhe naam master `geo_areas.aliases` me nuqte ke saath (src: osm) — har restaurant ke kaam ke. Default: dry run.
+ * Likhe naam master `geo_area_places` me nuqte ke saath (source osm) — har restaurant ke kaam ke. Default: dry run.
  */
 class OnlineOrderingMapPlacesCommand extends Command
 {
@@ -82,14 +83,16 @@ class OnlineOrderingMapPlacesCommand extends Command
 
         $zones = DeliveryZone::where('is_active', true)->whereNotNull('geo_area_id')->get(['id', 'area_name', 'geo_area_id']);
         $geo = GeoArea::whereIn('id', $zones->pluck('geo_area_id')->all())->get()->keyBy('id');
-        // area id → us ke naam (area + aliases), har naam ke tokens
+        // Platform ki jagahen (geo_area_places), area ke hisaab se.
+        $platform = GeoAreaPlace::whereIn('geo_area_id', $geo->keys()->all())->where('status', 'active')->get()->groupBy('geo_area_id');
+        // area id → us ke naam (area + us ki pakki jagahen), har naam ke tokens
         $names = [];
         foreach ($zones as $z) {
             $g = $geo->get($z->geo_area_id);
             if (! $g) {
                 continue;
             }
-            foreach (array_merge([$g->name], array_column($g->aliasList(), 'name')) as $n) {
+            foreach (array_merge([$g->name], $platform->get($g->id, collect())->where('kind', 'sure')->pluck('name')->all()) as $n) {
                 $names[$g->id][] = self::tokens($n);
             }
         }
@@ -158,9 +161,9 @@ class OnlineOrderingMapPlacesCommand extends Command
             }
         }
         foreach ($geo as $g) {
-            foreach ($g->aliasList() as $a) {
-                if ($a['lat'] !== null && ! $a['point_only']) {   // gawah sirf pakki jagahen
-                    $known[] = [$a['lat'], $a['lng'], $g->id];
+            foreach ($platform->get($g->id, collect()) as $a) {
+                if ($a->lat !== null && $a->kind === 'sure') {   // gawah sirf pakki jagahen
+                    $known[] = [(float) $a->lat, (float) $a->lng, $g->id];
                 }
             }
         }
@@ -425,26 +428,26 @@ class OnlineOrderingMapPlacesCommand extends Command
         }
     }
 
+    /** Pakki jagahen geo_area_places me (aik shehar me aik naam aik hi area ka — pehle se ho to nahi). */
     private function write(array $found, $geo): int
     {
         $added = 0;
         foreach ($found as $areaId => $list) {
             $g = $geo->get($areaId);
-            if (! $g || ! $list) {
-                continue;
-            }
-            $aliases = (array) ($g->aliases ?? []);
-            $have = array_map(fn ($a) => implode(' ', self::tokens((string) ($a['name'] ?? ''))), $aliases);
-            foreach ($list as $key => $p) {
-                if (! in_array($key, $have, true)) {
-                    // Pados ki gawahi = andaza: sirf nuqta (qareebi area), naam se "You are in" kabhi nahi.
-                    $aliases[] = ['name' => $p['name'], 'lat' => $p['lat'], 'lng' => $p['lng'], 'src' => 'osm']
-                        + ($p['how'] === 'nearby' ? ['point_only' => true] : []);
-                    $have[] = $key;
-                    $added++;
+            foreach ($g ? $list : [] as $p) {
+                $key = AreaLocator::norm($p['name']);
+                if (GeoAreaPlace::where('city', $g->city)->where('name_key', $key)->exists()) {
+                    continue;
                 }
+                GeoAreaPlace::create([
+                    'geo_area_id' => $g->id, 'city' => $g->city, 'name' => $p['name'], 'name_key' => $key,
+                    'lat' => $p['lat'], 'lng' => $p['lng'], 'source' => GeoAreaPlace::SOURCE_OSM,
+                    // Pados ki gawahi = andaza: sirf nuqta (qareebi area), naam se "You are in" kabhi nahi.
+                    'kind' => $p['how'] === 'nearby' ? GeoAreaPlace::KIND_NEARBY : GeoAreaPlace::KIND_SURE,
+                    'status' => 'active',
+                ]);
+                $added++;
             }
-            $g->update(['aliases' => $aliases]);
         }
 
         return $added;

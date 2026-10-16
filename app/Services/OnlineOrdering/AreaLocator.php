@@ -10,9 +10,9 @@ use Illuminate\Support\Collection;
  * ONLINE-ORDERING-1 — customer ki location se delivery area (malik: "auto fetch scheme 33 ya qareebi area").
  *
  * 1. Naam: OpenStreetMap jagah ka naam deta hai (mohalla, block, town). Jis area ke naam — ya us ke andar ki
- *    kisi society (`geo_areas.aliases`, jaise Scheme 33 → Gulzar-e-Hijri, aur restaurant ki apni likhi
- *    `delivery_zones.places`) — ke SAARE lafz us me hon wo area; sab se lamba naam jeetta hai.
- * 2. Qareebi: naam na mile to area ke nuqton (markazi `lat/lng` + har alias ka apna) me se jo sab se qareeb ho —
+ *    kisi society (Delivery Places: platform `geo_area_places`, jaise Scheme 33 → Gulzar-e-Hijri, aur restaurant
+ *    ki apni `delivery_zone_places`) — ke SAARE lafz us me hon wo area; sab se lamba naam jeetta hai.
+ * 2. Qareebi: naam na mile to area ke nuqton (markazi `lat/lng` + har jagah ka apna) me se jo sab se qareeb ho —
  *    shehar ke andar (MAX_KM). Bare area ka aik nuqta kafi nahi (Scheme 33 ka markaz 7 km door, Johar 3.6 km).
  * Dono na milen to kuch nahi — customer list se chunta hai. Aas paas ke areas hamesha saath (chunne me aasani).
  */
@@ -23,6 +23,11 @@ class AreaLocator
      * kitna door. Sirf shehar ki hadd: is se door phone (doosra shehar / ghalat GPS) par koi area khud nahi chuna jata.
      */
     public const MAX_KM = 50.0;
+
+    /** "Recommended near you": itne km tak ki jagahen, zyada se zyada itni. */
+    public const NEAR_PLACES_KM = 1.5;
+
+    public const NEAR_PLACES_MAX = 6;
 
     /** OSM pate ke sarkari/bare hisse — naam milane me nahi ginte (town = "Liaquatabad Town" jaise poore zile). */
     private const ADMIN_PARTS = ['town', 'city_district', 'district', 'county', 'state_district', 'state', 'region',
@@ -35,19 +40,21 @@ class AreaLocator
      */
     public function locate(float $lat, float $lng): array
     {
-        $zones = DeliveryZone::where('is_active', true)->get(['id', 'area_name', 'geo_area_id', 'places']);
+        $zones = DeliveryZone::where('is_active', true)->get(['id', 'area_name', 'geo_area_id']);
         $geo = GeoArea::whereIn('id', $zones->pluck('geo_area_id')->filter()->all())
-            ->get(['id', 'lat', 'lng', 'aliases'])->keyBy('id');
+            ->get(['id', 'lat', 'lng'])->keyBy('id');
+        // Jagahen (societies) asal tables se: platform + restaurant ki apni, restaurant ke faislon ke saath.
+        $places = app(DeliveryPlaces::class)->all()->whereIn('zone_id', $zones->pluck('id')->all())->groupBy('zone_id');
 
-        $distances = $zones->mapWithKeys(function (DeliveryZone $z) use ($geo, $lat, $lng) {
-            $points = self::points($geo->get($z->geo_area_id), $z);
+        $distances = $zones->mapWithKeys(function (DeliveryZone $z) use ($geo, $places, $lat, $lng) {
+            $points = self::points($geo->get($z->geo_area_id), $places->get($z->id, collect()));
 
             return $points ? [$z->id => min(array_map(fn ($p) => self::km($lat, $lng, $p[0], $p[1]), $points))] : [];
         })->sort();
 
         $osm = $this->osm->reverse($lat, $lng) ?? [];
         $address = (array) ($osm['address'] ?? []);
-        $byName = $this->byName($zones, $geo, $address, (string) ($osm['name'] ?? ''));
+        $byName = $this->byName($zones, $places, $address, (string) ($osm['name'] ?? ''));
 
         $nearestId = $distances->keys()->first();
         $nearest = $nearestId !== null && $distances[$nearestId] <= self::MAX_KM ? $nearestId : null;
@@ -64,16 +71,30 @@ class AreaLocator
             // Sirf bari society (suburb) — jab phone/computer ki location mota andaza ho to chhota mohalla nahi dikhate.
             'broad' => trim((string) ($address['suburb'] ?? $address['hamlet'] ?? $address['quarter'] ?? '')) ?: null,
             'nearby' => $distances->filter(fn ($km) => $km <= self::MAX_KM)->keys()->take(5)->values()->all(),
+            // Malik (16 Oct): "chhote area recommend karo" — pin ke aas paas ki jagahen (society), har ek apne area ke saath.
+            'near_places' => $this->nearPlaces($places->flatten(1), $lat, $lng),
         ];
     }
 
-    /** @return list<array{0: float, 1: float}> area ka markaz + us ki societies ke nuqte (master + restaurant ki likhi) */
-    private static function points(?GeoArea $g, DeliveryZone $z): array
+    /**
+     * Pin ke aas paas (NEAR_PLACES_KM) ki jagahen, qareebi pehle — "Recommended near you". Sirf `sure`: andaze
+     * wali (nearby) ka area khud andaza hai — us par customer se fee wala area chunwana theek nahi.
+     */
+    private function nearPlaces(Collection $places, float $lat, float $lng): array
+    {
+        return $places->filter(fn ($p) => $p['kind'] === 'sure' && $p['lat'] !== null && $p['lng'] !== null)
+            ->map(fn ($p) => ['name' => $p['name'], 'zone' => $p['zone_id'], 'km' => round(self::km($lat, $lng, $p['lat'], $p['lng']), 2)])
+            ->filter(fn ($p) => $p['km'] <= self::NEAR_PLACES_KM)
+            ->sortBy('km')->unique(fn ($p) => mb_strtolower($p['name']))->take(self::NEAR_PLACES_MAX)->values()->all();
+    }
+
+    /** @return list<array{0: float, 1: float}> area ka markaz + us ki jagahon ke nuqte (platform + restaurant) */
+    private static function points(?GeoArea $g, Collection $places): array
     {
         $out = $g && $g->lat !== null && $g->lng !== null ? [[(float) $g->lat, (float) $g->lng]] : [];
-        foreach (array_merge($g?->aliasList() ?? [], $z->placeList()) as $a) {
-            if ($a['lat'] !== null && $a['lng'] !== null) {
-                $out[] = [$a['lat'], $a['lng']];
+        foreach ($places as $p) {
+            if ($p['lat'] !== null && $p['lng'] !== null) {
+                $out[] = [(float) $p['lat'], (float) $p['lng']];
             }
         }
 
@@ -81,7 +102,7 @@ class AreaLocator
     }
 
     /** Naam se: area ke (ya us ki kisi society ke) naam ke saare lafz OSM ke pate me hon. */
-    private function byName(Collection $zones, Collection $geo, array $address, string $placeName): ?int
+    private function byName(Collection $zones, Collection $places, array $address, string $placeName): ?int
     {
         // Sirf jagah ke apne naam (gali, mohalla, society, imarat). Bare sarkari hisse nahi: Nazimabad ka pata
         // "Liaquatabad Town" me aata hai, Clifton ka "Saddar Town" me — un se "Liaquatabad"/"Saddar" area PAKKA
@@ -93,9 +114,8 @@ class AreaLocator
         $best = null;
         $bestLen = 0;
         foreach ($zones as $z) {
-            // "Sirf nuqta" wale (pados ki gawahi) naam se pakka nahi karte — wo sirf qareebi area me ginte hain.
-            $aliases = array_filter($geo->get($z->geo_area_id)?->aliasList() ?? [], fn ($a) => ! $a['point_only']);
-            $names = array_merge([(string) $z->area_name], array_column($aliases, 'name'), array_column($z->placeList(), 'name'));
+            // "nearby" wali jagahen (pados ki gawahi) naam se pakka nahi karti — wo sirf qareebi area me ginti hain.
+            $names = array_merge([(string) $z->area_name], $places->get($z->id, collect())->where('kind', 'sure')->pluck('name')->all());
             foreach ($names as $name) {
                 $tokens = array_values(array_filter(explode(' ', self::norm($name))));
                 if ($tokens === []) {
