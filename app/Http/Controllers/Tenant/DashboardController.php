@@ -305,7 +305,25 @@ class DashboardController extends Controller
     }
 
     /**
-     * Platform ke paise: kya dena hai, aur kya ban raha hai.
+     * Agla bill kis din banega — tenant ke apne `invoice_day` se.
+     *
+     * Jis mahine me wo din aa chuka, agla mahina. 31 wala din chhote mahine me us ke aakhri din par
+     * chala jata hai, warna February me us tenant ka din aata hi nahi.
+     */
+    private function nextInvoiceDate(int $tenantId): ?string
+    {
+        $day = (int) (\App\Models\Master\Subscription::where('tenant_id', $tenantId)->value('invoice_day') ?? 0);
+        if ($day < 1) {
+            return null;
+        }
+
+        $now = \Carbon\CarbonImmutable::now(app('tenant')->timezone ?: config('app.timezone'));
+        $month = $now->day >= $day ? $now->addMonthNoOverflow() : $now;
+
+        return $month->day(min($day, $month->endOfMonth()->day))->format('d M Y');
+    }
+
+    /**     * Platform ke paise: kya dena hai, aur kya ban raha hai.
      *
      * Master connection par, kyunke ye Bingoo ka tenant se hisaab hai, tenant ka apna karobar nahi.
      * Nakami nigal li jati hai: ye dashboard har roz har user ke saamne khulta hai, aur billing ke
@@ -315,7 +333,9 @@ class DashboardController extends Controller
      */
     private function billingSummary(): array
     {
-        $empty = ['due' => 0.0, 'dueCount' => 0, 'accruing' => 0.0, 'accruingMessages' => 0];
+        $empty = ['due' => 0.0, 'dueCount' => 0, 'accruing' => 0.0, 'accruingMessages' => 0,
+            'accruingWhatsApp' => 0.0, 'accruingWebsite' => 0.0, 'accruingOrders' => 0,
+            'invoices' => [], 'total' => 0.0, 'accruingPeriod' => null];
 
         try {
             if (! app()->bound('tenant')) {
@@ -327,18 +347,61 @@ class DashboardController extends Controller
                 ->whereIn('status', ['issued', 'partially_paid', 'overdue'])
                 ->where('balance_amount', '>', 0);
 
-            $draft = \App\Models\Master\SubscriptionInvoice::where('tenant_id', $tenantId)
-                ->where('invoice_type', 'addon')
-                ->where('status', 'draft')
-                ->first();
+            // BILLING-TENANT-CYCLE-1 — chalta hua bill ab KHULI rows se nikalta hai, kisi draft
+            // invoice se nahi.
+            //
+            // Pehle WhatsApp ki apni `addon` invoice banti thi aur ye khana us ka total parhta tha.
+            // Ab wo invoice banti hi nahi: usage mahana invoice ka hissa hai. To "ab tak kitna bana"
+            // ka jawab wohi rows hain jo abhi KISI invoice se bandhi nahi.
+            //
+            // Is ka aik acha asar ye bhi hai ke cycle ke din ye khana APNE AAP sifar ho jata hai —
+            // us lamhe sab rows invoice se bandh jati hain. Koi alag reset chalana nahi paRta.
+            $openWa = \App\Models\Master\WhatsAppMessage::where('tenant_id', $tenantId)->whereNull('invoice_id');
+            $openWeb = \App\Models\Master\WebsiteOrderCharge::where('tenant_id', $tenantId)->whereNull('invoice_id');
+
+            $waAmount = round((float) (clone $openWa)->sum('rate_charged'), 2);
+            $webAmount2 = round((float) (clone $openWeb)->sum('amount'), 2);
+
+
+            // DASHBOARD-BILLING-ONE-BOX-1 — khud invoice ki satrein, taake modal un ko dikha sake.
+            // Dashboard par sirf AIK aankRa hai (kul); kya kya mila kar wo bana, wo khulne par nazar
+            // aata hai. Sirf jama likh dena aur tafseel na dena wo soorat hai jahan log raqam par
+            // bharosa nahi karte aur phone uthate hain.
+            $rows = (clone $due)->orderBy('due_date')->get()->map(fn ($i) => [
+                'no' => $i->invoice_no,
+                'type' => $i->invoice_type,
+                'period' => $i->period_start && $i->period_end
+                    ? \Carbon\CarbonImmutable::parse($i->period_start)->format('d M').' – '
+                        .\Carbon\CarbonImmutable::parse($i->period_end)->format('d M Y')
+                    : null,
+                'due_date' => $i->due_date ? \Carbon\CarbonImmutable::parse($i->due_date)->format('d M Y') : null,
+                'overdue' => $i->due_date && \Carbon\CarbonImmutable::parse($i->due_date)->isPast(),
+                'balance' => (float) $i->balance_amount,
+                'url' => url('/billing/invoices/'.$i->id),
+            ])->all();
+
+            $dueTotal = (float) (clone $due)->sum('balance_amount');
+            $accruingTotal = round($waAmount + $webAmount2, 2);
 
             return [
-                'due' => (float) (clone $due)->sum('balance_amount'),
+                'due' => $dueTotal,
                 'dueCount' => (int) (clone $due)->count(),
-                'accruing' => (float) ($draft?->total_amount ?? 0),
-                'accruingMessages' => $draft
-                    ? \App\Models\Master\WhatsAppMessage::where('invoice_id', $draft->id)->count()
-                    : 0,
+                'invoices' => $rows,
+                // Kul = jo abhi dena hai + jo is mahine ban raha hai. Dono aik hi number me jama
+                // hote hain kyunke malik ne yehi maanga, magar modal me ye DO alag hisson me rehte
+                // hain — accruing abhi qabil-e-adaegi nahi, aur us par "due" likhna ghalat hota.
+                // Card par sirf DENA HAI. Chalta hua bill apne alag khane me hai — malik ne kaha
+                // "jaise pehle alag box aa raha tha wo bilkul theek tha". Dono ko jama kar dena us
+                // cheez ko "due" dikhata hai jo abhi maangi hi nahi gayi.
+                'total' => $dueTotal,
+                // Agla bill kis din banega — tenant ka apna din. Ye khana isi din sifar hoga, aur
+                // likh dena behtar hai: warna log poochhte hain ke ye raqam kab maangi jayegi.
+                'accruingPeriod' => $this->nextInvoiceDate($tenantId),
+                'accruing' => $accruingTotal,
+                'accruingMessages' => (int) (clone $openWa)->count(),
+                'accruingWhatsApp' => $waAmount,
+                'accruingWebsite' => $webAmount2,
+                'accruingOrders' => (int) (clone $openWeb)->where('kind', 'sale')->count(),
             ];
         } catch (\Throwable $e) {
             report($e);

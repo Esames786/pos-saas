@@ -67,6 +67,12 @@ class SubscriptionInvoice extends Model
         return $this->hasMany(SubscriptionPayment::class);
     }
 
+    /** ONLINE-ORDERING-1 (Phase 4b): usage invoice ki child rows — har service ki har din ki aik. */
+    public function lines(): HasMany
+    {
+        return $this->hasMany(SubscriptionInvoiceLine::class, 'invoice_id');
+    }
+
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(CentralUser::class, 'created_by_user_id');

@@ -115,6 +115,31 @@
     </table>
 </div></div>
 
+{{-- ── ONLINE-ORDERING-1 (Phase 4b): website orders ka 1% — usi usage invoice me, alag lines ── --}}
+<div class="card mb-4"><div class="card-body table-responsive">
+    <h6>Website orders (1%) — {{ $month->format('F Y') }}</h6>
+    <table class="table table-sm align-middle">
+        <thead><tr><th>Tenant</th><th class="text-end">Orders</th><th class="text-end">Returns</th>
+            <th class="text-end">Net sale</th><th class="text-end">Commission</th></tr></thead>
+        <tbody>
+        @forelse($website as $w)
+            <tr>
+                <td>
+                    <div class="fw-semibold">{{ $w->tenant_code }}</div>
+                    <div class="text-muted small">{{ $w->business_name }}</div>
+                </td>
+                <td class="text-end">{{ number_format($w->orders) }}</td>
+                <td class="text-end text-muted">{{ $w->returns ?: '—' }}</td>
+                <td class="text-end">{{ $fmt($w->net) }}</td>
+                <td class="text-end fw-semibold">{{ $fmt($w->amount) }}</td>
+            </tr>
+        @empty
+            <tr><td colspan="5" class="text-muted">Is mahine koi website order bill nahi hua.</td></tr>
+        @endforelse
+        </tbody>
+    </table>
+</div></div>
+
 {{-- ── rozana — malik ne "per day ki cost" maangi thi ── --}}
 <div class="card mb-4"><div class="card-body table-responsive">
     <h6>Day by day</h6>
@@ -143,7 +168,7 @@
 
 {{-- ── WhatsApp ke invoice ── --}}
 <div class="card mb-4"><div class="card-body table-responsive">
-    <h6>WhatsApp invoices</h6>
+    <h6>Usage invoices (WhatsApp + website orders)</h6>
     <p class="text-muted small mb-3">
         Har mahine ki aik invoice, jo mahine ke dauran <span class="badge bg-secondary">draft</span>
         rehti hai aur roz barhti hai. Mahina khatam hone par band ho kar

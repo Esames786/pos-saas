@@ -133,6 +133,45 @@ class PosScreenRendersHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame(200, $this->get_pos()->getStatusCode());
     }
 
+    /**
+     * ONLINE-ORDERING-1 — malik: "bas mera POS kharab na ho". Website ke liye bana add-on group
+     * ("Website only") counter par kabhi na pohanche: cashier ko naya popup na khule. "POS only"
+     * (har mojooda group) aur "POS + Website" waise hi aate rahen.
+     */
+    public function test_a_website_only_add_on_group_never_reaches_the_till(): void
+    {
+        $c = DB::connection('tenant');
+        $c->table('product_modifier_group')->delete();
+        $c->table('modifiers')->delete();
+        $c->table('modifier_groups')->delete();
+        $c->table('products')->where('id', $this->hiddenProductId)->update(['is_pos_visible' => 1, 'is_sellable' => 1]);
+
+        $groups = [];
+        foreach ([['Steak Side', null], ['Select Your Drink', 'website'], ['Extra Cheese', 'both']] as $i => [$name, $channel]) {
+            $row = ['name' => $name, 'min_select' => 0, 'max_select' => 1, 'is_required' => 0, 'sort_order' => $i,
+                'status' => 'active', 'created_at' => now(), 'updated_at' => now()];
+            if ($channel) {
+                $row['channel'] = $channel;   // na likha = column ka default ('pos'), jaisa har mojooda group
+            }
+            $groups[$name] = $gid = $c->table('modifier_groups')->insertGetId($row);
+            $c->table('modifiers')->insert(['modifier_group_id' => $gid, 'name' => $name.' option', 'price_delta' => 0,
+                'sort_order' => 0, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+            $c->table('product_modifier_group')->insert(['product_id' => $this->hiddenProductId, 'modifier_group_id' => $gid,
+                'sort_order' => $i, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $this->assertSame('pos', $c->table('modifier_groups')->where('id', $groups['Steak Side'])->value('channel'));
+
+        $html = $this->get_pos()->assertOk()->getContent();
+        $this->assertSame(1, preg_match('/const products\s*=\s*(\[.*?\]);\n/s', $html, $m), 'POS products payload nahi mila.');
+        $product = collect(json_decode($m[1], true))->firstWhere('id', $this->hiddenProductId);
+        $this->assertNotNull($product, 'Product POS payload me nahi.');
+
+        $names = collect($product['modifier_groups'])->pluck('name')->all();
+        $this->assertContains('Steak Side', $names, 'Mojooda (POS) group gayab ho gaya.');
+        $this->assertContains('Extra Cheese', $names, '"POS + Website" group POS par bhi aana chahiye.');
+        $this->assertNotContains('Select Your Drink', $names, '"Website only" group counter tak pohanch gaya.');
+    }
+
     private function seedMaster(): void
     {
         DB::setDefaultConnection(config('tenancy.master_connection', 'master'));

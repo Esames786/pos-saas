@@ -140,7 +140,22 @@ class ModifierGroupController extends Controller
             'is_required' => $request->boolean('is_required'),
             'sort_order'  => (int) ($data['sort_order'] ?? 0),
             'status'      => $data['status'],
-        ];
+        ] + $this->channel($request);
+    }
+
+    /**
+     * ONLINE-ORDERING-1: "Show on" sirf Online Ordering wale plan par form par aata hai. Na aaye to
+     * kuch nahi likhte — naya group DB ke default ('pos') par, purana jaisa tha.
+     */
+    private function channel(Request $request): array
+    {
+        if (! $request->has('channel')) {
+            return [];
+        }
+
+        $data = $request->validate(['channel' => ['required', Rule::in(array_keys(ModifierGroup::CHANNELS))]]);
+
+        return ['channel' => $data['channel']];
     }
 
     private function syncModifiers(Request $request, ModifierGroup $group): void

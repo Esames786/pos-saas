@@ -20,7 +20,7 @@
 
     <div class="card">
         <div class="card-body">
-            <form method="POST" action="{{ $editing ? url('/combos/' . $combo->id) : url('/combos') }}">
+            <form method="POST" action="{{ $editing ? url('/combos/' . $combo->id) : url('/combos') }}" enctype="multipart/form-data">
                 @csrf
                 @if($editing) @method('PUT') @endif
 
@@ -105,6 +105,13 @@
                         </tbody>
                     </table>
                 </div>
+
+                {{-- ONLINE-ORDERING-1: website placement in its own card at the bottom — only on a plan with Online Ordering; the POS deal does not change. --}}
+                @if(\App\Support\OnlineOrdering::enabledForTenant())
+                    <div class="mb-4">
+                        @include('tenant.partials.website-fields', array_merge(['model' => $combo ?? null, 'kind' => 'combo'], \App\Services\OnlineOrdering\WebsiteFields::formData()))
+                    </div>
+                @endif
 
                 <div class="d-flex gap-2">
                     <button class="btn btn-primary">{{ $editing ? 'Update Combo' : 'Create Combo' }}</button>

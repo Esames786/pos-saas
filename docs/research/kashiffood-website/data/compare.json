@@ -1,0 +1,4270 @@
+{
+    "rows": [
+        {
+            "cat": "Starter",
+            "name": "Chicken Hot Wings",
+            "size": "",
+            "price": 990,
+            "status": "Sahi",
+            "score": 0.65,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 1,
+                "name": "Chicken Hot Wings (Spicy) 8 Pcs",
+                "price": 990,
+                "category": "Starter"
+            }
+        },
+        {
+            "cat": "Starter",
+            "name": "Dynamite Chicken",
+            "size": "",
+            "price": 990,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 2,
+                "name": "Dynamite Chicken",
+                "price": 990,
+                "category": "Starter"
+            }
+        },
+        {
+            "cat": "Starter",
+            "name": "Dhaka Chicken",
+            "size": "",
+            "price": 990,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 3,
+                "name": "Dhaka Chicken",
+                "price": 990,
+                "category": "Starter"
+            }
+        },
+        {
+            "cat": "Starter",
+            "name": "Supreme Nachos",
+            "size": "",
+            "price": 990,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 4,
+                "name": "Supreme Nachos",
+                "price": 990,
+                "category": "Starter"
+            }
+        },
+        {
+            "cat": "Starter",
+            "name": "Korean Chicken",
+            "size": "",
+            "price": 990,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 5,
+                "name": "Korean Chicken",
+                "price": 990,
+                "category": "Starter"
+            }
+        },
+        {
+            "cat": "Starter",
+            "name": "Fish And Chips",
+            "size": "",
+            "price": 1490,
+            "status": "Sahi",
+            "score": 0.65,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 6,
+                "name": "Fish And Chips 5 Pcs",
+                "price": 1490,
+                "category": "Starter"
+            }
+        },
+        {
+            "cat": "Starter",
+            "name": "Dhaka Fish",
+            "size": "",
+            "price": 1490,
+            "status": "Sahi",
+            "score": 0.65,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 7,
+                "name": "Dhaka Fish 5 Pcs",
+                "price": 1490,
+                "category": "Starter"
+            }
+        },
+        {
+            "cat": "Soup",
+            "name": "Chicken Corn Soup",
+            "size": "Single Serving",
+            "price": 350,
+            "status": "Sahi",
+            "score": 0.95,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 8,
+                "name": "Chicken Corn Soup (Single)",
+                "price": 350,
+                "category": "Soup"
+            }
+        },
+        {
+            "cat": "Soup",
+            "name": "Chicken Corn Soup",
+            "size": "Family Bowl",
+            "price": 1100,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 9,
+                "name": "Chicken Corn Soup (Family Bowl)",
+                "price": 1100,
+                "category": "Soup"
+            }
+        },
+        {
+            "cat": "Soup",
+            "name": "Hot N Sour Soup",
+            "size": "Single Serving",
+            "price": 400,
+            "status": "Sahi",
+            "score": 0.98,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 10,
+                "name": "Hot n Sour Soup (Single)",
+                "price": 400,
+                "category": "Soup"
+            }
+        },
+        {
+            "cat": "Soup",
+            "name": "Hot N Sour Soup",
+            "size": "Family Bowl",
+            "price": 1200,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 11,
+                "name": "Hot n Sour Soup (Family Bowl)",
+                "price": 1200,
+                "category": "Soup"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 1 Serve 1",
+            "size": "",
+            "price": 875,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 12,
+                "name": "Deal 1 (Serve 1)",
+                "price": 875,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 2 Serve 2",
+            "size": "",
+            "price": 1190,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 13,
+                "name": "Deal 2 (Serve 2)",
+                "price": 1190,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 3 Serve 2",
+            "size": "",
+            "price": 1355,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 14,
+                "name": "Deal 3 (Serve 2)",
+                "price": 1355,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 4 Serve 2",
+            "size": "",
+            "price": 1420,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 15,
+                "name": "Deal 4 (Serve 2)",
+                "price": 1420,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 5 Serve 2",
+            "size": "",
+            "price": 1620,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 16,
+                "name": "Deal 5 (Serve 2)",
+                "price": 1620,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 6 Serve 2",
+            "size": "",
+            "price": 1555,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 17,
+                "name": "Deal 6 (Serve 2)",
+                "price": 1555,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 7 Serve 2",
+            "size": "",
+            "price": 1985,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 18,
+                "name": "Deal 7 (Serve 2)",
+                "price": 1985,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 8 Serve 2",
+            "size": "",
+            "price": 2005,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 19,
+                "name": "Deal 8 (Serve 2)",
+                "price": 2005,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 9 Serve 2",
+            "size": "",
+            "price": 1755,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 20,
+                "name": "Deal 9 (Serve 2)",
+                "price": 1755,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 10 Serve 2",
+            "size": "",
+            "price": 1905,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 21,
+                "name": "Deal 10 (Serve 2)",
+                "price": 1905,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 11 Serve 2",
+            "size": "",
+            "price": 1490,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 22,
+                "name": "Deal 11 (Serve 2)",
+                "price": 1490,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 12 Serve 2",
+            "size": "",
+            "price": 1620,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 23,
+                "name": "Deal 12 (Serve 2)",
+                "price": 1620,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 13 Serve 2",
+            "size": "",
+            "price": 2045,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 24,
+                "name": "Deal 13 (Serve 2)",
+                "price": 2045,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 14 Serve 2",
+            "size": "",
+            "price": 1390,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 25,
+                "name": "Deal 14 (Serve 2)",
+                "price": 1390,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 15 Serve 2",
+            "size": "",
+            "price": 2120,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 26,
+                "name": "Deal 15 (Serve 2)",
+                "price": 2120,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 16 Serve 4",
+            "size": "",
+            "price": 4270,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 27,
+                "name": "Deal 16 (Serve 4)",
+                "price": 4270,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 17 Serve 4",
+            "size": "",
+            "price": 4355,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 28,
+                "name": "Deal 17 (Serve 4)",
+                "price": 4355,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 18 Serve 4",
+            "size": "",
+            "price": 3510,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 29,
+                "name": "Deal 18 (Serve 4)",
+                "price": 3510,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 19 Serve 4",
+            "size": "",
+            "price": 5540,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 30,
+                "name": "Deal 19 (Serve 4)",
+                "price": 5540,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Deals",
+            "name": "Deal 20 Serve 6",
+            "size": "",
+            "price": 5625,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 31,
+                "name": "Deal 20 (Serve 6)",
+                "price": 5625,
+                "category": "Deals"
+            }
+        },
+        {
+            "cat": "Singaporean Rice",
+            "name": "Singaporean Rice",
+            "size": "Regular",
+            "price": 600,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 158,
+                "name": "Singaporean Rice (Regular)",
+                "price": 600,
+                "category": "Singaporean Rice"
+            }
+        },
+        {
+            "cat": "Singaporean Rice",
+            "name": "Singaporean Rice",
+            "size": "Large",
+            "price": 1050,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 159,
+                "name": "Singaporean Rice (Large)",
+                "price": 1050,
+                "category": "Singaporean Rice"
+            }
+        },
+        {
+            "cat": "Singaporean Rice",
+            "name": "Singaporean Rice",
+            "size": "Platter",
+            "price": 1580,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 160,
+                "name": "Singaporean Rice (Platter)",
+                "price": 1580,
+                "category": "Singaporean Rice"
+            }
+        },
+        {
+            "cat": "Singaporean Rice",
+            "name": "Singaporean Rice",
+            "size": "Khaas",
+            "price": 2900,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 161,
+                "name": "Singaporean Rice (Khass)",
+                "price": 2900,
+                "category": "Singaporean Rice"
+            }
+        },
+        {
+            "cat": "Singaporean Rice",
+            "name": "Singaporean Rice Family Pack",
+            "size": "small",
+            "price": 2750,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 162,
+                "name": "Singaporean Rice Family Pack (Small)",
+                "price": 2750,
+                "category": "Singaporean Rice"
+            }
+        },
+        {
+            "cat": "Singaporean Rice",
+            "name": "Singaporean Rice Family Pack",
+            "size": "Large",
+            "price": 4100,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 163,
+                "name": "Singaporean Rice Family Pack (Large)",
+                "price": 4100,
+                "category": "Singaporean Rice"
+            }
+        },
+        {
+            "cat": "Singaporean Rice",
+            "name": "Singaporean Rice Khass",
+            "size": "",
+            "price": 2900,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 161,
+                "name": "Singaporean Rice (Khass)",
+                "price": 2900,
+                "category": "Singaporean Rice"
+            }
+        },
+        {
+            "cat": "Biryani",
+            "name": "Chicken Biryani",
+            "size": "Plain",
+            "price": 250,
+            "status": "Sahi",
+            "score": 0.65,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 164,
+                "name": "Chicken Biryani (Sadi)",
+                "price": 250,
+                "category": "Chicken Biryani"
+            }
+        },
+        {
+            "cat": "Biryani",
+            "name": "Chicken Biryani",
+            "size": "small",
+            "price": 400,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 165,
+                "name": "Chicken Biryani (Small)",
+                "price": 400,
+                "category": "Chicken Biryani"
+            }
+        },
+        {
+            "cat": "Biryani",
+            "name": "Chicken Biryani",
+            "size": "Large",
+            "price": 750,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 166,
+                "name": "Chicken Biryani (Large)",
+                "price": 750,
+                "category": "Chicken Biryani"
+            }
+        },
+        {
+            "cat": "Biryani",
+            "name": "Chicken Biryani",
+            "size": "Platter",
+            "price": 2000,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 167,
+                "name": "Chicken Biryani (Platter)",
+                "price": 2000,
+                "category": "Chicken Biryani"
+            }
+        },
+        {
+            "cat": "Biryani",
+            "name": "Chicken Biryani",
+            "size": "Family Pack",
+            "price": 2270,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 168,
+                "name": "Chicken Biryani Family Pack 6 Pcs",
+                "price": 2270,
+                "category": "Chicken Biryani"
+            }
+        },
+        {
+            "cat": "Biryani",
+            "name": "Chicken biryani Take Away",
+            "size": "",
+            "price": 2270,
+            "status": "Sahi",
+            "score": 1,
+            "how": "haath se",
+            "pos": {
+                "kind": "product",
+                "id": 168,
+                "name": "Chicken Biryani Family Pack 6 Pcs",
+                "price": 2270,
+                "category": "Chicken Biryani"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Chicken Tikka",
+            "size": "Leg",
+            "price": 600,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 110,
+                "name": "Chicken Tikka (Leg)",
+                "price": 600,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Chicken Tikka",
+            "size": "Chest",
+            "price": 650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 109,
+                "name": "Chicken Tikka (Chest)",
+                "price": 650,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Chicken Malai Tikka",
+            "size": "Leg",
+            "price": 700,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 112,
+                "name": "Chicken Malai Tikka (Leg)",
+                "price": 700,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Chicken Malai Tikka",
+            "size": "Chest",
+            "price": 750,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 111,
+                "name": "Chicken Malai Tikka (Chest)",
+                "price": 750,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Chicken Malai Boti",
+            "size": "",
+            "price": 1150,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 113,
+                "name": "Chicken Malai Boti",
+                "price": 1150,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Chicken Boti Boneless",
+            "size": "",
+            "price": 1150,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 114,
+                "name": "Chicken Boti Boneless",
+                "price": 1150,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Chicken Reshmi Kebab",
+            "size": "",
+            "price": 1150,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 115,
+                "name": "Chicken Reshmi Kebab",
+                "price": 1150,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Chicken Shahi Chattakh",
+            "size": "",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 116,
+                "name": "Chicken Shahi Chattakh",
+                "price": 1250,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Chicken Balochi Boti",
+            "size": "",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 117,
+                "name": "Chicken Baluchi Boti",
+                "price": 1250,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Beef Behari Boti",
+            "size": "",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 118,
+                "name": "Beef Behari Boti",
+                "price": 1250,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Beef Seekh Kebab",
+            "size": "",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 119,
+                "name": "Beef Seekh Kebab",
+                "price": 1250,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Beef Dhaga Kebab",
+            "size": "Plain",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 0.9,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 120,
+                "name": "Beef Dhaga Kebab",
+                "price": 1250,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Beef Dhaga Kebab",
+            "size": "Fry",
+            "price": 1350,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 121,
+                "name": "Beef Dhaga Kebab (Fry)",
+                "price": 1350,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Beef Afghani Boti",
+            "size": "",
+            "price": 1550,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 122,
+                "name": "Beef Afghani Boti",
+                "price": 1550,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Bar-B-Que Fish Grill",
+            "size": "Half",
+            "price": 2250,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 123,
+                "name": "Bar B Q Fish Grill (Half)",
+                "price": 2250,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "Barbecue",
+            "name": "Bar-B-Que Fish Grill",
+            "size": "Full",
+            "price": 4500,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 124,
+                "name": "Bar B Q Fish Grill (Full)",
+                "price": 4500,
+                "category": "Bar-B-Que"
+            }
+        },
+        {
+            "cat": "BBQ New Arrival",
+            "name": "Cajun Chicken",
+            "size": "",
+            "price": 850,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 125,
+                "name": "Cajun Chicken (Spicy)",
+                "price": 850,
+                "category": "Bar-B-Que New Arrivals"
+            }
+        },
+        {
+            "cat": "BBQ New Arrival",
+            "name": "Chicken Namkeen Boti",
+            "size": "",
+            "price": 850,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 126,
+                "name": "Chicken Namkeen Boti",
+                "price": 850,
+                "category": "Bar-B-Que New Arrivals"
+            }
+        },
+        {
+            "cat": "BBQ New Arrival",
+            "name": "Adana Kebab",
+            "size": "Chicken",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 127,
+                "name": "Adana Kebab Chicken",
+                "price": 1250,
+                "category": "Bar-B-Que New Arrivals"
+            }
+        },
+        {
+            "cat": "BBQ New Arrival",
+            "name": "Adana Kebab",
+            "size": "Beef",
+            "price": 1450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 129,
+                "name": "Adana Kebab Beef",
+                "price": 1450,
+                "category": "Bar-B-Que New Arrivals"
+            }
+        },
+        {
+            "cat": "BBQ New Arrival",
+            "name": "Tandoori Chicken",
+            "size": "",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 128,
+                "name": "Tandoori Chicken",
+                "price": 1250,
+                "category": "Bar-B-Que New Arrivals"
+            }
+        },
+        {
+            "cat": "BBQ New Arrival",
+            "name": "Moroccan Kebab",
+            "size": "",
+            "price": 1450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 130,
+                "name": "Morocon Kebab",
+                "price": 1450,
+                "category": "Bar-B-Que New Arrivals"
+            }
+        },
+        {
+            "cat": "Platters",
+            "name": "Turkiya kebab",
+            "size": "",
+            "price": 1800,
+            "status": "Sahi",
+            "score": 0.55,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 10,
+                "name": "Turkiya Kebab (1-2 Persons)",
+                "price": 1800,
+                "category": "Deals > Platters"
+            }
+        },
+        {
+            "cat": "Platters",
+            "name": "Grill Chicken Al-Fahom",
+            "size": "Half",
+            "price": 1600,
+            "status": "Qeemat alag",
+            "score": 1,
+            "how": "haath se",
+            "pos": {
+                "kind": "product",
+                "id": 196,
+                "name": "Grill Chicken Al-Faham (Half)",
+                "price": 1650,
+                "category": "Al-Faham Components"
+            }
+        },
+        {
+            "cat": "Platters",
+            "name": "Grill Chicken Al-Fahom",
+            "size": "Full",
+            "price": 3100,
+            "status": "Qeemat alag",
+            "score": 1,
+            "how": "haath se",
+            "pos": {
+                "kind": "product",
+                "id": 207,
+                "name": "Grill Chicken Al-Faham (Full)",
+                "price": 3200,
+                "category": "Al-Faham Components"
+            }
+        },
+        {
+            "cat": "Platters",
+            "name": "Classic Platter 1",
+            "size": "",
+            "price": 5500,
+            "status": "Sahi",
+            "score": 0.75,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 3,
+                "name": "Classic Platter 1 (6 Persons)",
+                "price": 5500,
+                "category": "Deals > Platters"
+            }
+        },
+        {
+            "cat": "Platters",
+            "name": "Classic Platter 2",
+            "size": "",
+            "price": 4400,
+            "status": "Sahi",
+            "score": 0.75,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 4,
+                "name": "Classic Platter 2 (4 Persons)",
+                "price": 4400,
+                "category": "Deals > Platters"
+            }
+        },
+        {
+            "cat": "Platters",
+            "name": "Classic Platter 3",
+            "size": "",
+            "price": 3300,
+            "status": "Sahi",
+            "score": 0.9,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 5,
+                "name": "Classic Platter 3 (3 Persons)",
+                "price": 3300,
+                "category": "Deals > Platters"
+            }
+        },
+        {
+            "cat": "Platters",
+            "name": "Chullu Kebab Platter",
+            "size": "Chicken",
+            "price": 1900,
+            "status": "Sahi",
+            "score": 0.58,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 8,
+                "name": "Chullu Kebab Chicken (1-2 Persons)",
+                "price": 1900,
+                "category": "Deals > Platters"
+            }
+        },
+        {
+            "cat": "Platters",
+            "name": "Chullu Kebab Platter",
+            "size": "Beef",
+            "price": 2000,
+            "status": "Sahi",
+            "score": 0.58,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 7,
+                "name": "Chullu Kebab Beef (1-2 Persons)",
+                "price": 2000,
+                "category": "Deals > Platters"
+            }
+        },
+        {
+            "cat": "Platters",
+            "name": "Balochi Boti Rice",
+            "size": "",
+            "price": 1900,
+            "status": "Sahi",
+            "score": 0.65,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 9,
+                "name": "Balochi Boti Rice (1-2 Persons)",
+                "price": 1900,
+                "category": "Deals > Platters"
+            }
+        },
+        {
+            "cat": "Platters",
+            "name": "Bar-B-Que Platter",
+            "size": "",
+            "price": 5500,
+            "status": "Sahi",
+            "score": 0.55,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 11,
+                "name": "Bar-B-Que Platter (4-5 Persons)",
+                "price": 5500,
+                "category": "Deals > Platters"
+            }
+        },
+        {
+            "cat": "Crispy Fried Chicken",
+            "name": "Crispy Fried Chicken",
+            "size": "2 Pcs",
+            "price": 650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 12,
+                "name": "2 Pcs Crispy Fried Chicken",
+                "price": 650,
+                "category": "Crispy Fried Chicken"
+            }
+        },
+        {
+            "cat": "Crispy Fried Chicken",
+            "name": "Crispy Fried Chicken",
+            "size": "3 Pcs",
+            "price": 900,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 14,
+                "name": "3 Pcs Crispy Fried Chicken",
+                "price": 900,
+                "category": "Crispy Fried Chicken"
+            }
+        },
+        {
+            "cat": "Crispy Fried Chicken",
+            "name": "Crispy Spicy Fried Chicken",
+            "size": "2 Pcs",
+            "price": 700,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 16,
+                "name": "2 Pcs Crispy Fried Chicken (Spicy)",
+                "price": 700,
+                "category": "Crispy Fried Chicken"
+            }
+        },
+        {
+            "cat": "Crispy Fried Chicken",
+            "name": "Crispy Spicy Fried Chicken",
+            "size": "3 Pcs",
+            "price": 950,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 18,
+                "name": "3 Pcs Crispy Fried Chicken (Spicy)",
+                "price": 950,
+                "category": "Crispy Fried Chicken"
+            }
+        },
+        {
+            "cat": "Crispy Fried Chicken",
+            "name": "Crispy Garlic Fried Chicken",
+            "size": "",
+            "price": 700,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 20,
+                "name": "2 Pcs Crispy Fried Chicken (Garlic)",
+                "price": 700,
+                "category": "Crispy Fried Chicken"
+            }
+        },
+        {
+            "cat": "Pocket Friendly Deal",
+            "name": "Pocket Friendly Deal 01",
+            "size": "",
+            "price": 750,
+            "status": "Sahi",
+            "score": 1,
+            "how": "haath se",
+            "pos": {
+                "kind": "combo",
+                "id": 69,
+                "name": "Chicken Crunch Burger + Crispy Fried Chicken (Drum Stick)",
+                "price": 750,
+                "category": "Deals > Pocket Friendly"
+            }
+        },
+        {
+            "cat": "Pocket Friendly Deal",
+            "name": "Pocket Friendly Deal 02",
+            "size": "",
+            "price": 950,
+            "status": "Sahi",
+            "score": 1,
+            "how": "haath se",
+            "pos": {
+                "kind": "combo",
+                "id": 71,
+                "name": "Chicken Zinger Burger + Crispy Fried Chicken (Drum Stick)",
+                "price": 950,
+                "category": "Deals > Pocket Friendly"
+            }
+        },
+        {
+            "cat": "Family Deals",
+            "name": "Family Deal 01",
+            "size": "",
+            "price": 2500,
+            "status": "Sahi",
+            "score": 0.53,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 42,
+                "name": "Family Deal 1 - 9 Pcs Crispy Fried Chicken",
+                "price": 2500,
+                "category": "Deals > Family Deal"
+            }
+        },
+        {
+            "cat": "Family Deals",
+            "name": "Family Deal 02",
+            "size": "",
+            "price": 2750,
+            "status": "Sahi",
+            "score": 1,
+            "how": "haath se",
+            "pos": {
+                "kind": "combo",
+                "id": 43,
+                "name": "Family Deal 2 - 4 Crunch Burger + 4 Pc Chicken + 2 Roll",
+                "price": 2750,
+                "category": "Deals > Family Deal"
+            }
+        },
+        {
+            "cat": "Family Deals",
+            "name": "Family Deal 03",
+            "size": "",
+            "price": 2950,
+            "status": "Sahi",
+            "score": 0.45,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 44,
+                "name": "Family Deal 3 - 2 Zinger + 2 Crunch + 4 Pc Chicken + 2 Roll",
+                "price": 2950,
+                "category": "Deals > Family Deal"
+            }
+        },
+        {
+            "cat": "Family Deals",
+            "name": "Family Deal 04",
+            "size": "",
+            "price": 3250,
+            "status": "Sahi",
+            "score": 0.53,
+            "how": "naam",
+            "pos": {
+                "kind": "combo",
+                "id": 45,
+                "name": "Family Deal 4 - 4 Zinger + 4 Pc Chicken + 2 Roll",
+                "price": 3250,
+                "category": "Deals > Family Deal"
+            }
+        },
+        {
+            "cat": "Kids House",
+            "name": "Nuggets",
+            "size": "",
+            "price": 700,
+            "status": "Sahi",
+            "score": 0.48,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 22,
+                "name": "Nuggets 6 Pcs",
+                "price": 700,
+                "category": "Kids House"
+            }
+        },
+        {
+            "cat": "Kids House",
+            "name": "Chicken Crunch Burger",
+            "size": "",
+            "price": 500,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 28,
+                "name": "Chicken Crunch Burger",
+                "price": 500,
+                "category": "Burgers"
+            }
+        },
+        {
+            "cat": "Kids House",
+            "name": "Hot Shots",
+            "size": "",
+            "price": 650,
+            "status": "Sahi",
+            "score": 0.65,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 24,
+                "name": "Hot Shot 9 Pcs",
+                "price": 650,
+                "category": "Kids House"
+            }
+        },
+        {
+            "cat": "Kids House",
+            "name": "Crispy Fried Chicken",
+            "size": "",
+            "price": 450,
+            "status": "Sahi",
+            "score": 0.75,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 26,
+                "name": "Crispy Fried Chicken 1 Pcs",
+                "price": 450,
+                "category": "Kids House"
+            }
+        },
+        {
+            "cat": "Burgers",
+            "name": "Chicken Crunch Burger",
+            "size": "",
+            "price": 500,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 28,
+                "name": "Chicken Crunch Burger",
+                "price": 500,
+                "category": "Burgers"
+            }
+        },
+        {
+            "cat": "Burgers",
+            "name": "Chicken Zinger Burger",
+            "size": "",
+            "price": 650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 30,
+                "name": "Chicken Zinger Burger",
+                "price": 650,
+                "category": "Burgers"
+            }
+        },
+        {
+            "cat": "Burgers",
+            "name": "Thrill Zinger Burger",
+            "size": "",
+            "price": 700,
+            "status": "Sahi",
+            "score": 0.9,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 32,
+                "name": "Thrill Zinger Burger (Spicy)",
+                "price": 700,
+                "category": "Burgers"
+            }
+        },
+        {
+            "cat": "Burgers",
+            "name": "Chicken Burger",
+            "size": "",
+            "price": 600,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 34,
+                "name": "Chicken Burger",
+                "price": 600,
+                "category": "Burgers"
+            }
+        },
+        {
+            "cat": "Burgers",
+            "name": "Beef Burger",
+            "size": "",
+            "price": 650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 36,
+                "name": "Beef Burger",
+                "price": 650,
+                "category": "Burgers"
+            }
+        },
+        {
+            "cat": "Sandwiches",
+            "name": "Chicken Sandwich",
+            "size": "Plain",
+            "price": 700,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 46,
+                "name": "Chicken Sandwich",
+                "price": 700,
+                "category": "Sandwiches"
+            }
+        },
+        {
+            "cat": "Sandwiches",
+            "name": "Chicken Sandwich",
+            "size": "BBQ",
+            "price": 800,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 50,
+                "name": "Chicken Bar-B-Que Sandwich",
+                "price": 800,
+                "category": "Sandwiches"
+            }
+        },
+        {
+            "cat": "Sandwiches",
+            "name": "Chicken Sandwich",
+            "size": "Malai Boti",
+            "price": 800,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 52,
+                "name": "Chicken Malai Boti Sandwich",
+                "price": 800,
+                "category": "Sandwiches"
+            }
+        },
+        {
+            "cat": "Sandwiches",
+            "name": "Club Sandwich",
+            "size": "",
+            "price": 750,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 48,
+                "name": "Club Sandwich",
+                "price": 750,
+                "category": "Sandwiches"
+            }
+        },
+        {
+            "cat": "Fries",
+            "name": "Plain Fries",
+            "size": "Regular",
+            "price": 350,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 54,
+                "name": "Fries (Regular)",
+                "price": 350,
+                "category": "Fries"
+            }
+        },
+        {
+            "cat": "Fries",
+            "name": "Plain Fries",
+            "size": "Large",
+            "price": 450,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 55,
+                "name": "Fries (Large)",
+                "price": 450,
+                "category": "Fries"
+            }
+        },
+        {
+            "cat": "Fries",
+            "name": "Masala Fries",
+            "size": "Regular",
+            "price": 370,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 56,
+                "name": "Fries Masala (Regular)",
+                "price": 370,
+                "category": "Fries"
+            }
+        },
+        {
+            "cat": "Fries",
+            "name": "Masala Fries",
+            "size": "Large",
+            "price": 470,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 57,
+                "name": "Fries Masala (Large)",
+                "price": 470,
+                "category": "Fries"
+            }
+        },
+        {
+            "cat": "Fries",
+            "name": "Mayo Garlic Fries",
+            "size": "Regular",
+            "price": 450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 58,
+                "name": "Mayo Garlic Fries (Regular)",
+                "price": 450,
+                "category": "Fries"
+            }
+        },
+        {
+            "cat": "Fries",
+            "name": "Mayo Garlic Fries",
+            "size": "Large",
+            "price": 550,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 59,
+                "name": "Mayo Garlic Fries (Large)",
+                "price": 550,
+                "category": "Fries"
+            }
+        },
+        {
+            "cat": "Fries",
+            "name": "Pizza Fries",
+            "size": "small",
+            "price": 800,
+            "status": "Sahi",
+            "score": 0.9,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 62,
+                "name": "Tikka Pizza Fries (Small)",
+                "price": 800,
+                "category": "Pizza Fries"
+            }
+        },
+        {
+            "cat": "Fries",
+            "name": "Pizza Fries",
+            "size": "Large",
+            "price": 1300,
+            "status": "Sahi",
+            "score": 0.9,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 63,
+                "name": "Tikka Pizza Fries (Large)",
+                "price": 1300,
+                "category": "Pizza Fries"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "BBQ Shashlik with Garlic Fried Rice",
+            "size": "",
+            "price": 1650,
+            "status": "Sahi",
+            "score": 0.95,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 68,
+                "name": "Garlic Rice With Shashlik Bar-B-Que",
+                "price": 1650,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Manchurian With Fried Rice",
+            "size": "1 Person",
+            "price": 1350,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 69,
+                "name": "Manchurian With Fried Rice (1 Person)",
+                "price": 1350,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Manchurian With Fried Rice",
+            "size": "2 Person",
+            "price": 2450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 70,
+                "name": "Manchurian With Fried Rice (2 Person)",
+                "price": 2450,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Shashlik With Fried Rice",
+            "size": "1 Person",
+            "price": 1350,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 71,
+                "name": "Shashlik With Fried Rice (1 Person)",
+                "price": 1350,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Shashlik With Fried Rice",
+            "size": "2 Person",
+            "price": 2450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 72,
+                "name": "Shashlik With Fried Rice (2 Person)",
+                "price": 2450,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Schezwan With Fried Rice",
+            "size": "1 Person",
+            "price": 1350,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 73,
+                "name": "Schezwan With Fried Rice (1 Person)",
+                "price": 1350,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Schezwan With Fried Rice",
+            "size": "2 Person",
+            "price": 2450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 74,
+                "name": "Schezwan With Fried Rice (2 Person)",
+                "price": 2450,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Chicken Chilli Dry With Fried Rice",
+            "size": "1 Person",
+            "price": 1350,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 75,
+                "name": "Chicken Chilli Dry With Fried Rice (1 Person)",
+                "price": 1350,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Chicken Chilli Dry With Fried Rice",
+            "size": "2 Person",
+            "price": 2450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 76,
+                "name": "Chicken Chilli Dry With Fried Rice (2 Person)",
+                "price": 2450,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Kung Pao Chicken With Fried Rice",
+            "size": "1 Person",
+            "price": 1350,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 77,
+                "name": "Kung Pao Chicken With Fried Rice (1 Person)",
+                "price": 1350,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Kung Pao Chicken With Fried Rice",
+            "size": "2 Person",
+            "price": 2450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 78,
+                "name": "Kung Pao Chicken With Fried Rice (2 Person)",
+                "price": 2450,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Dragon Chicken With Fried Rice",
+            "size": "small",
+            "price": 1350,
+            "status": "Sahi",
+            "score": 0.72,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 79,
+                "name": "Dragon Chicken With Fried Rice (1 Person)",
+                "price": 1350,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Dragon Chicken With Fried Rice",
+            "size": "Large",
+            "price": 2450,
+            "status": "Sahi",
+            "score": 0.72,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 80,
+                "name": "Dragon Chicken With Fried Rice (2 Person)",
+                "price": 2450,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Beef Chilli Dry With Fried Rice",
+            "size": "1 Person",
+            "price": 1450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 81,
+                "name": "Beef Chilli Dry With Fried Rice (1 Person)",
+                "price": 1450,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Beef Chilli Dry With Fried Rice",
+            "size": "2 Person",
+            "price": 2650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 82,
+                "name": "Beef Chilli Dry With Fried Rice (2 Person)",
+                "price": 2650,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Dragon Beef With Fried Rice",
+            "size": "1 Person",
+            "price": 1450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 83,
+                "name": "Dragon Beef With Fried Rice (1 Person)",
+                "price": 1450,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Dragon Beef With Fried Rice",
+            "size": "2 Person",
+            "price": 2650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 84,
+                "name": "Dragon Beef With Fried Rice (2 Person)",
+                "price": 2650,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Chicken Fried Rice",
+            "size": "1 Person",
+            "price": 1200,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 85,
+                "name": "Chicken Fried Rice (1 Person)",
+                "price": 1200,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Chicken Fried Rice",
+            "size": "2 Person",
+            "price": 1950,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 86,
+                "name": "Chicken Fried Rice (2 Person)",
+                "price": 1950,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Chicken Chow Mein",
+            "size": "1 Person",
+            "price": 1200,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 87,
+                "name": "Chicken Chow Mein (1 Person)",
+                "price": 1200,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Chicken Chow Mein",
+            "size": "2 Person",
+            "price": 1900,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 88,
+                "name": "Chicken Chow Mein (2 Person)",
+                "price": 1900,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Vegetable Chow Mein",
+            "size": "small",
+            "price": 1050,
+            "status": "Sahi",
+            "score": 0.65,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 89,
+                "name": "Vegetable Chow Mein (1 Person)",
+                "price": 1050,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Vegetable Chow Mein",
+            "size": "Large",
+            "price": 2050,
+            "status": "Sahi",
+            "score": 0.65,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 90,
+                "name": "Vegetable Chow Mein (2 Person)",
+                "price": 2050,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Vegetable Fried Rice",
+            "size": "1 Person",
+            "price": 950,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 91,
+                "name": "Vegetable Fried Rice (1 Person)",
+                "price": 950,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Chinese",
+            "name": "Vegetable Fried Rice",
+            "size": "2 Person",
+            "price": 1750,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 92,
+                "name": "Vegetable Fried Rice (2 Person)",
+                "price": 1750,
+                "category": "Chinese"
+            }
+        },
+        {
+            "cat": "Steaks",
+            "name": "Tarragon Steak",
+            "size": "Chicken",
+            "price": 2050,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 93,
+                "name": "Tarragon Steak (Chicken)",
+                "price": 2050,
+                "category": "Continental > Steaks"
+            }
+        },
+        {
+            "cat": "Steaks",
+            "name": "Tarragon Steak",
+            "size": "Beef",
+            "price": 2650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 94,
+                "name": "Tarragon Steak (Beef)",
+                "price": 2650,
+                "category": "Continental > Steaks"
+            }
+        },
+        {
+            "cat": "Steaks",
+            "name": "Mushroom Steak",
+            "size": "Chicken",
+            "price": 2050,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 95,
+                "name": "Mushroom Steak (Chicken)",
+                "price": 2050,
+                "category": "Continental > Steaks"
+            }
+        },
+        {
+            "cat": "Steaks",
+            "name": "Mushroom Steak",
+            "size": "Beef",
+            "price": 2650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 96,
+                "name": "Mushroom Steak (Beef)",
+                "price": 2650,
+                "category": "Continental > Steaks"
+            }
+        },
+        {
+            "cat": "Steaks",
+            "name": "Spicy Mexican Steak",
+            "size": "Chicken",
+            "price": 2050,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 97,
+                "name": "Spicy Mexican Steak (Chicken)",
+                "price": 2050,
+                "category": "Continental > Steaks"
+            }
+        },
+        {
+            "cat": "Steaks",
+            "name": "Spicy Mexican Steak",
+            "size": "Beef",
+            "price": 2650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 98,
+                "name": "Spicy Mexican Steak (Beef)",
+                "price": 2650,
+                "category": "Continental > Steaks"
+            }
+        },
+        {
+            "cat": "Pasta",
+            "name": "Chicken Alfredo Pasta",
+            "size": "1 Person",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 101,
+                "name": "Chicken Alfredo Pasta (1 Person)",
+                "price": 1250,
+                "category": "Continental > Pasta"
+            }
+        },
+        {
+            "cat": "Pasta",
+            "name": "Chicken Alfredo Pasta",
+            "size": "2 Person",
+            "price": 2150,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 102,
+                "name": "Chicken Alfredo Pasta (2 Person)",
+                "price": 2150,
+                "category": "Continental > Pasta"
+            }
+        },
+        {
+            "cat": "Pasta",
+            "name": "Chicken Mac n Cheese Pasta",
+            "size": "1 Person",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 103,
+                "name": "Chicken Mac n Cheese Pasta (1 Person)",
+                "price": 1250,
+                "category": "Continental > Pasta"
+            }
+        },
+        {
+            "cat": "Pasta",
+            "name": "Chicken Mac n Cheese Pasta",
+            "size": "2 Person",
+            "price": 2150,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 104,
+                "name": "Chicken Mac n Cheese Pasta (2 Person)",
+                "price": 2150,
+                "category": "Continental > Pasta"
+            }
+        },
+        {
+            "cat": "Pasta",
+            "name": "Chicken Red Sauce Pasta",
+            "size": "1 Person",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 105,
+                "name": "Chicken Red Sauce Pasta (1 Person)",
+                "price": 1250,
+                "category": "Continental > Pasta"
+            }
+        },
+        {
+            "cat": "Pasta",
+            "name": "Chicken Red Sauce Pasta",
+            "size": "2 Person",
+            "price": 2150,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 106,
+                "name": "Chicken Red Sauce Pasta (2 Person)",
+                "price": 2150,
+                "category": "Continental > Pasta"
+            }
+        },
+        {
+            "cat": "Pasta",
+            "name": "Chicken Parmesan Cheese Pasta",
+            "size": "1 Person",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 107,
+                "name": "Chicken Parmesan Cheese Pasta (1 Person)",
+                "price": 1250,
+                "category": "Continental > Pasta"
+            }
+        },
+        {
+            "cat": "Pasta",
+            "name": "Chicken Parmesan Cheese Pasta",
+            "size": "2 Pcs",
+            "price": 2150,
+            "status": "Sahi",
+            "score": 0.86,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 108,
+                "name": "Chicken Parmesan Cheese Pasta (2 Person)",
+                "price": 2150,
+                "category": "Continental > Pasta"
+            }
+        },
+        {
+            "cat": "Smash Beef Burgers",
+            "name": "American Vintage",
+            "size": "",
+            "price": 1050,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 38,
+                "name": "American Vintage (Beef)",
+                "price": 1050,
+                "category": "Smash Burgers"
+            }
+        },
+        {
+            "cat": "Smash Beef Burgers",
+            "name": "Mushroom Melt",
+            "size": "",
+            "price": 1050,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 39,
+                "name": "Mushroom Melt (Beef)",
+                "price": 1050,
+                "category": "Smash Burgers"
+            }
+        },
+        {
+            "cat": "Smash Beef Burgers",
+            "name": "Smoky Bar-B-Que",
+            "size": "",
+            "price": 1150,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 40,
+                "name": "Smoky Bar-B-Que (Beef)",
+                "price": 1150,
+                "category": "Smash Burgers"
+            }
+        },
+        {
+            "cat": "Smash Beef Burgers",
+            "name": "Crunchy Jalapeno",
+            "size": "",
+            "price": 1550,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 41,
+                "name": "Crunchy Jalapeno (Beef)",
+                "price": 1550,
+                "category": "Smash Burgers"
+            }
+        },
+        {
+            "cat": "Smash Chicken Burgers",
+            "name": "Smoke House",
+            "size": "",
+            "price": 900,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 42,
+                "name": "Smoke House (Chicken)",
+                "price": 900,
+                "category": "Smash Burgers"
+            }
+        },
+        {
+            "cat": "Smash Chicken Burgers",
+            "name": "Grilled Mushroom",
+            "size": "",
+            "price": 900,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 43,
+                "name": "Grilled Mushroom (Chicken)",
+                "price": 900,
+                "category": "Smash Burgers"
+            }
+        },
+        {
+            "cat": "Smash Chicken Burgers",
+            "name": "Cheesy Blaze",
+            "size": "",
+            "price": 1000,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 44,
+                "name": "Cheesy Blaze (Chicken)",
+                "price": 1000,
+                "category": "Smash Burgers"
+            }
+        },
+        {
+            "cat": "Smash Chicken Burgers",
+            "name": "Dual Combo Crispy Burger",
+            "size": "",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 0.95,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 45,
+                "name": "Dual Combo Crispy Burger (Chicken)",
+                "price": 1250,
+                "category": "Smash Burgers"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Ustad Special Roll",
+            "size": "Plain",
+            "price": 550,
+            "status": "Sahi",
+            "score": 0.9,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 155,
+                "name": "Ustad Special Roll",
+                "price": 550,
+                "category": "Rolls > Ustad Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Ustad Special Roll",
+            "size": "Mayo",
+            "price": 600,
+            "status": "Sahi",
+            "score": 0.9,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 156,
+                "name": "Ustad Special Mayo",
+                "price": 600,
+                "category": "Rolls > Ustad Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Ustad Special Roll",
+            "size": "Chipotle",
+            "price": 600,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 157,
+                "name": "Ustad Special Chipotle Roll",
+                "price": 600,
+                "category": "Rolls > Ustad Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Beef Boti Rolls",
+            "size": "Plain",
+            "price": 370,
+            "status": "Sahi",
+            "score": 0.75,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 134,
+                "name": "Beef Boti Chatni Roll",
+                "price": 370,
+                "category": "Rolls > Beef Boti Rolls"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Beef Boti Rolls",
+            "size": "Mayo",
+            "price": 400,
+            "status": "Sahi",
+            "score": 0.95,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 135,
+                "name": "Beef Boti Garlic Mayo Roll",
+                "price": 400,
+                "category": "Rolls > Beef Boti Rolls"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Beef Boti Rolls",
+            "size": "Cheese",
+            "price": 410,
+            "status": "Sahi",
+            "score": 0.95,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 136,
+                "name": "Beef Boti Mayo Cheese Roll",
+                "price": 410,
+                "category": "Rolls > Beef Boti Rolls"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Beef Kebab Rolls",
+            "size": "Plain",
+            "price": 370,
+            "status": "Sahi",
+            "score": 0.65,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 137,
+                "name": "Beef Seekh Kebab Chatni Roll",
+                "price": 370,
+                "category": "Rolls > Beef Kebab Rolls"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Beef Kebab Rolls",
+            "size": "Mayo",
+            "price": 400,
+            "status": "Sahi",
+            "score": 0.95,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 138,
+                "name": "Beef Kebab Garlic Mayo Roll",
+                "price": 400,
+                "category": "Rolls > Beef Kebab Rolls"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Beef Kebab Rolls",
+            "size": "Cheese",
+            "price": 410,
+            "status": "Sahi",
+            "score": 0.95,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 139,
+                "name": "Beef Kebab Mayo Cheese Roll",
+                "price": 410,
+                "category": "Rolls > Beef Kebab Rolls"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Balochi Roll",
+            "size": "Plain",
+            "price": 400,
+            "status": "Sahi",
+            "score": 0.9,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 140,
+                "name": "Chicken Balochi Roll",
+                "price": 400,
+                "category": "Rolls > Chicken Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Balochi Roll",
+            "size": "Mayo",
+            "price": 440,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 141,
+                "name": "Chicken Balochi Mayo Roll",
+                "price": 440,
+                "category": "Rolls > Chicken Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Balochi Roll",
+            "size": "Cheese",
+            "price": 450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 142,
+                "name": "Chicken Balochi Cheese Roll",
+                "price": 450,
+                "category": "Rolls > Chicken Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Chatni Roll",
+            "size": "Plain",
+            "price": 370,
+            "status": "Sahi",
+            "score": 0.9,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 143,
+                "name": "Chicken Chatni Roll",
+                "price": 370,
+                "category": "Rolls > Chicken Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Chatni Roll",
+            "size": "Mayo",
+            "price": 400,
+            "status": "Sahi",
+            "score": 1,
+            "how": "haath se",
+            "pos": {
+                "kind": "product",
+                "id": 144,
+                "name": "Chicken Garlic Mayo Roll",
+                "price": 400,
+                "category": "Rolls > Chicken Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Chatni Roll",
+            "size": "Cheese",
+            "price": 410,
+            "status": "Sahi",
+            "score": 1,
+            "how": "haath se",
+            "pos": {
+                "kind": "product",
+                "id": 145,
+                "name": "Chicken Mayo Cheese Roll",
+                "price": 410,
+                "category": "Rolls > Chicken Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Crispy Rolls",
+            "size": "Plain",
+            "price": 500,
+            "status": "Sahi",
+            "score": 0.75,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 146,
+                "name": "Chicken Crispy Chatni Roll",
+                "price": 500,
+                "category": "Rolls > Chicken Crispy Rolls"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Crispy Rolls",
+            "size": "Mayo",
+            "price": 500,
+            "status": "Sahi",
+            "score": 0.95,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 147,
+                "name": "Chicken Crispy Mayo Garlic Roll",
+                "price": 500,
+                "category": "Rolls > Chicken Crispy Rolls"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Crispy Rolls",
+            "size": "Cheese",
+            "price": 510,
+            "status": "Sahi",
+            "score": 0.95,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 148,
+                "name": "Chicken Crispy Mayo Cheese Roll",
+                "price": 510,
+                "category": "Rolls > Chicken Crispy Rolls"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Malai Boti Roll",
+            "size": "Plain",
+            "price": 390,
+            "status": "Sahi",
+            "score": 0.65,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 149,
+                "name": "Chicken Malai Chatni Roll",
+                "price": 390,
+                "category": "Rolls > Chicken Malai Boti Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Malai Boti Roll",
+            "size": "Mayo",
+            "price": 420,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 150,
+                "name": "Chicken Malai Garlic Mayo Roll",
+                "price": 420,
+                "category": "Rolls > Chicken Malai Boti Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Malai Boti Roll",
+            "size": "Cheese",
+            "price": 440,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 151,
+                "name": "Chicken Malai Mayo Cheese Roll",
+                "price": 440,
+                "category": "Rolls > Chicken Malai Boti Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Reshmi Kebab Roll",
+            "size": "Plain",
+            "price": 380,
+            "status": "Sahi",
+            "score": 0.82,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 152,
+                "name": "Chicken Reshmi Kebab Chatni Roll",
+                "price": 380,
+                "category": "Rolls > Chicken Reshmi Kebab Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Reshmi Kebab Roll",
+            "size": "Mayo",
+            "price": 400,
+            "status": "Sahi",
+            "score": 0.98,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 153,
+                "name": "Chicken Reshmi Kebab Garlic Mayo Roll",
+                "price": 400,
+                "category": "Rolls > Chicken Reshmi Kebab Roll"
+            }
+        },
+        {
+            "cat": "Rolls",
+            "name": "Chicken Reshmi Kebab Roll",
+            "size": "Cheese",
+            "price": 420,
+            "status": "Sahi",
+            "score": 0.98,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 154,
+                "name": "Chicken Reshmi Kebab Mayo Cheese Roll",
+                "price": 420,
+                "category": "Rolls > Chicken Reshmi Kebab Roll"
+            }
+        },
+        {
+            "cat": "Meals",
+            "name": "Meal 01",
+            "size": "",
+            "price": 1700,
+            "status": "Sahi",
+            "score": 1,
+            "how": "haath se",
+            "pos": {
+                "kind": "combo",
+                "id": 73,
+                "name": "5 Pcs Crispy Fried Chicken + Fries",
+                "price": 1700,
+                "category": "Deals > Meal Deal"
+            }
+        },
+        {
+            "cat": "Meals",
+            "name": "Meal 02",
+            "size": "",
+            "price": 2000,
+            "status": "Sahi",
+            "score": 1,
+            "how": "haath se",
+            "pos": {
+                "kind": "combo",
+                "id": 74,
+                "name": "2 Chicken Zinger Burger + 2 Pcs Crispy Fried Chicken + Fries",
+                "price": 2000,
+                "category": "Deals > Meal Deal"
+            }
+        },
+        {
+            "cat": "Beverages",
+            "name": "Soft Drink",
+            "size": "500 ml",
+            "price": 140,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 176,
+                "name": "Soft Drink (500 ml)",
+                "price": 140,
+                "category": "Beverages"
+            }
+        },
+        {
+            "cat": "Beverages",
+            "name": "Soft Drink",
+            "size": "1.5 ltr",
+            "price": 220,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 178,
+                "name": "Soft Drink (1.5 Ltr)",
+                "price": 220,
+                "category": "Beverages"
+            }
+        },
+        {
+            "cat": "Beverages",
+            "name": "Soft Drink",
+            "size": "Jumbo",
+            "price": 320,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 179,
+                "name": "Soft Drink (Jumbo)",
+                "price": 320,
+                "category": "Beverages"
+            }
+        },
+        {
+            "cat": "Beverages",
+            "name": "Soft Drink",
+            "size": "500 ml(Sting)",
+            "price": 150,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 177,
+                "name": "Soft Drink Sting (500 ml)",
+                "price": 150,
+                "category": "Beverages"
+            }
+        },
+        {
+            "cat": "Beverages",
+            "name": "Mineral Water",
+            "size": "small",
+            "price": 80,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 170,
+                "name": "Mineral Water (Small)",
+                "price": 80,
+                "category": "Beverages"
+            }
+        },
+        {
+            "cat": "Beverages",
+            "name": "Mineral Water",
+            "size": "Large",
+            "price": 160,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 171,
+                "name": "Mineral Water (Large)",
+                "price": 160,
+                "category": "Beverages"
+            }
+        },
+        {
+            "cat": "Beverages",
+            "name": "Soft Drink",
+            "size": "Can",
+            "price": 160,
+            "status": "Sahi",
+            "score": 0.9,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 173,
+                "name": "Soft Drink Sting (Can)",
+                "price": 160,
+                "category": "Beverages"
+            }
+        },
+        {
+            "cat": "Beverages",
+            "name": "Soft Drink",
+            "size": "300 ML",
+            "price": 100,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 174,
+                "name": "Soft Drink (300 ml)",
+                "price": 100,
+                "category": "Beverages"
+            }
+        },
+        {
+            "cat": "Beverages",
+            "name": "Soft Drink",
+            "size": "345 ML",
+            "price": 120,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 175,
+                "name": "Soft Drink (345 ml)",
+                "price": 120,
+                "category": "Beverages"
+            }
+        },
+        {
+            "cat": "Beverages",
+            "name": "Sting Can",
+            "size": "",
+            "price": 180,
+            "status": "Qeemat alag",
+            "score": 0.5,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 173,
+                "name": "Soft Drink Sting (Can)",
+                "price": 160,
+                "category": "Beverages"
+            }
+        },
+        {
+            "cat": "Raita & Salad",
+            "name": "Raita",
+            "size": "",
+            "price": 100,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 181,
+                "name": "Raita",
+                "price": 100,
+                "category": "Raita"
+            }
+        },
+        {
+            "cat": "Raita & Salad",
+            "name": "Fresh Salad",
+            "size": "",
+            "price": 200,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 182,
+                "name": "Fresh Salad",
+                "price": 200,
+                "category": "Extras > BBQ Sauce"
+            }
+        },
+        {
+            "cat": "Extras",
+            "name": "Singaporean Sauce",
+            "size": "",
+            "price": 100,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 183,
+                "name": "Singaporean Sauce",
+                "price": 100,
+                "category": "Extras > Singaporean Sauce"
+            }
+        },
+        {
+            "cat": "Extras",
+            "name": "Butter",
+            "size": "",
+            "price": 200,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 184,
+                "name": "Butter",
+                "price": 200,
+                "category": "Extras"
+            }
+        },
+        {
+            "cat": "Extras",
+            "name": "Garlic Fried",
+            "size": "",
+            "price": 100,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 185,
+                "name": "Garlic Fried",
+                "price": 100,
+                "category": "Extras"
+            }
+        },
+        {
+            "cat": "Extras",
+            "name": "Cheese",
+            "size": "",
+            "price": 100,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 186,
+                "name": "Cheese",
+                "price": 100,
+                "category": "Extras"
+            }
+        },
+        {
+            "cat": "Extras",
+            "name": "Bun",
+            "size": "",
+            "price": 80,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 187,
+                "name": "Bun",
+                "price": 80,
+                "category": "Extras"
+            }
+        },
+        {
+            "cat": "Extras",
+            "name": "Dinner Roll",
+            "size": "",
+            "price": 80,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 188,
+                "name": "Dinner Roll",
+                "price": 80,
+                "category": "Extras"
+            }
+        },
+        {
+            "cat": "Extras",
+            "name": "Coleslaw",
+            "size": "",
+            "price": 80,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 189,
+                "name": "Coleslaw",
+                "price": 80,
+                "category": "Extras"
+            }
+        },
+        {
+            "cat": "Extras",
+            "name": "Mayo Sauce",
+            "size": "",
+            "price": 80,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 190,
+                "name": "Mayo Sauce",
+                "price": 80,
+                "category": "Extras > Fastfood Sauce"
+            }
+        },
+        {
+            "cat": "Extras",
+            "name": "Paratha",
+            "size": "small",
+            "price": 80,
+            "status": "Sahi",
+            "score": 0.48,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 131,
+                "name": "Parhata Small",
+                "price": 80,
+                "category": "Paratha"
+            }
+        },
+        {
+            "cat": "Extras",
+            "name": "Paratha",
+            "size": "Large",
+            "price": 150,
+            "status": "Sahi",
+            "score": 0.48,
+            "how": "naam",
+            "pos": {
+                "kind": "product",
+                "id": 132,
+                "name": "Parhata Large",
+                "price": 150,
+                "category": "Paratha"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 01",
+            "size": "Regular",
+            "price": 600,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 47,
+                "name": "2 Pcs Crispy Fried Chicken (Midnight)",
+                "price": 600,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 01",
+            "size": "Combo",
+            "price": 800,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 48,
+                "name": "2 Pcs Crispy Fried Chicken + Fries + Drink (Midnight)",
+                "price": 800,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 02",
+            "size": "Regular",
+            "price": 650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 49,
+                "name": "2 Pcs Crispy Fried Chicken (Spicy) (Midnight)",
+                "price": 650,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 02",
+            "size": "Combo",
+            "price": 850,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 50,
+                "name": "2 Pcs Crispy Fried Chicken (Spicy) + Fries + Drink (Midnight)",
+                "price": 850,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 03",
+            "size": "Regular",
+            "price": 700,
+            "status": "Sahi",
+            "score": 1.04,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 51,
+                "name": "Chicken Crunch Burger + Crispy Fried Chicken (Drum Stick) (Midnight)",
+                "price": 700,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 03",
+            "size": "Combo",
+            "price": 900,
+            "status": "Sahi",
+            "score": 1.06,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 52,
+                "name": "Chicken Crunch Burger + Crispy Fried Chicken (Drum Stick) + Fries + Drink (Midnight)",
+                "price": 900,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 04",
+            "size": "Regular",
+            "price": 900,
+            "status": "Sahi",
+            "score": 1.04,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 53,
+                "name": "Chicken Zinger Burger + Crispy Fried Chicken (Drum Stick) (Midnight)",
+                "price": 900,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 04",
+            "size": "Combo",
+            "price": 1050,
+            "status": "Sahi",
+            "score": 1.06,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 54,
+                "name": "Chicken Zinger Burger + Crispy Fried Chicken (Drum Stick) + Fries + Drink (Midnight)",
+                "price": 1050,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 05",
+            "size": "Regular",
+            "price": 450,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 55,
+                "name": "Chicken Crunch Burger (Midnight)",
+                "price": 450,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 05",
+            "size": "Combo",
+            "price": 650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 56,
+                "name": "Chicken Crunch Burger + Fries + Drink (Midnight)",
+                "price": 650,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 06",
+            "size": "Regular",
+            "price": 600,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 57,
+                "name": "Chicken Zinger Burger (Midnight)",
+                "price": 600,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 06",
+            "size": "Combo",
+            "price": 800,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 58,
+                "name": "Chicken Zinger Burger + Fries + Drink (Midnight)",
+                "price": 800,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 07",
+            "size": "Regular",
+            "price": 650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 59,
+                "name": "Thrill Zinger Burger (Spicy) (Midnight)",
+                "price": 650,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 07",
+            "size": "Combo",
+            "price": 850,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 60,
+                "name": "Thrill Zinger Burger (Spicy) + Fries + Drink (Midnight)",
+                "price": 850,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 08",
+            "size": "Regular",
+            "price": 600,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 61,
+                "name": "Beef Burger (Midnight)",
+                "price": 600,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 08",
+            "size": "Combo",
+            "price": 800,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 62,
+                "name": "Beef Burger + Fries + Drink (Midnight)",
+                "price": 800,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 09",
+            "size": "Regular",
+            "price": 700,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 63,
+                "name": "Chicken Club Sandwich (Midnight)",
+                "price": 700,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 09",
+            "size": "Combo",
+            "price": 900,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 64,
+                "name": "Chicken Club Sandwich + Fries + Drink (Midnight)",
+                "price": 900,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 10",
+            "size": "Regular",
+            "price": 750,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 65,
+                "name": "Bar-B-Que Sandwich (Midnight)",
+                "price": 750,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 10",
+            "size": "Combo",
+            "price": 950,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 66,
+                "name": "Bar-B-Que Sandwich + Fries + Drink (Midnight)",
+                "price": 950,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 11",
+            "size": "",
+            "price": 950,
+            "status": "Sahi",
+            "score": 0.71,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 32,
+                "name": "Tikka Pizza Fries + 2 Drinks (Midnight)",
+                "price": 950,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 12",
+            "size": "",
+            "price": 550,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 67,
+                "name": "Singaporean Rice (Regular) (Midnight)",
+                "price": 550,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 13",
+            "size": "",
+            "price": 2900,
+            "status": "Sahi",
+            "score": 1.01,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 34,
+                "name": "Singaporean Rice Khaas + 2 Drinks (Midnight)",
+                "price": 2900,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 14",
+            "size": "",
+            "price": 650,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 68,
+                "name": "Chicken Malai Tikka (Chest) (Midnight)",
+                "price": 650,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 15",
+            "size": "",
+            "price": 1150,
+            "status": "Sahi",
+            "score": 0.98,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 35,
+                "name": "Chicken Malai Boti + Drink (Midnight)",
+                "price": 1150,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 16",
+            "size": "",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 0.98,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 36,
+                "name": "Chicken Shahi Chattakh + Drink (Midnight)",
+                "price": 1250,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 17",
+            "size": "",
+            "price": 1550,
+            "status": "POS me nahi mila",
+            "score": 0.33,
+            "how": "andar ki cheez",
+            "pos": null
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 18",
+            "size": "",
+            "price": 1250,
+            "status": "Sahi",
+            "score": 0.98,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 37,
+                "name": "Chicken Balochi Boti + Drink (Midnight)",
+                "price": 1250,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 19",
+            "size": "Chicken Resham Kebab",
+            "price": 1150,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 38,
+                "name": "Chicken Resham Kebab + Drink (Midnight)",
+                "price": 1150,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 19",
+            "size": "Beef Seekh Kebab",
+            "price": 1350,
+            "status": "Sahi",
+            "score": 1.15,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 39,
+                "name": "Beef Seekh Kebab + Drink (Midnight)",
+                "price": 1350,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 20",
+            "size": "",
+            "price": 1350,
+            "status": "Sahi",
+            "score": 0.98,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 40,
+                "name": "Manchurian With Fried Rice + Drink (Midnight)",
+                "price": 1350,
+                "category": "Deals > Midnight"
+            }
+        },
+        {
+            "cat": "Midnight Deals",
+            "name": "Midnight Deal 21",
+            "size": "",
+            "price": 1200,
+            "status": "Sahi",
+            "score": 0.98,
+            "how": "andar ki cheez",
+            "pos": {
+                "kind": "combo",
+                "id": 41,
+                "name": "Chicken Chow Mein + Drink (Midnight)",
+                "price": 1200,
+                "category": "Deals > Midnight"
+            }
+        }
+    ],
+    "pos_only": [
+        {
+            "id": 172,
+            "pos": 1,
+            "kind": "product",
+            "name": "Cold Drink (Can)",
+            "sell": 1,
+            "price": 160,
+            "parent": null,
+            "status": "active",
+            "category": "Beverages",
+            "kindrole": "service"
+        },
+        {
+            "id": 200,
+            "pos": 1,
+            "kind": "product",
+            "name": "Soft Drink Sting (345 ml)",
+            "sell": 1,
+            "price": 130,
+            "parent": null,
+            "status": "active",
+            "category": "Beverages",
+            "kindrole": "service"
+        },
+        {
+            "id": 37,
+            "pos": 1,
+            "kind": "product",
+            "name": "Beef Burger (With Fries)",
+            "sell": 1,
+            "price": 800,
+            "parent": null,
+            "status": "active",
+            "category": "Burgers",
+            "kindrole": "service"
+        },
+        {
+            "id": 35,
+            "pos": 1,
+            "kind": "product",
+            "name": "Chicken Burger (With Fries)",
+            "sell": 1,
+            "price": 750,
+            "parent": null,
+            "status": "active",
+            "category": "Burgers",
+            "kindrole": "service"
+        },
+        {
+            "id": 29,
+            "pos": 1,
+            "kind": "product",
+            "name": "Chicken Crunch Burger (With Fries)",
+            "sell": 1,
+            "price": 650,
+            "parent": null,
+            "status": "active",
+            "category": "Burgers",
+            "kindrole": "service"
+        },
+        {
+            "id": 31,
+            "pos": 1,
+            "kind": "product",
+            "name": "Chicken Zinger Burger (With Fries)",
+            "sell": 1,
+            "price": 800,
+            "parent": null,
+            "status": "active",
+            "category": "Burgers",
+            "kindrole": "service"
+        },
+        {
+            "id": 33,
+            "pos": 1,
+            "kind": "product",
+            "name": "Thrill Zinger Burger (Spicy, With Fries)",
+            "sell": 1,
+            "price": 850,
+            "parent": null,
+            "status": "active",
+            "category": "Burgers",
+            "kindrole": "service"
+        },
+        {
+            "id": 169,
+            "pos": 1,
+            "kind": "product",
+            "name": "Extra Chicken Pcs",
+            "sell": 1,
+            "price": 200,
+            "parent": null,
+            "status": "active",
+            "category": "Chicken Biryani",
+            "kindrole": "service"
+        },
+        {
+            "id": 21,
+            "pos": 1,
+            "kind": "product",
+            "name": "2 Pcs Crispy Fried Chicken (Garlic, With Fries)",
+            "sell": 1,
+            "price": 850,
+            "parent": null,
+            "status": "active",
+            "category": "Crispy Fried Chicken",
+            "kindrole": "service"
+        },
+        {
+            "id": 17,
+            "pos": 1,
+            "kind": "product",
+            "name": "2 Pcs Crispy Fried Chicken (Spicy, With Fries)",
+            "sell": 1,
+            "price": 850,
+            "parent": null,
+            "status": "active",
+            "category": "Crispy Fried Chicken",
+            "kindrole": "service"
+        },
+        {
+            "id": 13,
+            "pos": 1,
+            "kind": "product",
+            "name": "2 Pcs Crispy Fried Chicken (With Fries)",
+            "sell": 1,
+            "price": 800,
+            "parent": null,
+            "status": "active",
+            "category": "Crispy Fried Chicken",
+            "kindrole": "service"
+        },
+        {
+            "id": 19,
+            "pos": 1,
+            "kind": "product",
+            "name": "3 Pcs Crispy Fried Chicken (Spicy, With Fries)",
+            "sell": 1,
+            "price": 1100,
+            "parent": null,
+            "status": "active",
+            "category": "Crispy Fried Chicken",
+            "kindrole": "service"
+        },
+        {
+            "id": 15,
+            "pos": 1,
+            "kind": "product",
+            "name": "3 Pcs Crispy Fried Chicken (With Fries)",
+            "sell": 1,
+            "price": 1050,
+            "parent": null,
+            "status": "active",
+            "category": "Crispy Fried Chicken",
+            "kindrole": "service"
+        },
+        {
+            "id": 203,
+            "pos": 1,
+            "kind": "product",
+            "name": "Crispy Fried Chicken (Drum Stick)",
+            "sell": 1,
+            "price": 450,
+            "parent": null,
+            "status": "active",
+            "category": "Crispy Fried Chicken",
+            "kindrole": "service"
+        },
+        {
+            "id": 75,
+            "pos": 1,
+            "kind": "combo",
+            "name": "Garlic Rice With Shashlik Bar-B-Que",
+            "sell": 1,
+            "price": 1650,
+            "parent": "Deals",
+            "status": "active",
+            "category": "Chinese Deals",
+            "kindrole": "combo",
+            "components": "1.000 Garlic Rice + 1.000 Shashlik Bar-B-Que"
+        },
+        {
+            "id": 46,
+            "pos": 1,
+            "kind": "combo",
+            "name": "Exclusive Deal 1 - 2 Zinger + 2 Singaporean Rice + 4 Drinks",
+            "sell": 1,
+            "price": 2500,
+            "parent": "Deals",
+            "status": "active",
+            "category": "Exclusive Deals",
+            "kindrole": "combo",
+            "components": "2.000 Chicken Zinger Burger + 2.000 Singaporean Rice (Regular) + 4.000 Soft Drink (300 ml)"
+        },
+        {
+            "id": 33,
+            "pos": 1,
+            "kind": "combo",
+            "name": "Miami Supreme Pizza Fries + 2 Drinks (Midnight)",
+            "sell": 1,
+            "price": 950,
+            "parent": "Deals",
+            "status": "active",
+            "category": "Midnight",
+            "kindrole": "combo",
+            "components": "1.000 Miami Supreme (Small) + 2.000 Regular Drink"
+        },
+        {
+            "id": 70,
+            "pos": 1,
+            "kind": "combo",
+            "name": "Chicken Crunch Burger + Crispy Fried Chicken (Drum Stick) + Fries",
+            "sell": 1,
+            "price": 900,
+            "parent": "Deals",
+            "status": "active",
+            "category": "Pocket Friendly",
+            "kindrole": "combo",
+            "components": "1.000 Chicken Crunch Burger + 1.000 Crispy Fried Chicken (Drum Stick) + 1.000 Fries (Regular)"
+        },
+        {
+            "id": 72,
+            "pos": 1,
+            "kind": "combo",
+            "name": "Chicken Zinger Burger + Crispy Fried Chicken (Drum Stick) + Fries",
+            "sell": 1,
+            "price": 1100,
+            "parent": "Deals",
+            "status": "active",
+            "category": "Pocket Friendly",
+            "kindrole": "combo",
+            "components": "1.000 Chicken Zinger Burger + 1.000 Crispy Fried Chicken (Drum Stick) + 1.000 Fries (Regular)"
+        },
+        {
+            "id": 6,
+            "pos": 1,
+            "kind": "combo",
+            "name": "Singaporean Rice Khass (2-3 Persons)",
+            "sell": 1,
+            "price": 2900,
+            "parent": "Deals",
+            "status": "active",
+            "category": "Singaporean Platter",
+            "kindrole": "combo",
+            "components": "1.000 Rice of Khaas + 1.000 Chicken Baluchi Boti + 1.000 Chicken Shahi Chattakh + 1.000 Chicken Boti Boneless"
+        },
+        {
+            "id": 201,
+            "pos": 1,
+            "kind": "product",
+            "name": "Cream Cocktail Cup",
+            "sell": 1,
+            "price": 200,
+            "parent": null,
+            "status": "active",
+            "category": "Dessert",
+            "kindrole": "service"
+        },
+        {
+            "id": 202,
+            "pos": 1,
+            "kind": "product",
+            "name": "Cream Cocktail Half Pack",
+            "sell": 1,
+            "price": 600,
+            "parent": null,
+            "status": "active",
+            "category": "Dessert",
+            "kindrole": "service"
+        },
+        {
+            "id": 204,
+            "pos": 1,
+            "kind": "product",
+            "name": "Plain Rice",
+            "sell": 1,
+            "price": 170,
+            "parent": null,
+            "status": "active",
+            "category": "Extras",
+            "kindrole": "service"
+        },
+        {
+            "id": 212,
+            "pos": 1,
+            "kind": "product",
+            "name": "Platter Rice",
+            "sell": 1,
+            "price": 350,
+            "parent": null,
+            "status": "active",
+            "category": "Extras",
+            "kindrole": "service"
+        },
+        {
+            "id": 192,
+            "pos": 1,
+            "kind": "product",
+            "name": "Sizzling Charge",
+            "sell": 1,
+            "price": 200,
+            "parent": null,
+            "status": "active",
+            "category": "Extras",
+            "kindrole": "service"
+        },
+        {
+            "id": 211,
+            "pos": 1,
+            "kind": "product",
+            "name": "BBQ Sauce",
+            "sell": 1,
+            "price": 80,
+            "parent": "Extras",
+            "status": "active",
+            "category": "BBQ Sauce",
+            "kindrole": "service"
+        },
+        {
+            "id": 193,
+            "pos": 1,
+            "kind": "product",
+            "name": "Extra Skewer",
+            "sell": 1,
+            "price": 625,
+            "parent": "Extras",
+            "status": "active",
+            "category": "BBQ Sauce",
+            "kindrole": "service"
+        },
+        {
+            "id": 191,
+            "pos": 1,
+            "kind": "product",
+            "name": "Extra Sauce",
+            "sell": 1,
+            "price": 100,
+            "parent": "Extras",
+            "status": "active",
+            "category": "Fastfood Sauce",
+            "kindrole": "service"
+        },
+        {
+            "id": 27,
+            "pos": 1,
+            "kind": "product",
+            "name": "Crispy Fried Chicken 1 Pcs (With Fries)",
+            "sell": 1,
+            "price": 600,
+            "parent": null,
+            "status": "active",
+            "category": "Kids House",
+            "kindrole": "service"
+        },
+        {
+            "id": 25,
+            "pos": 1,
+            "kind": "product",
+            "name": "Hot Shot 9 Pcs (With Fries)",
+            "sell": 1,
+            "price": 800,
+            "parent": null,
+            "status": "active",
+            "category": "Kids House",
+            "kindrole": "service"
+        },
+        {
+            "id": 23,
+            "pos": 1,
+            "kind": "product",
+            "name": "Nuggets 6 Pcs (With Fries)",
+            "sell": 1,
+            "price": 850,
+            "parent": null,
+            "status": "active",
+            "category": "Kids House",
+            "kindrole": "service"
+        },
+        {
+            "id": 133,
+            "pos": 1,
+            "kind": "product",
+            "name": "Pori Paratha",
+            "sell": 1,
+            "price": 80,
+            "parent": null,
+            "status": "active",
+            "category": "Paratha",
+            "kindrole": "service"
+        },
+        {
+            "id": 61,
+            "pos": 1,
+            "kind": "product",
+            "name": "Miami Supreme (Large)",
+            "sell": 1,
+            "price": 1300,
+            "parent": null,
+            "status": "active",
+            "category": "Pizza Fries",
+            "kindrole": "service"
+        },
+        {
+            "id": 60,
+            "pos": 1,
+            "kind": "product",
+            "name": "Miami Supreme (Small)",
+            "sell": 1,
+            "price": 800,
+            "parent": null,
+            "status": "active",
+            "category": "Pizza Fries",
+            "kindrole": "service"
+        },
+        {
+            "id": 67,
+            "pos": 1,
+            "kind": "product",
+            "name": "Pepperoni Pizza Fries (Large)",
+            "sell": 1,
+            "price": 1300,
+            "parent": null,
+            "status": "active",
+            "category": "Pizza Fries",
+            "kindrole": "service"
+        },
+        {
+            "id": 66,
+            "pos": 1,
+            "kind": "product",
+            "name": "Pepperoni Pizza Fries (Small)",
+            "sell": 1,
+            "price": 800,
+            "parent": null,
+            "status": "active",
+            "category": "Pizza Fries",
+            "kindrole": "service"
+        },
+        {
+            "id": 65,
+            "pos": 1,
+            "kind": "product",
+            "name": "Supreme Pizza Fries (Large)",
+            "sell": 1,
+            "price": 1300,
+            "parent": null,
+            "status": "active",
+            "category": "Pizza Fries",
+            "kindrole": "service"
+        },
+        {
+            "id": 64,
+            "pos": 1,
+            "kind": "product",
+            "name": "Supreme Pizza Fries (Small)",
+            "sell": 1,
+            "price": 800,
+            "parent": null,
+            "status": "active",
+            "category": "Pizza Fries",
+            "kindrole": "service"
+        },
+        {
+            "id": 51,
+            "pos": 1,
+            "kind": "product",
+            "name": "Chicken Bar-B-Que Sandwich (With Fries)",
+            "sell": 1,
+            "price": 950,
+            "parent": null,
+            "status": "active",
+            "category": "Sandwiches",
+            "kindrole": "service"
+        },
+        {
+            "id": 53,
+            "pos": 1,
+            "kind": "product",
+            "name": "Chicken Malai Boti Sandwich (With Fries)",
+            "sell": 1,
+            "price": 950,
+            "parent": null,
+            "status": "active",
+            "category": "Sandwiches",
+            "kindrole": "service"
+        },
+        {
+            "id": 47,
+            "pos": 1,
+            "kind": "product",
+            "name": "Chicken Sandwich (With Fries)",
+            "sell": 1,
+            "price": 850,
+            "parent": null,
+            "status": "active",
+            "category": "Sandwiches",
+            "kindrole": "service"
+        },
+        {
+            "id": 49,
+            "pos": 1,
+            "kind": "product",
+            "name": "Club Sandwich (With Fries)",
+            "sell": 1,
+            "price": 900,
+            "parent": null,
+            "status": "active",
+            "category": "Sandwiches",
+            "kindrole": "service"
+        }
+    ]
+}

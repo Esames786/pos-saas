@@ -1,0 +1,1566 @@
+{
+    "files": [
+        {
+            "file": "1767956787-ALFREDO PASTA_1_11zon.webp",
+            "kb": 1141,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Alfredo Pasta (Pasta )"
+            ]
+        },
+        {
+            "file": "1767957062-BEEF BEHARI BOTI_7_11zon.webp",
+            "kb": 1452,
+            "size": "800x800",
+            "used_by": [
+                "Product: Beef Behari Boti (Barbecue)"
+            ]
+        },
+        {
+            "file": "1767957079-BEEF BURGER_8_11zon.webp",
+            "kb": 1040,
+            "size": "800x800",
+            "used_by": [
+                "Product: Beef Burger (Burgers)"
+            ]
+        },
+        {
+            "file": "1767957108-BEEF CHILLI DRY WITH FRIED RICE_9_11zon.webp",
+            "kb": 975,
+            "size": "800x800",
+            "used_by": [
+                "Product: Beef Chilli Dry With Fried Rice (Chinese )"
+            ]
+        },
+        {
+            "file": "1767957126-BEEF DHAGA KEBAB FRY_10_11zon.webp",
+            "kb": 1486,
+            "size": "800x800",
+            "used_by": [
+                "Product: Beef Dhaga Kebab (Barbecue)"
+            ]
+        },
+        {
+            "file": "1767957146-BEEF SEEKH KEBAB_11_11zon.webp",
+            "kb": 1286,
+            "size": "800x800",
+            "used_by": [
+                "Product: Beef Seekh Kebab (Barbecue)"
+            ]
+        },
+        {
+            "file": "1767957331-CHCIKEN CRISPY ROLL_17_11zon.webp",
+            "kb": 1036,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Crispy Rolls (Rolls)"
+            ]
+        },
+        {
+            "file": "1767957364-CHCIKEN HOTSHOT_19_11zon.webp",
+            "kb": 971,
+            "size": "800x800",
+            "used_by": [
+                "Product: Hot Shots (Kids House )"
+            ]
+        },
+        {
+            "file": "1767957430-CHCIKEN ZINGER BURGER_22_11zon.webp",
+            "kb": 1053,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Zinger Burger (Burgers)"
+            ]
+        },
+        {
+            "file": "1767957568-CHICKEN NUGGETS_28_11zon.webp",
+            "kb": 972,
+            "size": "800x800",
+            "used_by": [
+                "Product: Nuggets (Kids House )"
+            ]
+        },
+        {
+            "file": "1767957594-CHICKEN ROLL_29_11zon.webp",
+            "kb": 1372,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Chatni Roll (Rolls)"
+            ]
+        },
+        {
+            "file": "1767957785-CRISPY FRIED CHICKEN_33_11zon.webp",
+            "kb": 1246,
+            "size": "800x800",
+            "used_by": [
+                "Product: Crispy Fried Chicken (Crispy Fried Chicken )"
+            ]
+        },
+        {
+            "file": "1767957861-DRAGON BEEF_36_11zon.webp",
+            "kb": 1271,
+            "size": "800x800",
+            "used_by": [
+                "Product: Dragon Beef With Fried Rice (Chinese )"
+            ]
+        },
+        {
+            "file": "1767957894-DRUM STICKS_38_11zon.webp",
+            "kb": 1139,
+            "size": "800x800",
+            "used_by": [
+                "Product: Crispy Fried Chicken (Kids House )"
+            ]
+        },
+        {
+            "file": "1767957934-FISH GRILL_39_11zon.webp",
+            "kb": 1011,
+            "size": "800x800",
+            "used_by": [
+                "Product: Bar-B-Que Fish Grill (Barbecue)"
+            ]
+        },
+        {
+            "file": "1767961631-Chicken Biryani_9_11zon.webp",
+            "kb": 712,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Biryani (Biryani )"
+            ]
+        },
+        {
+            "file": "1767961642-Chicken Biryani_9_11zon.webp",
+            "kb": 712,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken biryani Take Away (Biryani )"
+            ]
+        },
+        {
+            "file": "1767961662-Chicken Tikka_24_11zon.webp",
+            "kb": 821,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Tikka (Barbecue)"
+            ]
+        },
+        {
+            "file": "1767961676-Chicken Malai Tikka_17_11zon.webp",
+            "kb": 665,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Malai Tikka (Barbecue)"
+            ]
+        },
+        {
+            "file": "1767961733-Chicken Reshmi Kebab_22_11zon.webp",
+            "kb": 504,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Reshmi Kebab (Barbecue)"
+            ]
+        },
+        {
+            "file": "1767961759-Beef Afghani Boti_2_11zon.webp",
+            "kb": 555,
+            "size": "800x800",
+            "used_by": [
+                "Product: Beef Afghani Boti (Barbecue)"
+            ]
+        },
+        {
+            "file": "1767961795-Cajun Chicken_7_11zon.webp",
+            "kb": 734,
+            "size": "800x800",
+            "used_by": [
+                "Product: Cajun Chicken (BBQ New Arrival )"
+            ]
+        },
+        {
+            "file": "1767961808-Chicken Namkeen Boti_18_11zon.webp",
+            "kb": 517,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Namkeen Boti (BBQ New Arrival )"
+            ]
+        },
+        {
+            "file": "1767961823-Tandoori Chicken_62_11zon.webp",
+            "kb": 571,
+            "size": "800x800",
+            "used_by": [
+                "Product: Tandoori Chicken (BBQ New Arrival )"
+            ]
+        },
+        {
+            "file": "1767961846-Moroccan Kebab_46_11zon.webp",
+            "kb": 1174,
+            "size": "800x800",
+            "used_by": [
+                "Product: Moroccan Kebab (BBQ New Arrival )"
+            ]
+        },
+        {
+            "file": "1767961944-Chullu Kebab Platter_25_11zon.webp",
+            "kb": 701,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chullu Kebab Platter (Platters)"
+            ]
+        },
+        {
+            "file": "1767961974-Crispy Spicy Fried Chicken_28_11zon.webp",
+            "kb": 481,
+            "size": "800x800",
+            "used_by": [
+                "Product: Crispy Spicy Fried Chicken (Crispy Fried Chicken )"
+            ]
+        },
+        {
+            "file": "1767961990-Crispy Garlic Fried Chicken_27_11zon.webp",
+            "kb": 587,
+            "size": "800x800",
+            "used_by": [
+                "Product: Crispy Garlic Fried Chicken (Crispy Fried Chicken )"
+            ]
+        },
+        {
+            "file": "1767962051-Plain Fries_51_11zon.webp",
+            "kb": 545,
+            "size": "800x800",
+            "used_by": [
+                "Product: Plain Fries (Fries)"
+            ]
+        },
+        {
+            "file": "1767962068-Masala Fries_43_11zon.webp",
+            "kb": 616,
+            "size": "800x800",
+            "used_by": [
+                "Product: Masala Fries (Fries)"
+            ]
+        },
+        {
+            "file": "1767962086-Mayo Garlic Fries_44_11zon.webp",
+            "kb": 480,
+            "size": "800x800",
+            "used_by": [
+                "Product: Mayo Garlic Fries (Fries)"
+            ]
+        },
+        {
+            "file": "1767962102-Pizza Fries_50_11zon.webp",
+            "kb": 760,
+            "size": "800x800",
+            "used_by": [
+                "Product: Pizza Fries (Fries)"
+            ]
+        },
+        {
+            "file": "1767962240-Chicken Mac n Cheese Pasta_14_11zon.webp",
+            "kb": 673,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Mac n Cheese Pasta (Pasta )"
+            ]
+        },
+        {
+            "file": "1767962328-Water.webp",
+            "kb": 311,
+            "size": "800x800",
+            "used_by": [
+                "Product: Mineral Water (Beverages)"
+            ]
+        },
+        {
+            "file": "1767962361-Gemini_Generated_Image_ctfbmvctfbmvctfb_11zon.webp",
+            "kb": 554,
+            "size": "800x800",
+            "used_by": [
+                "Product: Soft Drink (Beverages)"
+            ]
+        },
+        {
+            "file": "1767962381-Sting Can_60_11zon.webp",
+            "kb": 268,
+            "size": "800x800",
+            "used_by": [
+                "Product: Sting Can (Beverages)"
+            ]
+        },
+        {
+            "file": "1767962405-Fresh Salad_36_11zon.webp",
+            "kb": 549,
+            "size": "800x800",
+            "used_by": [
+                "Product: Fresh Salad (Raita & Salad )"
+            ]
+        },
+        {
+            "file": "1767962452-Singaporean Sauce_57_11zon.webp",
+            "kb": 713,
+            "size": "800x800",
+            "used_by": [
+                "Product: Singaporean Sauce (Extras)"
+            ]
+        },
+        {
+            "file": "1767962463-Butter_6_11zon.webp",
+            "kb": 547,
+            "size": "800x800",
+            "used_by": [
+                "Product: Butter (Extras)"
+            ]
+        },
+        {
+            "file": "1767962474-Bun_5_11zon.webp",
+            "kb": 575,
+            "size": "800x800",
+            "used_by": [
+                "Product: Bun (Extras)"
+            ]
+        },
+        {
+            "file": "1767962486-Dinner Roll_30_11zon.webp",
+            "kb": 566,
+            "size": "800x800",
+            "used_by": [
+                "Product: Dinner Roll (Extras)"
+            ]
+        },
+        {
+            "file": "1767962497-Coleslaw_26_11zon.webp",
+            "kb": 572,
+            "size": "800x800",
+            "used_by": [
+                "Product: Coleslaw (Extras)"
+            ]
+        },
+        {
+            "file": "1767962510-Mayo Sauce_45_11zon.webp",
+            "kb": 917,
+            "size": "800x800",
+            "used_by": [
+                "Product: Mayo Sauce (Extras)"
+            ]
+        },
+        {
+            "file": "1767962521-Paratha_49_11zon.webp",
+            "kb": 609,
+            "size": "800x800",
+            "used_by": [
+                "Product: Paratha (Extras)"
+            ]
+        },
+        {
+            "file": "1767962530-Beef Boti Rolls_3_11zon.webp",
+            "kb": 566,
+            "size": "800x800",
+            "used_by": [
+                "Product: Beef Boti Rolls (Rolls)"
+            ]
+        },
+        {
+            "file": "1767962540-Beef Kebab Rolls_4_11zon.webp",
+            "kb": 615,
+            "size": "800x800",
+            "used_by": [
+                "Product: Beef Kebab Rolls (Rolls)"
+            ]
+        },
+        {
+            "file": "1767962550-Chicken Balochi Roll_8_11zon.webp",
+            "kb": 564,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Balochi Roll (Rolls)"
+            ]
+        },
+        {
+            "file": "1767962560-Chicken Malai Boti Roll_15_11zon.webp",
+            "kb": 625,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Malai Boti Roll (Rolls)"
+            ]
+        },
+        {
+            "file": "1767962571-Chicken Reshmi Kebab Roll_21_11zon.webp",
+            "kb": 639,
+            "size": "800x800",
+            "used_by": [
+                "Product: Chicken Reshmi Kebab Roll (Rolls)"
+            ]
+        },
+        {
+            "file": "1767962817-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Pocket Friendly Deal 01 (Pocket Friendly Deal )"
+            ]
+        },
+        {
+            "file": "1767962821-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Pocket Friendly Deal 02 (Pocket Friendly Deal )"
+            ]
+        },
+        {
+            "file": "1767962832-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Family Deal 01 (Family Deals )"
+            ]
+        },
+        {
+            "file": "1767962836-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Family Deal 02 (Family Deals )"
+            ]
+        },
+        {
+            "file": "1767962839-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Family Deal 03 (Family Deals )"
+            ]
+        },
+        {
+            "file": "1767962843-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Family Deal 04 (Family Deals )"
+            ]
+        },
+        {
+            "file": "1767962874-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 1 Serve 1 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962881-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 3 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962886-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 5 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962890-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 7 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962894-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 9 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962898-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 11 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962902-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 13 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962907-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 15 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962911-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 17 Serve 4 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962915-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 19 Serve 4 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962919-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 2 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962922-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 4 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962927-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 6 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962930-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 8 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962935-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 10 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962939-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 12 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962943-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 14 Serve 2 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962947-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 16 Serve 4 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962951-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 18 Serve 4 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962955-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Deal 20 Serve 6 (Deals)"
+            ]
+        },
+        {
+            "file": "1767962966-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Garlic Fried (Extras)"
+            ]
+        },
+        {
+            "file": "1767962970-Logo_11zon -3-.webp",
+            "kb": 377,
+            "size": "800x800",
+            "used_by": [
+                "Product: Cheese (Extras)"
+            ]
+        },
+        {
+            "file": "1767967320-419223039-702837458649085-5638199729379820459-n (1).jpg",
+            "kb": 37,
+            "size": "400x400",
+            "used_by": []
+        },
+        {
+            "file": "1767967320-419223039-702837458649085-5638199729379820459-n.jpg",
+            "kb": 37,
+            "size": "400x400",
+            "used_by": []
+        },
+        {
+            "file": "1768035578-23.png",
+            "kb": 43,
+            "size": "1400x400",
+            "used_by": [
+                "Category banner: Meals"
+            ]
+        },
+        {
+            "file": "1768899987-chicken-burger.jpeg",
+            "kb": 148,
+            "size": "818x837",
+            "used_by": [
+                "Product: Chicken Burger (Burgers)"
+            ]
+        },
+        {
+            "file": "1768900800-Mushroom-Steak.jpg",
+            "kb": 139,
+            "size": "756x756",
+            "used_by": [
+                "Product: Mushroom Steak (Steaks)"
+            ]
+        },
+        {
+            "file": "1768901405-chicken-boti.jpg",
+            "kb": 208,
+            "size": "756x756",
+            "used_by": [
+                "Product: Chicken Boti Boneless (Barbecue)"
+            ]
+        },
+        {
+            "file": "1768901835-Mexican-Steak.jpg",
+            "kb": 162,
+            "size": "756x756",
+            "used_by": [
+                "Product: Spicy Mexican Steak (Steaks)"
+            ]
+        },
+        {
+            "file": "1768902012-Red-Sauce-Pasta.jpg",
+            "kb": 143,
+            "size": "756x756",
+            "used_by": [
+                "Product: Chicken Red Sauce Pasta (Pasta )"
+            ]
+        },
+        {
+            "file": "1768902134-smoke-house.jpg",
+            "kb": 124,
+            "size": "756x756",
+            "used_by": [
+                "Product: Smoke House (Smash Chicken Burgers)"
+            ]
+        },
+        {
+            "file": "1768902356-RAITA.jpg",
+            "kb": 7,
+            "size": "157x157",
+            "used_by": [
+                "Product: Raita (Raita & Salad )"
+            ]
+        },
+        {
+            "file": "1773349636-Singaporean-Khass.jpg",
+            "kb": 54,
+            "size": "600x600",
+            "used_by": [
+                "Product: Singaporean Rice Khass (Singaporean Rice )"
+            ]
+        },
+        {
+            "file": "1773349676-Singaporean.jpg",
+            "kb": 48,
+            "size": "600x600",
+            "used_by": [
+                "Product: Singaporean Rice (Singaporean Rice )"
+            ]
+        },
+        {
+            "file": "1773349786-Singaporean.jpg",
+            "kb": 48,
+            "size": "600x600",
+            "used_by": [
+                "Product: Singaporean Rice Family Pack (Singaporean Rice )"
+            ]
+        },
+        {
+            "file": "1773349943-Bar-B-Q-Platter.jpg",
+            "kb": 62,
+            "size": "600x600",
+            "used_by": [
+                "Product: Bar-B-Que Platter (Platters)"
+            ]
+        },
+        {
+            "file": "1773349982-Classic-Platter.jpg",
+            "kb": 64,
+            "size": "600x600",
+            "used_by": [
+                "Product: Classic Platter 3 (Platters)"
+            ]
+        },
+        {
+            "file": "1773350017-Classic-Platter.jpg",
+            "kb": 64,
+            "size": "600x600",
+            "used_by": [
+                "Product: Classic Platter 2 (Platters)"
+            ]
+        },
+        {
+            "file": "1773350041-Classic-Platter.jpg",
+            "kb": 64,
+            "size": "600x600",
+            "used_by": [
+                "Product: Classic Platter 1 (Platters)"
+            ]
+        },
+        {
+            "file": "1773350071-Al-Faham.jpg",
+            "kb": 67,
+            "size": "600x600",
+            "used_by": [
+                "Product: Grill Chicken Al-Fahom (Platters)"
+            ]
+        },
+        {
+            "file": "1773350118-BaluchiBotiRice.jpg",
+            "kb": 647,
+            "size": "800x800",
+            "used_by": [
+                "Product: Balochi Boti Rice (Platters)"
+            ]
+        },
+        {
+            "file": "1773351709-DualCombo.jpg",
+            "kb": 549,
+            "size": "800x800",
+            "used_by": [
+                "Product: Dual Combo Crispy Burger (Smash Chicken Burgers)"
+            ]
+        },
+        {
+            "file": "1773912192-Beef-Smash-Burger.png",
+            "kb": 172,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Smash Beef Burgers"
+            ]
+        },
+        {
+            "file": "1773912256-Rolls.png",
+            "kb": 137,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Rolls"
+            ]
+        },
+        {
+            "file": "1773912351-Extras.png",
+            "kb": 135,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Extras"
+            ]
+        },
+        {
+            "file": "1773912386-Salad-n-raita.png",
+            "kb": 156,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Raita & Salad"
+            ]
+        },
+        {
+            "file": "1773912415-Beverages.png",
+            "kb": 144,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Beverages"
+            ]
+        },
+        {
+            "file": "1773912447-Chicken-Smash-Burger.png",
+            "kb": 172,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Smash Chicken Burgers"
+            ]
+        },
+        {
+            "file": "1773912478-Pasta.png",
+            "kb": 133,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Pasta"
+            ]
+        },
+        {
+            "file": "1773912502-Steaks.png",
+            "kb": 134,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Steaks"
+            ]
+        },
+        {
+            "file": "1773912653-Chinese.png",
+            "kb": 137,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Chinese"
+            ]
+        },
+        {
+            "file": "1773912679-Fries.png",
+            "kb": 131,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Fries"
+            ]
+        },
+        {
+            "file": "1773912711-Sandwiches.png",
+            "kb": 145,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Sandwiches"
+            ]
+        },
+        {
+            "file": "1773912729-Burger.png",
+            "kb": 139,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Burgers"
+            ]
+        },
+        {
+            "file": "1773912761-Kids-n-House.png",
+            "kb": 149,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Kids House"
+            ]
+        },
+        {
+            "file": "1773912814-Family-Deal.png",
+            "kb": 157,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Family Deals"
+            ]
+        },
+        {
+            "file": "1773912845-Deals.png",
+            "kb": 135,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Deals"
+            ]
+        },
+        {
+            "file": "1773912909-Pocket-Friendly-Deal.png",
+            "kb": 176,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Pocket Friendly Deal"
+            ]
+        },
+        {
+            "file": "1773912966-Platter.png",
+            "kb": 141,
+            "size": "3234x870",
+            "used_by": []
+        },
+        {
+            "file": "1773913016-BBQ-new-arrival.png",
+            "kb": 175,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: BBQ New Arrival"
+            ]
+        },
+        {
+            "file": "1773913033-BBQ.png",
+            "kb": 152,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Barbecue"
+            ]
+        },
+        {
+            "file": "1773913053-Biryani.png",
+            "kb": 141,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Biryani"
+            ]
+        },
+        {
+            "file": "1773913080-Singaporean-Rice.png",
+            "kb": 162,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Singaporean Rice"
+            ]
+        },
+        {
+            "file": "1773913103-Soup.png",
+            "kb": 134,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Soup"
+            ]
+        },
+        {
+            "file": "1773913132-Starters.png",
+            "kb": 137,
+            "size": "3234x870",
+            "used_by": [
+                "Category banner: Starter"
+            ]
+        },
+        {
+            "file": "1773913445-Banner-1.png",
+            "kb": 5264,
+            "size": "5120x1600",
+            "used_by": []
+        },
+        {
+            "file": "1773913464-Banner-2.png",
+            "kb": 7023,
+            "size": "5120x1600",
+            "used_by": []
+        },
+        {
+            "file": "1773913478-Banner-3.png",
+            "kb": 6976,
+            "size": "5120x1600",
+            "used_by": []
+        },
+        {
+            "file": "1773913560-Banner-4.png",
+            "kb": 848,
+            "size": "5120x1600",
+            "used_by": []
+        },
+        {
+            "file": "1774455189-Dhaka-Fish.jpg",
+            "kb": 38,
+            "size": "600x600",
+            "used_by": [
+                "Product: Dhaka Fish (Starter)"
+            ]
+        },
+        {
+            "file": "1774455230-Fish---Chips.jpg",
+            "kb": 38,
+            "size": "600x600",
+            "used_by": [
+                "Product: Fish And Chips (Starter)"
+            ]
+        },
+        {
+            "file": "1774455273-Korean-Chicken.jpg",
+            "kb": 43,
+            "size": "600x600",
+            "used_by": [
+                "Product: Korean Chicken (Starter)"
+            ]
+        },
+        {
+            "file": "1774455316-Supreme-Nachos--1-.jpg",
+            "kb": 48,
+            "size": "600x600",
+            "used_by": [
+                "Product: Supreme Nachos (Starter)"
+            ]
+        },
+        {
+            "file": "1774455360-Dhaka-Chicken--2-.jpg",
+            "kb": 41,
+            "size": "600x600",
+            "used_by": [
+                "Product: Dhaka Chicken (Starter)"
+            ]
+        },
+        {
+            "file": "1774455397-Dynamite-Chicken-.jpg",
+            "kb": 36,
+            "size": "600x600",
+            "used_by": [
+                "Product: Dynamite Chicken (Starter)"
+            ]
+        },
+        {
+            "file": "1774455424-Chicken-Hot-Wings.jpg",
+            "kb": 42,
+            "size": "600x600",
+            "used_by": [
+                "Product: Chicken Hot Wings (Starter)"
+            ]
+        },
+        {
+            "file": "1774652091-BBQ-Shashlik-with-Garlic-Fried-Rice.jpg",
+            "kb": 43,
+            "size": "600x600",
+            "used_by": [
+                "Product: BBQ Shashlik with Garlic Fried Rice (Chinese )"
+            ]
+        },
+        {
+            "file": "1774652159-Vegetable-Fried-Rice.jpg",
+            "kb": 41,
+            "size": "600x600",
+            "used_by": [
+                "Product: Vegetable Fried Rice (Chinese )"
+            ]
+        },
+        {
+            "file": "1774652189-Vegetable-Chowmein.jpg",
+            "kb": 43,
+            "size": "600x600",
+            "used_by": [
+                "Product: Vegetable Chow Mein (Chinese )"
+            ]
+        },
+        {
+            "file": "1774652214-Chicken-Chowmein.jpg",
+            "kb": 40,
+            "size": "600x600",
+            "used_by": [
+                "Product: Chicken Chow Mein (Chinese )"
+            ]
+        },
+        {
+            "file": "1774652239-Chicken-Fried-Rice.jpg",
+            "kb": 41,
+            "size": "600x600",
+            "used_by": [
+                "Product: Chicken Fried Rice (Chinese )"
+            ]
+        },
+        {
+            "file": "1774652267-Dragon-Chicken-with-Fried-Rice.jpg",
+            "kb": 44,
+            "size": "600x600",
+            "used_by": [
+                "Product: Dragon Chicken With Fried Rice (Chinese )"
+            ]
+        },
+        {
+            "file": "1774652292-Kung-Pao-Chicken-with-Fried-Rice.jpg",
+            "kb": 42,
+            "size": "600x600",
+            "used_by": [
+                "Product: Kung Pao Chicken With Fried Rice (Chinese )"
+            ]
+        },
+        {
+            "file": "1774652313-Chicken-Chilli-Dry-with-Fried-Rice.jpg",
+            "kb": 41,
+            "size": "600x600",
+            "used_by": [
+                "Product: Chicken Chilli Dry With Fried Rice (Chinese )"
+            ]
+        },
+        {
+            "file": "1774652341-Schezwan-with-Fried-Rice.jpg",
+            "kb": 48,
+            "size": "600x600",
+            "used_by": [
+                "Product: Schezwan With Fried Rice (Chinese )"
+            ]
+        },
+        {
+            "file": "1774652369-Shashlik-with-Fried-Rice.jpg",
+            "kb": 44,
+            "size": "600x600",
+            "used_by": [
+                "Product: Shashlik With Fried Rice (Chinese )"
+            ]
+        },
+        {
+            "file": "1774652398-Manchurian-with-Fried-Rice.jpg",
+            "kb": 41,
+            "size": "600x600",
+            "used_by": [
+                "Product: Manchurian With Fried Rice (Chinese )"
+            ]
+        },
+        {
+            "file": "1774654495-Chicken-Adana-Kebab.jpg",
+            "kb": 53,
+            "size": "600x600",
+            "used_by": [
+                "Product: Adana Kebab (BBQ New Arrival )"
+            ]
+        },
+        {
+            "file": "1774654567-Chicken-Malai-Boti.jpg",
+            "kb": 53,
+            "size": "600x600",
+            "used_by": [
+                "Product: Chicken Malai Boti (Barbecue)"
+            ]
+        },
+        {
+            "file": "1774654798-Tarragon-Steak.jpg",
+            "kb": 38,
+            "size": "600x600",
+            "used_by": [
+                "Product: Tarragon Steak (Steaks)"
+            ]
+        },
+        {
+            "file": "1774654868-Chicken-Parmesan-Cheese-Pasta.jpg",
+            "kb": 31,
+            "size": "600x600",
+            "used_by": [
+                "Product: Chicken Parmesan Cheese Pasta (Pasta )"
+            ]
+        },
+        {
+            "file": "1774656480-Thrill-Zinger-Burger.jpg",
+            "kb": 33,
+            "size": "600x600",
+            "used_by": [
+                "Product: Thrill Zinger Burger (Burgers)"
+            ]
+        },
+        {
+            "file": "1774656500-Crunch-Burger.jpg",
+            "kb": 33,
+            "size": "600x600",
+            "used_by": [
+                "Product: Chicken Crunch Burger (Kids House )"
+            ]
+        },
+        {
+            "file": "1774656531-Chicken-Shahi-Chattakh.jpg",
+            "kb": 42,
+            "size": "600x600",
+            "used_by": [
+                "Product: Chicken Shahi Chattakh (Barbecue)"
+            ]
+        },
+        {
+            "file": "1774887564-Crunchy-Jalapeno.jpg",
+            "kb": 42,
+            "size": "600x600",
+            "used_by": [
+                "Product: Crunchy Jalapeno (Smash Beef Burgers)"
+            ]
+        },
+        {
+            "file": "1774887593-Smoky-Bar-B-Que.jpg",
+            "kb": 41,
+            "size": "600x600",
+            "used_by": [
+                "Product: Smoky Bar-B-Que (Smash Beef Burgers)"
+            ]
+        },
+        {
+            "file": "1774887626-Mushroom-Melt.jpg",
+            "kb": 34,
+            "size": "600x600",
+            "used_by": [
+                "Product: Mushroom Melt (Smash Beef Burgers)"
+            ]
+        },
+        {
+            "file": "1774887651-American-Vintage--2-.jpg",
+            "kb": 46,
+            "size": "600x600",
+            "used_by": [
+                "Product: American Vintage (Smash Beef Burgers)"
+            ]
+        },
+        {
+            "file": "1774887913-Grilled-Mushroom.jpg",
+            "kb": 38,
+            "size": "600x600",
+            "used_by": [
+                "Product: Grilled Mushroom (Smash Chicken Burgers)"
+            ]
+        },
+        {
+            "file": "1774887969-Cheesy-Blaze--1-.jpg",
+            "kb": 37,
+            "size": "600x600",
+            "used_by": [
+                "Product: Cheesy Blaze (Smash Chicken Burgers)"
+            ]
+        },
+        {
+            "file": "1774895360-Sandwich.jpg",
+            "kb": 31,
+            "size": "600x600",
+            "used_by": [
+                "Product: Club Sandwich (Sandwiches)"
+            ]
+        },
+        {
+            "file": "1774895397-Sandwich.jpg",
+            "kb": 31,
+            "size": "600x600",
+            "used_by": [
+                "Product: Chicken Sandwich (Sandwiches)"
+            ]
+        },
+        {
+            "file": "1775253396-CrispyFriedchicken.png",
+            "kb": 152,
+            "size": "1500x287",
+            "used_by": [
+                "Category banner: Crispy Fried Chicken"
+            ]
+        },
+        {
+            "file": "1776680867-1767967320-419223039-702837458649085-563819972937.jpg",
+            "kb": 398,
+            "size": "800x800",
+            "used_by": []
+        },
+        {
+            "file": "1776684554-1767967320-419223039-702837458649085-563819972937.jpg",
+            "kb": 398,
+            "size": "800x800",
+            "used_by": []
+        },
+        {
+            "file": "1781377145-Turkiya-Kebab.jpg",
+            "kb": 60,
+            "size": "600x600",
+            "used_by": [
+                "Product: Turkiya kebab (Platters)"
+            ]
+        },
+        {
+            "file": "Fire-icon.svg",
+            "kb": 2,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "_favicon0r830bS6pJ3yLtBN.png",
+            "kb": 1,
+            "size": "32x32",
+            "used_by": []
+        },
+        {
+            "file": "image (1).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (10).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (11).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (12).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (13).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (14).svg",
+            "kb": 1,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (15).svg",
+            "kb": 1,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (16).svg",
+            "kb": 1,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (17).svg",
+            "kb": 1,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (18).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (19).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (2).svg",
+            "kb": 1,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (20).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (3).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (4).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (5).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (6).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (7).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (8).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image (9).svg",
+            "kb": 0,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "image.svg",
+            "kb": 1,
+            "size": "-",
+            "used_by": []
+        },
+        {
+            "file": "indolj-new-red.png",
+            "kb": 13,
+            "size": "1000x479",
+            "used_by": []
+        },
+        {
+            "file": "placholde-general2.png",
+            "kb": 6,
+            "size": "509x509",
+            "used_by": []
+        }
+    ],
+    "products_without_downloaded_photo": [
+        [
+            "Chicken Corn Soup",
+            "Soup ",
+            "1767957318-CHCIKEN CORN SOUP_16_11zon.webp"
+        ],
+        [
+            "Hot N Sour Soup",
+            "Soup ",
+            "1768649578-hot-n-sour-soup.jpg"
+        ],
+        [
+            "Chicken Balochi Boti",
+            "Barbecue",
+            "no photo (placeholder)"
+        ],
+        [
+            "Meal 01",
+            "Meals",
+            "1767962825-Logo_11zon (3).webp"
+        ],
+        [
+            "Meal 02",
+            "Meals",
+            "1767962828-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 01",
+            "Midnight Deals",
+            "1767963001-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 02",
+            "Midnight Deals",
+            "1767963011-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 03",
+            "Midnight Deals",
+            "1767963016-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 04",
+            "Midnight Deals",
+            "1767963021-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 05",
+            "Midnight Deals",
+            "1767963026-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 06",
+            "Midnight Deals",
+            "1767963032-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 07",
+            "Midnight Deals",
+            "1767963040-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 08",
+            "Midnight Deals",
+            "1767963046-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 09",
+            "Midnight Deals",
+            "1767963050-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 10",
+            "Midnight Deals",
+            "1767963056-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 11",
+            "Midnight Deals",
+            "1767963061-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 12",
+            "Midnight Deals",
+            "1767963157-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 13",
+            "Midnight Deals",
+            "1767963070-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 14",
+            "Midnight Deals",
+            "1767963077-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 15",
+            "Midnight Deals",
+            "1767963083-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 16",
+            "Midnight Deals",
+            "1767963089-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 17",
+            "Midnight Deals",
+            "1767963095-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 18",
+            "Midnight Deals",
+            "1767963101-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 19",
+            "Midnight Deals",
+            "1767963106-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 20",
+            "Midnight Deals",
+            "1767963133-Logo_11zon (3).webp"
+        ],
+        [
+            "Midnight Deal 21",
+            "Midnight Deals",
+            "1767963139-Logo_11zon (3).webp"
+        ],
+        [
+            "Ustad Special Roll",
+            "Rolls",
+            "1776680867-1767967320-419223039-702837458649085-5638199729379820459-n.jpg"
+        ],
+        [
+            "Soft Drink",
+            "Beverages",
+            "1776684554-1767967320-419223039-702837458649085-5638199729379820459-n.jpg"
+        ]
+    ]
+}

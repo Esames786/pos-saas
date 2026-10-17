@@ -132,7 +132,7 @@ class CategoryController extends Controller
             $slug = $slugBase . '-' . $counter++;
         }
 
-        return [
+        $fields = [
             'parent_id'  => $data['parent_id'] ?? null,
             'branch_id'  => $data['branch_id'],
             'code'       => $data['code'] ? strtoupper($data['code']) : null,
@@ -142,5 +142,28 @@ class CategoryController extends Controller
             'is_active'  => !empty($data['is_active']),
             'cogs_account_id' => $data['cogs_account_id'] ?? null,
         ];
+
+        // ONLINE-ORDERING-1: "Website" hissa sirf Online Ordering wale plan par form par aata hai. Na
+        // aaye to website ke khaane nahi chhute; POS ke khaanon par kabhi asar nahi.
+        if ($request->has('_website')) {
+            $web = $request->validate([
+                'website_name'         => ['nullable', 'string', 'max:120'],
+                'website_sort_order'   => ['nullable', 'integer', 'min:0'],
+                'website_visible_from' => ['nullable', 'date_format:H:i', 'required_with:website_visible_to'],
+                'website_visible_to'   => ['nullable', 'date_format:H:i', 'required_with:website_visible_from'],
+            ], [
+                'website_visible_from.required_with' => 'Enter both times, or leave both empty to show it all day.',
+                'website_visible_to.required_with'   => 'Enter both times, or leave both empty to show it all day.',
+            ]);
+            $fields += [
+                'show_on_website'      => $request->boolean('show_on_website'),
+                'website_name'         => trim((string) ($web['website_name'] ?? '')) ?: null,
+                'website_sort_order'   => $web['website_sort_order'] ?? null,
+                'website_visible_from' => $web['website_visible_from'] ?? null,
+                'website_visible_to'   => $web['website_visible_to'] ?? null,
+            ];
+        }
+
+        return $fields;
     }
 }

@@ -121,6 +121,27 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
     Route::get('/r/{token}/pdf', [\App\Http\Controllers\ReportShareController::class, 'pdf'])
         ->where('token', '[A-Za-z0-9]{16,64}')->name('tenant.report.share.pdf');
 
+    // ONLINE-ORDERING-1: customer ki ordering website — public, login ke BAHAR (customer ka koi
+    // account nahi). Naam `tenant.` se shuru nahi, taake ye staff ki permission list me na aaye.
+    // Plan me module na ho to controller 404 deta hai.
+    Route::get('/order', [\App\Http\Controllers\Website\StorefrontController::class, 'home'])->name('website.order');
+    Route::get('/order/menu.json', [\App\Http\Controllers\Website\StorefrontController::class, 'menu'])
+        ->middleware('throttle:60,1')->name('website.order.menu');
+    Route::get('/order/locate', [\App\Http\Controllers\Website\StorefrontController::class, 'locate'])
+        ->middleware('throttle:20,1')->name('website.order.locate');
+    Route::get('/order/manifest.webmanifest', [\App\Http\Controllers\Website\StorefrontController::class, 'manifest'])->name('website.order.manifest');
+    Route::post('/order/checkout', [\App\Http\Controllers\Website\StorefrontController::class, 'checkout'])
+        ->middleware('throttle:10,1')->name('website.order.checkout');
+    Route::get('/order/status/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'status'])
+        ->where('token', '[A-Za-z0-9]{40}')->name('website.order.status');
+    Route::get('/order/confirm/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'confirmPage'])
+        ->where('token', '[A-Za-z0-9]{40}')->name('website.order.confirm');
+    Route::post('/order/confirm/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'confirm'])
+        ->where('token', '[A-Za-z0-9]{40}')->middleware('throttle:20,1')->name('website.order.confirm.post');
+    // Website ke safhe — restaurant ka apna likha text (Website Settings → "SEO & pages"); khaali ho to 404.
+    Route::get('/order/privacy-policy', [\App\Http\Controllers\Website\WebsitePagesController::class, 'privacy'])->name('website.order.privacy');
+    Route::get('/order/faqs', [\App\Http\Controllers\Website\WebsitePagesController::class, 'faqs'])->name('website.order.faqs');
+
         Route::get('/login', [AuthController::class, 'showLogin'])->name('tenant.login');
         Route::post('/login', [AuthController::class, 'login'])->name('tenant.login.post');
 
@@ -488,6 +509,22 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::put('/delivery/riders/{deliveryRider}', [DeliveryRiderController::class, 'update'])->name('tenant.delivery-riders.update');
                 Route::delete('/delivery/riders/{deliveryRider}', [DeliveryRiderController::class, 'destroy'])->name('tenant.delivery-riders.destroy');
 
+                // ONLINE-ORDERING-1 — apni ordering website (plan module `online_ordering`; route key
+                // `tenant.online-ordering` khud ban jata hai). Sirf Owner ko milta hai (deploy).
+                Route::get('/online-ordering/settings', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteSettingsController::class, 'edit'])->name('tenant.online-ordering.settings.edit');
+                Route::put('/online-ordering/settings', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteSettingsController::class, 'update'])->name('tenant.online-ordering.settings.update');
+                Route::get('/online-ordering/areas', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryAreaController::class, 'index'])->name('tenant.online-ordering.areas.index');
+                Route::put('/online-ordering/areas', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryAreaController::class, 'update'])->name('tenant.online-ordering.areas.update');
+                // Har area ki jagahen (societies) — asal table me (malik, 16 Oct). Platform ki jagah: move / hide; apni: + remove.
+                Route::get('/online-ordering/places', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryPlaceController::class, 'index'])->name('tenant.online-ordering.places.index');
+                Route::post('/online-ordering/places', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryPlaceController::class, 'store'])->name('tenant.online-ordering.places.store');
+                Route::put('/online-ordering/places/{origin}/{id}', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryPlaceController::class, 'update'])
+                    ->whereIn('origin', ['platform', 'restaurant'])->whereNumber('id')->name('tenant.online-ordering.places.update');
+                Route::delete('/online-ordering/places/{origin}/{id}', [\App\Http\Controllers\Tenant\OnlineOrdering\DeliveryPlaceController::class, 'destroy'])
+                    ->whereIn('origin', ['platform', 'restaurant'])->whereNumber('id')->name('tenant.online-ordering.places.destroy');
+                // Sirf dekhna: menu jaisa customer dekhega. Badlav product/deal/category ke Website hisse se.
+                Route::get('/online-ordering/menu', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteMenuController::class, 'index'])->name('tenant.online-ordering.menu.index');
+
                 // POS
                 Route::get('/pos', [POSController::class, 'index'])->name('tenant.pos.index');
                 Route::post('/pos', [SalesOrderController::class, 'store'])->name('tenant.pos.store');
@@ -596,6 +633,12 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // BILL-PREVIEW-PARITY-1: proforma of the current cart rendered from the REAL receipt template.
                 Route::post('/api/pos/bill-preview', [POSController::class, 'billPreview'])->name('tenant.api.pos.bill-preview');
                 Route::get('/api/pos/table-board', [POSController::class, 'tableBoard'])->name('tenant.api.pos.table-board');
+                // ONLINE-ORDERING-1: website orders ka inbox (ghanti) aur Hold (rider ke saath). Module na ho to
+                // khaali jawab; Hold ka haq wohi jo POS ke Hold ka (`tenant.held-sales.store`).
+                Route::get('/api/pos/website-orders', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteOrderInboxController::class, 'index'])->name('tenant.api.pos.website-orders');
+                Route::post('/api/pos/website-orders/{salesOrder}/hold', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteOrderInboxController::class, 'hold'])->name('tenant.api.pos.website-orders.hold');
+                // Admin ka "Confirm" (customer ko WhatsApp is ke baad) — wohi haq jo Hold ka.
+                Route::post('/api/pos/website-orders/{salesOrder}/verify', [\App\Http\Controllers\Tenant\OnlineOrdering\WebsiteOrderInboxController::class, 'verify'])->name('tenant.api.pos.website-orders.verify');
                 Route::get('/api/pos/recent-sales', [POSController::class, 'recentSales'])->name('tenant.api.pos.recent-sales');
                 Route::get('/api/pos/shift-status', [ShiftController::class, 'posStatus'])->name('tenant.api.pos.shift-status');
                 // POS-REMINDER-PAUSE-1: pause/resume this terminal's Reminder slips until its shift closes.
@@ -1221,3 +1264,44 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
             Route::post('/commands/{printAgentCommand}/result', [PrintAgentApiController::class, 'commandResult'])->name('tenant.api.print-agent.commands.result');
         });
     });
+
+// ONLINE-ORDERING-1: robots.txt har host ka apna (public/robots.txt hata di — wo har host par aik hi thi).
+// bingoopos.com + POS subdomains: wohi purana text; restaurant ka domain: Google ko ijazat + sitemap; UAT: chhupa.
+Route::get('/robots.txt', [\App\Http\Controllers\Website\WebsitePagesController::class, 'robots'])->name('website.robots');
+
+// ONLINE-ORDERING-1 (Phase 5): client ka apna domain (jaise kashiffood.com) — SIRF ordering website.
+//
+// Kisi domain se bandha nahi (client ka domain pehle se maloom nahi), aur file ke AAKHIR me: bingoopos.com aur
+// *.bingoopos.com apne raaston par pehle hi mil jate hain, yahan tak sirf baqi host pohanchte hain. `website.host`:
+// IdentifyTenant ne host ko "website" qism ka pehchana ho, warna 404. Login, POS, admin yahan kabhi nahi.
+Route::middleware(['website.host'])->group(function () {
+    Route::get('/', [\App\Http\Controllers\Website\StorefrontController::class, 'home'])->name('website.domain.home');
+    Route::get('/order', fn () => redirect('/', 301))->name('website.domain.order');
+    Route::get('/order/menu.json', [\App\Http\Controllers\Website\StorefrontController::class, 'menu'])
+        ->middleware('throttle:60,1')->name('website.domain.menu');
+    Route::get('/order/locate', [\App\Http\Controllers\Website\StorefrontController::class, 'locate'])
+        ->middleware('throttle:20,1')->name('website.domain.locate');
+    Route::get('/order/manifest.webmanifest', [\App\Http\Controllers\Website\StorefrontController::class, 'manifest'])->name('website.domain.manifest');
+    // "Add to home screen": sirf client ke domain par — wahan poora origin website hai, POS nahi.
+    Route::get('/sw.js', [\App\Http\Controllers\Website\StorefrontController::class, 'serviceWorker'])->name('website.domain.sw');
+    Route::post('/order/checkout', [\App\Http\Controllers\Website\StorefrontController::class, 'checkout'])
+        ->middleware('throttle:10,1')->name('website.domain.checkout');
+    Route::get('/order/status/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'status'])
+        ->where('token', '[A-Za-z0-9]{40}')->name('website.domain.status');
+    Route::get('/order/confirm/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'confirmPage'])
+        ->where('token', '[A-Za-z0-9]{40}')->name('website.domain.confirm');
+    Route::post('/order/confirm/{token}', [\App\Http\Controllers\Website\StorefrontController::class, 'confirm'])
+        ->where('token', '[A-Za-z0-9]{40}')->middleware('throttle:20,1')->name('website.domain.confirm.post');
+
+    // Safhe + Google ki sitemap — restaurant ka apna text (malik: "sab dynamic").
+    Route::get('/privacy-policy', [\App\Http\Controllers\Website\WebsitePagesController::class, 'privacy'])->name('website.domain.privacy');
+    Route::get('/faqs', [\App\Http\Controllers\Website\WebsitePagesController::class, 'faqs'])->name('website.domain.faqs');
+    Route::get('/sitemap.xml', [\App\Http\Controllers\Website\WebsitePagesController::class, 'sitemap'])->name('website.domain.sitemap');
+
+    // Purani website (indolj) ke links jo Google me hain (`/product/…`, `/category/…`, `/pages/faqs`) — nayi website par, 301.
+    Route::get('/pages/{page}', fn (string $page) => redirect(match ($page) {
+        'privacy-policy' => '/privacy-policy', 'faqs' => '/faqs', default => '/',
+    }, 301))->where('page', '[A-Za-z0-9\-]+')->name('website.domain.legacy-pages');
+    Route::get('/{legacy}', fn () => redirect('/', 301))
+        ->where('legacy', '(product|category)(/.*)?')->name('website.domain.legacy');
+});

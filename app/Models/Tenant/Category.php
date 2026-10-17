@@ -8,14 +8,36 @@ class Category extends Model
 {
     protected $connection = 'tenant';
 
-    protected $fillable = ['parent_id', 'branch_id', 'code', 'name', 'slug', 'sort_order', 'is_active', 'cogs_account_id'];
+    protected $fillable = [
+        'parent_id', 'branch_id', 'code', 'name', 'slug', 'sort_order', 'is_active', 'cogs_account_id',
+        // ONLINE-ORDERING-1: website par dikhe ya nahi, kis naam/tarteeb/waqt me (POS par asar nahi).
+        'show_on_website', 'website_name', 'website_sort_order', 'website_visible_from', 'website_visible_to',
+    ];
 
     protected function casts(): array
     {
         return [
             'sort_order' => 'integer',
             'is_active'  => 'boolean',
+            'show_on_website' => 'boolean',
+            'website_sort_order' => 'integer',
         ];
+    }
+
+    /**
+     * ONLINE-ORDERING-1: is waqt ("H:i", tenant ka clock) website par dikhe? Dono khaali = hamesha;
+     * to < from = aadhi raat paar (00:00 → 04:00 bhi, 22:00 → 03:00 bhi).
+     */
+    public function websiteVisibleAt(string $hhmm): bool
+    {
+        $from = $this->website_visible_from ? substr((string) $this->website_visible_from, 0, 5) : null;
+        $to = $this->website_visible_to ? substr((string) $this->website_visible_to, 0, 5) : null;
+
+        if ($from === null || $to === null) {
+            return true;
+        }
+
+        return $from <= $to ? ($hhmm >= $from && $hhmm < $to) : ($hhmm >= $from || $hhmm < $to);
     }
 
     public function parent()

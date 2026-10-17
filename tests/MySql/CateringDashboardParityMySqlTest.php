@@ -316,7 +316,10 @@ class CateringDashboardParityMySqlTest extends MySqlTenantTestCase
         // cheez parkhi jati hai jo us faisle ke BAAD bhi preview aur asli
         // parche me farq batati hai: RELEASE NUMBER. Jaari-shuda parche par wo
         // hota hai, preview par nahi.
-        $this->assertStringContainsString('SERVE', $html,
+        // Nanga "SERVE" bekaar hai: wo lafz kitchen-sheet-style ke CSS comment
+        // me bhi mojood hai, is liye assertion parcha bane ya na bane, pass
+        // ho jati thi. Paer ka apna khana parkho — wo sirf asli parche par hai.
+        $this->assertStringContainsString("<div class=\"foot\"", $html,
             'release se pehle bhi parcha banna chahiye — yehi maanga gaya tha');
         $this->assertDoesNotMatchRegularExpression('/PR-\d/', $html,
             'aur us par release number nahi hona chahiye — yehi ab batata hai ke '

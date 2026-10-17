@@ -1,0 +1,4748 @@
+[
+    {
+        "id": "809552",
+        "name": "Chicken Hot Wings",
+        "slug": "Chicken-Hot-Wings",
+        "description": "8 Pcs Spicy Wings",
+        "photo": "https://assets.indolj.io/upload/1774455424-Chicken-Hot-Wings.jpg",
+        "tag": "",
+        "sequence": 1,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 990
+            }
+        ],
+        "category": "Starter",
+        "category_id": "431665",
+        "url": "https://kashiffood.com/product/Chicken-Hot-Wings",
+        "addon_groups": []
+    },
+    {
+        "id": "809553",
+        "name": "Dynamite Chicken",
+        "slug": "Dynamite-Chicken",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774455397-Dynamite-Chicken-.jpg",
+        "tag": "Popular",
+        "sequence": 2,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 990
+            }
+        ],
+        "category": "Starter",
+        "category_id": "431665",
+        "url": "https://kashiffood.com/product/Dynamite-Chicken",
+        "addon_groups": []
+    },
+    {
+        "id": "809554",
+        "name": "Dhaka Chicken",
+        "slug": "Dhaka-Chicken",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774455360-Dhaka-Chicken--2-.jpg",
+        "tag": "",
+        "sequence": 3,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 990
+            }
+        ],
+        "category": "Starter",
+        "category_id": "431665",
+        "url": "https://kashiffood.com/product/Dhaka-Chicken",
+        "addon_groups": []
+    },
+    {
+        "id": "809555",
+        "name": "Supreme Nachos",
+        "slug": "Supreme-Nachos",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774455316-Supreme-Nachos--1-.jpg",
+        "tag": "Hot Selling",
+        "sequence": 4,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 990
+            }
+        ],
+        "category": "Starter",
+        "category_id": "431665",
+        "url": "https://kashiffood.com/product/Supreme-Nachos",
+        "addon_groups": []
+    },
+    {
+        "id": "809556",
+        "name": "Korean Chicken",
+        "slug": "Korean-Chicken",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774455273-Korean-Chicken.jpg",
+        "tag": "",
+        "sequence": 5,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 990
+            }
+        ],
+        "category": "Starter",
+        "category_id": "431665",
+        "url": "https://kashiffood.com/product/Korean-Chicken",
+        "addon_groups": []
+    },
+    {
+        "id": "809558",
+        "name": "Fish And Chips",
+        "slug": "Fish-And-Chips",
+        "description": "(5 Pcs)",
+        "photo": "https://assets.indolj.io/upload/1774455230-Fish---Chips.jpg",
+        "tag": "",
+        "sequence": 7,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1490
+            }
+        ],
+        "category": "Starter",
+        "category_id": "431665",
+        "url": "https://kashiffood.com/product/Fish-And-Chips",
+        "addon_groups": []
+    },
+    {
+        "id": "809559",
+        "name": "Dhaka Fish",
+        "slug": "Dhaka-Fish",
+        "description": "(5 Pcs)",
+        "photo": "https://assets.indolj.io/upload/1774455189-Dhaka-Fish.jpg",
+        "tag": "",
+        "sequence": 8,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1490
+            }
+        ],
+        "category": "Starter",
+        "category_id": "431665",
+        "url": "https://kashiffood.com/product/Dhaka-Fish",
+        "addon_groups": []
+    },
+    {
+        "id": "809560",
+        "name": "Chicken Corn Soup",
+        "slug": "Chicken-Corn-Soup",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957318-CHCIKEN CORN SOUP_16_11zon.webp",
+        "tag": "Hot Selling",
+        "sequence": 9,
+        "available": false,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Single Serving ",
+                "price": 350
+            },
+            {
+                "size": "Family Bowl ",
+                "price": 1100
+            }
+        ],
+        "category": "Soup ",
+        "category_id": "431666",
+        "url": "https://kashiffood.com/product/Chicken-Corn-Soup",
+        "addon_groups": []
+    },
+    {
+        "id": "809561",
+        "name": "Hot N Sour Soup",
+        "slug": "Hot-N-Sour-Soup",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1768649578-hot-n-sour-soup.jpg",
+        "tag": "",
+        "sequence": 10,
+        "available": false,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Single Serving ",
+                "price": 400
+            },
+            {
+                "size": "Family Bowl ",
+                "price": 1200
+            }
+        ],
+        "category": "Soup ",
+        "category_id": "431666",
+        "url": "https://kashiffood.com/product/Hot-N-Sour-Soup",
+        "addon_groups": []
+    },
+    {
+        "id": "809562",
+        "name": "Singaporean Rice",
+        "slug": "Singaporean-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1773349676-Singaporean.jpg",
+        "tag": "",
+        "sequence": 11,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 600
+            },
+            {
+                "size": "Large",
+                "price": 1050
+            },
+            {
+                "size": "Platter",
+                "price": 1580
+            },
+            {
+                "size": "Khaas",
+                "price": 2900
+            }
+        ],
+        "category": "Singaporean Rice ",
+        "category_id": "431667",
+        "url": "https://kashiffood.com/product/Singaporean-Rice",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Extra Sauce",
+                        "price": 100
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809563",
+        "name": "Singaporean Rice Family Pack",
+        "slug": "Singaporean-Rice-Family-Pack",
+        "description": "For Takeaway And Delivery Only",
+        "photo": "https://assets.indolj.io/upload/1773349786-Singaporean.jpg",
+        "tag": "",
+        "sequence": 12,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "small",
+                "price": 2750
+            },
+            {
+                "size": "Large",
+                "price": 4100
+            }
+        ],
+        "category": "Singaporean Rice ",
+        "category_id": "431667",
+        "url": "https://kashiffood.com/product/Singaporean-Rice-Family-Pack",
+        "addon_groups": []
+    },
+    {
+        "id": "809564",
+        "name": "Chicken Biryani",
+        "slug": "Chicken-Biryani",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767961631-Chicken Biryani_9_11zon.webp",
+        "tag": "",
+        "sequence": 13,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Plain",
+                "price": 250
+            },
+            {
+                "size": "small",
+                "price": 400
+            },
+            {
+                "size": "Large",
+                "price": 750
+            },
+            {
+                "size": "Platter",
+                "price": 2000
+            },
+            {
+                "size": "Family Pack",
+                "price": 2270
+            }
+        ],
+        "category": "Biryani ",
+        "category_id": "431668",
+        "url": "https://kashiffood.com/product/Chicken-Biryani",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Extra Chicken Piece",
+                        "price": 200
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809565",
+        "name": "Chicken biryani Take Away",
+        "slug": "Chicken-biryani-Take-Away",
+        "description": "For Takeaway Orders Only <br>\r\nFamily Pack 6 Pcs",
+        "photo": "https://assets.indolj.io/upload/1767961642-Chicken Biryani_9_11zon.webp",
+        "tag": "",
+        "sequence": 14,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 2270
+            }
+        ],
+        "category": "Biryani ",
+        "category_id": "431668",
+        "url": "https://kashiffood.com/product/Chicken-biryani-Take-Away",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Extra Chicken Piece",
+                        "price": 200
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809566",
+        "name": "Chicken Tikka",
+        "slug": "Chicken-Tikka",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767961662-Chicken Tikka_24_11zon.webp",
+        "tag": "",
+        "sequence": 15,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Leg",
+                "price": 600
+            },
+            {
+                "size": "Chest",
+                "price": 650
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Chicken-Tikka",
+        "addon_groups": []
+    },
+    {
+        "id": "809567",
+        "name": "Chicken Malai Tikka",
+        "slug": "Chicken-Malai-Tikka",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767961676-Chicken Malai Tikka_17_11zon.webp",
+        "tag": "",
+        "sequence": 16,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Leg",
+                "price": 700
+            },
+            {
+                "size": "Chest",
+                "price": 750
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Chicken-Malai-Tikka",
+        "addon_groups": []
+    },
+    {
+        "id": "809568",
+        "name": "Chicken Malai Boti",
+        "slug": "Chicken-Malai-Boti",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774654567-Chicken-Malai-Boti.jpg",
+        "tag": "",
+        "sequence": 17,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1150
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Chicken-Malai-Boti",
+        "addon_groups": []
+    },
+    {
+        "id": "809569",
+        "name": "Chicken Boti Boneless",
+        "slug": "Chicken-Boti-Boneless",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1768901405-chicken-boti.jpg",
+        "tag": "",
+        "sequence": 18,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1150
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Chicken-Boti-Boneless",
+        "addon_groups": []
+    },
+    {
+        "id": "809570",
+        "name": "Chicken Reshmi Kebab",
+        "slug": "Chicken-Reshmi-Kebab",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767961733-Chicken Reshmi Kebab_22_11zon.webp",
+        "tag": "",
+        "sequence": 19,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1150
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Chicken-Reshmi-Kebab",
+        "addon_groups": []
+    },
+    {
+        "id": "809571",
+        "name": "Chicken Shahi Chattakh",
+        "slug": "Chicken-Shahi-Chattakh",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774656531-Chicken-Shahi-Chattakh.jpg",
+        "tag": "",
+        "sequence": 20,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1250
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Chicken-Shahi-Chattakh",
+        "addon_groups": []
+    },
+    {
+        "id": "809572",
+        "name": "Chicken Balochi Boti",
+        "slug": "Chicken-Balochi-Boti",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/placholde-general2.png",
+        "tag": "",
+        "sequence": 21,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1250
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Chicken-Balochi-Boti",
+        "addon_groups": []
+    },
+    {
+        "id": "809573",
+        "name": "Beef Behari Boti",
+        "slug": "Beef-Behari-Boti",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957062-BEEF BEHARI BOTI_7_11zon.webp",
+        "tag": "",
+        "sequence": 22,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1250
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Beef-Behari-Boti",
+        "addon_groups": []
+    },
+    {
+        "id": "809574",
+        "name": "Beef Seekh Kebab",
+        "slug": "Beef-Seekh-Kebab",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957146-BEEF SEEKH KEBAB_11_11zon.webp",
+        "tag": "",
+        "sequence": 23,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1250
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Beef-Seekh-Kebab",
+        "addon_groups": []
+    },
+    {
+        "id": "809575",
+        "name": "Beef Dhaga Kebab",
+        "slug": "Beef-Dhaga-Kebab",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957126-BEEF DHAGA KEBAB FRY_10_11zon.webp",
+        "tag": "",
+        "sequence": 24,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Plain",
+                "price": 1250
+            },
+            {
+                "size": "Fry",
+                "price": 1350
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Beef-Dhaga-Kebab",
+        "addon_groups": []
+    },
+    {
+        "id": "809576",
+        "name": "Beef Afghani Boti",
+        "slug": "Beef-Afghani-Boti",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767961759-Beef Afghani Boti_2_11zon.webp",
+        "tag": "",
+        "sequence": 25,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1550
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Beef-Afghani-Boti",
+        "addon_groups": []
+    },
+    {
+        "id": "809578",
+        "name": "Bar-B-Que Fish Grill",
+        "slug": "Bar-B-Que-Fish-Grill",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957934-FISH GRILL_39_11zon.webp",
+        "tag": "",
+        "sequence": 27,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Half ",
+                "price": 2250
+            },
+            {
+                "size": "Full",
+                "price": 4500
+            }
+        ],
+        "category": "Barbecue",
+        "category_id": "431669",
+        "url": "https://kashiffood.com/product/Bar-B-Que-Fish-Grill",
+        "addon_groups": []
+    },
+    {
+        "id": "809580",
+        "name": "Cajun Chicken",
+        "slug": "Cajun-Chicken",
+        "description": "(Spicy)",
+        "photo": "https://assets.indolj.io/upload/1767961795-Cajun Chicken_7_11zon.webp",
+        "tag": "",
+        "sequence": 29,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 850
+            }
+        ],
+        "category": "BBQ New Arrival ",
+        "category_id": "431670",
+        "url": "https://kashiffood.com/product/Cajun-Chicken",
+        "addon_groups": []
+    },
+    {
+        "id": "809581",
+        "name": "Chicken Namkeen Boti",
+        "slug": "Chicken-Namkeen-Boti",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767961808-Chicken Namkeen Boti_18_11zon.webp",
+        "tag": "",
+        "sequence": 30,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 850
+            }
+        ],
+        "category": "BBQ New Arrival ",
+        "category_id": "431670",
+        "url": "https://kashiffood.com/product/Chicken-Namkeen-Boti",
+        "addon_groups": []
+    },
+    {
+        "id": "809582",
+        "name": "Adana Kebab",
+        "slug": "Adana-Kebab",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774654495-Chicken-Adana-Kebab.jpg",
+        "tag": "",
+        "sequence": 31,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Chicken",
+                "price": 1250
+            },
+            {
+                "size": "Beef",
+                "price": 1450
+            }
+        ],
+        "category": "BBQ New Arrival ",
+        "category_id": "431670",
+        "url": "https://kashiffood.com/product/Adana-Kebab",
+        "addon_groups": []
+    },
+    {
+        "id": "809583",
+        "name": "Tandoori Chicken",
+        "slug": "Tandoori-Chicken",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767961823-Tandoori Chicken_62_11zon.webp",
+        "tag": "",
+        "sequence": 32,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1250
+            }
+        ],
+        "category": "BBQ New Arrival ",
+        "category_id": "431670",
+        "url": "https://kashiffood.com/product/Tandoori-Chicken",
+        "addon_groups": []
+    },
+    {
+        "id": "809585",
+        "name": "Moroccan Kebab",
+        "slug": "Moroccan-Kebab",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767961846-Moroccan Kebab_46_11zon.webp",
+        "tag": "",
+        "sequence": 34,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1450
+            }
+        ],
+        "category": "BBQ New Arrival ",
+        "category_id": "431670",
+        "url": "https://kashiffood.com/product/Moroccan-Kebab",
+        "addon_groups": []
+    },
+    {
+        "id": "809589",
+        "name": "Grill Chicken Al-Fahom",
+        "slug": "Grill-Chicken-Al-Fahom",
+        "description": "Arabic Rice, 3 Different Chatnies & Salad",
+        "photo": "https://assets.indolj.io/upload/1773350071-Al-Faham.jpg",
+        "tag": "",
+        "sequence": 38,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Half ",
+                "price": 1600
+            },
+            {
+                "size": "Full",
+                "price": 3100
+            }
+        ],
+        "category": "Platters",
+        "category_id": "431671",
+        "url": "https://kashiffood.com/product/Grill-Chicken-Al-Fahom",
+        "addon_groups": []
+    },
+    {
+        "id": "809590",
+        "name": "Classic Platter 1",
+        "slug": "Classic-Platter-1",
+        "description": "<b>5-6 Persons</b><br>\r\nComplimentary Dhaka Chicken<br>\r\nArabic Rice, Chicken Tandoori, Chicken Malai Boti, Chicken Boti Bonless, Chicken Shahi Chattakh, Chicken Resham Kebab, Chicken Balochi Boti, Beef Seekh Kebab, Namkeen Boti, Bar-B-Que Vegetable & Sauce",
+        "photo": "https://assets.indolj.io/upload/1773350041-Classic-Platter.jpg",
+        "tag": "",
+        "sequence": 39,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 5500
+            }
+        ],
+        "category": "Platters",
+        "category_id": "431671",
+        "url": "https://kashiffood.com/product/Classic-Platter-1",
+        "addon_groups": []
+    },
+    {
+        "id": "809591",
+        "name": "Classic Platter 2",
+        "slug": "Classic-Platter-2",
+        "description": "<b>3- 4 Persons</b><br>\r\nComplimentary Dhaka Chicken <br>\r\nArabic Rice, Chicken Tandoori, Chicken Malai Boti, Chicken Boti Bonless, Chicken Resham Kebab, Chicken Balochi Boti, Namkeen Boti, Bar-B-Que Vegetable & Sauce",
+        "photo": "https://assets.indolj.io/upload/1773350017-Classic-Platter.jpg",
+        "tag": "",
+        "sequence": 40,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 4400
+            }
+        ],
+        "category": "Platters",
+        "category_id": "431671",
+        "url": "https://kashiffood.com/product/Classic-Platter-2",
+        "addon_groups": []
+    },
+    {
+        "id": "809592",
+        "name": "Classic Platter 3",
+        "slug": "Classic-Platter-3",
+        "description": "<b>2-3 Persons</b><br>\r\nComplimentary Dhaka Chicken<br>\r\nArabic Rice, Chicken Malai Boti, Beef Seekh Kebab, Chicken Balochi Boti, Chicken Resham Kebab, Namkeen Boti, Bar-B-Que Vegetable & Sauce",
+        "photo": "https://assets.indolj.io/upload/1773349982-Classic-Platter.jpg",
+        "tag": "",
+        "sequence": 41,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 3300
+            }
+        ],
+        "category": "Platters",
+        "category_id": "431671",
+        "url": "https://kashiffood.com/product/Classic-Platter-3",
+        "addon_groups": []
+    },
+    {
+        "id": "809593",
+        "name": "Singaporean Rice Khass",
+        "slug": "Singaporean-Rice-Khass",
+        "description": "Served With Singaporean Rice, 1 Skewer Balochi Boti, 1 Skewer Shahi Chattakh, 1 Skewer Chicken Boti Bonless",
+        "photo": "https://assets.indolj.io/upload/1773349636-Singaporean-Khass.jpg",
+        "tag": "",
+        "sequence": 42,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 2900
+            }
+        ],
+        "category": "Singaporean Rice ",
+        "category_id": "431667",
+        "url": "https://kashiffood.com/product/Singaporean-Rice-Khass",
+        "addon_groups": []
+    },
+    {
+        "id": "809594",
+        "name": "Chullu Kebab Platter",
+        "slug": "Chullu-Kebab-Platter",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767961944-Chullu Kebab Platter_25_11zon.webp",
+        "tag": "",
+        "sequence": 43,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Chicken",
+                "price": 1900
+            },
+            {
+                "size": "Beef",
+                "price": 2000
+            }
+        ],
+        "category": "Platters",
+        "category_id": "431671",
+        "url": "https://kashiffood.com/product/Chullu-Kebab-Platter",
+        "addon_groups": []
+    },
+    {
+        "id": "809595",
+        "name": "Balochi Boti Rice",
+        "slug": "Balochi-Boti-Rice",
+        "description": "Served With Arabic Rice, 2 Skewer Chicken Balochi Boti, Bar-B-Que Tomato, Green Chilli & Sauce",
+        "photo": "https://assets.indolj.io/upload/1773350118-BaluchiBotiRice.jpg",
+        "tag": "",
+        "sequence": 44,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1900
+            }
+        ],
+        "category": "Platters",
+        "category_id": "431671",
+        "url": "https://kashiffood.com/product/Balochi-Boti-Rice",
+        "addon_groups": []
+    },
+    {
+        "id": "809596",
+        "name": "Bar-B-Que Platter",
+        "slug": "Bar-B-Que-Platter",
+        "description": "2 Skewer Chicken Tandoori,1 Skewer Malai Boti,1 Skewer Chicken Balochi Boti,\r\n1 Skewer Chicken Boti Boneless,1 Skewer Chicken Shahi Chattakh,\r\n1 Skewer Beef Behari Boti, 1 Skewer Beef Seekh Kebab,\r\n1 Skewer Chicken Resham Kebab,6 Skewer Afghani Boti,\r\nBar-B-Que Vegetable & 3 Different Chatnies",
+        "photo": "https://assets.indolj.io/upload/1773349943-Bar-B-Q-Platter.jpg",
+        "tag": "",
+        "sequence": 45,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 5500
+            }
+        ],
+        "category": "Platters",
+        "category_id": "431671",
+        "url": "https://kashiffood.com/product/Bar-B-Que-Platter",
+        "addon_groups": []
+    },
+    {
+        "id": "809597",
+        "name": "Crispy Fried Chicken",
+        "slug": "Crispy-Fried-Chicken-809597",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957785-CRISPY FRIED CHICKEN_33_11zon.webp",
+        "tag": "",
+        "sequence": 46,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "2 Pcs",
+                "price": 650
+            },
+            {
+                "size": "3 Pcs",
+                "price": 900
+            }
+        ],
+        "category": "Crispy Fried Chicken ",
+        "category_id": "431672",
+        "url": "https://kashiffood.com/product/Crispy-Fried-Chicken-809597",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    },
+                    {
+                        "name": "Dinner Roll",
+                        "price": 80
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809598",
+        "name": "Crispy Spicy Fried Chicken",
+        "slug": "Crispy-Spicy-Fried-Chicken",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767961974-Crispy Spicy Fried Chicken_28_11zon.webp",
+        "tag": "",
+        "sequence": 47,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "2 Pcs",
+                "price": 700
+            },
+            {
+                "size": "3 Pcs",
+                "price": 950
+            }
+        ],
+        "category": "Crispy Fried Chicken ",
+        "category_id": "431672",
+        "url": "https://kashiffood.com/product/Crispy-Spicy-Fried-Chicken",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    },
+                    {
+                        "name": "Dinner Roll",
+                        "price": 80
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809599",
+        "name": "Crispy Garlic Fried Chicken",
+        "slug": "Crispy-Garlic-Fried-Chicken",
+        "description": "2 Pcs",
+        "photo": "https://assets.indolj.io/upload/1767961990-Crispy Garlic Fried Chicken_27_11zon.webp",
+        "tag": "",
+        "sequence": 48,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 700
+            }
+        ],
+        "category": "Crispy Fried Chicken ",
+        "category_id": "431672",
+        "url": "https://kashiffood.com/product/Crispy-Garlic-Fried-Chicken",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    },
+                    {
+                        "name": "Dinner Roll",
+                        "price": 80
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809600",
+        "name": "Pocket Friendly Deal 01",
+        "slug": "Pocket-Friendly-Deal-01",
+        "description": "1 Chicken Crunch Burger <br>\r\n1 Crispy Fried Chicken (Drum Stick)",
+        "photo": "https://assets.indolj.io/upload/1767962817-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 49,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 750
+            }
+        ],
+        "category": "Pocket Friendly Deal ",
+        "category_id": "431673",
+        "url": "https://kashiffood.com/product/Pocket-Friendly-Deal-01",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809601",
+        "name": "Pocket Friendly Deal 02",
+        "slug": "Pocket-Friendly-Deal-02",
+        "description": "1 Chicken Zinger Burger<br>\r\n1 Crispy Fried Chicken (Drum Stick)",
+        "photo": "https://assets.indolj.io/upload/1767962821-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 50,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 950
+            }
+        ],
+        "category": "Pocket Friendly Deal ",
+        "category_id": "431673",
+        "url": "https://kashiffood.com/product/Pocket-Friendly-Deal-02",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809602",
+        "name": "Meal 01",
+        "slug": "Meal-01",
+        "description": "05 Pcs Crispy Fried Chicken <br>\r\nFries",
+        "photo": "https://assets.indolj.io/upload/1767962825-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 51,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1700
+            }
+        ],
+        "category": "Meals",
+        "category_id": "431685",
+        "url": "https://kashiffood.com/product/Meal-01",
+        "addon_groups": []
+    },
+    {
+        "id": "809603",
+        "name": "Meal 02",
+        "slug": "Meal-02",
+        "description": "2 Chicken Zinger Burger <br>\r\n2 Piece Crispy Fried Chicken<br>\r\nFries",
+        "photo": "https://assets.indolj.io/upload/1767962828-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 52,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 2000
+            }
+        ],
+        "category": "Meals",
+        "category_id": "431685",
+        "url": "https://kashiffood.com/product/Meal-02",
+        "addon_groups": []
+    },
+    {
+        "id": "809604",
+        "name": "Family Deal 01",
+        "slug": "Family-Deal-01",
+        "description": "9 Piece Crispy Fried Chicken",
+        "photo": "https://assets.indolj.io/upload/1767962832-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 53,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 2500
+            }
+        ],
+        "category": "Family Deals ",
+        "category_id": "431675",
+        "url": "https://kashiffood.com/product/Family-Deal-01",
+        "addon_groups": []
+    },
+    {
+        "id": "809606",
+        "name": "Family Deal 03",
+        "slug": "Family-Deal-03",
+        "description": "2 Zinger Burger <br>\r\n2 Chicken Crunch Burger<br>\r\n4 Piece Crispy Fried Chicken<br>\r\n2 Dinner Rolls",
+        "photo": "https://assets.indolj.io/upload/1767962839-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 55,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 2950
+            }
+        ],
+        "category": "Family Deals ",
+        "category_id": "431675",
+        "url": "https://kashiffood.com/product/Family-Deal-03",
+        "addon_groups": []
+    },
+    {
+        "id": "809607",
+        "name": "Family Deal 04",
+        "slug": "Family-Deal-04",
+        "description": "4 Zinger Burger<br>\r\n4 Piece Crispy Fried Chicken<br>\r\n2 Dinner Rolls",
+        "photo": "https://assets.indolj.io/upload/1767962843-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 56,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 3250
+            }
+        ],
+        "category": "Family Deals ",
+        "category_id": "431675",
+        "url": "https://kashiffood.com/product/Family-Deal-04",
+        "addon_groups": []
+    },
+    {
+        "id": "809608",
+        "name": "Nuggets",
+        "slug": "Nuggets",
+        "description": "06 Pcs",
+        "photo": "https://assets.indolj.io/upload/1767957568-CHICKEN NUGGETS_28_11zon.webp",
+        "tag": "",
+        "sequence": 57,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 700
+            }
+        ],
+        "category": "Kids House ",
+        "category_id": "431676",
+        "url": "https://kashiffood.com/product/Nuggets",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809609",
+        "name": "Chicken Crunch Burger",
+        "slug": "Chicken-Crunch-Burger",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774656500-Crunch-Burger.jpg",
+        "tag": "",
+        "sequence": 58,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 500
+            }
+        ],
+        "category": "Kids House ",
+        "category_id": "431676",
+        "url": "https://kashiffood.com/product/Chicken-Crunch-Burger",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809610",
+        "name": "Hot Shots",
+        "slug": "Hot-Shots",
+        "description": "09 Pcs",
+        "photo": "https://assets.indolj.io/upload/1767957364-CHCIKEN HOTSHOT_19_11zon.webp",
+        "tag": "",
+        "sequence": 59,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 650
+            }
+        ],
+        "category": "Kids House ",
+        "category_id": "431676",
+        "url": "https://kashiffood.com/product/Hot-Shots",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809613",
+        "name": "Chicken Zinger Burger",
+        "slug": "Chicken-Zinger-Burger",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957430-CHCIKEN ZINGER BURGER_22_11zon.webp",
+        "tag": "",
+        "sequence": 62,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 650
+            }
+        ],
+        "category": "Burgers",
+        "category_id": "431677",
+        "url": "https://kashiffood.com/product/Chicken-Zinger-Burger",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    },
+                    {
+                        "name": "Extra Cheese",
+                        "price": 100
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809614",
+        "name": "Thrill Zinger Burger",
+        "slug": "Thrill-Zinger-Burger",
+        "description": "(Spicy)",
+        "photo": "https://assets.indolj.io/upload/1774656480-Thrill-Zinger-Burger.jpg",
+        "tag": "",
+        "sequence": 63,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 700
+            }
+        ],
+        "category": "Burgers",
+        "category_id": "431677",
+        "url": "https://kashiffood.com/product/Thrill-Zinger-Burger",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    },
+                    {
+                        "name": "Extra Cheese",
+                        "price": 100
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809615",
+        "name": "Chicken Burger",
+        "slug": "Chicken-Burger",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1768899987-chicken-burger.jpeg",
+        "tag": "",
+        "sequence": 64,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 600
+            }
+        ],
+        "category": "Burgers",
+        "category_id": "431677",
+        "url": "https://kashiffood.com/product/Chicken-Burger",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    },
+                    {
+                        "name": "Extra Cheese",
+                        "price": 100
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809616",
+        "name": "Beef Burger",
+        "slug": "Beef-Burger",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957079-BEEF BURGER_8_11zon.webp",
+        "tag": "",
+        "sequence": 65,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 650
+            }
+        ],
+        "category": "Burgers",
+        "category_id": "431677",
+        "url": "https://kashiffood.com/product/Beef-Burger",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    },
+                    {
+                        "name": "Extra Cheese",
+                        "price": 100
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809617",
+        "name": "Chicken Sandwich",
+        "slug": "Chicken-Sandwich",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774895397-Sandwich.jpg",
+        "tag": "",
+        "sequence": 66,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Plain",
+                "price": 700
+            },
+            {
+                "size": "BBQ ",
+                "price": 800
+            },
+            {
+                "size": "Malai Boti ",
+                "price": 800
+            }
+        ],
+        "category": "Sandwiches",
+        "category_id": "431678",
+        "url": "https://kashiffood.com/product/Chicken-Sandwich",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    },
+                    {
+                        "name": "Extra Cheese",
+                        "price": 100
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809618",
+        "name": "Club Sandwich",
+        "slug": "Club-Sandwich",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774895360-Sandwich.jpg",
+        "tag": "",
+        "sequence": 67,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 750
+            }
+        ],
+        "category": "Sandwiches",
+        "category_id": "431678",
+        "url": "https://kashiffood.com/product/Club-Sandwich",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    },
+                    {
+                        "name": "Extra Cheese",
+                        "price": 100
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809619",
+        "name": "Plain Fries",
+        "slug": "Plain-Fries",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962051-Plain Fries_51_11zon.webp",
+        "tag": "",
+        "sequence": 68,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 350
+            },
+            {
+                "size": "Large",
+                "price": 450
+            }
+        ],
+        "category": "Fries",
+        "category_id": "431679",
+        "url": "https://kashiffood.com/product/Plain-Fries",
+        "addon_groups": []
+    },
+    {
+        "id": "809620",
+        "name": "Masala Fries",
+        "slug": "Masala-Fries",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962068-Masala Fries_43_11zon.webp",
+        "tag": "",
+        "sequence": 69,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 370
+            },
+            {
+                "size": "Large",
+                "price": 470
+            }
+        ],
+        "category": "Fries",
+        "category_id": "431679",
+        "url": "https://kashiffood.com/product/Masala-Fries",
+        "addon_groups": []
+    },
+    {
+        "id": "809621",
+        "name": "Mayo Garlic Fries",
+        "slug": "Mayo-Garlic-Fries",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962086-Mayo Garlic Fries_44_11zon.webp",
+        "tag": "",
+        "sequence": 70,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 450
+            },
+            {
+                "size": "Large",
+                "price": 550
+            }
+        ],
+        "category": "Fries",
+        "category_id": "431679",
+        "url": "https://kashiffood.com/product/Mayo-Garlic-Fries",
+        "addon_groups": []
+    },
+    {
+        "id": "809622",
+        "name": "Pizza Fries",
+        "slug": "Pizza-Fries",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962102-Pizza Fries_50_11zon.webp",
+        "tag": "",
+        "sequence": 71,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "small",
+                "price": 800
+            },
+            {
+                "size": "Large",
+                "price": 1300
+            }
+        ],
+        "category": "Fries",
+        "category_id": "431679",
+        "url": "https://kashiffood.com/product/Pizza-Fries",
+        "addon_groups": [
+            {
+                "name": "Select Your Preference",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Miami Supreme Fries",
+                        "price": 0
+                    },
+                    {
+                        "name": "Tikka Pizza Fries",
+                        "price": 0
+                    },
+                    {
+                        "name": "Supreme Pizza Fries",
+                        "price": 0
+                    },
+                    {
+                        "name": "Pepperoni Pizza Fries",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809623",
+        "name": "BBQ Shashlik with Garlic Fried Rice",
+        "slug": "BBQ-Shashlik-with-Garlic-Fried-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774652091-BBQ-Shashlik-with-Garlic-Fried-Rice.jpg",
+        "tag": "",
+        "sequence": 72,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1650
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/BBQ-Shashlik-with-Garlic-Fried-Rice",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Sizzling",
+                        "price": 200
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809624",
+        "name": "Manchurian With Fried Rice",
+        "slug": "Manchurian-With-Fried-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774652398-Manchurian-with-Fried-Rice.jpg",
+        "tag": "",
+        "sequence": 73,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1350
+            },
+            {
+                "size": "2 Person",
+                "price": 2450
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Manchurian-With-Fried-Rice",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Sizzling",
+                        "price": 200
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809625",
+        "name": "Shashlik With Fried Rice",
+        "slug": "Shashlik-With-Fried-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774652369-Shashlik-with-Fried-Rice.jpg",
+        "tag": "",
+        "sequence": 74,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1350
+            },
+            {
+                "size": "2 Person",
+                "price": 2450
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Shashlik-With-Fried-Rice",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Sizzling",
+                        "price": 200
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809626",
+        "name": "Schezwan With Fried Rice",
+        "slug": "Schezwan-With-Fried-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774652341-Schezwan-with-Fried-Rice.jpg",
+        "tag": "",
+        "sequence": 75,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1350
+            },
+            {
+                "size": "2 Person",
+                "price": 2450
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Schezwan-With-Fried-Rice",
+        "addon_groups": []
+    },
+    {
+        "id": "809627",
+        "name": "Chicken Chilli Dry With Fried Rice",
+        "slug": "Chicken-Chilli-Dry-With-Fried-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774652313-Chicken-Chilli-Dry-with-Fried-Rice.jpg",
+        "tag": "",
+        "sequence": 76,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1350
+            },
+            {
+                "size": "2 Person",
+                "price": 2450
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Chicken-Chilli-Dry-With-Fried-Rice",
+        "addon_groups": []
+    },
+    {
+        "id": "809628",
+        "name": "Kung Pao Chicken With Fried Rice",
+        "slug": "Kung-Pao-Chicken-With-Fried-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774652292-Kung-Pao-Chicken-with-Fried-Rice.jpg",
+        "tag": "",
+        "sequence": 77,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1350
+            },
+            {
+                "size": "2 Person",
+                "price": 2450
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Kung-Pao-Chicken-With-Fried-Rice",
+        "addon_groups": []
+    },
+    {
+        "id": "809629",
+        "name": "Dragon Chicken With Fried Rice",
+        "slug": "Dragon-Chicken-With-Fried-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774652267-Dragon-Chicken-with-Fried-Rice.jpg",
+        "tag": "",
+        "sequence": 78,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "small",
+                "price": 1350
+            },
+            {
+                "size": "Large",
+                "price": 2450
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Dragon-Chicken-With-Fried-Rice",
+        "addon_groups": []
+    },
+    {
+        "id": "809630",
+        "name": "Beef Chilli Dry With Fried Rice",
+        "slug": "Beef-Chilli-Dry-With-Fried-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957108-BEEF CHILLI DRY WITH FRIED RICE_9_11zon.webp",
+        "tag": "",
+        "sequence": 79,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1450
+            },
+            {
+                "size": "2 Person",
+                "price": 2650
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Beef-Chilli-Dry-With-Fried-Rice",
+        "addon_groups": []
+    },
+    {
+        "id": "809631",
+        "name": "Dragon Beef With Fried Rice",
+        "slug": "Dragon-Beef-With-Fried-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957861-DRAGON BEEF_36_11zon.webp",
+        "tag": "",
+        "sequence": 80,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1450
+            },
+            {
+                "size": "2 Person",
+                "price": 2650
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Dragon-Beef-With-Fried-Rice",
+        "addon_groups": []
+    },
+    {
+        "id": "809632",
+        "name": "Chicken Fried Rice",
+        "slug": "Chicken-Fried-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774652239-Chicken-Fried-Rice.jpg",
+        "tag": "",
+        "sequence": 81,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1200
+            },
+            {
+                "size": "2 Person",
+                "price": 1950
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Chicken-Fried-Rice",
+        "addon_groups": []
+    },
+    {
+        "id": "809633",
+        "name": "Chicken Chow Mein",
+        "slug": "Chicken-Chow-Mein",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774652214-Chicken-Chowmein.jpg",
+        "tag": "",
+        "sequence": 82,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1200
+            },
+            {
+                "size": "2 Person",
+                "price": 1900
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Chicken-Chow-Mein",
+        "addon_groups": []
+    },
+    {
+        "id": "809634",
+        "name": "Vegetable Chow Mein",
+        "slug": "Vegetable-Chow-Mein",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774652189-Vegetable-Chowmein.jpg",
+        "tag": "",
+        "sequence": 83,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "small",
+                "price": 1050
+            },
+            {
+                "size": "Large",
+                "price": 2050
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Vegetable-Chow-Mein",
+        "addon_groups": []
+    },
+    {
+        "id": "809635",
+        "name": "Vegetable Fried Rice",
+        "slug": "Vegetable-Fried-Rice",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774652159-Vegetable-Fried-Rice.jpg",
+        "tag": "",
+        "sequence": 84,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 950
+            },
+            {
+                "size": "2 Person",
+                "price": 1750
+            }
+        ],
+        "category": "Chinese ",
+        "category_id": "431680",
+        "url": "https://kashiffood.com/product/Vegetable-Fried-Rice",
+        "addon_groups": []
+    },
+    {
+        "id": "809636",
+        "name": "Tarragon Steak",
+        "slug": "Tarragon-Steak",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774654798-Tarragon-Steak.jpg",
+        "tag": "",
+        "sequence": 85,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Chicken",
+                "price": 2050
+            },
+            {
+                "size": "Beef",
+                "price": 2650
+            }
+        ],
+        "category": "Steaks",
+        "category_id": "431681",
+        "url": "https://kashiffood.com/product/Tarragon-Steak",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Extra Fries",
+                        "price": 300
+                    },
+                    {
+                        "name": "Vegetable Rice",
+                        "price": 400
+                    }
+                ]
+            },
+            {
+                "name": "Select Your Side",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Vegetable Rice",
+                        "price": 0
+                    },
+                    {
+                        "name": "Fries",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809637",
+        "name": "Mushroom Steak",
+        "slug": "Mushroom-Steak",
+        "description": "(White or Brown)",
+        "photo": "https://assets.indolj.io/upload/1768900800-Mushroom-Steak.jpg",
+        "tag": "",
+        "sequence": 86,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Chicken",
+                "price": 2050
+            },
+            {
+                "size": "Beef",
+                "price": 2650
+            }
+        ],
+        "category": "Steaks",
+        "category_id": "431681",
+        "url": "https://kashiffood.com/product/Mushroom-Steak",
+        "addon_groups": [
+            {
+                "name": "Select Your Preference",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "White",
+                        "price": 0
+                    },
+                    {
+                        "name": "Brown",
+                        "price": 0
+                    }
+                ]
+            },
+            {
+                "name": "Select Your Side",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Fries",
+                        "price": 0
+                    },
+                    {
+                        "name": "Fried Rice",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809638",
+        "name": "Spicy Mexican Steak",
+        "slug": "Spicy-Mexican-Steak",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1768901835-Mexican-Steak.jpg",
+        "tag": "",
+        "sequence": 87,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Chicken",
+                "price": 2050
+            },
+            {
+                "size": "Beef",
+                "price": 2650
+            }
+        ],
+        "category": "Steaks",
+        "category_id": "431681",
+        "url": "https://kashiffood.com/product/Spicy-Mexican-Steak",
+        "addon_groups": [
+            {
+                "name": "Select Your Side",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Fries",
+                        "price": 0
+                    },
+                    {
+                        "name": "Fried Rice",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809639",
+        "name": "Chicken Alfredo Pasta",
+        "slug": "Chicken-Alfredo-Pasta",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767956787-ALFREDO PASTA_1_11zon.webp",
+        "tag": "",
+        "sequence": 88,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1250
+            },
+            {
+                "size": "2 Person",
+                "price": 2150
+            }
+        ],
+        "category": "Pasta ",
+        "category_id": "431682",
+        "url": "https://kashiffood.com/product/Chicken-Alfredo-Pasta",
+        "addon_groups": []
+    },
+    {
+        "id": "809640",
+        "name": "Chicken Mac n Cheese Pasta",
+        "slug": "Chicken-Mac-n-Cheese-Pasta",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962240-Chicken Mac n Cheese Pasta_14_11zon.webp",
+        "tag": "",
+        "sequence": 89,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1250
+            },
+            {
+                "size": "2 Person",
+                "price": 2150
+            }
+        ],
+        "category": "Pasta ",
+        "category_id": "431682",
+        "url": "https://kashiffood.com/product/Chicken-Mac-n-Cheese-Pasta",
+        "addon_groups": []
+    },
+    {
+        "id": "809641",
+        "name": "Chicken Red Sauce Pasta",
+        "slug": "Chicken-Red-Sauce-Pasta",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1768902012-Red-Sauce-Pasta.jpg",
+        "tag": "",
+        "sequence": 90,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1250
+            },
+            {
+                "size": "2 Person",
+                "price": 2150
+            }
+        ],
+        "category": "Pasta ",
+        "category_id": "431682",
+        "url": "https://kashiffood.com/product/Chicken-Red-Sauce-Pasta",
+        "addon_groups": []
+    },
+    {
+        "id": "809642",
+        "name": "Chicken Parmesan Cheese Pasta",
+        "slug": "Chicken-Parmesan-Cheese-Pasta",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1774654868-Chicken-Parmesan-Cheese-Pasta.jpg",
+        "tag": "",
+        "sequence": 91,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "1 Person",
+                "price": 1250
+            },
+            {
+                "size": "2 Pcs",
+                "price": 2150
+            }
+        ],
+        "category": "Pasta ",
+        "category_id": "431682",
+        "url": "https://kashiffood.com/product/Chicken-Parmesan-Cheese-Pasta",
+        "addon_groups": []
+    },
+    {
+        "id": "809643",
+        "name": "American Vintage",
+        "slug": "American-Vintage",
+        "description": "Smash-grilled beef, melty cheese, caramelized onions, crispy lettuce, fresh tomato & signature sauce.",
+        "photo": "https://assets.indolj.io/upload/1774887651-American-Vintage--2-.jpg",
+        "tag": "",
+        "sequence": 92,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1050
+            }
+        ],
+        "category": "Smash Beef Burgers",
+        "category_id": "431683",
+        "url": "https://kashiffood.com/product/American-Vintage",
+        "addon_groups": []
+    },
+    {
+        "id": "809644",
+        "name": "Mushroom Melt",
+        "slug": "Mushroom-Melt",
+        "description": "Smash beef patty, creamy mushroom sauce, crispy lettuce & melted cheese slice.",
+        "photo": "https://assets.indolj.io/upload/1774887626-Mushroom-Melt.jpg",
+        "tag": "",
+        "sequence": 93,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1050
+            }
+        ],
+        "category": "Smash Beef Burgers",
+        "category_id": "431683",
+        "url": "https://kashiffood.com/product/Mushroom-Melt",
+        "addon_groups": []
+    },
+    {
+        "id": "809645",
+        "name": "Smoky Bar-B-Que",
+        "slug": "Smoky-Bar-B-Que",
+        "description": "Smash beef patty, crispy lettuce, fresh tomato, fried onions, smoky sauce & melted cheese.",
+        "photo": "https://assets.indolj.io/upload/1774887593-Smoky-Bar-B-Que.jpg",
+        "tag": "",
+        "sequence": 94,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1150
+            }
+        ],
+        "category": "Smash Beef Burgers",
+        "category_id": "431683",
+        "url": "https://kashiffood.com/product/Smoky-Bar-B-Que",
+        "addon_groups": []
+    },
+    {
+        "id": "809646",
+        "name": "Crunchy Jalapeno",
+        "slug": "Crunchy-Jalapeno",
+        "description": "Smash Double beef patty, Slice of Beef Pepperoni, crispy fried jalapeños, fresh lettuce, melty cheese & zesty sauce.",
+        "photo": "https://assets.indolj.io/upload/1774887564-Crunchy-Jalapeno.jpg",
+        "tag": "",
+        "sequence": 95,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1550
+            }
+        ],
+        "category": "Smash Beef Burgers",
+        "category_id": "431683",
+        "url": "https://kashiffood.com/product/Crunchy-Jalapeno",
+        "addon_groups": []
+    },
+    {
+        "id": "809647",
+        "name": "Smoke House",
+        "slug": "Smoke-House",
+        "description": "Smash chicken patty, fresh lettuce, tomato, onion, Bar-B-Q sauce & melted cheese slice.",
+        "photo": "https://assets.indolj.io/upload/1768902134-smoke-house.jpg",
+        "tag": "",
+        "sequence": 96,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 900
+            }
+        ],
+        "category": "Smash Chicken Burgers",
+        "category_id": "431684",
+        "url": "https://kashiffood.com/product/Smoke-House",
+        "addon_groups": []
+    },
+    {
+        "id": "809648",
+        "name": "Grilled Mushroom",
+        "slug": "Grilled-Mushroom",
+        "description": "Grilled chicken patty, crispy lettuce, and rich cheesy mushroom sauce.",
+        "photo": "https://assets.indolj.io/upload/1774887913-Grilled-Mushroom.jpg",
+        "tag": "",
+        "sequence": 97,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 900
+            }
+        ],
+        "category": "Smash Chicken Burgers",
+        "category_id": "431684",
+        "url": "https://kashiffood.com/product/Grilled-Mushroom",
+        "addon_groups": []
+    },
+    {
+        "id": "809650",
+        "name": "Dual Combo Crispy Burger",
+        "slug": "Dual-Combo-Crispy-Burger",
+        "description": "Crispy Double Patty, Slice Of Chicken Pepperoni, Iceberg, Jalapeno, Melted Cheese & Coriander Mayo",
+        "photo": "https://assets.indolj.io/upload/1773351709-DualCombo.jpg",
+        "tag": "",
+        "sequence": 99,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1250
+            }
+        ],
+        "category": "Smash Chicken Burgers",
+        "category_id": "431684",
+        "url": "https://kashiffood.com/product/Dual-Combo-Crispy-Burger",
+        "addon_groups": []
+    },
+    {
+        "id": "809651",
+        "name": "Deal 1 Serve 1",
+        "slug": "Deal-1-Serve-1",
+        "description": "1 Biryani Small <br>\r\n1 Chicken Chatni Roll<br>\r\n1 Drink Regular",
+        "photo": "https://assets.indolj.io/upload/1767962874-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 100,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 875
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-1-Serve-1",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809652",
+        "name": "Deal 3 Serve 2",
+        "slug": "Deal-3-Serve-2",
+        "description": "1 Biryani Chicken<br>\r\n2 Chicken Chatni Roll <br>\r\n2 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962881-Logo_11zon (3).webp",
+        "tag": "Popular",
+        "sequence": 102,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1355
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-3-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809653",
+        "name": "Deal 5 Serve 2",
+        "slug": "Deal-5-Serve-2",
+        "description": "1 Singaporean Rice Regular <br>\r\n1 Zinger Burger (Regular Fries) <br>\r\n2 Drinks Regular <br>",
+        "photo": "https://assets.indolj.io/upload/1767962886-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 104,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1620
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-5-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809654",
+        "name": "Deal 7 Serve 2",
+        "slug": "Deal-7-Serve-2",
+        "description": "1 Singaporean Rice Regular <br>\r\n1 Zinger Burger (Regular Fries) <br>\r\n1 Chicken Chatni Roll <br>\r\n2 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962890-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 106,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1985
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-7-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809655",
+        "name": "Deal 9 Serve 2",
+        "slug": "Deal-9-Serve-2",
+        "description": "1 Zinger Burger (Regular Fries) <br>\r\n2 Chicken Chatni Roll <br>\r\n2 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962894-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 108,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1755
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-9-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809656",
+        "name": "Deal 11 Serve 2",
+        "slug": "Deal-11-Serve-2",
+        "description": "1 Club Sandwich (Regular Fries) <br>\r\n1 Chicken Chatni Roll <br>\r\n2 Drink Regular",
+        "photo": "https://assets.indolj.io/upload/1767962898-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 110,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1490
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-11-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809657",
+        "name": "Deal 13 Serve 2",
+        "slug": "Deal-13-Serve-2",
+        "description": "1 Singaporean Rice Regular <br>\r\n1 Malai Boti <br>\r\n1 Paratha <br>\r\n2 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962902-Logo_11zon (3).webp",
+        "tag": "Popular",
+        "sequence": 112,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 2045
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-13-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809658",
+        "name": "Deal 15 Serve 2",
+        "slug": "Deal-15-Serve-2",
+        "description": "1 Chicken Tikka Leg <br>\r\n1 Chicken Malai Boti <br>\r\n2 Pori Paratha <br>\r\n2 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962907-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 114,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 2120
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-15-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809659",
+        "name": "Deal 17 Serve 4",
+        "slug": "Deal-17-Serve-4",
+        "description": "1 Singaporean Rice Platter <br>\r\n2 Zinger Burger (Regular Fries) <br>\r\n2 Chicken Chatni Roll <br>\r\n4 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962911-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 116,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 4355
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-17-Serve-4",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809660",
+        "name": "Deal 19 Serve 4",
+        "slug": "Deal-19-Serve-4",
+        "description": "1 Malai Boti <br>\r\n1 Chicken Resham Kabab <br>\r\n1 Beef Seekh Kabab <br>\r\n1 Beef Bihari Boti <br>\r\n4 Parathay <br>\r\n4 Drink Regular",
+        "photo": "https://assets.indolj.io/upload/1767962915-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 118,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 5540
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-19-Serve-4",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": false,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809661",
+        "name": "Deal 2 Serve 2",
+        "slug": "Deal-2-Serve-2",
+        "description": "1 Singaporean Rice Regular <br>\r\n1 Chicken Chatni Roll <br>\r\n2 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962919-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 101,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1190
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-2-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809662",
+        "name": "Deal 4 Serve 2",
+        "slug": "Deal-4-Serve-2",
+        "description": "1 Biryani Chicken <br>\r\n1 Zinger Burger (Regular Fries) <br>\r\n2 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962922-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 103,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1420
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-4-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809663",
+        "name": "Deal 6 Serve 2",
+        "slug": "Deal-6-Serve-2",
+        "description": "1 Singaporean Rice Regular<br>\r\n2 Chicken Chatni Roll <br>\r\n2 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962927-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 105,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1555
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-6-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809664",
+        "name": "Deal 8 Serve 2",
+        "slug": "Deal-8-Serve-2",
+        "description": "1 Singaporean Rice Large <br>\r\n2 Chicken Chatni Roll <br>\r\n2 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962930-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 107,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 2005
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-8-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809665",
+        "name": "Deal 10 Serve 2",
+        "slug": "Deal-10-Serve-2",
+        "description": "1 Bar-B-Que Sandwich (Regular Fries) <br>\r\n2 Chicken Chatni Roll <br>\r\n2 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962935-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 109,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1905
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-10-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809666",
+        "name": "Deal 12 Serve 2",
+        "slug": "Deal-12-Serve-2",
+        "description": "1 Singaporean Rice Regular <br>\r\n2 Pcs Crispy Fried Chicken (Regular Fries) <br>\r\n2 Drink Regular",
+        "photo": "https://assets.indolj.io/upload/1767962939-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 111,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1620
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-12-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809667",
+        "name": "Deal 14 Serve 2",
+        "slug": "Deal-14-Serve-2",
+        "description": "1 Zinger Burger (Regular Fries) <br>\r\n1 Chicken Chatni Roll <br>\r\n2 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962943-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 113,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1390
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-14-Serve-2",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809668",
+        "name": "Deal 16 Serve 4",
+        "slug": "Deal-16-Serve-4",
+        "description": "2 Chicken Biryani large <br>\r\n2 Zinger Burger (Regular Fries) <br> \r\n2 Chicken Chatni Roll <br>\r\n4 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962947-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 115,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 4270
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-16-Serve-4",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809669",
+        "name": "Deal 18 Serve 4",
+        "slug": "Deal-18-Serve-4",
+        "description": "2 Zinger Burger (Regular Fries) <br>\r\n4 Chicken Chatni Roll <br>\r\n4 Drinks Regular",
+        "photo": "https://assets.indolj.io/upload/1767962951-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 117,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 3510
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-18-Serve-4",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "custom",
+                "multi_option_val": "2",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809670",
+        "name": "Deal 20 Serve 6",
+        "slug": "Deal-20-Serve-6",
+        "description": "1 Singaporean Rice Family Pack Small <br>\r\n6 Chicken Chatni Roll <br>\r\n6 Drink Regular",
+        "photo": "https://assets.indolj.io/upload/1767962955-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 119,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 5625
+            }
+        ],
+        "category": "Deals",
+        "category_id": "431674",
+        "url": "https://kashiffood.com/product/Deal-20-Serve-6",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809671",
+        "name": "Mineral Water",
+        "slug": "Mineral-Water",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962328-Water.webp",
+        "tag": "",
+        "sequence": 120,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "small",
+                "price": 80
+            },
+            {
+                "size": "Large",
+                "price": 160
+            }
+        ],
+        "category": "Beverages",
+        "category_id": "431686",
+        "url": "https://kashiffood.com/product/Mineral-Water",
+        "addon_groups": []
+    },
+    {
+        "id": "809672",
+        "name": "Soft Drink",
+        "slug": "Soft-Drink",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962361-Gemini_Generated_Image_ctfbmvctfbmvctfb_11zon.webp",
+        "tag": "",
+        "sequence": 121,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Can",
+                "price": 160
+            },
+            {
+                "size": "300 ML",
+                "price": 100
+            },
+            {
+                "size": "345 ML",
+                "price": 120
+            }
+        ],
+        "category": "Beverages",
+        "category_id": "431686",
+        "url": "https://kashiffood.com/product/Soft-Drink",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809673",
+        "name": "Sting Can",
+        "slug": "Sting-Can",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962381-Sting Can_60_11zon.webp",
+        "tag": "",
+        "sequence": 122,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 180
+            }
+        ],
+        "category": "Beverages",
+        "category_id": "431686",
+        "url": "https://kashiffood.com/product/Sting-Can",
+        "addon_groups": []
+    },
+    {
+        "id": "809674",
+        "name": "Raita",
+        "slug": "Raita",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1768902356-RAITA.jpg",
+        "tag": "",
+        "sequence": 123,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 100
+            }
+        ],
+        "category": "Raita & Salad ",
+        "category_id": "431687",
+        "url": "https://kashiffood.com/product/Raita",
+        "addon_groups": []
+    },
+    {
+        "id": "809675",
+        "name": "Fresh Salad",
+        "slug": "Fresh-Salad",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962405-Fresh Salad_36_11zon.webp",
+        "tag": "",
+        "sequence": 124,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 200
+            }
+        ],
+        "category": "Raita & Salad ",
+        "category_id": "431687",
+        "url": "https://kashiffood.com/product/Fresh-Salad",
+        "addon_groups": []
+    },
+    {
+        "id": "809679",
+        "name": "Singaporean Sauce",
+        "slug": "Singaporean-Sauce",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962452-Singaporean Sauce_57_11zon.webp",
+        "tag": "",
+        "sequence": 128,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 100
+            }
+        ],
+        "category": "Extras",
+        "category_id": "431688",
+        "url": "https://kashiffood.com/product/Singaporean-Sauce",
+        "addon_groups": []
+    },
+    {
+        "id": "809681",
+        "name": "Garlic Fried",
+        "slug": "Garlic-Fried",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962966-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 130,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 100
+            }
+        ],
+        "category": "Extras",
+        "category_id": "431688",
+        "url": "https://kashiffood.com/product/Garlic-Fried",
+        "addon_groups": []
+    },
+    {
+        "id": "809682",
+        "name": "Cheese",
+        "slug": "Cheese",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962970-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 131,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 100
+            }
+        ],
+        "category": "Extras",
+        "category_id": "431688",
+        "url": "https://kashiffood.com/product/Cheese",
+        "addon_groups": []
+    },
+    {
+        "id": "809683",
+        "name": "Bun",
+        "slug": "Bun",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962474-Bun_5_11zon.webp",
+        "tag": "",
+        "sequence": 132,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 80
+            }
+        ],
+        "category": "Extras",
+        "category_id": "431688",
+        "url": "https://kashiffood.com/product/Bun",
+        "addon_groups": []
+    },
+    {
+        "id": "809684",
+        "name": "Dinner Roll",
+        "slug": "Dinner-Roll",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962486-Dinner Roll_30_11zon.webp",
+        "tag": "",
+        "sequence": 133,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 80
+            }
+        ],
+        "category": "Extras",
+        "category_id": "431688",
+        "url": "https://kashiffood.com/product/Dinner-Roll",
+        "addon_groups": []
+    },
+    {
+        "id": "809685",
+        "name": "Coleslaw",
+        "slug": "Coleslaw",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962497-Coleslaw_26_11zon.webp",
+        "tag": "",
+        "sequence": 134,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 80
+            }
+        ],
+        "category": "Extras",
+        "category_id": "431688",
+        "url": "https://kashiffood.com/product/Coleslaw",
+        "addon_groups": []
+    },
+    {
+        "id": "809686",
+        "name": "Mayo Sauce",
+        "slug": "Mayo-Sauce",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962510-Mayo Sauce_45_11zon.webp",
+        "tag": "",
+        "sequence": 135,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 80
+            }
+        ],
+        "category": "Extras",
+        "category_id": "431688",
+        "url": "https://kashiffood.com/product/Mayo-Sauce",
+        "addon_groups": []
+    },
+    {
+        "id": "809687",
+        "name": "Paratha",
+        "slug": "Paratha",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962521-Paratha_49_11zon.webp",
+        "tag": "",
+        "sequence": 136,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "small",
+                "price": 80
+            },
+            {
+                "size": "Large",
+                "price": 150
+            }
+        ],
+        "category": "Extras",
+        "category_id": "431688",
+        "url": "https://kashiffood.com/product/Paratha",
+        "addon_groups": []
+    },
+    {
+        "id": "809688",
+        "name": "Beef Boti Rolls",
+        "slug": "Beef-Boti-Rolls",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962530-Beef Boti Rolls_3_11zon.webp",
+        "tag": "",
+        "sequence": 137,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Plain",
+                "price": 370
+            },
+            {
+                "size": "Mayo",
+                "price": 400
+            },
+            {
+                "size": "Cheese",
+                "price": 410
+            }
+        ],
+        "category": "Rolls",
+        "category_id": "431690",
+        "url": "https://kashiffood.com/product/Beef-Boti-Rolls",
+        "addon_groups": []
+    },
+    {
+        "id": "809689",
+        "name": "Beef Kebab Rolls",
+        "slug": "Beef-Kebab-Rolls",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962540-Beef Kebab Rolls_4_11zon.webp",
+        "tag": "",
+        "sequence": 138,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Plain",
+                "price": 370
+            },
+            {
+                "size": "Mayo",
+                "price": 400
+            },
+            {
+                "size": "Cheese",
+                "price": 410
+            }
+        ],
+        "category": "Rolls",
+        "category_id": "431690",
+        "url": "https://kashiffood.com/product/Beef-Kebab-Rolls",
+        "addon_groups": []
+    },
+    {
+        "id": "809690",
+        "name": "Chicken Balochi Roll",
+        "slug": "Chicken-Balochi-Roll",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962550-Chicken Balochi Roll_8_11zon.webp",
+        "tag": "",
+        "sequence": 139,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Plain",
+                "price": 400
+            },
+            {
+                "size": "Mayo",
+                "price": 440
+            },
+            {
+                "size": "Cheese",
+                "price": 450
+            }
+        ],
+        "category": "Rolls",
+        "category_id": "431690",
+        "url": "https://kashiffood.com/product/Chicken-Balochi-Roll",
+        "addon_groups": []
+    },
+    {
+        "id": "809691",
+        "name": "Chicken Chatni Roll",
+        "slug": "Chicken-Chatni-Roll",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957594-CHICKEN ROLL_29_11zon.webp",
+        "tag": "",
+        "sequence": 140,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Plain",
+                "price": 370
+            },
+            {
+                "size": "Mayo",
+                "price": 400
+            },
+            {
+                "size": "Cheese",
+                "price": 410
+            }
+        ],
+        "category": "Rolls",
+        "category_id": "431690",
+        "url": "https://kashiffood.com/product/Chicken-Chatni-Roll",
+        "addon_groups": []
+    },
+    {
+        "id": "809692",
+        "name": "Chicken Crispy Rolls",
+        "slug": "Chicken-Crispy-Rolls",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767957331-CHCIKEN CRISPY ROLL_17_11zon.webp",
+        "tag": "",
+        "sequence": 141,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Plain",
+                "price": 500
+            },
+            {
+                "size": "Mayo",
+                "price": 500
+            },
+            {
+                "size": "Cheese",
+                "price": 510
+            }
+        ],
+        "category": "Rolls",
+        "category_id": "431690",
+        "url": "https://kashiffood.com/product/Chicken-Crispy-Rolls",
+        "addon_groups": []
+    },
+    {
+        "id": "809693",
+        "name": "Chicken Malai Boti Roll",
+        "slug": "Chicken-Malai-Boti-Roll",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962560-Chicken Malai Boti Roll_15_11zon.webp",
+        "tag": "",
+        "sequence": 142,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Plain",
+                "price": 390
+            },
+            {
+                "size": "Mayo",
+                "price": 420
+            },
+            {
+                "size": "Cheese",
+                "price": 440
+            }
+        ],
+        "category": "Rolls",
+        "category_id": "431690",
+        "url": "https://kashiffood.com/product/Chicken-Malai-Boti-Roll",
+        "addon_groups": []
+    },
+    {
+        "id": "809694",
+        "name": "Chicken Reshmi Kebab Roll",
+        "slug": "Chicken-Reshmi-Kebab-Roll",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962571-Chicken Reshmi Kebab Roll_21_11zon.webp",
+        "tag": "",
+        "sequence": 143,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Plain",
+                "price": 380
+            },
+            {
+                "size": "Mayo",
+                "price": 400
+            },
+            {
+                "size": "Cheese",
+                "price": 420
+            }
+        ],
+        "category": "Rolls",
+        "category_id": "431690",
+        "url": "https://kashiffood.com/product/Chicken-Reshmi-Kebab-Roll",
+        "addon_groups": []
+    },
+    {
+        "id": "809695",
+        "name": "Midnight Deal 01",
+        "slug": "Midnight-Deal-01",
+        "description": "2 Pcs Crispy Fried Chicken",
+        "photo": "https://assets.indolj.io/upload/1767963001-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 144,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 600
+            },
+            {
+                "size": "Combo",
+                "price": 800
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-01",
+        "addon_groups": []
+    },
+    {
+        "id": "809696",
+        "name": "Midnight Deal 02",
+        "slug": "Midnight-Deal-02",
+        "description": "2 Pcs Crispy Fried Chicken (Spicy)",
+        "photo": "https://assets.indolj.io/upload/1767963011-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 145,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 650
+            },
+            {
+                "size": "Combo",
+                "price": 850
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-02",
+        "addon_groups": []
+    },
+    {
+        "id": "809697",
+        "name": "Midnight Deal 03",
+        "slug": "Midnight-Deal-03",
+        "description": "1 Chicken Crunch Burger <br>\r\n1 Crispy Fried Chicken (Drum Stick)",
+        "photo": "https://assets.indolj.io/upload/1767963016-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 146,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 700
+            },
+            {
+                "size": "Combo",
+                "price": 900
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-03",
+        "addon_groups": []
+    },
+    {
+        "id": "809698",
+        "name": "Midnight Deal 04",
+        "slug": "Midnight-Deal-04",
+        "description": "1 Chicken Zinger Burger <br>\r\n1 Crispy Fried Chicken (Drum Stick)",
+        "photo": "https://assets.indolj.io/upload/1767963021-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 147,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 900
+            },
+            {
+                "size": "Combo",
+                "price": 1050
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-04",
+        "addon_groups": []
+    },
+    {
+        "id": "809700",
+        "name": "Midnight Deal 05",
+        "slug": "Midnight-Deal-05",
+        "description": "Chicken Crunch Burger",
+        "photo": "https://assets.indolj.io/upload/1767963026-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 148,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 450
+            },
+            {
+                "size": "Combo",
+                "price": 650
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-05",
+        "addon_groups": []
+    },
+    {
+        "id": "809701",
+        "name": "Midnight Deal 06",
+        "slug": "Midnight-Deal-06",
+        "description": "Chicken Zinger Burger",
+        "photo": "https://assets.indolj.io/upload/1767963032-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 149,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 600
+            },
+            {
+                "size": "Combo",
+                "price": 800
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-06",
+        "addon_groups": []
+    },
+    {
+        "id": "809702",
+        "name": "Midnight Deal 07",
+        "slug": "Midnight-Deal-07",
+        "description": "Thrill Zinger Burger (Spicy)",
+        "photo": "https://assets.indolj.io/upload/1767963040-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 150,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 650
+            },
+            {
+                "size": "Combo",
+                "price": 850
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-07",
+        "addon_groups": []
+    },
+    {
+        "id": "809703",
+        "name": "Midnight Deal 08",
+        "slug": "Midnight-Deal-08",
+        "description": "Beef Burger",
+        "photo": "https://assets.indolj.io/upload/1767963046-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 151,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 600
+            },
+            {
+                "size": "Combo",
+                "price": 800
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-08",
+        "addon_groups": []
+    },
+    {
+        "id": "809704",
+        "name": "Midnight Deal 09",
+        "slug": "Midnight-Deal-09",
+        "description": "Chicken Club Sandwich",
+        "photo": "https://assets.indolj.io/upload/1767963050-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 152,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 700
+            },
+            {
+                "size": "Combo",
+                "price": 900
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-09",
+        "addon_groups": []
+    },
+    {
+        "id": "809705",
+        "name": "Midnight Deal 10",
+        "slug": "Midnight-Deal-10",
+        "description": "Bar-B-Que Sandwich",
+        "photo": "https://assets.indolj.io/upload/1767963056-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 153,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Regular",
+                "price": 750
+            },
+            {
+                "size": "Combo",
+                "price": 950
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-10",
+        "addon_groups": []
+    },
+    {
+        "id": "809706",
+        "name": "Midnight Deal 11",
+        "slug": "Midnight-Deal-11",
+        "description": "Any 1 Pizza Fries With 2 Regular Drinks",
+        "photo": "https://assets.indolj.io/upload/1767963061-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 154,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 950
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-11",
+        "addon_groups": [
+            {
+                "name": "Select Your Preference",
+                "required": false,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Miami Supreme Fries",
+                        "price": 0
+                    },
+                    {
+                        "name": "Tikka Pizza Fries",
+                        "price": 0
+                    }
+                ]
+            },
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809707",
+        "name": "Midnight Deal 12",
+        "slug": "Midnight-Deal-12",
+        "description": "Singaporean Rice (Regular)",
+        "photo": "https://assets.indolj.io/upload/1767963157-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 155,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 550
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-12",
+        "addon_groups": []
+    },
+    {
+        "id": "809708",
+        "name": "Midnight Deal 13",
+        "slug": "Midnight-Deal-13",
+        "description": "Singaporean Rice (Khaas) With 2 Regular Drinks",
+        "photo": "https://assets.indolj.io/upload/1767963070-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 156,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 2900
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-13",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "multiple",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809709",
+        "name": "Midnight Deal 14",
+        "slug": "Midnight-Deal-14",
+        "description": "Chicken Malai Tikka (Chest)",
+        "photo": "https://assets.indolj.io/upload/1767963077-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 157,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 650
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-14",
+        "addon_groups": []
+    },
+    {
+        "id": "809710",
+        "name": "Midnight Deal 15",
+        "slug": "Midnight-Deal-15",
+        "description": "Chicken Malai Boti With Regular Drink",
+        "photo": "https://assets.indolj.io/upload/1767963083-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 158,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1150
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-15",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809711",
+        "name": "Midnight Deal 16",
+        "slug": "Midnight-Deal-16",
+        "description": "Chicken Shahi Chattakh With Regular Drink",
+        "photo": "https://assets.indolj.io/upload/1767963089-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 159,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1250
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-16",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809712",
+        "name": "Midnight Deal 17",
+        "slug": "Midnight-Deal-17",
+        "description": "Garlic Rice With Shashlik Bar-B-Que",
+        "photo": "https://assets.indolj.io/upload/1767963095-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 160,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1550
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-17",
+        "addon_groups": []
+    },
+    {
+        "id": "809713",
+        "name": "Midnight Deal 18",
+        "slug": "Midnight-Deal-18",
+        "description": "Chicken Balochi Boti With Regular Drink",
+        "photo": "https://assets.indolj.io/upload/1767963101-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 161,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1250
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-18",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809714",
+        "name": "Midnight Deal 19",
+        "slug": "Midnight-Deal-19",
+        "description": "Chicken Resham Kebab/ Beef Seekh Kebab  With Regular Drink",
+        "photo": "https://assets.indolj.io/upload/1767963106-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 162,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Chicken Resham Kebab",
+                "price": 1150
+            },
+            {
+                "size": "Beef Seekh Kebab ",
+                "price": 1350
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-19",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809720",
+        "name": "Midnight Deal 20",
+        "slug": "Midnight-Deal-20-809720",
+        "description": "Manchurian With Fried Rice With Regular Drink",
+        "photo": "https://assets.indolj.io/upload/1767963133-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 168,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1350
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-20-809720",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809721",
+        "name": "Midnight Deal 21",
+        "slug": "Midnight-Deal-21-809721",
+        "description": "Chicken Chow Mein With Regular Drink",
+        "photo": "https://assets.indolj.io/upload/1767963139-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 169,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1200
+            }
+        ],
+        "category": "Midnight Deals",
+        "category_id": "431689",
+        "url": "https://kashiffood.com/product/Midnight-Deal-21-809721",
+        "addon_groups": [
+            {
+                "name": "Select Your Drink",
+                "required": true,
+                "multi_option": "one",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Pepsi",
+                        "price": 0
+                    },
+                    {
+                        "name": "Mirinda",
+                        "price": 0
+                    },
+                    {
+                        "name": "7up",
+                        "price": 0
+                    },
+                    {
+                        "name": "Dew",
+                        "price": 0
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "828015",
+        "name": "Turkiya kebab",
+        "slug": "Turkiya-kebab",
+        "description": "(1 TO 2 PERSONS)<br>Served with Arabic Rice, 1 Skewer Chicken Adana Kebab, 1 Skewer\r\nBeef Adana Kebab Bar-B-Que Tomato, Green Chilli, Fries & Sauce",
+        "photo": "https://assets.indolj.io/upload/1781377145-Turkiya-Kebab.jpg",
+        "tag": "",
+        "sequence": 0,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1800
+            }
+        ],
+        "category": "Platters",
+        "category_id": "431671",
+        "url": "https://kashiffood.com/product/Turkiya-kebab",
+        "addon_groups": []
+    },
+    {
+        "id": "828033",
+        "name": "Ustad Special Roll",
+        "slug": "Ustad-Special-Roll",
+        "description": "Chicken Boti, Chicken Baluchi Boti, Chicken Malai Boti,Beef Boti, Chicken Resham Kebab & Beef Seekh Kebab",
+        "photo": "https://assets.indolj.io/upload/1776680867-1767967320-419223039-702837458649085-5638199729379820459-n.jpg",
+        "tag": "",
+        "sequence": 0,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "Plain",
+                "price": 550
+            },
+            {
+                "size": "Mayo",
+                "price": 600
+            },
+            {
+                "size": "Chipotle",
+                "price": 600
+            }
+        ],
+        "category": "Rolls",
+        "category_id": "431690",
+        "url": "https://kashiffood.com/product/Ustad-Special-Roll",
+        "addon_groups": []
+    },
+    {
+        "id": "828147",
+        "name": "Soft Drink",
+        "slug": "Soft-Drink-828147",
+        "description": "Only For Take Away",
+        "photo": "https://assets.indolj.io/upload/1776684554-1767967320-419223039-702837458649085-5638199729379820459-n.jpg",
+        "tag": "",
+        "sequence": 0,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": "500 ml",
+                "price": 140
+            },
+            {
+                "size": "1.5 ltr",
+                "price": 220
+            },
+            {
+                "size": "Jumbo",
+                "price": 320
+            },
+            {
+                "size": "500 ml(Sting)",
+                "price": 150
+            }
+        ],
+        "category": "Beverages",
+        "category_id": "431686",
+        "url": "https://kashiffood.com/product/Soft-Drink-828147",
+        "addon_groups": []
+    },
+    {
+        "id": "809605",
+        "name": "Family Deal 02",
+        "slug": "Family-Deal-02",
+        "description": "4 Chicken Crunch Burger <br>\r\n4 Piece Crispy Fried Chicken<br>\r\n2 Dinner Rolls",
+        "photo": "https://assets.indolj.io/upload/1767962836-Logo_11zon (3).webp",
+        "tag": "",
+        "sequence": 54,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 2750
+            }
+        ],
+        "category": "Family Deals ",
+        "category_id": "431675",
+        "url": "https://kashiffood.com/product/Family-Deal-02",
+        "addon_groups": []
+    },
+    {
+        "id": "809611",
+        "name": "Crispy Fried Chicken",
+        "slug": "Crispy-Fried-Chicken",
+        "description": "1 Piece",
+        "photo": "https://assets.indolj.io/upload/1767957894-DRUM STICKS_38_11zon.webp",
+        "tag": "",
+        "sequence": 60,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 450
+            }
+        ],
+        "category": "Kids House ",
+        "category_id": "431676",
+        "url": "https://kashiffood.com/product/Crispy-Fried-Chicken",
+        "addon_groups": [
+            {
+                "name": "Add Ons",
+                "required": false,
+                "multi_option": "custom",
+                "multi_option_val": "",
+                "options": [
+                    {
+                        "name": "Add Fries",
+                        "price": 150
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": "809649",
+        "name": "Cheesy Blaze",
+        "slug": "Cheesy-Blaze",
+        "description": "Crispy crumb-fried chicken, melted cheese, fresh lettuce & fiery dynamite sauce.",
+        "photo": "https://assets.indolj.io/upload/1774887969-Cheesy-Blaze--1-.jpg",
+        "tag": "",
+        "sequence": 98,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 1000
+            }
+        ],
+        "category": "Smash Chicken Burgers",
+        "category_id": "431684",
+        "url": "https://kashiffood.com/product/Cheesy-Blaze",
+        "addon_groups": []
+    },
+    {
+        "id": "809680",
+        "name": "Butter",
+        "slug": "Butter",
+        "description": "",
+        "photo": "https://assets.indolj.io/upload/1767962463-Butter_6_11zon.webp",
+        "tag": "",
+        "sequence": 129,
+        "available": true,
+        "size_heading": "",
+        "prices": [
+            {
+                "size": null,
+                "price": 200
+            }
+        ],
+        "category": "Extras",
+        "category_id": "431688",
+        "url": "https://kashiffood.com/product/Butter",
+        "addon_groups": []
+    }
+]

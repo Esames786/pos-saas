@@ -42,11 +42,40 @@ class IdentifyTenant
             ->where('status', 'active')
             ->first();
 
+        // ONLINE-ORDERING-1 (Phase 5): client ka website domain bina-www darj hota hai; www wala usi par.
+        if (! $domain && str_starts_with($host, 'www.')) {
+            $apex = substr($host, 4);
+            if (TenantDomain::where('domain', $apex)->where('kind', TenantDomain::KIND_WEBSITE)->where('status', 'active')->exists()) {
+                return redirect()->away($request->getScheme().'://'.substr($request->getHttpHost(), 4).$request->getRequestUri(), 301);
+            }
+        }
+
         if (!$domain || !$domain->tenant || $domain->tenant->status !== 'active') {
             abort(404, 'Tenant not found or inactive.');
         }
 
         app(TenancyManager::class)->activate($domain->tenant);
+
+        if ($domain->isWebsite()) {
+            // Sirf website ke raaste is host par khulte hain (`website.host`). Aur cookie isi host ki: ye
+            // bingoopos.com ka hissa nahi, `SESSION_DOMAIN` wala cookie browser rad kar deta — phir checkout
+            // ka CSRF kabhi na chalta.
+            $request->attributes->set('tenant_domain_kind', TenantDomain::KIND_WEBSITE);
+            config(['session.domain' => null]);
+
+            // UAT jaisa website address jo khud *.bingoopos.com hai (kashiffoodweb.bingoopos.com): tenant ke
+            // raaste bhi us host se milte hain, aur login wale raaste routing se pehle login par bhej dete. Yahan,
+            // routing se pehle, sirf website: khali address → menu; /order…, /sw.js aur /robots.txt ke siwa sab 404.
+            if (str_ends_with($host, '.'.config('tenancy.tenant_base_domain'))) {
+                $path = '/'.ltrim($request->path(), '/');
+                if ($path === '/') {
+                    return redirect('/order');
+                }
+                if (! preg_match('#^/(order(/.*)?|sw\.js|robots\.txt)$#', $path)) {
+                    abort(404);
+                }
+            }
+        }
 
         return $next($request);
     }

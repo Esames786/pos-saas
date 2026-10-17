@@ -7,6 +7,7 @@ use App\Models\Master\WhatsAppMessage;
 use App\Services\Reports\Delivery\ReportDelivery;
 use App\Services\Reports\Delivery\WhatsAppChannel;
 use App\Services\Reports\SalesReportEngine;
+use App\Services\Saas\BillingRates;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\MySql\Support\TenantFixtures;
@@ -38,6 +39,13 @@ class WhatsAppUsageLedgerMySqlTest extends MySqlTenantTestCase
 
         DB::connection('master')->table('whatsapp_messages')->delete();
         DB::connection('master')->table('report_share_links')->delete();
+
+        // ONLINE-ORDERING-1: asal rate ab master ki Billing rates me hai. Master DB teston ke beech
+        // bachti hai, to pichhle test ka likha rate yahan na aaye: dono rows hata kar upar wala
+        // `.env` sahara chalao, phir har test apna rate khud likhe.
+        DB::connection('master')->table('platform_settings')
+            ->whereIn('key', [BillingRates::WHATSAPP_RATE, BillingRates::WHATSAPP_COST])->delete();
+        $this->app->forgetScopedInstances();
 
         app()->instance('tenant', Tenant::first());
     }
@@ -135,11 +143,33 @@ class WhatsAppUsageLedgerMySqlTest extends MySqlTenantTestCase
 
         // Rate badalne se PURANI row nahi hilni chahiye, warna guzre mahine ka invoice khud ba khud
         // badal jayega — wohi usool jo catering ke invoice par hai.
-        config()->set('services.whatsapp.rate_pkr', 12.00);
+        //
+        // ONLINE-ORDERING-1: rate ab platform admin ki Billing rates se badalta hai (master), `.env`
+        // se nahi — to badla bhi wahin jata hai.
+        app(BillingRates::class)->put([BillingRates::WHATSAPP_RATE => 12.00]);
         $this->assertSame('9.8500', WhatsAppMessage::first()->fresh()->rate_charged);
 
         app(WhatsAppChannel::class)->send($this->delivery(), ['923331279246']);
         $this->assertSame('12.0000', WhatsAppMessage::orderByDesc('id')->first()->rate_charged);
+    }
+
+    public function test_the_master_rate_wins_over_env_and_env_is_only_the_fallback(): void
+    {
+        $this->okUnique();
+
+        // Master me row nahi (setUp ne hata di): `.env` ka 9.85 chalta hai — deploy aur pehli bharai
+        // ke beech report rukni nahi chahiye.
+        app(WhatsAppChannel::class)->send($this->delivery(), ['923328252838']);
+        $this->assertSame('9.8500', WhatsAppMessage::orderByDesc('id')->first()->rate_charged);
+
+        // Master me rate likha: wohi chalta hai, `.env` kuch bhi kahe.
+        app(BillingRates::class)->put([BillingRates::WHATSAPP_RATE => 11.25, BillingRates::WHATSAPP_COST => 6.10]);
+        config()->set('services.whatsapp.rate_pkr', 99.0);
+
+        app(WhatsAppChannel::class)->send($this->delivery(), ['923331279246']);
+        $row = WhatsAppMessage::orderByDesc('id')->first();
+        $this->assertSame('11.2500', $row->rate_charged);
+        $this->assertSame('6.1000', $row->provider_cost);
     }
 
     public function test_our_own_cost_is_recorded_so_the_margin_can_be_measured(): void
@@ -236,7 +266,7 @@ class WhatsAppUsageLedgerMySqlTest extends MySqlTenantTestCase
 
         DB::connection('master')->table('subscription_invoices')->where('invoice_type', 'addon')->delete();
 
-        $this->artisan('billing:whatsapp-invoice', ['--yes' => true])->assertSuccessful();
+        $this->artisan('billing:whatsapp-invoice', ['--legacy' => true, '--yes' => true])->assertSuccessful();
 
         $invoices = DB::connection('master')->table('subscription_invoices')->where('invoice_type', 'addon')->get();
         $this->assertCount(1, $invoices, 'Aik mahine ki aik hi invoice honi chahiye.');
@@ -246,7 +276,7 @@ class WhatsAppUsageLedgerMySqlTest extends MySqlTenantTestCase
         // Dobara chalao. Raqam waisi hi rehni chahiye. Agar total purane total me JORHA jata (bajaye
         // juRi hui rows se dobara nikalne ke) to har chalane par bill barhta jata — aur koi ise
         // pakaR nahi sakta tha, kyunke raqam hamesha "maqool" lagti.
-        $this->artisan('billing:whatsapp-invoice', ['--yes' => true])->assertSuccessful();
+        $this->artisan('billing:whatsapp-invoice', ['--legacy' => true, '--yes' => true])->assertSuccessful();
 
         $after = DB::connection('master')->table('subscription_invoices')->where('invoice_type', 'addon')->get();
         $this->assertCount(1, $after);

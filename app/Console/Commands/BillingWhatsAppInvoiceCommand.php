@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Master\SubscriptionInvoice;
 use App\Models\Master\Tenant;
 use App\Models\Master\WhatsAppMessage;
-use App\Services\Saas\SubscriptionBillingService;
+use App\Services\Saas\UsageInvoiceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -36,12 +36,30 @@ class BillingWhatsAppInvoiceCommand extends Command
     protected $signature = 'billing:whatsapp-invoice
         {--month= : YYYY-MM. Default: har wo mahina jis ki koi row abhi kisi invoice se nahi juRi}
         {--close : Us mahine ki draft invoice band kar do (draft → issued)}
+        {--legacy : Purana (retire-shuda) tareeqa — alag addon invoice}
         {--yes : Likho. Is ke baghair sirf dikhata hai}';
 
     protected $description = 'WhatsApp usage ki mahana draft invoice kholta/barhata hai (default: dry run).';
 
-    public function handle(SubscriptionBillingService $billing): int
+    public function handle(UsageInvoiceService $usage): int
     {
+        // BILLING-TENANT-CYCLE-1 — ye command ab chalni nahi chahiye.
+        //
+        // Ise chalane ka matlab hai calendar mahine ki aik ALAG `addon` invoice khol dena aur us me
+        // wo usage bandh dena jo mahana invoice ka hissa banni thi. Nateeja: tenant ko do bill, aur
+        // mahana invoice me usage GHAYAB — kyunke wo pehle hi kisi aur invoice se bandh chuki hogi.
+        //
+        // Mitaya is liye nahi ke purani addon invoices ki lines isi dhaanche se bani hain, aur
+        // --legacy un par kaam karne ka raasta khula rakhta hai.
+        if (! $this->option('legacy')) {
+            $this->error('Ye command retire ho chuki hai (BILLING-TENANT-CYCLE-1).');
+            $this->line('  Usage ab `billing:generate-monthly-invoices` khud uthati hai — tenant ke apne din par,');
+            $this->line('  usi AIK invoice me jis me plan fee hai.');
+            $this->line('  Waqai purana tareeqa chahiye to --legacy lagayein.');
+
+            return self::FAILURE;
+        }
+
         $write = (bool) $this->option('yes');
         $close = (bool) $this->option('close');
 
@@ -105,40 +123,20 @@ class BillingWhatsAppInvoiceCommand extends Command
         }
 
         foreach ($planned as $p) {
-            DB::connection('master')->transaction(function () use ($billing, $p) {
+            DB::connection('master')->transaction(function () use ($usage, $p) {
                 // Us mahine ki khuli invoice dhoondo; na mile to kholo. `draft` jaan boojh kar:
                 // mahina chal raha hai, raqam abhi barhegi, aur jo cheez abhi deni nahi us par
-                // "due" ka lafz nahi aana chahiye.
-                $invoice = SubscriptionInvoice::where('tenant_id', $p['tenant']->id)
-                    ->where('invoice_type', 'addon')
-                    ->where('period_start', $p['start']->toDateString())
-                    ->whereIn('status', ['draft', 'issued'])
-                    ->first();
-
-                if (! $invoice) {
-                    $invoice = $billing->createInvoice($p['tenant'], [
-                        'invoice_type' => 'addon',
-                        'status' => 'draft',
-                        'subtotal' => 0,
-                        'period_start' => $p['start']->toDateString(),
-                        'period_end' => $p['end']->toDateString(),
-                        'notes' => 'WhatsApp report messages — '.$p['start']->format('F Y')
-                            .'. Mahine ke dauran roz barhti hai; mahina khatam hone par band hoti hai.',
-                    ]);
-                }
+                // "due" ka lafz nahi aana chahiye. (ONLINE-ORDERING-1: wohi invoice jis par website ka 1% bhi.)
+                $invoice = $usage->openInvoice($p['tenant'], $p['start']);
 
                 WhatsAppMessage::whereIn('id', $p['rows']->pluck('id'))->update(['invoice_id' => $invoice->id]);
 
                 // Total hamesha JURI HUI rows se dobara nikala jata hai, purane total me joRa nahi
                 // jata. Agar ye command kabhi aadhe me ruk jaye to joRne wala tareeqa raqam ko aage
                 // peechhe kar deta; dobara nikalne wala tareeqa hamesha un rows ke barabar rehta hai
-                // jo waqai is invoice se bandhi hain.
-                $total = (float) WhatsAppMessage::where('invoice_id', $invoice->id)->sum('rate_charged');
-                $invoice->update([
-                    'subtotal' => $total,
-                    'total_amount' => $total,
-                    'balance_amount' => $total - (float) $invoice->paid_amount,
-                ]);
+                // jo waqai is invoice se bandhi hain. Ab din-wise lines → SUM(lines): pehle total seedha
+                // messages se likha jata tha, jo isi invoice par website ke 1% ki lines mita deta.
+                $usage->refresh($invoice);
             });
         }
 

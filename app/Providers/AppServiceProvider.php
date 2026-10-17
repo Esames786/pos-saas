@@ -11,10 +11,29 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
-    public function register(): void {}
+    public function register(): void
+    {
+        // ONLINE-ORDERING-1: rates aik request/job me aik dafa parhe jayen; agle job me dobara.
+        $this->app->scoped(\App\Services\Saas\BillingRates::class);
+    }
 
     public function boot(): void
     {
+        // ONLINE-ORDERING-1: a website order's WhatsApp follows the ORDER, whichever path changed it — the
+        // cashier's Hold, the inbox, the customer's confirm link, a cancel or the auto-cancel. Listening on
+        // the model means no POS controller had to change. Every other order returns on the first line.
+        \App\Models\Tenant\SalesOrder::updated(function (\App\Models\Tenant\SalesOrder $sale) {
+            if ($sale->order_source !== 'website') {
+                return;
+            }
+            if ($sale->wasChanged('is_draft') && ! $sale->is_draft && $sale->status === 'held') {
+                \App\Services\OnlineOrdering\WebsiteOrderNotifier::later('confirmed', $sale->id);
+            }
+            if ($sale->wasChanged('status') && $sale->status === 'cancelled') {
+                \App\Services\OnlineOrdering\WebsiteOrderNotifier::later('cancelled', $sale->id);
+            }
+        });
+
         // WEBSITE-I18N-GEO-1: public pages build every link in the page's own language — /pricing in
         // English, /ar/pricing in Arabic. $lurl('/pricing') in any public view.
         \Illuminate\Support\Facades\View::composer(['layouts.public', 'public.*'], function ($view) {

@@ -299,4 +299,26 @@ class DashboardDetailsScopeMySqlTest extends MySqlTenantTestCase
             'dashboard.blade.php me <div> aur </div> barabar nahi — koi khana adhoora band hua hai.',
         );
     }
+
+    public function test_no_blade_directive_is_glued_to_a_word(): void
+    {
+        // Ye DOOSRI baar hua. Pehle `voided@endif` ne Close Branch ko sab ke liye 500 kar diya tha;
+        // aaj `due@endif` aur `month@endif` ne dashboard ko. Blade aise chipke hue directive ko
+        // directive samajhta hi nahi — wo saada matn ban jata hai, upar wala @if khula reh jata hai,
+        // aur compile KAAMYAB ho jata hai. Masla sirf generated PHP ko lint karne par khulta hai,
+        // ya jab safha chalte hue gir jaye.
+        //
+        // Guard sirf band karne wale directives dekhta hai: wohi lafz ke BAAD likhe jate hain.
+        $html = file_get_contents(base_path('resources/views/tenant/dashboard.blade.php'));
+
+        preg_match_all('/\w@(endif|endforeach|endforelse|endcan|endunless|endsection|else|elseif)\b/', $html, $m, PREG_OFFSET_CAPTURE);
+
+        $bad = [];
+        foreach ($m[0] as [$text, $off]) {
+            $line = substr_count(substr($html, 0, $off), "\n") + 1;
+            $bad[] = "line {$line}: ...{$text}";
+        }
+
+        $this->assertSame([], $bad, "Blade directive lafz se chipka hua hai — Blade ise directive nahi samjhega:\n".implode("\n", $bad));
+    }
 }

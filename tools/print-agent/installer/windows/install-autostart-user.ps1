@@ -1,4 +1,4 @@
-# Bingoo Print Agent - LOGON par khud chalu, APNE hi naam par.
+# Bingoo Print Agent - LOGON par khud chalu, APNE hi naam par, bina window ke.
 #
 # `install-service.ps1` se farq kyun:
 #
@@ -23,6 +23,7 @@ $ErrorActionPreference = 'Stop'
 
 $dir = Join-Path $env:ProgramFiles 'BingooPrintAgent'
 $exe = Join-Path $dir 'BingooPrintAgent.exe'
+$vbs = Join-Path $dir 'run-hidden.vbs'
 
 # Naam hamesha ek hi rakho. Download version-wala naam deta hai
 # (BingooPrintAgent-2.6.1.exe) - agar task usi naam par bane to AGLI update
@@ -36,10 +37,47 @@ if (-not (Test-Path $exe)) {
     Write-Host "Naam theek kiya: $($newest.Name) -> BingooPrintAgent.exe"
 }
 
+# ---------------------------------------------------------------------------
+# KAUN SA USER? - AGENT-AUTOSTART-USER-TRUTH-1 (16 Oct 2026)
+#
+# Pehle yahan seedha $env:USERNAME likha tha. Wo us waqt theek hota hai jab
+# installer usi shakhs ne chalaya ho jo PC par baitha hai. Magar installer
+# ADMIN maangta hai, aur agar UAC par kisi DOOSRE admin account ka naam/pass
+# daala jaye (ya installer "Run as different user" se chale) to $env:USERNAME
+# us doosre account ka hota hai. Task us account ke naam par ban jata tha, aur
+# counter wala user log in karta to trigger kabhi chalta hi nahi - "install to
+# kiya tha, phir bhi khud start nahi hota".
+#
+# Win32_ComputerSystem.UserName hamesha us user ka naam deta hai jo CONSOLE
+# par baitha hai, chahe ye script kisi bhi account par chal rahi ho.
+# ---------------------------------------------------------------------------
+$target = $null
+try { $target = (Get-CimInstance Win32_ComputerSystem).UserName } catch { }
+if ([string]::IsNullOrWhiteSpace($target)) {
+    $target = "$env:USERDOMAIN\$env:USERNAME"
+    Write-Host "Console user nahi mila; is account par bana rahe hain: $target"
+}
+Write-Host "Task is user ke naam par banega: $target"
+
 $task = 'BingooPrintAgent'
 
-$action  = New-ScheduledTaskAction -Execute $exe -Argument 'run' -WorkingDirectory $dir
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+# ---------------------------------------------------------------------------
+# WINDOW KYUN NAHI - AGENT-AUTOSTART-HIDDEN-1 (16 Oct 2026)
+#
+# Pehle task seedha exe chalata tha. Agent console program hai, is liye screen
+# par ek kaali window khul jati thi. Client use "nodejs ki window" samajh kar
+# band kar deta tha aur agent bhi us ke saath mar jata tha - parchiyan queue me
+# khari reh jatin. Scheduled task ka "Hidden" khana ye masla hal NAHI karta;
+# wo sirf task ko list me chhupata hai, program ki window ko nahi.
+#
+# Is liye task ab run-hidden.vbs chalata hai, jo agent ko window-less mode me
+# uthata hai. //B = bina kisi dialog ke, //Nologo = bina banner ke.
+# ---------------------------------------------------------------------------
+if (-not (Test-Path $vbs)) { throw "run-hidden.vbs '$dir' me nahi mili - installer adhoora hai." }
+
+$action  = New-ScheduledTaskAction -Execute 'wscript.exe' `
+           -Argument ('//B //Nologo "' + $vbs + '"') -WorkingDirectory $dir
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $target
 
 # Mar jaye to khud uthe. Bijli jane ya net tootne par agent ka band reh jana
 # wo soorat hai jis me malik ko pata hi nahi chalta - aur parchi nahi nikalti.
@@ -64,14 +102,32 @@ $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New
 #
 # Agent ab khud bhi pehchanta hai: elevated chalne par shuru me warning deta hai
 # aur document ki nakami par ise pehla sabab bana kar likhta hai.
-$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
+$principal = New-ScheduledTaskPrincipal -UserId $target `
              -LogonType Interactive -RunLevel Limited
 
 try { Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction Stop } catch { }
 Register-ScheduledTask -TaskName $task -Action $action -Trigger $trigger -Settings $settings -Principal $principal | Out-Null
 Start-ScheduledTask -TaskName $task
 
+# ---------------------------------------------------------------------------
+# JAANCH - "ban gaya" aur "chal raha hai" do alag baatein hain.
+#
+# Pehle ye script sirf "Ho gaya" likh kar nikal jati thi. Install ke baad agent
+# chal raha hai ya nahi, ye kisi ne nahi dekha, aur masla baad me us waqt khula
+# jab parchi nahi nikli. Ab yahin bata dete hain.
+# ---------------------------------------------------------------------------
+Start-Sleep -Seconds 3
+$agent = Get-Process -Name 'BingooPrintAgent' -ErrorAction SilentlyContinue
+
 Write-Host ""
-Write-Host "Ho gaya. Task '$task' ab har logon par agent chalu karega - aur gir jaye to 1 minute me dobara."
+if ($agent) {
+    Write-Host "Ho gaya. Agent CHAL RAHA HAI (PID $($agent.Id -join ', ')) - bina window ke."
+} else {
+    $info = Get-ScheduledTask -TaskName $task | Get-ScheduledTaskInfo
+    Write-Host "Task ban gaya, magar agent abhi nazar nahi aaya."
+    Write-Host "Task ka natija: $($info.LastTaskResult)  (0 = theek, 2 = exe nahi mili)"
+    Write-Host "Log dekhein:    %ProgramData%\BingooPrintAgent\agent.log"
+}
+Write-Host "Har logon par khud chalu hoga - aur gir jaye to 1 minute me dobara."
 Write-Host "Band karne ko:  Unregister-ScheduledTask -TaskName $task -Confirm:`$false"
 Write-Host "Halat dekhne ko: Get-ScheduledTask $task | Get-ScheduledTaskInfo"

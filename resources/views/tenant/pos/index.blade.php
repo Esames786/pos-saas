@@ -834,6 +834,17 @@
                             <i class="ti ti-layout-list"></i>
                         </button>
                     </div>
+                    {{-- ONLINE-ORDERING-1: website orders (bell + badge). Only on a plan with Online Ordering;
+                         stays hidden until this counter is routed for website orders or one is waiting. --}}
+                    @if(\App\Support\OnlineOrdering::enabledForTenant())
+                    <div class="col-auto" hidden>
+                        <button type="button" class="btn btn-outline-danger btn-lg px-3 position-relative" id="web-orders-btn"
+                                title="Website orders">
+                            <i class="ti ti-world-www"></i>
+                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="web-orders-badge" hidden>0</span>
+                        </button>
+                    </div>
+                    @endif
                 </div>
                 <div class="row g-2">
                     <div class="col">
@@ -6915,8 +6926,15 @@ document.addEventListener('DOMContentLoaded', function () {
     updateRecalledBar();
     updateStartFreshLabel();
     if (_currentHeldSaleId) lockOrderControls();
+
+    // ONLINE-ORDERING-1: the website-orders inbox (its own script block) reuses the POS's OWN KOT-after-Hold,
+    // cancel and toast — so a website order is held, printed and cancelled exactly like a counter order.
+    window.posWebBridge = { handleKotAfterSale: handleKotAfterSale, cancelHeldSaleFromModal: cancelHeldSaleFromModal, toast: toast, recallHeldSale: recallHeldSale };
 });
 </script>
+@if(\App\Support\OnlineOrdering::enabledForTenant())
+    @include('tenant.pos.partials.website-orders')
+@endif
 
 {{-- CUSTOMER-UX-2: one-box customer flow (search → attach, or type-and-add) + chip + charge defaults --}}
 <script>

@@ -48,17 +48,27 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // never double-send. Cloud-only (Edge CLI boundary default-denies the command anyway).
     Schedule::command('reports:dispatch-scheduled')->everyFifteenMinutes()->withoutOverlapping();
 
-    // SAAS-BILLING-WHATSAPP-1 — raat ki report jane ke baad us din ka usage invoice me joR do.
+    // ONLINE-ORDERING-1: confirm na hue website orders (sirf Draft) client ki setting ke mutabiq cancel.
+    // Setting OFF (default) ho to kuch nahi karta. Held order kabhi nahi chhuta.
+    Schedule::command('online-ordering:auto-cancel')->everyMinute()->withoutOverlapping();
+
+    // BILLING-TENANT-CYCLE-1 — WhatsApp ki ALAG invoice ab nahi banti.
     //
-    // Rozana 03:30 Karachi: khatri 00:30 par bhejta hai aur kashiffood 02:30 par, to us waqt tak
-    // dono ki rows likhi ja chuki hoti hain. Timezone yahan SAAF likha hai, app ki default par nahi
-    // chhoRa — prod par app timezone UTC hai, aur us par "03:30" ka matlab 08:30 Karachi hota, yani
-    // subah ka aadha din bill ke baghair guzar jata.
+    // Pehle yahan roz `billing:whatsapp-invoice` chalti thi aur calendar mahine ki apni `addon`
+    // invoice kholti thi. Malik ne kaha: alag invoice ki zaroorat nahi — usage usi mahana invoice me
+    // aaye jo tenant ke apne din banti hai, breakup ke saath. Us ka kaam ab
+    // `billing:generate-monthly-invoices` karti hai: wo jo usage kisi invoice se bandhi nahi, sab
+    // apne andar le leti hai.
     //
-    // Aik din ka na chalna kuch nahi bigaRta: command har us row ko uthati hai jo kisi invoice se
-    // nahi juRi, sirf us din ki nahi. To agla run pichhla kaam bhi kar deta hai.
-    Schedule::command('billing:whatsapp-invoice --yes')
-        ->timezone('Asia/Karachi')->dailyAt('03:30')->withoutOverlapping();
+    // Usage ki rows phir bhi HAR raat likhi jati hain (WhatsAppChannel khud likhta hai) — wo rukti
+    // nahi, bas kisi invoice se nahi bandhtin jab tak cycle ka din na aaye. Dashboard ka running
+    // khana wohi khuli rows ginta hai, is liye wo cycle ke din apne aap sifar ho jata hai.
+
+    // ONLINE-ORDERING-1 (Phase 4b) — website orders ka 1%, usi usage invoice me. WhatsApp ke baad, taake
+    // aik raat me invoice dono hisson ke saath bane. Khule mahine roz dobara bante hain (cancel/return khud
+    // theek); band mahina nahi hilta.
+    Schedule::command('billing:website-commission --yes')
+        ->timezone('Asia/Karachi')->dailyAt('03:40')->withoutOverlapping();
 
     // SAAS-BILLING-AUTO-1 — har tenant ka mahana invoice us ke APNE din par. Roz chalti hai aur sirf
     // un subscriptions ko dekhti hai jin ka invoice_day aaj hai (khatri 15, kashifkitchen 20,
