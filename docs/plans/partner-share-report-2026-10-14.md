@@ -18,8 +18,8 @@ Date: 2026-10-14 · Status: **bana aur test hua (17 Oct), deploy baqi** · Tenan
 Section tab tak nahi dikhta jab tak koi rate na ho. Rate list sirf report ke liye hai: POS bill, stock,
 journals aur cash kuch nahi chhoota. K.Grill ko adaegi owner khud karta hai.
 
-Tests: `PartnerShareMySqlTest` (11). 9 sabotage, har ek sahi test laal karta hai. Poora suite (2059)
-me ek hi laal tha (reset ki table list), wo theek kiya. Asli screens aur teeno print local Kashif Food par
+Tests: `PartnerShareMySqlTest` (12, raat wali PDF ka test bhi). 10 sabotage, har ek sahi test laal karta hai.
+Poora suite (2172) hara; pehle ek laal tha (reset ki table list), wo theek kiya. Asli screens aur teeno print local Kashif Food par
 controller ke raaste render kar ke dekhe.
 
 ## Client ki teen sheets: raqam ka rukh
@@ -162,7 +162,7 @@ POS checkout, `stock_*`, journals / GL, departments, catering cost blocks. Repor
 - `%` ka option (dish ki asal bikri ka %).
 - Settlement: report se "Payment record karo" (Cash Book entry). Tab GL chhoota jayega, alag plan.
 
-## 30 din ki misaal (14 Sep – 13 Oct, prod se sirf parh kar)
+## 30 din ki misaal: sirf pehli sheet (14 Oct) par, purani (teeno sheets ke saath net 3,52,940, upar dekho)
 
 | | Raqam |
 |---|---|
