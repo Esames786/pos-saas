@@ -76,6 +76,10 @@ class EdgeChromePartialTest extends TestCase
         foreach (['pos-edge-menu-supplier-finance', 'pos-edge-menu-finance-journal', 'pos-edge-menu-purchase-returns'] as $absent) {
             $this->assertStringNotContainsString($absent, $html, "{$absent} must not render for a null route");
         }
+        // Shifts / Sales returns follow the operator's index permission (no authenticated operator here → no entry), like the Online sidebar's @can.
+        foreach (['pos-edge-menu-shifts', 'pos-edge-menu-sales-returns'] as $absent) {
+            $this->assertStringNotContainsString($absent, $html, "{$absent} renders only for an operator holding the index permission");
+        }
         // The menu is outside the display:none island (it must be able to open) but carries no `.sidebar`, no `<ul`, no Cloud chrome.
         $this->assertLessThan(strpos($html, 'id="pos-edge-menu"'), strpos($html, '</div>'), 'the offcanvas follows the hidden island, not inside it');
         $this->assertSame(1, preg_match_all('/class="sidebar"/', $html));

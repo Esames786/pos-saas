@@ -18,8 +18,14 @@
 --}}
 @php
     $edgeAuthority = $posRuntime->authority ?? [];
+    // Owner (18 Oct 2026): the Online SIDEBAR carries "Shifts" (open / close) and "Sales Returns"; the shared POS page itself only has
+    // the "Open shift" link, so without these two entries a Branch Server cashier had no way to reach shift CLOSE. Gated like the
+    // Online sidebar (@can on the index permission); the pages themselves enforce the same Online route permissions.
+    $edgeOperator = auth('tenant')->user();
     $edgeMenu = array_values(array_filter([
         ['id' => 'pos-edge-menu-status', 'label' => 'Health / status', 'hint' => 'Appliance health, sync and authority state', 'icon' => 'ti ti-heartbeat', 'href' => $posRuntime->route('status')],
+        ['id' => 'pos-edge-menu-shifts', 'label' => 'Shifts', 'hint' => 'Open and close the shift of this terminal', 'icon' => 'ti ti-clock', 'href' => $edgeOperator?->can('tenant.shifts.index') ? $posRuntime->route('shiftIndexPage') : null],
+        ['id' => 'pos-edge-menu-sales-returns', 'label' => 'Sales returns', 'hint' => 'Returns posted on this Branch Server', 'icon' => 'ti ti-receipt-refund', 'href' => $edgeOperator?->can('tenant.sales-returns.index') ? $posRuntime->route('salesReturnIndexPage') : null],
         ['id' => 'pos-edge-menu-supplier-finance', 'label' => 'Supplier finance', 'hint' => 'Suppliers, supplier ledger, record a payment, general journal', 'icon' => 'ti ti-truck-delivery', 'href' => $posRuntime->route('supplierFinancePage')],
         ['id' => 'pos-edge-menu-finance-journal', 'label' => 'General journal', 'hint' => 'Manual journal entries', 'icon' => 'ti ti-book', 'href' => $posRuntime->route('financeJournalPage')],
         ['id' => 'pos-edge-menu-purchase-returns', 'label' => 'Purchase returns', 'hint' => 'Return received goods to a supplier', 'icon' => 'ti ti-truck-return', 'href' => $posRuntime->route('purchaseReturnsPage')],

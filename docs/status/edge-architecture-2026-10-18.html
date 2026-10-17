@@ -1,0 +1,404 @@
+<title>Offline Edge Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: a narrow reading column for the text, full-width figure bands for the diagrams; engineering drawing on slate paper. */
+  :root {
+    --bg: #f3f5f8;          /* cool slate paper */
+    --panel: #ffffff;
+    --fg: #16202b;
+    --muted: #5b6977;
+    --line: #c9d2dc;
+    --cloud: #0f6fb7;       /* Cloud / Online = blue */
+    --cloud-soft: #e3effa;
+    --edge: #b45f06;        /* Branch Server / Local Mode = amber */
+    --edge-soft: #fbeedc;
+    --ok: #1f7a4d;
+    --warn: #b7791f;
+    --bad: #b3261e;
+    --font-display: "Sora", "Segoe UI", system-ui, sans-serif;
+    --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f151c; --panel: #161e27; --fg: #e6ecf2; --muted: #9aa8b6; --line: #2d3946;
+      --cloud: #5aa9ec; --cloud-soft: #14283a; --edge: #e8a24a; --edge-soft: #3a2a14;
+      --ok: #4fc08d; --warn: #e0b04a; --bad: #ef7a73; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f151c; --panel: #161e27; --fg: #e6ecf2; --muted: #9aa8b6; --line: #2d3946;
+    --cloud: #5aa9ec; --cloud-soft: #14283a; --edge: #e8a24a; --edge-soft: #3a2a14;
+    --ok: #4fc08d; --warn: #e0b04a; --bad: #ef7a73; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+         padding-block: 24px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 40px; }
+  header { display: grid; gap: 10px; }
+  .eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-family: var(--font-display); font-size: clamp(28px, 4vw, 40px); line-height: 1.1; margin: 0; text-wrap: balance; }
+  h2 { font-family: var(--font-display); font-size: 22px; margin: 0 0 6px; text-wrap: balance; }
+  h3 { font-family: var(--font-display); font-size: 16px; margin: 0 0 4px; }
+  p { margin: 0; max-width: 70ch; }
+  .lede { font-size: 17px; color: var(--muted); max-width: 70ch; }
+  .facts { display: flex; flex-wrap: wrap; gap: 10px 18px; font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
+  .facts b { color: var(--fg); font-weight: 500; }
+  section { display: grid; gap: 16px; }
+  figure { margin: 0; display: grid; gap: 10px; }
+  .fig { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; overflow-x: auto; }
+  .fig svg { display: block; max-width: 100%; height: auto; min-width: 640px; font-family: var(--font-body); }
+  figcaption { font-size: 13.5px; color: var(--muted); max-width: 80ch; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 12.5px; color: var(--muted); align-items: center; }
+  .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; border: 1px solid var(--line); }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: grid; gap: 8px; min-width: 0; }
+  .card.cloud { border-top: 3px solid var(--cloud); }
+  .card.edge { border-top: 3px solid var(--edge); }
+  ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+  code { font-family: var(--font-mono); font-size: 12.5px; background: color-mix(in srgb, var(--line) 35%, transparent); padding: 1px 5px; border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  .tablewrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+  td.mono, th.mono { font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  .pill { display: inline-block; font-family: var(--font-mono); font-size: 11.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+  .pill.ok { color: var(--ok); border-color: var(--ok); }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.bad { color: var(--bad); border-color: var(--bad); }
+  .bars { display: grid; gap: 10px; font-size: 13.5px; }
+  .bar { display: grid; grid-template-columns: minmax(160px, 2fr) minmax(0, 3fr) 48px; gap: 12px; align-items: center; }
+  .bar .track { height: 12px; background: color-mix(in srgb, var(--line) 50%, transparent); border-radius: 3px; overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--ok); }
+  .bar .fill.part { background: var(--warn); }
+  .bar .fill.none { background: var(--bad); }
+  .bar .pct { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .total { font-family: var(--font-display); font-size: 20px; }
+  footer { font-size: 12.5px; color: var(--muted); }
+  @media (max-width: 520px) { .bar { grid-template-columns: 1fr; gap: 4px; } .bar .pct { text-align: left; } }
+  @media (prefers-reduced-motion: no-preference) { .bar .fill { transition: width .4s ease; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Bingoo POS · Offline Edge · snapshot 18 Oct 2026</div>
+    <h1>Offline Edge Architecture</h1>
+    <p class="lede">One cashier screen, two places to run it. The Cloud stays the financial truth; the Branch Server is a warm standby that becomes the branch's writer only after a supervised takeover, and hands everything back exactly once.</p>
+    <div class="facts">
+      <span>branch <b>feat/edge-config-refresh-v1</b></span>
+      <span>head <b>718057e</b> (+ Phase 4 uncommitted)</span>
+      <span>LAB appliance <b>0.7.0-edge · STANDBY_READY</b></span>
+      <span>shared view <b>resources/views/tenant/pos/index.blade.php</b></span>
+    </div>
+  </header>
+
+  <!-- ===================== 1. SYSTEM ===================== -->
+  <section>
+    <h2>1. The system</h2>
+    <p>The same Blade renders on both sides. The only switch is the runtime adapter (<code>window.POS_RUNTIME</code>): on the Cloud it maps to <code>/pos</code> and the Online endpoints; on the appliance it maps every one of them to an <code>/edge/local/pos/*</code> twin and turns capabilities on or off.</p>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 960 560" role="img" aria-label="Cloud and Branch Server: the shared cashier view runs in both, the appliance talks to the Cloud over the device API, cashier laptops and printers hang off the appliance">
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          </defs>
+          <g fill="none" stroke="currentColor" stroke-width="1.2" font-size="12">
+            <!-- Cloud box -->
+            <rect x="20" y="20" width="920" height="170" rx="6" fill="var(--cloud-soft)" stroke="var(--cloud)"/>
+            <text x="36" y="44" fill="var(--cloud)" stroke="none" font-weight="600" font-size="14">BINGOO CLOUD · official financial truth · https://&lt;tenant&gt;.bingoopos.com</text>
+            <rect x="36" y="58" width="270" height="110" rx="4" fill="var(--panel)" stroke="var(--line)"/>
+            <text x="48" y="78" fill="currentColor" stroke="none" font-weight="600">Online POS  /pos</text>
+            <text x="48" y="96" fill="currentColor" stroke="none">shared cashier Blade</text>
+            <text x="48" y="112" fill="currentColor" stroke="none">CloudPosRuntimeFactory</text>
+            <text x="48" y="128" fill="currentColor" stroke="none">manager PIN approvals</text>
+            <text x="48" y="146" fill="var(--muted)" stroke="none">print jobs → shop print agent</text>
+            <rect x="326" y="58" width="300" height="110" rx="4" fill="var(--panel)" stroke="var(--line)"/>
+            <text x="338" y="78" fill="currentColor" stroke="none" font-weight="600">Device API  /api/edge/*</text>
+            <text x="338" y="96" fill="currentColor" stroke="none">pair · device/me · bootstrap/snapshots</text>
+            <text x="338" y="112" fill="currentColor" stroke="none">config/refresh · authority/heartbeat · handback</text>
+            <text x="338" y="128" fill="currentColor" stroke="none">sync/sales · sync/returns · sync/reconcile</text>
+            <text x="338" y="146" fill="currentColor" stroke="none">returnable/refresh · supplier-finance · backup keys</text>
+            <rect x="646" y="58" width="278" height="110" rx="4" fill="var(--panel)" stroke="var(--line)"/>
+            <text x="658" y="78" fill="currentColor" stroke="none" font-weight="600">Owner screens</text>
+            <text x="658" y="96" fill="currentColor" stroke="none">/settings/offline-edge</text>
+            <text x="658" y="112" fill="currentColor" stroke="none">pairing codes · paired devices</text>
+            <text x="658" y="128" fill="currentColor" stroke="none">version each appliance reports</text>
+            <text x="658" y="146" fill="currentColor" stroke="none">revoke device</text>
+            <!-- link -->
+            <line x1="476" y1="190" x2="476" y2="270" marker-end="url(#arr)"/>
+            <line x1="500" y1="270" x2="500" y2="190" marker-end="url(#arr)"/>
+            <text x="512" y="214" fill="currentColor" stroke="none">HTTPS over the WAN · device secret · epoch-fenced</text>
+            <text x="512" y="232" fill="currentColor" stroke="none">heartbeat every ~20 s (lease TTL 120 s + 30 s skew)</text>
+            <text x="512" y="250" fill="currentColor" stroke="none">config refresh · outbox sync · handback</text>
+            <!-- Appliance box -->
+            <rect x="20" y="270" width="920" height="190" rx="6" fill="var(--edge-soft)" stroke="var(--edge)"/>
+            <text x="36" y="294" fill="var(--edge)" stroke="none" font-weight="600" font-size="14">BRANCH SERVER · Windows appliance "Bingoo Edge" · warm standby</text>
+            <rect x="36" y="308" width="200" height="140" rx="4" fill="var(--panel)" stroke="var(--line)"/>
+            <text x="48" y="328" fill="currentColor" stroke="none" font-weight="600">nginx gateway</text>
+            <text x="48" y="346" fill="currentColor" stroke="none">https://&lt;host&gt;.local:8443</text>
+            <text x="48" y="364" fill="currentColor" stroke="none">TLS → PHP web workers</text>
+            <text x="48" y="382" fill="var(--muted)" stroke="none">/edge/local/login</text>
+            <text x="48" y="398" fill="var(--muted)" stroke="none">/edge/local/pos  (same Blade)</text>
+            <text x="48" y="414" fill="var(--muted)" stroke="none">/edge/local/health · finance</text>
+            <text x="48" y="430" fill="var(--muted)" stroke="none">menu behind #pos-sidebar-toggle</text>
+            <rect x="256" y="308" width="220" height="140" rx="4" fill="var(--panel)" stroke="var(--line)"/>
+            <text x="268" y="328" fill="currentColor" stroke="none" font-weight="600">EdgePosRuntimeFactory</text>
+            <text x="268" y="346" fill="currentColor" stroke="none">/edge/local/pos/* twins</text>
+            <text x="268" y="364" fill="currentColor" stroke="none">capabilities on/off</text>
+            <text x="268" y="382" fill="currentColor" stroke="none">status slot: STANDBY / LOCAL MODE</text>
+            <text x="268" y="400" fill="currentColor" stroke="none">approver: employee code +</text>
+            <text x="268" y="416" fill="currentColor" stroke="none">Edge credential, may_approve_pos</text>
+            <rect x="496" y="308" width="200" height="140" rx="4" fill="var(--panel)" stroke="var(--line)"/>
+            <text x="508" y="328" fill="currentColor" stroke="none" font-weight="600">Local DB  bingoo_edge_*</text>
+            <text x="508" y="346" fill="currentColor" stroke="none">tenant tables (menu, users,</text>
+            <text x="508" y="362" fill="currentColor" stroke="none">permissions, tables, customers)</text>
+            <text x="508" y="380" fill="currentColor" stroke="none">edge_* (outbox, lease, meta,</text>
+            <text x="508" y="396" fill="currentColor" stroke="none">print jobs, returnable mirror)</text>
+            <rect x="716" y="308" width="208" height="140" rx="4" fill="var(--panel)" stroke="var(--line)"/>
+            <text x="728" y="328" fill="currentColor" stroke="none" font-weight="600">7 worker tasks</text>
+            <text x="728" y="346" fill="currentColor" stroke="none">Gateway · Web1 · Web2</text>
+            <text x="728" y="362" fill="currentColor" stroke="none">PrintWorker</text>
+            <text x="728" y="378" fill="currentColor" stroke="none">SyncSender</text>
+            <text x="728" y="394" fill="currentColor" stroke="none">AuthorityWorker</text>
+            <text x="728" y="410" fill="currentColor" stroke="none">Backup</text>
+            <!-- LAN -->
+            <line x1="136" y1="460" x2="136" y2="520" marker-end="url(#arr)"/>
+            <text x="148" y="500" fill="currentColor" stroke="none">browser → :8443</text>
+            <rect x="36" y="520" width="200" height="30" rx="4" stroke="var(--line)"/>
+            <text x="48" y="540" fill="currentColor" stroke="none">cashier laptops (LAN)</text>
+            <line x1="816" y1="460" x2="816" y2="520" marker-end="url(#arr)"/>
+            <text x="620" y="500" fill="currentColor" stroke="none">ESC/POS over TCP 9100, one delivery per job</text>
+            <rect x="716" y="520" width="208" height="30" rx="4" stroke="var(--line)"/>
+            <text x="728" y="540" fill="currentColor" stroke="none">KOT + receipt printers (LAN)</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Figure 1. The Cloud and the Branch Server run the same cashier Blade; the appliance reaches the Cloud only through the device API, while cashier laptops and printers hang off the appliance on the branch LAN.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===================== 2. MODES ===================== -->
+  <section>
+    <h2>2. Online mode and offline mode</h2>
+    <p>The appliance is never a second writer. In STANDBY it only reads from the Cloud and refuses every mutation; after a supervised takeover it is the writer for its own branch; on handback the Cloud takes over again and the outbox is applied exactly once.</p>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 960 300" role="img" aria-label="State machine of the appliance: STANDBY_READY, LOCAL_ACTIVE after a supervised takeover once the lease has lapsed, HANDING_BACK when the WAN is back, then STANDBY_READY again; the writer is the Cloud in standby and the appliance in local mode">
+          <defs>
+            <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          </defs>
+          <g fill="none" stroke="currentColor" stroke-width="1.2" font-size="12">
+            <!-- states -->
+            <rect x="30" y="90" width="230" height="120" rx="8" fill="var(--cloud-soft)" stroke="var(--cloud)"/>
+            <text x="145" y="118" text-anchor="middle" fill="var(--cloud)" stroke="none" font-weight="600" font-size="14">STANDBY_READY</text>
+            <text x="145" y="140" text-anchor="middle" fill="currentColor" stroke="none">writer = Cloud (Online POS)</text>
+            <text x="145" y="158" text-anchor="middle" fill="currentColor" stroke="none">appliance: heartbeat, refresh,</text>
+            <text x="145" y="174" text-anchor="middle" fill="currentColor" stroke="none">returnable mirror, backups</text>
+            <text x="145" y="194" text-anchor="middle" fill="var(--muted)" stroke="none">every /edge/local mutation → 422 STANDBY</text>
+            <rect x="365" y="90" width="230" height="120" rx="8" fill="var(--edge-soft)" stroke="var(--edge)"/>
+            <text x="480" y="118" text-anchor="middle" fill="var(--edge)" stroke="none" font-weight="600" font-size="14">LOCAL_ACTIVE</text>
+            <text x="480" y="140" text-anchor="middle" fill="currentColor" stroke="none">writer = appliance (this branch only)</text>
+            <text x="480" y="158" text-anchor="middle" fill="currentColor" stroke="none">sales, holds, KOT, tables, cash,</text>
+            <text x="480" y="174" text-anchor="middle" fill="currentColor" stroke="none">returns, approvals, shifts, add-customer</text>
+            <text x="480" y="194" text-anchor="middle" fill="var(--muted)" stroke="none">card / bank / cheque / email: refused</text>
+            <rect x="700" y="90" width="230" height="120" rx="8" stroke="var(--line)" fill="var(--panel)"/>
+            <text x="815" y="118" text-anchor="middle" fill="currentColor" stroke="none" font-weight="600" font-size="14">HANDING_BACK</text>
+            <text x="815" y="140" text-anchor="middle" fill="currentColor" stroke="none">writer = nobody for the branch</text>
+            <text x="815" y="158" text-anchor="middle" fill="currentColor" stroke="none">SyncSender pushes the outbox</text>
+            <text x="815" y="174" text-anchor="middle" fill="currentColor" stroke="none">sale_uuid + content hash</text>
+            <text x="815" y="194" text-anchor="middle" fill="var(--muted)" stroke="none">Cloud ingestion ledger: exactly once</text>
+            <!-- transitions -->
+            <line x1="260" y1="130" x2="365" y2="130" marker-end="url(#arr2)"/>
+            <text x="312" y="70" text-anchor="middle" fill="currentColor" stroke="none">WAN down → lease LAPSES on the Cloud</text>
+            <text x="312" y="86" text-anchor="middle" fill="currentColor" stroke="none">operator: authority-takeover --confirm --by=</text>
+            <text x="312" y="122" text-anchor="middle" fill="var(--muted)" stroke="none">(no auto failover)</text>
+            <line x1="595" y1="130" x2="700" y2="130" marker-end="url(#arr2)"/>
+            <text x="647" y="70" text-anchor="middle" fill="currentColor" stroke="none">WAN back</text>
+            <text x="647" y="86" text-anchor="middle" fill="currentColor" stroke="none">authority-handback --by=</text>
+            <path d="M815 210 L815 250 L145 250 L145 210" marker-end="url(#arr2)"/>
+            <text x="480" y="268" text-anchor="middle" fill="currentColor" stroke="none">outbox acked, Cloud is the writer again (LAB 26 Sep: 5/5 sales, 2,960.00 reached the Cloud)</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Figure 2. The authority lease decides who writes. Takeover is manual and only possible once the Cloud-side lease has lapsed; handback is the only way back, and it replays the outbox exactly once.</figcaption>
+    </figure>
+    <div class="cols">
+      <div class="card cloud">
+        <h3>Online mode (normal day)</h3>
+        <ul>
+          <li>Cashiers use the Online POS at <code>/pos</code> on bingoopos.com; prints go through the shop's print agent.</li>
+          <li>The appliance heartbeats, pulls menu, prices, users, roles, permissions, printers, tables, customers and the alias book, and keeps the returnable-sale mirror and backups current.</li>
+          <li>The Cloud advertises what the appliance may do offline (for example <code>customer_create</code>); the appliance stores it with the heartbeat ACK.</li>
+        </ul>
+      </div>
+      <div class="card edge">
+        <h3>Offline mode (after takeover)</h3>
+        <ul>
+          <li>Cashiers open <code>https://&lt;host&gt;.local:8443/edge/local/pos</code>: the identical screen, status slot reads LOCAL MODE.</li>
+          <li>Every sale becomes an outbox envelope; manager approvals need an eligible approver who is not the requester; add-customer creates a canonical <code>customer_uuid</code> locally (Phase 4).</li>
+          <li>Finance posting (daily closing, journals) stays on the Cloud; non-cash tenders and e-mail are refused with a hint, never faked.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 3. LAB WIRING ===================== -->
+  <section>
+    <h2>3. How the home lab is wired, and where the FakePrinter sits</h2>
+    <p>Everything runs on the owner's laptop plus a second laptop for cashier acceptance. The LAB Cloud plays bingoopos.com; the appliance is a real installed package; the FakePrinter stands in for the LAN printers.</p>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 960 420" role="img" aria-label="LAB wiring: LAB Cloud on port 9701, the appliance gateway on 8443 with web workers 8090 and 8091, the FakePrinter TCP listener on 9100 appending to fake-printer.bin, the second laptop browsing to 8443, and the disposable dev instances 9702, 9704, 8095 and 8096">
+          <defs>
+            <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          </defs>
+          <g fill="none" stroke="currentColor" stroke-width="1.2" font-size="12">
+            <rect x="20" y="20" width="400" height="92" rx="6" fill="var(--cloud-soft)" stroke="var(--cloud)"/>
+            <text x="32" y="42" fill="var(--cloud)" stroke="none" font-weight="600" font-size="13">LAB CLOUD (plays bingoopos.com)</text>
+            <text x="32" y="62" fill="currentColor" stroke="none">http://127.0.0.1:9701 · tenant edgehomelab.localhost:9701</text>
+            <text x="32" y="80" fill="currentColor" stroke="none">code: export of 7b8f886 (0.7.0) · DBs pos_lab_master_edge / pos_lab_tenant_edge</text>
+            <text x="32" y="98" fill="var(--muted)" stroke="none">Start-LabCloud.ps1 · device API http://localhost:9701/api/edge/…</text>
+
+            <line x1="220" y1="112" x2="220" y2="160" marker-end="url(#arr3)"/>
+            <line x1="240" y1="160" x2="240" y2="112" marker-end="url(#arr3)"/>
+            <text x="252" y="140" fill="currentColor" stroke="none">pairing · bootstrap · heartbeat · sync (loopback, plays the WAN)</text>
+
+            <rect x="20" y="160" width="400" height="130" rx="6" fill="var(--edge-soft)" stroke="var(--edge)"/>
+            <text x="32" y="182" fill="var(--edge)" stroke="none" font-weight="600" font-size="13">LAB APPLIANCE  0.7.0-edge · STANDBY_READY</text>
+            <text x="32" y="202" fill="currentColor" stroke="none">gateway https://DESKTOP-0024EPM.local:8443 (TLS) · http :8081</text>
+            <text x="32" y="220" fill="currentColor" stroke="none">web workers 127.0.0.1:8090 / :8091 · DB bingoo_edge_lab_local</text>
+            <text x="32" y="238" fill="currentColor" stroke="none">install C:\Users\Dell\BingooEdgeLab\install\BingooEdge</text>
+            <text x="32" y="256" fill="currentColor" stroke="none">printers configured: network KOT + receipt → 127.0.0.1:9100</text>
+            <text x="32" y="274" fill="var(--muted)" stroke="none">Start-EdgeLabWorkers.ps1: Gateway Web1 Web2 PrintWorker SyncSender AuthorityWorker Backup</text>
+
+            <line x1="420" y1="256" x2="560" y2="256" marker-end="url(#arr3)"/>
+            <text x="490" y="248" text-anchor="middle" fill="currentColor" stroke="none">TCP 9100</text>
+            <rect x="560" y="200" width="380" height="110" rx="6" stroke="var(--line)" fill="var(--panel)"/>
+            <text x="572" y="222" fill="currentColor" stroke="none" font-weight="600" font-size="13">FAKE PRINTER  Start-FakePrinter.ps1</text>
+            <text x="572" y="242" fill="currentColor" stroke="none">hidden TCP listener 127.0.0.1:9100 (fake_printer.php)</text>
+            <text x="572" y="260" fill="currentColor" stroke="none">every accepted connection's bytes are APPENDED to</text>
+            <text x="572" y="278" fill="currentColor" stroke="none">printer\fake-printer.bin → 33 jobs ↔ 33 documents, 0 duplicates</text>
+            <text x="572" y="298" fill="var(--warn)" stroke="none">proves the transport, not a physical printer (PHYSICAL_PRINT_CERTIFIED=no)</text>
+
+            <line x1="220" y1="290" x2="220" y2="340" marker-end="url(#arr3)"/>
+            <text x="232" y="322" fill="currentColor" stroke="none">browser → https://…:8443 (LAN)</text>
+            <rect x="20" y="340" width="400" height="34" rx="4" stroke="var(--line)" fill="var(--panel)"/>
+            <text x="32" y="362" fill="currentColor" stroke="none">SECOND LAPTOP · cashier acceptance (owner, 26 Sep: 34 steps)</text>
+
+            <rect x="560" y="20" width="380" height="160" rx="6" stroke="var(--line)" stroke-dasharray="5 4" fill="var(--panel)"/>
+            <text x="572" y="42" fill="currentColor" stroke="none" font-weight="600" font-size="13">DEV ONLY (disposable, never the LAB appliance)</text>
+            <text x="572" y="64" fill="currentColor" stroke="none">dev Cloud 9702 · live worktree on the LAB DBs (renders only)</text>
+            <text x="572" y="84" fill="currentColor" stroke="none">dev Cloud 9704 · live worktree on a CLONE pos_devonline_* (Online proofs)</text>
+            <text x="572" y="104" fill="currentColor" stroke="none">dev Edge 8095 · worktree as branch_server, dev seed (Edge proofs)</text>
+            <text x="572" y="124" fill="currentColor" stroke="none">dev Edge 8096 · worktree PAIRED to the 9704 clone (same dataset)</text>
+            <text x="572" y="146" fill="var(--muted)" stroke="none">used for: 17/17 workflow proofs, geometry 0-diff, pixel pairs</text>
+            <text x="572" y="164" fill="var(--muted)" stroke="none">evidence: BingooEdgeLab\evidence\phase2, phase3</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Figure 3. The LAB Cloud on 9701 stands in for the internet; the appliance's printers point at 127.0.0.1:9100 where the FakePrinter appends every delivery to a file, which is how exactly-once printing was proven without a physical printer.</figcaption>
+    </figure>
+
+    <h3>Print path (same code on both sides, only the delivery differs)</h3>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 960 150" role="img" aria-label="Print path: a sale or KOT creates print job rows; on the Cloud the shop print agent polls and prints, on the appliance the PrintWorker claims the job and sends ESC/POS over TCP to the printer, which in the LAB is the FakePrinter on port 9100">
+          <defs>
+            <marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          </defs>
+          <g fill="none" stroke="currentColor" stroke-width="1.2" font-size="12">
+            <rect x="20" y="50" width="170" height="50" rx="4" stroke="var(--line)" fill="var(--panel)"/>
+            <text x="105" y="72" text-anchor="middle" fill="currentColor" stroke="none" font-weight="600">sale / KOT / receipt</text>
+            <text x="105" y="90" text-anchor="middle" fill="var(--muted)" stroke="none">print intents required</text>
+            <line x1="190" y1="75" x2="260" y2="75" marker-end="url(#arr4)"/>
+            <rect x="260" y="50" width="170" height="50" rx="4" stroke="var(--line)" fill="var(--panel)"/>
+            <text x="345" y="72" text-anchor="middle" fill="currentColor" stroke="none" font-weight="600">print_jobs rows</text>
+            <text x="345" y="90" text-anchor="middle" fill="var(--muted)" stroke="none">logical key · copy no · printer</text>
+            <line x1="430" y1="62" x2="520" y2="30" marker-end="url(#arr4)"/>
+            <line x1="430" y1="88" x2="520" y2="120" marker-end="url(#arr4)"/>
+            <rect x="520" y="10" width="200" height="40" rx="4" stroke="var(--cloud)" fill="var(--cloud-soft)"/>
+            <text x="620" y="28" text-anchor="middle" fill="var(--cloud)" stroke="none" font-weight="600">Cloud: shop print agent</text>
+            <text x="620" y="43" text-anchor="middle" fill="currentColor" stroke="none">polls, prints; "Print Here" fallback</text>
+            <rect x="520" y="100" width="200" height="40" rx="4" stroke="var(--edge)" fill="var(--edge-soft)"/>
+            <text x="620" y="118" text-anchor="middle" fill="var(--edge)" stroke="none" font-weight="600">Edge: PrintWorker</text>
+            <text x="620" y="133" text-anchor="middle" fill="currentColor" stroke="none">claims job → ESC/POS over TCP</text>
+            <line x1="720" y1="120" x2="790" y2="120" marker-end="url(#arr4)"/>
+            <text x="755" y="112" text-anchor="middle" fill="currentColor" stroke="none">ip:9100</text>
+            <rect x="790" y="100" width="150" height="40" rx="4" stroke="var(--line)" fill="var(--panel)"/>
+            <text x="865" y="118" text-anchor="middle" fill="currentColor" stroke="none" font-weight="600">LAB: FakePrinter</text>
+            <text x="865" y="133" text-anchor="middle" fill="var(--muted)" stroke="none">shop: real LAN printer</text>
+            <line x1="720" y1="30" x2="790" y2="30" marker-end="url(#arr4)"/>
+            <rect x="790" y="10" width="150" height="40" rx="4" stroke="var(--line)" fill="var(--panel)"/>
+            <text x="865" y="28" text-anchor="middle" fill="currentColor" stroke="none" font-weight="600">shop printers</text>
+            <text x="865" y="43" text-anchor="middle" fill="var(--muted)" stroke="none">via the agent</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Figure 4. Both runtimes write the same print job rows; the Cloud delivers through the shop's print agent, the appliance through its own PrintWorker straight to the printer's TCP port.</figcaption>
+    </figure>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Component</th><th class="mono">Address</th><th>What it is</th></tr></thead>
+        <tbody>
+          <tr><td>LAB Cloud</td><td class="mono">http://127.0.0.1:9701</td><td>Plays bingoopos.com; export of 7b8f886; owner screens at edgehomelab.localhost:9701</td></tr>
+          <tr><td>Appliance gateway</td><td class="mono">https://DESKTOP-0024EPM.local:8443</td><td>nginx TLS; cashier login, POS, health, finance screens; http fallback :8081</td></tr>
+          <tr><td>Appliance web workers</td><td class="mono">127.0.0.1:8090 · :8091</td><td>PHP backends behind the gateway (internal)</td></tr>
+          <tr><td>FakePrinter</td><td class="mono">127.0.0.1:9100</td><td>TCP listener appending to printer\fake-printer.bin; the appliance's KOT and receipt printers point here</td></tr>
+          <tr><td>dev Cloud (live worktree)</td><td class="mono">http://edgehomelab.localhost:9702</td><td>Renders the Online POS from the worktree on the LAB DBs</td></tr>
+          <tr><td>dev Cloud (clone)</td><td class="mono">http://edgehomelab.localhost:9704</td><td>Same worktree on a disposable clone; Online browser proofs ran here</td></tr>
+          <tr><td>dev Edge (seed)</td><td class="mono">http://127.0.0.1:8095/edge/local/pos</td><td>Worktree as a Branch Server with a dev menu; Edge browser proofs</td></tr>
+          <tr><td>dev Edge (paired)</td><td class="mono">http://127.0.0.1:8096/edge/local/pos</td><td>Worktree paired to the 9704 clone; same dataset as Online for geometry and pixel pairs</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== 4. COMPLETION ===================== -->
+  <section>
+    <h2>4. How much is done</h2>
+    <p>Bars are drawn to scale against the approved pilot scope. Source-complete means built and green in the gates; shipped means installed on the LAB appliance.</p>
+    <div class="card">
+      <div class="bars">
+        <div class="bar"><span>Sync engine (outbox, exactly-once ingestion, mirrors)</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="pct">100%</span></div>
+        <div class="bar"><span>Authority lease, takeover, handback</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="pct">100%</span></div>
+        <div class="bar"><span>Appliance: installer, TLS, workers, backups, updates</span><div class="track"><div class="fill" style="width:95%"></div></div><span class="pct">95%</span></div>
+        <div class="bar"><span>Cashier parity: one shared Online view on Edge</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="pct">100%</span></div>
+        <div class="bar"><span>Security: approver eligibility contract</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="pct">100%</span></div>
+        <div class="bar"><span>Offline add-customer (uncommitted)</span><div class="track"><div class="fill part" style="width:95%"></div></div><span class="pct">95%</span></div>
+        <div class="bar"><span>Release 0.8: merge vs canonical, signed package</span><div class="track"><div class="fill none" style="width:2%"></div></div><span class="pct">0%</span></div>
+        <div class="bar"><span>LAB update + second-laptop acceptance</span><div class="track"><div class="fill none" style="width:2%"></div></div><span class="pct">0%</span></div>
+        <div class="bar"><span>Physical printer certification</span><div class="track"><div class="fill none" style="width:2%"></div></div><span class="pct">0%</span></div>
+        <div class="bar"><span>P6 production pilot</span><div class="track"><div class="fill none" style="width:2%"></div></div><span class="pct">0%</span></div>
+      </div>
+    </div>
+    <div class="cols">
+      <div class="card">
+        <div class="total">About 80 to 85% of the pilot scope</div>
+        <p>Weighted by effort. Everything that is code is built and gated; what remains is release engineering, lab certification and the owner's go for a pilot branch.</p>
+      </div>
+      <div class="card">
+        <h3>Left to do, in order</h3>
+        <ul>
+          <li>Commit Phase 4 (blocked by the tool's permission classifier) and re-run the Edge browser proof.</li>
+          <li>Merge assessment against canonical 70c4e43, green gate on the merged tree.</li>
+          <li>Signed 0.8 package with the updater fix and bootstrap v8; dry-runs; pre-install report.</li>
+          <li>Owner-approved LAB update (Cloud first), LAB data fixes, second-laptop acceptance on the same dataset.</li>
+          <li>Physical printer certification, then the P6 pilot decision.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Owner decisions open</h3>
+        <ul>
+          <li><span class="pill warn">gap C</span> standby Recent Orders mirror (cancelled sales, table label).</li>
+          <li><span class="pill warn">LAB data</span> approver PIN + action permissions; missing shift, split-bill and quick-store permission rows.</li>
+          <li><span class="pill bad">blocked</span> allow the Phase 4 commit.</li>
+          <li><span class="pill ok">gates</span> full Edge MySQL 603 / 8,376 green · Edge 17/17 · Online 17/17 · geometry 0 diff.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>Sources: routes/edge.php, routes/edge_runtime.php, config/edge.php, C:\Users\Dell\BingooEdgeLab\lab.env and scripts, docs/status/edge-phase3-cutover-report.md, docs/status/edge-phase4-offline-add-customer.md. No secrets appear on this page.</footer>
+</div>

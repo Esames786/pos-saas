@@ -443,6 +443,10 @@ class EdgeSharedPosViewMySqlTest extends MySqlTenantTestCase
         $this->assertLessThan(strpos($html, 'id="main-content"'), strpos($html, 'id="pos-edge-menu"'), 'the menu lives in the chrome slot, outside the page content');
         $this->assertStringContainsString('class="offcanvas offcanvas-start" tabindex="-1" id="pos-edge-menu"', $html);
         $this->assertStringContainsString('id="pos-edge-menu-status" href="/edge/local/pos/health"', $html);
+        // Owner (18 Oct 2026): the Online sidebar offers Shifts (open / CLOSE) and Sales Returns; the POS page only links "Open shift",
+        // so the Branch Server menu carries both — gated on the index permission like the Online sidebar.
+        $this->assertStringContainsString('id="pos-edge-menu-shifts" href="/edge/local/pos/shared/shifts"', $html, 'the cashier reaches shift close through the Shifts page');
+        $this->assertStringContainsString('id="pos-edge-menu-sales-returns" href="/edge/local/pos/shared/sales-returns"', $html);
         $this->assertStringContainsString('id="pos-edge-menu-logout" form="pos-edge-logout-form"', $html);
         $this->assertStringContainsString('<form id="pos-edge-logout-form" method="POST" action="/edge/local/logout"', $html);
         $this->assertStringContainsString('Shared View Branch', $html);
@@ -469,10 +473,15 @@ class EdgeSharedPosViewMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString($toggle, $html);
         // every menu href is an allowlisted edge.local.* route (the render gate's test_e proves the same for the full page)
         preg_match_all('/id="pos-edge-menu-[a-z-]+" href="([^"]+)"/', $html, $m);
-        $this->assertCount(4, $m[1]);
+        $this->assertCount(6, $m[1]); // status, shifts, sales returns, supplier finance, journal, purchase returns
         foreach ($m[1] as $href) {
             $this->assertNotNull($this->allowlistedRouteFor($href), "{$href} is not an allowlisted Edge route");
         }
+        // the Shifts entry follows tenant.shifts.index exactly like the Online sidebar's @can
+        $this->revokeEdgePermission($this->userId, 'tenant.shifts.index');
+        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
+        $this->assertStringNotContainsString('id="pos-edge-menu-shifts"', $html, 'no Shifts entry without tenant.shifts.index');
+        $this->assertStringContainsString('id="pos-edge-menu-sales-returns"', $html);
         // the Cloud sidebar is never imported; the theme hook stays the only `.sidebar`
         $this->assertDoesNotMatchRegularExpression('#<div class="sidebar[\s"]#', $html);
         $this->assertSame(1, preg_match_all('/class="sidebar"/', $html));
