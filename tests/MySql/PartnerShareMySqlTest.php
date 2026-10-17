@@ -300,6 +300,32 @@ class PartnerShareMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('NET: WE PAY', $thermal);
     }
 
+    /**
+     * The nightly report — email AND WhatsApp — is one document: EmailChannel attaches
+     * SalesReportDocumentService::pdf() and the WhatsApp link (ReportShareController) serves the same
+     * call, both with the SCHEDULE's own section list. Ticked there, Partner Share must be in it.
+     */
+    public function test_the_nightly_pdf_carries_it_when_the_schedule_ticks_it(): void
+    {
+        $this->rate('c:' . $this->platter, 'partner', 1000);
+        $this->rate('p:' . $this->sandwich, 'us', 400);
+        $this->sale([[$this->sandwich, 1, 5500, $this->platter, 'combo_header']]);
+        $this->sale([[$this->sandwich, 3, 2400]]);
+        $this->bindTenant();
+
+        $doc = app(\App\Services\Reports\SalesReportDocumentService::class);
+        $f = app(SalesReportEngine::class)->normalizeFilters(['date_from' => $this->day, 'date_to' => $this->day]);
+
+        $ticked = view('tenant.reports.center.print', $doc->data($f, ['overview', 'partner_share'], true))->render();
+        $this->assertStringContainsString('PARTNER SHARE', $ticked);
+        $this->assertMatchesRegularExpression('/NET: we pay Partner A<\/td><td class="amt">\s*200(\.00)?/', $ticked);
+
+        $untouched = view('tenant.reports.center.print', $doc->data($f, ['overview', 'cash_bank'], true))->render();
+        $this->assertStringNotContainsString('PARTNER SHARE', $untouched, 'a schedule that does not tick it prints as before');
+
+        $this->assertStringStartsWith('%PDF-', $doc->pdf($f, ['overview', 'partner_share']), 'the attachment itself builds');
+    }
+
     // ── the rate list screen ───────────────────────────────────────────────────────────────────
 
     public function test_partners_and_rates_are_kept_through_the_screen(): void

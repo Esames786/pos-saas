@@ -44,7 +44,8 @@ Pichhle 30 din (14 Sep – 13 Oct) par net **K.Food → K.Grill 3,52,940**.
 1. Branch ko origin ke saath milao, push, `bash deploy.sh` (2 tenant migrations; POS / stock / GL nahi chhoote).
 2. Prod: `share-rates:import kashiffood --file=… --partner="K.Grill"` **dry run**. Har naam mile, list owner ko dikhao.
 3. Owner ki haan par `--yes`. Phir Report Center → Partner Share, 14 Sep – 13 Oct, net ~3,52,940 se milao.
-4. Koi aur role (Accounts) report dekhe to section permission `givePermissionTo` se do, phir `system:clear-tenant-permission-cache`.
+4. Raat ki email + WhatsApp PDF: Kashif Food ka schedule #1 ("Daily Owner A4 Sales Report", 02:30) — sections me `partner_share` jodo (baqi 9 waise hi). Schedule ki screen par edit nahi, is liye ek guarded data update (sirf agar pehle se na ho). Email aur WhatsApp dono `SalesReportDocumentService::pdf()` se bante hain, is liye dono me aa jayega. WhatsApp ke message ka TEXT (Meta template) nahi badalta — sirf PDF.
+5. Koi aur role (Accounts) report dekhe to section permission `givePermissionTo` se do, phir `system:clear-tenant-permission-cache`.
 
 ## Abhi tasdeeq baqi (client)
 
