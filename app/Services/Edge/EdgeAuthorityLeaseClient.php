@@ -74,6 +74,7 @@ class EdgeAuthorityLeaseClient
         return [
             EdgeSaleEnvelopeBuilder::SCHEMA_VERSION,
             EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V2,
+            EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V3,   // PHASE 4: new_customer kind (emitted only while the Cloud advertises customer_create)
             EdgeReturnEnvelopeBuilder::SCHEMA,
             EdgePurchaseReturnEnvelopeBuilder::SCHEMA,
             EdgeSupplierFinanceEnvelopeBuilder::SCHEMA_PAYMENT,

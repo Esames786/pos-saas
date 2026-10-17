@@ -53,6 +53,13 @@ class EdgeInboundSaleIngestionService
      */
     public const ENVELOPE_SCHEMA_V1 = 'edge-sale-envelope-v1';
     public const ENVELOPE_SCHEMA_V2 = 'edge-sale-envelope-v2';
+
+    /**
+     * EDGE PHASE 4 — v3 ⊇ v2 (modifier stock consumed alike) + the `new_customer` kind: a customer / address born on the
+     * appliance, resolved here by the deterministic create-or-match (resolveCustomer). The kind is accepted on v3 ONLY
+     * (ENVELOPE_INVALID otherwise); an older Cloud answers SCHEMA_UNSUPPORTED to v3 and the appliance parks the row.
+     */
+    public const ENVELOPE_SCHEMA_V3 = 'edge-sale-envelope-v3';
     private const SUPPORTED_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
     private const SUPPORTED_METHOD_TYPES = ['cash'];
 
@@ -128,7 +135,7 @@ class EdgeInboundSaleIngestionService
                     $ingestionUuid = (string) Str::ulid();
                     $registry = $this->claimRegistry($envelope, $device, $branch, $contentHash, $ingestionUuid);
 
-                    $sale = $this->projectSale($envelope, $branch);
+                    $sale = $this->projectSale($envelope, $branch, $device);
                     $this->projectLinesWithOfficialStock($envelope, $sale, $branch);
                     $this->projectPayments($envelope, $sale);
 
@@ -197,7 +204,7 @@ class EdgeInboundSaleIngestionService
      */
     protected function supportedEnvelopeSchemas(): array
     {
-        return [self::ENVELOPE_SCHEMA_V1, self::ENVELOPE_SCHEMA_V2];
+        return [self::ENVELOPE_SCHEMA_V1, self::ENVELOPE_SCHEMA_V2, self::ENVELOPE_SCHEMA_V3];
     }
 
     /** TEST-ONLY seam (see ingest): production no-op; a subclass may throw to prove atomic rollback. */
@@ -260,32 +267,152 @@ class EdgeInboundSaleIngestionService
         return [$device, $branch];
     }
 
-    /** Resolve the customer identity or fail closed (walk-in is explicit; a customer travels by uuid). */
-    private function resolveCustomerId(array $envelope): ?int
+    /**
+     * Resolve the customer identity or fail closed (walk-in is explicit; a customer travels by uuid). Runs INSIDE the
+     * posting transaction (a refusal rolls everything back; nothing partial).
+     *
+     * PHASE 4 — DETERMINISTIC CREATE-OR-MATCH (docs/status/edge-phase4-offline-add-customer.md §3), in this order:
+     *   kind `customer`      1. customer_uuid known → that customer;  2. known as an ALIAS → the canonical customer;
+     *                        else CUSTOMER_UNKNOWN (never a phone guess for a kind that claims a synced identity).
+     *   kind `new_customer`  (v3 only) 1. customer_uuid known → use it (a second sale of the same offline customer);
+     *                        2. alias known → the canonical customer;
+     *                        3. phone_normalized matches an EXISTING customer (row lock; CustomerDirectory's legacy spellings as
+     *                           the fallback) → bind the sale to it, record `customer_uuid_aliases[offline_uuid → canonical]`,
+     *                           fill ONLY empty name/email (never rename) — NO duplicate customer;
+     *                        4. else CREATE the customer WITH the offline customer_uuid as its canonical identity.
+     *                        In every branch the intent's addresses are created once by address_uuid (ensureAddresses).
+     * Idempotent: a replay of the same envelope never reaches here (already_applied); a retry after a rolled-back attempt
+     * re-runs the ladder and lands on step 1 or 2; two sales of one offline customer land on step 1/2 after the first.
+     */
+    private function resolveCustomerId(array $envelope, EdgeDevice $device): ?int
     {
         $customer = $envelope['customer'] ?? null;
         if (! is_array($customer) || ($customer['kind'] ?? null) === 'walk_in' || $customer === null) {
             return null; // walk-in: never invent a customer
         }
+        $kind = (string) ($customer['kind'] ?? '');
         $uuid = (string) ($customer['customer_uuid'] ?? '');
         if (! EdgeIdentity::isValid($uuid, EdgeIdentity::FORMAT_ULID)) {
             throw new IngestionRefusal('CUSTOMER_INVALID', 'the customer identity is not a canonical customer_uuid');
         }
-        $row = Customer::on('tenant')->where('customer_uuid', $uuid)->first();
+
+        // 1. the canonical identity itself.
+        $row = Customer::on('tenant')->where('customer_uuid', $uuid)->lockForUpdate()->first();
+        // 2. an offline identity this Cloud already matched.
         if (! $row) {
-            // Fail closed (Sync design): never silently bind by phone or a local numeric id.
-            throw new IngestionRefusal('CUSTOMER_UNKNOWN', 'the customer_uuid does not resolve in this tenant');
+            $aliasCustomerId = \App\Models\Tenant\CustomerUuidAlias::on('tenant')->where('alias_uuid', $uuid)->value('customer_id');
+            $row = $aliasCustomerId ? Customer::on('tenant')->whereKey((int) $aliasCustomerId)->lockForUpdate()->first() : null;
         }
+
+        if ($kind !== EdgeSaleEnvelopeBuilder::CUSTOMER_KIND_NEW) {
+            if ($kind !== EdgeSaleEnvelopeBuilder::CUSTOMER_KIND_CUSTOMER) {
+                throw new IngestionRefusal('CUSTOMER_INVALID', "unknown customer kind [{$kind}]");
+            }
+            if (! $row) {
+                // Fail closed (Sync design): never silently bind by phone or a local numeric id.
+                throw new IngestionRefusal('CUSTOMER_UNKNOWN', 'the customer_uuid does not resolve in this tenant');
+            }
+
+            return (int) $row->id;
+        }
+
+        // ── kind new_customer (v3 only) ──
+        if ((string) ($envelope['envelope_schema_version'] ?? '') !== self::ENVELOPE_SCHEMA_V3) {
+            throw new IngestionRefusal('ENVELOPE_INVALID', 'the new_customer kind requires ' . self::ENVELOPE_SCHEMA_V3);
+        }
+        $intent = $customer['new_customer'] ?? null;
+        if (! is_array($intent) || trim((string) ($intent['name'] ?? '')) === '' && trim((string) ($intent['phone'] ?? '')) === '') {
+            throw new IngestionRefusal('CUSTOMER_INVALID', 'the new_customer intent needs a name or a phone');
+        }
+        $phone = trim((string) ($intent['phone'] ?? ''));
+        $phoneKey = \App\Support\PhoneNormalizer::normalize($phone);
+        if ($phoneKey !== null && (string) ($intent['phone_normalized'] ?? $phoneKey) !== $phoneKey) {
+            throw new IngestionRefusal('CUSTOMER_INVALID', 'phone_normalized does not match the shared normaliser for the given phone');
+        }
+
+        if (! $row && $phoneKey !== null) {
+            // 3. an EXISTING Cloud customer owns this phone → alias, never a duplicate.
+            $row = Customer::on('tenant')->where('phone_normalized', $phoneKey)->orderBy('id')->lockForUpdate()->first()
+                ?? app(\App\Services\Tenant\CustomerDirectory::class)->findByPhone($phone, true);
+            if ($row) {
+                \App\Models\Tenant\CustomerUuidAlias::on('tenant')->create([
+                    'alias_uuid' => $uuid,
+                    'customer_id' => (int) $row->id,
+                    'customer_uuid' => (string) $row->customer_uuid,
+                    'source_device_uuid' => (string) $device->public_uuid,
+                    'source' => \App\Models\Tenant\CustomerUuidAlias::SOURCE_PHONE_MATCH,
+                ]);
+                // Online quick-store rule: top up what is missing, never rename.
+                $row->fill(array_filter([
+                    'name' => $row->name ?: trim((string) ($intent['name'] ?? '')),
+                    'email' => $row->email ?: ($intent['email'] ?? null),
+                ]))->save();
+                Log::info('[edge-sync-ingest] customer aliased by phone', ['alias_uuid' => $uuid, 'customer_id' => $row->id]);
+            }
+        }
+
+        if (! $row) {
+            // 4. a genuinely new customer: the offline identity BECOMES the canonical one (the only path allowed to set it).
+            $row = new Customer([
+                'code' => null,
+                'name' => trim((string) ($intent['name'] ?? '')) !== '' ? mb_substr(trim((string) $intent['name']), 0, 190) : ($phone !== '' ? $phone : 'Customer'),
+                'phone' => $phone !== '' ? app(\App\Services\Tenant\CustomerDirectory::class)->normalizePhone($phone) : null,
+                'email' => isset($intent['email']) && is_string($intent['email']) && trim($intent['email']) !== '' ? mb_substr(trim($intent['email']), 0, 190) : null,
+                'status' => 'active',
+            ]);
+            $row->customer_uuid = $uuid;   // preserved, never regenerated (immutable cross-system identity)
+            $row->save();
+            Log::info('[edge-sync-ingest] customer created from offline intent', ['customer_uuid' => $uuid, 'customer_id' => $row->id]);
+        }
+
+        $this->ensureAddresses($row, is_array($intent['addresses'] ?? null) ? $intent['addresses'] : []);
 
         return (int) $row->id;
     }
 
+    /**
+     * Create each intent address ONCE by address_uuid (idempotent across retries and across sales of the same customer).
+     * Online's storeAddressOnce text rule applies too: an identical address already in the customer's book is reused (the
+     * offline address_uuid then never exists on the Cloud; the appliance's refresh merges its local copy — applier rule).
+     * The first address of a customer becomes the default; an intent `is_default` on a customer that already has one does
+     * NOT demote the Cloud's default (the Cloud book is the authority on which address is the usual one).
+     */
+    private function ensureAddresses(Customer $customer, array $addresses): void
+    {
+        foreach ($addresses as $a) {
+            if (! is_array($a)) {
+                continue;
+            }
+            $addressUuid = (string) ($a['address_uuid'] ?? '');
+            $text = trim(preg_replace('/\s+/', ' ', (string) ($a['address'] ?? '')) ?? '');
+            if (! EdgeIdentity::isValid($addressUuid, EdgeIdentity::FORMAT_ULID) || $text === '') {
+                throw new IngestionRefusal('CUSTOMER_INVALID', 'an intent address needs a canonical address_uuid and a non-empty address');
+            }
+            if (\App\Models\Tenant\CustomerAddress::on('tenant')->where('address_uuid', $addressUuid)->exists()) {
+                continue;   // already created (retry / second sale)
+            }
+            $book = $customer->addresses()->lockForUpdate()->get();
+            $same = $book->first(fn ($row) => mb_strtolower(trim(preg_replace('/\s+/', ' ', (string) $row->address) ?? '')) === mb_strtolower($text));
+            if ($same) {
+                continue;   // Online storeAddressOnce: identical text is the same address
+            }
+            $row = new \App\Models\Tenant\CustomerAddress([
+                'customer_id' => (int) $customer->id,
+                'label' => isset($a['label']) && is_string($a['label']) && trim($a['label']) !== '' ? mb_substr(trim($a['label']), 0, 50) : null,
+                'address' => mb_substr($text, 0, 500),
+                'is_default' => $book->isEmpty(),
+            ]);
+            $row->address_uuid = $addressUuid;   // preserved offline identity
+            $row->save();
+        }
+    }
+
     // ── projection + official posting ───────────────────────────────────────────
 
-    private function projectSale(array $envelope, Branch $branch): SalesOrder
+    private function projectSale(array $envelope, Branch $branch, EdgeDevice $device): SalesOrder
     {
         $totals = $envelope['totals'] ?? [];
-        $customerId = $this->resolveCustomerId($envelope);
+        $customerId = $this->resolveCustomerId($envelope, $device);
 
         $sale = new SalesOrder([
             'sale_no' => $this->sales->nextSaleNo(),                 // official Cloud sale number authority
@@ -337,7 +464,8 @@ class EdgeInboundSaleIngestionService
 
     private function projectLinesWithOfficialStock(array $envelope, SalesOrder $sale, Branch $branch): void
     {
-        $consumeModifiers = (string) ($envelope['envelope_schema_version'] ?? '') === self::ENVELOPE_SCHEMA_V2;
+        // W6 v2 and PHASE 4 v3 (⊇ v2) consume modifier linked stock; v1 semantics stay frozen.
+        $consumeModifiers = in_array((string) ($envelope['envelope_schema_version'] ?? ''), [self::ENVELOPE_SCHEMA_V2, self::ENVELOPE_SCHEMA_V3], true);
         $sale->setRelation('branch', $branch);
         foreach (($envelope['lines'] ?? []) as $line) {
             $product = Product::on('tenant')->findOrFail((int) $line['product_id']);

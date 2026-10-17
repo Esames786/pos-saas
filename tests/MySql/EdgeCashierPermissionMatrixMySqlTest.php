@@ -37,7 +37,6 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
 
     /** Catalogue cashier permissions with NO Edge endpoint that checks them today (documented, asserted exact). */
     private const NO_EDGE_ENDPOINT = [
-        'tenant.pos.customers.quick-store' => 'W-D offline add-customer (EdgeLocalCustomerController) not yet on the appliance',
         'tenant.sales-orders.split-bill' => 'Online split-bill PAGE gate — the shared view table-board @can only (rendered on Edge from W-B)',
         'tenant.sales-returns.create' => 'Online returns create PAGE gate — the shared view Return button @can only (rendered on Edge from W-B)',
         'tenant.shifts.create' => 'Online open-shift PAGE gate — W-B shared shift pages (openPage gates tenant.shifts.store today; tenant/shifts/index @can)',
@@ -133,6 +132,8 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
         $this->seedEdgeCredential($this->userId, $this->branchId, 1);
         $this->seedEdgeCredential($this->managerId, $this->branchId, 1, 'MgrPass1');
         $this->markPosApprover($this->managerId);
+        // Phase 4: the appliance is paired to a Cloud that advertises customer_create, so the quick-store probe is a real 200.
+        $this->advertiseCloudCapabilities();
         $this->managerCode = (string) User::on('tenant')->find($this->managerId)->employee_code;
         $this->login();
     }
@@ -358,6 +359,8 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
                 },
             ],
             'tenant.pos.quick-report-send' => [fn () => $this->getJson('/edge/local/pos/quick-report/options'), false],
+            // Phase 4: the quick-store permission gates BOTH twins (quick-store + add-address); the probe is the quick-store.
+            'tenant.pos.customers.quick-store' => [fn () => $this->postJson('/edge/local/pos/customers/quick-store', ['name' => 'Probe Customer', 'phone' => '0300' . random_int(1000000, 9999999)]), true],
             'tenant.pos.void-kot-item' => [fn () => $this->voidOne($voidSale, $voidLine), 'errors.permission'],
             'tenant.held-sales.store' => [fn () => $this->postJson('/edge/local/pos/held-sales', ['order_type' => 'takeaway', 'lines' => [['product_id' => $this->productQ, 'quantity' => 1]]]), true],
             'tenant.held-sales.cancel' => [fn () => $this->postJson("/edge/local/pos/held-sales/{$cancelId}/cancel", ['reason_id' => $this->voidReasonId]), true],

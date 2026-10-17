@@ -81,6 +81,12 @@ class EdgeReservationHandbackService
                 if ($r->customer_uuid) {
                     $customer = Customer::on('tenant')->where('customer_uuid', $r->customer_uuid)->first();
                     if (! $customer) {
+                        // PHASE 4: an offline-minted customer_uuid the Cloud MATCHED to an existing customer (by phone) lives
+                        // on as an alias — the reservation resolves to the canonical customer, never a duplicate or a refusal.
+                        $aliasCustomerId = \App\Models\Tenant\CustomerUuidAlias::on('tenant')->where('alias_uuid', $r->customer_uuid)->value('customer_id');
+                        $customer = $aliasCustomerId ? Customer::on('tenant')->find((int) $aliasCustomerId) : null;
+                    }
+                    if (! $customer) {
                         throw new RuntimeException('HANDBACK_UNKNOWN_CUSTOMER: the reserved customer_uuid does not resolve to a Cloud customer.');
                     }
                     $customerId = (int) $customer->id;

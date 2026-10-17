@@ -60,7 +60,7 @@ final class PosPermissionCatalog
         ],
         'tenant.pos.customers.quick-store' => [
             'groups' => ['cashier'],
-            'edge' => 'W-D offline add-customer (EdgeLocalCustomerController, §8) — not yet on the appliance',
+            'edge' => 'EdgeLocalCustomerController::PERMISSION (denyUnlessCan {message, permission} 403 on quick-store AND add-address — Phase 4 offline add-customer; the Online add-address route carries no permission of its own, so the quick-store permission gates both twins)',
             'online' => 'POST /pos/customers/quick-store — CustomerController@quickStore',
         ],
         'tenant.pos.quick-report-send' => [

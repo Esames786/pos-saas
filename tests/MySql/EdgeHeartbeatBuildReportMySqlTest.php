@@ -24,7 +24,9 @@ use Tests\MySql\Support\TenantFixtures;
  *  - an old appliance (no block) is served exactly as before; an invalid block is dropped, never a refused beat;
  *  - a replayed or stale beat carrying a build is acknowledged/refused exactly as before — the lease row (holder,
  *    edge_state, seq, timestamps) is byte-identical and a refused beat records nothing;
- *  - every accepted beat advertises the Cloud's capabilities (customer_create = false for now);
+ *  - every accepted beat advertises the Cloud's capabilities (Phase 4: customer_create = true — this Cloud ingests the
+ *    new_customer envelope kind); the appliance stores the advertisement on its binding row; an ACK without the key
+ *    clears it (fail closed);
  *  - end to end: the appliance's own heartbeat tick sends its build and the Cloud records it.
  */
 class EdgeHeartbeatBuildReportMySqlTest extends MySqlTenantTestCase
@@ -231,11 +233,12 @@ class EdgeHeartbeatBuildReportMySqlTest extends MySqlTenantTestCase
 
     public function test_every_accepted_beat_advertises_cloud_capabilities(): void
     {
+        // Phase 4: this Cloud ingests the new_customer envelope kind (v3) → it advertises customer_create = true.
         $res = $this->beat(1, 'standby', $this->build())->assertOk();
-        $this->assertSame(['customer_create' => false], $res->json('capabilities'));
-        $this->assertFalse($res->json('capabilities.customer_create'));
+        $this->assertSame(['customer_create' => true], $res->json('capabilities'));
+        $this->assertTrue($res->json('capabilities.customer_create'));
         // Also without a build (an old appliance simply ignores the key).
-        $this->beat(2, 'standby', null, withBuildKey: false)->assertOk()->assertJsonPath('capabilities.customer_create', false);
+        $this->beat(2, 'standby', null, withBuildKey: false)->assertOk()->assertJsonPath('capabilities.customer_create', true);
     }
 
     public function test_an_invalid_build_is_dropped_and_never_fails_the_heartbeat(): void
@@ -294,11 +297,36 @@ class EdgeHeartbeatBuildReportMySqlTest extends MySqlTenantTestCase
         $this->assertSame('edge-local-schema@applied-on-box', $build['applied_edge_schema_version']);
         $this->assertContains(EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V2, $build['envelope_versions']);
         $this->assertSame(array_values((array) config('edge.capabilities')), $build['capabilities']);
+        $this->assertContains('offline_customer_create', $build['capabilities'], 'Phase 4: the build report declares offline add-customer');
+        $this->assertContains(EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V3, $build['envelope_versions'], 'Phase 4: the build can emit the new_customer envelope generation');
+
+        // Phase 4: the appliance STORES the Cloud's advertisement on its binding row (EdgeCloudCapabilities reads it from there).
+        $this->assertSame(['customer_create' => true], $tick['advertised']['capabilities']);
+        $meta = DB::connection('tenant')->table('edge_local_meta')->where('singleton_guard', 1)->first();
+        $this->assertSame(['customer_create' => true], json_decode((string) $meta->cloud_capabilities_seen, true));
+        $this->assertNotNull($meta->cloud_capabilities_seen_at);
+        $this->assertTrue(app(\App\Services\Edge\EdgeCloudCapabilities::class)->customerCreate());
 
         config(['app.role' => 'cloud']);
         $row = $this->deviceRow();
         $this->assertSame((string) config('edge.app_version'), $row['app_version']);
         $this->assertSame('edge-local-schema@applied-on-box', json_decode((string) $row['compatibility_manifest'], true)['applied_edge_schema_version']);
         $this->assertSame('cloud', $this->leaseRow()['holder'], 'reporting a build never changes who holds the branch');
+    }
+
+    /** Phase 4 fail-closed: an OLD Cloud whose ACK carries no `capabilities` advertises NOTHING — every capability reads false afterwards. */
+    public function test_an_ack_without_capabilities_clears_the_stored_advertisement(): void
+    {
+        DB::setDefaultConnection('tenant');
+        $this->bindEdgeLocalMeta($this->branchId, 1, $this->tenantId, $this->deviceUuid);
+        $this->advertiseCloudCapabilities(['customer_create' => true]);   // a previous, newer Cloud had advertised it
+        config(['app.role' => 'branch_server', 'edge.authority.heartbeat_url' => 'https://cloud.test/api/edge/authority/heartbeat',
+            'edge.sync.device_id' => $this->deviceUuid, 'edge.sync.device_secret' => $this->secret]);
+        Http::fake(fn () => Http::response(['status' => 'ok', 'holder' => 'cloud', 'edge_state' => 'standby', 'seq' => 1, 'lease_ttl_seconds' => 120], 200));
+
+        $tick = app(EdgeAuthorityService::class)->heartbeat();
+        $this->assertTrue($tick['ok'], json_encode($tick));
+        $this->assertSame([], $tick['advertised']['capabilities']);
+        $this->assertFalse(app(\App\Services\Edge\EdgeCloudCapabilities::class)->customerCreate(), 'absent key = false (never emit an unsupported envelope kind)');
     }
 }

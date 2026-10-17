@@ -100,12 +100,18 @@ class EdgeAuthorityService
             // F3 — the purchase-return watermark the Cloud advertised (the purchase-return projection's freshness target).
             'standby_purchase_return_watermark_seen' => isset($ack['purchase_return_watermark']) ? (string) $ack['purchase_return_watermark'] : $meta->standby_purchase_return_watermark_seen,
             'standby_purchase_return_as_of_seen' => isset($ack['purchase_return_as_of']) ? \Illuminate\Support\Carbon::parse($ack['purchase_return_as_of']) : $meta->standby_purchase_return_as_of_seen,
+            // EDGE PHASE 4 — the Cloud's capability advertisement (W-F `capabilities`). Stored on EVERY accepted beat as the
+            // Cloud sent it; an old Cloud that omits the key advertises NOTHING (fail closed: every capability reads false),
+            // so an appliance never emits an envelope kind the Cloud has not confirmed it can ingest (EdgeCloudCapabilities).
+            'cloud_capabilities_seen' => EdgeCloudCapabilities::normalizeAck($ack['capabilities'] ?? null),
+            'cloud_capabilities_seen_at' => now(),
         ])->save();
 
         return [
             'ok' => true, 'holder' => $ack['holder'] ?? null, 'cloud_edge_state' => $ack['edge_state'] ?? null, 'state' => $this->state(), 'seq' => $seq,
             'consecutive_acks' => (int) $meta->heartbeat_consecutive_acks,
-            'advertised' => ['config_revision' => $ack['cloud_config_revision'] ?? null, 'stock_watermark' => $ack['stock_watermark'] ?? null, 'stock_as_of' => $ack['stock_as_of'] ?? null],
+            'advertised' => ['config_revision' => $ack['cloud_config_revision'] ?? null, 'stock_watermark' => $ack['stock_watermark'] ?? null, 'stock_as_of' => $ack['stock_as_of'] ?? null,
+                'capabilities' => EdgeCloudCapabilities::normalizeAck($ack['capabilities'] ?? null)],
         ];
     }
 

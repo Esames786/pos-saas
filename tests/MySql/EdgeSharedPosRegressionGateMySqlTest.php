@@ -383,6 +383,51 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
     }
 
     /**
+     * (c2) PHASE 4 — the two ADVERTISED capabilities (EdgePosRuntimeFactory::ADVERTISED_CAPABILITIES): with nothing advertised
+     * the render follows the baseline matrix (test_c); once the Cloud advertised `customer_create` on a heartbeat, the SAME
+     * controls (#qa-save, #new-addr-save) render ENABLED in the same place, without the capability hint, the two routes
+     * are set and the labels no longer carry the off-hint — no markup change, the view stays capability-driven.
+     */
+    public function test_c2_cloud_advertised_customer_create_turns_quick_add_on_in_the_same_place(): void
+    {
+        foreach (EdgePosRuntimeFactory::ADVERTISED_CAPABILITIES as $capability => $flag) {
+            $this->assertFalse(EdgePosRuntimeFactory::CAPABILITIES[$capability], "{$capability}: the baseline matrix is OFF (nothing advertised)");
+            $this->assertArrayHasKey($capability, self::CAPABILITY_CONTROLS, "{$capability}: the view gates a control on it");
+            $this->assertSame('customer_create', $flag);
+        }
+        $this->advertiseCloudCapabilities(['customer_create' => true]);
+        $html = $this->renderEdge();
+        $rt = $this->runtimeFrom($html);
+        $dom = $this->xpath($html);
+
+        $this->assertTrue($rt['capabilities']['customerCreate']);
+        $this->assertTrue($rt['capabilities']['customerAddressCreate']);
+        $this->assertSame('/edge/local/pos/customers/quick-store', $rt['routes']['customerQuickStore']);
+        $this->assertSame('/edge/local/pos/customers/{customer}/addresses', $rt['routes']['customerAddressStore']);
+        $this->assertArrayNotHasKey('capability.customerCreate', $rt['labels']);
+        $this->assertArrayNotHasKey('capability.customerAddressCreate', $rt['labels']);
+        foreach (['customerCreate', 'customerAddressCreate'] as $capability) {
+            foreach (self::CAPABILITY_CONTROLS[$capability]['selectors'] as $xp) {
+                $nodes = $dom->query($xp);
+                $this->assertSame(1, $nodes->length, "{$capability}: exactly one {$xp}");
+                $this->assertFalse($nodes->item(0)->hasAttribute('disabled'), "Edge: {$xp} must be ENABLED once advertised");
+                $this->assertFalse($nodes->item(0)->hasAttribute('title'), "Edge: {$xp} carries no off-hint once advertised");
+            }
+        }
+        // Every other capability is untouched by the advertisement.
+        foreach (EdgePosRuntimeFactory::CAPABILITIES as $key => $on) {
+            if (! isset(EdgePosRuntimeFactory::ADVERTISED_CAPABILITIES[$key])) {
+                $this->assertSame($on, $rt['capabilities'][$key], "{$key} follows the baseline matrix");
+            }
+        }
+        // Both routes are allowlisted edge.local.* routes (the (e) leak rule holds for the two new routes).
+        foreach (['customerQuickStore', 'customerAddressStore'] as $key) {
+            $this->assertNotNull($this->allowlistedRouteFor($rt['routes'][$key]), "{$key} is an allowlisted Edge route");
+        }
+        $this->advertiseCloudCapabilities(null);
+    }
+
+    /**
      * (e) no Cloud-only endpoint leaks into the Edge runtime: every url-bearing attribute, every iframe/script/link URL and
      * every POS_RUNTIME route of the Edge render is an ALLOWLISTED edge.local.* route or a local asset.
      */

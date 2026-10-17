@@ -38,7 +38,8 @@ class EdgeHeartbeatBuildPayloadTest extends TestCase
         $this->assertSame($info['edge_schema_version'], $build['edge_schema_version']);
         $this->assertSame('edge-local-schema@applied', $build['applied_edge_schema_version']);
         $this->assertSame([
-            EdgeSaleEnvelopeBuilder::SCHEMA_VERSION, EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V2,
+            // Phase 4: v3 (the new_customer kind) is a generation this build can EMIT (only while the Cloud advertises customer_create).
+            EdgeSaleEnvelopeBuilder::SCHEMA_VERSION, EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V2, EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V3,
             EdgeReturnEnvelopeBuilder::SCHEMA, EdgePurchaseReturnEnvelopeBuilder::SCHEMA,
             EdgeSupplierFinanceEnvelopeBuilder::SCHEMA_PAYMENT, EdgeSupplierFinanceEnvelopeBuilder::SCHEMA_AP_JOURNAL,
         ], $build['envelope_versions']);

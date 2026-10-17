@@ -84,6 +84,7 @@ class EdgeLocalBootstrapImporter
         ['promotion_targets', 'promotion_targets', false],
         ['customers', 'customers', false],
         ['customer_addresses', 'customer_addresses', false],
+        ['customer_uuid_aliases', 'customer_uuid_aliases', false],   // PHASE 4: offline uuid → canonical customer (merge instructions for the applier)
         ['recipes', 'recipes', false],
         ['recipe_ingredients', 'recipe_ingredients', false],
         ['unit_conversions', 'unit_conversions', false],

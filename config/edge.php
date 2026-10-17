@@ -186,6 +186,7 @@ return [
         'purchase_returns_grn',       // F3: purchase return against a mirrored goods receipt, posted pending sync (no drafts)
         'quick_report',               // Quick Report view / print here / network on the canonical engine (e-mail = Internet)
         'shift_denomination_count',   // W4: shift close with the Online denomination count + closing notes (no shortage voucher)
+        'offline_customer_create',    // PHASE 4: add customer / address at the till (customer_uuid + phone_normalized + address_uuid), new_customer envelope v3 when the Cloud advertises customer_create
     ],
 
     /*
@@ -241,6 +242,8 @@ return [
         'edge.local.pos.held.show',
         'edge.local.pos.void-reasons',
         'edge.local.pos.customers.search',
+        'edge.local.pos.customers.quick-store',      // EDGE PHASE 4 — offline add-customer (Online quick-store twin)
+        'edge.local.pos.customers.addresses.store',  // EDGE PHASE 4 — offline add-address (Online add-address twin)
         'edge.local.pos.returns.search',   // F1 sales returns
         'edge.local.pos.returns.sale',
         'edge.local.pos.returns.store',

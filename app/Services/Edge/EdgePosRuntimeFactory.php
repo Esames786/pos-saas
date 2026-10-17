@@ -44,8 +44,8 @@ class EdgePosRuntimeFactory
         'branchSelect' => false,         // one bound branch per appliance
         'nonCashTender' => false,        // card/provider = ONLINE_REQUIRED; manual methods = owner decision
         'tipOnPaidSale' => false,        // the sync contract does not carry a tip yet
-        'customerCreate' => false,       // Team D (§8) switches this on with the Cloud advertisement
-        'customerAddressCreate' => false,
+        'customerCreate' => false,       // PHASE 4 (§8): BASELINE — on while the Cloud advertises customer_create (see capabilities())
+        'customerAddressCreate' => false, // PHASE 4: same advertisement (an address rides the same new_customer intent)
         'changeRider' => false,          // no Edge sales-order page (gap noted in §14)
         'splitBill' => true,
         'salesReturn' => true,
@@ -58,6 +58,15 @@ class EdgePosRuntimeFactory
         'printHere' => true,
     ];
 
+    /**
+     * PHASE 4 — capabilities that follow the Cloud's heartbeat advertisement (EdgeCloudCapabilities): capability key →
+     * advertised flag. The CAPABILITIES matrix is the baseline (nothing advertised); capabilities() overlays these.
+     */
+    public const ADVERTISED_CAPABILITIES = [
+        'customerCreate' => EdgeCloudCapabilities::CUSTOMER_CREATE,
+        'customerAddressCreate' => EdgeCloudCapabilities::CUSTOMER_CREATE,
+    ];
+
     /** Hint texts for the controls a capability turns off (the existing Edge wording). */
     public const LABELS = [
         'reports' => 'Reports run on the Online POS.',
@@ -67,8 +76,8 @@ class EdgePosRuntimeFactory
         'nonCashTender' => 'Cash is taken on the Branch Server. Card / provider payments run on the Online POS; bank transfer, cheque and other manual methods await the owner decision.',
         'nonCashTenderShort' => 'Only cash can be taken on the Branch Server.',
         'tipOnPaidSale' => 'A tip cannot be recorded on a Branch Server sale until the Cloud sync contract carries tips — choose No Tip to complete this sale.',
-        'customerCreate' => 'No exact match in the synced customer book. Adding a new customer needs the Online POS.',
-        'customerAddressCreate' => 'Saving another address for this customer needs the Online POS — the order can still go to a saved address.',
+        'customerCreate' => 'No exact match in the synced customer book. Adding a new customer here needs the Online service to confirm offline customer support; until then add the customer on the Online POS.',
+        'customerAddressCreate' => 'Saving another address for this customer here needs the Online service to confirm offline customer support; the order can still go to a saved address.',
         'changeRider' => 'Changing the rider of a completed delivery needs the Online POS.',
         'reservedOnline' => 'Reserved on the Online POS — guest details did not reach this Branch Server.',
         'refundOnlineRequired' => 'Refunding it the same way needs the Online POS; a cash refund from this till is possible where the business allows it.',
@@ -82,7 +91,25 @@ class EdgePosRuntimeFactory
         private readonly EdgeBranchContext $context,
         private readonly EdgeAuthorityService $authority,
         private readonly EdgeLocalReadiness $readiness,
+        private readonly EdgeCloudCapabilities $cloud,
     ) {
+    }
+
+    /**
+     * PHASE 4 — the EFFECTIVE capability matrix of this appliance: the §7 baseline plus the Cloud-advertised ones
+     * (ADVERTISED_CAPABILITIES) read from the last acknowledged heartbeat. Nothing advertised ⇒ exactly CAPABILITIES.
+     *
+     * @return array<string,bool>
+     */
+    public function capabilities(): array
+    {
+        $caps = self::CAPABILITIES;
+        $advertised = $this->cloud->advertised();
+        foreach (self::ADVERTISED_CAPABILITIES as $capability => $flag) {
+            $caps[$capability] = (bool) ($advertised[$flag] ?? false);
+        }
+
+        return $caps;
     }
 
     /**
@@ -153,7 +180,8 @@ class EdgePosRuntimeFactory
         $labels['modeChip'] = $authority['label'];
         $labels['connection'] = $authority['connection_label'];
         // PosRuntime::capabilityHint() reads `capability.<key>` (then `capabilityOff`) for a capability-off control's tooltip.
-        foreach (self::CAPABILITIES as $capability => $on) {
+        $capabilities = $this->capabilities();
+        foreach ($capabilities as $capability => $on) {
             if (! $on && isset(self::LABELS[$capability])) {
                 $labels['capability.' . $capability] = self::LABELS[$capability];
             }
@@ -163,7 +191,7 @@ class EdgePosRuntimeFactory
         return new PosRuntime(
             mode: PosRuntime::MODE_EDGE,
             routes: $this->routes(),
-            capabilities: self::CAPABILITIES,
+            capabilities: $capabilities,
             identity: [
                 'branch_id' => $branchId,
                 'branch_name' => $branch?->name,
@@ -200,6 +228,8 @@ class EdgePosRuntimeFactory
         $p = '/edge/local/pos';
         $user = auth('tenant')->user();
         $may = fn (array $permissions): bool => $user !== null && collect($permissions)->contains(fn (string $perm) => $user->can($perm));
+        // PHASE 4: the quick-add / add-address routes exist only while the Cloud advertised customer_create (§7: off ⇒ null).
+        $customerCreate = $this->cloud->customerCreate();
 
         return [
             // page + navigation
@@ -213,8 +243,8 @@ class EdgePosRuntimeFactory
             'printingRetry' => $p . '/sales/{sale}/printing/retry',
             // customers
             'customerSearch' => $p . '/customers',
-            'customerQuickStore' => null,        // capability customerCreate (Team D)
-            'customerAddressStore' => null,      // capability customerAddressCreate (Team D)
+            'customerQuickStore' => $customerCreate ? $p . '/customers/quick-store' : null,                 // capability customerCreate (Phase 4)
+            'customerAddressStore' => $customerCreate ? $p . '/customers/{customer}/addresses' : null,     // capability customerAddressCreate (Phase 4)
             // quick report
             'quickReportOptions' => $p . '/quick-report/options',
             'quickReportSettings' => $p . '/quick-report/settings',

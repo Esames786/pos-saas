@@ -97,6 +97,10 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::get('/void-reasons', [EdgeLocalHeldSalesController::class, 'voidReasons'])->name('void-reasons');
         // CUSTOMER-UX parity — on-demand lookup in the synced customer book (delivery / attach customer / addresses).
         Route::get('/customers', [EdgeLocalPosController::class, 'customers'])->name('customers.search');
+        // EDGE PHASE 4 — offline add-customer: Online's quick-store / add-address twins (permission + Cloud capability
+        // advertisement + branch authority; EdgeLocalCustomerController). Enabled on the shared view only while advertised.
+        Route::post('/customers/quick-store', [\App\Http\Controllers\Edge\EdgeLocalCustomerController::class, 'quickStore'])->name('customers.quick-store');
+        Route::post('/customers/{customer}/addresses', [\App\Http\Controllers\Edge\EdgeLocalCustomerController::class, 'storeAddress'])->name('customers.addresses.store');
         Route::post('/held-sales', [EdgeLocalHeldSalesController::class, 'storeHeldSale'])->name('held.store');
         Route::post('/held-sales/{sale}/kot', [EdgeLocalHeldSalesController::class, 'queueKot'])->name('held.kot');
         Route::post('/held-sales/{sale}/settle', [EdgeLocalHeldSalesController::class, 'settleHeldSale'])->name('held.settle');

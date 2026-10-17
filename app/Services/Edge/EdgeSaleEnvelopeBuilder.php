@@ -48,6 +48,20 @@ class EdgeSaleEnvelopeBuilder
     /** W6: emitted only when a line carries a stock-consuming modifier (see class doc). */
     public const SCHEMA_VERSION_V2 = 'edge-sale-envelope-v2';
 
+    /**
+     * EDGE PHASE 4 — emitted ONLY when the sale's customer is a `new_customer` intent (a customer or address born on this
+     * appliance that the Cloud has not sent back yet). v3 ⊇ v2: the Cloud consumes modifier stock exactly as for v2 AND
+     * runs the deterministic create-or-match on the customer block. An old Cloud answers SCHEMA_UNSUPPORTED (the sender
+     * parks the row under a bounded backoff — never failed_permanent, never a partial write) — and the appliance never
+     * emits v3 unless the Cloud advertised `customer_create` (EdgeCloudCapabilities), so that refusal is a deploy-ordering
+     * safety net, not the normal path. v1 / v2 byte shapes are unchanged for every other sale.
+     */
+    public const SCHEMA_VERSION_V3 = 'edge-sale-envelope-v3';
+
+    public const CUSTOMER_KIND_WALK_IN = 'walk_in';
+    public const CUSTOMER_KIND_CUSTOMER = 'customer';
+    public const CUSTOMER_KIND_NEW = 'new_customer';
+
     /** V1 offline-supported commercial shape (mirrors the EdgeLocalPosService gates). */
     private const SUPPORTED_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
     private const SUPPORTED_METHOD_TYPES = ['cash'];
@@ -75,8 +89,15 @@ class EdgeSaleEnvelopeBuilder
             : null;
         $user = \App\Models\Tenant\User::on('tenant')->find((int) $sale->created_by_user_id);
 
+        // PHASE 4: the customer block decides the schema generation (new_customer ⇒ v3) — resolved first, gated on the
+        // Cloud advertisement stored on the binding row.
+        $customer = $this->customerIdentity($sale, $meta);
+        $schema = ($customer['kind'] ?? '') === self::CUSTOMER_KIND_NEW
+            ? self::SCHEMA_VERSION_V3
+            : ($this->consumesModifierStock($sale) ? self::SCHEMA_VERSION_V2 : self::SCHEMA_VERSION);
+
         $envelope = [
-            'envelope_schema_version' => $this->consumesModifierStock($sale) ? self::SCHEMA_VERSION_V2 : self::SCHEMA_VERSION,
+            'envelope_schema_version' => $schema,
 
             // Frozen binding + config context (§5 / §9 of the design).
             'tenant_id' => (int) $meta->tenant_id,
@@ -127,8 +148,9 @@ class EdgeSaleEnvelopeBuilder
                 ->map(fn ($k) => ['event_uuid' => (string) $k->event_uuid, 'sequence_no' => (int) $k->sequence_no, 'event_type' => (string) $k->event_type])
                 ->all(),
             // CROSS-SYSTEM customer identity (1B closure): never a local integer PK. Walk-in is explicit; an
-            // attached customer is carried by its canonical customer_uuid (+ the sale's own name/phone snapshot).
-            'customer' => $this->customerIdentity($sale),
+            // attached customer is carried by its canonical customer_uuid (+ the sale's own name/phone snapshot);
+            // PHASE 4: a customer born on this appliance travels as a `new_customer` intent (v3).
+            'customer' => $customer,
 
             // Frozen commercial totals (envelope is the price authority at ingest — never repriced).
             'totals' => [
@@ -216,15 +238,28 @@ class EdgeSaleEnvelopeBuilder
     }
 
     /**
-     * @return array{kind: string, customer_uuid?: string, name: ?string, phone: ?string}
+     * PHASE 4 contract (docs/status/edge-phase4-offline-add-customer.md §2):
+     *   walk_in       {kind, name, phone}                                   — no customer row;
+     *   customer      {kind, customer_uuid, name, phone}                    — a customer the Cloud already knows (synced book);
+     *   new_customer  {kind, customer_uuid, name, phone, new_customer:{…}}  — a customer born on THIS appliance
+     *                 (customers.edge_origin = 'local') or a synced customer with an address born here
+     *                 (customer_addresses.edge_origin = 'local'). `name`/`phone` stay the SALE's snapshot (as for `customer`);
+     *                 `new_customer` is the BOOK intent: {name, phone, phone_normalized, email, addresses[{address_uuid, label,
+     *                 address, is_default}]} — for a local customer every address, for a synced one only the local-born ones.
+     * The new kind is emitted ONLY while the Cloud advertised `customer_create` (stored on the binding row at the last
+     * acknowledged heartbeat): otherwise the sale fails closed here (422 at the till — pick a synced customer or walk-in)
+     * rather than shipping a kind the Cloud never said it can ingest (owner: the old Cloud refuses safely BEFORE a device
+     * emits unsupported envelopes).
+     *
+     * @return array{kind: string, customer_uuid?: string, name: ?string, phone: ?string, new_customer?: array<string,mixed>}
      */
-    private function customerIdentity(SalesOrder $sale): array
+    private function customerIdentity(SalesOrder $sale, EdgeLocalMeta $meta): array
     {
         $name = $sale->customer_name !== null && $sale->customer_name !== '' ? (string) $sale->customer_name : null;
         $phone = $sale->customer_phone !== null && $sale->customer_phone !== '' ? (string) $sale->customer_phone : null;
 
         if ($sale->customer_id === null) {
-            return ['kind' => 'walk_in', 'name' => $name, 'phone' => $phone];
+            return ['kind' => self::CUSTOMER_KIND_WALK_IN, 'name' => $name, 'phone' => $phone];
         }
 
         $customer = \App\Models\Tenant\Customer::on('tenant')->find((int) $sale->customer_id);
@@ -232,12 +267,45 @@ class EdgeSaleEnvelopeBuilder
             throw new RuntimeException('ENVELOPE_UNSUPPORTED: the sale references a customer without a canonical customer_uuid — a local id is never a cross-system identity.');
         }
 
-        return [
-            'kind' => 'customer',
+        $identity = [
+            'kind' => self::CUSTOMER_KIND_CUSTOMER,
             'customer_uuid' => (string) $customer->customer_uuid,
             'name' => $name ?? (string) $customer->name,
             'phone' => $phone ?? ($customer->phone !== null ? (string) $customer->phone : null),
         ];
+
+        $localCustomer = (string) ($customer->getAttribute('edge_origin') ?? EdgeLocalCustomerService::ORIGIN_CLOUD) === EdgeLocalCustomerService::ORIGIN_LOCAL;
+        $addresses = \App\Models\Tenant\CustomerAddress::on('tenant')->where('customer_id', (int) $customer->id)
+            ->when(! $localCustomer, fn ($q) => $q->where('edge_origin', EdgeLocalCustomerService::ORIGIN_LOCAL))
+            ->orderByDesc('is_default')->orderBy('id')->get();
+        if (! $localCustomer && $addresses->isEmpty()) {
+            return $identity;
+        }
+
+        if (! EdgeCloudCapabilities::fromMeta($meta, EdgeCloudCapabilities::CUSTOMER_CREATE)) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: this customer (or an address) was added on this Branch Server, and the Online service has not confirmed offline customer support — attach a customer from the synced book or sell as walk-in.');
+        }
+        foreach ($addresses as $a) {
+            if (! EdgeIdentity::isValid((string) $a->address_uuid, EdgeIdentity::FORMAT_ULID)) {
+                throw new RuntimeException('ENVELOPE_UNSUPPORTED: a local address without a canonical address_uuid cannot be shipped.');
+            }
+        }
+
+        $identity['kind'] = self::CUSTOMER_KIND_NEW;
+        $identity['new_customer'] = [
+            'name' => (string) $customer->name,
+            'phone' => $customer->phone !== null && $customer->phone !== '' ? (string) $customer->phone : null,
+            'phone_normalized' => $customer->phone_normalized !== null && $customer->phone_normalized !== '' ? (string) $customer->phone_normalized : null,
+            'email' => $customer->email !== null && $customer->email !== '' ? (string) $customer->email : null,
+            'addresses' => $addresses->map(fn ($a) => [
+                'address_uuid' => (string) $a->address_uuid,
+                'label' => $a->label !== null && $a->label !== '' ? (string) $a->label : null,
+                'address' => (string) $a->address,
+                'is_default' => (bool) $a->is_default,
+            ])->values()->all(),
+        ];
+
+        return $identity;
     }
     // ── fail-closed guards ───────────────────────────────────────────────────
 

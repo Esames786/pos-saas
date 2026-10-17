@@ -93,8 +93,12 @@ class EdgeLocalConfigRefreshApplier
         'void_reasons' => ['flag', 'is_active', 0],
         'promotions' => ['flag', 'status', 'inactive'],
         'promotion_targets' => ['delete'],
+        // PHASE 4: customers / addresses are matched by IDENTITY (customer_uuid / address_uuid) in their own engines
+        // (upsertCustomers / upsertCustomerAddresses); the strategies below apply to CLOUD-origin rows only — a row born on
+        // this appliance (edge_origin = 'local') that the Cloud has not sent back is NEVER tombstoned.
         'customers' => ['flag', 'status', 'inactive'],   // sales/reservations keep resolving; a retired customer is never offered
         'customer_addresses' => ['delete'],
+        'customer_uuid_aliases' => ['delete'],
         'recipes' => ['flag', 'is_active', 0],
         'recipe_ingredients' => ['delete'],
         'unit_conversions' => ['delete'],
@@ -164,6 +168,7 @@ class EdgeLocalConfigRefreshApplier
             }
 
             $stats = [];
+            $this->customerIdMap = [];
             foreach (EdgeLocalBootstrapImporter::PLAN as [$section, $table, $branchScoped]) {
                 $rows = $sections[$section] ?? [];
                 $stats[$section] = match ($section) {
@@ -171,6 +176,10 @@ class EdgeLocalConfigRefreshApplier
                     'categories' => $this->upsertCategories($rows),
                     'users' => $this->upsertUsersAndPermissionGraph($rows),
                     'restaurant_tables' => $this->upsertSection($section, $table, $rows, mergeTableStatus: true),
+                    // PHASE 4: identity-keyed customer book (see the three engines).
+                    'customers' => $this->upsertCustomers($rows),
+                    'customer_addresses' => $this->upsertCustomerAddresses($rows),
+                    'customer_uuid_aliases' => $this->applyCustomerAliases($rows),
                     default => $this->upsertSection($section, $table, $rows),
                 };
             }
@@ -416,6 +425,291 @@ class EdgeLocalConfigRefreshApplier
         }
 
         return array_filter(['updated' => $updated, 'inserted' => $inserted, 'tombstoned' => $tombstoned]);
+    }
+
+    // ── PHASE 4 — the customer book, keyed by IDENTITY (docs/status/edge-phase4-offline-add-customer.md §4) ─────────────
+
+    /** Cloud customer id → LOCAL customer id for the revision being applied (built by upsertCustomers, read by the addresses). @var array<int,int> */
+    private array $customerIdMap = [];
+
+    public const ORIGIN_LOCAL = 'local';
+    public const ORIGIN_CLOUD = 'cloud';
+
+    /**
+     * THE REFRESH RULE for customers (owner: "refresh matches customer by UUID, not numeric id; never deactivate/overwrite
+     * an offline-created customer merely because its numeric id differs"):
+     *   1. a payload row whose customer_uuid exists locally (under ANY local id) UPDATES that local row in place — the local id
+     *      is KEPT (ids are local-only; every cross-system reference travels by uuid), `edge_origin` becomes 'cloud'
+     *      (the Cloud now owns the row); the Cloud id → local id mapping feeds the addresses pass;
+     *   2. a payload row whose uuid is unknown locally INSERTS with its Cloud id (a locally-born row can never hold that id:
+     *      local ids live in EdgeLocalCustomerService::LOCAL_ID_FLOOR …); an id held by a DIFFERENT identity is a refusal
+     *      (the whole refresh rolls back — never a silent overwrite of one customer by another);
+     *   3. a local row the payload does not carry: edge_origin 'cloud' → status 'inactive' (the Cloud retired it; history
+     *      keeps resolving), edge_origin 'local' → UNTOUCHED (still active, still attachable; its sale carries it to the Cloud).
+     */
+    private function upsertCustomers(array $rows): array
+    {
+        $conn = DB::connection(self::CONN);
+        $local = $conn->table('customers')->get(['id', 'customer_uuid', 'edge_origin', 'status']);
+        $byUuid = [];
+        $byId = [];
+        foreach ($local as $row) {
+            $byId[(int) $row->id] = $row;
+            if ($row->customer_uuid !== null && $row->customer_uuid !== '') {
+                $byUuid[(string) $row->customer_uuid] = $row;
+            }
+        }
+
+        $updated = $inserted = 0;
+        $seen = [];
+        foreach ($rows as $row) {
+            $cloudId = (int) $row['id'];
+            $uuid = (string) ($row['customer_uuid'] ?? '');
+            $data = $this->mutable($row) + ['edge_origin' => self::ORIGIN_CLOUD];
+            if ($uuid !== '' && isset($byUuid[$uuid])) {
+                $localId = (int) $byUuid[$uuid]->id;
+                $conn->table('customers')->where('id', $localId)->update($data);
+                $this->customerIdMap[$cloudId] = $localId;
+                $seen[$localId] = true;
+                $updated++;
+                continue;
+            }
+            if (isset($byId[$cloudId])) {
+                $held = $byId[$cloudId];
+                if ($held->customer_uuid !== null && $held->customer_uuid !== '' && $held->customer_uuid !== $uuid) {
+                    throw new RuntimeException("REFRESH_CONFLICT: customer id {$cloudId} is held locally by a different customer identity; refusing to overwrite one customer with another.");
+                }
+                // a legacy local row without an identity (pre-G3) adopts the Cloud's
+                $conn->table('customers')->where('id', $cloudId)->update($data);
+                $this->customerIdMap[$cloudId] = $cloudId;
+                $seen[$cloudId] = true;
+                $updated++;
+                continue;
+            }
+            $conn->table('customers')->insert($row + ['edge_origin' => self::ORIGIN_CLOUD]);
+            $this->customerIdMap[$cloudId] = $cloudId;
+            $seen[$cloudId] = true;
+            $inserted++;
+        }
+
+        $tombstoned = $keptLocal = 0;
+        foreach ($local as $row) {
+            if (isset($seen[(int) $row->id])) {
+                continue;
+            }
+            if ((string) ($row->edge_origin ?? self::ORIGIN_CLOUD) === self::ORIGIN_LOCAL) {
+                $keptLocal++;   // born here, not seen back from the Cloud yet — never deactivated, never overwritten
+                continue;
+            }
+            if ((string) $row->status !== 'inactive') {
+                $tombstoned += $conn->table('customers')->where('id', (int) $row->id)->update(['status' => 'inactive']);
+            }
+        }
+
+        return array_filter(['updated' => $updated, 'inserted' => $inserted, 'tombstoned' => $tombstoned, 'kept_local' => $keptLocal]);
+    }
+
+    /**
+     * Addresses follow the same rule keyed by address_uuid; `customer_id` is MAPPED to the local customer id (the Cloud's
+     * id for the parent may differ locally — rule 1 above). A local-origin address the payload does not carry is kept,
+     * unless the Cloud now carries an address of the same customer with the SAME text (Online's storeAddressOnce reused
+     * it on ingestion) — then the local copy is merged away (deleted) so the book does not show the address twice.
+     */
+    private function upsertCustomerAddresses(array $rows): array
+    {
+        $conn = DB::connection(self::CONN);
+        $local = $conn->table('customer_addresses')->get(['id', 'address_uuid', 'customer_id', 'address', 'edge_origin']);
+        $byUuid = [];
+        $byId = [];
+        foreach ($local as $row) {
+            $byId[(int) $row->id] = $row;
+            if ($row->address_uuid !== null && $row->address_uuid !== '') {
+                $byUuid[(string) $row->address_uuid] = $row;
+            }
+        }
+        $fold = fn (string $text): string => mb_strtolower(trim(preg_replace('/\s+/', ' ', $text) ?? $text));
+
+        $updated = $inserted = 0;
+        $seen = [];
+        $cloudTexts = [];   // local customer id → [folded address texts the Cloud carries]
+        foreach ($rows as $row) {
+            $cloudId = (int) $row['id'];
+            $uuid = (string) ($row['address_uuid'] ?? '');
+            $cloudCustomerId = (int) ($row['customer_id'] ?? 0);
+            $localCustomerId = $this->customerIdMap[$cloudCustomerId] ?? null;
+            if ($localCustomerId === null) {
+                throw new RuntimeException("REFRESH_CORRUPT: address {$cloudId} references customer {$cloudCustomerId}, which this revision does not carry.");
+            }
+            $data = $this->mutable($row);
+            $data['customer_id'] = $localCustomerId;
+            $data['edge_origin'] = self::ORIGIN_CLOUD;
+            $cloudTexts[$localCustomerId][] = $fold((string) ($row['address'] ?? ''));
+
+            if ($uuid !== '' && isset($byUuid[$uuid])) {
+                $localId = (int) $byUuid[$uuid]->id;
+                $conn->table('customer_addresses')->where('id', $localId)->update($data);
+                $seen[$localId] = true;
+                $updated++;
+                continue;
+            }
+            if (isset($byId[$cloudId])) {
+                $held = $byId[$cloudId];
+                if ($held->address_uuid !== null && $held->address_uuid !== '' && $held->address_uuid !== $uuid) {
+                    throw new RuntimeException("REFRESH_CONFLICT: address id {$cloudId} is held locally by a different address identity.");
+                }
+                $conn->table('customer_addresses')->where('id', $cloudId)->update($data);
+                $seen[$cloudId] = true;
+                $updated++;
+                continue;
+            }
+            $conn->table('customer_addresses')->insert($data + ['id' => $cloudId]);
+            $seen[$cloudId] = true;
+            $inserted++;
+        }
+
+        $deleted = $merged = $keptLocal = 0;
+        foreach ($local as $row) {
+            if (isset($seen[(int) $row->id])) {
+                continue;
+            }
+            if ((string) ($row->edge_origin ?? self::ORIGIN_CLOUD) === self::ORIGIN_LOCAL) {
+                if (in_array($fold((string) $row->address), $cloudTexts[(int) $row->customer_id] ?? [], true)) {
+                    $merged += $conn->table('customer_addresses')->where('id', (int) $row->id)->delete();
+                } else {
+                    $keptLocal++;
+                }
+                continue;
+            }
+            $deleted += $conn->table('customer_addresses')->where('id', (int) $row->id)->delete();
+        }
+
+        return array_filter(['updated' => $updated, 'inserted' => $inserted, 'deleted' => $deleted, 'merged' => $merged, 'kept_local' => $keptLocal]);
+    }
+
+    /**
+     * THE ALIAS RULE: the Cloud matched an offline-minted customer_uuid (alias) to an EXISTING customer by phone instead of
+     * creating it. On the appliance that offline customer still exists as its own local row (edge_origin 'local'). The
+     * alias book is upserted locally (deleted when the Cloud drops it) and each alias whose local row and canonical row
+     * BOTH exist here is MERGED: every reference to the local row (FK children discovered from the schema + the soft
+     * references: addresses, reservations by id AND by uuid, table sessions, reserved tables) is repointed to the
+     * canonical row, same-text addresses are deduplicated, then the local row is deleted. A canonical customer this
+     * appliance does not hold (inactive on the Cloud) leaves the local row untouched — history is never orphaned.
+     */
+    private function applyCustomerAliases(array $rows): array
+    {
+        $conn = DB::connection(self::CONN);
+        $existing = $conn->table('customer_uuid_aliases')->pluck('alias_uuid')->flip()->all();
+        $payloadUuids = [];
+        $updated = $inserted = 0;
+        foreach ($rows as $row) {
+            $alias = (string) ($row['alias_uuid'] ?? '');
+            if ($alias === '') {
+                throw new RuntimeException('REFRESH_CORRUPT: an alias row without alias_uuid.');
+            }
+            $payloadUuids[$alias] = true;
+            $data = $row;
+            unset($data['alias_uuid']);
+            // the Cloud's customer_id → this appliance's id for the same identity (rule 1 of upsertCustomers); unmapped = kept as is
+            $data['customer_id'] = $this->customerIdMap[(int) ($row['customer_id'] ?? 0)] ?? (int) ($row['customer_id'] ?? 0);
+            if (isset($existing[$alias])) {
+                $conn->table('customer_uuid_aliases')->where('alias_uuid', $alias)->update($data + ['updated_at' => now()]);
+                $updated++;
+            } else {
+                $conn->table('customer_uuid_aliases')->insert($data + ['alias_uuid' => $alias, 'created_at' => now(), 'updated_at' => now()]);
+                $inserted++;
+            }
+        }
+        $missing = array_values(array_diff(array_keys($existing), array_keys($payloadUuids)));
+        $deleted = 0;
+        foreach (array_chunk($missing, 500) as $chunk) {
+            $deleted += $conn->table('customer_uuid_aliases')->whereIn('alias_uuid', $chunk)->delete();
+        }
+
+        $merged = 0;
+        foreach ($rows as $row) {
+            $aliasUuid = (string) $row['alias_uuid'];
+            $canonicalUuid = (string) ($row['customer_uuid'] ?? '');
+            $localRow = $conn->table('customers')->where('customer_uuid', $aliasUuid)->first(['id']);
+            if (! $localRow) {
+                continue;   // already merged, or the alias was minted from another appliance's offline customer
+            }
+            $canonical = $canonicalUuid !== '' ? $conn->table('customers')->where('customer_uuid', $canonicalUuid)->first(['id']) : null;
+            if (! $canonical) {
+                Log::info('[edge-config-refresh] alias canonical customer not on this appliance; local row kept', ['alias_uuid' => $aliasUuid]);
+                continue;
+            }
+            if ((int) $canonical->id === (int) $localRow->id) {
+                continue;
+            }
+            $this->mergeLocalCustomer((int) $localRow->id, (int) $canonical->id, $aliasUuid, $canonicalUuid);
+            $merged++;
+        }
+
+        return array_filter(['updated' => $updated, 'inserted' => $inserted, 'deleted' => $deleted, 'merged' => $merged]);
+    }
+
+    /** Soft (no-FK) references to a customer on the appliance: table → [id columns, uuid columns]. Guarded by hasColumn at run time. */
+    private const CUSTOMER_SOFT_REFERENCES = [
+        'customer_addresses' => [['customer_id'], []],
+        'edge_local_table_reservations' => [['customer_id'], ['customer_uuid']],
+        'restaurant_table_sessions' => [['customer_id'], []],
+        'restaurant_tables' => [['reserved_customer_id'], []],
+    ];
+
+    private function mergeLocalCustomer(int $fromId, int $toId, string $fromUuid, string $toUuid): void
+    {
+        $conn = DB::connection(self::CONN);
+        $schema = \Illuminate\Support\Facades\Schema::connection(self::CONN);
+
+        // 1. every FK child of customers.id in THIS database (discovered, not guessed).
+        $children = $conn->select(
+            'SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME = ? AND REFERENCED_COLUMN_NAME = ?',
+            ['customers', 'id']
+        );
+        $repointed = [];
+        foreach ($children as $child) {
+            $conn->table((string) $child->t)->where((string) $child->c, $fromId)->update([(string) $child->c => $toId]);
+            $repointed["{$child->t}.{$child->c}"] = true;
+        }
+        // 2. the soft references (no FK) — by id and by uuid.
+        foreach (self::CUSTOMER_SOFT_REFERENCES as $table => [$idColumns, $uuidColumns]) {
+            if (! $schema->hasTable($table)) {
+                continue;
+            }
+            foreach ($idColumns as $column) {
+                if (! isset($repointed["{$table}.{$column}"]) && $schema->hasColumn($table, $column)) {
+                    $conn->table($table)->where($column, $fromId)->update([$column => $toId]);
+                }
+            }
+            foreach ($uuidColumns as $column) {
+                if ($schema->hasColumn($table, $column)) {
+                    $conn->table($table)->where($column, $fromUuid)->update([$column => $toUuid]);
+                }
+            }
+        }
+        // 3. the merged book: a moved local-origin address whose text the canonical customer already has is a duplicate.
+        $fold = fn (string $text): string => mb_strtolower(trim(preg_replace('/\s+/', ' ', $text) ?? $text));
+        $book = $conn->table('customer_addresses')->where('customer_id', $toId)->orderBy('id')->get(['id', 'address', 'edge_origin', 'is_default']);
+        $keep = [];
+        foreach ($book as $address) {
+            $key = $fold((string) $address->address);
+            if (isset($keep[$key])) {
+                $loser = (string) ($address->edge_origin ?? self::ORIGIN_CLOUD) === self::ORIGIN_LOCAL ? $address : $keep[$key];
+                $winner = $loser->id === $address->id ? $keep[$key] : $address;
+                $conn->table('customer_addresses')->where('id', (int) $loser->id)->delete();
+                $keep[$key] = $winner;
+                continue;
+            }
+            $keep[$key] = $address;
+        }
+        if ($conn->table('customer_addresses')->where('customer_id', $toId)->where('is_default', 1)->count() > 1) {
+            $firstDefault = (int) $conn->table('customer_addresses')->where('customer_id', $toId)->where('is_default', 1)->orderBy('id')->value('id');
+            $conn->table('customer_addresses')->where('customer_id', $toId)->where('is_default', 1)->where('id', '!=', $firstDefault)->update(['is_default' => 0]);
+        }
+
+        // 4. the local row has no references left — remove it (its identity lives on as the alias).
+        $conn->table('customers')->where('id', $fromId)->delete();
+        Log::info('[edge-config-refresh] local customer merged into canonical', ['alias_uuid' => $fromUuid, 'customer_uuid' => $toUuid, 'from_id' => $fromId, 'to_id' => $toId]);
     }
 
     /** Apply the section's tombstone strategy to the IDs missing from the revision. */

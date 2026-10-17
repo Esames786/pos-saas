@@ -1200,9 +1200,13 @@ await wf('W15', 'customer quick-add', async (rec) => {
   note(rec, qa);
   await shot(rec, 'quick-add-panel');
   step(rec, 'quick-add panel appears for an unmatched name', qa.shown, qa);
+  // PHASE 4 (offline add-customer): on Edge the capability follows the Cloud's heartbeat advertisement (customer_create).
+  //   POS_RUNTIME.capabilities.customerCreate === true  → the quick-add must PASS exactly like Online (create + attach below;
+  //                                                        the Edge response carries the canonical customer_uuid);
+  //   === false (nothing advertised / old Cloud)          → EXPECTED-DIFFERENCE: the same control, disabled with the hint.
   if (RT?.capabilities?.customerCreate === false) {
     const disabledWithHint = qa.save_disabled === true && !!(qa.save_title || qa.wrap_title);
-    if (disabledWithHint) { rec.status = 'EXPECTED-DIFFERENCE'; rec.reason = `customerCreate off: control disabled with hint "${qa.save_title || qa.wrap_title}"`; }
+    if (disabledWithHint) { rec.status = 'EXPECTED-DIFFERENCE'; rec.reason = `customerCreate off (the Cloud has not advertised customer_create to this appliance): control disabled with hint "${qa.save_title || qa.wrap_title}"`; }
     else {
       // the control is live — press it and record what the cashier sees
       await loc('#qa-phone').fill('0300' + Date.now().toString().slice(-7)); await loc('#qa-name').fill(name);
@@ -1218,7 +1222,11 @@ await wf('W15', 'customer quick-add', async (rec) => {
   await loc('#qa-phone').fill('0300' + Date.now().toString().slice(-7)); await loc('#qa-name').fill(name);
   const [res] = await Promise.all([waitResponse(r => r.request().method() === 'POST' && /quick-store|customers/.test(pathOf(r.url())), 20000), loc('#qa-save').click()]);
   const j = await jsonOf(res); await sleep(600);
-  step(rec, 'quick-store POST ok', j.status < 300 && j.body?.ok !== false, { status: j.status, ok: j.body?.ok, customer: j.body?.customer && { id: j.body.customer.id, name: j.body.customer.name }, message: j.body?.message, error_text: await text('#qa-error') });
+  step(rec, 'quick-store POST ok', j.status < 300 && j.body?.ok !== false, { status: j.status, ok: j.body?.ok, customer: j.body?.customer && { id: j.body.customer.id, name: j.body.customer.name, customer_uuid: j.body.customer.customer_uuid }, message: j.body?.message, error_text: await text('#qa-error') });
+  if (mode === 'edge') {
+    // Phase 4: the Branch Server answers Online's shape AND the canonical identity the sale envelope will carry (never the local id).
+    step(rec, 'Edge quick-store carries the canonical customer_uuid (26-char ULID)', /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(String(j.body?.customer?.customer_uuid || '')), { customer_uuid: j.body?.customer?.customer_uuid ?? null, local_id: j.body?.customer?.id ?? null });
+  }
   step(rec, 'new customer attached (chip)', (await text('#chip-cust-name')).includes(name.split(' ')[0]), await text('#chip-cust-name'));
   await shot(rec, 'created');
 });

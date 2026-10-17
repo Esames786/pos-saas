@@ -61,6 +61,9 @@ class EdgeLocalMeta extends Model
         'purchase_return_cache_as_of' => 'datetime',
         'purchase_return_cache_refreshed_at' => 'datetime',
         'standby_purchase_return_as_of_seen' => 'datetime',
+        // EDGE PHASE 4 — the Cloud's capability advertisement on the last acknowledged heartbeat ({name: bool}).
+        'cloud_capabilities_seen' => 'array',
+        'cloud_capabilities_seen_at' => 'datetime',
     ];
 
     /** Identity fields that become IMMUTABLE once set (fix 5). */

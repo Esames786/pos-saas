@@ -122,6 +122,8 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/held-sales/{sale}',
             'edge/local/pos/void-reasons',
             'edge/local/pos/customers',
+            'edge/local/pos/customers/quick-store',           // EDGE PHASE 4 (deliberately approved): offline add-customer (Online quick-store twin)
+            'edge/local/pos/customers/{customer}/addresses',  // EDGE PHASE 4 (deliberately approved): offline add-address (Online add-address twin)
             'edge/local/pos/returns/search',      // F1 sales returns
             'edge/local/pos/returns/sales/{sale}',
             'edge/local/pos/returns',

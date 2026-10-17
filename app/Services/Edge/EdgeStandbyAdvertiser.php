@@ -13,9 +13,16 @@ use App\Models\Tenant\Branch;
  */
 class EdgeStandbyAdvertiser
 {
-    /** W-F — the Cloud-controlled capability advertisement (see capabilities()). @var array<string,bool> */
+    /**
+     * W-F — the Cloud-controlled capability advertisement (see capabilities()). @var array<string,bool>
+     *
+     * EDGE PHASE 4: `customer_create` = TRUE — this Cloud ingests `edge-sale-envelope-v3` with the `new_customer` kind
+     * (EdgeInboundSaleIngestionService deterministic create-or-match by customer_uuid / alias / phone_normalized). An
+     * appliance stores the advertisement (edge_local_meta.cloud_capabilities_seen) and only then enables quick-add and
+     * emits the new kind; a Cloud without this build never advertises it and refuses a v3 envelope SCHEMA_UNSUPPORTED.
+     */
     public const CLOUD_CAPABILITIES = [
-        'customer_create' => false,
+        'customer_create' => true,
     ];
 
     public function __construct(
@@ -62,7 +69,7 @@ class EdgeStandbyAdvertiser
     /**
      * W-F — what THIS Cloud can accept from an appliance, advertised on every heartbeat ACK (additive: an old appliance
      * ignores the key). The Cloud controls it; an appliance must treat an absent key as `false`. `customer_create` gates
-     * the offline add-customer envelope (W-D) and stays false until the Cloud can ingest it.
+     * the offline add-customer envelope kind (Phase 4) — true since this Cloud can ingest it.
      *
      * @return array<string,bool>
      */

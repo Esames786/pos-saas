@@ -109,6 +109,23 @@ trait EdgeLocalRuntimeFixture
         DB::connection('tenant')->table('users')->where('id', $userId)->update(['may_approve_pos' => $eligible ? 1 : 0]);
     }
 
+    /**
+     * PHASE 4 — what the Cloud ADVERTISED on the last acknowledged heartbeat (EdgeAuthorityService::heartbeat stores the
+     * ACK's `capabilities` on edge_local_meta.cloud_capabilities_seen; EdgeCloudCapabilities reads it). A test that models
+     * an appliance paired to the current Cloud advertises ['customer_create' => true]; the default binding advertises
+     * nothing (an old Cloud / no heartbeat yet) and every capability reads false.
+     *
+     * @param  array<string,bool>|null  $capabilities  null = nothing advertised yet
+     */
+    protected function advertiseCloudCapabilities(?array $capabilities = ['customer_create' => true]): void
+    {
+        DB::connection('tenant')->table('edge_local_meta')->where('singleton_guard', 1)->update([
+            'cloud_capabilities_seen' => $capabilities === null ? null : json_encode($capabilities),
+            'cloud_capabilities_seen_at' => $capabilities === null ? null : now(),
+        ]);
+        app()->forgetInstance(EdgeBranchContext::class);
+    }
+
     /** Grant a synced (spatie, tenant guard) permission directly to a user — idempotent across tests. */
     protected function grantEdgePermission(int $userId, string $permission): void
     {

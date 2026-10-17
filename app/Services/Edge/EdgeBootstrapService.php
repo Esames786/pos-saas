@@ -608,6 +608,8 @@ class EdgeBootstrapService
         $add('service_charge_settings', 'branch_id'); $add('void_reasons'); $add('roles'); $add('permissions');
         // ONLINE-POS PARITY: promo codes and the customer book (delivery / attach customer) are synced config.
         $add('promotions', 'branch_id'); $add('promotion_targets'); $add('customers'); $add('customer_addresses');
+        // PHASE 4: an alias minted by the Cloud create-or-match must reach the appliance (its local row is merged on refresh).
+        $add('customer_uuid_aliases');
         $add('branch_user', 'branch_id');
         // EDGE-LOCAL-RUNTIME-1 (K): recipe config is now part of the snapshot, so a recipe edit must
         // change the revision and trigger a fresh bootstrap.
@@ -659,6 +661,32 @@ class EdgeBootstrapService
                 // the NULL predicate re-checked in the UPDATE: a concurrent writer that already minted one wins (0 rows).
                 $fixed += $conn->table('customers')->where('id', $id)->whereNull('customer_uuid')
                     ->update(['customer_uuid' => (string) Str::ulid(), 'updated_at' => now()]);
+            }
+        } while ($ids->count() > 0);
+
+        // PHASE 4 — the same safety net for the two identities the offline add-customer flow matches on: a row written raw
+        // (import/seed) without its phone match key gets it from `phone` (THE shared normaliser), and an address without a
+        // canonical address_uuid gets one — generate-once, populated values never change, the watermark moves.
+        $cursor = 0;
+        do {
+            // id cursor (not a re-select of NULLs): a phone with no digits has no key and must simply be skipped, never looped on
+            $rows = $conn->table('customers')->whereNull('phone_normalized')->whereNotNull('phone')->where('phone', '!=', '')
+                ->where('id', '>', $cursor)->orderBy('id')->limit(1000)->get(['id', 'phone']);
+            foreach ($rows as $row) {
+                $cursor = (int) $row->id;
+                $key = \App\Support\PhoneNormalizer::normalize((string) $row->phone);
+                if ($key === null) {
+                    continue;
+                }
+                $fixed += $conn->table('customers')->where('id', $row->id)->whereNull('phone_normalized')
+                    ->update(['phone_normalized' => $key, 'updated_at' => now()]);
+            }
+        } while ($rows->count() > 0);
+        do {
+            $ids = $conn->table('customer_addresses')->whereNull('address_uuid')->orderBy('id')->limit(1000)->pluck('id');
+            foreach ($ids as $id) {
+                $fixed += $conn->table('customer_addresses')->where('id', $id)->whereNull('address_uuid')
+                    ->update(['address_uuid' => (string) Str::ulid(), 'updated_at' => now()]);
             }
         } while ($ids->count() > 0);
 
@@ -828,10 +856,14 @@ class EdgeBootstrapService
                 ['id', 'branch_id', 'name', 'code', 'promotion_type', 'discount_type', 'discount_value', 'max_discount_amount', 'min_order_amount', 'order_types', 'requires_code', 'usage_limit', 'used_count', 'starts_at', 'ends_at', 'status', 'priority', 'notes']),
             'promotion_targets' => $rows($conn->table('promotion_targets')->whereIn('promotion_id', $conn->table('promotions')->where('status', 'active')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id'))->select('id')),
                 ['id', 'promotion_id', 'target_type', 'target_id']),
+            // PHASE 4 (additive within the unreleased v8 generation): phone_normalized (the match key), address_uuid (the
+            // address identity) and the alias book, so the applier matches customers / addresses by IDENTITY, not numeric id.
             'customers' => $rows($conn->table('customers')->where('status', 'active'),
-                ['id', 'customer_uuid', 'code', 'name', 'phone', 'email', 'address', 'tax_number', 'date_of_birth', 'gender', 'status']),
+                ['id', 'customer_uuid', 'code', 'name', 'phone', 'phone_normalized', 'email', 'address', 'tax_number', 'date_of_birth', 'gender', 'status']),
             'customer_addresses' => $rows($conn->table('customer_addresses')->whereIn('customer_id', $conn->table('customers')->where('status', 'active')->select('id')),
-                ['id', 'customer_id', 'label', 'address', 'is_default']),
+                ['id', 'address_uuid', 'customer_id', 'label', 'address', 'is_default']),
+            'customer_uuid_aliases' => collect($conn->table('customer_uuid_aliases')->whereIn('customer_id', $conn->table('customers')->where('status', 'active')->select('id'))
+                ->orderBy('alias_uuid')->get(['alias_uuid', 'customer_id', 'customer_uuid', 'source_device_uuid', 'source']))->map(fn ($r) => (array) $r)->all(),
             // EDGE-LOCAL-RUNTIME-1 (Section K) — recipe CONFIG (no stock execution this sprint).
             'recipes' => $recipeRows->map(fn ($r) => (array) $r)->all(),
             'recipe_ingredients' => $ingredientRows->map(fn ($r) => (array) $r)->all(),
