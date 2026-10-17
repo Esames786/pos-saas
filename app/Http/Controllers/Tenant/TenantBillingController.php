@@ -19,8 +19,17 @@ class TenantBillingController extends Controller
         $tenant = app('tenant');
         $tenant->loadMissing('subscription.plan');
 
+        // BILLING-TENANT-CYCLE-1 — void invoice tenant ko NAHI dikhti.
+        //
+        // Void ka matlab hai wo bill hai hi nahi: na kuch dena, na kuch diya. Us ko list me rakhna
+        // sirf uljhan deta hai — malik ne theek kaha ke wo "aik doosra WhatsApp wala bill" lagta
+        // hai, jabke aik cycle ki AIK hi invoice honi chahiye.
+        //
+        // Record mita nahi jata: central admin par wo pehle jaisi nazar aati hai, aur invoice ki
+        // ginti me soorakh bhi nahi paRta.
         $invoices = SubscriptionInvoice::with('plan')
             ->where('tenant_id', $tenant->id)
+            ->where('status', '!=', 'void')
             ->latest()
             ->paginate(20);
 
