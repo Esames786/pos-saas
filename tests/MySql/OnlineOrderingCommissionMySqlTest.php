@@ -73,8 +73,8 @@ class OnlineOrderingCommissionMySqlTest extends MySqlTenantTestCase
         $this->message('2026-09-10');
         $this->message('2026-09-10');
 
-        $this->artisan('billing:whatsapp-invoice', ['--yes' => true, '--month' => '2026-09'])->assertSuccessful();
-        $this->artisan('billing:website-commission', ['--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
+        $this->artisan('billing:whatsapp-invoice', ['--legacy' => true, '--yes' => true, '--month' => '2026-09'])->assertSuccessful();
+        $this->artisan('billing:website-commission', ['--legacy' => true, '--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
 
         $invoice = SubscriptionInvoice::where('tenant_id', $this->tenantId)->where('invoice_type', 'addon')->sole();
         $this->assertSame([
@@ -88,9 +88,9 @@ class OnlineOrderingCommissionMySqlTest extends MySqlTenantTestCase
 
         // Pehle WhatsApp wala command total seedha messages se likhta tha — commission mit jata. Ab nahi.
         $this->message('2026-09-11');
-        $this->artisan('billing:whatsapp-invoice', ['--yes' => true, '--month' => '2026-09'])->assertSuccessful();
+        $this->artisan('billing:whatsapp-invoice', ['--legacy' => true, '--yes' => true, '--month' => '2026-09'])->assertSuccessful();
         $this->assertSame('99.55', $invoice->fresh()->total_amount, 'WhatsApp ki nayi row aayi — commission (70.00) phir bhi invoice par.');
-        $this->artisan('billing:website-commission', ['--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
+        $this->artisan('billing:website-commission', ['--legacy' => true, '--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
         $this->assertSame('99.55', $invoice->fresh()->total_amount, 'Dobara chalana dugna nahi karta, aik doosre ko mitata nahi.');
         $this->assertSame(4, WebsiteOrderCharge::where('tenant_id', $this->tenantId)->count());
     }
@@ -98,25 +98,25 @@ class OnlineOrderingCommissionMySqlTest extends MySqlTenantTestCase
     public function test_an_open_month_follows_the_orders_and_a_closed_month_never_moves(): void
     {
         $sale = $this->web('2026-09-10', 1000);
-        $this->artisan('billing:website-commission', ['--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
+        $this->artisan('billing:website-commission', ['--legacy' => true, '--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
         $sep = SubscriptionInvoice::where('tenant_id', $this->tenantId)->sole();
         $this->assertSame('10.00', $sep->total_amount);
 
         // Khula mahina: order cancel → raat ko raqam khud hat jati hai.
         DB::connection('tenant')->table('sales_orders')->where('id', $sale)->update(['status' => 'cancelled']);
-        $this->artisan('billing:website-commission', ['--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
+        $this->artisan('billing:website-commission', ['--legacy' => true, '--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
         $this->assertSame('0.00', $sep->fresh()->total_amount);
         $this->assertSame(0, SubscriptionInvoiceLine::where('invoice_id', $sep->id)->count());
 
         DB::connection('tenant')->table('sales_orders')->where('id', $sale)->update(['status' => 'paid']);
-        $this->artisan('billing:website-commission', ['--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
-        $this->artisan('billing:whatsapp-invoice', ['--month' => '2026-09', '--close' => true, '--yes' => true])->assertSuccessful();
+        $this->artisan('billing:website-commission', ['--legacy' => true, '--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
+        $this->artisan('billing:whatsapp-invoice', ['--legacy' => true, '--month' => '2026-09', '--close' => true, '--yes' => true])->assertSuccessful();
         $this->assertSame('issued', $sep->fresh()->status);
 
         // Band mahina: der se aaya September ka order, aur band hone ke baad cancel — September nahi hilta.
         $this->web('2026-09-20', 5000);
         DB::connection('tenant')->table('sales_orders')->where('id', $sale)->update(['status' => 'cancelled']);
-        $this->artisan('billing:website-commission', ['--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])
+        $this->artisan('billing:website-commission', ['--legacy' => true, '--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])
             ->expectsOutputToContain('1 row(s) band mahine ke din par')->assertSuccessful();
         $this->assertSame('10.00', $sep->fresh()->total_amount);
         $this->assertSame(1, WebsiteOrderCharge::where('tenant_id', $this->tenantId)->count());
@@ -125,9 +125,9 @@ class OnlineOrderingCommissionMySqlTest extends MySqlTenantTestCase
         // Band mahine ke order ka return October me — September nahi hilta, October me minus.
         $this->refund($sale, '2026-10-02', 400);
         $this->message('2026-10-02');
-        $this->artisan('billing:website-commission', ['--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
-        $this->artisan('billing:whatsapp-invoice', ['--yes' => true, '--month' => '2026-10'])->assertSuccessful();
-        $this->artisan('billing:website-commission', ['--yes' => true, '--month' => '2026-10', '--tenant' => 'oocom'])->assertSuccessful();
+        $this->artisan('billing:website-commission', ['--legacy' => true, '--yes' => true, '--month' => '2026-09', '--tenant' => 'oocom'])->assertSuccessful();
+        $this->artisan('billing:whatsapp-invoice', ['--legacy' => true, '--yes' => true, '--month' => '2026-10'])->assertSuccessful();
+        $this->artisan('billing:website-commission', ['--legacy' => true, '--yes' => true, '--month' => '2026-10', '--tenant' => 'oocom'])->assertSuccessful();
 
         $this->assertSame('10.00', $sep->fresh()->total_amount);
         $oct = SubscriptionInvoice::where('tenant_id', $this->tenantId)->where('period_start', '2026-10-01')->sole();
@@ -138,7 +138,7 @@ class OnlineOrderingCommissionMySqlTest extends MySqlTenantTestCase
     {
         $this->message('2026-10-05');
         $this->message('2026-10-06');
-        $this->artisan('billing:whatsapp-invoice', ['--yes' => true, '--month' => '2026-10'])->assertSuccessful();
+        $this->artisan('billing:whatsapp-invoice', ['--legacy' => true, '--yes' => true, '--month' => '2026-10'])->assertSuccessful();
         $invoice = SubscriptionInvoice::where('tenant_id', $this->tenantId)->sole();
         SubscriptionInvoiceLine::where('invoice_id', $invoice->id)->delete();   // jaise lines se pehle ki invoice
 
@@ -158,15 +158,27 @@ class OnlineOrderingCommissionMySqlTest extends MySqlTenantTestCase
         $this->web(now()->toDateString(), 12000);
         $this->message(now()->toDateString());
         $month = now()->format('Y-m');
-        $this->artisan('billing:whatsapp-invoice', ['--yes' => true, '--month' => $month])->assertSuccessful();
+
+        // BILLING-TENANT-CYCLE-1 — dashboard ka chalta hua khana ab KHULI rows se banta hai (jo abhi
+        // kisi invoice se bandhi nahi), kisi draft invoice ke total se nahi. Is liye wo invoice
+        // banne se PEHLE dekha jata hai — yani us haalat me jis me tenant usay roz dekhta hai.
+        //
+        // Magar website ki charge rows khud order se nahi bantin; wo ye command likhti hai (prod me
+        // har raat chalti hai). Is liye wo pehle chalti hai — rows likh deti hai, bandhti kisi se
+        // nahi, kyunke koi draft addon invoice ab banti hi nahi.
+        // (Yahan --legacy JAAN BOOJH KAR nahi: legacy apni invoice khol kar charge bandh deta hai,
+        //  aur phir dashboard ka khula khana khaali reh jata.)
         $this->artisan('billing:website-commission', ['--yes' => true, '--month' => $month, '--tenant' => 'oocom'])->assertSuccessful();
-        $invoice = SubscriptionInvoice::where('tenant_id', $this->tenantId)->sole();
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $owner = User::on('tenant')->find($this->ownerId);
         $this->actingAs($owner, 'tenant')->get('http://'.$this->host.'/dashboard')->assertOk()
-            ->assertSee('Usage is mahine')->assertSee('129.85')
+            ->assertSee('Usage so far')->assertSee('129.85')
             ->assertSee('WhatsApp 9.85')->assertSee('Website orders 120.00');
+
+        $this->artisan('billing:whatsapp-invoice', ['--legacy' => true, '--yes' => true, '--month' => $month])->assertSuccessful();
+        $this->artisan('billing:website-commission', ['--legacy' => true, '--yes' => true, '--month' => $month, '--tenant' => 'oocom'])->assertSuccessful();
+        $invoice = SubscriptionInvoice::where('tenant_id', $this->tenantId)->sole();
 
         $this->actingAs($owner, 'tenant')->get('http://'.$this->host.'/billing/invoices/'.$invoice->id)->assertOk()
             ->assertSee('Charges')->assertSee('WhatsApp messages')->assertSee('Website orders')

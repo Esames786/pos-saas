@@ -266,7 +266,7 @@ class WhatsAppUsageLedgerMySqlTest extends MySqlTenantTestCase
 
         DB::connection('master')->table('subscription_invoices')->where('invoice_type', 'addon')->delete();
 
-        $this->artisan('billing:whatsapp-invoice', ['--yes' => true])->assertSuccessful();
+        $this->artisan('billing:whatsapp-invoice', ['--legacy' => true, '--yes' => true])->assertSuccessful();
 
         $invoices = DB::connection('master')->table('subscription_invoices')->where('invoice_type', 'addon')->get();
         $this->assertCount(1, $invoices, 'Aik mahine ki aik hi invoice honi chahiye.');
@@ -276,7 +276,7 @@ class WhatsAppUsageLedgerMySqlTest extends MySqlTenantTestCase
         // Dobara chalao. Raqam waisi hi rehni chahiye. Agar total purane total me JORHA jata (bajaye
         // juRi hui rows se dobara nikalne ke) to har chalane par bill barhta jata — aur koi ise
         // pakaR nahi sakta tha, kyunke raqam hamesha "maqool" lagti.
-        $this->artisan('billing:whatsapp-invoice', ['--yes' => true])->assertSuccessful();
+        $this->artisan('billing:whatsapp-invoice', ['--legacy' => true, '--yes' => true])->assertSuccessful();
 
         $after = DB::connection('master')->table('subscription_invoices')->where('invoice_type', 'addon')->get();
         $this->assertCount(1, $after);

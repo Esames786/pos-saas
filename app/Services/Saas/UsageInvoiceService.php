@@ -207,9 +207,9 @@ class UsageInvoiceService
      * @param  Collection<int, array<string, mixed>>  $rows  `websiteChargesFor()` se
      * @return list<SubscriptionInvoice> jin invoices ki lines bani
      */
-    public function writeWebsiteCharges(Tenant $tenant, CarbonImmutable $from, CarbonImmutable $to, Collection $rows): array
+    public function writeWebsiteCharges(Tenant $tenant, CarbonImmutable $from, CarbonImmutable $to, Collection $rows, bool $legacy = false): array
     {
-        return DB::connection('master')->transaction(function () use ($tenant, $from, $to, $rows) {
+        return DB::connection('master')->transaction(function () use ($tenant, $from, $to, $rows, $legacy) {
             // Khule din: purana record mita kar naya. Band invoice wala record (aur us ke din) nahi chhua jata.
             WebsiteOrderCharge::where('tenant_id', $tenant->id)
                 ->whereBetween('business_date', [$from->toDateString(), $to->toDateString()])
@@ -219,15 +219,25 @@ class UsageInvoiceService
 
             $touched = [];
             foreach ($rows->groupBy(fn ($r) => substr($r['business_date'], 0, 7)) as $ym => $monthRows) {
-                $invoice = $this->openInvoice($tenant, CarbonImmutable::parse($ym.'-01'));
+                // BILLING-TENANT-CYCLE-1 — yahan pehle `openInvoice()` thi, yani ye khud addon invoice
+                // BANA deti thi aur charge usi se bandh deta tha. Ab wo nahi: charge KHULA likha jata
+                // hai (`invoice_id = null`) aur tenant ke apne din par mahana invoice use uthata hai.
+                //
+                // Jo purani draft addon invoice pehle se maujood ho, us se bandhna jari hai — purane
+                // mahine aur `--legacy` raasta isi par chalte hain.
+                $invoice = $legacy
+                    ? $this->openInvoice($tenant, CarbonImmutable::parse($ym.'-01'))
+                    : $this->findInvoice($tenant->id, CarbonImmutable::parse($ym.'-01'));
                 foreach ($monthRows as $r) {
                     WebsiteOrderCharge::updateOrCreate(
                         ['tenant_id' => $tenant->id, 'kind' => $r['kind'], 'source_id' => $r['source_id']],
                         ['sale_no' => $r['sale_no'], 'business_date' => $r['business_date'], 'net_amount' => $r['net_amount'],
-                            'rate_percent' => $r['rate_percent'], 'amount' => $r['amount'], 'invoice_id' => $invoice->id],
+                            'rate_percent' => $r['rate_percent'], 'amount' => $r['amount'], 'invoice_id' => $invoice?->id],
                     );
                 }
-                $touched[$invoice->id] = $invoice;
+                if ($invoice) {
+                    $touched[$invoice->id] = $invoice;
+                }
             }
 
             // Jin khuli invoices ka website record ab khaali ho gaya (order cancel hua) un ki lines bhi saaf.
