@@ -1,6 +1,57 @@
 # PARTNER-SHARE-1 — Partner share report (ek dish, do kitchen)
 
-Date: 2026-10-14 · Status: **plan, abhi bana nahi** · Tenant: kashiffood (partner: K.Grill)
+Date: 2026-10-14 · Status: **bana aur test hua (17 Oct), deploy baqi** · Tenant: kashiffood (partner: K.Grill)
+
+## Jo bana (17 Oct ka haal)
+
+| Hissa | Kahan |
+|---|---|
+| Partners (jitne chahein) + har partner ki rate list | **Reports → Partner Share Rates** (`/reports/partner-share`), `PartnerShareController` |
+| Hisaab | `SalesReportEngine::partnerShare()` |
+| Report | Report Center section `partner_share`: screen, Print Selected (Thermal / A4), Send to network (ESC/POS), CSV, Email Now, Schedule |
+| Tables | `share_partners`, `share_rates` (migration `2026_10_14_000002`) |
+| Section permission | `tenant.reports.center.sections.partner-share`, sirf Owner role (migration `2026_10_14_000003`) |
+| CSV import | `share-rates:import {tenant} --file=… --partner="…" [--yes]`: dry run, phir poori list ya kuch nahi |
+| Saath ka fix | `TenantProvisioner`: naye tenant ke Owner ko Report Center ke saare sections (pehle 0 milte the) |
+| Reset | `share_*` tables `tenant:reset-transactions` me rakhi jati hain (setting hain, bikri nahi) |
+
+Section tab tak nahi dikhta jab tak koi rate na ho. Rate list sirf report ke liye hai: POS bill, stock,
+journals aur cash kuch nahi chhoota. K.Grill ko adaegi owner khud karta hai.
+
+Tests: `PartnerShareMySqlTest` (11). 9 sabotage, har ek sahi test laal karta hai. Poora suite (2059)
+me ek hi laal tha (reset ki table list), wo theek kiya. Asli screens aur teeno print local Kashif Food par
+controller ke raaste render kar ke dekhe.
+
+## Client ki teen sheets: raqam ka rukh
+
+Teeno sheets me naam ka matlab ek jaisa nahi. Har sheet ka matlab deal ke andar ke saman se pakka kiya:
+
+| Sheet | Naam ka matlab | Saboot |
+|---|---|---|
+| 1. Dishes (14 Oct) | **Dene wala** kitchen | Client ne WhatsApp par kaha: "platter ki amount K.Grill humain dega", "Khass K.Food K.Grill ko dega" |
+| 2. Deal 1–20 (17 Oct) | **Lene wala** kitchen (us ki cheez ki qeemat) | Har Chicken Chatni Roll (K.Grill ka) ~320: 1 roll 320, 2 = 650, 4 = 1,300, 6 = 1,950; Deal 13 me Malai Boti 1,200; poori BBQ wali Deal 15/19 me "K.Food 200/450" = paratha + drinks |
+| 3. Midnight (17 Oct) | **Dene wala** kitchen | BBQ + Drink deals par "K.Grill 100" = drink ke 100 (drink K.Food ki); BBQ Sandwich Midnight par K.Food → K.Grill 400 |
+
+System me rukh hamesha `payer` se likha jata hai: `partner` = K.Grill hum ko deta hai, `us` = hum K.Grill ko dete hain.
+Midnight Khass par sheet me do raqamein hain (K.Food 1,500, K.Grill 200); system me net `us 1,300`.
+Deal 4, 5, 12 poori K.Food ki hain, in ki koi row nahi.
+
+Rate list (43 rows, 1 Sep se lagu) CSV me hai; tasdeeq wala doc: "K.Grill rate list: dishes aur deals".
+Pichhle 30 din (14 Sep – 13 Oct) par net **K.Food → K.Grill 3,52,940**.
+
+## Deploy aur rates daalna
+
+1. Branch ko origin ke saath milao, push, `bash deploy.sh` (2 tenant migrations; POS / stock / GL nahi chhoote).
+2. Prod: `share-rates:import kashiffood --file=… --partner="K.Grill"` **dry run**. Har naam mile, list owner ko dikhao.
+3. Owner ki haan par `--yes`. Phir Report Center → Partner Share, 14 Sep – 13 Oct, net ~3,52,940 se milao.
+4. Koi aur role (Accounts) report dekhe to section permission `givePermissionTo` se do, phir `system:clear-tenant-permission-cache`.
+
+## Abhi tasdeeq baqi (client)
+
+Deal 10 (400 ya 1,050); Midnight Khass net 1,300; Midnight BBQ + Drink 100 ka rukh; Al-Faham ka rukh;
+Balochi / Chullu / Turkiya platter me; fries wale sandwich 400; sheet par na aane wali deals (Bar-B-Que Platter,
+Malai Tikka Midnight, Garlic Shashlik Midnight); akele BBQ items; lagu tareekh 1 Sep.
+Nayi deal jis me K.Grill ki cheez ho, us ka rate daale baghair report use nahi ginti.
 
 ## Masla
 
