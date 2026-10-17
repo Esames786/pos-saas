@@ -175,4 +175,31 @@ class BillingMonthlyInvoiceMySqlTest extends MySqlTenantTestCase
 
         $this->assertSame($before, (string) $this->sub->fresh()->current_period_ends_at);
     }
+
+    public function test_a_void_invoice_is_not_shown_to_the_tenant(): void
+    {
+        // Malik ne billing ke safhe par void wali satar par nishan lagaya: "whatsapp ki alag invoice
+        // show karne ki zaroorat nahi". Wo theek thay — void ka matlab hai bill hai hi nahi (na dena,
+        // na diya), aur list me rakhne se wo DOOSRA bill lagta hai, jabke aik cycle ki AIK invoice
+        // honi chahiye.
+        //
+        // Guard controller ki us satar par hai jo badli: record mita nahi jata (central admin par wo
+        // nazar aati hai aur ginti me soorakh nahi paRta), bas tenant ko nahi dikhti.
+        $c = file_get_contents(base_path('app/Http/Controllers/Tenant/TenantBillingController.php'));
+
+        $this->assertStringContainsString("->where('status', '!=', 'void')", $c);
+
+        // Aur void par balance sifar rehna chahiye, warna "dena hai" wala khana usay gin leta.
+        DB::connection('master')->table('subscription_invoices')->insert([
+            'invoice_no' => 'INV-VOID-TEST', 'tenant_id' => $this->tenant->id,
+            'invoice_type' => 'addon', 'status' => 'void', 'currency_code' => 'PKR',
+            'subtotal' => 500, 'total_amount' => 500, 'paid_amount' => 0, 'balance_amount' => 500,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $due = DB::connection('master')->table('subscription_invoices')
+            ->where('tenant_id', $this->tenant->id)
+            ->whereIn('status', ['issued', 'partially_paid', 'overdue'])
+            ->where('balance_amount', '>', 0)->sum('balance_amount');
+        $this->assertSame(0.0, (float) $due, 'Void invoice "dena hai" me gin li gayi.');
+    }
 }
