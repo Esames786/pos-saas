@@ -27,6 +27,7 @@ class BillingMonthlyInvoiceMySqlTest extends MySqlTenantTestCase
         $this->tenant = Tenant::first();
         DB::connection('master')->table('subscription_payments')->delete();
         DB::connection('master')->table('subscription_invoices')->where('tenant_id', $this->tenant->id)->delete();
+        DB::connection('master')->table('whatsapp_messages')->where('tenant_id', $this->tenant->id)->delete();
 
         $sub = Subscription::where('tenant_id', $this->tenant->id)->first();
         if (! $sub) {
@@ -71,9 +72,50 @@ class BillingMonthlyInvoiceMySqlTest extends MySqlTenantTestCase
 
         $i = $this->invoices()->first();
         $this->assertSame('issued', $i->status);
-        $this->assertSame('2026-11-01', (string) $i->period_start);
-        $this->assertSame('2026-11-30', (string) $i->period_end);
+
+        // BILLING-TENANT-CYCLE-1 — muddat ab CYCLE ki hai, calendar mahine ki nahi. Upar wala kinara
+        // wo din jab invoice bani; neeche wala pichhle invoice ke baad ka din. Malik ne saaf kaha ke
+        // 1-se-31 ka concept hai hi nahi: khatri 15 se 15, kisi ka 1 se 1, kisi ka 20 se 20.
+        $this->assertSame('2026-11-15', (string) $i->period_end);
+        $this->assertSame('2026-10-16', (string) $i->period_start);
+
+        // Total ab LINES se banta hai, is liye plan ki apni line hona zaroori hai — wo na ho to
+        // UsageInvoiceService::refresh() total ko sirf usage ke barabar kar deta aur plan ki fees
+        // chup-chaap ghayab ho jati.
+        $plan = DB::connection('master')->table('subscription_invoice_lines')
+            ->where('invoice_id', $i->id)->where('line_type', 'plan')->first();
+        $this->assertNotNull($plan, 'Plan ki line nahi bani — total se fees ghayab ho jayegi.');
+        $this->assertSame('25000.0000', (string) $plan->amount);
         $this->assertSame('25000.00', (string) $i->total_amount);
+    }
+
+    public function test_the_usage_rides_the_same_invoice_and_is_locked(): void
+    {
+        // Malik: "WhatsApp ki alag invoice ki zaroorat nahi — usi AIK invoice me breakup dikha do,
+        // aur us ke baad running bill sifar se shuru."
+        //
+        // Yahan dono baatein aik saath parkhi jati hain: usage usi invoice par aati hai jis par plan
+        // ki fees hai, aur bandh (lock) ho jati hai — yani agle invoice me dobara nahi aayegi.
+        DB::connection('master')->table('whatsapp_messages')->insert([
+            'tenant_id' => $this->tenant->id, 'source' => 'schedule', 'template' => 't',
+            'to' => '923000000000', 'status' => 'delivered', 'rate_charged' => 9.85,
+            'provider_cost' => 5.95, 'usage_date' => '2026-11-10', 'sent_at' => now(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->generate('2026-11-15');
+
+        $i = $this->invoices()->first();
+        $this->assertSame('25009.85', (string) $i->total_amount, 'Plan + usage aik hi invoice par nahi aaye.');
+
+        $row = DB::connection('master')->table('whatsapp_messages')
+            ->where('tenant_id', $this->tenant->id)->orderByDesc('id')->first();
+        $this->assertSame((int) $i->id, (int) $row->invoice_id, 'Usage lock nahi hui.');
+
+        // Aur agle cycle me wohi usage DOBARA nahi aani chahiye — yehi lock ka poora maqsad hai.
+        $this->generate('2026-12-15');
+        $next = $this->invoices()->sortByDesc('id')->first();
+        $this->assertSame('25000.00', (string) $next->total_amount, 'Pehle se bandhi usage dobara bill ho gayi.');
     }
 
     public function test_running_twice_in_one_month_does_not_bill_twice(): void

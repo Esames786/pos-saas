@@ -305,7 +305,25 @@ class DashboardController extends Controller
     }
 
     /**
-     * Platform ke paise: kya dena hai, aur kya ban raha hai.
+     * Agla bill kis din banega — tenant ke apne `invoice_day` se.
+     *
+     * Jis mahine me wo din aa chuka, agla mahina. 31 wala din chhote mahine me us ke aakhri din par
+     * chala jata hai, warna February me us tenant ka din aata hi nahi.
+     */
+    private function nextInvoiceDate(int $tenantId): ?string
+    {
+        $day = (int) (\App\Models\Master\Subscription::where('tenant_id', $tenantId)->value('invoice_day') ?? 0);
+        if ($day < 1) {
+            return null;
+        }
+
+        $now = \Carbon\CarbonImmutable::now(app('tenant')->timezone ?: config('app.timezone'));
+        $month = $now->day >= $day ? $now->addMonthNoOverflow() : $now;
+
+        return $month->day(min($day, $month->endOfMonth()->day))->format('d M Y');
+    }
+
+    /**     * Platform ke paise: kya dena hai, aur kya ban raha hai.
      *
      * Master connection par, kyunke ye Bingoo ka tenant se hisaab hai, tenant ka apna karobar nahi.
      * Nakami nigal li jati hai: ye dashboard har roz har user ke saamne khulta hai, aur billing ke
@@ -329,19 +347,21 @@ class DashboardController extends Controller
                 ->whereIn('status', ['issued', 'partially_paid', 'overdue'])
                 ->where('balance_amount', '>', 0);
 
-            $draft = \App\Models\Master\SubscriptionInvoice::where('tenant_id', $tenantId)
-                ->where('invoice_type', 'addon')
-                ->where('status', 'draft')
-                ->first();
+            // BILLING-TENANT-CYCLE-1 — chalta hua bill ab KHULI rows se nikalta hai, kisi draft
+            // invoice se nahi.
+            //
+            // Pehle WhatsApp ki apni `addon` invoice banti thi aur ye khana us ka total parhta tha.
+            // Ab wo invoice banti hi nahi: usage mahana invoice ka hissa hai. To "ab tak kitna bana"
+            // ka jawab wohi rows hain jo abhi KISI invoice se bandhi nahi.
+            //
+            // Is ka aik acha asar ye bhi hai ke cycle ke din ye khana APNE AAP sifar ho jata hai —
+            // us lamhe sab rows invoice se bandh jati hain. Koi alag reset chalana nahi paRta.
+            $openWa = \App\Models\Master\WhatsAppMessage::where('tenant_id', $tenantId)->whereNull('invoice_id');
+            $openWeb = \App\Models\Master\WebsiteOrderCharge::where('tenant_id', $tenantId)->whereNull('invoice_id');
 
-            // ONLINE-ORDERING-1 (Phase 4b): usi invoice me website ka 1% — WhatsApp aur website alag dikhte hain.
-            // WhatsApp = total − website, taake lines se pehle wali invoice bhi poori WhatsApp gine.
-            $web = $draft
-                ? \App\Models\Master\SubscriptionInvoiceLine::where('invoice_id', $draft->id)
-                    ->where('line_type', \App\Models\Master\SubscriptionInvoiceLine::TYPE_WEBSITE)
-                    ->selectRaw('COALESCE(SUM(amount), 0) as amount, COALESCE(SUM(quantity), 0) as qty')->first()
-                : null;
-            $webAmount = round((float) ($web?->amount ?? 0), 2);
+            $waAmount = round((float) (clone $openWa)->sum('rate_charged'), 2);
+            $webAmount2 = round((float) (clone $openWeb)->sum('amount'), 2);
+
 
             // DASHBOARD-BILLING-ONE-BOX-1 — khud invoice ki satrein, taake modal un ko dikha sake.
             // Dashboard par sirf AIK aankRa hai (kul); kya kya mila kar wo bana, wo khulne par nazar
@@ -361,7 +381,7 @@ class DashboardController extends Controller
             ])->all();
 
             $dueTotal = (float) (clone $due)->sum('balance_amount');
-            $accruingTotal = (float) ($draft?->total_amount ?? 0);
+            $accruingTotal = round($waAmount + $webAmount2, 2);
 
             return [
                 'due' => $dueTotal,
@@ -370,18 +390,18 @@ class DashboardController extends Controller
                 // Kul = jo abhi dena hai + jo is mahine ban raha hai. Dono aik hi number me jama
                 // hote hain kyunke malik ne yehi maanga, magar modal me ye DO alag hisson me rehte
                 // hain — accruing abhi qabil-e-adaegi nahi, aur us par "due" likhna ghalat hota.
-                'total' => round($dueTotal + $accruingTotal, 2),
-                'accruingPeriod' => $draft && $draft->period_start && $draft->period_end
-                    ? \Carbon\CarbonImmutable::parse($draft->period_start)->format('d M').' – '
-                        .\Carbon\CarbonImmutable::parse($draft->period_end)->format('d M Y')
-                    : null,
+                // Card par sirf DENA HAI. Chalta hua bill apne alag khane me hai — malik ne kaha
+                // "jaise pehle alag box aa raha tha wo bilkul theek tha". Dono ko jama kar dena us
+                // cheez ko "due" dikhata hai jo abhi maangi hi nahi gayi.
+                'total' => $dueTotal,
+                // Agla bill kis din banega — tenant ka apna din. Ye khana isi din sifar hoga, aur
+                // likh dena behtar hai: warna log poochhte hain ke ye raqam kab maangi jayegi.
+                'accruingPeriod' => $this->nextInvoiceDate($tenantId),
                 'accruing' => $accruingTotal,
-                'accruingMessages' => $draft
-                    ? \App\Models\Master\WhatsAppMessage::where('invoice_id', $draft->id)->count()
-                    : 0,
-                'accruingWhatsApp' => round((float) ($draft?->total_amount ?? 0) - $webAmount, 2),
-                'accruingWebsite' => $webAmount,
-                'accruingOrders' => (int) ($web?->qty ?? 0),
+                'accruingMessages' => (int) (clone $openWa)->count(),
+                'accruingWhatsApp' => $waAmount,
+                'accruingWebsite' => $webAmount2,
+                'accruingOrders' => (int) (clone $openWeb)->where('kind', 'sale')->count(),
             ];
         } catch (\Throwable $e) {
             report($e);

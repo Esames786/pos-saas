@@ -235,38 +235,66 @@
             {{-- DASHBOARD-LAYOUT-1 — billing ke khanay bhi ISI row me. Pehle ye apni alag
                  row me `col-md-6` par thay, yani aik hi card hota to aadhi row khaali. Ab ye baqi
                  KPI cards ke saath behte hain aur row khud bhar jati hai. --}}
-        {{-- SAAS-BILLING-WHATSAPP-1 / DASHBOARD-BILLING-ONE-BOX-1 — platform ke paise, AIK khana.
+        {{-- BILLING-TENANT-CYCLE-1 — DO khanay, jaan boojh kar alag.
 
-             Pehle do (kabhi teen) alag khanay thay: "dena hai", "usage is mahine". Malik ne kaha aik
-             karo aur tafseel click par do — safhe par aik hi aankRa, baqi kahani modal me.
+             Malik: "jaise pehle alag box aa raha tha wo bilkul theek tha". Pehle maine dono ko jama
+             kar diya tha; wo ghalat tha, kyunke jama karne se wo raqam bhi "due" lagti hai jo abhi
+             maangi hi nahi gayi.
 
-             Gate wohi permission hai jo /billing kholne deti hai. Dashboard har user ke saamne khulta
-             hai — counter par khaRa banda bhi — aur kitna baqi hai, ye har kisi ke parhne ki cheez
-             nahi.
+             1. "Billing"  — jo DENA hai. Click par modal: kaun sa invoice, kitna, kab tak.
+             2. "WhatsApp" — jo abhi BAN raha hai. Ye cycle ke din apne aap sifar ho jata hai,
+                kyunke wo khuli rows ginta hai aur us din wo sab invoice se bandh jati hain.
 
-             Matn ANGREZI me hai: malik ne khaas kaha. --}}
+             Gate wohi permission hai jo /billing kholne deti hai — dashboard counter par khaRe bande
+             ke saamne bhi khulta hai. --}}
         @can('tenant.billing.index')
-        @if(($billing['total'] ?? 0) > 0)
-            <div class="col-md-3 col-sm-6">
-                <div class="card border-0 shadow-sm h-100 @if(($billing['due'] ?? 0) > 0) border-start border-4 border-warning @endif"><div class="card-body">
-                    <span class="text-muted small"><i class="ti ti-wallet me-1"></i>Billing</span>
-                    <h5 class="mt-1 mb-0 @if(($billing['due'] ?? 0) > 0) text-warning @endif">{{ number_format($billing['total'], 2) }}</h5>
-                    <div class="text-muted small mt-1">
-                        @if(($billing['due'] ?? 0) > 0){{ $billing['dueCount'] }} invoice{{ $billing['dueCount'] === 1 ? '' : 's' }} due @endif
-                        @if(($billing['due'] ?? 0) > 0 && ($billing['accruing'] ?? 0) > 0) · @endif
-                        @if(($billing['accruing'] ?? 0) > 0)usage this month @endif
-                        <br>
-                        <a href="#" data-bs-toggle="modal" data-bs-target="#billingBreakdown">
-                            <i class="ti ti-info-circle"></i> Details
-                        </a>
+            @if(($billing['due'] ?? 0) > 0)
+                <div class="col-md-3 col-sm-6">
+                    <div class="card border-0 shadow-sm h-100 border-start border-4 border-warning"><div class="card-body">
+                        <span class="text-muted small"><i class="ti ti-file-invoice me-1"></i>Billing due</span>
+                        <h5 class="mt-1 mb-0 text-warning">{{ number_format($billing['due'], 2) }}</h5>
+                        <div class="text-muted small mt-1">
+                            {{ $billing['dueCount'] }} invoice{{ $billing['dueCount'] === 1 ? '' : 's' }}
+                            <br>
+                            <a href="#" data-bs-toggle="modal" data-bs-target="#billingBreakdown">
+                                <i class="ti ti-info-circle"></i> Details
+                            </a>
+                        </div>
+                    </div>
                     </div>
                 </div>
+            @endif
+
+            @if(($billing['accruing'] ?? 0) > 0)
+                <div class="col-md-3 col-sm-6">
+                    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+                        <span class="text-muted small"><i class="ti ti-brand-whatsapp me-1"></i>Usage so far</span>
+                        <h5 class="mt-1 mb-0">{{ number_format($billing['accruing'], 2) }}</h5>
+                        <div class="text-muted small mt-1">
+                            @if(($billing['accruingWebsite'] ?? 0) != 0)
+                                {{-- Do service hon to RAQAM ka split dikhao, sirf ginti nahi: yehi wo
+                                     cheez hai jo tenant ko batati hai paisa kahan ja raha hai. --}}
+                                WhatsApp {{ number_format($billing['accruingWhatsApp'], 2) }}
+                                · Website orders {{ number_format($billing['accruingWebsite'], 2) }}
+                                <br>
+                                {{ $billing['accruingMessages'] }} message{{ $billing['accruingMessages'] === 1 ? '' : 's' }}
+                                · {{ $billing['accruingOrders'] }} web order{{ $billing['accruingOrders'] === 1 ? '' : 's' }}
+                            @else
+                                {{ $billing['accruingMessages'] }} message{{ $billing['accruingMessages'] === 1 ? '' : 's' }}
+                            @endif
+                            <br>
+                            @if(! empty($billing['accruingPeriod']))
+                                Added to the invoice on {{ $billing['accruingPeriod'] }}
+                            @else
+                                Added to your next invoice
+                            @endif
+                        </div>
+                    </div>
+                    </div>
                 </div>
-            </div>
-        @endif
+            @endif
         @endcan
-        </div>
-        {{-- Bottom row: Top Products + 7-day sales.
+        </div>        {{-- Bottom row: Top Products + 7-day sales.
              DASHBOARD-DETAILS-1: both cards read the whole branch, so a counter operator does not
              get them. The controller already returns empty collections without the permission —
              this gate is what removes the empty cards from the page. --}}
@@ -402,7 +430,7 @@
      hai aur abhi dena NAHI. Card par dono jama hain kyunke malik ne aik aankRa maanga — magar yahan
      un par aik hi lafz lagana logon se ghalat waqt par adaegi karwata hai. --}}
 @can('tenant.billing.index')
-@if(($billing['total'] ?? 0) > 0)
+@if(($billing['due'] ?? 0) > 0)
 <div class="modal fade" id="billingBreakdown" tabindex="-1" aria-labelledby="billingBreakdownLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
@@ -449,43 +477,12 @@
                     </div>
                 @endif
 
-                @if(($billing['accruing'] ?? 0) > 0)
-                    <h6 class="mb-1">Accruing this month</h6>
-                    <p class="text-muted small">
-                        Not payable yet — this becomes an invoice when the month closes.
-                        @if(! empty($billing['accruingPeriod'])) ({{ $billing['accruingPeriod'] }}) @endif
-                    </p>
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
-                            <tbody>
-                                @if(($billing['accruingWhatsApp'] ?? 0) > 0 || ($billing['accruingWebsite'] ?? 0) == 0)
-                                    <tr>
-                                        <td><i class="ti ti-brand-whatsapp me-1"></i>WhatsApp reports</td>
-                                        <td class="small text-muted">{{ $billing['accruingMessages'] }} messages</td>
-                                        <td class="text-end">{{ number_format($billing['accruingWhatsApp'] ?? $billing['accruing'], 2) }}</td>
-                                    </tr>
-                                @endif
-                                @if(($billing['accruingWebsite'] ?? 0) != 0)
-                                    <tr>
-                                        <td><i class="ti ti-world me-1"></i>Website orders</td>
-                                        <td class="small text-muted">{{ $billing['accruingOrders'] }} orders</td>
-                                        <td class="text-end">{{ number_format($billing['accruingWebsite'], 2) }}</td>
-                                    </tr>
-                                @endif
-                            </tbody>
-                            <tfoot><tr class="table-light fw-semibold">
-                                <td colspan="2">Accruing</td>
-                                <td class="text-end">{{ number_format($billing['accruing'], 2) }}</td>
-                            </tr></tfoot>
-                        </table>
-                    </div>
-                @endif
 
             </div>
             <div class="modal-footer justify-content-between">
                 <div>
-                    <span class="text-muted">Total</span>
-                    <span class="fs-5 fw-semibold ms-2">{{ number_format($billing['total'], 2) }}</span>
+                    <span class="text-muted">Total due</span>
+                    <span class="fs-5 fw-semibold ms-2">{{ number_format($billing['due'], 2) }}</span>
                 </div>
                 <a href="{{ url('/billing') }}" class="btn btn-primary">Open billing</a>
             </div>

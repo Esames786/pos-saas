@@ -36,12 +36,30 @@ class BillingWhatsAppInvoiceCommand extends Command
     protected $signature = 'billing:whatsapp-invoice
         {--month= : YYYY-MM. Default: har wo mahina jis ki koi row abhi kisi invoice se nahi juRi}
         {--close : Us mahine ki draft invoice band kar do (draft → issued)}
+        {--legacy : Purana (retire-shuda) tareeqa — alag addon invoice}
         {--yes : Likho. Is ke baghair sirf dikhata hai}';
 
     protected $description = 'WhatsApp usage ki mahana draft invoice kholta/barhata hai (default: dry run).';
 
     public function handle(UsageInvoiceService $usage): int
     {
+        // BILLING-TENANT-CYCLE-1 — ye command ab chalni nahi chahiye.
+        //
+        // Ise chalane ka matlab hai calendar mahine ki aik ALAG `addon` invoice khol dena aur us me
+        // wo usage bandh dena jo mahana invoice ka hissa banni thi. Nateeja: tenant ko do bill, aur
+        // mahana invoice me usage GHAYAB — kyunke wo pehle hi kisi aur invoice se bandh chuki hogi.
+        //
+        // Mitaya is liye nahi ke purani addon invoices ki lines isi dhaanche se bani hain, aur
+        // --legacy un par kaam karne ka raasta khula rakhta hai.
+        if (! $this->option('legacy')) {
+            $this->error('Ye command retire ho chuki hai (BILLING-TENANT-CYCLE-1).');
+            $this->line('  Usage ab `billing:generate-monthly-invoices` khud uthati hai — tenant ke apne din par,');
+            $this->line('  usi AIK invoice me jis me plan fee hai.');
+            $this->line('  Waqai purana tareeqa chahiye to --legacy lagayein.');
+
+            return self::FAILURE;
+        }
+
         $write = (bool) $this->option('yes');
         $close = (bool) $this->option('close');
 
