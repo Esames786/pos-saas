@@ -732,6 +732,24 @@ class EscPosPayloadService
             $out .= self::BOLD_ON . $this->columns('Net Cash Movement', $money($cb['net_cash_movement'] ?? 0), $cols) . self::BOLD_OFF . "\n";
         }
 
+        // PARTNER SHARE — PARTNER-SHARE-1. Per partner: what each side owes, then the net.
+        if ($has('partner_share') && ($r['partnerShare'] ?? null) !== null) {
+            $out .= $header('PARTNER SHARE');
+            foreach ($r['partnerShare'] as $p) {
+                $out .= $big(strtoupper((string) $p['partner'])) . "\n";
+                foreach (['partner_pays' => $p['partner'] . ' pays us', 'we_pay' => 'We pay ' . $p['partner']] as $side => $label) {
+                    $out .= self::BOLD_ON . strtoupper($label) . self::BOLD_OFF . "\n";
+                    foreach ($p[$side] as $row) {
+                        $out .= strtoupper((string) $row['item']) . "\n";
+                        $out .= $this->columns('  ' . $qty($row['net_qty']) . ' x ' . $money($row['rate']), $money($row['amount']), $cols) . "\n";
+                    }
+                    $out .= self::BOLD_ON . $this->columns('Total', $money($p[$side . '_total']), $cols) . self::BOLD_OFF . "\n";
+                }
+                $netLabel = $p['net'] >= 0 ? 'NET: WE PAY' : 'NET: THEY PAY';
+                $out .= $big($this->columns($netLabel, $money(abs($p['net'])), $cols)) . "\n" . $rule . "\n";
+            }
+        }
+
         return $out . $rule . "\n\n\n" . self::CUT;
     }
 

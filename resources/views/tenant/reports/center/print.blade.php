@@ -640,6 +640,26 @@
 </table>
 @endif
 
+{{-- PARTNER SHARE — PARTNER-SHARE-1. Per partner: what each side owes, then the net. --}}
+@if($has('partner_share') && ($partnerShare ?? null) !== null)
+<h2>PARTNER SHARE</h2>
+@forelse($partnerShare as $p)
+<table>
+    <tr><td colspan="3"><strong>{{ strtoupper($p['partner']) }}</strong></td></tr>
+    @foreach(['partner_pays' => $p['partner'] . ' pays us', 'we_pay' => 'We pay ' . $p['partner']] as $side => $label)
+        <tr><td colspan="3"><strong>{{ $label }}</strong></td></tr>
+        @foreach($p[$side] as $r)
+            <tr><td>{{ $r['item'] }}</td><td class="amt">{{ $qty($r['net_qty']) }} x {{ $fmt($r['rate']) }}</td><td class="amt">{{ $fmt($r['amount']) }}</td></tr>
+        @endforeach
+        <tr class="total"><td colspan="2">Total</td><td class="amt">{{ $fmt($p[$side . '_total']) }}</td></tr>
+    @endforeach
+    <tr class="total"><td colspan="2">{{ $p['net'] >= 0 ? 'NET: we pay ' . $p['partner'] : 'NET: ' . $p['partner'] . ' pays us' }}</td><td class="amt">{{ $fmt(abs($p['net'])) }}</td></tr>
+</table>
+@empty
+<p>No active partner has rates yet.</p>
+@endforelse
+@endif
+
 @if($has('cash_bank') && $cashBank !== null)
 <h2>CASH &amp; BANK (money position)</h2>
 <table>

@@ -884,6 +884,143 @@ class SalesReportEngine
         return $byHead->flatten(1)->all();
     }
 
+    // ── S3. Partner share (PARTNER-SHARE-1) ──────────────────────────────────────────────────────
+    /**
+     * What each partner kitchen and the restaurant owe each other for the period: every rated dish
+     * sold × its fixed amount, split by who pays, and the net.
+     *
+     * The rules, each one a decision the owner signed off:
+     * - The SAME sales the rest of this report counts (`linesBase`: population, business day, every
+     *   filter). A deal's parts never count — `linesBase` drops `component` lines — so a deal is
+     *   rated as the deal (its `combo_header`), and a dish inside it is not rated a second time.
+     * - A product is rated only when sold on its own line (`combo_id` NULL).
+     * - The rate is the version in force on the ORDER's business day, so changing a rate never
+     *   rewrites a period already reported.
+     * - Returns come off at the rate of the sale they reverse (the ORIGINAL order's day).
+     * - A line sold for nothing (line_total 0 — given away) owes nothing, unless the partner is
+     *   set to count free lines.
+     *
+     * @return array<int, array<string, mixed>> one block per active partner that has rates
+     */
+    public function partnerShare(array $f): array
+    {
+        $conn = DB::connection('tenant');
+        $partners = $conn->table('share_partners')->where('is_active', true)->orderBy('name')->get()->keyBy('id');
+        if ($partners->isEmpty()) {
+            return [];
+        }
+        $rates = $conn->table('share_rates')->whereIn('share_partner_id', $partners->keys())
+            ->orderBy('effective_from')->orderBy('id')->get();
+        if ($rates->isEmpty()) {
+            return [];
+        }
+
+        // [partner][item_key] => versions, oldest first
+        $versions = [];
+        foreach ($rates as $r) {
+            $versions[(int) $r->share_partner_id][$r->item_key][] = $r;
+        }
+        $productIds = $rates->whereNotNull('product_id')->pluck('product_id')->unique()->values()->all();
+        $comboIds = $rates->whereNotNull('combo_id')->pluck('combo_id')->unique()->values()->all();
+
+        $rated = function ($q, string $line) use ($productIds, $comboIds) {
+            $q->where(function ($w) use ($line, $productIds, $comboIds) {
+                $w->whereIn("$line.combo_id", $comboIds ?: [-1])
+                    ->orWhere(fn ($p) => $p->whereNull("$line.combo_id")->whereIn("$line.product_id", $productIds ?: [-1]));
+            });
+        };
+        $keyExpr = fn (string $line) => "CASE WHEN $line.combo_id IS NOT NULL THEN CONCAT('c:', $line.combo_id) ELSE CONCAT('p:', $line.product_id) END";
+        $day = $this->businessDayExpr('o.');
+
+        $sold = $this->linesBase($f)
+            ->tap(fn ($q) => $rated($q, 'l'))
+            ->selectRaw($keyExpr('l') . " as item_key, $day as day, (l.line_total > 0) as paid_line, COALESCE(SUM(l.quantity),0) as qty")
+            ->groupByRaw($keyExpr('l') . ", $day, (l.line_total > 0)")
+            ->get();
+
+        $returned = $this->returnLinesBase($f)
+            ->where(fn ($w) => $w->where('ol.line_kind', '!=', 'component')->orWhereNull('ol.line_kind'))
+            ->tap(fn ($q) => $rated($q, 'ol'))
+            ->selectRaw($keyExpr('ol') . " as item_key, $day as day, (ol.line_total > 0) as paid_line, COALESCE(SUM(rl.quantity),0) as qty")
+            ->groupByRaw($keyExpr('ol') . ", $day, (ol.line_total > 0)")
+            ->get();
+
+        $versionOn = function (array $list, string $day) {
+            $hit = null;
+            foreach ($list as $v) {
+                if ((string) $v->effective_from <= $day) {
+                    $hit = $v;
+                }
+            }
+
+            return $hit;
+        };
+
+        // [partner][rate id] => ['rate' => version, 'sold' => qty, 'returned' => qty]
+        $buckets = [];
+        foreach (['sold' => $sold, 'returned' => $returned] as $kind => $rows) {
+            foreach ($rows as $row) {
+                foreach ($partners as $pid => $partner) {
+                    $list = $versions[$pid][$row->item_key] ?? null;
+                    if (! $list || (! $row->paid_line && ! $partner->count_free_lines)) {
+                        continue;
+                    }
+                    $v = $versionOn($list, (string) $row->day);
+                    if (! $v || (float) $v->amount <= 0) {
+                        continue;   // sold before any rate, or the item was taken off the list
+                    }
+                    $buckets[$pid][$v->id] ??= ['rate' => $v, 'sold' => 0.0, 'returned' => 0.0];
+                    $buckets[$pid][$v->id][$kind] += (float) $row->qty;
+                }
+            }
+        }
+
+        $productNames = $productIds ? $conn->table('products')->whereIn('id', $productIds)->pluck('name', 'id') : collect();
+        $comboNames = $comboIds ? $conn->table('combos')->whereIn('id', $comboIds)->pluck('name', 'id') : collect();
+
+        $out = [];
+        foreach ($partners as $pid => $partner) {
+            if (! isset($versions[$pid])) {
+                continue;
+            }
+            $sides = ['partner' => [], 'us' => []];
+            foreach ($buckets[$pid] ?? [] as $b) {
+                $v = $b['rate'];
+                $netQty = $b['sold'] - $b['returned'];
+                $sides[$v->payer][] = [
+                    'item' => $v->combo_id ? ($comboNames[$v->combo_id] ?? 'Deal #' . $v->combo_id) : ($productNames[$v->product_id] ?? 'Product #' . $v->product_id),
+                    'is_deal' => (bool) $v->combo_id,
+                    'rate' => (float) $v->amount,
+                    'effective_from' => (string) $v->effective_from,
+                    'sold_qty' => $b['sold'],
+                    'returned_qty' => $b['returned'],
+                    'net_qty' => $netQty,
+                    'amount' => round($netQty * (float) $v->amount, 2),
+                ];
+            }
+            foreach ($sides as &$rows) {
+                usort($rows, fn ($a, $b) => [$b['amount'], $a['item']] <=> [$a['amount'], $b['item']]);
+            }
+            unset($rows);
+
+            $partnerPays = round(array_sum(array_column($sides['partner'], 'amount')), 2);
+            $wePay = round(array_sum(array_column($sides['us'], 'amount')), 2);
+            $out[] = [
+                'partner_id' => (int) $pid,
+                'partner' => $partner->name,
+                'count_free_lines' => (bool) $partner->count_free_lines,
+                'partner_pays' => $sides['partner'],
+                'we_pay' => $sides['us'],
+                'partner_pays_total' => $partnerPays,
+                'we_pay_total' => $wePay,
+                // Positive: we owe the partner. Negative: the partner owes us.
+                'net' => round($wePay - $partnerPays, 2),
+            ];
+        }
+
+        return $out;
+    }
+
     // ── T. Waiter report (explicit Unassigned bucket) ────────────────────────────────────────────
     public function byWaiter(array $f): array
     {
