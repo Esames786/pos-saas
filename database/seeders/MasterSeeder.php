@@ -178,6 +178,11 @@ class MasterSeeder extends Seeder
             'central.tenants.business.update',
             'central.tenants.features.update',
 
+            // MASTER-UNIVERSE-1 — dashboard "Refresh now" (read-only usage snapshot) and adding a
+            // branch from the tenant hub.
+            'central.system-usage.refresh',
+            'central.tenants.branches.store',
+
             'central.plans.index',
             'central.plans.edit',
             'central.plans.update',
