@@ -49,6 +49,8 @@ class Product extends Model
         'website_price',
         'show_on_website', 'website_card_name', 'website_size_label', 'website_category_id',
         'website_tag', 'website_popular', 'website_sort_order', 'website_image_path', 'website_description',
+        // PRODUCT-SCREEN-V2: a medicine's salt, strength and prescription flag.
+        'generic_name', 'strength', 'needs_prescription',
     ];
 
     /** ONLINE-ORDERING-1 — website card ke tags. */
@@ -74,6 +76,7 @@ class Product extends Model
             'can_be_bom_component' => 'boolean',
             'can_be_bom_output' => 'boolean',
             'is_manufactured_finished_good' => 'boolean',
+            'needs_prescription' => 'boolean',
             'purchase_pack_size' => 'decimal:4',
             'website_price' => 'decimal:2',
             'show_on_website' => 'boolean',

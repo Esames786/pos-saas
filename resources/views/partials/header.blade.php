@@ -71,12 +71,25 @@
                         // true and put a POS button on a catering-only tenant's navbar.
                         // Same fault the sidebar had; this was the last place it survived.
                         $posEntitled = false;
+                        $mainButton = null;
                         if (app()->bound('tenant')) {
                             $sub = app('tenant')->subscription;
                             $posEntitled = (bool) $sub?->plan?->hasEnabledModuleKey('pos');
+                            // PRIMARY-BUSINESS-1 — each business's own main screen (owner, 19 Oct): Counter for a
+                            // medical store, Events for catering, Production for industry. Same rule: plan AND role.
+                            // Not set → the POS button exactly as before.
+                            $biz = \App\Support\Business::of();
+                            $btn = $biz ? \App\Support\Business::all()[$biz]['button'] : null;
+                            if ($btn && $sub?->plan?->hasEnabledModuleKey($btn['module']) && auth()->user()?->can($btn['permission'])) {
+                                $mainButton = $btn;
+                            }
                         }
                     @endphp
-                    @if($posEntitled)
+                    @if($mainButton)
+                        <a href="{{ url($mainButton['url']) }}" class="btn btn-dark btn-md d-inline-flex align-items-center">
+                            <i class="ti {{ $mainButton['icon'] }} me-1"></i>{{ $mainButton['label'] }}
+                        </a>
+                    @elseif($posEntitled)
                         @can('tenant.pos.index')
                             <a href="{{ url('/pos') }}" class="btn btn-dark btn-md d-inline-flex align-items-center">
                                 <i class="ti ti-device-laptop me-1"></i>POS
