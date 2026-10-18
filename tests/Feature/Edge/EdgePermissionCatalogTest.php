@@ -176,6 +176,35 @@ class EdgePermissionCatalogTest extends TestCase
         $this->assertSame(PosPermissionCatalog::cashier(), $probe->parity());
     }
 
+    /**
+     * EDGE PHASE 4 F2 — Online routes whose gate is ANOTHER route's permission (EnsureRoutePermission's alias map):
+     * each source must be a real routes/tenant.php name that is NOT itself a seeded permission (else the alias would
+     * be pointless), each target a catalogued POS permission, and the add-address alias must match the Edge twin.
+     */
+    public function test_route_permission_aliases_point_online_routes_at_catalogued_permissions(): void
+    {
+        $aliases = \App\Http\Middleware\EnsureRoutePermission::ROUTE_PERMISSION_ALIASES;
+        $this->assertNotEmpty($aliases);
+        $routes = $this->tenantRouteNames();
+        $provisioner = $this->provisionerPermissions();
+        $migrations = $this->migrationSeededPermissions();
+
+        foreach ($aliases as $routeName => $permission) {
+            $this->assertArrayHasKey($routeName, $routes, "alias source {$routeName} is not a routes/tenant.php route name");
+            $this->assertFalse(isset($provisioner[$routeName]) || isset($migrations[$routeName]), "alias source {$routeName} is seeded as a permission of its own — the alias would be redundant");
+            $this->assertTrue(PosPermissionCatalog::has($permission), "alias target {$permission} is not in PosPermissionCatalog");
+            $this->assertNotSame($routeName, $permission);
+            $this->assertSame([$permission, $routeName], \App\Http\Middleware\EnsureRoutePermission::permissionsFor($routeName));
+        }
+
+        $this->assertSame(
+            \App\Http\Controllers\Edge\EdgeLocalCustomerController::PERMISSION,
+            $aliases['tenant.pos.customers.addresses.store'] ?? null,
+            'Online add-address must be gated by the same permission as the Edge twin (quick-store)'
+        );
+        $this->assertStringContainsString('ROUTE_PERMISSION_ALIASES', PosPermissionCatalog::describe('tenant.pos.customers.quick-store')['online'], 'the catalogue documents the Online alias');
+    }
+
     // ── scanner ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /** @return array<string, list<string>> permission => files that check it */

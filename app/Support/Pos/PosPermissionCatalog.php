@@ -60,8 +60,8 @@ final class PosPermissionCatalog
         ],
         'tenant.pos.customers.quick-store' => [
             'groups' => ['cashier'],
-            'edge' => 'EdgeLocalCustomerController::PERMISSION (denyUnlessCan {message, permission} 403 on quick-store AND add-address — Phase 4 offline add-customer; the Online add-address route carries no permission of its own, so the quick-store permission gates both twins)',
-            'online' => 'POST /pos/customers/quick-store — CustomerController@quickStore',
+            'edge' => 'EdgeLocalCustomerController::PERMISSION (denyUnlessCan {message, permission} 403 on quick-store AND add-address — Phase 4 offline add-customer; ONE permission gates both twins on both runtimes: Online aliases its add-address route name to this permission in EnsureRoutePermission::ROUTE_PERMISSION_ALIASES, F2)',
+            'online' => 'POST /pos/customers/quick-store — CustomerController@quickStore; POST /pos/customers/{customer}/addresses — CustomerController@storeAddress (route tenant.pos.customers.addresses.store, gated by THIS permission through EnsureRoutePermission::ROUTE_PERMISSION_ALIASES — the route name itself is never seeded as a permission; an explicit route-name grant from the route catalog still passes but is not required)',
         ],
         'tenant.pos.quick-report-send' => [
             'groups' => ['cashier'],

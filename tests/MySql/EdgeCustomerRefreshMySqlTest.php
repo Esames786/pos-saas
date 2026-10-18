@@ -50,7 +50,9 @@ class EdgeCustomerRefreshMySqlTest extends MySqlTenantTestCase
         config(['app.role' => 'branch_server']);
         $this->ensureEdgeSchema();
         $this->cleanTenant([
-            'edge_local_table_reservations', 'edge_local_meta', 'sale_payments', 'sales_order_lines', 'sales_orders',
+            // sales_order_line_cancellations FKs void_reasons, which the bootstrap import clears (clearExistingConfig) —
+            // a KOT void left by an earlier class in the same process (EdgeCashierPermissionMatrix) must not block it.
+            'edge_local_table_reservations', 'edge_local_meta', 'sales_order_line_cancellations', 'sale_payments', 'sales_order_lines', 'sales_orders',
             'restaurant_table_sessions', 'restaurant_tables', 'restaurant_floors',
             'customer_uuid_aliases', 'customer_addresses', 'customers',
             'model_has_permissions', 'model_has_roles', 'role_has_permissions', 'permissions', 'roles', 'branch_user', 'users',

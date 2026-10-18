@@ -26,7 +26,7 @@ GATES=Feature/Edge 172 green · Feature/Pos 26 green (198 / 37,434 together) · 
 
 Three gates, in order, on both actions:
 
-1. **permission** `tenant.pos.customers.quick-store` (the Online quick-store route permission; Online's add-address route has none of its own, so the same permission gates both twins — `PosPermissionCatalog` entry updated) → 403 `{message, permission}`;
+1. **permission** `tenant.pos.customers.quick-store` (the Online quick-store route permission; the same permission gates both twins — `PosPermissionCatalog` entry updated. CORRECTION, F2 below: Online's add-address route did NOT lack a permission — it was gated by its own route NAME, which no tenant can grant; since F2 Online aliases that route name to quick-store, so the two runtimes really are gated by the one permission) → 403 `{message, permission}`;
 2. **Cloud capability** `customer_create` advertised (`EdgeCloudCapabilities`) → otherwise 422 `{ok:false, capabilityOff:true, code: CLOUD_CAPABILITY_NOT_ADVERTISED, message}` (the shared JS shows the capability hint on `capabilityOff`); the page never reaches it anyway because the routes are `null` while not advertised;
 3. **branch authority** `EdgeAuthorityService::assertLocalMutationAllowed()` — the same lease gate every Edge mutation uses → standby appliance 422 `{ok:false, code: STANDBY, message}`.
 
@@ -166,3 +166,43 @@ quick-add must PASS (create + attach, plus a step asserting the response carries
 - A local-origin address whose text matches a Cloud address but with a different `address_uuid` is merged by TEXT on refresh (Online's rule); the till's `address_uuid` then never exists on the Cloud (by design — the Cloud book is the authority).
 - `EdgeCleanMachineInstallMySqlTest` (appliance toolchain) not run by Team D; it runs in the release gate.
 - The browser proof (W15 on both runtimes) is the coordinator's run.
+
+## F2 — Online add-address permission
+
+**Finding (W15 browser proof, `docs/status/edge-phase4-w15-proof.md` §10 F2):** on the ONLINE POS the shared quick-add modal's "Save address"
+(`POST /pos/customers/{customer}/addresses`, route `tenant.pos.customers.addresses.store`) answered 403 "Permission denied." for the LAB cashier.
+`EnsureRoutePermission` gates every non-allow-listed route by its NAME; that name is never seeded as a permission (not in `TenantProvisioner`'s
+list, no migration, not in the cashier template — only `tenant.pos.customers.quick-store` is), so no cashier could ever be granted it. Section 1
+above and `PosPermissionCatalog` said the route "has no permission of its own" — wrong: it had an implicit, ungrantable one. (A tenant whose
+Owner published the name through the central route catalog could grant it by hand — `OnboardTawakalKashifCommand` does exactly that — which is
+why it never showed on Kashif's tills.)
+
+**Mechanism chosen — a route-name → permission alias in the middleware, no new permission.** `EnsureRoutePermission::ROUTE_PERMISSION_ALIASES`
+maps `tenant.pos.customers.addresses.store` → `tenant.pos.customers.quick-store`; `permissionsFor($routeName)` returns `[alias, route name]` and
+the gate passes on ANY of them (the alias is one-directional: quick-store itself still needs quick-store). Adding an address to a customer's book is
+part of the one "Add Customer" workflow, so Online now gates it by exactly the permission the Edge twin uses (`EdgeLocalCustomerController::PERMISSION`).
+Rejected alternatives: an allow-prefix + in-controller check (the quick-report pattern) would move the gate out of the middleware for a route that
+needs no different behaviour; a new synthetic permission would need a migration + Permission Center grants on every tenant for no gain, and would
+again desynchronise the twins. The route's own name still passes so an explicit route-catalog grant (Kashif's operator roles) keeps working.
+
+**Files changed:** `app/Http/Middleware/EnsureRoutePermission.php` (alias map + `permissionsFor` + any-of gate), `app/Support/Pos/PosPermissionCatalog.php`
+(quick-store entry: Edge check site + both Online routes, documents the alias), `tests/Feature/Edge/EdgePermissionCatalogTest.php` (new
+`test_route_permission_aliases_point_online_routes_at_catalogued_permissions`: every alias source is a real `routes/tenant.php` name that is NOT a
+seeded permission, every target is catalogued, the add-address alias equals the Edge twin's permission), new `tests/Feature/Pos/OnlineAddAddressPermissionAliasTest.php`
+(middleware driven directly, no DB: quick-store only → pass on both twins; without it → 403 on both; explicit route-name grant → pass; alias one-directional),
+new `tests/MySql/EdgeCustomerOnlineAddAddressPermissionHttpMySqlTest.php` (REAL Online tenant HTTP route on MySQL: a cashier holding ONLY quick-store
+gets 200 `{ok, address}` and a row while the `permissions` table holds no route-name row; without quick-store 403 on both twins, no row; the
+legacy route-name grant still passes, quick-store stays closed), this document (§1 correction + this section).
+
+**Gates run (19 Oct 2026, `_t18`):** Feature/Edge + Feature/Pos **207 tests / 37,510 assertions green** (6 new); new
+`EdgeCustomerOnlineAddAddressPermissionHttpMySqlTest` **3 / 17 green**; coordinator filter `EdgeCustomer|EdgeCashierPermission|PermissionCenter|CustomerDirectory`
+**40 tests / 616 assertions green**. Edge behaviour unchanged (`EdgeCashierPermissionMatrixMySqlTest`, `EdgeCustomerQuickStoreHttpMySqlTest` untouched).
+Test-isolation fix found by that filter (not F2): `EdgeCustomerRefreshMySqlTest` setUp now also cleans `sales_order_line_cancellations` — the
+matrix class before it leaves a KOT-void row (FK → `void_reasons`) that blocked the bootstrap importer's `clearExistingConfig`; the class was green
+alone and is now order-independent.
+
+**LAB / tenant impact:** NO grant needed on any tenant — every holder of `tenant.pos.customers.quick-store` (the LAB cashier role, the
+`Cashier (Counter)` template, every Owner) gains Online add-address the moment this build is deployed; no migration, no permission row, no cache
+flush (the alias is code, the quick-store row already exists). Tenants that granted `tenant.pos.customers.addresses.store` by hand keep it; it is
+now redundant and may be left as is. The Edge appliance is unaffected (its twin was already gated by quick-store). The W15 Online run's 403 is
+closed by the Cloud deploy alone.
