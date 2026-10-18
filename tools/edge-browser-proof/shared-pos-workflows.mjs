@@ -1206,7 +1206,15 @@ await wf('W15', 'customer quick-add', async (rec) => {
   //   === false (nothing advertised / old Cloud)          → EXPECTED-DIFFERENCE: the same control, disabled with the hint.
   if (RT?.capabilities?.customerCreate === false) {
     const disabledWithHint = qa.save_disabled === true && !!(qa.save_title || qa.wrap_title);
-    if (disabledWithHint) { rec.status = 'EXPECTED-DIFFERENCE'; rec.reason = `customerCreate off (the Cloud has not advertised customer_create to this appliance): control disabled with hint "${qa.save_title || qa.wrap_title}"`; }
+    if (disabledWithHint) {
+      rec.status = 'EXPECTED-DIFFERENCE'; rec.reason = `customerCreate off (the Cloud has not advertised customer_create to this appliance): control disabled with hint "${qa.save_title || qa.wrap_title}"`;
+      // PHASE 4 W15 (owner §4, old-Cloud / nothing advertised): the route is null so the page never posts — probe the endpoint
+      // directly (same session + CSRF) to record the explicit refusal {ok:false, capabilityOff:true, code: CLOUD_CAPABILITY_NOT_ADVERTISED}.
+      const pr = await probe(base + '/edge/local/pos/customers/quick-store', { method: 'POST', body: { name: name, phone: '0300' + Date.now().toString().slice(-7) } });
+      rec.steps.push({ step: 'direct POST quick-store while nothing is advertised answers 422 CLOUD_CAPABILITY_NOT_ADVERTISED (fail closed)', ok: pr.status === 422 && pr.body?.code === 'CLOUD_CAPABILITY_NOT_ADVERTISED' && pr.body?.capabilityOff === true, detail: pr, probe: true });
+      if (!(pr.status === 422 && pr.body?.code === 'CLOUD_CAPABILITY_NOT_ADVERTISED')) { rec.status = 'FAIL'; rec.reason = `nothing advertised but POST quick-store answered ${pr.status} ${pr.body?.code || ''}`; }
+      await shot(rec, 'quick-add-disabled-with-hint');
+    }
     else {
       // the control is live — press it and record what the cashier sees
       await loc('#qa-phone').fill('0300' + Date.now().toString().slice(-7)); await loc('#qa-name').fill(name);
@@ -1219,16 +1227,128 @@ await wf('W15', 'customer quick-add', async (rec) => {
     }
     return;
   }
-  await loc('#qa-phone').fill('0300' + Date.now().toString().slice(-7)); await loc('#qa-name').fill(name);
-  const [res] = await Promise.all([waitResponse(r => r.request().method() === 'POST' && /quick-store|customers/.test(pathOf(r.url())), 20000), loc('#qa-save').click()]);
-  const j = await jsonOf(res); await sleep(600);
-  step(rec, 'quick-store POST ok', j.status < 300 && j.body?.ok !== false, { status: j.status, ok: j.body?.ok, customer: j.body?.customer && { id: j.body.customer.id, name: j.body.customer.name, customer_uuid: j.body.customer.customer_uuid }, message: j.body?.message, error_text: await text('#qa-error') });
+  // PHASE 4 W15 (Team W, 18 Oct 2026) — the phone is typed in a NON-canonical spelling (default "+92 300 NNNNNNN"); the response
+  // must carry the canonical customer_uuid AND the shared match key phone_normalized ("03NNNNNNNNN", app/Support/PhoneNormalizer).
+  //   --qa-phone <text>            the new customer's phone as typed (default "+92 300 " + 7 random digits)
+  //   --qa-address <text>          the address added through the same modal (delivery address book) after the create
+  //   --qa-existing-phone <text>   a SECOND quick-add with the phone of an EXISTING customer in another spelling (the till reuses
+  //                                or creates per its rule — recorded, not asserted) followed by its own cash sale
+  //   --qa-cloud-only-phone <text> a THIRD quick-add with a phone only the Cloud knows (created Online after the appliance's last
+  //                                refresh) — on Edge the till cannot see it, creates a local customer with a fresh uuid and the
+  //                                sale envelope carries new_customer; the Cloud then phone-matches it (alias). Cash sale too.
+  // On Edge, a 422 {code: STANDBY} from quick-store is the EXPECTED negative while the appliance is not the branch writer
+  // (lease held by the Cloud) — recorded as EXPECTED-DIFFERENCE with the full exchange, never as PASS.
+  const normPhone = (p) => { let d = String(p || '').replace(/\D+/g, ''); if (!d) return null; if (d.startsWith('0092') && d.length === 14) d = '0' + d.slice(4); else if (d.startsWith('92') && d.length === 12) d = '0' + d.slice(2); else if (d.startsWith('3') && d.length === 10) d = '0' + d; return d.slice(0, 32); };
+  const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
+  const quickStorePath = (RT?.routes?.customerQuickStore || '').split('?')[0];
+  const isQuickStore = (r) => r.request().method() === 'POST' && (quickStorePath ? pathOf(r.url()) === quickStorePath : /quick-store|customers/.test(pathOf(r.url())));
+  const custView = (c) => c ? { id: c.id, name: c.name, phone: c.phone, phone_normalized: c.phone_normalized ?? null, customer_uuid: c.customer_uuid ?? null, addresses: (c.addresses || []).map(a => ({ id: a.id, address_uuid: a.address_uuid ?? null, label: a.label, address: a.address, is_default: a.is_default })) } : null;
+  facts.w15 = { customers: [], sales: [] };
+  /** Quick-add through the modal (already open, name typed): returns the quick-store exchange. */
+  const quickAdd = async (label, phoneTyped, custName) => {
+    await loc('#qa-phone').fill(phoneTyped); await loc('#qa-name').fill(custName);
+    await shot(rec, label + '-filled');
+    const [res] = await Promise.all([waitResponse(isQuickStore, 20000), loc('#qa-save').click()]);
+    const j = await jsonOf(res); await sleep(600);
+    const ex = { label, request: { name: custName, phone: phoneTyped }, status: j.status, ok: j.body?.ok ?? null, reused: j.body?.reused ?? null, code: j.body?.code ?? null, message: j.body?.message ?? null, customer: custView(j.body?.customer), error_text: await text('#qa-error'), toasts: await drainToasts() };
+    facts.w15.customers.push(ex);
+    return ex;
+  };
+  const rawPhone = String(args['qa-phone'] || ('+92 300 ' + Date.now().toString().slice(-7)));
+  const ex1 = await quickAdd('quick-add-new', rawPhone, name);
+  if (mode === 'edge' && ex1.status === 422 && ex1.code === 'STANDBY') {
+    rec.steps.push({ step: 'STANDBY refusal: quick-store answers 422 {code: STANDBY} while the Cloud holds the branch lease (expected negative, not a create)', ok: true, detail: ex1 });
+    rec.status = 'EXPECTED-DIFFERENCE'; rec.reason = `appliance is STANDBY (lease held by the Cloud): quick-store refused 422 ${ex1.code} "${ex1.message}" — capability customerCreate=${qa.capability}, control enabled=${qa.save_disabled === false}`;
+    await shot(rec, 'quick-add-standby-refused');
+    return;
+  }
+  step(rec, 'quick-store POST ok', ex1.status < 300 && ex1.ok !== false, ex1);
   if (mode === 'edge') {
     // Phase 4: the Branch Server answers Online's shape AND the canonical identity the sale envelope will carry (never the local id).
-    step(rec, 'Edge quick-store carries the canonical customer_uuid (26-char ULID)', /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(String(j.body?.customer?.customer_uuid || '')), { customer_uuid: j.body?.customer?.customer_uuid ?? null, local_id: j.body?.customer?.id ?? null });
+    step(rec, 'Edge quick-store carries the canonical customer_uuid (26-char ULID)', ULID.test(String(ex1.customer?.customer_uuid || '')), { customer_uuid: ex1.customer?.customer_uuid ?? null, local_id: ex1.customer?.id ?? null });
   }
+  step(rec, `phone typed "${rawPhone}" → phone_normalized is the shared key "${normPhone(rawPhone)}"`, !!ex1.customer && ex1.customer.phone_normalized === normPhone(rawPhone), { typed: rawPhone, stored_phone: ex1.customer?.phone ?? null, phone_normalized: ex1.customer?.phone_normalized ?? null, expected: normPhone(rawPhone) });
   step(rec, 'new customer attached (chip)', (await text('#chip-cust-name')).includes(name.split(' ')[0]), await text('#chip-cust-name'));
   await shot(rec, 'created');
+  if (ex1.status >= 300 || !ex1.customer) return;
+
+  // ── address through the SAME modal: delivery mode shows the address book of the chosen customer ──
+  const addrText = String(args['qa-address'] || ('W15 Street ' + Date.now().toString().slice(-4) + ', Proof Town'));
+  await setMode('delivery');
+  await loc('#pos-customer-btn').click(); await modalShown('customerModal');
+  await loc('#cust-search-input').fill(name);
+  const hit = page.locator('#cust-search-results button').filter({ hasText: name }).first();
+  await hit.waitFor({ timeout: T(15000) }).catch(() => {});
+  step(rec, 'the new customer is listed by the lookup at once', await hit.count() > 0, { query: name, listed: await page.locator('#cust-search-results button').evaluateAll(els => els.map(e => e.textContent.trim().slice(0, 60))) });
+  await hit.click(); await sleep(400);
+  step(rec, 'address book panel opens for the new customer (delivery)', await vis('#cust-selected-panel'), { selected: await text('#sel-cust-name'), existing_addresses: await page.locator('#cust-address-list .form-check').count() });
+  await loc('#new-addr-label').fill('Home'); await loc('#new-addr-text').fill(addrText);
+  await shot(rec, 'address-filled');
+  const addrTpl = (RT?.routes?.customerAddressStore || '').split('?')[0];
+  const addrRe = addrTpl ? new RegExp('^' + addrTpl.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\\\{customer\\\}|\{customer\}/g, '\\d+') + '$') : /\/customers\/\d+\/addresses$/;
+  const [ares] = await Promise.all([waitResponse(r => r.request().method() === 'POST' && addrRe.test(pathOf(r.url())), 20000), loc('#new-addr-save').click()]);
+  const aj = await jsonOf(ares); await sleep(500);
+  const addrEx = { request: { customer_id: ex1.customer.id, label: 'Home', address: addrText }, status: aj.status, ok: aj.body?.ok ?? null, code: aj.body?.code ?? null, message: aj.body?.message ?? null, address: aj.body?.address ? { id: aj.body.address.id, address_uuid: aj.body.address.address_uuid ?? null, label: aj.body.address.label, address: aj.body.address.address, is_default: aj.body.address.is_default } : null };
+  facts.w15.address = addrEx;
+  step(rec, 'address stored through the modal (Online shape {ok, address})', aj.status < 300 && aj.body?.ok === true && !!aj.body?.address, addrEx);
+  if (mode === 'edge') step(rec, 'Edge address carries its identity address_uuid (26-char ULID)', ULID.test(String(aj.body?.address?.address_uuid || '')), { address_uuid: aj.body?.address?.address_uuid ?? null });
+  step(rec, 'address listed in the book and selected', (await page.locator('#cust-address-list .form-check').count()) >= 1, { rendered: await page.locator('#cust-address-list label').evaluateAll(els => els.map(e => e.textContent.trim().slice(0, 80))) });
+  await shot(rec, 'address-saved');
+  await loc('#cust-attach-btn').click(); await sleep(400); await drainToasts();
+
+  // ── CASH sale with that customer (takeaway; a mode switch clears the chip by design → re-attach from the lookup) ──
+  const reattach = async (custName) => {
+    await loc('#pos-customer-btn').click(); await modalShown('customerModal');
+    await loc('#cust-search-input').fill(custName);
+    const h = page.locator('#cust-search-results button').filter({ hasText: custName }).first();
+    await h.waitFor({ timeout: T(15000) }); await h.click(); await sleep(400); await drainToasts();
+  };
+  const cashSaleWith = async (label, custName, custEx) => {
+    await setMode('takeaway');
+    // a mode switch clears the order's customer by design (hidden #customer_id emptied, chip hidden — its TEXT survives, so the
+    // check is the VISIBLE chip + the hidden field, never the text alone: the 18 Oct run paid sale 36 as a walk-in because of that)
+    const onOrder = async () => (await vis('#pos-customer-chip')) && String(await page.locator('#customer_id').inputValue().catch(() => '')) === String(custEx.customer?.id);
+    if (!(await onOrder())) await reattach(custName);
+    const chip = await text('#chip-cust-name');
+    const hidden = { customer_id: await page.locator('#customer_id').inputValue().catch(() => null), customer_phone: await page.locator('#customer_phone').inputValue().catch(() => null), chip_visible: await vis('#pos-customer-chip') };
+    step(rec, `${label}: customer on the order before paying`, hidden.chip_visible && chip.includes(custName.split(' ')[0]) && String(hidden.customer_id) === String(custEx.customer?.id), { chip, hidden });
+    await ensureCartLine(rec, `${label}: add item`);
+    const r = await payCash(rec, { kot: 'skip', label });
+    const sale = { label, customer_id: custEx.customer?.id ?? null, customer_uuid: custEx.customer?.customer_uuid ?? null, status: r.status ?? null, ok: r.body?.ok ?? null, sale_no: r.body?.sale_no ?? null, sale_id: r.body?.sale_id ?? null, code: r.body?.code ?? null, message: r.body?.message ?? null, refused: r.refused ?? null, error: r.error ?? null, prompts: r.prompts, total: r.total };
+    facts.w15.sales.push(sale);
+    // Edge answers 201 Created, Online 200 — both carry sale_no/sale_id (the 18 Oct run recorded three real sales as FAIL on `=== 200`)
+    step(rec, `${label}: CASH sale completed with that customer`, (r.status === 200 || r.status === 201) && r.body?.ok !== false && !!(r.body?.sale_no || r.body?.sale_id), sale);
+    return sale;
+  };
+  await cashSaleWith('sale-new-customer', name, ex1);
+
+  // ── SECOND quick-add: the phone of an EXISTING customer in another spelling (reuse-or-create per the till's rule) ──
+  if (args['qa-existing-phone']) {
+    const p2 = String(args['qa-existing-phone']); const n2 = 'Zed Twin ' + Date.now().toString().slice(-5);
+    await gotoPos(); await setMode('takeaway');
+    await loc('#pos-customer-btn').click(); await modalShown('customerModal');
+    await loc('#cust-search-input').fill(n2);
+    await page.locator('#cust-quick-add:not(.d-none)').waitFor({ timeout: T(10000) }).catch(() => {});
+    const ex2 = await quickAdd('quick-add-existing-phone', p2, n2);
+    step(rec, `existing phone typed "${p2}" (key ${normPhone(p2)}): quick-store answered`, ex2.status < 300 && ex2.ok !== false, ex2);
+    note(rec, { existing_phone_rule: ex2.reused === true ? `REUSED the known customer (id ${ex2.customer?.id}, uuid ${ex2.customer?.customer_uuid}) — name kept "${ex2.customer?.name}"` : `CREATED a new customer (id ${ex2.customer?.id}, uuid ${ex2.customer?.customer_uuid})`, toasts: ex2.toasts });
+    await shot(rec, 'existing-phone-result');
+    if (ex2.status < 300 && ex2.customer) await cashSaleWith('sale-existing-phone', ex2.customer.name || n2, ex2);
+  }
+
+  // ── THIRD quick-add: a phone only the Cloud knows (unknown to this till) → local create; the Cloud must alias it ──
+  if (args['qa-cloud-only-phone']) {
+    const p3 = String(args['qa-cloud-only-phone']); const n3 = 'Zed Alias ' + Date.now().toString().slice(-5);
+    await gotoPos(); await setMode('takeaway');
+    await loc('#pos-customer-btn').click(); await modalShown('customerModal');
+    await loc('#cust-search-input').fill(n3);
+    await page.locator('#cust-quick-add:not(.d-none)').waitFor({ timeout: T(10000) }).catch(() => {});
+    const ex3 = await quickAdd('quick-add-cloud-only-phone', p3, n3);
+    step(rec, `Cloud-only phone typed "${p3}" (key ${normPhone(p3)}): quick-store answered`, ex3.status < 300 && ex3.ok !== false, ex3);
+    note(rec, { cloud_only_phone_rule: ex3.reused === true ? `REUSED a local customer (id ${ex3.customer?.id}, uuid ${ex3.customer?.customer_uuid})` : `CREATED locally (id ${ex3.customer?.id}, uuid ${ex3.customer?.customer_uuid}) — the Cloud must phone-match it on ingestion (alias)` });
+    await shot(rec, 'cloud-only-phone-result');
+    if (ex3.status < 300 && ex3.customer) await cashSaleWith('sale-cloud-only-phone', ex3.customer.name || n3, ex3);
+  }
 });
 
 /** W16 pre-step — "settle THIS RUN's open work" THROUGH THE UI, the way a cashier does before closing the shift: every held order
