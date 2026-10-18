@@ -286,6 +286,8 @@ class MasterUniverseMySqlTest extends MySqlTenantTestCase
         $this->actingAs($admin, 'central')->post($this->host . '/system-usage/refresh')
             ->assertRedirect(route('central.dashboard'));
         $this->assertSame(1, DB::connection('master')->table('system_usage_snapshots')->whereNull('tenant_id')->count());
+        // A CLI process has no time limit; "Refresh now" must not arm one (it once killed a whole test run at 300 s).
+        $this->assertSame('0', (string) ini_get('max_execution_time'));
 
         $html = $this->actingAs($admin, 'central')->get($this->host . '/dashboard')->assertOk()->getContent();
         // Theme: only here, on a central page.
