@@ -173,6 +173,11 @@ class MasterSeeder extends Seeder
             'central.tenant-domains.deactivate',
             'central.tenant-domains.destroy',
 
+            // PRIMARY-BUSINESS-1 — a tenant's primary business and its switches (Bingoo Master).
+            'central.tenants.business.impact',
+            'central.tenants.business.update',
+            'central.tenants.features.update',
+
             'central.plans.index',
             'central.plans.edit',
             'central.plans.update',

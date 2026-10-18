@@ -24,6 +24,9 @@ class Tenant extends Model
         'is_demo',
         'trial_ends_at',
         'activated_at',
+        // PRIMARY-BUSINESS-1: who the tenant is (App\Support\Business) and the owner's per-tenant switches.
+        'primary_business',
+        'features',
     ];
 
     protected function casts(): array
@@ -35,6 +38,7 @@ class Tenant extends Model
             // of thing one caller forgets.
             'report_channels' => 'array',
             'report_whatsapp' => 'array',
+            'features' => 'array',
             'trial_ends_at' => 'datetime',
             'activated_at' => 'datetime',
         ];
