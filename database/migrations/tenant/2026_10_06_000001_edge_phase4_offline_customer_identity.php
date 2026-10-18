@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\EdgeRuntime;
 use App\Support\PhoneNormalizer;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -21,6 +22,14 @@ use Illuminate\Support\Str;
  *
  * Additive, idempotent (hasColumn / hasTable / whereNull guards), memory-bounded backfill — APPLIANCE-UPDATE-SAFE like
  * 2026_08_08_000010 (never drops, truncates or re-imports; re-runnable after an interruption).
+ *
+ * IDENTITY OWNERSHIP (F1 fix, docs/status/edge-phase4-fix-address-identity-skew.md): an address_uuid is minted ONLY where the
+ * row is OWNED. On the Cloud every existing row is Cloud-owned → backfilled here. On a Branch Server (APP_ROLE=branch_server;
+ * this migration reaches it through edge:local:schema-upgrade) every pre-existing address is a COPY of a Cloud row (the
+ * bootstrap/refresh wrote it; a till-born address is minted at creation by HasCanonicalIdentity and carries edge_origin
+ * 'local'), so the appliance must NOT invent an identity for it: the column is left NULL (the unique index permits NULLs)
+ * and the next config refresh carries the Cloud's uuid in (EdgeLocalConfigRefreshApplier adopts it by numeric id). Minting
+ * per row on both sides gave the SAME address two different identities and every refresh was refused REFRESH_CONFLICT.
  */
 return new class extends Migration
 {
@@ -59,12 +68,16 @@ return new class extends Migration
                     $t->char('address_uuid', 26)->nullable()->after('id');
                 });
             }
-            do {
-                $ids = $conn->table('customer_addresses')->whereNull('address_uuid')->orderBy('id')->limit(1000)->pluck('id');
-                foreach ($ids as $id) {
-                    $conn->table('customer_addresses')->where('id', $id)->whereNull('address_uuid')->update(['address_uuid' => (string) Str::ulid()]);
-                }
-            } while ($ids->count() > 0);
+            // Backfill on the OWNER side only (class doc): the Cloud mints for its rows; an appliance leaves them NULL for the
+            // next refresh to fill with the Cloud's identity. A nullable UNIQUE index is exactly what permits that.
+            if (! EdgeRuntime::isBranchServer()) {
+                do {
+                    $ids = $conn->table('customer_addresses')->whereNull('address_uuid')->orderBy('id')->limit(1000)->pluck('id');
+                    foreach ($ids as $id) {
+                        $conn->table('customer_addresses')->where('id', $id)->whereNull('address_uuid')->update(['address_uuid' => (string) Str::ulid()]);
+                    }
+                } while ($ids->count() > 0);
+            }
             if (! in_array('customer_addresses_address_uuid_unique', $this->indexNames($conn, 'customer_addresses'), true)) {
                 $schema->table('customer_addresses', function (Blueprint $t) {
                     $t->unique('address_uuid', 'customer_addresses_address_uuid_unique');

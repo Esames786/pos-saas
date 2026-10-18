@@ -378,6 +378,149 @@ class EdgeCustomerRefreshMySqlTest extends MySqlTenantTestCase
         $this->assertSame(EdgeLocalConfigRefreshApplier::OUTCOME_ALREADY_APPLIED, $this->apply($package)['outcome']);
     }
 
+    // ── IDENTITY OWNERSHIP (F1 fix: docs/status/edge-phase4-fix-address-identity-skew.md) ──────────────────────────────
+
+    /** The REAL Phase 4 tenant migration (its up() is idempotent: only the address_uuid backfill and the index step have work left). */
+    private function phase4IdentityMigration(): object
+    {
+        return require database_path('migrations/tenant/2026_10_06_000001_edge_phase4_offline_customer_identity.php');
+    }
+
+    /** Model the appliance side: the same Cloud customers under the same ids (bootstrap wrote them, Cloud uuids and all). */
+    private function stageApplianceCustomers(array $customers): void
+    {
+        foreach ($customers as [$id, $uuid, $name, $phone]) {
+            DB::connection('tenant')->table('customers')->insert(['id' => $id, 'customer_uuid' => $uuid, 'name' => $name, 'phone' => $phone, 'phone_normalized' => $phone, 'status' => 'active', 'edge_origin' => 'cloud', 'created_at' => now(), 'updated_at' => now()]);
+        }
+    }
+
+    public function test_a_cloud_origin_address_with_a_null_uuid_adopts_the_cloud_identity_on_refresh_and_keeps_its_id(): void
+    {
+        // (a) the appliance took the identity column through schema-upgrade AFTER the fix: pre-existing addresses stay NULL
+        [$ahmed, $ahmedUuid] = $this->cloudCustomer('Ahmed Raza', '03001234567');
+        [$home, $homeUuid] = $this->address($ahmed, 'House 1, Street 2', true);
+        [$office, $officeUuid] = $this->address($ahmed, 'Plaza 9');
+        $package = $this->package($this->sections(), 2);
+
+        $this->cleanTenant(['customer_uuid_aliases', 'customer_addresses', 'customers']);
+        $this->bindEdgeLocalMeta($this->branchId, 1, 42, 'test-device-uuid', 1);
+        $this->stageApplianceCustomers([[$ahmed, $ahmedUuid, 'Ahmed Raza', '03001234567']]);
+        foreach ([[$home, 'House 1, Street 2', 1], [$office, 'Plaza 9', 0]] as [$id, $text, $default]) {
+            DB::connection('tenant')->table('customer_addresses')->insert(['id' => $id, 'address_uuid' => null, 'customer_id' => $ahmed, 'address' => $text, 'is_default' => $default, 'edge_origin' => 'cloud', 'created_at' => now(), 'updated_at' => now()]);
+        }
+
+        $result = $this->apply($package);
+        $this->assertSame(EdgeLocalConfigRefreshApplier::OUTCOME_APPLIED, $result['outcome']);
+        $book = DB::connection('tenant')->table('customer_addresses')->orderBy('id')->get();
+        $this->assertSame([$home, $office], $book->pluck('id')->map(fn ($v) => (int) $v)->all(), 'the same two rows, ids kept, no duplicate');
+        $this->assertSame([$homeUuid, $officeUuid], $book->pluck('address_uuid')->all(), "the Cloud's identities adopted");
+        $this->assertSame(['cloud', 'cloud'], $book->pluck('edge_origin')->all());
+        $this->assertSame(2, (int) EdgeLocalMeta::current()->last_applied_config_revision, 'the appliance is fresh');
+    }
+
+    public function test_the_real_skew_a_cloud_origin_address_minted_a_different_uuid_on_the_appliance_adopts_the_cloud_identity_without_conflict(): void
+    {
+        // (b) REPRODUCE THE DEFECT: the same pre-existing addresses, identity column backfilled by the migration on BOTH sides.
+        $migration = $this->phase4IdentityMigration();
+        [$ahmed, $ahmedUuid] = $this->cloudCustomer('Ahmed Raza', '03001234567');
+        [$zara, $zaraUuid] = $this->cloudCustomer('Zara Khan', '03017654321');
+        $home = (int) DB::connection('tenant')->table('customer_addresses')->insertGetId(['address_uuid' => null, 'customer_id' => $ahmed, 'address' => 'House 1, Street 2', 'is_default' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $office = (int) DB::connection('tenant')->table('customer_addresses')->insertGetId(['address_uuid' => null, 'customer_id' => $zara, 'address' => 'Plaza 9', 'is_default' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        config(['app.role' => 'cloud']);
+        $migration->up();   // the Cloud tenant `migrate`: the OWNER mints
+        $cloudUuids = DB::connection('tenant')->table('customer_addresses')->orderBy('id')->pluck('address_uuid', 'id')->all();
+        $this->assertTrue(Str::isUlid((string) $cloudUuids[$home]) && Str::isUlid((string) $cloudUuids[$office]));
+        $package = $this->package($this->sections(), 18);
+
+        // the appliance BEFORE the fix: same rows, migration backfilled per row here too (the pre-fix code path = the Cloud's)
+        $this->cleanTenant(['customer_uuid_aliases', 'customer_addresses', 'customers']);
+        $this->bindEdgeLocalMeta($this->branchId, 1, 42, 'test-device-uuid', 17);
+        $this->stageApplianceCustomers([[$ahmed, $ahmedUuid, 'Ahmed Raza', '03001234567'], [$zara, $zaraUuid, 'Zara Khan', '03017654321']]);
+        foreach ([[$home, $ahmed, 'House 1, Street 2'], [$office, $zara, 'Plaza 9']] as [$id, $customerId, $text]) {
+            DB::connection('tenant')->table('customer_addresses')->insert(['id' => $id, 'address_uuid' => null, 'customer_id' => $customerId, 'address' => $text, 'is_default' => 1, 'edge_origin' => 'cloud', 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $migration->up();   // still role=cloud: EXACTLY what the pre-fix appliance did at schema-upgrade
+        $skewed = DB::connection('tenant')->table('customer_addresses')->orderBy('id')->pluck('address_uuid', 'id')->all();
+        $this->assertNotSame($cloudUuids[$home], $skewed[$home], 'the defect: the SAME address holds a different identity on each side');
+        $this->assertNotSame($cloudUuids[$office], $skewed[$office]);
+        config(['app.role' => 'branch_server']);
+
+        // one offline sale before the refresh binds Ahmed by id (never by address); a till-born address of Zara keeps its own uuid
+        $sale = (int) DB::connection('tenant')->table('sales_orders')->insertGetId(['sale_uuid' => (string) Str::ulid(), 'sale_no' => 'SO-1', 'branch_id' => $this->branchId, 'customer_id' => $ahmed, 'order_source' => 'pos', 'order_type' => 'takeaway', 'sale_date' => now(), 'status' => 'paid', 'created_at' => now(), 'updated_at' => now()]);
+        [$tillAddress, $tillUuid] = $this->localAddress($zara, 'Flat 4');
+
+        $result = $this->apply($package);   // was: REFRESH_CONFLICT "address id 1 is held locally by a different address identity"
+        $this->assertSame(EdgeLocalConfigRefreshApplier::OUTCOME_APPLIED, $result['outcome']);
+        $this->assertSame(18, (int) EdgeLocalMeta::current()->last_applied_config_revision, 'the appliance becomes fresh');
+        $book = DB::connection('tenant')->table('customer_addresses')->orderBy('id')->get();
+        $this->assertSame([$home, $office, $tillAddress], $book->pluck('id')->map(fn ($v) => (int) $v)->all(), 'no duplicate, no deletion, ids kept');
+        $this->assertSame([$cloudUuids[$home], $cloudUuids[$office], $tillUuid], $book->pluck('address_uuid')->all(), 'Cloud-owned rows took the Cloud identity; the till-born one kept its own');
+        $this->assertSame(['cloud', 'cloud', 'local'], $book->pluck('edge_origin')->all());
+        $this->assertSame(['active', 'active'], DB::connection('tenant')->table('customers')->orderBy('id')->pluck('status')->all(), 'nothing deactivated');
+        $this->assertSame([$ahmedUuid, $zaraUuid], DB::connection('tenant')->table('customers')->orderBy('id')->pluck('customer_uuid')->all(), 'customers never carried a skew: bootstrap/refresh always wrote the Cloud uuid');
+        $this->assertSame($ahmed, (int) DB::connection('tenant')->table('sales_orders')->where('id', $sale)->value('customer_id'));
+        $this->assertSame(0, DB::connection('tenant')->table('customer_addresses')->whereNull('address_uuid')->count());
+
+        // a replay is a no-op and the next revision no longer finds anything to adopt
+        $this->assertSame(EdgeLocalConfigRefreshApplier::OUTCOME_ALREADY_APPLIED, $this->apply($package)['outcome']);
+        $this->assertSame(EdgeLocalConfigRefreshApplier::OUTCOME_APPLIED, $this->apply($this->package($package['sections'], 19))['outcome']);
+        $this->assertSame([$cloudUuids[$home], $cloudUuids[$office], $tillUuid], DB::connection('tenant')->table('customer_addresses')->orderBy('id')->pluck('address_uuid')->all());
+    }
+
+    public function test_a_local_origin_address_holding_a_different_uuid_under_the_cloud_id_still_refuses_the_whole_refresh(): void
+    {
+        // (c) a REAL identity clash (impossible with the reserved local id range — modelled deliberately) rolls everything back
+        [$ahmed, $ahmedUuid] = $this->cloudCustomer('Ahmed Raza', '03001234567');
+        [$home] = $this->address($ahmed, 'House 1, Street 2', true);
+        [$bilal, $bilalUuid] = $this->cloudCustomer('Bilal', '03021111111');
+        $package = $this->package($this->sections(), 2);
+
+        $this->cleanTenant(['customer_uuid_aliases', 'customer_addresses', 'customers']);
+        $this->bindEdgeLocalMeta($this->branchId, 1, 42, 'test-device-uuid', 1);
+        $this->stageApplianceCustomers([[$ahmed, $ahmedUuid, 'Ahmed Raza', '03001234567']]);
+        $clash = (string) Str::ulid();
+        DB::connection('tenant')->table('customer_addresses')->insert(['id' => $home, 'address_uuid' => $clash, 'customer_id' => $ahmed, 'address' => 'Somewhere Else', 'is_default' => 1, 'edge_origin' => 'local', 'created_at' => now(), 'updated_at' => now()]);
+
+        try {
+            $this->apply($package);
+            $this->fail('a local-origin address must never be overwritten by another identity');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('REFRESH_CONFLICT', $e->getMessage());
+            $this->assertStringContainsString("address id {$home}", $e->getMessage());
+        }
+        $row = DB::connection('tenant')->table('customer_addresses')->find($home);
+        $this->assertSame($clash, $row->address_uuid, 'nothing changed');
+        $this->assertSame('Somewhere Else', $row->address);
+        $this->assertNull($this->customer($bilal), 'the WHOLE refresh rolled back: the new Cloud customer of the same revision is not there');
+        $this->assertSame(1, (int) EdgeLocalMeta::current()->last_applied_config_revision, 'the revision did not advance');
+    }
+
+    public function test_a_cloud_origin_customer_with_a_stale_uuid_adopts_the_cloud_identity_and_its_reservation_follows(): void
+    {
+        // (e) customers have no real exposure (bootstrap v7/v8 and every refresh write the Cloud uuid) — the same ownership rule
+        // is still proven for them, including the one soft uuid reference the appliance holds (a table reservation).
+        [$ahmed, $ahmedUuid] = $this->cloudCustomer('Ahmed Raza', '03001234567');
+        [$home, $homeUuid] = $this->address($ahmed, 'House 1, Street 2', true);
+        $package = $this->package($this->sections(), 2);
+
+        $this->cleanTenant(['customer_uuid_aliases', 'customer_addresses', 'customers']);
+        $this->bindEdgeLocalMeta($this->branchId, 1, 42, 'test-device-uuid', 1);
+        $stale = (string) Str::ulid();
+        $this->stageApplianceCustomers([[$ahmed, $stale, 'Ahmed Raza', '03001234567']]);
+        DB::connection('tenant')->table('customer_addresses')->insert(['id' => $home, 'address_uuid' => $homeUuid, 'customer_id' => $ahmed, 'address' => 'House 1, Street 2', 'is_default' => 1, 'edge_origin' => 'cloud', 'created_at' => now(), 'updated_at' => now()]);
+        $floor = (int) DB::connection('tenant')->table('restaurant_floors')->insertGetId(['branch_id' => $this->branchId, 'name' => 'G', 'sort_order' => 0, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $table = $this->makeTable($this->branchId, ['table_no' => 'T1', 'status' => 'reserved', 'restaurant_floor_id' => $floor]);
+        $reservation = (int) DB::connection('tenant')->table('edge_local_table_reservations')->insertGetId(['reservation_uuid' => (string) Str::ulid(), 'branch_id' => $this->branchId, 'restaurant_table_id' => $table, 'customer_id' => $ahmed, 'customer_uuid' => $stale, 'customer_name' => 'Ahmed Raza', 'reserved_for' => now()->addHour(), 'status' => 'active', 'reserved_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+
+        $this->assertSame(EdgeLocalConfigRefreshApplier::OUTCOME_APPLIED, $this->apply($package)['outcome']);
+        $row = $this->customer($ahmed);
+        $this->assertSame($ahmedUuid, $row->customer_uuid, "the Cloud's identity adopted in place");
+        $this->assertSame('active', $row->status);
+        $this->assertSame(1, DB::connection('tenant')->table('customers')->count(), 'no second row');
+        $this->assertSame($ahmedUuid, DB::connection('tenant')->table('edge_local_table_reservations')->where('id', $reservation)->value('customer_uuid'), 'the reservation hands back by the Cloud identity');
+        $this->assertSame($homeUuid, DB::connection('tenant')->table('customer_addresses')->where('id', $home)->value('address_uuid'));
+    }
+
     public function test_an_alias_whose_canonical_customer_is_not_on_this_appliance_leaves_the_local_row_untouched(): void
     {
         $w = (string) Str::ulid();

@@ -446,6 +446,17 @@ class EdgeLocalConfigRefreshApplier
      *      (the whole refresh rolls back — never a silent overwrite of one customer by another);
      *   3. a local row the payload does not carry: edge_origin 'cloud' → status 'inactive' (the Cloud retired it; history
      *      keeps resolving), edge_origin 'local' → UNTOUCHED (still active, still attachable; its sale carries it to the Cloud).
+     *
+     * IDENTITY OWNERSHIP (F1 fix, docs/status/edge-phase4-fix-address-identity-skew.md — owner: "after a Cloud upgrade the
+     * appliance proceeds without manual data editing"): CLOUD-OWNED ROWS TAKE THE CLOUD'S IDENTITY. When the payload id is
+     * held locally by a row that is NOT local-origin (edge_origin ≠ 'local': the bootstrap/refresh wrote it) its uuid is
+     * ADOPTED from the Cloud in place — whether the local uuid is NULL (an appliance that took the identity column through
+     * schema-upgrade leaves it NULL, see migration 2026_10_06_000001) or a stale/locally-minted value (an appliance upgraded
+     * before that fix). The same applies to addresses (upsertCustomerAddresses). REFRESH_CONFLICT remains ONLY for a
+     * LOCAL-ORIGIN row (edge_origin = 'local') that carries a different uuid under the Cloud's id — a real identity clash
+     * (impossible with the reserved local id range, modelled deliberately) — and it still rolls the whole refresh back.
+     * A customer adoption that changes a non-null uuid also repoints the soft uuid references (reservations) so nothing on
+     * the appliance keeps the retired value.
      */
     private function upsertCustomers(array $rows): array
     {
@@ -476,10 +487,16 @@ class EdgeLocalConfigRefreshApplier
             }
             if (isset($byId[$cloudId])) {
                 $held = $byId[$cloudId];
-                if ($held->customer_uuid !== null && $held->customer_uuid !== '' && $held->customer_uuid !== $uuid) {
-                    throw new RuntimeException("REFRESH_CONFLICT: customer id {$cloudId} is held locally by a different customer identity; refusing to overwrite one customer with another.");
+                $heldUuid = (string) ($held->customer_uuid ?? '');
+                if ($heldUuid !== '' && $heldUuid !== $uuid) {
+                    if ((string) ($held->edge_origin ?? self::ORIGIN_CLOUD) === self::ORIGIN_LOCAL) {
+                        throw new RuntimeException("REFRESH_CONFLICT: customer id {$cloudId} is held locally by a different customer identity; refusing to overwrite one customer with another.");
+                    }
+                    // a Cloud-owned row with a stale identity takes the Cloud's (class doc: identity ownership)
+                    $this->repointCustomerUuid($heldUuid, $uuid);
+                    Log::info('[edge-config-refresh] cloud-owned customer adopted the Cloud identity', ['id' => $cloudId, 'from' => $heldUuid, 'to' => $uuid]);
                 }
-                // a legacy local row without an identity (pre-G3) adopts the Cloud's
+                // a Cloud-owned row without an identity (NULL after schema-upgrade, or pre-G3) adopts the Cloud's
                 $conn->table('customers')->where('id', $cloudId)->update($data);
                 $this->customerIdMap[$cloudId] = $cloudId;
                 $seen[$cloudId] = true;
@@ -514,6 +531,13 @@ class EdgeLocalConfigRefreshApplier
      * id for the parent may differ locally — rule 1 above). A local-origin address the payload does not carry is kept,
      * unless the Cloud now carries an address of the same customer with the SAME text (Online's storeAddressOnce reused
      * it on ingestion) — then the local copy is merged away (deleted) so the book does not show the address twice.
+     *
+     * IDENTITY OWNERSHIP (see upsertCustomers): a Cloud-origin local row under the Cloud's id ADOPTS the Cloud's address_uuid
+     * in place — NULL (schema-upgraded appliance) or stale (an appliance whose Phase 4 migration minted one per row before the
+     * F1 fix) alike; no second row, no deletion, no conflict. REFRESH_CONFLICT only for a LOCAL-ORIGIN row holding a
+     * different uuid under that id. Nothing else on the appliance can hold a Cloud-origin address's stale uuid: the sale
+     * envelope ships address_uuid only for LOCAL-origin addresses (EdgeSaleEnvelopeBuilder::customerIdentity), which are
+     * minted once at creation and matched back by uuid (rule 1), never adopted — so the in-place update is complete.
      */
     private function upsertCustomerAddresses(array $rows): array
     {
@@ -554,9 +578,15 @@ class EdgeLocalConfigRefreshApplier
             }
             if (isset($byId[$cloudId])) {
                 $held = $byId[$cloudId];
-                if ($held->address_uuid !== null && $held->address_uuid !== '' && $held->address_uuid !== $uuid) {
-                    throw new RuntimeException("REFRESH_CONFLICT: address id {$cloudId} is held locally by a different address identity.");
+                $heldUuid = (string) ($held->address_uuid ?? '');
+                if ($heldUuid !== '' && $heldUuid !== $uuid) {
+                    if ((string) ($held->edge_origin ?? self::ORIGIN_CLOUD) === self::ORIGIN_LOCAL) {
+                        throw new RuntimeException("REFRESH_CONFLICT: address id {$cloudId} is held locally by a different address identity.");
+                    }
+                    // a Cloud-owned row with a stale identity takes the Cloud's (class doc: identity ownership)
+                    Log::info('[edge-config-refresh] cloud-owned address adopted the Cloud identity', ['id' => $cloudId, 'from' => $heldUuid, 'to' => $uuid]);
                 }
+                // NULL (schema-upgraded appliance) or already the Cloud's: update in place, the Cloud uuid lands with $data
                 $conn->table('customer_addresses')->where('id', $cloudId)->update($data);
                 $seen[$cloudId] = true;
                 $updated++;
@@ -655,6 +685,28 @@ class EdgeLocalConfigRefreshApplier
         'restaurant_table_sessions' => [['customer_id'], []],
         'restaurant_tables' => [['reserved_customer_id'], []],
     ];
+
+    /**
+     * A Cloud-owned customer row adopted a different customer_uuid (identity ownership): move the soft uuid references
+     * (reservations carry customer_uuid for the Cloud hand-back) from the retired value to the Cloud's. Numeric references
+     * (sales, sessions, tables) are untouched — the row keeps its id. Outbox envelopes are not rewritten: an envelope only
+     * ever carried a Cloud-owned customer's uuid as the Cloud itself exported it, so a retired value cannot be in one.
+     */
+    private function repointCustomerUuid(string $fromUuid, string $toUuid): void
+    {
+        $conn = DB::connection(self::CONN);
+        $schema = \Illuminate\Support\Facades\Schema::connection(self::CONN);
+        foreach (self::CUSTOMER_SOFT_REFERENCES as $table => [, $uuidColumns]) {
+            if ($uuidColumns === [] || ! $schema->hasTable($table)) {
+                continue;
+            }
+            foreach ($uuidColumns as $column) {
+                if ($schema->hasColumn($table, $column)) {
+                    $conn->table($table)->where($column, $fromUuid)->update([$column => $toUuid]);
+                }
+            }
+        }
+    }
 
     private function mergeLocalCustomer(int $fromId, int $toId, string $fromUuid, string $toUuid): void
     {

@@ -20,7 +20,9 @@ The appliance on 0.7.0 reports bootstrap v7. A Cloud on the new build classifies
 cleanly (the appliance keeps its last applied revision), so the Cloud can go first without breaking the running appliance.
 
 1. **LAB Cloud** (`Start-LabCloud.ps1 -Stop`, then `-Worktree <new export>`; export the reconciled release commit to `cloud\src-<hash>`):
-   run the tenant migrations on the LAB master/tenant DBs (`Migrate-LabTenant.php` pattern; includes `2026_10_06_000001` Phase 4
+   run the MASTER migrations (`php artisan migrate --database=master` with the LAB env — includes `2026_09_27_000001` edge_devices version
+   columns, without which the device page cannot show the reported version) AND the tenant migrations on the LAB tenant DB
+   (`Migrate-LabTenant.php` pattern; includes `2026_10_06_000001` Phase 4
    identity: `phone_normalized`, `address_uuid`, `customer_uuid_aliases`, Gap C mirror fields), confirm the Cloud advertises
    `customer_create` in the heartbeat ACK, confirm `/settings/offline-edge` shows the appliance's reported version.
 2. **LAB data corrections (LAB-only, owner §7; NO broad grants, NO "all permissions")** — run through the Online UI or a reviewed SQL file
@@ -50,6 +52,11 @@ exercised in 0.7.0), **shift close with denomination count** (not exercised in 0
 report to the network printer, FakePrinter proof (one delivery per job), controlled handback (`edge:local:authority-handback --by=`),
 outbox applied exactly once on the LAB Cloud incl. the new-customer envelope (create-or-match, alias on a phone match), paired
 Online/Edge screenshots at the same viewport (pixel + geometry tools), STANDBY_READY restored.
+
+## 2b. Identity adoption (F1 fix) — nothing manual
+
+The fixed build never mints `address_uuid` on the appliance; the first accepted v8 refresh adopts the Cloud identities for Cloud-origin
+customers/addresses by numeric id (`EdgeLocalConfigRefreshApplier`), so the LAB appliance becomes fresh without any data editing.
 
 ## 3. Rollback rule (unchanged from 0.7.0)
 
