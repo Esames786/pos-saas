@@ -129,7 +129,7 @@ class SystemResetCommand extends Command
 
         $this->info('✅ System reset complete in ' . $secs . 's.');
         $this->line('   Demo logins: demo@{code}.com / ' . config('saas.demos.default_password', 'demo1234'));
-        $this->line('   Codes: retaildemo, inventorydemo, restaurantdemo, restaurantprodemo, enterprisedemo, financedemo');
+        $this->line('   Codes: retaildemo, inventorydemo, restaurantdemo, restaurantprodemo, enterprisedemo, financedemo, pharmacydemo');
         $this->line('   Legacy demo: owner@demo.com');
         return self::SUCCESS;
     }

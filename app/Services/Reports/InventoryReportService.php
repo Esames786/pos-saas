@@ -160,15 +160,23 @@ class InventoryReportService
             });
     }
 
-    /** Inventory batches expiring within N days. */
+    /**
+     * Inventory batches expiring within N days that still have stock on the shelf.
+     *
+     * PHARMACY-DEMO-1: a batch row holds no quantity — stock lives in stock_balances, one row per
+     * batch — so the report printed 0.000 for every batch and listed sold-out batches too. The
+     * quantity is now the batch's own stock, and a batch with nothing left is not an alert.
+     */
     public function expiry(array $filters)
     {
-        $days = (int) ($filters['days'] ?? 30);
+        $days = max(1, (int) ($filters['days'] ?? 30));
 
         return InventoryBatch::query()
             ->with(['branch', 'product', 'variant'])
+            ->withSum('balances as quantity_on_hand', 'quantity_on_hand')
+            ->whereHas('balances', fn ($q) => $q->where('quantity_on_hand', '>', 0))
             ->whereNotNull('expiry_date')
-            ->whereDate('expiry_date', '<=', now()->addDays($days))
+            ->whereDate('expiry_date', '<=', today()->addDays($days))
             ->when($this->resolveBranchIds($filters), fn ($q, $ids) => $q->whereIn('branch_id', $ids))
             ->orderBy('expiry_date')
             ->paginate(25)

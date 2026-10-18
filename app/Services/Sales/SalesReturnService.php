@@ -2,11 +2,13 @@
 
 namespace App\Services\Sales;
 
+use App\Models\Tenant\InventoryBatch;
 use App\Models\Tenant\SalesLedger;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesOrderLine;
 use App\Models\Tenant\SalesReturn;
 use App\Models\Tenant\Shift;
+use App\Models\Tenant\StockLedger;
 use App\Services\Finance\JournalPostingService;
 use App\Services\Inventory\InventoryService;
 use Illuminate\Support\Facades\DB;
@@ -285,6 +287,8 @@ class SalesReturnService
             return;
         }
 
+        $batch = $this->batchTheSaleTookFrom($salesOrder, $orderLine, $product);
+
         $this->inventoryService->postIn(
             branch:        $salesOrder->branch,
             product:       $product,
@@ -295,9 +299,47 @@ class SalesReturnService
             referenceType: 'sales_return',
             referenceId:   $salesReturn->id,
             referenceNo:   $salesReturn->return_no,
+            batchNo:       $batch?->batch_no,
+            expiryDate:    $batch?->expiry_date?->toDateString(),
             notes:         'Return stock in',
             userId:        $userId,
         );
+    }
+
+    /**
+     * PHARMACY-DEMO-1 — a returned medicine goes back into a batch it was sold from, with that
+     * batch's expiry. Before, every return opened a new "BATCH-<time>" with NO expiry, so a returned
+     * syrup sat on the shelf undated: off the expiry report, and last in line for FEFO.
+     *
+     * Only products that carry an expiry, and only the sale's own stock-out rows for this product
+     * ('sale' — recipe and modifier stock leave as other movement types). When the sale took from
+     * two batches the earlier expiry is chosen, so the unit is sold, and flagged, first. Products
+     * without an expiry, and sales with no batch on record, keep the old behaviour.
+     */
+    private function batchTheSaleTookFrom(SalesOrder $salesOrder, $orderLine, $product): ?InventoryBatch
+    {
+        if (! $product->has_expiry) {
+            return null;
+        }
+
+        $batchIds = StockLedger::query()
+            ->where('reference_type', 'sales_order')
+            ->where('reference_id', $salesOrder->id)
+            ->where('movement_type', 'sale')
+            ->where('direction', 'out')
+            ->where('product_id', $product->id)
+            ->when($orderLine->product_variant_id,
+                fn ($q, $variantId) => $q->where('product_variant_id', $variantId),
+                fn ($q) => $q->whereNull('product_variant_id'))
+            ->whereNotNull('inventory_batch_id')
+            ->pluck('inventory_batch_id');
+
+        return InventoryBatch::query()
+            ->whereIn('id', $batchIds)
+            ->whereNotNull('expiry_date')
+            ->orderBy('expiry_date')
+            ->orderBy('id')
+            ->first();
     }
 
     private function updateShiftForReturn(SalesOrder $salesOrder, ?string $refundMethod, float $grandTotal): void

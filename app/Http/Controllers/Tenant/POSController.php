@@ -490,7 +490,27 @@ class POSController extends Controller
                     'auto_print_kot'     => (bool) $s->auto_print_kot,
                 ]),
             'activeMode'       => $requestedMode,
+            'kitchenTickets'   => $this->kitchenTicketsOn(),
         ]);
+    }
+
+    /**
+     * PHARMACY-DEMO-1 — does this counter feed a kitchen at all? A medical store or a shop has no
+     * kitchen, yet the POS asked "Print Kitchen Order?" on every sale. A kitchen is there when the
+     * plan has restaurant or kitchen work, or when an active printer takes kitchen tickets. Every
+     * live restaurant plan has the restaurant module, so their counters behave exactly as before;
+     * with no tenant bound (tests) the answer stays yes, as it always was.
+     */
+    private function kitchenTicketsOn(): bool
+    {
+        if (! app()->bound('tenant') || ! ($sub = app('tenant')->subscription)) {
+            return true;
+        }
+        $sub->loadMissing('plan.enabledModules');
+        $modules = $sub->plan ? $sub->plan->enabledModules->pluck('key')->all() : [];
+
+        return (bool) array_intersect(['restaurant', 'kitchen_display', 'kitchen_inventory'], $modules)
+            || \App\Models\Tenant\Printer::query()->where('is_active', true)->whereIn('print_role', ['kot', 'both'])->exists();
     }
 
     /**
