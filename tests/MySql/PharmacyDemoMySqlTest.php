@@ -139,9 +139,11 @@ class PharmacyDemoMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta(1600 - $sold + $returned, $onHand, 0.001);
         $this->assertSame(2, $c->table('inventory_batches')->where('product_id', $panadol->id)->count(), 'two batches: first stock and the restock');
 
-        // The salt is in the name, so "paracetamol" finds Panadol and Calpol on the POS.
-        $this->assertSame('Panadol 500mg Tablet (Paracetamol)', $panadol->name);
-        $this->assertSame(4, Product::where('name', 'like', '%(Paracetamol%')->count());
+        // The salt has its own field (PRODUCT-SCREEN-V2), so "paracetamol" finds every brand on the POS.
+        $this->assertSame('Panadol 500mg Tablet', $panadol->name);
+        $this->assertSame('Paracetamol', $panadol->generic_name);
+        $this->assertSame('500mg', $panadol->strength);
+        $this->assertSame(4, Product::where('generic_name', 'like', 'Paracetamol%')->count());
 
         // Barcodes scan: valid EAN-13.
         foreach ($c->table('product_barcodes')->pluck('barcode') as $code) {

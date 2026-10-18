@@ -64,6 +64,15 @@ Route::domain(config('tenancy.central_domain'))
                 Route::put('/tenants/{tenant}/subscription', [TenantController::class, 'updateSubscription'])
                     ->name('central.tenants.subscription.update');
 
+                // PRIMARY-BUSINESS-1 — who the tenant is (restaurant / catering / medical store / mart /
+                // industry) and its switches. Permission names are listed in MasterSeeder.
+                Route::get('/tenants/{tenant}/business/impact', [\App\Http\Controllers\Central\TenantBusinessController::class, 'impact'])
+                    ->name('central.tenants.business.impact');
+                Route::put('/tenants/{tenant}/business', [\App\Http\Controllers\Central\TenantBusinessController::class, 'updateBusiness'])
+                    ->name('central.tenants.business.update');
+                Route::put('/tenants/{tenant}/features', [\App\Http\Controllers\Central\TenantBusinessController::class, 'updateFeatures'])
+                    ->name('central.tenants.features.update');
+
                 // MASTER-TENANT-OPS-1 — backup / restore / reset / sync (superadmin only)
                 // Global actions use hyphenated paths so they never collide with /tenants/{tenant}.
                 Route::post('/tenants-sync-all', [TenantController::class, 'syncAll'])->name('central.tenants.sync-all');

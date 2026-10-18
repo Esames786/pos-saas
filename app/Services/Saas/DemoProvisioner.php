@@ -44,6 +44,17 @@ class DemoProvisioner
         'pharmacy'       => 'Bingoo Demo Pharmacy',
     ];
 
+    /** PRIMARY-BUSINESS-1 — every demo is one kind of business, so it shows only that business's screens. */
+    private const PRIMARY_BUSINESS = [
+        'retail'         => \App\Support\Business::MART,
+        'inventory'      => \App\Support\Business::MART,
+        'restaurant'     => \App\Support\Business::RESTAURANT,
+        'restaurant_pro' => \App\Support\Business::RESTAURANT,
+        'enterprise'     => \App\Support\Business::RESTAURANT,
+        'finance'        => \App\Support\Business::INDUSTRY,
+        'pharmacy'       => \App\Support\Business::PHARMACY,
+    ];
+
     public function __construct(
         private TenantProvisioner $provisioner,
         private TenancyManager $tenancyManager,
@@ -98,6 +109,9 @@ class DemoProvisioner
                 'status'        => 'pending',
                 'is_demo'       => true,
                 'trial_ends_at' => $farFuture,
+                'primary_business' => self::PRIMARY_BUSINESS[$industry] ?? null,
+                // Demos show the newest screens; live customers get them when the owner switches them on.
+                'features'      => [\App\Support\TenantFeatures::PRODUCT_SCREEN_V2 => true],
             ]);
 
             TenantDomain::create([

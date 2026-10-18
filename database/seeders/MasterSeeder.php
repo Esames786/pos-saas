@@ -125,11 +125,15 @@ class MasterSeeder extends Seeder
             );
         }
 
-        $admin = CentralUser::updateOrCreate(
+        // MASTER-ADMIN-PASSWORD-1 (19 Oct): this ran on EVERY deploy (deploy.sh [3b]) as updateOrCreate,
+        // so the Master super admin's password went back to "password" each time — a changed password never
+        // survived a deploy. The account is now only CREATED here (fresh install); an existing one is never
+        // touched. A fresh install takes CENTRAL_ADMIN_INITIAL_PASSWORD when set.
+        $admin = CentralUser::firstOrCreate(
             ['email' => 'superadmin@mywebsite.com'],
             [
                 'name' => 'Super Admin',
-                'password' => Hash::make('password'),
+                'password' => Hash::make((string) (env('CENTRAL_ADMIN_INITIAL_PASSWORD') ?: 'password')),
                 'status' => 'active',
             ]
         );
@@ -172,6 +176,11 @@ class MasterSeeder extends Seeder
             'central.tenant-domains.activate',
             'central.tenant-domains.deactivate',
             'central.tenant-domains.destroy',
+
+            // PRIMARY-BUSINESS-1 — a tenant's primary business and its switches (Bingoo Master).
+            'central.tenants.business.impact',
+            'central.tenants.business.update',
+            'central.tenants.features.update',
 
             'central.plans.index',
             'central.plans.edit',

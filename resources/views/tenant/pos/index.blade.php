@@ -2878,6 +2878,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const textMatch = !query
                 || String(product.name).toLowerCase().includes(query)
                 || String(product.sku || '').toLowerCase().includes(query)
+                || String(product.generic || '').toLowerCase().includes(query)
                 || barcodeMatch;
 
             return textMatch && (selectedChildCategory ? matchChild : matchParent);
