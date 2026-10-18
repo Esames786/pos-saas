@@ -688,6 +688,33 @@ class MasterSeeder extends Seeder
                     'product_limit' => null,
                 ],
             ],
+            [
+                // PHARMACY-DEMO-1 — the medical-store demo tenant (pharmacydemo) only; never public.
+                // Store modules plus multi_branch, because shifts, terminals and day closing live
+                // there today and the counter cannot sell without an open shift.
+                'attributes' => [
+                    'code' => 'pharmacy_demo',
+                    'name' => 'Pharmacy Demo',
+                    'price' => 0,
+                    'monthly_price' => null,
+                    'yearly_price' => null,
+                    'currency_code' => 'PKR',
+                    'billing_period' => 'monthly',
+                    'is_active' => true,
+                    'is_public' => false,
+                    'is_custom' => true,
+                    'trial_days' => 30,
+                    'display_order' => 902,
+                    'public_description' => 'Internal: medical store demo.',
+                ],
+                'modules' => ['pos', 'catalog', 'inventory', 'stock_count', 'purchasing', 'printing', 'reports', 'multi_branch', 'users_roles'],
+                'features' => [
+                    'branch_limit' => '1',
+                    'terminal_limit' => '2',
+                    'user_limit' => '5',
+                    'product_limit' => null,
+                ],
+            ],
         ];
 
         foreach ($catalog as $entry) {

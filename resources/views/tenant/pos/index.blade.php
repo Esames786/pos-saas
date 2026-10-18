@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Restaurant POS')
+@section('title', ($kitchenTickets ?? true) ? 'Restaurant POS' : 'POS')
 
 @section('content')
 <style>
@@ -430,7 +430,7 @@
     <button type="button" class="btn btn-outline-secondary" id="pos-sidebar-toggle" title="Show navigation" aria-label="Show navigation">
         <i class="ti ti-layout-sidebar-left-expand"></i>
     </button>
-    <h1 class="h3 mb-0">Restaurant POS</h1>
+    <h1 class="h3 mb-0">{{ ($kitchenTickets ?? true) ? 'Restaurant POS' : 'POS' }}</h1>
     {{-- View Tables sits right beside the title (dine-in only) with a small gap — not shoved into the
          far corner. Same id/handler; the session bar underneath carries only live-session context. --}}
     @if(in_array('dine_in', $allowedOrderTypes, true))
@@ -4387,6 +4387,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const terminalPrintConfig = @json($terminalPrintConfig);
     const receiptLayouts = @json($receiptLayouts);
+    // PHARMACY-DEMO-1: false only where the plan has no kitchen and no printer takes KOTs.
+    const KITCHEN_TICKETS = @json($kitchenTickets ?? true);
 
     // Session-only print overrides (this device): '1' force on, '0' force off, null = follow terminal.
     const PRINT_OVERRIDE_KEY = { kot: 'pos_auto_kot', receipt: 'pos_auto_receipt' };
@@ -4664,7 +4666,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function resolveDirectPayKotIntent() {
         if (_directPayKotIntent !== null) return Promise.resolve(true);
-        if (kotPending().pending <= 0) {
+        if (!KITCHEN_TICKETS || kotPending().pending <= 0) {
             _directPayKotIntent = 'skip';
             return Promise.resolve(true);
         }
@@ -4966,7 +4968,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 toast('success', (asDraft ? 'Draft saved: ' : 'Held: ') + saleNo);
                 // POS-DRAFT-1: a draft NEVER sends the KOT to the kitchen. A normal Hold prints the
                 // un-sent delta as before (re-holding without new items won't reprint).
-                if (!asDraft && kotPending().pending > 0) {
+                if (!asDraft && KITCHEN_TICKETS && kotPending().pending > 0) {
                     handleKotAfterSale(saleId, saleNo, terminalId);
                 }
             })

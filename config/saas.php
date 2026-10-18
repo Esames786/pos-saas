@@ -155,6 +155,7 @@ return [
         'restaurantdemo',
         'restaurantprodemo',
         'enterprisedemo',
+        'pharmacydemo',
     ],
 
     'demos' => [
@@ -168,6 +169,7 @@ return [
             'restaurantprodemo',
             'enterprisedemo',
             'financedemo',
+            'pharmacydemo',
         ],
         'tenant_codes' => [
             'retail' => 'retaildemo',
@@ -176,6 +178,9 @@ return [
             'restaurant_pro' => 'restaurantprodemo',
             'enterprise' => 'enterprisedemo',
             'finance' => 'financedemo',
+            // PHARMACY-DEMO-1: rebuilt every night with the others, so its dates stay current —
+            // today's sales exist and no batch is ever left on the shelf past its expiry.
+            'pharmacy' => 'pharmacydemo',
         ],
 
         // Tenants that demo:reset / demo:reset-all are allowed to drop & recreate (15D-8).
@@ -187,6 +192,7 @@ return [
             'restaurantprodemo',
             'enterprisedemo',
             'financedemo',
+            'pharmacydemo',
         ],
 
         // Time-of-day for the optional nightly demo reset scheduler (24h HH:MM).

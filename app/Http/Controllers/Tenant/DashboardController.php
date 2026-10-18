@@ -151,9 +151,12 @@ class DashboardController extends Controller
         // Low stock
         $lowStockCount = $inventoryService->lowStockCount();
 
-        // Expiry alerts (next 30 days)
+        // Expiry alerts (next 30 days) — PHARMACY-DEMO-1: only batches still on the shelf, in the
+        // branch being looked at, the same rows the Expiry report lists.
         $expiryCount = InventoryBatch::whereNotNull('expiry_date')
-            ->whereDate('expiry_date', '<=', now()->addDays(30))
+            ->whereDate('expiry_date', '<=', today()->addDays(30))
+            ->whereHas('balances', fn ($q) => $q->where('quantity_on_hand', '>', 0))
+            ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
             ->count();
 
         // DASHBOARD-OPEN-BILLS-1 — the money still sitting on the tables.
