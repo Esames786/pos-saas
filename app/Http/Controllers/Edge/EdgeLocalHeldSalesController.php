@@ -567,24 +567,14 @@ class EdgeLocalHeldSalesController extends Controller
 
     // ═══════════════════════ W3 — order lifecycle (Team 3) ═══════════════════════
 
-    /** A27 — Recent / Completed Orders (Online POSController::recentSales; tenant.api.pos.* is permission-free on Online). */
+    /**
+     * A27 — Recent / Completed Orders (Online POSController::recentSales; tenant.api.pos.* is permission-free on Online).
+     * ONE list rule on both runtimes (App\Support\Pos\RecentOrders): the service already answers the Online row (`time` =
+     * TenantClock 'd M, h:i A', `ago`, `total`, `table` …) plus the additive Edge keys (time_iso, sale_uuid, grand_total).
+     */
     public function recentSales(Request $request): JsonResponse
     {
-        $rows = $this->lifecycle->recentSales(auth('tenant')->user(), $request->query('order_type'));
-        // W-B canonical contract (§3.2): Online POSController::recentSales `time` = TenantClock::formatSale('d M, h:i A') and
-        // `ago` = diffForHumans(); the ISO instant stays available as `time_iso`.
-        $models = SalesOrder::on('tenant')->with(['shift', 'branch'])->whereIn('id', collect($rows)->pluck('id')->all() ?: [0])->get()->keyBy('id');
-        $clock = app(\App\Support\TenantClock::class);
-        $rows = collect($rows)->map(function (array $r) use ($models, $clock) {
-            $s = $models->get($r['id']);
-            $r['time_iso'] = $r['time'] ?? null;
-            $r['time'] = $s ? $clock->formatSale($s, 'd M, h:i A') : ($r['time'] ?? null);
-            $r['ago'] = optional($s?->sale_date ?? $s?->created_at)->diffForHumans();
-
-            return $r;
-        })->values();
-
-        return response()->json(['sales' => $rows]);
+        return response()->json(['sales' => $this->lifecycle->recentSales(auth('tenant')->user(), $request->query('order_type'))]);
     }
 
     /** A29/R31 — dead-session recovery: a held bill on a closed session moves to a NEW session on a free table. */

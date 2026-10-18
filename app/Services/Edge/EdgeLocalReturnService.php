@@ -34,7 +34,11 @@ use RuntimeException;
  */
 class EdgeLocalReturnService
 {
-    private const RETURNABLE_STATUSES = ['paid', 'partially_returned', EdgeReturnableSaleCacheService::SHADOW_STATUS];
+    /**
+     * What may be RETURNED is EdgeReturnableSaleCacheService::scopeReturnable(): a local sale in paid / partially_returned,
+     * or a mirrored Cloud sale whose CLOUD status is paid / partially_returned. Since gap C the mirror also lists
+     * cancelled / history rows for Recent Orders, so the shadow marker alone never makes a sale returnable.
+     */
 
     public function __construct(
         private readonly EdgeBranchContext $context,
@@ -56,7 +60,7 @@ class EdgeLocalReturnService
         // USER DATA SCOPE parity (Online SalesReturnController@create): an operator assigned to terminals / order
         // types only ever finds the sales inside that scope — the same rule, applied to the same sales query.
         $scope = app(\App\Services\Security\UserDataScope::class);
-        $rows = SalesOrder::on('tenant')->where('branch_id', $branchId)->whereIn('status', self::RETURNABLE_STATUSES)
+        $rows = EdgeReturnableSaleCacheService::scopeReturnable(SalesOrder::on('tenant')->where('branch_id', $branchId))
             ->when($user && $scope->isScoped($user), fn ($query) => $scope->applyToSales($query, $user))
             ->when($q !== '', fn ($query) => $query->where(function ($w) use ($q) {
                 $w->where('sale_no', 'like', "%{$q}%")->orWhere('customer_name', 'like', "%{$q}%")->orWhere('customer_phone', 'like', "%{$q}%");
@@ -412,7 +416,7 @@ class EdgeLocalReturnService
         // USER DATA SCOPE parity (Online SalesReturnController@create/@store, USER-DATA-SCOPE-1): a terminal/order-type
         // restricted operator cannot open or post a return for a sale outside his scope, even by a hand-typed sale id.
         $scope = app(\App\Services\Security\UserDataScope::class);
-        $query = SalesOrder::on('tenant')->where('id', $saleId)->where('branch_id', $branchId)->whereIn('status', self::RETURNABLE_STATUSES)
+        $query = EdgeReturnableSaleCacheService::scopeReturnable(SalesOrder::on('tenant')->where('id', $saleId)->where('branch_id', $branchId))
             ->when($user && $scope->isScoped($user), fn ($q) => $scope->applyToSales($q, $user));
         $sale = ($lock ? $query->lockForUpdate() : $query)->first();
         if (! $sale) {

@@ -2,11 +2,13 @@
 
 namespace App\Services\Edge;
 
+use App\Models\Edge\EdgeSyncOutbox;
 use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\User;
 use App\Services\Security\UserDataScope;
 use App\Support\EdgeUserAuthz;
+use App\Support\Pos\RecentOrders;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -25,21 +27,38 @@ class EdgeLocalOrderLifecycleService
     ) {
     }
 
-    /** Online POSController::recentSales — last 50 non-held sales of the branch, scoped like Online. */
+    /**
+     * Online POSController::recentSales — the SAME list rule (App\Support\Pos\RecentOrders, Phase 4 gap C): every non-held
+     * sale with a sale number (cancelled included), the operator's order types + UserDataScope, newest 50, the Online row.
+     *
+     * What is runtime truth here, and only here:
+     *   - ORDER KEY: Online orders by the Cloud's sale id. A mirrored Cloud sale (sales_orders.status = cloud_mirror) holds
+     *     it in edge_returnable_sales.cloud_sales_order_id; a LOCAL sale the Cloud has acknowledged holds it in the sale
+     *     envelope's ACK (edge_sync_outbox.ack_payload.sales_order_id); a local sale the Cloud has not numbered yet sorts
+     *     first (it is newer than everything the Cloud has). So the Edge list is in Online's order, not local-id order.
+     *   - STATUS of a mirrored sale = the Cloud's status (paid / partially_returned / cancelled …) — never the shadow
+     *     marker `cloud_mirror`, which is a storage fact, not a presentation.
+     *   - PRINT STATE = this appliance's print_jobs (Online reads its own direct_pay_print_state); a mirrored sale was
+     *     printed by the Cloud's terminal, so it carries no resumable print state here.
+     * Additive Edge-only keys (sale_uuid, grand_total, time_iso, edge_sync_state, origin) stay for the Edge callers.
+     */
     public function recentSales(User $user, ?string $orderType = null): array
     {
         $branchId = $this->guard($user);
-        $allowed = $user->effectiveAllowedOrderTypes() ?? [];
-        $filter = (string) ($orderType ?? '');
 
-        $query = SalesOrder::on('tenant')->with(['restaurantWaiter:id,name', 'restaurantTable:id,table_no', 'deliveryChannel:id,name,type', 'deliveryRider:id,name'])
-            ->where('branch_id', $branchId)
-            ->where('status', '!=', 'held')
-            ->whereNotNull('sale_no')
-            ->when($allowed, fn ($q) => $q->whereIn('order_type', $allowed))
-            ->when($filter !== '' && in_array($filter, $allowed, true), fn ($q) => $q->where('order_type', $filter));
-        $this->scope->applyToSales($query, $user);
-        $sales = $query->orderByDesc('id')->limit(50)->get();
+        $query = SalesOrder::on('tenant')->with(RecentOrders::RELATIONS)
+            ->select('sales_orders.*')
+            ->selectRaw("COALESCE(m.cloud_sales_order_id, CAST(JSON_UNQUOTE(JSON_EXTRACT(o.ack_payload, '$.sales_order_id')) AS UNSIGNED)) AS edge_cloud_order_id")
+            ->selectRaw('m.cloud_status AS edge_mirror_status')
+            ->leftJoin('edge_returnable_sales as m', 'm.local_sales_order_id', '=', 'sales_orders.id')
+            ->leftJoin('edge_sync_outbox as o', function ($join) {
+                $join->on('o.sale_uuid', '=', 'sales_orders.sale_uuid')->where('o.state', '=', EdgeSyncOutbox::STATE_ACKNOWLEDGED);
+            });
+        RecentOrders::applyInclusion($query, $user, $branchId, $orderType);
+        $sales = $query
+            ->orderByRaw('(edge_cloud_order_id IS NULL) DESC, edge_cloud_order_id DESC, sales_orders.id DESC')
+            ->limit(RecentOrders::LIMIT)
+            ->get();
 
         // Print state per sale (Edge truth = its print_jobs rows; Online reads direct_pay_print_state).
         $jobs = PrintJob::on('tenant')->whereIn('reference_id', $sales->pluck('id'))
@@ -50,29 +69,19 @@ class EdgeLocalOrderLifecycleService
             $mine = $jobs->get($s->id, collect());
             $last = fn (string $type) => $mine->where('document_type', $type)->last()?->print_status;
             $pending = $mine->contains(fn ($j) => in_array($j->print_status, ['queued', 'failed', 'pending', 'pending_retry'], true));
+            $printing = $mine->isEmpty() ? null : [
+                'kot' => $last('kot'), 'receipt' => $last('receipt'), 'reminder' => $last('reminder'),
+                'resume_available' => $pending,
+            ];
+            $mirrored = (string) $s->status === EdgeReturnableSaleCacheService::SHADOW_STATUS;
+            $row = RecentOrders::present($s, $printing, $mirrored && $s->edge_mirror_status ? (string) $s->edge_mirror_status : null);
 
-            return [
-                'id' => (int) $s->id,
-                'sale_no' => $s->sale_no,
+            return $row + [
                 'sale_uuid' => $s->sale_uuid,
-                'order_type' => $s->order_type,
-                'status' => $s->status,
-                'payment_status' => $s->payment_status,
-                'customer' => $s->customer_name ?: 'Walk-in',
-                'delivery_channel' => $s->deliveryChannel?->name,
-                'delivery_channel_type' => $s->deliveryChannel?->type,
-                'delivery_rider' => $s->deliveryRider?->name,
-                'waiter' => $s->restaurantWaiter?->name,
-                'vehicle_number' => $s->vehicle_number,
-                'table' => $s->restaurantTable?->table_no,
-                'total' => number_format((float) $s->grand_total, 2, '.', ''),
                 'grand_total' => (float) $s->grand_total,
-                'time' => ($s->sale_date ?? $s->created_at)?->toIso8601String(),
+                'time_iso' => ($s->sale_date ?? $s->created_at)?->toIso8601String(),
                 'edge_sync_state' => $s->edge_sync_state,
-                'printing' => $mine->isEmpty() ? null : [
-                    'kot' => $last('kot'), 'receipt' => $last('receipt'), 'reminder' => $last('reminder'),
-                    'resume_available' => $pending,
-                ],
+                'origin' => $mirrored ? 'online' : 'local',
             ];
         })->values()->all();
     }

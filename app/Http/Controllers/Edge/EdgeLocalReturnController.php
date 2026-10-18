@@ -196,7 +196,8 @@ class EdgeLocalReturnController extends Controller
                 'lines.product.unit', 'lines.variant', 'lines.returnLines',
             ])
                 ->where('branch_id', $branchId)
-                ->whereIn('status', ['paid', 'partially_returned', \App\Services\Edge\EdgeReturnableSaleCacheService::SHADOW_STATUS])
+                // gap C: a mirrored Cloud sale is returnable only by its CLOUD status (the mirror also lists history rows)
+                ->tap(fn ($q) => \App\Services\Edge\EdgeReturnableSaleCacheService::scopeReturnable($q))
                 ->when($scope->isScoped($user), fn ($q) => $scope->applyToSales($q, $user))
                 ->find((int) $request->input('sales_order_id'));
         }

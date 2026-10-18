@@ -53,7 +53,11 @@ class EdgeReturnableSaleCacheService
                 $map = $conn->table('edge_returnable_sales')->where('cloud_sales_order_id', (int) $sale['cloud_sales_order_id'])->lockForUpdate()->first();
                 $localSaleId = $map ? (int) $map->local_sales_order_id : $this->insertShadowSale($sale, $branchId);
                 if ($map) {
-                    $conn->table('sales_orders')->where('id', $localSaleId)->update([
+                    // REFRESH RULE (gap C): the mirrored row FOLLOWS the Cloud — totals AND every presentation fact the Recent
+                    // Orders row reads (table / waiter / channel / rider re-resolved against the bootstrapped rows, customer,
+                    // vehicle, order type, payment status, dates). The Cloud status lives on the mapping (cloud_status): a
+                    // sale cancelled after it was mirrored stops being returnable on this package, with no duplicate row.
+                    $conn->table('sales_orders')->where('id', $localSaleId)->update($this->presentationColumns($sale) + [
                         'grand_total' => (float) $sale['grand_total'], 'delivery_charge_amount' => (float) ($sale['delivery_charge_amount'] ?? 0),
                         'discount_amount' => (float) ($sale['discount_amount'] ?? 0), 'business_date' => $sale['business_date'] ?? null, 'updated_at' => now(),
                     ]);
@@ -94,6 +98,30 @@ class EdgeReturnableSaleCacheService
     public function mappingFor(int $localSaleId): ?object
     {
         return DB::connection('tenant')->table('edge_returnable_sales')->where('local_sales_order_id', $localSaleId)->first();
+    }
+
+    /**
+     * THE RETURN GUARD — what the return flow may touch (search / open / post), on both kinds of local row:
+     *   - a LOCAL sale whose own status is returnable (paid / partially_returned);
+     *   - a MIRRORED Cloud sale (status cloud_mirror) whose CLOUD status is returnable.
+     * Since gap C the mirror also carries the Recent Orders population (cancelled sales included), so the shadow marker
+     * alone is no longer "returnable": the Cloud status on the mapping decides, exactly as RETURNABLE_STATUSES decides Online.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder  $query  a sales_orders query
+     */
+    public static function scopeReturnable($query, string $table = 'sales_orders')
+    {
+        return $query->where(function ($w) use ($table) {
+            $w->whereIn("{$table}.status", EdgeReturnableSaleProjectionService::RETURNABLE_STATUSES)
+                ->orWhere(function ($shadow) use ($table) {
+                    $shadow->where("{$table}.status", self::SHADOW_STATUS)
+                        ->whereExists(function ($exists) use ($table) {
+                            $exists->selectRaw('1')->from('edge_returnable_sales as rs')
+                                ->whereColumn('rs.local_sales_order_id', "{$table}.id")
+                                ->whereIn('rs.cloud_status', EdgeReturnableSaleProjectionService::RETURNABLE_STATUSES);
+                        });
+                });
+        });
     }
 
     /** @return array<int,int> local line id => cloud line id */
@@ -141,27 +169,66 @@ class EdgeReturnableSaleCacheService
         return ['ok' => $ok, 'reasons' => $reasons, 'watermark' => $cached, 'as_of' => $asOf?->toIso8601String()];
     }
 
+    /** A Cloud id is stored only when the bootstrapped local row exists (FK-safe); otherwise NULL — Online's relation would be null too. */
+    private function localIdIfKnown(array $sale, string $key, string $table): ?int
+    {
+        if (empty($sale[$key])) {
+            return null;
+        }
+
+        return DB::connection('tenant')->table($table)->where('id', (int) $sale[$key])->exists() ? (int) $sale[$key] : null;
+    }
+
+    /**
+     * The presentation facts the Recent Orders row (App\Support\Pos\RecentOrders) reads from a mirrored sale — written on
+     * insert AND on every refresh so the row follows the Cloud (table moved, customer attached, status of payment …).
+     * Relation ids are resolved against the bootstrapped config rows by identity: the label Online renders through
+     * `restaurantTable.table_no` is rendered here through the same relation on the same row (shipped by bootstrap /
+     * config refresh); an id the appliance does not hold yet stays NULL until the next package re-resolves it.
+     */
+    private function presentationColumns(array $sale): array
+    {
+        return [
+            'customer_id' => $this->localIdIfKnown($sale, 'customer_id', 'customers'),
+            'customer_name' => $sale['customer_name'] ?? null,
+            'customer_phone' => $sale['customer_phone'] ?? null,
+            'restaurant_waiter_id' => $this->localIdIfKnown($sale, 'restaurant_waiter_id', 'restaurant_waiters'),
+            'restaurant_table_id' => $this->localIdIfKnown($sale, 'restaurant_table_id', 'restaurant_tables'),
+            'delivery_channel_id' => $this->localIdIfKnown($sale, 'delivery_channel_id', 'delivery_channels'),
+            'delivery_rider_id' => $this->localIdIfKnown($sale, 'delivery_rider_id', 'delivery_riders'),
+            'vehicle_number' => $sale['vehicle_number'] ?? null,
+            'order_type' => (string) ($sale['order_type'] ?? 'takeaway'),
+            'payment_status' => (string) ($sale['payment_status'] ?? 'paid'),
+            'sale_date' => $this->instant($sale['sale_date'] ?? null) ?? now()->format('Y-m-d H:i:s'),
+            'completed_at' => $this->instant($sale['completed_at'] ?? null) ?? $this->instant($sale['sale_date'] ?? null) ?? now()->format('Y-m-d H:i:s'),
+        ];
+    }
+
+    /**
+     * A package instant (ISO-8601 with offset) as the app-timezone DATETIME string the tables hold. The refresh path writes
+     * through the query builder, where a raw "+00:00" literal would be re-read by MySQL in the SESSION time zone and shift
+     * the sale by the branch offset; the model cast on insert does the same conversion, so both paths store one instant.
+     */
+    private function instant(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return Carbon::parse((string) $value)->setTimezone(config('app.timezone', 'UTC'))->format('Y-m-d H:i:s');
+    }
+
     private function insertShadowSale(array $sale, int $branchId): int
     {
-        $conn = DB::connection('tenant');
-        $terminalId = isset($sale['terminal_id']) && $conn->table('terminals')->where('id', (int) $sale['terminal_id'])->exists() ? (int) $sale['terminal_id'] : null;
-        $userId = isset($sale['created_by_user_id']) && $conn->table('users')->where('id', (int) $sale['created_by_user_id'])->exists() ? (int) $sale['created_by_user_id'] : null;
-        $customerId = isset($sale['customer_id']) && $conn->table('customers')->where('id', (int) $sale['customer_id'])->exists() ? (int) $sale['customer_id'] : null;
-        $waiterId = isset($sale['restaurant_waiter_id']) && $conn->table('restaurant_waiters')->where('id', (int) $sale['restaurant_waiter_id'])->exists() ? (int) $sale['restaurant_waiter_id'] : null;
+        $terminalId = $this->localIdIfKnown($sale, 'terminal_id', 'terminals');
+        $userId = $this->localIdIfKnown($sale, 'created_by_user_id', 'users');
 
-        $row = new SalesOrder([
+        $row = new SalesOrder($this->presentationColumns($sale) + [
             'sale_no' => (string) $sale['sale_no'],
             'client_uuid' => null,
             'branch_id' => $branchId,
             'terminal_id' => $terminalId,
-            'customer_id' => $customerId,
-            'customer_name' => $sale['customer_name'] ?? null,
-            'customer_phone' => $sale['customer_phone'] ?? null,
-            'restaurant_waiter_id' => $waiterId,
-            'vehicle_number' => $sale['vehicle_number'] ?? null,
             'order_source' => 'pos',
-            'order_type' => (string) ($sale['order_type'] ?? 'takeaway'),
-            'sale_date' => $sale['sale_date'] ?? now(),
             'business_date' => $sale['business_date'] ?? null,
             'subtotal' => (float) ($sale['subtotal'] ?? 0),
             'discount_type' => in_array((string) ($sale['discount_type'] ?? 'none'), ['none', 'fixed', 'percent'], true) ? (string) ($sale['discount_type'] ?? 'none') : 'none',
@@ -177,7 +244,6 @@ class EdgeReturnableSaleCacheService
             'change_amount' => (float) ($sale['change_amount'] ?? 0),
             'status' => self::SHADOW_STATUS,
             'inventory_posted' => true,
-            'completed_at' => $sale['completed_at'] ?? ($sale['sale_date'] ?? now()),
             'created_by_user_id' => $userId,
         ]);
         if (! empty($sale['sale_uuid'])) {

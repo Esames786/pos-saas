@@ -90,6 +90,10 @@ return [
     */
     'returns' => [
         'cache_window_days'      => (int) env('EDGE_RETURNS_CACHE_WINDOW_DAYS', 14),  // returnable Cloud sales mirrored to the appliance
+        // Gap C (18 Oct 2026): the SAME projection also mirrors Online's Recent Orders population — the branch's newest N
+        // non-held, numbered sales (cancelled included) — so a STANDBY appliance's Recent Orders reads like Online's.
+        // N is a superset of any Online list of 50 after the operator's order-type / data-scope narrowing.
+        'recent_orders_mirror_limit' => (int) env('EDGE_RECENT_ORDERS_MIRROR_LIMIT', 200),
         'offline_refund_methods' => ['cash'],
     ],
 

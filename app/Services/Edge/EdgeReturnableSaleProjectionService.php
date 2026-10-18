@@ -4,20 +4,36 @@ namespace App\Services\Edge;
 
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\SalesOrder;
+use App\Support\Pos\RecentOrders;
 use Illuminate\Support\Facades\DB;
 
 /**
- * OFFLINE EDGE — F1 (Cloud side): the RETURNABLE-SALE PROJECTION a branch appliance mirrors while the Cloud writes.
+ * OFFLINE EDGE — F1 (Cloud side): the SALE PROJECTION a branch appliance mirrors while the Cloud writes.
  *
- * Read-only, from the Cloud's own truth: the branch's sales still returnable (status paid / partially_returned)
- * within the configured window, with the lines (all kinds — combo components restore stock in proportion), the
- * tenders (default refund method policy), the posted returns (exact remaining discount/tax allocation) and the unit
- * facts (unit-aware return stepper). The WATERMARK is a content hash over everything that can change a returnable
- * balance, advertised on every heartbeat so the appliance can prove its cache is current.
+ * Read-only, from the Cloud's own truth. The population is the UNION of two rules, each the appliance needs for one job:
+ *
+ *   RETURNABLE  the branch's sales still returnable (status paid / partially_returned) within the configured window —
+ *               with the lines (all kinds — combo components restore stock in proportion), the tenders (default refund
+ *               method policy), the posted returns (exact remaining discount/tax allocation) and the unit facts
+ *               (unit-aware return stepper). What the RETURN flow may touch is still exactly RETURNABLE_STATUSES: the
+ *               appliance keeps the Cloud status per mirrored sale and its return guard filters on it.
+ *   RECENT      Phase 4 gap C (owner decision 18 Oct 2026): the sales Online's Recent Orders list shows — every non-held
+ *               sale with a sale number, cancelled INCLUDED — newest `edge.returns.recent_orders_mirror_limit` (200) by
+ *               id, a superset of any Online list of 50 after the operator's order-type / data-scope narrowing. Each
+ *               carries what the shared view's row needs: restaurant_table_id (the label is the bootstrapped table row's
+ *               table_no, resolved by identity on the appliance exactly as Online resolves it through the relation),
+ *               restaurant_waiter_id, delivery_channel_id, delivery_rider_id, customer name/phone, vehicle, payment_status.
+ *
+ * The WATERMARK is a content hash over everything that can change a returnable balance OR a Recent Orders row (status,
+ * updated_at, grand_total, table), advertised on every heartbeat so the appliance can prove its cache is current and
+ * re-pull when a mirrored sale changes (cancelled after mirroring, table moved, partially returned).
  */
 class EdgeReturnableSaleProjectionService
 {
     public const RETURNABLE_STATUSES = ['paid', 'partially_returned'];
+
+    /** Additive package generation: 2 = recent-orders population + presentation fields (18 Oct 2026). */
+    public const PACKAGE_GENERATION = 2;
 
     private function windowStart(): string
     {
@@ -26,13 +42,30 @@ class EdgeReturnableSaleProjectionService
         return now()->subDays($days)->toDateString();
     }
 
+    private function recentLimit(): int
+    {
+        return max(RecentOrders::LIMIT, (int) config('edge.returns.recent_orders_mirror_limit', 200));
+    }
+
+    /** @return int[] ascending ids: returnable-in-window ∪ Online's recent-orders population (newest N non-held, numbered). */
     private function populationIds(int $branchId): array
     {
-        return DB::connection('tenant')->table('sales_orders')
+        $conn = DB::connection('tenant');
+        $returnable = $conn->table('sales_orders')
             ->where('branch_id', $branchId)
             ->whereIn('status', self::RETURNABLE_STATUSES)
             ->whereRaw('COALESCE(business_date, DATE(sale_date)) >= ?', [$this->windowStart()])
-            ->orderBy('id')->pluck('id')->map(fn ($v) => (int) $v)->all();
+            ->pluck('id')->map(fn ($v) => (int) $v)->all();
+        $recent = $conn->table('sales_orders')
+            ->where('branch_id', $branchId)
+            ->whereNotIn('status', RecentOrders::EXCLUDED_STATUSES)
+            ->whereNotNull('sale_no')
+            ->orderByDesc('id')->limit($this->recentLimit())
+            ->pluck('id')->map(fn ($v) => (int) $v)->all();
+        $ids = array_values(array_unique(array_merge($returnable, $recent)));
+        sort($ids);
+
+        return $ids;
     }
 
     /** @return array{watermark:string, as_of:string} */
@@ -42,8 +75,8 @@ class EdgeReturnableSaleProjectionService
         $ids = $this->populationIds($branchId);
         $parts = [];
         if ($ids !== []) {
-            foreach ($conn->table('sales_orders')->whereIn('id', $ids)->orderBy('id')->get(['id', 'status', 'updated_at', 'grand_total']) as $s) {
-                $parts[] = 's:' . $s->id . ':' . $s->status . ':' . $s->updated_at . ':' . $s->grand_total;
+            foreach ($conn->table('sales_orders')->whereIn('id', $ids)->orderBy('id')->get(['id', 'status', 'updated_at', 'grand_total', 'restaurant_table_id']) as $s) {
+                $parts[] = 's:' . $s->id . ':' . $s->status . ':' . $s->updated_at . ':' . $s->grand_total . ':' . ($s->restaurant_table_id ?? '');
             }
             foreach ($conn->table('sales_order_lines')->whereIn('sales_order_id', $ids)->orderBy('id')->get(['id', 'quantity', 'returned_quantity']) as $l) {
                 $parts[] = 'l:' . $l->id . ':' . $l->quantity . ':' . $l->returned_quantity;
@@ -53,12 +86,11 @@ class EdgeReturnableSaleProjectionService
             }
         }
 
-        return ['watermark' => 'rw:' . substr(hash('sha256', implode('|', $parts) . '|' . $branchId), 0, 40), 'as_of' => now()->toIso8601String()];
+        return ['watermark' => 'rw:' . substr(hash('sha256', implode('|', $parts) . '|' . $branchId . '|g' . self::PACKAGE_GENERATION), 0, 40), 'as_of' => now()->toIso8601String()];
     }
 
     public function package(Branch $branch): array
     {
-        $conn = DB::connection('tenant');
         $branchId = (int) $branch->id;
         $wm = $this->watermark($branchId);
         $ids = $this->populationIds($branchId);
@@ -71,6 +103,8 @@ class EdgeReturnableSaleProjectionService
                     'sale_uuid' => $o->sale_uuid ?: null,
                     'sale_no' => (string) $o->sale_no,
                     'status' => (string) $o->status,
+                    'returnable' => in_array((string) $o->status, self::RETURNABLE_STATUSES, true),
+                    'payment_status' => $o->payment_status !== null ? (string) $o->payment_status : null,
                     'updated_at' => optional($o->updated_at)->toIso8601String(),
                     'order_type' => (string) $o->order_type,
                     'sale_date' => optional($o->sale_date)->toIso8601String() ?? (string) $o->sale_date,
@@ -81,6 +115,10 @@ class EdgeReturnableSaleProjectionService
                     'customer_name' => $o->customer_name,
                     'customer_phone' => $o->customer_phone,
                     'restaurant_waiter_id' => $o->restaurant_waiter_id ? (int) $o->restaurant_waiter_id : null,
+                    // Gap C — the Recent Orders row: table (label = the bootstrapped table row's table_no), channel, rider.
+                    'restaurant_table_id' => $o->restaurant_table_id ? (int) $o->restaurant_table_id : null,
+                    'delivery_channel_id' => $o->delivery_channel_id ? (int) $o->delivery_channel_id : null,
+                    'delivery_rider_id' => $o->delivery_rider_id ? (int) $o->delivery_rider_id : null,
                     'vehicle_number' => $o->vehicle_number,
                     'created_by_user_id' => $o->created_by_user_id ? (int) $o->created_by_user_id : null,
                     'subtotal' => (float) $o->subtotal, 'discount_type' => (string) ($o->discount_type ?? 'none'), 'discount_value' => (float) ($o->discount_value ?? 0),
@@ -132,7 +170,9 @@ class EdgeReturnableSaleProjectionService
             'branch_id' => $branchId,
             'watermark' => $wm['watermark'],
             'as_of' => $wm['as_of'],
+            'generation' => self::PACKAGE_GENERATION,
             'window_days' => (int) config('edge.returns.cache_window_days', 14),
+            'recent_limit' => $this->recentLimit(),
             'sales' => $sales,
         ];
     }

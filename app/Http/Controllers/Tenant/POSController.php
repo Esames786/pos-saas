@@ -23,6 +23,7 @@ use App\Services\Sales\SalesTotalsService;
 use App\Services\Security\UserDataScope;
 use App\Support\Pos\CloudPosRuntimeFactory;
 use App\Support\Pos\PosPageData;
+use App\Support\Pos\RecentOrders;
 use App\Support\Pos\RecipeAvailability;
 use Illuminate\Http\Request;
 
@@ -810,60 +811,24 @@ class POSController extends Controller
             app(UserDataScope::class)->assertPosSelection(auth('tenant')->user(), $branchId, null);
         }
 
-        // Only the order types this operator is allowed to run — a delivery counter never sees
-        // dine-in/takeaway orders. An optional filter narrows further, but never widens.
-        $allowedTypes = auth("tenant")->user()?->effectiveAllowedOrderTypes() ?? [];
-        $filterType = (string) $request->input('order_type', '');
-
-        $sales = SalesOrder::with(['customer', 'deliveryChannel', 'deliveryRider', 'branch', 'shift',
-                                   'restaurantWaiter', 'restaurantTable'])
-            ->where('status', '!=', 'held')
-            ->whereNotNull('sale_no')
-            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
-            ->when($allowedTypes, fn ($q) => $q->whereIn('order_type', $allowedTypes))
-            ->when($filterType !== '' && in_array($filterType, $allowedTypes, true),
-                fn ($q) => $q->where('order_type', $filterType))
-            ->tap(fn ($query) => app(UserDataScope::class)->applyToSales($query, auth('tenant')->user()))
-            ->orderByDesc('id')
-            ->limit(50)
+        // ONE list rule for both runtimes (App\Support\Pos\RecentOrders — Phase 4 gap C): inclusion (every non-held sale
+        // with a sale number, cancelled included; only the order types this operator may run — an optional filter
+        // narrows, never widens; UserDataScope), newest 50 by id, and the row the shared view consumes. The Branch
+        // Server twin (EdgeLocalOrderLifecycleService::recentSales) calls the same class; Online's only runtime truth
+        // here is its direct-pay print state.
+        $user = auth('tenant')->user();
+        $sales = RecentOrders::applyInclusion(
+            SalesOrder::with(RecentOrders::RELATIONS),
+            $user,
+            $branchId ?: null,
+            (string) $request->input('order_type', '')
+        )
+            ->orderByDesc('sales_orders.id')
+            ->limit(RecentOrders::LIMIT)
             ->get();
 
         return response()->json([
-            'sales' => $sales->map(function ($s) {
-                $printState = $s->direct_pay_print_state;
-                $resumePrinting = $printState && (
-                    in_array($printState['kot_status'] ?? null, ['pending', 'pending_retry'], true)
-                    || in_array($printState['receipt_status'] ?? null, ['pending', 'pending_retry'], true)
-                    || in_array($printState['reminder_status'] ?? null, ['pending_retry', 'awaiting_confirmation'], true)
-                );
-
-                return [
-                'id'             => (int) $s->id,
-                'sale_no'        => $s->sale_no,
-                'order_type'     => $s->order_type,
-                'status'         => $s->status,
-                'payment_status' => $s->payment_status,
-                'customer'       => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
-                // Both lists render order meta through one JS helper, so both must feed it the
-                // same keys: which channel took the order, and who is carrying it.
-                'delivery_channel'      => $s->deliveryChannel?->name,
-                'delivery_channel_type' => $s->deliveryChannel?->type,
-                'delivery_rider'        => $s->deliveryRider?->name,
-                // Waiter (quick-sale + dine-in), vehicle (quick-sale), table (dine-in) for the list.
-                'waiter'         => $s->restaurantWaiter?->name,
-                'vehicle_number' => $s->vehicle_number,
-                'table'          => $s->restaurantTable?->table_no,
-                'total'          => number_format((float) $s->grand_total, 2),
-                'time'           => app(\App\Support\TenantClock::class)->formatSale($s, 'd M, h:i A'),
-                'ago'            => optional($s->sale_date ?? $s->created_at)->diffForHumans(),
-                'printing'       => $printState ? [
-                    'kot' => $printState['kot_status'] ?? null,
-                    'receipt' => $printState['receipt_status'] ?? null,
-                    'reminder' => $printState['reminder_status'] ?? null,
-                    'resume_available' => $resumePrinting,
-                ] : null,
-                ];
-            })->values(),
+            'sales' => $sales->map(fn (SalesOrder $s) => RecentOrders::present($s, RecentOrders::directPayPrinting($s)))->values(),
         ]);
     }
 }
