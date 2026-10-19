@@ -36,7 +36,7 @@ final class PackLines
     public static function toLines(array $lines, string $qtyField, bool $isGrn, ?int $branchId = null): array
     {
         $lines = array_values(array_filter($lines, fn ($l) => is_array($l) && ! empty($l['product_id'])));
-        $products = Product::with(['unit', 'packUnits', 'defaultVariant'])->whereIn('id', array_map(fn ($l) => (int) $l['product_id'], $lines))->get()->keyBy('id');
+        $products = Product::with(['unit', 'packUnits', 'defaultVariant', 'purchaseUnit'])->whereIn('id', array_map(fn ($l) => (int) $l['product_id'], $lines))->get()->keyBy('id');
         $packsOn = PackUnits::enabled();
         $today = Carbon::now('Asia/Karachi')->startOfDay();
         $errors = [];
@@ -140,7 +140,7 @@ final class PackLines
                 // batch box / batches made beforehand use. A null variant would file the stock where nothing finds it.
                 'product_variant_id'     => ($l['product_variant_id'] ?? null) ?: $p->defaultVariant?->id,
                 'pack_unit_id'           => $buy['id'],
-                'pack_factor'            => $buy['factor'],
+                'pack_factor'            => self::wholeOrNull($buy['factor']),
             ] + ($isGrn ? [
                 'batch_no'               => ($b = strtoupper(trim((string) ($l['batch_no'] ?? '')))) !== '' ? $b : null,
                 'expiry_date'            => $expiry ?: null,
@@ -154,7 +154,7 @@ final class PackLines
                     'unit_cost'              => round($net, 4),
                     'discount_amount'        => 0,
                     'tax_amount'             => 0,
-                    'notes'                  => self::note($p, $packs, $l, $buy, $priceRaw, $discRaw),
+                    'notes'                  => self::withNote(self::note($p, $packs, $l, $buy, $priceRaw, $discRaw), $l),
                 ];
             }
             if ($free > 0) {
@@ -195,7 +195,34 @@ final class PackLines
             return $out;
         }
 
-        return ['base' => ['id' => null, 'name' => $baseName, 'factor' => 1, 'can_buy' => true]];
+        // PURCHASING-V2-2 (owner: "kis unit mein purchase karein"): the product screen's "bought in — holding"
+        // (e.g. a Sack holding 50 Kilogram) is a buying pack on the GRN / PO too. Until now only recipe costing
+        // read it; the price is then per sack and the stock still goes in by the kilogram.
+        $out = [];
+        $size = (float) ($p->purchase_pack_size ?? 0);
+        if ($p->purchase_unit_id && $size > 0 && abs($size - 1) > 1e-9 && $p->purchaseUnit) {
+            $out['buy'] = ['id' => null, 'name' => $p->purchaseUnit->name, 'factor' => $size, 'can_buy' => true,
+                'holds' => rtrim(rtrim(number_format($size, 4, '.', ''), '0'), '.') . ' ' . $baseName];
+        }
+        $out['base'] = ['id' => null, 'name' => $baseName, 'factor' => 1, 'can_buy' => true];
+
+        return $out;
+    }
+
+    /** pack_factor is a whole-number column: a 12.5 kg "pack" is kept in the note, not there. */
+    public static function wholeOrNull($factor): ?int
+    {
+        $f = (float) $factor;
+
+        return abs($f - round($f)) < 1e-9 ? (int) round($f) : null;
+    }
+
+    /** The person's own note on a line ("one carton torn"), after what the line said. */
+    public static function withNote(string $summary, array $l): string
+    {
+        $note = trim(preg_replace('/\s+/u', ' ', (string) ($l['note'] ?? '')));
+
+        return mb_substr($note !== '' ? $summary . ' · ' . $note : $summary, 0, 500);
     }
 
     /** @param array<string,array{id:?int,name:string,factor:int,can_buy:bool}> $packs */

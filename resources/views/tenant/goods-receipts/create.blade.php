@@ -145,6 +145,8 @@
 </form>
 @endsection
 
+{{-- PURCHASING-V2-2: the new screen shows a full preview before posting instead of this question. --}}
+@if(!($entryV2 ?? false))
 @push('scripts')
 <script>
 (function () {
@@ -172,3 +174,4 @@
 })();
 </script>
 @endpush
+@endif

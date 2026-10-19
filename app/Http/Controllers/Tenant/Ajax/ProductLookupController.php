@@ -139,6 +139,10 @@ class ProductLookupController extends Controller
         if ($withPacks) {
             $query->with('packUnits');
         }
+        if ($request->boolean('packs')) {
+            // The new purchase screens offer the product's "bought in" unit (a 50 kg sack) with or without packs.
+            $query->with('purchaseUnit:id,name');
+        }
 
         $total = (clone $query)->count();
 
@@ -288,6 +292,7 @@ class ProductLookupController extends Controller
                 // PURCHASING-V2-1: biggest pack first; 'key' is what the page posts back (a pack id, or "base").
                 'unit_name'    => $p->unit?->name ?: 'Piece',
                 'packs'        => collect(\App\Support\PackLines::packsOf($p, $withPacks))->map(fn ($pk, $key) => $pk + ['key' => (string) $key])->values()->all(),
+                'unit_set'     => (bool) $p->unit_id,
                 'scanned_pack' => $withPacks && $q !== '' ? (string) ($p->packUnits->firstWhere('barcode', $q)?->id ?? '') : '',
                 'last_cost'    => $supplierId > 0 ? self::lastCost($p->id, $supplierId) : null,
             ] : []));

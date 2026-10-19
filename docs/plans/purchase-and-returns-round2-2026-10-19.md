@@ -304,6 +304,64 @@ Proof:
 - A browser drive on a local test shop: search, F2 new supplier, batch list, lock, new batch, reload →
   bring back, Post → saved on the same page, Batches page new + change expiry. 0 page errors.
 
+**Step 1 LIVE 19 Oct ~20:15 PKT (`0886108f`).** On pharmacydemo only. Permissions: only the Owner role gained
+the 4 new route names; no role lost anything; plans unchanged; smoke 13/13.
+
+**Step 2 built 19 Oct, night (PURCHASE-RETURN-V2).** Same switch, now named "New purchase screens (PO, GRN &
+Returns)".
+
+- **The page.** `/purchase-returns/create` shows the new page (supplier box, branch, date, a reason for all
+  lines, notes). "From a receipt (GRN)" lists this supplier's last receipts.
+- **Entry area in return mode.**
+  - Search an item; ↓ lists only the batches that have stock, expired ones included.
+  - Quantity in Box / Strip / Tablet; price per pack; a reason on each line.
+- **Receipt panel.** It shows "Can still go back", never more than the batch holds now, or "Nothing left in
+  this batch". "Return" brings the line up with its batch and the receipt rate.
+- **Without a receipt.** The price is what one unit of that batch cost (keeps the books equal to the stock
+  value).
+- **Mixed.** Receipt lines and extra items go in one return.
+- **Expired stock.** "This supplier's expired stock" + a month lists every batch from that supplier with
+  stock that has expired, or will by then. Tick, and the batches go in the list.
+- **Save or post.** "Post return" (asks once) or "Save as draft". Either way it saves without reload. A
+  refused post leaves no draft behind.
+- **The fix.** Stock leaves **the batch on the line**, through `InventoryService::postOutFefo(onlyBatchId)`,
+  which refuses rather than going negative. Old-screen returns (no batch on the line) leave oldest-first
+  exactly as before.
+- **Proof that the test bites.** With the one line removed, `test_a_return_in_packs_leaves_from_the_batch_picked`
+  fails with 350 left instead of 150.
+- **The return page** prints the packs: "1 Box 15 Strip @ 900 / Box · B:RB-NEW EXP:09/28".
+- **Old bug fixed for everyone.** Inventory → Batches marked EVERY future batch "Expiring": Carbon's
+  `diffInDays` is signed now. It now marks only batches within 30 days.
+
+**Round 3 (owner, 19 Oct ~19:15–19:35, after using it on pharmacydemo and kashiffood):**
+
+Kashiffood: **the owner switched "New purchase screens" ON himself**, so it is a live tenant on these screens.
+
+- **One straight row.** Every box has the same label height. Price and "/ Box ▾" are one box. Notes under
+  the boxes no longer push them.
+- **The old screen's batch rule.** A batch number is asked only for "requires batch" items, an expiry only
+  for "has expiry" items. Otherwise "optional": a restaurant's milk needs no batch number. A picked batch
+  edited into a new number clears its expiry.
+- **Bought-in unit.** The product's "bought in X holding N" (e.g. Sack holding 50 Kilogram) is a buying box
+  on GRN / PO / return. The price is per sack; stock still goes in by the kilogram. Until now only recipe
+  costing read it.
+- **"Counted in"** shows on the item card, with "set its unit ↗" when the item has no unit (kashiffood's
+  two buyable items have none).
+- **Each line shows** "In stock now" and its own note. The note is saved in the line's notes after the
+  packs: "2 Sack 5 Kilogram @ 9000 / Sack · one sack torn".
+- **Totals at the bottom.** Goods before discount, discount, goods, extra charges (GRN, live as typed),
+  total.
+- **Preview before anything is saved.** Ctrl+S, or the Post / Save button, opens it. It shows who / branch
+  / date, every line with batch, expiry, packs, free, price, disc or reason, short-expiry warnings, and
+  what will happen ("Stock goes up …, the supplier's bill Rs X"). Enter posts; Esc goes back. A return
+  also has "Save as draft". It replaces the old "Post this GRN?" popup on the new screens.
+- **Enter through the header.** Supplier → branch → date → charges → notes → the item search. F2 adds a
+  new supplier.
+- **"All batches ↗"** from the item card opens Inventory → Batches for that item. That page is the batch /
+  expiry screen: "+ New batch" and "Change expiry".
+- **Kitchen test.** Chicken 12.5 kg, rice 2 sacks + 5 kg at 9,000 / sack = 105 kg @ 180, milk with expiry
+  and no batch, gas purchase-only (no stock). PurchasingV2MySqlTest is 18 / 211.
+
 | Step | Work | Needs |
 | --- | --- | --- |
 | 1 | Purchasing tabs + supplier search + "+ New supplier" + batch box + save without reload (PO, GRN) | — |
