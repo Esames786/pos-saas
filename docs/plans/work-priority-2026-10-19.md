@@ -40,6 +40,20 @@ switches it on. Tentative boards for P1: https://claude.ai/artifact/LBfacrEPnNJL
 - **What a draft PO does.** It stays draft after a GRN, as before; only an approved PO moves to
   partly / fully received.
 
+**Round 2 (owner, 19 Oct ~17:40, after trying it):** see
+`docs/plans/purchase-and-returns-round2-2026-10-19.md`. It covers:
+- purchasing tabs;
+- supplier search and a new supplier on the page;
+- a batch box;
+- saving without reload;
+- purchase discounts and scheme;
+- purchase / sales returns from a bill, without one, or mixed, in packs, with "Back on the shelf?";
+- kg / gram.
+
+It also has market research and owner decisions. **It found a bug:** a purchase return takes stock from the
+oldest-expiry batch, not the batch being returned — fixed in step 2 there. Three small fixes from his first
+try are live (`ad8f1494`).
+
 Rules for P1 (from the risk review, rev 32):
 - The stock engine stays as it is. Packs become tablets just before it; quantity and cost on a line stay in the
   pack the user typed. The line's `base_quantity` is set only when it carries a pack.
