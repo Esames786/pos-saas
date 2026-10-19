@@ -79,11 +79,12 @@
             'show_column_dividers'   => 'Column Divider Lines',
             'show_category_header'   => 'KOT Category Header',
             'show_heading_stars'     => 'Stars around KOT heading (*** KOT #1 ***)',
+            'show_bill_barcode'      => 'Bill number as a big barcode (scan it at the billing counter)',
         ] as $field => $label)
         @php
             // Most toggles default ON for a brand-new layout; dividers are the exception (today's
             // tickets have none), so they default OFF until an operator turns them on.
-            $switchDefault = $field === 'show_column_dividers' ? false : true;
+            $switchDefault = in_array($field, ['show_column_dividers', 'show_bill_barcode'], true) ? false : true;
         @endphp
         <div class="col-md-4 layout-option" data-layout-field="{{ $field }}">
             <div class="form-check form-switch">

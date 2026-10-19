@@ -155,6 +155,18 @@
 <div>Order: <span class="bold">{{ $salesOrder->sale_no ?? $salesOrder->order_no }}</span></div>
 @endif
 
+{{-- BILL-BARCODE-1: the bill number, big, for the billing counter's scanner. Only where the layout switch is
+     SAVED on (never $show(): that treats a missing switch as on, and every tenant would get a barcode). --}}
+@php
+    $billCode = (data_get($layout, 'show_bill_barcode') === true)
+        ? (data_get($salesOrder, 'bill_code') ?: (data_get($salesOrder, 'id') ? \App\Support\Code128::billCode((int) data_get($salesOrder, 'id')) : null))
+        : null;
+@endphp
+@if($billCode)
+<div class="center" style="margin:6px 0 2px">{!! \App\Support\Code128::svg($billCode, 60, 2) !!}</div>
+<div class="center bold" style="font-size:1.25em;letter-spacing:.08em">{{ $billCode }}</div>
+@endif
+
 <div>Date: {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->copy()->timezone($printTz)->format('d/m/Y h:i A') }}</div>
 
 @if($show('show_cashier_name') && $salesOrder->createdBy)

@@ -81,9 +81,15 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         // the shortcut list is one click (or Ctrl+/) away, and says the easy keys
         $this->assertStringContainsString('id="medKeysModal"', $pos);
         $this->assertStringContainsString('id="med-keys-btn"', $pos);
-        foreach (['Pay now (exact cash) and print', 'Hold sale (Ctrl+H too)', 'Held list — recall (Ctrl+L too)', 'Remove the item'] as $says) {
+        foreach (['Pay now (exact cash) and print', '<td>Hold sale</td>', 'Held orders — recall (Ctrl+L too)', 'Remove the item', 'A bill held at another counter comes up here'] as $says) {
             $this->assertStringContainsString($says, $pos);
         }
+        $this->assertStringContainsString('id="med-held-search"', $pos, 'Held Orders has its search / scan box');
+        $this->assertSame(2, DB::connection('tenant')->table('receipt_layout_settings')->whereIn('document_type', ['receipt', 'kot'])
+            ->where('show_bill_barcode', 1)->count(), 'the pharmacy demo prints the bill barcode on its bill and KOT (and keeps it after the nightly reset)');
+        $this->assertSame(2, substr_count($pos, 'data-med-keys title="All shortcut keys'), 'the Shortcuts button is in the top bar too');
+        $this->assertStringContainsString("h: 'held'", $pos, 'Ctrl+H opens the held orders');
+        $this->assertStringNotContainsString("r: 'held'", $pos, 'Ctrl+R stays the browser refresh');
         $this->assertScriptsParse($pos);
 
         $this->setFeatures(['product_screen_v2' => true, 'packs' => true]);
@@ -94,6 +100,8 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString('.med-list-h', $off, 'no counter styles either');
         $this->assertStringNotContainsString('id="med-notes"', $off);
         $this->assertStringNotContainsString('id="medKeysModal"', $off, 'no new keys or windows on any other counter');
+        $this->assertStringNotContainsString('id="med-held-search"', $off);
+        $this->assertStringNotContainsString('data-med-keys title=', $off, 'no Shortcuts button on any other counter');
         $this->assertStringContainsString('>Products</h2>', $off);
         $this->assertScriptsParse($off);
     }
@@ -247,6 +255,25 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         ])->assertOk();
         $html = (string) $res->json('html');
         $this->assertStringContainsString('1 Strip = 10 Tablet · B:PNLTEST EXP:09/28', $html);
+        $this->assertStringNotContainsString('aria-label="Barcode', $html, 'switch off: no barcode');
+
+        // BILL-BARCODE-1: with the bill switch on, a HELD order's preview carries its code; a new cart has none.
+        DB::connection('tenant')->table('receipt_layout_settings')->updateOrInsert(
+            ['branch_id' => $this->branchId(), 'document_type' => 'receipt'],
+            ['paper_size' => '80mm', 'is_active' => 1, 'show_bill_barcode' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        try {
+            $held = $this->owner()->postJson($this->url('/held-sales'), $this->payload([['product_id' => $p->id, 'quantity' => 1, 'unit_price' => 52.5, 'pack_unit_id' => $strip->id]]) + ['save_as_draft' => '0']);
+            $this->assertTrue($held->isSuccessful(), Str::limit($held->getContent(), 200));
+            $heldId = (int) SalesOrder::where('status', 'held')->latest('id')->value('id');
+            $line = [['product_id' => $p->id, 'quantity' => 1, 'unit_price' => 52.5, 'pack_unit_id' => $strip->id]];
+            $base = ['branch_id' => $this->branchId(), 'terminal_id' => $this->terminal()->id, 'order_type' => 'takeaway', 'lines' => $line];
+            $withHeld = (string) $this->owner()->postJson($this->url('/api/pos/bill-preview'), $base + ['held_sale_id' => $heldId])->assertOk()->json('html');
+            $this->assertStringContainsString('aria-label="Barcode BL' . $heldId . '"', $withHeld, 'the held bill previews with its own code');
+            $newCart = (string) $this->owner()->postJson($this->url('/api/pos/bill-preview'), $base)->assertOk()->json('html');
+            $this->assertStringNotContainsString('aria-label="Barcode', $newCart, 'a cart that was never held has no bill code');
+        } finally {
+            DB::connection('tenant')->table('receipt_layout_settings')->where('document_type', 'receipt')->update(['show_bill_barcode' => 0]);
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════════

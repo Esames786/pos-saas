@@ -565,6 +565,12 @@
                     <i class="ti ti-send me-1"></i>Quick Report
                 </button>
             @endcan
+            @if($medicalCounter ?? false)
+                {{-- MEDICAL-COUNTER-1: every shortcut key, one click away (Ctrl+/ or F1 too) --}}
+                <button type="button" class="btn btn-sm btn-dark me-2" data-med-keys title="All shortcut keys (Ctrl+/ or F1)">
+                    <i class="ti ti-keyboard me-1"></i>Shortcuts <kbd class="ms-1 bg-light text-dark">Ctrl+/</kbd>
+                </button>
+            @endif
             <button type="button" class="btn btn-sm btn-outline-dark" id="pos-customer-btn"
                     data-bs-toggle="modal" data-bs-target="#customerModal">
                 <i class="ti ti-user-search me-1"></i>Add / Search Customer
@@ -774,10 +780,10 @@
                     <span class="small text-muted d-flex align-items-center gap-2 flex-wrap">
                         <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> pay</span>
                         <span><kbd>Ctrl</kbd>+<kbd>S</kbd> hold</span>
-                        <span><kbd>Ctrl</kbd>+<kbd>R</kbd> held list</span>
+                        <span><kbd>Ctrl</kbd>+<kbd>H</kbd> held orders</span>
                         <span><kbd>Ctrl</kbd>+<kbd>D</kbd> discount</span>
                         <span><kbd>+</kbd><kbd>−</kbd> qty</span>
-                        <button type="button" class="btn btn-sm btn-outline-dark py-0" id="med-keys-btn" title="All shortcut keys (Ctrl+/ or F1)">
+                        <button type="button" class="btn btn-sm btn-outline-dark py-0" id="med-keys-btn" data-med-keys title="All shortcut keys (Ctrl+/ or F1)">
                             <i class="ti ti-keyboard me-1"></i>Shortcuts
                         </button>
                     </span>
@@ -848,6 +854,7 @@
                                                 <tr><td><kbd>Enter</kbd></td><td>Add the chosen item (the cursor goes to its Strip box)</td></tr>
                                                 <tr><td><kbd>Esc</kbd></td><td>Empty the scan box</td></tr>
                                                 <tr><td><kbd>Tab</kbd></td><td>From the scan box into the cart</td></tr>
+                                                <tr><td>Scan a bill (BL…)</td><td>A bill held at another counter comes up here to be paid</td></tr>
                                             </tbody></table>
                                             <h3 class="h6">Cart</h3>
                                             <table class="table table-sm mb-0"><tbody>
@@ -865,9 +872,9 @@
                                             <table class="table table-sm mb-3"><tbody>
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Pay now (exact cash) and print</td></tr>
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>P</kbd> or <kbd>F10</kbd></td><td>Review &amp; Pay window</td></tr>
-                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>S</kbd> or <kbd>F4</kbd></td><td>Hold sale (Ctrl+H too)</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>S</kbd> or <kbd>F4</kbd></td><td>Hold sale</td></tr>
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> or <kbd>F7</kbd></td><td>Save as draft</td></tr>
-                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>R</kbd> or <kbd>F5</kbd></td><td>Held list — recall (Ctrl+L too)</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>H</kbd> or <kbd>F5</kbd></td><td>Held orders — recall (Ctrl+L too)</td></tr>
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>D</kbd> or <kbd>F8</kbd></td><td>Discount</td></tr>
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>B</kbd> or <kbd>F9</kbd></td><td>Bill preview</td></tr>
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>U</kbd> or <kbd>F3</kbd></td><td>Customer</td></tr>
@@ -881,6 +888,13 @@
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Preview the bill</td></tr>
                                                 <tr><td><kbd>Esc</kbd></td><td>Back</td></tr>
                                             </tbody></table>
+                                            <h3 class="h6">Held orders window</h3>
+                                            <table class="table table-sm mb-3"><tbody>
+                                                <tr><td>Type / scan</td><td>Bill no, its barcode (BL…), customer or item</td></tr>
+                                                <tr><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>Enter</kbd></td><td>Choose and bring it back</td></tr>
+                                            </tbody></table>
+                                            <h3 class="h6">Prescription box</h3>
+                                            <p class="mb-3"><kbd>Enter</kbd> moves Doctor → Patient → ticks “Seen” and goes back to the scan box.</p>
                                             <h3 class="h6">Popups</h3>
                                             <p class="mb-0"><kbd>Enter</kbd> = OK. The cursor then goes back to the box you were in.</p>
                                         </div>
@@ -1317,6 +1331,14 @@
                     @endif
                 @endforeach
             </div>
+            @endif
+            @if($medicalCounter ?? false)
+                {{-- MEDICAL-COUNTER-1: find a held bill — scan its barcode (BL…) or type its number / customer / item. --}}
+                <div class="px-3 pt-2">
+                    <input type="text" class="form-control" id="med-held-search" autocomplete="off"
+                           placeholder="Scan the bill's barcode, or type bill no / customer / item — ↑ ↓ choose, Enter brings it back"
+                           aria-label="Find a held bill">
+                </div>
             @endif
             <div class="modal-body p-0" id="held-sales-modal-body">
                 <div class="text-center py-5">
@@ -4424,6 +4446,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 // A matched scan empties the box as the code arrives; its Enter must not open Review & Pay.
                 if (Date.now() - medLastScan < 600) return;
                 if (!q) { if (cart.length) document.getElementById('review-pay-btn')?.click(); return; }
+                // A bill held at another counter: its barcode (BL20339) or number brings it here to be paid.
+                if (medIsBillCode(q)) { searchEl.value = ''; medHi = 0; renderProducts(); medRecallByCode(q); return; }
                 if (handlePosBarcodeScan(q)) return;
                 var p = medRows[medHi];
                 if (p) { addToCart(p, p.variants && p.variants.length ? p.variants[0] : null); searchEl.value = ''; medHi = 0; renderProducts(); }
@@ -4453,16 +4477,17 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         // The keys. Easy ones sit under the left hand (Ctrl + a letter); the F-keys still work too.
-        //   Ctrl+Enter pay now · Ctrl+P pay window · Ctrl+S hold · Ctrl+Shift+S draft · Ctrl+R held list
+        //   Ctrl+Enter pay now · Ctrl+P pay window · Ctrl+S hold · Ctrl+Shift+S draft · Ctrl+H held orders
         //   Ctrl+D discount · Ctrl+B bill preview · Ctrl+E batch · Ctrl+U customer · Alt+N new sale
-        //   Ctrl+/ or F1 this list. Today's Ctrl+F / H / L / M / Enter are left exactly as they were.
+        //   Ctrl+/ or F1 this list. Ctrl+R stays the browser's refresh (owner, 20 Oct). Today's Ctrl+F / L / M /
+        //   Enter are left as they were; Ctrl+H means "held orders" here (Ctrl+S holds).
         var medKeyOf = function (e) {
             var k = e.key, c = e.ctrlKey || e.metaKey, lower = String(k).toLowerCase();
             if (/^F([1-9]|10)$/.test(k) && !c && !e.altKey) return k;
             if (e.altKey && !c && lower === 'n') return 'new';
             if (!c || e.altKey) return null;
             if (lower === 's') return e.shiftKey ? 'draft' : 'hold';
-            return { p: 'pay', r: 'held', d: 'discount', b: 'preview', e: 'batch', u: 'customer', '/': 'keys' }[lower] || null;
+            return { p: 'pay', h: 'held', d: 'discount', b: 'preview', e: 'batch', u: 'customer', '/': 'keys' }[lower] || null;
         };
         var medAction = { F1: 'keys', F2: 'search', F3: 'customer', F4: 'hold', F5: 'held', F6: 'batch', F7: 'draft', F8: 'discount', F9: 'preview', F10: 'pay' };
         document.addEventListener('keydown', function (e) {
@@ -4478,7 +4503,9 @@ document.addEventListener('DOMContentLoaded', function () {
             var key = medKeyOf(e);
             if (!key) return;
             var act = medAction[key] || key;
-            e.preventDefault();   // never the browser's own Ctrl+S / Ctrl+R / Ctrl+D / F5 on the counter
+            e.preventDefault();   // never the browser's own Ctrl+S / Ctrl+D / F5 on the counter
+            // today's Ctrl+H handler (further down) would HOLD the sale; here Ctrl+H opens the held orders
+            if (act === 'held' && (e.ctrlKey || e.metaKey)) e.stopImmediatePropagation();
             var pay = document.getElementById('paymentModal');
             var payOpen = pay && pay.classList.contains('show');
             var popup = document.querySelector('.swal2-container .swal2-popup');
@@ -4514,7 +4541,102 @@ document.addEventListener('DOMContentLoaded', function () {
             else if (act === 'new') click('new-sale-btn');
             else if (act === 'keys') medOpenKeys();
         });
-        document.getElementById('med-keys-btn')?.addEventListener('click', medOpenKeys);
+        document.querySelectorAll('[data-med-keys]').forEach(function (b) { b.addEventListener('click', medOpenKeys); });
+
+        // Prescription box: Enter moves Doctor → Patient → "Seen" (ticked) → back to the scan box.
+        rxDoctor?.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); rxPatient?.focus(); } });
+        rxPatient?.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            if (!medRx.seen) { medRx.seen = true; medSyncRx(); }
+            searchEl.focus();
+        });
+
+        // After the customer window (a customer added or chosen) the cursor is back in the scan box.
+        document.getElementById('customerModal')?.addEventListener('hidden.bs.modal', function () {
+            setTimeout(function () { if (!document.querySelector('.modal.show')) { searchEl.focus(); searchEl.select(); } }, 60);
+        });
+        // Held Orders: the cursor goes to its search / scan box.
+        // (by id: the page's own heldSalesModalEl is declared further down and is not ready yet here)
+        document.getElementById('heldSalesModal')?.addEventListener('shown.bs.modal', function () {
+            var hs = document.getElementById('med-held-search');
+            if (hs) { hs.value = ''; hs.focus(); }
+        });
+        // When the counter opens (or is refreshed) the cursor is in the scan box.
+        var medFocusScan = function () { if (!document.querySelector('.modal.show') && medFocusLost() || document.activeElement === document.body) { searchEl.focus(); } };
+        if (document.readyState === 'complete') setTimeout(medFocusScan, 250);
+        else window.addEventListener('load', function () { setTimeout(medFocusScan, 250); });
+    }
+
+    /* held bills: scan the bill's barcode (BL20339) or type its number / customer — at the counter or in Held Orders */
+
+    function medIsBillCode(q) { return /^BL\d+$/i.test(q) || /^HS-\d{8,}/i.test(q); }
+
+    function medHeldMatch(s, q) {
+        q = String(q || '').trim().toUpperCase();
+        if (!q) return true;
+        var m = q.match(/^BL(\d+)$/);
+        if (m) return Number(s.id) === Number(m[1]);
+        var hay = [s.sale_no, s.customer, s.customer_phone, s.total, (s.lines || []).map(function (l) { return l.product_name; }).join(' ')]
+            .join(' ').toUpperCase();
+        return hay.indexOf(q) !== -1;
+    }
+
+    function medRecallByCode(code) {
+        if (cart.length && !_currentHeldSaleId) {
+            medAlert('This sale is not saved yet. Hold it (Ctrl+S) or clear it, then scan the bill.', null);
+            return;
+        }
+        fetch('{{ url('/api/pos/held-sales') }}?branch_id=' + encodeURIComponent(selectedBranchId()), {
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var q = String(code).trim().toUpperCase();
+            var hit = (data.sales || []).find(function (s) {
+                return /^BL\d+$/.test(q) ? medHeldMatch(s, q) : String(s.sale_no).toUpperCase() === q;
+            });
+            if (!hit) { medAlert('No held bill ' + code + ' on this branch — it may already be paid or cancelled.', null); return; }
+            recallHeldSale(hit);
+            setTimeout(function () { searchEl.focus(); }, 50);
+        })
+        .catch(function () { toast('error', 'Could not load the held bills. Please try again.'); });
+    }
+
+    // Held Orders window: type or scan to narrow the list, ↑ ↓ to choose, Enter brings it back.
+    function medHeldReady(sales, salesMap) {
+        var input = document.getElementById('med-held-search');
+        var body = document.getElementById('held-sales-modal-body');
+        if (!input || !body) return;
+        var rows = Array.prototype.slice.call(body.querySelectorAll('tbody tr'));
+        var hi = 0;
+        var visible = function () { return rows.filter(function (r) { return r.style.display !== 'none'; }); };
+        var paint = function () {
+            var vis = visible();
+            if (hi >= vis.length) hi = Math.max(0, vis.length - 1);
+            rows.forEach(function (r) { r.classList.remove('table-warning'); });
+            if (vis[hi]) { vis[hi].classList.add('table-warning'); vis[hi].scrollIntoView({ block: 'nearest' }); }
+        };
+        var filter = function () {
+            rows.forEach(function (r, i) { r.style.display = medHeldMatch(sales[i], input.value) ? '' : 'none'; });
+            hi = 0;
+            paint();
+        };
+        input.oninput = filter;
+        input.onkeydown = function (e) {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                hi = Math.max(0, Math.min(visible().length - 1, hi + (e.key === 'ArrowDown' ? 1 : -1)));
+                paint();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                var row = visible()[hi];
+                var btn = row ? row.querySelector('[data-recall-id]') : null;
+                if (btn) btn.click();
+                else toast('warning', 'No held bill matches “' + input.value + '”.');
+            }
+        };
+        filter();
     }
 
     /* totals */
@@ -6160,6 +6282,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     cancelHeldSaleFromModal(Number(btn.dataset.cancelId), btn.dataset.cancelNo, btn);
                 });
             });
+            if (medicalCounter) medHeldReady(data.sales, salesMap);   // MEDICAL-COUNTER-1: search / scan the list
         })
         .catch(function () {
             body.innerHTML = '<div class="alert alert-danger m-3">Failed to load held orders.</div>';
@@ -6905,6 +7028,8 @@ document.addEventListener('DOMContentLoaded', function () {
             // Dine-in table + session, so the preview shows the Table/Waiter line the receipt prints.
             restaurant_table_id:         (document.getElementById('restaurant_table_id') || {}).value || null,
             restaurant_table_session_id: (document.getElementById('restaurant_table_session_id') || {}).value || null,
+            // BILL-BARCODE-1: a held order's preview carries its bill code (printed only where the layout switch is on)
+            held_sale_id:           _currentHeldSaleId || null,
             lines: cart.map(function (it) {
                 return Object.assign({
                     product_id:      it.product_id || it.id || null,
