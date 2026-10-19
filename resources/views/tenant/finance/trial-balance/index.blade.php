@@ -2,11 +2,15 @@
 
 @section('title', 'Trial Balance')
 
+@php
+    $sided = [\App\Http\Controllers\Tenant\Finance\TrialBalanceController::class, 'sided'];
+@endphp
+
 @section('content')
         <div class="page-header">
             <div class="page-title">
                 <h4>Trial Balance</h4>
-                <h6>As of {{ $asOf }}
+                <h6>{{ $from }} to {{ $to }}
                     @if(count($selectedBranchIds))
                         &mdash; {{ $branches->whereIn('id', $selectedBranchIds)->pluck('name')->implode(', ') }}
                     @else
@@ -19,22 +23,38 @@
                     @foreach($selectedBranchIds as $id)
                         <input type="hidden" name="branch_ids[]" value="{{ $id }}">
                     @endforeach
-                    @if(!empty($filters['as_of_date']))
-                        <input type="hidden" name="as_of_date" value="{{ $filters['as_of_date'] }}">
-                    @endif
+                    <input type="hidden" name="date_from" value="{{ $from }}">
+                    <input type="hidden" name="date_to" value="{{ $to }}">
+                    <input type="hidden" name="parties" value="{{ $showParties ? 1 : 0 }}">
                     <button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>CSV</button>
                 </form>
+                {{-- Part 2: Print — the same figures as a paged A4 PDF. --}}
+                <a href="{{ url('/finance/trial-balance') . '?' . http_build_query(['date_from' => $from, 'date_to' => $to, 'branch_ids' => $selectedBranchIds, 'parties' => $showParties ? 1 : 0, 'format' => 'pdf']) }}"
+                   target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm ms-1" id="tb-print"><i class="ti ti-printer me-1"></i>Print</a>
             </div>
         </div>
 
         <div class="card">
             <div class="card-body">
+                {{-- TRIAL-BALANCE-PERIOD-1: a period, not a single "as of" date. --}}
                 <form method="GET" class="row g-2 align-items-end">
-                    <div class="col-sm-3">
-                        <label class="form-label mb-1">As of</label>
-                        <input type="date" name="as_of_date" class="form-control" value="{{ $filters['as_of_date'] ?? $asOf }}">
+                    <div class="col-sm-2">
+                        <label class="form-label mb-1">From</label>
+                        <input type="date" name="date_from" class="form-control" value="{{ $from }}">
+                    </div>
+                    <div class="col-sm-2">
+                        <label class="form-label mb-1">To</label>
+                        <input type="date" name="date_to" class="form-control" value="{{ $to }}">
                     </div>
                     @include('tenant.finance.partials.branch-multiselect', ['branches' => $branches, 'selectedBranchIds' => $selectedBranchIds])
+                    <div class="col-sm-2">
+                        {{-- Unticked sends the hidden 0; ticked, the later 1 wins. Default on. --}}
+                        <input type="hidden" name="parties" value="0">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="parties" value="1" id="tb-parties" @checked($showParties)>
+                            <label class="form-check-label" for="tb-parties">Show party detail</label>
+                        </div>
+                    </div>
                     <div class="col-sm-2">
                         <button type="submit" class="btn btn-primary w-100">Apply</button>
                     </div>
@@ -42,9 +62,10 @@
             </div>
         </div>
 
+        {{-- The check is on the CLOSING pair — the same figures the old "as of" screen balanced. --}}
         <div class="alert {{ $difference == 0 ? 'alert-success' : 'alert-danger' }}">
             <i class="ti {{ $difference == 0 ? 'ti-circle-check' : 'ti-alert-triangle' }} me-1"></i>
-            Total Debits {{ number_format($totalDebit, 2) }} | Total Credits {{ number_format($totalCredit, 2) }} | Difference {{ number_format($difference, 2) }}
+            Closing Debits {{ number_format($totals['closing_debit'], 2) }} | Closing Credits {{ number_format($totals['closing_credit'], 2) }} | Difference {{ number_format($difference, 2) }}
             {{ $difference == 0 ? '— balanced' : '— OUT OF BALANCE' }}
         </div>
 
@@ -52,35 +73,54 @@
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-sm mb-0">
-                        <caption class="visually-hidden">Trial balance</caption>
+                        <caption class="visually-hidden">Trial balance for the period</caption>
                         <thead class="table-light">
                             <tr>
                                 <th scope="col">Code</th>
                                 <th scope="col">Account</th>
                                 <th scope="col">Type</th>
+                                <th scope="col" class="text-end">Opening</th>
                                 <th scope="col" class="text-end">Debit</th>
                                 <th scope="col" class="text-end">Credit</th>
+                                <th scope="col" class="text-end">Balance</th>
                             </tr>
                         </thead>
                         <tbody>
                             @forelse($rows as $r)
                             <tr>
                                 <td class="fw-semibold">{{ $r['code'] }}</td>
-                                <td>{{ $r['name'] }}</td>
+                                {{-- One click to where the movement came from. --}}
+                                <td><a href="{{ url('/finance/general-ledger') . '?' . http_build_query(['account_id' => $r['account_id'], 'date_from' => $from, 'date_to' => $to, 'branch_ids' => $selectedBranchIds]) }}">{{ $r['name'] }}</a></td>
                                 <td><span class="badge bg-secondary">{{ ucfirst($r['type']) }}</span></td>
-                                <td class="text-end">{{ $r['debit_balance'] > 0 ? number_format($r['debit_balance'], 2) : '' }}</td>
-                                <td class="text-end">{{ $r['credit_balance'] > 0 ? number_format($r['credit_balance'], 2) : '' }}</td>
+                                <td class="text-end text-muted">{{ $sided($r['opening_debit'], $r['opening_credit']) }}</td>
+                                <td class="text-end">{{ $r['period_debit'] > 0 ? number_format($r['period_debit'], 2) : '' }}</td>
+                                <td class="text-end">{{ $r['period_credit'] > 0 ? number_format($r['period_credit'], 2) : '' }}</td>
+                                <td class="text-end fw-semibold">{{ $sided($r['closing_debit'], $r['closing_credit']) }}</td>
                             </tr>
+                            {{-- Part 2: who makes up this account. These always add up to the row above. --}}
+                            @foreach($parties[$r['account_id']] ?? [] as $p)
+                            <tr class="tb-party small">
+                                <td></td>
+                                <td class="ps-4 text-muted">{{ $p['label'] }}</td>
+                                <td></td>
+                                <td class="text-end text-muted">{{ $sided($p['opening_debit'], $p['opening_credit']) }}</td>
+                                <td class="text-end text-muted">{{ $p['period_debit'] > 0 ? number_format($p['period_debit'], 2) : '' }}</td>
+                                <td class="text-end text-muted">{{ $p['period_credit'] > 0 ? number_format($p['period_credit'], 2) : '' }}</td>
+                                <td class="text-end text-muted">{{ $sided($p['closing_debit'], $p['closing_credit']) }}</td>
+                            </tr>
+                            @endforeach
                             @empty
-                            <tr><td colspan="5" class="text-center text-muted py-4">No posted journal activity yet.</td></tr>
+                            <tr><td colspan="7" class="text-center text-muted py-4">No posted journal activity up to {{ $to }}.</td></tr>
                             @endforelse
                         </tbody>
                         @if(count($rows))
                         <tfoot class="table-light">
                             <tr>
                                 <th colspan="3" class="text-end">Totals</th>
-                                <th class="text-end">{{ number_format($totalDebit, 2) }}</th>
-                                <th class="text-end">{{ number_format($totalCredit, 2) }}</th>
+                                <th class="text-end small">{{ number_format($totals['opening_debit'], 2) }} Dr / {{ number_format($totals['opening_credit'], 2) }} Cr</th>
+                                <th class="text-end" id="tb-period-debit">{{ number_format($totals['period_debit'], 2) }}</th>
+                                <th class="text-end" id="tb-period-credit">{{ number_format($totals['period_credit'], 2) }}</th>
+                                <th class="text-end small" id="tb-closing">{{ number_format($totals['closing_debit'], 2) }} Dr / {{ number_format($totals['closing_credit'], 2) }} Cr</th>
                             </tr>
                         </tfoot>
                         @endif

@@ -18,6 +18,9 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // Requires OS cron on the server: * * * * * php /path/to/artisan schedule:run
     Schedule::command('saas:subscriptions-expire')->dailyAt('00:10');
 
+    // WEBSITE-I18N-GEO-1 P4: the public website's country database (DB-IP Lite), refreshed monthly.
+    Schedule::command('geoip:update')->monthlyOn(4, '03:40')->withoutOverlapping();
+
     // Nightly public-demo reset (15D-8): restore the five industry demos to clean sample data.
     // Registered only; it does nothing until OS cron runs `php artisan schedule:run`.
     if (config('saas.demos.enabled', true)) {
@@ -45,7 +48,27 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // never double-send. Cloud-only (Edge CLI boundary default-denies the command anyway).
     Schedule::command('reports:dispatch-scheduled')->everyFifteenMinutes()->withoutOverlapping();
 
-    // PRINT-AUTOCLOSE-STUCK-1 — jo parchi ek ghante se atki rahe, khud band ho jaye.
+    // SAAS-BILLING-WHATSAPP-1 — raat ki report jane ke baad us din ka usage invoice me joR do.
+    //
+    // Rozana 03:30 Karachi: khatri 00:30 par bhejta hai aur kashiffood 02:30 par, to us waqt tak
+    // dono ki rows likhi ja chuki hoti hain. Timezone yahan SAAF likha hai, app ki default par nahi
+    // chhoRa — prod par app timezone UTC hai, aur us par "03:30" ka matlab 08:30 Karachi hota, yani
+    // subah ka aadha din bill ke baghair guzar jata.
+    //
+    // Aik din ka na chalna kuch nahi bigaRta: command har us row ko uthati hai jo kisi invoice se
+    // nahi juRi, sirf us din ki nahi. To agla run pichhla kaam bhi kar deta hai.
+    Schedule::command('billing:whatsapp-invoice --yes')
+        ->timezone('Asia/Karachi')->dailyAt('03:30')->withoutOverlapping();
+
+    // SAAS-BILLING-AUTO-1 — har tenant ka mahana invoice us ke APNE din par. Roz chalti hai aur sirf
+    // un subscriptions ko dekhti hai jin ka invoice_day aaj hai (khatri 15, kashifkitchen 20,
+    // kashiffood 25, tawakal 10). Is se pehle koi generator tha hi nahi, yani 105,000/mah ka hisaab
+    // har mahine haath se banta — aur jo cheez haath se banti hai wo kisi mahine bhool jati hai.
+    //
+    // 06:00 Karachi: din shuru hone par bana ho, raat ke kisi lamhe me nahi. Dobara banne ka khatra
+    // nahi — aik tenant ke aik mahine ka aik hi invoice banta hai.
+    Schedule::command('billing:generate-monthly-invoices --yes')
+        ->timezone('Asia/Karachi')->dailyAt('06:00')->withoutOverlapping();    // PRINT-AUTOCLOSE-STUCK-1 — jo parchi ek ghante se atki rahe, khud band ho jaye.
     //
     // Zaroorat: The Kashif Foods par teen Report Center ki parchiyan galti se DOOSRI branch
     // ki printer par bhej di gayi thin. Wahan se pahunch hi nahi sakti thin, aur defer

@@ -70,7 +70,7 @@
                 <div class="col-md-4">
                     <label for="timezone" class="form-label required">Timezone</label>
                     <input type="text" id="timezone" name="timezone"
-                        value="{{ old('timezone', $branch?->timezone ?? 'Asia/Karachi') }}"
+                        value="{{ old('timezone', $branch?->timezone ?? (\App\Models\Tenant\Branch::orderBy('id')->value('timezone') ?: 'Asia/Karachi')) }}"
                         class="form-control" required maxlength="100"
                         list="timezone-list">
                     <datalist id="timezone-list">

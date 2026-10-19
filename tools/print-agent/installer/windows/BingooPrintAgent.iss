@@ -20,7 +20,7 @@
 ; Ab `tools/print-agent/test/version-match-test.js` dono ko mila kar dekhta hai.
 [Setup]
 AppName=Bingoo Print Agent
-AppVersion=2.6.0
+AppVersion=2.6.5
 AppPublisher=Bingoo POS
 DefaultDirName={commonpf}\BingooPrintAgent
 DefaultGroupName=Bingoo Print Agent
@@ -35,7 +35,15 @@ WizardStyle=modern
 
 [Files]
 Source: "..\..\dist\BingooPrintAgent.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "install-service.ps1";   DestDir: "{app}"; Flags: ignoreversion
+; SumatraPDF - PDF ko printer tak pahunchane ke liye. Windows me command line se
+; PDF chhapne ka koi tareeqa nahi: "printto" verb sirf tab hota hai jab koi PDF
+; reader use register kare, aur Edge aur Chrome dono nahi karte. 10 Oct 2026 ko
+; asli HP Laser MFP par poora silsila theek chala aur bas isi qadam par ruka.
+; Alag program hai, bina badla hua, GPLv3 - tafseel THIRD-PARTY-NOTICE.txt me.
+Source: "SumatraPDF.exe";           DestDir: "{app}"; Flags: ignoreversion
+Source: "THIRD-PARTY-NOTICE.txt";   DestDir: "{app}"; Flags: ignoreversion
+Source: "install-autostart-user.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "install-service.ps1";       DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall-service.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Dirs]
@@ -50,9 +58,21 @@ Name: "{group}\Agent Status";               Filename: "{app}\BingooPrintAgent.ex
 Filename: "{app}\BingooPrintAgent.exe"; \
   Parameters: "setup --server ""{code:GetServerUrl}"" --code ""{code:GetPairingCode}"" --no-start"; \
   StatusMsg: "Pairing with Bingoo POS..."; Flags: runhidden waituntilterminated
-; 2) Register + start the auto-start service (survives reboot).
+; 2) Register + start the auto-start task (survives reboot).
+;
+;    install-autostart-user.ps1 — SOCH SAMAJH KAR, install-service.ps1 nahi.
+;
+;    install-service.ps1 task ko SYSTEM + RunLevel Highest par banata hai.
+;    9 Oct ko Kashif Kitchen par yehi A4/A5 document printing ko maar gaya:
+;    Chromium ELEVATED process se chalne par PDF banane se inkar kar deta hai.
+;    Chrome ek second me exit 0 de kar nikal jata tha, bina PDF, bina shikayat.
+;    Edge ne bhi wohi kiya. Wohi command aam (non-admin) PowerShell me chalai
+;    to PDF foran ban gayi — 12,409 bytes.
+;
+;    Ye nakami KHAMOSH hai: thermal parchi chalti rehti hai aur sirf document
+;    rukte hain, is liye koi shikayat bhi der se aati hai.
 Filename: "powershell.exe"; \
-  Parameters: "-ExecutionPolicy Bypass -File ""{app}\install-service.ps1"""; \
+  Parameters: "-ExecutionPolicy Bypass -File ""{app}\install-autostart-user.ps1"""; \
   StatusMsg: "Setting up auto-start..."; Flags: runhidden waituntilterminated
 
 [UninstallRun]

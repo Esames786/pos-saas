@@ -1,0 +1,58 @@
+Bingoo Print Agent - third party software notice
+================================================
+
+This product is distributed together with the following third party program.
+It is a separate, independent program. It is NOT part of Bingoo Print Agent and
+it has NOT been modified in any way.
+
+
+SumatraPDF
+----------
+
+  Program      : SumatraPDF
+  Version      : 3.5.2 (64-bit, portable build)
+  Author       : Krzysztof Kowalczyk and contributors
+  Copyright    : Copyright 2006-2022 all authors
+  Licence      : GNU General Public License, version 3 (GPLv3)
+  Home page    : https://www.sumatrapdfreader.org/
+  Source code  : https://github.com/sumatrapdfreader/sumatrapdf
+  Licence text : https://www.gnu.org/licenses/gpl-3.0.html
+
+  Downloaded unmodified from:
+    https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64.zip
+
+  SHA-256 of the file shipped here (SumatraPDF.exe):
+    290E4AA7ED64C728138711C011E89AAB7AA48DBC1AE430371DC2BE4100B92BF0
+
+
+Why it is here
+--------------
+
+Bingoo Print Agent turns an A4/A5 document (quotation, kitchen sheet, address
+sheet) into a PDF using the browser already installed on the PC, and then has
+to hand that PDF to a Windows printer.
+
+Windows has no built-in way to print a PDF from the command line. There is a
+"printto" shell verb, but it only exists when a PDF reader registers it, and
+neither Microsoft Edge nor Google Chrome does. On a clean Windows machine that
+last resort is therefore simply not available - verified on 10 Oct 2026 against
+a real HP Laser MFP, where the whole chain ran correctly right up to that step
+and then stopped with "No application is associated with the specified file for
+this operation".
+
+SumatraPDF prints a PDF silently to a named printer and needs no installation,
+so it is shipped beside the agent. The agent looks for it first, before any
+other method.
+
+
+Your rights
+-----------
+
+SumatraPDF is free software under the GPLv3. You may use, study, share and
+modify it under the terms of that licence. The complete corresponding source
+code is published by its authors at the GitHub address above; the binary
+shipped here is the authors' own unmodified release build.
+
+The GPLv3 applies to SumatraPDF alone. Bingoo Print Agent is a separate program
+that merely invokes it as an external command; the two are aggregated on the
+same medium and are not combined into a single work.

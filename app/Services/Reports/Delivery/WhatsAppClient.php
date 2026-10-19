@@ -14,7 +14,14 @@ use RuntimeException;
  */
 class WhatsAppClient
 {
-    public function sendTemplate(string $to, string $template, string $language, array $components): void
+    /**
+     * Bhejta hai aur Meta ka `wamid` wapis karta hai.
+     *
+     * Pehle ye void tha. wamid is liye darkar hai ke usage ki row usi se webhook ke jawab (delivered
+     * / read / failed) se juRti hai — us ke baghair "pohancha ya nahi" ka jawab kabhi nahi milta,
+     * aur bill "accepted" par banta rehta.
+     */
+    public function sendTemplate(string $to, string $template, string $language, array $components): ?string
     {
         $token = (string) config('services.whatsapp.token');
         $phoneId = (string) config('services.whatsapp.phone_number_id');
@@ -49,6 +56,8 @@ class WhatsAppClient
         if ($response->failed()) {
             throw new RuntimeException($this->reason($response->status(), (string) $response->body()));
         }
+
+        return $response->json('messages.0.id');
     }
 
     /**

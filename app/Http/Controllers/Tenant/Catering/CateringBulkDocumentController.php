@@ -39,7 +39,10 @@ class CateringBulkDocumentController extends Controller
      */
     private function documentPrinters()
     {
-        return \App\Models\Tenant\Printer::documentCapable()->orderBy('name')->get(['id', 'name']);
+        // `paper_size` bhi: wo printer ko ROKTA nahi — kagaz document se
+        // aata hai — magar Send-to-network us se tay karta hai ke KAUN SA
+        // printer pehle se chuna hua aaye. Dekho send-to-network.blade.php.
+        return \App\Models\Tenant\Printer::documentCapable()->orderBy('name')->get(['id', 'name', 'paper_size']);
     }
 
     /**
@@ -61,7 +64,7 @@ class CateringBulkDocumentController extends Controller
     public function printToNetwork(Request $request)
     {
         $data = $request->validate([
-            'kind' => ['required', 'string', 'in:quotation,kitchen_sheet,address_sheet'],
+            'kind' => ['required', 'string', 'in:quotation,kitchen_sheet,address_sheet,proforma'],
             'printer_id' => ['required', 'integer', 'exists:printers,id'],
             'ids' => ['required', 'array', 'min:1', 'max:'.self::MAX_SELECTION],
             'ids.*' => ['integer'],
@@ -85,18 +88,41 @@ class CateringBulkDocumentController extends Controller
         $userId = $request->user()?->id;
 
         $queued = 0;
+        $already = 0;
         $failed = [];
 
         foreach ($events as $event) {
             try {
-                match ($data['kind']) {
+                $job = match ($data['kind']) {
                     'quotation' => $queue->queueQuotation(
                         $event->currentEstimate()->firstOrFail(), $printer, $userId, $reprint
                     ),
                     'kitchen_sheet' => $queue->queueKitchenSheetForEvent($event, $printer, $userId, $reprint),
                     'address_sheet' => $queue->queueAddressSheet($event, $printer, $userId, $reprint),
+                    // Proforma bhi yahin se: wo kahin mehfooz nahi hoti, is liye
+                    // us ka apna route/permission banane ki zaroorat nahi thi —
+                    // bulk ka `ids[]` hamesha EVENT ki id hoti hai, aur proforma
+                    // bhi event se hi banti hai.
+                    'proforma' => $queue->queueProformaInvoice($event, $printer, 'en', $userId, $reprint),
                 };
-                $queued++;
+
+                // NAYA AUR PURANA ALAG GINO — aur ye farq operator ko DIKHE.
+                //
+                // Malik (11 Oct): "ek aur print bheja hai kitchen sheet ka,
+                // dekho gaya print?" Prod par koi nayi job bani hi nahi thi:
+                // us event ki kitchen sheet pehle hi ja kar chhap chuki thi,
+                // aur dobara dabane par wohi purani job lautti hai (ye jaan
+                // bujh kar hai, warna ghalti se do kaghaz nikal jate).
+                //
+                // Magar screen phir bhi "1 document queued" likh deti thi. Wo
+                // JHOOT tha: operator intezar karta rehta ke kaghaz aaye, aur
+                // kuch aata hi nahi. Sab se bura natija yehi hai — ek aisi
+                // nakami jo screen par kamyabi ki tarah dikhti hai.
+                //
+                // `wasRecentlyCreated` hi wo nishan hai: nayi job par sach,
+                // aur jo `logical_key` ki wajah se wapas uthai gayi us par
+                // jhoot.
+                $job->wasRecentlyCreated ? $queued++ : $already++;
             } catch (\Throwable $e) {
                 // Ek booking ka ruk jana baqi sab ko nahi rokta — magar chup
                 // chaap bhi nahi guzarta: operator ko jaan'na chahiye ke kis ka
@@ -105,9 +131,18 @@ class CateringBulkDocumentController extends Controller
             }
         }
 
-        $message = $queued.' '.\Illuminate\Support\Str::plural('document', $queued)
-            .' queued to '.$printer->name
-            .'. Kagaz ka size document se liya gaya — finance par kuch post nahi hua.';
+        $message = $queued > 0
+            ? $queued.' '.\Illuminate\Support\Str::plural('document', $queued)
+                .' queued to '.$printer->name
+                .'. Kagaz ka size document se liya gaya — finance par kuch post nahi hua.'
+            : '';
+
+        if ($already > 0) {
+            $message .= ($message === '' ? '' : ' ')
+                .$already.' '.\Illuminate\Support\Str::plural('document', $already)
+                .' pehle hi '.$printer->name.' par bheja ja chuka hai — naya kaghaz nahi nikla. '
+                .'Doosri copy chahiye to "Dobara chhapein" par nishan laga kar bhejein.';
+        }
 
         if ($failed !== []) {
             $message .= ' Nahi bheji ja sakin: '.implode(', ', $failed).'.';
@@ -170,10 +205,10 @@ class CateringBulkDocumentController extends Controller
         $releases = collect();
         $skipped = [];
         foreach ($events as $event) {
-            $release = $event->productionReleases
-                ->where('status', 'released')
-                ->sortByDesc('released_at')
-                ->first();
+            // CATERING-SHEET-ALWAYS-CURRENT-1 — parcha hamesha aaj ki quotation
+            // se. Kaun sa release number us par chhapega ye `sheetFor()` tay
+            // karta hai; wo faisla yahan DOBARA nahi likha ja raha.
+            $release = $previews->sheetFor($event);
 
             if ($release) {
                 $releases->push($release);

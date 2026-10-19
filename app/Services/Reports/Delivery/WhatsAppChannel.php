@@ -3,6 +3,7 @@
 namespace App\Services\Reports\Delivery;
 
 use App\Models\Master\Tenant;
+use App\Models\Master\WhatsAppMessage;
 use App\Services\Reports\SalesReportEngine;
 use App\Services\Reports\Sharing\ReportShareLinkService;
 use RuntimeException;
@@ -75,23 +76,62 @@ final class WhatsAppChannel implements ReportChannel
 
         $failures = [];
 
+        // Har message ki apni row. Isi ke baghair "kis tenant ne kitne bheje" ka jawab takhmeena tha,
+        // aur takhmeena 112 nikla jabke Meta 90 keh raha tha — us farq par bill bhejna 15% zyada
+        // wasool karna hota. Row yahan likhi jati hai, bhejne ke saath, kyunke baad me ginne ke liye
+        // koi aisi cheez hai hi nahi jo numbers ke badalne ko yaad rakhti ho.
+        $usageDate = now($tenant->timezone ?: config('app.timezone'))->toDateString();
+
         foreach ($numbers as $number) {
+            $row = [
+                'tenant_id' => $tenant->id,
+                'source' => 'schedule',
+                'template' => $template,
+                'to' => $number,
+                'usage_date' => $usageDate,
+                'sent_at' => now(),
+                'rate_charged' => (float) config('services.whatsapp.rate_pkr'),
+                'provider_cost' => (float) config('services.whatsapp.cost_pkr'),
+            ];
+
             try {
-                $this->client->sendTemplate(
+                $wamid = $this->client->sendTemplate(
                     $number,
                     $template,
                     (string) config('services.whatsapp.language'),
                     $components,
                 );
+                // 'accepted', 'delivered' nahi: Meta ne sirf qatar me lagaya hai. Delivered sirf
+                // webhook keh sakta hai, aur bill delivered par banta hai.
+                $this->log($row + ['wamid' => $wamid, 'status' => 'accepted']);
             } catch (\Throwable $e) {
                 // One bad number must not stop the rest. A wrong digit in one owner's entry would
                 // otherwise silently cost everyone else on the list their report.
                 $failures[] = $this->mask($number).': '.$e->getMessage();
+                $this->log($row + ['status' => 'failed', 'failure_reason' => $e->getMessage()]);
             }
         }
 
         if ($failures !== [] && count($failures) === count($numbers)) {
             throw new RuntimeException('WhatsApp: '.implode(' | ', $failures));
+        }
+    }
+
+    /**
+     * Usage ki row likho — aur likhne ki nakami par bhejna kabhi na roko.
+     *
+     * Ye jaan boojh kar nigal li jati hai. Register billing ke liye hai; report malik ke karobar ke
+     * liye. Agar master DB aik lamhe ke liye na mile to us ki saza report ko nahi milni chahiye —
+     * warna hum aik aise masle par wo cheez rok dete jo har subah pohanchni chahiye.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function log(array $row): void
+    {
+        try {
+            WhatsAppMessage::create($row);
+        } catch (\Throwable $e) {
+            report($e);
         }
     }
 

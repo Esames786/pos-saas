@@ -93,7 +93,11 @@ class CateringCustomerCreditMySqlTest extends MySqlTenantTestCase
             'branch_id' => $this->branchId,
             'customer_name' => 'Credit Test Customer',
             'booking_date' => now()->toDateString(),
-            'event_date' => now()->addDays(5)->toDateString(),
+            // CATERING-NOTHING-FREEZES-BEFORE-EVENT-1 (10 Oct) — ye fixture
+            // pehle AANE WALI tareekh ka event banata tha aur phir us ka bill
+            // bana deta tha. Wo surat asal duniya me mumkin hi nahi: bill event
+            // guzarne ke baad banta hai. Fixture ab sach bol raha hai.
+            'event_date' => now()->subDays(5)->toDateString(),
             'pax' => 300,
         ]);
         $this->estimates->saveDraftLines($event->currentEstimate, [
@@ -324,6 +328,12 @@ class CateringCustomerCreditMySqlTest extends MySqlTenantTestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessageMatches('/owes the customer/i');
 
+        // CATERING-CLOSE-AFTER-EVENT-1 (8 Oct) — close ab event ke din se
+        // pehle nahi hota. Ye booking mustaqbil ki tareekh par banti hai, is
+        // liye band karne se pehle us ka din guzaar diya jata hai. Fixture ki
+        // tareekh global badalna theek nahi hota: isi file ke doosre test
+        // "aane wali booking" par khare hain.
+        $event->forceFill(['event_date' => now()->subDay()->toDateString()])->save();
         app(CateringFinalInvoiceService::class)->close($event->refresh());
     }
 

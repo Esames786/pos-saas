@@ -1789,8 +1789,10 @@ class EdgeLocalPosService
             }
             // LOCKING (current) read — a concurrent hold on this session serializes against the close
             // instead of slipping past the transaction snapshot (same rule as closeRestaurantTableSession).
+            // CANCEL-PAID-FREES-TABLE-1 (canonical 7a1d1087, merge D8): only a RUNNING bill (held / draft) keeps the table — an
+            // all-paid session closes from the board exactly as on the Online POS, with the SAME refusal text.
             if (SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)->whereIn('status', ['draft', 'held'])->lockForUpdate()->exists()) {
-                throw new RuntimeException('This table still has open orders — settle or cancel them first.');
+                throw new RuntimeException('This table has an open order now. Cancel or complete it through POS before closing.');
             }
             $session->update(['status' => $targetStatus, 'closed_by_user_id' => $user->id, 'closed_at' => now()]);
             // EDGE-CONFIG-REFRESH-1: never resurrect a tombstoned table — if a config refresh removed

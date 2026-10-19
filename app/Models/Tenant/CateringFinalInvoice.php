@@ -40,6 +40,9 @@ class CateringFinalInvoice extends Model
         'status',
         'issued_at',
         'issued_by_user_id',
+        'voided_at',
+        'voided_by_user_id',
+        'void_reason',
     ];
 
     protected function casts(): array
@@ -56,6 +59,7 @@ class CateringFinalInvoice extends Model
             'advance_applied' => 'decimal:2',
             'balance_due' => 'decimal:2',
             'issued_at' => 'datetime',
+            'voided_at' => 'datetime',
         ];
     }
 
@@ -70,6 +74,20 @@ class CateringFinalInvoice extends Model
         'gl_posted_at',
     ];
 
+    /**
+     * CATERING-INVOICE-VOID-1 (10 Oct) — nishan lagane ke khaane.
+     *
+     * Ye bhi WRITE-ONCE hain, bilkul linkage ki tarah: ek baar void hua to
+     * wo faisla bhi jam jata hai. Bill ke COMMERCIAL khaane (rakam, lines,
+     * totals) ab bhi hamesha ke liye jame hue hain — void unhen badalta
+     * nahi, sirf kehta hai ke ye bill ab nahi chalta.
+     */
+    private const WRITE_ONCE_VOID = [
+        'voided_at',
+        'voided_by_user_id',
+        'void_reason',
+    ];
+
     protected static function booted(): void
     {
         static::updating(function (CateringFinalInvoice $invoice) {
@@ -77,12 +95,43 @@ class CateringFinalInvoice extends Model
                 if ($column === 'updated_at') {
                     continue;
                 }
-                $isLinkage = in_array($column, self::WRITE_ONCE_LINKAGE, true);
+                $isLinkage = in_array($column, self::WRITE_ONCE_LINKAGE, true)
+                    || in_array($column, self::WRITE_ONCE_VOID, true);
                 if (! $isLinkage || $invoice->getOriginal($column) !== null) {
                     throw new RuntimeException('A catering final invoice is immutable once issued.');
                 }
             }
         });
+
+        // 🚨 VOID HUA BILL HAR SAWAL SE BAHAR.
+        //
+        // `finalInvoice` is code me 14 files me 34 jagah parha jata hai —
+        // balance ka hisaab, Customer Balances, calendar ka filter, document
+        // lock, advance service. Har jagah "aur void to nahi?" likhna nakami
+        // ka pakka nuskha hai: ek jagah bhoolte hi booking par ek aisa bill
+        // "mojood" rehta hai jo void ho chuka, aur graahak ka baqi ghalat ho
+        // jata hai.
+        //
+        // Is liye shart EK jagah hai. Bilkul wohi tareeqa jo advances par
+        // `notVoided` ki shakl me pehle se chal raha hai.
+        //
+        // Void hue bill tak pahunchne ka EK hi raasta hai — `withVoided()` —
+        // aur wo jaan boojh kar numaya hai, taake har pukarne wale ko pata ho
+        // ke wo kis cheez ko chher raha hai.
+        static::addGlobalScope('notVoided', function (\Illuminate\Database\Eloquent\Builder $query) {
+            $query->whereNull($query->getModel()->getTable().'.voided_at');
+        });
+    }
+
+    /** Void hue bill bhi — sirf wahan jahan maqsad hi wo ho (void karna, tareekh dekhna). */
+    public function scopeWithVoided(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->withoutGlobalScope('notVoided');
+    }
+
+    public function isVoided(): bool
+    {
+        return $this->voided_at !== null;
     }
 
     public function event()

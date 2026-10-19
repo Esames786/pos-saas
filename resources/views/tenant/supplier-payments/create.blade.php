@@ -3,6 +3,10 @@
 @section('title', 'Create Supplier Payment')
 
 @section('content')
+@php
+    // SUPPLIER-RUNNING-ACCOUNT-1: paid on account — more than is owed becomes an advance.
+    $runningAccount = \App\Models\Tenant\PurchasingSetting::supplierRunningAccount();
+@endphp
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
         <h1 class="mb-1">Create Supplier Payment</h1>
@@ -19,6 +23,9 @@
             Choose <strong>Pay From (Cash/Bank)</strong> only if money actually leaves that account.
             <div class="text-muted mt-1">Flow: PO → GRN → Purchase Bill → <strong>Supplier Payment</strong>.</div>
             <div class="text-muted">A purchase bill is <strong>not</strong> required — a supplier can be paid straight against their outstanding balance.</div>
+            @if($runningAccount)
+                <div class="text-muted" id="running-account-note">Paid <strong>on account</strong>: a payment settles the supplier's oldest open bills first, and you may pay more than is owed — the extra is kept as an <strong>advance</strong> and used on the next bills.</div>
+            @endif
         </div>
     </div>
 </div>
@@ -35,6 +42,9 @@
             <div class="col-6 col-md-3"><div class="text-muted">Selected Bill Outstanding</div><div class="fw-bold fs-6" id="sum-bill">—</div></div>
             <div class="col-6 col-md-3"><div class="text-muted">This Payment</div><div class="fw-bold fs-6 text-primary" id="sum-amount">0.00</div></div>
             <div class="col-6 col-md-3"><div class="text-muted">Remaining After</div><div class="fw-bold fs-6" id="sum-remaining">—</div></div>
+        </div>
+        <div class="alert alert-warning py-2 px-3 mt-2 mb-0 small d-none" id="advance-warn" data-running-account="{{ $runningAccount ? '1' : '0' }}">
+            <i class="ti ti-alert-triangle me-1"></i><span id="advance-warn-text"></span>
         </div>
         <div class="alert alert-warning py-2 px-3 mt-2 mb-0 small d-none" id="cashbank-warn">
             <i class="ti ti-alert-triangle me-1"></i>No Cash/Bank account selected for a <span id="cashbank-method"></span> payment — this will record the supplier ledger only, with <strong>no cash/bank movement</strong>. Select an account above if money actually left one.
@@ -59,7 +69,7 @@
                                 data-balance="{{ (float) $supplier->current_balance }}"
                                 @selected(old('supplier_id', ($supplierPreset ?? null)?->id ?? $bill?->supplier_id) == $supplier->id)>
                             {{ $supplier->name }}
-                            (Balance: {{ number_format($supplier->current_balance, 2) }})
+                            ({{ $supplier->current_balance < 0 ? '' : 'Balance: ' }}{{ \App\Services\Purchasing\SupplierRunningAccountService::balanceLabel((float) $supplier->current_balance) }})
                         </option>
                     @endforeach
                 </select>
@@ -216,14 +226,38 @@
         var supBal = optNum(supplier);
         var billBal = optNum(billSel);
         var amt = Number(amount && amount.value || 0);
-        document.getElementById('sum-supplier').textContent = supBal==null ? '—' : fmt(supBal);
+        // SUPPLIER-RUNNING-ACCOUNT-1: below zero the supplier holds our money — say "Advance", never a bare minus.
+        function money(n){ return n < -0.005 ? 'Advance ' + fmt(-n) : fmt(n); }
+        document.getElementById('sum-supplier').textContent = supBal==null ? '—' : money(supBal);
         document.getElementById('sum-bill').textContent = billBal==null ? '—' : fmt(billBal);
         document.getElementById('sum-amount').textContent = fmt(amt);
         // Remaining = bill outstanding if a bill selected, else supplier balance, minus amount.
         var base = billBal!=null ? billBal : supBal;
         var remEl = document.getElementById('sum-remaining');
+        var advWarn = document.getElementById('advance-warn');
+        var running = advWarn && advWarn.getAttribute('data-running-account') === '1';
         if (base==null){ remEl.textContent='—'; remEl.className='fw-bold fs-6'; }
-        else { var rem = base - amt; remEl.textContent = fmt(rem); remEl.className = 'fw-bold fs-6 ' + (rem < -0.01 ? 'text-danger' : 'text-success'); }
+        else {
+            var rem = base - amt;
+            remEl.textContent = running ? money(rem) : fmt(rem);
+            remEl.className = 'fw-bold fs-6 ' + (rem < -0.01 ? (running ? 'text-warning' : 'text-danger') : 'text-success');
+        }
+
+        // Paying more than the supplier is owed: on account it is an advance (said BEFORE Save);
+        // otherwise this business refuses it, so say that before Save too.
+        if (advWarn) {
+            var after = supBal==null ? null : supBal - amt;
+            var over = after != null && amt > 0.005 && after < -0.005;   // only when THIS payment pays something
+            advWarn.classList.toggle('d-none', !over);
+            if (over) {
+                var name = supplier.options[supplier.selectedIndex].text.replace(/\s*\(.*\)\s*$/, '').trim();
+                document.getElementById('advance-warn-text').textContent = running
+                    ? 'After this payment, ' + name + ' will be ' + fmt(-after) + ' in advance. It is used on their next bills.'
+                    : (supBal > 0.005 ? 'This is more than ' + name + ' is owed (' + fmt(supBal) + ').' : name + ' is owed nothing (' + money(supBal) + ').')
+                      + ' Paying beyond the balance is not allowed for this business.';
+                advWarn.className = 'alert py-2 px-3 mt-2 mb-0 small ' + (running ? 'alert-warning' : 'alert-danger');
+            }
+        }
 
         // Cash/bank warning: money-moving methods with no account selected.
         var moneyMethods = ['cash','bank_transfer','cheque','card'];

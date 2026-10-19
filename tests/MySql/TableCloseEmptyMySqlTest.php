@@ -229,14 +229,38 @@ class TableCloseEmptyMySqlTest extends MySqlTenantTestCase
         $this->assertSame('available', $this->tableStatus());
     }
 
-    /** The card must not offer Close once anything is on the session. */
-    public function test_the_board_only_offers_close_on_an_empty_session(): void
+    /**
+     * The card offers Close while nothing on the session is RUNNING — empty, or every bill already
+     * paid (CANCEL-PAID-FREES-TABLE-1: Kashif Food's tables 19 and 20, 8 Oct, had no way out) — and
+     * never while a held bill is on it. Rendered through the real board endpoint, not read as text.
+     */
+    public function test_the_board_offers_close_only_when_nothing_is_running(): void
     {
-        $blade = file_get_contents(resource_path('views/tenant/pos/partials/table-board.blade.php'));
+        \Spatie\Permission\Models\Permission::findOrCreate('tenant.restaurant.table-sessions.close', 'tenant');
+        User::on('tenant')->find($this->userId)->givePermissionTo('tenant.restaurant.table-sessions.close');
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
 
-        $this->assertStringContainsString('$hasAnyOrder = $session->salesOrders->isNotEmpty()', $blade);
-        $this->assertStringContainsString('@if(! $hasAnyOrder)', $blade,
-            'the button is hidden the moment an order exists — the server still re-checks');
-        $this->assertStringContainsString("@can('tenant.restaurant.table-sessions.close')", $blade);
+        $empty = $this->openSession();                       // table 1 (setUp)
+        $sessionOn = function (string $tableNo) {
+            $this->tableId = $this->makeTable($this->branchId, ['table_no' => $tableNo]);
+            return $this->openSession();
+        };
+        $paid = $sessionOn('2');
+        $this->punchOrder($paid, 'paid');
+        $running = $sessionOn('3');
+        $this->punchOrder($running, 'paid');
+        $this->punchOrder($running, 'held');
+
+        $req = \Illuminate\Http\Request::create('/api/pos/table-board', 'GET', ['branch_id' => $this->branchId]);
+        $req->setUserResolver(fn () => User::on('tenant')->find($this->userId));
+        $html = (string) app(\App\Http\Controllers\Tenant\POSController::class)->tableBoard($req)->getData()->html;
+
+        $this->assertMatchesRegularExpression('/data-table-close="' . $empty->id . '"(?![^>]*data-table-paid)/', $html,
+            'an empty session offers Close, as an empty one');
+        $this->assertMatchesRegularExpression('/data-table-close="' . $paid->id . '"[^>]*data-table-paid="1"/', $html,
+            'every bill paid — Close is offered, and says so');
+        $this->assertStringNotContainsString('data-table-close="' . $running->id . '"', $html,
+            'a held bill is running — the card never offers Close (the server re-checks anyway)');
     }
 }

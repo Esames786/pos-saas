@@ -8,6 +8,7 @@ use App\Models\Master\Tenant;
 use App\Models\Master\TenantDomain;
 use App\Services\Tenancy\TenancyManager;
 use App\Services\Tenancy\TenantProvisioner;
+use App\Support\PublicLocale;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
@@ -20,71 +21,124 @@ class SelfSignupService
     ) {}
 
     /**
-     * Provision a brand-new tenant from a public trial signup.
+     * Provision a brand-new tenant from a public trial signup, in one go.
      *
-     * Creates the master records (tenant + primary domain + trial subscription)
-     * in one transaction, then provisions the tenant DB / owner user via the
-     * existing TenantProvisioner. On any failure the half-created tenant — and
-     * its database — are removed so no orphans are left behind.
+     * Kept for any caller that wants the old synchronous behaviour. The public signup no longer
+     * uses it: TRIAL-SIGNUP-QUEUE-1 creates the master rows in the request (createPendingTrial)
+     * and provisions on the queue worker (provisionPendingTrial).
      */
     public function registerTrial(array $data): Tenant
     {
-        $tenant = null;
+        return $this->provisionPendingTrial($this->createPendingTrial($data), $data['password']);
+    }
 
+    /**
+     * TRIAL-SIGNUP-QUEUE-1 — the fast half, run inside the signup request.
+     *
+     * Creates the master records (tenant `pending` + primary domain + trial subscription) in one
+     * transaction. No database and no migrations, so the request returns in about a second.
+     */
+    public function createPendingTrial(array $data): Tenant
+    {
+        $plan = Plan::where('is_active', true)
+            ->where('is_public', true)
+            ->where('is_custom', false)
+            ->findOrFail($data['plan_id']);
+
+        $tenantCode = Str::of($data['tenant_code'])
+            ->lower()
+            ->replaceMatches('/[^a-z0-9_-]/', '-')
+            ->trim('-')
+            ->toString();
+
+        $domain = $tenantCode . '.' . config('tenancy.tenant_base_domain');
+
+        $trialDays   = (int) ($plan->trial_days ?: config('saas.default_trial_days', 14));
+        $trialEndsAt = $trialDays > 0 ? now()->addDays($trialDays) : null;
+
+        // WEBSITE-I18N-GEO-1 P3: the market prices the plan (bundle in Pakistan, per branch in the Gulf and
+        // the US) — from the plan and the counts, never from an amount or a currency the browser sent.
+        // The quote is kept on the subscription, so a later price change never touches this customer.
+        $pricing = app(PlanPricingService::class);
+        $market = $pricing->isMarket($data['market'] ?? null) ? $data['market'] : $pricing->defaultMarket();
+        $quote = $pricing->quote($plan->loadMissing(['features', 'prices']), $market,
+            (int) ($data['branches'] ?? 1), (int) ($data['extra_terminals'] ?? 0), $data['billing_period'] ?? 'monthly');
+        $perBranch = ($quote['pricing'] ?? null) === 'per_branch';
+        // The business's clock: the market's timezone; for a market spanning many (the US) the visitor's own
+        // browser zone; else Asia/Karachi, as every workspace had before.
+        $timezone = $pricing->market($market)['timezone'] ?? null;
+        if (! $timezone && in_array($data['timezone'] ?? null, timezone_identifiers_list(), true)) {
+            $timezone = $data['timezone'];
+        }
+        $extra = [
+            'currency' => $quote['currency'] ?? ($data['currency_code'] ?? 'PKR'),
+            'timezone' => $timezone ?: 'Asia/Karachi',
+            'locale'   => PublicLocale::current(),
+            'subscription' => $quote ? [
+                'pricing_model'      => $quote['pricing'],
+                'currency_code'      => $quote['currency'],
+                'branches_purchased' => $perBranch ? $quote['branches'] : null,
+                'extra_terminals'    => $perBranch ? $quote['extra_terminals'] : 0,
+                'price_snapshot'     => $quote,
+            ] : [],
+        ];
+
+        return DB::connection('master')->transaction(function () use ($data, $plan, $tenantCode, $domain, $trialEndsAt, $extra) {
+            $tenant = Tenant::create([
+                'tenant_code'   => $tenantCode,
+                'business_name' => $data['business_name'],
+                'owner_name'    => $data['owner_name'],
+                'owner_email'   => $data['owner_email'],
+                'currency_code' => $extra['currency'],
+                'locale'        => $extra['locale'],
+                'timezone'      => $extra['timezone'],
+                'status'        => 'pending',
+                'trial_ends_at' => $trialEndsAt,
+            ]);
+
+            TenantDomain::create([
+                'tenant_id'  => $tenant->id,
+                'domain'     => $domain,
+                'is_primary' => true,
+                'status'     => 'pending',
+            ]);
+
+            Subscription::create($extra['subscription'] + [
+                'tenant_id'              => $tenant->id,
+                'plan_id'                => $plan->id,
+                'status'                 => 'trial',
+                'billing_period'         => ($data['billing_period'] ?? 'monthly') === 'yearly' ? 'yearly' : 'monthly',
+                'trial_ends_at'          => $trialEndsAt,
+                'current_period_ends_at' => null,
+            ]);
+
+            return $tenant;
+        });
+    }
+
+    /**
+     * TRIAL-SIGNUP-QUEUE-1 — the slow half: the tenant database, migrations and owner.
+     *
+     * On any failure the half-created tenant — and its database — are removed so no orphans are
+     * left behind, exactly as before. The caller decides what to tell the customer.
+     */
+    public function provisionPendingTrial(Tenant $tenant, string $ownerPassword, bool $passwordIsHashed = false): Tenant
+    {
         try {
-            $plan = Plan::where('is_active', true)
-                ->where('is_public', true)
-                ->where('is_custom', false)
-                ->findOrFail($data['plan_id']);
-
-            $tenantCode = Str::of($data['tenant_code'])
-                ->lower()
-                ->replaceMatches('/[^a-z0-9_-]/', '-')
-                ->trim('-')
-                ->toString();
-
-            $domain = $tenantCode . '.' . config('tenancy.tenant_base_domain');
-
-            $trialDays   = (int) ($plan->trial_days ?: config('saas.default_trial_days', 14));
-            $trialEndsAt = $trialDays > 0 ? now()->addDays($trialDays) : null;
-
-            $tenant = DB::connection('master')->transaction(function () use ($data, $plan, $tenantCode, $domain, $trialEndsAt) {
-                $tenant = Tenant::create([
-                    'tenant_code'   => $tenantCode,
-                    'business_name' => $data['business_name'],
-                    'owner_name'    => $data['owner_name'],
-                    'owner_email'   => $data['owner_email'],
-                    'currency_code' => $data['currency_code'] ?? 'PKR',
-                    'status'        => 'pending',
-                    'trial_ends_at' => $trialEndsAt,
-                ]);
-
-                TenantDomain::create([
-                    'tenant_id'  => $tenant->id,
-                    'domain'     => $domain,
-                    'is_primary' => true,
-                    'status'     => 'pending',
-                ]);
-
-                Subscription::create([
-                    'tenant_id'              => $tenant->id,
-                    'plan_id'                => $plan->id,
-                    'status'                 => 'trial',
-                    'trial_ends_at'          => $trialEndsAt,
-                    'current_period_ends_at' => null,
-                ]);
-
-                return $tenant;
-            });
-
             return $this->provisioner
-                ->provisionTenant($tenant->fresh(), $data['password'])
+                ->provisionTenant($tenant->fresh(), $ownerPassword, $passwordIsHashed)
                 ->fresh(['domains', 'database', 'subscription.plan']);
         } catch (Throwable $e) {
             $this->cleanupFailedSignup($tenant);
 
             throw $e;
         }
+    }
+
+    /** Remove a signup that will not complete. Safe to call twice, or for a tenant already gone. */
+    public function discardFailedTrial(?Tenant $tenant): void
+    {
+        $this->cleanupFailedSignup($tenant);
     }
 
     /**

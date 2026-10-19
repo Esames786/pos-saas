@@ -1,2 +1,5 @@
 User-agent: *
 Disallow:
+
+# WEBSITE-I18N-GEO-1: every public page in every language (English + Arabic).
+Sitemap: https://bingoopos.com/sitemap.xml

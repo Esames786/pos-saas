@@ -3,7 +3,10 @@
 namespace App\Http\Requests\Public;
 
 use App\Models\Master\TenantDomain;
+use App\Rules\RecaptchaPassed;
+use App\Services\Saas\Recaptcha;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -23,12 +26,20 @@ class StartTrialRequest extends FormRequest
                 ->replaceMatches('/\s+/', '-')
                 ->toString(),
             'owner_email' => Str::of((string) $this->input('owner_email'))->lower()->trim()->toString(),
+            // CLOUD-BILLING-2: anything but an explicit "yearly" is monthly. Only the cycle is taken from the
+            // client; the amount is always recomputed from the plan (BillingPeriodResolver).
+            'billing_period' => strtolower(trim((string) $this->input('billing_period'))) === 'yearly' ? 'yearly' : 'monthly',
+            // WEBSITE-I18N-GEO-1 P3: the market and the counts chosen in the plan builder. Counts only —
+            // SelfSignupService prices them again from the plan.
+            'market' => $this->filled('market') ? strtolower(trim((string) $this->input('market'))) : null,
         ]);
     }
 
     public function rules(): array
     {
         return [
+            // RECAPTCHA-TRIAL-1: only when both keys are configured (Recaptcha::enabled()).
+            ...(Recaptcha::enabled() ? ['g-recaptcha-response' => ['bail', 'required', 'string', new RecaptchaPassed]] : []),
             'business_name' => ['required', 'string', 'max:255'],
             'tenant_code' => [
                 'required',
@@ -41,7 +52,7 @@ class StartTrialRequest extends FormRequest
                     $domain = $value . '.' . config('tenancy.tenant_base_domain');
 
                     if (TenantDomain::where('domain', $domain)->exists()) {
-                        $fail('This subdomain is already taken.');
+                        $fail(__('This subdomain is already taken.'));
                     }
                 },
             ],
@@ -59,6 +70,12 @@ class StartTrialRequest extends FormRequest
                 }),
             ],
             'currency_code' => ['nullable', 'string', 'size:3'],
+            'billing_period' => ['required', 'in:monthly,yearly'],
+            'market' => ['nullable', Rule::in(array_keys((array) config('saas.markets', [])))],
+            'branches' => ['nullable', 'integer', 'min:1', 'max:' . (int) config('saas.max_self_service_branches', 10)],
+            'extra_terminals' => ['nullable', 'integer', 'min:0', 'max:99'],
+            // The visitor's own clock (browser Intl), used only where the market has no single timezone (US).
+            'timezone' => ['nullable', 'string', Rule::in(timezone_identifiers_list())],
             // Honeypot: real users never see/fill this; bots usually do.
             'website' => ['nullable', 'size:0'],
         ];
@@ -67,15 +84,17 @@ class StartTrialRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'tenant_code.not_in' => 'This subdomain is reserved. Please choose another.',
-            'tenant_code.unique' => 'This subdomain is already taken.',
-            'plan_id.exists'     => 'Please choose an available self-service plan.',
-            'website.size'       => 'Signup could not be completed.',
+            'tenant_code.not_in' => __('This subdomain is reserved. Please choose another.'),
+            'tenant_code.unique' => __('This subdomain is already taken.'),
+            'plan_id.exists'     => __('Please choose an available self-service plan.'),
+            'website.size'       => __('Signup could not be completed.'),
+            'g-recaptcha-response.required' => __('Please tick “I’m not a robot” and try again.'),
         ];
     }
 
     public function signupData(): array
     {
-        return $this->validated();
+        // The reCAPTCHA token is spent here; it has no business in the signup or any queued job.
+        return Arr::except($this->validated(), ['g-recaptcha-response']);
     }
 }

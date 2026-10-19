@@ -62,6 +62,10 @@ $app = Application::configure(basePath: dirname(__DIR__))
             'api/edge/*',
         ]);
 
+        // WEBSITE-I18N-GEO-1 P5: the public site's cookie banner writes and reads this answer in the
+        // browser, so it stays plain text (it holds only "v1.a1" / "v1.a0").
+        $middleware->encryptCookies(except: [\App\Support\CookieConsent::COOKIE]);
+
         $middleware->redirectGuestsTo('/login');
         // P4 — on a Branch Server the LAN listener is the loopback TLS gateway (nginx → 127.0.0.1 PHP backends):
         // trust ONLY loopback so X-Forwarded-Proto=https is honoured. A Cloud host never enables this.
@@ -73,6 +77,8 @@ $app = Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'central.only' => CentralOnly::class,
+            'public.locale' => \App\Http\Middleware\SetPublicLocale::class,
+            'public.suggest' => \App\Http\Middleware\SuggestPublicLanguage::class,
             'tenant.only' => TenantOnly::class,
             'route.permission' => EnsureRoutePermission::class,
             'tenant.subscription.access' => EnsureTenantSubscriptionAccess::class,

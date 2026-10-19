@@ -341,6 +341,566 @@ class CateringSendToPrinterMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /**
+     * JIS KAGAZ KA DOCUMENT HAI, USI NAAP KA PRINTER PEHLE SE CHUNA HO.
+     *
+     * Malik (10 Oct): "kitchen sheet par A4 likha hai magar printer A5 aa raha
+     * hai — confusing lag raha hai. A4 ke waqt A4 printer aaye, A5 ke waqt A5."
+     *
+     * Screen WAQAI apne aap ko jhutla rahi thi: chip "A4" kehti aur us ke saath
+     * "Office — HP M127fn (A5)" chuna hua nazar aata. Wajah mamooli thi —
+     * fehrist sirf NAAM ke hisaab se tarteeb me hai, is liye "M127fn" hamesha
+     * "P2055dn" se pehle aa jata aur browser pehla option khud chun leta;
+     * document se us ka koi taaluq hi nahi tha.
+     *
+     * Duplicate printer rows banane ki zaroorat nahi pari — wo har cheez do
+     * guni kar deti (do health check, do jagah naam theek karna) aur masla phir
+     * bhi screen ka hi rehta.
+     *
+     * AHEM: `paper_size` yahan sirf PEHLA CHUNAO tay karta hai, kisi ko ROKTA
+     * nahi. Dono printer fehrist me rehte hain, aur HP ke dono A4/A5 chhap
+     * sakte hain. Kagaz ka faisla ab bhi document ka hai.
+     */
+    public function test_the_printer_matching_the_document_paper_is_preselected(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+
+        $a4 = $this->windowsPrinter(['name' => 'Zebra A4 wala', 'paper_size' => 'A4']);
+        $a5 = $this->windowsPrinter(['name' => 'Alpha A5 wala', 'paper_size' => 'A5',
+            'windows_printer_name' => 'HP LaserJet Pro MFP M127fn']);
+
+        // Naam JAAN BUJH KAR aise rakhe hain ke harf ki tarteeb me A5 wala PEHLE
+        // aaye ("Alpha" < "Zebra"). Us ke baghair ye test kaamyab lagta rehta
+        // chahe `selected` laga ho ya na laga ho — yani kuch sabit hi na karta.
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'PS'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        $c = app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class);
+        $req = fn () => \Illuminate\Http\Request::create('/x', 'GET');
+
+        foreach ([
+            ['quotation', $c->estimate($req(), $event->currentEstimate()->first()), $a4, $a5],
+            ['kitchen sheet', $c->kitchenSheetPreview($req(), $event), $a5, $a4],
+        ] as [$name, $view, $expected, $other]) {
+            $html = $view->render();
+
+            $this->assertMatchesRegularExpression(
+                '/<option value="'.$expected->id.'"\s[^>]*selected/',
+                $html,
+                "{$name}: us printer par `selected` hona chahiye jis ka naap document se milta hai "
+                ."({$expected->name})"
+            );
+            $this->assertDoesNotMatchRegularExpression(
+                '/<option value="'.$other->id.'"\s[^>]*selected/',
+                $html,
+                "{$name}: doosre printer par `selected` nahi hona chahiye ({$other->name})"
+            );
+
+            // Magar wo doosra printer fehrist se GAYAB bhi na ho — rokna maqsad
+            // nahi tha, sirf pehla chunao theek karna tha.
+            $this->assertStringContainsString('value="'.$other->id.'"', $html,
+                "{$name}: doosra printer chunne ke liye mojood rehna chahiye");
+        }
+    }
+
+    /**
+     * CATERING-SEND-SINGLE-1 — control SINGLE safhon par bhi, sirf bulk par nahi.
+     *
+     * Malik (10 Oct): "event ki edit wali screen se quotation print karta hoon
+     * to wahan koi printer chunne ka option aata hi nahi."
+     *
+     * Theek shikayat thi. "Send to network" sirf TEEN bulk safhon par laga tha,
+     * jabke rozmarra ka kaam inhi single safhon se hota hai — ek booking kholo,
+     * quotation ya kitchen sheet kholo, chhapo. Us raaste par control tha hi
+     * nahi, is liye operator ko browser ke print dialog me ja kar printer aur
+     * kagaz dono haath se chunne parte — yani bilkul wohi takleef jis ko mitane
+     * ke liye ye poora feature bana tha.
+     */
+    public function test_the_single_document_screens_also_offer_send_to_network(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $this->windowsPrinter(['name' => 'Office A4']);
+        $this->windowsPrinter(['name' => 'Office A5', 'paper_size' => 'A5',
+            'windows_printer_name' => 'HP LaserJet Pro MFP M127fn']);
+
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'SG'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        $c = app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class);
+        $req = fn () => \Illuminate\Http\Request::create('/x', 'GET');
+
+        foreach ([
+            ['quotation', $c->estimate($req(), $event->currentEstimate()->first())],
+            ['kitchen sheet', $c->kitchenSheetPreview($req(), $event)],
+        ] as [$name, $view]) {
+            $html = $view->render();
+
+            $this->assertStringContainsString('window.print()', $html,
+                "{$name}: haath wala Print button rehna chahiye — naya control purane ko hataata nahi");
+            $this->assertStringContainsString('Send to network', $html,
+                "{$name}: single safhe par bhi network wala button hona chahiye");
+            $this->assertStringContainsString('name="printer_id"', $html,
+                "{$name}: printer chunne ka khaana");
+
+            // DONO printer aayein. Malik ki shart: kaghaz ka size printer se
+            // aata hi nahi, is liye har document par dono chunne ke qabil hon.
+            $this->assertStringContainsString('Office A4', $html, "{$name}: pehla printer");
+            $this->assertStringContainsString('Office A5', $html, "{$name}: doosra printer bhi");
+
+            $this->assertStringNotContainsString('name="paper', $html,
+                "{$name}: kagaz ka koi khaana NAHI — document khud jaanta hai");
+        }
+    }
+
+    /**
+     * KAGHAZ KA SIZE DOCUMENT SE AATA HAI, PRINTER SE NAHI — aur screen wohi kahe.
+     *
+     * Malik (10 Oct): "dono printer A4 bhi chhap sakte hain aur A5 bhi. Kitchen
+     * sheet hamesha A5, baqi sab A4."
+     *
+     * Qaida PEHLE SE theek chal raha tha — `queueKitchenSheetForEvent()` kagaz
+     * `kitchen_sheet_paper` se uthati hai — magar screen par kahin likha nahi
+     * tha. Operator ko printer ke NAAM par jana parta tha ("Office — HP P2055dn
+     * (A4)"), aur wo naam jhoot bolta hai: usi printer par kitchen sheet bhejo
+     * to wo A5 hi nikalti hai.
+     *
+     * Ye test dono simton par khara hai: label wohi ho jo JOB me jata hai, aur
+     * printer ke naam se mutaasir na ho.
+     */
+    public function test_the_paper_label_on_screen_matches_the_job_not_the_printer_name(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+
+        // Printer ka naam JAAN BUJH KAR jhoota: "(A4)" likha hai magar is par
+        // kitchen sheet A5 hi jayegi. Agar kabhi label printer se aane lage to
+        // ye test wohi ghalti pakdega.
+        $printer = $this->windowsPrinter(['name' => 'Office — HP P2055dn (A4)']);
+
+        $svc = \App\Services\Catering\CateringDocumentQueueService::class;
+
+        $this->assertSame('A5', $svc::paperLabel($svc::KIND_KITCHEN_SHEET), 'kitchen sheet hamesha A5');
+        $this->assertSame('A4', $svc::paperLabel($svc::KIND_QUOTATION), 'quotation A4');
+        $this->assertSame('A4', $svc::paperLabel($svc::KIND_ADDRESS_SHEET), 'address sheet A4');
+
+        // Aur ab asal natija: JOB me kya gaya. Label aur job ek hi jagah se
+        // aate hain, aur yahan dono mila kar dekhe jate hain.
+        foreach ([
+            [$svc::KIND_KITCHEN_SHEET, fn () => $this->queue->queueKitchenSheetForEvent($event, $printer)],
+            [$svc::KIND_QUOTATION, fn () => $this->queue->queueQuotation($event->currentEstimate()->first(), $printer)],
+            [$svc::KIND_ADDRESS_SHEET, fn () => $this->queue->queueAddressSheet($event, $printer)],
+        ] as [$kind, $make]) {
+            $job = $make();
+            $payload = is_array($job->payload) ? $job->payload : (array) json_decode((string) $job->payload, true);
+            $paper = (string) ($payload['paper'] ?? '');
+
+            $this->assertStringStartsWith(
+                strtolower($svc::paperLabel($kind)), $paper,
+                "{$kind}: screen ka label (".$svc::paperLabel($kind).") aur job ka kagaz ({$paper}) ek hone chahiyein"
+            );
+        }
+    }
+
+    /**
+     * A4 PRINTER PAR INVOICE KA PARCHA HTML HO, ESC/POS BYTES NAHI.
+     *
+     * ── 11 OCTOBER, ASAL KHARABI ──────────────────────────────────────────
+     *
+     * Event ke safhe par "Send invoice to printer" ka dropdown HAR active
+     * printer dikhata hai — dono A4/A5 laser bhi. Magar us ka raasta
+     * `CateringDocumentPrintService` hai, jo `raw_payload` me ESC/POS bytes
+     * bharta hai (wo thermal parchi ke liye bana tha), aur us me printer ki
+     * qisam dekhi hi nahi jati.
+     *
+     * Agent us job ko `printer_type === 'windows'` dekh kar document ke raaste
+     * par bhejta hai: raw_payload ko `.html` file me likhta hai aur Chrome ko
+     * deta hai. Chrome un control bytes ko matn samajh kar chhap deta hai.
+     * Natija — A4 ke kaghaz par koora.
+     *
+     * Ye nakami KHAMOSH hai: job "printed" lagti hai, agent khush hai, aur
+     * sirf graahak ke haath me aaya kaghaz sach bolta hai.
+     */
+    public function test_an_invoice_sent_to_an_a4_printer_carries_html_not_escpos(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $printer = $this->windowsPrinter();
+
+        $this->estimates->markSent($event->currentEstimate->refresh());
+        $this->estimates->confirmEvent($event->refresh());
+
+        // Event ka din guzar chuka ho — CATERING-CLOSE-AFTER-EVENT-1 ka pehra
+        // us se pehle final invoice banne hi nahi deta, aur ye test invoice ke
+        // PARCHE ke baare me hai, us pehre ke baare me nahi.
+        DB::connection("tenant")->table("catering_events")->where("id", $event->id)
+            ->update(["event_date" => now()->subDays(2)->toDateString()]);
+
+        $paymentMethodId = $this->makePaymentMethod();
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 50000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $paymentMethodId,
+        ]);
+        $invoice = app(\App\Services\Catering\CateringFinalInvoiceService::class)->issue($event->refresh());
+
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'IV'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class)->printFinalInvoice(
+            \Illuminate\Http\Request::create('/x', 'POST', ['printer_id' => $printer->id, 'lang' => 'en']),
+            $invoice
+        );
+
+        $job = \App\Models\Tenant\PrintJob::on('tenant')
+            ->where('printer_id', $printer->id)->orderByDesc('id')->first();
+
+        $this->assertNotNull($job, 'invoice ki job banni chahiye thi');
+
+        $html = (string) $job->raw_payload;
+        $this->assertStringContainsString('<', $html,
+            'A4 printer par jo parcha jata hai wo HTML hona chahiye — agent use Chrome se PDF banata hai');
+        $this->assertStringNotContainsString("\x1b@", $html,
+            'ESC/POS ka reset byte (ESC @) A4 ke parche me nahi hona chahiye — '
+            .'Chrome use matn samajh kar chhap deta hai aur kaghaz par koora aata hai');
+        $this->assertStringNotContainsString("\x1dV", $html,
+            'aur na hi cut command (GS V)');
+
+        // Aur kagaz A4 ho — invoice kabhi A5 par nahi jati.
+        $payload = is_array($job->payload) ? $job->payload : (array) json_decode((string) $job->payload, true);
+        $this->assertStringStartsWith('a4', (string) ($payload['paper'] ?? ''),
+            'invoice ka kagaz A4 hona chahiye, aur wo job ke saath jana chahiye — '
+            .'warna agent printer ko naap batata hi nahi aur wo apni default utha leta hai');
+    }
+    /**
+     * INVOICE AUR PROFORMA KE DOCUMENT SAFHON PAR BHI "SEND TO NETWORK".
+     *
+     * Malik (11 Oct): "invoice ki bhi setting add karo... send to network
+     * daalo", aur phir "proforma me bhi laga dena".
+     *
+     * Dono wohi view chalate hain (`final-invoice`), magar raaste alag hain:
+     *
+     *   invoice   -> apna route, kyunke us ka apna permission hai aur wo
+     *                reprint ki ginti rakhta hai
+     *   proforma  -> bulk ka raasta (`kind` + `ids[]`), kyunke wo kahin
+     *                mehfooz hoti hi nahi aur `ids[]` hamesha EVENT ki hoti
+     *                hai. Is ka apna route BANAYA NAHI gaya: naya route naya
+     *                permission maangta hai jo har role par alag se dena
+     *                parta, aur yahan us ki zaroorat hi nahi thi.
+     *
+     * Dono A4 par chhapte hain, aur wo kabhi badalta nahi — invoice ka kaghaz
+     * us ke bharne se nahi badalta.
+     */
+    public function test_the_invoice_and_proforma_pages_offer_send_to_network(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $this->windowsPrinter(['name' => 'Office A4']);
+
+        $this->estimates->markSent($event->currentEstimate->refresh());
+        $this->estimates->confirmEvent($event->refresh());
+        DB::connection('tenant')->table('catering_events')->where('id', $event->id)
+            ->update(['event_date' => now()->subDays(2)->toDateString()]);
+
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 50000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->makePaymentMethod(),
+        ]);
+        $invoice = app(\App\Services\Catering\CateringFinalInvoiceService::class)->issue($event->refresh());
+
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'ID'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        $c = app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class);
+        $req = fn () => \Illuminate\Http\Request::create('/x', 'GET');
+
+        foreach ([
+            ['invoice', $c->finalInvoice($req(), $invoice), '/final-invoice/'.$invoice->id.'/print'],
+            ['proforma', $c->proformaInvoice($req(), $event->refresh()), '/catering/documents/bulk/print'],
+        ] as [$name, $view, $expectedAction]) {
+            $html = $view->render();
+
+            $this->assertStringContainsString('Send to network', $html,
+                "{$name}: network wala button hona chahiye");
+            $this->assertStringContainsString('name="printer_id"', $html,
+                "{$name}: printer chunne ka khaana");
+            $this->assertStringContainsString('window.print()', $html,
+                "{$name}: purana Print button bhi rehna chahiye");
+            $this->assertStringContainsString($expectedAction, $html,
+                "{$name}: form sahi raaste par jana chahiye");
+
+            // Dono A4. Invoice ka kaghaz us ke bharne se nahi badalta.
+            preg_match('/doc-paper[^>]*>\s*([A-Z0-9]+)\s*</', $html, $m);
+            $this->assertSame('A4', $m[1] ?? null, "{$name}: kagaz A4 hona chahiye");
+
+            $this->assertStringNotContainsString('name="paper', $html,
+                "{$name}: kagaz ka koi khaana NAHI");
+        }
+    }
+
+    /**
+     * AUR JO KAGHAZ PRINTER KO JATA HAI, US ME TOOLBAR NA HO.
+     *
+     * Yehi view `CateringDocumentQueueService` bhi render karti hai — agent ko
+     * bhejne ke liye HTML jamate waqt. Us raaste par na `ids` hoti hain na
+     * `sendAction`, is liye partial kuch nikalti hi nahi. Pehra yahan is liye
+     * hai ke ye kharabi DIKHTI nahi: kaghaz nikal aata hai, bas us par ek
+     * fazool toolbar hota hai, aur shikayat tab aati hai jab graahak use parh
+     * le.
+     */
+    public function test_the_queued_invoice_and_proforma_carry_no_toolbar(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $printer = $this->windowsPrinter();
+
+        $this->estimates->markSent($event->currentEstimate->refresh());
+        $this->estimates->confirmEvent($event->refresh());
+        DB::connection('tenant')->table('catering_events')->where('id', $event->id)
+            ->update(['event_date' => now()->subDays(2)->toDateString()]);
+
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 50000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->makePaymentMethod(),
+        ]);
+        $invoice = app(\App\Services\Catering\CateringFinalInvoiceService::class)->issue($event->refresh());
+
+        foreach ([
+            'invoice' => fn () => $this->queue->queueFinalInvoice($invoice, $printer),
+            'proforma' => fn () => $this->queue->queueProformaInvoice($event->refresh(), $printer),
+        ] as $name => $make) {
+            $html = (string) $make()->raw_payload;
+
+            $this->assertStringNotContainsString('Send to network', $html,
+                "{$name}: bheja hua kaghaz toolbar nahi le kar ja sakta");
+            $this->assertStringContainsString('<', $html,
+                "{$name}: aur wo HTML ho — ESC/POS bytes nahi");
+            $this->assertNotSame('', trim($html), "{$name}: kaghaz khali bhi na ho");
+        }
+    }
+    /**
+     * JITNI BAAR BHEJO, UTNE KAGHAZ — malik ka faisla, 11 October.
+     *
+     * ── KYA HUA THA ───────────────────────────────────────────────────────
+     *
+     * Malik: "ek aur print bheja hai kitchen sheet ka, dekho gaya print?" Koi
+     * nayi job bani hi nahi thi — us event ki kitchen sheet pehle ja kar chhap
+     * chuki thi, aur dobara dabane par wohi purani job lautti thi.
+     *
+     * Maine pehle sirf PAIGHAM theek kiya aur ek "Dobara chhapein" ka khaana
+     * laga diya. Malik ne us par saaf kaha: "jitni baar bhi bhejoon, POS thori
+     * hai." Baat durust thi — catering ka parcha POS ki parchi nahi. Bawarchi
+     * khane ko teen copy chahiye to teen baar dabana hi us ka tareeqa hai, aur
+     * har baar ek khaane par nishan lagwana rozmarra ke kaam me rukawat hai.
+     *
+     * Is liye ab is toolbar par koi khaana nahi: har dabana ek naya kaghaz.
+     *
+     * AHEM: duplicate ki rok KHATM nahi hui. Wo POS ke receipt/KOT par jaise
+     * thi waisi hai — wahan dohri parchi asal masla hai. Yahan sirf band hai.
+     *
+     * Qeemat: do baar dabane se do kaghaz. Malik ko maloom hai; yehi farmaish
+     * thi.
+     */
+    public function test_every_press_queues_another_sheet(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $printer = $this->windowsPrinter();
+
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'RP'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        $controller = app(\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class);
+        $jobs = fn () => \App\Models\Tenant\PrintJob::on('tenant')->where('printer_id', $printer->id)->count();
+
+        // Toolbar ab HAMESHA `reprint` bhejta hai — wohi jo safhe par hidden hai.
+        $press = fn () => $controller->printToNetwork(
+            \Illuminate\Http\Request::create('/x', 'POST', [
+                'kind' => 'kitchen_sheet',
+                'ids' => [$event->id],
+                'printer_id' => $printer->id,
+                'reprint' => '1',
+            ])
+        );
+
+        foreach ([1, 2, 3] as $n) {
+            session()->forget('status');
+            $press();
+            $this->assertSame($n, $jobs(),
+                "{$n} baar dabane par {$n} kaghaz nikalne chahiyein — catering ka parcha POS ki parchi nahi");
+            $this->assertStringContainsString('queued to', (string) session('status'),
+                "{$n}: har baar screen ko kehna chahiye ke kaghaz bheja gaya");
+        }
+    }
+
+    /**
+     * AUR WO HIDDEN KHAANA SAFHE PAR MOJOOD HO.
+     *
+     * Us ke baghair upar wala raasta chup chaap band ho jata hai: screen wahi
+     * dikhti hai, button wahi hai, magar doosra kaghaz kabhi nahi nikalta —
+     * aur ye wohi shikayat thi jo 11 Oct ko aayi.
+     */
+    public function test_the_toolbar_always_asks_for_a_fresh_copy(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $this->windowsPrinter();
+
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        \Illuminate\Support\Facades\Gate::before(fn (?\App\Models\Tenant\User $u = null) => true);
+        $user = \App\Models\Tenant\User::on('tenant')
+            ->find($this->makeUser(['employee_code' => 'RB'.\Illuminate\Support\Str::random(4)]));
+        $this->actingAs($user, 'tenant');
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+
+        $html = app(\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class)
+            ->kitchenSheets(\Illuminate\Http\Request::create('/x', 'GET', ['ids' => [$event->id]]))
+            ->render();
+
+        $this->assertStringContainsString('name="reprint" value="1"', $html,
+            'toolbar ko hamesha nayi copy maangni chahiye');
+        $this->assertStringNotContainsString('type="checkbox" name="reprint"', $html,
+            'aur us par koi khaana nahi hona chahiye — malik ne saaf mana kiya tha');
+    }
+    /**
+     * HAR PARCHE PAR CHHAPNE KA WAQT, AUR KISI PAR KAROBAR KA NAAM NAHI.
+     *
+     * Malik (11 Oct), do farmaishein ek saath:
+     *
+     *   "ye printed time tamam quotation, invoice, address, proforma sab pe
+     *    aana chahiye"
+     *
+     *   "ye Kashif Kitchen hata do, jahan jahan print par naam aa raha hai —
+     *    branch ya company ka"
+     *
+     * Parche apne chhape hue letterhead par nikalte hain, jis par naam pehle se
+     * mojood hai. Us ke theek upar doosra naam chhapna us kaghaz ko kharab
+     * karta hai.
+     *
+     * ── YE TEST US HTML PAR CHALTA HAI JO PRINTER KO JATA HAI ─────────────
+     *
+     * Screen par dekh lena kaafi nahi hota. Address sheet is ki misaal hai: us
+     * par chhapne ka waqt PEHLE SE likha tha — magar toolbar ke andar, jis par
+     * `@media print { display: none }` lagta hai. Yani wo waqt screen par to
+     * nazar aata tha aur kaghaz par kabhi nahi aaya. Agar ye test screen ka
+     * HTML dekhta to wo kharabi pakri hi na jati.
+     *
+     * `queue*()` wohi HTML jamati hai jo agent Chrome ko deta hai — yani ye
+     * theek wo kaghaz hai jo graahak ke haath me jayega.
+     */
+    public function test_every_printed_document_carries_the_time_and_no_business_name(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $printer = $this->windowsPrinter();
+
+        $this->estimates->markSent($event->currentEstimate->refresh());
+        $this->estimates->confirmEvent($event->refresh());
+        DB::connection('tenant')->table('catering_events')->where('id', $event->id)
+            ->update(['event_date' => now()->subDays(2)->toDateString()]);
+
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 50000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->makePaymentMethod(),
+        ]);
+        $invoice = app(\App\Services\Catering\CateringFinalInvoiceService::class)->issue($event->refresh());
+
+        foreach ([
+            'quotation' => fn () => $this->queue->queueQuotation($event->currentEstimate()->first(), $printer),
+            'kitchen sheet' => fn () => $this->queue->queueKitchenSheetForEvent($event->refresh(), $printer),
+            'address sheet' => fn () => $this->queue->queueAddressSheet($event->refresh(), $printer),
+            'invoice' => fn () => $this->queue->queueFinalInvoice($invoice, $printer),
+            'proforma' => fn () => $this->queue->queueProformaInvoice($event->refresh(), $printer),
+        ] as $name => $make) {
+            $html = (string) $make()->raw_payload;
+
+            $this->assertStringContainsString('Printed', $html,
+                "{$name}: chhapne ka waqt KAGHAZ par hona chahiye — screen par hona kaafi nahi, "
+                .'address sheet par wo toolbar me tha aur print par chhup jata tha');
+
+            // Waqt bhi ho, sirf lafz nahi. (TenantClock ka `d M Y g:i A`.)
+            $this->assertMatchesRegularExpression('/Printed\s+\d{2} [A-Z][a-z]{2} \d{4} \d{1,2}:\d{2} (AM|PM)/', $html,
+                "{$name}: sirf lafz 'Printed' kaafi nahi — us ke saath asal waqt bhi hona chahiye");
+
+            // Aur karobar ka naam kahin na ho.
+            $this->assertStringNotContainsString('class="brand"', $html,
+                "{$name}: karobar ka naam parche par nahi hona chahiye — letterhead par wo pehle se hai");
+            $this->assertStringNotContainsString('Catering & Events', $html,
+                "{$name}: aur na hi us ke neeche wali satar");
+        }
+    }
+    /**
+     * KITCHEN SHEET KA SAR: PREVIEW ka band aur unwan dono hat gaye.
+     *
+     * Malik (11 Oct), parche par nishan laga kar: "preview wala box aur Kashif
+     * Kitchen / SERVICE SHEET ka header hatana hai, baqi theek hai."
+     *
+     * ── EK KHATRA JO UTHAYA GAYA THA, AUR AB CHHOTA HO GAYA ──────────────
+     *
+     * Wo band is liye lagaya gaya tha ke bawarchi-khane ke paas DO SACH na ho
+     * jayen: ek preview deewar par laga rahe, asli parcha baad me aaye, aur
+     * dono ek jaise dikhein. Malik ko ye bata diya gaya; faisla un ka hai.
+     *
+     * Farq ab bhi mojood hai, bas chhota: jaari-shuda parche par upar RELEASE
+     * NUMBER chhapta hai, preview par nahi. Yehi test wo farq bhi parakhta
+     * hai — warna wo chup chaap khatm ho jata aur phir koi nishani na bachti.
+     *
+     * "QUOTATION CHANGED AFTER THIS SHEET" wala band JAAN BUJH KAR rakha gaya:
+     * wo alag baat kehta hai (parcha nikalne ke BAAD sauda badla) aur malik ne
+     * us par nishan nahi lagaya tha.
+     */
+    public function test_the_kitchen_sheet_header_is_bare_but_the_release_number_still_marks_a_released_sheet(): void
+    {
+        CateringSetting::create(['quotation_paper' => 'a4_portrait', 'kitchen_sheet_paper' => 'a5_portrait']);
+        $event = $this->booking();
+        $printer = $this->windowsPrinter();
+
+        // (a) PREVIEW — koi release nahi bani.
+        $preview = (string) $this->queue->queueKitchenSheetForEvent($event, $printer)->raw_payload;
+
+        $this->assertStringNotContainsString('PRODUCTION NOT RELEASED', $preview,
+            'PREVIEW ka band hata diya gaya tha');
+        $this->assertStringNotContainsString('KITCHEN / SERVICE SHEET', $preview,
+            'sar ka unwan bhi hata diya gaya tha');
+        $this->assertStringContainsString('Printed', $preview,
+            'magar chhapne ka waqt rehna chahiye');
+
+        // (b) JAARI-SHUDA — ab release number parche par aana chahiye. Yehi ab
+        //     wo akela farq hai jis se bawarchi khana preview aur asli parche me
+        //     tameez kar sakta hai.
+        $this->estimates->markSent($event->currentEstimate->refresh());
+        $release = app(\App\Services\Catering\CateringProductionReleaseService::class)->release($event->refresh());
+        $released = (string) $this->queue->queueKitchenSheet($release, $printer)->raw_payload;
+
+        $this->assertStringContainsString((string) $release->release_no, $released,
+            'jaari-shuda parche par RELEASE NUMBER hona chahiye — PREVIEW ka band hatne ke baad '
+            .'yehi akeli nishani bachi hai jo preview aur asli parche me farq batati hai');
+        $this->assertStringNotContainsString((string) $release->release_no, $preview,
+            'aur preview par wo number nahi hona chahiye, warna farq hi mit jata');
+    }
     /** Do baar dabane se do kaghaz nahi — wohi job wapas aati hai. */
     public function test_queueing_the_same_document_twice_returns_the_same_job(): void
     {

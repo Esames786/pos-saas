@@ -55,6 +55,57 @@ class CateringEvent extends Model
         self::STATUS_CONFIRMED,
     ];
 
+    /**
+     * "Booking pakki ho chuki hai" — CATERING-CONFIRMED-IS-A-GROUP-1 (11 Oct).
+     *
+     * Malik: "confirm se le kar closed tak saare wo status hain jo actually
+     * confirm bookings hoti hain… confirm ka matlab ye saare confirm hi hain."
+     *
+     * Ye ek KAAROBARI tareef hai, kisi ek screen ka filter nahi. Graahak ne
+     * haan kar di — us ke baad `production_ready`, `released`, `completed`,
+     * `closed` sirf ye batate hain ke kaam kitna aage barha, na ke ye ke
+     * booking pakki hai ya nahi. Operator ke liye wo sab "confirm" hain.
+     *
+     * `cancelled` is me NAHI: wo booking pakki thi aur phir toot gayi.
+     *
+     * 🚨 Ye `OPEN_STATUSES` ka ulta nahi hai aur us ki jagah bhi nahi leta.
+     * Wo alag sawal ka jawab hai — "is par kaam BAQI hai?" — aur usi liye
+     * us me `confirmed` hai magar `released` nahi.
+     */
+    public const CONFIRMED_STATUSES = [
+        self::STATUS_CONFIRMED,
+        self::STATUS_PRODUCTION_READY,
+        self::STATUS_RELEASED,
+        self::STATUS_COMPLETED,
+        self::STATUS_CLOSED,
+    ];
+
+    /**
+     * Filter ki fehrist par is status ka naam.
+     *
+     * EK jagah, kyunke ye fehrist DO screenon par hai. Pehli koshish me
+     * maine wazahat ("confirmed → closed") sirf bookings ki screen par likhi
+     * thi; Customer Balances par sirf "Confirmed" likha raha aur wahan parhne
+     * wale ko pata hi na chalta ke us me closed bhi shamil hai.
+     */
+    public static function filterLabel(string $status): string
+    {
+        if ($status === self::STATUS_CONFIRMED) {
+            return 'Confirmed (confirmed → closed)';
+        }
+
+        return self::statusLabel($status);
+    }
+
+    /** Filter ki fehrist me jo chunne layak hain — group ke andar wale alag se nahi. */
+    public const FILTER_STATUSES = [
+        self::STATUS_INQUIRY,
+        self::STATUS_DRAFT,
+        self::STATUS_QUOTED,
+        self::STATUS_CONFIRMED,
+        self::STATUS_CANCELLED,
+    ];
+
     protected $fillable = [
         'event_no',
         'branch_id',
@@ -217,6 +268,25 @@ class CateringEvent extends Model
      * banati hai. Is ke baghair tabdeeli khamosh hoti: kaghaz bawarchi-khane
      * me laga rehta aur koi na jaanta ke wo purana ho chuka.
      */
+    /**
+     * Kya wo parcha purana hai JO AB CHHAPEGA?
+     *
+     * CATERING-RERELEASE-1 (9 Oct) — pehle ye sawal "KOI BHI release purani
+     * quotation ki hai?" tha. Ek release ki duniya me dono sawal ka jawab
+     * ek tha, is liye farq kabhi zahir nahi hua. Doosri release mumkin hote
+     * hi wo farq ek kharabi ban jata: purani release HAMESHA purani rahti
+     * hai, is liye tanbeeh kabhi na hatti — aur "Send Updated Kitchen Sheet"
+     * ka button hamesha nazar aata, har click par ek naya faltu parcha.
+     *
+     * Tarteeb wohi hai jo CHHAPNE wala raasta lagata hai
+     * (`CateringBulkDocumentController`: `sortByDesc('released_at')`), aur
+     * ye ittefaq nahi: tanbeeh usi kaghaz ke baare me honi chahiye jo waqai
+     * printer se niklega. Dono alag tarteeb lagayen to ek din screen "sab
+     * theek hai" kahegi aur printer purana parcha de dega.
+     *
+     * `id` sirf baraabari torne ke liye — do release ek hi lamhe me ban
+     * jayen to `released_at` faisla nahi kar pata.
+     */
     public function hasStaleRelease(): bool
     {
         $currentId = $this->currentEstimate?->id;
@@ -225,9 +295,45 @@ class CateringEvent extends Model
             return false;
         }
 
-        return $this->productionReleases()
-            ->where('catering_estimate_id', '!=', $currentId)
-            ->exists();
+        $latest = $this->currentRelease();
+
+        return $latest !== null && $latest->catering_estimate_id !== $currentId;
+    }
+
+    /**
+     * Wo parcha jo AB chhapega — aur yehi wo jagah hai jahan ye tay hota hai.
+     *
+     * CATERING-RERELEASE-1 (9 Oct): pehle ye faisla TEEN jagah alag alag
+     * likha tha — bulk print, print queue, aur tanbeeh. Jab tak ek hi
+     * release hoti thi, teenon ka jawab ek tha aur farq kabhi zahir nahi
+     * hua. Doosri release mumkin hote hi farq ek KHAMOSH nakami ban gaya:
+     * sirf `released_at` par tarteeb lagao aur do release ek hi second me
+     * ban jayen, to `sortByDesc` PURANA parcha wapas kar deta hai. Screen
+     * kehti "sab theek hai", printer purana parcha deta hai, aur pata
+     * bawarchi-khane me ja kar chalta hai.
+     *
+     * Is liye tarteeb (`released_at`, phir `id`) sirf yahan likhi hai.
+     */
+    public function currentRelease(): ?CateringProductionRelease
+    {
+        $this->loadMissing('productionReleases');
+
+        return self::pickCurrentRelease($this->productionReleases);
+    }
+
+    /**
+     * Wohi qaida, pehle se laayi hui fehrist par — taake jo screenein kai
+     * bookings ek saath dikhati hain wo har booking par nayi query na
+     * chalayen.
+     *
+     * @param  iterable<\App\Models\Tenant\CateringProductionRelease>  $releases
+     */
+    public static function pickCurrentRelease($releases): ?CateringProductionRelease
+    {
+        return collect($releases)
+            ->where('status', CateringProductionRelease::STATUS_RELEASED)
+            ->sortByDesc(fn ($r) => [$r->released_at?->getTimestamp() ?? 0, $r->id])
+            ->first();
     }
 
     public function isCancelled(): bool

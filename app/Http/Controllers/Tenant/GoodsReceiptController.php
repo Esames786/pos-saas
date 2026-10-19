@@ -147,18 +147,14 @@ class GoodsReceiptController extends Controller
             if (! $product) {
                 continue;
             }
-            // GRN-PICKER-GUARD-1: receiving a line calls InventoryService::postIn(), which throws a
-            // raw RuntimeException on a product that is not stock tracked — and that reached the
-            // client as a 500 error page. A purchasable-but-untracked product is a real and
-            // legitimate state (a freight charge, or a drink whose inventory has not been started
-            // yet), so this is a thing to SAY, not to crash on. Checked here, before anything is
-            // written, so nothing is half-received.
+            // GRN-NON-STOCK-1 (owner, 6 Oct): a purchasable product that does not track stock — a
+            // drink whose inventory has not been started — is RECEIVED as a purchase only. It posts,
+            // nothing enters stock (postGrn skips it), and its bill books it to cost, not inventory.
+            // Until 6 Oct this was refused here (GRN-PICKER-GUARD-1), which left the purchase with
+            // nowhere to go: a bill can only be built from a GRN. Batch/expiry mean nothing without
+            // stock, so they are not asked for.
             if (! $product->is_stock_tracked) {
-                throw ValidationException::withMessages([
-                    "lines.$i.product_id" => "{$product->name} does not track stock, so it cannot be "
-                        . 'received on a GRN. Turn on Track Stock for it, or put this cost on a '
-                        . 'Purchase Bill instead.',
-                ]);
+                continue;
             }
             if ($product->requires_batch && empty($line['batch_no'])) {
                 throw ValidationException::withMessages([
@@ -174,7 +170,7 @@ class GoodsReceiptController extends Controller
 
         $userId = auth('tenant')->id();
 
-        DB::connection('tenant')->transaction(function () use ($data, $validLines, $userId) {
+        DB::connection('tenant')->transaction(function () use ($data, $validLines, $userId, $productMap) {
             $grn = GoodsReceipt::create([
                 'grn_no'            => $this->purchasingService->nextGrnNo(),
                 'purchase_order_id' => $data['purchase_order_id'] ?? null,
@@ -202,6 +198,8 @@ class GoodsReceiptController extends Controller
                     'discount_amount'         => $line['discount_amount'] ?? 0,
                     'tax_amount'              => $line['tax_amount'] ?? 0,
                     'notes'                   => $line['notes'] ?? null,
+                    // Frozen at receipt: the bill and any return follow THIS, not the product's flag later.
+                    'affects_stock'           => (bool) ($productMap[$line['product_id']]->is_stock_tracked ?? true),
                 ]);
             }
 

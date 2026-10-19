@@ -5,10 +5,10 @@
 @php
     /** PRODUCT-UX-1: guided product setup. UI only — same fields, same controller. */
     $u = auth()->user();
+    $can = fn (string $permission) => (bool) ($u?->can($permission) ?? false);
     $context = $context ?? 'catalog';
     $isManufacturing = $context === 'manufacturing';
-    $kitchenAvailable = (bool) ($u?->can('tenant.recipes.index') ?? false);
-    $mfgAvailable     = (bool) (($u?->can('tenant.manufacturing.bom.index') ?? false) || ($u?->can('tenant.manufacturing.products.index') ?? false));
+    $kitchenAvailable = $can('tenant.recipes.index');
     // Catering materials reuse the manufacturing context but post to their own
     // path. The fallback reproduces the previous hardcoded behaviour exactly.
     $base = $contextBase ?? ($isManufacturing ? '/manufacturing/products' : '/products');
@@ -21,6 +21,72 @@
     // Manufacturing tenants keep their own wording untouched.
     $isCateringMaterials = $base === '/catering/materials';
 
+    // PRODUCT-FORM-AREA-1 — which part of the business a product is for, chosen BEFORE its type.
+    //
+    // A permission is not an entitlement: deploy.sh gives the Owner every tenant.* permission
+    // whatever the plan, so "can open BOMs" was true on all four live tenants and none of them
+    // has manufacturing — which is how a restaurant's crate of Pakola became a Finished Good.
+    // Each area needs the plan AND the role, as the sidebar does. With no tenant bound (only the
+    // test harness) the plan is unknown and the permission decides alone, as it always did.
+    $planModules = null;
+    if (app()->bound('tenant') && ($sub = app('tenant')->subscription)) {
+        $sub->loadMissing('plan.enabledModules');
+        $planModules = $sub->plan ? $sub->plan->enabledModules->pluck('key')->all() : [];
+    }
+    $planHas = fn (string ...$keys) => $planModules === null || (bool) array_intersect($keys, $planModules);
+    $mfgAvailable = $planHas('manufacturing')
+        && ($can('tenant.manufacturing.bom.index') || $can('tenant.manufacturing.products.index'));
+
+    // The screen's own area is always offered — the route middleware already checked plan and role.
+    // Catering Materials is a narrower form (no Sale Item role, no POS Visible box), so it offers
+    // nothing else: a dish saved through it could not keep either.
+    $areaAllowed = [
+        'restaurant'    => ! $isCateringMaterials && $planHas('pos', 'restaurant')
+                           && (! $isManufacturing || $can('tenant.products.index')),
+        'catering'      => $isCateringMaterials
+                           || ($planModules !== null && in_array('catering', $planModules, true) && $can('tenant.catering.materials.index')),
+        'manufacturing' => ! $isCateringMaterials && ($isManufacturing || $mfgAvailable),
+    ];
+    if (! in_array(true, $areaAllowed, true)) {
+        $areaAllowed['restaurant'] = true;   // a plan with none of the three still gets the catalog's cards
+    }
+    $areas = array_intersect_key([
+        'restaurant'    => ['Restaurant / POS', 'ti-tools-kitchen-2'],
+        'catering'      => ['Catering', 'ti-calendar-event'],
+        'manufacturing' => ['Manufacturing', 'ti-building-factory-2'],
+    ], array_filter($areaAllowed));
+
+    // Each area's cards. Catering's are the SAME modes as the restaurant's — same defaults, same
+    // save — in a kitchen's own words. Manufacturing types live in Manufacturing and nowhere else.
+    $advancedCard = ['Advanced / Custom', 'ti-adjustments', 'Show every field'];
+    $areaCards = array_intersect_key([
+        'restaurant' => [
+            'pos_sale'     => ['POS Sale Item', 'ti-shopping-cart', 'Sold at the till, tracked in stock'],
+            'recipe'       => ['Recipe / Kitchen Item', 'ti-chef-hat', 'Sold in POS, consumes ingredients'],
+            'raw_material' => ['Ingredient / Raw Material', 'ti-meat', 'Hidden from POS, used in recipes'],
+            'packaging'    => ['Packing Material', 'ti-package', 'Hidden from POS, packaging stock'],
+            'service'      => ['Service Item', 'ti-businessplan', 'Sold in POS, no stock'],
+            'advanced'     => $advancedCard,
+        ],
+        // Catering offers exactly the two things a kitchen stocks, in its own words.
+        'catering' => $isCateringMaterials ? [
+            'raw_material' => ['Ingredient', 'ti-meat', 'Purchased and consumed by your recipes'],
+            'packaging'    => ['Packaging Material', 'ti-package', 'Boxes, foil, disposable plates'],
+        ] : [
+            'pos_sale'     => ['Catering Dish', 'ti-bowl', 'Sold to customers at events'],
+            'recipe'       => ['Dish with Recipe', 'ti-chef-hat', 'Sold at events, consumes ingredients'],
+            'raw_material' => ['Ingredient', 'ti-meat', 'Purchased and consumed by your recipes'],
+            'packaging'    => ['Packaging Material', 'ti-package', 'Boxes, foil, disposable plates'],
+            'service'      => ['Service / Charge', 'ti-businessplan', 'A charge with no stock'],
+            'advanced'     => $advancedCard,
+        ],
+        'manufacturing' => [
+            'mfg_raw'  => ['Manufacturing Raw Material', 'ti-building-factory-2', 'BOM component'],
+            'mfg_fg'   => ['Manufacturing Finished Good', 'ti-box', 'Produced via BOM'],
+            'advanced' => $advancedCard,
+        ],
+    ], $areas);
+
     // Detect the current product's setup mode from its existing flags (edit screens).
     //
     // PRODUCT-FORM-ROLE-1 — the ROLE picks the card, never the shape.
@@ -32,45 +98,45 @@
     // then hid the Purchasable and Track Stock boxes which are the whole point of such an item,
     // so the screen contradicted its own badges. Shape now settles only the one question it can
     // answer: a plain POS item, or a POS item sold without stock.
-    $detectMode = function ($p) use ($mfgAvailable, $kitchenAvailable) {
+    //
+    // A raw material is the same row in a kitchen and in a factory (the controller sets
+    // can_be_bom_component on every raw/packaging material), so its card is the AREA's name for it.
+    $detectMode = function ($p) {
         if (! $p) return 'pos_sale';
         $kind = $p->product_kind ?? 'sale_item';
         if ($kind === 'service')            return 'service';
-        if ($kind === 'raw_material')      return ($p->can_be_bom_component && $mfgAvailable) ? 'mfg_raw' : 'raw_material';
+        if ($kind === 'raw_material')       return 'raw_material';
         if ($kind === 'packaging_material') return 'packaging';
-        if ($kind === 'finished_good')      return $mfgAvailable ? 'mfg_fg' : 'advanced';
+        if ($kind === 'finished_good')      return 'mfg_fg';
         if ($kind === 'sale_item' && $p->inventory_consumption_method === 'recipe') return 'recipe';
         if ($kind === 'sale_item')          return $p->product_type === 'service' ? 'service' : 'pos_sale';
         return 'advanced';
     };
     $currentMode = old('_setup_mode', $detectMode($product ?? null));
-    if (! $product && ! old('_setup_mode') && $isManufacturing) {
-        $currentMode = 'mfg_raw';
-    }
 
-    // Card catalogue (manufacturing cards gated by availability).
-    $modeCards = [
-        'pos_sale'     => ['POS Sale Item', 'ti-shopping-cart', 'Sold at the till, tracked in stock', ! $isManufacturing],
-        'recipe'       => ['Recipe / Kitchen Item', 'ti-chef-hat', 'Sold in POS, consumes ingredients', ! $isManufacturing],
-        'raw_material' => ['Ingredient / Raw Material', 'ti-meat', 'Hidden from POS, used in recipes', ! $isManufacturing],
-        'packaging'    => ['Packing Material', 'ti-package', 'Hidden from POS, packaging stock', ! $isManufacturing],
-        'service'      => ['Service Item', 'ti-businessplan', 'Sold in POS, no stock', ! $isManufacturing],
-        'mfg_raw'      => ['Manufacturing Raw Material', 'ti-building-factory-2', 'BOM component', $isManufacturing && $mfgAvailable && ! $isCateringMaterials],
-        'mfg_fg'       => ['Manufacturing Finished Good', 'ti-box', 'Produced via BOM', $isManufacturing && $mfgAvailable && ! $isCateringMaterials],
-        'advanced'     => ['Advanced / Custom', 'ti-adjustments', 'Show every field', ! $isCateringMaterials],
-    ];
-
-    // Catering offers exactly the two things a kitchen stocks, in its own words.
-    // The underlying archetypes are unchanged — only the label and the blurb.
-    if ($isCateringMaterials) {
-        $modeCards['raw_material'] = ['Ingredient', 'ti-meat', 'Purchased and consumed by your recipes', true];
-        $modeCards['packaging']    = ['Packaging Material', 'ti-package', 'Boxes, foil, disposable plates', true];
-        if (! in_array($currentMode, ['raw_material', 'packaging'], true)) {
-            $currentMode = 'raw_material';
-        }
+    // The area the screen opens on: what was posted back; else Catering Materials' own; else
+    // Manufacturing for a product only manufacturing can hold; else the screen's own; else the first.
+    $manufacturingOnly = $product && (
+        in_array($product->product_kind, ['finished_good', 'semi_finished'], true)
+        || $product->can_be_bom_output || $product->is_manufactured_finished_good
+    );
+    $currentArea = old('_area');
+    if (! isset($areas[$currentArea])) {
+        $currentArea = match (true) {
+            $isCateringMaterials                                 => 'catering',
+            $manufacturingOnly && isset($areas['manufacturing']) => 'manufacturing',
+            $isManufacturing                                     => 'manufacturing',
+            default                                              => array_key_first($areas),
+        };
     }
-    if (! ($modeCards[$currentMode][3] ?? false)) {
-        $currentMode = 'advanced';
+    if (! $product && ! old('_setup_mode')) {
+        $currentMode = array_key_first($areaCards[$currentArea]);   // a new product starts on its area's first type
+    }
+    if ($currentArea === 'manufacturing' && $currentMode === 'raw_material') $currentMode = 'mfg_raw';
+    if ($currentArea !== 'manufacturing' && $currentMode === 'mfg_raw')      $currentMode = 'raw_material';
+    if (! isset($areaCards[$currentArea][$currentMode])) {
+        // e.g. a Finished Good on a plan without manufacturing: Advanced, so its role is on screen to fix.
+        $currentMode = isset($areaCards[$currentArea]['advanced']) ? 'advanced' : array_key_first($areaCards[$currentArea]);
     }
 @endphp
 
@@ -133,18 +199,31 @@
                 </div>
             @endif
 
+            {{-- ── Business area (PRODUCT-FORM-AREA-1) — only what the plan AND the role allow ── --}}
+            <div class="mb-3">
+                <h5 class="mb-1">Which part of the business is this product for?</h5>
+                <p class="text-muted small mb-2">Only the areas your plan and role include are listed. The product types below follow this choice.</p>
+                <div class="d-flex flex-wrap gap-2" id="parea-options" role="radiogroup">
+                    @foreach($areas as $areaKey => [$areaLabel, $areaIcon])
+                        <input type="radio" class="btn-check" name="_area" id="parea-{{ $areaKey }}" value="{{ $areaKey }}" autocomplete="off" @checked($currentArea === $areaKey)>
+                        <label class="btn btn-outline-primary btn-sm" for="parea-{{ $areaKey }}"><i class="ti {{ $areaIcon }} me-1"></i>{{ $areaLabel }}</label>
+                    @endforeach
+                </div>
+            </div>
+
             {{-- ── Product Setup Mode ─────────────────────────────────────────── --}}
             <div class="mb-4">
                 <h5 class="mb-1">What type of product is this?</h5>
                 <p class="text-muted small mb-2">Pick a type to show only the fields you need. Choose <strong>Advanced / Custom</strong> for full control.</p>
                 <div class="d-flex flex-wrap gap-2" id="pmode-cards">
-                    @foreach($modeCards as $key => [$label, $icon, $desc, $show])
-                        @if($show)
-                            <button type="button" class="pmode-card {{ $currentMode === $key ? 'active' : '' }}" data-mode="{{ $key }}">
+                    @foreach($areaCards as $areaKey => $cards)
+                        @foreach($cards as $key => [$label, $icon, $desc])
+                            <button type="button" class="pmode-card {{ $currentArea === $areaKey && $currentMode === $key ? 'active' : '' }}"
+                                    data-area="{{ $areaKey }}" data-mode="{{ $key }}" @if($currentArea !== $areaKey) hidden @endif>
                                 <div class="pmode-title"><i class="ti {{ $icon }} me-1"></i>{{ $label }}</div>
                                 <div class="pmode-desc">{{ $desc }}</div>
                             </button>
-                        @endif
+                        @endforeach
                     @endforeach
                 </div>
                 <div id="pmode-summary" class="alert alert-light border py-2 px-3 mt-2 mb-0 small"></div>
@@ -444,8 +523,15 @@
                                 ? array_intersect_key(\App\Models\Tenant\Product::KINDS, array_flip(['raw_material', 'packaging_material']))
                                 : \App\Models\Tenant\Product::KINDS;
                         @endphp
+                        @php
+                            $kindNow = old('product_kind', $product?->product_kind ?? ($isCateringMaterials ? 'raw_material' : 'sale_item'));
+                            // PRODUCT-FORM-AREA-1: manufacturing roles are offered in Manufacturing only — but the
+                            // role a product already has is always offered, or the dropdown would misstate it.
+                            $mfgKinds = ['finished_good', 'semi_finished'];
+                        @endphp
                         @foreach($kindOptions as $val => $label)
-                            <option value="{{ $val }}" @selected(old('product_kind', $product?->product_kind ?? ($isCateringMaterials ? 'raw_material' : 'sale_item')) === $val)>{{ $label }}</option>
+                            @php $kindOff = in_array($val, $mfgKinds, true) && $currentArea !== 'manufacturing' && $kindNow !== $val; @endphp
+                            <option value="{{ $val }}" @selected($kindNow === $val) @if(in_array($val, $mfgKinds, true)) data-mfg="1" @endif @if($kindOff) hidden disabled @endif>{{ $label }}</option>
                         @endforeach
                     </select>
                     @error('product_kind') <div class="invalid-feedback">{{ $message }}</div> @enderror
@@ -629,12 +715,24 @@
 
 <script>
 (function () {
-    var IS_EDIT = {{ $product ? 'true' : 'false' }};
-    var MFG = {{ $mfgAvailable ? 'true' : 'false' }};
     var KITCHEN = {{ $kitchenAvailable ? 'true' : 'false' }};
     var CONTEXT = {!! json_encode($context) !!};
     // PRODUCT-FORM-ROLE-1: a card click on an EXISTING product rewrites its flags, so it asks first.
     var IS_EDIT = {{ $product ? 'true' : 'false' }};
+    // PRODUCT-FORM-AREA-1: the area picked above the cards. A form posted back keeps what was typed.
+    var START_AREA = {!! json_encode($currentArea) !!};
+    var HAS_OLD = {{ old('_setup_mode') !== null ? 'true' : 'false' }};
+    // A raw material is one row in a kitchen and a factory; each area just names it differently.
+    var SAME_ROW = { raw_material: 'mfg_raw', mfg_raw: 'raw_material' };
+    function areaNow() {
+        var r = document.querySelector('input[name="_area"]:checked');
+        return r ? r.value : START_AREA;
+    }
+    function areaModes(area) {
+        return Array.prototype.map.call(
+            document.querySelectorAll('#pmode-cards .pmode-card[data-area="' + area + '"]'),
+            function (c) { return c.getAttribute('data-mode'); });
+    }
 
     // groups always-visible regardless of mode
     var ALL_GROUPS = ['sell','pos','tax','purchase','pack','stock','batch','kitchen','mfg','role'];
@@ -661,9 +759,11 @@
         var m = MODES[mode] || MODES.pos_sale;
         var groups = (m.groups === 'all') ? ALL_GROUPS.slice() : m.groups.slice();
         if (m.groups === 'all') {
-            if (!MFG)     groups = groups.filter(function (g) { return g !== 'mfg'; });
             if (!KITCHEN) groups = groups.filter(function (g) { return g !== 'kitchen'; });
         }
+        // PRODUCT-FORM-AREA-1: the BOM boxes belong to Manufacturing — never on a restaurant or catering
+        // screen, not even under Advanced. Hidden, not removed: they still post what the product carries.
+        if (areaNow() !== 'manufacturing') groups = groups.filter(function (g) { return g !== 'mfg'; });
 
         // PRODUCT-FORM-ROLE-1: a setting that is ALREADY ON is never hidden.
         //
@@ -703,7 +803,7 @@
     // UX-POLISH-1: short per-mode explanation under the type cards.
     var SUMMARIES = {
         pos_sale:     'This item appears in POS and can be sold to customers.',
-        recipe:       'This item is sold in POS and consumes ingredients through Recipes/BOM.',
+        recipe:       'This item is sold in POS and consumes ingredients through its recipe.',
         raw_material: 'This item is not sold in POS. It is purchased and consumed by recipes.',
         packaging:    'This item is hidden from POS and used for takeaway/delivery packaging.',
         service:      'This item is sold without stock tracking.',
@@ -713,9 +813,18 @@
             ? 'Advanced mode shows every field, including POS visibility, for special cross-context products.'
             : 'Advanced mode — every field is shown for full manual control.'
     };
+    // PRODUCT-FORM-AREA-1: the same types, told the way a caterer would say them.
+    var CATERING_SUMMARIES = {
+        pos_sale:     'This dish is sold to customers at events.',
+        recipe:       'This dish is sold at events and consumes ingredients through its recipe.',
+        raw_material: 'Not sold to customers. Bought and consumed by your recipes.',
+        packaging:    'Boxes, foil and disposable plates: bought and consumed, never sold.',
+        service:      'A charge with no stock, such as service or delivery.'
+    };
     function updateSummary(mode) {
         var box = document.getElementById('pmode-summary');
-        if (box) box.innerHTML = '<i class="ti ti-info-circle me-1"></i>' + (SUMMARIES[mode] || SUMMARIES.pos_sale);
+        var text = (areaNow() === 'catering' && CATERING_SUMMARIES[mode]) || SUMMARIES[mode] || SUMMARIES.pos_sale;
+        if (box) box.innerHTML = '<i class="ti ti-info-circle me-1"></i>' + text;
     }
 
     function isChecked(id) { var e = document.getElementById(id); return e ? !!e.checked : false; }
@@ -753,13 +862,15 @@
     function applyMode(mode, withDefaults) {
         var hid = document.getElementById('_setup_mode');
         if (hid) hid.value = mode;
+        var area = areaNow();
         document.querySelectorAll('#pmode-cards .pmode-card').forEach(function (c) {
-            c.classList.toggle('active', c.getAttribute('data-mode') === mode);
+            c.classList.toggle('active', c.getAttribute('data-mode') === mode && c.getAttribute('data-area') === area);
         });
 
         // Defaults BEFORE visibility so linked fields reflect the new checkbox states.
         if (withDefaults && MODES[mode] && MODES[mode].def) applyDefaults(MODES[mode].def);
         syncConsumptionMethod();   // keep Consumption Method coherent with Track Stock (+ on load)
+        syncRoleOptions(area);     // a role set by code fires no 'change' — re-read which roles to offer
 
         renderVisibility(visibleGroups(mode));
 
@@ -785,7 +896,7 @@
         if (!box) return;
         var get = function (id) { var e = document.getElementById(id); return e ? (e.type === 'checkbox' ? e.checked : e.value) : null; };
         var mode = (document.getElementById('_setup_mode') || {}).value || 'pos_sale';
-        var showMfgBadges = CONTEXT === 'manufacturing' || mode === 'advanced';
+        var showMfgBadges = areaNow() === 'manufacturing';   // PRODUCT-FORM-AREA-1: BOM words stay in Manufacturing
         var out = [];
         out.push(get('is_pos_visible') ? chip('Appears in POS', 'success') : chip('Hidden from POS', 'secondary'));
         if (get('is_sellable')) out.push(chip('Sellable', 'primary'));
@@ -810,9 +921,9 @@
             if (IS_EDIT && MODES[mode] && MODES[mode].def) {
                 var el = card.querySelector('.pmode-title');
                 var title = (el ? el.textContent : mode).trim();
-                if (! window.confirm('Switch this product to "' + title + '"?
-
-Its role, POS visibility, purchasing, stock tracking and consumption will be reset to that type\'s defaults.')) {
+                // Line breaks are written as \n. A raw line break inside a quoted JS string is a
+                // SyntaxError that stopped this ENTIRE script from 29 Sep to 7 Oct, add and edit alike.
+                if (! window.confirm('Switch this product to "' + title + '"?\n\nIts role, POS visibility, purchasing, stock tracking and consumption will be reset to that type\'s defaults.')) {
                     return;
                 }
             }
@@ -860,8 +971,55 @@ Its role, POS visibility, purchasing, stock tracking and consumption will be res
         if (el) el.addEventListener('change', updateChips);
     });
 
-    // Initial render: show the detected mode's sections WITHOUT rewriting any saved data.
-    applyMode({!! json_encode($currentMode) !!}, false);
+    // PRODUCT-FORM-AREA-1 — the area above the cards.
+    //
+    // Manufacturing roles are offered in Manufacturing only. The role the product already has stays
+    // offered and enabled everywhere: a disabled selected option is not POSTED, and the save would
+    // then quietly turn it into a Sale Item.
+    function syncRoleOptions(area) {
+        var sel = document.getElementById('product_kind');
+        if (!sel) return;
+        Array.prototype.forEach.call(sel.options, function (o) {
+            if (!o.hasAttribute('data-mfg')) return;
+            var off = area !== 'manufacturing' && o.value !== sel.value;
+            o.hidden = off;
+            o.disabled = off;
+        });
+    }
+    function showAreaCards(area) {
+        document.querySelectorAll('#pmode-cards .pmode-card').forEach(function (c) {
+            c.hidden = c.getAttribute('data-area') !== area;
+        });
+        syncRoleOptions(area);
+    }
+    // Add: the new area's matching type, else its first type with that type's defaults.
+    // Edit: switching area changes NOTHING on the product. The same type is only renamed; if the
+    // area has no such type, no card is active until one is picked — and that click asks first.
+    document.querySelectorAll('input[name="_area"]').forEach(function (radio) {
+        radio.addEventListener('change', function () {
+            if (!radio.checked) return;
+            var area = radio.value;
+            showAreaCards(area);
+            var mode = (document.getElementById('_setup_mode') || {}).value || '';
+            var modes = areaModes(area);
+            if (modes.indexOf(mode) === -1 && SAME_ROW[mode] && modes.indexOf(SAME_ROW[mode]) !== -1) mode = SAME_ROW[mode];
+            if (modes.indexOf(mode) !== -1) { applyMode(mode, false); return; }
+            if (!IS_EDIT) { applyMode(modes[0], true); return; }
+            document.querySelectorAll('#pmode-cards .pmode-card').forEach(function (c) { c.classList.remove('active'); });
+            renderVisibility(visibleGroups(mode));
+            updateChips();
+            var box = document.getElementById('pmode-summary');
+            if (box) box.innerHTML = '<i class="ti ti-info-circle me-1"></i>Pick a type below. Nothing on this product changes until you do.';
+        });
+    });
+    var _kindForArea = document.getElementById('product_kind');
+    if (_kindForArea) _kindForArea.addEventListener('change', function () { syncRoleOptions(areaNow()); });
+
+    // Initial render: an EXISTING product's saved data is never rewritten. A new one starts from its
+    // card's defaults — before this, Manufacturing's Add screen showed "Raw Material" over a hidden
+    // Sale Item role with POS Visible ticked.
+    showAreaCards(areaNow());
+    applyMode({!! json_encode($currentMode) !!}, !IS_EDIT && !HAS_OLD);
 })();
 </script>
 @endsection

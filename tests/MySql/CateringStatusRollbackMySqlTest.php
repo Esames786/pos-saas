@@ -454,7 +454,11 @@ class CateringStatusRollbackMySqlTest extends MySqlTenantTestCase
             'branch_id' => $this->branchId,
             'customer_name' => 'Rollback Test Customer',
             'booking_date' => now()->toDateString(),
-            'event_date' => now()->addDays(20)->toDateString(),
+            // CATERING-NOTHING-FREEZES-BEFORE-EVENT-1 (10 Oct) — bill event
+            // guzarne ke baad banta hai, is liye jo fixture bill tak jata hai
+            // us ka event bhi guzra hua hona chahiye. Pehle yahan aane wali
+            // tareekh thi — ek aisi surat jo asal duniya me banti hi nahi.
+            'event_date' => now()->subDays(20)->toDateString(),
             'pax' => 100,
         ]);
 

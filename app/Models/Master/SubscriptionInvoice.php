@@ -82,6 +82,17 @@ class SubscriptionInvoice extends Model
         return $this->status === 'paid';
     }
 
+    /**
+     * Kya ye invoice service ki MUDDAT ka paisa hai?
+     *
+     * Sirf isi qism ki adaegi subscription ka period aage barhati hai. `addon` (jaise WhatsApp ka
+     * usage) kisi muddat ka haq nahi khareedta — wo us cheez ka bill hai jo kharch ho chuki.
+     */
+    public function extendsSubscriptionPeriod(): bool
+    {
+        return in_array($this->invoice_type, ['subscription', 'upgrade'], true);
+    }
+
     public function isVoid(): bool
     {
         return $this->status === 'void';

@@ -105,4 +105,28 @@
         </div>
     </div>
 </div>
+
+{{-- SUPPLIER-RUNNING-ACCOUNT-1: paid ahead — they owe us goods; never netted into "due" above. --}}
+@if(($advances ?? collect())->isNotEmpty())
+<div class="card border-0 shadow-sm mt-3" id="suppliers-in-advance">
+    <div class="card-body p-0">
+        <div class="px-3 pt-3 pb-2">
+            <h6 class="mb-0">Suppliers in advance</h6>
+            <div class="small text-muted">Paid more than their bills. Each advance is used on that supplier's next bills.</div>
+        </div>
+        <table class="table table-sm mb-0">
+            <thead><tr><th>Supplier</th><th class="text-end">Advance (Dr)</th></tr></thead>
+            <tbody>
+                @foreach($advances as $advance)
+                    <tr>
+                        <td><a href="{{ url('/suppliers/' . $advance->id . '/ledger') }}">{{ $advance->name }}</a></td>
+                        <td class="text-end">{{ number_format(abs((float) $advance->current_balance), 2) }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+            <tfoot><tr><th>Total</th><th class="text-end">{{ number_format(abs((float) $advances->sum('current_balance')), 2) }}</th></tr></tfoot>
+        </table>
+    </div>
+</div>
+@endif
 @endsection

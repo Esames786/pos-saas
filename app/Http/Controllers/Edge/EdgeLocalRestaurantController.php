@@ -196,10 +196,12 @@ class EdgeLocalRestaurantController extends Controller
         try {
             $closed = $this->pos->closeTableSession($session, $data['status'] ?? 'closed', auth('tenant')->user());
         } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            // CANCEL-PAID-FREES-TABLE-1 parity (canonical merge D8): the shared board JS reads `ok === false` + `message` to show
+            // "Table not closed" — Online RestaurantTableSessionController::close answers {ok:false, message} with 422.
+            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['session_id' => $closed->id, 'status' => $closed->status,
+        return response()->json(['ok' => true, 'session_id' => $closed->id, 'status' => $closed->status,
             'message' => $closed->status === 'cancelled' ? 'Session cancelled.' : 'Session closed as paid.']);
     }
 

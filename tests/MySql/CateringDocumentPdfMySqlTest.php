@@ -193,7 +193,24 @@ class CateringDocumentPdfMySqlTest extends MySqlTenantTestCase
         $this->assertContains('route.permission',
             Route::getRoutes()->getByName('tenant.catering.documents.estimate')->gatherMiddleware());
 
-        foreach (Route::getRoutes() as $route) {
+        // 6 Oct — this loop used to sweep EVERY route in the application, and
+        // that was wider than the thing it was guarding. The concern here is a
+        // CATERING DOCUMENT growing a PDF route of its own; an unrelated route
+        // that merely has "pdf" in its name is not that. `tenant.report.share.pdf`
+        // (the WhatsApp report link) tripped it, and that route is deliberately
+        // outside auth — token-gated, no permission to grant anywhere.
+        //
+        // Narrowed, not softened: a `tenant.catering.documents.*.pdf` route would
+        // still be caught, which is the only thing this ever meant to catch.
+        $catering = collect(Route::getRoutes())
+            ->filter(fn ($route) => str_starts_with((string) $route->getName(), 'tenant.catering.'));
+
+        // Aur ye pehra khali na guzar jaye: agar filter kal kuch na pakre to
+        // neeche ka loop sifar baar chalega aur test hamesha hara rahega.
+        $this->assertGreaterThan(10, $catering->count(),
+            'catering ke routes milne chahiyen — warna neeche ka loop kuch jaanchta hi nahi');
+
+        foreach ($catering as $route) {
             $this->assertStringNotContainsString('pdf', (string) $route->getName(),
                 'the PDF must ride the document route it belongs to, not a route of its own');
         }

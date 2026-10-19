@@ -78,6 +78,79 @@ class CateringProductionReleaseService
         return $release;
     }
 
+    /**
+     * Wo parcha jo chhapega — aur us par HAMESHA aaj ki quotation.
+     *
+     * CATERING-SHEET-ALWAYS-CURRENT-1 (9 Oct). Malik: "kitchen sheet mai hamesha
+     * updated data aana chahiye... mujhe itna status update na karna pare, auto
+     * sab ho."
+     *
+     * Pehle parcha us release se banta tha jo kitchen ko BHEJI GAYI thi. Wo soch
+     * ghalat nahi thi — jo kaghaz deewar par lag chuka us ka chup chaap badal
+     * jana khatarnak hai — magar us ki qeemat ye thi ke quotation badalne par
+     * parcha hamesha ke liye adhoora reh jata. EV-20261009-0216 par yehi hua:
+     * release ke 4 minute baad do dish juriin aur parcha ek hi dish par atka
+     * raha.
+     *
+     * Pehla ilaj ek button tha ("Send Updated Kitchen Sheet"). Malik ne use
+     * radd kiya, aur theek kiya: poora masla hi ye tha ke kisi ne ek qadam
+     * bhula diya, aur ilaj me ek aur qadam jorna usi ghalti ko dawat dena hai.
+     *
+     * Ab parcha SEEDHA maujooda quotation se banta hai. Release ka record
+     * barqarar hai aur apna kaam karta rehta hai (maal nikalne ka snapshot,
+     * aur "kab bheja tha" ka number) — magar wo ab ye tay nahi karta ke
+     * kaghaz par kya chhapega.
+     *
+     * Jis booking ki kabhi release hui hi nahi, us par `null` — aur ye jaan
+     * boojh kar hai. Pehle yahan `preview()` banaya ja raha tha, magar us ka
+     * matlab tha ke JIS BOOKING KI QUOTATION HI NAHI us par poora safha phat
+     * jata ("has no estimate to preview"). Bulk print aisi booking ko pehle
+     * shaista tareeqe se chhor deta tha — "ye chhoot gayi" — aur wo rawaiya
+     * wapas aana chahiye.
+     *
+     * Preview chahiye to pukarne wala khud maange; dono pukarne wale alag
+     * cheez chahte hain aur ye farq unhi ka hai:
+     *   • bulk print — kabhi release na hui ho to CHHOR do
+     *   • print queue — preview bhej do
+     */
+    public function sheetFor(CateringEvent $event): ?CateringProductionRelease
+    {
+        $real = $event->currentRelease();
+
+        if (! $real) {
+            return null;
+        }
+
+        $estimate = $event->currentEstimate;
+
+        if (! $estimate) {
+            return $real;
+        }
+
+        // Asli release ka number aur waqt rehte hain (kaghaz par wohi chhapta
+        // hai), magar lines aaj ki quotation ki.
+        //
+        // ⚠️ Ye badlav SIRF memory me hai — ye object kabhi save nahi hota, aur
+        // hona bhi nahi chahiye: database me padi release ek jami hui gawahi hai
+        // ke us waqt kitchen ko kya bheja gaya tha. Is liye yahan se aage koi
+        // `save()` nahi, aur isi wajah se ye kaam ek alag method me hai jise
+        // chhapne wale raaste hi bulate hain.
+        $real->setRelation('lines', new EloquentCollection(
+            array_map(
+                fn (array $attrs) => new CateringProductionReleaseLine($attrs),
+                $this->lineAttributesFor($estimate)
+            )
+        ));
+        $real->event_snapshot = $this->eventSnapshotFor($event, $estimate);
+
+        // "QUOTATION CHANGED AFTER THIS SHEET" ab jhoot hoga — lines to aaj ki
+        // hi hain. Band usi `catering_estimate_id` par chalta hai, is liye wo
+        // yahan bhi aaj wali par laga di jati hai.
+        $real->catering_estimate_id = $estimate->id;
+        $real->setRelation('event', $event);
+
+        return $real;
+    }
     public function release(CateringEvent $event, ?int $userId = null): CateringProductionRelease
     {
         $estimate = $event->currentEstimate;

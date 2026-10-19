@@ -95,8 +95,18 @@
             <div class="col-12 col-md-6 col-lg-2">
                 <select name="status" class="form-select">
                     <option value="">All Statuses</option>
-                    @foreach(\App\Models\Tenant\CateringEvent::STATUSES as $s)
-                        <option value="{{ $s }}" @selected($status === $s)>{{ ucwords(str_replace('_', ' ', $s)) }}</option>
+                    {{-- CATERING-CONFIRMED-IS-A-GROUP-1 (11 Oct) — malik:
+                         "confirm se le kar closed tak saare wo status hain jo
+                         actually confirm bookings hoti hain… in ko alag se show
+                         na karo."
+
+                         Is liye fehrist `FILTER_STATUSES` se banti hai, `STATUSES`
+                         se nahi: production_ready/released/completed/closed ab
+                         "Confirmed" ke andar aa jate hain. Satar par badge phir
+                         bhi ASAL status dikhata hai — wo khabar chhupani nahi
+                         thi, sirf chunna aasan karna tha. --}}
+                    @foreach(\App\Models\Tenant\CateringEvent::FILTER_STATUSES as $s)
+                        <option value="{{ $s }}" @selected($status === $s)>{{ \App\Models\Tenant\CateringEvent::filterLabel($s) }}</option>
                     @endforeach
                 </select>
             </div>
@@ -352,6 +362,24 @@
                                              Ye raasta kuch MEHFOOZ NAHI karta: na release banti
                                              hai, na number kharch hota hai, na status hilta hai.
                                              Kaghaz khud oopar likhta hai ke wo jaari nahi hua. --}}
+                                        @can('tenant.catering.documents.proforma-invoice')
+                                            {{-- CATERING-PROFORMA-1 — kitchen sheet ke preview ke
+                                                 saath, kyunke dono ek hi qism ke hain: maujooda
+                                                 order se bante hain aur kuch mehfooz nahi karte. --}}
+                                            <li class="px-3 py-1">
+                                                <div class="fs-13 mb-1">
+                                                    <i class="ti ti-file-invoice me-2"></i>Proforma Invoice
+                                                    <span class="badge bg-warning-subtle text-warning-emphasis fs-11">not final</span>
+                                                </div>
+                                                <div class="fs-12 text-muted mb-1">Event se pehle — maujooda order se</div>
+                                                <div class="btn-group btn-group-sm w-100" role="group" aria-label="Proforma language">
+                                                    <a class="btn btn-outline-secondary" target="_blank"
+                                                       href="{{ url('/catering/documents/proforma-invoice/' . $event->id . '?lang=en') }}">EN</a>
+                                                    <a class="btn btn-outline-secondary" target="_blank"
+                                                       href="{{ url('/catering/documents/proforma-invoice/' . $event->id . '?lang=ur') }}">اردو</a>
+                                                </div>
+                                            </li>
+                                        @endcan
                                         @can('tenant.catering.documents.kitchen-sheet-preview')
                                             <li class="px-3 py-1">
                                                 <div class="fs-13 mb-1">

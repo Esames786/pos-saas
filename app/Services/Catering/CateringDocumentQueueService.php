@@ -55,11 +55,56 @@ class CateringDocumentQueueService
 
     public const KIND_ADDRESS_SHEET = 'address_sheet';
 
+    /** Final invoice — A4, aur wo kisi setting se nahi badalta. */
+    public const KIND_FINAL_INVOICE = 'final_invoice';
+
+    /** Proforma — event se pehle wala bill. Wohi kaghaz jo invoice ka: A4. */
+    public const KIND_PROFORMA = 'proforma';
+
     public const KINDS = [self::KIND_KITCHEN_SHEET, self::KIND_QUOTATION, self::KIND_ADDRESS_SHEET];
 
     /** `print_jobs.document_type` — POS ke `receipt`/`kot` se bilkul alag lane. */
     public const DOCUMENT_TYPE = 'catering_document';
 
+    /**
+     * Kis document ka kaghaz kaun sa — EK hi jagah.
+     *
+     * Malik (10 Oct): "kitchen sheet hamesha A5 par, baqi quotation / invoice /
+     * address sab A4 par. Jo printer bhi chunoon, size wohi rehna chahiye."
+     *
+     * Ye qaida pehle se chal raha tha — teenon queue methods apna apna kaghaz
+     * yahin se uthate thay — magar wo faisla TEEN jagah likha tha, aur SCREEN
+     * par kahin likha hi nahi tha. Is liye operator ko printer ke naam par
+     * jana parta tha ("Office - HP P2055dn (A4)"), aur wo naam jhoot bolta
+     * hai: usi printer par kitchen sheet bhejo to wo A5 hi nikalti hai.
+     *
+     * Ab faisla yahan ek baar hota hai, aur Send-to-network wala control bhi
+     * YAHIN se parh kar operator ko dikhata hai. Do jagah do jawab nahi ho
+     * sakte, kyunke jagah ek hi hai.
+     */
+    public static function paperFor(string $kind): string
+    {
+        return match ($kind) {
+            self::KIND_KITCHEN_SHEET => CateringSetting::tenantDefault()->kitchen_sheet_paper ?: 'a5_portrait',
+            self::KIND_QUOTATION => CateringSetting::tenantDefault()->quotation_paper ?: 'a4_portrait',
+            // Address sheet ka kaghaz setting se NAHI aata: wo document ke code
+            // me A4 tay hai, aur use kahin aur se badalne dena do sach bana
+            // deta — screen par kuch, kaghaz par kuch.
+            //
+            // Final invoice YAHAN SAAF likhi hui hai, `default` par chhori nahi
+            // gayi. Malik ne 11 Oct ko poochha tha: "normal aur fully paid dono
+            // me A4 aayega?" Us sawal ka jawab parhne wale ko DIKHNA chahiye,
+            // kisi `default` me chhupa nahi hona chahiye.
+            self::KIND_FINAL_INVOICE, self::KIND_PROFORMA => 'a4_portrait',
+            default => 'a4_portrait',
+        };
+    }
+
+    /** Wohi faisla, operator ki zubaan me: "A4" ya "A5". */
+    public static function paperLabel(string $kind): string
+    {
+        return str_starts_with(self::paperFor($kind), 'a5') ? 'A5' : 'A4';
+    }
     /**
      * Kitchen sheet — production release ka parcha. Kagaz tenant ki setting se
      * (`kitchen_sheet_paper`, aam tor par A5).
@@ -80,7 +125,7 @@ class CateringDocumentQueueService
                 'lang' => $this->language(),
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: CateringSetting::tenantDefault()->kitchen_sheet_paper ?: 'a5_portrait',
+            paper: self::paperFor(self::KIND_KITCHEN_SHEET),
             referenceType: 'catering_production_release',
             referenceId: (int) $release->id,
             referenceNo: $release->release_no,
@@ -111,11 +156,11 @@ class CateringDocumentQueueService
     ): PrintJob {
         $event->loadMissing(['productionReleases.lines', 'productionReleases.event']);
 
-        $release = $event->productionReleases
-            ->where('status', 'released')
-            ->sortByDesc('released_at')
-            ->first()
-            ?? app(CateringProductionReleaseService::class)->preview($event);
+        // CATERING-SHEET-ALWAYS-CURRENT-1 — parcha hamesha aaj ki quotation se.
+        // `sheetFor()` khud hi preview par gir jata hai jab booking kabhi
+        // release hui hi na ho, is liye yahan doosri shart ki zaroorat nahi.
+        $releases = app(CateringProductionReleaseService::class);
+        $release = $releases->sheetFor($event) ?? $releases->preview($event);
 
         if (! $release->relationLoaded('event')) {
             $release->setRelation('event', $event);
@@ -129,7 +174,7 @@ class CateringDocumentQueueService
                 'lang' => $this->language(),
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: CateringSetting::tenantDefault()->kitchen_sheet_paper ?: 'a5_portrait',
+            paper: self::paperFor(self::KIND_KITCHEN_SHEET),
             referenceType: 'catering_event',
             referenceId: (int) $event->id,
             referenceNo: $event->event_no,
@@ -166,11 +211,99 @@ class CateringDocumentQueueService
                 'advanceTotal' => $position['net_received'],
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: CateringSetting::tenantDefault()->quotation_paper ?: 'a4_portrait',
+            paper: self::paperFor(self::KIND_QUOTATION),
             referenceType: 'catering_estimate',
             referenceId: (int) $estimate->id,
             referenceNo: $estimate->event?->event_no.' / Q'.$estimate->version_no,
             branchId: $estimate->event?->branch_id,
+            userId: $userId,
+            isReprint: $isReprint,
+        );
+    }
+
+    /**
+     * Final invoice — A4 par, poora document, agent ke Chrome se.
+     *
+     * ── 11 OCTOBER: YE METHOD KYUN BANI ──────────────────────────────────
+     *
+     * `printFinalInvoice()` HAR printer ke liye `CateringDocumentPrintService`
+     * bulata tha, jo `raw_payload` me ESC/POS bytes bharta hai (wo THERMAL
+     * parchi ke liye bana tha) aur printer ki qisam dekhta hi nahi.
+     *
+     * Agent us job ko `printer_type === 'windows'` dekh kar document ke raaste
+     * par bhejta hai: raw_payload ko `.html` me likh kar Chrome ko deta hai.
+     * Chrome un control bytes ko matn samajh kar chhap deta hai — A4 ke kaghaz
+     * par koora. Test ne ye code parh kar nahi, CHALA KAR dikhaya: payload
+     * `1d2111 1b4501 ... 1d564200` nikla, yani GS! / ESC E / GS V.
+     *
+     * Quotation par ye branch PEHLE SE mojood thi (`printEstimate()` me).
+     * Invoice ko wo kabhi di hi nahi gayi — ek jagah kiya, doosri reh gayi.
+     *
+     * Thermal ka purana raasta waisa hi hai: wahan ESC/POS hi theek hai.
+     */
+    public function queueFinalInvoice(
+        \App\Models\Tenant\CateringFinalInvoice $invoice,
+        Printer $printer,
+        string $lang = 'en',
+        ?int $userId = null,
+        bool $isReprint = false,
+    ): PrintJob {
+        $invoice->loadMissing(['event']);
+
+        return $this->queue(
+            kind: self::KIND_FINAL_INVOICE,
+            printer: $printer,
+            html: view('tenant.catering.documents.final-invoice', [
+                'invoice' => $invoice,
+                'lang' => $lang,
+                'businessName' => $this->businessName(),
+            ])->render(),
+            paper: self::paperFor(self::KIND_FINAL_INVOICE),
+            referenceType: 'catering_final_invoice',
+            referenceId: (int) $invoice->id,
+            referenceNo: $invoice->invoice_no,
+            branchId: $invoice->event?->branch_id,
+            userId: $userId,
+            isReprint: $isReprint,
+        );
+    }
+
+    /**
+     * Proforma — event se pehle wala bill, maujooda order se.
+     *
+     * WOHI view jo asli invoice chalati hai, aur wohi kaghaz (A4). Do view ya
+     * do naap rakhne par ek din unhen milate rehna bhool jata hai aur graahak
+     * ke do kaghaz alag dikhne lagte hain. Kaghaz khud farq bata deta hai,
+     * kyunke `$invoice->exists` jhoot hai.
+     *
+     * EVENT leti hai, invoice nahi — proforma kahin mehfooz hoti hi nahi. Isi
+     * liye ye bulk endpoint par theek baithti hai: wahan `ids[]` hamesha event
+     * ki hoti hain. Is ka apna route BANAYA NAHI gaya, kyunke naya route naya
+     * permission maangta hai jo har role par alag se dena parta — aur yahan us
+     * ki zaroorat hi nahi thi.
+     */
+    public function queueProformaInvoice(
+        CateringEvent $event,
+        Printer $printer,
+        string $lang = 'en',
+        ?int $userId = null,
+        bool $isReprint = false,
+    ): PrintJob {
+        $proforma = app(CateringFinalInvoiceService::class)->proforma($event);
+
+        return $this->queue(
+            kind: self::KIND_PROFORMA,
+            printer: $printer,
+            html: view('tenant.catering.documents.final-invoice', [
+                'invoice' => $proforma,
+                'lang' => $lang,
+                'businessName' => $this->businessName(),
+            ])->render(),
+            paper: self::paperFor(self::KIND_PROFORMA),
+            referenceType: 'catering_event',
+            referenceId: (int) $event->id,
+            referenceNo: 'PROFORMA-'.$event->event_no,
+            branchId: $event->branch_id,
             userId: $userId,
             isReprint: $isReprint,
         );
@@ -194,7 +327,7 @@ class CateringDocumentQueueService
                 'events' => collect([$event]),
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: 'a4_portrait',
+            paper: self::paperFor(self::KIND_ADDRESS_SHEET),
             referenceType: 'catering_event',
             referenceId: (int) $event->id,
             referenceNo: $event->event_no,

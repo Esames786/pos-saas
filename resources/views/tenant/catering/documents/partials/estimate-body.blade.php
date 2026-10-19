@@ -4,6 +4,14 @@
      including page. --}}
 <div class="print-bar">
     <button onclick="window.print()" style="padding: 8px 18px; cursor: pointer;">Print</button>
+    {{-- CATERING-SEND-SINGLE-1 — THEEK WAHIN jahan Print hai.
+
+         Partial khud `@isset($ids)` par khari hai. Yehi safha
+         `CateringDocumentQueueService` bhi render karta hai (agent ko
+         bhejne ke liye HTML jamate waqt) aur `?format=pdf` bhi — un
+         dono me `ids` hoti hi nahi, is liye wahan kuch nikalta nahi.
+         Warna chhapne wale kaghaz par toolbar bhi chhap jata. --}}
+    @include('tenant.catering.documents.partials.send-to-network', ['kind' => 'quotation'])
 </div>
 
 {{-- KASHIF-LEGACY-ALIGN-1: the per-line materials box carries its own styles so
@@ -16,9 +24,18 @@
 </style>
 
 <div class="doc-header">
-    <div>
-        <div class="brand">{{ $businessName }}</div>
-        <div class="brand-sub">{{ $t('Catering & Events', 'کیٹرنگ اینڈ ایونٹس') }}</div>
+    {{-- KAROBAR KA NAAM YAHAN SE HATA DIYA GAYA.
+
+         Malik (11 Oct): "ye Kashif Kitchen hata do, jahan jahan print par
+         naam aa raha hai — branch ya company ka." Parche apne chhape hue
+         letterhead par nikalte hain, jis par naam pehle se mojood hai; yahan
+         dobara likhna us ke theek upar ek doosra naam rakh deta hai.
+
+         Us ki jagah ab chhapne ka waqt aata hai — wo khaana khali nahi
+         chhora ja sakta tha, warna sar par sirf ek taraf matn rehta aur
+         header ek taraf ko jhuk jata. --}}
+    <div style="color:#6b7280;font-size:11px;">
+        @include('tenant.catering.documents.partials.printed-at')
     </div>
     <div class="doc-title">
         {{-- CATERING-DOC-KIND-1 — the paper says what it actually IS.

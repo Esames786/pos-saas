@@ -68,6 +68,12 @@ class PurchasingService
         $landed = $this->landedUnitCosts($grn);
 
         foreach ($grn->lines as $line) {
+            // GRN-NON-STOCK-1: a purchase-only line records what was bought and what it cost, and
+            // touches no stock. Its share of the extra charges stays with it, into cost at the bill.
+            if ($line->affects_stock === false) {
+                continue;
+            }
+
             $product = $line->product;
             $variant = $line->variant;
             $branch  = $grn->branch;
@@ -299,6 +305,12 @@ class PurchasingService
             $bill->notes,
             $userId
         );
+
+        // SUPPLIER-RUNNING-ACCOUNT-1: a supplier paid ahead — the new bill takes that credit first.
+        $runningAccount = app(SupplierRunningAccountService::class);
+        if ($runningAccount->enabled()) {
+            $runningAccount->applyCreditToBill($bill);
+        }
     }
 
     public function postPayment(SupplierPayment $payment, ?int $userId = null): void
@@ -316,6 +328,19 @@ class PurchasingService
             $payment->notes,
             $userId
         );
+
+        // SUPPLIER-RUNNING-ACCOUNT-1: on account, the payment settles its bill (only up to what that
+        // bill owes), then the oldest open bills; the rest is an advance. The switch OFF keeps the
+        // original bill update below exactly as it was.
+        $runningAccount = app(SupplierRunningAccountService::class);
+        if ($runningAccount->enabled()) {
+            $runningAccount->settleCredit(
+                (int) $payment->supplier_id, \App\Models\Tenant\SupplierCreditAllocation::SOURCE_PAYMENT,
+                (int) $payment->id, (float) $payment->amount, $payment->purchase_bill_id ? (int) $payment->purchase_bill_id : null,
+            );
+
+            return;
+        }
 
         if ($payment->purchase_bill_id) {
             $bill = PurchaseBill::find($payment->purchase_bill_id);

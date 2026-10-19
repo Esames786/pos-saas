@@ -158,13 +158,28 @@ class CateringKitchenSheetPreviewMySqlTest extends MySqlTenantTestCase
         $this->assertSame('120', (string) $preview->event_snapshot['pax']);
     }
 
-    /** Kaghaz render hota hai aur KHUD kehta hai ke wo preview hai. */
-    public function test_the_rendered_sheet_says_it_is_not_released(): void
+    /**
+     * Kaghaz render hota hai, aur us par RELEASE NUMBER nahi hota.
+     *
+     * Pehle ye parcha khud likh kar kehta tha ke wo preview hai ("PRODUCTION
+     * NOT RELEASED YET" ka band). Malik ne 11 Oct ko parche par nishan laga
+     * kar wo band hatwa diya.
+     *
+     * Us faisle ka khatra bata diya gaya tha: bawarchi-khane ke paas do sach
+     * ho sakte hain — ek preview deewar par, asli parcha baad me, aur dono ek
+     * jaise. Farq ab bhi mojood hai magar CHHOTA: jaari-shuda parche par
+     * release number chhapta hai, preview par nahi. Ye test ab usi farq par
+     * khara hai, taake wo bhi chup chaap khatm na ho jaye.
+     */
+    public function test_the_rendered_sheet_carries_no_release_number(): void
     {
         $html = $this->render(true);
 
-        $this->assertStringContainsString('PRODUCTION NOT RELEASED YET', $html);
-        $this->assertStringContainsString('<div class="preview-band">', $html);
+        $this->assertDoesNotMatchRegularExpression('/PR-\d/', $html,
+            'preview par release number nahi hona chahiye — PREVIEW ka band hatne ke baad '
+            .'yehi akeli nishani hai jo use asli parche se alag karti hai');
+        $this->assertStringNotContainsString('PRODUCTION NOT RELEASED YET', $html,
+            'aur purana band wapas nahi aana chahiye');
         $this->assertStringContainsString('Chicken Biryani', $html);
     }
 
@@ -364,8 +379,14 @@ class CateringKitchenSheetPreviewMySqlTest extends MySqlTenantTestCase
             'released booking ka asli parcha aana chahiye');
         $this->assertStringContainsString('MR MUBASSHIR', $html,
             'draft booking ka parcha bhi aana chahiye — yehi maanga gaya tha');
-        $this->assertSame(1, substr_count($html, '<div class="preview-band">'),
-            'sirf draft wale parche par preview band, released wale par nahi');
+        // 11 Oct: PREVIEW wala band malik ke kehne par hata diya gaya. Wohi
+        // farq ab release number se parkha jata hai — dono parche bante hain,
+        // magar number sirf jaari-shuda wale par chhapta hai.
+        $this->assertSame(2, substr_count($html, 'Printed'),
+            'dono parche banne chahiyein');
+        $this->assertSame(1, substr_count($html, $released->release_no),
+            'magar release number sirf jaari-shuda parche par — draft wale par nahi. '
+            . 'PREVIEW ka band hatne ke baad yehi akela farq bacha hai');
     }
 
     /** Bulk par ab koi booking sirf "release nahi hui" ki wajah se nahi chhoot-ti. */

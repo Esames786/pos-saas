@@ -84,15 +84,57 @@
 @include("tenant.catering.documents.partials.pdf-overrides")
 </head>
 <body>
-<div class="print-bar"><button onclick="window.print()" style="padding: 8px 18px; cursor: pointer;">Print</button></div>
+{{-- CATERING-PROFORMA-1 (10 Oct) — ye kaghaz khud kehta hai ke wo final
+     nahi hai.
+
+     Shart `! $invoice->exists` hai, koi alag jhanda nahi: jo bill database
+     me MEHFOOZ HI NAHI HUA wo proforma hai — aur ye baat ghalat ho hi nahi
+     sakti. Ek alag $proforma variable har naye caller par dobara sahi
+     likhna parta, aur ek din koi usay bhool jata. Bilkul yehi dalil kitchen
+     sheet ke preview par pehle se likhi hui hai.
+
+     Border aur weight se banaya gaya hai, background se nahi: browser print
+     par background rang gira dete hain. --}}
+@if(! $invoice->exists)
+    <div style="border:2px dashed #b45309; color:#b45309; font-weight:bold;
+                padding:6px 10px; margin-bottom:10px; text-align:center;
+                letter-spacing:.04em; font-size:{{ $isUr ? '15px' : '12px' }}">
+        {{ $t('PROFORMA — NOT A FINAL INVOICE', 'عارضی رسید — یہ حتمی بل نہیں') }}
+        <span style="font-weight:normal">
+            {{ $t('Figures follow the current order and can still change. The final invoice is issued after the event.',
+                  'اعداد موجودہ آرڈر کے مطابق ہیں اور بدل سکتے ہیں۔ حتمی بل تقریب کے بعد بنتا ہے۔') }}
+        </span>
+    </div>
+@endif
+<div class="print-bar">
+    <button onclick="window.print()" style="padding: 8px 18px; cursor: pointer;">Print</button>
+    {{-- CATERING-SEND-INVOICE-DOC-1 — THEEK WAHIN jahan Print hai.
+
+         Partial `$sendAction` par khari hai, aur wo SIRF controller ke screen
+         wale raaste se aati hai. `?format=pdf` ko aur
+         `CateringDocumentQueueService` ko (jo YEHI view render kar ke agent ke
+         liye HTML jamati hai) wo nahi milti — warna chhapne wale kaghaz par
+         toolbar bhi chhap jata. Proforma ko bhi nahi: us ki koi invoice hi nahi
+         hoti, is liye bhejne ko kuch hai hi nahi. --}}
+    @include('tenant.catering.documents.partials.send-to-network', ['kind' => $sendKind ?? \App\Services\Catering\CateringDocumentQueueService::KIND_FINAL_INVOICE])
+</div>
 
 <div class="doc-header">
-    <div>
-        <div class="brand">{{ $businessName }}</div>
-        <div class="brand-sub">{{ $t('Catering & Events', 'کیٹرنگ اینڈ ایونٹس') }}</div>
+    {{-- KAROBAR KA NAAM YAHAN SE HATA DIYA GAYA.
+
+         Malik (11 Oct): "ye Kashif Kitchen hata do, jahan jahan print par
+         naam aa raha hai — branch ya company ka." Parche apne chhape hue
+         letterhead par nikalte hain, jis par naam pehle se mojood hai; yahan
+         dobara likhna us ke theek upar ek doosra naam rakh deta hai.
+
+         Us ki jagah ab chhapne ka waqt aata hai — wo khaana khali nahi
+         chhora ja sakta tha, warna sar par sirf ek taraf matn rehta aur
+         header ek taraf ko jhuk jata. --}}
+    <div style="color:#6b7280;font-size:11px;">
+        @include('tenant.catering.documents.partials.printed-at')
     </div>
     <div class="doc-title">
-        <h2>{{ $t('FINAL INVOICE', 'حتمی رسید') }}</h2>
+        <h2>{{ $invoice->exists ? $t('FINAL INVOICE', 'حتمی رسید') : $t('PROFORMA INVOICE', 'عارضی رسید') }}</h2>
         <div><strong>{{ $invoice->invoice_no }}</strong></div>
         <div style="color:#6b7280;">{{ $t('Event', 'تقریب') }}: {{ $s['event_no'] ?? '' }} / Q{{ $s['estimate_version'] ?? '' }}</div>
         <div style="color:#6b7280;">{{ $t('Issued', 'اجراء') }}: {{ $invoice->issued_at->format('d M Y') }}</div>

@@ -207,6 +207,31 @@ class DashboardController extends Controller
             $selectedBranch ? \App\Models\Tenant\Branch::find($selectedBranch) : null
         );
 
+        // DASHBOARD-CATEGORY-TODAY-1 — maalik: "Top products ki list k bjae tmam category ki list
+        // ajae". Har category aaj kitni biki — Report Center ke Categories section ka WOHI hisaab
+        // (`byCategory()`), apna naya query nahi: deal apni category me (DEAL-CATEGORY-1), deal ke
+        // hisse dobara nahi gine jaate, returns ghatte hain, aur user ke terminal/order type ki hadd
+        // wahi jo report par lagti hai. Is liye ye card aur report ek din par hamesha ek hi raqam
+        // batate hain. Sirf jinhein Top Products dikhta hai (dashboard.details), unhi ke liye chalta hai.
+        $categoriesToday = [];
+        if ($maySeeDetails) {
+            $engine  = app(\App\Services\Reports\SalesReportEngine::class);
+            $filters = $engine->normalizeFilters([
+                'date_from'  => $todayBusinessDate,
+                'date_to'    => $todayBusinessDate,
+                'branch_ids' => $selectedBranch ? [$selectedBranch] : [],
+            ]);
+            // The dashboard's "All branches" means every branch the user may see — exactly what
+            // applyToSales() gives the Top Products card beside it — not the user's default branch.
+            $filters['_branch_filter_present'] = true;
+            $filters = $scope->applyToReportFilters($filters, $scopeUser);
+            $categoriesToday = collect($engine->byCategory($filters))
+                ->filter(fn ($row) => abs((float) $row['net_qty']) > 0.0001 || abs((float) $row['net_value']) > 0.004)
+                ->sortByDesc('net_value')
+                ->values()
+                ->all();
+        }
+
         // DASHBOARD-8DAY-1 — maalik: "yaha last 7 days nhi, last 8 days ana chahye". Wajah amli
         // hai: aaj ka din ADHOORA hota hai (17 Sep par 106 order jab baaqi dinon par ~400), is
         // liye 7 ka window sirf 6 MUKAMMAL din deta tha — aur hafte ka wohi din, jis se maalik
@@ -262,13 +287,63 @@ class DashboardController extends Controller
         // render hone wala calendar fragment bhi bilkul yehi jawab paye.
         $maySeeAmounts = $this->maySeeAmounts($selectedBranch);
 
+        // SAAS-BILLING-WHATSAPP-1 — paise ki do alag cheezein, jaan boojh kar alag.
+        //
+        // "Dena hai" = jo invoice jari ho chuka aur baqi hai. "Ban raha hai" = is mahine ka chalta
+        // hua WhatsApp kharcha, jo abhi DRAFT hai aur dena nahi. Dono ko aik jaisa dikhana logon ko
+        // ya ghalat wali ki adaegi karwata hai ya be-waja ghabrata hai.
+        $billing = $this->billingSummary();
+
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
             'cashToday', 'cardToday', 'openShifts', 'failedPrints',
-            'lowStockCount', 'expiryCount', 'topProducts', 'salesWindowRows', 'salesWindowKeys', 'windowDays',
+            'lowStockCount', 'expiryCount', 'topProducts', 'categoriesToday', 'salesWindowRows', 'salesWindowKeys', 'windowDays',
             'todayBusinessDate', 'openBills',
             'cateringCalendar', 'cateringKpis', 'cateringNextSeven',
-            'maySeeAmounts'
+            'maySeeAmounts', 'billing'
         ));
+    }
+
+    /**
+     * Platform ke paise: kya dena hai, aur kya ban raha hai.
+     *
+     * Master connection par, kyunke ye Bingoo ka tenant se hisaab hai, tenant ka apna karobar nahi.
+     * Nakami nigal li jati hai: ye dashboard har roz har user ke saamne khulta hai, aur billing ke
+     * aik sawal par poora safha gira dena us se kahin bura hai ke ye khana na dikhe.
+     *
+     * @return array<string, mixed>
+     */
+    private function billingSummary(): array
+    {
+        $empty = ['due' => 0.0, 'dueCount' => 0, 'accruing' => 0.0, 'accruingMessages' => 0];
+
+        try {
+            if (! app()->bound('tenant')) {
+                return $empty;
+            }
+            $tenantId = app('tenant')->id;
+
+            $due = \App\Models\Master\SubscriptionInvoice::where('tenant_id', $tenantId)
+                ->whereIn('status', ['issued', 'partially_paid', 'overdue'])
+                ->where('balance_amount', '>', 0);
+
+            $draft = \App\Models\Master\SubscriptionInvoice::where('tenant_id', $tenantId)
+                ->where('invoice_type', 'addon')
+                ->where('status', 'draft')
+                ->first();
+
+            return [
+                'due' => (float) (clone $due)->sum('balance_amount'),
+                'dueCount' => (int) (clone $due)->count(),
+                'accruing' => (float) ($draft?->total_amount ?? 0),
+                'accruingMessages' => $draft
+                    ? \App\Models\Master\WhatsAppMessage::where('invoice_id', $draft->id)->count()
+                    : 0,
+            ];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $empty;
+        }
     }
 }

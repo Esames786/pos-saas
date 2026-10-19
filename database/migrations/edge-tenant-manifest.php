@@ -2884,7 +2884,6 @@ return [
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_affects_stock_on_goods_receipt_lines_upgrades_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Additive boolean on a table the appliance never uses (GoodsReceipt* is excluded from the artifact) — carried ONLY because the EDGE_REQUIRED cogs migration places cost_account_id AFTER affects_stock (dependency-safe).',
         ],
         '2026_10_06_000001_edge_phase4_offline_customer_identity' => [
@@ -2915,7 +2914,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Supplier running account (Supplier* excluded); the appliance F2 supplier-finance cache is an edge-only table.',
         ],
         '2026_10_10_000001_let_a_catering_invoice_be_voided' => [
@@ -2931,7 +2929,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Catering (excluded module).',
         ],
         '2026_10_13_000001_let_a_supplier_payment_be_voided' => [

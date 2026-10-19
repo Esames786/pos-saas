@@ -12,11 +12,13 @@ class GoodsReceiptLine extends Model
     protected $fillable = [
         'goods_receipt_id', 'purchase_order_line_id', 'product_id', 'product_variant_id',
         'batch_no', 'expiry_date', 'quantity_received', 'unit_cost',
-        'discount_amount', 'tax_amount', 'notes',
+        'discount_amount', 'tax_amount', 'notes', 'affects_stock',
     ];
 
     protected $casts = [
         'expiry_date' => 'date',
+        // GRN-NON-STOCK-1: did this line move stock when it was received?
+        'affects_stock' => 'boolean',
     ];
 
     public function goodsReceipt()

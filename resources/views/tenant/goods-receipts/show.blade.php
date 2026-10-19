@@ -121,6 +121,8 @@ The stock it brought in will be taken back out. The receipt stays on record as v
                     <td>
                         <code>{{ $line->product?->sku }}</code>
                         <small class="d-block">{{ $line->product?->name }}</small>
+                        {{-- GRN-NON-STOCK-1: bought, not stocked — its cost goes to 5100 at the bill. --}}
+                        @if($line->affects_stock === false)<span class="badge bg-light text-dark border">Purchase only — no stock</span>@endif
                     </td>
                     <td>{{ $line->variant?->name ?? '—' }}</td>
                     <td>{{ $line->batch_no ?: '—' }}</td>
@@ -131,6 +133,30 @@ The stock it brought in will be taken back out. The receipt stays on record as v
                 </tr>
             @endforeach
             </tbody>
+            {{-- GRN-CHARGES-VISIBLE-1: the receipt's own total, charge included, where the eye ends up. --}}
+            @php
+                $grnGoods = $goodsReceipt->lines->sum('line_total');
+                $grnCharges = (float) ($goodsReceipt->extra_charges ?? 0);
+            @endphp
+            <tfoot class="table-light">
+                <tr>
+                    <td colspan="6" class="text-end">Goods</td>
+                    <td>{{ number_format($grnGoods, 2) }}</td>
+                </tr>
+                @if($grnCharges > 0)
+                <tr>
+                    <td colspan="6" class="text-end">
+                        Extra Charges
+                        @if($goodsReceipt->extra_charges_note)<span class="text-muted">&mdash; {{ $goodsReceipt->extra_charges_note }}</span>@endif
+                    </td>
+                    <td>{{ number_format($grnCharges, 2) }}</td>
+                </tr>
+                @endif
+                <tr class="fw-bold">
+                    <td colspan="6" class="text-end">Total</td>
+                    <td id="grn-total">{{ number_format($grnGoods + $grnCharges, 2) }}</td>
+                </tr>
+            </tfoot>
         </table>
     </div>
 </div>

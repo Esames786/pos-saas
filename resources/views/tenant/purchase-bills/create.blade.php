@@ -153,6 +153,18 @@
                         <td class="text-end">{{ number_format((float) $goodsReceipt->extra_charges, 2) }}</td>
                     </tr>
                     @endif
+                    {{-- GRN-CHARGES-VISIBLE-1: the figure the bill will be posted at, by the SAME formula
+                         PurchaseBillController::store uses — goods (qty x cost) + charges − discount + tax —
+                         live as discount/tax are typed above. --}}
+                    @php
+                        $billBase = $goodsReceipt->lines->sum(fn ($l) => (float) $l->quantity_received * (float) $l->unit_cost)
+                            + round((float) ($goodsReceipt->extra_charges ?? 0), 4);
+                        $billNow = $billBase - (float) old('discount_amount', 0) + (float) old('tax_amount', 0);
+                    @endphp
+                    <tr class="fw-bold">
+                        <td colspan="4" class="text-end">Bill Total <span class="text-muted small fw-normal">(goods + charges − discount + tax)</span></td>
+                        <td class="text-end"><span id="bill-total-preview" data-base="{{ $billBase }}">{{ number_format($billNow, 2) }}</span></td>
+                    </tr>
                 </tfoot>
             </table>
         </div>
@@ -171,3 +183,22 @@
     </div>
 </form>
 @endsection
+
+@push('scripts')
+<script>
+// GRN-CHARGES-VISIBLE-1: keep the Bill Total in step with the discount and tax typed above.
+(function () {
+    var out = document.getElementById('bill-total-preview');
+    if (!out) return;
+    var num = function (id) { var el = document.getElementById(id); var n = Number(el && el.value || 0); return Number.isFinite(n) ? n : 0; };
+    var render = function () {
+        var total = Number(out.dataset.base || 0) - num('discount_amount') + num('tax_amount');
+        out.textContent = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+    ['discount_amount', 'tax_amount'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', render);
+    });
+})();
+</script>
+@endpush

@@ -106,12 +106,17 @@ class PrinterController extends Controller
             'branch_id'            => ['nullable', 'exists:branches,id'],
             'name'                 => ['required', 'string', 'max:100'],
             'code'                 => ['required', 'string', 'max:50', 'unique:printers,code'],
-            'printer_type'         => ['required', Rule::in(['network', 'usb', 'browser'])],
-            'print_role'           => ['required', Rule::in(['receipt', 'kot', 'both'])],
+            // PRINTER-FORM-PARITY-1 — fehristein model se, yahan haath se nahi.
+            // Ye teen satrein DB ke enum se bichhar gayi thin: `windows`,
+            // `document` aur `A5` DB me mojood the magar yahan rad ho jate.
+            'printer_type'         => ['required', Rule::in(array_keys(Printer::TYPES))],
+            'print_role'           => ['required', Rule::in(array_keys(Printer::ROLES))],
             'supports_reminder'    => ['nullable', 'boolean'],
             'ip_address'           => ['nullable', 'string', 'max:50'],
+            // Agent `windows` printer ko IP se nahi, NAAM se pehchanta hai.
+            'windows_printer_name' => ['nullable', 'string', 'max:255'],
             'port'                 => ['nullable', 'integer', 'min:1', 'max:65535'],
-            'paper_size'           => ['required', Rule::in(['58mm', '80mm', 'A4'])],
+            'paper_size'           => ['required', Rule::in(Printer::PAPER_SIZES)],
             'characters_per_line'  => ['required', 'integer', 'min:20', 'max:80'],
             'is_default'           => ['nullable', 'boolean'],
             'is_active'            => ['nullable', 'boolean'],
@@ -134,12 +139,17 @@ class PrinterController extends Controller
             'branch_id'            => ['nullable', 'exists:branches,id'],
             'name'                 => ['required', 'string', 'max:100'],
             'code'                 => ['required', 'string', 'max:50', Rule::unique('printers', 'code')->ignore($printer->id)],
-            'printer_type'         => ['required', Rule::in(['network', 'usb', 'browser'])],
-            'print_role'           => ['required', Rule::in(['receipt', 'kot', 'both'])],
+            // PRINTER-FORM-PARITY-1 — fehristein model se, yahan haath se nahi.
+            // Ye teen satrein DB ke enum se bichhar gayi thin: `windows`,
+            // `document` aur `A5` DB me mojood the magar yahan rad ho jate.
+            'printer_type'         => ['required', Rule::in(array_keys(Printer::TYPES))],
+            'print_role'           => ['required', Rule::in(array_keys(Printer::ROLES))],
             'supports_reminder'    => ['nullable', 'boolean'],
             'ip_address'           => ['nullable', 'string', 'max:50'],
+            // Agent `windows` printer ko IP se nahi, NAAM se pehchanta hai.
+            'windows_printer_name' => ['nullable', 'string', 'max:255'],
             'port'                 => ['nullable', 'integer', 'min:1', 'max:65535'],
-            'paper_size'           => ['required', Rule::in(['58mm', '80mm', 'A4'])],
+            'paper_size'           => ['required', Rule::in(Printer::PAPER_SIZES)],
             'characters_per_line'  => ['required', 'integer', 'min:20', 'max:80'],
             'is_default'           => ['nullable', 'boolean'],
             'is_active'            => ['nullable', 'boolean'],

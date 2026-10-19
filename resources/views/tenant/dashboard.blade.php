@@ -233,6 +233,61 @@
             </div>
         </div>
 
+        {{-- SAAS-BILLING-WHATSAPP-1 — platform ke paise.
+
+             Gate wohi permission hai jo /billing kholne deti hai. Dashboard har user ke saamne
+             khulta hai — counter par khaRa banda bhi — aur "aap par itna baqi hai" har kisi ke parhne
+             ki cheez nahi. Yehi ghalti WhatsApp ki settings wali card par ho chuki hai.
+
+             Do khanay JAAN BOOJH KAR alag shakl me: "Dena hai" par rang aur link hai, "Ban raha hai"
+             saada hai aur us par DUE ka lafz tak nahi aata — kyunke wo abhi deni nahi. Dono ko aik
+             jaisa dikhana logon se ghalat wali ki adaegi karwata hai. --}}
+        @can('tenant.billing.index')
+        @if(($billing['due'] ?? 0) > 0 || ($billing['accruing'] ?? 0) > 0)
+            <div class="row g-3 mb-4">
+                @if(($billing['due'] ?? 0) > 0)
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm h-100 border-start border-4 border-warning">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <span class="text-muted small">
+                                            <i class="ti ti-file-invoice me-1"></i>Dena hai
+                                        </span>
+                                        <div class="fs-4 fw-semibold">PKR {{ number_format($billing['due'], 2) }}</div>
+                                        <div class="text-muted small">
+                                            {{ $billing['dueCount'] }} invoice baqi
+                                        </div>
+                                    </div>
+                                    <a href="{{ url('/billing') }}" class="btn btn-sm btn-warning">
+                                        Dekhein
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @endif
+
+                @if(($billing['accruing'] ?? 0) > 0)
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-body">
+                                <span class="text-muted small">
+                                    <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp — is mahine ab tak
+                                </span>
+                                <div class="fs-4 fw-semibold">PKR {{ number_format($billing['accruing'], 2) }}</div>
+                                <div class="text-muted small">
+                                    {{ $billing['accruingMessages'] }} report messages · abhi dena nahi,
+                                    mahina khatam hone par bill banega
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @endif
+            </div>
+        @endif
+        @endcan
+
         {{-- Bottom row: Top Products + 7-day sales.
              DASHBOARD-DETAILS-1: both cards read the whole branch, so a counter operator does not
              get them. The controller already returns empty collections without the permission —
@@ -308,6 +363,53 @@
                     </div>
                     <div class="card-footer bg-white border-0 text-end">
                         <a href="{{ url('/reports/sales/summary') }}" class="small text-primary">View Sales Summary →</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {{-- DASHBOARD-CATEGORY-TODAY-1 — every category that sold today, biggest first. Same figures
+             as the Report Center's Categories section for today (the controller asks that engine). --}}
+        <div class="row g-3 mt-1">
+            <div class="col-lg-5">
+                <div class="card border-0 shadow-sm h-100" id="dashboard-category-today">
+                    <div class="card-header bg-white border-0 pb-0">
+                        <h6 class="mb-0">Sales by Category Today</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        @if(empty($categoriesToday))
+                            <p class="text-muted text-center py-4 small mb-0">No sales today.</p>
+                        @else
+                        <table class="table table-sm mb-0">
+                            <caption class="visually-hidden">Quantity and sales of every category today</caption>
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">Category</th>
+                                    <th scope="col" class="text-end">Qty</th>
+                                    <th scope="col" class="text-end">Sales</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($categoriesToday as $cat)
+                                <tr>
+                                    <td>{{ $cat['name'] }}</td>
+                                    <td class="text-end">{{ $fig($cat['net_qty']) }}</td>
+                                    <td class="text-end">{{ $fig($cat['net_value']) }}</td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                            <tfoot class="table-light fw-semibold">
+                                <tr>
+                                    {{-- Items only: delivery and other bill-level charges belong to no category,
+                                         so this sits a little under the Net Sales tile (Kashif Food 10 Oct:
+                                         1,037,450 against 1,043,086.50). The label says so before anyone asks. --}}
+                                    <td title="Bill-level charges such as delivery are not in any category">Items total</td>
+                                    <td class="text-end">{{ $fig(array_sum(array_column($categoriesToday, 'net_qty'))) }}</td>
+                                    <td class="text-end" id="dashboard-category-total">{{ $fig(array_sum(array_column($categoriesToday, 'net_value'))) }}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        @endif
                     </div>
                 </div>
             </div>

@@ -7,6 +7,7 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\CateringEvent;
 use App\Models\Tenant\Customer;
 use App\Services\Catering\CateringCustomerBalanceService;
+use App\Support\Catering\EventDateWindow;
 use Illuminate\Http\Request;
 
 /**
@@ -44,6 +45,14 @@ class CateringCustomerBalanceController extends Controller
             return ['open', CateringEvent::OPEN_STATUSES];
         }
 
+        // CATERING-CONFIRMED-IS-A-GROUP-1 — yahan bhi wohi tareef. Agar sirf
+        // bookings ki fehrist par lagti aur yahan nahi, to ek hi lafz do
+        // screenon par do alag jawab deta — aur farq paison wali screen par
+        // khulta.
+        if ($asked === CateringEvent::STATUS_CONFIRMED) {
+            return [$asked, CateringEvent::CONFIRMED_STATUSES];
+        }
+
         return in_array($asked, CateringEvent::STATUSES, true)
             ? [$asked, [$asked]]
             : ['', []];
@@ -54,16 +63,24 @@ class CateringCustomerBalanceController extends Controller
         $branchId = $request->integer('branch_id') ?: null;
         $search = trim((string) $request->query('q', ''));
         [$status, $statuses] = $this->statusFilter($request);
+        // CATERING-BALANCES-DATE-FILTER-1 — qaida sanjha hai, yahan dobara
+        // nahi likha gaya: bookings ki fehrist bhi isi se From/To parhti hai.
+        [$from, $to] = EventDateWindow::window($request->input('from'), $request->input('to'));
 
-        $rows = $this->balances->rows($branchId, $search ?: null, $statuses);
+        $rows = $this->balances->rows($branchId, $search ?: null, $statuses, $from, $to);
 
         return view('tenant.catering.customer-balances.index', [
             'rows' => $rows,
-            'unlinked' => $this->balances->unlinked($branchId, $statuses),
+            // Banner bhi usi muddat ka ho — warna upar "7 bookings not linked"
+            // likha rehta jab ke neeche ki fehrist sirf ek mahine ki hai, aur
+            // do adad ek doosre ko jhutlate hain.
+            'unlinked' => $this->balances->unlinked($branchId, $statuses, $from, $to),
             'branches' => Branch::on('tenant')->orderBy('name')->get(['id', 'name']),
             'branchId' => $branchId,
             'search' => $search,
             'status' => $status,
+            'from' => $from,
+            'to' => $to,
             'totals' => [
                 'billed' => round((float) $rows->sum('billed'), 2),
                 'received' => round((float) $rows->sum('received'), 2),
@@ -76,6 +93,7 @@ class CateringCustomerBalanceController extends Controller
     public function show(Request $request, Customer $customer)
     {
         [$status, $statuses] = $this->statusFilter($request);
+        [$from, $to] = EventDateWindow::window($request->input('from'), $request->input('to'));
 
         return view('tenant.catering.customer-balances.show', $this->balances->forCustomer(
             $customer,
@@ -85,8 +103,14 @@ class CateringCustomerBalanceController extends Controller
             // milni chahiyen — warna adad badal jate hain aur screen apni hi
             // pichhli satar ko jhutla deti hai.
             $statuses,
+            // Muddat bhi saath aati hai, usi wajah se: fehrist par 4 events
+            // dekh kar click kiya to andar bhi 4 milne chahiyen.
+            $from,
+            $to,
         ) + [
             'status' => $status,
+            'from' => $from,
+            'to' => $to,
             // Wohi fehrist jo booking ki screen deti hai. Paisa lene ke form
             // yahan se bhi wohi endpoints par jate hain, is liye khaane bhi
             // bilkul wohi hone chahiyen — warna do screenein do alag cheezein

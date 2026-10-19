@@ -295,6 +295,23 @@ class TenantSubscriptionAccessService
             return 0;
         }
 
+        // WEBSITE-I18N-GEO-1 P3: a per-branch subscription (Saudi Arabia, UAE, Qatar, US) bought a number of
+        // branches; each brings the plan's terminals and users per branch, plus the extra terminals bought.
+        // Products stay the plan's. Every subscription from before has no pricing model: read as always.
+        if ($subscription->pricing_model === 'per_branch' && (int) $subscription->branches_purchased > 0) {
+            $perBranch = fn (string $key) => (int) ($subscription->plan->features->firstWhere('feature_key', $key)?->feature_value ?? 0);
+            $branches = (int) $subscription->branches_purchased;
+            if ($featureKey === 'branch_limit') {
+                return $branches;
+            }
+            if ($featureKey === 'terminal_limit') {
+                return $branches * max(1, $perBranch('terminals_per_branch')) + (int) $subscription->extra_terminals;
+            }
+            if ($featureKey === 'user_limit' && $perBranch('users_per_branch') > 0) {
+                return $branches * $perBranch('users_per_branch');
+            }
+        }
+
         $feature = $subscription->plan->features
             ->firstWhere('feature_key', $featureKey);
 

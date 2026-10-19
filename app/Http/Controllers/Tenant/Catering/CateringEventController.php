@@ -92,7 +92,18 @@ class CateringEventController extends Controller
         };
 
         if ($status && in_array($status, CateringEvent::STATUSES, true)) {
-            $query->where('status', $status);
+            // CATERING-CONFIRMED-IS-A-GROUP-1 — "Confirmed" ek GROUP hai.
+            // Malik: "confirm ka matlab ye saare confirm hi hain." Graahak ki
+            // haan ke baad `released`/`completed`/`closed` sirf ye batate hain
+            // ke kaam kitna aage barha — booking pakki to tabhi ho gayi thi.
+            //
+            // Tareef model me hai, yahan DOBARA nahi likhi ja rahi: Customer
+            // Balances par bhi yehi filter hai, aur do jagah do fehristen
+            // rakhne ka matlab hai ke ek din "Confirmed" do screenon par do
+            // alag jawab dega.
+            $query->whereIn('status', $status === CateringEvent::STATUS_CONFIRMED
+                ? CateringEvent::CONFIRMED_STATUSES
+                : [$status]);
         }
 
         $events = $query->paginate(25)->withQueryString();
@@ -137,20 +148,18 @@ class CateringEventController extends Controller
      * agle saal me badal deta hai, aur phir fehrist ek aisi tareekh dikhati
      * hai jo kisi ne maangi hi nahi thi.
      */
+    /**
+     * CATERING-BALANCES-DATE-FILTER-1 — ye qaida ab `EventDateWindow` me hai.
+     *
+     * Customer Balances par bhi wohi From/To maanga gaya. Yahan se naql
+     * kar lena aasan tha, magar phir ek hi sawal ke do jawab do jagah
+     * hote — aur un ka alag ho jana khamoshi se hota hai. Ye method
+     * rakha gaya hai (is file ke apne paanch jagah ke pukare ke liye),
+     * magar wo ab sirf sanjhe qaide tak pohanchata hai.
+     */
     private function filterDate(mixed $value): ?string
     {
-        $value = trim((string) $value);
-        if ($value === '') {
-            return null;
-        }
-
-        try {
-            $date = \Carbon\Carbon::createFromFormat('Y-m-d', $value);
-        } catch (\Throwable) {
-            return null;
-        }
-
-        return $date && $date->format('Y-m-d') === $value ? $date->toDateString() : null;
+        return \App\Support\Catering\EventDateWindow::parse($value);
     }
 
     public function create()

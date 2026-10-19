@@ -16,6 +16,11 @@
 
     Parameters: action, label, printers, permission
 --}}
+@php
+    // Kagaz DOCUMENT se aata hai, printer se nahi — aur wo faisla ek hi jagah
+    // hota hai. Yahan dobara likhna do jagah do jawab bana deta.
+    $dpPaper = \App\Services\Catering\CateringDocumentQueueService::paperLabel($kind ?? 'quotation');
+@endphp
 @can($permission)
     @if($printers->isNotEmpty())
         <div class="dropdown d-inline-block">
@@ -29,10 +34,20 @@
 
                     <label class="form-label fs-12 text-uppercase text-muted">Printer</label>
                     <select name="printer_id" class="form-select form-select-sm mb-2" required>
+                        {{-- PRINTER KE NAAM KE SAATH KAGAZ NAHI LIKHA JATA.
+
+                             Pehle yahan "Office — HP M127fn · A5" likha aata tha,
+                             aur theek niche isi panel me "Paper size is set for you"
+                             bhi likha tha. Dono ek saath jhoot bolte thay: malik ne
+                             11 Oct ko A4 ki invoice par "· A5" dekh kar poochha ke
+                             "ye confusion kaise door hogi?"
+
+                             Dono HP A4 aur A5 dono chhapte hain. `paper_size` ab sirf
+                             itna tay karta hai ke kaun sa printer PEHLE SE chuna aaye
+                             — kisi ko rokta nahi, aur naam ke saath likhne layak nahi. --}}
                         @foreach($printers as $printer)
-                            <option value="{{ $printer->id }}">
-                                {{ $printer->name }}@if($printer->paper_size) · {{ $printer->paper_size }}@endif
-                            </option>
+                            <option value="{{ $printer->id }}"
+                                @selected(strtoupper((string) ($printer->paper_size ?? '')) === $dpPaper)>{{ $printer->name }}</option>
                         @endforeach
                     </select>
 
@@ -59,7 +74,7 @@
                             <i class="ti ti-language-off me-1"></i><strong>Thermal is English only.</strong>
                             A thermal printer cannot render Urdu — pick an A4/A5 printer for that.
                         @else
-                            <i class="ti ti-printer me-1"></i><strong>Paper size is set for you.</strong>
+                            <i class="ti ti-printer me-1"></i><strong>Ye document {{ $dpPaper }} par chhapega.</strong>
                             The document decides A4 or A5 — you do not have to pick it.
                         @endif
                         <span class="d-block mt-1 text-muted">

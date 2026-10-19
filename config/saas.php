@@ -41,6 +41,95 @@ return [
 
     'enabled_locales' => array_values(array_filter(array_map('trim', explode(',', env('SAAS_ENABLED_LOCALES', 'en,ur'))))),
 
+    // WEBSITE-I18N-GEO-1: languages of the PUBLIC website (bingoopos.com) — separate from enabled_locales
+    // above, which is the back office. The first enabled one keeps the plain URLs (/pricing); every other
+    // lives under its own prefix (/ar/pricing). Turning a language off removes its URLs.
+    'public_locales' => [
+        'en' => ['native' => 'English', 'dir' => 'ltr', 'og' => 'en_US'],
+        'ar' => ['native' => 'العربية', 'dir' => 'rtl', 'og' => 'ar_SA'],
+    ],
+    'public_locales_enabled' => array_values(array_filter(array_map('trim', explode(',', env('SAAS_PUBLIC_LOCALES', 'en,ar'))))),
+
+    /*
+     * WEBSITE-I18N-GEO-1 P2 — who sees which price (docs/plans/website-i18n-geo-pricing-2026-10-07.md §2).
+     * Pakistan keeps its BUNDLE plans (branches included). The Gulf and the US pay PER BRANCH.
+     * Prices live in master.plan_prices, one row per plan and currency; this only says which currency
+     * and model a market uses, its VAT (shown "+ VAT", never added to the price), and its timezone for
+     * a new workspace (null = the visitor's browser decides).
+     */
+    'markets' => [
+        'pk' => ['name' => 'Pakistan',             'currency' => 'PKR', 'pricing' => 'bundle',     'vat' => null, 'timezone' => 'Asia/Karachi'],
+        'sa' => ['name' => 'Saudi Arabia',         'currency' => 'SAR', 'pricing' => 'per_branch', 'vat' => 15,   'timezone' => 'Asia/Riyadh'],
+        'ae' => ['name' => 'United Arab Emirates', 'currency' => 'AED', 'pricing' => 'per_branch', 'vat' => 5,    'timezone' => 'Asia/Dubai'],
+        'qa' => ['name' => 'Qatar',                'currency' => 'QAR', 'pricing' => 'per_branch', 'vat' => null, 'timezone' => 'Asia/Qatar'],
+        'us' => ['name' => 'United States & other countries', 'currency' => 'USD', 'pricing' => 'per_branch', 'vat' => null, 'timezone' => null],
+    ],
+    // Until the visitor's country is known (P4): the market a language opens on.
+    'default_market' => env('SAAS_DEFAULT_MARKET', 'pk'),
+    'market_by_locale' => ['en' => 'pk', 'ar' => 'sa'],
+    // P4: once the visitor's country is known it picks the market (their own choice still wins).
+    'country_markets' => ['PK' => 'pk', 'SA' => 'sa', 'AE' => 'ae', 'QA' => 'qa', 'US' => 'us'],
+    // Any other KNOWN country. An unknown country (no database, a private address) keeps the language default.
+    'other_countries_market' => env('SAAS_OTHER_COUNTRIES_MARKET', 'us'),
+    // WEBSITE-I18N-GEO-1 P4 — the visitor's country, from a database file on this server (no outside call).
+    'geoip' => [
+        'path' => env('SAAS_GEOIP_PATH', storage_path('app/geoip/dbip-country-lite.mmdb')),
+        // DB-IP "IP to Country Lite", CC BY 4.0 (credited in the site footer); refreshed by geoip:update.
+        'download_url' => env('SAAS_GEOIP_URL', 'https://download.db-ip.com/free/dbip-country-lite-{Y}-{m}.mmdb.gz'),
+        // Only if the site is ever put behind Cloudflare: then its CF-IPCountry header is the answer.
+        'trust_cloudflare_header' => (bool) env('SAAS_GEOIP_TRUST_CLOUDFLARE', false),
+        // A first visit from these opens in Arabic …
+        'arabic_countries' => ['SA'],
+        // … and from these only when the browser itself asks for Arabic first (many read the web in English).
+        'arabic_if_browser_prefers' => ['AE', 'QA', 'KW', 'BH', 'OM', 'EG', 'JO'],
+    ],
+    // WEBSITE-I18N-GEO-1 P5 — website analytics, only after the visitor says yes (the cookie banner).
+    // Empty = no analytics and no banner: the site's own cookies are all necessary and need no consent.
+    'analytics' => [
+        'ga4_id' => env('SAAS_GA4_ID'),   // "G-XXXXXXXXXX": Google Analytics → Admin → Data streams
+    ],
+    // RECAPTCHA-TRIAL-1 — Google reCAPTCHA v2 checkbox on the public Start Trial form.
+    // Both keys empty = off (no box, no check): local development and tests never call Google.
+    'recaptcha' => [
+        'site_key' => env('SAAS_RECAPTCHA_SITE_KEY'),
+        'secret_key' => env('SAAS_RECAPTCHA_SECRET_KEY'),
+        'verify_url' => 'https://www.google.com/recaptcha/api/siteverify',
+    ],
+    // Per-branch markets: from N branches, P% off the whole plan. 11+ is Enterprise (Contact Sales).
+    'branch_discounts' => [3 => 10, 6 => 15],
+    'max_self_service_branches' => 10,
+    // The plan builder: business × level → plan code.
+    'plan_builder' => [
+        'restaurant' => ['starter' => 'restaurant_starter', 'pro' => 'restaurant_pro'],
+        'retail'     => ['starter' => 'retail_starter',     'pro' => 'inventory_store'],
+    ],
+    // How a currency is written: English "SAR 549" / "$169", Arabic "549 ر.س" / "$169".
+    'currency_labels' => [
+        'PKR' => ['en' => 'PKR', 'ar' => 'روبية'],
+        'SAR' => ['en' => 'SAR', 'ar' => 'ر.س'],
+        'AED' => ['en' => 'AED', 'ar' => 'د.إ'],
+        'QAR' => ['en' => 'QAR', 'ar' => 'ر.ق'],
+        'USD' => ['en' => '$',   'ar' => '$', 'prefix' => true],
+    ],
+    // A module's name on a per-branch plan card (only modules listed here are shown).
+    'module_labels' => [
+        'pos' => 'POS',
+        'catalog' => 'Catalog',
+        'restaurant' => 'Restaurant Tables',
+        'printing' => 'KOT Printing',
+        'kitchen_display' => 'Kitchen Display',
+        'kitchen_inventory' => 'Kitchen Inventory',
+        'inventory' => 'Inventory',
+        'purchasing' => 'Purchasing',
+        'stock_count' => 'Stock Count',
+        'reports' => 'Reports',
+        'sales_controls' => 'Sales Controls',
+        'finance' => 'Finance & Accounting',
+        'multi_branch' => 'Multi Branch',
+        'users_roles' => 'Users & Roles',
+        'customer_payments' => 'Customer payments',
+    ],
+
     'reserved_subdomains' => [
         'www',
         'app',

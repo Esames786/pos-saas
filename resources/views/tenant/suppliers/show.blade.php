@@ -42,7 +42,7 @@
             <dd class="col-sm-9">{{ number_format($supplier->opening_balance, 2) }}</dd>
 
             <dt class="col-sm-3">Current Balance</dt>
-            <dd class="col-sm-9"><strong>{{ number_format($supplier->current_balance, 2) }}</strong></dd>
+            <dd class="col-sm-9"><strong>{{ \App\Services\Purchasing\SupplierRunningAccountService::balanceLabel((float) $supplier->current_balance) }}</strong></dd>
 
             <dt class="col-sm-3">Status</dt>
             <dd class="col-sm-9">

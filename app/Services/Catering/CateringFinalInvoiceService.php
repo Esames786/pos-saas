@@ -29,6 +29,7 @@ class CateringFinalInvoiceService
         private readonly CateringNumberService $numbers,
         private readonly CateringMailService $mail,
         private readonly \App\Services\Finance\JournalPostingService $journalPosting,
+        private readonly \App\Services\Finance\JournalService $journal,
         private readonly CateringDocumentLock $locks,
     ) {}
 
@@ -62,6 +63,26 @@ class CateringFinalInvoiceService
                 throw new RuntimeException("Event {$event->event_no} ({$event->status}) cannot be invoiced — confirm the booking first.");
             }
 
+            // CATERING-NOTHING-FREEZES-BEFORE-EVENT-1 (10 Oct) — malik:
+            // "jab tak event ka din na guzar jaye tab tak koi invoice freeze
+            // na ho, na hi final ho. Order edit ho sake."
+            //
+            // Ye pehra CLOSE par pehle se tha (`closeLocked()`, 8 Oct) — magar
+            // asal tala CLOSE par nahi, YAHAN lagta hai: bill bante hi booking
+            // `completed` ho jati hai, aur `completed` par `isCommerciallyOpen()`
+            // jhoot ho kar "Create Revision" chhupa deta hai. Yani darwaza B par
+            // taala laga tha aur log darwaze A se andar aate rahe.
+            //
+            // Prod par ye 33 me se 3 baar hua; EV-20261009-0219 (event 10 Oct,
+            // bill 9 Oct) wo case hai jis par malik ne ungli rakhi.
+            //
+            // ⚠️ MUQABLA TAREEKH KI STRING PAR, LAMHON PAR NAHI — `event_date`
+            // UTC ki aadhi raat hai, TenantClock ki aadhi raat Karachi ki (19:00
+            // UTC pichhle din). Lamhe milane par event ka apna din bhi "abhi
+            // aaya hi nahi" nikalta hai. Ye ghalti `closeLocked()` me ek baar ho
+            // chuki hai aur us par comment likha hua hai.
+            $this->refuseBeforeTheEventDayHasPassed($event);
+
             $advances = $event->advances()->orderBy('received_date')->get();
             $advanceTotal = round((float) $advances->sum('amount') - (float) $event->refunds()->sum('amount'), 2);
             $balanceDue = round((float) $estimate->grand_total - $advanceTotal, 2);
@@ -72,47 +93,11 @@ class CateringFinalInvoiceService
             // and the business would stop being able to see that it owes it.
             $advanceApplied = round(min($advanceTotal, (float) $estimate->grand_total), 2);
 
-            $invoice = CateringFinalInvoice::create([
+            $invoice = CateringFinalInvoice::create(
+                $this->documentAttributesFor($event, $estimate, $advances, $advanceTotal, $advanceApplied, $balanceDue) + [
                 'invoice_no' => $this->numbers->nextFinalInvoiceNo(),
                 'catering_event_id' => $event->id,
                 'catering_estimate_id' => $estimate->id,
-                'snapshot' => [
-                    'event_no' => $event->event_no,
-                    'estimate_version' => $estimate->version_no,
-                    'customer_name' => $event->customer_name,
-                    'customer_name_ur' => $event->customer_name_ur,
-                    'customer_phone' => $event->customer_phone,
-                    'customer_address' => $event->customer_address,
-                    'event_type' => $event->event_type,
-                    'event_date' => $event->event_date->toDateString(),
-                    'service_time' => $event->service_time,
-                    'venue' => $event->venue,
-                    'pax' => $event->pax,
-                    'lines' => $estimate->lines->map(fn ($line) => [
-                        'item_name' => $line->item_name,
-                        'item_name_ur' => $line->item_name_ur,
-                        'quantity' => (float) $line->quantity,
-                        'unit_code' => $line->unit_code,
-                        'rate' => (float) $line->rate,
-                        'amount' => (float) $line->amount,
-                        'instructions' => $line->instructions,
-                    ])->values()->all(),
-                    'advances' => $advances->map(fn ($advance) => [
-                        'received_date' => $advance->received_date->toDateString(),
-                        'amount' => (float) $advance->amount,
-                        'reference' => $advance->reference,
-                    ])->values()->all(),
-                ],
-                'subtotal' => $estimate->subtotal,
-                'service_charge_amount' => $estimate->service_charge_amount,
-                'other_charge_label' => $estimate->other_charge_label,
-                'other_charge_amount' => $estimate->other_charge_amount,
-                'discount_amount' => $estimate->discount_amount,
-                'tax_amount' => $estimate->tax_amount,
-                'grand_total' => $estimate->grand_total,
-                'advance_total' => $advanceTotal,
-                'advance_applied' => $advanceApplied,
-                'balance_due' => max($balanceDue, 0),
                 'status' => CateringFinalInvoice::STATUS_ISSUED,
                 'issued_at' => now(),
                 'issued_by_user_id' => $userId,
@@ -160,6 +145,342 @@ class CateringFinalInvoiceService
         return DB::connection('tenant')->transaction(fn () => $this->closeLocked($event));
     }
 
+    /**
+     * Event ka din guzre baghair ye booking par kuch jamta nahi.
+     *
+     * CATERING-NOTHING-FREEZES-BEFORE-EVENT-1 — qaida EK jagah, kyunke do
+     * darwaze hain (bill banana aur booking band karna) aur un ka alag ho jana
+     * khamoshi se hota hai. 8 Oct ko pehra sirf CLOSE par laga tha; INVOICE ka
+     * raasta khula raha aur wohi masla doosri shakl me 9 Oct ko wapas aa gaya.
+     *
+     * Hadd: `event_date < aaj`. Event ke DIN bhi nahi — us din khana abhi ja
+     * raha hota hai aur rakam badal sakti hai.
+     */
+    /**
+     * Ek catering bill ke khaane — EK jagah.
+     *
+     * CATERING-PROFORMA-1 (10 Oct): ye hissa `issue()` ke andar likha tha.
+     * Proforma ko bilkul yehi shakl chahiye (sirf number, status aur GL ke
+     * baghair), aur us ki doosri nakal rakhne ka anjaam maloom hai — ek din
+     * graahak ka proforma aur us ka asli bill alag adad kehne lagte. Dono ab
+     * yahin se bante hain.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\Tenant\CateringAdvance>  $advances
+     * @return array<string, mixed>
+     */
+    /**
+     * Bill void — aur us ke saath booking wapas khul jaye.
+     *
+     * CATERING-INVOICE-VOID-1 (10 Oct). Malik: "jo order ab complete ho gaye
+     * hain before date, un ki invoices ko proforma mein change karna hoga taake
+     * wo order edit ho sake."
+     *
+     * Ab tak is ka koi raasta tha hi nahi — model ke comment me likha tha ke
+     * "void/reversal policy is a future finance design", yani jaan boojh kar
+     * baad ke liye chhora gaya aur banaya kabhi nahi gaya.
+     *
+     * ── KYA HOTA HAI ───────────────────────────────────────────────────────
+     *
+     * 1. Bill ki DONO journal entries ulti post hoti hain. Reversal entry banti
+     *    hai, purani entry mitai nahi jati — khaton me dono nazar aati hain.
+     * 2. Bill ke row par nishan lagta hai. Row MITAYA NAHI jata: numbered
+     *    dastavez mitana qatar me sooraakh aur gawahi ka nuqsan dono hai.
+     * 3. Booking wapas khul jati hai, taake order edit ho sake.
+     *
+     * Advance ka kya hota hai? `applyCateringAdvance` ne Dr 2300 / Cr 1300 kiya
+     * tha; us ka ulta Cr 2300 / Dr 1300 hai — yani graahak ka paisa wapas us ke
+     * naam par liability ban jata hai, bilkul bill se pehle wali halat. Advance
+     * ka apna row chhua tak nahi jata.
+     *
+     * 🚨 GL KI NAKAMI NIGLI NAHI JATI. `JournalPostingService::reverseForSource()`
+     * nakami par `report()` kar ke `null` de deta hai — un translators ke liye
+     * theek hai jo safe-null hain, magar YAHAN nahi: bill void ho jaye aur us ki
+     * entry khaton me khari rahe to kitaabein jhoot bolne lagti hain, khamoshi
+     * se. Is liye reversal `JournalService` se seedha liya ja raha hai (jo
+     * throw karta hai), aur poora kaam ek hi transaction me hai.
+     */
+    public function void(CateringFinalInvoice $invoice, string $reason, ?int $userId = null): CateringFinalInvoice
+    {
+        $reason = trim($reason);
+
+        if ($reason === '') {
+            throw new RuntimeException('A void needs a reason — six months from now nobody remembers why.');
+        }
+
+        if ($invoice->isVoided()) {
+            return $invoice;   // dobara chalane par kuch na ho
+        }
+
+        // 🚨 BILL KE BAAD AAYA PAISA — yahan ruk jao.
+        //
+        // Receipt ka GL us ke `posting_type` par chalta hai:
+        //   • `advance`    (bill se PEHLE)  → Cr 2300 Customer Advances
+        //   • `settlement` (bill ke BAAD)   → Cr 1300 AR, seedha
+        //
+        // Void bill ki entry ulti karta hai, yani AR se bill ki raqam nikal
+        // jati hai. Agar us bill ke khilaf `settlement` receipts aa chuki hon
+        // to un ka Cr 1300 wahin reh jata hai aur AR MANFI ho jata hai —
+        // khate kehne lagte hain ke graahak ne itna zyada de diya.
+        //
+        // Prod par ye farziya nahi: EV-20260909-0002 par 4,89,605 do
+        // `settlement` receipts me aaya hai. Us ko void karna AR ko
+        // -4,89,605 kar deta, aur `tb_diff` ko khabar tak na hoti kyunke
+        // dono taraf barabar rehta hai.
+        //
+        // Is ka sahi ilaj ye hai ke aisi receipts wapas `advance` me badli
+        // jayen (Dr 1300 / Cr 2300 ka ek durusti posting). Wo abhi banaya
+        // nahi gaya, aur banaye baghair ye raasta BAND rehna chahiye: aadha
+        // kaam khaton me chup chaap ghalat adad chhorta hai.
+        $settlements = $invoice->event()->first()?->advances()
+            ->where('posting_type', \App\Models\Tenant\CateringAdvance::POSTING_SETTLEMENT)
+            ->count() ?? 0;
+
+        if ($settlements > 0) {
+            throw new RuntimeException(
+                "Invoice {$invoice->invoice_no} ke khilaf {$settlements} receipt bill ke BAAD aayi hain "
+                .'(settlement). Inhen pehle advance me badalna hoga, warna void AR ko manfi kar dega. '
+                .'Ye raasta abhi banaya nahi gaya — malik se poochho.'
+            );
+        }
+
+        return $this->voidInvoiceRow($invoice, $reason, $userId);
+    }
+
+    /**
+     * Bill ka apna hissa — bina settlement wale pehre ke.
+     *
+     * Ye jaan boojh kar private hai. Wo pehra `void()` par lagta hai kyunke
+     * akela bill ulta karna AR ko manfi kar deta hai. `voidEntireBooking()`
+     * use jaaiz taur par paar karta hai — wo receipts bhi usi saans me ulti
+     * karta hai, is liye AR wapas sifar par aa jata hai.
+     */
+    private function voidInvoiceRow(CateringFinalInvoice $invoice, string $reason, ?int $userId): CateringFinalInvoice
+    {
+        return DB::connection('tenant')->transaction(function () use ($invoice, $reason, $userId) {
+            $event = $invoice->event()->first();
+
+            foreach (['catering_final_invoice', 'catering_advance_application'] as $source) {
+                $entry = $this->journal->findPostedForSource($source, $invoice->id);
+
+                if (! $entry) {
+                    // `catering_advance_application` tab nahi banti jab koi
+                    // advance hi na aaya ho — wo jaiz hai. Invoice ki apni entry
+                    // ka na milna jaiz NAHI, aur neeche us par pehra hai.
+                    continue;
+                }
+
+                $this->journal->reverse($entry, $reason, $userId);
+            }
+
+            if ($invoice->journal_entry_id && ! $this->journal->findPostedForSource('catering_final_invoice', $invoice->id)) {
+                throw new RuntimeException(
+                    "Invoice {$invoice->invoice_no} ki journal entry mili hi nahi — void rok diya gaya."
+                );
+            }
+
+            $invoice->forceFill([
+                'voided_at' => now(),
+                'voided_by_user_id' => $userId,
+                'void_reason' => $reason,
+            ])->save();
+
+            // Booking wapas khul jaye. `released` wahan rakha ja raha hai jahan
+            // kitchen ko parcha ja chuka tha — us haqeeqat ko void badalta nahi.
+            if ($event) {
+                $event->forceFill([
+                    'status' => $event->productionReleases()->exists()
+                        ? CateringEvent::STATUS_RELEASED
+                        : CateringEvent::STATUS_CONFIRMED,
+                    'closed_at' => null,
+                ])->save();
+            }
+
+            return $invoice->refresh();
+        });
+    }
+
+    /**
+     * Ek test booking ko khaton se POORI TARAH nikal dena.
+     *
+     * CATERING-VOID-ENTIRE-BOOKING-1 (11 Oct). Malik: "ye wala order cancel
+     * kardo, ye test entry thi — aur jo bhi paisa khate mein hai usay void
+     * kardo taake khaton mein na aaye."
+     *
+     * ── YE EK GAANTH THI ──────────────────────────────────────────────────
+     *
+     * Do raaste pehle se mojood the aur dono ek doosre ka intezar kar rahe the:
+     *   • receipt void kehta hai "invoice ban chuki hai — pehle wo hatao"
+     *   • invoice void kehta hai "settlement receipts hain — pehle wo hatao"
+     *
+     * Is liye ye ek hi saans ka kaam hai, aur TARTEEB ahem hai: pehle bill, phir
+     * receipts. Bill void hote hi `notVoided` global scope use nazar se hata
+     * deta hai, aur receipt ka apna pehra khud-ba-khud guzar jata hai — yani
+     * use paar nahi kiya ja raha, usay SACH kar diya jata hai.
+     *
+     * Naya hisaab yahan NAHI likha gaya: bill ka hissa `voidInvoiceRow()` karta
+     * hai aur receipts `CateringAdvanceService::void()` — wohi raaste jo akele
+     * bhi chalte hain. Yahan sirf tarteeb hai.
+     *
+     * 🚨 SAB KUCH EK TRANSACTION ME. Aadha kaam — bill ulta aur receipts khari —
+     * AR ko manfi chhor deta hai, aur ye khamosh hota hai: `tb_diff` phir bhi
+     * sifar rehta hai.
+     *
+     * @return array<string, mixed> kya kya hua, dikhane ke liye
+     */
+    public function voidEntireBooking(CateringEvent $event, string $reason, ?int $userId = null): array
+    {
+        $reason = trim($reason);
+
+        if ($reason === '') {
+            throw new RuntimeException('A void needs a reason — six months from now nobody remembers why.');
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($event, $reason, $userId) {
+            $kiya = ['invoice' => null, 'receipts' => [], 'cancelled' => false];
+
+            // 1) Bill — pehle, taake receipts ka pehra sach ho jaye.
+            $invoice = CateringFinalInvoice::where('catering_event_id', $event->id)->first();
+
+            if ($invoice) {
+                $this->voidInvoiceRow($invoice, $reason, $userId);
+                $kiya['invoice'] = $invoice->invoice_no;
+            }
+
+            // 2) Har receipt — wohi raasta jo akela bhi chalta hai, is liye
+            //    cash/bank aur GL dono usi tarah wapas hote hain.
+            $advances = app(\App\Services\Catering\CateringAdvanceService::class);
+
+            foreach ($event->advances()->get() as $receipt) {
+                $advances->void($receipt, $reason, $userId);
+                $kiya['receipts'][] = (float) $receipt->amount;
+            }
+
+            // 3) Aur booking khud. `cancelEvent()` completed/closed par inkaar
+            //    karta hai — magar bill void hote hi booking wapas khul chuki
+            //    hoti hai, is liye wo pehra yahan aarahe me guzar jata hai.
+            app(\App\Services\Catering\CateringEstimateService::class)
+                ->cancelEvent($event->refresh(), $reason, $userId);
+            $kiya['cancelled'] = true;
+
+            return $kiya;
+        });
+    }
+    /**
+     * Proforma — wohi bill, magar jama hua nahi.
+     *
+     * CATERING-PROFORMA-1 (10 Oct). Malik: "jab tak event ka din na guzar jaye
+     * tab tak koi invoice freeze na ho… order edit ho sake, aur agar order edit
+     * ho raha ho to kitchen release sheet ya invoice sheet sab auto update ho."
+     *
+     * 🚨 YE DATABASE ME KUCH NAHI LIKHTA. Na number kharch hota hai, na status
+     * hilta hai, na GL. Ye ek UNSAVED model hai jo maujooda quotation se bhara
+     * jata hai — bilkul waise jaise kitchen sheet ka `preview()` karta hai.
+     *
+     * Alag "draft invoice" ka record JAAN BOOJH KAR nahi banaya gaya: phir do
+     * cheezein ho jatin jo alag ho sakti hain (order kuch kahe, draft bill kuch
+     * aur), aur unhein milate rehna khud ek nayi kharabi hai. Aaj ka poora
+     * masla isi shakl ka tha — kitchen sheet ek jami hui nakal par chal raha
+     * tha aur order aage nikal gaya tha. Is liye: EK hi sach — order.
+     *
+     * Khaane `documentAttributesFor()` se aate hain, yani wohi jo asli bill
+     * istemaal karta hai. Graahak ka proforma aur us ka bill kabhi alag adad
+     * nahi keh sakte.
+     */
+    public function proforma(CateringEvent $event): CateringFinalInvoice
+    {
+        $estimate = $event->currentEstimate;
+
+        if (! $estimate) {
+            throw new RuntimeException("Event {$event->event_no} has no quotation to bill.");
+        }
+
+        $advances = $event->advances()->orderBy('received_date')->get();
+        $advanceTotal = round((float) $advances->sum('amount') - (float) $event->refunds()->sum('amount'), 2);
+        $advanceApplied = round(min($advanceTotal, (float) $estimate->grand_total), 2);
+        $balanceDue = round((float) $estimate->grand_total - $advanceTotal, 2);
+
+        $proforma = new CateringFinalInvoice(
+            $this->documentAttributesFor($event, $estimate, $advances, $advanceTotal, $advanceApplied, $balanceDue)
+        );
+
+        // Number nahi liya ja raha: ek proforma par qatar ka number kharch karna
+        // us qatar me hamesha ka sooraakh chhod deta hai. Yehi faisla kitchen
+        // sheet ke preview par bhi hai ("PREVIEW").
+        $proforma->invoice_no = 'PROFORMA';
+        $proforma->issued_at = app(\App\Support\TenantClock::class)->now();
+        $proforma->setRelation('event', $event);
+
+        return $proforma;
+    }
+    private function documentAttributesFor(
+        CateringEvent $event,
+        $estimate,
+        $advances,
+        float $advanceTotal,
+        float $advanceApplied,
+        float $balanceDue,
+    ): array {
+        return [
+                'snapshot' => [
+                    'event_no' => $event->event_no,
+                    'estimate_version' => $estimate->version_no,
+                    'customer_name' => $event->customer_name,
+                    'customer_name_ur' => $event->customer_name_ur,
+                    'customer_phone' => $event->customer_phone,
+                    'customer_address' => $event->customer_address,
+                    'event_type' => $event->event_type,
+                    'event_date' => $event->event_date->toDateString(),
+                    'service_time' => $event->service_time,
+                    'venue' => $event->venue,
+                    'pax' => $event->pax,
+                    'lines' => $estimate->lines->map(fn ($line) => [
+                        'item_name' => $line->item_name,
+                        'item_name_ur' => $line->item_name_ur,
+                        'quantity' => (float) $line->quantity,
+                        'unit_code' => $line->unit_code,
+                        'rate' => (float) $line->rate,
+                        'amount' => (float) $line->amount,
+                        'instructions' => $line->instructions,
+                    ])->values()->all(),
+                    'advances' => $advances->map(fn ($advance) => [
+                        'received_date' => $advance->received_date->toDateString(),
+                        'amount' => (float) $advance->amount,
+                        'reference' => $advance->reference,
+                    ])->values()->all(),
+                ],
+                'subtotal' => $estimate->subtotal,
+                'service_charge_amount' => $estimate->service_charge_amount,
+                'other_charge_label' => $estimate->other_charge_label,
+                'other_charge_amount' => $estimate->other_charge_amount,
+                'discount_amount' => $estimate->discount_amount,
+                'tax_amount' => $estimate->tax_amount,
+                'grand_total' => $estimate->grand_total,
+                'advance_total' => $advanceTotal,
+                'advance_applied' => $advanceApplied,
+                'balance_due' => max($balanceDue, 0),
+        ];
+    }
+
+    private function refuseBeforeTheEventDayHasPassed(CateringEvent $event, string $kaam = 'bill'): void
+    {
+        if (! $event->event_date) {
+            return;
+        }
+
+        // Tareekh ki STRING par — dekho upar likhi hui wajah.
+        $today = app(\App\Support\TenantClock::class)->now()->toDateString();
+
+        if ($event->event_date->toDateString() < $today) {
+            return;
+        }
+
+        throw new RuntimeException(
+            "Event {$event->event_no} ka din ({$event->event_date->format('d M Y')}) abhi guzra nahi — "
+            .($kaam === 'band'
+                ? 'event guzarne ke baad hi band kiya ja sakta hai.'
+                : 'event guzarne ke baad hi final invoice banta hai. Us se pehle order badla ja sakta hai aur Proforma chhapi ja sakti hai.')
+        );
+    }
     private function closeLocked(CateringEvent $event): CateringEvent
     {
         $this->locks->refreshEvent($event);
@@ -171,6 +492,39 @@ class CateringFinalInvoiceService
         if ($event->status !== CateringEvent::STATUS_COMPLETED) {
             throw new RuntimeException("Event {$event->event_no} ({$event->status}) is not in a closable state.");
         }
+
+        // CATERING-CLOSE-AFTER-EVENT-1 (8 Oct) — malik: "event close nahi
+        // ho sakti jab tak event ka din guzar na jaye."
+        //
+        // `closed` ka matlab "paisa pura ho gaya" nahi, "is booking par ab koi
+        // kaam baqi nahi" hai. Aakhri adaygi aksar event se PEHLE aa jati hai,
+        // jabke khana abhi jana hota hai — aur band ho jane par wo booking
+        // chalti hui fehrist se nikal jati hai aur kisi ko pata nahi chalta ke
+        // us par kaam baqi tha.
+        //
+        // Prod par ye do baar ho chuka tha jab ye pehra nahi tha:
+        // EV-20260909-0002 (event 15 Oct) aur EV-20261004-0157 (event 9 Oct)
+        // dono apne din se pehle band kar di gayi thin.
+        //
+        // Tareekh TenantClock se — server ke waqt se nahi. Karachi me raat 2
+        // baje server ka "kal" dukandar ka "aaj" hota hai.
+        //
+        // ⚠️ MUQABLA TAREEKH KI STRING PAR, LAMHON PAR NAHI. Pehli koshish me
+        // maine `event_date->startOfDay()` ko `TenantClock::now()->startOfDay()`
+        // se mila diya tha — aur test foran laal ho gaya. Wajah: `event_date`
+        // ek DATE hai (UTC ki aadhi raat), jabke TenantClock ki aadhi raat
+        // Karachi ki hoti hai, yani 19:00 UTC pichhle din. Natija ye tha ke
+        // event ka apna din bhi "abhi aaya hi nahi" nikalta.
+        //
+        // Do alag timezone ke lamhe milana isi project me pehle bhi kaat chuka
+        // hai. Jab sawal "kaun sa DIN" ho, to din hi milao.
+        //
+        // 10 Oct — hadd AB "din guzar jaye" hai, "din aa jaye" nahi. Malik:
+        // "aaj 10 hai, aaj complete nahi hone dena tha." Pehle ye `> $today`
+        // tha, yani event ke DIN bhi band ho jati — jab ke us din to khana
+        // abhi ja raha hota hai. Dono darwaze (close aur invoice) ab ek hi
+        // qaida lagate hain, warna wohi masla doosri shakl me wapas aata.
+        $this->refuseBeforeTheEventDayHasPassed($event, 'band');
 
         $position = app(CateringFinancialPositionService::class)->position($event);
 

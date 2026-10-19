@@ -126,6 +126,26 @@
                             <tr><td colspan="{{ $showRunning ? 8 : 7 }}" class="text-center text-muted py-4">No ledger activity for these filters.</td></tr>
                             @endforelse
                         </tbody>
+                        {{-- GL-TOTALS-1: what the filters add up to — all matching lines, even past the 5,000 shown. --}}
+                        @if($lines->count())
+                        <tfoot class="table-light fw-semibold">
+                            <tr>
+                                <td colspan="5" class="text-end">
+                                    Total
+                                    @if(!empty($lines->truncated))<span class="text-muted small fw-normal">(all {{ number_format($lines->total_count) }} lines)</span>@endif
+                                </td>
+                                <td class="text-end" id="gl-total-debit">{{ number_format((float) $lines->total_debit, 2) }}</td>
+                                <td class="text-end" id="gl-total-credit">{{ number_format((float) $lines->total_credit, 2) }}</td>
+                                @if($showRunning)<td class="text-end" id="gl-closing">{{ empty($lines->truncated) ? number_format((float) $lines->last()->running, 2) : '' }}</td>@endif
+                            </tr>
+                            @unless($showRunning)
+                            <tr class="small">
+                                <td colspan="5" class="text-end text-muted fw-normal">Difference (Debit − Credit)</td>
+                                <td colspan="2" class="text-end" id="gl-difference">{{ number_format((float) $lines->total_debit - (float) $lines->total_credit, 2) }}</td>
+                            </tr>
+                            @endunless
+                        </tfoot>
+                        @endif
                     </table>
                 </div>
             </div>

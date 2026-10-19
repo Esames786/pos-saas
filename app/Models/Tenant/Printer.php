@@ -25,6 +25,40 @@ class Printer extends Model
      */
     public const ROLE_DOCUMENT = 'document';
 
+    /**
+     * PRINTER-FORM-PARITY-1 (9 Oct) — form ki fehristein YAHAN se aati hain.
+     *
+     * Pehle ye teen fehristein Blade me HAATH SE likhi hui thin. Jab DB ke enum
+     * me `windows`, `document` aur `A5` daale gaye to form wahin ka wahin raha
+     * — aur natija ye nikla:
+     *
+     *   Edit kholte hi `windows` printer "Browser" dikhne laga (kyunke us ki
+     *   asli qeemat list me thi hi nahi, aur select pehle option par gir gaya),
+     *   `document` "Receipt" ban gaya, aur A5 wala "58mm". Save dabate hi ye
+     *   sirf dikhawa nahi raha — DB me WAQAI likha gaya. Dono document
+     *   printers thermal receipt printers ban gaye aur "Send to network" teenon
+     *   safhon se gayab ho gaya.
+     *
+     * Us din ka sabaq: ek chunao jis me mojooda qeemat shaamil na ho, wo
+     * khamoshi se data badal deta hai. Ab fehrist ek hi jagah hai, aur
+     * `PrinterFormParityMySqlTest` DB ke enum se mila kar dekhta hai.
+     */
+    public const TYPES = [
+        'browser' => 'Browser (print dialog)',
+        'network' => 'Network (IP/Port)',
+        'usb' => 'USB',
+        self::TYPE_WINDOWS => 'Windows printer (A4/A5 documents)',
+    ];
+
+    public const ROLES = [
+        'receipt' => 'Receipt',
+        'kot' => 'KOT',
+        'both' => 'Both',
+        self::ROLE_DOCUMENT => 'Document (A4/A5)',
+    ];
+
+    public const PAPER_SIZES = ['58mm', '80mm', 'A4', 'A5'];
+
     protected $fillable = [
         'branch_id', 'name', 'code', 'printer_type', 'print_role', 'supports_reminder',
         'ip_address', 'port', 'windows_printer_name', 'paper_size', 'characters_per_line',

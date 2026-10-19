@@ -89,6 +89,10 @@ echo "==> [8/9] Fix ownership (belt-and-suspenders — see [7]: caches now build
 sudo chown -R www-data:www-data storage bootstrap/cache
 sudo chmod -R ug+rwX storage bootstrap/cache
 
+echo "==> [8b/9] Public-site country database (only when missing — the scheduler refreshes it monthly)"
+# WEBSITE-I18N-GEO-1 P4: storage/ is not in git. The site works without the file (language default market).
+if [ ! -f storage/app/geoip/dbip-country-lite.mmdb ]; then $RUNWEB artisan geoip:update || echo "  (geoip:update failed — continuing)"; fi
+
 echo "==> [9/9] Reload PHP-FPM (clear OPcache)"
 sudo systemctl reload php8.2-fpm
 

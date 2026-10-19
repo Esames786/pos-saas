@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.6.0';
+const AGENT_VERSION = '2.6.5';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -468,8 +468,20 @@ function sendToNetworkPrinter(ip, port, payload) {
 
 const { execFile } = require('child_process');
 
-/** Chrome jahan jahan hota hai — pehla jo mile. */
-function findChrome() {
+/**
+ * Har wo browser jo is PC par mojood hai — tarteeb se, saare ke saare.
+ *
+ * Pehle sirf PEHLA mila browser lauta kar bas kar dia jata tha. 9 Oct ko Kashif
+ * Kitchen par us ki qeemat chukani pari: wahan ka Chrome har command ko pehle se
+ * khuli Chrome ko thama kar khud nikal jata tha ("Opening in existing browser
+ * session"), aur USI PC par Edge bhi mojood tha jo kaam kar sakta tha — magar
+ * agent wahan tak pahunchta hi nahi tha, kyunke "Chrome mil gaya" tha.
+ *
+ * Ab sab lautte hain aur bari bari aazmaye jate hain. `BINGOO_CHROME` phir bhi
+ * sab se pehle: jahan malik ne jaan bujh kar koi browser chuna ho, wahan hamara
+ * andaza us par bhaari na pare.
+ */
+function findBrowsers() {
     const candidates = [
         process.env.BINGOO_CHROME,
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -478,9 +490,92 @@ function findChrome() {
         'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
     ].filter(Boolean);
 
-    return candidates.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || null;
+    const seen = new Set();
+    const found = [];
+    for (const p of candidates) {
+        const key = String(p).toLowerCase();
+        if (seen.has(key)) { continue; }
+        seen.add(key);
+        try { if (fs.existsSync(p)) { found.push(p); } } catch { /* chhor do */ }
+    }
+
+    return found;
 }
 
+/**
+ * Browser ka version — FILE SYSTEM se, command se nahi.
+ *
+ * `chrome.exe --version` Windows par bharosemand nahi: Chrome GUI app hai,
+ * console se judta hi nahi. 9 Oct ko us ne version ke bajaye "Opening in
+ * existing browser session." lauta diya — wo jumla error me chhap kar hi asal
+ * wajah tak le gaya, magar version phir bhi na mila.
+ *
+ * Chrome aur Edge dono apne Application folder me version ke naam ka folder
+ * rakhte hain (jaise `155.0.8059.40`). Wohi sach hai, aur wo kisi chalte hue
+ * process par mun'hasir nahi.
+ */
+function browserVersion(exe) {
+    try {
+        const v = fs.readdirSync(path.dirname(exe))
+            .filter((n) => /^\d+\.\d+\.\d+\.\d+$/.test(n))
+            .sort()
+            .pop();
+        if (v) { return v; }
+    } catch { /* chhor do */ }
+
+    return 'version maloom nahi';
+}
+
+/**
+ * Kya ye agent ADMINISTRATOR ke taur par chal raha hai?
+ *
+ * ── 9 OCTOBER, POORA DIN ─────────────────────────────────────────────────
+ *
+ * Kashif Kitchen par catering ke document chhap hi nahi rahe thay. Chrome
+ * `--headless=new` par ek second me `exit 0` de kar nikal jata tha, bina PDF
+ * banaye aur bina kisi shikayat ke. Edge ne bhi bilkul wohi kiya. Browser naye
+ * thay (Chrome 154, Edge 155), koi enterprise policy nahi thi, `--user-data-dir`
+ * bhi diya ja raha tha.
+ *
+ * Asal wajah: agent shuru se ADMINISTRATOR par chal raha tha — pehle "Administrator:
+ * Windows PowerShell" me, phir scheduled task `RunLevel Highest` par. Chromium
+ * elevated process se chalne par kaam karne se inkar kar deta hai.
+ *
+ * Sabit aise hua: WOHI command, WOHI PC, browser khule hue, sirf aam (non-admin)
+ * PowerShell me — aur PDF foran ban gayi (12,409 bytes).
+ *
+ * Ye jaanch is liye hai ke agli baar ye poora din dobara na lage. Elevated hone
+ * par agent shuru me hi saaf keh dega, aur document ki nakami par ise sab se
+ * pehla mumkina sabab bana kar pesh karega.
+ *
+ * ── IS JAANCH KI HADD, SAAF SAAF ─────────────────────────────────────────
+ *
+ * Likhte waqt ye Medium (`S-1-16-8192`) par aazmai gayi aur us ne theek `false`
+ * kaha — aur PowerShell ke apne `IsInRole(Administrator)` ne bhi wohi kaha. High
+ * (`S-1-16-12288`) wali shakh asal machine par nahi aazmai ja saki, kyunke us ke
+ * liye khud elevated hona parta. Wo SID Windows ka tay-shuda adad hai, magar
+ * yahan likha ja raha hai ke wo shakh JAANCHI NAHI GAYI.
+ *
+ * Isi liye ye kabhi kisi kaam ko ROKTI nahi — sirf batati hai. Galat "haan" se
+ * bhi koi parchi nahi rukegi.
+ */
+function isElevated() {
+    try {
+        // Poora raasta jaan bujh kar: kisi PC ke PATH par koi aur `whoami` ho
+        // sakta hai (mere apne machine par Git ka Unix wala saamne aa gaya tha,
+        // aur jaanch chup chaap "pata nahi" dene lagi thi).
+        const exe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'whoami.exe');
+        const out = require('child_process')
+            .execFileSync(exe, ['/groups', '/fo', 'csv'], { timeout: 10000, windowsHide: true })
+            .toString();
+
+        if (out.includes('S-1-16-12288')) { return true; }   // High   = elevated
+        if (out.includes('S-1-16-16384')) { return true; }   // System = elevated
+        if (out.includes('S-1-16-8192'))  { return false; }  // Medium = aam user
+    } catch { /* chhor do */ }
+
+    return null;   // pata nahi chala — aur "pata nahi" ko "haan" nahi banaya jata
+}
 /**
  * PDF ko kisi KHAAS printer par bhejne wali utility.
  *
@@ -488,11 +583,55 @@ function findChrome() {
  * ke saath rakha ja sakta hai; PDFtoPrinter doosra aam hal hai; Acrobat aakhir
  * me, kyunke wo dheema hai aur kabhi kabhi window khol deta hai.
  */
+/**
+ * Job ka kagaz SumatraPDF ki zubaan me — aur ye satar hi wo cheez thi jo kam thi.
+ *
+ * ── 10/11 OCTOBER ─────────────────────────────────────────────────────────
+ *
+ * Kitchen sheet A5 par bheji ja rahi thi aur A4 par nikal rahi thi. Malik ne
+ * theek pakra. Jaanch par hamari taraf sab durust nikla: job me `a5_portrait`
+ * tha aur HTML me `@page { size: A5 portrait }` — yani PDF waqai A5 ki banti
+ * thi.
+ *
+ * Kami aage thi: SumatraPDF ko printer ke liye kagaz ka naap bataya hi nahi
+ * jata tha, is liye Windows printer ki APNI default (A4) lag jati thi. Natija
+ * — A5 ka naqsha A4 ke kaghaz par.
+ *
+ * `-print-settings paper=A5` DEVMODE me `DM_PAPERSIZE` set karta hai, yani
+ * printer ko kehta hai ke kaun sa kaghaz uthana hai. `noscale` is liye ke
+ * content ko sheet par fit karne ke chakkar me khincha na jaye — naap wohi rahe
+ * jo document ka hai.
+ *
+ * Qeematein andaze se nahi li gayin: SumatraPDF 3.5.2 ki binary me paper ki
+ * fehrist dekhi gayi (A3/A5/letter/legal wagaira null-terminated table me) aur
+ * `-print-settings` ke chunao bhi (noscale, portrait, landscape, bin=, paper=).
+ *
+ * Na-pehchana kagaz ho to `null` — yani koi setting nahi jati aur purana
+ * rawaiyya chalta hai. Ek na-samjhi ki wajah se parchi rokna us masle se bara
+ * masla hai jo wo batati.
+ */
+function printSettingsFor(job) {
+    const paper = String(((job || {}).payload || {}).paper || '').toLowerCase();
+    const m = paper.match(/^(a3|a4|a5|a6|letter|legal)(?:[_-](portrait|landscape))?$/);
+    if (!m) { return null; }
+
+    const parts = ['paper=' + (m[1].length === 2 ? m[1].toUpperCase() : m[1])];
+    if (m[2]) { parts.push(m[2]); }
+    parts.push('noscale');
+
+    return parts.join(',');
+}
 function findPdfPrinter() {
+    const sumatraArgs = (f, p, settings) => (settings
+        ? ['-print-to', p, '-print-settings', settings, '-silent', '-exit-when-done', f]
+        : ['-print-to', p, '-silent', '-exit-when-done', f]);
+
     const options = [
         { exe: process.env.BINGOO_PDF_PRINTER, args: (f, p) => ['-print-to', p, '-silent', f] },
-        { exe: path.join(exeDir(), 'SumatraPDF.exe'), args: (f, p) => ['-print-to', p, '-silent', '-exit-when-done', f] },
-        { exe: 'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe', args: (f, p) => ['-print-to', p, '-silent', '-exit-when-done', f] },
+        // `-print-settings` SIRF SumatraPDF samajhta hai. PDFtoPrinter aur
+        // Acrobat ko ye dena un ko tor deta, is liye wo satrein waisi hi hain.
+        { exe: path.join(exeDir(), 'SumatraPDF.exe'), args: sumatraArgs },
+        { exe: 'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe', args: sumatraArgs },
         { exe: path.join(exeDir(), 'PDFtoPrinter.exe'), args: (f, p) => [f, p] },
         { exe: 'C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe', args: (f, p) => ['/t', f, p] },
         { exe: 'C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe', args: (f, p) => ['/t', f, p] },
@@ -528,9 +667,21 @@ async function printDocumentOnWindows(job) {
         throw new Error('Is printer par Windows wala naam likha hi nahi — agent usi naam se printer pehchanta hai.');
     }
 
-    const chrome = findChrome();
-    if (!chrome) {
+    const browsers = findBrowsers();
+    if (browsers.length === 0) {
         throw new Error('Chrome ya Edge is PC par nahi mila — document ka PDF usi se banta hai.');
+    }
+
+    // Printer ka wajood PEHLE — chhapne ki koshish se bhi pehle, aur PDF banane
+    // se bhi pehle. Ghalat naam par 60 second Chrome chalana aur phir nakam hona
+    // bekaar hai, aur 10 Oct tak us ka natija "chhap gaya" nikalta tha.
+    const known = windowsPrinterExists(targetName);
+    if (known && ! known.found) {
+        throw new Error(
+            'Is PC par "' + targetName + '" naam ka koi printer nahi hai. '
+            + 'Mojood printer: ' + known.list.join(', ') + '. '
+            + 'Printers screen par bilkul wohi naam likhein jo yahan hai.'
+        );
     }
 
     const tool = findPdfPrinter();
@@ -538,28 +689,100 @@ async function printDocumentOnWindows(job) {
     const stamp    = `${job.job_no || job.id}-${Date.now()}`.replace(/[^A-Za-z0-9._-]/g, '-');
     const htmlPath = path.join(os.tmpdir(), `bingoo-${stamp}.html`);
     const pdfPath  = path.join(os.tmpdir(), `bingoo-${stamp}.pdf`);
+    const profileDir = path.join(os.tmpdir(), `bingoo-chrome-${stamp}`);
 
     try {
         fs.writeFileSync(htmlPath, job.raw_payload || '', 'utf8');
 
         // Kagaz ka size HTML ke apne `@page` me pehle se hai aur Chrome usi ko
         // maanta hai. Yahan dobara likhna do jagah do jawab bana deta.
-        await runExe(chrome, [
-            '--headless=new',
+        // HAR BROWSER, HAR HEADLESS SOORAT — jab tak PDF na ban jaye.
+        //
+        // Do alag cheezein yahan ikattha hui hain, aur dono ki qeemat chukai ja
+        // chuki hai:
+        //
+        //   1. Do headless soortein. `--headless=new` sirf Chrome 109+ samajhta
+        //      hai; us se purane par wo flag bemani hai aur PDF banti hi nahi.
+        //
+        //   2. Har browser. 9 Oct, Kashif Kitchen: Chrome ne `--headless=new`
+        //      par chup chaap 0 lauta diya aur kuch na banaya, aur purane
+        //      `--headless` par non-zero de kar mar gaya — bina kisi shikayat
+        //      ke. Wajah error me khud nikli: `--version` ne version ke bajaye
+        //      "Opening in existing browser session." kaha, yani us PC ka
+        //      chrome.exe har command pehle se khuli Chrome ko thama kar nikal
+        //      jata tha. USI PC par Edge bhi mojood tha — magar agent kabhi us
+        //      tak pahunchta hi nahi tha.
+        //
+        // Us se pehle ek aur andaza — default profile ka taala — ALAG se jaanch
+        // kar GHALAT nikla tha: 19 Chrome process chalte hue bhi PDF ban jati
+        // hai. Is liye `--user-data-dir` yahan "hal" ke taur par nahi, sirf is
+        // liye hai ke nuqsan nahi deta aur service mode me lazmi hoga.
+        const chromeArgs = (headlessFlag, prof) => [
+            headlessFlag,
             '--disable-gpu',
             '--no-sandbox',
+            '--user-data-dir=' + prof,
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--no-first-run',
             '--no-pdf-header-footer',
             '--print-background',          // is ke baghair parcha jhoot bolta hai
-            `--print-to-pdf=${pdfPath}`,
-            `file:///${htmlPath.replace(/\\/g, '/')}`,
-        ], 60000);
+            '--print-to-pdf=' + pdfPath,
+            'file:///' + htmlPath.replace(/\\/g, '/'),
+        ];
 
-        if (!fs.existsSync(pdfPath) || fs.statSync(pdfPath).size === 0) {
-            throw new Error('Chrome ne PDF banayi hi nahi.');
+        const madePdf = () => fs.existsSync(pdfPath) && fs.statSync(pdfPath).size > 0;
+        const tried = [];
+        let attempt = 0;
+
+        outer:
+        for (const browser of browsers) {
+            for (const flag of ['--headless=new', '--headless']) {
+                attempt += 1;
+
+                // Har koshish ki apni profile — warna Chrome aur Edge ek hi
+                // folder par larein ge.
+                const prof  = path.join(profileDir, String(attempt));
+                const label = path.basename(browser) + ' ' + flag;
+
+                // Pehli koshish ko poora waqt, baad walon ko aadha: chaar
+                // koshishein mil kar ek nakaam parchi ko chaar minute ka na
+                // bana dein.
+                try {
+                    await runExe(browser, chromeArgs(flag, prof), attempt === 1 ? 60000 : 30000);
+                } catch (err) {
+                    tried.push(label + ': ' + err.message);
+                }
+                if (madePdf()) { break outer; }
+                tried.push(label + ': PDF nahi bani');
+                try { if (fs.existsSync(pdfPath)) { fs.unlinkSync(pdfPath); } } catch { /* chhor do */ }
+            }
         }
 
+        if (!madePdf()) {
+            // Har browser ka naam aur version saath jaata hai. Akela "PDF nahi
+            // bani" ek poora chakkar khaa gaya tha, kyunke us se ye pata hi
+            // nahi chalta tha ke kyun.
+            const seen = browsers.map((b) => b + ' (' + browserVersion(b) + ')');
+
+            // Elevation pehle, kyunke 9 Oct ko yehi wajah thi aur yehi aakhir me
+            // pata chali. Jab tak ye satar yahan nahi thi, error ki har baat
+            // sach thi magar kisi ne asal sabab ki taraf ishara nahi kiya.
+            const elevated = isElevated() === true
+                ? 'AGENT ADMINISTRATOR PAR CHAL RAHA HAI - Chrome aise kaam karne se inkar karta hai. '
+                  + 'Scheduled task ko RunLevel Limited par daalein (Highest par nahi). '
+                : '';
+
+            throw new Error(
+                elevated
+                + 'Kisi bhi browser se PDF nahi bani. Mojood: ' + seen.join(', ') + '. '
+                + 'Koshishein: ' + tried.join(' | ')
+            );
+        }
         if (tool) {
-            await runExe(tool.exe, tool.args(pdfPath, targetName), 120000);
+            // Kagaz ka naap printer tak pahunchana — warna wo apni default
+            // (aam tor par A4) uthata hai aur A5 ka parcha A4 par nikalta hai.
+            await runExe(tool.exe, tool.args(pdfPath, targetName, printSettingsFor(job)), 120000);
         } else {
             // Koi maaruf utility nahi mili — Windows ka apna "PrintTo" aazmao.
             //
@@ -577,6 +800,10 @@ async function printDocumentOnWindows(job) {
         for (const f of [htmlPath, pdfPath]) {
             try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* chhor do */ }
         }
+        // Aur wo asthai Chrome profile bhi. Ye chhorte jana ek khamosh kharabi
+        // hoti: har parche par kuch MB `temp` me jama hote rehte aur mahinon
+        // baad disk bhar jati, bina kisi ko wajah bataye.
+        try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch { /* chhor do */ }
     }
 }
 
@@ -591,19 +818,71 @@ async function printDocumentOnWindows(job) {
  * dene ke baad apne aap band ho jate hain. Teen second us ka sasta ilaj hai.
  */
 function printViaWindowsVerb(pdfFile, printerName) {
+    // `exit 1` JAAN BUJH KAR, aur yehi is function ki sab se ahem satar hai.
+    //
+    // 10 Oct: end-to-end test ne pakra ke agent ek aise printer par "chhap gaya"
+    // keh raha tha jo mojood hi nahi tha. Wajah yahan thi: `Start-Process -Verb
+    // PrintTo` THROW karta hai ("No application is associated with the specified
+    // file for this operation") magar `powershell.exe -Command` us ke bawajood
+    // EXIT 0 deta hai. `runExe` exit code dekhta hai, is liye nakami kamyabi ban
+    // kar lauti — job DB me "printed" lag jati aur kisi ko kabhi pata na chalta
+    // ke kaghaz nikla hi nahi.
+    //
+    // Chup-chaap jhooti kamyabi us nakami se BADTAR hai jo saaf nazar aaye.
+    const q = (v) => String(v).replace(/'/g, "''");
     const ps = [
         '-NoProfile', '-NonInteractive', '-Command',
-        `$p = Start-Process -FilePath '${pdfFile.replace(/'/g, "''")}' -Verb PrintTo `
-        + `-ArgumentList '"${printerName.replace(/'/g, "''")}"' -PassThru -ErrorAction Stop; `
-        + '$p | Wait-Process -Timeout 90 -ErrorAction SilentlyContinue; Start-Sleep -Seconds 3',
+        "$ErrorActionPreference = 'Stop'; "
+        + 'try { '
+        + `$p = Start-Process -FilePath '${q(pdfFile)}' -Verb PrintTo `
+        + `-ArgumentList '"${q(printerName)}"' -PassThru -ErrorAction Stop; `
+        + '$p | Wait-Process -Timeout 90 -ErrorAction SilentlyContinue; '
+        + 'Start-Sleep -Seconds 3; '
+        + '} catch { Write-Error $_.Exception.Message; exit 1 }',
     ];
 
     return runExe('powershell.exe', ps, 120000).catch((err) => {
         throw new Error(
-            'PDF ko printer par bhejne ka koi raasta nahi mila. Is PC par SumatraPDF install karein '
-            + '(ya SumatraPDF.exe agent ke folder me rakh dein). Asli wajah: ' + err.message
+            'PDF ban gayi magar printer tak nahi pahunchi. Is PC par PDF chhapne wala koi program '
+            + 'nahi hai: SumatraPDF install karein, ya SumatraPDF.exe agent ke folder me rakh dein. '
+            + 'Asli wajah: ' + err.message
         );
     });
+}
+
+/**
+ * Printer WAQAI mojood hai? Chhapne se PEHLE, har baar.
+ *
+ * 10 Oct, end-to-end test: agent ne ek aise printer par "chhap gaya" kaha jo
+ * kisi machine par hai hi nahi. Us waqt tak chhapne se pehle koi jaanch thi hi
+ * nahi — naam seedha Windows ko thama diya jata tha.
+ *
+ * Ye jaanch sab se sasti aur sab se zyada kaam ki hai: printer ka naam galat
+ * likha hona sab se aam ghalti hai (`HP LaserJet P2055dn` ki jagah `HP LaserJet
+ * P2055`), aur us ki nishani aur koi nahi hoti. Ab error me mojood printers ki
+ * fehrist bhi jati hai, taake malik ko dhoondna na pare.
+ *
+ * Jaanch KHUD na chal sake to raasta rokti NAHI — `null` lauta kar aage jane
+ * deti hai. Ek na-chalne wali jaanch ki wajah se parchi rokna us masle se bara
+ * masla hai jo wo batati.
+ */
+function windowsPrinterExists(name) {
+    try {
+        const out = require('child_process').execFileSync('powershell.exe', [
+            '-NoProfile', '-NonInteractive', '-Command',
+            '(Get-Printer -ErrorAction Stop | Select-Object -ExpandProperty Name) -join "`n"',
+        ], { timeout: 20000, windowsHide: true }).toString();
+
+        const list = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        if (list.length === 0) { return null; }
+
+        return {
+            found: list.some((p) => p.toLowerCase() === String(name).toLowerCase()),
+            list,
+        };
+    } catch {
+        return null;
+    }
 }
 
 async function markPrinted(jobId) {
@@ -1043,6 +1322,20 @@ function run(config) {
     log(`Agent:   ${CONFIG.agentCode}`);
     log(`Config:  ${CONFIG.source || 'file'}`);
     log(`Polling: every ${CONFIG.pollMs}ms`);
+
+    // Shuru me hi keh do. 9 Oct ko Kashif Kitchen par A4/A5 document is liye
+    // nahi chhap rahe thay ke agent ADMINISTRATOR par chal raha tha — Chromium
+    // elevated process se PDF banane se inkar kar deta hai. Us din ye teen
+    // satrein mojood hoti to ghanton ki talash pehli nazar me khatam ho jati.
+    //
+    // Sirf ittila hai — kisi kaam ko rokti nahi. Thermal parchi elevated par
+    // bhi theek chhapti hai, aur ek ghalat warning par parchi rok dena us
+    // masle se bara masla ban jata jo ye batati hai.
+    if (isElevated() === true) {
+        log('WARNING: ye agent ADMINISTRATOR par chal raha hai. Thermal parchi to chhapegi,');
+        log('         magar A4/A5 document NAHI - Chrome elevated par PDF nahi banata.');
+        log('         Scheduled task ko RunLevel Limited par daalein (Highest par nahi).');
+    }
 
     setInterval(tick, CONFIG.pollMs);
     // Hold the printers awake so a kitchen ticket is never the thing that wakes one.

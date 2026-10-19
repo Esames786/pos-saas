@@ -6,6 +6,11 @@
     $prefillLines    = $prefillLines    ?? [];
     $stockEffect     = $stockEffect     ?? '';          // note shown under the table
     $products        = $products        ?? collect();   // used only to hydrate prefilled rows
+    // GRN-CHARGES-VISIBLE-1: id of the page's Extra Charges input (GRN only). When set, the footer
+    // adds the charge and a Total — the grand total used to show the goods alone, so a counter who
+    // typed 500 of cartage saw 500, not 1,000, and thought the charge had not taken.
+    $extraChargesInput = $extraChargesInput ?? null;
+    $extraChargesNoteInput = $extraChargesNoteInput ?? null;
 
     $oldLines = old('lines');
     if ($oldLines) {
@@ -25,6 +30,8 @@
 <div class="purchase-lines-widget"
      data-quantity-field="{{ $quantityField }}"
      data-show-batch="{{ $showBatch ? 1 : 0 }}"
+     @if($extraChargesInput) data-extra-charges-input="{{ $extraChargesInput }}" @endif
+     @if($extraChargesNoteInput) data-extra-charges-note-input="{{ $extraChargesNoteInput }}" @endif
      data-lookup-url="{{ url('/api/catalog/barcode/lookup') }}"
      data-search-url="{{ url('/ajax/products') }}">
 
@@ -148,6 +155,21 @@
                     <td class="text-end"><span class="purchase-summary-grand text-primary">0.00</span></td>
                     <td></td>
                 </tr>
+                @if($extraChargesInput)
+                    @php $footLabelCols = ($showBatch ? 5 : 3) + 1 + ($showDiscountTax ? 2 : 0) + ($showNotes ? 1 : 0) + 1; @endphp
+                    <tr class="purchase-summary-charges-row">
+                        <td colspan="{{ $footLabelCols }}" class="text-end">
+                            Extra Charges <span class="purchase-summary-charges-note text-muted small"></span>
+                        </td>
+                        <td class="text-end"><span class="purchase-summary-charges">0.00</span></td>
+                        <td></td>
+                    </tr>
+                    <tr class="fw-bold">
+                        <td colspan="{{ $footLabelCols }}" class="text-end">Total (goods + charges)</td>
+                        <td class="text-end"><span class="purchase-summary-total text-primary">0.00</span></td>
+                        <td></td>
+                    </tr>
+                @endif
             </tfoot>
         </table>
     </div>
@@ -350,6 +372,17 @@
             set('.purchase-summary-discount', discount.toFixed(2));
             set('.purchase-summary-tax', tax.toFixed(2));
             set('.purchase-summary-grand', grand.toFixed(2));
+            // GRN-CHARGES-VISIBLE-1: the page's Extra Charges belong in what is shown as the total.
+            var chargesId = widget.dataset.extraChargesInput;
+            if (chargesId) {
+                var chargesEl = document.getElementById(chargesId);
+                var charges = money(chargesEl && chargesEl.value);
+                var noteEl = widget.dataset.extraChargesNoteInput ? document.getElementById(widget.dataset.extraChargesNoteInput) : null;
+                var note = noteEl && noteEl.value ? noteEl.value.trim() : '';
+                set('.purchase-summary-charges', charges.toFixed(2));
+                set('.purchase-summary-charges-note', note ? '— ' + note : '');
+                set('.purchase-summary-total', (grand + charges).toFixed(2));
+            }
         });
     }
 
@@ -440,6 +473,12 @@
         widget.querySelectorAll('.purchase-line-row').forEach(function(row){
             var ps = row.querySelector('.purchase-product-select');
             if (ps && ps.value) { fillVariants(row, row.querySelector('.purchase-variant-select') && row.querySelector('.purchase-variant-select').dataset.selected); applyBatchExpiry(row); }
+        });
+
+        // GRN-CHARGES-VISIBLE-1: the charge and its description live outside the table.
+        [widget.dataset.extraChargesInput, widget.dataset.extraChargesNoteInput].forEach(function(id){
+            var el = id ? document.getElementById(id) : null;
+            if (el) el.addEventListener('input', recalcTotals);
         });
 
         // recalc on any qty/cost/disc/tax change

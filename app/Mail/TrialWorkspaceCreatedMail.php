@@ -30,7 +30,7 @@ class TrialWorkspaceCreatedMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: $this->brand . ' workspace is ready');
+        return new Envelope(subject: __(':brand workspace is ready', ['brand' => $this->brand]));
     }
 
     public function content(): Content

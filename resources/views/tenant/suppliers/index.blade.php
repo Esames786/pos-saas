@@ -53,7 +53,7 @@
                             <small class="d-block text-muted">{{ $supplier->email }}</small>
                         @endif
                     </td>
-                    <td>{{ number_format($supplier->current_balance, 2) }}</td>
+                    <td>{{ \App\Services\Purchasing\SupplierRunningAccountService::balanceLabel((float) $supplier->current_balance) }}</td>
                     <td>
                         <span class="badge bg-{{ $supplier->status === 'active' ? 'success' : 'secondary' }}">
                             {{ ucfirst($supplier->status) }}

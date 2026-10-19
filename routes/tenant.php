@@ -767,6 +767,8 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/reports/purchases/summary', [PurchaseReportController::class, 'summary'])->name('tenant.reports.purchases.summary');
                 Route::get('/reports/purchases/suppliers', [PurchaseReportController::class, 'suppliers'])->name('tenant.reports.purchases.suppliers');
                 Route::get('/reports/purchases/payables', [PurchaseReportController::class, 'payables'])->name('tenant.reports.purchases.payables');
+                // CASH-BOOK-REPORT-1: money in / out / balance per cash drawer and bank (CSV + print via ?format=).
+                Route::get('/reports/cash-book', [\App\Http\Controllers\Tenant\Reports\CashBookController::class, 'index'])->name('tenant.reports.cash-book.index');
                 Route::get('/reports/purchases/returns', [PurchaseReportController::class, 'returns'])->name('tenant.reports.purchases.returns');
                 Route::get('/reports/restaurant/tables', [RestaurantReportController::class, 'tables'])->name('tenant.reports.restaurant.tables');
                 Route::get('/reports/restaurant/waiters', [RestaurantReportController::class, 'waiters'])->name('tenant.reports.restaurant.waiters');
@@ -999,6 +1001,15 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     // 2026_09_27_000001 wo har us role ko deti hai jis ke paas
                     // asli kitchen sheet pehle se hai.
                     Route::get('/catering/documents/kitchen-sheet-preview/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheetPreview'])->name('tenant.catering.documents.kitchen-sheet-preview');
+                    // CATERING-PROFORMA-1 (10 Oct) — event guzarne se pehle graahak ko
+                    // dene wala bill. Kitchen sheet ke preview ke bilkul saath rakha
+                    // gaya hai kyunke dono ek hi qism ke hain: maujooda order se bante
+                    // hain, kuch mehfooz nahi karte, aur khud kehte hain ke final nahi.
+                    //
+                    // 🚨 NAYA ROUTE = NAYI PERMISSION. deploy.sh sirf Owner ko deti hai;
+                    // Manager aur baqi roles ko additively dena hoga, phir
+                    // system:clear-tenant-permission-cache.
+                    Route::get('/catering/documents/proforma-invoice/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'proformaInvoice'])->name('tenant.catering.documents.proforma-invoice');
                     Route::get('/catering/documents/final-invoice/{cateringFinalInvoice}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'finalInvoice'])->name('tenant.catering.documents.final-invoice');
 
                     // KASHIF-CATERING-OPERATOR-UI-1: bulk documents for a selected set

@@ -26,6 +26,24 @@ use Illuminate\Http\Request;
 class CateringDocumentController extends Controller
 {
     /** Customer-facing A4 estimate. */
+    /**
+     * Wo printer jo A4/A5 document chhap sakte hain — aur koi nahi.
+     *
+     * `CateringBulkDocumentController` me bhi bilkul yehi satar thi. Ek hi
+     * jagah rakhna behtar hota, magar wo doosra controller hai; yahan us ka
+     * naam liya ja raha hai taake agli baar koi dhoondne par dono dekh le.
+     *
+     * `documentCapable()` scope hi wo shart hai jo A4 laser ko ESC/POS bytes
+     * se bachati hai — fehrist yahan haath se banana us hifazat ko tor deta.
+     */
+    private function documentPrinters()
+    {
+        // `paper_size` bhi: wo printer ko ROKTA nahi — kagaz document se
+        // aata hai — magar Send-to-network us se tay karta hai ke KAUN SA
+        // printer pehle se chuna hua aaye. Dekho send-to-network.blade.php.
+        return \App\Models\Tenant\Printer::documentCapable()->orderBy('name')->get(['id', 'name', 'paper_size']);
+    }
+
     public function estimate(Request $request, CateringEstimate $cateringEstimate)
     {
         $cateringEstimate->load(['event.customer', 'lines']);
@@ -64,6 +82,21 @@ class CateringDocumentController extends Controller
                 $cateringEstimate->event->event_no.'-Q'.$cateringEstimate->version_no);
         }
 
+        // CATERING-SEND-SINGLE-1 — "Send to network" yahan bhi, bulk ki tarah.
+        //
+        // Malik (10 Oct): "event ki edit wali screen se quotation print karta
+        // hoon to wahan koi printer chunne ka option aata hi nahi." Theek
+        // shikayat thi: ye control sirf TEEN bulk safhon par laga tha, aur
+        // rozmarra ka kaam inhi single safhon se hota hai.
+        //
+        // Ye do qeematein SIRF is raaste par jaati hain. PDF wale raaste ko
+        // (upar) aur `CateringDocumentQueueService` ko — jo YEHI view render
+        // kar ke agent ke liye HTML jamata hai — nahi miltin. Partial khud
+        // `@isset($ids)` par khari hai, is liye wahan kuch nikalta hi nahi:
+        // warna chhapne wale kaghaz par toolbar bhi chhap jata.
+        $data['ids'] = array_filter([$cateringEstimate->event?->id]);
+        $data['printers'] = $this->documentPrinters();
+
         return view('tenant.catering.documents.estimate', $data);
     }
 
@@ -77,6 +110,9 @@ class CateringDocumentController extends Controller
             'release' => $cateringProductionRelease,
             'lang' => $lang,
             'businessName' => $this->businessName(),
+            // CATERING-SEND-SINGLE-1 — dekho `estimate()` ka note.
+            'ids' => array_filter([$cateringProductionRelease->event?->id]),
+            'printers' => $this->documentPrinters(),
         ]);
     }
 
@@ -98,6 +134,12 @@ class CateringDocumentController extends Controller
             'release' => app(CateringProductionReleaseService::class)->preview($cateringEvent),
             'lang' => $this->language($request),
             'businessName' => $this->businessName(),
+            // CATERING-SEND-SINGLE-1 — preview se bhi bheja ja sakta hai.
+            // Qatai mehfooz: `queueKitchenSheetForEvent()` EVENT leti hai,
+            // release nahi — is liye yahan se bhejne par bhi koi release
+            // nahi banti aur koi number kharch nahi hota.
+            'ids' => [$cateringEvent->id],
+            'printers' => $this->documentPrinters(),
             // Koi `preview` jhanda nahi bheja ja raha: kaghaz khud dekh leta
             // hai ke release mehfooz hui hai ya nahi (`$release->exists`). Ek
             // jhanda har naye caller par dobara sahi likhna parta — aur bulk
@@ -106,6 +148,43 @@ class CateringDocumentController extends Controller
     }
 
     /** CATERING-V1-CLOSURE-1 (§5): A4 final invoice from the immutable snapshot. */
+    /**
+     * CATERING-PROFORMA-1 — event se pehle wala bill, maujooda order se.
+     *
+     * WOHI view jo asli bill chalata hai. Do view rakhne par ek din unhen
+     * milate rehna bhool jata hai aur graahak ke do kaghaz alag dikhne lagte
+     * hain. Kaghaz khud farq bata deta hai, kyunke `$invoice->exists` jhoot
+     * hai — wohi shart jo kitchen sheet ke preview par lagti hai.
+     */
+    public function proformaInvoice(Request $request, \App\Models\Tenant\CateringEvent $cateringEvent)
+    {
+        $lang = $this->language($request);
+        $proforma = app(\App\Services\Catering\CateringFinalInvoiceService::class)->proforma($cateringEvent);
+
+        $data = [
+            'invoice' => $proforma,
+            'lang' => $lang,
+            'businessName' => $this->businessName(),
+        ];
+
+        if ($request->query('format') === 'pdf') {
+            return $this->asPdf('tenant.catering.documents.final-invoice', $data, $lang,
+                'PROFORMA-'.$cateringEvent->event_no);
+        }
+
+        // CATERING-SEND-INVOICE-DOC-1 — proforma bulk ke raaste par jati hai
+        // (`kind` + `ids[]`), kyunke wo kahin mehfooz nahi hoti aur `ids[]`
+        // hamesha EVENT ki id hoti hai. Asli invoice ka apna raasta hai.
+        //
+        // Ye qeematein SIRF is raaste par: PDF ko nahi (upar), aur queue service
+        // ko nahi, jo YEHI view render kar ke agent ke liye HTML jamati hai.
+        $data['sendKind'] = \App\Services\Catering\CateringDocumentQueueService::KIND_PROFORMA;
+        $data['ids'] = [$cateringEvent->id];
+        $data['printers'] = $this->documentPrinters();
+
+        return view('tenant.catering.documents.final-invoice', $data);
+    }
+
     public function finalInvoice(Request $request, \App\Models\Tenant\CateringFinalInvoice $cateringFinalInvoice)
     {
         $cateringFinalInvoice->load('event');
@@ -121,6 +200,17 @@ class CateringDocumentController extends Controller
             return $this->asPdf('tenant.catering.documents.final-invoice', $data, $lang,
                 $cateringFinalInvoice->invoice_no);
         }
+
+        // CATERING-SEND-INVOICE-DOC-1 — dekho `estimate()` ka note. Ye qeematein
+        // SIRF is raaste par jaati hain: PDF ko nahi (upar), aur queue service ko
+        // nahi, jo YEHI view render kar ke agent ke liye HTML jamati hai.
+        //
+        // Invoice ka apna raasta hai, bulk endpoint nahi: us ka apna permission
+        // hai aur wo reprint ki ginti bhi rakhta hai.
+        $data['sendAction'] = url('/catering/documents/final-invoice/'.$cateringFinalInvoice->id.'/print');
+        $data['sendExtra'] = ['lang' => $lang];
+        $data['sendPermission'] = 'tenant.catering.documents.final-invoice-print';
+        $data['printers'] = $this->documentPrinters();
 
         return view('tenant.catering.documents.final-invoice', $data);
     }
@@ -196,8 +286,19 @@ class CateringDocumentController extends Controller
 
     public function printFinalInvoice(Request $request, CateringFinalInvoice $cateringFinalInvoice)
     {
-        return $this->queueDocument($request, fn (Printer $printer, string $lang, bool $reprint) => app(CateringDocumentPrintService::class)
-            ->queueFinalInvoice($cateringFinalInvoice, $printer, $lang, $request->user()?->id, $reprint));
+        // WOHI BRANCH JO `printEstimate()` PAR PEHLE SE HAI.
+        //
+        // 11 Oct tak yahan har printer ke liye `CateringDocumentPrintService`
+        // bulaya jata tha, jo ESC/POS bytes banata hai. A4 printer chunne par
+        // agent un bytes ko HTML samajh kar Chrome ko deta aur kaghaz par koora
+        // aata. Quotation par ye theek tha; invoice par kabhi kiya hi nahi gaya.
+        return $this->queueDocument($request, fn (Printer $printer, string $lang, bool $reprint) => $printer->printer_type === Printer::TYPE_WINDOWS
+            // A4 par poora document — Urdu samet, agent ke Chrome se.
+            ? app(CateringDocumentQueueService::class)
+                ->queueFinalInvoice($cateringFinalInvoice, $printer, $lang, $request->user()?->id, $reprint)
+            // Thermal par wohi purani English slip — ek harf nahi badla.
+            : app(CateringDocumentPrintService::class)
+                ->queueFinalInvoice($cateringFinalInvoice, $printer, $lang, $request->user()?->id, $reprint));
     }
 
     /** Shared validation, printer resolution and honest failure for both documents. */

@@ -44,6 +44,11 @@
     .doc-btn:hover, .doc-select:hover { border-color: #9ca3af; }
     .doc-btn-primary { background: #111827; border-color: #111827; color: #fff; }
     .doc-btn-primary:hover { background: #374151; border-color: #374151; }
+    .doc-paper {
+        display: inline-flex; align-items: center; font-family: Arial, Helvetica, sans-serif;
+        font-size: 12px; font-weight: 700; letter-spacing: .04em; padding: 0 12px;
+        border: 1px solid #d1d5db; border-radius: 5px; background: #f3f4f6; color: #374151;
+    }
     .doc-note { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #6b7280; }
     .doc-flash {
         font-family: Arial, Helvetica, sans-serif; font-size: 13px; border-radius: 5px;
@@ -64,26 +69,105 @@
      mojood hi nahi hota (yehi 500 test ne pakra).
 
      CSS upar hai, is shart se BAHAR: wo purane Print button par bhi lagti hai. --}}
-@isset($ids)
+@if(isset($ids) || isset($sendAction))
 @php
     $stnPrinters = collect($printers ?? []);
-    $stnIds = collect($ids)->filter()->values();
+    // `?? []` zaroori: invoice wale raaste par `ids` hoti hi nahi (wahan apna
+    // `sendAction` hota hai), aur us surat me ye satar warna girti thi.
+    $stnIds = collect($ids ?? [])->filter()->values();
+    $stnPaper = \App\Services\Catering\CateringDocumentQueueService::paperLabel($kind);
+
+    // CATERING-SEND-INVOICE-DOC-1 — ek alag raasta bhi.
+    //
+    // Quotation / kitchen sheet / address sheet bulk endpoint par jaate hain
+    // (`kind` + `ids[]`). Final invoice ka apna raasta hai, kyunke us ka
+    // apna permission hai aur wo `reprint` ki ginti bhi rakhta hai. Do alag
+    // control banane se ye saada toolbar do jagah likha jata — aur ek din
+    // dono alag ho jate.
+    $stnAction = $sendAction ?? url('/catering/documents/bulk/print');
+    $stnExtra = $sendExtra ?? [];
+    $stnPermission = $sendPermission ?? 'tenant.catering.documents.bulk-print';
 @endphp
 
-@can('tenant.catering.documents.bulk-print')
-    @if($stnPrinters->isNotEmpty() && $stnIds->isNotEmpty())
-        <form method="POST" action="{{ url('/catering/documents/bulk/print') }}" class="doc-toolbar-row">
+@can($stnPermission)
+    @if($stnPrinters->isNotEmpty() && (isset($sendAction) || $stnIds->isNotEmpty()))
+        <form method="POST" action="{{ $stnAction }}" class="doc-toolbar-row">
             @csrf
-            <input type="hidden" name="kind" value="{{ $kind }}">
-            @foreach($stnIds as $id)
-                <input type="hidden" name="ids[]" value="{{ $id }}">
-            @endforeach
+            @if(isset($sendAction))
+                @foreach($stnExtra as $k => $v)
+                    <input type="hidden" name="{{ $k }}" value="{{ $v }}">
+                @endforeach
+            @else
+                <input type="hidden" name="kind" value="{{ $kind }}">
+                @foreach($stnIds as $id)
+                    <input type="hidden" name="ids[]" value="{{ $id }}">
+                @endforeach
+            @endif
 
+            {{-- KAGHAZ KA SIZE YAHAN LIKHA HAI, aur ye jaan bujh kar hai.
+
+                 Malik (10 Oct): "dono printer A4 bhi chhap sakte hain aur A5
+                 bhi. Kitchen sheet hamesha A5, baqi sab A4." Qaida pehle se
+                 THEEK chal raha tha — size document se aata hai, printer se
+                 nahi — magar screen par kahin likha nahi tha. Operator ko
+                 printer ke naam par jana parta tha ("… (A4)"), aur wo naam
+                 jhoot bolta hai: usi printer par kitchen sheet bhejo to A5 hi
+                 nikalti hai.
+
+                 Ye label SERVICE se aata hai, yahan dobara nahi likha ja raha.
+                 Do jagah likhne par ek din dono alag ho jate aur screen jhoot
+                 bolne lagti. --}}
+            <span class="doc-paper" title="Kaghaz ka size document se tay hota hai, printer se nahi">
+                {{ $stnPaper }}
+            </span>
             <select name="printer_id" class="doc-select" required>
+                {{-- JIS KAGAZ KA DOCUMENT HAI, USI NAAP KA PRINTER PEHLE SE CHUNA HO.
+
+                     Malik (10 Oct): "kitchen sheet par A4 likha hai magar printer A5
+                     aa raha hai — ye confusing lag raha hai." Theek shikayat thi, aur
+                     screen WAQAI apne aap ko jhutla rahi thi: chip "A4" kehti aur us
+                     ke saath "Office - HP M127fn (A5)" chuna hua nazar aata.
+
+                     Wajah mamooli thi: fehrist sirf NAAM ke hisaab se tarteeb me hai,
+                     is liye "M127fn" hamesha "P2055dn" se pehle aa jata aur browser
+                     pehla option khud chun leta — document se us ka koi taaluq hi nahi
+                     tha.
+
+                     `paper_size` yahan sirf PEHLA CHUNAO tay karta hai, rokta kisi ko
+                     nahi: dono printer fehrist me rehte hain aur dono dono naap chhap
+                     sakte hain. Isi liye duplicate rows banane ki zaroorat nahi pari —
+                     wo har cheez do guni kar deti (do health check, do jagah naam
+                     theek karna) aur masla phir bhi screen ka hi rehta.
+
+                     Kisi printer ka naap na mile to koi `selected` nahi lagta aur
+                     browser pehla chun leta hai — yani purana rawaiyya, jo kabhi
+                     galat jawab nahi deta kyunke kagaz document se jata hai. --}}
                 @foreach($stnPrinters as $p)
-                    <option value="{{ $p->id }}">{{ $p->name }}</option>
+                    <option value="{{ $p->id }}"
+                        @selected(strtoupper((string) ($p->paper_size ?? '')) === $stnPaper)>{{ $p->name }}</option>
                 @endforeach
             </select>
+            {{-- HAR BAAR NAYA KAGHAZ — ye malik ka faisla hai, 11 October.
+
+                 Pehle ek document do baar queue nahi hota tha: wohi purani job
+                 lautti thi, taake ghalti se do kaghaz na nikal jayein. Us ki
+                 qeemat ye nikli ke malik kitchen sheet dobara bhejte rahe aur
+                 kuch hota hi nahi tha.
+
+                 Maine pehle yahan ek "Dobara chhapein" ka khaana lagaya tha.
+                 Malik ne saaf kaha: "jitni baar bhi bhejoon, POS thori hai."
+                 Baat durust hai — catering ka parcha POS ki parchi nahi: bawarchi
+                 khane ko teen copy chahiye to teen baar dabana hi us ka tareeqa
+                 hai, aur har baar ek khaane par nishan lagwana rozmarra ke kaam
+                 me rukawat hai.
+
+                 Is liye ab koi khaana nahi — ye hamesha ON hai, aur har dabana ek
+                 naya kaghaz deta hai. (Duplicate ki rok KHATM nahi hui; wo POS ke
+                 receipt/KOT par jaise thi waisi hai. Yahan sirf band hai.)
+
+                 Qeemat ye hai ke do baar dabane se do kaghaz nikalenge. Malik ko
+                 ye maloom hai aur yehi un ki farmaish thi. --}}
+            <input type="hidden" name="reprint" value="1">
             <button type="submit" class="doc-btn doc-btn-primary">Send to network</button>
         </form>
     @elseif($stnPrinters->isEmpty())
@@ -104,4 +188,4 @@
 @if(isset($errors) && $errors->has('print'))
     <div class="doc-flash doc-flash-bad">{{ $errors->first('print') }}</div>
 @endif
-@endisset
+@endif

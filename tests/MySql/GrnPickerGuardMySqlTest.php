@@ -82,30 +82,24 @@ class GrnPickerGuardMySqlTest extends MySqlTenantTestCase
             . 'every one of them 500d on Post');
     }
 
-    public function test_posting_an_untracked_product_explains_itself_instead_of_crashing(): void
+    public function test_an_untracked_product_posts_as_a_purchase_only_instead_of_crashing(): void
     {
-        // The live shape on 1 Oct: a drink made purchasable so buying can be recorded, while its
-        // inventory is deliberately not started yet.
+        // The live shape: a drink made purchasable so buying can be recorded, while its inventory is
+        // deliberately not started. Until 6 Oct this was refused with a message; the owner then asked
+        // for it to post (GRN-NON-STOCK-1). What this guard was born for still holds: no 500.
         $drink = $this->makeProduct($this->categoryId, [
             'name' => 'Cola Next 300 ml', 'is_sellable' => 1, 'is_pos_visible' => 1,
             'is_purchasable' => 1, 'is_stock_tracked' => 0,
         ]);
 
-        try {
-            $this->controller()->store($this->postFor($drink));
-            $this->fail('posting an untracked product should have been rejected');
-        } catch (ValidationException $e) {
-            $message = implode(' ', array_merge(...array_values($e->errors())));
-            $this->assertStringContainsString('Cola Next 300 ml', $message, 'it names the product');
-            $this->assertStringContainsString('does not track stock', $message);
-            $this->assertStringContainsString('Purchase Bill', $message, 'it says where the cost belongs');
-        }
+        $this->controller()->store($this->postFor($drink));
 
-        // Nothing may be half-written: the check runs before any receipt is created.
-        $this->assertSame(0, (int) DB::connection('tenant')->table('goods_receipts')->count(),
-            'a rejected GRN must leave no receipt behind');
+        $this->assertSame(1, (int) DB::connection('tenant')->table('goods_receipts')->count(), 'the receipt posts');
+        $this->assertSame(0, (int) DB::connection('tenant')->table('goods_receipt_lines')->where('product_id', $drink)->value('affects_stock'),
+            'and the line says it moved no stock');
+        $this->assertSame(0.0, (float) DB::connection('tenant')->table('stock_balances')->where('product_id', $drink)->sum('quantity_on_hand'),
+            'nothing enters stock');
     }
-
     public function test_a_tracked_product_still_posts_normally(): void
     {
         $supply = $this->makeProduct($this->categoryId, [
