@@ -33,7 +33,7 @@ final class WhatsAppChannel implements ReportChannel
 
     public function send(ReportDelivery $delivery, array $recipients): void
     {
-        $numbers = $this->valid($recipients);
+        $numbers = self::normalise($recipients);
 
         if ($numbers === []) {
             throw new RuntimeException('No valid WhatsApp number is configured for this report.');
@@ -92,6 +92,10 @@ final class WhatsAppChannel implements ReportChannel
     }
 
     /**
+     * PUBLIC and static on purpose: the settings screen normalises with the EXACT same rule when it
+     * saves. Two copies would drift, and the day they did a number would save happily and then never
+     * receive anything — with nothing on any screen to show why.
+     *
      * Meta wants `923001234567` — no plus, no leading zero, no spaces or dashes. People write
      * `0300-1234567`. Without this the number looks right in the settings screen and the message just
      * never arrives, which is the hardest kind of failure to notice.
@@ -99,7 +103,7 @@ final class WhatsAppChannel implements ReportChannel
      * @param  list<string> $recipients
      * @return list<string>
      */
-    private function valid(array $recipients): array
+    public static function normalise(array $recipients): array
     {
         $clean = [];
 
@@ -117,7 +121,10 @@ final class WhatsAppChannel implements ReportChannel
             }
         }
 
-        return array_keys($clean);
+        // strval() is not cosmetic: the numbers are array KEYS above (to dedupe), and PHP turns a
+        // numeric string key into an int. They would then be stored as JSON integers and handed to
+        // Meta as integers, where a string is expected.
+        return array_map('strval', array_keys($clean));
     }
 
     /** Never put a full customer number into a failure string that lands in last_failure. */

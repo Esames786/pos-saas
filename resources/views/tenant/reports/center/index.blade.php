@@ -34,7 +34,7 @@
             @foreach(request()->except('_token') as $k => $v)
                 @if(!is_array($v))<input type="hidden" name="{{ $k }}" value="{{ $v }}">@else @foreach($v as $vv)<input type="hidden" name="{{ $k }}[]" value="{{ $vv }}">@endforeach @endif
             @endforeach
-            <button class="btn btn-outline-success btn-sm">Email Now</button>
+            <button class="btn btn-outline-success btn-sm">Send Now</button>
         </form>
     </div>
 </div>
@@ -546,6 +546,60 @@
 @if($tab === 'z')
     <div class="alert alert-secondary py-2 small">Z Report preset: Overview + Order Types + Categories + Waiters + Payments + Cash &amp; Bank for the selected day. Use <strong>Print Thermal</strong> for the familiar end-of-day slip.</div>
 @endif
+
+{{-- WHATSAPP-REPORT-CHANNEL-1: where the reports go. Tenant-wide on purpose — the two POS buttons
+     and the nightly cron all read this one answer, so a per-schedule setting would leave the others
+     quietly on something else. --}}
+<div class="card mb-4"><div class="card-body">
+    <h6>Report delivery</h6>
+    <p class="text-muted small mb-3">
+        Applies to the nightly scheduled report and to the “Send” buttons here and on POS.
+    </p>
+
+    <form method="POST" action="{{ url('/reports/center/channels') }}" class="row g-3 align-items-start">
+        @csrf
+        @php
+            $tenantChannels = (array) (app('tenant')->report_channels ?? ['email']);
+            $tenantNumbers  = (array) (app('tenant')->report_whatsapp ?? []);
+        @endphp
+
+        <div class="col-12 col-md-3">
+            <label class="form-label small mb-1">Send by</label>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="channels[]" value="email" id="ch-email"
+                       @checked(in_array('email', $tenantChannels, true))>
+                <label class="form-check-label small" for="ch-email">Email</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="channels[]" value="whatsapp" id="ch-wa"
+                       @checked(in_array('whatsapp', $tenantChannels, true))>
+                <label class="form-check-label small" for="ch-wa">WhatsApp</label>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-7">
+            <label class="form-label small mb-1">WhatsApp numbers</label>
+            <input name="whatsapp" type="text" class="form-control form-control-sm"
+                   value="{{ implode(', ', $tenantNumbers) }}"
+                   placeholder="03001234567, 03211234567">
+            <div class="form-text">
+                Comma-separated. Write them however you like — <code>0300-1234567</code> is stored as
+                <code>923001234567</code>. Anything that is not a mobile number is skipped and the count
+                is reported back, so a mistyped entry cannot sit there looking fine.
+            </div>
+            @error('whatsapp')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+        </div>
+
+        <div class="col-12 col-md-2 d-flex align-items-end">
+            <button class="btn btn-primary btn-sm w-100">Save delivery</button>
+        </div>
+    </form>
+
+    <div class="form-text mt-2">
+        Each number is charged as its own message. The WhatsApp message carries the day’s figures and a
+        link to the full report; that link expires after 48 hours.
+    </div>
+</div></div>
 
 {{-- ── schedules ── --}}
 <div class="card mb-4"><div class="card-body">

@@ -1699,7 +1699,7 @@
                 </button>
                 <button type="button" class="btn btn-sm btn-primary" id="qr-email"
                         @disabled(! $posRuntime->can('quickReportEmail')) @unless($posRuntime->can('quickReportEmail')) title="{{ $posRuntime->capabilityHint('quickReportEmail') }}" @endunless>
-                    <i class="ti ti-mail me-1"></i>Email to owner
+                    <i class="ti ti-send me-1"></i>Send to owner
                 </button>
             </div>
         </div>

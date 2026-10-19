@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant\Reports;
 
 use App\Http\Controllers\Controller;
 use App\Services\Reports\Delivery\ReportDelivery;
+use App\Services\Reports\Delivery\WhatsAppChannel;
 use App\Services\Reports\Delivery\ReportDispatcher;
 use App\Services\Reports\ReportScheduleService;
 use App\Services\Reports\SalesReportEngine;
@@ -351,6 +352,59 @@ class SalesReportCenterController extends Controller
         return back()->with('status', 'Report emailed to '.$recipient.'.');
     }
 
+    /**
+     * WHATSAPP-REPORT-CHANNEL-1 — who gets the reports, and how.
+     *
+     * This is tenant-wide, which is why it is not part of the schedule form: the two POS buttons and
+     * the nightly cron all read the same answer, so putting it on one schedule would leave the others
+     * silently on a different setting.
+     *
+     * Numbers are normalised with the CHANNEL's own rule, not a copy of it. Saving a number the sender
+     * would later reject is the worst outcome available here — it looks saved, and nothing ever
+     * arrives.
+     */
+    public function saveChannels(Request $request)
+    {
+        $data = $request->validate([
+            'channels'   => ['array'],
+            'channels.*' => ['string', 'in:email,whatsapp'],
+            'whatsapp'   => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $typed = array_values(array_filter(array_map('trim', explode(',', (string) ($data['whatsapp'] ?? '')))));
+        $numbers = WhatsAppChannel::normalise($typed);
+
+        // Say which ones were thrown out and why. Silently dropping them is how a shop ends up
+        // wondering for a week why one owner never gets the report.
+        $rejected = count($typed) - count($numbers);
+
+        $channels = array_values(array_unique($data['channels'] ?? ['email']));
+        if ($channels === []) {
+            $channels = ['email'];   // never leave a tenant with no way to receive anything
+        }
+
+        if (in_array('whatsapp', $channels, true) && $numbers === []) {
+            return back()->withErrors([
+                'whatsapp' => 'WhatsApp is on but no usable number was given. Use 03001234567 or 923001234567.',
+            ]);
+        }
+
+        $tenant = app('tenant');
+        $tenant->report_channels = $channels;
+        $tenant->report_whatsapp = $numbers;
+        $tenant->save();
+
+        $note = 'Report delivery saved: '.implode(' + ', $channels).'.';
+        if ($numbers !== []) {
+            $note .= ' '.count($numbers).' WhatsApp number'.(count($numbers) === 1 ? '' : 's').'.';
+        }
+        if ($rejected > 0) {
+            $note .= ' '.$rejected.' entr'.($rejected === 1 ? 'y was' : 'ies were').' not a valid mobile number and ';
+            $note .= $rejected === 1 ? 'was skipped.' : 'were skipped.';
+        }
+
+        return back()->with('status', $note);
+    }
     public function storeSchedule(Request $request, ReportScheduleService $schedules)
     {
         $data = $request->validate([
