@@ -119,6 +119,7 @@
         var bits = [];
         bits.push(s.balance > 0 ? 'You owe <span class="owe">' + money(s.balance) + '</span>' : (s.balance < 0 ? 'They owe you <span class="owe">' + money(s.balance) + '</span>' : 'Nothing owed'));
         if (s.terms > 0) bits.push('pays in ' + s.terms + ' days');
+        if (s.disc) bits.push('usual discount ' + s.disc + '%');
         var html = bits.join(' · ');
         var waiting = (ORDERS[s.id] || []).filter(function (o) { return String(o.id) !== String(CURRENT_PO); });
         if (MODE === 'grn' && waiting.length) {
@@ -184,7 +185,7 @@
         });
     });
 
-    window.__supplierBox = { pick: function (id) { pick(byId(id)); }, clear: function () { q.value = ''; clearPick(); } };
+    window.__supplierBox = { pick: function (id) { pick(byId(id)); }, clear: function () { q.value = ''; clearPick(); }, current: function () { return byId(sel.value) || null; } };
     drawInfo();
 })();
 </script>

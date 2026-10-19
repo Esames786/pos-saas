@@ -33,6 +33,8 @@ class SupplierController extends Controller
             'address'             => 'nullable|string|max:1000',
             'tax_number'          => 'nullable|string|max:100',
             'payment_terms_days'  => 'nullable|integer|min:0|max:365',
+            // PURCHASE-DISCOUNTS-1: posted only by the page with "New purchase screens" on.
+            'default_discount_percent' => 'nullable|numeric|min:0|max:100',
             'opening_balance'     => 'nullable|numeric|min:0',
             'status'              => 'required|in:active,inactive',
         ]);
@@ -135,6 +137,7 @@ class SupplierController extends Controller
             'address'            => 'nullable|string|max:1000',
             'tax_number'         => 'nullable|string|max:100',
             'payment_terms_days' => 'nullable|integer|min:0|max:365',
+            'default_discount_percent' => 'nullable|numeric|min:0|max:100',
             'status'             => 'required|in:active,inactive',
         ]);
 

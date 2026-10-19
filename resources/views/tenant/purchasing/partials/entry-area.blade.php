@@ -29,6 +29,7 @@
             'po_line_id' => $l['purchase_order_line_id'] ?? null, 'product_id' => $l['product_id'], 'variant_id' => $l['product_variant_id'] ?? null,
             'due' => (float) ($l['quantity_received'] ?? 0), 'unit_cost' => (float) ($l['unit_cost'] ?? 0), 'pack_unit_id' => $l['pack_unit_id'] ?? null,
             'name' => \App\Models\Tenant\Product::whereKey($l['product_id'])->value('name'),
+            'deal' => is_array($l['entry_json'] ?? null) ? $l['entry_json'] : null,
         ])->values()->all();
     $reasonWords = ['expired' => 'Expired', 'damaged' => 'Damaged / broken', 'wrong_item' => 'Wrong item', 'over_supply' => 'Too many sent',
         'quality_issue' => 'Quality problem', 'price_dispute' => 'Price problem', 'other' => 'Other'];
@@ -77,6 +78,9 @@
     .ea .ea-tot td { padding:3px 0 3px 18px; }
     .ea .ea-tot td:last-child { text-align:right; font-weight:700; }
     .ea .ea-tot tr.grand td { border-top:2px solid var(--navy); padding-top:6px; font-size:1.25rem; font-weight:800; color:var(--navy); }
+    .ea .ea-tot .ea-bd { display:inline-flex; margin-left:8px; vertical-align:middle; }
+    .ea .ea-tot .ea-bd input { width:80px; height:32px; border:1px solid #CBD3DE; border-radius:8px 0 0 8px; padding:0 8px; text-align:right; }
+    .ea .ea-tot .ea-bd select { height:32px; border:1px solid #CBD3DE; border-left:0; border-radius:0 8px 8px 0; background:#F4F6FA; padding:0 4px; font-weight:700; }
     .ea [hidden] { display:none !important; }
 </style>
 @endpush
@@ -156,6 +160,14 @@
             <tr id="ea-t-gross-r" hidden><td>Goods before discount</td><td id="ea-t-gross"></td></tr>
             <tr id="ea-t-disc-r" hidden><td>Discount</td><td id="ea-t-disc"></td></tr>
             <tr><td>{{ $isRet ? 'Goods going back' : 'Goods' }}</td><td id="ea-t-sub">Rs 0</td></tr>
+            @if(! $isRet)
+                {{-- PURCHASE-DISCOUNTS-1: a discount on the whole bill, % or Rs — spread over the lines into their cost. --}}
+                <tr><td><label for="ea-bd">Bill discount</label>
+                    <span class="ea-bd"><input id="ea-bd" name="bill_disc" inputmode="decimal" placeholder="0" value="{{ old('bill_disc') }}" autocomplete="off">
+                        <select id="ea-bdt" name="bill_disc_type" aria-label="Percent or rupees"><option value="percent" @selected(old('bill_disc_type') !== 'amount')>%</option><option value="amount" @selected(old('bill_disc_type') === 'amount')>Rs</option></select></span></td>
+                    <td id="ea-t-bd">—</td></tr>
+            @endif
+            <tr id="ea-t-rnd-r" hidden><td title="The cost of one unit is kept to 4 decimals; the bill reads quantity × that cost.">Rounding (paisa)</td><td id="ea-t-rnd"></td></tr>
             @if($isGrn)<tr id="ea-t-chg-r" hidden><td>Extra charges (cartage, labour…)</td><td id="ea-t-chg"></td></tr>@endif
             <tr class="grand"><td>{{ $isRet ? 'Supplier owes you less by' : ($isGrn ? 'Total of this GRN' : 'Order total') }}</td><td id="ea-total">Rs 0</td></tr>
         </table>
@@ -211,7 +223,27 @@
     function packOf(item, key) { return item.packs.filter(function (p) { return p.key === String(key); })[0]; }
     function buyPack(item, key) { return packOf(item, key) || item.packs.filter(function (p) { return p.can_buy; })[0] || item.packs[0]; }
     function baseOf(line) { return line.item.packs.reduce(function (t, p) { return t + (parseFloat(line.qty[p.key]) || 0) * p.factor; }, 0); }
-    function amountOf(line) { var bp = buyPack(line.item, line.buyKey); return baseOf(line) / bp.factor * (parseFloat(line.price) || 0) * (1 - (parseFloat(line.disc) || 0) / 100); }
+    // PURCHASE-DISCOUNTS-1: a discount is % or Rs off the line; the Free box holds a number ("1") or a scheme ("10+1").
+    function parseScheme(t) { var m = /^(\d+)\s*\+\s*(\d+)$/.exec(String(t || '').trim()); return m && +m[1] > 0 ? [+m[1], +m[2]] : null; }
+    function freeOf(line) {   // free packs, in the buying pack
+        var bp = buyPack(line.item, line.buyKey), t = String(line.free || '').trim(), sc = parseScheme(t) || (t === '' ? parseScheme(line.scheme) : null);
+        if (sc) return Math.floor(baseOf(line) / bp.factor / sc[0] + 1e-9) * sc[1];
+        return parseFloat(t) || 0;
+    }
+    function grossOf(line) { var bp = buyPack(line.item, line.buyKey); return baseOf(line) / bp.factor * (parseFloat(line.price) || 0); }
+    function discOf(line) { var g = grossOf(line), d = parseFloat(line.disc) || 0; return line.discType === 'amount' ? Math.min(d, g) : g * d / 100; }
+    function discWords(line) { return (parseFloat(line.disc) || 0) > 0 ? (line.discType === 'amount' ? 'Rs ' + line.disc : line.disc + '%') : ''; }
+    // The server keeps the cost of ONE unit to 4 decimals and the bill reads quantity × that cost; the page
+    // works it out the same way, so what it shows is what the bill will say, to the paisa.
+    function r4(n) { return Math.round(n * 10000) / 10000; }
+    function unitOf(line) { var b = baseOf(line); return b > 0 ? r4((grossOf(line) - discOf(line)) / b) : 0; }
+    function amountOf(line) { return baseOf(line) * unitOf(line); }
+    // The bill discount, spread over the lines by value and rounded per unit — the server's way, line by line.
+    function afterBill(lines) {
+        var goods = lines.reduce(function (t, l) { return t + amountOf(l); }, 0), off = billDiscOf(goods);
+        if (!(off > 0) || !(goods > 0)) return goods;
+        return lines.reduce(function (t, l) { var v = amountOf(l), b = baseOf(l); return t + (b > 0 ? b * r4((v - off * v / goods) / b) : 0); }, 0);
+    }
     // "0928", "09-28", "9/28", "09/2028" → "09/28"; anything else comes back as typed.
     function normExpiry(v) { var t = String(v || '').trim(), m = /^(\d{1,2})[\/\-.\s]?(\d{2}|\d{4})$/.exec(t); if (!m || +m[1] < 1 || +m[1] > 12) return t; return ('0' + +m[1]).slice(-2) + '/' + m[2].slice(-2); }
     function monthsLeft(exp) { var m = /^(\d{2})\/(\d{2})$/.exec(normExpiry(exp)); if (!m) return null; var now = new Date(); return (2000 + +m[2]) * 12 + (+m[1]) - (now.getFullYear() * 12 + now.getMonth() + 1); }
@@ -289,8 +321,14 @@
         var bp = item.packs.filter(function (p) { return p.can_buy; })[0] || item.packs[0];
         if (o.buyKey) bp = packOf(item, o.buyKey) || bp;
         var perUnit = item.last_cost ? item.last_cost.unit_cost : (item.purchase_price || 0);
-        S = { item: item, qty: o.qty || {}, batch: o.batch || '', expiry: o.expiry || '', free: o.free || '', disc: o.disc || '',
-              buyKey: bp.key, price: o.price != null ? String(o.price) : (perUnit ? String(Math.round(perUnit * bp.factor * 100) / 100) : ''),
+        var deal = !IS_RET && o.price == null && item.last_cost && item.last_cost.deal && packOf(item, item.last_cost.deal.buy_pack) ? item.last_cost.deal : null;
+        if (deal) bp = packOf(item, deal.buy_pack);
+        var sup = window.__supplierBox && window.__supplierBox.current ? window.__supplierBox.current() : null;
+        var dDisc = o.disc != null ? o.disc : (deal ? (deal.disc || '') : (item.buy_disc ? item.buy_disc.value : (sup && sup.disc ? sup.disc : '')));
+        var dType = o.discType || (deal ? deal.disc_type : (item.buy_disc ? item.buy_disc.type : 'percent')) || 'percent';
+        var dFree = o.free != null ? o.free : (deal ? (deal.scheme || '') : (item.buy_scheme || ''));
+        S = { item: item, qty: o.qty || {}, batch: o.batch || '', expiry: o.expiry || '', free: IS_RET ? '' : String(dFree || ''), disc: IS_RET ? '' : String(dDisc || ''), discType: dType,
+              buyKey: bp.key, price: o.price != null ? String(o.price) : (deal ? String(deal.price) : (perUnit ? String(Math.round(perUnit * bp.factor * 100) / 100) : '')),
               poLineId: o.poLineId || null, variantId: o.variantId || item.variant_id || null,
               batchId: o.batchId || null, batchStock: null, reason: o.reason || '', priceFrom: o.priceFrom || '', note: o.note || '' };
         S.priceKey = S.buyKey;   // the pack the price box is in — switching "Price per" converts from it
@@ -322,21 +360,25 @@
         $('ea-item').innerHTML = '<div style="min-width:220px"><b style="font-size:1.05rem">' + esc(it.name) + '</b><div class="text-muted small">' + packWords + '</div></div>'
             + '<div><span class="ea-lbl">Counted in</span><b>' + esc(it.unit_name) + '</b>' + (it.unit_set === false ? ' <a class="small ms-1" href="' + esc(PRODUCT_EDIT.replace('__ID__', it.id)) + '" target="_blank" rel="noopener" title="No unit is set on this item">set its unit ↗</a>' : '') + '</div>'
             + '<div><span class="ea-lbl">In stock now</span><b>' + esc(it.current_stock == null ? '—' : words(it, it.current_stock)) + '</b></div>'
-            + (it.last_cost ? '<div><span class="ea-lbl">Last bought from this supplier</span><b>' + money(it.last_cost.unit_cost * bp.factor) + ' / ' + esc(bp.name) + '</b> <span class="text-muted small">' + esc(it.last_cost.date) + '</span></div>' : '')
+            + (it.last_cost ? '<div><span class="ea-lbl">Last bought from this supplier</span><b>'
+                + (it.last_cost.deal ? money(it.last_cost.deal.price) + ' / ' + esc(it.last_cost.deal.pack || bp.name) + (it.last_cost.deal.disc > 0 ? ', −' + (it.last_cost.deal.disc_type === 'amount' ? 'Rs ' + it.last_cost.deal.disc : it.last_cost.deal.disc + '%') : '') + (it.last_cost.deal.scheme ? ', ' + esc(it.last_cost.deal.scheme) : '')
+                    : money(it.last_cost.unit_cost * bp.factor) + ' / ' + esc(bp.name))
+                + '</b> <span class="text-muted small">' + esc(it.last_cost.date) + '</span></div>' : '')
             + (BATCHY ? '<div><span class="ea-lbl">Batch &amp; expiry</span><b>' + (needsBatch() ? (IS_RET ? 'Pick the batch it goes back from' : (it.requires_batch ? 'Needed' : (it.has_expiry ? 'Expiry needed, batch optional' : 'Batch optional'))) : 'Not kept for this item') + '</b>'
                 + (needsBatch() ? ' <a class="small ms-1" href="' + esc(BATCHES_PAGE + '?q=' + encodeURIComponent(it.name)) + '" target="_blank" rel="noopener">All batches ↗</a>' : '') + '</div>' : '');
         var f = [];
         fieldOrder = [];
         if (BATCHY && needsBatch()) {
-            f.push(field('batch', IS_RET ? 'Batch (↓ list)' : 'Batch no.', S.batch, IS_RET ? '↓ pick' : (it.requires_batch ? 'e.g. PN2410-07' : 'optional'), 'text', 150));
+            f.push(field('batch', IS_RET ? 'Batch (↓ list)' : 'Batch no.', S.batch, IS_RET ? '↓ pick' : (it.requires_batch ? 'e.g. PN2410-07' : 'optional'), 'text', 140));
             if (IS_GRN && it.has_expiry) f.push(field('expiry', 'Expiry', S.expiry, 'MM/YY', 'text', 84));
         }
         it.packs.forEach(function (p) {
             f.push(field('pack:' + p.key, p.name + (it.packs.length > 1 && p.factor > 1 ? ' (' + (p.holds || num(p.factor)) + ')' : ''), S.qty[p.key] || '', '0', it.allow_decimal ? 'decimal' : 'numeric', p.holds ? 125 : 82));
         });
-        if (IS_GRN) f.push(field('free', 'Free ' + bp.name, S.free, '0', 'numeric', 82));
+        if (IS_GRN) f.push(field('free', 'Free / scheme', S.free, '0 or 10+1', 'text', 86));
+        if (!IS_GRN && !IS_RET) f.push(field('free', 'Scheme', S.free, '10+1', 'text', 76));
         var buyables = it.packs.filter(function (p) { return p.can_buy; });
-        f.push('<div class="ea-f" style="width:175px"><label class="ea-lbl" for="ea-f-price">Price</label><div class="ea-pg">'
+        f.push('<div class="ea-f" style="width:165px"><label class="ea-lbl" for="ea-f-price">Price</label><div class="ea-pg">'
             + '<input id="ea-f-price" class="ea-in ea-num" inputmode="decimal" value="' + esc(S.price) + '" data-k="price" autocomplete="off">'
             + (buyables.length > 1
                 ? '<select id="ea-buy" class="ea-buy" aria-label="Price is for one">' + buyables.map(function (p) { return '<option value="' + esc(p.key) + '"' + (p.key === bp.key ? ' selected' : '') + '>/ ' + esc(p.name) + '</option>'; }).join('') + '</select>'
@@ -349,7 +391,11 @@
                 + Object.keys(REASONS).map(function (k) { return '<option value="' + esc(k) + '"' + (S.reason === k ? ' selected' : '') + '>' + esc(REASONS[k]) + '</option>'; }).join('') + '</select><div class="ea-tag"></div></div>');
             fieldOrder.push('reason');
         } else {
-            f.push(field('disc', 'Disc %', S.disc, '0', 'decimal', 64));
+            fieldOrder.push('disc');
+            f.push('<div class="ea-f" style="width:104px"><label class="ea-lbl" for="ea-f-disc">Disc</label><div class="ea-pg">'
+                + '<input id="ea-f-disc" class="ea-in ea-num" inputmode="decimal" value="' + esc(S.disc) + '" placeholder="0" data-k="disc" autocomplete="off">'
+                + '<select class="ea-buy" data-k="discType" aria-label="Percent or rupees"><option value="percent"' + (S.discType !== 'amount' ? ' selected' : '') + '>%</option><option value="amount"' + (S.discType === 'amount' ? ' selected' : '') + '>Rs</option></select>'
+                + '</div><div class="ea-tag"></div></div>');
             f.push(field('note', 'Note (optional)', S.note || '', 'e.g. 2 cartons torn', 'text', 0));
         }
         $('ea-fields').innerHTML = f.join('');
@@ -366,7 +412,7 @@
         if (k === 'batch') { extra = ' role="combobox" aria-expanded="false" aria-controls="ea-bl" aria-autocomplete="list" aria-describedby="ea-btag"'; after = '<div class="ea-bl" id="ea-bl" role="listbox" aria-label="Batches of this item" hidden></div><div class="ea-tag" id="ea-btag"></div>'; }
         if (k === 'expiry') { if (S && S.batchLocked) extra = ' readonly aria-describedby="ea-etag"'; after = '<div class="ea-tag" id="ea-etag">' + (S && S.batchLocked ? 'From the batch' : '') + '</div>'; }
         if (!after) after = '<div class="ea-tag"></div>';
-        return '<div class="ea-f" style="' + (w ? 'width:' + w + 'px' : 'flex:1 1 100px;min-width:100px') + '"><label class="ea-lbl" for="' + id + '">' + esc(label) + '</label><input id="' + id + '" class="ea-in' + (mode === 'text' ? '' : ' ea-num') + '" inputmode="' + mode + '" value="' + esc(v) + '" placeholder="' + esc(ph) + '" data-k="' + esc(k) + '" autocomplete="off"' + extra + '>' + after + '</div>';
+        return '<div class="ea-f" style="' + (w ? 'width:' + w + 'px' : 'flex:1 1 80px;min-width:80px') + '"><label class="ea-lbl" for="' + id + '">' + esc(label) + '</label><input id="' + id + '" class="ea-in' + (mode === 'text' ? '' : ' ea-num') + '" inputmode="' + mode + '" value="' + esc(v) + '" placeholder="' + esc(ph) + '" data-k="' + esc(k) + '" autocomplete="off"' + extra + '>' + after + '</div>';
     }
     // At once, not on a timer: a scanner or a fast hand types the next key straight after Enter.
     function focusField(k) { var el = root.querySelector('[data-k="' + k + '"]'); if (el) { el.focus(); el.select && el.select(); } }
@@ -442,8 +488,10 @@
     function sums() {
         if (!S) return;
         readEntry();
-        var it = S.item, bp = buyPack(it, S.buyKey), base = baseOf(S), free = (parseFloat(S.free) || 0) * bp.factor, amt = amountOf(S);
-        $('ea-sum-qty').textContent = words(it, base) + (free > 0 ? ' + ' + S.free + ' ' + bp.name + ' free' : '');
+        var it = S.item, bp = buyPack(it, S.buyKey), base = baseOf(S), freePacks = IS_GRN ? freeOf(S) : 0, free = freePacks * bp.factor, amt = amountOf(S);
+        $('ea-sum-qty').textContent = words(it, base) + (free > 0 ? ' + ' + num(freePacks) + ' ' + bp.name + ' free' : '');
+        var fb = root.querySelector('[data-k="free"]'), ft = fb && fb.parentNode.querySelector('.ea-tag');
+        if (ft) ft.textContent = parseScheme(S.free) ? (IS_GRN ? '= ' + num(freePacks) + ' ' + bp.name + ' free' : 'buy ' + parseScheme(S.free)[0] + ', get ' + parseScheme(S.free)[1]) : '';
         $('ea-sum-base').textContent = it.packs.length > 1 && base + free > 0 ? '= ' + num(base + free) + ' ' + it.unit_name + (IS_GRN ? ' into stock' : '') : '';
         $('ea-sum-cost').textContent = it.packs.length > 1 && base > 0 ? 'Cost per ' + it.unit_name + ': ' + money(amt / base) + (free > 0 ? ' → ' + money(amt / (base + free)) + ' with the bonus' : '') : '';
         $('ea-sum-amt').textContent = money(amt);
@@ -521,7 +569,10 @@
     function add() {
         if (!S) return;
         readEntry();
-        var it = S.item, base = baseOf(S), bp = buyPack(it, S.buyKey), free = (parseFloat(S.free) || 0);
+        var it = S.item, base = baseOf(S), bp = buyPack(it, S.buyKey), free = IS_GRN ? freeOf(S) : 0;
+        if (!IS_RET && String(S.free || '').trim() !== '' && !parseScheme(S.free) && (IS_GRN ? !/^\d+(\.\d+)?$/.test(String(S.free).trim()) : true)) { msg(IS_GRN ? 'Free: a number (1) or a scheme like 10+1.' : 'Scheme: write it like 10+1.'); focusField('free'); return; }
+        if (!IS_RET && S.discType === 'percent' && (parseFloat(S.disc) || 0) > 100) { msg('A discount in % is from 0 to 100.'); focusField('disc'); return; }
+        if (!IS_RET && discOf(S) > grossOf(S) + 0.005) { msg('The discount is more than the line.'); focusField('disc'); return; }
         // The old screen's rule: a batch only for items that require one, an expiry only for items that have one.
         if (IS_GRN && needsBatch() && it.requires_batch && !S.batch.trim()) { msg('Write the batch number printed on the box.'); focusField('batch'); return; }
         var ml = IS_GRN && it.has_expiry ? monthsLeft(S.expiry) : null;
@@ -539,7 +590,9 @@
             if (bad) { msg(bad.name + ': a whole number, please.'); focusField('pack:' + bad.key); return; }
         }
         var line = { item: it, qty: Object.assign({}, S.qty), batch: S.batch.trim().toUpperCase(), expiry: normExpiry(S.expiry), free: S.free, price: S.price, buyKey: bp.key, disc: S.disc, poLineId: S.poLineId, variantId: S.variantId,
-                     batchId: S.batchId, reason: S.reason, priceFrom: S.priceFrom, note: (S.note || '').trim() };
+                     batchId: S.batchId, reason: S.reason, priceFrom: S.priceFrom, note: (S.note || '').trim(), discType: S.discType || 'percent' };
+        // The Free box: a scheme travels as the scheme (the server works out the free packs), a number as free packs.
+        if (parseScheme(S.free)) { line.scheme = String(S.free).replace(/\s+/g, ''); line.free = ''; } else { line.scheme = ''; }
         if (editAt !== null) { LINES[editAt] = line; delete rowErr[editAt]; } else LINES.push(line);
         saved = false; $('ea-done').hidden = true;
         S = null; editAt = null; body.hidden = true; search.value = ''; msg(''); $('ea-exp').hidden = true;
@@ -557,27 +610,34 @@
                 + (l.note ? '<div class="small fst-italic">' + esc(l.note) + '</div>' : '') + '</td>'
                 + (BATCHY ? '<td>' + esc(needsBatchOf(it) ? l.batch : '—') + '</td><td>' + esc(needsBatchOf(it) ? (l.expiry || '—') : '—') + '</td>' : '')
                 + '<td><b>' + esc(words(it, base)) + '</b>' + (it.packs.length > 1 && words(it, base) !== num(base) + ' ' + it.unit_name ? ' <span class="text-muted small">= ' + num(base) + ' ' + esc(it.unit_name) + '</span>' : '') + '</td>'
-                + (IS_GRN ? '<td>' + ((parseFloat(l.free) || 0) > 0 ? '+' + esc(l.free) + ' ' + esc(bp.name) : '—') + '</td>' : '')
-                + '<td class="text-end">' + money(parseFloat(l.price) || 0) + ' / ' + esc(bp.name) + '</td>'
-                + (IS_RET ? '<td>' + esc(REASONS[l.reason] || '—') + '</td>' : '<td class="text-end">' + (l.disc ? esc(l.disc) + '%' : '—') + '</td>')
+                + (IS_GRN ? '<td>' + (freeOf(l) > 0 ? '+' + esc(num(freeOf(l))) + ' ' + esc(bp.name) + (l.scheme ? ' <span class="text-muted small">(' + esc(l.scheme) + ')</span>' : '') : '—') + '</td>' : '')
+                + '<td class="text-end">' + money(parseFloat(l.price) || 0) + ' / ' + esc(bp.name) + (!IS_GRN && l.scheme ? '<div class="small text-muted">scheme ' + esc(l.scheme) + '</div>' : '') + '</td>'
+                + (IS_RET ? '<td>' + esc(REASONS[l.reason] || '—') + '</td>' : '<td class="text-end">' + (discWords(l) ? esc(discWords(l)) : '—') + '</td>')
                 + '<td class="text-end"><b>' + money(amt) + '</b></td>'
                 + '<td class="text-end text-nowrap"><button type="button" class="btn btn-sm btn-light" data-edit="' + i + '" aria-label="Edit line ' + (i + 1) + '">Edit</button> <button type="button" class="btn btn-sm btn-light text-danger" data-del="' + i + '" aria-label="Remove line ' + (i + 1) + '">Remove</button></td></tr>'
                 + (rowErr[i] ? '<tr class="err-msg"><td></td><td colspan="' + (IS_GRN ? 9 : (IS_RET ? 8 : 6)) + '">' + esc(rowErr[i]) + ' — press Edit to fix it.</td></tr>' : ''));
             var n = 'lines[' + i + ']';
             hid.push(hidden(n + '[product_id]', it.id), hidden(n + '[product_variant_id]', l.variantId || ''), hidden(n + (IS_RET ? '[source_line_id]' : '[purchase_order_line_id]'), l.poLineId || ''),
-                hidden(n + '[buy_pack]', l.buyKey), hidden(n + '[price]', l.price), hidden(n + '[disc]', l.disc || ''), hidden(n + '[note]', l.note || ''));
+                hidden(n + '[buy_pack]', l.buyKey), hidden(n + '[price]', l.price), hidden(n + '[disc]', l.disc || ''), hidden(n + '[note]', l.note || ''),
+                hidden(n + '[disc_type]', l.discType || 'percent'), hidden(n + '[scheme]', l.scheme || ''));
             if (IS_RET) hid.push(hidden(n + '[inventory_batch_id]', l.batchId || ''), hidden(n + '[reason_code]', l.reason || ''));
             if (IS_GRN) hid.push(hidden(n + '[batch_no]', l.batch), hidden(n + '[expiry]', l.expiry), hidden(n + '[free]', l.free || ''));
             it.packs.forEach(function (p) { hid.push(hidden(n + '[packs][' + p.key + ']', l.qty[p.key] || '')); });
         });
         g.innerHTML = h.length ? h.join('') : '<tr><td colspan="' + (IS_GRN ? 10 : (IS_RET ? 9 : 7)) + '" class="text-center text-muted py-4">Nothing yet — ' + (IS_RET ? 'press Return on a receipt line, show the expired stock, or pick an item above' : (IS_GRN ? 'press Receive on an order line, or scan a box' : 'pick an item above and press Ctrl + Enter')) + '.</td></tr>';
         $('ea-hidden').innerHTML = hid.join('');
-        var disc = Math.max(0, gross - total), charges = IS_GRN ? (parseFloat((($('extra_charges') || {}).value || '0').replace(/,/g, '')) || 0) : 0;
+        // What was typed (line discounts, the bill discount) — and, on its own row, the few paisa that keeping
+        // the cost of one unit to 4 decimals moves. Total = what the supplier's bill will say.
+        var charges = IS_GRN ? (parseFloat((($('extra_charges') || {}).value || '0').replace(/,/g, '')) || 0) : 0;
+        var disc = LINES.reduce(function (t, l) { return t + discOf(l); }, 0), goods = gross - disc;
+        var bill = IS_RET ? 0 : billDiscOf(goods), final = IS_RET ? total : afterBill(LINES), rounding = final - (goods - bill);
+        if ($('ea-t-bd')) $('ea-t-bd').textContent = bill > 0 ? '− ' + money(bill) : '—';
         $('ea-t-gross-r').hidden = !(disc > 0.004); $('ea-t-gross').textContent = money(gross);
         $('ea-t-disc-r').hidden = !(disc > 0.004); $('ea-t-disc').textContent = '− ' + money(disc);
-        $('ea-t-sub').textContent = money(total);
+        $('ea-t-sub').textContent = money(goods);
+        $('ea-t-rnd-r').hidden = !(Math.abs(rounding) >= 0.005); $('ea-t-rnd').textContent = (rounding < 0 ? '− ' : '+ ') + money(Math.abs(rounding));
         if ($('ea-t-chg-r')) { $('ea-t-chg-r').hidden = !(charges > 0); $('ea-t-chg').textContent = '+ ' + money(charges); }
-        $('ea-total').textContent = money(total + charges);
+        $('ea-total').textContent = money(final + charges);
         $('ea-count').innerHTML = saved ? '<span class="ea-sign ok">Saved ✓</span>' : (LINES.length + (LINES.length === 1 ? ' line' : ' lines') + (LINES.length ? ' · <span class="ea-sign">Not saved yet</span>' : ''));
         saveDraft();
     }
@@ -609,7 +669,7 @@
     function hidden(n, v) { return '<input type="hidden" name="' + esc(n) + '" value="' + esc(v) + '">'; }
     $('ea-grid').addEventListener('click', function (e) {
         var ed = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]');
-        if (ed) { var i = +ed.dataset.edit, l = LINES[i]; editAt = i; load(l.item, { qty: Object.assign({}, l.qty), batch: l.batch, expiry: l.expiry, free: l.free, price: l.price, disc: l.disc, buyKey: l.buyKey, poLineId: l.poLineId, variantId: l.variantId, batchId: l.batchId, reason: l.reason, priceFrom: l.priceFrom, note: l.note }); drawGrid(); }
+        if (ed) { var i = +ed.dataset.edit, l = LINES[i]; editAt = i; load(l.item, { qty: Object.assign({}, l.qty), batch: l.batch, expiry: l.expiry, free: l.free, price: l.price, disc: l.disc, buyKey: l.buyKey, poLineId: l.poLineId, variantId: l.variantId, batchId: l.batchId, reason: l.reason, priceFrom: l.priceFrom, note: l.note, discType: l.discType, free: l.scheme || l.free || '' }); drawGrid(); }
         if (del) { LINES.splice(+del.dataset.del, 1); editAt = null; rowErr = {}; drawGrid(); drawPo(); }
     });
 
@@ -646,7 +706,11 @@
                         priceFrom: o.free ? 'free goods (bonus) — nothing to pay back' : 'the receipt rate', focus: 'reason' });
                     return;
                 }
-                load(item, { qty: qty, price: Math.round(o.unit_cost * bp.factor * 100) / 100, buyKey: bp.key, poLineId: o.po_line_id, variantId: o.variant_id });
+                // The order's own price per pack, disc and scheme when it was typed on the new screen; else its cost.
+                var od = o.deal && packOf(item, o.deal.buy_pack) ? o.deal : null;
+                if (od) bp = packOf(item, od.buy_pack);
+                load(item, { qty: qty, price: od ? od.price : Math.round(o.unit_cost * bp.factor * 100) / 100, buyKey: bp.key, poLineId: o.po_line_id, variantId: o.variant_id,
+                    disc: od ? (od.disc || '') : '', discType: od ? od.disc_type : 'percent', free: od ? (od.scheme || '') : '' });
             };
             if (it) go(it); else fetchItems({ product_id: o.product_id }).then(function (r) { if (r[0]) { poItems[o.product_id] = r[0]; go(r[0]); } });
         });
@@ -689,8 +753,14 @@
         });
     }
 
-    // The GRN's extra charges show in the totals as they are typed.
+    // The GRN's extra charges and the bill discount show in the totals as they are typed.
     if ($('extra_charges')) $('extra_charges').addEventListener('input', function () { drawGrid(); });
+    function billDiscOf(goods) {
+        var v = parseFloat((($('ea-bd') || {}).value || '').replace(/,/g, '')) || 0;
+        if (v <= 0) return 0;
+        return (($('ea-bdt') || {}).value === 'amount') ? Math.min(v, goods) : goods * Math.min(v, 100) / 100;
+    }
+    ['ea-bd', 'ea-bdt'].forEach(function (id) { var el = $(id); if (el) { el.addEventListener('input', function () { drawGrid(); }); el.addEventListener('change', function () { drawGrid(); }); } });
 
     // ── start: header gate, the order's lines, and lines coming back from a refused save ──────────
     ['supplier_id', 'branch_id'].forEach(function (id) { var el = $(id); if (el) el.addEventListener('change', gate); });
@@ -704,7 +774,7 @@
             OLD.forEach(function (l) {
                 var it = poItems[l.product_id]; if (!it) return;
                 LINES.push({ item: it, qty: l.packs || {}, batch: l.batch_no || '', expiry: l.expiry || '', free: l.free || '', price: l.price || '', buyKey: l.buy_pack || '', disc: l.disc || '', poLineId: l.purchase_order_line_id || l.source_line_id || null, variantId: l.product_variant_id || null,
-                    batchId: l.inventory_batch_id || null, reason: l.reason_code || '', note: l.note || '' });
+                    batchId: l.inventory_batch_id || null, reason: l.reason_code || '', note: l.note || '', discType: l.disc_type || 'percent', scheme: l.scheme || '' });
             });
             drawGrid(); drawPo();
         });
@@ -775,15 +845,19 @@
             return '<tr><td class="text-muted">' + (i + 1) + '</td><td><b>' + esc(it.name) + '</b>' + (l.note ? '<div class="small fst-italic">' + esc(l.note) + '</div>' : '') + '</td>'
                 + (BATCHY ? '<td>' + esc(l.batch || '—') + '</td><td>' + esc(l.expiry || '—') + '</td>' : '')
                 + '<td><b>' + esc(words(it, base)) + '</b>' + (it.packs.length > 1 && words(it, base) !== num(base) + ' ' + it.unit_name ? ' <span class="text-muted small">= ' + num(base) + ' ' + esc(it.unit_name) + '</span>' : '') + '</td>'
-                + (IS_GRN ? '<td>' + ((parseFloat(l.free) || 0) > 0 ? '+' + esc(l.free) + ' ' + esc(bp.name) : '—') + '</td>' : '')
-                + '<td class="text-end">' + money(parseFloat(l.price) || 0) + ' / ' + esc(bp.name) + '</td>'
-                + (IS_RET ? '<td>' + esc(REASONS[l.reason] || '—') + '</td>' : '<td class="text-end">' + (l.disc ? esc(l.disc) + '%' : '—') + '</td>')
+                + (IS_GRN ? '<td>' + (freeOf(l) > 0 ? '+' + esc(num(freeOf(l))) + ' ' + esc(bp.name) + (l.scheme ? ' (' + esc(l.scheme) + ')' : '') : '—') + '</td>' : '')
+                + '<td class="text-end">' + money(parseFloat(l.price) || 0) + ' / ' + esc(bp.name) + (!IS_GRN && l.scheme ? '<div class="small text-muted">scheme ' + esc(l.scheme) + '</div>' : '') + '</td>'
+                + (IS_RET ? '<td>' + esc(REASONS[l.reason] || '—') + '</td>' : '<td class="text-end">' + (discWords(l) ? esc(discWords(l)) : '—') + '</td>')
                 + '<td class="text-end"><b>' + money(amt) + '</b></td></tr>';
         });
         var head = '<tr><th>#</th><th>Item</th>' + (BATCHY ? '<th>Batch</th><th>Expiry</th>' : '') + '<th>Quantity</th>' + (IS_GRN ? '<th>Free</th>' : '') + '<th class="text-end">Price</th>' + (IS_RET ? '<th>Reason</th>' : '<th class="text-end">Disc</th>') + '<th class="text-end">Amount</th></tr>';
+        var goods = LINES.reduce(function (t, l) { return t + grossOf(l) - discOf(l); }, 0), bill = IS_RET ? 0 : billDiscOf(goods);
+        total = IS_RET ? total : afterBill(LINES);
+        var rnd = IS_RET ? 0 : total - (goods - bill);
+        var parts = (bill > 0 ? ' − bill discount ' + money(bill) : '') + (Math.abs(rnd) >= 0.005 ? (rnd < 0 ? ' − ' : ' + ') + 'rounding ' + money(Math.abs(rnd)) : '') + (charges > 0 ? ' + charges ' + money(charges) : '');
         var what = IS_RET ? 'Stock leaves these batches, and this supplier will owe you <b>' + money(total) + '</b> less.'
-            : (IS_GRN ? 'Stock goes up by these quantities. The supplier\'s bill comes from this GRN: <b>' + money(total + charges) + '</b>' + (charges > 0 ? ' (goods ' + money(total) + ' + charges ' + money(charges) + ', spread over the goods by value)' : '') + '.'
-                : 'Nothing moves yet — this is the order to send. Total <b>' + money(total) + '</b>.');
+            : (IS_GRN ? 'Stock goes up by these quantities. The supplier\'s bill comes from this GRN: <b>' + money(total + charges) + '</b>' + (parts ? ' (goods ' + money(goods) + parts + '; spread over the goods by value)' : '') + '.'
+                : 'Nothing moves yet — this is the order to send. Total <b>' + money(total) + '</b>' + (bill > 0 ? ' (goods ' + money(goods) + ' − bill discount ' + money(bill) + ')' : '') + '.');
         $('ea-pv-title').textContent = IS_RET ? 'Check the return' : (IS_GRN ? 'Check the goods received' : 'Check the order');
         $('ea-pv-body').innerHTML = '<div class="ea-pv-who"><span>Supplier: <b>' + esc(($('sup-q') || {}).value || selText('supplier_id')) + '</b></span><span>Branch: <b>' + esc(selText('branch_id')) + '</b></span><span>Date: <b>' + esc(date) + '</b></span>'
             + (PO_ID ? '<span>Order: <b>' + esc(@json($purchaseOrder?->po_no)) + '</b></span>' : '') + (IS_RET && @json($goodsReceipt?->grn_no ?? null) ? '<span>Receipt: <b>' + esc(@json($goodsReceipt?->grn_no ?? null)) + '</b></span>' : '') + '</div>'

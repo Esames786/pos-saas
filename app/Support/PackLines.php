@@ -31,9 +31,11 @@ final class PackLines
      * @param  array<int,array<string,mixed>>  $lines  the posted entry-area lines
      * @param  string  $qtyField  'quantity_received' (GRN) or 'quantity_ordered' (PO)
      * @param  int|null  $branchId  the GRN's branch: a batch already known there keeps its one expiry
+     * @param  array{type?:?string, value?:mixed}|null  $billDisc  a discount on the whole bill, % or Rs —
+     *         spread over the paid lines by value, into their cost (the supplier's bill reads quantity × cost)
      * @return list<array<string,mixed>>  lines in the existing request shape
      */
-    public static function toLines(array $lines, string $qtyField, bool $isGrn, ?int $branchId = null): array
+    public static function toLines(array $lines, string $qtyField, bool $isGrn, ?int $branchId = null, ?array $billDisc = null): array
     {
         $lines = array_values(array_filter($lines, fn ($l) => is_array($l) && ! empty($l['product_id'])));
         $products = Product::with(['unit', 'packUnits', 'defaultVariant', 'purchaseUnit'])->whereIn('id', array_map(fn ($l) => (int) $l['product_id'], $lines))->get()->keyBy('id');
@@ -71,22 +73,46 @@ final class PackLines
                 $base += (float) $raw * $pack['factor'];
             }
 
-            // Price: of ONE buying pack, less the discount.
+            // Price: of ONE buying pack. The line discount is a % or Rs off the whole line.
             $buy = $packs[(string) ($l['buy_pack'] ?? '')] ?? self::biggestBuyable($packs);
             $priceRaw = str_replace(',', '', trim((string) ($l['price'] ?? '0')));
             $discRaw = str_replace(',', '', trim((string) ($l['disc'] ?? '0')));
+            $discType = ($l['disc_type'] ?? 'percent') === 'amount' ? 'amount' : 'percent';
             if (! is_numeric($priceRaw) || (float) $priceRaw < 0) {
                 $errors["lines.$i.price"] = "{$name}: the price must be a number.";
                 continue;
             }
-            if ($discRaw !== '' && (! is_numeric($discRaw) || (float) $discRaw < 0 || (float) $discRaw > 100)) {
-                $errors["lines.$i.disc"] = "{$name}: the discount is a percent from 0 to 100.";
+            if ($discRaw !== '' && (! is_numeric($discRaw) || (float) $discRaw < 0 || ($discType === 'percent' && (float) $discRaw > 100))) {
+                $errors["lines.$i.disc"] = $discType === 'percent' ? "{$name}: the discount is a percent from 0 to 100." : "{$name}: the discount must be an amount in Rs.";
                 continue;
             }
-            $net = (float) $priceRaw * (1 - (float) ($discRaw ?: 0) / 100) / $buy['factor'];
+            $gross = $base / $buy['factor'] * (float) $priceRaw;
+            $lineDisc = $discType === 'percent' ? $gross * (float) ($discRaw ?: 0) / 100 : (float) ($discRaw ?: 0);
+            if ($lineDisc > $gross + 0.005) {
+                $errors["lines.$i.disc"] = "{$name}: the discount is more than the line (Rs " . number_format($gross, 2) . ').';
+                continue;
+            }
+            $net = $base > 0 ? ($gross - $lineDisc) / $base : 0.0;
+
+            // The scheme ("10+1": every 10 bought, 1 free) — on a GRN it fills the free quantity when none is typed.
+            $schemeRaw = preg_replace('/\s+/', '', (string) ($l['scheme'] ?? ''));
+            $scheme = null;
+            if ($schemeRaw !== '') {
+                if (! preg_match('/^(\d+)\+(\d+)$/', $schemeRaw, $sm) || (int) $sm[1] <= 0) {
+                    $errors["lines.$i.scheme"] = "{$name}: write the scheme like 10+1 (buy 10, get 1 free).";
+                    continue;
+                }
+                $scheme = [(int) $sm[1], (int) $sm[2]];
+            }
 
             // Free (bonus) packs, GRN only.
             $freeRaw = trim((string) ($l['free'] ?? ''));
+            if ($isGrn && $freeRaw === '' && $scheme && $base > 0) {
+                $freeRaw = (string) (floor($base / $buy['factor'] / $scheme[0] + 1e-9) * $scheme[1]);
+                if ((float) $freeRaw <= 0) {
+                    $freeRaw = '';
+                }
+            }
             $free = 0.0;
             if ($isGrn && $freeRaw !== '') {
                 if (! is_numeric($freeRaw) || (float) $freeRaw < 0 || (! $part && floor((float) $freeRaw) != (float) $freeRaw)) {
@@ -154,7 +180,10 @@ final class PackLines
                     'unit_cost'              => round($net, 4),
                     'discount_amount'        => 0,
                     'tax_amount'             => 0,
-                    'notes'                  => self::withNote(self::note($p, $packs, $l, $buy, $priceRaw, $discRaw), $l),
+                    'notes'                  => self::withNote(self::note($p, $packs, $l, $buy, $priceRaw, $discRaw, $discType, $schemeRaw), $l),
+                    // PURCHASE-DISCOUNTS-1: what was typed, read back as "the last deal" with this supplier.
+                    'entry_json'             => ['buy_pack' => (string) ($l['buy_pack'] ?? ''), 'pack' => $buy['name'], 'factor' => $buy['factor'], 'price' => (float) $priceRaw,
+                        'disc_type' => $discType, 'disc' => (float) ($discRaw ?: 0), 'scheme' => $schemeRaw !== '' ? $schemeRaw : null, 'free' => $freeRaw !== '' ? (float) $freeRaw : null],
                 ];
             }
             if ($free > 0) {
@@ -170,11 +199,48 @@ final class PackLines
             }
         }
 
+        // PURCHASE-DISCOUNTS-1: a discount on the whole bill (% or Rs), spread over the paid lines by value
+        // into their cost — the supplier's bill and the stock value both come out right.
+        $bd = self::billDiscount($billDisc);
+        if ($bd === false) {
+            $errors['bill_disc'] = 'The bill discount is a % from 0 to 100, or an amount in Rs.';
+        } elseif ($bd && ! $errors) {
+            $paid = array_keys(array_filter($out, fn ($o) => (float) $o['unit_cost'] > 0));
+            $value = array_sum(array_map(fn ($k) => $out[$k][$qtyField] * $out[$k]['unit_cost'], $paid));
+            $off = $bd['type'] === 'percent' ? $value * $bd['value'] / 100 : $bd['value'];
+            if ($off > $value + 0.005) {
+                $errors['bill_disc'] = 'The bill discount (Rs ' . number_format($off, 2) . ') is more than the goods (Rs ' . number_format($value, 2) . ').';
+            } elseif ($off > 0 && $value > 0) {
+                $word = $bd['type'] === 'percent' ? self::trim((string) $bd['value']) . '%' : 'Rs ' . self::trim((string) $bd['value']);
+                foreach ($paid as $k) {
+                    $lineValue = $out[$k][$qtyField] * $out[$k]['unit_cost'];
+                    $out[$k]['unit_cost'] = round(($lineValue - $off * $lineValue / $value) / $out[$k][$qtyField], 4);
+                    $out[$k]['notes'] = mb_substr($out[$k]['notes'] . ' · bill disc ' . $word, 0, 500);
+                    $out[$k]['entry_json'] += ['bill_disc_type' => $bd['type'], 'bill_disc' => $bd['value']];
+                }
+            }
+        }
+
         if ($errors) {
             throw ValidationException::withMessages($errors);
         }
 
         return $out;
+    }
+
+    /** @return array{type:string, value:float}|null|false  null = none, false = not a valid discount */
+    private static function billDiscount(?array $in): array|null|false
+    {
+        $raw = str_replace(',', '', trim((string) ($in['value'] ?? '')));
+        if ($raw === '' || (is_numeric($raw) && (float) $raw == 0)) {
+            return null;
+        }
+        $type = ($in['type'] ?? 'percent') === 'amount' ? 'amount' : 'percent';
+        if (! is_numeric($raw) || (float) $raw < 0 || ($type === 'percent' && (float) $raw > 100)) {
+            return false;
+        }
+
+        return ['type' => $type, 'value' => (float) $raw];
     }
 
     /**
@@ -260,8 +326,8 @@ final class PackLines
         return false;
     }
 
-    /** What the line said, kept on it: "2 Box 3 Strip @ 892 / Box, −5%". */
-    private static function note(Product $p, array $packs, array $l, array $buy, string $price, string $disc): string
+    /** What the line said, kept on it: "2 Box 3 Strip @ 892 / Box, −5%, scheme 10+1". */
+    private static function note(Product $p, array $packs, array $l, array $buy, string $price, string $disc, string $discType = 'percent', string $scheme = ''): string
     {
         $parts = [];
         foreach ($packs as $key => $pk) {
@@ -272,7 +338,10 @@ final class PackLines
         }
         $note = implode(' ', $parts) . ' @ ' . self::trim($price) . ' / ' . $buy['name'];
         if ($disc !== '' && (float) $disc > 0) {
-            $note .= ', −' . self::trim($disc) . '%';
+            $note .= $discType === 'amount' ? ', −Rs ' . self::trim($disc) : ', −' . self::trim($disc) . '%';
+        }
+        if ($scheme !== '') {
+            $note .= ', scheme ' . $scheme;
         }
 
         return mb_substr($note, 0, 500);

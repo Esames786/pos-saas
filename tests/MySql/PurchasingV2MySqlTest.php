@@ -391,6 +391,66 @@ class PurchasingV2MySqlTest extends MySqlTenantTestCase
         $this->assertEquals(0, $stock($gas));
     }
 
+    public function test_a_rupee_discount_a_scheme_and_a_bill_discount_all_land_in_the_cost(): void
+    {
+        // Owner, 19 Oct: "line discount, overall bill discount fixed or %", the distributor's "10+1".
+        [$p, $box] = $this->medicine('Discount Med');
+        $c = DB::connection('tenant');
+        $this->postAs('/goods-receipts', $this->grn([
+            ['product_id' => $p->id, 'batch_no' => 'DM-1', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '900', 'disc' => '500', 'disc_type' => 'amount',
+             'scheme' => '10+1', 'packs' => [(string) $box->id => '10']],
+        ], ['bill_disc' => '2', 'bill_disc_type' => 'percent']))->assertRedirect()->assertSessionHasNoErrors();
+
+        $lines = GoodsReceiptLine::where('goods_receipt_id', GoodsReceipt::max('id'))->orderBy('id')->get();
+        [$paid, $free] = $lines->all();
+        $this->assertEquals(2000, $paid->quantity_received);
+        // 10 Box × 900 = 9,000 − Rs 500 = 8,500; − 2% bill discount = 8,330 over 2,000 tablets.
+        $this->assertEquals(4.165, (float) $paid->unit_cost);
+        $this->assertEquals(200, $free->quantity_received, '10+1 on 10 Box = 1 Box free, worked out by the server');
+        $this->assertEquals(0, (float) $free->unit_cost);
+        $this->assertStringContainsString('10 Box @ 900 / Box, −Rs 500, scheme 10+1 · bill disc 2%', $paid->notes);
+        $this->assertSame(['amount', '10+1', 2.0], [$paid->entry_json['disc_type'], $paid->entry_json['scheme'], (float) $paid->entry_json['bill_disc']]);
+
+        $this->postAs('/purchase-bills', ['goods_receipt_id' => GoodsReceipt::max('id'), 'bill_date' => now()->toDateString()])->assertRedirect();
+        $this->assertEquals(8330, round((float) $c->table('purchase_bills')->where('goods_receipt_id', GoodsReceipt::max('id'))->value('grand_total'), 2), 'the bill is the paid goods after both discounts');
+
+        // Wrong shapes are refused, nothing saved.
+        $before = GoodsReceipt::count();
+        $one = ['product_id' => $p->id, 'batch_no' => 'DM-2', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '900', 'packs' => [(string) $box->id => '1']];
+        $this->callAs(null, 'POST', '/goods-receipts', $this->grn([$one + ['scheme' => '10x1']]), true)->assertStatus(422)->assertJsonValidationErrors('lines.0.scheme');
+        $this->callAs(null, 'POST', '/goods-receipts', $this->grn([$one + ['disc' => '1000', 'disc_type' => 'amount']]), true)->assertStatus(422)->assertJsonValidationErrors('lines.0.disc');
+        $this->callAs(null, 'POST', '/goods-receipts', $this->grn([$one], ['bill_disc' => '5000', 'bill_disc_type' => 'amount']), true)->assertStatus(422)->assertJsonValidationErrors('bill_disc');
+        $this->assertSame($before, GoodsReceipt::count());
+    }
+
+    public function test_the_last_deal_and_the_usual_discounts_come_back_on_the_next_purchase(): void
+    {
+        [$p, $box] = $this->medicine('Deal Med');
+        $branch = (int) DB::connection('tenant')->table('branches')->value('id');
+        $this->postAs('/goods-receipts', $this->grn([
+            ['product_id' => $p->id, 'batch_no' => 'DL-1', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '880', 'disc' => '4', 'scheme' => '12+1', 'packs' => [(string) $box->id => '12']],
+        ]))->assertSessionHasNoErrors();
+
+        $p->update(['purchase_discount_type' => 'percent', 'purchase_discount_value' => 3, 'purchase_scheme_buy' => 10, 'purchase_scheme_free' => 1]);
+        $row = collect($this->page('/ajax/products?context=purchase&rich=1&packs=1&branch_id=' . $branch . '&supplier_id=' . $this->supplier()->id . '&q=Deal%20Med')->assertOk()->json('results'))->firstWhere('id', $p->id);
+        $this->assertSame(['price' => 880.0, 'disc' => 4.0, 'disc_type' => 'percent', 'scheme' => '12+1'],
+            ['price' => (float) $row['last_cost']['deal']['price'], 'disc' => (float) $row['last_cost']['deal']['disc'], 'disc_type' => $row['last_cost']['deal']['disc_type'], 'scheme' => $row['last_cost']['deal']['scheme']],
+            'the last deal with this supplier, as typed');
+        $this->assertSame(['type' => 'percent', 'value' => 3.0], ['type' => $row['buy_disc']['type'], 'value' => (float) $row['buy_disc']['value']], "the item's usual discount");
+        $this->assertSame('10+1', $row['buy_scheme']);
+
+        // A PO typed with a scheme keeps it for "Receive".
+        $this->postAs('/purchase-orders', ['_entry_v2' => '1', 'branch_id' => $branch, 'supplier_id' => $this->supplier()->id, 'order_date' => now()->toDateString(),
+            'bill_disc' => '100', 'bill_disc_type' => 'amount',
+            'lines' => [['product_id' => $p->id, 'buy_pack' => (string) $box->id, 'price' => '880', 'disc' => '4', 'scheme' => '12+1', 'packs' => [(string) $box->id => '12']]]])->assertSessionHasNoErrors();
+        $pl = PurchaseOrderLine::where('purchase_order_id', PurchaseOrder::max('id'))->firstOrFail();
+        $this->assertSame('12+1', $pl->entry_json['scheme']);
+        // 12 × 880 = 10,560 − 4% = 10,137.60 − Rs 100 = 10,037.60, kept as 2,400 tablets × Rs 4.1823 (cost of one
+        // tablet to 4 decimals) = 10,037.52 — the same figure the screen shows, so the bill never surprises.
+        $this->assertEquals(10037.52, round((float) PurchaseOrder::latest('id')->value('total_amount'), 2));
+        $this->assertStringContainsString('"scheme":"12+1"', $this->page('/goods-receipts/create?purchase_order_id=' . PurchaseOrder::max('id'))->assertOk()->getContent(), 'the GRN from this order gets the scheme');
+    }
+
     // ── PURCHASE-RETURN-V2 ───────────────────────────────────────────────────────────────────────────
 
     public function test_a_return_in_packs_leaves_from_the_batch_picked_not_the_oldest(): void

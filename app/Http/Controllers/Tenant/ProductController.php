@@ -464,6 +464,28 @@ class ProductController extends Controller
             }
         }
 
+        // PURCHASE-DISCOUNTS-1: the usual buying discount and scheme — written only when the new screen sends them,
+        // so the old form (and an item not bought) keeps whatever was saved.
+        if ($isV2 && $request->exists('purchase_discount_value')) {
+            $d = $request->validate([
+                'purchase_discount_type'  => ['nullable', 'in:percent,amount'],
+                'purchase_discount_value' => ['nullable', 'numeric', 'min:0'],
+                'purchase_scheme'         => ['nullable', 'regex:/^\s*\d+\s*\+\s*\d+\s*$/'],
+            ], ['purchase_scheme.regex' => 'Write the scheme like 10+1 (buy 10, get 1 free).']);
+            $value = (float) ($d['purchase_discount_value'] ?? 0);
+            $type = ($d['purchase_discount_type'] ?? 'percent') === 'amount' ? 'amount' : 'percent';
+            if ($type === 'percent' && $value > 100) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['purchase_discount_value' => 'A discount in % is from 0 to 100.']);
+            }
+            $fields['purchase_discount_type'] = $value > 0 ? $type : null;
+            $fields['purchase_discount_value'] = $value > 0 ? $value : null;
+            if ($request->exists('purchase_scheme')) {
+                $scheme = preg_match('/^(\d+)\+(\d+)$/', preg_replace('/\s+/', '', (string) ($d['purchase_scheme'] ?? '')), $m) && (int) $m[1] > 0 ? [(int) $m[1], (int) $m[2]] : null;
+                $fields['purchase_scheme_buy'] = $scheme[0] ?? null;
+                $fields['purchase_scheme_free'] = $scheme[1] ?? null;
+            }
+        }
+
         // ONLINE-ORDERING-1: khaana sirf "Online Ordering" wale plan par dikhta hai. Jahan form par
         // khaana hi nahi, wahan save purani website price ko mitaye nahi — sirf aane par likho.
         if ($request->exists('website_price')) {

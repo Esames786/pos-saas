@@ -17,12 +17,15 @@ class GoodsReceiptLine extends Model
         'cost_account_id',
         // PURCHASING-V2-1: the pack the price was typed in (screens only; quantity/cost stay per unit).
         'pack_unit_id', 'pack_factor', 'base_quantity',
+        // PURCHASE-DISCOUNTS-1: what was typed (pack, price, disc, scheme) — read back as "the last deal".
+        'entry_json',
     ];
 
     protected $casts = [
         'expiry_date' => 'date',
         // GRN-NON-STOCK-1: did this line move stock when it was received?
         'affects_stock' => 'boolean',
+        'entry_json' => 'array',
     ];
 
     public function goodsReceipt()

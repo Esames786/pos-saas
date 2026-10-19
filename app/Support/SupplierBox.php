@@ -18,6 +18,7 @@ final class SupplierBox
         $box = ['suppliers' => $suppliers->map(fn ($s) => [
             'id' => $s->id, 'name' => $s->name, 'code' => $s->code, 'phone' => $s->phone,
             'balance' => round((float) $s->current_balance, 2), 'terms' => (int) $s->payment_terms_days,
+            'disc' => $s->default_discount_percent !== null ? (float) $s->default_discount_percent : null,
         ])->values()->all(), 'orders' => []];
 
         if ($withOrders) {
