@@ -51,7 +51,7 @@
     .ea .ea-f { display:flex; flex-direction:column; position:relative; }
     .ea .ea-pg { display:flex; }
     .ea .ea-pg .ea-in { border-top-right-radius:0; border-bottom-right-radius:0; }
-    .ea .ea-pg .ea-buy, .ea .ea-pg .ea-unit { flex:0 0 auto; width:auto; height:44px; border:1px solid #CBD3DE; border-left:0; border-radius:0 10px 10px 0; background:#F4F6FA; padding:0 8px; display:flex; align-items:center; font-weight:700; color:var(--navy); }
+    .ea .ea-pg .ea-buy, .ea .ea-pg .ea-unit { flex:0 0 auto; width:auto; height:44px; border:1px solid #CBD3DE; border-left:0; border-radius:0 10px 10px 0; background:#F4F6FA; padding:0 6px; display:flex; align-items:center; font-weight:700; color:var(--navy); }
     .ea .ea-pv { position:fixed; inset:0; z-index:1060; background:rgba(9,20,40,.45); display:flex; align-items:flex-start; justify-content:center; padding:5vh 16px; overflow:auto; }
     .ea .ea-pv-box { background:#fff; border-radius:16px; width:100%; max-width:1000px; padding:20px 22px; box-shadow:0 24px 60px rgba(9,44,76,.3); }
     .ea .ea-pv-who { display:flex; flex-wrap:wrap; gap:6px 22px; background:#F8FAFC; border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:12px; }
@@ -328,15 +328,15 @@
         var f = [];
         fieldOrder = [];
         if (BATCHY && needsBatch()) {
-            f.push(field('batch', IS_RET ? 'Batch (↓ list)' : 'Batch no.', S.batch, IS_RET ? '↓ pick' : (it.requires_batch ? 'e.g. PN2410-07' : 'optional'), 'text', 190));
-            if (IS_GRN && it.has_expiry) f.push(field('expiry', 'Expiry MM/YY', S.expiry, '09/28', 'text', 105));
+            f.push(field('batch', IS_RET ? 'Batch (↓ list)' : 'Batch no.', S.batch, IS_RET ? '↓ pick' : (it.requires_batch ? 'e.g. PN2410-07' : 'optional'), 'text', 150));
+            if (IS_GRN && it.has_expiry) f.push(field('expiry', 'Expiry', S.expiry, 'MM/YY', 'text', 84));
         }
         it.packs.forEach(function (p) {
-            f.push(field('pack:' + p.key, p.name + (it.packs.length > 1 && p.factor > 1 ? ' (' + (p.holds || num(p.factor)) + ')' : ''), S.qty[p.key] || '', '0', it.allow_decimal ? 'decimal' : 'numeric', p.holds ? 150 : 110));
+            f.push(field('pack:' + p.key, p.name + (it.packs.length > 1 && p.factor > 1 ? ' (' + (p.holds || num(p.factor)) + ')' : ''), S.qty[p.key] || '', '0', it.allow_decimal ? 'decimal' : 'numeric', p.holds ? 125 : 82));
         });
-        if (IS_GRN) f.push(field('free', 'Free ' + bp.name, S.free, '0', 'numeric', 110));
+        if (IS_GRN) f.push(field('free', 'Free ' + bp.name, S.free, '0', 'numeric', 82));
         var buyables = it.packs.filter(function (p) { return p.can_buy; });
-        f.push('<div class="ea-f" style="width:220px"><label class="ea-lbl" for="ea-f-price">Price</label><div class="ea-pg">'
+        f.push('<div class="ea-f" style="width:175px"><label class="ea-lbl" for="ea-f-price">Price</label><div class="ea-pg">'
             + '<input id="ea-f-price" class="ea-in ea-num" inputmode="decimal" value="' + esc(S.price) + '" data-k="price" autocomplete="off">'
             + (buyables.length > 1
                 ? '<select id="ea-buy" class="ea-buy" aria-label="Price is for one">' + buyables.map(function (p) { return '<option value="' + esc(p.key) + '"' + (p.key === bp.key ? ' selected' : '') + '>/ ' + esc(p.name) + '</option>'; }).join('') + '</select>'
@@ -344,13 +344,13 @@
             + '</div><div class="ea-tag"></div></div>');
         fieldOrder.push('price');
         if (IS_RET) {
-            f.push(field('note', 'Note (optional)', S.note || '', 'e.g. box torn', 'text', 170));
-            f.push('<div class="ea-f" style="width:190px"><label class="ea-lbl" for="ea-f-reason">Why it goes back</label><select id="ea-f-reason" class="ea-in" data-k="reason"><option value="">— pick —</option>'
+            f.push(field('note', 'Note (optional)', S.note || '', 'e.g. box torn', 'text', 0));
+            f.push('<div class="ea-f" style="width:160px"><label class="ea-lbl" for="ea-f-reason">Why it goes back</label><select id="ea-f-reason" class="ea-in" data-k="reason"><option value="">— pick —</option>'
                 + Object.keys(REASONS).map(function (k) { return '<option value="' + esc(k) + '"' + (S.reason === k ? ' selected' : '') + '>' + esc(REASONS[k]) + '</option>'; }).join('') + '</select><div class="ea-tag"></div></div>');
             fieldOrder.push('reason');
         } else {
-            f.push(field('disc', 'Disc %', S.disc, '0', 'decimal', 90));
-            f.push(field('note', 'Note (optional)', S.note || '', 'e.g. 2 cartons torn', 'text', 190));
+            f.push(field('disc', 'Disc %', S.disc, '0', 'decimal', 64));
+            f.push(field('note', 'Note (optional)', S.note || '', 'e.g. 2 cartons torn', 'text', 0));
         }
         $('ea-fields').innerHTML = f.join('');
         body.hidden = false;
@@ -366,7 +366,7 @@
         if (k === 'batch') { extra = ' role="combobox" aria-expanded="false" aria-controls="ea-bl" aria-autocomplete="list" aria-describedby="ea-btag"'; after = '<div class="ea-bl" id="ea-bl" role="listbox" aria-label="Batches of this item" hidden></div><div class="ea-tag" id="ea-btag"></div>'; }
         if (k === 'expiry') { if (S && S.batchLocked) extra = ' readonly aria-describedby="ea-etag"'; after = '<div class="ea-tag" id="ea-etag">' + (S && S.batchLocked ? 'From the batch' : '') + '</div>'; }
         if (!after) after = '<div class="ea-tag"></div>';
-        return '<div class="ea-f" style="width:' + w + 'px"><label class="ea-lbl" for="' + id + '">' + esc(label) + '</label><input id="' + id + '" class="ea-in' + (mode === 'text' ? '' : ' ea-num') + '" inputmode="' + mode + '" value="' + esc(v) + '" placeholder="' + esc(ph) + '" data-k="' + esc(k) + '" autocomplete="off"' + extra + '>' + after + '</div>';
+        return '<div class="ea-f" style="' + (w ? 'width:' + w + 'px' : 'flex:1 1 100px;min-width:100px') + '"><label class="ea-lbl" for="' + id + '">' + esc(label) + '</label><input id="' + id + '" class="ea-in' + (mode === 'text' ? '' : ' ea-num') + '" inputmode="' + mode + '" value="' + esc(v) + '" placeholder="' + esc(ph) + '" data-k="' + esc(k) + '" autocomplete="off"' + extra + '>' + after + '</div>';
     }
     // At once, not on a timer: a scanner or a fast hand types the next key straight after Enter.
     function focusField(k) { var el = root.querySelector('[data-k="' + k + '"]'); if (el) { el.focus(); el.select && el.select(); } }
