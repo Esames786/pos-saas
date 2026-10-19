@@ -80,6 +80,7 @@
     .pv2 .what li { margin-bottom:6px; }
     .pv2 .note { background:var(--goldbg); border:1px solid #F2DFA8; border-radius:10px; padding:10px 12px; color:#6B5310; }
     .pv2 .btn-big { min-height:46px; padding:0 22px; font-weight:800; }
+    .pv2 .input-group-lg .btn { font-size:1rem; font-weight:700; }
     .pv2 .bc-wrap svg { max-width:100%; height:70px; }
     .pv2 [hidden] { display:none !important; }
     @media (max-width: 991px) { .pv2 .what { position:static; } }
@@ -352,10 +353,10 @@
             </div>
 
             <div class="col-lg-4">
-                <aside class="what" aria-labelledby="what-title">
+                <div class="what" role="complementary" aria-labelledby="what-title">
                     <h2 id="what-title">What will happen <span class="ur-inline" style="color:#F2DFA8">کیا ہوگا</span></h2>
                     <ul id="what-list" aria-live="polite" class="mb-0 ps-3"></ul>
-                </aside>
+                </div>
             </div>
         </div>
     </form>
