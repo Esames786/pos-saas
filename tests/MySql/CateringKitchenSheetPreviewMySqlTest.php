@@ -460,6 +460,94 @@ class CateringKitchenSheetPreviewMySqlTest extends MySqlTenantTestCase
             'aur paer safhe par mojood ho — warna upar wali teen shartein khali hain');
     }
 
+    /**
+     * DOC-TOOLBAR-OFF-PAPER-1 (19 Oct) — screen ke button kaghaz par na baithen.
+     *
+     * Malik ne estimate ka safha nishan laga kar bheja: Print / A4 / printer ka
+     * khana / Send to network — chaaron parche ke UPAR tair rahe thay aur
+     * unwan ko dhaanp rahe thay. Phir: "ye tamam pages — invoices, pre invoice,
+     * kitchen sheet, address — har jagah ye masla nahi aana chahiye."
+     *
+     * Wajah ek hi satar thi, teen stylesheet me alag alag likhi hui:
+     *     .print-bar { position: fixed; top: 10px; right: 10px; z-index: 10 }
+     * In safhon par `body` KHUD kaghaz hai, is liye wo kona hamesha parche ke
+     * upar parta tha.
+     *
+     * Ye test wahi cheez pakadta hai jo dobara likhi ja sakti hai: koi bhi
+     * document view phir se toolbar ko screen ke kone par taanke, ya koi safha
+     * sanjha partial lagana bhool jaye. Chaukhat ki paimaish Chrome se hui
+     * (screenshot): button ab kaghaz ke upar wali mez par hain.
+     */
+    public function test_no_document_page_pins_its_toolbar_over_the_paper(): void
+    {
+        $dir = resource_path('views/tenant/catering/documents');
+
+        // 1. Koi bhi document view toolbar ko screen ke kone par na taanke.
+        $pinned = [];
+        foreach (glob($dir.'/{,partials/}*.blade.php', GLOB_BRACE) as $file) {
+            // Comments PEHLE nikaalo. Purani satar in files ke notes me jaan
+            // boojh kar likhi hui hai (taake aane wale ko pata ho ke kya aur
+            // kyun hataya gaya) — aur us par match karna ek jhoota red deta
+            // hai. Yehi jaal is track me pehle bhi lag chuka hai: CSS comment
+            // document me inline jata hai, is liye uske lafz "mojood" hote
+            // hain. Hamesha matn par parkho, note par nahi.
+            $text = (string) preg_replace(
+                ['/\{\{--.*?--\}\}/s', '#/\*.*?\*/#s'], '', (string) file_get_contents($file)
+            );
+            if (preg_match('/\.(print-bar|bulk-toolbar|toolbar)[^{]*\{[^}]*position:\s*fixed/', $text)) {
+                $pinned[] = basename($file);
+            }
+        }
+        $this->assertSame([], $pinned,
+            'in views me toolbar phir se screen ke kone par taanka gaya hai — '
+            .'in safhon par body khud kaghaz hai, is liye wo kona parche ke upar parta hai: '
+            .implode(', ', $pinned));
+
+        // 2. Har document SAFHA sanjha partial lagaye (partials khud nahi —
+        //    wo shell ka hissa nahi hote).
+        $pages = [
+            'estimate.blade.php', 'final-invoice.blade.php', 'kitchen-sheet.blade.php',
+            'address-sheet.blade.php', 'bulk-quotations.blade.php', 'bulk-kitchen-sheets.blade.php',
+        ];
+        foreach ($pages as $page) {
+            $this->assertStringContainsString(
+                "@include('tenant.catering.documents.partials.doc-toolbar-style')",
+                (string) file_get_contents($dir.'/'.$page),
+                "{$page} par toolbar ki jagah tay karne wali partial nahi lagi — "
+                .'us safhe ka toolbar phir kaghaz par ja baithega');
+        }
+    }
+
+    /**
+     * Bulk safhe par TOOLBAR SIRF EK.
+     *
+     * Toolbar pehle `kitchen-sheet-body` ke andar tha, aur bulk safha wohi jism
+     * har booking ke liye dobara lagata hai — yani N toolbar, sab ek doosre ke
+     * upar tairte hue, plus bulk ka apna. Nazar ek hi aata tha, is liye kisi ko
+     * pata nahi chala. Toolbar ab safhe ka chrema hai, jism ka nahi.
+     */
+    public function test_the_bulk_page_shows_only_one_toolbar_however_many_bookings(): void
+    {
+        $estimates = app(CateringEstimateService::class);
+        $second = $estimates->createEvent([
+            'branch_id' => $this->event->branch_id, 'customer_name' => 'MR MUBASSHIR',
+            'booking_date' => now()->toDateString(),
+            'event_date' => now()->addDays(6)->toDateString(), 'pax' => 100,
+        ]);
+        $estimates->saveDraftLines($second->currentEstimate, [[
+            'product_id' => $this->productId, 'item_name' => 'Chicken Biryani',
+            'quantity' => 12, 'unit_id' => $this->unitId, 'unit_code' => 'KG', 'rate' => 900,
+        ]], []);
+
+        $html = $this->bulkHtml([$this->event->id, $second->id]);
+
+        $this->assertSame(2, substr_count($html, 'class="bulk-doc"'),
+            'do booking, do parche — warna neeche wali ginti ka koi matlab nahi');
+        $this->assertSame(1,
+            substr_count($html, 'class="print-bar"') + substr_count($html, 'class="bulk-toolbar"'),
+            'chahe kitni bookings hon, toolbar ek hi hona chahiye');
+    }
+
     /** @param  list<int>  $eventIds */
     private function bulkHtml(array $eventIds): string
     {

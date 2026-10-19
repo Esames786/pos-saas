@@ -342,8 +342,11 @@
     .preview-band strong { font-size: 11px; letter-spacing: .06em; margin-{{ $isUr ? "left" : "right" }}: 8px; }
     @media print { .preview-band { border-color: #000; color: #000; } }
     /* Sits in the grey gutter beside the sheet; it used to overlap the header. */
-    .print-bar { position: fixed; top: 10px; {{ $isUr ? 'left' : 'right' }}: 10px; z-index: 10; }
-    @media print { .print-bar { display: none; } }
+    /* `.print-bar` ki jagah ab `partials/doc-toolbar-style` tay karti hai —
+       button kaghaz par nahi, us ke UPAR WALI MEZ par. Yahan pehle
+       `position: fixed; top: 10px; right: 10px` tha, aur chunke in safhon
+       par `body` khud kaghaz hai, wo kona hamesha parche ke upar parta
+       tha. 19 Oct ko malik ne nishan laga kar hatwaya. */
     /* Rows must not split mid-dish across a page break, and the header repeats
        on every continuation page. */
     table.items thead, table.req-table thead { display: table-header-group; }
