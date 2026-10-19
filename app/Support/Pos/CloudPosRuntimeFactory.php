@@ -119,6 +119,8 @@ final class CloudPosRuntimeFactory
             'supplierFinancePage' => null,
             'financeJournalPage' => null,
             'purchaseReturnsPage' => null,
+            // POS-REMINDER-PAUSE-1 (canonical 4175db4f): pause / resume the selected terminal's Reminder slips (tenant.api.pos.reminder-pause).
+            'reminderPause' => '/api/pos/reminder-pause',
         ]);
 
         return new PosRuntime(

@@ -311,6 +311,7 @@ class EdgeLocalShiftController extends Controller
                 'timezone' => app(TenantClock::class)->businessTimezone($this->branch()),
                 'opened_at' => null, 'opened_at_display' => null, 'server_epoch_ms' => (int) round(microtime(true) * 1000),
                 'open_url' => '/edge/local/pos/shifts/open', 'shift' => null,
+                'reminder' => null, // POS-REMINDER-PAUSE-1 twin key (null = no Reminder switch on the Branch Server yet; team D2)
             ]);
         }
         $terminal = $this->selectedTerminal($request);
@@ -347,6 +348,9 @@ class EdgeLocalShiftController extends Controller
                 'total_sales' => $maySeeAmounts ? (float) $open->total_sales : null,
                 'expected_cash' => $maySeeAmounts ? (float) $open->expected_cash : null,
             ] : null,
+            // CANONICAL MERGE (D8): Online posStatus carries `reminder` (ReminderPauseService::statusFor). null here = the page hides
+            // the switch (renderReminderStatus(null)); team D2 replaces it with the shared service's status + the pause twin route.
+            'reminder' => null,
         ]);
     }
 

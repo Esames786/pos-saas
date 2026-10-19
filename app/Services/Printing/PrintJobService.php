@@ -19,6 +19,7 @@ class PrintJobService
     public function __construct(
         private readonly PrintRoutingService $routingService,
         private readonly PrintJobFactory $jobFactory,
+        private readonly ReminderPauseService $reminderPause,
     ) {}
 
     public function queueReceipt(SalesOrder $sale, ?Printer $printer = null, ?string $terminalId = null, bool $ensureOnce = false): PrintJob
@@ -266,6 +267,14 @@ class PrintJobService
             return $this->emptyReminderPlan();
         }
 
+        // POS-REMINDER-PAUSE-1: the counter paused its Reminder slips for this shift. Checked on the
+        // ORDER's terminal — the same terminal reminderRoutesForSale() routes on. Both the POS KOT
+        // endpoint and Review & Pay come through here, so this one check covers both. The KOT itself
+        // was already queued and is untouched.
+        if ($this->reminderPause->isPausedForTerminal($sale->terminal_id)) {
+            return $this->emptyReminderPlan() + ['paused' => true];
+        }
+
         $revision = $this->reminderRevision($sale, $batch);
         $routes = $this->routingService->reminderRoutesForSale($sale);
         $autoRoutes = collect($routes)->filter(
@@ -410,6 +419,15 @@ class PrintJobService
     /** Queue non-interactive correction Reminders after cancellation approval/audit is durable. */
     public function queueCancellationReminders(SalesOrder $sale, KotBatch $batch, bool $wholeOrder, ?string $terminalId = null): array
     {
+        // POS-REMINDER-PAUSE-1: while the counter has Reminder paused, a correction slip is still owed
+        // to any order that already has a Reminder on paper — otherwise someone works from a stale
+        // slip. An order that never had one gets nothing to correct.
+        if ($this->reminderPause->isPausedForTerminal($terminalId ?: $sale->terminal_id)
+            && ! PrintJob::where('reference_type', 'sales_order')->where('reference_id', $sale->id)
+                ->where('document_type', 'reminder')->where('print_status', '!=', 'cancelled')->exists()) {
+            return [];
+        }
+
         $sale->loadMissing(['lines.product.category']);
         $cancellations = SalesOrderLineCancellation::with(['reason', 'requestedBy', 'approvedBy'])
             ->where('sales_order_id', $sale->id)->where('kot_batch_id', $batch->id)->get();

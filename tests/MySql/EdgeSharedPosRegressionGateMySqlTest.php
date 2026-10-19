@@ -89,6 +89,7 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
         'quickReportEmail' => ['selectors' => ['//*[@id="qr-email"]'], 'hint' => true],
         'customerCreate' => ['selectors' => ['//*[@id="qa-save"]'], 'hint' => true],
         'customerAddressCreate' => ['selectors' => ['//*[@id="new-addr-save"]'], 'hint' => true],
+        'reminderPause' => ['selectors' => ['//*[@id="pos-reminder-toggle"]'], 'hint' => true], // POS-REMINDER-PAUSE-1 (canonical merge D8)
     ];
 
     /** Capabilities the page JS gates (POS.can) — no Blade @disabled site; the runtime flag + null route are asserted. */

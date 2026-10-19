@@ -57,6 +57,10 @@ final class PosRuntime implements JsonSerializable
         // behind #pos-sidebar-toggle (pos-chrome-edge). Cloud: null (the Cloud sidebar carries its own menu); Edge: null when
         // the operator lacks the permission the Edge route enforces.
         'supplierFinancePage', 'financeJournalPage', 'purchaseReturnsPage',
+        // CANONICAL MERGE (D8, 19 Oct 2026) — POS-REMINDER-PAUSE-1 (canonical 4175db4f): the selected terminal's Reminder switch.
+        // Cloud: /api/pos/reminder-pause; Edge: null (capability reminderPause off) until team D2 builds the Branch Server twin
+        // through the shared ReminderPauseService. The view NEVER hard-codes the Cloud URL (owner: no Cloud literal in the shared view).
+        'reminderPause',
     ];
 
     /** Every capability flag the shared view may ask for. Factories MUST define all of them. */
@@ -64,6 +68,8 @@ final class PosRuntime implements JsonSerializable
         'reports', 'quickReport', 'quickReportEmail', 'quickReportNetwork', 'manageFloorsTables', 'branchSelect',
         'nonCashTender', 'tipOnPaidSale', 'customerCreate', 'customerAddressCreate', 'changeRider', 'splitBill',
         'salesReturn', 'shiftPages', 'promotions', 'tips', 'tableMerge', 'reservations', 'deadSessionRecovery', 'printHere',
+        // CANONICAL MERGE (D8): POS-REMINDER-PAUSE-1 — pause / resume Reminder slips from the counter (Edge: off until D2).
+        'reminderPause',
     ];
 
     /**

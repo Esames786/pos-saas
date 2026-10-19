@@ -582,6 +582,15 @@
                     <span id="pos-shift-detail" class="text-muted ms-1"></span>
                     <a href="{{ $posRuntime->route('shiftOpenPage') }}" id="pos-shift-open-link" class="ms-1" style="display:none">Open shift</a>
                 </div>
+                {{-- POS-REMINDER-PAUSE-1: this terminal's Reminder slips — ON, or paused until its shift
+                     closes. Hidden on a terminal with no Reminder rule; the state rides on the
+                     shift-status poll, so a toggle at another POS shows up here too. --}}
+                <div id="pos-reminder-status" class="small" style="display:none">
+                    {{-- CANONICAL MERGE (D8): the same control in the same slot on both runtimes; the Branch Server renders it
+                         disabled with the runtime hint while capability reminderPause is off (team D2 builds the twin). --}}
+                    <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="pos-reminder-toggle"
+                            @disabled(! $posRuntime->can('reminderPause')) @unless($posRuntime->can('reminderPause')) title="{{ $posRuntime->capabilityHint('reminderPause') }}" @endunless></button>
+                </div>
                 <div id="no-terminal-warning" class="small text-warning-emphasis" style="display:none">
                     <i class="ti ti-alert-triangle me-1"></i>No terminal — auto receipt/KOT print is off
                 </div>
@@ -2450,6 +2459,81 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    // POS-REMINDER-PAUSE-1: the Reminder switch for the selected terminal. OFF lasts until this
+    // terminal's shift closes; the server decides, this only shows the state and asks for changes.
+    var reminderWrap = document.getElementById('pos-reminder-status');
+    var reminderBtn  = document.getElementById('pos-reminder-toggle');
+    function renderReminderStatus(r, shiftOpen) {
+        if (!reminderWrap || !reminderBtn) return;
+        if (!r || !r.available) { reminderWrap.style.display = 'none'; return; }
+        reminderWrap.style.display = '';
+        reminderBtn.dataset.paused = r.paused ? '1' : '0';
+        if (r.paused) {
+            reminderBtn.className = 'btn btn-sm btn-warning py-0 fw-semibold';
+            reminderBtn.innerHTML = '<i class="ti ti-bell-off me-1"></i>Reminder OFF';
+            reminderBtn.title = 'Reminder slips paused' + (r.paused_by ? ' by ' + r.paused_by : '') +
+                (r.paused_at ? ' at ' + r.paused_at : '') + ' until this shift closes. KOT and receipts still print.';
+        } else {
+            reminderBtn.className = 'btn btn-sm btn-outline-secondary py-0';
+            reminderBtn.innerHTML = '<i class="ti ti-bell me-1"></i>Reminder ON';
+            reminderBtn.title = 'Reminder slips print on this terminal.';
+        }
+        // The state is always visible; only a permitted user on an open shift can change it.
+        // CANONICAL MERGE (D8): a runtime without the endpoint (Edge until D2) keeps the control disabled whatever the badge says.
+        reminderBtn.disabled = !r.can_toggle || !shiftOpen || !POS.route('reminderPause');
+    }
+
+    function sendReminderPause(paused) {
+        if (!terminalEl || !terminalEl.value) return;
+        // CANONICAL MERGE (D8): the endpoint comes from the runtime (Cloud: /api/pos/reminder-pause; Edge: null = capability off).
+        if (!POS.route('reminderPause')) { toast('error', POS.hintText('reminderPause')); return; }
+        reminderBtn.disabled = true;
+        fetch(POS.route('reminderPause'), {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ terminal_id: terminalEl.value, paused: paused }),
+        }).then(function (response) {
+            return response.json().catch(function () { return {}; }).then(function (data) {
+                if (!response.ok) throw new Error(data.message || 'Reminder setting could not be changed.');
+                return data;
+            });
+        }).then(function (data) {
+            renderReminderStatus(data.reminder, true);
+            toast('success', paused ? 'Reminder paused until this shift closes' : 'Reminder is ON');
+        }).catch(function (e) {
+            toast('error', e.message);
+            refreshShiftStatus();
+        });
+    }
+
+    if (reminderBtn) {
+        reminderBtn.addEventListener('click', function () {
+            var pausing = reminderBtn.dataset.paused !== '1';
+            if (!pausing) { sendReminderPause(false); return; }
+            var text = 'KOT and receipts still print. Reminder comes back ON by itself when this shift closes.';
+            if (typeof Swal === 'undefined') {
+                if (window.confirm('Pause Reminder slips on this terminal?\n\n' + text)) sendReminderPause(true);
+                return;
+            }
+            Swal.fire({
+                icon: 'question',
+                title: 'Pause Reminder slips on this terminal?',
+                text: text,
+                showCancelButton: true,
+                confirmButtonText: 'Pause',
+                cancelButtonText: 'Keep ON',
+                reverseButtons: true,
+            }).then(function (result) {
+                if (result.isConfirmed) sendReminderPause(true);
+            });
+        });
+    }
+
     // SHIFT-TIMEZONE-BUSINESS-DATE-1 (R/S): reflect the selected terminal's open-shift status so
     // the cashier knows before ringing anything whether POS operations are allowed here.
     var _shiftStatusSeq = 0;
@@ -2461,7 +2545,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var link   = document.getElementById('pos-shift-open-link');
         var tid    = terminalEl.value || '';
 
-        if (!tid) { wrap.style.display = 'none'; return; }
+        if (!tid) { wrap.style.display = 'none'; renderReminderStatus(null); return; }
 
         var seq = ++_shiftStatusSeq;
         fetch(POS.route('shiftStatus') + '?terminal_id=' + encodeURIComponent(tid), {
@@ -2483,6 +2567,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     detail.textContent = 'POS operations are blocked on this terminal.';
                     if (link) link.style.display = '';
                 }
+                renderReminderStatus(d.reminder, !!d.open);
                 // One source of truth: retune the shop clock to THIS terminal's shift timezone +
                 // business date + server epoch. Falls back to the branch business tz when closed.
                 if (window.__setPosClock) {

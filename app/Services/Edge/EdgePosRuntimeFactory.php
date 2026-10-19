@@ -56,6 +56,10 @@ class EdgePosRuntimeFactory
         'reservations' => true,
         'deadSessionRecovery' => true,
         'printHere' => true,
+        // CANONICAL MERGE (D8, 19 Oct 2026): POS-REMINDER-PAUSE-1 — OFF until team D2 builds the Edge twin
+        // (/edge/local/api/pos/reminder-pause via the shared ReminderPauseService + the `reminder` key on shift-status).
+        // The shared print plumbing (PrintJobService / DirectPayPrintOrchestrator) already honours a paused shift row.
+        'reminderPause' => false,
     ];
 
     /**
@@ -83,6 +87,7 @@ class EdgePosRuntimeFactory
         'refundOnlineRequired' => 'Refunding it the same way needs the Online POS; a cash refund from this till is possible where the business allows it.',
         'shiftBranchWide' => 'Opening shifts for several terminals at once runs on the Online POS — this Branch Server opens the shift of its own terminal.',
         'shortageVoucher' => 'The shortage is recorded on this shift. The Branch Server does not raise the finance draft expense voucher; finance settles it from the shift record.',
+        'reminderPause' => 'Pausing Reminder slips runs on the Online POS for now — this Branch Server prints reminders as configured.',
         'modeChip' => null,
         'connection' => null,
     ];
@@ -327,6 +332,8 @@ class EdgePosRuntimeFactory
             'supplierFinancePage' => $may([EdgeLocalSupplierFinanceService::PERM_LEDGER, EdgeLocalSupplierFinanceService::PERM_PAYMENT]) ? $p . '/suppliers' : null,
             'financeJournalPage' => $may([EdgeLocalSupplierFinanceService::PERM_JOURNAL]) ? $p . '/finance/journal' : null,
             'purchaseReturnsPage' => $may([EdgeLocalPurchaseReturnService::PERM_STORE, EdgeLocalPurchaseReturnService::PERM_POST]) ? $p . '/purchase-returns' : null,
+            // CANONICAL MERGE (D8): POS-REMINDER-PAUSE-1 — capability reminderPause (null until team D2 builds the twin).
+            'reminderPause' => null,
         ];
     }
 

@@ -58,6 +58,7 @@ class PosRuntimeTest extends TestCase
             'reminderConfirm' => '/printing/jobs/reminder/{sale}/confirm', 'reminderReprint' => '/printing/jobs/{job}/reminder-reprint',
             'printRetry' => '/printing/jobs/{job}/retry', 'printDocument' => '/printing/documents/{job}/preview',
             'salesReturnCreatePage' => '/sales-returns/create', 'reportsCenter' => '/reports/center',
+            'reminderPause' => '/api/pos/reminder-pause', // POS-REMINDER-PAUSE-1 (canonical merge D8)
         ];
         foreach ($expected as $key => $path) {
             $this->assertSame($path, $rt->routes[$key], "route [{$key}]");

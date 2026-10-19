@@ -129,9 +129,13 @@ class DirectPayPrintOrchestrator
             try {
                 $reminder = $this->printJobs->planRemindersForKotJobs($sale, $jobs);
                 $state['ask_printer_ids'] = collect($reminder['ask_printers'] ?? [])->pluck('id')->all();
-                $state['reminder_status'] = !empty($reminder['ask_printers'])
-                    ? 'awaiting_confirmation'
-                    : (!empty($reminder['auto_jobs']) ? 'queued' : 'not_applicable');
+                // POS-REMINDER-PAUSE-1: 'paused' is a finished state, never a pending one — the counter
+                // chose no Reminder, so the order must not land in "Printing needs attention".
+                $state['reminder_status'] = !empty($reminder['paused'])
+                    ? 'paused'
+                    : (!empty($reminder['ask_printers'])
+                        ? 'awaiting_confirmation'
+                        : (!empty($reminder['auto_jobs']) ? 'queued' : 'not_applicable'));
             } catch (\Throwable $exception) {
                 $reminder = $this->emptyReminder();
                 $reminder['warning'] = 'KOT was queued, but Reminder is pending retry.';

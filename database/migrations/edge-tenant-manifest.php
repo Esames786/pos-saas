@@ -2859,7 +2859,7 @@ return [
         '2026_10_05_000002_add_reminder_pause_to_shifts' => [
             'MIGRATION' => '2026_10_05_000002_add_reminder_pause_to_shifts',
             'CLASSIFICATION' => 'EDGE_REQUIRED',
-            'TABLES_CHANGED' => ['shifts', 'permissions', 'roles', 'role_has_permissions', 'cache', 'model_has_permissions'],
+            'TABLES_CHANGED' => ['shifts', 'permissions', 'roles', 'role_has_permissions', 'cache'],
             'EDGE_CODE_REFERENCES' => ['EdgeBackupService', 'EdgeBootstrapService', 'EdgeHandbackOrchestrator', 'EdgeIdentity', 'EdgeLocalAuthController', 'EdgeLocalBootstrapImporter', 'EdgeLocalConfigRefreshApplier', 'EdgeLocalPosController', '+19 more'],
             'ADDITIVE_ONLY' => true,
             'DATA_REWRITE' => false,
@@ -2869,7 +2869,6 @@ return [
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_reminder_pause_on_shifts_upgrades_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'shifts is appliance-operational; the shared Shift model + ReminderPauseService (printing) read reminders_paused_*. Seeds tenant.pos.pause-reminders (the permission graph is rebuilt from the users section on every refresh).',
         ],
         '2026_10_06_000001_add_affects_stock_to_goods_receipt_lines' => [
