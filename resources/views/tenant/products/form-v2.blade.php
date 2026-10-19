@@ -123,6 +123,7 @@
         border-radius:14px 14px 0 0; padding:10px 14px; margin-top:12px; box-shadow:0 -6px 18px rgba(9,44,76,.08); }
     .pv2 .savebar .grow { flex:1 1 auto; }
     .pv2 .savebar .hint { color:var(--ink2); font-size:.8rem; }
+    @media (max-width: 575px) { .pv2 .savebar { gap:6px; padding:8px 10px; } .pv2 .savebar .btn-big { min-height:42px; padding:0 12px; } .pv2 .savebar .grow { display:none; } }
     .pv2 .review { display:grid; grid-template-columns:minmax(150px,220px) 1fr auto; gap:0; margin:8px 0 0; }
     .pv2 .review > * { padding:9px 4px; border-bottom:1px solid var(--line); margin:0; }
     .pv2 .review dt { font-weight:700; color:#344054; }
@@ -439,10 +440,9 @@
                     <button type="button" class="btn btn-light btn-big" id="pv2-prev">← Back</button>
                     <button type="button" class="btn btn-outline-primary btn-big" id="pv2-next">Next →</button>
                     <span class="grow"></span>
-                    <span class="hint d-none d-md-inline">Ctrl + Enter saves</span>
+                    <span class="hint d-none d-xl-inline">Ctrl + Enter saves</span>
                     <button type="submit" class="btn btn-primary btn-big" id="pv2-save">Save <span class="ur-inline" style="color:#fff">محفوظ کریں</span></button>
-                    <button type="submit" name="_after" value="new" class="btn btn-outline-primary btn-big">Save and add another</button>
-                    <a href="{{ $isEdit ? url('/products/' . $product->id) : url('/products') }}" class="btn btn-light btn-big d-inline-flex align-items-center">Cancel</a>
+                    <button type="submit" name="_after" value="new" class="btn btn-outline-primary btn-big d-none d-sm-inline-block">Save and add another</button>
                 </div>
             </div>
 
@@ -590,6 +590,7 @@
         refresh();
     });
     form.addEventListener('input', function (e) { if (e.target.id === 'default_selling_price') refresh(); });
+    window.pv2Refresh = refresh;   // the Packs step updates "What will happen" while a size is typed
     applyCard(card(), false);
     var err = document.getElementById('pv2-errors'); if (err) err.focus();
 })();
