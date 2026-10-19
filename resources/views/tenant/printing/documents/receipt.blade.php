@@ -213,6 +213,11 @@
                 @if($line->variant_name && strcasecmp(trim($line->variant_name), trim((string) $line->product_name)) !== 0)
                     <small>({{ $line->variant_name }})</small>
                 @endif
+                {{-- MEDICAL-COUNTER-1: "2 Strip = 20 Tablet · B:PN2410-07 EXP:09/28" under a medicine sold in a pack. --}}
+                @php($packLine = \App\Support\CounterPacks::receiptLine($line))
+                @if($packLine)
+                    <br><small>&nbsp;{{ $packLine }}</small>
+                @endif
                 @foreach(($line->modifiers ?? []) as $modifier)
                     @if(!empty($modifier['name']))
                         <br><small>&nbsp;+ {{ $modifier['name'] }}@if((float) ($modifier['price_delta'] ?? 0) !== 0.0) ({{ (float) $modifier['price_delta'] > 0 ? '+' : '' }}{{ number_format((float) $modifier['price_delta'], 2) }})@endif</small>

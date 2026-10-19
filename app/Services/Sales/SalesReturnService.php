@@ -287,14 +287,20 @@ class SalesReturnService
             return;
         }
 
-        $batch = $this->batchTheSaleTookFrom($salesOrder, $orderLine, $product);
+        // MEDICAL-COUNTER-1: a line sold in a pack ("2 Strip") is returned in that pack, but its TABLETS go
+        // back on the shelf (2 × 10), at the cost of one tablet, into the batch the line left from.
+        $factor = $orderLine->base_quantity !== null && (int) $orderLine->pack_factor > 0 ? (int) $orderLine->pack_factor : 1;
+        $batch = ($orderLine->inventory_batch_id && $product->has_expiry
+                ? InventoryBatch::query()->whereKey($orderLine->inventory_batch_id)->whereNotNull('expiry_date')->first()
+                : null)
+            ?? $this->batchTheSaleTookFrom($salesOrder, $orderLine, $product);
 
         $this->inventoryService->postIn(
             branch:        $salesOrder->branch,
             product:       $product,
             variant:       $orderLine->variant,
-            quantity:      $quantity,
-            unitCost:      (float) ($orderLine->unit_cost > 0 ? $orderLine->unit_cost : 0),
+            quantity:      round($quantity * $factor, 3),
+            unitCost:      (float) ($orderLine->unit_cost > 0 ? $orderLine->unit_cost / $factor : 0),
             movementType:  'sale_return',
             referenceType: 'sales_return',
             referenceId:   $salesReturn->id,

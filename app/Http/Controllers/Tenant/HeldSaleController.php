@@ -120,6 +120,10 @@ class HeldSaleController extends Controller
                     'kot_sent'           => (bool) $l->kot_sent,
                     'kot_sent_quantity'  => (float) ($l->kot_sent_quantity ?? 0),
                     'kitchen_note'       => $l->kitchen_note,
+                    // MEDICAL-COUNTER-1: a recalled pack line comes back as the same pack and batch.
+                    'pack_unit_id'       => $l->pack_unit_id ? (int) $l->pack_unit_id : null,
+                    'pack_factor'        => $l->pack_factor ? (int) $l->pack_factor : null,
+                    'inventory_batch_id' => $l->inventory_batch_id ? (int) $l->inventory_batch_id : null,
                 ])->values(),
             ]),
         ]);
@@ -236,6 +240,9 @@ class HeldSaleController extends Controller
                 'kot_sent'           => (bool) $l->kot_sent,
                 'kot_sent_quantity'  => (float) ($l->kot_sent_quantity ?? 0),
                 'kitchen_note'       => $l->kitchen_note,
+                'pack_unit_id'       => $l->pack_unit_id ? (int) $l->pack_unit_id : null,
+                'pack_factor'        => $l->pack_factor ? (int) $l->pack_factor : null,
+                'inventory_batch_id' => $l->inventory_batch_id ? (int) $l->inventory_batch_id : null,
             ])->values(),
         ];
     }
@@ -296,6 +303,9 @@ class HeldSaleController extends Controller
             'lines.*.quantity'            => 'nullable|numeric|min:0.001',
             'lines.*.unit_price'          => 'nullable|numeric|min:0',
             'lines.*.modifiers'           => 'nullable|string',
+            // MEDICAL-COUNTER-1: the pack a line is sold in.
+            'lines.*.pack_unit_id'        => 'nullable|integer',
+            'lines.*.inventory_batch_id'  => 'nullable|integer',
             'void_items'                  => 'nullable|array',
             'void_items.*.old_line_id'    => 'nullable|integer',
             'void_items.*.reason_id'      => 'required_with:void_items.*.old_line_id|exists:void_reasons,id',
@@ -743,6 +753,15 @@ class HeldSaleController extends Controller
                 ? ProductVariant::find($line['product_variant_id'])
                 : null;
 
+            // MEDICAL-COUNTER-1: a line held in a pack keeps it (and its tablets) for the recall and the sale.
+            $pack = $product && (($line['line_kind'] ?? 'standard') === 'standard')
+                ? \App\Support\CounterPacks::resolve($product, (array) $line, (float) $line['quantity']) : null;
+            if ($pack && ! isset($line['unit_price'])) {
+                $line['unit_price'] = $pack['pack_price'];
+            }
+            $preferBatch = $product && (($line['line_kind'] ?? 'standard') === 'standard')
+                ? \App\Support\CounterPacks::preferredBatch($product, (int) $sale->branch_id, $line['inventory_batch_id'] ?? null) : null;
+
             $lineTotal = (float) $line['quantity'] * (float) ($line['unit_price'] ?? 0);
 
             // BUG-014 FIX: use the same 4-part key as the lookup above.
@@ -779,7 +798,7 @@ class HeldSaleController extends Controller
                     ? $line['line_name']
                     : ($product?->name ?? ''),
                 'variant_name'       => $variant?->name ?? null,
-                'unit_code'          => $product?->unit?->code,
+                'unit_code'          => $pack ? mb_substr($pack['pack_name'], 0, 20) : $product?->unit?->code,
                 'quantity'           => $line['quantity'],
                 'unit_price'         => $line['unit_price'] ?? 0,
                 'unit_cost'          => 0,
@@ -790,6 +809,10 @@ class HeldSaleController extends Controller
                 'modifiers'          => $this->normalizeLineModifiers($line['modifiers'] ?? null),
                 'kot_sent'           => $kotSent,
                 'kot_sent_quantity'  => $kotSentQty,
+                'pack_unit_id'       => $pack['pack_unit_id'] ?? null,
+                'pack_factor'        => $pack['pack_factor'] ?? null,
+                'base_quantity'      => $pack['base_quantity'] ?? null,
+                'inventory_batch_id' => $preferBatch,
             ]);
 
             if (!empty($line['client_line_key'])) {

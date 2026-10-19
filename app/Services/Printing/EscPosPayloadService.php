@@ -877,6 +877,10 @@ class EscPosPayloadService
             if ($this->meaningfulVariant($line->variant_name, $line->product_name)) {
                 $out .= $this->sized('  (' . $line->variant_name . ')' . "\n", $rowTall);
             }
+            // MEDICAL-COUNTER-1: "2 Strip = 20 Tablet · B:PN2410-07 EXP:09/28" under a medicine sold in a pack.
+            if ($packLine = \App\Support\CounterPacks::receiptLine($line)) {
+                $out .= $this->sized('  ' . $packLine . "\n", $rowTall);
+            }
             if ($line->kitchen_note) {
                 $out .= "  * {$line->kitchen_note}\n";
             }

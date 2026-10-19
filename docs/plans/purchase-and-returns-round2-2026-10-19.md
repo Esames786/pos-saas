@@ -373,6 +373,56 @@ Kashiffood: **the owner switched "New purchase screens" ON himself**, so it is a
 - **Deploy race (not new code).** One request hit `routes-v7.php` while `route:cache` was writing it (ParseError 16:33:19 UTC). Proposed fix: deploy.sh writes the cache to a temp file and renames it (`APP_ROUTES_CACHE` / `APP_CONFIG_CACHE`). Waiting for the owner.
 - **Tests.** PurchasingV2MySqlTest 20 / 241; ProductScreenV2MySqlTest 12 / 191.
 
+**Step 4 BUILT 19 Oct night — MEDICAL-COUNTER-1.** The owner approved the design (canvas boards 7 and 8): "same as
+our POS, so nothing major changes". So it is the same /pos page with the Master switch "Pack & batch counter"
+(`medical_counter`, needs Packs). Live tenants are OFF; it is on for the pharmacy demo.
+
+- **Kept as it is.** Takeaway tab, branch · terminal · shift line, cart on the right, Total + Review & Pay,
+  Hold / Draft / Held list / Bill-Preview / Recent Orders / Cancel / print history, and the Review & Pay
+  window (method, tendered, quick cash, reference, promo, manual discount + manager PIN, auto-print KOT /
+  receipt, Preview Bill). Today's Ctrl keys still work.
+- **New with the switch.**
+  - The middle shows a list instead of tiles: stock that is not expired, the batch sold first (expiry
+    colour), and the price of each pack. A salt search finds every brand; same-salt brands in stock show
+    under the list.
+  - A cart line shows Box | Strip | Tablet boxes. Each box is its own line (`pack_unit_id`, price of one
+    pack, quantity in packs), so totals, hold, recall and split read it like any line.
+  - A pack's own barcode sells that pack.
+  - A batch chip on the line opens the batch picker. The picked batch goes first, then the oldest expiry;
+    an expired batch is shown as skipped.
+  - A medicine marked "needs prescription" shows Doctor / Patient / "Seen?" under the cart. The sale waits
+    for "Seen"; doctor and patient go on the bill's notes.
+  - The pay window gets note buttons +10 … +5000.
+  - F2 search, F3 customer, F4 hold, F5 held, F6 batch, F8 discount, F9 preview, F10 pay. Enter in Tendered
+    completes the sale.
+- **Server.**
+  - `CounterPacks` handles the pack, the price, the tablets, the picked batch (this product's, this
+    branch's, not expired) and the payload.
+  - `InventoryService::postOutFefo(skipExpired, preferBatchId)`: a medicine never leaves from an expired
+    batch. When only expired stock is left the sale is refused ("only N Tablet left that is not expired
+    (M more has expired …)") and nothing moves.
+  - The line keeps `inventory_batch_id` and `batch_note`; `unit_code` is the pack name.
+  - The receipt (80 mm and HTML) and the preview print "2 Strip = 20 Tablet · B:PNL2609A EXP:04/28".
+  - Split bill carries the pack.
+  - A returned Strip puts its 10 tablets back into the batch it left from, at the cost of one tablet.
+- **Migration.** `2026_10_20_000002_add_sale_line_batch` adds `inventory_batch_id` and `batch_note` to
+  sales_order_lines. It is additive and INSTANT, with lock_wait_timeout 10.
+- **Switch off.** Today's payload, page and post exactly. A posted pack is ignored. Proven in the test.
+- **Proof.**
+  - MedicalCounterMySqlTest 7 / 85, and every inline script on the page parses.
+  - With the guards removed, 3 tests go red.
+  - A local browser drive covered salt search → Strip box → Enter → Tablet box, the batch picker, the
+    prescription block, F10, notes +500 +100 +100 (700 − 690.75 = 9.25 change), the F9 preview, Complete
+    Sale, F4 hold, F5 held list and Recall. There were 0 page errors.
+  - The database shows 2 Strip = 20 + 3 Tablet from PNL2609A, and Augmentin from AUG2610B (AUG2609A was
+    used up).
+- **Not in this step.**
+  - The usual line discount from the item at the counter.
+  - Repeat last bill.
+  - Reports count packs as their own quantity: 2 Strip + 3 Tablet = 5 in "qty sold". A tablet total is next.
+- **Seen on the way (old, every tenant).** The yellow "Recalled: —" bar shows on an empty cart. Its
+  `d-flex` beats `style="display:none"`. It is not touched here.
+
 | Step | Work | Needs |
 | --- | --- | --- |
 | 1 | Purchasing tabs + supplier search + "+ New supplier" + batch box + save without reload (PO, GRN) | — |
