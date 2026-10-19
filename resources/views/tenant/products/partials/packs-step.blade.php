@@ -235,7 +235,7 @@
         });
     });
     form.addEventListener('input', function (e) {
-        if (e.target.closest && (e.target.closest('#packs-step') || e.target.id === 'default_selling_price')) refreshPacks();
+        if (e.target.closest && (e.target.closest('#packs-step') || e.target.id === 'default_selling_price')) { refreshPacks(); if (window.pv2Refresh) window.pv2Refresh(); }
     });
     form.addEventListener('change', function (e) {
         if (e.target.name === '_packs') {
