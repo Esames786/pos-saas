@@ -2809,7 +2809,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Purchasing/AP (GoodsReceipt*/Purchase* excluded from the artifact).',
         ],
         '2026_10_03_000001_add_extra_charges_to_purchase_bills' => [
@@ -2825,7 +2824,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Purchasing/AP (excluded).',
         ],
         '2026_10_03_000002_add_voided_to_goods_receipts' => [
@@ -2841,7 +2839,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Purchasing/AP (excluded); raw ALTER … MODIFY ENUM on goods_receipts.',
         ],
         '2026_10_05_000001_add_windows_document_printer_support' => [
@@ -2857,7 +2854,6 @@ return [
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_windows_document_printer_support_upgrades_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'printers is a bootstrap section; a Cloud printer row with printer_type=windows / print_role=document / paper_size=A5 must insert on the appliance and the local print worker reads printers. Raw ALTER … MODIFY ENUM (widening only) on a small table.',
         ],
         '2026_10_05_000002_add_reminder_pause_to_shifts' => [
