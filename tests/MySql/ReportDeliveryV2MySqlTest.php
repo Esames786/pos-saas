@@ -282,6 +282,25 @@ class ReportDeliveryV2MySqlTest extends MySqlTenantTestCase
         $this->assertCount(2, $this->runs());
     }
 
+    public function test_closing_the_whole_branch_at_once_sends_it_too(): void
+    {
+        $owner = $this->owner();
+        $this->schedule();
+        $day = $this->openShift($owner->id, 'T1')->business_date->toDateString();
+        $this->openShift($owner->id, 'T2');
+
+        $response = app(ShiftController::class)->closeBranch(
+            Request::create('/shifts/close-branch', 'POST', ['branch_id' => $this->branchId, 'mode' => 'branch_total', 'branch_counted_cash' => '0']),
+            app(ShiftService::class),
+        );
+        $this->assertSame(302, $response->getStatusCode());
+        $this->assertSame(0, Shift::on('tenant')->where('status', 'open')->count(), 'both counters closed');
+        app()->terminate();
+
+        $this->assertSame(["email|{$day}|shift_close", "whatsapp|{$day}|shift_close"], $this->runs());
+        Http::assertSentCount(2);
+    }
+
     public function test_a_tenant_without_the_switch_or_on_a_fixed_time_is_untouched(): void
     {
         $owner = $this->owner();
