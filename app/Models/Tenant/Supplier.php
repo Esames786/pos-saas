@@ -16,6 +16,8 @@ class Supplier extends Model
         'code', 'name', 'contact_person', 'phone', 'email',
         'address', 'tax_number', 'payment_terms_days',
         'opening_balance', 'current_balance', 'status',
+        // PURCHASE-DISCOUNTS-1: what this supplier usually gives (fills the new purchase screens' disc %).
+        'default_discount_percent',
     ];
 
     public function ledgers()

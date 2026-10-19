@@ -2627,6 +2627,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (candidate) terminalEl.value = candidate;
         updateTerminalWarning();
+        // The header ("Branch · Terminal") was written before this pick and said "No terminal".
+        if (window.__posUpdateContext) window.__posUpdateContext();
     }
 
     if (terminalEl) {
@@ -2905,6 +2907,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const textMatch = !query
                 || String(product.name).toLowerCase().includes(query)
                 || String(product.sku || '').toLowerCase().includes(query)
+                || String(product.generic || '').toLowerCase().includes(query)
                 || barcodeMatch;
 
             return textMatch && (selectedChildCategory ? matchChild : matchParent);
@@ -7330,6 +7333,8 @@ document.addEventListener('DOMContentLoaded', function () {
         const el = $id(id);
         if (el) el.addEventListener('change', updateContextSummary);
     });
+    // Also called when the page picks the terminal by itself (autoSelectTerminal), whichever runs first.
+    window.__posUpdateContext = updateContextSummary;
     updateContextSummary();
     // PHASE 3 (E) — root cause of "No terminal" beside a selected terminal on BOTH runtimes: this block runs while the
     // document is still parsing, but the terminal is auto-selected (autoSelectTerminal → terminalEl.value = …, no 'change'

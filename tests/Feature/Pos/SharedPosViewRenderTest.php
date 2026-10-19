@@ -182,8 +182,11 @@ class SharedPosViewRenderTest extends TestCase
         // A3 (W-C): the self-hosted font sheet sits immediately before style.css; layouts.app gets the same link from its
         // owner. Compare the theme list without it, and pin its position in the POS layout.
         $font = 'assets/css/fonts-local.css';
-        $appList = array_values(array_diff($a[1], [$font]));
-        $posList = array_values(array_diff($b[1], [$font]));
+        // CANONICAL MERGE (D8): MASTER-UNIVERSE-1 links master-theme.css in layouts.app ONLY behind request()->routeIs('central.*') —
+        // the Bingoo Master pages, never a tenant POS render — so the tenant theme list the two layouts must share excludes it.
+        $masterOnly = 'assets/css/master-theme.css';
+        $appList = array_values(array_diff($a[1], [$font, $masterOnly]));
+        $posList = array_values(array_diff($b[1], [$font, $masterOnly]));
         $this->assertCount(22, $appList);
         $this->assertSame($appList, $posList);
         $i = array_search($font, $b[1], true);

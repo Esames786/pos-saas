@@ -170,6 +170,8 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
             // AJAX Select2 lookups (authenticated only — no per-permission gate;
             // they are read-only searchable pickers used across forms/filters).
             Route::get('/ajax/products', ProductLookupController::class)->name('tenant.ajax.products');
+            // PURCHASING-V2-2: an item's batches for the batch box (gated in the controller).
+            Route::get('/ajax/batches', \App\Http\Controllers\Tenant\Ajax\BatchLookupController::class)->name('tenant.ajax.batches');
             Route::get('/ajax/sales', \App\Http\Controllers\Tenant\Ajax\SaleLookupController::class)->name('tenant.ajax.sales');
             Route::get('/ajax/customers', \App\Http\Controllers\Tenant\Ajax\CustomerLookupController::class)->name('tenant.ajax.customers');
             Route::get('/ajax/goods-receipts', \App\Http\Controllers\Tenant\Ajax\GrnLookupController::class)->name('tenant.ajax.goods-receipts');
@@ -332,6 +334,9 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/inventory', [InventoryController::class, 'index'])->name('tenant.inventory.index');
                 Route::get('/inventory/movements', [InventoryController::class, 'movements'])->name('tenant.inventory.movements');
                 Route::get('/inventory/batches', [InventoryController::class, 'batches'])->name('tenant.inventory.batches');
+                // PURCHASING-V2-2: make a batch before the goods come, and correct its expiry (gated in the controller).
+                Route::post('/inventory/batches', [InventoryController::class, 'storeBatch'])->name('tenant.inventory.batches.store');
+                Route::post('/inventory/batches/{batch}/expiry', [InventoryController::class, 'updateBatchExpiry'])->name('tenant.inventory.batches.expiry');
                 Route::get('/inventory/low-stock', [InventoryController::class, 'lowStock'])->name('tenant.inventory.low-stock');
                 Route::get('/inventory/expiry-alerts', [InventoryController::class, 'expiryAlerts'])->name('tenant.inventory.expiry-alerts');
 
@@ -413,6 +418,9 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 ]);
                 Route::get('/suppliers/{supplier}/ledger', [SupplierController::class, 'ledger'])
                     ->name('tenant.suppliers.ledger');
+                // PURCHASING-V2-2: "+ New supplier" from the GRN / PO screen (gated in the controller).
+                Route::post('/suppliers/quick', [SupplierController::class, 'quickStore'])
+                    ->name('tenant.suppliers.quick-store');
 
                 // Purchase Orders
                 Route::get('/purchase-orders', [PurchaseOrderController::class, 'index'])

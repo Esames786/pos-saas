@@ -37,6 +37,10 @@ Route::domain(config('tenancy.central_domain'))
                 // home (routes/public.php). Central admins land on /dashboard
                 // via the post-login redirect.
                 Route::get('/dashboard', DashboardController::class)->name('central.dashboard');
+                // MASTER-UNIVERSE-1 — "Refresh now": the same read-only usage snapshot the daily
+                // `system:usage-snapshot` takes. Permission name listed in MasterSeeder.
+                Route::post('/system-usage/refresh', [\App\Http\Controllers\Central\SystemUsageController::class, 'refresh'])
+                    ->name('central.system-usage.refresh');
 
                 Route::get('/routes', [RouteCatalogController::class, 'index'])->name('central.routes.index');
                 Route::post('/routes/sync', [RouteCatalogController::class, 'sync'])->name('central.routes.sync');
@@ -63,6 +67,20 @@ Route::domain(config('tenancy.central_domain'))
 
                 Route::put('/tenants/{tenant}/subscription', [TenantController::class, 'updateSubscription'])
                     ->name('central.tenants.subscription.update');
+
+                // PRIMARY-BUSINESS-1 — who the tenant is (restaurant / catering / medical store / mart /
+                // industry) and its switches. Permission names are listed in MasterSeeder.
+                Route::get('/tenants/{tenant}/business/impact', [\App\Http\Controllers\Central\TenantBusinessController::class, 'impact'])
+                    ->name('central.tenants.business.impact');
+                Route::put('/tenants/{tenant}/business', [\App\Http\Controllers\Central\TenantBusinessController::class, 'updateBusiness'])
+                    ->name('central.tenants.business.update');
+                Route::put('/tenants/{tenant}/features', [\App\Http\Controllers\Central\TenantBusinessController::class, 'updateFeatures'])
+                    ->name('central.tenants.features.update');
+
+                // MASTER-UNIVERSE-1 — add a branch from the tenant hub (the same insert as the tenant's
+                // own Branches screen, plan limit included). Permission name listed in MasterSeeder.
+                Route::post('/tenants/{tenant}/branches', [TenantController::class, 'storeBranch'])
+                    ->name('central.tenants.branches.store');
 
                 // MASTER-TENANT-OPS-1 — backup / restore / reset / sync (superadmin only)
                 // Global actions use hyphenated paths so they never collide with /tenants/{tenant}.

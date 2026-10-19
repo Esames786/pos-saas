@@ -101,7 +101,11 @@
                     <td>{{ $line->product?->sku ? $line->product->sku . ' — ' : '' }}{{ $line->product?->name }}</td>
                     <td>{{ $line->variant?->name ?? 'Default' }}</td>
                     <td class="small">{{ $line->source_line_id ? '#' . $line->source_line_id . ($line->sourceGrnLine?->batch_no ? ' · ' . $line->sourceGrnLine->batch_no : '') : 'standalone' }}</td>
-                    <td class="text-end fw-semibold">{{ number_format($line->quantity, 3) }} {{ $line->product?->unit?->code }}</td>
+                    <td class="text-end fw-semibold">
+                        {{ number_format($line->quantity, 3) }} {{ $line->product?->unit?->code }}
+                        {{-- PURCHASE-RETURN-V2: what was typed on the new screen ("2 Box 3 Strip @ 850 / Box · B:PN-1 EXP:09/28"). --}}
+                        @if($line->base_quantity !== null && $line->notes)<small class="d-block text-muted fw-normal">{{ $line->notes }}</small>@endif
+                    </td>
                     <td class="text-end">{{ number_format($line->unit_cost, 4) }}</td>
                     <td class="text-end">{{ number_format($line->discount_amount, 2) }}</td>
                     <td class="text-end">{{ number_format($line->tax_amount, 2) }}</td>

@@ -66,10 +66,12 @@ class PharmacyDemoSeeder
         $this->seedCategories();
         $this->seedSuppliers();
         $this->seedProducts();
+        $this->seedPacks();
         $this->seedCustomers();
         $this->seedPurchases();
         $this->seedSales();
         $this->seedReturns();
+        $this->openTodaysShift();
 
         return $this->counts;
     }
@@ -250,8 +252,9 @@ class PharmacyDemoSeeder
     private function seedProducts(): void
     {
         $count = 0;
+        $hasMedicineCols = \Illuminate\Support\Facades\Schema::connection('tenant')->hasColumn('products', 'generic_name');
         foreach ($this->products() as $i => [$sku, $brand, $salt, $catCode, $unitCode, $cost, $price, $pack, $tracksBatch]) {
-            $name = $this->shelfName($sku, $brand, $salt, $catCode);
+            [$name, $generic, $strength] = $this->medicineParts($sku, $brand, $salt, $catCode, $hasMedicineCols);
             $product = Product::updateOrCreate(
                 ['sku' => $sku],
                 [
@@ -277,7 +280,7 @@ class PharmacyDemoSeeder
                     'default_selling_price'         => $price,
                     'is_taxable'                    => false,
                     'status'                        => 'active',
-                ]
+                ] + ($hasMedicineCols ? ['generic_name' => $generic, 'strength' => $strength, 'needs_prescription' => $catCode === 'ANTB'] : [])
             );
             $product->translations()->updateOrCreate(['language_code' => 'en'], ['name' => $name]);
 
@@ -312,16 +315,26 @@ class PharmacyDemoSeeder
 
     /**
      * A medicine is found by its salt as often as by its brand ("paracetamol" for Panadol or Calpol).
-     * The POS search reads name, SKU and barcode, so the salt goes into the name, without strengths.
+     * With the medicine fields (PRODUCT-SCREEN-V2) the salt and strength have their own columns and the
+     * counter searches them; the name stays the brand. Without them (older schema) the salt goes into the
+     * name so the demo can still be searched by it.
+     *
+     * @return array{0:string,1:?string,2:?string}  name, generic, strength
      */
-    private function shelfName(string $sku, string $brand, string $salt, string $catCode): string
+    private function medicineParts(string $sku, string $brand, string $salt, string $catCode, bool $hasColumns): array
     {
         if (in_array($catCode, ['SURG', 'BABY'], true) || in_array($sku, ['PH-ORS', 'PH-VICK'], true)) {
-            return $brand;
+            return [$brand, null, null];
         }
         $generic = trim(preg_replace('/\s*\d[\d.,]*\s*(mg|mcg|ml|g)(\/\s*\d+\s*ml)?/i', '', $salt));
+        preg_match_all('/\d[\d.,]*\s*(?:mg|mcg|ml|g)(?:\/\s*\d+\s*ml)?/i', $salt, $m);
+        $strength = $m[0] ? implode(' + ', $m[0]) : null;
 
-        return $generic !== '' ? "{$brand} ({$generic})" : $brand;
+        if ($hasColumns) {
+            return [$brand, $generic !== '' ? $generic : null, $strength];
+        }
+
+        return [$generic !== '' ? "{$brand} ({$generic})" : $brand, null, null];
     }
 
     private function seedCustomers(): void
@@ -666,6 +679,72 @@ class PharmacyDemoSeeder
             }
         }
         $this->counts['returns'] = count($made) . ' (' . implode(', ', $made) . ')';
+    }
+
+    /**
+     * PHARMACY-PACKS-1 — the strip and the box of each medicine, read from its "pack on the shelf" text
+     * ("Box 200 = 20 strips x 10"). Stock stays in tablets; the packs only name bigger amounts of them.
+     * Boxes carry a barcode (in-store EAN-13 range); strips have none, as in a real shop. Prices are left
+     * empty = size × the tablet price, which is how a box's printed price is worked out anyway.
+     */
+    private function seedPacks(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::connection('tenant')->hasTable('product_pack_units')) {
+            $this->counts['packs'] = 'skipped (no pack table)';
+
+            return;
+        }
+        $made = 0;
+        foreach ($this->products() as $i => [$sku, , , , , , , $pack]) {
+            $product = Product::where('sku', $sku)->first();
+            if (! $product || $product->packUnits()->exists()) {
+                continue;
+            }
+            $boxCode = $this->ean13('2009200' . str_pad((string) ($i + 1), 5, '0', STR_PAD_LEFT));
+            $packs = [];
+            if (preg_match('/^Box (\d+) = (\d+) strips? x (\d+)$/', $pack, $m)) {
+                [$total, $perStrip] = [(int) $m[1], (int) $m[3]];
+                $packs[] = ['name' => 'Strip', 'factor' => $perStrip, 'can_buy' => false, 'barcode' => null];
+                if ($total > $perStrip) {
+                    $packs[] = ['name' => 'Box', 'factor' => $total, 'can_buy' => true, 'barcode' => $boxCode];
+                }
+            } elseif (preg_match('/^Box (\d+)( pairs)?$/', $pack, $m)) {
+                $packs[] = ['name' => 'Box', 'factor' => (int) $m[1], 'can_buy' => true, 'barcode' => $boxCode];
+            } elseif (preg_match('/^Bottle (\d+) tablets$/', $pack, $m)) {
+                $packs[] = ['name' => 'Bottle', 'factor' => (int) $m[1], 'can_buy' => true, 'barcode' => null];
+            }
+            if (! $packs) {
+                continue;
+            }
+            \App\Support\PackUnits::sync($product, [
+                'base_name' => \App\Support\PackUnits::baseName($product->unit_id),
+                'base_sell' => true,
+                'packs'     => array_map(fn ($p) => $p + ['id' => null, 'sale_price' => null, 'can_sell' => true], $packs),
+            ]);
+            $made++;
+        }
+        $this->counts['packs'] = $made . ' items with strip / box packs';
+    }
+
+    /**
+     * The counter is ready when the demo opens: every login is on Counter 1 and its shift is open for
+     * today (the nightly reset otherwise left "No terminal · No Open Shift" and the POS refused to sell).
+     * Runs last, so none of the seeded history above belongs to this shift.
+     */
+    private function openTodaysShift(): void
+    {
+        $terminal = Terminal::where('code', 'C1')->first();
+        if (! $this->branch || ! $terminal || ! $this->owner) {
+            return;
+        }
+        if (\Illuminate\Support\Facades\Schema::connection('tenant')->hasColumn('users', 'default_terminal_id')) {
+            User::query()->update(['default_terminal_id' => $terminal->id]);
+        }
+        $shifts = app(\App\Services\Sales\ShiftService::class);
+        if (! $shifts->activeShiftForTerminal($terminal)) {
+            $shifts->open($this->branch, $terminal, $this->owner->id, 5000, 'Opened for the demo (nightly reset)');
+        }
+        $this->counts['shift'] = 'Counter 1 open for today (Rs 5,000 opening cash)';
     }
 
     private function ean13(string $twelve): string

@@ -18,7 +18,8 @@ use RuntimeException;
  *
  * draft (no stock/finance impact, editable/cancellable)
  *   → posted (immutable):
- *       stock OUT via InventoryService movement 'purchase_return' (FEFO),
+ *       stock OUT via InventoryService movement 'purchase_return' (FEFO; a line that names its batch —
+ *       PURCHASE-RETURN-V2 — leaves from that batch only),
  *       supplier ledger CREDIT (payable down — may go into supplier credit),
  *       GL Dr 2100 AP / Cr 1400 Inventory (mirror of the purchase bill).
  *
@@ -156,6 +157,18 @@ class PurchaseReturnService
             }
         }
 
+        // PURCHASE-RETURN-V2: a line that names its batch needs that batch to hold it (lines of the same
+        // batch are summed). Lines without a batch are checked below exactly as before.
+        foreach ($return->lines->whereNotNull('inventory_batch_id')->groupBy('inventory_batch_id') as $batchId => $lines) {
+            $inBatch = (float) StockBalance::query()->where('inventory_batch_id', $batchId)->sum('quantity_on_hand');
+            $requested = (float) $lines->sum('quantity');
+            if ($requested > $inBatch + 0.0005) {
+                $batchNo = \App\Models\Tenant\InventoryBatch::whereKey($batchId)->value('batch_no');
+                $name = $lines->first()->product?->name ?? ('#' . $lines->first()->product_id);
+                throw new RuntimeException("Batch {$batchNo} of {$name} holds " . number_format($inBatch, 3) . ', returning ' . number_format($requested, 3) . '. It may already be sold.');
+            }
+        }
+
         // Every line (sourced or standalone): official branch stock must cover it — except a
         // purchase-only line (GRN-NON-STOCK-1), which never entered stock and takes none out.
         $byProductVariant = $return->lines
@@ -211,9 +224,11 @@ class PurchaseReturnService
                 }
                 $variant = $this->inventoryService->resolveVariant($product, $line->product_variant_id);
 
-                // FEFO out — oldest-expiry batches leave first. The stored line
-                // batch_no (from the GRN) is informational in v1.
+                // FEFO out — oldest-expiry batches leave first. PURCHASE-RETURN-V2: a line that names its
+                // batch takes from that batch only (the expired batch going back is the one that leaves);
+                // a line without one (the old screen) is FEFO exactly as before.
                 $this->inventoryService->postOutFefo(
+                    onlyBatchId: $line->inventory_batch_id ? (int) $line->inventory_batch_id : null,
                     branch: $branch,
                     product: $product,
                     variant: $variant,
@@ -305,7 +320,12 @@ class PurchaseReturnService
             );
 
             $sourceLineId = ! empty($line['source_line_id']) ? (int) $line['source_line_id'] : null;
-            $batchId = null;
+            // PURCHASE-RETURN-V2: the new screen names the batch the goods go back from — it must be this
+            // branch's batch of this item. The old screen sends none (stock leaves FEFO, as before).
+            $batchId = ! empty($line['inventory_batch_id']) ? (int) $line['inventory_batch_id'] : null;
+            if ($batchId && ! \App\Models\Tenant\InventoryBatch::whereKey($batchId)->where('branch_id', $return->branch_id)->where('product_id', $product->id)->exists()) {
+                throw new RuntimeException('The batch picked for ' . $product->name . ' is not this branch\'s batch of it.');
+            }
             $unitCost = (float) ($line['unit_cost'] ?? 0);
 
             if ($sourceLineId) {
@@ -333,6 +353,10 @@ class PurchaseReturnService
                 'discount_amount'    => (float) ($line['discount_amount'] ?? 0),
                 'reason_code'        => $line['reason_code'] ?? null,
                 'notes'              => $line['notes'] ?? null,
+                // PURCHASE-RETURN-V2: the pack it was typed in, for the screen and the paper only.
+                'pack_unit_id'       => $line['pack_unit_id'] ?? null,
+                'pack_factor'        => $line['pack_factor'] ?? null,
+                'base_quantity'      => $line['base_quantity'] ?? null,
             ]);
             $created++;
         }

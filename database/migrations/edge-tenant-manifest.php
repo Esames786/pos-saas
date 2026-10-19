@@ -45,13 +45,16 @@
 */
 
 return [
-    'manifest_version' => 'edge-tenant-migration-manifest@2026-10-19.1',
+    'manifest_version' => 'edge-tenant-migration-manifest@2026-10-20.1',
     'meta' => [
         'baseline_release' => '0.7.0-edge',
         'baseline_commit' => '7b8f886',
         'baseline_tenant_migrations' => 172,
         'pending_merge_canonical' => '99e9365',
         'pending_merge_base' => 'b529c95',
+        // CANONICAL MERGE (D8): canonical was integrated INTO the Edge branch up to this head; migrations after 99e9365 were
+        // classified as the merge landed them (see the entries marked "CANONICAL MERGE (D8, 20 Oct 2026)").
+        'merged_canonical' => '8230eedc',
         'governs' => 'database/migrations/tenant',
         'bootstrap_section_tables' => [
             'branches', 'units', 'currencies', 'currency_denominations', 'categories', 'products', 'product_variants',
@@ -62,7 +65,7 @@ return [
             'customers', 'customer_addresses', 'customer_uuid_aliases', 'recipes', 'recipe_ingredients', 'unit_conversions',
             'roles', 'users', 'permissions', 'role_has_permissions', 'model_has_permissions', 'model_has_roles', 'branch_user',
         ],
-        'divergent_tables' => ['catering_*', 'goods_receipts', 'purchase_bills', 'supplier_payments', 'report_schedule_runs', 'web_settings', 'web_order_routes', 'delivery_zones'],
+        'divergent_tables' => ['catering_*', 'goods_receipts', 'purchase_bills', 'supplier_payments', 'report_schedules', 'report_schedule_runs', 'web_settings', 'web_order_routes', 'delivery_zones'],
         'absent_on_appliance' => ['purchasing_settings', 'supplier_credit_allocations', 'share_partners', 'share_rates', 'delivery_zone_places', 'web_branch_settings', 'delivery_fee_bands'],
     ],
     'migrations' => [
@@ -3154,8 +3157,54 @@ return [
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_medicine_fields_on_products_upgrade_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'products is a bootstrap section and the shared POSController reads generic_name (product search) on the appliance.',
+        ],
+        // ── CANONICAL MERGE (D8, 20 Oct 2026) — migrations that post-date the D7 pre-classification (canonical 99e9365); classified
+        //    by the same rules when the merge landed the file (chunk 11: a9499a10..40f7d6f0). ──
+        '2026_10_19_000001_add_send_trigger_to_report_schedules' => [
+            'MIGRATION' => '2026_10_19_000001_add_send_trigger_to_report_schedules',
+            'CLASSIFICATION' => 'CLOUD_ONLY',
+            'TABLES_CHANGED' => ['report_schedules', 'report_schedule_runs'],
+            'EDGE_CODE_REFERENCES' => ['none'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'none',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'EXCLUDE',
+            'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'REPORT-DELIVERY-V2-1: scheduled-report delivery runs on the Cloud only (ShiftCloseReportTrigger is called by the Online ShiftController; the Edge shift twin never sends reports). report_schedule_runs already diverges (CLOUD_ONLY channel migration); report_schedules now diverges too.',
+        ],
+        '2026_10_19_000002_create_product_pack_units' => [
+            'MIGRATION' => '2026_10_19_000002_create_product_pack_units',
+            'CLASSIFICATION' => 'EDGE_REQUIRED',
+            'TABLES_CHANGED' => ['product_pack_units', 'sales_order_lines', 'sales_return_lines', 'goods_receipt_lines', 'purchase_order_lines', 'purchase_bill_lines', 'purchase_return_lines', 'stock_adjustment_lines', 'stock_transfer_lines'],
+            'EDGE_CODE_REFERENCES' => ['SalesService', 'SalesReturnService', 'POSController', 'Product', 'EdgeLocalPosService', 'EdgeLocalReturnService', 'EdgeSaleEnvelopeBuilder'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'low',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
+            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_product_pack_units_upgrade_an_older_appliance',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'PHARMACY-PACKS-1 / MEDICAL-COUNTER-1: sales_order_lines and sales_return_lines are OPERATIONAL tables the appliance writes through the shared SalesService / SalesReturnService (pack_unit_id / pack_factor / base_quantity, nullable, ALGORITHM=INSTANT); product_pack_units is read by the shared POS for a medical tenant (Product::packUnits). The purchasing line tables gain the same nullable columns (Cloud-only use). Behind a Master switch — live tenants OFF.',
+        ],
+        '2026_10_20_000001_add_purchase_discounts' => [
+            'MIGRATION' => '2026_10_20_000001_add_purchase_discounts',
+            'CLASSIFICATION' => 'EDGE_REQUIRED',
+            'TABLES_CHANGED' => ['products', 'suppliers', 'goods_receipt_lines', 'purchase_order_lines'],
+            'EDGE_CODE_REFERENCES' => ['EdgeBootstrapService', 'EdgeLocalBootstrapImporter', 'EdgeLocalConfigRefreshApplier', 'Product'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'low',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
+            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_purchase_discounts_upgrade_an_older_appliance',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'PURCHASE-DISCOUNTS-1: products is a bootstrap section (whole rows upserted — the six discount/scheme columns must exist before the next refresh); suppliers and the purchasing line tables gain nullable columns the appliance never writes (Cloud purchasing). Behind a Master switch.',
         ],
     ],
 ];

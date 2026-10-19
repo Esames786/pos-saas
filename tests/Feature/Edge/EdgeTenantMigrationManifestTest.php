@@ -184,8 +184,10 @@ class EdgeTenantMigrationManifestTest extends TestCase
     {
         $m = $this->manifest();
         $counts = $m->counts();
-        $this->assertSame(206, array_sum($counts), 'tree (173) + canonical pending (33)');
-        $this->assertSame(23, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
+        // CANONICAL MERGE (D8, 20 Oct 2026): tree (173) + canonical 99e9365 (33) + canonical after 99e9365 classified as the merge
+        // landed them (3 in chunk 11: send_trigger CLOUD_ONLY, product_pack_units + purchase_discounts EDGE_REQUIRED).
+        $this->assertSame(209, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (3)');
+        $this->assertSame(24, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
         $baselineCloudOnly = array_filter($m->entries(), fn ($e) => ($e['BASELINE'] ?? false) && $e['CLASSIFICATION'] === EdgeTenantMigrationManifest::CLOUD_ONLY);
         $this->assertSame([], array_keys($baselineCloudOnly), 'baseline rule: no 0.7.0 migration is CLOUD_ONLY in this manifest version');
     }

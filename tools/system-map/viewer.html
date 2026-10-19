@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bingoo System Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<style>
+:root{
+  --bg:#F3F5F8; --panel:#FFFFFF; --ink:#16212E; --ink2:#4E5B6B; --ink3:#8792A0; --line:#E2E7EE;
+  --navy:#092C4C; --gold:#B8902E; --goldbg:#FFF6E0; --red:#B42318; --redbg:#FDECEA; --green:#1E7A50; --chip:#EEF2F7;
+  --edge:#B9C3CF;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F151C; --panel:#17202A; --ink:#E8EDF3; --ink2:#AEB9C6; --ink3:#7C8896; --line:#26313D;
+    --navy:#9CC3EA; --gold:#E2BC5C; --goldbg:#2C2513; --red:#F08A80; --redbg:#3A1C1A; --green:#6FCF9E; --chip:#1F2A36; --edge:#3B4A5A;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F151C; --panel:#17202A; --ink:#E8EDF3; --ink2:#AEB9C6; --ink3:#7C8896; --line:#26313D;
+  --navy:#9CC3EA; --gold:#E2BC5C; --goldbg:#2C2513; --red:#F08A80; --redbg:#3A1C1A; --green:#6FCF9E; --chip:#1F2A36; --edge:#3B4A5A;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Nunito,system-ui,sans-serif}
+code,.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12.5px}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:baseline;padding:18px 24px 10px}
+header h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.01em}
+header .meta{color:var(--ink3);font-size:13px}
+.stats{display:flex;gap:18px;flex-wrap:wrap;padding:0 24px 14px;color:var(--ink2);font-size:13.5px}
+.stats b{color:var(--ink);font-variant-numeric:tabular-nums}
+.wrap{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;padding:0 24px 32px}
+@media (max-width:900px){.wrap{grid-template-columns:1fr;padding:0 16px 24px}header,.stats{padding-left:16px;padding-right:16px}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+aside.panel{padding:12px;display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 120px);position:sticky;top:12px;overflow:hidden}
+@media (max-width:900px){aside.panel{position:static;max-height:none}}
+input[type=search]{width:100%;height:38px;border:1px solid var(--line);border-radius:8px;padding:0 10px;background:var(--bg);color:var(--ink);font:inherit}
+input[type=search]:focus,button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.doms{display:flex;flex-wrap:wrap;gap:6px}
+.dom{border:1px solid var(--line);background:var(--chip);color:var(--ink2);border-radius:999px;padding:3px 10px;font:700 12px Nunito,sans-serif;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.dom.on{border-color:var(--ink);color:var(--ink)}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+.list{overflow:auto;display:flex;flex-direction:column;gap:2px;min-height:120px}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer;border:none;background:none;color:var(--ink);text-align:left;font:inherit;font-size:13.5px}
+.row:hover,.row.on{background:var(--chip)}
+.row small{color:var(--ink3);font-variant-numeric:tabular-nums}
+main{display:flex;flex-direction:column;gap:16px;min-width:0}
+.card{padding:16px 18px}
+.card h2{margin:0 0 4px;font-size:17px;font-weight:800}
+.card .lead{margin:0;color:var(--ink2);font-size:14px;max-width:80ch}
+#graph{height:460px;border-top:1px solid var(--line)}
+.impact{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+.imp{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.imp b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.imp span{font-size:12.5px;color:var(--ink2)}
+.imp.warn{border-color:var(--red);background:var(--redbg)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.sec h3{margin:0 0 6px;font-size:14px;font-weight:800}
+.sec .hint{margin:0 0 8px;color:var(--ink3);font-size:12.5px}
+.li{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
+.li button{border:none;background:none;color:var(--navy);font:700 13px Nunito,sans-serif;cursor:pointer;padding:0;text-align:left}
+.tag{font:700 11px Nunito,sans-serif;padding:2px 7px;border-radius:999px;background:var(--chip);color:var(--ink2);white-space:nowrap}
+.tag.cascade{background:var(--redbg);color:var(--red)}
+.tag.cross{background:var(--goldbg);color:var(--gold)}
+details{border-bottom:1px solid var(--line);padding:4px 0}
+summary{cursor:pointer;font-size:13px;font-weight:700}
+.routes{display:flex;flex-direction:column;gap:2px;padding:4px 0 6px 12px}
+.routes code{color:var(--ink2)}
+.empty{color:var(--ink3);font-size:13px}
+.theme{margin-left:auto;border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:8px;padding:4px 10px;font:700 12px Nunito,sans-serif;cursor:pointer}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Bingoo System Map</h1>
+  <span class="meta" id="meta"></span>
+  <button class="theme" id="themeBtn" type="button">Theme</button>
+</header>
+<div class="stats" id="stats"></div>
+<div class="wrap">
+  <aside class="panel" aria-label="Find">
+    <input type="search" id="q" placeholder="Table ya screen dhoondo… (products, pos, grn)" autocomplete="off">
+    <div class="doms" id="doms"></div>
+    <div class="list" id="list" role="listbox" aria-label="Results"></div>
+  </aside>
+  <main>
+    <section class="panel card" id="work"></section>
+    <section class="panel">
+      <div class="card" id="head"></div>
+      <div id="graph" role="img" aria-label="Link graph"></div>
+    </section>
+    <section class="panel card" id="detail"></section>
+  </main>
+</div>
+<script>
+const DATA = /*__DATA__*/null;
+
+const DOMAIN_COLORS = {
+  'Catalog':'#2F6FB3','Sales & POS':'#C2410C','Inventory':'#0F766E','Purchasing':'#7C3AED','Catering':'#B45309',
+  'Kitchen & Recipes':'#A16207','Manufacturing':'#4D7C0F','Finance':'#1D4ED8','Restaurant':'#BE185D','Printing':'#475569',
+  'Website':'#0E7490','Edge (offline)':'#6D28D9','Users & Access':'#9F1239','Branches & Settings':'#64748B','Reports':'#15803D',
+  'System':'#94A3B8','Bingoo Master':'#0B1F33','Other':'#94A3B8'
+};
+const T = {}; const S = DATA.s.map(s => ({route:s[0], uri:s[1], methods:s[2], controller:s[3], tables:s[4]}));
+DATA.t.forEach(r => { T[r[0]] = {name:r[0], domain:r[1], side:r[2], cols:r[3], fkOut:r[4].map(f=>({col:f[0],table:f[1],del:f[2]})), infOut:r[5].map(f=>({col:f[0],table:f[1]})), models:r[6], fkIn:[], infIn:[], screens:[]}; });
+Object.values(T).forEach(t => {
+  t.fkOut.forEach(f => T[f.table] && T[f.table].fkIn.push({table:t.name,col:f.col,del:f.del}));
+  t.infOut.forEach(f => T[f.table] && f.table !== t.name && T[f.table].infIn.push({table:t.name,col:f.col}));
+});
+S.forEach(s => s.tables.forEach(n => T[n] && T[n].screens.push(s)));
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let state = {domain:null, sel:null, q:''};
+
+$('meta').textContent = 'Code ' + DATA.git + ' · bana ' + new Date(DATA.built_at).toLocaleString() + ' · schema + code se khud bana, haath se nahi';
+$('stats').innerHTML = [['tables',DATA.counts.tables],['pakke rishte (foreign keys)',DATA.counts.foreign_keys],['naam se pehchane rishte',DATA.counts.inferred_links],['routes / screens',DATA.counts.screens]]
+  .map(([l,v]) => `<span><b>${v}</b> ${l}</span>`).join('');
+
+function renderWork(){
+  const w = (DATA.work || []).slice();
+  const active = w.filter(x => x.ahead_of_prod > 0 || x.uncommitted_files > 0);
+  const quiet = w.length - active.length;
+  const row = x => `<div class="li"><span><span class="mono">${esc(x.branch)}</span><br><small style="color:var(--ink3)">${esc(x.path)} · ${esc(x.last_commit)}</small></span>
+    <span style="text-align:right;white-space:nowrap">${x.ahead_of_prod ? `<span class="tag cross">${x.ahead_of_prod} commit prod se aage</span>` : '<span class="tag">prod me</span>'}
+    ${x.uncommitted_files ? ` <span class="tag cascade">${x.uncommitted_files} file uncommitted</span>` : ''}</span></div>`;
+  $('work').innerHTML = `<h2>Kaam jo chal raha hai</h2><p class="lead">Production branch <code>${esc(DATA.prod_branch||'')}</code> @ <code>${esc(DATA.prod_head||'')}</code>. Neeche har worktree jo prod se aage hai ya jis me uncommitted kaam hai (${active.length}); baqi ${quiet} prod ke barabar hain.</p>
+    <div class="cols" style="margin-top:10px"><div class="sec"><h3>Worktrees</h3>${active.map(row).join('') || '<p class="empty">Sab prod ke barabar.</p>'}</div>
+    <div class="sec"><h3>Naye plans</h3>${(DATA.plans||[]).slice(0,10).map(p => `<div class="li"><span>${esc(p.title)}<br><small class="mono" style="color:var(--ink3)">${esc(p.file)}</small></span><span class="tag">${esc(p.modified)}</span></div>`).join('')}</div></div>`;
+}
+const domains = {};
+Object.values(T).forEach(t => (domains[t.domain] = domains[t.domain] || []).push(t));
+function renderDomains(){
+  $('doms').innerHTML = Object.keys(domains).sort((a,b)=>domains[b].length-domains[a].length).map(d =>
+    `<button type="button" class="dom ${state.domain===d?'on':''}" data-d="${esc(d)}"><span class="dot" style="background:${DOMAIN_COLORS[d]||'#999'}"></span>${esc(d)} <small>${domains[d].length}</small></button>`).join('');
+  $('doms').querySelectorAll('.dom').forEach(b => b.onclick = () => { state.domain = state.domain===b.dataset.d ? null : b.dataset.d; state.sel = null; renderAll(); });
+}
+function renderList(){
+  const q = state.q.trim().toLowerCase();
+  let rows = [];
+  if (q) {
+    rows = Object.values(T).filter(t => t.name.includes(q) || t.models.some(m => m.toLowerCase().includes(q))).map(t => ({k:'t', id:t.name, label:t.name, n:t.fkIn.length+t.infIn.length}));
+    rows = rows.concat(S.filter(s => s.route.includes(q) || s.uri.includes(q)).slice(0,60).map(s => ({k:'s', id:s.route, label:s.route, n:s.tables.length})));
+  } else {
+    const pool = state.domain ? domains[state.domain] : Object.values(T);
+    rows = pool.slice().sort((a,b)=>(b.fkIn.length+b.infIn.length)-(a.fkIn.length+a.infIn.length)).map(t => ({k:'t', id:t.name, label:t.name, n:t.fkIn.length+t.infIn.length}));
+  }
+  $('list').innerHTML = rows.slice(0,250).map(r => `<button type="button" class="row ${state.sel&&state.sel.id===r.id?'on':''}" data-k="${r.k}" data-id="${esc(r.id)}"><span class="mono">${r.k==='s'?'⇢ ':''}${esc(r.label)}</span><small>${r.n}</small></button>`).join('') || '<p class="empty">Kuch nahi mila.</p>';
+  $('list').querySelectorAll('.row').forEach(b => b.onclick = () => { state.sel = {k:b.dataset.k, id:b.dataset.id}; renderAll(); });
+}
+
+let cy = null;
+function cyStyle(){
+  return [
+    {selector:'node', style:{'label':'data(label)','font-family':'Nunito','font-size':11,'color':css('--ink'),'text-valign':'bottom','text-margin-y':4,'background-color':'data(color)','width':'data(size)','height':'data(size)','text-wrap':'wrap','text-max-width':120,'border-width':0}},
+    {selector:'node.focus', style:{'border-width':4,'border-color':css('--gold'),'font-weight':800}},
+    {selector:'edge', style:{'width':'data(w)','line-color':css('--edge'),'curve-style':'bezier','target-arrow-shape':'triangle','target-arrow-color':css('--edge'),'arrow-scale':.7,'opacity':.9}},
+    {selector:'edge.inferred', style:{'line-style':'dashed'}},
+    {selector:'edge.cascade', style:{'line-color':css('--red'),'target-arrow-color':css('--red')}}
+  ];
+}
+function drawGraph(elements, layout){
+  if (!window.cytoscape) { $('graph').innerHTML = '<p class="empty" style="padding:16px">Graph library load nahi hui; neeche ki list wahi batati hai.</p>'; return; }
+  if (cy) cy.destroy();
+  cy = cytoscape({container:$('graph'), elements, style:cyStyle(), layout, wheelSensitivity:.25, minZoom:.2, maxZoom:3});
+  cy.on('tap','node', e => { const id = e.target.id(); if (id.startsWith('D:')) { state.domain = id.slice(2); state.sel = null; } else { state.sel = {k:'t', id}; } renderAll(); });
+}
+function overview(){
+  const between = {};
+  Object.values(T).forEach(t => t.fkOut.concat(t.infOut).forEach(f => { const o = T[f.table]; if (!o || o.domain===t.domain) return; const k = t.domain+'→'+o.domain; between[k]=(between[k]||0)+1; }));
+  const els = Object.keys(domains).map(d => ({data:{id:'D:'+d,label:d+' ('+domains[d].length+')',color:DOMAIN_COLORS[d]||'#999',size:18+Math.sqrt(domains[d].length)*9}}));
+  Object.entries(between).forEach(([k,n]) => { const [a,b] = k.split('→'); els.push({data:{id:'E:'+k,source:'D:'+a,target:'D:'+b,w:Math.min(1+Math.log2(n+1)*1.6,9)}}); });
+  $('head').innerHTML = `<h2>Poora system, upar se</h2><p class="lead">Har gola ek hissa (domain) hai; lakeer ka matlab ek hisse ki tables doosre hisse ki tables par tiki hain — moti lakeer = zyada rishte. Kisi gole par click karo to us ki tables, kisi table par click karo to "badalne ka asar".</p>`;
+  drawGraph(els, {name:'cose', animate:false, nodeRepulsion:9000, idealEdgeLength:140, padding:30});
+  $('detail').innerHTML = `<h2>Kaise parhein</h2><p class="lead">Ye naqsha database aur code se khud banta hai (<code>php tools/system-map/build.php</code>). Pakka rishta = foreign key (database khud rokta hai); dashed = <code>_id</code> wala khana jis par taala nahi (code ko hi khayal rakhna hai). Laal lakeer = "cascade delete": parent mita to ye bhi mit jayega.</p>`;
+}
+function tableView(t){
+  const neigh = new Map();
+  const add = (n, how) => { if (T[n] && n !== t.name && neigh.size < 70) neigh.set(n, how); };
+  t.fkIn.forEach(f => add(f.table,'in')); t.infIn.forEach(f => add(f.table,'in')); t.fkOut.forEach(f => add(f.table,'out')); t.infOut.forEach(f => add(f.table,'out'));
+  const els = [{data:{id:t.name,label:t.name,color:DOMAIN_COLORS[t.domain],size:46}, classes:'focus'}];
+  neigh.forEach((how, n) => els.push({data:{id:n,label:n,color:DOMAIN_COLORS[T[n].domain]||'#999',size:22}}));
+  t.fkIn.forEach(f => neigh.has(f.table) && els.push({data:{id:'i'+f.table+f.col,source:f.table,target:t.name,w:2}, classes:f.del==='CASCADE'?'cascade':''}));
+  t.infIn.forEach(f => neigh.has(f.table) && els.push({data:{id:'ii'+f.table+f.col,source:f.table,target:t.name,w:1.5}, classes:'inferred'}));
+  t.fkOut.forEach(f => neigh.has(f.table) && els.push({data:{id:'o'+f.table+f.col,source:t.name,target:f.table,w:2}, classes:f.del==='CASCADE'?'cascade':''}));
+  t.infOut.forEach(f => neigh.has(f.table) && els.push({data:{id:'oo'+f.table+f.col,source:t.name,target:f.table,w:1.5}, classes:'inferred'}));
+  const cascades = t.fkIn.filter(f => f.del==='CASCADE').length;
+  const groups = {};
+  t.screens.forEach(s => { const g = s.route.split('.').slice(0,2).join('.'); (groups[g] = groups[g] || []).push(s); });
+  $('head').innerHTML = `<h2><span class="dot" style="background:${DOMAIN_COLORS[t.domain]}"></span> <span class="mono">${esc(t.name)}</span> <span class="tag">${esc(t.domain)}</span> <span class="tag">${t.side}</span></h2>
+    <p class="lead">Models: ${t.models.length ? t.models.map(esc).join(', ') : '—'} · ${t.cols.length} khane</p>
+    <div class="impact">
+      <div class="imp"><b>${t.fkIn.length}</b><span>tables foreign key se is par tiki hain</span></div>
+      <div class="imp ${cascades?'warn':''}"><b>${cascades}</b><span>cascade delete — ye mita to woh bhi mitengi</span></div>
+      <div class="imp"><b>${t.infIn.length}</b><span>naam se judi (taala nahi, code ka zimma)</span></div>
+      <div class="imp"><b>${t.screens.length}</b><span>routes / screens is ko chhoote hain (${Object.keys(groups).length} hisse)</span></div>
+    </div>`;
+  drawGraph(els, {name:'concentric', concentric:n => n.hasClass('focus') ? 2 : 1, levelWidth:() => 1, minNodeSpacing:18, animate:false, padding:24});
+  const li = (n, extra) => `<div class="li"><button type="button" data-t="${esc(n)}">${esc(n)}</button><span>${extra}</span></div>`;
+  $('detail').innerHTML = `<div class="cols">
+    <div class="sec"><h3>Kaun is par tika hai</h3><p class="hint">Is table ko badla ya mitaya to inhein dekhna hoga.</p>
+      ${t.fkIn.map(f => li(f.table, `<code>${esc(f.col)}</code> <span class="tag ${f.del==='CASCADE'?'cascade':''}">${f.del}</span>`)).join('')}
+      ${t.infIn.map(f => li(f.table, `<code>${esc(f.col)}</code> <span class="tag">naam se</span>`)).join('') || ''}
+      ${!t.fkIn.length && !t.infIn.length ? '<p class="empty">Koi nahi.</p>' : ''}</div>
+    <div class="sec"><h3>Ye kis par tika hai</h3><p class="hint">Ye table in ke baghair nahi chalti.</p>
+      ${t.fkOut.map(f => li(f.table, `<code>${esc(f.col)}</code> <span class="tag">${f.del}</span>`)).join('')}
+      ${t.infOut.map(f => li(f.table, `<code>${esc(f.col)}</code> <span class="tag ${T[f.table]&&T[f.table].side!==t.side?'cross':''}">${T[f.table]?'naam se':esc(f.table)}</span>`)).join('')}
+      ${!t.fkOut.length && !t.infOut.length ? '<p class="empty">Kisi par nahi.</p>' : ''}</div>
+    <div class="sec"><h3>Kaun si screens chhooti hain</h3><p class="hint">Route → controller (model, service ya DB::table ke zariye).</p>
+      ${Object.keys(groups).sort((a,b)=>groups[b].length-groups[a].length).map(g => `<details><summary>${esc(g)} · ${groups[g].length}</summary><div class="routes">${groups[g].map(s => `<code>${esc(s.methods)} ${esc(s.uri)}</code>`).join('')}</div></details>`).join('') || '<p class="empty">Koi route seedha nahi chhoota.</p>'}</div>
+  </div>
+  <details style="margin-top:12px"><summary>Saare khane (${t.cols.length})</summary><p class="mono" style="color:var(--ink2)">${t.cols.map(esc).join(' · ')}</p></details>`;
+  $('detail').querySelectorAll('button[data-t]').forEach(b => b.onclick = () => { state.sel = {k:'t', id:b.dataset.t}; renderAll(); });
+}
+function screenView(s){
+  const els = [{data:{id:'R',label:s.route,color:css('--gold'),size:40}, classes:'focus'}];
+  s.tables.forEach(n => T[n] && els.push({data:{id:n,label:n,color:DOMAIN_COLORS[T[n].domain]||'#999',size:22}}, {data:{id:'e'+n,source:'R',target:n,w:1.5}}));
+  $('head').innerHTML = `<h2><span class="mono">${esc(s.route)}</span></h2><p class="lead"><code>${esc(s.methods)} ${esc(s.uri)}</code> · ${esc(s.controller)} · ${s.tables.length} tables tak pahunch</p>`;
+  drawGraph(els, {name:'concentric', concentric:n => n.id()==='R'?2:1, levelWidth:() => 1, animate:false, padding:24});
+  $('detail').innerHTML = `<h3 style="margin:0 0 8px">Ye screen in tables tak pahunchti hai</h3>` + s.tables.map(n => `<div class="li"><button type="button" data-t="${esc(n)}">${esc(n)}</button><span class="tag">${esc(T[n]?T[n].domain:'')}</span></div>`).join('');
+  $('detail').querySelectorAll('button[data-t]').forEach(b => b.onclick = () => { state.sel = {k:'t', id:b.dataset.t}; renderAll(); });
+}
+function renderAll(){
+  renderDomains(); renderList();
+  if (state.sel && state.sel.k==='t' && T[state.sel.id]) tableView(T[state.sel.id]);
+  else if (state.sel && state.sel.k==='s') { const s = S.find(x => x.route===state.sel.id); s ? screenView(s) : overview(); }
+  else if (state.domain) { const t = domains[state.domain].slice().sort((a,b)=>(b.fkIn.length+b.infIn.length)-(a.fkIn.length+a.infIn.length))[0]; state.sel = {k:'t', id:t.name}; tableView(t); renderList(); }
+  else overview();
+}
+$('q').addEventListener('input', e => { state.q = e.target.value; renderList(); });
+$('themeBtn').onclick = () => { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme==='dark' : matchMedia('(prefers-color-scheme: dark)').matches; r.dataset.theme = dark ? 'light' : 'dark'; if (cy) cy.style(cyStyle()); };
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => cy && cy.style(cyStyle()));
+state.sel = {k:'t', id:'products'};
+renderWork();
+renderAll();
+</script>
+</body>
+</html>

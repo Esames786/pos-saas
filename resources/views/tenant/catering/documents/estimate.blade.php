@@ -32,10 +32,20 @@
 @endphp
 <title>{{ $event->event_no }} / Q{{ $estimate->version_no }} — {{ $docName }}</title>
 @include("tenant.catering.documents.partials.estimate-style")
+@include('tenant.catering.documents.partials.doc-toolbar-style')
 {{-- Last, so it overrides — and only when a PDF is being drawn. --}}
 @include("tenant.catering.documents.partials.pdf-overrides")
 </head>
 <body>
+    {{-- Toolbar document ke JISM me nahi, SAFHE par: bulk safhe wohi jism
+         lagate hain aur un ka apna toolbar hota hai — pehle wahan har
+         booking ka ek aur toolbar ban raha tha. `send-to-network` khud
+         `$ids` par khari hai, is liye `?format=pdf` aur agent wale raaste
+         par wo waise hi nahi nikalti. --}}
+    <div class="print-bar">
+        <button onclick="window.print()" style="padding: 8px 18px; cursor: pointer;">Print</button>
+        @include('tenant.catering.documents.partials.send-to-network', ['kind' => 'quotation'])
+    </div>
     @include("tenant.catering.documents.partials.estimate-body")
 </body>
 </html>

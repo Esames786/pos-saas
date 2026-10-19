@@ -601,6 +601,11 @@
     <div class="alert alert-secondary py-2 small">Z Report preset: Overview + Order Types + Categories + Waiters + Payments + Cash &amp; Bank for the selected day. Use <strong>Print Thermal</strong> for the familiar end-of-day slip.</div>
 @endif
 
+{{-- REPORT-DELIVERY-V2-1: on a tenant switched on in Bingoo Master, whoever may save delivery gets the one
+     new card (it replaces both cards below). Everyone else, and every other tenant, sees them unchanged. --}}
+@if(! empty($delivery))
+    @include('tenant.reports.center.partials.delivery-v2', ['d' => $delivery])
+@else
 {{-- Gated to whoever may SAVE it. On khatribiryani SEVEN roles can open this page — Delivery, Dine
      In, Takeaway, Quick Sale and Accounts among them — while only Owner holds
      tenant.reports.center.channels. Showing this card to them would put the owner's and managers'
@@ -716,4 +721,5 @@
         <div class="col-6 col-md-2"><button class="btn btn-primary btn-sm">Schedule Report</button></div>
     </form>
 </div></div>
+@endif
 @endsection

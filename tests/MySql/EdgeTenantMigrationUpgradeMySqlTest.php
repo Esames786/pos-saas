@@ -263,6 +263,56 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             });
     }
 
+    // ── CANONICAL MERGE (D8, 20 Oct 2026) — migrations after 99e9365, classified when the merge landed them ──────────
+
+    public function test_product_pack_units_upgrade_an_older_appliance(): void
+    {
+        $lineTables = ['sales_order_lines', 'sales_return_lines', 'goods_receipt_lines', 'purchase_order_lines',
+            'purchase_bill_lines', 'purchase_return_lines', 'stock_adjustment_lines', 'stock_transfer_lines'];
+        $this->proveUpgrade('2026_10_19_000002_create_product_pack_units', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn, $schema) use ($lineTables) {
+                $schema->dropIfExists('product_pack_units');
+                foreach ($lineTables as $t) {
+                    if ($schema->hasTable($t)) {
+                        $this->dropColumns($t, ['pack_unit_id', 'pack_factor', 'base_quantity']);
+                    }
+                }
+            },
+            function ($conn, $schema) use ($lineTables) {
+                $this->assertTrue($schema->hasTable('product_pack_units'));
+                foreach (['sales_order_lines', 'sales_return_lines'] as $t) {
+                    foreach (['pack_unit_id', 'pack_factor', 'base_quantity'] as $c) {
+                        $this->assertTrue($schema->hasColumn($t, $c), "{$t}.{$c}");
+                    }
+                }
+                // The operational rows carry NULL packs (a non-medical counter never writes them).
+                $this->assertNull($conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->value('pack_unit_id'));
+            });
+    }
+
+    public function test_purchase_discounts_upgrade_an_older_appliance(): void
+    {
+        $productCols = ['purchase_discount_type', 'purchase_discount_value', 'purchase_scheme_buy', 'purchase_scheme_free', 'sale_discount_type', 'sale_discount_value'];
+        $this->proveUpgrade('2026_10_20_000001_add_purchase_discounts', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn, $schema) use ($productCols) {
+                $this->dropColumns('products', $productCols);
+                if ($schema->hasTable('suppliers')) {
+                    $this->dropColumns('suppliers', ['default_discount_percent']);
+                }
+                foreach (['goods_receipt_lines', 'purchase_order_lines'] as $t) {
+                    if ($schema->hasTable($t)) {
+                        $this->dropColumns($t, ['entry_json']);
+                    }
+                }
+            },
+            function ($conn, $schema) use ($productCols) {
+                foreach ($productCols as $c) {
+                    $this->assertTrue($schema->hasColumn('products', $c), $c);
+                }
+                // A refreshed product row with the new columns upserts (bootstrap section shape).
+                $this->assertNotNull($this->makeProduct($this->makeCategory(), ['sale_discount_type' => 'percent', 'sale_discount_value' => 5]));
+            });
+    }
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void
@@ -284,6 +334,8 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             '2026_10_14_000001_add_cost_of_sales_account_to_categories', '2026_10_14_000001_create_online_ordering_tables',
             '2026_10_15_000001_add_website_fields_to_catalog', '2026_10_19_000001_add_medicine_fields_to_products',
             '2026_10_06_000001_add_affects_stock_to_goods_receipt_lines', '2026_10_15_000002_add_website_order_fields_to_sales_orders',
+            // CANONICAL MERGE (D8, 20 Oct 2026): classified when the merge landed them.
+            '2026_10_19_000002_create_product_pack_units', '2026_10_20_000001_add_purchase_discounts',
         ];
         foreach ($canonicalRun as $name) {
             $this->assertFalse($m->entry($name)['BASELINE'] ?? true, $name);

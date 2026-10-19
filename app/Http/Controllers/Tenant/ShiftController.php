@@ -355,6 +355,10 @@ class ShiftController extends Controller
                 . ($voucher ? ' — draft expense ' . $voucher->voucher_no . ' created for finance to settle.' : '.');
         }
 
+        // REPORT-DELIVERY-V2-1: the day's last shift closing sends the daily report (after the response,
+        // never blocking or failing this close). A no-op unless the tenant switched it on.
+        app(\App\Services\Reports\ShiftCloseReportTrigger::class)->afterClose([$closed]);
+
         return redirect('/shifts/' . $shift->id)->with('status', $message);
     }
 
@@ -608,6 +612,9 @@ class ShiftController extends Controller
         if ($vouchers) {
             $msg .= ' — short cash raised as draft expense ' . implode(', ', $vouchers) . ' for finance to settle';
         }
+
+        // REPORT-DELIVERY-V2-1: same as a single close — closing the whole branch can be the day's last close.
+        app(\App\Services\Reports\ShiftCloseReportTrigger::class)->afterClose($result['closed']);
 
         return redirect('/shifts')->with('status', $msg . '.');
     }

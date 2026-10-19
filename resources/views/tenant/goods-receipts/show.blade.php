@@ -127,7 +127,11 @@ The stock it brought in will be taken back out. The receipt stays on record as v
                     <td>{{ $line->variant?->name ?? '—' }}</td>
                     <td>{{ $line->batch_no ?: '—' }}</td>
                     <td>{{ $line->expiry_date?->format('Y-m-d') ?? '—' }}</td>
-                    <td>{{ number_format($line->quantity_received, 3) }}</td>
+                    <td>
+                        {{ number_format($line->quantity_received, 3) }}
+                        {{-- PURCHASING-V2-1: what was typed on the new screen ("6 Box @ 892 / Box", "Bonus (free): 1 Box"). --}}
+                        @if($line->base_quantity !== null && $line->notes)<small class="d-block text-muted">{{ $line->notes }}</small>@endif
+                    </td>
                     <td>{{ number_format($line->unit_cost, 4) }}</td>
                     <td>{{ number_format($line->line_total, 2) }}</td>
                 </tr>

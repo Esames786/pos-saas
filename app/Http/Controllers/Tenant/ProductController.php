@@ -79,17 +79,26 @@ class ProductController extends Controller
             };
         }
 
+        // PRODUCT-LIST-PLAIN-1: where the new product screen is on, the list speaks the same plain words —
+        // what each item is (the business's own cards) and where it shows. Same filters underneath.
+        $plain = $this->usesScreenV2($request);
+        $business = $plain ? \App\Support\Business::of() : null;
+        $kindLabels = $plain ? \App\Support\ProductCards::kindWords($business) : Product::KINDS;
+
         return view('tenant.products.index', [
             'products'    => $query->paginate(15)->withQueryString(),
             'categories'  => Category::where('is_active', true)->orderBy('name')->get(),
             'context'     => $context,
             'contextBase' => $this->contextBaseUrl($request, $context),
-            'roleOptions' => collect(Product::KINDS)
+            'roleOptions' => collect($kindLabels)
                 ->filter(fn ($label, $kind) => in_array($kind, $kindsHere, true) || in_array($kind, $chosenRoles, true))->all(),
-            'flagOptions' => self::FLAG_FILTERS,
+            'flagOptions' => $plain ? \App\Support\ProductCards::FLAG_WORDS : self::FLAG_FILTERS,
             'chosenRoles' => $chosenRoles,
             'chosenFlags' => $chosenFlags,
             'listsEveryKind' => $context === 'catalog' && ! $this->materialsHaveTheirOwnList(),
+            'plainList'   => $plain,
+            'plainCards'  => $plain ? \App\Support\ProductCards::forBusiness($business) : [],
+            'plainBusiness' => $business,
         ]);
     }
 
@@ -118,6 +127,10 @@ class ProductController extends Controller
     {
         $context = $this->productContext($request);
         $isCateringMaterials = $this->isCateringMaterials($request);
+
+        if ($this->usesScreenV2($request)) {
+            return view('tenant.products.form-v2', $this->screenV2Data(null, $request));
+        }
 
         return view('tenant.products.form', [
             'product'     => null,
@@ -170,9 +183,14 @@ class ProductController extends Controller
                     'product_id'         => $product->id,
                     'product_variant_id' => $variant->id,
                     'barcode'            => $variant->barcode,
-                    'barcode_type'       => 'manual',
+                    // PRODUCT-SCREEN-V2: a code the screen made (valid EAN-13, "2…" in-store range) is 'system'.
+                    'barcode_type'       => $request->boolean('_barcode_made') ? 'system' : 'manual',
                     'is_primary'         => true,
                 ]);
+            }
+
+            if ($this->packsPosted) {
+                \App\Support\PackUnits::sync($product, $this->packPlan);
             }
 
             return $product;
@@ -197,6 +215,10 @@ class ProductController extends Controller
     public function edit(Request $request, Product $product)
     {
         $context = $this->productContext($request);
+
+        if ($this->usesScreenV2($request)) {
+            return view('tenant.products.form-v2', $this->screenV2Data($product, $request));
+        }
 
         return view('tenant.products.form', [
             'product'     => $product,
@@ -229,7 +251,7 @@ class ProductController extends Controller
             $data['image_path'] = $newPath;
         }
 
-        DB::transaction(function () use ($product, $data) {
+        DB::transaction(function () use ($product, $data, $request) {
             $product->update($data);
 
             $product->translations()->updateOrCreate(
@@ -244,6 +266,14 @@ class ProductController extends Controller
                     'purchase_price' => $product->default_purchase_price,
                     'selling_price'  => $product->default_selling_price,
                 ]);
+            }
+
+            if ($request->boolean('_form_v2')) {
+                $this->syncScreenV2Variant($request, $product, $default);
+            }
+
+            if ($this->packsPosted) {
+                \App\Support\PackUnits::sync($product, $this->packPlan);
             }
         });
 
@@ -293,6 +323,14 @@ class ProductController extends Controller
 
     private function validated(Request $request, ?Product $product = null): array
     {
+        // PRODUCT-SCREEN-V2: the new screen posts a card + yes/no answers; the SERVER turns them into the
+        // fields below (locks included), and keeps every field the screen does not show at its saved value.
+        $isV2 = $request->boolean('_form_v2');
+        if ($isV2) {
+            $request->merge(\App\Support\ProductCards::resolve(\App\Support\Business::of(), $request->all(), $product));
+            $this->guardScreenV2($request, $product);
+        }
+
         $data = $request->validate([
             'category_id'            => ['nullable', 'exists:categories,id'],
             'unit_id'                => ['nullable', 'exists:units,id'],
@@ -413,14 +451,65 @@ class ProductController extends Controller
             'default_wastage_percent'     => $data['default_wastage_percent'] ?? 0,
         ];
 
+        // PRODUCT-SCREEN-V2: medicine details, written only when the new screen sends them.
+        if ($isV2 && \Illuminate\Support\Facades\Schema::connection('tenant')->hasColumn('products', 'generic_name')) {
+            $med = $request->validate([
+                'generic_name' => ['nullable', 'string', 'max:190'],
+                'strength'     => ['nullable', 'string', 'max:60'],
+            ]);
+            if ($request->exists('generic_name')) {
+                $fields['generic_name'] = trim((string) ($med['generic_name'] ?? '')) ?: null;
+                $fields['strength'] = trim((string) ($med['strength'] ?? '')) ?: null;
+                $fields['needs_prescription'] = $request->boolean('_rx');
+            }
+        }
+
+        // PURCHASE-DISCOUNTS-1: the usual buying discount and scheme — written only when the new screen sends them,
+        // so the old form (and an item not bought) keeps whatever was saved.
+        if ($isV2 && $request->exists('purchase_discount_value')) {
+            $d = $request->validate([
+                'purchase_discount_type'  => ['nullable', 'in:percent,amount'],
+                'purchase_discount_value' => ['nullable', 'numeric', 'min:0'],
+                'purchase_scheme'         => ['nullable', 'regex:/^\s*\d+\s*\+\s*\d+\s*$/'],
+            ], ['purchase_scheme.regex' => 'Write the scheme like 10+1 (buy 10, get 1 free).']);
+            $value = (float) ($d['purchase_discount_value'] ?? 0);
+            $type = ($d['purchase_discount_type'] ?? 'percent') === 'amount' ? 'amount' : 'percent';
+            if ($type === 'percent' && $value > 100) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['purchase_discount_value' => 'A discount in % is from 0 to 100.']);
+            }
+            $fields['purchase_discount_type'] = $value > 0 ? $type : null;
+            $fields['purchase_discount_value'] = $value > 0 ? $value : null;
+            if ($request->exists('purchase_scheme')) {
+                $scheme = preg_match('/^(\d+)\+(\d+)$/', preg_replace('/\s+/', '', (string) ($d['purchase_scheme'] ?? '')), $m) && (int) $m[1] > 0 ? [(int) $m[1], (int) $m[2]] : null;
+                $fields['purchase_scheme_buy'] = $scheme[0] ?? null;
+                $fields['purchase_scheme_free'] = $scheme[1] ?? null;
+            }
+        }
+
         // ONLINE-ORDERING-1: khaana sirf "Online Ordering" wale plan par dikhta hai. Jahan form par
         // khaana hi nahi, wahan save purani website price ko mitaye nahi — sirf aane par likho.
         if ($request->exists('website_price')) {
             $fields['website_price'] = (isset($data['website_price']) && $data['website_price'] !== '') ? $data['website_price'] : null;
         }
 
+        // PHARMACY-PACKS-1: packs come only from the new screen, only where Master switched them on.
+        // Elsewhere nothing posted about packs is read, and saved packs stay as they are.
+        $this->packsPosted = false;
+        if ($isV2 && \App\Support\PackUnits::enabled() && $request->exists('_packs')) {
+            $this->packPlan = \App\Support\PackUnits::fromRequest($request->all(), $product);
+            if ($product) {
+                \App\Support\PackUnits::guardChanges($product, $this->packPlan);
+            }
+            $this->packsPosted = true;
+        }
+
         return $fields;
     }
+
+    /** PHARMACY-PACKS-1 — the packs checked by validated(), saved inside the product's transaction. */
+    private ?array $packPlan = null;
+
+    private bool $packsPosted = false;
 
     private function productContext(Request $request): string
     {
@@ -541,8 +630,123 @@ class ProductController extends Controller
         return $context === 'manufacturing' ? '/manufacturing/products' : '/products';
     }
 
+    /** PRODUCT-SCREEN-V2 — only on the catalog's own Add/Edit, and only where the owner switched it on. */
+    private function usesScreenV2(Request $request): bool
+    {
+        return $this->productContext($request) === 'catalog'
+            && ! $this->isCateringMaterials($request)
+            && \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRODUCT_SCREEN_V2);
+    }
+
+    private function screenV2Data(?Product $product, Request $request): array
+    {
+        $business = \App\Support\Business::of();
+        $cards = \App\Support\ProductCards::forBusiness($business);
+        $card = $product
+            ? \App\Support\ProductCards::detect($business, $product)
+            : (isset($cards[(string) $request->query('card')]) ? (string) $request->query('card') : array_key_first($cards));
+        $variant = $product?->defaultVariant;
+        $hasStockHistory = $product ? \App\Models\Tenant\StockLedger::where('product_id', $product->id)->exists() : false;
+
+        return [
+            'product'         => $product,
+            'title'           => $product ? 'Edit product' : 'Add a product',
+            'business'        => $business,
+            'businessInfo'    => \App\Support\Business::all()[$business] ?? null,
+            'cards'           => $cards,
+            'currentCard'     => $card,
+            'categories'      => Category::where('is_active', true)->orderBy('name')->get(),
+            'units'           => Unit::where('is_active', true)->orderBy('name')->get(),
+            'barcode'         => $variant?->barcode ?? $product?->barcodes()->where('is_primary', true)->value('barcode'),
+            'reorderLevel'    => $variant?->reorder_level,
+            'reorderQuantity' => $variant?->reorder_quantity,
+            'hasStockHistory' => $hasStockHistory,
+            'salesCount'      => $product ? \App\Models\Tenant\SalesOrderLine::where('product_id', $product->id)->count() : 0,
+            'onHand'          => $product ? (float) \App\Models\Tenant\StockBalance::where('product_id', $product->id)->sum('quantity_on_hand') : 0.0,
+            'hasMedicineCols' => \Illuminate\Support\Facades\Schema::connection('tenant')->hasColumn('products', 'generic_name'),
+        ] + $this->packScreenData($product);
+    }
+
+    /** PHARMACY-PACKS-1 — the packs part of the screen; empty when Master has packs off for this tenant. */
+    private function packScreenData(?Product $product): array
+    {
+        if (! \App\Support\PackUnits::enabled()) {
+            return ['packsOn' => false];
+        }
+        $saved = \App\Support\PackUnits::forScreen($product);
+        $baseName = \App\Support\PackUnits::baseName($product?->unit_id);
+        $onHand = $product ? (float) \App\Models\Tenant\StockBalance::where('product_id', $product->id)->sum('quantity_on_hand') : 0.0;
+
+        return [
+            'packsOn'       => true,
+            'savedPacks'    => $saved['packs'],
+            'packBaseSell'  => $saved['base_sell'],
+            'packBaseName'  => $baseName,
+            'packStockSays' => $product && $saved['packs'] && $onHand != 0
+                ? \App\Support\PackUnits::describe($product->packUnits()->get(), $onHand, $baseName)
+                : null,
+            'packPresets'   => \App\Support\PackUnits::presets(\App\Support\Business::of()),
+        ];
+    }
+
+    /** Refuse what would hurt: switching stock counting off after stock has moved; a barcode another product owns. */
+    private function guardScreenV2(Request $request, ?Product $product): void
+    {
+        $errors = [];
+        if ($product && $product->is_stock_tracked && ! $request->boolean('is_stock_tracked')
+            && \App\Models\Tenant\StockLedger::where('product_id', $product->id)->exists()) {
+            $errors['_stock'] = 'Stock of this item has already moved, so counting cannot be switched off. (اس چیز کا اسٹاک پہلے سے چل چکا ہے)';
+        }
+        $code = trim((string) $request->input('barcode', ''));
+        if ($code !== '' && ProductBarcode::where('barcode', $code)->when($product, fn ($q) => $q->where('product_id', '!=', $product->id))->exists()) {
+            $errors['barcode'] = 'This barcode already belongs to another product.';
+        } elseif ($code !== '' && \App\Support\PackUnits::isPackBarcode($code)) {
+            // PHARMACY-PACKS-1: a box's barcode cannot also be the single item's — one scan, one meaning.
+            $errors['barcode'] = 'This barcode is already a pack’s barcode (a box or strip). Give the single item its own.';
+        }
+        if ($errors) {
+            throw \Illuminate\Validation\ValidationException::withMessages($errors);
+        }
+    }
+
+    /** Edit on the new screen also saves what the old form dropped: code, reorder level, barcode. */
+    private function syncScreenV2Variant(Request $request, Product $product, ?ProductVariant $default): void
+    {
+        if (! $default) {
+            return;
+        }
+        $update = ['sku' => $product->sku];
+        if ($request->exists('reorder_level')) {
+            $update['reorder_level'] = (float) $request->input('reorder_level', 0);
+        }
+        if ($request->exists('reorder_quantity')) {
+            $update['reorder_quantity'] = (float) $request->input('reorder_quantity', 0);
+        }
+        if (! ProductVariant::where('sku', $product->sku)->where('id', '!=', $default->id)->exists()) {
+            $default->update($update);
+        } else {
+            unset($update['sku']);
+            $default->update($update);
+        }
+
+        $code = trim((string) $request->input('barcode', ''));
+        if ($code !== '' && $code !== (string) $default->barcode) {
+            $default->update(['barcode' => $code]);
+            ProductBarcode::where('product_id', $product->id)->where('product_variant_id', $default->id)->update(['is_primary' => false]);
+            ProductBarcode::updateOrCreate(
+                ['barcode' => $code],
+                ['product_id' => $product->id, 'product_variant_id' => $default->id, 'is_primary' => true,
+                 'barcode_type' => $request->boolean('_barcode_made') ? 'system' : 'manual']
+            );
+        }
+    }
+
     private function productRedirectUrl(Request $request, Product $product): string
     {
+        if ($request->boolean('_form_v2') && $request->input('_after') === 'new') {
+            return '/products/create?card=' . urlencode((string) $request->input('_card'));
+        }
+
         // Catering shares the manufacturing context but must land back on its own
         // screen — /manufacturing/products is not reachable on a catering-only plan.
         if ($this->isCateringMaterials($request)) {

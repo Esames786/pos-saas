@@ -33,17 +33,22 @@
         <div class="card-header"><strong>Order Header</strong></div>
         <div class="card-body row g-3">
             <div class="col-md-4">
-                <label for="supplier_id" class="form-label required">Supplier</label>
-                <select id="supplier_id" name="supplier_id"
-                        class="form-select @error('supplier_id') is-invalid @enderror" required>
-                    <option value="">— Select —</option>
-                    @foreach($suppliers as $supplier)
-                        <option value="{{ $supplier->id }}" @selected(old('supplier_id') == $supplier->id)>
-                            {{ $supplier->name }}
-                        </option>
-                    @endforeach
-                </select>
-                @error('supplier_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                @if($entryV2 ?? false)
+                    {{-- PURCHASING-V2-2: type to search, "+ New" without leaving the page. --}}
+                    @include('tenant.purchasing.partials.supplier-box', ['selectedSupplierId' => old('supplier_id'), 'mode' => 'po', 'currentPoId' => null])
+                @else
+                    <label for="supplier_id" class="form-label required">Supplier</label>
+                    <select id="supplier_id" name="supplier_id"
+                            class="form-select @error('supplier_id') is-invalid @enderror" required>
+                        <option value="">— Select —</option>
+                        @foreach($suppliers as $supplier)
+                            <option value="{{ $supplier->id }}" @selected(old('supplier_id') == $supplier->id)>
+                                {{ $supplier->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('supplier_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                @endif
             </div>
 
             <div class="col-md-4">
@@ -88,6 +93,10 @@
     <div class="card mb-3">
         <div class="card-header"><strong>Product Lines</strong></div>
         <div class="card-body">
+            @if($entryV2 ?? false)
+                {{-- PURCHASING-V2-1: the entry area (Master switch "New purchase screens"). --}}
+                @include('tenant.purchasing.partials.entry-area', ['mode' => 'po', 'prefillLines' => [], 'purchaseOrder' => null])
+            @else
             @include('tenant.purchasing.partials.product-lines', [
                 'products'       => $products,
                 'quantityField'  => 'quantity_ordered',
@@ -96,6 +105,7 @@
                 'showNotes'      => false,
                 'stockEffect'    => 'Stock effect: none. This PO does not change stock — stock updates only when the GRN is posted.',
             ])
+            @endif
         </div>
     </div>
 

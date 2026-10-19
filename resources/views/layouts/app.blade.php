@@ -21,6 +21,11 @@
     <link rel="stylesheet" href="{{ asset('assets/css/fonts-local.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/a11y-custom.css') }}">
+    {{-- MASTER-UNIVERSE-1: Bingoo Master (central.* routes only) gets its dark navy theme. Every rule in
+         master-theme.css starts with body.master-ui, so tenant pages are untouched. --}}
+    @if(request()->routeIs('central.*'))
+        <link rel="stylesheet" href="{{ asset('assets/css/master-theme.css') }}?v={{ is_file(public_path('assets/css/master-theme.css')) ? filemtime(public_path('assets/css/master-theme.css')) : 0 }}">
+    @endif
     @if(request()->is('pos'))
         <style>
             body.pos-workspace .header { display: none; }
@@ -55,7 +60,8 @@
 <body @class([
     'pos-workspace nosidebar' => request()->is('pos'),
     'embedded-workspace' => request()->boolean('embed'),
-])>
+    'master-ui' => request()->routeIs('central.*'),
+])@if(request()->routeIs('central.*')) data-bs-theme="dark"@endif>
 {{-- Any page opened inside a POS window (iframe) hides the app chrome — even after an in-window
      navigation (e.g. picking a sale) that drops the ?embed=1 param. Runs before paint, so no flash. --}}
 <script>try{if(window.self!==window.top){document.body.classList.add('embedded-workspace');}}catch(e){}</script>
@@ -96,6 +102,10 @@
                     } catch (e) {}
                 </script>
                 @endif
+            @endif
+            {{-- PURCHASING-V2-2: tabs across the six purchasing pages, only with "New purchase screens" on. --}}
+            @if(request()->routeIs('tenant.suppliers.*', 'tenant.purchase-orders.*', 'tenant.goods-receipts.*', 'tenant.purchase-bills.*', 'tenant.supplier-payments.*', 'tenant.purchase-returns.*') && app()->bound('tenant') && \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PURCHASING_V2))
+                @include('tenant.purchasing.partials.tabs')
             @endif
             @yield('content')
         </div>

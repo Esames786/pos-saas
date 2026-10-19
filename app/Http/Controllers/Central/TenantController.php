@@ -12,8 +12,15 @@ use App\Models\Master\Tenant;
 use App\Models\Master\TenantBackup;
 use App\Models\Master\TenantBackupSetting;
 use App\Models\Master\TenantDomain;
+use App\Services\Central\MasterOverviewService;
+use App\Services\Central\ModuleCatalogService;
+use App\Services\Central\SystemUsageService;
 use App\Services\Central\TenantBackupService;
+use App\Services\Central\TenantBranchService;
+use App\Services\Central\TenantBusinessService;
 use App\Services\Central\TenantOpsService;
+use App\Support\Business;
+use App\Support\TenantFeatures;
 use App\Services\Tenancy\TenantProvisioner;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -40,6 +47,13 @@ class TenantController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        // MASTER-UNIVERSE-1: filter by primary business ("none" = not set yet).
+        if ($request->filled('business')) {
+            $request->business === 'none'
+                ? $query->whereNull('primary_business')
+                : $query->where('primary_business', $request->business);
         }
 
         $tenants = $query->paginate(15)->withQueryString();
@@ -88,9 +102,20 @@ class TenantController extends Controller
             ->with('status', 'Tenant created. Provision the database to activate.');
     }
 
-    public function show(Tenant $tenant)
-    {
-        $tenant->load(['domains', 'database', 'subscription.plan']);
+    /**
+     * MASTER-UNIVERSE-1 — the tenant hub: Overview · Business & switches · Modules · Branches ·
+     * Billing & invoices · Backups · Domains & database · Danger zone. Everything the old page did is
+     * still here, moved into tabs. Only the Branches tab opens the tenant database (read-only).
+     */
+    public function show(
+        Tenant $tenant,
+        TenantBusinessService $business,
+        ModuleCatalogService $catalog,
+        TenantBranchService $branches,
+        SystemUsageService $usage,
+        MasterOverviewService $overview,
+    ) {
+        $tenant->load(['domains', 'database', 'subscription.plan', 'backupSetting']);
 
         $recentInvoices = $tenant->invoices()
             ->with('plan')
@@ -98,11 +123,56 @@ class TenantController extends Controller
             ->take(5)
             ->get();
 
+        $planModules = $business->planModules($tenant);
+        $snapshot = $usage->latestForTenant($tenant->id);
+        $card = $overview->card(
+            $tenant,
+            $snapshot,
+            $usage->lastBackups()[$tenant->id] ?? null,
+            $overview->invoicesDue($tenant->id)[$tenant->id] ?? null,
+            (int) $usage->latestPerTenant()->sum(fn ($s) => (int) ($s->sales_30d ?? 0)),
+        );
+
         return view('central.tenants.show', [
             'tenant'         => $tenant,
             'plans'          => Plan::where('is_active', true)->orderBy('name')->get(),
             'recentInvoices' => $recentInvoices,
+            'card'           => $card,
+            'snapshot'       => $snapshot,
+            'businesses'     => Business::all(),
+            'planModules'    => $planModules,
+            'features'       => TenantFeatures::all(),
+            'history'        => $business->history($tenant, 30),
+            'modules'        => $catalog->all(true),
+            'branchList'     => $branches->list($tenant),
+            'branchDefaultType' => TenantBranchService::defaultType($tenant->primary_business),
+            'backups'        => TenantBackup::where('tenant_id', $tenant->id)->with('creator')->latest()->take(5)->get(),
+            'backupCount'    => TenantBackup::where('tenant_id', $tenant->id)->count(),
+            'backupSetting'  => $tenant->backupSetting ?? new TenantBackupSetting(['retention_days' => 7]),
+            'resettable'     => $tenant->isDemo() && in_array($tenant->tenant_code, (array) config('saas.demos.reset_tenant_codes', []), true),
         ]);
+    }
+
+    /** MASTER-UNIVERSE-1 — add a branch from Master (same insert as the tenant's own Branches screen). */
+    public function storeBranch(Request $request, Tenant $tenant, TenantBranchService $branches)
+    {
+        $data = $request->validate([
+            'name'          => ['required', 'string', 'max:190'],
+            'code'          => ['nullable', 'string', 'max:50'],
+            'address'       => ['nullable', 'string', 'max:500'],
+            'phone'         => ['nullable', 'string', 'max:50'],
+            'business_type' => ['required', Rule::in(['store', 'restaurant', 'hybrid'])],
+            'timezone'      => ['nullable', 'string', Rule::in(timezone_identifiers_list())],
+        ]);
+
+        try {
+            $label = $branches->create($tenant, $data, $this->adminId());
+        } catch (\RuntimeException $e) {
+            return redirect('/tenants/' . $tenant->id . '#branches')->withInput()->withErrors(['branch' => $e->getMessage()]);
+        }
+
+        return redirect('/tenants/' . $tenant->id . '#branches')
+            ->with('status', "Branch \"{$label}\" added to {$tenant->tenant_code}. Add its terminals and staff from the tenant's own screens.");
     }
 
     public function edit(Tenant $tenant)
@@ -268,7 +338,10 @@ class TenantController extends Controller
             ]
         );
 
-        return redirect('/tenants/' . $tenant->id . '/backups')
+        // MASTER-UNIVERSE-1: the tenant hub's Backups tab posts here too and wants to come back to it.
+        $back = $request->input('return') === 'hub' ? '/tenants/' . $tenant->id . '#backups' : '/tenants/' . $tenant->id . '/backups';
+
+        return redirect($back)
             ->with('status', $enabled
                 ? 'Auto-backup ON — ' . implode(', ', $times) . ' (' . ($data['timezone'] ?? 'Asia/Karachi') . '), keeping ' . (int) $data['retention_days'] . ' days.'
                 : 'Auto-backup turned off.');

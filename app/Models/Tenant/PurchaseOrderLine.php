@@ -12,7 +12,13 @@ class PurchaseOrderLine extends Model
     protected $fillable = [
         'purchase_order_id', 'product_id', 'product_variant_id',
         'quantity_ordered', 'unit_cost', 'discount_amount', 'tax_amount', 'notes',
+        // PURCHASING-V2-1: the pack the price was typed in (screens only).
+        'pack_unit_id', 'pack_factor', 'base_quantity',
+        // PURCHASE-DISCOUNTS-1: what was typed (pack, price, disc, scheme).
+        'entry_json',
     ];
+
+    protected $casts = ['entry_json' => 'array'];
 
     public function purchaseOrder()
     {

@@ -3,94 +3,65 @@
 @section('title', 'Modules')
 
 @section('content')
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+<div class="mu-head">
     <div>
-        <h1 class="mb-1">Modules</h1>
-        <p class="text-muted mb-0">Business feature groups used by plan enforcement and the Plan Builder.</p>
+        <p class="mu-eyebrow">Bingoo Master</p>
+        <h1>Modules</h1>
+        <p class="mu-sub">A module is a set of screens a plan can switch on. Plans decide which tenant gets which module.</p>
     </div>
+    @can('central.plans.index')
+        <a href="{{ url('/plans') }}" class="btn btn-light"><i class="ti ti-credit-card me-1" aria-hidden="true"></i>Plans</a>
+    @endcan
 </div>
 
-<div class="alert alert-info d-flex align-items-start gap-2">
-    <i class="ti ti-info-circle fs-5"></i>
-    <div>
-        Modules group routes into business features that can be enabled or disabled on plans.
-        Route keys are hidden by default because they are technical enforcement mappings.
-    </div>
-</div>
-
-@foreach($modules as $category => $items)
-    <section class="mb-4">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-            <h5 class="mb-0">{{ $category ?: 'Uncategorized' }}</h5>
-            <span class="badge bg-light text-dark border">{{ $items->count() }} modules</span>
-        </div>
-
-        <div class="card">
-            <div class="card-body table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Description</th>
-                            <th>Category</th>
-                            <th>Core</th>
-                            <th>Status</th>
-                            <th>Route Keys</th>
-                            <th>Sort</th>
-                            <th class="text-end">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($items as $module)
-                            @php
-                                $routeKeys = $module->route_module_keys ?? [];
-                                $summary = $moduleSummaries[$module->key] ?? [];
-                                $collapseId = 'module-routes-' . $module->id;
-                            @endphp
-                            <tr>
-                                <td>
-                                    <div class="fw-semibold">{{ $module->name }}</div>
-                                    <code class="small">{{ $module->key }}</code>
-                                </td>
-                                <td class="text-muted">{{ $summary['description'] ?? ($module->description ?: 'Business feature controlled by this module.') }}</td>
-                                <td>{{ $module->category ?: 'Uncategorized' }}</td>
-                                <td>
-                                    <span class="badge {{ $module->is_core ? 'bg-info text-dark' : 'bg-secondary' }}">
-                                        {{ $module->is_core ? 'Core' : 'Optional' }}
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="badge {{ $module->is_active ? 'bg-success' : 'bg-secondary' }}">
-                                        {{ $module->is_active ? 'Active' : 'Inactive' }}
-                                    </span>
-                                </td>
-                                <td>
-                                    <button class="btn btn-sm btn-light border" type="button" data-bs-toggle="collapse" data-bs-target="#{{ $collapseId }}" aria-expanded="false" aria-controls="{{ $collapseId }}">
-                                        {{ count($routeKeys) }} keys
-                                    </button>
-                                </td>
-                                <td>{{ $module->sort_order }}</td>
-                                <td class="text-end">
-                                    <a href="{{ url('/modules/' . $module->id . '/edit') }}" class="btn btn-sm btn-primary">
-                                        Edit
-                                    </a>
-                                </td>
-                            </tr>
-                            <tr class="collapse" id="{{ $collapseId }}">
-                                <td colspan="8" class="bg-light">
-                                    <div class="small text-muted mb-2">Advanced route keys mapped to this business module.</div>
-                                    @forelse($routeKeys as $key)
-                                        <span class="badge bg-white text-dark border mb-1">{{ $key }}</span>
-                                    @empty
-                                        <span class="text-muted">No route keys mapped.</span>
-                                    @endforelse
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
+@foreach($groups as $category => $items)
+    <section class="mb-3">
+        <h2 class="mu-section-title"><i class="ti ti-folder" aria-hidden="true"></i>{{ $category }} <span class="mu-count">{{ $items->count() }} {{ $items->count() === 1 ? 'module' : 'modules' }}</span></h2>
+        <div class="mu-grid is-wide">
+            @foreach($items as $row)
+                @php
+                    $module = $row['module'];
+                    $main = $row['main_screens'];
+                @endphp
+                <article class="mu-module {{ $module->is_active ? '' : 'is-off' }}" aria-label="{{ $module->name }}">
+                    <div class="mu-module-thumb">
+                        @if($row['image'])
+                            <img src="{{ $row['image'] }}" alt="{{ $module->name }} screen" loading="lazy">
+                        @else
+                            <i class="ti ti-puzzle" aria-hidden="true"></i>
+                        @endif
+                    </div>
+                    <div class="mu-module-body">
+                        <div class="mu-module-title">
+                            <h3>{{ $module->name }}</h3>
+                            <span class="mu-pill {{ $module->is_active ? 'is-on' : 'is-off' }}">{{ $module->is_active ? 'Active' : 'Inactive' }}</span>
+                        </div>
+                        <p class="mu-module-desc">{{ $row['description'] }}</p>
+                        <div class="mu-module-meta">
+                            <span>{{ $row['screens'] }} screens · {{ $row['permissions'] }} permissions</span>
+                            <span>{{ $row['plans'] }} {{ $row['plans'] === 1 ? 'plan' : 'plans' }}</span>
+                            <span>{{ $row['tenants'] }} {{ $row['tenants'] === 1 ? 'tenant' : 'tenants' }}</span>
+                            <span>{{ $module->is_core ? 'Core' : 'Optional' }}</span>
+                        </div>
+                        @if($main !== [])
+                            <p class="mu-module-screens"><b>Screens:</b> {{ implode(', ', array_slice($main, 0, 6)) }}@if(count($main) > 6) and {{ count($main) - 6 }} more @endif</p>
+                        @endif
+                    </div>
+                    <div class="mu-module-foot">
+                        <code class="small">{{ $module->key }}</code>
+                        @can('central.modules.edit')
+                            <a href="{{ url('/modules/' . $module->id . '/edit') }}" class="btn btn-sm btn-primary">Edit</a>
+                        @endcan
+                    </div>
+                </article>
+            @endforeach
         </div>
     </section>
 @endforeach
+
+@if($groups->isEmpty())
+    <div class="mu-empty"><i class="ti ti-puzzle" aria-hidden="true"></i>No modules yet.</div>
+@endif
+
+<p class="mu-note mt-2"><i class="ti ti-info-circle me-1" aria-hidden="true"></i>Screens = pages a person can open (GET routes). Permissions = every action the module allows (one per route). Both are counted from the route catalogue, which every deploy refreshes.</p>
 @endsection

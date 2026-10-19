@@ -3,6 +3,10 @@
 @section('title', 'Create Purchase Return')
 
 @section('content')
+@if($entryV2 ?? false)
+    {{-- PURCHASE-RETURN-V2: the new page (packs, batch box, from a GRN / without / both). --}}
+    @include('tenant.purchase-returns.partials.create-v2')
+@else
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
         <h1 class="mb-1">Create Purchase Return</h1>
@@ -339,4 +343,5 @@
 })();
 </script>
 @endpush
+@endif
 @endsection

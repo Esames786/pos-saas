@@ -80,6 +80,9 @@ class InventoryService
         ?string $notes = null,
         ?int $userId = null,
         bool $allowNegative = false,
+        // PURCHASE-RETURN-V2: a purchase return names the batch going back — take from that batch only, and
+        // refuse (never go negative) if it holds too little. Null = every caller as before (oldest expiry first).
+        ?int $onlyBatchId = null,
     ): array {
         // EDGE-SPLITBRAIN-STOCK-1: FEFO out couples the operational decrement with COGS/FEFO valuation.
         // On a Branch Server, stock is decremented ONLY by EdgeOperationalStockService (quantity-only);
@@ -92,7 +95,7 @@ class InventoryService
         // inside the same transaction as the caller (SalesService, etc.).
         return DB::connection('tenant')->transaction(function () use (
             $branch, $product, $variant, $quantity, $movementType,
-            $referenceType, $referenceId, $referenceNo, $notes, $userId, $allowNegative
+            $referenceType, $referenceId, $referenceNo, $notes, $userId, $allowNegative, $onlyBatchId
         ) {
             $remaining = $quantity;
             $ledgers = [];
@@ -104,6 +107,7 @@ class InventoryService
                 ->where('product_id', $product->id)
                 ->where('product_variant_id', $variant?->id)
                 ->where('quantity_on_hand', '>', 0)
+                ->when($onlyBatchId, fn ($q) => $q->where('inventory_batch_id', $onlyBatchId))
                 ->get()
                 ->sortBy(function (StockBalance $balance) {
                     return $balance->batch?->expiry_date?->format('Y-m-d') ?? '9999-12-31';
@@ -137,6 +141,11 @@ class InventoryService
                 }
 
                 $remaining -= $consumeQty;
+            }
+
+            if ($remaining > 0.0001 && $onlyBatchId) {
+                $batchNo = InventoryBatch::whereKey($onlyBatchId)->value('batch_no');
+                throw new RuntimeException('Batch ' . $batchNo . ' of ' . $product->name . ' holds ' . round($quantity - $remaining, 3) . ', not ' . round($quantity, 3) . '.');
             }
 
             if ($remaining > 0.0001) {
@@ -435,7 +444,7 @@ class InventoryService
         }
     }
 
-    private function batchKey(int $branchId, int $productId, ?int $variantId, string $batchNo): string
+    public function batchKey(int $branchId, int $productId, ?int $variantId, string $batchNo): string
     {
         return implode('-', [$branchId, $productId, $variantId ?: 0, strtolower(trim($batchNo))]);
     }

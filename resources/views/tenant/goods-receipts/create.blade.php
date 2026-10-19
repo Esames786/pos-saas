@@ -42,18 +42,23 @@
         <div class="card-header"><strong>Receipt Header</strong></div>
         <div class="card-body row g-3">
             <div class="col-md-4">
-                <label for="supplier_id" class="form-label required">Supplier</label>
-                <select id="supplier_id" name="supplier_id"
-                        class="form-select @error('supplier_id') is-invalid @enderror" required>
-                    <option value="">— Select —</option>
-                    @foreach($suppliers as $supplier)
-                        <option value="{{ $supplier->id }}"
-                                @selected(old('supplier_id', $purchaseOrder?->supplier_id) == $supplier->id)>
-                            {{ $supplier->name }}
-                        </option>
-                    @endforeach
-                </select>
-                @error('supplier_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                @if($entryV2 ?? false)
+                    {{-- PURCHASING-V2-2: type to search, "+ New" without leaving the page. --}}
+                    @include('tenant.purchasing.partials.supplier-box', ['selectedSupplierId' => old('supplier_id', $purchaseOrder?->supplier_id), 'mode' => 'grn', 'currentPoId' => $purchaseOrder?->id])
+                @else
+                    <label for="supplier_id" class="form-label required">Supplier</label>
+                    <select id="supplier_id" name="supplier_id"
+                            class="form-select @error('supplier_id') is-invalid @enderror" required>
+                        <option value="">— Select —</option>
+                        @foreach($suppliers as $supplier)
+                            <option value="{{ $supplier->id }}"
+                                    @selected(old('supplier_id', $purchaseOrder?->supplier_id) == $supplier->id)>
+                                {{ $supplier->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('supplier_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                @endif
             </div>
 
             <div class="col-md-4">
@@ -111,6 +116,10 @@
     <div class="card mb-3">
         <div class="card-header"><strong>Received Products</strong></div>
         <div class="card-body">
+            @if($entryV2 ?? false)
+                {{-- PURCHASING-V2-1: the entry area (Master switch "New purchase screens"). --}}
+                @include('tenant.purchasing.partials.entry-area', ['mode' => 'grn', 'prefillLines' => $prefillLines ?? [], 'purchaseOrder' => $purchaseOrder ?? null])
+            @else
             <p class="text-muted small mb-3">Enter batch number and expiry date for products that require batch tracking.</p>
             @include('tenant.purchasing.partials.product-lines', [
                 'products'        => $products,
@@ -123,6 +132,7 @@
                 'extraChargesInput'     => 'extra_charges',
                 'extraChargesNoteInput' => 'extra_charges_note',
             ])
+            @endif
         </div>
     </div>
 
@@ -135,6 +145,8 @@
 </form>
 @endsection
 
+{{-- PURCHASING-V2-2: the new screen shows a full preview before posting instead of this question. --}}
+@if(!($entryV2 ?? false))
 @push('scripts')
 <script>
 (function () {
@@ -162,3 +174,4 @@
 })();
 </script>
 @endpush
+@endif

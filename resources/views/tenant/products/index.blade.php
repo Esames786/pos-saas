@@ -150,15 +150,16 @@
                 $roleOptions = $roleOptions ?? [];
                 $flagOptions = $flagOptions ?? [];
                 $chosenCount = count($chosenRoles) + count($chosenFlags);
+                $plainList = $plainList ?? false;
             @endphp
             <div class="col-md-4">
                 <label class="form-label">
-                    Role / Visibility
+                    {{ $plainList ? 'What it is · where it shows' : 'Role / Visibility' }}
                     <span class="text-muted small">@if($chosenCount) ({{ $chosenCount }} chosen) @else (all) @endif</span>
                 </label>
-                <div class="border rounded p-2 d-flex flex-wrap gap-3" id="role-visibility-filter" style="max-height:150px; overflow-y:auto;">
+                <div class="border rounded p-2 d-flex flex-wrap gap-3" id="role-visibility-filter" style="max-height:{{ $plainList ? 240 : 150 }}px; overflow-y:auto;">
                     <div>
-                        <div class="small fw-semibold text-muted">Role <span class="fw-normal">(any)</span></div>
+                        <div class="small fw-semibold text-muted">{{ $plainList ? 'What it is' : 'Role' }} <span class="fw-normal">(any)</span></div>
                         @foreach($roleOptions as $kind => $label)
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="roles[]" value="{{ $kind }}" id="role-{{ $kind }}" @checked(in_array($kind, $chosenRoles, true))>
@@ -167,7 +168,7 @@
                         @endforeach
                     </div>
                     <div>
-                        <div class="small fw-semibold text-muted">Is <span class="fw-normal">(all ticked)</span></div>
+                        <div class="small fw-semibold text-muted">{{ $plainList ? 'Show only' : 'Is' }} <span class="fw-normal">(all ticked)</span></div>
                         @foreach($flagOptions as $flag => $label)
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="flags[]" value="{{ $flag }}" id="flag-{{ $flag }}" @checked(in_array($flag, $chosenFlags, true))>
@@ -211,8 +212,8 @@
                         <th scope="col">BOM Output</th>
                         <th scope="col">Manufactured FG</th>
                     @else
-                        <th scope="col">Type</th>
-                        <th scope="col">Role / Visibility</th>
+                        <th scope="col">{{ ($plainList ?? false) ? 'What it is' : 'Type' }}</th>
+                        <th scope="col">{{ ($plainList ?? false) ? 'Where it shows' : 'Role / Visibility' }}</th>
                         <th scope="col">Sell Price</th>
                     @endif
                     <th scope="col">Status</th>
@@ -235,10 +236,16 @@
                         <td>{{ $product->can_be_bom_output ? 'Yes' : 'No' }}</td>
                         <td>{{ $product->is_manufactured_finished_good ? 'Yes' : 'No' }}</td>
                     @else
+                        @if($plainList ?? false)
+                            @php $plainCard = $plainCards[\App\Support\ProductCards::detect($plainBusiness, $product)] ?? null; @endphp
+                            <td><b>{{ $plainCard['label'] ?? '—' }}</b><div class="small text-muted">old name: {{ \App\Support\ProductCards::oldTypeLabel($product) }}</div></td>
+                            <td><span class="d-inline-flex flex-wrap gap-1">@include('tenant.products.partials.product-plain-badges')</span></td>
+                        @else
                         <td><span class="badge bg-light text-dark">{{ ucfirst($product->product_type) }}</span></td>
                         <td class="text-nowrap">
                             <span class="d-inline-flex flex-wrap gap-1">@include('tenant.products.partials.product-role-badges', ['badgeContext' => 'catalog'])</span>
                         </td>
+                        @endif
                         <td>{{ number_format($product->default_selling_price, 2) }}</td>
                     @endif
                     <td>

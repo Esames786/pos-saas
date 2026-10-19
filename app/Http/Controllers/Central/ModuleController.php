@@ -4,27 +4,29 @@ namespace App\Http\Controllers\Central;
 
 use App\Http\Controllers\Controller;
 use App\Models\Master\Module;
+use App\Services\Central\ModuleCatalogService;
 use Illuminate\Http\Request;
 
 class ModuleController extends Controller
 {
-    public function index()
+    public function index(ModuleCatalogService $catalog)
     {
-        $modules = Module::orderBy('sort_order')
-            ->orderBy('name')
-            ->get()
-            ->groupBy('category');
+        // MASTER-UNIVERSE-1: big boxes grouped by category, each with its plain description, how many
+        // plans / tenants use it and "N screens · M permissions" from the route catalogue.
+        $groups = $catalog->all()->groupBy(fn ($row) => $row['module']->category ?: 'Other');
 
-        $moduleSummaries = $this->moduleSummaries();
-
-        return view('central.modules.index', compact('modules', 'moduleSummaries'));
+        return view('central.modules.index', [
+            'groups' => $groups,
+            'moduleSummaries' => $this->moduleSummaries(),
+        ]);
     }
 
-    public function edit(Module $module)
+    public function edit(Module $module, ModuleCatalogService $catalog)
     {
         $moduleSummaries = $this->moduleSummaries();
+        $stats = $catalog->all()->first(fn ($row) => $row['module']->id === $module->id);
 
-        return view('central.modules.edit', compact('module', 'moduleSummaries'));
+        return view('central.modules.edit', compact('module', 'moduleSummaries', 'stats'));
     }
 
     public function update(Request $request, Module $module)
@@ -61,71 +63,6 @@ class ModuleController extends Controller
 
     private function moduleSummaries(): array
     {
-        return [
-            'pos' => [
-                'description' => 'Checkout, sales orders, payments, returns, customers, and POS screen.',
-                'sees' => 'POS checkout, sales orders, held sales, returns, customers, payment methods, and sales ledger.',
-            ],
-            'catalog' => [
-                'description' => 'Products, categories, units, modifiers, barcodes, and branch pricing.',
-                'sees' => 'Product catalog, units, categories, modifiers, and barcode tools.',
-            ],
-            'inventory' => [
-                'description' => 'Stock on hand, adjustments, transfers, and inventory movement control.',
-                'sees' => 'Inventory dashboard, stock adjustments, and stock transfers.',
-            ],
-            'stock_count' => [
-                'description' => 'Physical stock count sessions and variance review.',
-                'sees' => 'Stock count sessions and count review screens.',
-            ],
-            'purchasing' => [
-                'description' => 'Suppliers, purchase orders, receipts, bills, and supplier payments.',
-                'sees' => 'Purchasing documents, suppliers, receipts, and payables.',
-            ],
-            'restaurant' => [
-                'description' => 'Floors, tables, waiters, dine-in sessions, and restaurant operations.',
-                'sees' => 'Restaurant floors, tables, waiters, and table sessions.',
-            ],
-            'kitchen_display' => [
-                'description' => 'Live kitchen preparation queues.',
-                'sees' => 'Kitchen display and order preparation screens.',
-            ],
-            'kitchen_inventory' => [
-                'description' => 'Kitchen recipes, ingredient usage, and consumption reports.',
-                'sees' => 'Kitchen recipes, ingredients, production, and wastage tools.',
-            ],
-            'printing' => [
-                'description' => 'Print agents, KOT, receipts, and print job monitoring.',
-                'sees' => 'Printing setup, print agents, and print job status.',
-            ],
-            'reports' => [
-                'description' => 'Operational dashboards and report menus.',
-                'sees' => 'Analytics dashboards and report menus.',
-            ],
-            'sales_controls' => [
-                'description' => 'Promotions, combos/deals, void reasons, and service charges.',
-                'sees' => 'Promotions, deals, void controls, and service-charge setup.',
-            ],
-            'multi_branch' => [
-                'description' => 'Branches, terminals, shifts, daily closings, and currencies.',
-                'sees' => 'Branch, terminal, shift, daily closing, and currency setup.',
-            ],
-            'users_roles' => [
-                'description' => 'Tenant users, roles, and permission administration.',
-                'sees' => 'User, role, and permission administration.',
-            ],
-            'finance' => [
-                'description' => 'Chart of accounts, cash/bank, expenses, journals, and financial statements.',
-                'sees' => 'Finance ledgers, cash/bank, journals, expenses, and statements.',
-            ],
-            'manufacturing' => [
-                'description' => 'BOM, production orders, WIP, finished goods, consumption, and reports.',
-                'sees' => 'BOM, production orders, WIP, receipts, requisitions, and manufacturing reports.',
-            ],
-            'catering' => [
-                'description' => 'Catering events, estimates/quotations, material rate book, recipe costing, and production releases.',
-                'sees' => 'Catering events, estimates, material rates, rate impact, production sheets, and catering settings.',
-            ],
-        ];
+        return ModuleCatalogService::SUMMARIES;
     }
 }
