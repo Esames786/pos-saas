@@ -216,7 +216,19 @@ class CateringListFilterMySqlTest extends MySqlTenantTestCase
         $this->booking(now()->addDays(3), 'Floor Customer');
         $html = $this->html([]);
 
-        foreach (['Event #', 'Customer', 'Event Date', 'Venue', 'PAX', 'Quotation', 'Position', 'Status', 'Next Action'] as $col) {
+        // 11 Oct — 'Next Action' is fehrist se nikla, kyunke wo column hi
+        // nahi raha (malik: "no need to show next action column"). Us ka naam
+        // yahan chhorne ka matlab hota: ek column ka farsh maangna jo mojood
+        // hi nahi — yani test apne hi dhaanche ko jhutlata.
+        $columns = ['Event #', 'Customer', 'Event Date', 'Venue', 'PAX', 'Quotation', 'Position', 'Status'];
+
+        // Aur ye jaanch khali na guzar jaye: fehrist khali hoti to neeche ka
+        // loop sifar baar chalta aur test hamesha hara rehta.
+        $this->assertGreaterThan(5, count($columns));
+        $this->assertStringNotContainsString('Next Action', $html,
+            'wo column hata diya gaya tha — wapas aa gaya to ye jaanch bataye');
+
+        foreach ($columns as $col) {
             $this->assertDoesNotMatchRegularExpression(
                 '/<th[^>]*style="width:\d+px;?"[^>]*>'.preg_quote($col, '/').'</',
                 $html,

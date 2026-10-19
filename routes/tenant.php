@@ -440,6 +440,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     ->name('tenant.supplier-payments.store');
                 Route::get('/supplier-payments/{supplierPayment}', [SupplierPaymentController::class, 'show'])
                     ->name('tenant.supplier-payments.show');
+                // SUPPLIER-PAYMENT-VOID-1 — ghalat payment ulti karo. Ek click, ek void.
+                Route::post('/supplier-payments/{supplierPayment}/void', [SupplierPaymentController::class, 'void'])
+                    ->middleware('prevent.duplicate.submit')
+                    ->name('tenant.supplier-payments.void');
 
                 // Purchase Returns (PURCHASE-RETURNS-1) — completes the purchasing cycle.
                 Route::get('/purchase-returns', [\App\Http\Controllers\Tenant\PurchaseReturnController::class, 'index'])->name('tenant.purchase-returns.index');
@@ -994,6 +998,23 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::get('/catering/store-issues/requirements', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'requirements'])->name('tenant.catering.store-issues.requirements');
 
                     Route::post('/catering/events/{cateringEvent}/final-invoice', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'store'])->name('tenant.catering.final-invoices.store');
+                    // CATERING-VOID-BUTTON-1 (13 Oct) — poori booking khaton se
+                    // nikalne ka raasta. Ye sab se bara hathyar hai jo is module
+                    // me hai: ek ghalat click ek ASLI graahak ka bill aur us ki
+                    // adaygiyan khaton se nikal deta hai.
+                    //
+                    // 🚨 NAYA ROUTE = NAYI PERMISSION, aur ye jaan boojh kar SIRF
+                    // Owner ke paas rehni chahiye — deploy.sh ka default yahan
+                    // theek hai, is ko kisi aur role ko mat do.
+                    Route::post('/catering/events/{cateringEvent}/void-everything', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'voidEverything'])->name('tenant.catering.final-invoices.void-everything');
+                    // Preview ALAG endpoint par, jaan boojh kar: customer ledger ek
+                    // graahak ki SAARI bookings dikhati hai, aur har satar ka hisaab
+                    // safhe par lagana us ko bhaari kar deta (ek booking par taqreeban
+                    // aath query). Ab wo sirf us waqt chalta hai jab dabba khulta hai.
+                    //
+                    // 🚨 Ye bhi SIRF Owner — void jaisa hi. Ye adad batata hai ke kis
+                    // khaate me kitna para hai; wo khabar bhi har kisi ki nahi.
+                    Route::get('/catering/events/{cateringEvent}/void-preview', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'voidPreview'])->name('tenant.catering.final-invoices.void-preview');
                     Route::post('/catering/events/{cateringEvent}/close', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'close'])->name('tenant.catering.events.close');
 
                     Route::get('/catering/documents/estimate/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'estimate'])->name('tenant.catering.documents.estimate');

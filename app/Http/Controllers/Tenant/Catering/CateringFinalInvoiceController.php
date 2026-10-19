@@ -34,4 +34,73 @@ class CateringFinalInvoiceController extends Controller
 
         return back()->with('status', "Event {$cateringEvent->event_no} closed — fully settled.");
     }
+
+    /**
+     * Dabbe ke liye adad — JSON me.
+     *
+     * CATERING-VOID-BUTTON-2 (13 Oct) — malik ne customer ledger par bhi ye
+     * option maanga. Maine mashwara diya tha ke wahan na ho (fehrist par
+     * destructive button wahi jagah hai jahan ghalat click hota hai), magar
+     * faisla un ka hai aur unhone kaha laga do.
+     *
+     * Us surat me ek cheez chhorni nahi chahiye: ADAD. Warna operator wo
+     * booking khaton se nikal raha hoga jise us ne dekha hi nahi — aur yehi wo
+     * khatra tha jis ki wajah se maine mana kiya tha. Is liye wahan bhi dabba
+     * wohi adad dikhata hai, bas wo yahan se aate hain jab dabba khulta hai.
+     */
+    public function voidPreview(CateringEvent $cateringEvent)
+    {
+        return response()->json(
+            app(\App\Services\Catering\CateringFinalInvoiceService::class)->voidPreview($cateringEvent)
+        );
+    }
+    /**
+     * Poori booking khaton se nikal dena — test entry ya darj karne ki ghalti.
+     *
+     * CATERING-VOID-BUTTON-1 (13 Oct). Malik: "ye wala order cancel kardo, ye
+     * test entry thi — aur jo bhi paisa khate mein hai usay void kardo."
+     *
+     * Ye 11 Oct ko server se haath se chalaya gaya tha. Malik ne poochha "ye
+     * system mein kaise karsakte hain?" — jawab tha: nahi kar sakte. Ab kar
+     * sakte hain.
+     *
+     * ── TASDEEQ BOOKING KE NUMBER SE ──────────────────────────────────────
+     *
+     * Sirf "OK" kaafi nahi. Operator ko booking ka number KHUD likhna parta
+     * hai, aur wo yahan milaya jata hai. Wajah: ek ghalat click us screen par
+     * ho sakta hai jahan dozens bookings ek jaisi dikhti hain, aur is kaam ka
+     * anjaam wapas nahi hota — wo asli graahak ka bill aur us ki adaygiyan
+     * khaton se nikal deta hai. Number likhna aadmi ko ek lamhe ke liye rukne
+     * par majboor karta hai.
+     */
+    public function voidEverything(Request $request, CateringEvent $cateringEvent)
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+            'confirm_event_no' => ['required', 'string'],
+        ], [], [
+            'reason' => 'wajah',
+            'confirm_event_no' => 'booking ka number',
+        ]);
+
+        if (trim($data['confirm_event_no']) !== $cateringEvent->event_no) {
+            return back()->withErrors([
+                'void' => 'Booking ka number mel nahi khaya. Tasdeeq ke liye '
+                    .$cateringEvent->event_no.' likhna hoga — kuch bhi nahi badla.',
+            ]);
+        }
+
+        try {
+            $kiya = app(\App\Services\Catering\CateringFinalInvoiceService::class)
+                ->voidEntireBooking($cateringEvent, $data['reason'], $request->user()?->id);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['void' => $e->getMessage()]);
+        }
+
+        $kehna = 'Booking '.$cateringEvent->event_no.' cancel kar di gayi';
+        if ($kiya['invoice']) { $kehna .= ', bill '.$kiya['invoice'].' void'; }
+        if ($kiya['receipts']) { $kehna .= ', '.count($kiya['receipts']).' receipt void'; }
+
+        return redirect()->to('/catering/events/'.$cateringEvent->id)->with('status', $kehna.'.');
+    }
 }

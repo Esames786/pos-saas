@@ -137,7 +137,7 @@ class ManualJournalController extends Controller
         // tha, is liye user ko pata hi nahi chalta tha ke kaam ho chuka hai.
         $existing = JournalEntry::where('reversed_entry_id', $manualJournal->id)->first();
         if ($existing) {
-            return redirect(url('/finance/manual-journals/' . $existing->id))
+            return redirect(\App\Support\CashBookReturn::from($request) ?? url('/finance/manual-journals/' . $existing->id))
                 ->with('status', $manualJournal->entry_no . ' was already reversed by ' . $existing->entry_no
                     . ' — nothing was posted again.');
         }
@@ -159,8 +159,9 @@ class ManualJournalController extends Controller
             return back()->withErrors(['journal' => $e->getMessage()]);
         }
 
-        return redirect(url('/finance/manual-journals/' . $reversal->id))
-            ->with('status', 'Reversal ' . $reversal->entry_no . ' posted.');
+        // CASH-BOOK-VOID-1: Cash Book se aaya reverse wapas Cash Book par.
+        return redirect(\App\Support\CashBookReturn::from($request) ?? url('/finance/manual-journals/' . $reversal->id))
+            ->with('status', 'Reversal ' . $reversal->entry_no . ' posted for ' . $manualJournal->entry_no . '.');
     }
 
     private function validateData(Request $request): array

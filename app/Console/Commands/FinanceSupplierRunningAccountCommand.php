@@ -92,7 +92,8 @@ class FinanceSupplierRunningAccountCommand extends Command
                 // 1) Payments made against a bill before today: record them as that bill's allocations,
                 //    up to what the bill owed. A payment above its bill keeps the rest as credit.
                 $recorded = 0;
-                foreach (SupplierPayment::whereNotNull('purchase_bill_id')->orderBy('payment_date')->orderBy('id')->get() as $payment) {
+                // SUPPLIER-PAYMENT-VOID-1: ulti ki gayi payment kisi bill ko nahi chukati.
+                foreach (SupplierPayment::whereNotNull('purchase_bill_id')->whereNull('voided_at')->orderBy('payment_date')->orderBy('id')->get() as $payment) {
                     $bill = PurchaseBill::find($payment->purchase_bill_id);
                     if (! $bill) {
                         continue;

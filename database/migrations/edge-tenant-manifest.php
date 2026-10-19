@@ -2944,7 +2944,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'SupplierPayment is excluded from the artifact; the appliance never voids a supplier payment locally (F2 posts to the Cloud).',
         ],
         '2026_10_14_000001_add_cost_of_sales_account_to_categories' => [
@@ -2960,7 +2959,6 @@ return [
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_cost_of_sales_account_on_categories_upgrades_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'categories is a bootstrap section (Category model carries cogs_account_id). ALSO adds goods_receipt_lines.cost_account_id AFTER affects_stock → depends on 2026_10_06_000001_add_affects_stock_to_goods_receipt_lines, which is therefore carried as EDGE_SCHEMA_SAFE.',
         ],
         '2026_10_14_000001_create_online_ordering_tables' => [

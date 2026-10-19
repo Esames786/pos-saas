@@ -187,4 +187,224 @@ class GrnNonStockMySqlTest extends MySqlTenantTestCase
 
         $this->assertSame(1, substr_count($html, 'Purchase only — no stock'), 'on the drink, not the containers');
     }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // PNL-COST-BY-CATEGORY-1 — a category may send its purchase-only cost to its own account
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /** A cost account under a 5000 group head (created once). */
+    private function costAccount(string $code, string $name): int
+    {
+        $head = $this->acc['5000'] ??= DB::table('accounts')->insertGetId(['code' => '5000', 'name' => 'Cost of Goods Sold', 'type' => 'expense', 'normal_balance' => 'debit', 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('accounts')->where('id', $this->acc['5100'])->update(['parent_id' => $head]);
+
+        return $this->acc[$code] ??= DB::table('accounts')->insertGetId(['code' => $code, 'name' => $name, 'type' => 'expense', 'normal_balance' => 'debit', 'parent_id' => $head, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    /** A purchase-only (no stock) product in a category of its own, optionally mapped to a cost account. */
+    private function drink(string $name, ?int $account = null, ?int $parentCategory = null): int
+    {
+        $cat = $this->makeCategory(['name' => $name . ' cat', 'parent_id' => $parentCategory]);
+        DB::table('categories')->where('id', $cat)->update(['cogs_account_id' => $account]);
+
+        return $this->makeProduct($cat, ['name' => $name, 'is_sellable' => 1, 'is_pos_visible' => 1, 'is_purchasable' => 1, 'is_stock_tracked' => 0]);
+    }
+
+    private function tbDiff(): float
+    {
+        return round((float) DB::table('journal_lines as l')->join('journal_entries as e', 'e.id', '=', 'l.journal_entry_id')
+            ->where('e.status', 'posted')->selectRaw('COALESCE(SUM(l.debit) - SUM(l.credit), 0) v')->value('v'), 4);
+    }
+
+    public function test_unmapped_categories_post_one_5100_line_as_before(): void
+    {
+        $a = $this->drink('Pakola 300');
+        $b = $this->drink('Mineral Water 1.5 L');
+
+        $bill = $this->bill($this->receive([[$a, 10, 100], [$b, 5, 100]], 150));
+
+        $this->assertSame(['2100' => [0.0, 1650.0], '5100' => [1650.0, 0.0]], $this->journal('purchase_bill', $bill->id));
+        $entry = DB::table('journal_entries')->where('source_type', 'purchase_bill')->where('source_id', $bill->id)->value('id');
+        $this->assertSame(1, DB::table('journal_lines')->where('journal_entry_id', $entry)->where('account_id', $this->acc['5100'])->count(), 'exactly one 5100 line');
+    }
+
+    public function test_a_mapped_category_takes_its_lines_share_charges_pro_rata(): void
+    {
+        $bev = $this->costAccount('5110', 'Beverages');
+        $a = $this->drink('Cola Next 1.5 L', $bev);      // mapped
+        $b = $this->drink('Ice cubes');                    // unmapped
+
+        // A 1,000 + B 500 (no stock) + containers 500 (stock) + 200 charges = 2,200.
+        $bill = $this->bill($this->receive([[$a, 10, 100], [$b, 5, 100], [$this->container, 100, 5]], 200));
+
+        $this->assertSame([
+            '1400' => [550.0, 0.0],
+            '2100' => [0.0, 2200.0],
+            '5100' => [550.0, 0.0],
+            '5110' => [1100.0, 0.0],
+        ], $this->journal('purchase_bill', $bill->id));
+        $this->assertSame(0.0, $this->tbDiff());
+
+        $lines = DB::table('goods_receipt_lines')->whereIn('product_id', [$a, $b, $this->container])->pluck('cost_account_id', 'product_id');
+        $this->assertSame($bev, (int) $lines[$a], 'the bill remembers where the drink went');
+        $this->assertSame($this->acc['5100'], (int) $lines[$b]);
+        $this->assertNull($lines[$this->container], 'a stocked line has no cost account');
+    }
+
+    public function test_rounding_lands_on_the_paisa(): void
+    {
+        $x = $this->drink('Drink X', $this->costAccount('5110', 'Beverages'));
+        $y = $this->drink('Drink Y', $this->costAccount('5120', 'Water'));
+        $z = $this->drink('Drink Z', $this->costAccount('5130', 'Juice'));
+
+        // 3 × 100 + 700 charges = 1,000 → 333.3333… each.
+        $bill = $this->bill($this->receive([[$x, 1, 100], [$y, 1, 100], [$z, 1, 100]], 700));
+
+        $entry = DB::table('journal_entries')->where('source_type', 'purchase_bill')->where('source_id', $bill->id)->value('id');
+        $sum = (float) DB::table('journal_lines')->where('journal_entry_id', $entry)->whereIn('account_id', [$this->acc['5110'], $this->acc['5120'], $this->acc['5130']])->sum('debit');
+        $this->assertSame(1000.0, round($sum, 4), 'the three parts add up to exactly the purchase-only share');
+        $this->assertSame(0.0, $this->tbDiff());
+    }
+
+    public function test_a_child_category_inherits_its_parents_account(): void
+    {
+        $bev = $this->costAccount('5110', 'Beverages');
+        $parent = $this->makeCategory(['name' => 'Beverages']);
+        DB::table('categories')->where('id', $parent)->update(['cogs_account_id' => $bev]);
+        $soda = $this->drink('Soda', null, $parent);   // child, no account of its own
+
+        $bill = $this->bill($this->receive([[$soda, 10, 50]]));
+
+        $this->assertSame(['2100' => [0.0, 500.0], '5110' => [500.0, 0.0]], $this->journal('purchase_bill', $bill->id));
+    }
+
+    public function test_a_return_credits_the_account_its_bill_debited_even_after_remapping(): void
+    {
+        $bev = $this->costAccount('5110', 'Beverages');
+        $a = $this->drink('Cola Next 1.5 L', $bev);
+        $grn = $this->receive([[$a, 10, 100]]);
+        $this->bill($grn);
+        $line = $grn->lines->firstWhere('product_id', $a);
+
+        $return = function () use ($grn, $a, $line) {
+            $service = app(PurchaseReturnService::class);
+            $r = $service->createDraft(
+                ['branch_id' => $this->branchId, 'supplier_id' => $this->supplierId, 'goods_receipt_id' => $grn->id, 'return_date' => now()->toDateString()],
+                [['product_id' => $a, 'source_line_id' => $line->id, 'quantity' => 1, 'unit_cost' => 100]]
+            );
+            $service->post($r);
+
+            return $r;
+        };
+
+        $first = $return();
+        $this->assertSame(['2100' => [100.0, 0.0], '5110' => [0.0, 100.0]], $this->journal('purchase_return', $first->id), 'not 5100');
+
+        // The owner re-maps the category; the bill already sat on 5110, so the return still does.
+        DB::table('categories')->where('id', DB::table('products')->where('id', $a)->value('category_id'))
+            ->update(['cogs_account_id' => $this->costAccount('5120', 'Soft Drinks')]);
+        $second = $return();
+        $this->assertSame(['2100' => [100.0, 0.0], '5110' => [0.0, 100.0]], $this->journal('purchase_return', $second->id));
+        $this->assertSame(0.0, $this->tbDiff());
+    }
+
+    public function test_a_return_of_a_bill_from_before_the_mapping_goes_back_to_5100(): void
+    {
+        $a = $this->drink('Cola Next 1.5 L');
+        $grn = $this->receive([[$a, 10, 100]]);
+        $this->bill($grn);
+        DB::table('goods_receipt_lines')->where('goods_receipt_id', $grn->id)->update(['cost_account_id' => null]);   // a bill posted before this change
+        DB::table('categories')->where('id', DB::table('products')->where('id', $a)->value('category_id'))
+            ->update(['cogs_account_id' => $this->costAccount('5110', 'Beverages')]);
+
+        $service = app(PurchaseReturnService::class);
+        $r = $service->createDraft(
+            ['branch_id' => $this->branchId, 'supplier_id' => $this->supplierId, 'goods_receipt_id' => $grn->id, 'return_date' => now()->toDateString()],
+            [['product_id' => $a, 'source_line_id' => $grn->lines->first()->id, 'quantity' => 2, 'unit_cost' => 100]]
+        );
+        $service->post($r);
+
+        $this->assertSame(['2100' => [200.0, 0.0], '5100' => [0.0, 200.0]], $this->journal('purchase_return', $r->id),
+            'that bill debited 5100, so its return credits 5100');
+    }
+
+    public function test_the_backfill_dry_run_writes_nothing_and_yes_reclasses_once(): void
+    {
+        $code = $this->registerTenant();
+        $a = $this->drink('Cola Next 1.5 L');
+        $b = $this->drink('Ice cubes');
+        $bill = $this->bill($this->receive([[$a, 10, 100], [$b, 5, 100]]));   // all to 5100 — mapped later
+        $bev = $this->costAccount('5110', 'Beverages');
+        DB::table('categories')->where('id', DB::table('products')->where('id', $a)->value('category_id'))->update(['cogs_account_id' => $bev]);
+        $journals = DB::table('journal_entries')->count();
+
+        $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('finance:recost-nonstock-bills', ['tenant_code' => $code]));
+        $this->assertStringContainsString('Dr 5110 1,000.00', \Illuminate\Support\Facades\Artisan::output());
+        $this->assertSame($journals, DB::table('journal_entries')->count(), 'dry run posts nothing');
+
+        \Illuminate\Support\Facades\Artisan::call('finance:recost-nonstock-bills', ['tenant_code' => $code, '--yes' => true]);
+        $this->assertSame(['5100' => [0.0, 1000.0], '5110' => [1000.0, 0.0]], $this->journal('purchase_bill_recost', $bill->id));
+        $this->assertSame(['2100' => [0.0, 1500.0], '5100' => [1500.0, 0.0]], $this->journal('purchase_bill', $bill->id), 'the original journal is untouched');
+        $this->assertSame(0.0, $this->tbDiff());
+        $this->assertSame($bev, (int) DB::table('goods_receipt_lines')->where('product_id', $a)->value('cost_account_id'), 'a later return follows the reclass');
+
+        \Illuminate\Support\Facades\Artisan::call('finance:recost-nonstock-bills', ['tenant_code' => $code, '--yes' => true]);
+        $this->assertSame(1, DB::table('journal_entries')->where('source_type', 'purchase_bill_recost')->count(), 'never twice');
+    }
+
+    public function test_the_pl_shows_beverages_as_its_own_cost_line(): void
+    {
+        $a = $this->drink('Cola Next 1.5 L', $this->costAccount('5110', 'Beverages'));
+        $b = $this->drink('Ice cubes');
+        $this->bill($this->receive([[$a, 10, 100], [$b, 5, 100], [$this->container, 100, 5]], 200));
+
+        $html = app(\App\Http\Controllers\Tenant\Finance\ProfitLossController::class)
+            ->index(Request::create('/finance/profit-loss', 'GET', ['date_from' => now()->toDateString(), 'date_to' => now()->toDateString()]))->render();
+
+        $this->assertMatchesRegularExpression('/5110 — Beverages<\/td><td class="text-end">1,100\.00</', $html);
+        $this->assertMatchesRegularExpression('/5100 — Product COGS<\/td><td class="text-end">550\.00</', $html);
+    }
+
+    public function test_the_category_form_offers_and_checks_the_cost_account(): void
+    {
+        $bev = $this->costAccount('5110', 'Beverages');
+        $cat = $this->makeCategory(['name' => 'Soft Drinks', 'code' => 'SOFT']);
+        $controller = app(\App\Http\Controllers\Tenant\CategoryController::class);
+
+        $html = $controller->edit(\App\Models\Tenant\Category::find($cat))->render();
+        $this->assertMatchesRegularExpression('/<option value="' . $bev . '"[^>]*>\s*5110 — Beverages/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<option value="' . $this->acc['5000'] . '"/', $html, 'a group head is not offered');
+        $this->assertDoesNotMatchRegularExpression('/<option value="' . $this->acc['1400'] . '"[^>]*>\s*1400/', $html);
+
+        $save = fn ($account) => $controller->update(Request::create('/categories/' . $cat, 'PUT',
+            ['name' => 'Soft Drinks', 'code' => 'SOFT', 'sort_order' => 0, 'is_active' => 1, 'cogs_account_id' => $account]), \App\Models\Tenant\Category::find($cat));
+
+        try {
+            $save($this->acc['5000']);
+            $this->fail('a group head was accepted');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertArrayHasKey('cogs_account_id', $e->errors());
+        }
+        $save($bev);
+        $this->assertSame($bev, (int) DB::table('categories')->where('id', $cat)->value('cogs_account_id'));
+    }
+
+    /** The command finds a tenant by code in master and activates its database — this test DB. */
+    private function registerTenant(): string
+    {
+        $m = DB::connection('master');
+        $code = 'recost' . strtolower(\Illuminate\Support\Str::random(5));
+        $id = $m->table('tenants')->insertGetId(['tenant_code' => $code, 'business_name' => 'Recost', 'owner_name' => 'O',
+            'owner_email' => $code . '@test.local', 'currency_code' => 'PKR', 'status' => 'active', 'is_demo' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $m->table('tenant_databases')->insert(['tenant_id' => $id, 'db_connection' => 'tenant',
+            'db_host' => config('database.connections.tenant.host'), 'db_port' => (int) config('database.connections.tenant.port'),
+            'db_database' => $this->tenantDb, 'db_username' => config('database.connections.tenant.username'), 'db_password' => null,
+            'migration_status' => 'completed', 'created_at' => now(), 'updated_at' => now()]);
+        $this->beforeApplicationDestroyed(function () use ($m, $id) {
+            $m->table('tenant_databases')->where('tenant_id', $id)->delete();
+            $m->table('tenants')->where('id', $id)->delete();
+        });
+
+        return $code;
+    }
 }

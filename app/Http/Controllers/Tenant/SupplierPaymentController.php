@@ -125,7 +125,30 @@ class SupplierPaymentController extends Controller
 
     public function show(SupplierPayment $supplierPayment)
     {
-        $supplierPayment->load(['supplier', 'branch', 'bill', 'postedBy']);
+        $supplierPayment->load(['supplier', 'branch', 'bill', 'postedBy', 'voidedBy']);
         return view('tenant.supplier-payments.show', compact('supplierPayment'));
+    }
+
+    /**
+     * SUPPLIER-PAYMENT-VOID-1 — ghalat payment ulti karo (cash wapas, supplier ka payable wapas,
+     * GL reversal, bill dobara khula). Wajah lazmi. Poora kaam SupplierPayableService::voidPayment().
+     */
+    public function void(Request $request, SupplierPayment $supplierPayment)
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:3', 'max:500'],
+        ]);
+
+        try {
+            app(SupplierPayableService::class)->voidPayment($supplierPayment, $data['reason'], auth('tenant')->id());
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['payment' => $e->getMessage()]);
+        }
+
+        $status = 'Payment ' . $supplierPayment->payment_no . ' voided — '
+            . number_format((float) $supplierPayment->amount, 2) . ' is back in the cash/bank account and on the supplier\'s balance.';
+
+        return redirect(\App\Support\CashBookReturn::from($request) ?? url('/supplier-payments/' . $supplierPayment->id))
+            ->with('status', $status);
     }
 }

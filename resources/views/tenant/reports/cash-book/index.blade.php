@@ -22,6 +22,13 @@
     </div>
 </div>
 
+{{-- CASH-BOOK-VOID-1 — kisi void ki nakami (jaise invoice ke baad receipt) yahin wapas aati hai. --}}
+@if($errors->any())
+    <div class="alert alert-danger" id="cash-book-errors">
+        @foreach($errors->all() as $err)<div>{{ $err }}</div>@endforeach
+    </div>
+@endif
+
 <div class="card">
     <div class="card-body">
         <form method="GET" action="{{ url('/reports/cash-book') }}" class="row g-2 align-items-end" id="cash-book-filters">
@@ -148,9 +155,9 @@
             <div class="card-header bg-white"><strong>{{ $summary[$id]['account']->name }}</strong></div>
             <div class="card-body p-0"><div class="table-responsive">
                 <table class="table table-sm mb-0">
-                    <thead class="table-light"><tr><th>Date</th><th>Type</th><th>Ref</th><th>From / to</th><th class="text-end">In</th><th class="text-end">Out</th><th class="text-end">Balance</th></tr></thead>
+                    <thead class="table-light"><tr><th>Date</th><th>Type</th><th>Ref</th><th>From / to</th><th class="text-end">In</th><th class="text-end">Out</th><th class="text-end">Balance</th><th class="text-end">Action</th></tr></thead>
                     <tbody>
-                        <tr class="table-light"><td colspan="6" class="text-muted small">Balance brought forward</td><td class="text-end fw-semibold">{{ $money($broughtForward) }}</td></tr>
+                        <tr class="table-light"><td colspan="6" class="text-muted small">Balance brought forward</td><td class="text-end fw-semibold">{{ $money($broughtForward) }}</td><td></td></tr>
                         @foreach($rows as $e)
                             <tr>
                                 <td class="text-nowrap">{{ \Illuminate\Support\Carbon::parse($e->transaction_date)->format('d M Y') }}</td>
@@ -162,10 +169,29 @@
                                 <td class="text-end text-success">{{ $e->direction === 'in' ? $money($e->amount) : '' }}</td>
                                 <td class="text-end text-danger">{{ $e->direction === 'out' ? $money($e->amount) : '' }}</td>
                                 <td class="text-end fw-semibold">{{ $money($e->balance) }}</td>
+                                {{-- CASH-BOOK-VOID-1 — ghalat entry yahin se ulti. Har void apne mojooda darwaze par jata hai. --}}
+                                <td class="text-end text-nowrap">
+                                    @if($e->void)
+                                        @if($e->void['voided'])
+                                            <span class="badge bg-secondary">{{ $e->void['kind'] === 'manual_journal' ? 'Reversed' : 'Voided' }}</span>
+                                        @elseif(auth()->user()?->can($e->void['can']))
+                                            @if($e->void['action'])
+                                                <button type="button" class="btn btn-sm btn-outline-danger cash-book-void"
+                                                    data-action="{{ url($e->void['action']) }}" data-kind="{{ $e->void['kind'] }}"
+                                                    data-ref="{{ $e->ref }}" data-party="{{ $e->party }}" data-type="{{ $e->type_label }}"
+                                                    data-date="{{ \Illuminate\Support\Carbon::parse($e->transaction_date)->format('d M Y') }}"
+                                                    data-amount="{{ $money($e->amount) }}" data-direction="{{ $e->direction }}"
+                                                    data-drawer="{{ $summary[$id]['account']->name }}">Void</button>
+                                            @else
+                                                <a href="{{ url($e->void['open']) }}" class="btn btn-sm btn-outline-secondary" title="A POS sale is cancelled on its own page, with manager approval">Cancel on sale</a>
+                                            @endif
+                                        @endif
+                                    @endif
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>
-                    <tfoot class="table-light fw-bold"><tr><td colspan="4">Period total · {{ $summary[$id]['account']->name }}</td><td class="text-end">{{ $money($summary[$id]['in']) }}</td><td class="text-end">{{ $money($summary[$id]['out']) }}</td><td class="text-end">{{ $money($summary[$id]['closing']) }}</td></tr></tfoot>
+                    <tfoot class="table-light fw-bold"><tr><td colspan="4">Period total · {{ $summary[$id]['account']->name }}</td><td class="text-end">{{ $money($summary[$id]['in']) }}</td><td class="text-end">{{ $money($summary[$id]['out']) }}</td><td class="text-end">{{ $money($summary[$id]['closing']) }}</td><td></td></tr></tfoot>
                 </table>
             </div></div>
         </div>
@@ -176,4 +202,90 @@
         <div class="mt-3">{{ $entries->appends($query)->links() }}</div>
     @endif
 @endif
+
+{{-- CASH-BOOK-VOID-1 — ek hi modal, har satar ka button isay bhar kar khol-ta hai. Form usi satar ke
+     mojooda void darwaze par jata hai (receipt / expense / journal / supplier payment) — wohi ijazat,
+     wohi hisaab — aur `return_to` kaam ke baad yahin, isi tareekh par wapas laata hai. --}}
+<div class="modal fade" id="cashBookVoidModal" tabindex="-1" aria-labelledby="cashBookVoidTitle" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="" id="cash-book-void-form">
+                @csrf
+                <input type="hidden" name="return_to" value="{{ request()->getRequestUri() }}">
+                <input type="hidden" name="void_reason" id="cash-book-void-reason-copy" value="">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cashBookVoidTitle">Void this entry?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <dl class="row small mb-2">
+                        <dt class="col-4">Date</dt><dd class="col-8" id="cbv-date"></dd>
+                        <dt class="col-4">Type</dt><dd class="col-8" id="cbv-type"></dd>
+                        <dt class="col-4">Ref</dt><dd class="col-8" id="cbv-ref"></dd>
+                        <dt class="col-4">From / to</dt><dd class="col-8" id="cbv-party"></dd>
+                        <dt class="col-4">Amount</dt><dd class="col-8 fw-semibold" id="cbv-amount"></dd>
+                    </dl>
+                    <div class="alert alert-warning small mb-3" id="cbv-effect"></div>
+                    <label for="cash-book-void-reason" class="form-label">Why is it being voided? <span class="text-danger">*</span></label>
+                    <textarea name="reason" id="cash-book-void-reason" class="form-control" rows="2" required minlength="3" maxlength="255"
+                        placeholder="e.g. entered twice, wrong amount, wrong drawer"></textarea>
+                    <div class="form-text">The original entry stays in the books, marked voided. The money moves back today, with your reason on it.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger" id="cash-book-void-submit">Void entry</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@include('tenant.catering.partials.submit-guard')
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var modalEl = document.getElementById('cashBookVoidModal');
+    var form = document.getElementById('cash-book-void-form');
+    if (!modalEl || !form || !window.bootstrap) return;
+    var modal = new bootstrap.Modal(modalEl);
+
+    // Har qism ka void kya karega — asaan alfaaz me, taake dabane se pehle maloom ho.
+    function effect(d) {
+        var amt = d.amount, drawer = d.drawer;
+        switch (d.kind) {
+            case 'supplier_payment':
+                return amt + ' comes back into ' + drawer + ' today, the supplier owes it again, and any bill it paid opens again.';
+            case 'catering_receipt':
+                return amt + ' goes back out of ' + drawer + ' today and the customer owes it again. Not possible once the booking\'s final invoice is issued — use Refund then.';
+            case 'expense':
+                return amt + ' comes back into ' + drawer + ' today and the expense leaves the books.';
+            case 'manual_journal':
+                return 'The whole journal ' + d.ref + ' is reversed — all its lines, not only this one — dated today.';
+        }
+        return '';
+    }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.cash-book-void');
+        if (!btn) return;
+        var d = btn.dataset;
+        form.setAttribute('action', d.action);
+        document.getElementById('cbv-date').textContent = d.date || '';
+        document.getElementById('cbv-type').textContent = d.type || '';
+        document.getElementById('cbv-ref').textContent = d.ref || '—';
+        document.getElementById('cbv-party').textContent = d.party || '—';
+        document.getElementById('cbv-amount').textContent = (d.direction === 'in' ? 'In ' : 'Out ') + d.amount + ' · ' + d.drawer;
+        document.getElementById('cbv-effect').textContent = effect(d);
+        document.getElementById('cash-book-void-reason').value = '';
+        modal.show();
+    });
+
+    // Expense ka darwaza wajah `void_reason` naam se leta hai, baqi `reason` se — dono bhar do.
+    form.addEventListener('submit', function () {
+        document.getElementById('cash-book-void-reason-copy').value = document.getElementById('cash-book-void-reason').value;
+    });
+});
+</script>
+@endpush

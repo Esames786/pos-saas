@@ -13,6 +13,8 @@ class GoodsReceiptLine extends Model
         'goods_receipt_id', 'purchase_order_line_id', 'product_id', 'product_variant_id',
         'batch_no', 'expiry_date', 'quantity_received', 'unit_cost',
         'discount_amount', 'tax_amount', 'notes', 'affects_stock',
+        // PNL-COST-BY-CATEGORY-1: the account the bill actually debited for this purchase-only line.
+        'cost_account_id',
     ];
 
     protected $casts = [

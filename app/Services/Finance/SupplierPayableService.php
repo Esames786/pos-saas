@@ -97,6 +97,139 @@ class SupplierPayableService
     }
 
     /**
+     * SUPPLIER-PAYMENT-VOID-1 — ek supplier payment ULTI karo. Amount edit nahi hoti; ghalat payment
+     * ulti hoti hai aur sahi payment nayi darj hoti hai — catering receipt aur expense ki tarah.
+     *
+     * recordPayment() ke chaaron hisse, ulte, EK transaction me — sab ya kuch nahi:
+     *
+     *   1. GL           asal entry (Dr 2100 / Cr cash) ki reversal — aaj ki tareekh par. GL na mile
+     *                   to ruk jao: bina GL ke ulti karna AP control ko subledger se hata deta.
+     *   2. subledger    'payment_void' satar, direction 'debit' (aaina: payable WAPAS barha).
+     *   3. bills        running account ON: is payment ki allocations hatao aur un bills ka paid
+     *                   dobara jodo. OFF: jis bill par thi us ka amount_paid utna kam.
+     *   4. cash/bank    paisa drawer me WAPAS ('in'), aaj ki tareekh par.
+     *
+     * Payment ka row rehta hai; `voided_at` us par nishan hai. Do bar dabane par doosra reversal nahi
+     * banta — row ka taala aur `voided_at` ki jaanch pehle hoti hai.
+     */
+    public function voidPayment(SupplierPayment $payment, string $reason, ?int $userId = null): SupplierPayment
+    {
+        $reason = trim($reason);
+        if (mb_strlen($reason) < 3) {
+            throw new RuntimeException('Write why this payment is being voided (at least 3 characters) — it becomes part of the record.');
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($payment, $reason, $userId) {
+            $locked = SupplierPayment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->voided_at !== null) {
+                throw new RuntimeException('Payment ' . $locked->payment_no . ' has already been voided.');
+            }
+
+            $supplier = Supplier::whereKey($locked->supplier_id)->lockForUpdate()->firstOrFail();
+            $amount = (float) $locked->amount;
+            $note = 'Void of supplier payment ' . $locked->payment_no . ' — ' . $reason;
+
+            // 1. GL
+            $entry = JournalEntry::where('source_type', 'supplier_payment')
+                ->where('source_id', $locked->id)
+                ->where('is_reversal', false)
+                ->first();
+            if (! $entry) {
+                throw new RuntimeException('Payment ' . $locked->payment_no . ' has no general-ledger entry, so it cannot be '
+                    . 'voided safely. Nothing was changed.');
+            }
+            $reversal = app(JournalService::class)->reverse($entry, $note, $userId);
+
+            // 2. Supplier subledger — payable wapas barha.
+            $this->purchasing->postSupplierLedger(
+                $supplier, 'payment_void', 'debit', $amount,
+                SupplierPayment::class, (int) $locked->id, (string) $locked->payment_no, $note, $userId
+            );
+
+            // 3. Bills
+            $this->releaseBills($locked);
+
+            // 4. Cash/bank — sirf tab jab payment ne waqai drawer se paisa nikala tha.
+            if ($locked->cash_bank_account_id) {
+                $paidOut = CashBankAccountTransaction::query()
+                    ->where('reference_type', 'supplier_payment')->where('reference_id', $locked->id)
+                    ->where('transaction_type', 'supplier_payment')->exists();
+                $alreadyBack = CashBankAccountTransaction::query()
+                    ->where('reference_type', 'supplier_payment')->where('reference_id', $locked->id)
+                    ->where('transaction_type', 'supplier_payment_void_reversal')->exists();
+
+                if ($paidOut && ! $alreadyBack) {
+                    $cash = CashBankAccount::whereKey($locked->cash_bank_account_id)->lockForUpdate()->firstOrFail();
+                    $newBalance = (float) $cash->current_balance + $amount;
+
+                    CashBankAccountTransaction::create([
+                        'cash_bank_account_id' => $cash->id,
+                        'transaction_date'     => now()->toDateString(),
+                        'direction'            => 'in',
+                        'amount'               => $locked->amount,
+                        'balance_after'        => $newBalance,
+                        'transaction_type'     => 'supplier_payment_void_reversal',
+                        'reference_type'       => 'supplier_payment',
+                        'reference_id'         => $locked->id,
+                        'notes'                => $note,
+                        'created_by_user_id'   => $userId,
+                    ]);
+                    $cash->update(['current_balance' => $newBalance]);
+                }
+            }
+
+            $locked->forceFill([
+                'voided_at'             => now(),
+                'voided_by_user_id'     => $userId,
+                'void_reason'           => $reason,
+                'void_journal_entry_id' => $reversal->id,
+            ])->save();
+
+            return $locked;
+        });
+    }
+
+    /** Ulti payment ne jo bills chukaye thay, unhein wapas khol do. */
+    private function releaseBills(SupplierPayment $payment): void
+    {
+        $running = app(\App\Services\Purchasing\SupplierRunningAccountService::class);
+        $allocations = \App\Models\Tenant\SupplierCreditAllocation::query()
+            ->where('source_type', \App\Models\Tenant\SupplierCreditAllocation::SOURCE_PAYMENT)
+            ->where('source_id', $payment->id)
+            ->get(['id', 'purchase_bill_id']);
+
+        // Running account: bill ka paid uski allocations ka jod hai — inhein hatao aur dobara jodo.
+        if ($allocations->isNotEmpty()) {
+            \App\Models\Tenant\SupplierCreditAllocation::whereIn('id', $allocations->pluck('id'))->delete();
+            foreach (PurchaseBill::whereIn('id', $allocations->pluck('purchase_bill_id')->unique())->lockForUpdate()->get() as $bill) {
+                $running->recomputeBill($bill);
+            }
+
+            return;
+        }
+
+        // Purana tareeqa (switch OFF): payment ne seedha apne bill ka amount_paid barhaya tha. ON par
+        // allocation na hone ka matlab hai bill par kuch baqi nahi tha — wahan kuch nahi lautana.
+        if ($running->enabled() || ! $payment->purchase_bill_id) {
+            return;
+        }
+
+        $bill = PurchaseBill::whereKey($payment->purchase_bill_id)->lockForUpdate()->first();
+        if (! $bill || ! in_array($bill->status, ['posted', 'partial', 'paid'], true)) {
+            return;
+        }
+
+        $paid = max(0.0, round((float) $bill->amount_paid - (float) $payment->amount, 4));
+        $due = max(0.0, round((float) $bill->grand_total - $paid, 4));
+        $bill->update([
+            'amount_paid' => $paid,
+            'balance_due' => $due,
+            'status'      => $due <= 0.00005 ? 'paid' : ($paid > 0.00005 ? 'partial' : 'posted'),
+        ]);
+    }
+
+    /**
      * Supplier advance / overpayment par FAIL CLOSED.
      *
      * Is system mein supplier advance ka koi nizam mojood NAHI hai — COA mein `2300 Customer

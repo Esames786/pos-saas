@@ -300,6 +300,76 @@ class CateringFinalInvoiceService
     }
 
     /**
+     * Void se PEHLE: kaun se khaate kitna hilenge.
+     *
+     * CATERING-VOID-BUTTON-1 (13 Oct) — malik ko dabane se pehle asal adad
+     * dikhane ke liye.
+     *
+     * 🚨 ADAD WAHIN SE AATE HAIN JAHAN SE ASAL KAAM HOTA HAI. Preview ke liye
+     * alag hisaab likhna sab se khatarnak shakl hai: screen kuch dikhati aur
+     * button kuch aur karta, aur farq tabhi khulta jab paisa hil chuka hota.
+     * Is liye yahan wohi entries dhoondi jati hain jo `voidEntireBooking()`
+     * ulti karega — aur un ki apni lines ulti kar ke jama ki jati hain.
+     *
+     * @return array{accounts: array<string, array{name: string, delta: float}>, entries: int, receipts: int, invoice_no: ?string}
+     */
+    public function voidPreview(CateringEvent $event): array
+    {
+        $out = ['accounts' => [], 'entries' => 0, 'receipts' => 0, 'invoice_no' => null];
+
+        $sources = [];
+
+        $invoice = CateringFinalInvoice::where('catering_event_id', $event->id)->first();
+
+        if ($invoice) {
+            $out['invoice_no'] = $invoice->invoice_no;
+            $sources[] = ['catering_final_invoice', $invoice->id];
+            $sources[] = ['catering_advance_application', $invoice->id];
+        }
+
+        foreach ($event->advances()->get() as $receipt) {
+            $out['receipts']++;
+            // Wohi faisla jo `CateringAdvanceService::void()` lagata hai: bill se
+            // pehle aaya paisa `catering_advance`, baad me aaya `catering_settlement`.
+            $sources[] = [
+                $receipt->posting_type === \App\Models\Tenant\CateringAdvance::POSTING_SETTLEMENT
+                    ? 'catering_settlement'
+                    : 'catering_advance',
+                $receipt->id,
+            ];
+        }
+
+        foreach ($sources as [$type, $id]) {
+            $entry = $this->journal->findPostedForSource($type, $id);
+
+            if (! $entry) {
+                continue;
+            }
+
+            $out['entries']++;
+
+            $lines = DB::connection('tenant')->table('journal_lines as l')
+                ->join('accounts as a', 'a.id', '=', 'l.account_id')
+                ->where('l.journal_entry_id', $entry->id)
+                ->get(['a.code', 'a.name', 'l.debit', 'l.credit']);
+
+            foreach ($lines as $line) {
+                $code = $line->code;
+                $out['accounts'][$code] ??= ['name' => $line->name, 'delta' => 0.0];
+                // Ulta: jo debit tha wo nikal jayega, jo credit tha wo wapas aayega.
+                $out['accounts'][$code]['delta'] -= (float) $line->debit - (float) $line->credit;
+            }
+        }
+
+        // Jo khaate net me hilte hi nahi (misal AR, jahan bill aur receipt
+        // barabar hain) un ko dikhana sirf shor hai.
+        $out['accounts'] = array_filter($out['accounts'], fn ($a) => abs($a['delta']) >= 0.01);
+        $out['accounts'] = array_map(fn ($a) => ['name' => $a['name'], 'delta' => round($a['delta'], 2)], $out['accounts']);
+        ksort($out['accounts']);
+
+        return $out;
+    }
+    /**
      * Ek test booking ko khaton se POORI TARAH nikal dena.
      *
      * CATERING-VOID-ENTIRE-BOOKING-1 (11 Oct). Malik: "ye wala order cancel

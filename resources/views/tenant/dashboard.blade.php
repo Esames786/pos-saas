@@ -231,8 +231,10 @@
                     <h5 class="mt-1 mb-0 @if($expiryCount > 0) text-warning @endif">{{ $fig($expiryCount, 0) }}</h5>
                 </div></div>
             </div>
-        </div>
 
+            {{-- DASHBOARD-LAYOUT-1 — billing ke khanay bhi ISI row me. Pehle ye apni alag
+                 row me `col-md-6` par thay, yani aik hi card hota to aadhi row khaali. Ab ye baqi
+                 KPI cards ke saath behte hain aur row khud bhar jati hai. --}}
         {{-- SAAS-BILLING-WHATSAPP-1 — platform ke paise.
 
              Gate wohi permission hai jo /billing kholne deti hai. Dashboard har user ke saamne
@@ -244,49 +246,35 @@
              jaisa dikhana logon se ghalat wali ki adaegi karwata hai. --}}
         @can('tenant.billing.index')
         @if(($billing['due'] ?? 0) > 0 || ($billing['accruing'] ?? 0) > 0)
-            <div class="row g-3 mb-4">
                 @if(($billing['due'] ?? 0) > 0)
-                    <div class="col-md-6">
-                        <div class="card border-0 shadow-sm h-100 border-start border-4 border-warning">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <div>
-                                        <span class="text-muted small">
-                                            <i class="ti ti-file-invoice me-1"></i>Dena hai
-                                        </span>
-                                        <div class="fs-4 fw-semibold">PKR {{ number_format($billing['due'], 2) }}</div>
-                                        <div class="text-muted small">
-                                            {{ $billing['dueCount'] }} invoice baqi
-                                        </div>
-                                    </div>
-                                    <a href="{{ url('/billing') }}" class="btn btn-sm btn-warning">
-                                        Dekhein
-                                    </a>
-                                </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card border-0 shadow-sm h-100 border-start border-4 border-warning"><div class="card-body">
+                            <span class="text-muted small"><i class="ti ti-file-invoice me-1"></i>Dena hai</span>
+                            <h5 class="mt-1 mb-0 text-warning">{{ number_format($billing['due'], 2) }}</h5>
+                            <div class="text-muted small mt-1">
+                                {{ $billing['dueCount'] }} invoice baqi ·
+                                <a href="{{ url('/billing') }}">dekhein</a>
                             </div>
+                        </div>
                         </div>
                     </div>
                 @endif
 
                 @if(($billing['accruing'] ?? 0) > 0)
-                    <div class="col-md-6">
-                        <div class="card border-0 shadow-sm h-100">
-                            <div class="card-body">
-                                <span class="text-muted small">
-                                    <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp — is mahine ab tak
-                                </span>
-                                <div class="fs-4 fw-semibold">PKR {{ number_format($billing['accruing'], 2) }}</div>
-                                <div class="text-muted small">
-                                    {{ $billing['accruingMessages'] }} report messages · abhi dena nahi,
-                                    mahina khatam hone par bill banega
-                                </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+                            <span class="text-muted small"><i class="ti ti-brand-whatsapp me-1"></i>WhatsApp is mahine</span>
+                            <h5 class="mt-1 mb-0">{{ number_format($billing['accruing'], 2) }}</h5>
+                            <div class="text-muted small mt-1">
+                                {{ $billing['accruingMessages'] }} messages · bill mahine ke aakhir me
                             </div>
+                        </div>
                         </div>
                     </div>
                 @endif
-            </div>
         @endif
         @endcan
+        </div>
 
         {{-- Bottom row: Top Products + 7-day sales.
              DASHBOARD-DETAILS-1: both cards read the whole branch, so a counter operator does not
@@ -295,7 +283,7 @@
         @can('tenant.dashboard.details')
         <div class="row g-3">
             <div class="col-lg-5">
-                <div class="card border-0 shadow-sm h-100">
+                <div class="card border-0 shadow-sm">
                     <div class="card-header bg-white border-0 pb-0">
                         <h6 class="mb-0">Top 5 Products Today</h6>
                     </div>
@@ -321,6 +309,51 @@
                                 </tr>
                                 @endforeach
                             </tbody>
+                        </table>
+                        @endif
+                    </div>
+                </div>
+
+            {{-- DASHBOARD-LAYOUT-1 — ye card pehle apni alag row me tha aur us ki daayein taraf
+                 saat column khaali paRe rehte thay. Ab Top-5 ke NEECHE, usi baayein sutoon me:
+                 Top-5 par paanch satrein hoti hain aur "Last 8 Days" par aath, to baayein taraf jo
+                 jagah khaali bachti thi wo theek isi se bhar jati hai. --}}
+                <div class="card border-0 shadow-sm mt-3" id="dashboard-category-today">
+                    <div class="card-header bg-white border-0 pb-0">
+                        <h6 class="mb-0">Sales by Category Today</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        @if(empty($categoriesToday))
+                            <p class="text-muted text-center py-4 small mb-0">No sales today.</p>
+                        @else
+                        <table class="table table-sm mb-0">
+                            <caption class="visually-hidden">Quantity and sales of every category today</caption>
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">Category</th>
+                                    <th scope="col" class="text-end">Qty</th>
+                                    <th scope="col" class="text-end">Sales</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($categoriesToday as $cat)
+                                <tr>
+                                    <td>{{ $cat['name'] }}</td>
+                                    <td class="text-end">{{ $fig($cat['net_qty']) }}</td>
+                                    <td class="text-end">{{ $fig($cat['net_value']) }}</td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                            <tfoot class="table-light fw-semibold">
+                                <tr>
+                                    {{-- Items only: delivery and other bill-level charges belong to no category,
+                                         so this sits a little under the Net Sales tile (Kashif Food 10 Oct:
+                                         1,037,450 against 1,043,086.50). The label says so before anyone asks. --}}
+                                    <td title="Bill-level charges such as delivery are not in any category">Items total</td>
+                                    <td class="text-end">{{ $fig(array_sum(array_column($categoriesToday, 'net_qty'))) }}</td>
+                                    <td class="text-end" id="dashboard-category-total">{{ $fig(array_sum(array_column($categoriesToday, 'net_value'))) }}</td>
+                                </tr>
+                            </tfoot>
                         </table>
                         @endif
                     </div>
@@ -368,52 +401,6 @@
             </div>
         </div>
 
-        {{-- DASHBOARD-CATEGORY-TODAY-1 — every category that sold today, biggest first. Same figures
-             as the Report Center's Categories section for today (the controller asks that engine). --}}
-        <div class="row g-3 mt-1">
-            <div class="col-lg-5">
-                <div class="card border-0 shadow-sm h-100" id="dashboard-category-today">
-                    <div class="card-header bg-white border-0 pb-0">
-                        <h6 class="mb-0">Sales by Category Today</h6>
-                    </div>
-                    <div class="card-body p-0">
-                        @if(empty($categoriesToday))
-                            <p class="text-muted text-center py-4 small mb-0">No sales today.</p>
-                        @else
-                        <table class="table table-sm mb-0">
-                            <caption class="visually-hidden">Quantity and sales of every category today</caption>
-                            <thead class="table-light">
-                                <tr>
-                                    <th scope="col">Category</th>
-                                    <th scope="col" class="text-end">Qty</th>
-                                    <th scope="col" class="text-end">Sales</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach($categoriesToday as $cat)
-                                <tr>
-                                    <td>{{ $cat['name'] }}</td>
-                                    <td class="text-end">{{ $fig($cat['net_qty']) }}</td>
-                                    <td class="text-end">{{ $fig($cat['net_value']) }}</td>
-                                </tr>
-                                @endforeach
-                            </tbody>
-                            <tfoot class="table-light fw-semibold">
-                                <tr>
-                                    {{-- Items only: delivery and other bill-level charges belong to no category,
-                                         so this sits a little under the Net Sales tile (Kashif Food 10 Oct:
-                                         1,037,450 against 1,043,086.50). The label says so before anyone asks. --}}
-                                    <td title="Bill-level charges such as delivery are not in any category">Items total</td>
-                                    <td class="text-end">{{ $fig(array_sum(array_column($categoriesToday, 'net_qty'))) }}</td>
-                                    <td class="text-end" id="dashboard-category-total">{{ $fig(array_sum(array_column($categoriesToday, 'net_value'))) }}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                        @endif
-                    </div>
-                </div>
-            </div>
-        </div>
         @endcan
 
 @endsection
