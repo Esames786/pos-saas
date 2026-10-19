@@ -362,6 +362,17 @@ Kashiffood: **the owner switched "New purchase screens" ON himself**, so it is a
 - **Kitchen test.** Chicken 12.5 kg, rice 2 sacks + 5 kg at 9,000 / sack = 105 kg @ 180, milk with expiry
   and no batch, gas purchase-only (no stock). PurchasingV2MySqlTest is 18 / 211.
 
+**Step 3 LIVE 19 Oct ~21:35 PKT (`28779f17`) — PURCHASE-DISCOUNTS-1.** Two standard choices were taken: a trade discount lowers the stock cost, and tax rows come later.
+
+- **Line discount.** % or Rs.
+- **Free box.** It takes a number or a scheme ("10+1" works out the free quantity, on the server too). On a PO it is "Scheme".
+- **Bill discount.** % or Rs, in the totals, spread over the lines into their cost.
+- **What fills in, in this order.** The order (Receive) or the line being edited; else the last deal with this supplier (as typed, kept in `entry_json`); else the item's usual discount and scheme (product screen, "When bought"; the scheme is asked for pharmacy / mart only); else the supplier's usual discount % (supplier page, switch on only).
+- **Totals.** They show the typed discounts, plus a "Rounding (paisa)" row: the cost of one unit is kept to 4 decimals and the page works money out the server's way, so grid, preview and bill agree. Widening the cost column would copy huge live tables, so it is not done.
+- **Migration.** Additive, INSTANT, lock_wait_timeout 10. It ran on 13/13 tenants in a 25-second deploy during dinner traffic; sales kept flowing.
+- **Deploy race (not new code).** One request hit `routes-v7.php` while `route:cache` was writing it (ParseError 16:33:19 UTC). Proposed fix: deploy.sh writes the cache to a temp file and renames it (`APP_ROUTES_CACHE` / `APP_CONFIG_CACHE`). Waiting for the owner.
+- **Tests.** PurchasingV2MySqlTest 20 / 241; ProductScreenV2MySqlTest 12 / 191.
+
 | Step | Work | Needs |
 | --- | --- | --- |
 | 1 | Purchasing tabs + supplier search + "+ New supplier" + batch box + save without reload (PO, GRN) | — |
