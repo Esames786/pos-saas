@@ -298,6 +298,9 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
             }
             $m->table('tenants')->where('id', $old)->delete();
         }
+        // Another test may wipe tenants with foreign keys off, leaving this host's domain behind.
+        $m->table('tenant_domains')->where('domain', $this->host)->delete();
+        $m->table('tenant_databases')->where('db_database', $this->db)->delete();
         $id = $m->table('tenants')->insertGetId([
             'tenant_code' => self::CODE, 'business_name' => 'Screen V2 Test', 'owner_name' => 'Owner', 'owner_email' => 'owner@pv2test.test',
             'currency_code' => 'PKR', 'status' => 'active', 'is_demo' => 0, 'created_at' => now(), 'updated_at' => now(),

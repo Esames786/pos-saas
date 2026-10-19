@@ -255,6 +255,8 @@ class MasterUniverseMySqlTest extends MySqlTenantTestCase
     public function test_the_forecast_waits_for_two_snapshots_a_day_apart(): void
     {
         $usage = app(SystemUsageService::class);
+        // Only this test's rows: an earlier test's real snapshot (taken now, real disk) would shift the arithmetic.
+        DB::connection('master')->table('system_usage_snapshots')->delete();
         $row = fn ($at, $free) => DB::connection('master')->table('system_usage_snapshots')->insert([
             'taken_at' => $at, 'tenant_id' => null, 'disk_total_bytes' => 100 * 1024 ** 3, 'disk_free_bytes' => $free,
             'meta' => '{}', 'created_at' => now(), 'updated_at' => now(),
