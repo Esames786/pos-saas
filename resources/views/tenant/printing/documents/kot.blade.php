@@ -118,6 +118,18 @@
 <div class="center">{{ $salesOrder->sale_no ?? $salesOrder->order_no }}</div>
 @endif
 
+{{-- BILL-BARCODE-1: the bill number, big, so the billing counter scans this KOT and the order comes up.
+     Only where the layout switch is SAVED on (default OFF — no tenant's KOT changes on deploy). --}}
+@php
+    $billCode = (data_get($layout, 'show_bill_barcode') === true)
+        ? (data_get($salesOrder, 'bill_code') ?: (data_get($salesOrder, 'id') ? \App\Support\Code128::billCode((int) data_get($salesOrder, 'id')) : null))
+        : null;
+@endphp
+@if($billCode)
+<div class="center" style="margin:6px 0 2px">{!! \App\Support\Code128::svg($billCode, 60, 2) !!}</div>
+<div class="center big">{{ $billCode }}</div>
+@endif
+
 <hr>
 
 {{-- Field ORDER + casing mirror EscPosPayloadService::kot() exactly, so the preview equals the

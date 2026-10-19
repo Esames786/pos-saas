@@ -799,6 +799,7 @@ class EscPosPayloadService
         if ($show('show_order_no')) {
             $out .= "Receipt: {$sale->sale_no}\n";
         }
+        $out .= $this->billBarcode($sale, $layout);
         $tz = $this->printTz($sale);
         $out .= 'Date: ' . ($sale->sale_date ? $sale->sale_date->copy()->timezone($tz)->format('d/m/Y h:i A') : '') . "\n";
         if ($show('show_cashier_name')) {
@@ -1084,6 +1085,7 @@ class EscPosPayloadService
         if ($show('show_order_no')) {
             $out .= $this->center($sale->sale_no ?? '') . "\n";
         }
+        $out .= $this->billBarcode($sale, $layout);
         $out .= $rule . "\n";
 
         if ($show('show_table_info')) {
@@ -1391,5 +1393,26 @@ class EscPosPayloadService
         } catch (\Throwable) {
             return $timestamp;
         }
+    }
+
+    /**
+     * BILL-BARCODE-1 — the bill number ("BL20339") as the printer's own Code 128 barcode, centred, with the
+     * number printed under it, so the billing counter scans the paper and the held order comes up. Only where
+     * the layout switch is SAVED on (no layout row = off — never the $show() default of on).
+     */
+    private function billBarcode(SalesOrder $sale, $layout): string
+    {
+        if (! $layout || ! (bool) ($layout->show_bill_barcode ?? false) || ! $sale->id) {
+            return '';
+        }
+        $data = '{B' . \App\Support\Code128::billCode((int) $sale->id);
+        $module = ($layout->paper_size ?? '80mm') === '58mm' ? 2 : 3;
+
+        return "\x1B\x61\x01"                         // centre
+            . "\x1D\x48\x02" . "\x1D\x66\x00"         // the number printed under the bars, font A
+            . "\x1D\x68" . chr(80)                    // 80 dots tall
+            . "\x1D\x77" . chr($module)               // bar width
+            . "\x1D\x6B\x49" . chr(strlen($data)) . $data . "\n"
+            . "\x1B\x61\x00";                         // back to the left
     }
 }

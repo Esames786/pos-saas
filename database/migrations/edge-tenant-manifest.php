@@ -54,7 +54,7 @@ return [
         'pending_merge_base' => 'b529c95',
         // CANONICAL MERGE (D8): canonical was integrated INTO the Edge branch up to this head; migrations after 99e9365 were
         // classified as the merge landed them (see the entries marked "CANONICAL MERGE (D8, 20 Oct 2026)").
-        'merged_canonical' => '8230eedc',
+        'merged_canonical' => 'ccc67fa1',
         'governs' => 'database/migrations/tenant',
         'bootstrap_section_tables' => [
             'branches', 'units', 'currencies', 'currency_denominations', 'categories', 'products', 'product_variants',
@@ -3237,6 +3237,22 @@ return [
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
             'NOTE' => 'BILL-BARCODE-1 (schema step, default OFF): receipt_layout_settings is a bootstrap section (whole rows upserted) — the column must exist on the appliance before the next refresh; the shared receipt path reads the layout row.',
+        ],
+        // chunk 14 (ccc67fa1 REFUND-SHIFT-1 schema)
+        '2026_10_20_000004_add_refund_shift_to_sales_returns' => [
+            'MIGRATION' => '2026_10_20_000004_add_refund_shift_to_sales_returns',
+            'CLASSIFICATION' => 'EDGE_REQUIRED',
+            'TABLES_CHANGED' => ['sales_returns'],
+            'EDGE_CODE_REFERENCES' => ['SalesReturnService', 'EdgeLocalReturnService', 'EdgeReturnEnvelopeBuilder', 'EdgeCashierReturnParity'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'low',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
+            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_refund_shift_on_sales_returns_upgrades_an_older_appliance',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'REFUND-SHIFT-1 (schema step): sales_returns is an OPERATIONAL table the appliance writes (shared SalesReturnService via EdgeLocalReturnService); shift_id / terminal_id nullable, ALGORITHM=INSTANT. The refund-to-shift behaviour itself is a later canonical step — the Edge return twin must carry the same two columns when it lands (handover item).',
         ],
     ],
 ];

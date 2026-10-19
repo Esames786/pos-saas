@@ -615,6 +615,8 @@ class POSController extends Controller
             // Table/Waiter line the printed receipt already prints (show_table_info honoured in view).
             'restaurant_table_id'         => ['nullable', 'integer'],
             'restaurant_table_session_id' => ['nullable', 'integer'],
+            // BILL-BARCODE-1: the held order on screen, so its preview carries the bill barcode to scan later
+            'held_sale_id'                => ['nullable', 'integer'],
             'lines'                   => ['required', 'array', 'min:1'],
             'lines.*.product_id'      => ['nullable', 'integer'],
             'lines.*.product_name'    => ['nullable', 'string', 'max:190'],
@@ -694,6 +696,11 @@ class POSController extends Controller
         ]);
         $sale->sale_no = 'PREVIEW';
         $sale->sale_date = now();
+        // BILL-BARCODE-1: a held order (this branch's) previews with its own bill code; a new cart has none.
+        if (! empty($data['held_sale_id']) && \App\Models\Tenant\SalesOrder::whereKey((int) $data['held_sale_id'])
+                ->where('status', 'held')->where('branch_id', $branch->id)->exists()) {
+            $sale->setAttribute('bill_code', \App\Support\Code128::billCode((int) $data['held_sale_id']));
+        }
         $sale->setRelation('branch', $branch);
         $sale->setRelation('customer', null);
         $sale->setRelation('createdBy', auth('tenant')->user());

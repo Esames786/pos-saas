@@ -55,6 +55,7 @@ class ReceiptLayoutController extends Controller
             'show_column_dividers'   => ['nullable', 'boolean'],
             'show_category_header'   => ['nullable', 'boolean'],
             'show_heading_stars'     => ['nullable', 'boolean'],
+            'show_bill_barcode'      => ['nullable', 'boolean'],
             'header_text'            => ['nullable', 'string', 'max:500'],
             'footer_text'            => ['nullable', 'string', 'max:500'],
             'font_size'              => ['required', 'integer', 'min:8', 'max:24'],
@@ -239,6 +240,8 @@ class ReceiptLayoutController extends Controller
         return (object) [
             'sale_no'               => 'PREVIEW-001',
             'order_no'              => 'PREVIEW-001',
+            // BILL-BARCODE-1: a sample, so the "bill barcode" switch shows something in the preview
+            'bill_code'             => 'BL12345',
             'sale_date'             => now(),
             'order_type'            => 'quick_sale',
             'branch'                => $branch,

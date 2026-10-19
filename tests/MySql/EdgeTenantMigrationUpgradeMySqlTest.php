@@ -333,6 +333,15 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
                 $this->assertSame(0, (int) ($conn->table('receipt_layout_settings')->value('show_bill_barcode') ?? 0));
             });
     }
+    public function test_refund_shift_on_sales_returns_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_20_000004_add_refund_shift_to_sales_returns', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            fn () => $this->dropColumns('sales_returns', ['shift_id', 'terminal_id']),
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('sales_returns', 'shift_id'));
+                $this->assertTrue($schema->hasColumn('sales_returns', 'terminal_id'));
+            });
+    }
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void
@@ -357,6 +366,7 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             // CANONICAL MERGE (D8, 20 Oct 2026): classified when the merge landed them.
             '2026_10_19_000002_create_product_pack_units', '2026_10_20_000001_add_purchase_discounts',
             '2026_10_20_000002_add_sale_line_batch', '2026_10_20_000003_add_bill_barcode_toggle',
+            '2026_10_20_000004_add_refund_shift_to_sales_returns',
         ];
         foreach ($canonicalRun as $name) {
             $this->assertFalse($m->entry($name)['BASELINE'] ?? true, $name);

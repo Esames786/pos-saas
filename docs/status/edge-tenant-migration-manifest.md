@@ -525,3 +525,34 @@ Suites run green on the isolated `_t19` databases before hand-off (`Feature/Edge
 - Baseline classifications were derived mechanically (tables parsed from each migration; references grepped across the appliance runtime
   and shared POS paths) and then reviewed by hand for the special cases listed in the manifest; the baseline has already run on every
   appliance, so a misclassification there changes nothing at runtime (no baseline entry is CLOUD_ONLY).
+
+## 11. Post-merge state (20 Oct 2026, Team MERGE — owner decision D8)
+
+The canonical branch was integrated INTO the Edge branch in 14 chunks (report: `docs/status/edge-canonical-merge-report.md`).
+Manifest version is now `edge-tenant-migration-manifest@2026-10-20.1`; `meta.merged_canonical = ccc67fa1`.
+
+- **All 33 `PENDING_MERGE_FROM => '99e9365'` markers are gone** — every pre-classified canonical file landed; the real `up()` of each
+  was compared with its entry as the chunk landed it (tables, additive/destructive, data rewrite). One correction:
+  `2026_10_05_000002_add_reminder_pause_to_shifts` does not touch `model_has_permissions` (TABLES_CHANGED corrected). No entry
+  changed class: nothing was reclassified CLOUD_ONLY → RUN or RUN → CLOUD_ONLY.
+- **6 canonical tenant migrations post-date 99e9365** and were classified by the §1 rules when they landed (not pre-classified by D7):
+
+| Migration | Class | Why (rule) | Upgrade test |
+|---|---|---|---|
+| `2026_10_19_000001_add_send_trigger_to_report_schedules` | CLOUD_ONLY | REPORT-DELIVERY-V2-1 — scheduled-report delivery is Cloud-only (ShiftCloseReportTrigger is called by the Online ShiftController; the Edge shift twin never sends reports). `report_schedules` joins `meta.divergent_tables`. | n/a |
+| `2026_10_19_000002_create_product_pack_units` | EDGE_REQUIRED | PHARMACY-PACKS-1 / MEDICAL-COUNTER-1 — `sales_order_lines` / `sales_return_lines` are OPERATIONAL tables the appliance writes through the shared SalesService / SalesReturnService (nullable pack columns, `ALGORITHM=INSTANT`); `product_pack_units` is read by the shared POS (`Product::packUnits`) for a medical tenant. Master switch — live tenants OFF. | `test_product_pack_units_upgrade_an_older_appliance` |
+| `2026_10_20_000001_add_purchase_discounts` | EDGE_REQUIRED | PURCHASE-DISCOUNTS-1 — `products` is a bootstrap section (whole rows upserted; the six discount/scheme columns must exist before the next refresh). `suppliers` + purchasing line tables gain nullable columns the appliance never writes. | `test_purchase_discounts_upgrade_an_older_appliance` |
+| `2026_10_20_000002_add_sale_line_batch` | EDGE_REQUIRED | MEDICAL-COUNTER-1 — `sales_order_lines.inventory_batch_id` / `batch_note` (operational; shared SalesService + receipt/ESC/POS read it). | `test_sale_line_batch_upgrades_an_older_appliance` |
+| `2026_10_20_000003_add_bill_barcode_toggle` | EDGE_REQUIRED | BILL-BARCODE-1 schema — `receipt_layout_settings` is a bootstrap section (default OFF). | `test_bill_barcode_toggle_upgrades_an_older_appliance` |
+| `2026_10_20_000004_add_refund_shift_to_sales_returns` | EDGE_REQUIRED | REFUND-SHIFT-1 schema — `sales_returns` is an OPERATIONAL table the appliance writes (shared SalesReturnService via EdgeLocalReturnService); `shift_id` / `terminal_id` nullable, `ALGORITHM=INSTANT`. The refund-to-shift behaviour is a later canonical step — the Edge return twin must carry the two columns when it lands (handover). | `test_refund_shift_on_sales_returns_upgrades_an_older_appliance` |
+
+- Counts now: **212 entries** — EDGE_REQUIRED 121, EDGE_SCHEMA_SAFE 67, CLOUD_ONLY 24 (the §0 table above is the 19 Oct pre-merge
+  picture). `EdgeTenantMigrationManifestTest` asserts 212 / 24.
+- `EdgeTenantMigrationUpgradeMySqlTest` on the isolated `_t20` databases: **16 / 16 passed, 0 skipped** — the 10 pre-written upgrade
+  tests activated when the files landed, plus the 5 new ones and the naming gate.
+- Artifact: the ONLINE-ORDERING-1 Cloud-only domain is physically excluded (`config/edge.php` → `app/Services/OnlineOrdering`,
+  `app/Http/Controllers/Website`, `app/Http/Controllers/Tenant/OnlineOrdering`, `OnlineOrdering*` commands, `website` +
+  `online-ordering` views), which is what the `AreaLocator` CLOUD_ONLY dependency of `create_delivery_zone_places_table` requires;
+  `App\Support\OnlineOrdering`, the Web*/DeliveryZone models and the `WebsiteDomainOnly` alias stay.
+- Open: D7-1…D7-5 (§7) are unchanged; D6 (partner share on the appliance) now has an interim guard — the Edge quick report never asks the
+  shared engine for the `partner_share` section because `share_partners` / `share_rates` are CLOUD_ONLY (absent on the appliance).
