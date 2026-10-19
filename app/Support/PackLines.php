@@ -30,12 +30,13 @@ final class PackLines
     /**
      * @param  array<int,array<string,mixed>>  $lines  the posted entry-area lines
      * @param  string  $qtyField  'quantity_received' (GRN) or 'quantity_ordered' (PO)
+     * @param  int|null  $branchId  the GRN's branch: a batch already known there keeps its one expiry
      * @return list<array<string,mixed>>  lines in the existing request shape
      */
-    public static function toLines(array $lines, string $qtyField, bool $isGrn): array
+    public static function toLines(array $lines, string $qtyField, bool $isGrn, ?int $branchId = null): array
     {
         $lines = array_values(array_filter($lines, fn ($l) => is_array($l) && ! empty($l['product_id'])));
-        $products = Product::with(['unit', 'packUnits'])->whereIn('id', array_map(fn ($l) => (int) $l['product_id'], $lines))->get()->keyBy('id');
+        $products = Product::with(['unit', 'packUnits', 'defaultVariant'])->whereIn('id', array_map(fn ($l) => (int) $l['product_id'], $lines))->get()->keyBy('id');
         $packsOn = PackUnits::enabled();
         $today = Carbon::now('Asia/Karachi')->startOfDay();
         $errors = [];
@@ -120,11 +121,24 @@ final class PackLines
                     $errors["lines.$i.expiry_date"] = "{$name}: write the expiry (month/year).";
                     continue;
                 }
+                // PURCHASING-V2-2: a batch keeps ONE expiry. The stock engine finds a batch by its number and
+                // would silently keep the old date, so a different date for a known batch is refused here.
+                $batchNo = strtoupper(trim((string) ($l['batch_no'] ?? '')));
+                if ($branchId && $expiry && $batchNo !== '') {
+                    $known = \App\Models\Tenant\InventoryBatch::where('branch_id', $branchId)->where('product_id', $p->id)
+                        ->where('batch_no', $batchNo)->whereNotNull('expiry_date')->value('expiry_date');
+                    if ($known && Carbon::parse($known)->toDateString() !== $expiry) {
+                        $errors["lines.$i.expiry_date"] = "{$name}: batch {$batchNo} already has expiry " . Carbon::parse($known)->format('m/y') . ' — pick it from the list, or use a new batch number.';
+                        continue;
+                    }
+                }
             }
 
             $common = [
                 'product_id'             => $p->id,
-                'product_variant_id'     => $l['product_variant_id'] ?? null,
+                // PURCHASING-V2-2: no variant sent = the item's own (default) one — the one the counter sells from and the
+                // batch box / batches made beforehand use. A null variant would file the stock where nothing finds it.
+                'product_variant_id'     => ($l['product_variant_id'] ?? null) ?: $p->defaultVariant?->id,
                 'pack_unit_id'           => $buy['id'],
                 'pack_factor'            => $buy['factor'],
             ] + ($isGrn ? [

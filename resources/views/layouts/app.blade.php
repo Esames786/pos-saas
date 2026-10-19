@@ -102,6 +102,10 @@
                 </script>
                 @endif
             @endif
+            {{-- PURCHASING-V2-2: tabs across the six purchasing pages, only with "New purchase screens" on. --}}
+            @if(request()->routeIs('tenant.suppliers.*', 'tenant.purchase-orders.*', 'tenant.goods-receipts.*', 'tenant.purchase-bills.*', 'tenant.supplier-payments.*', 'tenant.purchase-returns.*') && app()->bound('tenant') && \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PURCHASING_V2))
+                @include('tenant.purchasing.partials.tabs')
+            @endif
             @yield('content')
         </div>
     </div>
