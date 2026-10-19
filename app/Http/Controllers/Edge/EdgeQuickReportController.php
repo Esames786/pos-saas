@@ -39,6 +39,14 @@ class EdgeQuickReportController extends Controller
 
     public const SECTIONS = PosQuickReportController::SECTIONS;
 
+    /**
+     * CANONICAL MERGE (D8, 19 Oct 2026) — PARTNER-SHARE-1: the shared SalesReportEngine reads share_partners / share_rates for
+     * this section, and both tables are CLOUD_ONLY in the Edge tenant-migration manifest (D7) — they do not exist on the
+     * appliance. The section stays in the modal (same geometry as Online) but is never computed here; owner decision D6
+     * (bootstrap sections vs. a capability that disables the box) replaces this guard.
+     */
+    public const CLOUD_ONLY_SECTIONS = ['partner_share'];
+
     private const PERMISSION = 'tenant.pos.quick-report-send';
 
     private const PERMISSION_MESSAGE = 'Sending or printing the Quick Report needs the Quick Report permission.';
@@ -106,6 +114,7 @@ class EdgeQuickReportController extends Controller
             'include_open' => true,
         ]);
         $sections = array_values(array_intersect((array) $request->input('sections', self::SECTIONS), self::SECTIONS)) ?: self::SECTIONS;
+        $sections = array_values(array_diff($sections, self::CLOUD_ONLY_SECTIONS)) ?: array_values(array_diff(self::SECTIONS, self::CLOUD_ONLY_SECTIONS));
 
         return [$filters, $sections, (string) $date, $branch];
     }
