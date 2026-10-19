@@ -74,3 +74,56 @@ The fields, the yes/no questions, the picture cards, the server rules (`ProductC
   and [GOV.UK task list pattern](https://designnotes.blog.gov.uk/2017/04/04/weve-published-the-task-list-pattern).
 - Wizard vs tabs: [Microsoft InfoPath team — tabs](https://learn.microsoft.com/en-us/archive/blogs/infopath/tabs),
   [Oracle — tabbed pages](https://docs.oracle.com/en/industries/retail/retail-supply-chain-collaboration-cloud/latest/revwu/tabbed_pages.htm).
+
+## Round 2 — the owner's checks on a live tenant (19 Oct, afternoon)
+
+The owner switched the new screen on for one live restaurant and tested it. What he found, and what changed:
+
+1. **"Hidden from POS" was lost.** An item sold inside deals, as an add-on or online is *sellable* but has
+   no counter button. The screen read "Do you sell it?" as "has a button", so saving such an item would
+   have put it back on the counter. The tenant had 15 such items; **none was saved** with the screen on
+   (checked on production). Now:
+   - a separate question under "Do you sell it?": **"Show its button on the counter (POS)?"**;
+   - the server keeps the saved answer when a request does not carry the question;
+   - a test fails on the old rule.
+2. **Every box of the old form is on the new screen, or kept untouched.**
+
+   | Old form box | New screen |
+   | --- | --- |
+   | POS Visible | Selling & stock → "Show its button on the counter?" |
+   | Sellable / Purchasable / Track stock / Recipe / Tax / prices / reorder | Selling & stock questions |
+   | Has expiry + Requires batch | one question; a saved item where they differ keeps both |
+   | Item Kind | More settings → "Used as" (follows the card until changed) |
+   | Perishable, Storage type, Shelf life, Default wastage % | More settings (only the ones this business uses; pharmacy sees "Kept in") |
+   | Purchase unit + pack size (recipe costing) | More settings → "For recipe cost: bought in … holding …" |
+   | Product type / kind / consumption | decided by the card + answers; shown in Review |
+   | Variants | kept as saved; edited on the product page as before |
+   | Manufacturing BOM boxes | decided by the industry cards; kept as saved otherwise |
+
+   A box that is not shown is never cleared: the server reads only what the screen posts.
+3. **Review shows everything:**
+   - the counter button;
+   - **"In the old screen"** — POS Sale Item / Recipe / Kitchen Item / Ingredient / Packing / Service Item;
+   - **"In the system"** — e.g. "Service · service, no stock · no stock moves";
+   - every More-settings value.
+4. **The products list speaks the same words** (only where the new screen is on; other tenants see the old
+   list):
+   - "What it is · where it shows";
+   - kinds in the business's words, e.g. "Service — sold, no stock (delivery, decoration)";
+   - "Has a button on the counter" / "No button on the counter";
+   - each row's card name, with "old name: …" under it;
+   - badges "On the counter / Sold, no counter button / Not sold — used inside / Stock counted / Bought / Recipe";
+   - the filters underneath are unchanged.
+
+## Next: purchasing (owner's direction, 19 Oct)
+
+PO and GRN move to the catering event screen's pattern:
+- one entry area on top: scan or search an item, and its own settings appear (Box | Strip | Tab, batch,
+  expiry, bonus, price);
+- Enter moves on, Ctrl+Enter puts the line in the grid, and a grid line opens back for editing;
+- the same for every business.
+
+"Internet connected" is read as one order page from PO to payment, with the supplier confirming by a
+WhatsApp link — **to be confirmed by the owner**.
+
+Tentative boards (no code yet): https://claude.ai/artifact/LBfacrEPnNJLCHki3K8chw

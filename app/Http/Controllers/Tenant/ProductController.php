@@ -79,17 +79,26 @@ class ProductController extends Controller
             };
         }
 
+        // PRODUCT-LIST-PLAIN-1: where the new product screen is on, the list speaks the same plain words —
+        // what each item is (the business's own cards) and where it shows. Same filters underneath.
+        $plain = $this->usesScreenV2($request);
+        $business = $plain ? \App\Support\Business::of() : null;
+        $kindLabels = $plain ? \App\Support\ProductCards::kindWords($business) : Product::KINDS;
+
         return view('tenant.products.index', [
             'products'    => $query->paginate(15)->withQueryString(),
             'categories'  => Category::where('is_active', true)->orderBy('name')->get(),
             'context'     => $context,
             'contextBase' => $this->contextBaseUrl($request, $context),
-            'roleOptions' => collect(Product::KINDS)
+            'roleOptions' => collect($kindLabels)
                 ->filter(fn ($label, $kind) => in_array($kind, $kindsHere, true) || in_array($kind, $chosenRoles, true))->all(),
-            'flagOptions' => self::FLAG_FILTERS,
+            'flagOptions' => $plain ? \App\Support\ProductCards::FLAG_WORDS : self::FLAG_FILTERS,
             'chosenRoles' => $chosenRoles,
             'chosenFlags' => $chosenFlags,
             'listsEveryKind' => $context === 'catalog' && ! $this->materialsHaveTheirOwnList(),
+            'plainList'   => $plain,
+            'plainCards'  => $plain ? \App\Support\ProductCards::forBusiness($business) : [],
+            'plainBusiness' => $business,
         ]);
     }
 

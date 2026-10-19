@@ -171,28 +171,44 @@ final class ProductCards
         $isMfgFinished = $card['mfg'] === 'finished';
         $isSemi = $card['mfg'] === 'semi';
 
+        // The counter button is its own answer (19 Oct, owner on a live tenant: an item sold inside deals,
+        // as an add-on or online is "Hidden from POS" yet sellable). A save that did not ask keeps it.
+        $posVisible = $sell && (array_key_exists('_pos', $in)
+            ? filter_var($in['_pos'], FILTER_VALIDATE_BOOLEAN)
+            : ($saved ? (bool) $saved->is_pos_visible : true));
+        // Batch and expiry are asked as one question; a saved item where the two differ keeps both while
+        // the answer still matches it.
+        $requiresBatch = ($saved && $expiry === (bool) $saved->has_expiry) ? (bool) $saved->requires_batch : $expiry;
+
+        // "More settings" (the old form's kitchen and costing boxes): what the screen posted, else the saved
+        // value, else the old form's default — never cleared because the screen left a box out.
+        $more = filter_var($in['_more'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $posted = fn (string $k) => $more && array_key_exists($k, $in);
+        $blankToNull = fn ($v) => ($v === null || trim((string) $v) === '') ? null : $v;
+        $defaultItemKind = in_array($kind, ['raw_material', 'packaging_material'], true) ? 'ingredient' : 'finished_good';
+
         $out = [
             'product_kind'                  => $kind,
             'product_type'                  => $type,
             'inventory_consumption_method'  => $method,
             'is_sellable'                   => $sell ? 1 : 0,
-            'is_pos_visible'                => $sell ? 1 : 0,
+            'is_pos_visible'                => $posVisible ? 1 : 0,
             'is_purchasable'                => $buy ? 1 : 0,
             'is_stock_tracked'              => $stock ? 1 : 0,
             'has_expiry'                    => $expiry ? 1 : 0,
-            'requires_batch'                => $expiry ? 1 : 0,
+            'requires_batch'                => $requiresBatch ? 1 : 0,
             'is_manufactured_finished_good' => $isMfgFinished ? 1 : (int) ($saved?->is_manufactured_finished_good ?? 0),
             'can_be_bom_output'             => ($isMfgFinished || $isSemi) ? 1 : (int) ($saved?->can_be_bom_output ?? 0),
             'can_be_bom_component'          => $isSemi ? 1 : (int) ($saved?->can_be_bom_component ?? 0),
-            // Fields this screen does not show: the saved value, or the old form's default.
-            'item_kind'               => $saved?->item_kind ?? (in_array($kind, ['raw_material', 'packaging_material'], true) ? 'ingredient' : 'finished_good'),
             'has_variants'            => (int) ($saved?->has_variants ?? 0),
-            'purchase_unit_id'        => $saved?->purchase_unit_id,
-            'purchase_pack_size'      => $saved?->purchase_pack_size,
-            'is_perishable'           => (int) ($saved?->is_perishable ?? 0),
-            'storage_type'            => $saved?->storage_type,
-            'shelf_life_days'         => $saved?->shelf_life_days,
-            'default_wastage_percent' => $saved?->default_wastage_percent ?? 0,
+            'item_kind'               => $posted('item_kind') && in_array($in['item_kind'], ['finished_good', 'ingredient', 'both'], true)
+                ? $in['item_kind'] : ($saved?->item_kind ?? $defaultItemKind),
+            'purchase_unit_id'        => $posted('purchase_unit_id') ? $blankToNull($in['purchase_unit_id']) : $saved?->purchase_unit_id,
+            'purchase_pack_size'      => $posted('purchase_pack_size') ? $blankToNull($in['purchase_pack_size']) : $saved?->purchase_pack_size,
+            'is_perishable'           => $posted('_perishable') ? (filter_var($in['_perishable'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0) : (int) ($saved?->is_perishable ?? 0),
+            'storage_type'            => $posted('storage_type') ? $blankToNull(trim((string) $in['storage_type'])) : $saved?->storage_type,
+            'shelf_life_days'         => $posted('shelf_life_days') ? $blankToNull($in['shelf_life_days']) : $saved?->shelf_life_days,
+            'default_wastage_percent' => $posted('default_wastage_percent') ? ($blankToNull($in['default_wastage_percent']) ?? 0) : ($saved?->default_wastage_percent ?? 0),
         ];
 
         // Prices: a section answered "no" keeps whatever was saved, so turning it back on later loses nothing.
@@ -217,6 +233,63 @@ final class ProductCards
 
         return $out;
     }
+
+    /**
+     * PRODUCT-LIST-PLAIN-1 — each product kind in this business's own words, for the products list filter
+     * ("which item can be what", owner 19 Oct). Kinds the business never uses still get a plain name.
+     *
+     * @return array<string,string>
+     */
+    public static function kindWords(?string $business): array
+    {
+        $sold = match ($business) {
+            Business::PHARMACY   => 'Sold item — medicine or store item',
+            Business::RESTAURANT => 'Sold item — menu item or ready-made (burger, Pepsi)',
+            Business::CATERING   => 'Sold item — menu dish',
+            Business::MART       => 'Sold item — packed or loose',
+            default              => 'Sold item',
+        };
+
+        return [
+            Product::KIND_SALE_ITEM          => $sold,
+            Product::KIND_SERVICE            => 'Service — sold, no stock (delivery, decoration)',
+            Product::KIND_RAW_MATERIAL       => $business === Business::INDUSTRY ? 'Raw material — bought to make products' : 'Kitchen item — used in cooking, not sold',
+            Product::KIND_PACKAGING_MATERIAL => 'Packing — boxes, bags, cartons',
+            Product::KIND_FINISHED_GOOD      => 'Finished product — made here',
+            Product::KIND_SEMI_FINISHED      => 'Half-made part — made here, used again',
+            Product::KIND_COMBO_VIRTUAL      => 'Deal',
+        ];
+    }
+
+    /** The name the old product form used for this item ("Service Item", "Recipe / Kitchen Item"…). */
+    public static function oldTypeLabel(Product $p): string
+    {
+        $kind = $p->product_kind ?: Product::KIND_SALE_ITEM;
+        if ($kind === Product::KIND_SERVICE || $p->product_type === 'service') {
+            return 'Service Item';
+        }
+
+        return match ($kind) {
+            Product::KIND_RAW_MATERIAL       => 'Ingredient / Raw Material',
+            Product::KIND_PACKAGING_MATERIAL => 'Packing Material',
+            Product::KIND_FINISHED_GOOD      => 'Finished Good',
+            Product::KIND_SEMI_FINISHED      => 'Half-made part',
+            Product::KIND_COMBO_VIRTUAL      => 'Deal',
+            default => $p->inventory_consumption_method === 'recipe' ? 'Recipe / Kitchen Item' : 'POS Sale Item',
+        };
+    }
+
+    /** PRODUCT-LIST-PLAIN-1 — the list's "Show only" ticks in plain words (same keys as the old ones). */
+    public const FLAG_WORDS = [
+        'pos_visible'       => 'Has a button on the counter',
+        'hidden_from_pos'   => 'No button on the counter',
+        'sellable'          => 'Sold to customers',
+        'purchasable'       => 'Bought from suppliers',
+        'stock_tracked'     => 'Stock is counted',
+        'not_stock_tracked' => 'Stock is not counted',
+        'service'           => 'Service (no stock)',
+        'recipe'            => 'Made from a recipe',
+    ];
 
     /** A code nobody has yet, in products AND variants: PREFIX-000123. Keeps the saved SKU on edit. */
     public static function nextSku(string $prefix, ?Product $saved = null): string
