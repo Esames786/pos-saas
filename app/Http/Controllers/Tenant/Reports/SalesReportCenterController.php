@@ -183,7 +183,63 @@ class SalesReportCenterController extends Controller
             'schedules' => DB::connection('tenant')->table('report_schedules')->orderBy('id')->get(),
             // Network printers the report can be streamed to via the agent (scoped above).
             'networkPrinters' => $networkPrinters,
+            // REPORT-DELIVERY-V2-1: the one delivery card, for whoever may save it, on tenants switched on
+            // in Bingoo Master. Everyone else — and every other tenant — gets the two old cards unchanged.
+            'delivery' => $this->deliveryCardFor($allowed),
         ]);
+    }
+
+    private function deliveryCardFor(array $allowed): ?array
+    {
+        if (! \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::REPORT_DELIVERY_V2)
+            || ! auth('tenant')->user()?->can('tenant.reports.center.channels')) {
+            return null;
+        }
+
+        return app(\App\Services\Reports\ReportDeliverySettings::class)->read($allowed);
+    }
+
+    /**
+     * REPORT-DELIVERY-V2-1 — the new card posts to the SAME route as the old "Save delivery" box, so the
+     * permission that guards the owner's numbers (tenant.reports.center.channels, Owner-only) guards this
+     * too, and no role gains or loses anything.
+     */
+    private function saveDeliveryV2(Request $request)
+    {
+        $request->validate([
+            'wa_numbers' => ['nullable', 'array', 'max:50'],
+            'wa_numbers.*' => ['nullable', 'string', 'max:40'],
+            'wa_names' => ['nullable', 'array', 'max:50'],
+            'wa_names.*' => ['nullable', 'string', 'max:60'],
+            'emails' => ['nullable', 'array', 'max:30'],
+            'emails.*' => ['nullable', 'string', 'max:190'],
+            'when' => ['nullable', 'in:time,shift_close'],
+            'send_time' => ['nullable', 'string', 'max:5'],
+            'fallback_time' => ['nullable', 'string', 'max:5'],
+            'preset' => ['nullable', 'in:short,full,custom'],
+            'sections' => ['nullable', 'array'],
+            'sections.*' => ['string', 'in:'.implode(',', self::SECTIONS)],
+            'test' => ['nullable', 'string', 'max:40'],
+        ]);
+
+        $settings = app(\App\Services\Reports\ReportDeliverySettings::class);
+        $allowed = $this->allowedSections();
+
+        try {
+            if ($request->filled('test')) {
+                $message = $settings->sendTest((string) $request->input('test'), $allowed);
+            } elseif ($request->boolean('test_all')) {
+                $message = $settings->sendTest(null, $allowed);
+            } else {
+                $message = $settings->save($request->all(), $allowed, auth('tenant')->id());
+            }
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e->redirectTo(url('/reports/center').'#report-delivery');
+        } catch (\RuntimeException $e) {
+            return redirect(url('/reports/center').'#report-delivery')->withErrors(['delivery' => $e->getMessage()]);
+        }
+
+        return redirect(url('/reports/center').'#report-delivery')->with('status', $message);
     }
 
     /** Departments tab — delegates to the EXISTING department-sales authority (resolver + Unassigned). */
@@ -371,6 +427,10 @@ class SalesReportCenterController extends Controller
      */
     public function saveChannels(Request $request)
     {
+        if ($request->boolean('v2') && \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::REPORT_DELIVERY_V2)) {
+            return $this->saveDeliveryV2($request);
+        }
+
         $data = $request->validate([
             'channels'   => ['array'],
             'channels.*' => ['string', 'in:email,whatsapp'],
