@@ -171,6 +171,11 @@ class SplitBillController extends Controller
                         // or trip the "cancellation required" guard.
                         'kot_sent'           => (float) $heldLine->kot_sent_quantity > 0,
                         'kot_sent_quantity'  => min((float) $heldLine->kot_sent_quantity, $splitQty),
+                        // MEDICAL-COUNTER-1: a pack line splits in its own packs; its tablets follow.
+                        'pack_unit_id'       => $heldLine->pack_unit_id,
+                        'pack_factor'        => $heldLine->pack_factor,
+                        'base_quantity'      => $heldLine->pack_factor ? round($splitQty * (int) $heldLine->pack_factor, 3) : null,
+                        'inventory_batch_id' => $heldLine->inventory_batch_id,
                     ]);
 
                     $subtotal      += $splitSubtotal;
@@ -194,6 +199,7 @@ class SplitBillController extends Controller
                             // Without this, kot_sent_quantity > quantity and paying the remainder
                             // is blocked by a spurious "cancellation required" guard.
                             'kot_sent_quantity' => min((float) $heldLine->kot_sent_quantity, $remainingQty),
+                            'base_quantity'     => $heldLine->pack_factor ? round($remainingQty * (int) $heldLine->pack_factor, 3) : $heldLine->base_quantity,
                         ]);
                     }
                 }

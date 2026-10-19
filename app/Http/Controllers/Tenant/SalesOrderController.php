@@ -219,6 +219,15 @@ class SalesOrderController extends Controller
                     }
 
                     $submittedPrice = isset($line['unit_price']) ? (float) $line['unit_price'] : null;
+                    // MEDICAL-COUNTER-1: a line sold in a pack (Box / Strip / Tablet) — quantity in packs, the
+                    // price of one pack; its tablets go beside it for stock. Off = null = today's line.
+                    $pack = $lineKind === 'standard' ? \App\Support\CounterPacks::resolve($product, (array) $line, $qty) : null;
+                    if ($pack && $submittedPrice === null) {
+                        $submittedPrice = $pack['pack_price'];
+                    }
+                    // …and the batch the cashier picked goes first (checked: this product's, this branch's, not expired).
+                    $preferBatch = $lineKind === 'standard'
+                        ? \App\Support\CounterPacks::preferredBatch($product, (int) $branch->id, $line['inventory_batch_id'] ?? null) : null;
                     // Combo header carries the bundle price; components are intentionally 0.
                     // Honour those exactly — never re-resolve a combo line from the catalog,
                     // or the server total drifts above what the customer pays.
@@ -243,6 +252,11 @@ class SalesOrderController extends Controller
                         'line_kind'       => $line['line_kind'] ?? 'standard',
                         'combo_id'        => $line['combo_id'] ?? null,
                         'line_name'       => $line['line_name'] ?? null,
+                        'pack_unit_id'    => $pack['pack_unit_id'] ?? null,
+                        'pack_name'       => $pack['pack_name'] ?? null,
+                        'pack_factor'     => $pack['pack_factor'] ?? null,
+                        'base_quantity'   => $pack['base_quantity'] ?? null,
+                        'inventory_batch_id' => $preferBatch,
                     ]);
                 })->values()->toArray();
 
@@ -539,7 +553,8 @@ class SalesOrderController extends Controller
                             ? $line['line_name']
                             : $product->name,
                         'variant_name'       => $variant?->name,
-                        'unit_code'          => $product->unit?->code,
+                        // MEDICAL-COUNTER-1: a pack line says its pack ("2 Strip"), not the tablet's code.
+                        'unit_code'          => ! empty($line['pack_name']) ? mb_substr($line['pack_name'], 0, 20) : $product->unit?->code,
                         'quantity'           => $qty,
                         'unit_price'         => $unitPrice,
                         'unit_cost'          => 0,
@@ -550,6 +565,10 @@ class SalesOrderController extends Controller
                         'modifiers'          => $line['modifiers'] ?? [],
                         'kot_sent'           => $sentQuantity > 0,
                         'kot_sent_quantity'  => $sentQuantity,
+                        'pack_unit_id'       => $line['pack_unit_id'] ?? null,
+                        'pack_factor'        => $line['pack_factor'] ?? null,
+                        'base_quantity'      => $line['base_quantity'] ?? null,
+                        'inventory_batch_id' => $line['inventory_batch_id'] ?? null,
                     ]);
 
                     if (!empty($line['client_line_key'])) {
@@ -867,6 +886,9 @@ class SalesOrderController extends Controller
             'lines.*.discount_amount'    => ['nullable', 'numeric', 'min:0'],
             'lines.*.tax_amount'         => ['nullable', 'numeric', 'min:0'],
             'lines.*.modifiers'          => ['nullable', 'string'],
+            // MEDICAL-COUNTER-1: the pack a line is sold in (checked against the product in CounterPacks).
+            'lines.*.pack_unit_id'       => ['nullable', 'integer'],
+            'lines.*.inventory_batch_id' => ['nullable', 'integer'],
 
             'void_items'                            => ['nullable', 'array'],
             'void_items.*.old_line_id'              => ['required_with:void_items', 'integer'],

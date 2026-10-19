@@ -15,6 +15,7 @@ final class TenantFeatures
     public const PRODUCT_SCREEN_V2 = 'product_screen_v2';
     public const PACKS = 'packs';
     public const PURCHASING_V2 = 'purchasing_v2';
+    public const MEDICAL_COUNTER = 'medical_counter';
 
     public const REPORT_DELIVERY_V2 = 'report_delivery_v2';
 
@@ -41,6 +42,13 @@ final class TenantFeatures
                 'where' => 'Purchasing → Purchase Orders, GRN and Returns → New; tabs on every purchasing page; Inventory → Batches',
             ],
             // REPORT-DELIVERY-V2-1
+            // MEDICAL-COUNTER-1
+            self::MEDICAL_COUNTER => [
+                'label' => 'Pack & batch counter (medical store, mart)',
+                'says'  => 'On the counter each medicine sells as Box, Strip or Tablet; the bill shows the batch and expiry; an expired batch is never sold; a scanned box sells a box.',
+                'where' => 'Sales → POS',
+                'needs' => [self::PACKS],
+            ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',
                 'says'  => 'One card to turn WhatsApp and Email on, add numbers with names, see the price per message, and send the daily report the moment the last shift of the day closes.',

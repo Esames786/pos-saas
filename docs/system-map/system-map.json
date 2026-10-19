@@ -1,22 +1,22 @@
 {
-    "built_at": "2026-10-19T16:32:26+00:00",
+    "built_at": "2026-10-19T18:46:21+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
-    "prod_branch_head": "da2f86d8",
+    "prod_branch_head": "40f7d6f0",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas",
             "branch": "feat/14d-2-plan-upgrade-requests",
-            "head": "da2f86d8",
+            "head": "40f7d6f0",
             "behind_prod": 0,
             "ahead_of_prod": 0,
-            "last_commit": "2026-10-19\u00b7Merge PURCHASING-V2 one-row layout",
+            "last_commit": "2026-10-19\u00b7Merge DEPLOY-ATOMIC-CACHE-1: config and route caches swapped in with one rename",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-catering",
             "branch": "feat/catering-stacked-material-row-20260909",
             "head": "39333d6f",
-            "behind_prod": 24,
+            "behind_prod": 31,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7DOC-TOOLBAR-OFF-PAPER-1: screen ke button kaghaz se bahar, har document par",
             "uncommitted_files": 0
@@ -25,7 +25,7 @@
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
             "head": "9abf7b5a",
-            "behind_prod": 66,
+            "behind_prod": 73,
             "ahead_of_prod": 170,
             "last_commit": "2026-10-19\u00b7Merge canonical a9499a10 (chunk 10, D8): PHARMACY-DEMO-1 \u2014 medical-store demo tenant, no 'Print Kitchen Order?' prompt on a counter without a kitchen (kitchenTickets), expiry report + returned medicine goes back into the batch it was sold from (SalesReturnService::batchTheSaleTookFrom, auto-merged into the Edge-modified service).",
             "uncommitted_files": 0
@@ -34,7 +34,7 @@
             "path": "D:/laragon2/www/pos-saas-masterui",
             "branch": "fix/usage-snapshot-after-demo-reset-20261019",
             "head": "002ee25e",
-            "behind_prod": 45,
+            "behind_prod": 52,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7MASTER-UNIVERSE-1: daily usage reading moves after the demo reset (09:45 PKT)",
             "uncommitted_files": 0
@@ -42,17 +42,17 @@
         {
             "path": "D:/laragon2/www/pos-saas-packs",
             "branch": "feat/pharmacy-packs-20261019",
-            "head": "89bd329c",
-            "behind_prod": 8,
-            "ahead_of_prod": 1,
-            "last_commit": "2026-10-19\u00b7PURCHASE-DISCOUNTS-1: line discount % or Rs, scheme 10+1, bill discount, usual discounts on item and supplier, the last deal fills in",
-            "uncommitted_files": 0
+            "head": "140f486a",
+            "behind_prod": 11,
+            "ahead_of_prod": 0,
+            "last_commit": "2026-10-19\u00b7DEPLOY-ATOMIC-CACHE-1: deploy writes the config and route caches to a temp file and renames them into place",
+            "uncommitted_files": 14
         },
         {
             "path": "D:/laragon2/www/pos-saas-pharmademo",
             "branch": "feat/pharmacy-demo-20261018",
             "head": "dc84b937",
-            "behind_prod": 66,
+            "behind_prod": 73,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP-1: bird's-eye system map + standing rule for every session",
             "uncommitted_files": 0
@@ -61,7 +61,7 @@
             "path": "D:/laragon2/www/pos-saas-primary",
             "branch": "feat/primary-business-v2-20261019",
             "head": "e99cd7a2",
-            "behind_prod": 61,
+            "behind_prod": 68,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP: rebuilt after PRIMARY-BUSINESS-1 + PRODUCT-SCREEN-V2 (tenant_setting_changes, products.generic_name/strength/needs_prescription)",
             "uncommitted_files": 0
@@ -70,7 +70,7 @@
             "path": "D:/laragon2/www/pos-saas-qrwaiter",
             "branch": "feat/report-delivery-v2-20261019",
             "head": "3680be32",
-            "behind_prod": 33,
+            "behind_prod": 40,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7REPORT-DELIVERY-V2-1: system map rebuilt after merging PHARMACY-PACKS-1",
             "uncommitted_files": 0
@@ -79,7 +79,7 @@
             "path": "D:/laragon2/www/pos-saas-hideamounts",
             "branch": "fix/billing-hide-void-20261017",
             "head": "37515a12",
-            "behind_prod": 81,
+            "behind_prod": 88,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7BILLING-HIDE-VOID-1: void invoice tenant ko nahi dikhti",
             "uncommitted_files": 0
@@ -88,7 +88,7 @@
             "path": "D:/laragon2/www/pos-saas-partnershare",
             "branch": "feat/partner-share-report-20261014",
             "head": "cbe5616b",
-            "behind_prod": 69,
+            "behind_prod": 76,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7PARTNER-SHARE-1: plan doc \u2014 test aur suite ki ginti, purani misaal par label",
             "uncommitted_files": 0
@@ -97,7 +97,7 @@
             "path": "D:/laragon2/www/pos-saas-pharmacy-audit",
             "branch": "(detached)",
             "head": "70c4e434",
-            "behind_prod": 68,
+            "behind_prod": 75,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7Merge PARTNER-SHARE-1: ek dish, do kitchen \u2014 Partner Share rates + Report Center section",
             "uncommitted_files": 0
@@ -106,7 +106,7 @@
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
             "head": "c0741579",
-            "behind_prod": 90,
+            "behind_prod": 97,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-16\u00b7AREA-WINDOW-LAYOUT-1: area list hamesha nazar aaye (kam se kam ~4 rows), qareebi jagahen aik scroll row me",
             "uncommitted_files": 0
@@ -115,7 +115,7 @@
             "path": "D:/laragon2/www/pos-saas-catlist",
             "branch": "feat/kk-purchase-items-import-20261014",
             "head": "7e5d8dea",
-            "behind_prod": 143,
+            "behind_prod": 150,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-14\u00b7PURCHASE-ITEMS-IMPORT-1: purane software ke khareed wale items, mehfooz jhandon ke saath",
             "uncommitted_files": 0
@@ -124,7 +124,7 @@
             "path": "D:/laragon2/www/pos-saas-web-i18n",
             "branch": "feat/recaptcha-trial-20261008",
             "head": "a8191e1d",
-            "behind_prod": 246,
+            "behind_prod": 253,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-08\u00b7RECAPTCHA-TRIAL-1: Start Trial par \"I'm not a robot\" (reCAPTCHA v2), en + ar",
             "uncommitted_files": 0
@@ -133,7 +133,7 @@
             "path": "D:/laragon2/www/pos-saas-voice",
             "branch": "research/voice-ordering-agent",
             "head": "79c76679",
-            "behind_prod": 288,
+            "behind_prod": 295,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-05\u00b7VOICE-ORDER-1: vendor options + bahar wale mashware ki do ghaltiyan darj",
             "uncommitted_files": 0
@@ -142,7 +142,7 @@
             "path": "D:/laragon2/www/pos-saas-video",
             "branch": "feat/demo-video-pipeline",
             "head": "04dfd5c4",
-            "behind_prod": 351,
+            "behind_prod": 358,
             "ahead_of_prod": 13,
             "last_commit": "2026-09-29\u00b7DEMO-VIDEO-13: khapat ab bikri ka 30% (hadaf), aur document number ke takraao se bachao",
             "uncommitted_files": 2
@@ -151,7 +151,7 @@
             "path": "D:/laragon2/www/pos-saas-tawakal",
             "branch": "feat/tawakal_kashif",
             "head": "b4870c0e",
-            "behind_prod": 552,
+            "behind_prod": 559,
             "ahead_of_prod": 0,
             "last_commit": "2026-09-06\u00b7Merge prod branch into tawakal \u2014 76 commits ka pichla kaam",
             "uncommitted_files": 0
@@ -160,7 +160,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/history-urdu-ux",
             "branch": "fix/catering-history-urdu-ux-20260829",
             "head": "da8e2ed3",
-            "behind_prod": 681,
+            "behind_prod": 688,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7Improve catering operator UX and Urdu print readability",
             "uncommitted_files": 0
@@ -169,7 +169,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/quoted-rate-persistence",
             "branch": "fix/catering-quoted-rate-persistence-20260828",
             "head": "e020c390",
-            "behind_prod": 687,
+            "behind_prod": 694,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7fix(catering): persist punched customer rates",
             "uncommitted_files": 0
@@ -178,7 +178,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/catering-client-feedback",
             "branch": "fix/catering-client-feedback-20260827",
             "head": "893d8e44",
-            "behind_prod": 700,
+            "behind_prod": 707,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-27\u00b7fix(catering): tighten time and item entry UX",
             "uncommitted_files": 0
@@ -187,7 +187,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert-v2",
             "branch": "(detached)",
             "head": "ec09b6a6",
-            "behind_prod": 749,
+            "behind_prod": 756,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-22\u00b7KASHIF-LEGACY-ALIGN-5/6: Complimentary in one click, and a bill you can read",
             "uncommitted_files": 1
@@ -196,7 +196,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-parity",
             "branch": "feat/catering-operator-completion-v1",
             "head": "008ba947",
-            "behind_prod": 769,
+            "behind_prod": 776,
             "ahead_of_prod": 4,
             "last_commit": "2026-08-22\u00b7CATERING: keep event create and edit inside the operator workspace",
             "uncommitted_files": 0
@@ -205,7 +205,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-catalogue",
             "branch": "data/kashif-catalogue-prep-v1",
             "head": "73807eb9",
-            "behind_prod": 772,
+            "behind_prod": 779,
             "ahead_of_prod": 1,
             "last_commit": "2026-08-21\u00b7CATERING: transcribe the Kashif catalogue without inventing prices",
             "uncommitted_files": 0
@@ -214,7 +214,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-product",
             "branch": "audit/catering-product-completeness-v1",
             "head": "ef184b6a",
-            "behind_prod": 818,
+            "behind_prod": 825,
             "ahead_of_prod": 18,
             "last_commit": "2026-08-21\u00b7AUDIT: assess Catering product completeness",
             "uncommitted_files": 0
@@ -223,7 +223,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex",
             "branch": "audit/catering-e2e-qa-v1",
             "head": "f8fa2205",
-            "behind_prod": 818,
+            "behind_prod": 825,
             "ahead_of_prod": 13,
             "last_commit": "2026-08-20\u00b7DOCS: preserve independent Catering architecture audit",
             "uncommitted_files": 0
@@ -232,7 +232,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert",
             "branch": "audit/catering-rate-impact-cert-v1",
             "head": "55ad8d5e",
-            "behind_prod": 818,
+            "behind_prod": 825,
             "ahead_of_prod": 17,
             "last_commit": "2026-08-20\u00b7TEST: expose Catering draft writer send races",
             "uncommitted_files": 0
@@ -241,7 +241,7 @@
             "path": "D:/laragon2/www/pos-saas-cloud",
             "branch": "feat/cloud-billing-onboarding-v1",
             "head": "9c30ea46",
-            "behind_prod": 884,
+            "behind_prod": 891,
             "ahead_of_prod": 8,
             "last_commit": "2026-08-15\u00b7CLOUD-BILLING E2E: real monthly + yearly signup lifecycle (throwaway tenants)",
             "uncommitted_files": 0
@@ -374,15 +374,15 @@
             "modified": "2026-10-19"
         }
     ],
-    "git": "89bd329c",
+    "git": "140f486a",
     "source": {
-        "tenant_db": "pos_test_tenant_mui",
+        "tenant_db": "pos_test_tenant_mui_medc",
         "master_db": "pos_test_master_mui"
     },
     "counts": {
         "tables": 225,
         "foreign_keys": 425,
-        "inferred_links": 207,
+        "inferred_links": 208,
         "screens": 730
     },
     "tables": [
@@ -13501,7 +13501,12 @@
                     "on_delete": "SET NULL"
                 }
             ],
-            "inferred_in": [],
+            "inferred_in": [
+                {
+                    "table": "sales_order_lines",
+                    "col": "inventory_batch_id"
+                }
+            ],
             "models": [
                 "InventoryBatch"
             ],
@@ -19120,6 +19125,90 @@
                     "why": "via PackUnits"
                 },
                 {
+                    "route": "tenant.pos.index",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.pos.store",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.pos.printing.retry",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.sales-orders.index",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.sales-orders.create",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.sales-orders.store",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.sales-orders.show",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.sales-orders.rider.update",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.sales-orders.cancel",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.held-sales.index",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.held-sales.create",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.held-sales.store",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.held-sales.cancel",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.held-sales.reattach-table",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.api.pos.held-sales",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.api.pos.table-sessions",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.api.pos.totals.quote",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.api.pos.bill-preview",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.api.pos.table-board",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.api.pos.recent-sales",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.api.pos.table-sessions.open-orders",
+                    "why": "via CounterPacks"
+                },
+                {
                     "route": "tenant.api.catalog.barcode.lookup",
                     "why": "via PackUnits"
                 },
@@ -19164,7 +19253,7 @@
                     "why": "via PackUnits"
                 }
             ],
-            "used_by_count": 28
+            "used_by_count": 49
         },
         {
             "name": "product_translations",
@@ -25555,7 +25644,9 @@
                 "kitchen_completed_at timestamp",
                 "pack_unit_id bigint unsigned",
                 "pack_factor int unsigned",
-                "base_quantity decimal(15,3)"
+                "base_quantity decimal(15,3)",
+                "inventory_batch_id bigint unsigned",
+                "batch_note varchar(160)"
             ],
             "fk_out": [
                 {
@@ -25598,6 +25689,10 @@
                 {
                     "col": "pack_unit_id",
                     "table": "units"
+                },
+                {
+                    "col": "inventory_batch_id",
+                    "table": "inventory_batches"
                 }
             ],
             "domain": "Sales & POS",
@@ -28372,6 +28467,34 @@
                     "why": "via InventoryService"
                 },
                 {
+                    "route": "tenant.held-sales.index",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.held-sales.create",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.held-sales.store",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.held-sales.cancel",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.held-sales.reattach-table",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.api.pos.held-sales",
+                    "why": "via CounterPacks"
+                },
+                {
+                    "route": "tenant.api.pos.table-sessions",
+                    "why": "via CounterPacks"
+                },
+                {
                     "route": "tenant.api.pos.totals.quote",
                     "why": "model StockBalance"
                 },
@@ -28386,6 +28509,10 @@
                 {
                     "route": "tenant.api.pos.recent-sales",
                     "why": "model StockBalance"
+                },
+                {
+                    "route": "tenant.api.pos.table-sessions.open-orders",
+                    "why": "via CounterPacks"
                 },
                 {
                     "route": "tenant.recipes.index",
@@ -28512,7 +28639,7 @@
                     "why": "model StockBalance"
                 }
             ],
-            "used_by_count": 114
+            "used_by_count": 122
         },
         {
             "name": "stock_count_lines",
@@ -43869,6 +43996,7 @@
                 "users",
                 "units",
                 "unit_conversions",
+                "product_pack_units",
                 "shifts"
             ]
         },
@@ -43904,7 +44032,8 @@
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
-                "void_reasons"
+                "void_reasons",
+                "product_pack_units"
             ]
         },
         {
@@ -43939,7 +44068,8 @@
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
-                "void_reasons"
+                "void_reasons",
+                "product_pack_units"
             ]
         },
         {
@@ -44121,7 +44251,8 @@
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
-                "void_reasons"
+                "void_reasons",
+                "product_pack_units"
             ]
         },
         {
@@ -44156,7 +44287,8 @@
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
-                "void_reasons"
+                "void_reasons",
+                "product_pack_units"
             ]
         },
         {
@@ -44191,7 +44323,8 @@
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
-                "void_reasons"
+                "void_reasons",
+                "product_pack_units"
             ]
         },
         {
@@ -44226,7 +44359,8 @@
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
-                "void_reasons"
+                "void_reasons",
+                "product_pack_units"
             ]
         },
         {
@@ -44261,7 +44395,8 @@
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
-                "void_reasons"
+                "void_reasons",
+                "product_pack_units"
             ]
         },
         {
@@ -44296,7 +44431,8 @@
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
-                "void_reasons"
+                "void_reasons",
+                "product_pack_units"
             ]
         },
         {
@@ -44953,7 +45089,9 @@
                 "sales_order_line_cancellations",
                 "users",
                 "void_reasons",
-                "shifts"
+                "shifts",
+                "product_pack_units",
+                "stock_balances"
             ]
         },
         {
@@ -44979,7 +45117,9 @@
                 "sales_order_line_cancellations",
                 "users",
                 "void_reasons",
-                "shifts"
+                "shifts",
+                "product_pack_units",
+                "stock_balances"
             ]
         },
         {
@@ -45005,7 +45145,9 @@
                 "sales_order_line_cancellations",
                 "users",
                 "void_reasons",
-                "shifts"
+                "shifts",
+                "product_pack_units",
+                "stock_balances"
             ]
         },
         {
@@ -45031,7 +45173,9 @@
                 "sales_order_line_cancellations",
                 "users",
                 "void_reasons",
-                "shifts"
+                "shifts",
+                "product_pack_units",
+                "stock_balances"
             ]
         },
         {
@@ -45057,7 +45201,9 @@
                 "sales_order_line_cancellations",
                 "users",
                 "void_reasons",
-                "shifts"
+                "shifts",
+                "product_pack_units",
+                "stock_balances"
             ]
         },
         {
@@ -45083,7 +45229,9 @@
                 "sales_order_line_cancellations",
                 "users",
                 "void_reasons",
-                "shifts"
+                "shifts",
+                "product_pack_units",
+                "stock_balances"
             ]
         },
         {
@@ -45109,7 +45257,9 @@
                 "sales_order_line_cancellations",
                 "users",
                 "void_reasons",
-                "shifts"
+                "shifts",
+                "product_pack_units",
+                "stock_balances"
             ]
         },
         {
@@ -45160,6 +45310,7 @@
                 "users",
                 "units",
                 "unit_conversions",
+                "product_pack_units",
                 "shifts"
             ]
         },
@@ -45192,6 +45343,7 @@
                 "users",
                 "units",
                 "unit_conversions",
+                "product_pack_units",
                 "shifts"
             ]
         },
@@ -45224,6 +45376,7 @@
                 "users",
                 "units",
                 "unit_conversions",
+                "product_pack_units",
                 "shifts"
             ]
         },
@@ -45328,6 +45481,7 @@
                 "users",
                 "units",
                 "unit_conversions",
+                "product_pack_units",
                 "shifts"
             ]
         },
@@ -45406,7 +45560,9 @@
                 "sales_order_line_cancellations",
                 "users",
                 "void_reasons",
-                "shifts"
+                "shifts",
+                "product_pack_units",
+                "stock_balances"
             ]
         },
         {

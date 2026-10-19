@@ -83,6 +83,13 @@ class InventoryService
         // PURCHASE-RETURN-V2: a purchase return names the batch going back — take from that batch only, and
         // refuse (never go negative) if it holds too little. Null = every caller as before (oldest expiry first).
         ?int $onlyBatchId = null,
+        // MEDICAL-COUNTER-1: a medicine sale never takes from an expired batch and never goes negative instead —
+        // it refuses. Only the medical-store counter's sale asks for this; wastage, transfers, counts, returns
+        // and every restaurant sale run exactly as before (false).
+        bool $skipExpired = false,
+        // MEDICAL-COUNTER-1: the batch the cashier picked on the counter goes FIRST, then the oldest expiry as
+        // always (never strict — a short batch is topped up from the next one). Null = oldest expiry first.
+        ?int $preferBatchId = null,
     ): array {
         // EDGE-SPLITBRAIN-STOCK-1: FEFO out couples the operational decrement with COGS/FEFO valuation.
         // On a Branch Server, stock is decremented ONLY by EdgeOperationalStockService (quantity-only);
@@ -95,8 +102,10 @@ class InventoryService
         // inside the same transaction as the caller (SalesService, etc.).
         return DB::connection('tenant')->transaction(function () use (
             $branch, $product, $variant, $quantity, $movementType,
-            $referenceType, $referenceId, $referenceNo, $notes, $userId, $allowNegative, $onlyBatchId
+            $referenceType, $referenceId, $referenceNo, $notes, $userId, $allowNegative, $onlyBatchId, $skipExpired, $preferBatchId
         ) {
+            $clock = app(\App\Support\TenantClock::class);
+            $today = $skipExpired ? $clock->now($clock->businessTimezone($branch))->toDateString() : null;
             $remaining = $quantity;
             $ledgers = [];
             $lastConsumedCost = null;
@@ -109,8 +118,11 @@ class InventoryService
                 ->where('quantity_on_hand', '>', 0)
                 ->when($onlyBatchId, fn ($q) => $q->where('inventory_batch_id', $onlyBatchId))
                 ->get()
-                ->sortBy(function (StockBalance $balance) {
-                    return $balance->batch?->expiry_date?->format('Y-m-d') ?? '9999-12-31';
+                ->filter(fn (StockBalance $b) => ! $today || ! $b->batch?->expiry_date || $b->batch->expiry_date->toDateString() >= $today)
+                ->sortBy(function (StockBalance $balance) use ($preferBatchId) {
+                    $first = $preferBatchId && (int) $balance->inventory_batch_id === $preferBatchId ? '0' : '1';
+
+                    return $first . ($balance->batch?->expiry_date?->format('Y-m-d') ?? '9999-12-31');
                 });
 
             foreach ($balances as $balance) {
@@ -141,6 +153,15 @@ class InventoryService
                 }
 
                 $remaining -= $consumeQty;
+            }
+
+            if ($remaining > 0.0001 && $skipExpired) {
+                $expired = (float) StockBalance::query()->where('branch_id', $branch->id)->where('product_id', $product->id)
+                    ->where('product_variant_id', $variant?->id)->where('quantity_on_hand', '>', 0)
+                    ->whereHas('batch', fn ($b) => $b->whereNotNull('expiry_date')->whereDate('expiry_date', '<', $today))->sum('quantity_on_hand');
+                $unit = ' ' . ($product->unit?->name ?: 'units');
+                throw new RuntimeException($product->name . ': only ' . round($quantity - $remaining, 3) . $unit . ' left that is not expired'
+                    . ($expired > 0 ? ' (' . round($expired, 3) . $unit . ' more has expired and cannot be sold — return it to the supplier)' : '') . '.');
             }
 
             if ($remaining > 0.0001 && $onlyBatchId) {
