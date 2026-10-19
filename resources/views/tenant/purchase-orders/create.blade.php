@@ -88,6 +88,10 @@
     <div class="card mb-3">
         <div class="card-header"><strong>Product Lines</strong></div>
         <div class="card-body">
+            @if($entryV2 ?? false)
+                {{-- PURCHASING-V2-1: the entry area (Master switch "New purchase screens"). --}}
+                @include('tenant.purchasing.partials.entry-area', ['mode' => 'po', 'prefillLines' => [], 'purchaseOrder' => null])
+            @else
             @include('tenant.purchasing.partials.product-lines', [
                 'products'       => $products,
                 'quantityField'  => 'quantity_ordered',
@@ -96,6 +100,7 @@
                 'showNotes'      => false,
                 'stockEffect'    => 'Stock effect: none. This PO does not change stock — stock updates only when the GRN is posted.',
             ])
+            @endif
         </div>
     </div>
 

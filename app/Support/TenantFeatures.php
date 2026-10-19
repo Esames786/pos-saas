@@ -14,6 +14,7 @@ final class TenantFeatures
 {
     public const PRODUCT_SCREEN_V2 = 'product_screen_v2';
     public const PACKS = 'packs';
+    public const PURCHASING_V2 = 'purchasing_v2';
 
     /** @return array<string, array{label:string, says:string, where:string, needs?:list<string>}> */
     public static function all(): array
@@ -30,6 +31,12 @@ final class TenantFeatures
                 'says'  => 'Say how an item is packed — 1 box = 10 strips, 1 strip = 10 tablets — with a price and a barcode for each pack. Stock is still counted in the smallest unit.',
                 'where' => 'Products → Add / Edit (new product screen)',
                 'needs' => [self::PRODUCT_SCREEN_V2],
+            ],
+            // PURCHASING-V2-1
+            self::PURCHASING_V2 => [
+                'label' => 'New purchase screens (PO & GRN)',
+                'says'  => 'Type purchase lines in one entry area: scan or search, and each item shows its own boxes (box · strip · tablet, batch, expiry, bonus); Ctrl+Enter puts the line in the list.',
+                'where' => 'Purchasing → Purchase Orders and GRN → New',
             ],
         ];
     }

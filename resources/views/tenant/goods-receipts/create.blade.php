@@ -111,6 +111,10 @@
     <div class="card mb-3">
         <div class="card-header"><strong>Received Products</strong></div>
         <div class="card-body">
+            @if($entryV2 ?? false)
+                {{-- PURCHASING-V2-1: the entry area (Master switch "New purchase screens"). --}}
+                @include('tenant.purchasing.partials.entry-area', ['mode' => 'grn', 'prefillLines' => $prefillLines ?? [], 'purchaseOrder' => $purchaseOrder ?? null])
+            @else
             <p class="text-muted small mb-3">Enter batch number and expiry date for products that require batch tracking.</p>
             @include('tenant.purchasing.partials.product-lines', [
                 'products'        => $products,
@@ -123,6 +127,7 @@
                 'extraChargesInput'     => 'extra_charges',
                 'extraChargesNoteInput' => 'extra_charges_note',
             ])
+            @endif
         </div>
     </div>
 

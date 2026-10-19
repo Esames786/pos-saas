@@ -96,7 +96,11 @@
                         <small class="d-block">{{ $line->product?->name }}</small>
                     </td>
                     <td>{{ $line->variant?->name ?? '—' }}</td>
-                    <td>{{ number_format($line->quantity_ordered, 3) }}</td>
+                    <td>
+                        {{ number_format($line->quantity_ordered, 3) }}
+                        {{-- PURCHASING-V2-1: what was typed on the new screen ("10 Box @ 892 / Box"). --}}
+                        @if($line->base_quantity !== null && $line->notes)<small class="d-block text-muted">{{ $line->notes }}</small>@endif
+                    </td>
                     <td>{{ number_format($line->unit_cost, 4) }}</td>
                     <td>{{ number_format($line->discount_amount, 2) }}</td>
                     <td>{{ number_format($line->tax_amount, 2) }}</td>

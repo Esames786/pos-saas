@@ -88,6 +88,7 @@ class GoodsReceiptController extends Controller
                         'tax_amount'             => 0 + (float) $line->tax_amount,
                         'batch_no'               => '',
                         'expiry_date'            => '',
+                        'pack_unit_id'           => $line->pack_unit_id ?? null,
                     ];
                 }
             }
@@ -100,11 +101,19 @@ class GoodsReceiptController extends Controller
             'openOrders'    => $openOrders,
             'purchaseOrder' => $selectedPo,
             'prefillLines'  => $prefillLines,
+            'entryV2'       => \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PURCHASING_V2),
         ]);
     }
 
     public function store(Request $request)
     {
+        // PURCHASING-V2-1: the new entry area posts packs, bonus and MM/YY; the server turns them into
+        // today's lines (tablets, net cost per tablet) before anything else reads them. The old screen
+        // does not send _entry_v2 and is untouched.
+        if ($request->boolean('_entry_v2')) {
+            $request->merge(['lines' => \App\Support\PackLines::toLines((array) $request->input('lines', []), 'quantity_received', true)]);
+        }
+
         // Drop fully-blank rows before validation (robust even if client JS is bypassed).
         $request->merge([
             'lines' => collect($request->input('lines', []))
@@ -133,6 +142,10 @@ class GoodsReceiptController extends Controller
             'lines.*.discount_amount'      => 'nullable|numeric|min:0',
             'lines.*.tax_amount'           => 'nullable|numeric|min:0',
             'lines.*.notes'                => 'nullable|string|max:500',
+            // PURCHASING-V2-1: the pack the price was typed in — for screens only; stock reads the line.
+            'lines.*.pack_unit_id'         => 'nullable|integer',
+            'lines.*.pack_factor'          => 'nullable|integer|min:1',
+            'lines.*.base_quantity'        => 'nullable|numeric|min:0',
         ]);
 
         $validLines = collect($data['lines'])->filter(fn($l) => !empty($l['product_id']));
@@ -200,6 +213,9 @@ class GoodsReceiptController extends Controller
                     'notes'                   => $line['notes'] ?? null,
                     // Frozen at receipt: the bill and any return follow THIS, not the product's flag later.
                     'affects_stock'           => (bool) ($productMap[$line['product_id']]->is_stock_tracked ?? true),
+                    'pack_unit_id'            => $line['pack_unit_id'] ?? null,
+                    'pack_factor'             => $line['pack_factor'] ?? null,
+                    'base_quantity'           => $line['base_quantity'] ?? null,
                 ]);
             }
 
@@ -216,6 +232,11 @@ class GoodsReceiptController extends Controller
                         ->join('goods_receipts', 'goods_receipt_lines.goods_receipt_id', '=', 'goods_receipts.id')
                         ->where('goods_receipts.purchase_order_id', $po->id)
                         ->where('goods_receipts.status', 'posted')
+                        // PURCHASING-V2-1: a bonus line (free, zero cost, no order line) was never ordered.
+                        // Only the new screen writes base_quantity, so older lines count exactly as before.
+                        ->where(fn ($q) => $q->whereNull('goods_receipt_lines.base_quantity')
+                            ->orWhereNotNull('goods_receipt_lines.purchase_order_line_id')
+                            ->orWhere('goods_receipt_lines.unit_cost', '>', 0))
                         ->sum('goods_receipt_lines.quantity_received');
 
                     $newPoStatus = ($totalOrdered > 0 && $totalReceived >= $totalOrdered)
