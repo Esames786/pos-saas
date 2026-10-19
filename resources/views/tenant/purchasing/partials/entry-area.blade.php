@@ -122,7 +122,9 @@
     function buyPack(item, key) { return packOf(item, key) || item.packs.filter(function (p) { return p.can_buy; })[0] || item.packs[0]; }
     function baseOf(line) { return line.item.packs.reduce(function (t, p) { return t + (parseFloat(line.qty[p.key]) || 0) * p.factor; }, 0); }
     function amountOf(line) { var bp = buyPack(line.item, line.buyKey); return baseOf(line) / bp.factor * (parseFloat(line.price) || 0) * (1 - (parseFloat(line.disc) || 0) / 100); }
-    function monthsLeft(exp) { var m = /^(\d{1,2})\s*\/\s*(\d{2})$/.exec((exp || '').trim()); if (!m) return null; var now = new Date(); return (2000 + +m[2]) * 12 + (+m[1]) - (now.getFullYear() * 12 + now.getMonth() + 1); }
+    // "0928", "09-28", "9/28", "09/2028" → "09/28"; anything else comes back as typed.
+    function normExpiry(v) { var t = String(v || '').trim(), m = /^(\d{1,2})[\/\-.\s]?(\d{2}|\d{4})$/.exec(t); if (!m || +m[1] < 1 || +m[1] > 12) return t; return ('0' + +m[1]).slice(-2) + '/' + m[2].slice(-2); }
+    function monthsLeft(exp) { var m = /^(\d{2})\/(\d{2})$/.exec(normExpiry(exp)); if (!m) return null; var now = new Date(); return (2000 + +m[2]) * 12 + (+m[1]) - (now.getFullYear() * 12 + now.getMonth() + 1); }
     function headerReady() { var s = $('supplier_id'), b = $('branch_id'); return !!(s && s.value && b && b.value); }
     function gate() { var ok = headerReady(); $('ea-gate').hidden = ok; search.disabled = !ok; }
 
@@ -200,6 +202,7 @@
         S = { item: item, qty: o.qty || {}, batch: o.batch || '', expiry: o.expiry || '', free: o.free || '', disc: o.disc || '',
               buyKey: bp.key, price: o.price != null ? String(o.price) : (perUnit ? String(Math.round(perUnit * bp.factor * 100) / 100) : ''),
               poLineId: o.poLineId || null, variantId: o.variantId || item.variant_id || null };
+        S.priceKey = S.buyKey;   // the pack the price box is in — switching "Price per" converts from it
         search.value = item.name;
         drawEntry();
         $('ea-msg').hidden = true;
@@ -265,8 +268,21 @@
     function msg(t) { var m = $('ea-msg'); m.hidden = !t; m.textContent = t || ''; }
     function clearEntry() { S = null; editAt = null; body.hidden = true; search.value = ''; msg(''); $('ea-exp').hidden = true; drawGrid(); search.focus(); }
 
-    $('ea-fields').addEventListener('input', sums);
-    $('ea-fields').addEventListener('change', function (e) { if (e.target.id === 'ea-buy') { readEntry(); drawEntry(); } });
+    $('ea-fields').addEventListener('input', function () { msg(''); sums(); });
+    $('ea-fields').addEventListener('change', function (e) {
+        if (e.target.dataset.k === 'expiry') { e.target.value = normExpiry(e.target.value); sums(); return; }
+        if (e.target.id !== 'ea-buy') return;
+        var was = buyPack(S.item, S.priceKey), now = buyPack(S.item, e.target.value);
+        readEntry();
+        if (was.factor !== now.factor) {
+            var p = parseFloat(String(S.price).replace(/,/g, ''));
+            if (p > 0) S.price = String(Math.round(p / was.factor * now.factor * 10000) / 10000);
+            var fr = parseFloat(S.free) * was.factor / now.factor;
+            if (fr > 0 && Math.abs(fr - Math.round(fr)) < 1e-9) S.free = String(Math.round(fr));
+        }
+        S.priceKey = now.key;
+        drawEntry(); focusField('price');
+    });
     root.addEventListener('keydown', function (e) {
         if (!S || !e.target.closest('#ea-fields')) return;
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); add(); return; }
@@ -274,6 +290,7 @@
         if (e.key === 'Enter') {
             e.preventDefault();
             var k = e.target.dataset.k, i = fieldOrder.indexOf(k);
+            if (k === 'expiry') { e.target.value = normExpiry(e.target.value); sums(); }
             if (k === 'disc' || i === fieldOrder.length - 1) add(); else focusField(fieldOrder[i + 1]);
         }
     });
@@ -293,7 +310,7 @@
             var bad = it.packs.filter(function (p) { var v = S.qty[p.key]; return v && !/^\d+$/.test(String(v).trim()); })[0];
             if (bad) { msg(bad.name + ': a whole number, please.'); focusField('pack:' + bad.key); return; }
         }
-        var line = { item: it, qty: Object.assign({}, S.qty), batch: S.batch.trim().toUpperCase(), expiry: S.expiry.trim(), free: S.free, price: S.price, buyKey: bp.key, disc: S.disc, poLineId: S.poLineId, variantId: S.variantId };
+        var line = { item: it, qty: Object.assign({}, S.qty), batch: S.batch.trim().toUpperCase(), expiry: normExpiry(S.expiry), free: S.free, price: S.price, buyKey: bp.key, disc: S.disc, poLineId: S.poLineId, variantId: S.variantId };
         if (editAt !== null) LINES[editAt] = line; else LINES.push(line);
         S = null; editAt = null; body.hidden = true; search.value = ''; msg(''); $('ea-exp').hidden = true;
         drawGrid(); drawPo(); search.focus();

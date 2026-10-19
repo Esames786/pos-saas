@@ -196,14 +196,17 @@ final class PackLines
         return reset($packs);
     }
 
-    /** "09/28" → 2028-09-30; "2028-09-30" stays; '' → null; anything else → false. */
+    /** "09/28", "0928", "09-28", "9/28", "09/2028" → 2028-09-30; "2028-09-30" stays; '' → null; anything else → false. */
     public static function expiry($raw): string|false|null
     {
         $raw = trim((string) $raw);
         if ($raw === '') {
             return null;
         }
-        if (preg_match('/^(\d{1,2})\s*\/\s*(\d{2}|\d{4})$/', $raw, $m)) {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw) && strtotime($raw)) {
+            return $raw;
+        }
+        if (preg_match('/^(\d{1,2})\s*[\/\-.\s]?\s*(\d{2}|\d{4})$/', $raw, $m)) {
             $month = (int) $m[1];
             $year = strlen($m[2]) === 2 ? 2000 + (int) $m[2] : (int) $m[2];
             if ($month < 1 || $month > 12) {
@@ -211,9 +214,6 @@ final class PackLines
             }
 
             return Carbon::create($year, $month, 1)->endOfMonth()->toDateString();
-        }
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw) && strtotime($raw)) {
-            return $raw;
         }
 
         return false;
