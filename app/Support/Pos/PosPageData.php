@@ -43,6 +43,11 @@ final class PosPageData
         // CANONICAL MERGE (D8): PHARMACY-DEMO-1 (canonical a9499a10) — false only where the counter feeds no kitchen (no restaurant /
         // kitchen module and no printer takes KOTs); the page then never asks "Print Kitchen Order?". Edge twin: EdgeLocalPosController.
         'kitchenTickets' => 'bool — PHARMACY-DEMO-1: does this counter feed a kitchen at all (KOT prompt + title)',
+        // CANONICAL MERGE (D8): MEDICAL-COUNTER-1 (canonical b76fd581) — the medical-store counter on the SAME POS (packs per line,
+        // batch first-out, prescription check) behind a Master switch (TenantFeatures::MEDICAL_COUNTER + PackUnits). false = the
+        // page is exactly today's; no new route or endpoint — the sale/held/split stores carry pack_unit_id / inventory_batch_id /
+        // batch_note on the existing lines. Edge twin: OFF (EdgeLocalPosController) — a follow-up owner decision builds it.
+        'medicalCounter' => 'bool — MEDICAL-COUNTER-1: the medical-store counter is on for this tenant (Master switch)',
     ];
 
     /** @param  array<string,mixed>  $data */

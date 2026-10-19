@@ -81,11 +81,17 @@ class SalesService
                             ]);
                         }
                     } elseif ($consumptionMethod === 'stock_item' && $product->is_stock_tracked) {
+                        // MEDICAL-COUNTER-1: a line sold in a pack takes its tablets (base_quantity); a medicine
+                        // never leaves from an expired batch on the medical-store counter.
+                        $medical = \App\Support\CounterPacks::enabled();
                         $ledgers = $this->inventoryService->postOutFefo(
                             branch: $sale->branch,
                             product: $product,
                             variant: $line->variant,
-                            quantity: (float) $line->quantity,
+                            quantity: \App\Support\CounterPacks::baseOf($line),
+                            skipExpired: $medical && (bool) $product->has_expiry,
+                            // …and the batch the cashier picked (checked when the line was saved) goes first.
+                            preferBatchId: $medical && $line->inventory_batch_id ? (int) $line->inventory_batch_id : null,
                             movementType: 'sale',
                             referenceType: 'sales_order',
                             referenceId: $sale->id,
@@ -101,7 +107,7 @@ class SalesService
                         $line->update([
                             'unit_cost'  => $unitCost,
                             'cost_total' => $costTotal,
-                        ]);
+                        ] + ($medical ? self::batchOfSale($ledgers) : []));
                     }
                     // 'none': skip inventory entirely
 
@@ -333,5 +339,33 @@ class SalesService
     public function paymentMethodType(int $paymentMethodId): string
     {
         return PaymentMethod::findOrFail($paymentMethodId)->method_type;
+    }
+
+    /**
+     * MEDICAL-COUNTER-1 — the batch(es) a sale line left from, for the bill and for a return:
+     * "PN2410-07 EXP:09/28", or "PN2410-07 EXP:09/28 ×7, PN2411-01 EXP:11/28 ×3" when it took from two.
+     *
+     * @return array{inventory_batch_id:?int, batch_note:?string}
+     */
+    private static function batchOfSale(array $ledgers): array
+    {
+        $parts = [];
+        $first = null;
+        foreach ($ledgers as $l) {
+            $b = $l->batch ?? null;
+            if (! $b) {
+                continue;
+            }
+            $first ??= $b->id;
+            $parts[$b->id] = ['no' => $b->batch_no . ($b->expiry_date ? ' EXP:' . $b->expiry_date->format('m/y') : ''), 'qty' => ($parts[$b->id]['qty'] ?? 0) + (float) $l->quantity];
+        }
+        if (! $parts) {
+            return ['inventory_batch_id' => null, 'batch_note' => null];
+        }
+        $note = count($parts) === 1
+            ? reset($parts)['no']
+            : implode(', ', array_map(fn ($p) => $p['no'] . ' ×' . rtrim(rtrim(number_format($p['qty'], 3, '.', ''), '0'), '.'), $parts));
+
+        return ['inventory_batch_id' => $first, 'batch_note' => mb_substr($note, 0, 160)];
     }
 }

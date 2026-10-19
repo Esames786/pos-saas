@@ -67,6 +67,8 @@ class SaleIdempotencyService
                 'discount_amount'    => $l['discount_amount'] ?? null,
                 'tax_amount'         => $l['tax_amount'] ?? null,
                 'modifiers'          => $l['modifiers'] ?? null,
+                // MEDICAL-COUNTER-1: 1 Strip and 1 Tablet are not the same sale.
+                'pack_unit_id'       => $l['pack_unit_id'] ?? null,
             ])->sortBy(fn ($l) => implode('|', [$l['client_line_key'] ?? '', $l['product_id'] ?? '', $l['product_variant_id'] ?? '', $l['line_kind'] ?? '']))->values()->all(),
             'payments' => collect($data['payments'] ?? [])->map(fn ($p) => [
                 'payment_method_id' => $p['payment_method_id'] ?? null,

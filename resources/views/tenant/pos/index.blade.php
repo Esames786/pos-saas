@@ -130,6 +130,31 @@
         overflow-y: auto;
         padding-right: .25rem;
     }
+@if($medicalCounter ?? false)
+    /* MEDICAL-COUNTER-1: a list instead of picture tiles, and Box | Strip | Tablet boxes on a cart line. */
+    #product-grid.med-list { display: block; padding-right: 0; border: 1px solid #e5e7eb; border-radius: 10px; }
+    .med-list-h, .med-row { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 1.45fr); gap: 10px; align-items: center; padding: 8px 12px; }
+    .med-list-h { position: sticky; top: 0; z-index: 1; background: #f8fafc; border-bottom: 1px solid #e5e7eb; font-size: .7rem; font-weight: 800; color: #4b5563; text-transform: uppercase; letter-spacing: .03em; }
+    .med-row { width: 100%; border: 0; border-bottom: 1px solid #eef2f6; background: #fff; text-align: left; font-size: .9rem; color: inherit; }
+    .med-row:hover { background: #fafbfd; }
+    .med-row.on { background: #fff8e6; box-shadow: inset 4px 0 0 #caa23f; }
+    .med-row small, .med-sub { display: block; color: #6b7280; font-size: .76rem; }
+    .med-price { font-variant-numeric: tabular-nums; font-size: .84rem; }
+    .med-chip { display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 8px; font-size: .72rem; font-weight: 800; white-space: nowrap; border: 0; }
+    .med-ok { background: #e7f5ee; color: #155f3e; }
+    .med-near { background: #fff0c7; color: #7a4f00; }
+    .med-exp, .med-rx { background: #fdecec; color: #8e1c14; }
+    .med-box { width: 64px; }
+    .med-box span { display: block; font-size: .6rem; font-weight: 800; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .med-box input { height: 34px; text-align: right; padding: 0 6px; font-variant-numeric: tabular-nums; }
+    .med-msg { font-size: .74rem; }
+    .med-pick { background: #f8fafc; border-radius: 8px; padding: 6px; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .med-pick button { text-align: left; border: 1px solid #cbd3de; border-radius: 8px; background: #fff; padding: 4px 8px; font-size: .78rem; }
+    .med-pick button.on { border-color: #caa23f; box-shadow: inset 0 0 0 2px #caa23f; }
+    .med-pick button.off { opacity: .55; }
+    #med-subs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; border: 1px dashed #b8c2cf; border-radius: 10px; padding: 6px 10px; background: #f8fafc; font-size: .85rem; }
+    #med-subs:empty { display: none; }
+@endif
 
     /* TABLE-WORKSPACE-WIDTH-1 — ye POS ka sab se bhara modal hai: ek floor par 20+ table cards,
        aur har card par ab Bill Preview / Split / Held / Move ke button bhi. `modal-xl` 1140px par
@@ -565,6 +590,10 @@
     <input type="hidden" name="promo_code"          id="pos-promo-code"                 value="">
     <input type="hidden" name="tip_amount"          id="pos-tip-amount"                 value="0">
     <input type="hidden" name="manager_approval_id" id="pos-manager-approval-id"        value="">
+    @if($medicalCounter ?? false)
+        {{-- MEDICAL-COUNTER-1: "Rx: Dr … · Patient …" for a sale with a prescription medicine. --}}
+        <input type="hidden" name="notes" id="med-notes" value="">
+    @endif
     <div id="dynamic-pos-inputs"></div>
 
     <div class="pos-shell">
@@ -719,7 +748,7 @@
             <div class="row g-2 mb-2">
                 <div class="col-12">
                     <label for="pos_search" class="form-label small mb-1 visually-hidden">Barcode / Product Search</label>
-                    <input id="pos_search" class="form-control form-control-lg" placeholder="Scan barcode or type product name / SKU">
+                    <input id="pos_search" class="form-control form-control-lg" placeholder="{{ ($medicalCounter ?? false) ? 'Scan barcode, or type brand / salt / SKU  (F2)' : 'Scan barcode or type product name / SKU' }}">
                 </div>
             </div>
 
@@ -750,9 +779,16 @@
 
             {{-- POS-UX-2: heading + shortcuts on one slim line --}}
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                <h2 id="products_heading" class="h6 mb-0">Products</h2>
+                <h2 id="products_heading" class="h6 mb-0">{{ ($medicalCounter ?? false) ? 'Items' : 'Products' }}</h2>
+                @if($medicalCounter ?? false)
+                    {{-- MEDICAL-COUNTER-1: the keys; today's Ctrl keys keep working too. --}}
+                    <span class="small text-muted"><kbd>F2</kbd> search · <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> add · <kbd>F4</kbd> hold · <kbd>F5</kbd> held · <kbd>F6</kbd> batch · <kbd>F9</kbd> preview · <kbd>F10</kbd> pay</span>
+                @endif
             </div>
             <div class="product-grid" id="product-grid" aria-live="polite"></div>
+            @if($medicalCounter ?? false)
+                <div id="med-subs" aria-live="polite"></div>
+            @endif
         </section>
 
         {{-- RIGHT: cart + payment --}}
@@ -782,6 +818,20 @@
                 <div class="cart-items" id="cart-items">
                     <p class="text-muted mb-0"><i class="ti ti-scan me-1"></i>No items yet. Scan a barcode or search for a product.</p>
                 </div>
+                @if($medicalCounter ?? false)
+                    {{-- MEDICAL-COUNTER-1: shown while a medicine that needs a prescription is in the cart.
+                         Doctor and patient go on the bill's notes; the sale waits for "Prescription seen". --}}
+                    <div id="med-rx-box" class="border rounded p-2 mt-2" style="display:none;background:#fff6f5;border-color:#f5c6c2 !important">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <strong class="small" style="color:#8e1c14" id="med-rx-title">Prescription</strong>
+                        </div>
+                        <div class="d-flex gap-1">
+                            <input type="text" class="form-control form-control-sm" id="med-rx-doctor" placeholder="Doctor" aria-label="Doctor's name" maxlength="80">
+                            <input type="text" class="form-control form-control-sm" id="med-rx-patient" placeholder="Patient" aria-label="Patient's name" maxlength="80">
+                            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" id="med-rx-seen" aria-pressed="false">Seen?</button>
+                        </div>
+                    </div>
+                @endif
             </section>
 
             {{-- Charge bar: always-visible total + opens the Payment modal (payment moved to a modal for space) --}}
@@ -2176,6 +2226,8 @@
             'product_name'       => $l->product_name,
             'unit_code'          => $l->unit_code,
             'modifiers'          => $l->modifiers ?? [],
+            'pack_unit_id'       => $l->pack_unit_id ? (int) $l->pack_unit_id : null,
+            'inventory_batch_id' => $l->inventory_batch_id ? (int) $l->inventory_batch_id : null,
         ])->values()->toArray(),
     ] : null;
 @endphp
@@ -2225,6 +2277,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const combos     = @json($combosPayload);
     const categories = @json($categories);
     const heldSale   = @json($heldSaleJson);
+    // MEDICAL-COUNTER-1: the medical-store counter (Master switch). Off = this page works exactly as before.
+    const medicalCounter = @json((bool) ($medicalCounter ?? false));
     const branchCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_cancellation_approval_mode ?? 'manager_required']));
     const branchLineCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_line_cancellation_approval_mode ?: ($branch->held_kot_cancellation_approval_mode ?? 'manager_required')]));
     const branchManualDiscountModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->manual_discount_approval_mode ?? 'manager_required']));
@@ -2789,8 +2843,10 @@ document.addEventListener('DOMContentLoaded', function () {
         }, 0);
     }
 
-    function cartKey(product, variant, modifiers) {
-        return product.id + ':' + (variant ? variant.id : 0) + ':' + modifierSignature(modifiers);
+    function cartKey(product, variant, modifiers, packUnitId) {
+        // MEDICAL-COUNTER-1: a Strip and a Tablet of the same medicine are two cart lines.
+        return product.id + ':' + (variant ? variant.id : 0) + ':' + modifierSignature(modifiers)
+            + (packUnitId ? ':p' + packUnitId : '');
     }
 
     function availableQty(product, variant) {
@@ -2912,6 +2968,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
             return textMatch && (selectedChildCategory ? matchChild : matchParent);
         });
+
+        // MEDICAL-COUNTER-1: a list (stock, the batch sold first, price per pack) instead of tiles.
+        if (medicalCounter) { medRenderList(filtered, query); return; }
 
         productGrid.innerHTML = '';
 
@@ -3270,7 +3329,12 @@ document.addEventListener('DOMContentLoaded', function () {
         renderCart();
     }
 
-    function addToCart(product, variant, forceQty, selectedModifiers) {
+    function addToCart(product, variant, forceQty, selectedModifiers, pack) {
+        // MEDICAL-COUNTER-1: a medicine goes in by its pack (a scanned Box = 1 Box; a click = 1 Strip).
+        if (medicalCounter && product && product.med && !hasModifierGroups(product) && !(selectedModifiers && selectedModifiers.length)) {
+            medAdd(product, variant, forceQty, pack);
+            return;
+        }
         ensureSaleUuid();  // SALE-IDEMPOTENCY-1: a logical sale begins at first item
         var modifiers = normalizeModifiers(selectedModifiers || []);
         var key       = cartKey(product, variant, modifiers);
@@ -3479,6 +3543,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function renderCart() {
+        if (medicalCounter) { medRenderCart(); return; }   // MEDICAL-COUNTER-1
         cartItemsEl.innerHTML = '';
         updateCartActionStates();
 
@@ -3629,6 +3694,598 @@ document.addEventListener('DOMContentLoaded', function () {
         updateTotals();
     }
 
+    /* ── MEDICAL-COUNTER-1: the medical-store counter ───────────────────────────────────────────────
+       Same POS — same save, hold, draft, recall, Review & Pay window, promotions, discount, printing.
+       Only two things change while the Master switch is on: the middle is a LIST (stock that is not
+       expired, the batch sold first, the price of each pack) instead of picture tiles, and a cart line
+       shows Box | Strip | Tablet boxes for one medicine. Each box is its OWN cart item (pack_unit_id,
+       price of one pack, quantity in packs), so totals, hold, recall, split and the server read it
+       exactly like any line; the server turns packs into tablets for stock (CounterPacks). */
+
+    var medRows = [];          // the list as drawn (for ↑ ↓ Enter)
+    var medHi = 0;             // highlighted row while a search is typed
+    var medPick = null;        // group whose batch picker is open
+    var medFocus = null;       // cart item key whose box gets the cursor after a re-draw
+    var medLastScan = 0;       // a scanner's Enter right after a matched code is not "open Review & Pay"
+    var medRx = { doctor: '', patient: '', seen: false };
+
+    function medGroupKey(productId, variantId) { return productId + ':' + (variantId || 0); }
+
+    function medPacks(product, variant) {
+        var med = product.med || {};
+        var base = productPrice(product, variant);
+        var list = (med.packs || []).map(function (p) {
+            var factor = Number(p.factor) || 1;
+            return { id: p.id, name: p.name, factor: factor, price: p.own ? Number(p.price) : Math.round(factor * base * 100) / 100, barcode: p.barcode };
+        });
+        // The loose unit (Tablet / Bottle) sells too, unless a pack row already is that unit.
+        if (!list.some(function (p) { return p.factor === 1; })) {
+            list.push({ id: null, name: med.base_name || product.unit_name || 'Unit', factor: 1, price: base, barcode: null });
+        }
+        return list.sort(function (a, b) { return b.factor - a.factor; });
+    }
+
+    function medDefaultPack(product, variant) {
+        var packs = medPacks(product, variant).slice().sort(function (a, b) { return a.factor - b.factor; });
+        return packs.find(function (p) { return p.factor > 1; }) || packs[0];
+    }
+
+    function medItemsOf(gk) {
+        return cart.filter(function (it) {
+            return it.line_kind !== 'component' && it.line_kind !== 'combo_header'
+                && !normalizeModifiers(it.modifiers).length
+                && medGroupKey(it.product_id, it.product_variant_id) === gk;
+        });
+    }
+
+    function medBase(items) {
+        return items.reduce(function (t, it) { return t + Number(it.quantity || 0) * Number(it.pack_factor || 1); }, 0);
+    }
+
+    function medBatches(product, variant) {
+        var branchId = selectedBranchId();
+        var vid = variant ? Number(variant.id) : null;
+        return ((product.med || {}).batches || []).filter(function (b) {
+            return Number(b.branch_id) === branchId && (b.variant_id === null || vid === null || Number(b.variant_id) === vid);
+        });
+    }
+
+    function medExpiredQty(product, variant) {
+        return medBatches(product, variant).filter(function (b) { return b.expired; })
+            .reduce(function (t, b) { return t + Number(b.qty || 0); }, 0);
+    }
+
+    // What can be sold: all stock minus the expired batches (the server refuses those too).
+    function medAvailable(product, variant) {
+        var all = availableQty(product, variant);
+        if (all === null) return null;
+        return Math.max(0, all - medExpiredQty(product, variant));
+    }
+
+    // Which batches a quantity leaves from: the picked one first, then the oldest expiry — as the server does.
+    function medPlan(product, variant, chosenId, need) {
+        var ok = medBatches(product, variant).filter(function (b) { return !b.expired && Number(b.qty) > 0; });
+        var first = chosenId ? ok.find(function (b) { return Number(b.id) === Number(chosenId); }) : null;
+        var order = first ? [first].concat(ok.filter(function (b) { return b !== first; })) : ok;
+        var left = need, parts = [];
+        order.forEach(function (b) {
+            if (left <= 0.0001) return;
+            var take = Math.min(left, Number(b.qty));
+            parts.push({ id: b.id, no: b.no, exp: b.exp, take: take });
+            left -= take;
+        });
+        return { parts: parts, first: order[0] || null };
+    }
+
+    function medQtyText(q) { return String(Math.round(Number(q || 0) * 1000) / 1000); }
+
+    function medWords(product, variant, qty) {
+        var left = Math.round(Number(qty || 0) * 1000) / 1000;
+        var out = [];
+        medPacks(product, variant).forEach(function (p) {
+            if (p.factor <= 1) return;
+            var k = Math.floor(left / p.factor + 1e-9);
+            if (k > 0) { out.push(k + ' ' + p.name); left = Math.round((left - k * p.factor) * 1000) / 1000; }
+        });
+        if (left > 0.0005 || !out.length) out.push(medQtyText(left) + ' ' + ((product.med || {}).base_name || 'Unit'));
+        return out.join(' ');
+    }
+
+    function medExpState(b) {
+        if (!b || !b.exp_date) return 'ok';
+        if (b.expired) return 'expired';
+        var soon = new Date(); soon.setDate(soon.getDate() + 90);
+        return new Date(b.exp_date + 'T00:00:00') <= soon ? 'near' : 'ok';
+    }
+
+    function medChip(state) { return 'med-chip ' + (state === 'expired' ? 'med-exp' : (state === 'near' ? 'med-near' : 'med-ok')); }
+
+    function medShortText(product, variant, avail) {
+        var ex = medExpiredQty(product, variant);
+        return product.name + ': only ' + medWords(product, variant, avail) + ' left that is not expired'
+            + (ex > 0 ? ' (' + medWords(product, variant, ex) + ' more has expired — it cannot be sold)' : '') + '.';
+    }
+
+    /* the list */
+
+    function medRenderList(filtered, query) {
+        productGrid.classList.add('med-list');
+        var rows = filtered.filter(function (p) { return p.pos_grid_visible !== false; });
+        if (medHi >= rows.length) medHi = Math.max(0, rows.length - 1);
+        var html = '<div class="med-list-h"><span>Item</span><span>In stock (not expired)</span><span>Sold first</span><span>Price</span></div>';
+        rows.forEach(function (p, k) {
+            var v = p.variants && p.variants.length ? p.variants[0] : null;
+            var avail = p.med ? medAvailable(p, v) : availableQty(p, v);
+            var first = p.med ? medPlan(p, v, null, 1).first : null;
+            var stockTxt = avail === null ? 'Service' : (avail <= 0 ? 'Out of stock' : (p.med ? medWords(p, v, avail) : String(avail)));
+            var prices = p.med
+                ? medPacks(p, v).slice().reverse().map(function (x) { return escapeHtml(x.name) + ' ' + money(x.price); }).join(' · ')
+                : money(productPrice(p, v));
+            var sub = [p.generic, p.med && p.med.strength].filter(Boolean).join(' · ');
+            html += '<button type="button" class="med-row' + (query && k === medHi ? ' on' : '') + '" data-med-add="' + k + '" role="option" aria-selected="' + (query && k === medHi ? 'true' : 'false') + '">'
+                + '<span><b>' + escapeHtml(p.name) + '</b>' + (p.med && p.med.rx ? ' <span class="med-chip med-rx">Rx</span>' : '')
+                + (sub ? '<small>' + escapeHtml(sub) + '</small>' : '') + '</span>'
+                + '<span class="' + (avail !== null && avail <= 0 ? 'text-danger fw-bold' : '') + '">' + escapeHtml(stockTxt) + '</span>'
+                + '<span>' + (first
+                    ? '<span class="' + medChip(medExpState(first)) + '">' + escapeHtml(first.no + (first.exp ? ' · exp ' + first.exp : '')) + '</span>'
+                    : '<small>' + ((p.med && (p.med.batches || []).length) ? '—' : 'No batch') + '</small>') + '</span>'
+                + '<span class="med-price">' + prices + '</span>'
+                + '</button>';
+        });
+        if (!rows.length) {
+            html += '<div class="alert alert-info m-2" role="status">No products found' + (query ? ' — try the salt, e.g. paracetamol.' : '.') + '</div>';
+        }
+        productGrid.innerHTML = html;
+        medRows = rows;
+        productGrid.querySelectorAll('[data-med-add]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var p = medRows[Number(btn.dataset.medAdd)];
+                if (p) addToCart(p, p.variants && p.variants.length ? p.variants[0] : null);
+                searchEl.value = '';
+                medHi = 0;
+                renderProducts();
+            });
+        });
+        medRenderSubs(query ? rows[medHi] : null);
+    }
+
+    // Same salt, other brands in stock — under the list while a search is typed.
+    function medRenderSubs(cur) {
+        var box = document.getElementById('med-subs');
+        if (!box) return;
+        box.innerHTML = '';
+        if (!cur || !cur.generic) return;
+        var salt = String(cur.generic).trim().toLowerCase();
+        var curV = cur.variants && cur.variants.length ? cur.variants[0] : null;
+        var subs = products.filter(function (x) {
+            if (x.id === cur.id || x.pos_grid_visible === false || String(x.generic || '').trim().toLowerCase() !== salt) return false;
+            var v = x.variants && x.variants.length ? x.variants[0] : null;
+            var a = x.med ? medAvailable(x, v) : availableQty(x, v);
+            return a === null || a > 0;
+        });
+        if (!subs.length) return;
+        var curAvail = cur.med ? medAvailable(cur, curV) : availableQty(cur, curV);
+        var title = document.createElement('strong');
+        title.textContent = (curAvail !== null && curAvail <= 0 ? cur.name + ' is out of stock — same salt in stock:' : 'Same salt, other brands:');
+        box.appendChild(title);
+        subs.slice(0, 6).forEach(function (x) {
+            var v = x.variants && x.variants.length ? x.variants[0] : null;
+            var pk = x.med ? medDefaultPack(x, v) : null;
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'btn btn-sm btn-outline-dark';
+            b.textContent = x.name + ' · ' + (pk ? pk.name + ' ' + money(pk.price) : money(productPrice(x, v)));
+            b.addEventListener('click', function () { addToCart(x, v); searchEl.value = ''; medHi = 0; renderProducts(); });
+            box.appendChild(b);
+        });
+    }
+
+    // A pack's own barcode (Box / Strip) → 1 of that pack.
+    function medScanPack(query) {
+        for (var i = 0; i < products.length; i++) {
+            var p = products[i];
+            var hit = ((p.med || {}).packs || []).find(function (pk) { return pk.barcode && String(pk.barcode).toLowerCase() === query; });
+            if (hit) {
+                var v = p.variants && p.variants.length ? p.variants[0] : null;
+                var pk = medPacks(p, v).find(function (x) { return Number(x.id) === Number(hit.id); });
+                if (pk) { medAdd(p, v, 1, pk, true); return true; }
+            }
+        }
+        return false;
+    }
+
+    /* the cart */
+
+    function medAdd(product, variant, forceQty, pack, fromScan) {
+        var pk = pack || medDefaultPack(product, variant);
+        var key = cartKey(product, variant, [], pk.id);
+        var existing = cart.find(function (it) { return it.key === key; });
+        var add = forceQty !== undefined && forceQty !== null ? Number(forceQty) : 1;
+        // A click on an item already in the cart only puts the cursor in its box; a scan always adds one.
+        if (existing && !fromScan && forceQty === undefined) {
+            medFocus = key;
+            renderCart();
+            return;
+        }
+        medSet(product, variant, pk, Number(existing ? existing.quantity : 0) + add, true);
+    }
+
+    function medSet(product, variant, pk, qty, focusAfter) {
+        ensureSaleUuid();   // SALE-IDEMPOTENCY-1: a logical sale begins at first item
+        var gk = medGroupKey(product.id, variant ? variant.id : null);
+        var key = cartKey(product, variant, [], pk.id);
+        var items = medItemsOf(gk);
+        var item = items.find(function (it) { return it.key === key; });
+        var loose = pk.factor === 1 && isMeasurableProduct(product);
+        qty = loose ? Math.round(Number(qty || 0) * 1000) / 1000 : Math.round(Number(qty || 0));
+        if (!(qty > 0)) qty = 0;
+        var need = medBase(items.filter(function (it) { return it.key !== key; })) + qty * pk.factor;
+        var avail = medAvailable(product, variant);
+        if (avail !== null && qty > 0 && need > avail + 0.0001) {
+            // A medicine with an expiry never goes below what is not expired (the server refuses it too).
+            if ((product.med && product.med.has_expiry) || !branchAllowsNegative()) {
+                blockAlert(medShortText(product, variant, avail));
+                medFocus = key;
+                renderCart();
+                return false;
+            }
+            backorderToast(product.name);
+        }
+        if (item) {
+            if (qty <= 0) cart.splice(cart.indexOf(item), 1);
+            else { item.quantity = qty; item.tax_amount = lineTax(product, qty, item.unit_price, item.discount_amount || 0); }
+        } else if (qty > 0) {
+            cart.push({
+                key:                key,
+                product_id:         product.id,
+                product_variant_id: variant ? variant.id : null,
+                name:               product.name,
+                variant_name:       variant ? variant.name : null,
+                unit_code:          pk.id ? pk.name : (product.unit_code || ''),
+                quantity:           qty,
+                unit_price:         pk.price,
+                base_unit_price:    pk.price,
+                modifiers:          [],
+                discount_amount:    0,
+                tax_amount:         lineTax(product, qty, pk.price, 0),
+                product:            product,
+                variant:            variant || null,
+                _dbLineId:          null,
+                kot_sent:           false,
+                kot_sent_quantity:  0,
+                pack_unit_id:       pk.id,
+                pack_factor:        pk.factor,
+                pack_name:          pk.name,
+                // the whole medicine leaves from the same picked batch
+                inventory_batch_id: items.length ? (items[0].inventory_batch_id || null) : null,
+            });
+        }
+        if (focusAfter) medFocus = key;
+        renderCart();
+        return true;
+    }
+
+    // A recalled / pre-loaded line becomes the same pack again.
+    function medAdoptLine(item, product, variant, line) {
+        if (!item || !product || !product.med) return;
+        var pk = line.pack_unit_id
+            ? medPacks(product, variant).find(function (p) { return Number(p.id) === Number(line.pack_unit_id); })
+            : medPacks(product, variant).find(function (p) { return p.id === null; });
+        item.pack_unit_id = line.pack_unit_id ? Number(line.pack_unit_id) : null;
+        item.pack_factor = pk ? pk.factor : (Number(line.pack_factor) || 1);
+        item.pack_name = pk ? pk.name : (line.unit_code || '');
+        item.inventory_batch_id = line.inventory_batch_id ? Number(line.inventory_batch_id) : null;
+    }
+
+    function medBatchNote(item) {
+        if (!item.product || !item.product.med) return null;
+        var items = medItemsOf(medGroupKey(item.product_id, item.product_variant_id));
+        var plan = medPlan(item.product, item.variant, items.length ? items[0].inventory_batch_id : null, medBase(items));
+        return plan.parts.length ? plan.parts.map(function (p) { return p.no + (p.exp ? ' EXP:' + p.exp : ''); }).join(', ') : null;
+    }
+
+    function medPreviewFields(item) {
+        var out = {};
+        if (item.pack_unit_id) out.pack_unit_id = item.pack_unit_id;
+        var note = medBatchNote(item);
+        if (note) out.batch_note = note.substring(0, 160);
+        return out;
+    }
+
+    function medGroupRow(g) {
+        var p = g.product, v = g.variant, gk = g.gk;
+        var packs = medPacks(p, v);
+        var need = medBase(g.items);
+        var chosen = g.items[0].inventory_batch_id || null;
+        var plan = medPlan(p, v, chosen, need);
+        var first = plan.first;
+        var amount = g.items.reduce(function (t, it) {
+            return t + Number(it.quantity) * Number(it.unit_price) - Number(it.discount_amount || 0) + Number(it.tax_amount || 0);
+        }, 0);
+        var msgs = [];
+        medBatches(p, v).filter(function (b) { return b.expired; }).forEach(function (b) {
+            msgs.push('<span class="text-danger">Batch ' + escapeHtml(b.no) + ' (expired ' + escapeHtml(b.exp || '') + ', ' + escapeHtml(medWords(p, v, b.qty)) + ') is skipped — expired stock is never sold.</span>');
+        });
+        if (plan.parts.length > 1) {
+            msgs.push('<span>Takes ' + plan.parts.map(function (x) { return escapeHtml(medQtyText(x.take) + ' ' + ((p.med || {}).base_name || '') + ' from ' + x.no); }).join(', then ') + '.</span>');
+        }
+        var avail = medAvailable(p, v);
+        if (avail !== null && need > avail + 0.0001) msgs.push('<b class="text-danger">' + escapeHtml(medShortText(p, v, avail)) + '</b>');
+
+        // one box per pack, plus any recalled pack that is no longer set up on the item
+        var boxes = packs.map(function (pk) {
+            var it = g.items.find(function (x) { return (x.pack_unit_id || null) === (pk.id || null); });
+            return { pk: pk, item: it };
+        });
+        g.items.forEach(function (it) {
+            if (!boxes.some(function (b) { return b.item === it; })) {
+                boxes.push({ pk: { id: it.pack_unit_id, name: it.pack_name || it.unit_code || 'Pack', factor: Number(it.pack_factor || 1), price: Number(it.unit_price) }, item: it });
+            }
+        });
+
+        var row = document.createElement('div');
+        row.className = 'cart-row';
+        var batchHtml = '';
+        if (medBatches(p, v).length) {
+            var st = first ? medExpState(first) : 'expired';
+            batchHtml = '<button type="button" class="' + medChip(st) + '" data-med-batch="' + gk + '" aria-expanded="' + (medPick === gk ? 'true' : 'false') + '" title="Change batch (F6)">'
+                + (first ? 'B: ' + escapeHtml(first.no) + (first.exp ? ' · exp ' + escapeHtml(first.exp) : '') + (st === 'near' ? ' · sell first' : '') + (chosen ? ' · picked' : '') : 'No batch that can be sold')
+                + ' ▾</button>';
+        }
+        row.innerHTML =
+            '<div class="d-flex justify-content-between gap-2">'
+                + '<div class="min-w-0"><div class="fw-bold">' + escapeHtml(p.name) + '</div>'
+                + ((p.generic || (p.med && p.med.strength)) ? '<div class="med-sub">' + escapeHtml([p.generic, p.med && p.med.strength].filter(Boolean).join(' · ')) + '</div>' : '')
+                + '</div>'
+                + '<div class="d-flex gap-1 align-items-start"><strong class="text-nowrap">' + money(amount) + '</strong>'
+                + '<button type="button" class="btn btn-sm btn-outline-danger" data-med-remove="' + gk + '" title="Remove item"><i class="ti ti-x"></i></button></div>'
+            + '</div>'
+            + '<div class="d-flex justify-content-between align-items-end gap-2 flex-wrap mt-1">'
+                + '<div class="d-flex gap-1 flex-wrap align-items-center">' + batchHtml + (p.med && p.med.rx ? '<span class="med-chip med-rx">Rx</span>' : '') + '</div>'
+                + '<div class="d-flex gap-1">' + boxes.map(function (b) {
+                    var k = b.item ? b.item.key : cartKey(p, v, [], b.pk.id);
+                    return '<label class="med-box"><span>' + escapeHtml(b.pk.name.toUpperCase() + ' ' + money(b.pk.price)) + '</span>'
+                        + '<input type="text" inputmode="decimal" class="form-control form-control-sm" placeholder="0" autocomplete="off"'
+                        + ' data-med-box="' + escapeHtml(k) + '" data-med-group="' + gk + '" data-med-pack="' + (b.pk.id || '') + '"'
+                        + ' aria-label="' + escapeHtml(p.name + ', how many ' + b.pk.name) + '"'
+                        + ' value="' + (b.item ? medQtyText(b.item.quantity) : '') + '"></label>';
+                }).join('') + '</div>'
+            + '</div>'
+            + (msgs.length ? '<div class="med-msg mt-1">' + msgs.join('<br>') + '</div>' : '');
+
+        if (medPick === gk) {
+            var pick = document.createElement('div');
+            pick.className = 'med-pick';
+            pick.innerHTML = medBatches(p, v).map(function (b) {
+                var bs = medExpState(b);
+                var on = first && Number(first.id) === Number(b.id) && chosen;
+                return '<button type="button" class="' + (on ? 'on' : '') + (bs === 'expired' ? ' off' : '') + '" data-med-choose="' + gk + '|' + b.id + '">'
+                    + '<b>' + escapeHtml(b.no) + '</b> · exp ' + escapeHtml(b.exp || '—') + '<br><span class="' + medChip(bs) + '">'
+                    + (bs === 'expired' ? 'Expired — cannot sell' : (bs === 'near' ? 'Expires soon — sell first' : 'Fine')) + '</span> '
+                    + escapeHtml(medWords(p, v, b.qty)) + '</button>';
+            }).join('') + '<button type="button" data-med-choose="' + gk + '|">Automatic — oldest expiry first</button>';
+            row.appendChild(pick);
+        }
+        return row;
+    }
+
+    function medPlainRow(item, index) {
+        var row = document.createElement('div');
+        row.className = 'cart-row';
+        row.innerHTML = '<div class="d-flex justify-content-between gap-2"><div><div class="fw-bold">' + escapeHtml(item.name) + '</div>'
+            + '<div class="small text-muted">' + escapeHtml(formatQty(item.quantity, item.product)) + ' × ' + money(item.unit_price) + '</div></div>'
+            + '<div class="d-flex gap-1 align-items-start"><strong>' + money(Number(item.quantity) * Number(item.unit_price) - Number(item.discount_amount || 0) + Number(item.tax_amount || 0)) + '</strong>'
+            + '<button type="button" class="btn btn-sm btn-outline-danger" data-med-remove-line="' + index + '" title="Remove item"><i class="ti ti-x"></i></button></div></div>';
+        return row;
+    }
+
+    function medRenderCart() {
+        cartItemsEl.innerHTML = '';
+        updateCartActionStates();
+        medSyncRx();
+        if (!cart.length) {
+            cartItemsEl.innerHTML = '<p class="text-muted mb-0"><i class="ti ti-scan me-1"></i>No items yet. Scan a barcode or search for a medicine.</p>';
+            updateTotals();
+            return;
+        }
+        var groups = [], seen = {};
+        cart.forEach(function (it, idx) {
+            if (it.line_kind === 'component') return;
+            it.tax_amount = lineTax(it.product, it.quantity, it.unit_price, it.discount_amount);
+            var plain = it.line_kind === 'combo_header' || normalizeModifiers(it.modifiers).length || !it.product || !it.product.med;
+            var gk = plain ? 'line:' + idx : medGroupKey(it.product_id, it.product_variant_id);
+            if (!seen[gk]) { seen[gk] = { gk: gk, plain: plain, index: idx, items: [], product: it.product, variant: it.variant }; groups.push(seen[gk]); }
+            seen[gk].items.push(it);
+        });
+        groups.forEach(function (g) { cartItemsEl.appendChild(g.plain ? medPlainRow(g.items[0], g.index) : medGroupRow(g)); });
+
+        var groupOf = function (gk) { return groups.find(function (g) { return g.gk === gk; }); };
+        var apply = function (input) {
+            var g = groupOf(input.dataset.medGroup);
+            if (!g) return;
+            var packId = input.dataset.medPack ? Number(input.dataset.medPack) : null;
+            var pk = medPacks(g.product, g.variant).find(function (x) { return (x.id || null) === packId; });
+            var it = g.items.find(function (x) { return x.key === input.dataset.medBox; });
+            if (!pk && it) pk = { id: it.pack_unit_id, name: it.pack_name, factor: Number(it.pack_factor || 1), price: Number(it.unit_price) };
+            if (!pk) return;
+            var val = parseFloat(String(input.value).replace(/[^0-9.]/g, '')) || 0;
+            if (it && Math.abs(Number(it.quantity) - val) < 0.0005) return;
+            if (!it && val <= 0) return;
+            medSet(g.product, g.variant, pk, val, false);
+        };
+        cartItemsEl.querySelectorAll('[data-med-box]').forEach(function (input) {
+            input.addEventListener('change', function () { apply(input); });
+            input.addEventListener('keydown', function (e) {
+                if (e.key !== 'Enter' || e.ctrlKey || e.metaKey) return;
+                e.preventDefault();
+                var boxes = Array.prototype.slice.call(cartItemsEl.querySelectorAll('[data-med-group="' + input.dataset.medGroup + '"]'));
+                var next = boxes[boxes.indexOf(input) + 1];
+                var nextKey = next ? next.dataset.medBox : null;
+                apply(input);
+                if (nextKey) {
+                    var el = cartItemsEl.querySelector('[data-med-box="' + nextKey.replace(/"/g, '\\"') + '"]');
+                    if (el) { el.focus(); el.select(); return; }
+                }
+                searchEl.focus();
+            });
+        });
+        cartItemsEl.querySelectorAll('[data-med-remove]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var gk = btn.dataset.medRemove;
+                cart = cart.filter(function (it) { return medItemsOf(gk).indexOf(it) === -1; });
+                if (medPick === gk) medPick = null;
+                renderCart();
+            });
+        });
+        cartItemsEl.querySelectorAll('[data-med-remove-line]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var item = cart[Number(btn.dataset.medRemoveLine)];
+                if (!item) return;
+                cart = item.line_kind === 'combo_header'
+                    ? cart.filter(function (row) { return row.key !== item.key && row.parent_key !== item.key; })
+                    : cart.filter(function (row) { return row !== item; });
+                renderCart();
+            });
+        });
+        cartItemsEl.querySelectorAll('[data-med-batch]').forEach(function (btn) {
+            btn.addEventListener('click', function () { medPick = medPick === btn.dataset.medBatch ? null : btn.dataset.medBatch; renderCart(); });
+        });
+        cartItemsEl.querySelectorAll('[data-med-choose]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var parts = btn.dataset.medChoose.split('|');
+                var g = groupOf(parts[0]);
+                if (!g) return;
+                var batchId = parts[1] ? Number(parts[1]) : null;
+                var b = batchId ? medBatches(g.product, g.variant).find(function (x) { return Number(x.id) === batchId; }) : null;
+                if (b && b.expired) { toast('warning', b.no + ' has expired — it cannot be sold. Send it back on a purchase return.'); return; }
+                g.items.forEach(function (it) { it.inventory_batch_id = batchId; });
+                medPick = null;
+                renderCart();
+                if (b) toast('info', g.product.name + ': sells from ' + b.no + ' first, then the oldest expiry.');
+            });
+        });
+
+        if (medFocus) {
+            var el = cartItemsEl.querySelector('[data-med-box="' + String(medFocus).replace(/"/g, '\\"') + '"]');
+            medFocus = null;
+            if (el) { el.focus(); el.select(); el.scrollIntoView({ block: 'nearest' }); }
+        }
+        updateTotals();
+    }
+
+    /* prescription */
+
+    function medRxItems() {
+        return cart.filter(function (it) { return it.product && it.product.med && it.product.med.rx && it.line_kind !== 'component'; })
+            .map(function (it) { return it.product; })
+            .filter(function (p, i, all) { return all.indexOf(p) === i; });
+    }
+
+    function medNotes() {
+        if (!medRxItems().length || (!medRx.doctor && !medRx.patient)) return '';
+        var doctor = String(medRx.doctor || '').replace(/^dr\.?\s+/i, '');   // "Dr Saad" is not "Dr Dr Saad"
+        return 'Rx: Dr ' + (doctor || '—') + ' · Patient ' + (medRx.patient || '—');
+    }
+
+    function medSyncRx() {
+        var box = document.getElementById('med-rx-box');
+        if (!box) return;
+        var rx = medRxItems();
+        box.style.display = rx.length ? '' : 'none';
+        document.getElementById('med-rx-title').textContent = 'Prescription — ' + rx.map(function (p) { return p.name; }).join(', ');
+        var d = document.getElementById('med-rx-doctor'), pt = document.getElementById('med-rx-patient'), seen = document.getElementById('med-rx-seen');
+        if (document.activeElement !== d) d.value = medRx.doctor;
+        if (document.activeElement !== pt) pt.value = medRx.patient;
+        seen.textContent = medRx.seen ? '✓ Seen' : 'Seen?';
+        seen.setAttribute('aria-pressed', medRx.seen ? 'true' : 'false');
+        seen.className = 'btn btn-sm text-nowrap ' + (medRx.seen ? 'btn-success' : 'btn-outline-danger');
+        var notes = document.getElementById('med-notes');
+        if (notes) notes.value = medNotes();
+    }
+
+    function medRxReady() {
+        var rx = medRxItems();
+        if (!rx.length || medRx.seen) return true;
+        blockAlert(rx[0].name + ' needs a prescription. Look at it, then tick “Seen” under the cart.');
+        return false;
+    }
+
+    function medRxFromNotes(notes) {
+        var m = String(notes || '').match(/^Rx: Dr (.*?) · Patient (.*)$/);
+        medRx = { doctor: m && m[1] !== '—' ? m[1] : '', patient: m && m[2] !== '—' ? m[2] : '', seen: false };
+    }
+
+    function medResetBill() {
+        medRx = { doctor: '', patient: '', seen: false };
+        medPick = null;
+        medFocus = null;
+    }
+
+    if (medicalCounter) {
+        var rxDoctor = document.getElementById('med-rx-doctor');
+        var rxPatient = document.getElementById('med-rx-patient');
+        if (rxDoctor) rxDoctor.addEventListener('input', function () { medRx.doctor = rxDoctor.value.trim(); medSyncRx(); });
+        if (rxPatient) rxPatient.addEventListener('input', function () { medRx.patient = rxPatient.value.trim(); medSyncRx(); });
+        document.getElementById('med-rx-seen')?.addEventListener('click', function () { medRx.seen = !medRx.seen; medSyncRx(); });
+
+        // ↑ ↓ choose in the list, Enter adds it; an empty search + Enter opens Review & Pay.
+        searchEl.addEventListener('keydown', function (e) {
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            var q = searchEl.value.trim();
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                if (!q || !medRows.length) return;
+                e.preventDefault();
+                medHi = Math.max(0, Math.min(medRows.length - 1, medHi + (e.key === 'ArrowDown' ? 1 : -1)));
+                renderProducts();
+                productGrid.querySelector('.med-row.on')?.scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter') {
+                // A matched scan empties the box as the code arrives; its Enter must not open Review & Pay.
+                if (Date.now() - medLastScan < 600) return;
+                if (!q) { if (cart.length) document.getElementById('review-pay-btn')?.click(); return; }
+                if (handlePosBarcodeScan(q)) return;
+                var p = medRows[medHi];
+                if (p) { addToCart(p, p.variants && p.variants.length ? p.variants[0] : null); searchEl.value = ''; medHi = 0; renderProducts(); }
+            }
+        });
+        searchEl.addEventListener('input', function () { medHi = 0; });
+
+        // Enter in Tendered Amount completes the sale (Ctrl+Enter still does too).
+        tenderedEl?.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); document.getElementById('complete-sale-btn')?.click(); }
+        });
+
+        // Function keys, as medical-store counters use them. Today's Ctrl keys keep working.
+        document.addEventListener('keydown', function (e) {
+            var k = e.key;
+            if (!/^F(2|3|4|5|6|8|9|10)$/.test(k)) return;
+            e.preventDefault();   // never reload (F5) or open browser search (F3) on the counter
+            var pay = document.getElementById('paymentModal');
+            var payOpen = pay && pay.classList.contains('show');
+            // a question on screen (not a small toast) or another window open → the keys wait
+            var popup = document.querySelector('.swal2-container .swal2-popup');
+            if ((!payOpen && document.querySelector('.modal.show')) || (popup && !popup.classList.contains('swal2-toast'))) return;
+            var click = function (id) { var b = document.getElementById(id); if (b && !b.disabled) b.click(); };
+            if (payOpen) {
+                if (k === 'F10') click('complete-sale-btn');
+                else if (k === 'F9') click('payment-bill-preview-btn');
+                else if (k === 'F8') document.getElementById('manual-discount-value')?.focus();
+                return;
+            }
+            if (k === 'F2') { searchEl.focus(); searchEl.select(); }
+            else if (k === 'F3') click('pos-customer-btn');
+            else if (k === 'F4') click('hold-sale-btn');
+            else if (k === 'F5') click('held-orders-btn');
+            else if (k === 'F6') {
+                var keys = [];
+                cart.forEach(function (it) { if (it.product && it.product.med && it.line_kind !== 'component') { var gk = medGroupKey(it.product_id, it.product_variant_id); if (keys.indexOf(gk) === -1) keys.push(gk); } });
+                if (keys.length) { medPick = medPick ? null : keys[keys.length - 1]; renderCart(); }
+            }
+            else if (k === 'F8') { click('review-pay-btn'); setTimeout(function () { document.getElementById('manual-discount-value')?.focus(); }, 400); }
+            else if (k === 'F9') click('bill-preview-btn');
+            else if (k === 'F10') click('review-pay-btn');
+        });
+    }
+
     /* totals */
 
     let _promoDiscountAmount = 0;
@@ -3703,6 +4360,34 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             container.appendChild(b);
         });
+
+        // MEDICAL-COUNTER-1: add the notes the customer hands over, one by one (+500, +100, +20 …).
+        if (medicalCounter && total > 0) {
+            var notesRow = document.createElement('div');
+            notesRow.className = 'd-flex gap-1 flex-wrap w-100 mt-1 align-items-center';
+            notesRow.innerHTML = '<span class="small text-muted me-1">Notes:</span>';
+            [10, 20, 50, 100, 500, 1000, 5000].forEach(function (note) {
+                var nb = document.createElement('button');
+                nb.type = 'button';
+                nb.className = 'btn btn-sm btn-outline-success';
+                nb.textContent = '+' + note.toLocaleString('en-PK');
+                nb.setAttribute('aria-label', 'Add a ' + note + ' rupee note');
+                nb.addEventListener('click', function () {
+                    var start = tenderedEl.dataset.manual ? Number(tenderedEl.value || 0) : 0;
+                    tenderedEl.value = money(start + note);
+                    tenderedEl.dataset.manual = '1';
+                    updateTotals(false);
+                });
+                notesRow.appendChild(nb);
+            });
+            var clr = document.createElement('button');
+            clr.type = 'button';
+            clr.className = 'btn btn-sm btn-link text-muted';
+            clr.textContent = 'Clear';
+            clr.addEventListener('click', function () { tenderedEl.value = '0.00'; tenderedEl.dataset.manual = '1'; updateTotals(false); tenderedEl.focus(); });
+            notesRow.appendChild(clr);
+            container.appendChild(notesRow);
+        }
     }
 
     function updateTotals(quoteServer) {
@@ -3916,6 +4601,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 tax_amount:         item.tax_amount || 0,
                 modifiers:          JSON.stringify(normalizeModifiers(item.modifiers)),
             };
+            // MEDICAL-COUNTER-1: the pack and the batch picked — only when there is one, so every other
+            // counter posts exactly what it posted before.
+            if (item.pack_unit_id) fields.pack_unit_id = item.pack_unit_id;
+            if (item.inventory_batch_id) fields.inventory_batch_id = item.inventory_batch_id;
             Object.keys(fields).forEach(function (field) {
                 var inp  = document.createElement('input');
                 inp.type = 'hidden';
@@ -4356,6 +5045,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (window.posRenderCustomerChip) window.posRenderCustomerChip();
             if (typeof updateDeliveryPanel === 'function') updateDeliveryPanel();
         }
+        if (medicalCounter) medResetBill();   // MEDICAL-COUNTER-1: prescription + picked batch belong to one bill
         renderCart();
         updateSplitBillBtn();
         updateRecalledBar();
@@ -4786,6 +5476,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
         if (!requireDeliveryCustomer()) return;
         if (!requireQuickSaleFields()) return;
+        if (medicalCounter && !medRxReady()) return;   // MEDICAL-COUNTER-1: a prescription medicine waits for "seen"
         _completeSaleFlowActive = true;
 
         if (_directPayKotIntent === null) {
@@ -5268,7 +5959,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const lineKind = line.line_kind || 'standard';
             const key = (lineKind === 'combo_header' || lineKind === 'component')
                 ? 'held-line:' + line.id
-                : cartKey(product, variant, modifiers);
+                : cartKey(product, variant, modifiers, medicalCounter ? line.pack_unit_id : null);
             const parentKey = line.parent_sales_order_line_id ? recalledLineKeys[line.parent_sales_order_line_id] : '';
             // Honour the STORED price exactly — combo components are 0, and a falsy-OR
             // would wrongly re-price them to full catalog price (inflating the total).
@@ -5309,6 +6000,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 kot_sent:           !!line.kot_sent,
                 kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
             });
+            if (medicalCounter) medAdoptLine(cart[cart.length - 1], product, variant, line);   // MEDICAL-COUNTER-1
             recalledLineKeys[line.id] = key;
         });
 
@@ -5316,6 +6008,7 @@ document.addEventListener('DOMContentLoaded', function () {
         _currentHeldSaleNo = sale.sale_no;
         _currentHeldSaleIsDraft = !!sale.is_draft;   // POS-DRAFT-1: recalled draft keeps its badge
         rememberLastSale(sale.id, sale.sale_no);
+        if (medicalCounter) medRxFromNotes(sale.notes);   // MEDICAL-COUNTER-1: doctor / patient come back
         const heldInput = document.querySelector('input[name="held_sale_id"]');
         if (heldInput) heldInput.value = sale.id;
 
@@ -5993,7 +6686,7 @@ document.addEventListener('DOMContentLoaded', function () {
             restaurant_table_id:         (document.getElementById('restaurant_table_id') || {}).value || null,
             restaurant_table_session_id: (document.getElementById('restaurant_table_session_id') || {}).value || null,
             lines: cart.map(function (it) {
-                return {
+                return Object.assign({
                     product_id:      it.product_id || it.id || null,
                     product_name:    it.name || it.product_name || 'Item',
                     category_id:     (it.product && it.product.category_id) || it.category_id || 0,
@@ -6008,7 +6701,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     line_kind:       it.line_kind || 'standard',
                     variant_name:    it.variant_name || null,
                     modifiers:       normalizeModifiers(it.modifiers || []),
-                };
+                }, medicalCounter ? medPreviewFields(it) : {});
             }),
         };
 
@@ -6583,6 +7276,15 @@ document.addEventListener('DOMContentLoaded', function () {
         var query = (rawQuery || '').trim().toLowerCase();
         if (!query) return false;
 
+        // MEDICAL-COUNTER-1: a pack's own barcode sells that pack (the Box barcode = 1 Box).
+        if (medicalCounter && medScanPack(query)) {
+            medLastScan = Date.now();
+            searchEl.value = '';
+            searchEl.focus();
+            renderProducts();
+            return true;
+        }
+
         var matched = null;
         var matchedVariant = null;
 
@@ -6609,6 +7311,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (matched) {
+            medLastScan = Date.now();   // MEDICAL-COUNTER-1 (unused elsewhere)
             addToCart(matched, matchedVariant);
             searchEl.value = '';
             searchEl.focus();
@@ -6910,7 +7613,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const lineKind = line.line_kind || 'standard';
             const key = (lineKind === 'combo_header' || lineKind === 'component')
                 ? 'held-line:' + line.id
-                : cartKey(product, variant, modifiers);
+                : cartKey(product, variant, modifiers, medicalCounter ? line.pack_unit_id : null);
             const parentKey = line.parent_sales_order_line_id ? preloadedLineKeys[line.parent_sales_order_line_id] : '';
             // Honour the STORED price exactly (combo components are 0; a falsy-OR re-prices them).
             const unitPrice = (line.unit_price !== undefined && line.unit_price !== null)
@@ -6952,6 +7655,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 kot_sent:           !!line.kot_sent,
                 kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
             });
+            if (medicalCounter) medAdoptLine(cart[cart.length - 1], product, variant, line);   // MEDICAL-COUNTER-1
             preloadedLineKeys[line.id] = key;
         });
     }

@@ -216,6 +216,11 @@ class EdgeLocalPosController extends Controller
                 ])),
             'activeMode' => $requestedMode,
             'kitchenTickets' => $this->kitchenTicketsOn(),
+            // MEDICAL-COUNTER-1 twin (merge D8): OFF on the Branch Server for now — the feature is a Master switch read from the Cloud
+            // tenant row (TenantFeatures::on needs the `tenant` binding) and its packs / batches / prescription data are not part of
+            // the bootstrap sections yet. Non-medical tenants render exactly the same page on both runtimes; a medical tenant's Branch
+            // Server is a follow-up owner decision (recorded in docs/status/edge-canonical-merge-report.md).
+            'medicalCounter' => false,
         ];
     }
 

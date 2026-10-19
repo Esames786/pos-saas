@@ -81,6 +81,7 @@ class SharedPosViewRenderTest extends TestCase
             'terminalPrintConfig' => collect(),
             'activeMode' => 'takeaway',
             'kitchenTickets' => true, // PHARMACY-DEMO-1 (canonical merge D8)
+            'medicalCounter' => false, // MEDICAL-COUNTER-1 (canonical merge D8)
         ]);
     }
 

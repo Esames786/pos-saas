@@ -224,6 +224,24 @@ class POSController extends Controller
             ->orderBy('name')
             ->get();
 
+        // MEDICAL-COUNTER-1: the medical-store counter (Master switch) also gets each item's packs, batches
+        // with stock (expired too — the counter says it skips them) and its prescription flag. Off = nothing
+        // extra is read and the payload is exactly today's.
+        $medicalCounter = \App\Support\CounterPacks::enabled();
+        $batchBalances = collect();
+        $medToday = null;
+        if ($medicalCounter) {
+            $products->load('packUnits');
+            $batchBalances = StockBalance::query()
+                ->with('batch')
+                ->whereIn('product_id', $products->pluck('id'))
+                ->whereNotNull('inventory_batch_id')
+                ->where('quantity_on_hand', '>', 0)
+                ->get()
+                ->groupBy('product_id');
+            $medToday = app(\App\Support\TenantClock::class)->currentBusinessDate();
+        }
+
         $stockRows = StockBalance::query()
             ->selectRaw('branch_id, product_id, product_variant_id, SUM(quantity_on_hand) as qty')
             ->groupBy('branch_id', 'product_id', 'product_variant_id')
@@ -238,7 +256,7 @@ class POSController extends Controller
         // W-G1: the recipe "makeable" preview is the ONE shared computation (also used by the Branch Server).
         $recipeAvailability = app(RecipeAvailability::class);
 
-        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $recipeAvailability, $posRuntime) {
+        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $recipeAvailability, $posRuntime, $medicalCounter, $batchBalances, $medToday) {
             $defaultVariant = $product->defaultVariant ?: $product->variants->first();
 
             $barcodes = $product->barcodes
@@ -350,7 +368,7 @@ class POSController extends Controller
                 'is_recipe'                     => $recipe['is_recipe'],
                 'makeable_by_branch'            => $recipe['makeable'],
                 'limiting_ingredient_by_branch' => $recipe['limiting'],
-            ];
+            ] + ($medicalCounter ? ['med' => \App\Support\CounterPacks::payload($product, $batchBalances->get($product->id, collect()), $medToday)] : []);
         })->values();
 
         $combosPayload = Combo::with(['components.product.unit', 'components.variant'])
@@ -498,6 +516,7 @@ class POSController extends Controller
                 ]),
             'activeMode'       => $requestedMode,
             'kitchenTickets'   => $this->kitchenTicketsOn(),
+            'medicalCounter'   => $medicalCounter,
         ])->toViewData($posRuntime));
     }
 
@@ -610,6 +629,9 @@ class POSController extends Controller
             'lines.*.line_kind'       => ['nullable', 'string', 'max:30'],
             'lines.*.variant_name'    => ['nullable', 'string', 'max:190'],
             'lines.*.modifiers'       => ['nullable', 'array'],
+            // MEDICAL-COUNTER-1 (display only): the pack a line is in and the batch the counter shows.
+            'lines.*.pack_unit_id'    => ['nullable', 'integer'],
+            'lines.*.batch_note'      => ['nullable', 'string', 'max:160'],
         ]);
 
         abort_unless(auth('tenant')->user()?->allowsOrderType($data['order_type']), 403);
@@ -734,6 +756,16 @@ class POSController extends Controller
                 : null;
             $saleLine->modifiers = $line['modifiers'] ?? [];
             $saleLine->setRelation('product', $product);
+            // MEDICAL-COUNTER-1: the preview says "2 Strip = 20 Tablet · B:…" exactly as the printed bill will.
+            if ($product && ($pack = rescue(fn () => \App\Support\CounterPacks::resolve($product, (array) $line, $qty), null, false))) {
+                $saleLine->unit_code = mb_substr($pack['pack_name'], 0, 20);
+                $saleLine->pack_unit_id = $pack['pack_unit_id'];
+                $saleLine->pack_factor = $pack['pack_factor'];
+                $saleLine->base_quantity = $pack['base_quantity'];
+            }
+            if (\App\Support\CounterPacks::enabled() && ! empty($line['batch_note'])) {
+                $saleLine->batch_note = $line['batch_note'];
+            }
 
             return $saleLine;
         }));

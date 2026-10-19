@@ -313,6 +313,16 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
                 $this->assertNotNull($this->makeProduct($this->makeCategory(), ['sale_discount_type' => 'percent', 'sale_discount_value' => 5]));
             });
     }
+    public function test_sale_line_batch_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_20_000002_add_sale_line_batch', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            fn () => $this->dropColumns('sales_order_lines', ['inventory_batch_id', 'batch_note']),
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('sales_order_lines', 'inventory_batch_id'));
+                $this->assertTrue($schema->hasColumn('sales_order_lines', 'batch_note'));
+                $this->assertNull($conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->value('batch_note'));
+            });
+    }
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void
@@ -336,6 +346,7 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             '2026_10_06_000001_add_affects_stock_to_goods_receipt_lines', '2026_10_15_000002_add_website_order_fields_to_sales_orders',
             // CANONICAL MERGE (D8, 20 Oct 2026): classified when the merge landed them.
             '2026_10_19_000002_create_product_pack_units', '2026_10_20_000001_add_purchase_discounts',
+            '2026_10_20_000002_add_sale_line_batch',
         ];
         foreach ($canonicalRun as $name) {
             $this->assertFalse($m->entry($name)['BASELINE'] ?? true, $name);

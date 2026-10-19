@@ -3206,5 +3206,21 @@ return [
             'BASELINE' => false,
             'NOTE' => 'PURCHASE-DISCOUNTS-1: products is a bootstrap section (whole rows upserted — the six discount/scheme columns must exist before the next refresh); suppliers and the purchasing line tables gain nullable columns the appliance never writes (Cloud purchasing). Behind a Master switch.',
         ],
+        // chunk 12 (b76fd581 MEDICAL-COUNTER-1)
+        '2026_10_20_000002_add_sale_line_batch' => [
+            'MIGRATION' => '2026_10_20_000002_add_sale_line_batch',
+            'CLASSIFICATION' => 'EDGE_REQUIRED',
+            'TABLES_CHANGED' => ['sales_order_lines'],
+            'EDGE_CODE_REFERENCES' => ['SalesService', 'SalesOrderController', 'HeldSaleController', 'SplitBillController', 'EscPosPayloadService', 'EdgeLocalPosService', 'EdgeSaleEnvelopeBuilder'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'low',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
+            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_sale_line_batch_upgrades_an_older_appliance',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'MEDICAL-COUNTER-1: sales_order_lines is the OPERATIONAL table the appliance writes through the shared SalesService (inventory_batch_id / batch_note, nullable, ALGORITHM=INSTANT); the shared receipt + ESC/POS read batch_note. Medical counter OFF on the Branch Server → NULL on every Edge line.',
+        ],
     ],
 ];
