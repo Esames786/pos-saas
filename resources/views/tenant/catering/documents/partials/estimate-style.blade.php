@@ -110,8 +110,11 @@
     .sig { border-top: 1px solid #9ca3af; padding-top: 4px; width: 200px; text-align: center; color: #6b7280; }
     /* Sits in the grey gutter beside the sheet. It used to overlap the document
        header — in Urdu it flipped to the left and covered the estimate number. */
-    .print-bar { position: fixed; top: 10px; {{ $isUr ? 'left' : 'right' }}: 10px; z-index: 10; }
-    @media print { .print-bar { display: none; } }
+    /* `.print-bar` ki jagah ab `partials/doc-toolbar-style` tay karti hai —
+       button kaghaz par nahi, us ke UPAR WALI MEZ par. Yahan pehle
+       `position: fixed; top: 10px; right: 10px` tha, aur chunke in safhon
+       par `body` khud kaghaz hai, wo kona hamesha parche ke upar parta
+       tha. 19 Oct ko malik ne nishan laga kar hatwaya. */
     /* Keep rows, totals and signatures whole across a page break; repeat the
        header row on every continuation page. Ye tab bhi zaroori hai jab
        document ek safhe me aa jaye — CATERING-A4-FIT-1 ne aam lambai ko ek

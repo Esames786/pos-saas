@@ -21,6 +21,7 @@
     .bulk-toolbar { max-width: 210mm; margin: 10px auto 0; text-align: center; font-family: Arial, sans-serif; }
     @media print { .bulk-toolbar { display: none; } }
 </style>
+@include('tenant.catering.documents.partials.doc-toolbar-style')
 </head>
 <body>
     <div class="bulk-toolbar">
