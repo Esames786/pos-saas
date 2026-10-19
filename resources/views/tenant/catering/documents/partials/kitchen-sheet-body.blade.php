@@ -333,11 +333,23 @@
         @if($snapshot['has_service_charge'] ?? false)
             <span class="svc">SERVICE</span>
         @endif
-        @if(!empty($snapshot['service_time']))
-            <span class="ft"><span class="ftl">SERVE</span><span class="ftv" dir="ltr">{{ \Carbon\Carbon::parse($snapshot['service_time'])->format('g:i A') }}</span></span>
-        @endif
+        {{-- KITCHEN-SHEET-ONE-TIME-1 (16 Oct) — malik: "agar departure time ho
+             to sirf wo dikhao, serve mat dikhao; departure save na ho to serve
+             dikha do — warna serve ki zaroorat nahi."
+
+             Parche par dono chhapte the aur amooman dono ka waqt EK hi hota
+             hai, is liye bawarchi-khane ko ek hi cheez do baar nazar aati
+             thi. Ab paer par waqt ki sirf EK satar jati hai: departure pehle,
+             warna serve.
+
+             Jo cheez is faisle se jaati hai wo likh deni chahiye: jab dono
+             waqt alag alag bhare hon, parcha ab sirf ROWANGI ka waqt kehta
+             hai aur khana lagne ka waqt chhup jata hai. Malik ne ye poochh
+             kar tai kiya. --}}
         @if(!empty($snapshot['dispatch_time']))
             <span class="ft"><span class="ftl">DEPARTURE</span><span class="ftv" dir="ltr">{{ \Carbon\Carbon::parse($snapshot['dispatch_time'])->format('g:i A') }}</span></span>
+        @elseif(!empty($snapshot['service_time']))
+            <span class="ft"><span class="ftl">SERVE</span><span class="ftv" dir="ltr">{{ \Carbon\Carbon::parse($snapshot['service_time'])->format('g:i A') }}</span></span>
         @endif
     </div>
     <div class="foot-r">

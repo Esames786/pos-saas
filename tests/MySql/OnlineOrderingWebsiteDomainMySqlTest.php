@@ -60,7 +60,7 @@ class OnlineOrderingWebsiteDomainMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection('tenant');
         $this->cleanTenant([
             'customer_addresses', 'customers', 'sales_order_lines', 'sales_orders', 'shifts', 'web_order_routes', 'web_settings',
-            'delivery_zones', 'delivery_channels', 'combo_modifier_group', 'combo_components', 'combos', 'product_branch_prices',
+            'delivery_zone_places', 'delivery_zones', 'delivery_channels', 'combo_modifier_group', 'combo_components', 'combos', 'product_branch_prices',
             'product_variants', 'products', 'categories', 'terminals', 'users', 'branches',
         ]);
         $this->userId = $this->makeUser(['employee_code' => 'WD'.Str::random(4)]);

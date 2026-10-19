@@ -40,7 +40,7 @@ class OnlineOrderingExtrasMySqlTest extends MySqlTenantTestCase
         app(PermissionSyncService::class)->syncRouteCatalog();
 
         DB::setDefaultConnection('tenant');
-        $this->cleanTenant(['sales_order_lines', 'sales_orders', 'web_order_routes', 'web_settings', 'delivery_zones',
+        $this->cleanTenant(['sales_order_lines', 'sales_orders', 'web_order_routes', 'web_settings', 'delivery_zone_places', 'delivery_zones',
             'product_modifier_group', 'products', 'categories', 'branches']);
         $this->branchId = $this->makeBranch();
         WebSetting::tenantDefault()->update(['is_enabled' => true, 'default_branch_id' => $this->branchId]);

@@ -84,6 +84,33 @@ class OnlineOrderingStorefrontMySqlTest extends MySqlTenantTestCase
         $this->assertSame('disabled', $payload['status']['reason']);
     }
 
+    public function test_by_distance_the_page_carries_the_branch_point_and_bands_and_pick_up_gets_directions(): void
+    {
+        $this->menuFixture();
+        $html = $this->get('http://'.$this->host.'/order')->assertOk()->getContent();
+        $p = $this->payload($html);
+        $this->assertSame('area', $p['delivery']['mode'], 'Default: area ki fee.');
+        $this->assertStringContainsString('google.com/maps/search', $p['branches'][0]['directions'], 'Nuqta nahi: naam aur pate se.');
+
+        \App\Models\Tenant\WebBranchSetting::create(['branch_id' => $this->branchA, 'lat' => 24.923007, 'lng' => 67.089347]);
+        \App\Models\Tenant\DeliveryFeeBand::create(['branch_id' => $this->branchA, 'up_to_km' => 18, 'fee' => 400]);
+        \App\Models\Tenant\DeliveryFeeBand::create(['branch_id' => $this->branchA, 'up_to_km' => 1, 'fee' => 50]);
+        WebSetting::tenantDefault()->update(['delivery_fee_mode' => 'distance']);
+
+        $html = $this->get('http://'.$this->host.'/order')->assertOk()->getContent();
+        $this->assertInlineScriptsParse($html, 'order page by distance', 'function quote');
+        $p = $this->payload($html);
+        $this->assertSame('distance', $p['delivery']['mode']);
+        $this->assertSame([[1, 50], [18, 400]], array_map(fn ($b) => array_map('intval', $b), $p['delivery']['branches'][$this->branchA]['bands']), 'Chhote se bare.');
+        $this->assertEqualsWithDelta(24.923007, $p['delivery']['branches'][$this->branchA]['lat'], 0.000001);
+        $this->assertArrayHasKey('lat', $p['areas'][0], 'Pin na ho to area ka markaz.');
+        $this->assertStringContainsString('24.923007,67.089347', $p['branches'][0]['directions'], 'Pick-up: branch ka nuqta.');
+
+        // Malik ka apna link (Google share) sab se pehle.
+        \App\Models\Tenant\WebBranchSetting::where('branch_id', $this->branchA)->update(['map_url' => 'https://share.google/example']);
+        $this->assertSame('https://share.google/example', $this->payload($this->get('http://'.$this->host.'/order')->getContent())['branches'][0]['directions']);
+    }
+
     public function test_without_the_module_there_is_no_website(): void
     {
         $this->seedPlan(withModule: false);
@@ -224,7 +251,7 @@ class OnlineOrderingStorefrontMySqlTest extends MySqlTenantTestCase
     {
         DB::setDefaultConnection('tenant');
         $this->cleanTenant([
-            'shifts', 'web_order_routes', 'web_settings', 'delivery_zones',
+            'shifts', 'web_order_routes', 'web_settings', 'delivery_fee_bands', 'web_branch_settings', 'delivery_zone_places', 'delivery_zones',
             'combo_modifier_group', 'product_modifier_group', 'modifiers', 'modifier_groups',
             'combo_components', 'combos', 'product_branch_prices', 'product_variants', 'products', 'categories',
             'terminals', 'model_has_roles', 'users', 'branches',

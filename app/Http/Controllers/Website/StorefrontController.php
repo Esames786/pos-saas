@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Website;
 
 use App\Http\Controllers\Controller;
+use App\Models\Master\GeoArea;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\DeliveryZone;
 use App\Models\Tenant\ReceiptLayoutSetting;
+use App\Models\Tenant\WebBranchSetting;
 use App\Models\Tenant\WebSetting;
+use App\Services\OnlineOrdering\DeliveryFee;
 use App\Services\OnlineOrdering\WebImageService;
 use App\Services\OnlineOrdering\WebMenuService;
 use App\Services\OnlineOrdering\WebsiteAvailability;
@@ -40,6 +43,10 @@ class StorefrontController extends Controller
         abort_if($branchId === 0, 404);
 
         $tenant = app('tenant');
+        // DELIVERY-RADIUS-1: fee branch se doori ke hisaab se ho to browser ko wohi bands aur nuqte (checkout phir khud ginta hai).
+        $delivery = app(DeliveryFee::class)->payload($branches->pluck('id'), $settings);
+        $centres = $delivery['mode'] === DeliveryFee::MODE_DISTANCE
+            ? GeoArea::whereIn('id', $zones->pluck('geo_area_id')->filter()->all())->get(['id', 'lat', 'lng'])->keyBy('id') : collect();
         $payload = [
             'business' => [
                 'name' => $tenant->business_name,
@@ -66,7 +73,10 @@ class StorefrontController extends Controller
                 'fee' => (float) $z->fee, 'min' => $z->min_order !== null ? (float) $z->min_order : null,
                 'freeAbove' => $z->free_delivery_above !== null ? (float) $z->free_delivery_above : null,
                 'eta' => $z->eta_minutes ?: $settings->default_eta_minutes,
+                // Pin na ho to fee area ke markaz ki doori se.
+                'lat' => $centres->get($z->geo_area_id)?->lat, 'lng' => $centres->get($z->geo_area_id)?->lng,
             ])->values(),
+            'delivery' => $delivery,
             'branches' => $branches->map(fn ($b) => ['id' => $b->id, 'name' => $b->name, 'address' => $b->address])->values(),
             'menuBranch' => $branchId,
             'menu' => $this->present($this->best($settings, $menu->menu($branchId, $this->hhmm($clock, $branches->firstWhere('id', $branchId))), $branchId)),
@@ -87,9 +97,12 @@ class StorefrontController extends Controller
                 'faqs' => $settings->faqList() !== [] ? WebsiteSeo::path($request, 'faqs') : null,
             ],
         ];
-        // Pick-up: branch ka pata + "Get directions" (Google Maps, naam aur pate se — koi nuqta lagana nahi parta).
+        // Pick-up: branch ka pata + "Get directions": restaurant ka diya link, warna branch ka nuqta, warna naam aur pata.
+        $locs = WebBranchSetting::whereIn('branch_id', $branches->pluck('id'))->get()->keyBy('branch_id');
         $payload['branches'] = $branches->map(fn ($b) => ['id' => $b->id, 'name' => $b->name, 'address' => $b->address,
-            'directions' => 'https://www.google.com/maps/search/?api=1&query='.rawurlencode(trim($tenant->business_name.' '.$b->name.', '.$b->address))])->values();
+            'directions' => $locs->get($b->id)?->map_url
+                ?: ($locs->get($b->id)?->hasPoint() ? 'https://www.google.com/maps/search/?api=1&query='.$locs->get($b->id)->lat.','.$locs->get($b->id)->lng
+                    : 'https://www.google.com/maps/search/?api=1&query='.rawurlencode(trim($tenant->business_name.' '.$b->name.', '.$b->address)))])->values();
 
         $canonical = WebsiteSeo::canonical($request);
         $seo = WebsiteSeo::meta($settings, (string) $tenant->business_name) + [

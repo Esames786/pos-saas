@@ -303,15 +303,20 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .sheet.area.locked .band .x { display:none; }
 .sheet.area.nudge { animation:nudge .35s ease; }
 @keyframes nudge { 25% { margin-left:-8px; } 75% { margin-left:8px; } }
-.area .bd { padding-top:46px; gap:12px; }
+.area .bd { padding-top:46px; gap:12px; display:flex; flex-direction:column; min-height:0; }
+/* The area list takes the room that is left but never less than ~4 rows (owner, 16 Oct: the found-place box had squeezed it to one cut row). */
+.area .bd > * { flex:none; }
+.area .bd > .alist { flex:1 1 auto; min-height:150px; }
+.orpick { margin:0; font-size:12px; color:var(--muted); text-align:center; }
 .area h2 { margin:0; text-align:center; font-size:16px; font-weight:700; }
 .seg { display:flex; background:#F2F2F2; border-radius:999px; padding:4px; }
 .seg button { flex:1; border:0; background:none; border-radius:999px; padding:8px; font-weight:600; font-size:14px; color:var(--muted); transition:background .25s, color .25s; }
 .seg button.on { background:var(--brand); color:#fff; box-shadow:0 4px 12px rgba(166,13,18,.25); }
 .gps { border:1.5px solid #F0C5C7; background:#fff; color:var(--brand); border-radius:12px; padding:9px 12px; font-weight:600; font-size:13.5px; display:flex; align-items:center; justify-content:center; gap:8px; transition:background .2s; }
 .gps:hover { background:var(--brand-soft); }
-.pin { display:flex; gap:10px; align-items:center; background:#F7F7F7; border-radius:12px; padding:9px 12px; font-size:12.5px; animation:fade .3s ease; }
-.pin .dot { width:9px; height:9px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 4px #F3C9CB; flex:none; animation:pulse 1.6s infinite; }
+.pin { display:flex; gap:10px; align-items:flex-start; background:#F7F7F7; border-radius:12px; padding:9px 12px; font-size:12.5px; animation:fade .3s ease; }
+.pin .dot { width:9px; height:9px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 4px #F3C9CB; flex:none; margin-top:4px; animation:pulse 1.6s infinite; }
+#gpsText { flex:1; min-width:0; }
 @keyframes pulse { 50% { box-shadow:0 0 0 7px rgba(243,201,203,.4); } }
 .asearch { width:100%; border:1px solid #E2E2E2; border-radius:12px; padding:9px 12px; font:inherit; font-size:13.5px; }
 .alist { border:1px solid var(--line); border-radius:14px; max-height:236px; overflow-y:auto; padding:6px; display:grid; gap:2px; scroll-behavior:smooth; }
@@ -334,6 +339,11 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .pin small.approx { color:#9A5B00; }
 .pin .pk { border:1px solid #E3E3E3; background:#fff; border-radius:999px; padding:4px 10px; font:inherit; font-size:12px; font-weight:600; color:var(--ink); transition:border-color .2s, color .2s; }
 .pin .pk:hover { border-color:var(--brand); color:var(--brand); }
+.pin .pk em { font-style:normal; font-weight:500; color:var(--muted); }
+.pin .pk.on { border-color:var(--brand); color:var(--brand); background:#FFF5F5; }
+.pin .nl { display:block; margin-top:8px; color:var(--muted); }
+.pin .picks.row { flex-wrap:nowrap; overflow-x:auto; margin-top:5px; padding-bottom:4px; scrollbar-width:thin; -webkit-overflow-scrolling:touch; }
+.pin .picks.row .pk { flex:none; white-space:nowrap; }
 .pin .go { margin-left:auto; border:0; background:var(--brand); color:#fff; border-radius:999px; padding:5px 12px; font-weight:600; font-size:12px; white-space:nowrap; }
 
 /* item sheet */
@@ -489,6 +499,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     <div class="seg" role="tablist"><button type="button" id="tDelivery" class="on">Delivery</button><button type="button" id="tPickup">Pick-Up</button></div>
     <button class="gps" type="button" id="gps"><svg width="16" height="16"><use href="#i-loc"/></svg>Use my current location</button>
     <div class="pin" id="gpsPin" hidden><span class="dot"></span><span id="gpsText"></span></div>
+    <p class="orpick" id="orPick" hidden>Not right? Search or pick your area from the list below.</p>
     <input class="asearch" id="areaSearch" type="search" placeholder="Search your area" autocomplete="off" aria-label="Search your area">
     <div class="alist" id="areaList" role="listbox" aria-label="Delivery areas"></div>
     <div class="bcard" id="branchCard" hidden></div>
@@ -915,6 +926,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     $('tDelivery').classList.toggle('on', !pickup);
     $('tPickup').classList.toggle('on', pickup);
     $('areaSearch').hidden = pickup;
+    $('orPick').hidden = pickup || $('gpsPin').hidden;   // after a location answer: the list is still there to choose from
     $('gps').hidden = pickup;
     var cur = pending !== null ? pending : (pickup ? branchOf() : S.area);
     var rows = pickup
@@ -973,7 +985,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   var nearby = [], locating = false, userPicked = false;
   var APPROX_M = 200;   // device accuracy worse than this = "approximate" (laptop / desktop / weak signal)
   function accText() { var m = S.pinAcc || 0; return '±' + (m >= 1000 ? (Math.round(m / 100) / 10) + ' km' : Math.round(m / 10) * 10 + ' m'); }
-  function nearRank(id) { var i = nearby.indexOf(id); return i === -1 ? 99 : i; }
+  // The found area leads the list (so it opens at the top), then the others by distance.
+  function nearRank(id) { if (id === S.placeArea) { return -1; } var i = nearby.indexOf(id); return i === -1 ? 99 : i; }
   // Owner (15 Oct): no Continue — the found area is chosen straight away; the customer can still Change it.
   // Owner (16 Oct): the found area is PRE-SELECTED in the area window — nothing closes by itself; the customer
   // presses Select (or taps another area first). Outside the window (e.g. sharing the pin at checkout) the
@@ -983,6 +996,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     if (openSheet !== $('areaSheet')) { paintStatus(); return; }
     if (!userPicked) { S.type = 'delivery'; pending = a.id; }
     var sure = j.by === 'name';
+    var near = (j.near_places || []).filter(function (p) { return D.areas.some(function (x) { return x.id === p.zone; }); }).slice(0, 5);
     // Not sure (only by distance) = offer the next closest areas; the customer picked by hand = offer the found one.
     var others = (userPicked && pending !== a.id ? [a] : []).concat(sure ? [] : nearby.filter(function (id) { return id !== a.id; }).slice(0, 3)
       .map(function (id) { return D.areas.find(function (x) { return x.id === id; }); }).filter(Boolean));
@@ -990,9 +1004,22 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       (S.placeApprox ? '<br><small class="approx">Your location is approximate (' + accText() + ') — please check the area.</small>' : '') +
       (others.length ? '<span class="picks"><small>' + (userPicked && pending !== a.id ? 'Tap to use it:' : 'Not right? Tap yours:') + '</small>' + others.map(function (o) {
         return '<button type="button" class="pk" data-pick="' + o.id + '">' + esc(o.name) + '</button>';
+      }).join('') + '</span>' : '') +
+      (near.length ? '<small class="nl">Recommended near you — tap your society:</small><span class="picks row">' + near.map(function (p, i) {
+        var za = D.areas.find(function (x) { return x.id === p.zone; });
+        return '<button type="button" class="pk' + (S.place === p.name ? ' on' : '') + '" data-near="' + i + '" aria-pressed="' + (S.place === p.name) + '">' + esc(p.name) + ' <em>· ' + esc(za.name) + '</em></button>';
       }).join('') + '</span>' : '') + '</span>');
     $('gpsText').querySelectorAll('[data-pick]').forEach(function (b) {
       b.addEventListener('click', function () { pending = +b.dataset.pick; userPicked = true; renderAreas(true); });
+    });
+    // Owner (16 Oct): small places (societies) near the pin, each with its delivery area — the customer taps theirs;
+    // the area (and its fee) comes from that place, and the society goes with the address as "near …".
+    $('gpsText').querySelectorAll('[data-near]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var p = near[+b.dataset.near];
+        pending = p.zone; userPicked = true; S.place = p.name; save();
+        showLocated(D.areas.find(function (x) { return x.id === p.zone; }), Object.assign({}, j, { by: 'name' }));
+      });
     });
     renderAreas(true);   // glide to the found area
     paintStatus();
@@ -1022,6 +1049,13 @@ label.f span.req::after { content:" *"; color:var(--brand); }
             // Goes with the order's address as "near …" (the map names the nearest place it knows).
             S.place = S.placeApprox ? (j.broad || null) : (j.label || j.place || null);
             save();
+            // Owner (16 Oct): no delivery outside the city, nor to an area the restaurant has switched off.
+            if (j.outside || j.closed) {
+              gpsMsg(j.closed ? 'Sorry — we don\'t deliver to <b>' + esc(j.closed) + '</b> right now. You can choose <b>Pick-Up</b>.'
+                : 'We deliver only inside ' + esc((D.areas[0] || {}).city || 'our city') + '. Your location shows <b>' + esc(j.outside) + '</b> — you can choose <b>Pick-Up</b>.');
+              renderAreas();
+              return;
+            }
             var a = j.area ? D.areas.find(function (x) { return x.id === j.area; }) : null;
             if (a) {
               showLocated(a, j);
@@ -1148,10 +1182,24 @@ label.f span.req::after { content:" *"; color:var(--brand); }
 
   // ── cart ──
   function subtotal() { return S.cart.reduce(function (s, l) { return s + l.unit * l.qty; }, 0); }
+  // Owner (16 Oct): the delivery fee by distance from the branch — the same bands the checkout charges (the server
+  // works it out again; this only shows it). From the customer's pin, else from the middle of their area.
+  function km(a1, o1, a2, o2) {
+    var r = Math.PI / 180, h = Math.pow(Math.sin((a2 - a1) * r / 2), 2) + Math.cos(a1 * r) * Math.cos(a2 * r) * Math.pow(Math.sin((o2 - o1) * r / 2), 2);
+    return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  function quote(a) {
+    var dv = D.delivery || {}, br = dv.mode === 'distance' && dv.branches ? dv.branches[a.branch] : null;
+    var p = S.pin || (a.lat != null && a.lng != null ? { lat: a.lat, lng: a.lng } : null);
+    if (!br || !p) { return { ok: true, fee: a.fee, km: null }; }
+    var d = km(br.lat, br.lng, p.lat, p.lng), band = br.bands.find(function (b) { return d <= b[0]; });
+    return { ok: !!band, fee: band ? band[1] : 0, km: Math.round(d * 10) / 10, max: br.bands[br.bands.length - 1][0] };
+  }
+  function tooFar(q) { return 'We deliver up to ' + q.max + ' km from our branch — your location is ' + q.km + ' km away. Please choose Pick-Up.'; }
   function fee() {
     if (S.type === 'pickup') { return 0; }
     var a = area(); if (!a) { return 0; }
-    return (a.freeAbove !== null && subtotal() >= a.freeAbove) ? 0 : a.fee;
+    return (a.freeAbove !== null && subtotal() >= a.freeAbove) ? 0 : quote(a).fee;
   }
   function count() { return S.cart.reduce(function (s, l) { return s + l.qty; }, 0); }
   function paintBar() {
@@ -1217,16 +1265,17 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     }
     h.push('<button type="button" class="addmore" id="addMore">' + icon('plus') + 'Add more items</button>');
     h.push(upsells());
-    var sub = subtotal(), f = fee();
+    var sub = subtotal(), f = fee(), q = S.type === 'delivery' && a ? quote(a) : null;
     h.push('<div class="totals"><div>' + icon('calc', 18) + '<span>Total</span><b>' + money(sub) + '</b></div>' +
-      (S.type === 'delivery' ? '<div>' + icon('truck', 18) + '<span>Delivery Fee' + (a ? ' <small style="color:var(--muted)">(' + esc(a.name) + ')</small>' : '') + '</span><b>' + (a ? (f > 0 ? money(f) : 'Free') : '—') + '</b></div>' : '') +
+      (S.type === 'delivery' ? '<div>' + icon('truck', 18) + '<span>Delivery Fee' + (a ? ' <small style="color:var(--muted)">(' + esc(a.name) + (q && q.km !== null ? ' · ' + q.km + ' km' : '') + ')</small>' : '') + '</span><b>' + (a ? (q && !q.ok ? '—' : f > 0 ? money(f) : 'Free') : '—') + '</b></div>' : '') +
       '<div class="gt"><span></span><span>Grand Total</span><b>' + money(sub + f) + '</b></div></div>');
     var warns = [];
     if (S.type === 'delivery' && !a) { warns.push('Choose your delivery area to see the delivery fee.'); }
     if (a && a.min && sub < a.min) { warns.push('Minimum order for ' + esc(a.name) + ' is ' + money(a.min) + '.'); }
+    if (q && !q.ok) { warns.push(esc(tooFar(q))); }
     if (!branchOpen()) { warns.push(esc(D.status.message || 'We are not taking orders right now.')); }
     $('cartBody').innerHTML = h.join('') + warns.map(function (w) { return '<div class="warn">' + w + '</div>'; }).join('');
-    var blocked = !branchOpen() || (S.type === 'delivery' && !a) || (a && a.min && sub < a.min);
+    var blocked = !branchOpen() || (S.type === 'delivery' && !a) || (a && a.min && sub < a.min) || (q && !q.ok);
     $('cartFoot').innerHTML = '<button class="big" type="button" id="toCheckout"' + (blocked ? ' disabled' : '') + '>Checkout ' + icon('right', 18) + '</button>' +
       '<p class="eta">' + esc(etaText()) + '</p>';
     $('toCheckout').addEventListener('click', renderCheckout);
@@ -1262,7 +1311,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     $('cartTitleText').textContent = 'Checkout';
     $('cartBody').innerHTML =
       '<div class="pin"><span class="dot"></span><span>' + (S.type === 'pickup' ? 'Pick-Up order' : 'Delivery to <b>' + esc(a ? a.name : '') + '</b>' +
-        (S.place && S.pin ? '<br><small>📍 near ' + esc(S.place) + '</small>' : '')) + '</span></div>' +
+        (S.place && S.pin ? '<br><small>📍 near ' + esc(S.place) + '</small>' : '') + '<br><small id="cFee"></small>') + '</span></div>' +
       '<label class="f"><span class="req">Full name</span><input class="in" id="cName" autocomplete="name" maxlength="120" value="' + esc(c.name || '') + '"></label>' +
       '<label class="f"><span class="req">WhatsApp number</span><input class="in" id="cPhone" inputmode="tel" autocomplete="tel" placeholder="03xx xxxxxxx" maxlength="20" value="' + esc(c.phone || '') + '"></label>' +
       '<label class="f">Another number (optional)<input class="in" id="cAlt" inputmode="tel" maxlength="20" value="' + esc(c.alt || '') + '"></label>' +
@@ -1280,10 +1329,19 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     $('cartFoot').innerHTML = '<button class="big" type="button" id="place">Place order · ' + money(subtotal() + fee()) + ' · Cash</button><button class="ghost" type="button" id="backCart">Back to cart</button>';
     $('backCart').addEventListener('click', renderCart);
     $('place').addEventListener('click', placeOrder);
+    paintPlace();
     if ($('sharePin')) {
       $('sharePin').addEventListener('click', function () { keepFields(); locateMe(false, function () { if (step === 'checkout') { keepFields(); renderCheckout(); } }); $('sharePin').textContent = 'Finding your location…'; });
     }
     showMap();
+  }
+  // The fee follows the pin: dragging it to the door can change the distance band.
+  function paintPlace() {
+    if (!$('place')) { return; }
+    var a = area(), q = S.type === 'delivery' && a ? quote(a) : null, f = fee();
+    $('place').textContent = 'Place order · ' + money(subtotal() + f) + ' · Cash';
+    $('place').disabled = !!(q && !q.ok);
+    if ($('cFee')) { $('cFee').textContent = q ? (q.ok ? 'Delivery fee ' + (f > 0 ? money(f) : 'free') + (q.km !== null ? ' · ' + q.km + ' km from our branch' : '') : tooFar(q)) : ''; }
   }
   // Typed but not yet placed: kept when the checkout redraws (e.g. after sharing the location).
   function keepFields() {
@@ -1310,8 +1368,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
       var map = L.map(el, { scrollWheelZoom: false }).setView([S.pin.lat, S.pin.lng], 17);
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
       var mk = L.marker([S.pin.lat, S.pin.lng], { draggable: true, autoPan: true }).addTo(map);
-      mk.on('dragend', function () { var ll = mk.getLatLng(); S.pin = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) }; save(); });
-      map.on('click', function (e) { mk.setLatLng(e.latlng); S.pin = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) }; save(); });
+      mk.on('dragend', function () { var ll = mk.getLatLng(); S.pin = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) }; save(); paintPlace(); });
+      map.on('click', function (e) { mk.setLatLng(e.latlng); S.pin = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) }; save(); paintPlace(); });
       setTimeout(function () { map.invalidateSize(); }, 300);
     });
   }

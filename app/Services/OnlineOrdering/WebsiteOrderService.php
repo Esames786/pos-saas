@@ -82,11 +82,20 @@ class WebsiteOrderService
         $subtotal = array_sum(array_map(fn ($l) => $l['quantity'] * $l['unit_price'], $lines));
 
         $fee = 0.0;
+        $quote = null;
         if ($zone) {
             if ($zone->min_order !== null && $subtotal < (float) $zone->min_order) {
                 $this->fail('min_order', 'Minimum order for '.$zone->area_name.' is Rs. '.number_format((float) $zone->min_order).'.');
             }
-            $fee = ($zone->free_delivery_above !== null && $subtotal >= (float) $zone->free_delivery_above) ? 0.0 : (float) $zone->fee;
+            // DELIVERY-RADIUS-1: fee area ki, ya branch se doori ke band ki (customer ke pin se) — browser ki bheji fee kabhi nahi.
+            $pin = $in['customer'] ?? [];
+            $quote = app(DeliveryFee::class)->quote($zone,
+                isset($pin['lat'], $pin['lng']) ? (float) $pin['lat'] : null, isset($pin['lat'], $pin['lng']) ? (float) $pin['lng'] : null);
+            if (! $quote['ok']) {
+                $this->fail('distance', 'We deliver up to '.rtrim(rtrim(number_format((float) $quote['max_km'], 1), '0'), '.').' km from our branch — your location is '
+                    .$quote['km'].' km away. Please choose Pick-Up.');
+            }
+            $fee = ($zone->free_delivery_above !== null && $subtotal >= (float) $zone->free_delivery_above) ? 0.0 : $quote['fee'];
         }
 
         $orderType = $pickup ? 'takeaway' : 'delivery';
@@ -98,7 +107,7 @@ class WebsiteOrderService
         $phone = $this->localPhone((string) $in['customer']['phone']);
         $c = $in['customer'];
 
-        $sale = DB::connection('tenant')->transaction(function () use ($in, $branch, $zone, $fee, $orderType, $terminalId, $shift, $lines, $itemNotes, $phone, $c) {
+        $sale = DB::connection('tenant')->transaction(function () use ($in, $branch, $zone, $fee, $quote, $orderType, $terminalId, $shift, $lines, $itemNotes, $phone, $c) {
             $customer = $this->customers->findOrCreateByPhone($phone, (string) $c['name']);
             // Malik (15 Oct): location se mili jagah ("Chappal Sun City, New Rizvia Society") bhi pate ke saath —
             // cashier aur rider ko dikhe. Jo hissa customer pehle hi likh chuka, dobara nahi.
@@ -156,7 +165,7 @@ class WebsiteOrderService
                 'is_draft' => true,
                 'inventory_posted' => false,
                 'created_by_user_id' => null,
-                'notes' => $this->readableNote($c, $in['note'] ?? null, $itemNotes, $orderType),
+                'notes' => $this->readableNote($c, $in['note'] ?? null, $itemNotes, $orderType, $quote['km'] ?? null),
                 'web_order_key' => $in['key'],
                 'web_token' => Str::random(40),
                 'web_meta' => [
@@ -165,6 +174,8 @@ class WebsiteOrderService
                     'lat' => $c['lat'] ?? null, 'lng' => $c['lng'] ?? null,
                     'place' => $orderType === 'delivery' ? (trim((string) ($c['place'] ?? '')) ?: null) : null,
                     'place_accuracy_m' => isset($c['acc']) ? (int) $c['acc'] : null,
+                    // Fee kaise bani: area | pin (customer ka nuqta) | centre (area ka markaz), aur branch se km.
+                    'fee_from' => $quote['from'] ?? null, 'distance_km' => $quote['km'] ?? null,
                     'alt_phone' => $c['alt'] ?? null, 'note' => $in['note'] ?? null, 'item_notes' => $itemNotes,
                     'eta_minutes' => $orderType === 'delivery' ? ($zone?->eta_minutes ?: WebSetting::tenantDefault()->default_eta_minutes) : WebSetting::tenantDefault()->pickup_eta_minutes,
                     'placed_at' => now()->toIso8601String(),
@@ -366,7 +377,7 @@ class WebsiteOrderService
     }
 
     /** POS ke Held/Draft list me cashier ko seedha dikhne wala note (asal tafseel web_meta me). */
-    private function readableNote(array $c, ?string $note, array $itemNotes, string $orderType = 'delivery'): string
+    private function readableNote(array $c, ?string $note, array $itemNotes, string $orderType = 'delivery', ?float $km = null): string
     {
         $parts = ['WEBSITE ORDER', $orderType === 'takeaway' ? 'CASH ON PICK-UP' : 'CASH ON DELIVERY'];
         if (! empty($c['landmark'])) {
@@ -374,6 +385,9 @@ class WebsiteOrderService
         }
         if ($orderType !== 'takeaway' && ! empty($c['place'])) {
             $parts[] = 'Location: near '.$c['place'].(! empty($c['acc']) ? ' (GPS ±'.(int) $c['acc'].' m)' : '');
+        }
+        if ($orderType !== 'takeaway' && $km !== null) {
+            $parts[] = 'Distance: '.$km.' km';
         }
         if (! empty($c['alt'])) {
             $parts[] = 'Alt phone: '.$c['alt'];

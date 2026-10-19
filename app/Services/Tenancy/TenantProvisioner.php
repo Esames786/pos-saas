@@ -520,6 +520,10 @@ class TenantProvisioner
             'tenant.online-ordering.settings.update',
             'tenant.online-ordering.areas.index',
             'tenant.online-ordering.areas.update',
+            'tenant.online-ordering.places.index',
+            'tenant.online-ordering.places.store',
+            'tenant.online-ordering.places.update',
+            'tenant.online-ordering.places.destroy',
             'tenant.online-ordering.menu.index',
 
             // POS
@@ -968,6 +972,15 @@ class TenantProvisioner
                 'status'              => 'active',
             ]
         );
+
+        // Report Center sections are synthetic too, and their migrations grant them to roles that
+        // exist when they run — which, on a new tenant, is none. A tenant provisioned by trial signup
+        // (10-07) had an Owner holding ZERO sections, so its Report Center showed nothing. Built from
+        // SECTIONS so a section added later (PARTNER-SHARE-1) cannot be left out of this list.
+        $tenantPermissions = array_values(array_unique(array_merge($tenantPermissions, array_map(
+            [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'sectionPermission'],
+            \App\Http\Controllers\Tenant\Reports\SalesReportCenterController::SECTIONS
+        ))));
 
         foreach ($tenantPermissions as $permission) {
             Permission::findOrCreate($permission, 'tenant');

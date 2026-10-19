@@ -112,6 +112,7 @@
         'category_items' => 'Items by Category', 'deals' => 'Deals',
         'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'By Order Type',
         'cancellations' => 'Cancellations', 'detailed' => 'Details (CSV only)', 'cash_bank' => 'Cash & Bank',
+        'partner_share' => 'Partner Share',
     ], array_flip($allowedSections));
 @endphp
 <div class="card mb-3"><div class="card-body py-2">
@@ -214,7 +215,7 @@
 
 {{-- ── tabs (permission-filtered; Departments rides the Order Types grant) ── --}}
 <ul class="nav nav-tabs mb-3 flex-nowrap overflow-auto">
-    @foreach(['overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items', 'category_items' => 'Items by Category', 'deals' => 'Deals', 'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'By Order Type', 'departments' => 'Departments', 'cancellations' => 'Cancellations', 'detailed' => 'Details', 'cash_bank' => 'Cash & Bank'] as $key => $label)
+    @foreach(['overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items', 'category_items' => 'Items by Category', 'deals' => 'Deals', 'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'By Order Type', 'departments' => 'Departments', 'cancellations' => 'Cancellations', 'detailed' => 'Details', 'cash_bank' => 'Cash & Bank', 'partner_share' => 'Partner Share'] as $key => $label)
         @continue(! in_array($key === 'departments' ? 'order_types' : $key, $allowedSections, true))
         <li class="nav-item"><a class="nav-link @if($tab === $key) active @endif" href="{{ url('/reports/center?' . $qs(['tab' => $key, 'preset' => null])) }}">{{ $label }}</a></li>
     @endforeach
@@ -505,6 +506,59 @@
         {{ $data['detailed']->links() }}
         <p class="text-muted small mb-0">Export uses the complete filtered dataset, not just this page.</p>
     </div></div>
+@endif
+
+{{-- PARTNER SHARE — PARTNER-SHARE-1. Per partner: what each side owes for the dishes they share,
+     and the net. Rates live on Reports → Partner Share Rates; this only multiplies them by sales. --}}
+@if(isset($data['partner_share']))
+    @php $psQty = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.'); @endphp
+    @forelse($data['partner_share'] as $p)
+        <div class="card mb-3" id="partner-share-{{ $p['partner_id'] }}"><div class="card-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <h6 class="mb-0">{{ $p['partner'] }}</h6>
+                @can('tenant.reports.partner-share.index')
+                    <a href="{{ url('/reports/partner-share?partner_id=' . $p['partner_id']) }}" class="small">Rates</a>
+                @endcan
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-sm-4"><div class="border rounded p-2"><div class="small text-muted">{{ $p['partner'] }} pays us</div><div class="fs-5 fw-semibold">{{ $fmt($p['partner_pays_total']) }}</div></div></div>
+                <div class="col-sm-4"><div class="border rounded p-2"><div class="small text-muted">We pay {{ $p['partner'] }}</div><div class="fs-5 fw-semibold">{{ $fmt($p['we_pay_total']) }}</div></div></div>
+                <div class="col-sm-4"><div class="border border-primary rounded p-2"><div class="small text-muted">Net</div>
+                    <div class="fs-5 fw-semibold" id="partner-share-net-{{ $p['partner_id'] }}">{{ $fmt(abs($p['net'])) }}</div>
+                    <div class="small">{{ $p['net'] >= 0 ? 'We pay ' . $p['partner'] : $p['partner'] . ' pays us' }}</div></div></div>
+            </div>
+            <div class="row g-3">
+                @foreach(['partner_pays' => $p['partner'] . ' pays us', 'we_pay' => 'We pay ' . $p['partner']] as $side => $label)
+                    <div class="col-lg-6 table-responsive">
+                        <table class="table table-sm">
+                            <thead><tr><th colspan="6">{{ $label }}</th></tr>
+                                <tr><th>Dish / Deal</th><th class="text-end">Rate</th><th class="text-end">Sold</th><th class="text-end">Ret</th><th class="text-end">Net Qty</th><th class="text-end">Amount</th></tr></thead>
+                            <tbody>
+                            @forelse($p[$side] as $r)
+                                <tr>
+                                    <td>{{ $r['item'] }}</td>
+                                    <td class="text-end">{{ $fmt($r['rate']) }}</td>
+                                    <td class="text-end">{{ $psQty($r['sold_qty']) }}</td>
+                                    <td class="text-end">{{ $psQty($r['returned_qty']) }}</td>
+                                    <td class="text-end">{{ $psQty($r['net_qty']) }}</td>
+                                    <td class="text-end fw-semibold">{{ $fmt($r['amount']) }}</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="6" class="text-muted">Nothing sold in this period.</td></tr>
+                            @endforelse
+                            </tbody>
+                            <tfoot><tr class="fw-semibold"><td colspan="5">Total</td><td class="text-end">{{ $fmt($p[$side . '_total']) }}</td></tr></tfoot>
+                        </table>
+                    </div>
+                @endforeach
+            </div>
+            @unless($p['count_free_lines'])
+                <p class="form-text mb-0">Dishes given free (sold for Rs 0) are not counted.</p>
+            @endunless
+        </div></div>
+    @empty
+        <div class="card mb-3"><div class="card-body text-muted">No active partner has rates yet.</div></div>
+    @endforelse
 @endif
 
 @if(isset($data['cash_bank']))

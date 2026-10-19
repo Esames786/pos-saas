@@ -23,6 +23,7 @@ class BillingWebsiteCommissionCommand extends Command
     protected $signature = 'billing:website-commission
         {--month= : YYYY-MM. Default: pichhla aur chalta mahina}
         {--tenant= : Sirf is tenant_code par}
+        {--legacy : Purana tareeqa — apni alag addon invoice khol do}
         {--yes : Likho. Is ke baghair sirf dikhata hai}';
 
     protected $description = 'Website orders ka 1% mahana usage invoice me (default: dry run).';
@@ -71,7 +72,7 @@ class BillingWebsiteCommissionCommand extends Command
                 }
 
                 if ($write) {
-                    $usage->writeWebsiteCharges($tenant, $from, $to, $rows);
+                    $usage->writeWebsiteCharges($tenant, $from, $to, $rows, (bool) $this->option('legacy'));
                 }
             } catch (\Throwable $e) {
                 // Aik tenant ki kharabi baqi ko na roke.

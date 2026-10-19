@@ -20,7 +20,7 @@
 ; Ab `tools/print-agent/test/version-match-test.js` dono ko mila kar dekhta hai.
 [Setup]
 AppName=Bingoo Print Agent
-AppVersion=2.6.5
+AppVersion=2.6.6
 AppPublisher=Bingoo POS
 DefaultDirName={commonpf}\BingooPrintAgent
 DefaultGroupName=Bingoo Print Agent
@@ -42,6 +42,11 @@ Source: "..\..\dist\BingooPrintAgent.exe"; DestDir: "{app}"; Flags: ignoreversio
 ; Alag program hai, bina badla hua, GPLv3 - tafseel THIRD-PARTY-NOTICE.txt me.
 Source: "SumatraPDF.exe";           DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD-PARTY-NOTICE.txt";   DestDir: "{app}"; Flags: ignoreversion
+; run-hidden.vbs - agent ko BINA WINDOW ke uthata hai. Is ke baghair task
+; seedha exe chalata tha aur screen par kaali console window khul jati thi;
+; client use band kar deta tha aur agent bhi saath mar jata tha. Scheduled
+; task ka "Hidden" khana ye hal nahi karta - wo sirf task ko chhupata hai.
+Source: "run-hidden.vbs";           DestDir: "{app}"; Flags: ignoreversion
 Source: "install-autostart-user.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install-service.ps1";       DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall-service.ps1"; DestDir: "{app}"; Flags: ignoreversion

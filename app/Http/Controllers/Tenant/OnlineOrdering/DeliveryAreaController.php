@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Tenant\OnlineOrdering;
 use App\Http\Controllers\Controller;
 use App\Models\Master\GeoArea;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\DeliveryFeeBand;
 use App\Models\Tenant\DeliveryZone;
+use App\Models\Tenant\WebBranchSetting;
 use App\Models\Tenant\WebSetting;
-use App\Services\OnlineOrdering\AreaLocator;
-use App\Services\OnlineOrdering\OpenStreetMap;
+use App\Services\OnlineOrdering\DeliveryFee;
+use App\Services\OnlineOrdering\DeliveryPlaces;
+use App\Services\OnlineOrdering\MapPoint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -30,20 +33,30 @@ class DeliveryAreaController extends Controller
         $cities = GeoArea::where('is_active', true)->distinct()->orderBy('city')->pluck('city');
         $city = $cities->contains($request->query('city')) ? $request->query('city') : $cities->first();
 
+        $settings = WebSetting::tenantDefault();
+        $zones = DeliveryZone::all();
+        $fees = app(DeliveryFee::class);
+        // Doori se fee: har area ke markaz ki fee (andaza — customer ki asal fee us ke pin se).
+        $byDistance = DeliveryFee::mode($settings) === DeliveryFee::MODE_DISTANCE
+            ? $zones->mapWithKeys(fn ($z) => [$z->id => $fees->quote($z, null, null, DeliveryFee::MODE_DISTANCE)]) : collect();
+
         return view('tenant.online-ordering.areas', [
-            'settings' => WebSetting::tenantDefault(),
+            'settings' => $settings,
             'cities' => $cities,
             'city' => $city,
             'areas' => GeoArea::where('is_active', true)->where('city', $city)->orderBy('sort_order')->orderBy('name')->get(),
-            'zones' => DeliveryZone::all()->keyBy('geo_area_id'),
+            'zones' => $zones->keyBy('geo_area_id'),
+            'feeMode' => DeliveryFee::mode($settings),
+            'branchLocs' => WebBranchSetting::all()->keyBy('branch_id'),
+            'bands' => DeliveryFeeBand::orderBy('up_to_km')->get()->groupBy('branch_id'),
+            'byDistance' => $byDistance,
+            // Har area ki jagahen (Delivery Places screen par) — yahan sirf ginti.
+            'placeCounts' => app(DeliveryPlaces::class)->all()->countBy('zone_id'),
             'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
         ]);
     }
 
-    /** Aik save par itne naye naamon ke nuqte OSM se (har sawal ~1 second — form ruka na rahe). */
-    private const PLACE_LOOKUPS_PER_SAVE = 5;
-
-    public function update(Request $request, OpenStreetMap $osm)
+    public function update(Request $request)
     {
         $data = $request->validate([
             'city' => ['required', 'string'],
@@ -54,8 +67,16 @@ class DeliveryAreaController extends Controller
             'zones.*.min_order' => ['nullable', 'numeric', 'min:0', 'max:10000000'],
             'zones.*.free_delivery_above' => ['nullable', 'numeric', 'min:0', 'max:10000000'],
             'zones.*.eta_minutes' => ['nullable', 'integer', 'min:5', 'max:240'],
-            'zones.*.places' => ['nullable', 'string', 'max:1000'],
-        ]);
+            // DELIVERY-RADIUS-1: fee kaise bane + branch ka nuqta + doori ke bands (form me hon tab hi chhute).
+            'fee_mode' => ['nullable', 'in:'.DeliveryFee::MODE_AREA.','.DeliveryFee::MODE_DISTANCE],
+            'branches' => ['nullable', 'array'],
+            'branches.*.location' => ['nullable', 'string', 'max:500'],
+            'branches.*.map_url' => ['nullable', 'url', 'max:500'],
+            'bands' => ['nullable', 'array'],
+            'bands.*' => ['array'],
+            'bands.*.*.up_to_km' => ['nullable', 'numeric', 'min:0.1', 'max:100'],
+            'bands.*.*.fee' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+        ], [], ['branches.*.map_url' => 'directions link', 'bands.*.*.up_to_km' => 'km', 'bands.*.*.fee' => 'fee']);
 
         $settings = WebSetting::tenantDefault();
         $branchIds = Branch::where('status', 'active')->pluck('id')->all();
@@ -72,19 +93,9 @@ class DeliveryAreaController extends Controller
             ->whereIn('id', array_map('intval', array_keys($data['zones'] ?? [])))
             ->get()->keyBy('id');
 
-        // "Places inside this area": OSM se nuqte transaction se PEHLE (network ke dauran DB lock nahi).
-        $zonesNow = DeliveryZone::whereIn('geo_area_id', $areas->keys()->all())->get()->keyBy('geo_area_id');
-        $budget = self::PLACE_LOOKUPS_PER_SAVE;
-        $places = [];
-        foreach ($data['zones'] ?? [] as $areaId => $row) {
-            $area = $areas->get((int) $areaId);
-            if ($area && ! empty($row['serve']) && array_key_exists('places', $row)) {
-                $places[$area->id] = $this->places($row['places'], $zonesNow->get($area->id), $area, $osm, $budget);
-            }
-        }
-
         $served = 0;
-        DB::connection('tenant')->transaction(function () use ($data, $areas, $branchIds, $singleBranch, $places, &$served) {
+        DB::connection('tenant')->transaction(function () use ($data, $request, $settings, $areas, $branchIds, $singleBranch, &$served) {
+            $this->saveFees($request, $data, $settings, $branchIds);
             foreach ($data['zones'] ?? [] as $areaId => $row) {
                 $area = $areas->get((int) $areaId);
                 if (! $area) {
@@ -116,7 +127,7 @@ class DeliveryAreaController extends Controller
                     'free_delivery_above' => $this->money($row['free_delivery_above'] ?? null),
                     'eta_minutes' => isset($row['eta_minutes']) && $row['eta_minutes'] !== '' ? (int) $row['eta_minutes'] : null,
                     'is_active' => true,
-                ] + (array_key_exists($area->id, $places) ? ['places' => $places[$area->id] ?: null] : []));
+                ]);
                 $served++;
             }
         });
@@ -126,40 +137,63 @@ class DeliveryAreaController extends Controller
             ->with('status', "Delivery areas saved — {$served} areas in {$data['city']} are served.");
     }
 
-    /**
-     * "Chappal Sun City, New Rizvia Society" → [{name, lat, lng}]. Pehle se likhe naam apna nuqta rakhte hain;
-     * naye naam ka nuqta OSM se (budget tak). Shehar ki hadd se door mila = kisi aur shehar ka hum-naam, chhoR do.
-     * Nuqta na mile to bhi naam rehta hai — pate me ho to area naam se hi mil jata hai.
-     *
-     * @return list<array{name: string, lat: ?float, lng: ?float}>
-     */
-    private function places(?string $raw, ?DeliveryZone $zone, GeoArea $area, OpenStreetMap $osm, int &$budget): array
+    /** Fee ka tareeqa, branch ka nuqta / directions link aur bands — sirf jo form me aaye (purana form kuch nahi mitata). */
+    private function saveFees(Request $request, array $data, WebSetting $settings, array $branchIds): void
     {
-        $names = collect(preg_split('/[,;\n]+/', (string) $raw) ?: [])
-            ->map(fn ($n) => trim((string) preg_replace('/\s+/', ' ', $n)))
-            ->filter(fn ($n) => $n !== '' && mb_strlen($n) <= 80)
-            ->unique(fn ($n) => mb_strtolower($n))->take(20)->values();
-        $known = collect($zone?->placeList() ?? [])->keyBy(fn ($p) => mb_strtolower($p['name']));
-
-        $out = [];
-        foreach ($names as $name) {
-            $p = ['name' => $name] + ($known->get(mb_strtolower($name)) ?? ['lat' => null, 'lng' => null]);
-            $p['name'] = $name;
-            if ($p['lat'] === null && $budget > 0) {
-                if ($budget < self::PLACE_LOOKUPS_PER_SAVE) {
-                    usleep(1100000);   // OSM: ~1 request/second
-                }
-                $budget--;
-                $hit = $osm->search($name.', '.$area->city.', '.$area->country, OpenStreetMap::countryCode($area->country));
-                if ($hit && ($area->lat === null || AreaLocator::km((float) $area->lat, (float) $area->lng, $hit['lat'], $hit['lng']) <= AreaLocator::MAX_KM)) {
-                    $p['lat'] = $hit['lat'];
-                    $p['lng'] = $hit['lng'];
-                }
+        foreach ($data['branches'] ?? [] as $branchId => $row) {
+            if (! in_array((int) $branchId, $branchIds, true)) {
+                continue;
             }
-            $out[] = $p;
+            [$lat, $lng] = MapPoint::parse($row['location'] ?? null);
+            if ($lat === null && trim((string) ($row['location'] ?? '')) !== '') {
+                throw ValidationException::withMessages(["branches.$branchId.location" => 'Branch location: paste the numbers (e.g. 24.9230, 67.0893) or a Google Maps link that shows them.']);
+            }
+            WebBranchSetting::updateOrCreate(['branch_id' => (int) $branchId], [
+                'lat' => $lat, 'lng' => $lng, 'map_url' => trim((string) ($row['map_url'] ?? '')) ?: null,
+            ]);
         }
 
-        return $out;
+        foreach ($data['bands'] ?? [] as $branchId => $rows) {
+            if (! in_array((int) $branchId, $branchIds, true)) {
+                continue;
+            }
+            $clean = [];
+            foreach ($rows as $r) {
+                $km = $r['up_to_km'] ?? null;
+                $fee = $r['fee'] ?? null;
+                if (($km === null || $km === '') && ($fee === null || $fee === '')) {
+                    continue;   // khaali row
+                }
+                if ($km === null || $km === '' || $fee === null || $fee === '') {
+                    throw ValidationException::withMessages(["bands.$branchId" => 'Each distance band needs both the km and the fee.']);
+                }
+                $key = number_format((float) $km, 2, '.', '');
+                if (isset($clean[$key])) {
+                    throw ValidationException::withMessages(["bands.$branchId" => "Two bands end at {$km} km — keep one."]);
+                }
+                $clean[$key] = (float) $fee;
+            }
+            DeliveryFeeBand::where('branch_id', (int) $branchId)->delete();
+            foreach ($clean as $km => $fee) {
+                DeliveryFeeBand::create(['branch_id' => (int) $branchId, 'up_to_km' => (float) $km, 'fee' => $fee]);
+            }
+        }
+
+        if (! $request->has('fee_mode')) {
+            return;
+        }
+        if ($data['fee_mode'] === DeliveryFee::MODE_DISTANCE) {
+            // Har branch jo areas serve karti hai: nuqta aur kam se kam aik band — warna doori kis se ginein.
+            foreach (Branch::whereIn('id', $branchIds)->get(['id', 'name']) as $b) {
+                if (! DeliveryZone::where('branch_id', $b->id)->where('is_active', true)->exists()) {
+                    continue;
+                }
+                if (! WebBranchSetting::where('branch_id', $b->id)->whereNotNull('lat')->exists() || ! DeliveryFeeBand::where('branch_id', $b->id)->exists()) {
+                    throw ValidationException::withMessages(['fee_mode' => "{$b->name}: add the branch location and at least one distance band before charging by distance."]);
+                }
+            }
+        }
+        $settings->update(['delivery_fee_mode' => $data['fee_mode']]);
     }
 
     private function money(mixed $value): ?float

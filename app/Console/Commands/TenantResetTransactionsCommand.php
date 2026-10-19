@@ -239,6 +239,9 @@ class TenantResetTransactionsCommand extends Command
         'service_charge_settings', 'manufacturing_posting_settings',
         // SUPPLIER-RUNNING-ACCOUNT-1: the owner's choice to pay suppliers on account — configuration.
         'purchasing_settings',
+        // PARTNER-SHARE-1: the agreed rate list with a partner kitchen — a price list, like the
+        // department mappings above. The report computes from sales, so a reset leaves nothing stale.
+        'share_partners', 'share_rates',
         'manufacturing_boms', 'manufacturing_bom_lines', 'manufacturing_customers',
         'expense_categories', 'cash_bank_accounts', 'branch_user', 'terminal_user',
         'model_has_roles', 'model_has_permissions', 'role_has_permissions',
@@ -272,6 +275,8 @@ class TenantResetTransactionsCommand extends Command
         // ONLINE-ORDERING-1: the ordering website's setup — hours, which terminal rings,
         // delivery areas and fees, deal add-ons. Configuration, not sales: kept.
         'web_settings', 'web_order_routes', 'delivery_zones', 'combo_modifier_group',
+        // Societies inside the areas, the branch's map point and the distance fee bands — setup too.
+        'delivery_zone_places', 'web_branch_settings', 'delivery_fee_bands',
     ];
 
     /** Tenant tables this command has no opinion about — surfaced as a warning. */

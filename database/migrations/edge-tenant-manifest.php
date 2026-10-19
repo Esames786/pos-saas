@@ -2989,7 +2989,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Partner share (Cloud reports).',
         ],
         '2026_10_14_000003_add_partner_share_report_section_permission' => [
@@ -3005,7 +3004,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Seeds a Cloud report-section permission.',
         ],
         '2026_10_15_000001_add_website_fields_to_catalog' => [
@@ -3126,7 +3124,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => true,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Online ordering; references App\\Services\\OnlineOrdering\\AreaLocator (Cloud-only class) — EXCLUDING it keeps that class out of the package.',
         ],
         '2026_10_16_000007_create_delivery_distance_fees' => [
@@ -3142,7 +3139,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Online ordering.',
         ],
         '2026_10_19_000001_add_medicine_fields_to_products' => [
