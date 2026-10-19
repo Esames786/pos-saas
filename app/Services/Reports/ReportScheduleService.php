@@ -113,7 +113,39 @@ class ReportScheduleService
 
         $results = [];
         foreach ($this->channelsFor($schedule) as $channel) {
-            $results[] = $this->runChannel($schedule, $period, $channel);
+            $results[] = $this->runChannel($schedule, $period, $channel, 'time');
+        }
+
+        if (in_array('failed', $results, true)) {
+            return 'failed';
+        }
+
+        return in_array('sent', $results, true) ? 'sent' : 'skipped_already_sent';
+    }
+
+    /**
+     * REPORT-DELIVERY-V2-1 — send a DAILY schedule for one business day, now, because that day's last
+     * shift has just closed.
+     *
+     * It claims the SAME period key the timed run uses for that day (the business date, Y-m-d), per
+     * channel. That one choice is what keeps the two triggers from ever double-sending: whichever runs
+     * first claims the day and the other finds the claim and skips — the 06:00 safety-net run after a
+     * 02:00 close, or a second shift closing later on the same business day. A failed send frees its
+     * claim exactly as a timed one does, so the safety-net run retries it.
+     *
+     * Returns the runDue() contract: 'sent' | 'skipped_already_sent' | 'skipped_not_due' | 'failed'.
+     */
+    public function runForBusinessDay(object $schedule, string $businessDate, string $via = 'shift_close'): string
+    {
+        if (! $schedule->is_active || $schedule->frequency !== 'daily') {
+            return 'skipped_not_due';
+        }
+
+        $period = ['from' => $businessDate, 'to' => $businessDate, 'key' => $businessDate];
+
+        $results = [];
+        foreach ($this->channelsFor($schedule) as $channel) {
+            $results[] = $this->runChannel($schedule, $period, $channel, $via);
         }
 
         if (in_array('failed', $results, true)) {
@@ -144,15 +176,22 @@ class ReportScheduleService
     }
 
     /** Claim, send and record ONE channel. Returns 'sent' | 'skipped_already_sent' | 'failed'. */
-    private function runChannel(object $schedule, array $period, string $channel): string
+    private function runChannel(object $schedule, array $period, string $channel, string $via = 'time'): string
     {
-        $claimed = DB::connection('tenant')->table('report_schedule_runs')->insertOrIgnore([
+        $claim = [
             'report_schedule_id' => $schedule->id,
             'period_key' => $period['key'],
             'channel' => $channel,
             'status' => 'sent',
             'created_at' => now(),
-        ]);
+        ];
+        // REPORT-DELIVERY-V2-1: which trigger sent it. Written only once the column exists, so the
+        // seconds between a deploy's code pull and its tenant migrations cannot fail a nightly send.
+        if ($this->runsRecordVia()) {
+            $claim['via'] = $via;
+        }
+
+        $claimed = DB::connection('tenant')->table('report_schedule_runs')->insertOrIgnore($claim);
         if ($claimed === 0) {
             return 'skipped_already_sent'; // unique(schedule, period, channel) — retry can never double-send
         }
@@ -193,6 +232,17 @@ class ReportScheduleService
 
             return 'failed';
         }
+    }
+
+    /** @var array<string, bool> keyed by tenant database — the nightly command walks every tenant with one instance */
+    private array $runsRecordVia = [];
+
+    private function runsRecordVia(): bool
+    {
+        $db = (string) DB::connection('tenant')->getDatabaseName();
+
+        return $this->runsRecordVia[$db] ??= \Illuminate\Support\Facades\Schema::connection('tenant')
+            ->hasColumn('report_schedule_runs', 'via');
     }
 
     /** Build the report and hand it to the channel that will carry it. */
