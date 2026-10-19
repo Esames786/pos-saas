@@ -62,8 +62,19 @@
                         <tr>
                             <td>
                                 <a href="{{ url('/finance/manual-journals/' . $e->id) }}" class="fw-semibold">{{ $e->entry_no }}</a>
+                                {{-- B2 — reversal list me apne badge ke saath, aur asal par "Reversed by". --}}
                                 @if($e->is_reversal)
                                     <span class="badge bg-warning text-dark ms-1">Reversal</span>
+                                    @if($e->reversedEntry)
+                                        <div class="small text-muted">of
+                                            <a href="{{ url('/finance/manual-journals/' . $e->reversedEntry->id) }}">{{ $e->reversedEntry->entry_no }}</a>
+                                        </div>
+                                    @endif
+                                @elseif($reversedBy->has($e->id))
+                                    <span class="badge bg-secondary ms-1">Reversed</span>
+                                    <div class="small text-muted">by
+                                        <a href="{{ url('/finance/manual-journals/' . $reversedBy[$e->id]->id) }}">{{ $reversedBy[$e->id]->entry_no }}</a>
+                                    </div>
                                 @endif
                             </td>
                             <td>{{ optional($e->entry_date)->format('Y-m-d') }}</td>

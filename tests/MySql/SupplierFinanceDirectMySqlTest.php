@@ -427,8 +427,11 @@ class SupplierFinanceDirectMySqlTest extends MySqlTenantTestCase
 
     public function test_ghair_ap_journal_par_supplier_ki_koi_shart_nahi(): void
     {
+        // 1200 "Bank Accounts" group head hai (neeche 1210) — MANUAL-JOURNAL-CASH-LINE-GUARD-1 ke
+        // baad manual journal us par post nahi hota. Imtihan supplier ki shart ka hai, is liye
+        // ek aam leaf khaata liya hai jo kisi drawer se juda nahi.
         $entry = $this->manualJournal([
-            ['code' => '1200', 'debit' => 3000, 'credit' => 0],
+            ['code' => '1300', 'debit' => 3000, 'credit' => 0],
             ['code' => '5100', 'debit' => 0, 'credit' => 3000],
         ]);
 
