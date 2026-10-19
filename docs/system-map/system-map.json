@@ -1,40 +1,49 @@
 {
-    "built_at": "2026-10-19T03:24:04+00:00",
+    "built_at": "2026-10-19T08:46:12+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
-    "prod_branch_head": "754c01ad",
+    "prod_branch_head": "92b11486",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas",
             "branch": "feat/14d-2-plan-upgrade-requests",
-            "head": "754c01ad",
+            "head": "92b11486",
             "behind_prod": 0,
             "ahead_of_prod": 0,
-            "last_commit": "2026-10-19\u00b7Merge PRIMARY-BUSINESS-1 + PRODUCT-SCREEN-V2: tenant primary business, one product screen behind a Master switch (live tenants OFF), Master admin password fix",
+            "last_commit": "2026-10-19\u00b7Merge PHARMACY-PACKS-1 follow-up: pack barcode line, counter header shows the picked terminal",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
             "head": "5d9bbcee",
-            "behind_prod": 342,
+            "behind_prod": 363,
             "ahead_of_prod": 156,
             "last_commit": "2026-10-19\u00b7docs: Phase 4 close-out report (owner \u00a78) \u2014 Phase 4 committed, Gap C done, W15 and Cloud ingestion proven end to end on the disposable pair, F1/F2 fixed, old-Cloud compatibility proven, full Edge MySQL gate 642/8,915 green, canonical reconciliation ready with decisions D1-D8; no release built",
-            "uncommitted_files": 0
+            "uncommitted_files": 9
         },
         {
             "path": "D:/laragon2/www/pos-saas-masterui",
-            "branch": "feat/master-universe-20261019",
-            "head": "731922da",
-            "behind_prod": 0,
-            "ahead_of_prod": 10,
-            "last_commit": "2026-10-19\u00b7MASTER-UNIVERSE-1: tests survive leftovers in the shared master test DB",
-            "uncommitted_files": 2
+            "branch": "fix/usage-snapshot-after-demo-reset-20261019",
+            "head": "002ee25e",
+            "behind_prod": 6,
+            "ahead_of_prod": 0,
+            "last_commit": "2026-10-19\u00b7MASTER-UNIVERSE-1: daily usage reading moves after the demo reset (09:45 PKT)",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-packs",
+            "branch": "feat/pharmacy-packs-20261019",
+            "head": "5ca968a1",
+            "behind_prod": 2,
+            "ahead_of_prod": 0,
+            "last_commit": "2026-10-19\u00b7PHARMACY-PACKS-1: pack barcode on its own line; counter header names the picked terminal",
+            "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-pharmademo",
             "branch": "feat/pharmacy-demo-20261018",
             "head": "dc84b937",
-            "behind_prod": 6,
+            "behind_prod": 27,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP-1: bird's-eye system map + standing rule for every session",
             "uncommitted_files": 0
@@ -43,16 +52,25 @@
             "path": "D:/laragon2/www/pos-saas-primary",
             "branch": "feat/primary-business-v2-20261019",
             "head": "e99cd7a2",
-            "behind_prod": 1,
+            "behind_prod": 22,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP: rebuilt after PRIMARY-BUSINESS-1 + PRODUCT-SCREEN-V2 (tenant_setting_changes, products.generic_name/strength/needs_prescription)",
             "uncommitted_files": 0
         },
         {
+            "path": "D:/laragon2/www/pos-saas-qrwaiter",
+            "branch": "feat/report-delivery-v2-20261019",
+            "head": "33ab7736",
+            "behind_prod": 5,
+            "ahead_of_prod": 3,
+            "last_commit": "2026-10-19\u00b7REPORT-DELIVERY-V2-1: raise a web time limit, never arm one on CLI; plan doc",
+            "uncommitted_files": 2
+        },
+        {
             "path": "D:/laragon2/www/pos-saas-hideamounts",
             "branch": "fix/billing-hide-void-20261017",
             "head": "37515a12",
-            "behind_prod": 21,
+            "behind_prod": 42,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7BILLING-HIDE-VOID-1: void invoice tenant ko nahi dikhti",
             "uncommitted_files": 0
@@ -61,7 +79,7 @@
             "path": "D:/laragon2/www/pos-saas-partnershare",
             "branch": "feat/partner-share-report-20261014",
             "head": "cbe5616b",
-            "behind_prod": 9,
+            "behind_prod": 30,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7PARTNER-SHARE-1: plan doc \u2014 test aur suite ki ginti, purani misaal par label",
             "uncommitted_files": 0
@@ -70,7 +88,7 @@
             "path": "D:/laragon2/www/pos-saas-pharmacy-audit",
             "branch": "(detached)",
             "head": "70c4e434",
-            "behind_prod": 8,
+            "behind_prod": 29,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7Merge PARTNER-SHARE-1: ek dish, do kitchen \u2014 Partner Share rates + Report Center section",
             "uncommitted_files": 0
@@ -79,25 +97,16 @@
             "path": "D:/laragon2/www/pos-saas-catering",
             "branch": "feat/catering-stacked-material-row-20260909",
             "head": "148fb294",
-            "behind_prod": 85,
+            "behind_prod": 106,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-16\u00b7PRINT-AGENT-2.6.6 build: setup wizard shelf par, aur lockfile ki version seedhi",
-            "uncommitted_files": 0
-        },
-        {
-            "path": "D:/laragon2/www/pos-saas-qrwaiter",
-            "branch": "fix/product-list-ingredients-20261016",
-            "head": "443bf13d",
-            "behind_prod": 35,
-            "ahead_of_prod": 0,
-            "last_commit": "2026-10-16\u00b7PRODUCT-LIST-EVERY-KIND-1: Products list shows ingredients when no other screen lists them",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
             "head": "c0741579",
-            "behind_prod": 30,
+            "behind_prod": 51,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-16\u00b7AREA-WINDOW-LAYOUT-1: area list hamesha nazar aaye (kam se kam ~4 rows), qareebi jagahen aik scroll row me",
             "uncommitted_files": 0
@@ -106,7 +115,7 @@
             "path": "D:/laragon2/www/pos-saas-catlist",
             "branch": "feat/kk-purchase-items-import-20261014",
             "head": "7e5d8dea",
-            "behind_prod": 83,
+            "behind_prod": 104,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-14\u00b7PURCHASE-ITEMS-IMPORT-1: purane software ke khareed wale items, mehfooz jhandon ke saath",
             "uncommitted_files": 0
@@ -115,7 +124,7 @@
             "path": "D:/laragon2/www/pos-saas-web-i18n",
             "branch": "feat/recaptcha-trial-20261008",
             "head": "a8191e1d",
-            "behind_prod": 186,
+            "behind_prod": 207,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-08\u00b7RECAPTCHA-TRIAL-1: Start Trial par \"I'm not a robot\" (reCAPTCHA v2), en + ar",
             "uncommitted_files": 0
@@ -124,7 +133,7 @@
             "path": "D:/laragon2/www/pos-saas-voice",
             "branch": "research/voice-ordering-agent",
             "head": "79c76679",
-            "behind_prod": 228,
+            "behind_prod": 249,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-05\u00b7VOICE-ORDER-1: vendor options + bahar wale mashware ki do ghaltiyan darj",
             "uncommitted_files": 0
@@ -133,7 +142,7 @@
             "path": "D:/laragon2/www/pos-saas-video",
             "branch": "feat/demo-video-pipeline",
             "head": "04dfd5c4",
-            "behind_prod": 291,
+            "behind_prod": 312,
             "ahead_of_prod": 13,
             "last_commit": "2026-09-29\u00b7DEMO-VIDEO-13: khapat ab bikri ka 30% (hadaf), aur document number ke takraao se bachao",
             "uncommitted_files": 2
@@ -142,7 +151,7 @@
             "path": "D:/laragon2/www/pos-saas-tawakal",
             "branch": "feat/tawakal_kashif",
             "head": "b4870c0e",
-            "behind_prod": 492,
+            "behind_prod": 513,
             "ahead_of_prod": 0,
             "last_commit": "2026-09-06\u00b7Merge prod branch into tawakal \u2014 76 commits ka pichla kaam",
             "uncommitted_files": 0
@@ -151,7 +160,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/history-urdu-ux",
             "branch": "fix/catering-history-urdu-ux-20260829",
             "head": "da8e2ed3",
-            "behind_prod": 621,
+            "behind_prod": 642,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7Improve catering operator UX and Urdu print readability",
             "uncommitted_files": 0
@@ -160,7 +169,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/quoted-rate-persistence",
             "branch": "fix/catering-quoted-rate-persistence-20260828",
             "head": "e020c390",
-            "behind_prod": 627,
+            "behind_prod": 648,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7fix(catering): persist punched customer rates",
             "uncommitted_files": 0
@@ -169,7 +178,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/catering-client-feedback",
             "branch": "fix/catering-client-feedback-20260827",
             "head": "893d8e44",
-            "behind_prod": 640,
+            "behind_prod": 661,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-27\u00b7fix(catering): tighten time and item entry UX",
             "uncommitted_files": 0
@@ -178,7 +187,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert-v2",
             "branch": "(detached)",
             "head": "ec09b6a6",
-            "behind_prod": 689,
+            "behind_prod": 710,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-22\u00b7KASHIF-LEGACY-ALIGN-5/6: Complimentary in one click, and a bill you can read",
             "uncommitted_files": 1
@@ -187,7 +196,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-parity",
             "branch": "feat/catering-operator-completion-v1",
             "head": "008ba947",
-            "behind_prod": 709,
+            "behind_prod": 730,
             "ahead_of_prod": 4,
             "last_commit": "2026-08-22\u00b7CATERING: keep event create and edit inside the operator workspace",
             "uncommitted_files": 0
@@ -196,7 +205,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-catalogue",
             "branch": "data/kashif-catalogue-prep-v1",
             "head": "73807eb9",
-            "behind_prod": 712,
+            "behind_prod": 733,
             "ahead_of_prod": 1,
             "last_commit": "2026-08-21\u00b7CATERING: transcribe the Kashif catalogue without inventing prices",
             "uncommitted_files": 0
@@ -205,7 +214,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-product",
             "branch": "audit/catering-product-completeness-v1",
             "head": "ef184b6a",
-            "behind_prod": 758,
+            "behind_prod": 779,
             "ahead_of_prod": 18,
             "last_commit": "2026-08-21\u00b7AUDIT: assess Catering product completeness",
             "uncommitted_files": 0
@@ -214,7 +223,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex",
             "branch": "audit/catering-e2e-qa-v1",
             "head": "f8fa2205",
-            "behind_prod": 758,
+            "behind_prod": 779,
             "ahead_of_prod": 13,
             "last_commit": "2026-08-20\u00b7DOCS: preserve independent Catering architecture audit",
             "uncommitted_files": 0
@@ -223,7 +232,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert",
             "branch": "audit/catering-rate-impact-cert-v1",
             "head": "55ad8d5e",
-            "behind_prod": 758,
+            "behind_prod": 779,
             "ahead_of_prod": 17,
             "last_commit": "2026-08-20\u00b7TEST: expose Catering draft writer send races",
             "uncommitted_files": 0
@@ -232,7 +241,7 @@
             "path": "D:/laragon2/www/pos-saas-cloud",
             "branch": "feat/cloud-billing-onboarding-v1",
             "head": "9c30ea46",
-            "behind_prod": 824,
+            "behind_prod": 845,
             "ahead_of_prod": 8,
             "last_commit": "2026-08-15\u00b7CLOUD-BILLING E2E: real monthly + yearly signup lifecycle (throwaway tenants)",
             "uncommitted_files": 0
@@ -245,130 +254,130 @@
             "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
-            "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
-            "modified": "2026-10-18"
+            "file": "docs/plans/partner-share-report-2026-10-14.md",
+            "title": "PARTNER-SHARE-1 \u2014 Partner share report (ek dish, do kitchen)",
+            "modified": "2026-10-19"
+        },
+        {
+            "file": "docs/plans/report-delivery-v2-2026-10-19.md",
+            "title": "REPORT-DELIVERY-V2-1 \u2014 one \"Daily report delivery\" card, sent when the day's last shift closes",
+            "modified": "2026-10-19"
+        },
+        {
+            "file": "docs/plans/online-ordering-website-2026-10-14.md",
+            "title": "ONLINE-ORDERING-1 \u2014 Tenant ki apni ordering website (pehle Kashif Food)",
+            "modified": "2026-10-16"
         },
         {
             "file": "docs/plans/cash-book-report-2026-10-10.md",
             "title": "CASH-BOOK-REPORT-1 \u2014 Cash Book report: kitna aaya, kitna gaya, kis cash/bank me, tareekh-war",
-            "modified": "2026-10-18"
+            "modified": "2026-10-10"
         },
         {
-            "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
-            "title": "Catering product model \u2014 what is wrong, and the work to fix it",
-            "modified": "2026-10-18"
+            "file": "docs/plans/saas-billing-and-whatsapp-usage-2026-10-09.md",
+            "title": "SaaS billing zinda karna + WhatsApp usage ki alag invoice",
+            "modified": "2026-10-09"
         },
         {
-            "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
-            "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
-            "modified": "2026-10-18"
+            "file": "docs/plans/supplier-running-account-2026-10-08.md",
+            "title": "SUPPLIER-RUNNING-ACCOUNT-1 \u2014 Supplier ko general payment, balance se zyada bhi",
+            "modified": "2026-10-08"
         },
         {
-            "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
-            "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
-            "modified": "2026-10-18"
+            "file": "docs/plans/website-i18n-geo-pricing-2026-10-07.md",
+            "title": "WEBSITE-I18N-GEO-1 \u2014 bingoopos.com: Arabic, har mulk ki qeemat (per branch), custom plan, cookies, yearly bug",
+            "modified": "2026-10-08"
         },
         {
-            "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
-            "title": "Two order counts on one dashboard \u2014 research",
-            "modified": "2026-10-18"
+            "file": "docs/plans/trial-signup-queue-2026-10-07.md",
+            "title": "TRIAL-SIGNUP-QUEUE-1 \u2014 Free trial: form foran wapas, workspace queue me, email foran",
+            "modified": "2026-10-07"
         },
         {
-            "file": "docs/plans/deals-as-their-own-report-heads-2026-09-02.md",
-            "title": "Deals belong under their own heads \u2014 research",
-            "modified": "2026-10-18"
+            "file": "docs/plans/product-form-business-area-2026-10-07.md",
+            "title": "PRODUCT-FORM-AREA-1 \u2014 Product form: pehle \"kis kaam ka product\", phir us ke cards",
+            "modified": "2026-10-06"
+        },
+        {
+            "file": "docs/plans/pos-reminder-pause-2026-10-05.md",
+            "title": "POS-REMINDER-PAUSE-1 \u2014 pause Reminder slips for one terminal, for the rest of the shift",
+            "modified": "2026-10-05"
         },
         {
             "file": "docs/plans/grn-extra-charges-2026-10-02.md",
             "title": "GRN-EXTRA-CHARGES-1 \u2014 cartage ko product ki jagah \"Extra Charges\" banana",
-            "modified": "2026-10-18"
+            "modified": "2026-10-02"
+        },
+        {
+            "file": "docs/plans/whatsapp-report-channel-2026-09-30.md",
+            "title": "WHATSAPP-REPORT-CHANNEL-1 \u2014 report WhatsApp par, aur \"Email\" ki jagah \"Send\"",
+            "modified": "2026-09-30"
+        },
+        {
+            "file": "docs/plans/pos-tile-sku-2026-09-29.md",
+            "title": "PRODUCT-TILE-SKU-1 \u2014 POS tile par SKU sirf tab jab wo kuch kehti ho",
+            "modified": "2026-09-29"
+        },
+        {
+            "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
+            "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
+            "modified": "2026-09-28"
+        },
+        {
+            "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
+            "title": "Catering product model \u2014 what is wrong, and the work to fix it",
+            "modified": "2026-09-28"
+        },
+        {
+            "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
+            "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
+            "modified": "2026-09-28"
+        },
+        {
+            "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
+            "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
+            "modified": "2026-09-28"
+        },
+        {
+            "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
+            "title": "Two order counts on one dashboard \u2014 research",
+            "modified": "2026-09-28"
+        },
+        {
+            "file": "docs/plans/deals-as-their-own-report-heads-2026-09-02.md",
+            "title": "Deals belong under their own heads \u2014 research",
+            "modified": "2026-09-28"
         },
         {
             "file": "docs/plans/held-sale-dead-session-2026-09-12.md",
             "title": "HELD-SALE-DEAD-SESSION-1 \u2014 band table par bill hold ho jata hai, phir kabhi pay nahi hota",
-            "modified": "2026-10-18"
+            "modified": "2026-09-28"
         },
         {
             "file": "docs/plans/hide-amounts-from-operators-2026-09-01.md",
             "title": "Hide the money from the counter \u2014 research before building",
-            "modified": "2026-10-18"
+            "modified": "2026-09-28"
         },
         {
             "file": "docs/plans/items-by-category-section-2026-09-03.md",
             "title": "ITEMS-BY-CATEGORY-1 \u2014 Item ka category-wise breakup, apne alag section me",
-            "modified": "2026-10-18"
+            "modified": "2026-09-28"
         },
         {
             "file": "docs/plans/items-in-category-sequence-2026-09-03.md",
             "title": "ITEM-CATEGORY-SEQUENCE \u2014 Item report category ki tarteeb me, purane software ki tarah",
-            "modified": "2026-10-18"
+            "modified": "2026-09-28"
         },
         {
             "file": "docs/plans/kashif-client-feedback-2026-09-15.md",
             "title": "Client feedback, 15 September \u2014 chaar cheezen",
-            "modified": "2026-10-18"
-        },
-        {
-            "file": "docs/plans/kashif-document-pdf-2026-09-09.md",
-            "title": "Quotation ka PDF \u2014 aur ek hadd jo chhupai nahi gayi",
-            "modified": "2026-10-18"
-        },
-        {
-            "file": "docs/plans/kashif-event-history-revert-2026-08-23.md",
-            "title": "Event Change History + Revert \u2014 research + implementation plan",
-            "modified": "2026-10-18"
-        },
-        {
-            "file": "docs/plans/kashif-food-first-floor-tables-2026-08-30.md",
-            "title": "Kashif Food \u2014 dine-in floors & tables",
-            "modified": "2026-10-18"
-        },
-        {
-            "file": "docs/plans/kashif-food-operator-permission-hide-2026-08-31.md",
-            "title": "KASHIF-OPERATOR-HIDE \u2014 jo owner ne screenshots par cross kiya",
-            "modified": "2026-10-18"
-        },
-        {
-            "file": "docs/plans/kashif-foods-pulao-subcategories-2026-09-17.md",
-            "title": "KF-PULAO-SUBCAT-1 \u2014 The Kashif Foods: \"Chicken Pulao\" \u2192 \"Pulao\" + Chicken / Beef",
-            "modified": "2026-10-18"
-        },
-        {
-            "file": "docs/plans/kashif-hide-amounts-gap-2026-09-04.md",
-            "title": "Kashif Food \u2014 \"*** kyun nahi aa raha\" (research)",
-            "modified": "2026-10-18"
-        },
-        {
-            "file": "docs/plans/kashif-inline-table-editor-2026-09-09.md",
-            "title": "In-table editor \u2014 pehle FLOW MAP, phir plan",
-            "modified": "2026-10-18"
-        },
-        {
-            "file": "docs/plans/kashif-kitchen-go-live-2026-09-05.md",
-            "title": "Kashif Kitchen go-live \u2014 research + plan",
-            "modified": "2026-10-18"
-        },
-        {
-            "file": "docs/plans/kashif-kot-routing-requests-2026-09-03.md",
-            "title": "Kashif Food \u2014 chaar KOT routing ki farmaishein",
-            "modified": "2026-10-18"
-        },
-        {
-            "file": "docs/plans/kashif-legacy-alignment-2026-08-22.md",
-            "title": "Kashif \u2014 Legacy-Software Alignment (design, before any code)",
-            "modified": "2026-10-18"
-        },
-        {
-            "file": "docs/plans/kashif-legacy-item-screen-2026-08-22.md",
-            "title": "Kashif \u2014 Old-Software ITEM Screen, on the new system (implementation plan)",
-            "modified": "2026-10-18"
+            "modified": "2026-09-28"
         }
     ],
-    "git": "731922da",
+    "git": "33ab7736",
     "source": {
-        "tenant_db": "pos_test_tenant_pri",
-        "master_db": "pos_test_master_mui"
+        "tenant_db": "pos_test_tenant_qrw",
+        "master_db": "pos_test_master_qrw"
     },
     "counts": {
         "tables": 233,
@@ -22975,13 +22984,13 @@
                 "time_font_size tinyint unsigned",
                 "show_column_dividers tinyint(1)",
                 "show_category_header tinyint(1)",
+                "show_heading_stars tinyint(1)",
                 "is_active tinyint(1)",
                 "created_at timestamp",
                 "updated_at timestamp",
                 "show_delivery_details tinyint(1)",
                 "show_vehicle_number tinyint(1)",
-                "show_order_type tinyint(1)",
-                "show_heading_stars tinyint(1)"
+                "show_order_type tinyint(1)"
             ],
             "fk_out": [],
             "inferred_out": [
@@ -23694,6 +23703,7 @@
                 "channel varchar(20)",
                 "period_key varchar(20)",
                 "status varchar(20)",
+                "via varchar(20)",
                 "detail varchar(500)",
                 "created_at timestamp"
             ],
@@ -23758,6 +23768,7 @@
                 "weekday tinyint unsigned",
                 "day_of_month tinyint unsigned",
                 "send_time varchar(5)",
+                "send_trigger varchar(20)",
                 "is_active tinyint(1)",
                 "last_run_at timestamp",
                 "last_success_at timestamp",
@@ -23787,6 +23798,38 @@
             "models": [],
             "used_by": [
                 {
+                    "route": "tenant.shifts.index",
+                    "why": "via ShiftCloseReportTrigger"
+                },
+                {
+                    "route": "tenant.shifts.create",
+                    "why": "via ShiftCloseReportTrigger"
+                },
+                {
+                    "route": "tenant.shifts.store",
+                    "why": "via ShiftCloseReportTrigger"
+                },
+                {
+                    "route": "tenant.shifts.show",
+                    "why": "via ShiftCloseReportTrigger"
+                },
+                {
+                    "route": "tenant.shifts.close-form",
+                    "why": "via ShiftCloseReportTrigger"
+                },
+                {
+                    "route": "tenant.shifts.close",
+                    "why": "via ShiftCloseReportTrigger"
+                },
+                {
+                    "route": "tenant.shifts.close-branch-form",
+                    "why": "via ShiftCloseReportTrigger"
+                },
+                {
+                    "route": "tenant.shifts.close-branch",
+                    "why": "via ShiftCloseReportTrigger"
+                },
+                {
                     "route": "tenant.pos.quick-report.settings",
                     "why": "DB::table"
                 },
@@ -23805,6 +23848,14 @@
                 {
                     "route": "tenant.pos.quick-report.send-to-network",
                     "why": "DB::table"
+                },
+                {
+                    "route": "tenant.api.pos.shift-status",
+                    "why": "via ShiftCloseReportTrigger"
+                },
+                {
+                    "route": "tenant.api.pos.reminder-pause",
+                    "why": "via ShiftCloseReportTrigger"
                 },
                 {
                     "route": "tenant.reports.center.index",
@@ -23839,7 +23890,7 @@
                     "why": "DB::table"
                 }
             ],
-            "used_by_count": 13
+            "used_by_count": 23
         },
         {
             "name": "restaurant_floors",
@@ -37241,6 +37292,7 @@
                 "owner_name varchar(255)",
                 "owner_email varchar(255)",
                 "report_whatsapp json",
+                "report_whatsapp_names json",
                 "report_channels json",
                 "currency_code varchar(3)",
                 "locale varchar(8)",
@@ -40164,7 +40216,8 @@
                 "accounts",
                 "cash_bank_accounts",
                 "expense_categories",
-                "expense_vouchers"
+                "expense_vouchers",
+                "report_schedules"
             ]
         },
         {
@@ -40189,7 +40242,8 @@
                 "accounts",
                 "cash_bank_accounts",
                 "expense_categories",
-                "expense_vouchers"
+                "expense_vouchers",
+                "report_schedules"
             ]
         },
         {
@@ -40214,7 +40268,8 @@
                 "accounts",
                 "cash_bank_accounts",
                 "expense_categories",
-                "expense_vouchers"
+                "expense_vouchers",
+                "report_schedules"
             ]
         },
         {
@@ -40239,7 +40294,8 @@
                 "accounts",
                 "cash_bank_accounts",
                 "expense_categories",
-                "expense_vouchers"
+                "expense_vouchers",
+                "report_schedules"
             ]
         },
         {
@@ -40264,7 +40320,8 @@
                 "accounts",
                 "cash_bank_accounts",
                 "expense_categories",
-                "expense_vouchers"
+                "expense_vouchers",
+                "report_schedules"
             ]
         },
         {
@@ -40289,7 +40346,8 @@
                 "accounts",
                 "cash_bank_accounts",
                 "expense_categories",
-                "expense_vouchers"
+                "expense_vouchers",
+                "report_schedules"
             ]
         },
         {
@@ -40314,7 +40372,8 @@
                 "accounts",
                 "cash_bank_accounts",
                 "expense_categories",
-                "expense_vouchers"
+                "expense_vouchers",
+                "report_schedules"
             ]
         },
         {
@@ -40339,7 +40398,8 @@
                 "accounts",
                 "cash_bank_accounts",
                 "expense_categories",
-                "expense_vouchers"
+                "expense_vouchers",
+                "report_schedules"
             ]
         },
         {
@@ -44560,7 +44620,8 @@
                 "accounts",
                 "cash_bank_accounts",
                 "expense_categories",
-                "expense_vouchers"
+                "expense_vouchers",
+                "report_schedules"
             ]
         },
         {
@@ -44585,7 +44646,8 @@
                 "accounts",
                 "cash_bank_accounts",
                 "expense_categories",
-                "expense_vouchers"
+                "expense_vouchers",
+                "report_schedules"
             ]
         },
         {
