@@ -241,6 +241,10 @@ body.master-ui .accordion-body { color: var(--mu-text-2); }
 body.master-ui .page-link { background-color: var(--mu-surface); border-color: var(--mu-border); color: var(--mu-text-2); font-size: 12.5px; }
 body.master-ui .page-item.active .page-link { background-color: var(--mu-accent-strong); border-color: var(--mu-accent-strong); color: #fff; }
 body.master-ui .page-item.disabled .page-link { background-color: var(--mu-surface); color: var(--mu-text-3); }
+body.master-ui .nav-pills .nav-link { background: var(--mu-surface-2) !important; color: var(--mu-text-2) !important; border: 1px solid var(--mu-border-soft); font-weight: 700; }
+body.master-ui .nav-pills .nav-link:hover { color: var(--mu-text) !important; }
+body.master-ui .nav-pills .nav-link.active,
+body.master-ui .nav-pills .show > .nav-link { background: var(--mu-accent-strong) !important; color: #fff !important; border-color: var(--mu-accent-strong); }
 body.master-ui .nav-tabs { border-bottom-color: var(--mu-border); }
 body.master-ui .nav-tabs .nav-link { color: var(--mu-text-2); }
 body.master-ui .nav-tabs .nav-link.active { background: var(--mu-surface); color: var(--mu-text); border-color: var(--mu-border) var(--mu-border) var(--mu-surface); }
