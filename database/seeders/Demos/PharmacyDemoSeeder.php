@@ -210,6 +210,15 @@ class PharmacyDemoSeeder
                 'updated_at'          => now(),
             ]);
 
+        // BILL-BARCODE-1: the demo shows a held bill's number as a big barcode (bill + KOT), so a bill held at
+        // one counter is scanned at another. Only this demo; every live tenant keeps the switch OFF.
+        if (\Illuminate\Support\Facades\Schema::connection('tenant')->hasColumn('receipt_layout_settings', 'show_bill_barcode')) {
+            DB::connection('tenant')->table('receipt_layout_settings')
+                ->where('branch_id', $this->branch->id)
+                ->whereIn('document_type', ['receipt', 'kot'])
+                ->update(['show_bill_barcode' => true, 'updated_at' => now()]);
+        }
+
         $this->counts['store'] = 'branch renamed, Counter 1 (needs a shift), takeaway-only users, receipt text';
     }
 
