@@ -64,12 +64,24 @@
 <div class="card mb-3">
     <div class="card-body">
         <form method="GET" action="{{ url('/tenants') }}" class="row g-3 align-items-end">
-            <div class="col-md-5">
-                <label class="form-label">Search</label>
-                <input type="text" name="search" value="{{ request('search') }}" class="form-control" placeholder="Business, owner, email, code">
+            <div class="col-md-4">
+                <label class="form-label" for="tenant-search">Search</label>
+                <input type="text" name="search" id="tenant-search" value="{{ request('search') }}" class="form-control" placeholder="Business, owner, email, code">
             </div>
 
-            <div class="col-md-3">
+            {{-- MASTER-UNIVERSE-1: filter by primary business ("none" = not set yet). --}}
+            <div class="col-md-2">
+                <label class="form-label" for="tenant-business">Business type</label>
+                <select name="business" id="tenant-business" class="form-select">
+                    <option value="">All</option>
+                    @foreach(\App\Support\Business::all() as $bizKey => $bizRow)
+                        <option value="{{ $bizKey }}" @selected(request('business') === $bizKey)>{{ $bizRow['label'] }}</option>
+                    @endforeach
+                    <option value="none" @selected(request('business') === 'none')>Not set</option>
+                </select>
+            </div>
+
+            <div class="col-md-2">
                 <label class="form-label">Status</label>
                 <select name="status" class="form-select">
                     <option value="">All</option>
@@ -79,7 +91,7 @@
                 </select>
             </div>
 
-            <div class="col-md-4 d-flex gap-2">
+            <div class="col-md-4 d-flex gap-2 align-items-end">
                 <button class="btn btn-dark">
                     <i class="ti ti-search me-1"></i>Filter
                 </button>
@@ -96,6 +108,7 @@
                 <tr>
                     <th>Code</th>
                     <th>Business</th>
+                    <th>Business type</th>
                     <th>Primary Domain</th>
                     <th>Plan</th>
                     <th>DB</th>
@@ -117,6 +130,17 @@
                     <td>
                         <div class="fw-semibold">{{ $tenant->business_name }}</div>
                         <small class="text-muted">{{ $tenant->owner_email }}</small>
+                    </td>
+                    <td>
+                        @php $bizRow = \App\Support\Business::exists($tenant->primary_business) ? \App\Support\Business::all()[$tenant->primary_business] : null; @endphp
+                        @if($bizRow)
+                            <span class="d-inline-flex align-items-center gap-2">
+                                <img src="{{ asset($bizRow['image']) }}" alt="" width="28" height="28" style="object-fit:contain">
+                                <span>{{ $bizRow['label'] }}</span>
+                            </span>
+                        @else
+                            <span class="text-danger fw-semibold">Not set</span>
+                        @endif
                     </td>
                     <td>
                         @if($primaryDomain)
@@ -164,7 +188,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-4">No tenants found.</td>
+                    <td colspan="9" class="text-center text-muted py-4">No tenants found.</td>
                 </tr>
             @endforelse
             </tbody>

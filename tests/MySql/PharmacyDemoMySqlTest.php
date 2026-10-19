@@ -339,6 +339,9 @@ class PharmacyDemoMySqlTest extends MySqlTenantTestCase
             }
             $m->table('tenants')->where('id', $old)->delete();
         }
+        // Another test may wipe tenants with foreign keys off, leaving this host's domain behind.
+        $m->table('tenant_domains')->where('domain', $this->host)->delete();
+        $m->table('tenant_databases')->where('db_database', $this->storeDb)->delete();
 
         $tenantId = $m->table('tenants')->insertGetId([
             'tenant_code' => self::CODE, 'business_name' => 'Bingoo Demo Pharmacy',
