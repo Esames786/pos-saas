@@ -109,7 +109,8 @@
     var S = null, LINES = [], editAt = null, hi = 0, results = [], fieldOrder = [];
 
     function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-    function money(n) { return 'Rs ' + (Math.round(n * 100) / 100).toLocaleString('en-PK', { maximumFractionDigits: 2 }); }
+    // Whole rupees stay whole ("Rs 8,920"); paisa always shows two places ("Rs 4,593.80", never "4,593.8").
+    function money(n) { var r = Math.round(n * 100) / 100; return 'Rs ' + r.toLocaleString('en-PK', { minimumFractionDigits: r % 1 ? 2 : 0, maximumFractionDigits: 2 }); }
     function num(n) { return (Math.round(n * 1000) / 1000).toLocaleString('en-PK', { maximumFractionDigits: 3 }); }
     function words(item, q) {
         if (item.allow_decimal) return num(q) + ' ' + item.unit_name;
