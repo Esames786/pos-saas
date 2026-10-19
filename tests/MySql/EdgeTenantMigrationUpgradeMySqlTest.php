@@ -323,6 +323,16 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
                 $this->assertNull($conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->value('batch_note'));
             });
     }
+    public function test_bill_barcode_toggle_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_20_000003_add_bill_barcode_toggle', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            fn () => $this->dropColumns('receipt_layout_settings', ['show_bill_barcode']),
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('receipt_layout_settings', 'show_bill_barcode'));
+                // Default OFF — an upgraded layout row prints no bill barcode until the owner switches it on.
+                $this->assertSame(0, (int) ($conn->table('receipt_layout_settings')->value('show_bill_barcode') ?? 0));
+            });
+    }
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void
@@ -346,7 +356,7 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             '2026_10_06_000001_add_affects_stock_to_goods_receipt_lines', '2026_10_15_000002_add_website_order_fields_to_sales_orders',
             // CANONICAL MERGE (D8, 20 Oct 2026): classified when the merge landed them.
             '2026_10_19_000002_create_product_pack_units', '2026_10_20_000001_add_purchase_discounts',
-            '2026_10_20_000002_add_sale_line_batch',
+            '2026_10_20_000002_add_sale_line_batch', '2026_10_20_000003_add_bill_barcode_toggle',
         ];
         foreach ($canonicalRun as $name) {
             $this->assertFalse($m->entry($name)['BASELINE'] ?? true, $name);

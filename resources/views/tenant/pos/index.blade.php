@@ -154,6 +154,8 @@
     .med-pick button.off { opacity: .55; }
     #med-subs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; border: 1px dashed #b8c2cf; border-radius: 10px; padding: 6px 10px; background: #f8fafc; font-size: .85rem; }
     #med-subs:empty { display: none; }
+    #medKeysModal td { white-space: normal; vertical-align: middle; }
+    #medKeysModal td:first-child { white-space: nowrap; width: 1%; padding-right: 14px; }
 @endif
 
     /* TABLE-WORKSPACE-WIDTH-1 — ye POS ka sab se bhara modal hai: ek floor par 20+ table cards,
@@ -781,8 +783,17 @@
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                 <h2 id="products_heading" class="h6 mb-0">{{ ($medicalCounter ?? false) ? 'Items' : 'Products' }}</h2>
                 @if($medicalCounter ?? false)
-                    {{-- MEDICAL-COUNTER-1: the keys; today's Ctrl keys keep working too. --}}
-                    <span class="small text-muted"><kbd>F2</kbd> search · <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> add · <kbd>F4</kbd> hold · <kbd>F5</kbd> held · <kbd>F6</kbd> batch · <kbd>F9</kbd> preview · <kbd>F10</kbd> pay</span>
+                    {{-- MEDICAL-COUNTER-1: the everyday keys (left hand), and the full list a click / Ctrl+/ away. --}}
+                    <span class="small text-muted d-flex align-items-center gap-2 flex-wrap">
+                        <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> pay</span>
+                        <span><kbd>Ctrl</kbd>+<kbd>S</kbd> hold</span>
+                        <span><kbd>Ctrl</kbd>+<kbd>R</kbd> held list</span>
+                        <span><kbd>Ctrl</kbd>+<kbd>D</kbd> discount</span>
+                        <span><kbd>+</kbd><kbd>−</kbd> qty</span>
+                        <button type="button" class="btn btn-sm btn-outline-dark py-0" id="med-keys-btn" title="All shortcut keys (Ctrl+/ or F1)">
+                            <i class="ti ti-keyboard me-1"></i>Shortcuts
+                        </button>
+                    </span>
                 @endif
             </div>
             <div class="product-grid" id="product-grid" aria-live="polite"></div>
@@ -829,6 +840,67 @@
                             <input type="text" class="form-control form-control-sm" id="med-rx-doctor" placeholder="Doctor" aria-label="Doctor's name" maxlength="80">
                             <input type="text" class="form-control form-control-sm" id="med-rx-patient" placeholder="Patient" aria-label="Patient's name" maxlength="80">
                             <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" id="med-rx-seen" aria-pressed="false">Seen?</button>
+                        </div>
+                    </div>
+
+                    {{-- MEDICAL-COUNTER-1: every shortcut key on one page (Ctrl+/ or F1, or the Shortcuts button). --}}
+                    <div class="modal fade" id="medKeysModal" tabindex="-1" aria-labelledby="medKeysModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                            <div class="modal-content">
+                                <div class="modal-header py-2">
+                                    <h2 class="modal-title h5" id="medKeysModalLabel"><i class="ti ti-keyboard me-2"></i>Shortcut keys</h2>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row g-4 small">
+                                        <div class="col-md-6">
+                                            <h3 class="h6">Find &amp; add</h3>
+                                            <table class="table table-sm mb-3"><tbody>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>F</kbd> or <kbd>F2</kbd></td><td>Go to the scan box</td></tr>
+                                                <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Choose in the list</td></tr>
+                                                <tr><td><kbd>Enter</kbd></td><td>Add the chosen item (the cursor goes to its Strip box)</td></tr>
+                                                <tr><td><kbd>Esc</kbd></td><td>Empty the scan box</td></tr>
+                                                <tr><td><kbd>Tab</kbd></td><td>From the scan box into the cart</td></tr>
+                                            </tbody></table>
+                                            <h3 class="h6">Cart</h3>
+                                            <table class="table table-sm mb-0"><tbody>
+                                                <tr><td><kbd>Enter</kbd></td><td>Next box (Box → Strip → Tablet), then back to scan</td></tr>
+                                                <tr><td><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></td><td>Next / previous box — only the scan box and the cart</td></tr>
+                                                <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Same box on the row above / below</td></tr>
+                                                <tr><td><kbd>+</kbd> <kbd>−</kbd></td><td>One more / one less (in the scan box: the last item)</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>Del</kbd></td><td>Remove the item (in the scan box: the last one)</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>E</kbd> or <kbd>F6</kbd></td><td>Change the batch (expiry)</td></tr>
+                                                <tr><td><kbd>Esc</kbd></td><td>Back to the scan box</td></tr>
+                                            </tbody></table>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h3 class="h6">Bill</h3>
+                                            <table class="table table-sm mb-3"><tbody>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Pay now (exact cash) and print</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>P</kbd> or <kbd>F10</kbd></td><td>Review &amp; Pay window</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>S</kbd> or <kbd>F4</kbd></td><td>Hold sale (Ctrl+H too)</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> or <kbd>F7</kbd></td><td>Save as draft</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>R</kbd> or <kbd>F5</kbd></td><td>Held list — recall (Ctrl+L too)</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>D</kbd> or <kbd>F8</kbd></td><td>Discount</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>B</kbd> or <kbd>F9</kbd></td><td>Bill preview</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>U</kbd> or <kbd>F3</kbd></td><td>Customer</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Calculator</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Alt</kbd>+<kbd>N</kbd></td><td>New sale</td></tr>
+                                            </tbody></table>
+                                            <h3 class="h6">Review &amp; Pay window</h3>
+                                            <table class="table table-sm mb-3"><tbody>
+                                                <tr><td><kbd>Enter</kbd> (in Tendered)</td><td>Complete sale — <kbd>F10</kbd> or <kbd>Ctrl</kbd>+<kbd>Enter</kbd> too</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>Go to the discount</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Preview the bill</td></tr>
+                                                <tr><td><kbd>Esc</kbd></td><td>Back</td></tr>
+                                            </tbody></table>
+                                            <h3 class="h6">Popups</h3>
+                                            <p class="mb-0"><kbd>Enter</kbd> = OK. The cursor then goes back to the box you were in.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer py-2"><span class="text-muted small me-auto">Open this list any time: <kbd>Ctrl</kbd>+<kbd>/</kbd> or <kbd>F1</kbd></span><button type="button" class="btn btn-dark" data-bs-dismiss="modal">Close (Esc)</button></div>
+                            </div>
                         </div>
                     </div>
                 @endif
@@ -3707,6 +3779,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var medPick = null;        // group whose batch picker is open
     var medFocus = null;       // cart item key whose box gets the cursor after a re-draw
     var medLastScan = 0;       // a scanner's Enter right after a matched code is not "open Review & Pay"
+    var medAlertAt = 0;        // when the last "Not available" popup opened / closed
+    var medLastBox = null;     // the cart box the cashier was last in (the cursor comes back to it)
     var medRx = { doctor: '', patient: '', seen: false };
 
     function medGroupKey(productId, variantId) { return productId + ':' + (variantId || 0); }
@@ -3924,9 +3998,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (avail !== null && qty > 0 && need > avail + 0.0001) {
             // A medicine with an expiry never goes below what is not expired (the server refuses it too).
             if ((product.med && product.med.has_expiry) || !branchAllowsNegative()) {
-                blockAlert(medShortText(product, variant, avail));
-                medFocus = key;
+                // The cursor waits on the popup (Enter = OK) and comes back to this box after it. The guard
+                // goes up BEFORE the redraw: removing the box fires its "change", which must not try again.
+                medAlertAt = Date.now();
+                medFocus = null;
                 renderCart();
+                medAlert(medShortText(product, variant, avail), key);
                 return false;
             }
             backorderToast(product.name);
@@ -4100,42 +4177,85 @@ document.addEventListener('DOMContentLoaded', function () {
         groups.forEach(function (g) { cartItemsEl.appendChild(g.plain ? medPlainRow(g.items[0], g.index) : medGroupRow(g)); });
 
         var groupOf = function (gk) { return groups.find(function (g) { return g.gk === gk; }); };
-        var apply = function (input) {
+        // Apply what is typed in a box. false = refused (a popup is up and owns the cursor until it closes).
+        var apply = function (input, forceVal) {
+            if (Date.now() - medAlertAt < 600) return false;   // the popup's own blur is not a second try
             var g = groupOf(input.dataset.medGroup);
-            if (!g) return;
+            if (!g) return true;
             var packId = input.dataset.medPack ? Number(input.dataset.medPack) : null;
             var pk = medPacks(g.product, g.variant).find(function (x) { return (x.id || null) === packId; });
             var it = g.items.find(function (x) { return x.key === input.dataset.medBox; });
             if (!pk && it) pk = { id: it.pack_unit_id, name: it.pack_name, factor: Number(it.pack_factor || 1), price: Number(it.unit_price) };
-            if (!pk) return;
-            var val = parseFloat(String(input.value).replace(/[^0-9.]/g, '')) || 0;
-            if (it && Math.abs(Number(it.quantity) - val) < 0.0005) return;
-            if (!it && val <= 0) return;
-            medSet(g.product, g.variant, pk, val, false);
+            if (!pk) return true;
+            var val = forceVal !== undefined ? forceVal : (parseFloat(String(input.value).replace(/[^0-9.]/g, '')) || 0);
+            if (it && Math.abs(Number(it.quantity) - val) < 0.0005) return true;
+            if (!it && val <= 0) return true;
+            return medSet(g.product, g.variant, pk, Math.max(0, val), false) !== false;
         };
+        var focusBox = function (key) {
+            var el = key ? cartItemsEl.querySelector('[data-med-box="' + String(key).replace(/"/g, '\\"') + '"]') : null;
+            if (el) { el.focus(); el.select(); el.scrollIntoView({ block: 'nearest' }); return true; }
+            return false;
+        };
+        var allBoxes = function () { return Array.prototype.slice.call(cartItemsEl.querySelectorAll('[data-med-box]')); };
         cartItemsEl.querySelectorAll('[data-med-box]').forEach(function (input) {
             input.addEventListener('change', function () { apply(input); });
             input.addEventListener('keydown', function (e) {
-                if (e.key !== 'Enter' || e.ctrlKey || e.metaKey) return;
-                e.preventDefault();
-                var boxes = Array.prototype.slice.call(cartItemsEl.querySelectorAll('[data-med-group="' + input.dataset.medGroup + '"]'));
-                var next = boxes[boxes.indexOf(input) + 1];
-                var nextKey = next ? next.dataset.medBox : null;
-                apply(input);
-                if (nextKey) {
-                    var el = cartItemsEl.querySelector('[data-med-box="' + nextKey.replace(/"/g, '\\"') + '"]');
-                    if (el) { el.focus(); el.select(); return; }
+                var k = e.key;
+                var boxes = allBoxes();
+                var at = boxes.indexOf(input);
+                var keyOf = function (el) { return el ? el.dataset.medBox : null; };
+                // Enter: keep this number, go to the next box of this medicine (then back to the scan box).
+                if (k === 'Enter' && !e.ctrlKey && !e.metaKey) {
+                    e.preventDefault();
+                    var row = boxes.filter(function (b) { return b.dataset.medGroup === input.dataset.medGroup; });
+                    var nextKey = keyOf(row[row.indexOf(input) + 1]);
+                    if (!apply(input)) return;
+                    if (!focusBox(nextKey)) { searchEl.focus(); searchEl.select(); }
+                    return;
                 }
-                searchEl.focus();
+                // Tab / Shift+Tab: only the scan box and the cart boxes, round and round.
+                if (k === 'Tab') {
+                    e.preventDefault();
+                    var target = keyOf(boxes[at + (e.shiftKey ? -1 : 1)]);
+                    if (!apply(input)) return;
+                    if (!focusBox(target)) { searchEl.focus(); searchEl.select(); }
+                    return;
+                }
+                // ↑ ↓: the same kind of box on the row above / below.
+                if ((k === 'ArrowUp' || k === 'ArrowDown') && !e.ctrlKey) {
+                    var rows = [];
+                    boxes.forEach(function (b) { if (rows.indexOf(b.dataset.medGroup) === -1) rows.push(b.dataset.medGroup); });
+                    var r = rows.indexOf(input.dataset.medGroup) + (k === 'ArrowDown' ? 1 : -1);
+                    if (r < 0 || r >= rows.length) return;
+                    e.preventDefault();
+                    var mine = boxes.filter(function (b) { return b.dataset.medGroup === input.dataset.medGroup; });
+                    var theirs = boxes.filter(function (b) { return b.dataset.medGroup === rows[r]; });
+                    var key = keyOf(theirs[Math.min(mine.indexOf(input), theirs.length - 1)]);
+                    if (!apply(input)) return;
+                    focusBox(key);
+                    return;
+                }
+                // + / −: one more / one less of this pack (numpad too).
+                if ((k === '+' || k === '-') && !e.ctrlKey && !e.altKey) {
+                    e.preventDefault();
+                    var now = parseFloat(String(input.value).replace(/[^0-9.]/g, '')) || 0;
+                    var me = input.dataset.medBox;
+                    if (apply(input, Math.max(0, now + (k === '+' ? 1 : -1))) && !focusBox(me)) { searchEl.focus(); }
+                    return;
+                }
+                // Ctrl+Delete: this medicine leaves the cart.
+                if (k === 'Delete' && (e.ctrlKey || e.altKey)) {
+                    e.preventDefault();
+                    medRemoveGroup(input.dataset.medGroup);
+                    return;
+                }
+                // Esc: back to the scan box.
+                if (k === 'Escape') { e.preventDefault(); input.value = input.defaultValue; searchEl.focus(); searchEl.select(); }
             });
         });
         cartItemsEl.querySelectorAll('[data-med-remove]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var gk = btn.dataset.medRemove;
-                cart = cart.filter(function (it) { return medItemsOf(gk).indexOf(it) === -1; });
-                if (medPick === gk) medPick = null;
-                renderCart();
-            });
+            btn.addEventListener('click', function () { medRemoveGroup(btn.dataset.medRemove); });
         });
         cartItemsEl.querySelectorAll('[data-med-remove-line]').forEach(function (btn) {
             btn.addEventListener('click', function () {
@@ -4206,8 +4326,67 @@ document.addEventListener('DOMContentLoaded', function () {
     function medRxReady() {
         var rx = medRxItems();
         if (!rx.length || medRx.seen) return true;
-        blockAlert(rx[0].name + ' needs a prescription. Look at it, then tick “Seen” under the cart.');
+        var pay = bootstrap.Modal.getInstance(document.getElementById('paymentModal'));
+        if (pay) pay.hide();
+        medAlert(rx[0].name + ' needs a prescription. Look at it, then tick “Seen” under the cart (Ctrl+Enter pays after that).',
+            null, medRx.doctor ? 'med-rx-seen' : 'med-rx-doctor');
         return false;
+    }
+
+    /* popups and the cursor — a popup owns the cursor (Enter = OK); after it, the cursor is back where it was */
+
+    function medAlert(message, boxKey, elementId) {
+        medAlertAt = Date.now();
+        var back = function () { medRestoreFocus(boxKey, elementId); };
+        if (typeof Swal === 'undefined') { toast('warning', message); back(); return; }
+        Swal.fire({ icon: 'warning', title: 'Not available', text: message, confirmButtonText: 'OK (Enter)', confirmButtonColor: '#caa23f', returnFocus: false })
+            .then(function () {
+                // replaced by another popup → that one owns the cursor; come back only when none is open
+                setTimeout(function () { if (!(Swal.isVisible && Swal.isVisible())) back(); }, 0);
+            });
+    }
+
+    function medRestoreFocus(boxKey, elementId) {
+        var el = elementId ? document.getElementById(elementId) : null;
+        var key = boxKey || medLastBox;
+        if (!el && key) el = cartItemsEl.querySelector('[data-med-box="' + String(key).replace(/"/g, '\\"') + '"]');
+        el = el || searchEl;
+        el.focus();
+        if (el.select) el.select();
+    }
+
+    function medRemoveGroup(gk) {
+        var name = (medItemsOf(gk)[0] || {}).name || 'Item';
+        cart = cart.filter(function (it) { return medItemsOf(gk).indexOf(it) === -1; });
+        if (medPick === gk) medPick = null;
+        medLastBox = null;
+        renderCart();
+        searchEl.focus();
+        toast('info', name + ' removed.');
+    }
+
+    function medLastGroup() {
+        var keys = [];
+        cart.forEach(function (it) { if (it.product && it.product.med && it.line_kind !== 'component') { var gk = medGroupKey(it.product_id, it.product_variant_id); if (keys.indexOf(gk) === -1) keys.push(gk); } });
+        if (medLastBox) {
+            var item = cart.find(function (it) { return it.key === medLastBox; });
+            if (item) return medGroupKey(item.product_id, item.product_variant_id);
+        }
+        return keys.length ? keys[keys.length - 1] : null;
+    }
+
+    // the box to come back to: the one last typed in, else the first box of the last medicine
+    function medBoxToReturn() {
+        var key = medLastBox && cartItemsEl.querySelector('[data-med-box="' + String(medLastBox).replace(/"/g, '\\"') + '"]') ? medLastBox : null;
+        if (key) return key;
+        var gk = medLastGroup();
+        var first = gk ? cartItemsEl.querySelector('[data-med-group="' + gk + '"]') : null;
+        return first ? first.dataset.medBox : null;
+    }
+
+    function medOpenKeys() {
+        var m = document.getElementById('medKeysModal');
+        if (m) bootstrap.Modal.getOrCreateInstance(m).show();
     }
 
     function medRxFromNotes(notes) {
@@ -4230,8 +4409,38 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // ↑ ↓ choose in the list, Enter adds it; an empty search + Enter opens Review & Pay.
         searchEl.addEventListener('keydown', function (e) {
-            if (e.ctrlKey || e.metaKey || e.altKey) return;
             var q = searchEl.value.trim();
+            // Tab / Shift+Tab: into the cart's boxes (the last one typed in), not through the page's buttons.
+            if (e.key === 'Tab' && !e.ctrlKey && !e.altKey) {
+                var boxes = cartItemsEl.querySelectorAll('[data-med-box]');
+                if (!boxes.length) return;
+                e.preventDefault();
+                var key = e.shiftKey ? boxes[boxes.length - 1].dataset.medBox : medBoxToReturn();
+                medRestoreFocus(key);
+                return;
+            }
+            // Ctrl+Delete in the scan box: the last medicine leaves the cart (a wrong scan).
+            if (e.key === 'Delete' && (e.ctrlKey || e.altKey)) {
+                e.preventDefault();
+                var gk = medLastGroup();
+                if (gk) medRemoveGroup(gk);
+                return;
+            }
+            // + / − with an empty scan box: one more / one less of the last thing scanned or typed.
+            if ((e.key === '+' || e.key === '-') && !q && !e.ctrlKey && !e.altKey) {
+                var last = medBoxToReturn();
+                var el = last ? cartItemsEl.querySelector('[data-med-box="' + String(last).replace(/"/g, '\\"') + '"]') : null;
+                if (!el) return;
+                e.preventDefault();
+                var now = parseFloat(el.value) || 0;
+                el.value = String(Math.max(0, now + (e.key === '+' ? 1 : -1)));
+                el.dispatchEvent(new Event('change'));
+                searchEl.focus();
+                return;
+            }
+            // Esc: empty the scan box.
+            if (e.key === 'Escape' && q) { e.preventDefault(); searchEl.value = ''; medHi = 0; renderProducts(); return; }
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 if (!q || !medRows.length) return;
                 e.preventDefault();
@@ -4254,36 +4463,85 @@ document.addEventListener('DOMContentLoaded', function () {
             if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); document.getElementById('complete-sale-btn')?.click(); }
         });
 
-        // Function keys, as medical-store counters use them. Today's Ctrl keys keep working.
+        // The cart box the cashier was last in — the cursor comes back to it after a popup or a window.
+        document.addEventListener('focusin', function (e) {
+            if (e.target && e.target.dataset && e.target.dataset.medBox) medLastBox = e.target.dataset.medBox;
+        });
+        // Any popup (a question, not a toast) or window that closes and leaves the cursor nowhere → back to work.
+        var medFocusLost = function () { var a = document.activeElement; return !a || a === document.body || !document.body.contains(a); };
+        var medSwalWasOpen = false;
+        new MutationObserver(function () {
+            var open = document.body.classList.contains('swal2-shown') && !document.body.classList.contains('swal2-toast-shown');
+            if (medSwalWasOpen && !open) setTimeout(function () { if (medFocusLost() && !document.querySelector('.modal.show')) medRestoreFocus(); }, 40);
+            medSwalWasOpen = open;
+        }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        document.addEventListener('hidden.bs.modal', function () {
+            setTimeout(function () { if (medFocusLost() && !document.querySelector('.modal.show')) medRestoreFocus(); }, 40);
+        });
+
+        // The keys. Easy ones sit under the left hand (Ctrl + a letter); the F-keys still work too.
+        //   Ctrl+Enter pay now · Ctrl+P pay window · Ctrl+S hold · Ctrl+Shift+S draft · Ctrl+R held list
+        //   Ctrl+D discount · Ctrl+B bill preview · Ctrl+E batch · Ctrl+U customer · Alt+N new sale
+        //   Ctrl+/ or F1 this list. Today's Ctrl+F / H / L / M / Enter are left exactly as they were.
+        var medKeyOf = function (e) {
+            var k = e.key, c = e.ctrlKey || e.metaKey, lower = String(k).toLowerCase();
+            if (/^F([1-9]|10)$/.test(k) && !c && !e.altKey) return k;
+            if (e.altKey && !c && lower === 'n') return 'new';
+            if (!c || e.altKey) return null;
+            if (lower === 's') return e.shiftKey ? 'draft' : 'hold';
+            return { p: 'pay', r: 'held', d: 'discount', b: 'preview', e: 'batch', u: 'customer', '/': 'keys' }[lower] || null;
+        };
+        var medAction = { F1: 'keys', F2: 'search', F3: 'customer', F4: 'hold', F5: 'held', F6: 'batch', F7: 'draft', F8: 'discount', F9: 'preview', F10: 'pay' };
         document.addEventListener('keydown', function (e) {
-            var k = e.key;
-            if (!/^F(2|3|4|5|6|8|9|10)$/.test(k)) return;
-            e.preventDefault();   // never reload (F5) or open browser search (F3) on the counter
-            var pay = document.getElementById('paymentModal');
-            var payOpen = pay && pay.classList.contains('show');
-            // a question on screen (not a small toast) or another window open → the keys wait
-            var popup = document.querySelector('.swal2-container .swal2-popup');
-            if ((!payOpen && document.querySelector('.modal.show')) || (popup && !popup.classList.contains('swal2-toast'))) return;
-            var click = function (id) { var b = document.getElementById(id); if (b && !b.disabled) b.click(); };
-            if (payOpen) {
-                if (k === 'F10') click('complete-sale-btn');
-                else if (k === 'F9') click('payment-bill-preview-btn');
-                else if (k === 'F8') document.getElementById('manual-discount-value')?.focus();
+            // Ctrl+Enter is today's "pay now": a number just typed in a cart box counts first; refused = stop.
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                var box = document.activeElement;
+                if (box && box.dataset && box.dataset.medBox) {
+                    box.dispatchEvent(new Event('change'));
+                    if (Date.now() - medAlertAt < 600) { e.preventDefault(); e.stopImmediatePropagation(); }
+                }
                 return;
             }
-            if (k === 'F2') { searchEl.focus(); searchEl.select(); }
-            else if (k === 'F3') click('pos-customer-btn');
-            else if (k === 'F4') click('hold-sale-btn');
-            else if (k === 'F5') click('held-orders-btn');
-            else if (k === 'F6') {
-                var keys = [];
-                cart.forEach(function (it) { if (it.product && it.product.med && it.line_kind !== 'component') { var gk = medGroupKey(it.product_id, it.product_variant_id); if (keys.indexOf(gk) === -1) keys.push(gk); } });
-                if (keys.length) { medPick = medPick ? null : keys[keys.length - 1]; renderCart(); }
+            var key = medKeyOf(e);
+            if (!key) return;
+            var act = medAction[key] || key;
+            e.preventDefault();   // never the browser's own Ctrl+S / Ctrl+R / Ctrl+D / F5 on the counter
+            var pay = document.getElementById('paymentModal');
+            var payOpen = pay && pay.classList.contains('show');
+            var popup = document.querySelector('.swal2-container .swal2-popup');
+            if (popup && !popup.classList.contains('swal2-toast')) return;   // a question on screen answers first
+            if (!payOpen && document.querySelector('.modal.show')) return;   // another window is open
+            var click = function (id) { var b = document.getElementById(id); if (b && !b.disabled) b.click(); };
+            // a number typed in a cart box counts before any action (a refused one stops it)
+            var a = document.activeElement;
+            if (a && a.dataset && a.dataset.medBox) { a.dispatchEvent(new Event('change')); if (Date.now() - medAlertAt < 600) return; }
+            if (payOpen) {
+                if (key === 'F10') click('complete-sale-btn');
+                else if (act === 'pay') { /* Ctrl+P here: today's handler puts the cursor on the payment method */ }
+                else if (act === 'preview') click('payment-bill-preview-btn');
+                else if (act === 'discount') document.getElementById('manual-discount-value')?.focus();
+                else if (act === 'keys') medOpenKeys();
+                return;
             }
-            else if (k === 'F8') { click('review-pay-btn'); setTimeout(function () { document.getElementById('manual-discount-value')?.focus(); }, 400); }
-            else if (k === 'F9') click('bill-preview-btn');
-            else if (k === 'F10') click('review-pay-btn');
+            if (act === 'search') { searchEl.focus(); searchEl.select(); }
+            else if (act === 'customer') click('pos-customer-btn');
+            else if (act === 'hold') click('hold-sale-btn');
+            else if (act === 'draft') click('save-draft-btn');
+            else if (act === 'held') click('held-orders-btn');
+            else if (act === 'batch') { var gk = medLastGroup(); if (gk) { medPick = medPick ? null : gk; renderCart(); } }
+            else if (act === 'discount') {
+                // the pay window puts the cursor on Tendered when it opens; Ctrl+D moves it to the discount after that
+                pay.addEventListener('shown.bs.modal', function () {
+                    setTimeout(function () { var d = document.getElementById('manual-discount-value'); if (d) { d.focus(); d.select(); } }, 60);
+                }, { once: true });
+                click('review-pay-btn');
+            }
+            else if (act === 'preview') click('bill-preview-btn');
+            else if (act === 'pay') click('review-pay-btn');
+            else if (act === 'new') click('new-sale-btn');
+            else if (act === 'keys') medOpenKeys();
         });
+        document.getElementById('med-keys-btn')?.addEventListener('click', medOpenKeys);
     }
 
     /* totals */

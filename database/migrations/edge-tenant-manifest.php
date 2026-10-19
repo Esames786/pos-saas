@@ -3222,5 +3222,21 @@ return [
             'BASELINE' => false,
             'NOTE' => 'MEDICAL-COUNTER-1: sales_order_lines is the OPERATIONAL table the appliance writes through the shared SalesService (inventory_batch_id / batch_note, nullable, ALGORITHM=INSTANT); the shared receipt + ESC/POS read batch_note. Medical counter OFF on the Branch Server → NULL on every Edge line.',
         ],
+        // chunk 13 (8230eedc BILL-BARCODE-1 schema)
+        '2026_10_20_000003_add_bill_barcode_toggle' => [
+            'MIGRATION' => '2026_10_20_000003_add_bill_barcode_toggle',
+            'CLASSIFICATION' => 'EDGE_REQUIRED',
+            'TABLES_CHANGED' => ['receipt_layout_settings'],
+            'EDGE_CODE_REFERENCES' => ['EdgeBootstrapService', 'EdgeLocalBootstrapImporter', 'EdgeLocalConfigRefreshApplier', 'EdgeLocalPosController', 'EdgeLocalPrintDocumentService', 'EscPosPayloadService'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'none',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
+            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_bill_barcode_toggle_upgrades_an_older_appliance',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'BILL-BARCODE-1 (schema step, default OFF): receipt_layout_settings is a bootstrap section (whole rows upserted) — the column must exist on the appliance before the next refresh; the shared receipt path reads the layout row.',
+        ],
     ],
 ];
