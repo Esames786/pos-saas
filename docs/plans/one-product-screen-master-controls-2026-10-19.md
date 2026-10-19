@@ -1,7 +1,21 @@
 # Ek Product Screen + Bingoo Master Controls — Plan (v2)
 
-Date: 2026-10-19 · Status: **plan + tentative design; code nahi hua.** Owner "develop karo" kahe tab hi, kisi tenant ko chhede baghair.
+Date: 2026-10-19 · Status: **raat ko bana (owner: "saara kaam karke rakhna, bhale live kar dena")** — tafseel neeche "Raat ko kya bana".
 Prod: `a9499a10` · System map: https://claude.ai/artifact/3aVXbRq9PAEoWn1ivwMnKs (schema + code se khud bana)
+
+## Raat ko kya bana (19 Oct)
+
+| Cheez | Haal | Kahan |
+|---|---|---|
+| Primary Business (tenant ki setting) + switches + har tabdeeli ka record | ✅ bana | master `tenants.primary_business`, `tenants.features`, `tenant_setting_changes`; `App\Support\Business`, `TenantFeatures` |
+| Karobar badalne ki hifazat (asar dikhao, plan me module na ho to roko, tenant code likh kar tasdeeq, data nahi badalta) | ✅ bana | `TenantBusinessService`, `TenantBusinessController` |
+| Nayi product screen (Add = Edit, tasveer wale cards, haan/nahi, simple English + Urdu, SKU khud, barcode bana kar label print, dawai ka salt / strength / nuskha) | ✅ bana | `tenant/products/form-v2.blade.php`, `App\Support\ProductCards` |
+| Live tenants par asar | Nahi — switch Khatri / Kashif Food / Tawakal / Kashif Kitchen par **OFF**; demos par ON | Master → tenant → switches |
+| Upar ka button karobar ke mutabiq (POS / Counter / Events / Production) | ✅ bana | `partials/header.blade.php` |
+| Counter search salt se | ✅ | POS |
+| Master universe, tenant ka ghar, module ke bade dabbe | 🔧 alag worktree me ban raha (`pos-saas-masterui`) | — |
+| Box / Strip / Goli (packs) | ❌ nahi — GRN, counter aur return teeno chahiye (1-2 hafte); screen par jhoota nahi dikhaya | — |
+| Master admin ka password har deploy par "password" ho jata tha | ✅ seeder theek (ab sirf naye install par banta hai); **owner password khud badle** | `MasterSeeder` |
 
 ## 0. Ek nazar me
 

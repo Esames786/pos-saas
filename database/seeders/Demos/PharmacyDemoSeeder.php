@@ -250,8 +250,9 @@ class PharmacyDemoSeeder
     private function seedProducts(): void
     {
         $count = 0;
+        $hasMedicineCols = \Illuminate\Support\Facades\Schema::connection('tenant')->hasColumn('products', 'generic_name');
         foreach ($this->products() as $i => [$sku, $brand, $salt, $catCode, $unitCode, $cost, $price, $pack, $tracksBatch]) {
-            $name = $this->shelfName($sku, $brand, $salt, $catCode);
+            [$name, $generic, $strength] = $this->medicineParts($sku, $brand, $salt, $catCode, $hasMedicineCols);
             $product = Product::updateOrCreate(
                 ['sku' => $sku],
                 [
@@ -277,7 +278,7 @@ class PharmacyDemoSeeder
                     'default_selling_price'         => $price,
                     'is_taxable'                    => false,
                     'status'                        => 'active',
-                ]
+                ] + ($hasMedicineCols ? ['generic_name' => $generic, 'strength' => $strength, 'needs_prescription' => $catCode === 'ANTB'] : [])
             );
             $product->translations()->updateOrCreate(['language_code' => 'en'], ['name' => $name]);
 
@@ -312,16 +313,26 @@ class PharmacyDemoSeeder
 
     /**
      * A medicine is found by its salt as often as by its brand ("paracetamol" for Panadol or Calpol).
-     * The POS search reads name, SKU and barcode, so the salt goes into the name, without strengths.
+     * With the medicine fields (PRODUCT-SCREEN-V2) the salt and strength have their own columns and the
+     * counter searches them; the name stays the brand. Without them (older schema) the salt goes into the
+     * name so the demo can still be searched by it.
+     *
+     * @return array{0:string,1:?string,2:?string}  name, generic, strength
      */
-    private function shelfName(string $sku, string $brand, string $salt, string $catCode): string
+    private function medicineParts(string $sku, string $brand, string $salt, string $catCode, bool $hasColumns): array
     {
         if (in_array($catCode, ['SURG', 'BABY'], true) || in_array($sku, ['PH-ORS', 'PH-VICK'], true)) {
-            return $brand;
+            return [$brand, null, null];
         }
         $generic = trim(preg_replace('/\s*\d[\d.,]*\s*(mg|mcg|ml|g)(\/\s*\d+\s*ml)?/i', '', $salt));
+        preg_match_all('/\d[\d.,]*\s*(?:mg|mcg|ml|g)(?:\/\s*\d+\s*ml)?/i', $salt, $m);
+        $strength = $m[0] ? implode(' + ', $m[0]) : null;
 
-        return $generic !== '' ? "{$brand} ({$generic})" : $brand;
+        if ($hasColumns) {
+            return [$brand, $generic !== '' ? $generic : null, $strength];
+        }
+
+        return [$generic !== '' ? "{$brand} ({$generic})" : $brand, null, null];
     }
 
     private function seedCustomers(): void

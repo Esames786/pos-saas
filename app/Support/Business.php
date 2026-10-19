@@ -19,34 +19,34 @@ final class Business
     public const MART       = 'mart';
     public const INDUSTRY   = 'industry';
 
-    /** @return array<string, array{label:string, label_ur:string, image:string, hint:string, needs:array<int,string>, button:array{label:string,url:string,module:string}}> */
+    /** @return array<string, array{label:string, label_ur:string, image:string, hint:string, needs:array<int,string>, button:array{label:string,url:string,module:string,permission:string,icon:string}}> */
     public static function all(): array
     {
         return [
             self::RESTAURANT => [
                 'label' => 'Restaurant', 'label_ur' => 'ریسٹورنٹ', 'image' => 'assets/img/business/restaurant.png',
                 'hint' => 'Dine-in, takeaway, delivery', 'needs' => ['pos'],
-                'button' => ['label' => 'POS', 'url' => '/pos', 'module' => 'pos'],
+                'button' => ['label' => 'POS', 'url' => '/pos', 'module' => 'pos', 'permission' => 'tenant.pos.index', 'icon' => 'ti-device-laptop'],
             ],
             self::CATERING => [
                 'label' => 'Catering', 'label_ur' => 'کیٹرنگ', 'image' => 'assets/img/business/catering.png',
                 'hint' => 'Events, degs, per head', 'needs' => ['catering'],
-                'button' => ['label' => 'Events', 'url' => '/catering/events', 'module' => 'catering'],
+                'button' => ['label' => 'Events', 'url' => '/catering/events', 'module' => 'catering', 'permission' => 'tenant.catering.events.index', 'icon' => 'ti-calendar-event'],
             ],
             self::PHARMACY => [
                 'label' => 'Medical Store', 'label_ur' => 'میڈیکل اسٹور', 'image' => 'assets/img/business/pharmacy.png',
                 'hint' => 'Medicine, batch, expiry', 'needs' => ['pos', 'inventory', 'purchasing'],
-                'button' => ['label' => 'Counter', 'url' => '/pos', 'module' => 'pos'],
+                'button' => ['label' => 'Counter', 'url' => '/pos', 'module' => 'pos', 'permission' => 'tenant.pos.index', 'icon' => 'ti-device-laptop'],
             ],
             self::MART => [
                 'label' => 'Mart / Shop', 'label_ur' => 'مارٹ / دکان', 'image' => 'assets/img/business/mart.png',
                 'hint' => 'Barcode, loose items by weight', 'needs' => ['pos'],
-                'button' => ['label' => 'Counter', 'url' => '/pos', 'module' => 'pos'],
+                'button' => ['label' => 'Counter', 'url' => '/pos', 'module' => 'pos', 'permission' => 'tenant.pos.index', 'icon' => 'ti-device-laptop'],
             ],
             self::INDUSTRY => [
                 'label' => 'Industry', 'label_ur' => 'انڈسٹری', 'image' => 'assets/img/business/industry.png',
                 'hint' => 'Raw material, BOM, production', 'needs' => ['manufacturing'],
-                'button' => ['label' => 'Production', 'url' => '/manufacturing/bom', 'module' => 'manufacturing'],
+                'button' => ['label' => 'Production', 'url' => '/manufacturing/bom', 'module' => 'manufacturing', 'permission' => 'tenant.manufacturing.bom.index', 'icon' => 'ti-building-factory-2'],
             ],
         ];
     }

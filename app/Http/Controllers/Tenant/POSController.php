@@ -320,6 +320,8 @@ class POSController extends Controller
                 'id'                => (int) $product->id,
                 'name'              => $product->name,
                 'sku'               => $product->sku,
+                // PRODUCT-SCREEN-V2: a medicine's salt, so "paracetamol" finds every brand (null for everyone else).
+                'generic'           => $product->generic_name ?? null,
                 // POS-UX-1: tile image (public disk URL) — null keeps initials avatar.
                 'image_url'         => $product->image_path ? asset('storage/' . $product->image_path) : null,
                 'category_id'       => $product->category_id ? (int) $product->category_id : null,
