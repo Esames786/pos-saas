@@ -80,6 +80,7 @@
     .toolbar { text-align: center; margin-bottom: 10px; }
     .empty { text-align: center; color: #6b7280; padding: 40px 0; font-size: 15px; }
 </style>
+@include('tenant.catering.documents.partials.doc-toolbar-style')
 </head>
 <body>
     <div class="toolbar">

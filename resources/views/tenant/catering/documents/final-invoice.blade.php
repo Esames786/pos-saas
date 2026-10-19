@@ -74,13 +74,17 @@
     .footer { margin-top: 16px; display: flex; justify-content: space-between; font-size: 12px; }
     .sig { border-top: 1px solid #9ca3af; padding-top: 4px; width: 200px; text-align: center; color: #6b7280; }
     /* Sits in the grey gutter beside the sheet; it used to overlap the header. */
-    .print-bar { position: fixed; top: 10px; {{ $isUr ? 'left' : 'right' }}: 10px; z-index: 10; }
-    @media print { .print-bar { display: none; } }
+    /* `.print-bar` ki jagah ab `partials/doc-toolbar-style` tay karti hai —
+       button kaghaz par nahi, us ke UPAR WALI MEZ par. Yahan pehle
+       `position: fixed; top: 10px; right: 10px` tha, aur chunke in safhon
+       par `body` khud kaghaz hai, wo kona hamesha parche ke upar parta
+       tha. 19 Oct ko malik ne nishan laga kar hatwaya. */
     /* Keep rows, totals and the paid stamp whole across a page break. */
     table.items thead { display: table-header-group; }
     table.items tr, .totals, .adv, .footer, .meta-box, .paid-stamp { break-inside: avoid; page-break-inside: avoid; }
 </style>
 {{-- Last, so it overrides — and only when a PDF is being drawn. --}}
+@include('tenant.catering.documents.partials.doc-toolbar-style')
 @include("tenant.catering.documents.partials.pdf-overrides")
 </head>
 <body>

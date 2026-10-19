@@ -16,6 +16,8 @@ final class TenantFeatures
     public const PACKS = 'packs';
     public const PURCHASING_V2 = 'purchasing_v2';
 
+    public const REPORT_DELIVERY_V2 = 'report_delivery_v2';
+
     /** @return array<string, array{label:string, says:string, where:string, needs?:list<string>}> */
     public static function all(): array
     {
@@ -37,6 +39,12 @@ final class TenantFeatures
                 'label' => 'New purchase screens (PO & GRN)',
                 'says'  => 'Type purchase lines in one entry area: scan or search, and each item shows its own boxes (box · strip · tablet, batch, expiry, bonus); Ctrl+Enter puts the line in the list.',
                 'where' => 'Purchasing → Purchase Orders and GRN → New',
+            ],
+            // REPORT-DELIVERY-V2-1
+            self::REPORT_DELIVERY_V2 => [
+                'label' => 'New daily report delivery',
+                'says'  => 'One card to turn WhatsApp and Email on, add numbers with names, see the price per message, and send the daily report the moment the last shift of the day closes.',
+                'where' => 'Reports → Sales Report Center → Daily report delivery',
             ],
         ];
     }

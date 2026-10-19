@@ -16,6 +16,8 @@ class Tenant extends Model
         // WHATSAPP-REPORT-CHANNEL-1: where the tenant's reports go when no branch overrides it.
         'report_channels',
         'report_whatsapp',
+        // REPORT-DELIVERY-V2-1: number => name, read only by the delivery card.
+        'report_whatsapp_names',
         'currency_code',
         // WEBSITE-I18N-GEO-1 P3: the owner's language (emails) and the business's timezone (first branch).
         'locale',
@@ -38,6 +40,7 @@ class Tenant extends Model
             // of thing one caller forgets.
             'report_channels' => 'array',
             'report_whatsapp' => 'array',
+            'report_whatsapp_names' => 'array',
             'features' => 'array',
             'trial_ends_at' => 'datetime',
             'activated_at' => 'datetime',
