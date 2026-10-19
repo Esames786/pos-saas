@@ -268,6 +268,42 @@ Returns. A role sees only the tabs it may open. A small count shows what waits, 
 
 ## 7. Build order (P1 medical-store demo first)
 
+**Step 1 built 19 Oct, evening (PURCHASING-V2-2).** It is behind the same "New purchase screens" switch.
+
+What was built:
+- **Tabs.** Over all six purchasing pages, put in once from the layout. A role sees only its own tabs, with
+  counts: "Orders 1 to receive", "Bills 8 to bill".
+- **Supplier box.**
+  - Type to search name, code or phone; ↑↓ Enter.
+  - "+ New" / F2 asks only name and phone. The code (SUP-0001…) is made by itself and the supplier is picked
+    without reload.
+  - Under the box: what is owed, payment days, and on a GRN the orders waiting (links).
+- **Batch box.**
+  - ↓ lists the item's batches in this branch, nearest expiry first, expired left out. Each row shows
+    expiry, months left and stock in packs.
+  - Pick one, and its expiry fills and **locks**; the cursor goes to the quantity.
+  - A new number asks for its expiry.
+  - The server refuses a different expiry for a known batch. Before this, the stock engine silently kept the
+    old date.
+- **Batches made beforehand.** Inventory → Batches gets "+ New batch", "Change expiry", an item / batch
+  search and a stock-left column.
+- **Post without reload.**
+  - JSON reply with the GRN / PO number, "Open it" and "New GRN".
+  - Errors land on their own red line.
+  - A "Not saved yet / Saved ✓" sign.
+  - Lines are kept in the browser: "You were typing 2 lines … Bring them back".
+  - The browser asks before leaving with unsaved lines.
+- **Access.** The owner's rule: the four new endpoints check the permission of the screen they are used
+  from. No new permission and no role change. A GRN-only clerk adds a supplier (tested).
+- **Variant.** A GRN line with no variant now takes the item's own (default) variant. The counter sells from
+  that variant, and the batch box uses it. Without this, a batch made beforehand and the received goods
+  became two batches (found by the test).
+
+Proof:
+- `PurchasingV2MySqlTest` 12 tests / 140 assertions.
+- A browser drive on a local test shop: search, F2 new supplier, batch list, lock, new batch, reload →
+  bring back, Post → saved on the same page, Batches page new + change expiry. 0 page errors.
+
 | Step | Work | Needs |
 | --- | --- | --- |
 | 1 | Purchasing tabs + supplier search + "+ New supplier" + batch box + save without reload (PO, GRN) | — |

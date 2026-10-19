@@ -101,7 +101,8 @@ class GoodsReceiptController extends Controller
             'openOrders'    => $openOrders,
             'purchaseOrder' => $selectedPo,
             'prefillLines'  => $prefillLines,
-            'entryV2'       => \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PURCHASING_V2),
+            'entryV2'       => $entryV2 = \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PURCHASING_V2),
+            'supplierBox'   => $entryV2 ? \App\Support\SupplierBox::data($suppliers, true) : null,
         ]);
     }
 
@@ -111,7 +112,7 @@ class GoodsReceiptController extends Controller
         // today's lines (tablets, net cost per tablet) before anything else reads them. The old screen
         // does not send _entry_v2 and is untouched.
         if ($request->boolean('_entry_v2')) {
-            $request->merge(['lines' => \App\Support\PackLines::toLines((array) $request->input('lines', []), 'quantity_received', true)]);
+            $request->merge(['lines' => \App\Support\PackLines::toLines((array) $request->input('lines', []), 'quantity_received', true, (int) $request->input('branch_id'))]);
         }
 
         // Drop fully-blank rows before validation (robust even if client JS is bypassed).
@@ -183,7 +184,8 @@ class GoodsReceiptController extends Controller
 
         $userId = auth('tenant')->id();
 
-        DB::connection('tenant')->transaction(function () use ($data, $validLines, $userId, $productMap) {
+        $grn = null;
+        DB::connection('tenant')->transaction(function () use ($data, $validLines, $userId, $productMap, &$grn) {
             $grn = GoodsReceipt::create([
                 'grn_no'            => $this->purchasingService->nextGrnNo(),
                 'purchase_order_id' => $data['purchase_order_id'] ?? null,
@@ -247,6 +249,11 @@ class GoodsReceiptController extends Controller
                 }
             }
         });
+
+        // PURCHASING-V2-2: the new screen saves without leaving the page.
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'id' => $grn->id, 'number' => $grn->grn_no, 'url' => url('/goods-receipts/' . $grn->id)]);
+        }
 
         return redirect(url('/goods-receipts'))->with('status', 'Goods receipt posted.');
     }

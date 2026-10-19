@@ -201,7 +201,170 @@ class PurchasingV2MySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('name="_entry_v2"', $this->page('/purchase-orders/create')->assertOk()->getContent());
     }
 
+    // ── PURCHASING-V2-2 ──────────────────────────────────────────────────────────────────────────────
+
+    public function test_a_new_supplier_from_the_grn_screen_needs_only_the_grn_screen(): void
+    {
+        // Owner's rule: whoever can open the screen does all of its work — a GRN-only clerk adds a supplier.
+        $clerk = $this->clerk('grnonly', ['tenant.goods-receipts.create', 'tenant.goods-receipts.index']);
+        $this->assertFalse($clerk->can('tenant.suppliers.create'), 'the clerk cannot open the Suppliers page');
+
+        $r = $this->callAs($clerk, 'POST', '/suppliers/quick', ['name' => '  Al  Shifa Distributors ', 'phone' => '0300 1234567'], true)->assertStatus(201);
+        $sup = Supplier::findOrFail($r->json('id'));
+        $this->assertSame('Al Shifa Distributors', $sup->name, 'spaces tidied');
+        $this->assertMatchesRegularExpression('/^SUP-\d{4}$/', $sup->code, 'the code is made by itself');
+        $this->assertSame('active', $sup->status);
+        $this->assertEquals(0, (float) $sup->current_balance);
+
+        $this->callAs($clerk, 'POST', '/suppliers/quick', ['name' => 'al shifa distributors'], true)->assertStatus(422)->assertJsonValidationErrors('name');
+
+        $nobody = $this->clerk('salesonly', ['tenant.pos.index']);
+        $this->callAs($nobody, 'POST', '/suppliers/quick', ['name' => 'Someone Else'], true)->assertStatus(403);
+
+        $this->setFeatures(['product_screen_v2' => true, 'packs' => true, 'purchasing_v2' => false]);
+        $this->callAs($clerk, 'POST', '/suppliers/quick', ['name' => 'Switched Off Ltd'], true)->assertStatus(404);
+        $this->assertSame(0, Supplier::where('name', 'Switched Off Ltd')->count(), 'switch off = nothing there');
+    }
+
+    public function test_the_batch_box_lists_batches_nearest_expiry_first_with_their_stock(): void
+    {
+        [$p, $box] = $this->medicine('Batchbox Med');
+        $branch = (int) DB::connection('tenant')->table('branches')->value('id');
+        $this->postAs('/goods-receipts', $this->grn([
+            ['product_id' => $p->id, 'batch_no' => 'BB-LATE', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '800', 'packs' => [(string) $box->id => '5']],
+            ['product_id' => $p->id, 'batch_no' => 'BB-SOON', 'expiry' => '03/27', 'buy_pack' => (string) $box->id, 'price' => '800', 'packs' => [(string) $box->id => '1']],
+        ]))->assertSessionHasNoErrors();
+        \App\Models\Tenant\InventoryBatch::create(['batch_key' => 'test-expired-' . $p->id, 'branch_id' => $branch, 'product_id' => $p->id, 'batch_no' => 'BB-OLD',
+            'expiry_date' => '2025-01-31', 'unit_cost' => 0, 'status' => 'active']);
+
+        $rows = $this->page('/ajax/batches?product_id=' . $p->id . '&branch_id=' . $branch)->assertOk()->json('batches');
+        $this->assertSame(['BB-SOON', 'BB-LATE'], array_column($rows, 'batch_no'), 'nearest expiry first; the expired batch is not offered');
+        $this->assertSame(['03/27', '09/28'], array_column($rows, 'expiry'));
+        $this->assertEquals([200, 1000], array_column($rows, 'stock'), 'stock is kept per batch');
+
+        $all = $this->page('/ajax/batches?expired=1&product_id=' . $p->id . '&branch_id=' . $branch)->json('batches');
+        $this->assertContains('BB-OLD', array_column($all, 'batch_no'), 'a return can ask for expired batches');
+    }
+
+    public function test_a_known_batch_keeps_its_one_expiry(): void
+    {
+        [$p, $box] = $this->medicine('Onexpiry Med');
+        $line = fn (string $exp) => ['product_id' => $p->id, 'batch_no' => 'ONE-1', 'expiry' => $exp, 'buy_pack' => (string) $box->id, 'price' => '500', 'packs' => [(string) $box->id => '1']];
+        $this->postAs('/goods-receipts', $this->grn([$line('09/28')]))->assertSessionHasNoErrors();
+
+        $r = $this->callAs(null, 'POST', '/goods-receipts', $this->grn([$line('10/28')]), true)->assertStatus(422);
+        $this->assertStringContainsString('already has expiry 09/28', $r->json('errors')['lines.0.expiry_date'][0]);
+
+        $this->postAs('/goods-receipts', $this->grn([$line('09/28')]))->assertSessionHasNoErrors();
+        $this->assertSame(1, \App\Models\Tenant\InventoryBatch::where('product_id', $p->id)->where('batch_no', 'ONE-1')->count(), 'the same batch received twice');
+    }
+
+    public function test_batches_made_beforehand_show_in_the_batch_box_and_take_the_goods(): void
+    {
+        [$p, $box] = $this->medicine('Premade Med');
+        $branch = (int) DB::connection('tenant')->table('branches')->value('id');
+
+        $made = $this->callAs(null, 'POST', '/inventory/batches', ['product_id' => $p->id, 'branch_id' => $branch, 'batch_no' => 'pre-1', 'expiry' => '1128'], true)->assertStatus(201);
+        $this->assertSame('PRE-1', $made->json('batch_no'));
+        $this->callAs(null, 'POST', '/inventory/batches', ['product_id' => $p->id, 'branch_id' => $branch, 'batch_no' => 'PRE-1', 'expiry' => '11/28'], true)
+            ->assertStatus(422)->assertJsonValidationErrors('batch_no');
+        $this->callAs(null, 'POST', '/inventory/batches', ['product_id' => $p->id, 'branch_id' => $branch, 'batch_no' => 'PRE-2'], true)
+            ->assertStatus(422)->assertJsonValidationErrors('expiry');
+
+        $rows = $this->page('/ajax/batches?product_id=' . $p->id . '&branch_id=' . $branch)->json('batches');
+        $this->assertSame([['PRE-1', '11/28', 0]], array_map(fn ($b) => [$b['batch_no'], $b['expiry'], (int) $b['stock']], $rows));
+
+        // A typing mistake: the expiry is corrected; the GRN then receives into that batch.
+        $this->callAs(null, 'POST', '/inventory/batches/' . $made->json('id') . '/expiry', ['expiry' => '12/28'], true)->assertOk()->assertJson(['expiry' => '12/28']);
+        $this->postAs('/goods-receipts', $this->grn([['product_id' => $p->id, 'batch_no' => 'PRE-1', 'expiry' => '12/28', 'buy_pack' => (string) $box->id, 'price' => '500', 'packs' => [(string) $box->id => '2']]]))->assertSessionHasNoErrors();
+        $this->assertEquals(400, (float) DB::connection('tenant')->table('stock_balances')->where('inventory_batch_id', $made->json('id'))->sum('quantity_on_hand'), 'stock went into the batch made beforehand');
+
+        $page = $this->page('/inventory/batches?q=Premade')->assertOk()->getContent();
+        $this->assertStringContainsString('id="bt-new-btn"', $page);
+        $this->assertStringContainsString('2 Box', $page, 'stock left, in packs');
+        $this->assertStringContainsString('data-exp-edit="' . $made->json('id') . '"', $page);
+
+        $clerk = $this->clerk('grnonly2', ['tenant.goods-receipts.create']);
+        $this->callAs($clerk, 'POST', '/inventory/batches', ['product_id' => $p->id, 'branch_id' => $branch, 'batch_no' => 'PRE-3', 'expiry' => '11/28'], true)->assertStatus(403);
+
+        $this->setFeatures(['product_screen_v2' => true, 'packs' => true, 'purchasing_v2' => false]);
+        $off = $this->page('/inventory/batches')->assertOk()->getContent();
+        $this->assertStringNotContainsString('bt-new-btn', $off, 'switch off = the page as before');
+        $this->assertStringNotContainsString('Stock left', $off);
+    }
+
+    public function test_post_without_reload_answers_with_the_number_or_the_line_to_fix(): void
+    {
+        [$p, $box] = $this->medicine('Nojump Med');
+        $ok = $this->callAs(null, 'POST', '/goods-receipts', $this->grn([['product_id' => $p->id, 'batch_no' => 'NJ-1', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '500', 'packs' => [(string) $box->id => '1']]]), true)->assertOk();
+        $this->assertTrue($ok->json('ok'));
+        $this->assertStringStartsWith('GRN-', $ok->json('number'));
+        $this->assertStringEndsWith('/goods-receipts/' . $ok->json('id'), $ok->json('url'));
+
+        $bad = $this->callAs(null, 'POST', '/goods-receipts', $this->grn([
+            ['product_id' => $p->id, 'batch_no' => 'NJ-2', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '500', 'packs' => [(string) $box->id => '1']],
+            ['product_id' => $p->id, 'batch_no' => '', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '500', 'packs' => [(string) $box->id => '1']],
+        ]), true)->assertStatus(422);
+        $this->assertArrayHasKey('lines.1.batch_no', $bad->json('errors'), 'the error names the line to fix');
+
+        $po = $this->callAs(null, 'POST', '/purchase-orders', ['_entry_v2' => '1', 'branch_id' => DB::connection('tenant')->table('branches')->value('id'), 'supplier_id' => $this->supplier()->id,
+            'order_date' => now()->toDateString(), 'lines' => [['product_id' => $p->id, 'buy_pack' => (string) $box->id, 'price' => '500', 'packs' => [(string) $box->id => '3']]]], true)->assertOk();
+        $this->assertStringStartsWith('PO-', $po->json('number'));
+    }
+
+    public function test_tabs_and_the_supplier_box_only_with_the_switch_on(): void
+    {
+        $grn = $this->page('/goods-receipts/create')->assertOk()->getContent();
+        $this->assertStringContainsString('class="pur-tabs"', $grn);
+        $this->assertStringContainsString('Receive (GRN)', $grn);
+        $this->assertStringContainsString('id="sup-q"', $grn, 'type-to-search supplier box');
+        $this->assertStringContainsString('id="sup-new"', $grn, '+ New supplier');
+        $this->assertStringContainsString('class="pur-tabs"', $this->page('/purchase-returns')->assertOk()->getContent(), 'every purchasing page');
+
+        $clerk = $this->clerk('grnonly3', ['tenant.goods-receipts.create', 'tenant.goods-receipts.index']);
+        $mine = $this->callAs($clerk, 'GET', '/goods-receipts/create')->assertOk()->getContent();
+        $this->assertStringContainsString('Receive (GRN)', $mine);
+        $this->assertStringNotContainsString('>Bills <', $mine, 'a role sees only the tabs it can open');
+
+        $this->setFeatures(['product_screen_v2' => true, 'packs' => true, 'purchasing_v2' => false]);
+        $off = $this->page('/goods-receipts/create')->assertOk()->getContent();
+        $this->assertStringNotContainsString('pur-tabs', $off);
+        $this->assertStringNotContainsString('id="sup-q"', $off);
+        $this->assertStringContainsString('class="form-select', $off, 'the old supplier list is back');
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────────────────────────
+
+    /** A user holding only these permissions (the owner's rule is tested with screen permissions only). */
+    private function clerk(string $code, array $permissions): User
+    {
+        $c = DB::connection('tenant');
+        $id = $c->table('users')->where('email', $code . '@pv2grn.test')->value('id') ?? $c->table('users')->insertGetId([
+            'name' => 'Clerk ' . $code, 'email' => $code . '@pv2grn.test', 'password' => bcrypt('x'), 'employee_code' => strtoupper($code),
+            'status' => 'active', 'locale' => 'en', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::setDefaultConnection('tenant');
+        foreach ($permissions as $perm) {
+            \Spatie\Permission\Models\Permission::findOrCreate($perm, 'tenant');
+        }
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $user = User::on('tenant')->findOrFail($id);
+        $user->syncPermissions($permissions);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        return User::on('tenant')->findOrFail($id);
+    }
+
+    /** As $user (null = the owner); $json = the way the new screen calls (Accept: application/json). */
+    private function callAs(?User $user, string $method, string $uri, array $data = [], bool $json = false)
+    {
+        DB::setDefaultConnection('tenant');
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $user ??= User::on('tenant')->where('email', 'owner@pv2grn.test')->firstOrFail();
+        $server = $json ? ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'] : [];
+
+        return $this->actingAs($user, 'tenant')->call($method, 'http://' . $this->host . $uri, $data, [], [], $server);
+    }
 
     /** @return array{0:Product,1:ProductPackUnit,2:ProductPackUnit,3:ProductPackUnit} */
     private function medicine(string $name): array

@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Supplier;
 use App\Models\Tenant\SupplierLedger;
+use App\Support\ScreenAccess;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class SupplierController extends Controller
 {
@@ -62,6 +64,54 @@ class SupplierController extends Controller
         }
 
         return redirect(url('/suppliers'))->with('status', 'Supplier created.');
+    }
+
+    /**
+     * PURCHASING-V2-2 — "+ New supplier" on the GRN / PO screen: only a name (and a phone), the code made by
+     * itself, saved without leaving the page. Whoever can open a purchase screen may add one (owner's rule),
+     * so this gates on those screens, not on the Suppliers page.
+     */
+    public function quickStore(Request $request)
+    {
+        ScreenAccess::purchasing(['tenant.goods-receipts.create', 'tenant.purchase-orders.create', 'tenant.purchase-returns.create', 'tenant.suppliers.create']);
+
+        $data = $request->validate([
+            'name'  => 'required|string|max:255',
+            'phone' => 'nullable|string|max:50',
+        ], ['name.required' => "Write the supplier's name."]);
+
+        $name = trim(preg_replace('/\s+/u', ' ', $data['name']));
+        $same = Supplier::withTrashed()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->first();
+        if ($same) {
+            throw ValidationException::withMessages(['name' => '"' . $same->name . '" is already a supplier' . ($same->trashed() || $same->status !== 'active' ? ' (switched off) — turn it on in Suppliers.' : ' — pick it from the list.')]);
+        }
+
+        $supplier = Supplier::create([
+            'code'               => self::nextCode(),
+            'name'               => $name,
+            'phone'              => filled($data['phone'] ?? null) ? trim($data['phone']) : null,
+            'payment_terms_days' => 0,
+            'opening_balance'    => 0,
+            'current_balance'    => 0,
+            'status'             => 'active',
+        ]);
+
+        return response()->json([
+            'id' => $supplier->id, 'name' => $supplier->name, 'code' => $supplier->code, 'phone' => $supplier->phone,
+            'balance' => 0.0, 'terms' => 0,
+        ], 201);
+    }
+
+    /** SUP-0001, SUP-0002 … — the next number after every code that already looks like that. */
+    private static function nextCode(): string
+    {
+        $n = (int) Supplier::withTrashed()->where('code', 'like', 'SUP-%')->pluck('code')
+            ->map(fn ($c) => (int) preg_replace('/\D/', '', substr((string) $c, 4)))->max();
+        do {
+            $code = 'SUP-' . str_pad((string) ++$n, 4, '0', STR_PAD_LEFT);
+        } while (Supplier::withTrashed()->where('code', $code)->exists());
+
+        return $code;
     }
 
     public function show(Supplier $supplier)

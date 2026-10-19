@@ -49,7 +49,8 @@ class PurchaseOrderController extends Controller
             ->get();
 
         return view('tenant.purchase-orders.create', compact('branches', 'suppliers', 'products') + [
-            'entryV2' => \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PURCHASING_V2),
+            'entryV2' => $entryV2 = \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PURCHASING_V2),
+            'supplierBox' => $entryV2 ? \App\Support\SupplierBox::data($suppliers) : null,
         ]);
     }
 
@@ -93,7 +94,8 @@ class PurchaseOrderController extends Controller
             return back()->withErrors(['lines' => 'At least one product line is required.'])->withInput();
         }
 
-        DB::connection('tenant')->transaction(function () use ($data, $validLines) {
+        $po = null;
+        DB::connection('tenant')->transaction(function () use ($data, $validLines, &$po) {
             $total = $validLines->sum(function ($l) {
                 return ($l['quantity_ordered'] * $l['unit_cost'])
                     - ($l['discount_amount'] ?? 0)
@@ -128,6 +130,11 @@ class PurchaseOrderController extends Controller
                 ]);
             }
         });
+
+        // PURCHASING-V2-2: the new screen saves without leaving the page.
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'id' => $po->id, 'number' => $po->po_no, 'url' => url('/purchase-orders/' . $po->id)]);
+        }
 
         return redirect(url('/purchase-orders'))->with('status', 'Purchase order created.');
     }

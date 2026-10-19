@@ -435,7 +435,7 @@ class InventoryService
         }
     }
 
-    private function batchKey(int $branchId, int $productId, ?int $variantId, string $batchNo): string
+    public function batchKey(int $branchId, int $productId, ?int $variantId, string $batchNo): string
     {
         return implode('-', [$branchId, $productId, $variantId ?: 0, strtolower(trim($batchNo))]);
     }

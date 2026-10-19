@@ -43,6 +43,12 @@ class EnsureRoutePermission
             'tenant.restaurant.tables.reserve',
             'tenant.restaurant.tables.unreserve',
             'tenant.restaurant.tables.reservation',
+            // PURCHASING-V2-2 (owner, 19 Oct: "jis ko screen ka access hoga wo saray kaam kar sakta hai"):
+            // a new supplier or a batch made from the GRN / PO screen, and new batches / expiry changes on
+            // Inventory → Batches, gate in-controller on the permission of the screen they are made from.
+            'tenant.suppliers.quick-store',
+            'tenant.ajax.batches',
+            'tenant.inventory.batches.',
             'tenant.api.catalog',
             'tenant.api.kitchen-display',
             // Read-only server clock the POS/report pages poll on every screen; behind auth:tenant,
