@@ -598,6 +598,6 @@ class MasterUniverseMySqlTest extends MySqlTenantTestCase
     public function test_the_snapshot_is_scheduled_daily_on_cloud(): void
     {
         $console = file_get_contents(base_path('routes/console.php'));
-        $this->assertMatchesRegularExpression("/Schedule::command\('system:usage-snapshot'\)\s*->timezone\('Asia\/Karachi'\)->dailyAt\('05:30'\)/", $console);
+        $this->assertMatchesRegularExpression("/Schedule::command\('system:usage-snapshot'\)\s*->timezone\('Asia\/Karachi'\)->dailyAt\('09:45'\)/", $console);
     }
 }

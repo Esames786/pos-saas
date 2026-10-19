@@ -107,7 +107,7 @@
         </div>
     </div>
     <div class="mu-snapline">
-        <span><i class="ti ti-clock me-1" aria-hidden="true"></i>Last reading {{ $server['taken_at']->diffForHumans() }} ({{ \App\Services\Central\MasterOverviewService::pkt($server['taken_at']) }}). Read automatically every morning at 05:30.</span>
+        <span><i class="ti ti-clock me-1" aria-hidden="true"></i>Last reading {{ $server['taken_at']->diffForHumans() }} ({{ \App\Services\Central\MasterOverviewService::pkt($server['taken_at']) }}). Read automatically every morning at 09:45.</span>
     </div>
 @else
     <div class="mu-empty">

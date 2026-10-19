@@ -101,10 +101,10 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     Schedule::command('catering:dispatch-event-reminders')->everyFifteenMinutes()->withoutOverlapping();
 
     // MASTER-UNIVERSE-1 — Bingoo Master's daily usage snapshot (server CPU/RAM/disk + each tenant's
-    // database size, files, 30-day sales). Read-only on tenants. 05:30 Karachi (00:30 UTC): a quiet
-    // hour after the restaurants close. The app clock is UTC, so the nightly backup (02:00) and the
-    // demo reset (04:00) come AFTER it — a new backup's size shows in the next morning's row. Two
-    // days of rows give the first "disk full in ~N days" forecast.
+    // database size, files, 30-day sales). Read-only on tenants. 09:45 Karachi = 04:45 UTC: AFTER the
+    // nightly backup (02:00 UTC) and the demo reset (04:00 UTC, ~7 min). The reset rebuilds each demo
+    // tenant under a new id, which cascades away its earlier rows — a reading before it left every
+    // demo card blank all day (19 Oct). Two days of rows give the first "disk full in ~N days" forecast.
     Schedule::command('system:usage-snapshot')
-        ->timezone('Asia/Karachi')->dailyAt('05:30')->withoutOverlapping();
+        ->timezone('Asia/Karachi')->dailyAt('09:45')->withoutOverlapping();
 }
