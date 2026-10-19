@@ -202,6 +202,34 @@
     @endcan
 </div>
 
+{{-- PHARMACY-PACKS-1 — how it is packed (read-only here; changed on the Edit screen). --}}
+@if(\App\Support\PackUnits::enabled() && ($packs = $product->packUnits()->get())->where('factor', '>', 1)->isNotEmpty())
+    @php $packBase = $packs->firstWhere('factor', 1)?->name ?? \App\Support\PackUnits::baseName($product->unit_id); @endphp
+    <div class="card mb-4">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <strong>Packs</strong>
+            @can('tenant.products.edit')<a href="{{ url('/products/' . $product->id . '/edit') }}#packs-step" class="btn btn-sm btn-outline-primary">Change packs</a>@endcan
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+                <thead><tr><th scope="col">Pack</th><th scope="col">Holds</th><th scope="col" class="text-end">Price (Rs)</th><th scope="col">Barcode</th><th scope="col">Sold</th><th scope="col">Bought</th></tr></thead>
+                <tbody>
+                    @foreach($packs as $p)
+                        <tr>
+                            <td class="fw-semibold">{{ $p->name }}</td>
+                            <td>{{ $p->factor === 1 ? 'stock unit' : number_format($p->factor) . ' ' . $packBase }}</td>
+                            <td class="text-end">{{ number_format($p->priceFor($product), 2) }}@if($p->sale_price === null && $p->factor > 1) <span class="text-muted small">(auto)</span>@endif</td>
+                            <td>{{ $p->barcode ?: '—' }}</td>
+                            <td>{{ $p->can_sell ? 'Yes' : 'No' }}</td>
+                            <td>{{ $p->can_buy ? 'Yes' : 'No' }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+@endif
+
 {{-- Barcodes panel --}}
 <div class="card mb-4">
     <div class="card-header d-flex align-items-center justify-content-between">

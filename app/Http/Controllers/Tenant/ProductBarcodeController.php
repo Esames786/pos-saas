@@ -19,6 +19,10 @@ class ProductBarcodeController extends Controller
             'barcode_type'       => ['required', Rule::in(['manual', 'system', 'supplier'])],
             'is_primary'         => ['nullable', 'boolean'],
         ]);
+        // PHARMACY-PACKS-1: a box or strip barcode cannot also be a plain product barcode.
+        if (\App\Support\PackUnits::isPackBarcode((string) $data['barcode'])) {
+            return back()->withErrors(['barcode' => 'This barcode is already a pack’s barcode (a box or strip).'])->withInput();
+        }
 
         $variant = !empty($data['product_variant_id'])
             ? ProductVariant::where('product_id', $product->id)->where('id', $data['product_variant_id'])->firstOrFail()
@@ -70,7 +74,7 @@ class ProductBarcodeController extends Controller
     {
         do {
             $code = '2' . now()->format('ymd') . random_int(100000, 999999);
-        } while (ProductBarcode::where('barcode', $code)->exists());
+        } while (ProductBarcode::where('barcode', $code)->exists() || \App\Support\PackUnits::isPackBarcode($code));
 
         return $code;
     }

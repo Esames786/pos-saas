@@ -222,6 +222,8 @@ class TenantResetTransactionsCommand extends Command
         'migrations', 'cache', 'cache_locks', 'sessions', 'password_reset_tokens', 'languages',
         'currencies', 'currency_denominations', 'units', 'unit_conversions',
         'product_variants', 'product_barcodes', 'product_branch_prices', 'product_translations',
+        // PHARMACY-PACKS-1: how a product is packed (box / strip) — catalogue, not a transaction.
+        'product_pack_units',
         'product_variant_translations', 'category_translations', 'products_translations',
         'modifier_groups', 'modifiers', 'product_modifier_group', 'combos', 'combo_components',
         'recipes', 'recipe_ingredients', 'promotions', 'promotion_targets',

@@ -180,6 +180,10 @@ class ProductController extends Controller
                 ]);
             }
 
+            if ($this->packsPosted) {
+                \App\Support\PackUnits::sync($product, $this->packPlan);
+            }
+
             return $product;
         });
 
@@ -257,6 +261,10 @@ class ProductController extends Controller
 
             if ($request->boolean('_form_v2')) {
                 $this->syncScreenV2Variant($request, $product, $default);
+            }
+
+            if ($this->packsPosted) {
+                \App\Support\PackUnits::sync($product, $this->packPlan);
             }
         });
 
@@ -453,8 +461,24 @@ class ProductController extends Controller
             $fields['website_price'] = (isset($data['website_price']) && $data['website_price'] !== '') ? $data['website_price'] : null;
         }
 
+        // PHARMACY-PACKS-1: packs come only from the new screen, only where Master switched them on.
+        // Elsewhere nothing posted about packs is read, and saved packs stay as they are.
+        $this->packsPosted = false;
+        if ($isV2 && \App\Support\PackUnits::enabled() && $request->exists('_packs')) {
+            $this->packPlan = \App\Support\PackUnits::fromRequest($request->all(), $product);
+            if ($product) {
+                \App\Support\PackUnits::guardChanges($product, $this->packPlan);
+            }
+            $this->packsPosted = true;
+        }
+
         return $fields;
     }
+
+    /** PHARMACY-PACKS-1 — the packs checked by validated(), saved inside the product's transaction. */
+    private ?array $packPlan = null;
+
+    private bool $packsPosted = false;
 
     private function productContext(Request $request): string
     {
@@ -609,6 +633,28 @@ class ProductController extends Controller
             'salesCount'      => $product ? \App\Models\Tenant\SalesOrderLine::where('product_id', $product->id)->count() : 0,
             'onHand'          => $product ? (float) \App\Models\Tenant\StockBalance::where('product_id', $product->id)->sum('quantity_on_hand') : 0.0,
             'hasMedicineCols' => \Illuminate\Support\Facades\Schema::connection('tenant')->hasColumn('products', 'generic_name'),
+        ] + $this->packScreenData($product);
+    }
+
+    /** PHARMACY-PACKS-1 — the packs part of the screen; empty when Master has packs off for this tenant. */
+    private function packScreenData(?Product $product): array
+    {
+        if (! \App\Support\PackUnits::enabled()) {
+            return ['packsOn' => false];
+        }
+        $saved = \App\Support\PackUnits::forScreen($product);
+        $baseName = \App\Support\PackUnits::baseName($product?->unit_id);
+        $onHand = $product ? (float) \App\Models\Tenant\StockBalance::where('product_id', $product->id)->sum('quantity_on_hand') : 0.0;
+
+        return [
+            'packsOn'       => true,
+            'savedPacks'    => $saved['packs'],
+            'packBaseSell'  => $saved['base_sell'],
+            'packBaseName'  => $baseName,
+            'packStockSays' => $product && $saved['packs'] && $onHand != 0
+                ? \App\Support\PackUnits::describe($product->packUnits()->get(), $onHand, $baseName)
+                : null,
+            'packPresets'   => \App\Support\PackUnits::presets(\App\Support\Business::of()),
         ];
     }
 
@@ -623,6 +669,9 @@ class ProductController extends Controller
         $code = trim((string) $request->input('barcode', ''));
         if ($code !== '' && ProductBarcode::where('barcode', $code)->when($product, fn ($q) => $q->where('product_id', '!=', $product->id))->exists()) {
             $errors['barcode'] = 'This barcode already belongs to another product.';
+        } elseif ($code !== '' && \App\Support\PackUnits::isPackBarcode($code)) {
+            // PHARMACY-PACKS-1: a box's barcode cannot also be the single item's — one scan, one meaning.
+            $errors['barcode'] = 'This barcode is already a pack’s barcode (a box or strip). Give the single item its own.';
         }
         if ($errors) {
             throw \Illuminate\Validation\ValidationException::withMessages($errors);

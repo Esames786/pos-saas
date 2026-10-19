@@ -128,7 +128,7 @@
                     <div class="mu-switch-text">
                         <strong>{{ $f['label'] }}</strong>
                         <span>{{ $f['says'] }}</span>
-                        <em>Where: {{ $f['where'] }} · now <b>{{ $on ? 'ON' : 'OFF' }}</b></em>
+                        <em>Where: {{ $f['where'] }} · now <b>{{ $on ? 'ON' : 'OFF' }}</b>@if(! empty($f['needs'])) · needs: {{ collect($f['needs'])->map(fn ($n) => $features[$n]['label'] ?? $n)->implode(', ') }}@endif</em>
                     </div>
                     <div class="form-check form-switch m-0">
                         <input type="hidden" name="features[{{ $key }}]" value="0">
