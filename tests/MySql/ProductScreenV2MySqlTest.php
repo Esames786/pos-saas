@@ -185,6 +185,102 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
         $this->assertEquals(600, $after['default_selling_price']);
     }
 
+    /**
+     * 19 Oct, owner on a live tenant: an item sold inside deals / online is "Hidden from POS" yet sellable.
+     * The screen read "sold" as "has a counter button", so any save would have put it back on the counter.
+     */
+    public function test_a_hidden_from_the_counter_item_stays_hidden_until_its_own_question_says_otherwise(): void
+    {
+        $this->setTenant('restaurant', true);
+        $p = Product::create([
+            'sku' => 'HIDE-1', 'name' => 'Rice of the house', 'slug' => 'rice-of-the-house', 'product_type' => 'service', 'product_kind' => 'service',
+            'inventory_consumption_method' => 'none', 'is_sellable' => true, 'is_pos_visible' => false, 'is_purchasable' => false, 'is_stock_tracked' => false,
+            'default_selling_price' => 2900, 'status' => 'active',
+        ]);
+        ProductVariant::create(['product_id' => $p->id, 'sku' => 'HIDE-1', 'name' => 'Rice of the house', 'selling_price' => 2900, 'is_default' => true, 'is_active' => true]);
+
+        $html = $this->page('/products/' . $p->id . '/edit')->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/id="pos-n" name="_pos" value="0"\s+checked/', $html, 'the screen shows it as hidden');
+
+        $edit = ['_card' => 'menu_item', 'name' => 'Rice of the house', 'sku' => 'HIDE-1', 'default_selling_price' => '2950'];
+        // A save that does not carry the question (an old page, a crafted request) keeps it hidden.
+        $this->putAs('/products/' . $p->id, $this->form($edit))->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertFalse($p->fresh()->is_pos_visible);
+        $this->assertTrue($p->fresh()->is_sellable);
+        // The screen's own answer "No" keeps it hidden; "Yes" puts the button back.
+        $this->putAs('/products/' . $p->id, $this->form($edit + ['_pos' => '0']))->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertFalse($p->fresh()->is_pos_visible);
+        $this->putAs('/products/' . $p->id, $this->form($edit + ['_pos' => '1']))->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertTrue($p->fresh()->is_pos_visible);
+
+        // A new sold item has its button unless the owner says no.
+        $this->postAs('/products', $this->form(['_card' => 'menu_item', 'name' => 'Plain Rice New', 'default_selling_price' => '170']))->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertTrue(Product::where('name', 'Plain Rice New')->firstOrFail()->is_pos_visible);
+        $this->postAs('/products', $this->form(['_card' => 'menu_item', 'name' => 'Deal-only Raita', 'default_selling_price' => '0', '_pos' => '0']))->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertFalse(Product::where('name', 'Deal-only Raita')->firstOrFail()->is_pos_visible);
+    }
+
+    public function test_batch_and_expiry_keep_their_saved_difference_and_more_settings_save(): void
+    {
+        $this->setTenant('restaurant', true);
+        $this->postAs('/products', $this->form(['_card' => 'kitchen', 'name' => 'Fresh Cream', '_buy' => '1', '_stock' => '1', '_expiry' => '1']))->assertRedirect()->assertSessionHasNoErrors();
+        $p = Product::where('name', 'Fresh Cream')->firstOrFail();
+        $p->update(['requires_batch' => false]);   // expiry kept, batch not — the old form allowed it
+
+        $edit = ['_card' => 'kitchen', 'name' => 'Fresh Cream', 'sku' => $p->sku, '_buy' => '1', '_stock' => '1', '_expiry' => '1'];
+        $this->putAs('/products/' . $p->id, $this->form($edit))->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertTrue($p->fresh()->has_expiry);
+        $this->assertFalse($p->fresh()->requires_batch, 'the answer did not change, so the saved difference stays');
+
+        // More settings: posted boxes are saved; a box the business does not show keeps its saved value.
+        $unit = DB::connection('tenant')->table('units')->value('id');
+        $this->putAs('/products/' . $p->id, $this->form($edit + ['_more' => '1', 'item_kind' => 'ingredient', '_perishable' => '1', 'storage_type' => 'Fridge',
+            'shelf_life_days' => '5', 'default_wastage_percent' => '10', 'purchase_unit_id' => (string) $unit, 'purchase_pack_size' => '12']))->assertRedirect()->assertSessionHasNoErrors();
+        $f = $p->fresh();
+        $this->assertSame('ingredient', $f->item_kind);
+        $this->assertTrue($f->is_perishable);
+        $this->assertSame('Fridge', $f->storage_type);
+        $this->assertEquals(5, $f->shelf_life_days);
+        $this->assertEquals(10, $f->default_wastage_percent);
+        $this->assertEquals($unit, $f->purchase_unit_id);
+        $this->assertEquals(12, $f->purchase_pack_size);
+
+        $this->setTenant('pharmacy', true);   // the pharmacy screen shows only "Kept in"
+        $this->putAs('/products/' . $p->id, $this->form(['_card' => 'store_item', 'name' => 'Fresh Cream', 'sku' => $p->sku, '_buy' => '1', '_stock' => '1', '_expiry' => '1',
+            'default_selling_price' => '0', '_more' => '1', 'storage_type' => 'Freezer']))->assertRedirect()->assertSessionHasNoErrors();
+        $g = $p->fresh();
+        $this->assertSame('Freezer', $g->storage_type);
+        $this->assertEquals(5, $g->shelf_life_days, 'not on this screen — kept');
+        $this->assertEquals(10, $g->default_wastage_percent);
+        $this->assertTrue($g->is_perishable);
+
+        $html = $this->page('/products/' . $p->id . '/edit')->assertOk()->getContent();
+        $this->assertStringContainsString('id="storage_type"', $html);
+        $this->assertStringNotContainsString('id="shelf_life_days"', $html, 'a pharmacy does not see the kitchen boxes');
+    }
+
+    public function test_the_products_list_speaks_plain_words_only_where_the_new_screen_is_on(): void
+    {
+        $p = Product::create(['sku' => 'LIST-1', 'name' => 'Hidden Shashlik', 'slug' => 'hidden-shashlik', 'product_type' => 'service', 'product_kind' => 'service',
+            'inventory_consumption_method' => 'none', 'is_sellable' => true, 'is_pos_visible' => false, 'default_selling_price' => 0, 'status' => 'active']);
+
+        $this->setTenant('restaurant', false);
+        $old = $this->page('/products?search=Hidden+Shashlik')->assertOk()->getContent();
+        $this->assertStringContainsString('Role / Visibility', $old);
+        $this->assertStringContainsString('Hidden from POS', $old, 'switch off: the list is exactly as before');
+
+        $this->setTenant('restaurant', true);
+        $new = $this->page('/products?search=Hidden+Shashlik')->assertOk()->getContent();
+        $this->assertStringContainsString('Where it shows', $new);
+        $this->assertStringContainsString('Sold, no counter button', $new);
+        $this->assertStringContainsString('old name: Service Item', $new);
+        $this->assertStringContainsString('Has a button on the counter', $new, 'the filter ticks are plain words');
+        $this->assertStringContainsString('Service — sold, no stock', $new);
+        $this->assertStringNotContainsString('>POS Visible<', $new);
+
+        $this->assertStringContainsString('Hidden Shashlik', $this->page('/products?flags[]=hidden_from_pos')->getContent(), 'same filter underneath');
+    }
+
     public function test_stock_counting_cannot_be_switched_off_after_stock_moved(): void
     {
         $this->setTenant('mart', true);

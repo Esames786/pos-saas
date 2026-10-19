@@ -43,6 +43,27 @@
         'expiry' => ['Does it have a batch and an expiry date?', 'کیا اس کا بیچ اور ایکسپائری ہوتی ہے؟'],
         'recipe' => ['Is it made from other items (a recipe)?', 'کیا یہ دوسری چیزوں سے بنتا ہے؟'],
     ];
+    // Counter button: its own answer, never forced by "sold" (19 Oct).
+    $posOn = (bool) (int) old('_pos', $isEdit ? ($product->is_pos_visible ? 1 : 0) : 1);
+    // "More settings": the old form's kitchen and costing boxes this business uses.
+    $moreFields = match ($business) {
+        \App\Support\Business::RESTAURANT, \App\Support\Business::CATERING => ['item_kind', 'perishable', 'storage', 'shelf', 'wastage', 'buyunit'],
+        \App\Support\Business::PHARMACY => ['storage'],
+        \App\Support\Business::MART     => ['storage', 'shelf'],
+        \App\Support\Business::INDUSTRY => ['item_kind', 'wastage', 'storage'],
+        default                         => ['item_kind', 'perishable', 'storage', 'shelf', 'wastage', 'buyunit'],
+    };
+    $moreVals = [
+        'item_kind' => old('item_kind', $product?->item_kind ?? (in_array($cardDef['kind'], ['raw_material', 'packaging_material'], true) ? 'ingredient' : 'finished_good')),
+        'perishable' => (bool) (int) old('_perishable', $product?->is_perishable ? 1 : 0),
+        'storage' => old('storage_type', $product?->storage_type),
+        'shelf' => old('shelf_life_days', $product?->shelf_life_days),
+        'wastage' => old('default_wastage_percent', $product !== null && (float) $product->default_wastage_percent != 0.0 ? rtrim(rtrim((string) $product->default_wastage_percent, '0'), '.') : ''),
+        'buy_unit' => old('purchase_unit_id', $product?->purchase_unit_id),
+        'buy_size' => old('purchase_pack_size', $product?->purchase_pack_size !== null ? rtrim(rtrim((string) $product->purchase_pack_size, '0'), '.') : ''),
+    ];
+    $moreOpen = $errors->hasAny(['item_kind', 'storage_type', 'shelf_life_days', 'default_wastage_percent', 'purchase_unit_id', 'purchase_pack_size'])
+        || $moreVals['storage'] || $moreVals['shelf'] || $moreVals['wastage'] || $moreVals['buy_unit'] || $moreVals['perishable'];
     // PRODUCT-SCREEN-TABS-1 — the sections as tabs (docs/plans/product-screen-tabs-2026-10-19.md). Built from
     // what this tenant has: Packs only where Master switched them on, Website only with online ordering.
     $websiteOn = \App\Support\OnlineOrdering::enabledForTenant();
@@ -319,6 +340,16 @@
                                             <div id="sp-help" class="help">The price for one {{ $cardDef['weight'] ? 'kg / litre' : 'piece' }}. <span class="ur-inline">بیچنے کی قیمت</span></div>
                                             @error('default_selling_price')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                         </div>
+                                        {{-- Its own answer: "sold" never means "has a button" (19 Oct — items sold inside deals,
+                                             as add-ons or online are hidden from the counter on purpose). --}}
+                                        <div class="col-md-6">
+                                            <span class="form-label d-block" id="q-pos-label">Show its button on the counter (POS)?</span>
+                                            <div class="yn" role="radiogroup" aria-labelledby="q-pos-label">
+                                                <input type="radio" id="pos-y" name="_pos" value="1" @checked($posOn)><label for="pos-y">Yes</label>
+                                                <input type="radio" id="pos-n" name="_pos" value="0" @checked(! $posOn)><label for="pos-n">No, hide it</label>
+                                            </div>
+                                            <div class="help">"No" = still sold — inside a deal, as an add-on, or on the website — but the counter has no button for it. <span class="ur-inline">بٹن نہیں، پھر بھی بکتا ہے</span></div>
+                                        </div>
                                     </div>
                                 @elseif($q === 'buy')
                                     <div class="row g-3">
@@ -365,6 +396,74 @@
                         </div>
                     </div>
                 </fieldset>
+
+                {{-- The old form's kitchen and costing boxes, in plain words — only the ones this business uses.
+                     A box not shown keeps its saved value (ProductCards::resolve reads only what is posted). --}}
+                @if($moreFields)
+                <details class="step" id="pv2-more" @if($moreOpen) open @endif>
+                    <summary class="step-title" style="cursor:pointer">More settings <span class="ur-inline">مزید ترتیبات</span>
+                        <span class="help d-block" style="font-weight:400">Only if you need them — each keeps its saved value until you change it.</span></summary>
+                    <input type="hidden" name="_more" value="1">
+                    <div class="row g-3 mt-1">
+                        @if(in_array('item_kind', $moreFields, true))
+                            <div class="col-md-6">
+                                <label class="form-label" for="item_kind">Used as</label>
+                                <select id="item_kind" name="item_kind" class="form-select form-select-lg" data-touched="{{ old('item_kind') !== null || $isEdit ? 1 : 0 }}">
+                                    @foreach(['finished_good' => 'Sold as it is (finished)', 'ingredient' => 'Used in cooking (ingredient)', 'both' => 'Both'] as $v => $l)
+                                        <option value="{{ $v }}" @selected($moreVals['item_kind'] === $v)>{{ $l }}</option>
+                                    @endforeach
+                                </select>
+                                <div class="help">The old screen called this "Item Kind". <span class="ur-inline">کس کام آتا ہے</span></div>
+                            </div>
+                        @endif
+                        @if(in_array('perishable', $moreFields, true))
+                            <div class="col-md-6">
+                                <span class="form-label d-block" id="q-per-label">Goes bad quickly?</span>
+                                <div class="yn" role="radiogroup" aria-labelledby="q-per-label">
+                                    <input type="radio" id="per-y" name="_perishable" value="1" @checked($moreVals['perishable'])><label for="per-y">Yes</label>
+                                    <input type="radio" id="per-n" name="_perishable" value="0" @checked(! $moreVals['perishable'])><label for="per-n">No</label>
+                                </div>
+                                <div class="help">Milk, meat, vegetables. <span class="ur-inline">جلد خراب ہونے والی</span></div>
+                            </div>
+                        @endif
+                        @if(in_array('storage', $moreFields, true))
+                            <div class="col-md-6">
+                                <label class="form-label" for="storage_type">Kept in</label>
+                                <input id="storage_type" name="storage_type" list="pv2-storage" maxlength="50" class="form-control form-control-lg" value="{{ $moreVals['storage'] }}" placeholder="e.g. Fridge">
+                                <datalist id="pv2-storage">@foreach(['Room temperature', 'Dry store', 'Fridge', 'Freezer'] as $o)<option value="{{ $o }}"></option>@endforeach</datalist>
+                                <div class="help">Where it is kept. <span class="ur-inline">کہاں رکھا جاتا ہے</span></div>
+                            </div>
+                        @endif
+                        @if(in_array('shelf', $moreFields, true))
+                            <div class="col-md-6">
+                                <label class="form-label" for="shelf_life_days">Stays good for (days)</label>
+                                <input id="shelf_life_days" name="shelf_life_days" inputmode="numeric" class="form-control form-control-lg" value="{{ $moreVals['shelf'] }}" style="max-width:200px">
+                            </div>
+                        @endif
+                        @if(in_array('wastage', $moreFields, true))
+                            <div class="col-md-6">
+                                <label class="form-label" for="default_wastage_percent">Usual waste (%)</label>
+                                <input id="default_wastage_percent" name="default_wastage_percent" inputmode="decimal" class="form-control form-control-lg" value="{{ $moreVals['wastage'] }}" style="max-width:200px">
+                                <div class="help">Used when a recipe is costed — e.g. 10% of onions is peel. <span class="ur-inline">عام ضیاع</span></div>
+                            </div>
+                        @endif
+                        @if(in_array('buyunit', $moreFields, true))
+                            <div class="col-md-6">
+                                <label class="form-label" for="purchase_unit_id">For recipe cost: bought in</label>
+                                <div class="d-flex gap-2 align-items-center flex-wrap">
+                                    <select id="purchase_unit_id" name="purchase_unit_id" class="form-select form-select-lg" style="max-width:200px">
+                                        <option value="">— same unit —</option>
+                                        @foreach($units as $u)<option value="{{ $u->id }}" @selected((string) $moreVals['buy_unit'] === (string) $u->id)>{{ $u->name }}</option>@endforeach
+                                    </select>
+                                    <span>holding</span>
+                                    <input id="purchase_pack_size" name="purchase_pack_size" inputmode="decimal" class="form-control form-control-lg" value="{{ $moreVals['buy_size'] }}" style="max-width:120px" aria-label="How many in one">
+                                </div>
+                                <div class="help">e.g. a 50 kg sack. Only recipe costing reads this. <span class="ur-inline">ترکیب کی لاگت کے لیے</span></div>
+                            </div>
+                        @endif
+                    </div>
+                </details>
+                @endif
                 </section>
 
                 @if($packsOn)
@@ -503,6 +602,8 @@
         if (fromUser && c.weight && unit && !unit.value && unit.dataset.weightUnit) unit.value = unit.dataset.weightUnit;
         if (fromUser && c.barcode) { var y = document.getElementById('bc-y'); if (y) y.checked = true; }
         var warn = document.getElementById('pv2-card-warn'); if (warn) warn.hidden = !(IS_EDIT && c.key !== START_CARD);
+        var ik = document.getElementById('item_kind');
+        if (fromUser && ik && ik.dataset.touched !== '1') ik.value = (c.kind === 'raw_material' || c.kind === 'packaging_material') ? 'ingredient' : 'finished_good';
         refresh();
     }
 
@@ -514,7 +615,9 @@
         drawBarcode();
         var c = card(), w = [];
         var price = (document.getElementById('default_selling_price') || {}).value;
-        w.push(val('_sell') ? 'It will appear on the counter' + (price ? ' at Rs ' + price : '') + '.' : 'It will NOT appear on the counter — it is used inside the business.');
+        w.push(!val('_sell') ? 'It will NOT appear on the counter — it is used inside the business.'
+            : (val('_pos') ? 'It will appear on the counter' + (price ? ' at Rs ' + price : '') + '.'
+                : 'It is sold' + (price ? ' at Rs ' + price : '') + ', but has no button on the counter — e.g. inside a deal, as an add-on, or online.'));
         w.push(val('_buy') ? 'You can receive it from suppliers (goods receipt).' : 'It will not appear on purchase screens.');
         w.push(val('_stock') ? 'Its stock is counted: in with goods receipts, out when sold or used.' : 'Its stock is not counted.');
         if (val('_expiry')) w.push('Each goods receipt asks for batch and expiry; the oldest batch is sold first.');
@@ -589,6 +692,8 @@
     });
     form.addEventListener('input', function (e) { if (e.target.id === 'default_selling_price') refresh(); });
     window.pv2Refresh = refresh;   // the Packs step updates "What will happen" while a size is typed
+    window.pv2Card = card;         // the Review tab names the type from the chosen card
+    var ikSel = document.getElementById('item_kind'); if (ikSel) ikSel.addEventListener('change', function () { ikSel.dataset.touched = '1'; });
     applyCard(card(), false);
     var err = document.getElementById('pv2-errors'); if (err) err.focus();
 })();
@@ -606,6 +711,11 @@
     var isEdit = !!form.querySelector('input[name="_method"]');
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var current = keys[0], visited = {}, dirty = false, submitting = false;
+    var SAVED = @json(['kind' => $product?->product_kind, 'type' => $product?->product_type]);
+    var KIND = { sale_item: 'Sold item', raw_material: 'Raw material / ingredient', packaging_material: 'Packing material', service: 'Service', finished_good: 'Finished good', semi_finished: 'Half-made part', combo_virtual: 'Deal' };
+    var TYPE = { simple: 'sold as it is', recipe: 'made from a recipe', hybrid: 'recipe + its own stock', service: 'service, no stock' };
+    var METHOD = { stock_item: 'its own stock goes down', recipe: 'its recipe items go down', none: 'no stock moves' };
+    var OLD = { sale_item: 'POS Sale Item', recipe: 'Recipe / Kitchen Item', raw_material: 'Ingredient / Raw Material', packaging_material: 'Packing Material', service: 'Service Item', finished_good: 'Finished Good', semi_finished: 'Half-made part', combo_virtual: 'Deal' };
 
     function panel(k) { return document.getElementById('tp-' + k); }
     function tab(k) { return document.getElementById('tab-' + k); }
@@ -616,7 +726,7 @@
         return !!r && r.value === '1';
     }
     // Shown by its own answers — a tab panel being hidden right now does not count.
-    function shown(el) { return !!el && !el.closest('[hidden]:not(.tp)'); }
+    function shown(el) { if (!el || el.closest('[hidden]:not(.tp)')) return false; var d = el.closest('details'); return !d || d.open || el.tagName === 'SUMMARY'; }
     function selText(sel) { var s = form.querySelector(sel); return s && s.selectedIndex >= 0 ? s.options[s.selectedIndex].text.split(' — ')[0].replace(/^—\s*|\s*—$/g, '').trim() : ''; }
 
     function errorsIn(k) {
@@ -730,6 +840,7 @@
         }
         var price = val('#default_selling_price');
         row('Sold to customers', yes('_sell') ? (price ? 'Yes, Rs ' + price : 'Yes — price not written yet') : 'No', 'selling', yes('_sell') && !price);
+        if (yes('_sell')) row('Button on the counter', yes('_pos') ? 'Yes' : 'Hidden — sold in deals, as an add-on or online', 'selling');
         row('Bought from a supplier', yes('_buy') ? 'Yes' + (val('#default_purchase_price') ? ', Rs ' + val('#default_purchase_price') : '') : 'No', 'selling');
         row('Stock counted', yes('_stock') ? 'Yes' : 'No', 'selling');
         if (shown(form.querySelector('[data-q="expiry"]'))) row('Batch and expiry', yes('_expiry') ? 'Yes' : 'No', 'selling');
@@ -742,6 +853,23 @@
         var next = (document.getElementById('sku-next') || {}).textContent || '';
         row('Item code', val('#sku') || ('Made by Bingoo' + (next ? ' (' + next + ')' : '')), 'code');
         row('Barcode', yes('_barcode') ? (val('#barcode') || 'Not written yet') : 'No', 'code', yes('_barcode') && !val('#barcode'));
+        // What the system will store, in words — the old screen's name too, so nothing is a surprise.
+        var c = window.pv2Card ? window.pv2Card() : null;
+        if (c) {
+            var kind = (SAVED.kind && c.allowed_kinds.indexOf(SAVED.kind) >= 0) ? SAVED.kind : c.kind;
+            var recipe = yes('_recipe'), stock = yes('_stock') && kind !== 'service';
+            var type = recipe ? 'recipe' : (kind === 'service' ? 'service' : 'simple');
+            if (SAVED.type && ((/^(simple|service)$/.test(SAVED.type) && /^(simple|service)$/.test(type)) || (recipe && SAVED.type === 'hybrid'))) type = SAVED.type;
+            var method = recipe ? 'recipe' : (stock ? 'stock_item' : 'none');
+            row('In the old screen', OLD[kind === 'sale_item' && method === 'recipe' ? 'recipe' : kind] || kind, 'type');
+            row('In the system', (KIND[kind] || kind) + ' · ' + (TYPE[type] || type) + ' · ' + METHOD[method], 'type');
+        }
+        var ik = form.querySelector('#item_kind'); if (ik) row('Used as', selText('#item_kind'), 'selling');
+        if (form.querySelector('input[name="_perishable"]')) row('Goes bad quickly', yes('_perishable') ? 'Yes' : 'No', 'selling');
+        if (val('#storage_type')) row('Kept in', val('#storage_type'), 'selling');
+        if (val('#shelf_life_days')) row('Stays good for', val('#shelf_life_days') + ' days', 'selling');
+        if (val('#default_wastage_percent')) row('Usual waste', val('#default_wastage_percent') + '%', 'selling');
+        if (val('#purchase_unit_id')) row('For recipe cost: bought in', selText('#purchase_unit_id') + (val('#purchase_pack_size') ? ' holding ' + val('#purchase_pack_size') : ''), 'selling');
     }
     document.getElementById('pv2-review').addEventListener('click', function (e) {
         var b = e.target.closest('[data-goto]'); if (b) show(b.dataset.goto, { focusPanel: true });
