@@ -13,6 +13,7 @@ use App\Services\Finance\ManualJournalService;
 use App\Services\Finance\SupplierPayableService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
