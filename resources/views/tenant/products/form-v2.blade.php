@@ -43,6 +43,18 @@
         'expiry' => ['Does it have a batch and an expiry date?', 'کیا اس کا بیچ اور ایکسپائری ہوتی ہے؟'],
         'recipe' => ['Is it made from other items (a recipe)?', 'کیا یہ دوسری چیزوں سے بنتا ہے؟'],
     ];
+    // PRODUCT-SCREEN-TABS-1 — the sections as tabs (docs/plans/product-screen-tabs-2026-10-19.md). Built from
+    // what this tenant has: Packs only where Master switched them on, Website only with online ordering.
+    $websiteOn = \App\Support\OnlineOrdering::enabledForTenant();
+    $tabs = array_values(array_filter([
+        ['key' => 'type',    'label' => 'Type',            'ur' => 'قسم',             'icon' => 'ti-category'],
+        ['key' => 'details', 'label' => 'Details',         'ur' => 'تفصیل',           'icon' => 'ti-file-description'],
+        ['key' => 'selling', 'label' => 'Selling & stock', 'ur' => 'بیچنا اور اسٹاک', 'icon' => 'ti-building-store'],
+        $packsOn ? ['key' => 'packs', 'label' => 'Packs', 'ur' => 'پیک', 'icon' => 'ti-packages'] : null,
+        ['key' => 'code',    'label' => 'Code',            'ur' => 'کوڈ',             'icon' => 'ti-barcode'],
+        $websiteOn ? ['key' => 'website', 'label' => 'Website', 'ur' => 'ویب سائٹ', 'icon' => 'ti-world'] : null,
+        ['key' => 'review',  'label' => 'Review',          'ur' => 'جائزہ',           'icon' => 'ti-list-check'],
+    ]));
 @endphp
 
 @push('styles')
@@ -75,7 +87,7 @@
     .pv2 .q-body { padding:12px 0 6px; }
     .pv2 .form-label { font-weight:700; }
     .pv2 .help { color:var(--ink2); font-size:.85rem; }
-    .pv2 .what { position:sticky; top:12px; background:var(--navy); color:#fff; border-radius:14px; padding:16px 18px; }
+    .pv2 .what { position:sticky; top:150px; background:var(--navy); color:#fff; border-radius:14px; padding:16px 18px; }
     .pv2 .what h2 { font-size:1rem; color:#F2DFA8; margin:0 0 8px; font-weight:800; }
     .pv2 .what li { margin-bottom:6px; }
     .pv2 .note { background:var(--goldbg); border:1px solid #F2DFA8; border-radius:10px; padding:10px 12px; color:#6B5310; }
@@ -84,6 +96,44 @@
     .pv2 .bc-wrap svg { max-width:100%; height:70px; }
     .pv2 [hidden] { display:none !important; }
     @media (max-width: 991px) { .pv2 .what { position:static; } }
+
+    /* PRODUCT-SCREEN-TABS-1 — one row of tabs above the panel, sticky under the app header (65px). */
+    .pv2 .visually-hidden { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important; white-space:nowrap !important; border:0 !important; }
+    .pv2 .tabbar { position:sticky; top:65px; z-index:20; background:#F6F8FB; padding:8px 0 10px; margin-bottom:12px; }
+    .pv2 .tablist { display:flex; gap:6px; overflow-x:auto; scrollbar-width:thin; scroll-snap-type:x proximity; padding:2px; }
+    .pv2 .tab { position:relative; flex:1 0 auto; scroll-snap-align:center; display:flex; align-items:center; gap:8px; min-height:52px; padding:6px 14px;
+        border:1px solid var(--line); border-bottom:3px solid transparent; border-radius:12px; background:#fff; color:#344054; font-weight:700; text-align:left; white-space:nowrap; }
+    .pv2 .tab:hover { border-color:#CBD3DE; }
+    .pv2 .tab:focus-visible { outline:3px solid var(--navy); outline-offset:2px; }
+    .pv2 .tab .tn { position:relative; display:inline-grid; place-items:center; width:26px; height:26px; border-radius:50%; background:#EEF2F6; color:var(--navy); font-size:.85rem; flex:none; }
+    .pv2 .tab .tl { display:flex; flex-direction:column; line-height:1.15; }
+    .pv2 .tab .tl .ur-inline { font-size:.75rem; line-height:1.6; }
+    .pv2 .tab[aria-selected="true"] { background:var(--goldbg); border-color:var(--gold); border-bottom-color:var(--gold); color:var(--navy); box-shadow:0 4px 14px rgba(184,144,46,.18); }
+    .pv2 .tab[aria-selected="true"] .tn { background:var(--navy); color:#fff; }
+    .pv2 .tab[data-state="done"] .tn { background:var(--ok); color:#fff; }
+    .pv2 .tab[data-state="done"] .tn::after { content:"✓"; position:absolute; inset:0; display:grid; place-items:center; font-size:.85rem; }
+    .pv2 .tab[data-state="done"] .tn span { visibility:hidden; }
+    .pv2 .tab .terr { display:none; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:var(--bad); color:#fff; font-size:.75rem; line-height:20px; text-align:center; }
+    .pv2 .tab[data-errors] .terr { display:inline-block; }
+    .pv2 .tp:not([hidden]) { animation:pv2fade .15s ease-out; }
+    .pv2 .tp:focus { outline:none; }
+    @keyframes pv2fade { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+    @media (prefers-reduced-motion: reduce) { .pv2 .tp:not([hidden]) { animation:none; } }
+    .pv2 .savebar { position:sticky; bottom:0; z-index:20; display:flex; gap:8px; flex-wrap:wrap; align-items:center; background:#fff; border:1px solid var(--line);
+        border-radius:14px 14px 0 0; padding:10px 14px; margin-top:12px; box-shadow:0 -6px 18px rgba(9,44,76,.08); }
+    .pv2 .savebar .grow { flex:1 1 auto; }
+    .pv2 .savebar .hint { color:var(--ink2); font-size:.8rem; }
+    .pv2 .review { display:grid; grid-template-columns:minmax(150px,220px) 1fr auto; gap:0; margin:8px 0 0; }
+    .pv2 .review > * { padding:9px 4px; border-bottom:1px solid var(--line); margin:0; }
+    .pv2 .review dt { font-weight:700; color:#344054; }
+    .pv2 .review dd.miss { color:var(--bad); font-weight:700; }
+    .pv2 .review .chg { border:0; background:transparent; color:#8A6A12; font-weight:700; text-decoration:underline; }
+    @media (max-width: 767px) {
+        .pv2 .tab { flex:0 0 auto; min-height:46px; padding:6px 10px; }
+        .pv2 .tab .tl .ur-inline { display:none; }
+        .pv2 .review { grid-template-columns:1fr auto; }
+        .pv2 .review dt { grid-column:1 / -1; border-bottom:0; padding-bottom:0; }
+    }
 </style>
 @endpush
 
@@ -115,11 +165,26 @@
         <input type="hidden" name="_form_v2" value="1">
         <input type="hidden" name="_barcode_made" id="_barcode_made" value="{{ old('_barcode_made', 0) }}">
 
+        <div class="tabbar">
+            <div class="tablist" role="tablist" aria-label="Sections of this product" id="pv2-tablist">
+                @foreach($tabs as $n => $t)
+                    <button type="button" class="tab" role="tab" id="tab-{{ $t['key'] }}" aria-controls="tp-{{ $t['key'] }}" aria-selected="{{ $n === 0 ? 'true' : 'false' }}" tabindex="{{ $n === 0 ? '0' : '-1' }}" data-tab="{{ $t['key'] }}">
+                        <span class="tn" aria-hidden="true"><span>{{ $n + 1 }}</span></span>
+                        <span class="tl">{{ $t['label'] }}<span class="ur-inline">{{ $t['ur'] }}</span></span>
+                        <span class="terr" aria-hidden="true"></span>
+                        <span class="visually-hidden" data-tab-sr></span>
+                    </button>
+                @endforeach
+            </div>
+        </div>
+        <div class="visually-hidden" aria-live="polite" id="pv2-tab-live"></div>
+
         <div class="row g-3">
             <div class="col-lg-8">
 
+                <section class="tp" id="tp-type" role="tabpanel" aria-labelledby="tab-type" tabindex="-1">
                 <fieldset class="step">
-                    <legend>1. What are you adding?</legend>
+                    <legend>What are you adding?</legend>
                     <span class="ur">آپ کیا شامل کر رہے ہیں؟</span>
                     @if($businessInfo)
                         <p class="help mb-0">Showing {{ $businessInfo['label'] }} items only.</p>
@@ -140,9 +205,11 @@
                         <p class="help mt-2 mb-0" id="pv2-card-warn" hidden>You are changing the type of a saved item. Past sales and stock stay as they are.</p>
                     @endif
                 </fieldset>
+                </section>
 
+                <section class="tp" id="tp-details" role="tabpanel" aria-labelledby="tab-details" tabindex="-1" hidden>
                 <fieldset class="step">
-                    <legend>2. Basic details</legend>
+                    <legend>Basic details</legend>
                     <span class="ur">بنیادی معلومات</span>
                     <div class="row g-3 mt-1">
                         <div class="col-md-7">
@@ -220,9 +287,11 @@
                     </div>
                 </fieldset>
                 @endif
+                </section>
 
+                <section class="tp" id="tp-selling" role="tabpanel" aria-labelledby="tab-selling" tabindex="-1" hidden>
                 <fieldset class="step">
-                    <legend>3. A few questions</legend>
+                    <legend>A few questions</legend>
                     <span class="ur">چند سوال — جواب "ہاں" ہو تو اس کا حصہ کھلتا ہے</span>
 
                     @foreach($questions as $q => [$en, $ur])
@@ -295,13 +364,17 @@
                         </div>
                     </div>
                 </fieldset>
+                </section>
 
                 @if($packsOn)
-                    @include('tenant.products.partials.packs-step')
+                    <section class="tp" id="tp-packs" role="tabpanel" aria-labelledby="tab-packs" tabindex="-1" hidden>
+                        @include('tenant.products.partials.packs-step')
+                    </section>
                 @endif
 
+                <section class="tp" id="tp-code" role="tabpanel" aria-labelledby="tab-code" tabindex="-1" hidden>
                 <fieldset class="step">
-                    <legend>{{ $packsOn ? '5' : '4' }}. Code and barcode</legend>
+                    <legend>Code and barcode</legend>
                     <span class="ur">کوڈ اور بارکوڈ</span>
                     <div class="row g-3 mt-1">
                         <div class="col-md-6">
@@ -344,13 +417,30 @@
                         </div>
                     </div>
                 </fieldset>
+                </section>
 
-                @if(\App\Support\OnlineOrdering::enabledForTenant())
-                    @include('tenant.partials.website-fields', array_merge(['model' => $product, 'kind' => 'product'], \App\Services\OnlineOrdering\WebsiteFields::formData()))
+                @if($websiteOn)
+                    <section class="tp" id="tp-website" role="tabpanel" aria-labelledby="tab-website" tabindex="-1" hidden>
+                        @include('tenant.partials.website-fields', array_merge(['model' => $product, 'kind' => 'product'], \App\Services\OnlineOrdering\WebsiteFields::formData()))
+                    </section>
                 @endif
 
-                <div class="d-flex gap-2 flex-wrap mb-4">
-                    <button type="submit" class="btn btn-primary btn-big">Save <span class="ur-inline" style="color:#fff">محفوظ کریں</span></button>
+                {{-- Check your answers: every answer in plain words, each with a way back to its tab. --}}
+                <section class="tp" id="tp-review" role="tabpanel" aria-labelledby="tab-review" tabindex="-1" hidden>
+                    <fieldset class="step">
+                        <legend>Check before saving</legend>
+                        <span class="ur">محفوظ کرنے سے پہلے دیکھ لیں</span>
+                        <dl class="review" id="pv2-review"></dl>
+                        <p class="help mt-2 mb-0">Nothing is saved until you press Save. <span class="ur-inline">سیو دبانے تک کچھ محفوظ نہیں ہوتا</span></p>
+                    </fieldset>
+                </section>
+
+                <div class="savebar" role="group" aria-label="Move between sections and save">
+                    <button type="button" class="btn btn-light btn-big" id="pv2-prev">← Back</button>
+                    <button type="button" class="btn btn-outline-primary btn-big" id="pv2-next">Next →</button>
+                    <span class="grow"></span>
+                    <span class="hint d-none d-md-inline">Ctrl + Enter saves</span>
+                    <button type="submit" class="btn btn-primary btn-big" id="pv2-save">Save <span class="ur-inline" style="color:#fff">محفوظ کریں</span></button>
                     <button type="submit" name="_after" value="new" class="btn btn-outline-primary btn-big">Save and add another</button>
                     <a href="{{ $isEdit ? url('/products/' . $product->id) : url('/products') }}" class="btn btn-light btn-big d-inline-flex align-items-center">Cancel</a>
                 </div>
@@ -502,6 +592,228 @@
     form.addEventListener('input', function (e) { if (e.target.id === 'default_selling_price') refresh(); });
     applyCard(card(), false);
     var err = document.getElementById('pv2-errors'); if (err) err.focus();
+})();
+
+// PRODUCT-SCREEN-TABS-1 — the sections as tabs (W3C ARIA tabs pattern, automatic activation: every panel is
+// already on the page, so switching is instant and nothing typed is ever lost). One form, one Save.
+(function () {
+    var form = document.getElementById('pv2-form');
+    var list = document.getElementById('pv2-tablist');
+    if (!form || !list) return;
+    var tabs = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+    var keys = tabs.map(function (t) { return t.dataset.tab; });
+    var live = document.getElementById('pv2-tab-live');
+    var prevBtn = document.getElementById('pv2-prev'), nextBtn = document.getElementById('pv2-next');
+    var isEdit = !!form.querySelector('input[name="_method"]');
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var current = keys[0], visited = {}, dirty = false, submitting = false;
+
+    function panel(k) { return document.getElementById('tp-' + k); }
+    function tab(k) { return document.getElementById('tab-' + k); }
+    function label(k) { var t = tab(k); return t ? t.querySelector('.tl').firstChild.textContent.trim() : k; }
+    function val(sel) { var el = form.querySelector(sel); return el ? (el.value || '').trim() : ''; }
+    function yes(name) {
+        var r = form.querySelector('input[name="' + name + '"]:checked') || form.querySelector('input[type="hidden"][name="' + name + '"]');
+        return !!r && r.value === '1';
+    }
+    // Shown by its own answers — a tab panel being hidden right now does not count.
+    function shown(el) { return !!el && !el.closest('[hidden]:not(.tp)'); }
+    function selText(sel) { var s = form.querySelector(sel); return s && s.selectedIndex >= 0 ? s.options[s.selectedIndex].text.split(' — ')[0].replace(/^—\s*|\s*—$/g, '').trim() : ''; }
+
+    function errorsIn(k) {
+        var p = panel(k);
+        return p ? p.querySelectorAll('.invalid-feedback, .text-danger.small, [data-client-error]').length : 0;
+    }
+    function complete(k) {
+        switch (k) {
+            case 'type': return !!form.querySelector('input[name="_card"]:checked');
+            case 'details': return val('#name') !== '';
+            case 'selling': return !yes('_sell') || val('#default_selling_price') !== '';
+            case 'packs':
+                if (!yes('_packs')) return true;
+                var rows = Array.prototype.slice.call(form.querySelectorAll('#pack-rows .pack-row'));
+                return rows.length > 0 && rows.every(function (r) {
+                    var c = (r.querySelector('[data-f="contains"]').value || '').trim();
+                    return (r.querySelector('[data-f="name"]').value || '').trim() !== '' && /^\d+$/.test(c) && +c >= 2;
+                });
+            case 'review': return false;
+            default: return true;
+        }
+    }
+    function refreshStates() {
+        tabs.forEach(function (t) {
+            var k = t.dataset.tab, n = errorsIn(k), sr = t.querySelector('[data-tab-sr]');
+            t.removeAttribute('data-state');
+            if (n) {
+                t.setAttribute('data-errors', n);
+                t.querySelector('.terr').textContent = n;
+                sr.textContent = ' (' + n + (n === 1 ? ' problem' : ' problems') + ')';
+            } else {
+                t.removeAttribute('data-errors');
+                var done = (visited[k] || isEdit) && k !== current && complete(k);
+                if (done) t.setAttribute('data-state', 'done');
+                sr.textContent = done ? ' (done)' : '';
+            }
+        });
+    }
+
+    function show(k, opts) {
+        opts = opts || {};
+        if (keys.indexOf(k) < 0) k = keys[0];
+        visited[current] = true;
+        current = k;
+        tabs.forEach(function (t) {
+            var on = t.dataset.tab === k;
+            t.setAttribute('aria-selected', on ? 'true' : 'false');
+            t.tabIndex = on ? 0 : -1;
+            panel(t.dataset.tab).hidden = !on;
+        });
+        var i = keys.indexOf(k);
+        prevBtn.hidden = i === 0;
+        nextBtn.hidden = i === keys.length - 1;
+        if (i < keys.length - 1) nextBtn.textContent = 'Next: ' + label(keys[i + 1]) + ' →';
+        if (k === 'review') buildReview();
+        refreshStates();
+        // Keep the chosen tab in view on a phone, where the row scrolls sideways.
+        var t = tab(k);
+        list.scrollTo({ left: Math.max(0, t.offsetLeft - (list.clientWidth - t.clientWidth) / 2), behavior: reduce ? 'auto' : 'smooth' });
+        // A new tab starts at its top: if the page was scrolled down into the last tab, come back up.
+        var top = form.getBoundingClientRect().top + window.scrollY - 70;
+        if (opts.scroll !== false && window.scrollY > top) window.scrollTo({ top: top, behavior: reduce ? 'auto' : 'smooth' });
+        if (opts.focusTab) t.focus();
+        if (opts.focusPanel) {
+            var first = Array.prototype.slice.call(panel(k).querySelectorAll('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])')).find(shown);
+            (first || panel(k)).focus({ preventScroll: true });
+        }
+        live.textContent = 'Step ' + (i + 1) + ' of ' + keys.length + ': ' + label(k);
+        try { history.replaceState(null, '', '#' + k); } catch (e) {}
+    }
+    function step(d, focusPanel) {
+        var i = keys.indexOf(current) + d;
+        if (i >= 0 && i < keys.length) show(keys[i], { focusPanel: focusPanel });
+    }
+
+    list.addEventListener('click', function (e) { var t = e.target.closest('[role="tab"]'); if (t) show(t.dataset.tab); });
+    list.addEventListener('keydown', function (e) {
+        var i = keys.indexOf(current), n = null;
+        if (e.key === 'ArrowRight') n = (i + 1) % keys.length;
+        else if (e.key === 'ArrowLeft') n = (i - 1 + keys.length) % keys.length;
+        else if (e.key === 'Home') n = 0;
+        else if (e.key === 'End') n = keys.length - 1;
+        if (n === null) return;
+        e.preventDefault();
+        show(keys[n], { focusTab: true });
+    });
+    prevBtn.addEventListener('click', function () { step(-1, true); });
+    nextBtn.addEventListener('click', function () { step(1, true); });
+
+    // Check your answers (Review tab): every answer in plain words, each with a way back to its tab.
+    function buildReview() {
+        var dl = document.getElementById('pv2-review');
+        dl.innerHTML = '';
+        function row(title, value, goTo, missing) {
+            var dt = document.createElement('dt'); dt.textContent = title;
+            var dd = document.createElement('dd'); dd.textContent = value || '—'; if (missing) dd.className = 'miss';
+            var act = document.createElement('dd');
+            var b = document.createElement('button'); b.type = 'button'; b.className = 'chg'; b.dataset.goto = goTo;
+            b.textContent = 'Change'; b.setAttribute('aria-label', 'Change ' + title);
+            act.appendChild(b);
+            dl.appendChild(dt); dl.appendChild(dd); dl.appendChild(act);
+        }
+        var card = form.querySelector('input[name="_card"]:checked');
+        row('Type', card ? card.closest('.pcard').querySelector('b').textContent : '', 'type');
+        row('Name', val('#name') || 'Not written yet', 'details', !val('#name'));
+        row('Group', selText('#category_id') || 'None', 'details');
+        row('Sold and counted in', selText('#unit_id') || 'Piece', 'details');
+        if (shown(form.querySelector('[data-only="medicine"]'))) {
+            row('Salt and strength', [val('#generic_name'), val('#strength')].filter(Boolean).join(' · ') || 'Not written', 'details');
+            row('Prescription', yes('_rx') ? 'Needed' : 'Not needed', 'details');
+        }
+        var price = val('#default_selling_price');
+        row('Sold to customers', yes('_sell') ? (price ? 'Yes, Rs ' + price : 'Yes — price not written yet') : 'No', 'selling', yes('_sell') && !price);
+        row('Bought from a supplier', yes('_buy') ? 'Yes' + (val('#default_purchase_price') ? ', Rs ' + val('#default_purchase_price') : '') : 'No', 'selling');
+        row('Stock counted', yes('_stock') ? 'Yes' : 'No', 'selling');
+        if (shown(form.querySelector('[data-q="expiry"]'))) row('Batch and expiry', yes('_expiry') ? 'Yes' : 'No', 'selling');
+        if (shown(form.querySelector('[data-q="recipe"]'))) row('Made from a recipe', yes('_recipe') ? 'Yes' : 'No', 'selling');
+        row('Tax', yes('_tax') ? (val('#tax_rate_percent') || '?') + '%' : 'No', 'selling');
+        if (panel('packs')) {
+            var sum = (document.getElementById('pack-sum') || {}).textContent || '';
+            row('Packs', yes('_packs') ? (/=/.test(sum) ? sum : 'Not finished') : 'No', 'packs', yes('_packs') && !/=/.test(sum));
+        }
+        var next = (document.getElementById('sku-next') || {}).textContent || '';
+        row('Item code', val('#sku') || ('Made by Bingoo' + (next ? ' (' + next + ')' : '')), 'code');
+        row('Barcode', yes('_barcode') ? (val('#barcode') || 'Not written yet') : 'No', 'code', yes('_barcode') && !val('#barcode'));
+    }
+    document.getElementById('pv2-review').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-goto]'); if (b) show(b.dataset.goto, { focusPanel: true });
+    });
+
+    // Enter never sends the form by accident (a barcode scanner ends with Enter): it moves to the next box,
+    // and from the last box of a tab to the next tab. Ctrl + Enter saves.
+    form.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        var t = e.target;
+        if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            var save = document.getElementById('pv2-save');
+            if (form.requestSubmit) form.requestSubmit(save); else save.click();
+            return;
+        }
+        if (t.tagName !== 'INPUT' && t.tagName !== 'SELECT') return;
+        if (['submit', 'button', 'file', 'checkbox'].indexOf(t.type) >= 0) return;
+        e.preventDefault();
+        var p = panel(current);
+        var fields = Array.prototype.slice.call(p.querySelectorAll('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])')).filter(shown);
+        var at = fields.indexOf(t);
+        if (at >= 0 && at < fields.length - 1) fields[at + 1].focus();
+        else step(1, true);
+    });
+
+    // Quick checks before sending; the server checks everything again and decides.
+    form.addEventListener('submit', function (e) {
+        form.querySelectorAll('[data-client-error]').forEach(function (el) { el.remove(); });
+        var problems = [];
+        function need(k, el, msg) { if (el) problems.push([k, el, msg]); }
+        if (!val('#name')) need('details', form.querySelector('#name'), 'Write the item name.');
+        if (yes('_sell') && !val('#default_selling_price')) need('selling', form.querySelector('#default_selling_price'), 'Write the selling price.');
+        if (panel('packs') && yes('_packs')) {
+            form.querySelectorAll('#pack-rows .pack-row').forEach(function (r) {
+                var name = r.querySelector('[data-f="name"]'), c = r.querySelector('[data-f="contains"]');
+                if (!(name.value || '').trim()) need('packs', name, 'Give this pack a name, for example Strip.');
+                if (!/^\d+$/.test((c.value || '').trim()) || +c.value < 2) need('packs', c, 'How many are in one? A whole number, 2 or more.');
+            });
+        }
+        if (problems.length) {
+            e.preventDefault();
+            problems.forEach(function (p) {
+                var m = document.createElement('div');
+                m.className = 'text-danger small mt-1'; m.setAttribute('data-client-error', '1'); m.setAttribute('role', 'alert');
+                m.textContent = p[2];
+                (p[1].closest('.input-group, .pack-holds') || p[1]).insertAdjacentElement('afterend', m);
+            });
+            show(problems[0][0]);
+            problems[0][1].focus();
+            refreshStates();
+            return;
+        }
+        submitting = true;
+    });
+
+    // Leaving with unsaved changes asks first.
+    form.addEventListener('input', function () { dirty = true; });
+    form.addEventListener('change', function (e) {
+        dirty = true;
+        // An answer fixed here clears this box's earlier client message.
+        var m = e.target.parentElement && e.target.parentElement.parentElement && e.target.parentElement.parentElement.querySelector('[data-client-error]');
+        if (m && (e.target.value || '').trim()) { m.remove(); refreshStates(); }
+    });
+    window.addEventListener('beforeunload', function (e) { if (dirty && !submitting) { e.preventDefault(); e.returnValue = ''; } });
+
+    // Start: the first tab with a problem after a failed save, else the tab in the address (#packs), else the first.
+    var hash = (location.hash || '').replace('#', '');
+    if (hash === 'packs-step') hash = 'packs';
+    var withError = keys.filter(function (k) { return errorsIn(k) > 0; })[0];
+    show(withError || (keys.indexOf(hash) >= 0 ? hash : keys[0]), { scroll: false });
 })();
 </script>
 @endpush
