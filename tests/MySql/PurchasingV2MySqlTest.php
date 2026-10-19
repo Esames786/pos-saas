@@ -123,6 +123,12 @@ class PurchasingV2MySqlTest extends MySqlTenantTestCase
         $this->postAs('/goods-receipts', $this->grn([['product_id' => $p->id, 'batch_no' => 'B', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '100', 'packs' => [(string) $box->id => '1.5']]]))
             ->assertSessionHasErrors('lines.0.packs');
         $this->assertSame($before, GoodsReceipt::count());
+
+        // People type the expiry in many ways (owner, 19 Oct: "0928"); all of these mean Sep 2028.
+        foreach (['0928', '09/28', '9/28', '09-28', '09/2028', '2028-09-30'] as $typed) {
+            $this->assertSame('2028-09-30', \App\Support\PackLines::expiry($typed), $typed);
+        }
+        $this->assertFalse(\App\Support\PackLines::expiry('1328'), 'month 13 is refused');
     }
 
     public function test_the_old_grn_post_is_untouched(): void
