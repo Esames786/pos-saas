@@ -33,9 +33,13 @@ class ProductLookupController extends Controller
         $branchId = (int) $request->input('branch_id', 0);
         $fromDeptId = (int) $request->input('from_department_id', 0);
         $toDeptId = (int) $request->input('to_department_id', 0);
+        // PURCHASING-V2-1: the new entry area asks for each item's packs, finds a box by its own barcode and
+        // shows the last price paid to this supplier — only when it asks; older screens get the same answer.
+        $withPacks = $request->boolean('packs') && \App\Support\PackUnits::enabled();
+        $supplierId = (int) $request->input('supplier_id', 0);
 
         $query = $rich
-            ? Product::query()->with(['unit:id,code,unit_type', 'variants'])
+            ? Product::query()->with(['unit:id,code,name,unit_type', 'variants'])
             : Product::query()->select(['id', 'sku', 'name']);
 
         if ($request->boolean('only_active', true)) {
@@ -105,7 +109,7 @@ class ProductLookupController extends Controller
             // codes by prefix and SKUs by prefix only, with the EXACT code
             // match ranked first; text queries keep the broad behaviour.
             $isCode = ctype_digit($q);
-            $query->where(function ($w) use ($q, $isCode) {
+            $query->where(function ($w) use ($q, $isCode, $withPacks) {
                 if ($isCode) {
                     $w->where('sku', 'like', "{$q}%")
                         ->orWhere('name', 'like', "%{$q}%")
@@ -114,6 +118,9 @@ class ProductLookupController extends Controller
                     $w->where('sku', 'like', "%{$q}%")
                         ->orWhere('name', 'like', "%{$q}%")
                         ->orWhereHas('barcodes', fn ($b) => $b->where('barcode', 'like', "%{$q}%"));
+                }
+                if ($withPacks) {
+                    $w->orWhereHas('packUnits', fn ($b) => $b->where('barcode', $q));
                 }
             });
             if ($isCode) {
@@ -129,6 +136,9 @@ class ProductLookupController extends Controller
         // hashed SKU. Real scan barcodes (EAN-8/13) are longer than 5 digits
         // and are deliberately NOT promoted to display codes.
         $query->with('barcodes:id,product_id,barcode');
+        if ($withPacks) {
+            $query->with('packUnits');
+        }
 
         $total = (clone $query)->count();
 
@@ -179,7 +189,7 @@ class ProductLookupController extends Controller
             : null;
 
         $isCode = $isCode ?? false;
-        $results = $records->map(function (Product $p) use ($rich, $branchId, $context, $deptInventory, $destResolver, $fromDeptId, $toDeptId, $isCode, $q) {
+        $results = $records->map(function (Product $p) use ($rich, $branchId, $context, $deptInventory, $destResolver, $fromDeptId, $toDeptId, $isCode, $q, $withPacks, $supplierId, $request) {
             // Display code: the barcode the query matched, else the product's
             // shortest short-numeric code (the human item id), else the SKU.
             $codeLabel = null;
@@ -274,6 +284,12 @@ class ProductLookupController extends Controller
                     ? in_array($toDeptId, $destResolver->matchingDepartmentIds($p->id, $p->category_id), true)
                     : null,
                 'branch_average_cost' => $deptInventory->officialAverageCost($branchId, $p->id, $default?->id),
+            ] : []) + ($request->boolean('packs') ? [
+                // PURCHASING-V2-1: biggest pack first; 'key' is what the page posts back (a pack id, or "base").
+                'unit_name'    => $p->unit?->name ?: 'Piece',
+                'packs'        => collect(\App\Support\PackLines::packsOf($p, $withPacks))->map(fn ($pk, $key) => $pk + ['key' => (string) $key])->values()->all(),
+                'scanned_pack' => $withPacks && $q !== '' ? (string) ($p->packUnits->firstWhere('barcode', $q)?->id ?? '') : '',
+                'last_cost'    => $supplierId > 0 ? self::lastCost($p->id, $supplierId) : null,
             ] : []));
         });
 
@@ -281,5 +297,18 @@ class ProductLookupController extends Controller
             'results' => $results,
             'pagination' => ['more' => ($page * self::PER_PAGE) < $total],
         ]);
+    }
+
+    /** PURCHASING-V2-1 — the last price paid to this supplier for one unit of the item, and when. */
+    private static function lastCost(int $productId, int $supplierId): ?array
+    {
+        $row = \Illuminate\Support\Facades\DB::connection('tenant')->table('goods_receipt_lines as l')
+            ->join('goods_receipts as g', 'g.id', '=', 'l.goods_receipt_id')
+            ->where('g.supplier_id', $supplierId)->where('g.status', 'posted')
+            ->where('l.product_id', $productId)->where('l.unit_cost', '>', 0)
+            ->orderByDesc('g.receipt_date')->orderByDesc('l.id')
+            ->first(['l.unit_cost', 'g.receipt_date']);
+
+        return $row ? ['unit_cost' => (float) $row->unit_cost, 'date' => (string) $row->receipt_date] : null;
     }
 }

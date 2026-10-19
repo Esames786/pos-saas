@@ -48,11 +48,18 @@ class PurchaseOrderController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('tenant.purchase-orders.create', compact('branches', 'suppliers', 'products'));
+        return view('tenant.purchase-orders.create', compact('branches', 'suppliers', 'products') + [
+            'entryV2' => \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PURCHASING_V2),
+        ]);
     }
 
     public function store(Request $request)
     {
+        // PURCHASING-V2-1: the new entry area posts packs; turned into today's lines first (no bonus on a PO).
+        if ($request->boolean('_entry_v2')) {
+            $request->merge(['lines' => \App\Support\PackLines::toLines((array) $request->input('lines', []), 'quantity_ordered', false)]);
+        }
+
         // Drop fully-blank rows before validation so empty lines never trigger
         // confusing per-line errors (works even if client-side JS is bypassed).
         $request->merge([
@@ -76,6 +83,9 @@ class PurchaseOrderController extends Controller
             'lines.*.discount_amount'  => 'nullable|numeric|min:0',
             'lines.*.tax_amount'       => 'nullable|numeric|min:0',
             'lines.*.notes'            => 'nullable|string|max:500',
+            'lines.*.pack_unit_id'     => 'nullable|integer',
+            'lines.*.pack_factor'      => 'nullable|integer|min:1',
+            'lines.*.base_quantity'    => 'nullable|numeric|min:0',
         ]);
 
         $validLines = collect($data['lines'])->filter(fn($l) => !empty($l['product_id']));
@@ -112,6 +122,9 @@ class PurchaseOrderController extends Controller
                     'discount_amount'    => $line['discount_amount'] ?? 0,
                     'tax_amount'         => $line['tax_amount'] ?? 0,
                     'notes'              => $line['notes'] ?? null,
+                    'pack_unit_id'       => $line['pack_unit_id'] ?? null,
+                    'pack_factor'        => $line['pack_factor'] ?? null,
+                    'base_quantity'      => $line['base_quantity'] ?? null,
                 ]);
             }
         });

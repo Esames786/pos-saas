@@ -15,6 +15,8 @@ class GoodsReceiptLine extends Model
         'discount_amount', 'tax_amount', 'notes', 'affects_stock',
         // PNL-COST-BY-CATEGORY-1: the account the bill actually debited for this purchase-only line.
         'cost_account_id',
+        // PURCHASING-V2-1: the pack the price was typed in (screens only; quantity/cost stay per unit).
+        'pack_unit_id', 'pack_factor', 'base_quantity',
     ];
 
     protected $casts = [

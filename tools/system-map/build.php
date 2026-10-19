@@ -196,7 +196,8 @@ function tablesInFile(string $file, array $modelTable, array $tables, int $depth
     if (preg_match_all("/->table\\(\\s*'([a-z0-9_]+)'/", $src, $m)) {
         foreach ($m[1] as $t) if (isset($tables[$t])) $found[$t] ??= 'DB::table';
     }
-    if ($depth === 0 && preg_match_all('/\\\\?(App\\\\Services\\\\[A-Za-z0-9\\\\]+)/', $src, $m)) {
+    // Services and the Support helpers (PackUnits, PackLines, ProductCards … reach tables too).
+    if ($depth === 0 && preg_match_all('/\\\\?(App\\\\(?:Services|Support)\\\\[A-Za-z0-9\\\\]+)/', $src, $m)) {
         foreach (array_unique($m[1]) as $svc) {
             $path = $root . '/app/' . str_replace('\\', '/', substr($svc, 4)) . '.php';
             if (is_file($path)) {

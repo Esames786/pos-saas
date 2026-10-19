@@ -12,6 +12,8 @@ class PurchaseOrderLine extends Model
     protected $fillable = [
         'purchase_order_id', 'product_id', 'product_variant_id',
         'quantity_ordered', 'unit_cost', 'discount_amount', 'tax_amount', 'notes',
+        // PURCHASING-V2-1: the pack the price was typed in (screens only).
+        'pack_unit_id', 'pack_factor', 'base_quantity',
     ];
 
     public function purchaseOrder()
