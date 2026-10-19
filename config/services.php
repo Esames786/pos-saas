@@ -3,6 +3,25 @@
 return [
 
     /*
+     * WHATSAPP-REPORT-CHANNEL-1 — Cloud API, direct. No BSP: a provider wanted PKR 14,000/month to
+     * wrap one HTTP call, against a message bill of roughly PKR 840.
+     *
+     * The template is APPROVED and therefore frozen — its name, language and five body variables
+     * cannot change without a new Meta review. 'language' is 'en', NOT 'en_US': the approved
+     * template is English, while the two sample templates on the same account are English (US).
+     * The wrong code is not a warning, it is a failed send.
+     */
+    'whatsapp' => [
+        'base_url'        => env('WHATSAPP_BASE_URL', 'https://graph.facebook.com'),
+        'version'         => env('WHATSAPP_API_VERSION', 'v25.0'),
+        'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+        'token'           => env('WHATSAPP_TOKEN'),
+        'template'        => env('WHATSAPP_TEMPLATE', 'daily_sales_report'),
+        'language'        => env('WHATSAPP_TEMPLATE_LANG', 'en'),
+    ],
+
+
+    /*
     |--------------------------------------------------------------------------
     | Third Party Services
     |--------------------------------------------------------------------------

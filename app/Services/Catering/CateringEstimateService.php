@@ -73,7 +73,10 @@ class CateringEstimateService
 
     public function updateEvent(CateringEvent $event, array $eventData): CateringEvent
     {
-        if (! $event->isOpen()) {
+        // CATERING-EDIT-AFTER-RELEASE-1: `released` booking ki tafseel bhi
+        // badli ja sakti hai — aam taur par wahi din hota hai jab pata ya
+        // waqt badalta hai.
+        if (! $event->isCommerciallyOpen()) {
             throw new RuntimeException("Event {$event->event_no} is {$event->status} and can no longer be edited.");
         }
 
@@ -448,6 +451,23 @@ class CateringEstimateService
             // of the same version would otherwise both pass this check and both
             // supersede it, leaving two "current" quotations for one booking.
             $this->locks->refreshEstimate($estimate);
+
+            // CATERING-EDIT-AFTER-RELEASE-1 (1 Oct) — YE JAANCH YAHAN THI HI
+            // NAHI, aur us ki kami ne prod par ek booking phansa di.
+            //
+            // EV-20261001-0120: 12:14:48 par production release hui, aur
+            // 12:16:55 par kisi ne Revise daba diya. revise() sirf ESTIMATE ka
+            // status dekhta tha, booking ka kabhi nahi — is liye wo chal gaya:
+            // Q1 superseded, Q2 draft. Nateeja ek band gali thi. Edit mana
+            // karta tha (booking khuli nahi), Revise mana karta tha (estimate
+            // draft hai), aur invoice bhi mana karti thi (draft bill nahi
+            // hota). Har pehra apni jagah durust tha; mil kar unhon ne ek aisa
+            // kamra bana diya jis ka darwaza nahi tha.
+            //
+            // Ab booking ki haalat PEHLE dekhi jati hai. Ye jaanch
+            // `assertEditable()` me bhi hai, magar revise() wahan se guzarta
+            // nahi — wo apne alag qaide par chalta hai.
+            $this->locks->assertRevisable($estimate);
 
             if ($estimate->isDraft()) {
                 throw new RuntimeException('The estimate is still a draft — edit it directly instead of revising.');

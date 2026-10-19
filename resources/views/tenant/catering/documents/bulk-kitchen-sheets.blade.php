@@ -1,8 +1,14 @@
-{{-- KASHIF-CATERING-OPERATOR-UI-1 — a print run of kitchen sheets, one released
+{{-- KASHIF-CATERING-OPERATOR-UI-1 — a print run of kitchen sheets, one
      booking per sheet, rendered from the same body partial as the single
-     document. Only bookings with a RELEASED production snapshot appear — a
-     kitchen sheet invented from a draft estimate is exactly what the release
-     authority exists to prevent. Read-only; prints nothing by itself. --}}
+     document.
+
+     KITCHEN-SHEET-PREVIEW-1 (27 Sep): ab HAR status ki booking aati hai. Jis
+     ki production release ho chuki hai us ka asli parcha, aur jis ki nahi hui
+     us ka aarzi — aur aarzi parcha khud apne oopar likhta hai ke wo jaari
+     nahi hua. Yahan pehle likha tha ke draft se parcha gharna wohi cheez hai
+     jise release ka nizam rokta hai; malik ne us ke khilaf faisla diya.
+
+     Read-only; prints nothing by itself. --}}
 @php
     $isUr = $lang === 'ur';
     $isBoth = $lang === 'both';
@@ -28,7 +34,7 @@
         </button>
         @if(! empty($skippedEvents))
             <div style="color:#92400e;font-size:12px;margin-top:4px">
-                No released kitchen sheet yet, skipped: {{ implode(', ', $skippedEvents) }}
+                Koi quotation nahi, is liye chhoot gayin: {{ implode(", ", $skippedEvents) }}
             </div>
         @endif
     </div>

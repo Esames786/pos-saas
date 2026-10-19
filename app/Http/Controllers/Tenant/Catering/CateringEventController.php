@@ -24,6 +24,13 @@ class CateringEventController extends Controller
         $filter = $request->input('filter');
         $status = $request->input('status');
 
+        // CATERING-LIST-DATE-RANGE-1 (27 Sep) — "date range filter bhi de do".
+        // Bucket cards sirf aaj/kal/haftay ke sawal ka jawab dete hain. Malik ka
+        // asal sawal aksar "is mahine kya kya tha" hota hai, aur us ka koi
+        // raasta nahi tha.
+        $from = $this->filterDate($request->input('from'));
+        $to = $this->filterDate($request->input('to'));
+
         // KASHIF-CATERING-OPERATOR-UI-1: predictable search over the fields an
         // operator actually holds — booking number, customer, phone, venue or
         // address. Deliberately NOT a cross-module global search.
@@ -31,7 +38,11 @@ class CateringEventController extends Controller
 
         $query = CateringEvent::with([
             'currentEstimate',
-            'finalInvoice:id,catering_event_id,balance_due,status',
+            // CATERING-LIVE-BALANCE-1: `grand_total` bhi — fehrist ab baqi ka hisaab
+            // khud lagati hai (jama hue `balance_due` ke bajaye), aur us hisaab
+            // ka ek sira yehi adad hai. Ise chhorne par har booking "kuch baqi
+            // nahi" dikhane lagti — ek khamosh aur bilkul ghalat jawab.
+            'finalInvoice:id,catering_event_id,grand_total,balance_due,status',
             // KASHIF-EVENT-ACTIONS-1: the row Actions menu links straight to the
             // kitchen sheet / production release, so the release identity has to
             // travel with the row rather than cost a query per booking.
@@ -53,6 +64,22 @@ class CateringEventController extends Controller
             // first — the old ascending order buried today's work under an
             // event book that now runs years deep.
             ->orderByDesc('id');
+
+        // Likhi hui range aur bucket card DONO event_date ko baandhte hain. Agar
+        // dono chal jayen to fehrist khamoshi se un ka QATAA (intersection)
+        // dikhati hai — aksar khali — aur operator ko do filter nazar aate hain
+        // jin me se har ek theek lagta hai. Sarih range jeetti hai, aur bucket
+        // gira diya jata hai taake card bhi chuna hua dikhna band kar de.
+        if ($from !== null || $to !== null) {
+            $filter = null;
+        }
+
+        if ($from !== null) {
+            $query->whereDate('event_date', '>=', $from);
+        }
+        if ($to !== null) {
+            $query->whereDate('event_date', '<=', $to);
+        }
 
         match ($filter) {
             'today' => $query->whereDate('event_date', $today),
@@ -97,7 +124,33 @@ class CateringEventController extends Controller
                 : null;
         }
 
-        return view('tenant.catering.events.index', compact('events', 'buckets', 'filter', 'status', 'q', 'backTargets'));
+        return view('tenant.catering.events.index',
+            compact('events', 'buckets', 'filter', 'status', 'q', 'backTargets', 'from', 'to'));
+    }
+
+    /**
+     * Ek tareekh jis par bharosa kiya ja sake, warna kuch nahi.
+     *
+     * Aadha likha hua khana fehrist ko khali nahi kar sakta: browser ka date
+     * input khali ya poora bhejta hai, magar URL haath se bhi likhi jati hai.
+     * Round-trip isi liye jaanchi jati hai — Carbon '2026-13-45' ko chupke se
+     * agle saal me badal deta hai, aur phir fehrist ek aisi tareekh dikhati
+     * hai jo kisi ne maangi hi nahi thi.
+     */
+    private function filterDate(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            $date = \Carbon\Carbon::createFromFormat('Y-m-d', $value);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $date && $date->format('Y-m-d') === $value ? $date->toDateString() : null;
     }
 
     public function create()
@@ -257,9 +310,18 @@ class CateringEventController extends Controller
         // and the server-side send/confirm gate can never reach different
         // verdicts about the same estimate.
         $costingReadiness = null;
+        // CATERING-ADOPT-PUNCHED-RATE-1: the dishes the blocker is about, with
+        // the rate this quotation already carries for each — so the wall can
+        // carry the way through it instead of only the reason.
+        $rateOffers = [];
         if ($cateringEvent->currentEstimate && $cateringEvent->currentEstimate->lines->isNotEmpty()) {
             $costingReadiness = app(\App\Services\Catering\CateringEstimateCostingService::class)
                 ->readiness($cateringEvent->currentEstimate);
+
+            if (! $costingReadiness['ready']) {
+                $rateOffers = app(\App\Services\Catering\CateringPunchedRateAdoptionService::class)
+                    ->offersFor($cateringEvent->currentEstimate);
+            }
         }
 
         // KASHIF-CATERING-PRODUCT-UX-1 (item 7) — destinations for sending a
@@ -303,6 +365,7 @@ class CateringEventController extends Controller
             'profileMap' => $profileMap,
             'paymentMethods' => $paymentMethods,
             'costingReadiness' => $costingReadiness,
+            'rateOffers' => $rateOffers,
             'printers' => $printers,
             'position' => $finance->position($cateringEvent),
             // CATERING-STATUS-ROLLBACK-1: worked out once, by the service that
@@ -316,6 +379,14 @@ class CateringEventController extends Controller
                 ->restoreTargetIsAssumed($cateringEvent),
             'headline' => $finance->headline($cateringEvent),
             'ledger' => $finance->ledger($cateringEvent),
+            // CATERING-ADVANCE-VOID-1 — ulti hui receipts ALAG se.
+            //
+            // Inhein `advances` relation me milana aasan tha aur ghalat hota:
+            // wohi relation hai jis se `$advanceTotal` aur baqi sums bante
+            // hain. Ek nazar aane wali satar ki khatir ulti hui rakam dobara
+            // ginti me aa jati. Nazar aana aur gina jana do alag cheezein hain
+            // aur yahan unhein alag hi rehna chahiye.
+            'voidedAdvances' => $finance->voidedAdvances($cateringEvent),
             // KASHIF-EVENT-HISTORY-1: the unified timeline + every quotation
             // version, for the History panel.
             'revisions' => $revisions,
@@ -487,6 +558,49 @@ class CateringEventController extends Controller
         return back()->with('status', $message);
     }
 
+    /**
+     * CATERING-PHONE-2-1 — phone ki ginti ADADON par, likhi hui shakl par nahi.
+     *
+     * Operator "0312-2951623" ya "+92 312 2951623" likhta hai. `digits_between`
+     * aisi string ko seedha rad kar deta hai, halanke number bilkul durust
+     * hai. Is liye pehle ghair-adad nikaal kar ginti ki jati hai — bilkul
+     * wohi kaam jo `CustomerDirectory::normalizePhone` karta hai, taake jo
+     * number yahan qubool ho wo aage customer dhoondne me bhi chale.
+     *
+     * 11 se 14: 11 seedha `03xxxxxxxxx`, aur 14 tak taake `+92` wali shakl
+     * bhi samaye.
+     */
+    /**
+     * CATERING-PHONE-11-1 (29 Sep) — THEEK 11 adad, dono khaanon par.
+     *
+     * Pehle 11 se 14 ki gunjaish thi taake "+92 312 2951623" bhi chal jaye.
+     * Malik ne 29 Sep ko us gunjaish ko band karwa diya: "limit the phone
+     * number 11 digits, both required and optional fields if entered."
+     *
+     * ⚠ IS KA EK ASAR HAI: "+92" wali shakl (12 adad) ab RAD hogi. Ye qeemat
+     * jaan-boojh kar di ja rahi hai — ek hi shakl ka hona graahak ki pehchan
+     * ko bharosa-mand banata hai, kyunke customer usi number se dhoonda aur
+     * banaya jata hai. Is liye paigham sirf "ghalat" nahi kehta, wo BATATA
+     * hai ke karna kya hai.
+     *
+     * GINTI ADADON PAR hoti hai, likhi hui shakl par nahi: "0312-295 1623"
+     * bilkul durust hai aur usay rad karna operator ko bina wajah rokna hai.
+     */
+    private function phoneDigits(): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) {
+            $digits = strlen(preg_replace('/\D+/', '', (string) $value) ?? '');
+            if ($digits === 11) {
+                return;
+            }
+
+            $fail($digits > 11
+                ? "Phone number me theek 11 adad hone chahiyen — is me {$digits} hain. "
+                    .'Agar "+92" se likha hai to us ki jagah 0 lagayein.'
+                : "Phone number me theek 11 adad hone chahiyen — is me sirf {$digits} hain.");
+        };
+    }
+
     private function validated(Request $request): array
     {
         // KASHIF-EVENT-FORM-3 — a TYPED name is not a customer id.
@@ -507,13 +621,27 @@ class CateringEventController extends Controller
             'customer_id' => ['nullable', 'exists:customers,id'],
             'customer_name' => ['required', 'string', 'max:255'],
             'customer_name_ur' => ['nullable', 'string', 'max:255'],
-            'customer_phone' => ['nullable', 'string', 'max:50'],
+            // CATERING-PHONE-2-1 (27 Sep) — phone 1 LAZMI, phone 2 marzi ka.
+            //
+            // Phone lazmi is liye ke customer ki pehchan usi par bunti hai:
+            // `findOrCreateByPhone` phone na hone par kuch nahi karta, aur
+            // booking kisi graahak ke khaate me jati hi nahi. Prod par aisi
+            // 11 bookings mili jin par naam to tha magar phone nahi, aur
+            // isi liye un ka koi balance nikala hi nahi ja sakta tha.
+            //
+            // Ginti ADADON par hoti hai, likhe hue huroof par nahi: log
+            // "0312-2951623" likhte hain, aur `digits_between` aisi string
+            // ko rad kar deta hai. 11 se 14 — 11 seedha 03xxxxxxxxx, aur 14
+            // tak is liye ke +92 wali shakl aur space bhi samaye.
+            'customer_phone' => ['required', 'string', 'max:50', $this->phoneDigits()],
+            'customer_phone_2' => ['nullable', 'string', 'max:50', $this->phoneDigits()],
             'customer_email' => ['nullable', 'email', 'max:255'],
             'customer_address' => ['nullable', 'string', 'max:2000'],
             'event_type' => ['nullable', 'string', 'max:50'],
             'booking_date' => ['required', 'date'],
             'event_date' => ['required', 'date'],
             'service_time' => ['nullable', 'date_format:H:i'],
+            'dispatch_time' => ['nullable', 'date_format:H:i'],
             'venue' => ['nullable', 'string', 'max:255'],
             // CATERING-PAX-OPTIONAL-1: an inquiry often arrives before the guest
             // count does — "shaadi hai, rate bata dein" — and the booking was

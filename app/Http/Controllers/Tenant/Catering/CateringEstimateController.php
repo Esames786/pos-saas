@@ -200,9 +200,34 @@ class CateringEstimateController extends Controller
         return back()->with('status', $message);
     }
 
-    public function send(CateringEstimate $cateringEstimate)
+    public function send(Request $request, CateringEstimate $cateringEstimate)
     {
+        // CATERING-ADOPT-PUNCHED-RATE-1 — a dish with no cost block stopped this
+        // quotation dead, and the only way round it was to leave the booking,
+        // add a block by hand and come back. What operators actually added was
+        // an empty block at rate 0, purely to open the door. The screen now
+        // offers the rate this quotation already carries, and the yes lands here.
+        //
+        // Deliberately part of SEND rather than a route of its own: the
+        // authority being exercised IS "send this quotation", so it needs no
+        // second permission — and a new route would mean granting one to every
+        // non-Owner role by hand after the deploy.
+        //
+        // Only the dish IDs come from the request. Every rate is read from the
+        // line by the service, so this cannot be used to set a price.
+        $adopt = array_values(array_filter(array_map('intval', (array) $request->input('adopt_punched_rate', []))));
+
         try {
+            if ($adopt !== []) {
+                $adopted = app(\App\Services\Catering\CateringPunchedRateAdoptionService::class)
+                    ->adopt($cateringEstimate, $adopt, $request->user()?->id);
+
+                if ($adopted !== []) {
+                    app(\App\Services\Catering\CateringEventHistoryService::class)
+                        ->record($cateringEstimate->event, 'cost_block_adopted', $request->user()?->id);
+                }
+            }
+
             $this->estimates->markSent($cateringEstimate);
         } catch (RuntimeException $e) {
             return back()->withErrors(['estimate' => $e->getMessage()]);

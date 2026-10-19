@@ -66,6 +66,9 @@ class CateringCommercialRateController extends Controller
 
         return view('tenant.catering.commercial-rates.index', [
             'rates' => $current,
+            // RATE-APPLY-ON-SAVE-1: har material ki ginti, taake rate likhte
+            // waqt checkbox ke saath likha ja sake ke wo kitni dishes chhuega.
+            'blockCounts' => $this->impact->blockSourceCounts(),
             // Recorded, dated, and deliberately not in force yet.
             'scheduled' => CateringMaterialCommercialRate::query()
                 ->with(['product:id,name,sku', 'unit:id,code'])
@@ -148,6 +151,19 @@ class CateringCommercialRateController extends Controller
             'note' => ['nullable', 'string', 'max:255'],
         ]);
 
+        // RATE-APPLY-ON-SAVE-1 (28 Sep) — malik: "rate change karte he do
+        // checkbox dedo, click karne pe sab pe apply ho jaye."
+        //
+        // Pehle rate likhna aur rate lagana do alag safhe thay, aur doosra
+        // safha itna lamba tha ke us ka asal button neeche dab jata tha. Ab
+        // chunav wahin hai jahan rate likha jata hai.
+        //
+        // Ek tick NAHI hai jo dono kaam kare: "jo pehle se house rate par
+        // hain" aur "jo haath se likhi gayi hain" alag rehte hain, kyunke
+        // doosra ek aisa faisla palat deta hai jo kisi ne soch kar liya tha.
+        $applyFollowing = $request->boolean('apply_following');
+        $applyManual = $request->boolean('apply_manual');
+
         DB::connection('tenant')->transaction(function () use ($data, $request) {
             $previous = $this->book->effectiveRate((int) $data['product_id'], $data['effective_from']);
 
@@ -174,10 +190,39 @@ class CateringCommercialRateController extends Controller
         });
 
         $name = Product::whereKey($data['product_id'])->value('name');
+        $productId = (int) $data['product_id'];
+        $message = "{$name} is now charged at ".number_format((float) $data['rate'], 2).' per unit. ';
 
-        return redirect()->to('/catering/commercial-rates')->with('status',
-            "{$name} is now charged at ".number_format((float) $data['rate'], 2).' per unit. '
-            .'Nothing has been repriced — review the impact to decide what should follow it.');
+        // Jorna khud rate bhi adopt kar leta hai (wohi usool jo cost block ki
+        // apni screen par likha hai), is liye neeche wala applyToProducts un
+        // dishes ke liye be-asar guzar jata hai jo abhi abhi juri hain — wo un
+        // ke liye hai jo pehle se book par thin. Dono milane se ginti theek
+        // aati hai aur dobara chalane par kuch nahi badalta.
+        $linked = 0;
+        if ($applyManual) {
+            $result = $this->impact->linkManualBlocks($productId, $request->user()?->id, $data['effective_from']);
+            $linked = $result['linked'];
+        }
+
+        $applied = 0;
+        if ($applyFollowing || $applyManual) {
+            $applied = $this->impact->applyToProducts(
+                $productId,
+                $this->impact->applicableBlockIds($productId, $data['effective_from']),
+                $request->user()?->id,
+                $data['effective_from']
+            );
+        }
+
+        if (! $applyFollowing && ! $applyManual) {
+            $message .= 'Nothing has been repriced — review the impact to decide what should follow it.';
+        } else {
+            $message .= $applied.' dish(es) now charge this rate'
+                .($linked > 0 ? " ({$linked} of them were hand-set and now follow the house rate)" : '')
+                .'. Quotations already drafted or sent are untouched — the impact screen can reprice those.';
+        }
+
+        return redirect()->to('/catering/commercial-rates')->with('status', $message);
     }
 
     /** What this rate change would do, to dishes and to drafts. */
@@ -186,7 +231,8 @@ class CateringCommercialRateController extends Controller
         return view('tenant.catering.commercial-rates.impact', [
             'material' => $product,
             'impact' => $this->impact->productImpact($product->id),
-            'drafts' => $this->impact->draftImpact($product->id),
+            // RATE-IMPACT-BY-ORDER-1: ab qatar ek DISH nahi, ek BOOKING hai.
+            'orders' => $this->impact->quotationImpactByOrder($product->id),
             'log' => CateringCommercialRateApplication::query()
                 ->where('material_product_id', $product->id)
                 ->with('performedBy:id,name')

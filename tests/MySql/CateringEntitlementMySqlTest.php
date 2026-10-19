@@ -227,6 +227,12 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
             'Commercial Rates',
             'Confirm Booking',
             'Create / Edit Estimate',
+            // CATERING-EDIT-AFTER-RELEASE-1 (1 Oct): release ke BAAD quotation
+            // badalna apna alag kaam hai, bilkul jaise 'Take More Than Due'
+            // aur 'Refund Beyond Credit' — wo 'Create / Edit Estimate' ke
+            // saath muft nahi milna chahiye, kyunke us waqt kitchen sheet
+            // pehle hi nikal chuka hota hai.
+            'Edit After Release',
             'Finalise Event',
             'Issue Materials',
             'Manage Material Rates',
@@ -240,6 +246,10 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
             'Store Issue',
             'Take More Than Due',
             'View Catering',
+            // CATERING-ADVANCE-VOID-1 (1 Oct): darj shuda receipt ulta karna.
+            // 'Record Advance' se alag, kyunke ulta karne se cash/bank ka
+            // balance GHATTA hai — paisa kitabon se nikalta hai.
+            'Void Receipt',
         ];
 
         foreach ($featureNames as $name) {

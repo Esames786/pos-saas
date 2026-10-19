@@ -208,41 +208,51 @@ class CateringCourseOrderMySqlTest extends MySqlTenantTestCase
     // ── KITCHEN SHEET ──────────────────────────────────────────────────────
 
     /**
-     * Kitchen sheet bhi wohi tarteeb de, AUR course ke unwaan ke saath — bawarchi
-     * course-dar-course pakata hai.
+     * KITCHEN-SHEET-NO-COURSE-HEADINGS-1 (26 Sep) — malik ne unwaan hatwa diye:
+     * "category hata do, need nahi, aur space aa jayega". Do khanon wale sheet
+     * par do pattiyan aa rahi thin, aur jagah wahi cheez kha rahi thi jis ki
+     * shikayat thi.
+     *
+     * TARTEEB QAYAM HAI — wo 21 Sep ki maang thi aur wo nahi badli. Yehi is
+     * test ka asal maqsad hai.
+     *
+     * ⚠ Purana test yahan `assertStringContainsString('RICE')` bhi karta tha,
+     * aur wo unwaan hatne ke BAAD BHI PASS ho jata — kyunke is fixture ke khane
+     * ka naam hi "RICE Dish" hai. Yani ek pehra jo ghalat wajah se green tha.
+     * Ab unwaan ki GHAIR-mojoodgi us ke apne markup se parkhi jati hai, lafz se
+     * nahi.
      */
-    public function test_the_kitchen_sheet_groups_the_lines_into_courses(): void
+    public function test_the_kitchen_sheet_keeps_the_course_order_without_printing_headings(): void
     {
         $html = $this->renderKitchenSheet();
-
-        foreach (['STARTERS', 'RICE', 'BBQ', 'DESSERTS', 'NAN-TANDOOR', 'SALAD'] as $course) {
-            $this->assertStringContainsString($course, $html, "{$course} ka unwaan kitchen sheet par hona chahiye");
-        }
 
         $positions = [];
         foreach (['STARTERS Dish', 'RICE Dish', 'BBQ Dish', 'DESSERTS Dish', 'NAN-TANDOOR Dish', 'SALAD Dish'] as $name) {
             $positions[$name] = mb_strpos($html, $name);
         }
         $this->assertSame(array_keys($positions), array_keys(collect($positions)->sort()->all()),
-            'kitchen sheet par khana course ki tarteeb me aana chahiye');
+            'kitchen sheet par khana AB BHI course ki tarteeb me aana chahiye');
+
+        // MARKUP par, lafz par nahi: stylesheet isi safhe me inline hoti hai, to
+        // "course-name" jaisa lafz dhoondna CSS par ja lagta hai aur test kabhi
+        // green hi nahi hota. Pehli koshish yahi thi.
+        $this->assertStringNotContainsString('<tr class="course"', $html,
+            'course ki patti ab nahi chhapti');
     }
 
     /**
-     * Wo shikayat jo pehle aa chuki hai, dobara na aaye: EK table, header EK
-     * baar, aur koi kaali patti nahi. (`KITCHEN-SHEET-NO-STATIONS-1` — malik ne
-     * station wali kaali pattiyan aur baar baar chhapne wale header hatwaye
-     * the.) Grouping wapas aayi hai, wo shikayat nahi.
+     * Wo shikayat jo pehle aa chuki hai, dobara na aaye: EK table aur header EK
+     * baar. (`KITCHEN-SHEET-NO-STATIONS-1` — malik ne station wali kaali
+     * pattiyan aur baar baar chhapne wale header hatwaye the.)
      */
     public function test_the_kitchen_sheet_keeps_one_table_and_one_header(): void
     {
         $html = $this->renderKitchenSheet();
 
         $this->assertSame(1, substr_count($html, '<table class="items">'),
-            'sirf EK items table honi chahiye, har course ki apni nahi');
+            'sirf EK items table honi chahiye');
         $this->assertSame(1, substr_count($html, '<thead>'),
             'header sirf ek baar — malik ne baar baar chhapta header hatwaya tha');
-        $this->assertSame(6, substr_count($html, 'class="course"'),
-            'chhe course, chhe unwaan');
     }
 
     private function renderKitchenSheet(): string

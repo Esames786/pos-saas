@@ -333,6 +333,141 @@ class CateringCommercialRateImpactService
     }
 
     /**
+     * WAHI ASAR, MAGAR ORDER KI SHAKL ME.
+     *
+     * RATE-IMPACT-BY-ORDER-1 (28 Sep) — malik: "order aare hon, main order par
+     * click karun to collapse khul ke order ki detail aaye, total wagera, aur
+     * jis item ka rate update hoga wo highlight ho."
+     *
+     * Pehle har qatar ek DISH thi. Ek booking ke teen dish teen alag qatarein
+     * banti thin, aur koi qatar ye nahi bata sakti thi ke POORE bill par kya
+     * asar parega — jo ke asal sawal hai, kyunke graahak bill dekhta hai, dish
+     * ki qatar nahi. 119 qatarein thin jahan 30 booking thin.
+     *
+     * Ab ek qatar ek BOOKING hai, aur us ke andar poora order khulta hai:
+     * saari lines (sirf mutasir hone wali nahi), pehle ka total, baad ka
+     * total, aur farq.
+     *
+     * DO CHEEZEIN JAAN-BOOJH KAR ALAG DIKHAI JATI HAIN:
+     *
+     *   1. Jis line par AGREED RATE hai, us ki graahak wali qeemat apply se
+     *      NAHI hilti — sirf andaruni calculated rate hilta hai. Ye koi keeda
+     *      nahi: us qeemat par graahak se baat ho chuki hai. Magar agar ye
+     *      screen par na likha ho to operator apply dabata hai, total wohi
+     *      rehta hai, aur wo samajhta hai kuch chala hi nahi.
+     *
+     *   2. Booking ka total sirf un lines se hilta hai jin par agreed rate
+     *      NAHI hai. Is liye "naya total" wohi adad hai jo apply ke baad
+     *      waqai banega — andaza nahi.
+     *
+     * @return array<int, array<string, mixed>> ek entry fi booking-version
+     */
+    public function quotationImpactByOrder(int $materialProductId, ?float $newRate = null, ?string $asOfDate = null): array
+    {
+        $rows = $this->draftImpact($materialProductId, $newRate, $asOfDate);
+        if ($rows === []) {
+            return [];
+        }
+
+        $byEstimate = [];
+        foreach ($rows as $row) {
+            $byEstimate[$row['estimate_id']][] = $row;
+        }
+
+        $estimates = CateringEstimate::query()
+            ->with(['event:id,event_no,customer_name,status,event_date', 'lines'])
+            ->whereIn('id', array_keys($byEstimate))
+            ->get()->keyBy('id');
+
+        $orders = [];
+
+        foreach ($byEstimate as $estimateId => $hits) {
+            $estimate = $estimates->get($estimateId);
+            if ($estimate === null) {
+                continue;
+            }
+
+            // Ek line par ek se zyada snapshot ho sakte hain (ek hi material do
+            // block me). Line ke hisaab se jama karo, warna ek line do baar
+            // ginti jayegi aur total jhoota ho jayega.
+            $hitByLine = [];
+            foreach ($hits as $hit) {
+                $hitByLine[$hit['line_id']][] = $hit;
+            }
+
+            $lines = [];
+            $oldTotal = 0.0;
+            $newTotal = 0.0;
+
+            foreach ($estimate->lines->sortBy('sort_order') as $line) {
+                $lineOld = round((float) $line->quantity * (float) $line->rate, 2);
+                $lineNew = $lineOld;
+                $touched = $hitByLine[$line->id] ?? [];
+                $moves = false;
+
+                foreach ($touched as $hit) {
+                    // Sirf wo hit jo waqai lagega. Aur agreed rate wali line ka
+                    // graahak wala adad nahi hilta — wahi "quotation_difference"
+                    // 0 keh raha hota hai.
+                    if (! $hit['shows_impact'] || $hit['quotation_difference'] === null) {
+                        continue;
+                    }
+                    $lineNew = round($lineNew + (float) $hit['quotation_difference'], 2);
+                    $moves = $moves || abs((float) $hit['quotation_difference']) > 0.009;
+                }
+
+                $oldTotal = round($oldTotal + $lineOld, 2);
+                $newTotal = round($newTotal + $lineNew, 2);
+
+                $lines[] = [
+                    'id' => (int) $line->id,
+                    'item_name' => $line->item_name,
+                    'quantity' => (float) $line->quantity,
+                    'unit_code' => $line->unit_code,
+                    'rate' => round((float) $line->rate, 2),
+                    'amount' => $lineOld,
+                    'new_amount' => $lineNew,
+                    'affected' => $touched !== [],
+                    'moves' => $moves,
+                    'is_override' => $line->rate_override_reason !== null,
+                    'override_reason' => $line->rate_override_reason,
+                    'hits' => $touched,
+                ];
+            }
+
+            // Booking ki haalat us ke apne hits se aati hai, alag se tay nahi
+            // hoti — warna qatar "apply ho sakta hai" kehti aur andar ki har
+            // line mana kar rahi hoti.
+            $states = array_column($hits, 'state');
+            $orders[] = [
+                'estimate_id' => (int) $estimateId,
+                'event_no' => $estimate->event?->event_no,
+                'customer' => $estimate->event?->customer_name,
+                'event_date' => $estimate->event?->event_date,
+                'event_status' => $estimate->event?->status,
+                'version_no' => (int) $estimate->version_no,
+                'status' => $estimate->status,
+                'grand_total' => round((float) $estimate->grand_total, 2),
+                'old_total' => $oldTotal,
+                'new_total' => $newTotal,
+                'total_difference' => round($newTotal - $oldTotal, 2),
+                'lines' => $lines,
+                'eligible_snapshot_ids' => array_column(
+                    array_filter($hits, fn ($h) => $h['eligible']), 'snapshot_id'
+                ),
+                'revisable' => in_array(self::STATE_REVISION_REQUIRED, $states, true),
+                'eligible' => in_array(self::STATE_APPLICABLE, $states, true),
+                'states' => array_values(array_unique($states)),
+            ];
+        }
+
+        // Jis par sab se zyada farq parta hai wo pehle — wohi faisla maangta hai.
+        usort($orders, fn ($a, $b) => abs($b['total_difference']) <=> abs($a['total_difference']));
+
+        return $orders;
+    }
+
+    /**
      * What the line's CALCULATED rate would become with only this material moved.
      *
      * Deliberately the same arithmetic CateringLineCostBlockService::reprice()
@@ -391,7 +526,7 @@ class CateringCommercialRateImpactService
         // is a draft on an invoiced event — and "it is a draft" would otherwise
         // be read as permission to reprice a booking that has already been
         // billed and closed.
-        if (! $this->documentIsOpen($estimate)) {
+        if (! $this->documentIsRepriceable($estimate)) {
             return self::STATE_LOCKED;
         }
 
@@ -403,21 +538,25 @@ class CateringCommercialRateImpactService
     }
 
     /**
-     * Is this booking still open to commercial change at all?
+     * Kya is booking ki QEEMAT abhi bhi durust ki ja sakti hai?
      *
-     * Uses the authorities that already exist rather than inventing a status
-     * rule: CateringEvent::isOpen() decides whether the event still accepts
-     * commercial change, and an issued final invoice is the document that ends
-     * the argument — immutable by its own model, and a price moving behind it
-     * would leave the customer holding a bill nothing agrees with.
+     * RATE-REPRICE-WINDOW-1 (28 Sep) — malik: "draft, inquiry, release, quote,
+     * ya kisi bhi aise status par jo mukammal na ho, us par naya commercial
+     * rate laga sakein."
+     *
+     * Pehle yahan `isCommerciallyOpen` tha, jo `production_ready` aur
+     * `released` ko band maanta hai. Wo us sawal ka theek jawab hai jo wo
+     * poochta hai — "lines badal sakti hain?" — magar is sawal ka nahi.
+     * Release ke baad ITEM badalna parche ko jhoota kar deta hai; RATE badalna
+     * nahi, kyunke kitchen sheet par qeemat chhapti hi nahi.
+     *
+     * Ab deewar final invoice hai. Qanoon phir bhi yahan nahi likha — wo
+     * CateringDocumentLock me apne bhai ke saath rehta hai, taake teeno sawal
+     * ek jagah saamne rahein.
      */
-    private function documentIsOpen(CateringEstimate $estimate): bool
+    private function documentIsRepriceable(CateringEstimate $estimate): bool
     {
-        // One definition, shared with every ordinary draft writer. Rate Impact
-        // and the form save are siblings under the same authority; two copies of
-        // this rule would eventually disagree, and the disagreement would be
-        // exactly the gap somebody's price slips through.
-        return $this->locks->isCommerciallyOpen($estimate);
+        return $this->locks->isRepriceable($estimate);
     }
 
     /**
@@ -436,7 +575,7 @@ class CateringCommercialRateImpactService
             return false;
         }
 
-        return $this->documentIsOpen($estimate);
+        return $this->documentIsRepriceable($estimate);
     }
 
     private function stateLabel(string $state): string
@@ -530,6 +669,127 @@ class CateringCommercialRateImpactService
         });
 
         return $applied;
+    }
+
+    /**
+     * Kis material ki kitni dishes book par hain aur kitni haath par.
+     *
+     * Sirf ginti — taake rate likhte waqt checkbox ke saath likha ja sake ke
+     * wo kitni cheezon ko chhuega. Ek tick jis ke saath koi adad na ho, wo
+     * chunav nahi, andaza hai.
+     *
+     * @return array<int, array{book: int, manual: int}>
+     */
+    public function blockSourceCounts(): array
+    {
+        $rows = CateringProductCostBlock::query()
+            ->whereNotNull('material_product_id')
+            ->selectRaw('material_product_id, commercial_rate_source, COUNT(*) as n')
+            ->groupBy('material_product_id', 'commercial_rate_source')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $id = (int) $row->material_product_id;
+            $out[$id] ??= ['book' => 0, 'manual' => 0];
+            $key = $row->commercial_rate_source === CateringProductCostBlock::SOURCE_COMMERCIAL_BOOK
+                ? 'book' : 'manual';
+            $out[$id][$key] += (int) $row->n;
+        }
+
+        return $out;
+    }
+
+    /**
+     * HAATH SE LIKHI HUI DISHES KO HOUSE RATE PAR LE AANA — bulk.
+     *
+     * `applyToProducts` jaan-boojh kar manual block ko chhoota hi nahi: wahan
+     * ka pehra is liye hai ke form me id likh dene se koi haath se tay kiya
+     * hua rate na mit jaye. Us pehre ko narm karna ghalat hota — is liye ye
+     * alag method hai, alag naam se, aur ise hamesha SARIH tor par maanga
+     * jata hai.
+     *
+     * Ye link bhi karta hai aur rate bhi adopt karta hai, bilkul usi tarah
+     * jaise cost block ki apni screen karti hai — wahan likha hai "Linking
+     * ADOPTS the current house rate as the applied one", aur do jagah do usool
+     * rakhna unhe waqt ke saath alag kar deta.
+     *
+     * Jo dish rate ke hisaab se follow kar hi nahi sakti (dish ke unit par
+     * qeemat, ya alag unit) wo chhori jati hai — usay zabardasti jorna ek
+     * ghalat adad likhne ke barabar hai.
+     *
+     * @return array{linked: int, skipped: int}
+     */
+    public function linkManualBlocks(int $materialProductId, ?int $userId = null, ?string $asOfDate = null): array
+    {
+        $bookRate = $this->requireRate($materialProductId, $asOfDate);
+        $rate = (float) $bookRate->rate;
+        $linked = 0;
+        $skipped = 0;
+
+        DB::connection('tenant')->transaction(function () use ($materialProductId, $bookRate, $rate, $userId, &$linked, &$skipped) {
+            $blocks = CateringProductCostBlock::query()
+                ->with(['product:id,name', 'unit:id,code'])
+                ->where('material_product_id', $materialProductId)
+                ->where('commercial_rate_source', '!=', CateringProductCostBlock::SOURCE_COMMERCIAL_BOOK)
+                ->get();
+
+            foreach ($blocks as $block) {
+                // Jorne ke BAAD wali haalat par faisla: block ko book par rakh
+                // kar poochho ke kya ye tab bhi qabil-e-amal hoga. Warna ek
+                // aisi dish bhi jur jati jo unit hi doosra naapti hai, aur
+                // uska rate chupke se ghalat ho jata.
+                $probe = clone $block;
+                $probe->commercial_rate_source = CateringProductCostBlock::SOURCE_COMMERCIAL_BOOK;
+                if ($this->productBlockState($probe, $bookRate) !== self::STATE_APPLICABLE) {
+                    $skipped++;
+
+                    continue;
+                }
+
+                $oldRate = (float) $block->rate;
+                $oldCalculated = $this->costBlocks->rateFor($block->product_id);
+
+                $block->forceFill([
+                    'commercial_rate_source' => CateringProductCostBlock::SOURCE_COMMERCIAL_BOOK,
+                    'rate' => $rate,
+                ])->save();
+                $linked++;
+
+                $this->book->record([
+                    'material_product_id' => $materialProductId,
+                    'action' => CateringCommercialRateApplication::ACTION_BLOCK_LINKED,
+                    'target_type' => CateringCommercialRateApplication::TARGET_PRODUCT_BLOCK,
+                    'target_id' => $block->id,
+                    'target_label' => trim(($block->product?->name ?? 'Dish').' · '.$block->label),
+                    'old_commercial_rate' => $oldRate,
+                    'new_commercial_rate' => $rate,
+                    'old_calculated_rate' => round($oldCalculated, 2),
+                    'new_calculated_rate' => round($this->costBlocks->rateFor($block->product_id), 2),
+                    'performed_by_user_id' => $userId,
+                    'note' => 'Rate likhte waqt haath wali dishes bhi house rate par laayi gayin.',
+                ]);
+            }
+        });
+
+        return ['linked' => $linked, 'skipped' => $skipped];
+    }
+
+    /** Jo dishes pehle se book par hain, un sab ke block ids. */
+    public function applicableBlockIds(int $materialProductId, ?string $asOfDate = null): array
+    {
+        $bookRate = $this->book->effectiveRate($materialProductId, $asOfDate);
+        if ($bookRate === null) {
+            return [];
+        }
+
+        return CateringProductCostBlock::query()
+            ->with('unit:id,code')
+            ->where('material_product_id', $materialProductId)
+            ->where('commercial_rate_source', CateringProductCostBlock::SOURCE_COMMERCIAL_BOOK)
+            ->get()
+            ->filter(fn ($b) => $this->productBlockState($b, $bookRate) === self::STATE_APPLICABLE)
+            ->pluck('id')->all();
     }
 
     /**

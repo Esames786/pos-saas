@@ -5,6 +5,7 @@ namespace App\Services\Catering;
 use App\Models\Tenant\CateringEvent;
 use App\Models\Tenant\CateringProductionRelease;
 use App\Models\Tenant\CateringProductionReleaseLine;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -21,6 +22,61 @@ class CateringProductionReleaseService
         private readonly CateringNumberService $numbers,
         private readonly CateringRequirementService $requirements,
     ) {}
+
+    /**
+     * KITCHEN-SHEET-PREVIEW-1 — wohi parcha, release se PEHLE, sirf chhapne ke liye.
+     *
+     * Malik ne 27 September ko kaha: kitchen sheet production release se pehle
+     * bhi chhap sake. Ye method release BANATI hai magar MEHFOOZ NAHI karti:
+     * koi row nahi banti, release number kharch nahi hota, event ka status
+     * nahi hilta, koi snapshot nahi jamta. Sirf wo dhaancha jo kaghaz maangta
+     * hai.
+     *
+     * Lines wohi builder banata hai jo asli release chalata hai
+     * (`lineAttributesFor`). Preview ke liye alag se lines likhna — production
+     * label, Urdu ka silsila, "CUSTOMER SUPPLIES" wali satar, materials — un
+     * dono kaghazon ko waqt ke saath alag kar deta: preview kuch kehta, asli
+     * parcha kuch aur.
+     *
+     * release() wali shartein yahan JAAN-BOOJH KAR nahi lagayin (draft hona,
+     * ya event ka confirmed na hona) — poora maqsad hi ye hai ke parcha pehle
+     * dekha ja sake. Kaghaz khud oopar likhta hai ke wo abhi jaari nahi hua.
+     */
+    public function preview(CateringEvent $event): CateringProductionRelease
+    {
+        $estimate = $event->currentEstimate;
+        if (! $estimate) {
+            throw new RuntimeException("Event {$event->event_no} has no estimate to preview.");
+        }
+
+        $estimate->loadMissing('lines.costBlocks');
+
+        $release = new CateringProductionRelease([
+            'catering_event_id' => $event->id,
+            'catering_estimate_id' => $estimate->id,
+            'event_snapshot' => $this->eventSnapshotFor($event, $estimate),
+            'requirements_snapshot' => $this->requirements->consolidatedForEstimate($estimate, $event->branch_id),
+            'status' => CateringProductionRelease::STATUS_RELEASED,
+        ]);
+
+        // Sirf kaghaz par chhapne ke liye. release_no sequence se NAHI liya
+        // gaya: ek preview par number kharch karna us qatar me hamesha ka
+        // sooraakh chhod deta.
+        $release->release_no = 'PREVIEW';
+        $release->released_at = now();
+
+        // Unsaved model par relation khud load nahi hoti, aur kaghaz
+        // `$release->lines` parhta hai — is liye yahin bitha di jati hai.
+        $release->setRelation('lines', new EloquentCollection(
+            array_map(
+                fn (array $attrs) => new CateringProductionReleaseLine($attrs),
+                $this->lineAttributesFor($estimate)
+            )
+        ));
+        $release->setRelation('event', $event);
+
+        return $release;
+    }
 
     public function release(CateringEvent $event, ?int $userId = null): CateringProductionRelease
     {
@@ -50,80 +106,118 @@ class CateringProductionReleaseService
                 'release_no' => $this->numbers->nextProductionReleaseNo(),
                 'catering_event_id' => $event->id,
                 'catering_estimate_id' => $estimate->id,
-                'event_snapshot' => [
-                    'event_no' => $event->event_no,
-                    'customer_name' => $event->customer_name,
-                    'customer_name_ur' => $event->customer_name_ur,
-                    'customer_phone' => $event->customer_phone,
-                    'venue' => $event->venue,
-                    'event_date' => $event->event_date->toDateString(),
-                    'service_time' => $event->service_time,
-                    'pax' => $event->pax,
-                    'event_type' => $event->event_type,
-                    'estimate_version' => $estimate->version_no,
-                ],
+                'event_snapshot' => $this->eventSnapshotFor($event, $estimate),
                 'requirements_snapshot' => $consolidated,
                 'status' => CateringProductionRelease::STATUS_RELEASED,
                 'released_at' => now(),
                 'released_by_user_id' => $userId,
             ]);
 
-            foreach ($estimate->lines as $index => $line) {
-                $profile = $line->product?->cateringProfile;
-                CateringProductionReleaseLine::create([
-                    'catering_production_release_id' => $release->id,
-                    'product_id' => $line->product_id,
-                    // Production label wins over the commercial name on the kitchen floor.
-                    'item_name' => $profile?->production_label ?: $line->item_name,
-                    // KASHIF-URDU-CARRY-1: the kitchen sheet prints Urdu when it HAS
-                    // Urdu. Production label first, then the line's own, then the
-                    // product book itself — a blank here was the only reason the
-                    // sheet read English on an Urdu sheet.
-                    'item_name_ur' => $profile?->production_label_ur
-                        ?: ($line->item_name_ur ?: $this->productUrduName($line->product_id)),
-                    'quantity' => $line->quantity,
-                    'unit_code' => $line->unit_code,
-                    'production_station' => $profile?->production_station,
-                    // KASHIF-CATERING-INSTRUCTIONS-1: the line's managed selections
-                    // and free note as one string, then the dish profile's standing
-                    // instruction. Snapshotted as TEXT — the kitchen sheet stays
-                    // readable even if the vocabulary is edited later.
-                    'instructions' => trim(implode("\n", array_filter([
-                        $line->instructionSummary(),
-                        // The kitchen must know what arrives from the CUSTOMER —
-                        // it still gets cooked, but our store hands over none of
-                        // it (or, on a split, only the billable balance).
-                        ($cs = $line->costBlocks
-                            ->filter(fn ($b) => $b->isMaterial() && $b->suppliedQty() > 0)
-                            ->map(function ($b) {
-                                $name = $b->material_name ?: $b->label;
-                                if (! $b->isPartiallyCustomerSupplied()) {
-                                    return $name;
-                                }
-                                $fmt = fn (float $q) => rtrim(rtrim(number_format($q, 4), '0'), '.');
-
-                                return sprintf('%s %s %s (of %s %s)',
-                                    $name, $fmt($b->suppliedQty()), $b->unit_code,
-                                    $fmt($b->physicalRequirement()), $b->unit_code);
-                            })
-                            ->filter()->implode(', ')) !== ''
-                            ? 'CUSTOMER SUPPLIES: '.$cs
-                            : null,
-                        $profile?->instructions,
-                    ]))) ?: null,
-                    // KASHIF-KITCHEN-MATERIALS-1: what this dish takes and who
-                    // brings it, frozen with the rest of the release. The kitchen
-                    // sheet reads THIS, never the live quotation — a sheet on the
-                    // wall must not change because someone edited the estimate.
-                    'materials_snapshot' => $line->materialSummary() ?: null,
-                    'sort_order' => $index,
-                ]);
+            foreach ($this->lineAttributesFor($estimate) as $attrs) {
+                CateringProductionReleaseLine::create(
+                    $attrs + ['catering_production_release_id' => $release->id]
+                );
             }
 
             $event->forceFill(['status' => CateringEvent::STATUS_RELEASED])->save();
 
             return $release;
         });
+    }
+
+    /**
+     * Tqreeb ka wo hissa jo kaghaz par chhapta hai.
+     *
+     * Ye pehle `release()` ke andar likha tha. KITCHEN-SHEET-PREVIEW-1 me bahar
+     * nikala gaya taake preview aur asli release DONO isi se banein — do jagah
+     * do nakal rakhne ka anjaam yahi hota hai ke ek din venue ek kaghaz par
+     * aata hai aur dusre par nahi.
+     *
+     * @return array<string, mixed>
+     */
+    private function eventSnapshotFor(CateringEvent $event, $estimate): array
+    {
+        return [
+            'event_no' => $event->event_no,
+            'customer_name' => $event->customer_name,
+            'customer_name_ur' => $event->customer_name_ur,
+            'customer_phone' => $event->customer_phone,
+            'venue' => $event->venue,
+            // KITCHEN-SHEET-A5-1: driver ko pata chahiye, aur khana nikalne ka
+            // waqt bawarchi-khane ko. Dono parche par chhapte hain, is liye
+            // dono snapshot me jamte hain — kaghaz us waqt ka sach dikhae jab
+            // release hui thi, na ke aaj ka.
+            'customer_address' => $event->customer_address,
+            'dispatch_time' => $event->dispatch_time,
+            // Sirf HAAN/NAHI. Raqam jaan-boojh kar nahi: kitchen sheet par
+            // kabhi paisa nahi chhapta, aur malik ne bhi lafz maanga tha —
+            // "jub service charges li gae tub service likha howe ae".
+            'has_service_charge' => (float) ($estimate->service_charge_amount ?? 0) > 0,
+            'event_date' => $event->event_date->toDateString(),
+            'service_time' => $event->service_time,
+            'pax' => $event->pax,
+            'event_type' => $event->event_type,
+            'estimate_version' => $estimate->version_no,
+        ];
+    }
+
+    /**
+     * Har line ka wo roop jo bawarchi-khana parhta hai — production label,
+     * Urdu ka silsila, hidayaat, aur maal.
+     *
+     * Yehi hissa sab se zyada nazuk hai aur isi liye ek hi jagah rehta hai:
+     * preview aur release dono isay chalate hain, sirf ek `release_id` ka
+     * farq hota hai.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function lineAttributesFor($estimate): array
+    {
+        $out = [];
+
+        foreach ($estimate->lines as $index => $line) {
+            $profile = $line->product?->cateringProfile;
+
+            $out[] = [
+                'product_id' => $line->product_id,
+                // Production label wins over the commercial name on the kitchen floor.
+                'item_name' => $profile?->production_label ?: $line->item_name,
+                // KASHIF-URDU-CARRY-1: the kitchen sheet prints Urdu when it HAS
+                // Urdu. Production label first, then the line's own, then the
+                // product book itself — a blank here was the only reason the
+                // sheet read English on an Urdu sheet.
+                'item_name_ur' => $profile?->production_label_ur
+                    ?: ($line->item_name_ur ?: $this->productUrduName($line->product_id)),
+                'quantity' => $line->quantity,
+                'unit_code' => $line->unit_code,
+                'production_station' => $profile?->production_station,
+                // KASHIF-CATERING-INSTRUCTIONS-1: the line's managed selections
+                // and free note as one string, then the dish profile's standing
+                // instruction. Snapshotted as TEXT — the kitchen sheet stays
+                // readable even if the vocabulary is edited later.
+                // KITCHEN-SHEET-A5-1 (27 Sep) — is khaane me ab SIRF hidayaat.
+                //
+                // Yahan pehle "CUSTOMER SUPPLIES: Beef (With Bone) …" bhi
+                // jorra jata tha. Malik ne kaha: "instruction mai sirf
+                // instruction ayen (material ya cost block na ae)". Wo baat
+                // ab bhi parche par hai — magar dish ke neeche, chhoti si
+                // shakl me: "Party 42 KG" / "Own 84 KG" (dekhein
+                // line-materials ka compact roop). Ek hi baat do jagah likhna
+                // parche ko lamba karta tha aur A5 par wo gunjaish hai nahi.
+                'instructions' => trim(implode("\n", array_filter([
+                    $line->instructionSummary(),
+                    $profile?->instructions,
+                ]))) ?: null,
+                // KASHIF-KITCHEN-MATERIALS-1: what this dish takes and who
+                // brings it, frozen with the rest of the release. The kitchen
+                // sheet reads THIS, never the live quotation — a sheet on the
+                // wall must not change because someone edited the estimate.
+                'materials_snapshot' => $line->materialSummary() ?: null,
+                'sort_order' => $index,
+            ];
+        }
+
+        return $out;
     }
 
     /** The product book's Urdu name, cached per request. */

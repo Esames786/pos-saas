@@ -87,7 +87,16 @@
 @if(($eventType ?? '') === 'duplicate')
 <div class="center bold">DUPLICATE {{ max($copyNo ?? 1, 1) }}</div>
 @endif
-<div class="center big">** {{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }} **</div>
+{{-- KOT-HEADING-STARS-1 — wohi switch jo thermal parchi par lagta hai, taake preview aur kaghaz
+     ek hi baat kahein. `!== false` likha hai (na ke `=== true`) kyunki jis tenant ki layout row
+     abhi purani hai us me ye column hai hi nahi — us soorat me aaj wali soorat qaayam rehni
+     chahiye, yani sitare.
+
+     ⚠️ Upar wale `KOT #n` par sitare JAAN-BOOJH KAR nahi jore gaye: is blade par wo pehle se
+     nahi hain (thermal par hain — purana ikhtilaf). Jorne se har tenant ka preview badal jata,
+     jabke kisi ne maanga nahi. Switch band hone par dono khud ba khud mil jate hain. --}}
+@php $kotStars = ($layout?->show_heading_stars ?? true) !== false; @endphp
+<div class="center big">{{ $kotStars ? '** ' : '' }}{{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }}{{ $kotStars ? ' **' : '' }}</div>
 @if(!($layout?->show_category_header === false) && !empty($kotCategory ?? null))
 @php
     // Brackets are dropped when they would no longer fit, exactly as the ESC/POS builder does —

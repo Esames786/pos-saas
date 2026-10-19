@@ -29,6 +29,18 @@ class SalesReportEngine
 
     public const POPULATION = ['paid', 'partially_returned', 'returned'];
 
+    /**
+     * QUICK-REPORT-WAITER-NULL-1 — the value that means "orders that carry NO waiter".
+     *
+     * A waiter is attached on dine-in only, so counter work (takeaway, delivery, quick sale) sits on
+     * sales_orders.restaurant_waiter_id = NULL. SQL's IN (...) never matches NULL, so a plain
+     * whereIn silently DROPPED that whole population: ticking every waiter on Khatri hid 46 of 82
+     * orders in a day, and on Kashif Food — where no order carries a waiter at all — it emptied the
+     * report outright. The sentinel makes that population askable instead of unaskable. A selection
+     * WITHOUT it still means "only these waiters", so "just Ali's orders" keeps working.
+     */
+    public const WAITER_NONE = 'none';
+
     public function businessDayExpr(string $prefix = 'o.'): string
     {
         return "COALESCE({$prefix}business_date, DATE({$prefix}sale_date))";
@@ -68,6 +80,64 @@ class SalesReportEngine
         ];
     }
 
+    /**
+     * QUICK-REPORT-WAITER-NULL-1 — apply the multi-waiter filter, NULL included on request.
+     *
+     * Wrapped in its own where() group so the OR can never leak out and widen the other filters
+     * sitting beside it (branch, date, order type) — that is the classic bug this shape prevents.
+     */
+    private function applyWaiterIds($q, array $waiterIds, string $column = 'o.restaurant_waiter_id')
+    {
+        $ids = array_values(array_filter($waiterIds, fn ($v) => (string) $v !== self::WAITER_NONE));
+        $wantsUnassigned = count($ids) !== count($waiterIds);
+
+        return $q->where(function ($w) use ($ids, $wantsUnassigned, $column) {
+            if ($ids) {
+                $w->whereIn($column, $ids);
+            }
+            if ($wantsUnassigned) {
+                $ids ? $w->orWhereNull($column) : $w->whereNull($column);
+            }
+        });
+    }
+
+    /**
+     * QUICK-REPORT-WAITER-NULL-1 — the narrowing a reader CANNOT see on the printed page.
+     *
+     * Categories and items announce themselves: you see which rows printed. Waiter and order-type
+     * filters leave no trace at all, so a half report looks exactly like a full one — which is why
+     * one saved selection shrank a counter's Quick Report every day for a month before anyone
+     * noticed. Naming them in the header is the guard against that silence. Returns [] when the
+     * report is whole, so the Report Center's own prints are byte-identical.
+     *
+     * @return list<string>
+     */
+    public function describeNarrowing(array $f): array
+    {
+        $bits = [];
+
+        if ($f['waiter_ids'] ?? []) {
+            $ids = array_values(array_filter($f['waiter_ids'], fn ($v) => (string) $v !== self::WAITER_NONE));
+            $names = $ids
+                ? DB::connection('tenant')->table('restaurant_waiters')->whereIn('id', $ids)->orderBy('name')->pluck('name')->all()
+                : [];
+            if (count($ids) !== count($f['waiter_ids'])) {
+                $names[] = 'Unassigned';
+            }
+            $bits[] = 'Waiters: ' . ($names ? implode(', ', $names) : '—');
+        }
+
+        if ($f['order_types'] ?? []) {
+            $labels = \App\Models\Tenant\User::ORDER_TYPES;
+            $bits[] = 'Order types: ' . implode(', ', array_map(
+                fn ($v) => $labels[$v] ?? (string) $v,
+                $f['order_types']
+            ));
+        }
+
+        return $bits;
+    }
+
     /** Union of each category id + all its descendants (for the multi-category filter). */
     public function categoriesWithDescendants(array $categoryIds): array
     {
@@ -105,7 +175,7 @@ class SalesReportEngine
             ->when($f['shift_id'], fn ($q) => $q->where('o.shift_id', $f['shift_id']))
             ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))
             ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
-            ->when($f['waiter_ids'], fn ($q) => $q->whereIn('o.restaurant_waiter_id', $f['waiter_ids']))
+            ->when($f['waiter_ids'], fn ($q) => $this->applyWaiterIds($q, $f['waiter_ids']))
             ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
             ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
             ->when($f['order_types'], fn ($q) => $q->whereIn('o.order_type', $f['order_types']))
@@ -220,7 +290,7 @@ class SalesReportEngine
             ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
             ->when($f['order_types'], fn ($q) => $q->whereIn('o.order_type', $f['order_types']))
             ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
-            ->when($f['waiter_ids'], fn ($q) => $q->whereIn('o.restaurant_waiter_id', $f['waiter_ids']))
+            ->when($f['waiter_ids'], fn ($q) => $this->applyWaiterIds($q, $f['waiter_ids']))
             ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
             ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn('o.terminal_id', $f['allowed_terminal_ids']))
             ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))

@@ -13,6 +13,9 @@ class Tenant extends Model
         'business_name',
         'owner_name',
         'owner_email',
+        // WHATSAPP-REPORT-CHANNEL-1: where the tenant's reports go when no branch overrides it.
+        'report_channels',
+        'report_whatsapp',
         'currency_code',
         'status',
         'is_demo',
@@ -24,6 +27,11 @@ class Tenant extends Model
     {
         return [
             'is_demo' => 'boolean',
+            // Both are json columns holding lists; without these casts they come back as
+            // raw strings and every read has to remember to decode — which is exactly the kind
+            // of thing one caller forgets.
+            'report_channels' => 'array',
+            'report_whatsapp' => 'array',
             'trial_ends_at' => 'datetime',
             'activated_at' => 'datetime',
         ];

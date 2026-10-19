@@ -328,15 +328,27 @@ class EscPosPayloadService
         if ($topLevel->isEmpty()) {
             $out .= $this->scaled('NO REMAINING ITEMS', $big, true);
         }
+        // REMINDER-DEAL-NAME-ONLY-1 — reminder par deal ka SIRF NAAM.
+        //
+        // Pehle har deal ke neeche us ke saare components chhapte thay:
+        //
+        //     1  CLASSIC PLATTER 3 (3 PERSONS)
+        //        - 1 x ARABIC RICE
+        //        - 1 x CHICKEN MALAI BOTI
+        //        - 1 x BEEF SEEKH KEBAB          … aath satarein ek deal ke liye
+        //
+        // Maalik ne kaha ye tafseel reminder par nahi chahiye. Ye theek wohi faisla hai jo
+        // RECEIPT par pehle se laga hua hai (COMBO-RECEIPT-NAME-ONLY, f191680): deal apne naam
+        // se jaana jaye, us ke purze nahi. Ab do documents ka ikhtilaf bhi khatam hota hai.
+        //
+        // ⚠️ KOT par components QAAYAM hain aur rehne chahiyen — kitchen unhi se khana banati
+        // hai. Reminder counter ka recap hai, kitchen ka parcha nahi. Is par apna guard hai.
+        //
+        // ⚠️ Component ke saath us ke modifiers aur kitchen note bhi jate hain (wo isi loop ke
+        // andar thay). Ye maalik ke saamne rakha gaya tha. Top-level item ke modifiers aur note
+        // neeche waale loop me hain aur QAAYAM hain.
         foreach ($topLevel as $line) {
             $out .= $this->reminderLine($line, $revision > 1, $rowBig, '', $dividers);
-            foreach ($lines->where('parent_line_id', $line['line_id'] ?? null) as $component) {
-                $out .= $this->reminderLine($component, $revision > 1, $sub, '  - ');
-                foreach (($component['modifiers'] ?? []) as $modifier) {
-                    if (!empty($modifier['name'])) { $out .= $this->subRow('    + ' . $modifier['name'], $sub); }
-                }
-                if (!empty($component['kitchen_note'])) { $out .= $this->subRow('    NOTE: ' . $component['kitchen_note'], $sub, true); }
-            }
             foreach (($line['modifiers'] ?? []) as $modifier) {
                 if (!empty($modifier['name'])) {
                     $out .= $this->subRow('  + ' . $modifier['name'], $sub);
@@ -997,19 +1009,40 @@ class EscPosPayloadService
             $out .= $this->center($headerText) . "\n";
         }
 
-        $heading = match ($eventType) {
-            'cancel' => '*** CANCEL KOT #' . $sequenceNo . ' ***',
-            'addition' => '*** ADDITION KOT #' . $sequenceNo . ' ***',
-            'duplicate' => '*** DUPLICATE KOT #' . $sequenceNo . ' ***',
-            default => '*** KOT #' . ($sequenceNo ?: 1) . ' ***',
+        // KOT-HEADING-STARS-1 — Khatri ke client ne parchi par likha tha "star remove". Magar ye
+        // code chaaron chalti hui businesses ki parchi chhapta hai aur maang sirf ek ki hai, is
+        // liye sitare hataye NAHI — switch ke peeche rakhe. Default `true` = aaj wali soorat, to
+        // deploy ke din kisi ki parchi nahi badalti; sirf jab operator Edit Layout me band kare.
+        //
+        // ⚠️ `$show()` JAAN-BOOJH KAR istemal NAHI kiya. Us ka default SIRF us soorat me chalta
+        // hai jab POORA `$layout` null ho:
+        //
+        //     $show = fn ($f, $default = true) => $layout === null ? $default : (bool) $layout->{$f};
+        //
+        // Yani row maujood ho magar column na ho — us tenant par jahan migration abhi chali hi
+        // nahi — to `(bool) null` yani FALSE milta aur sitare CHUP-CHAAP gayab ho jate. Theek
+        // wohi cheez jis se bachne ke liye ye switch banaya gaya tha. (Ye farq sabotage ne pakra:
+        // pehli koshish me `$show()` istemal hua tha aur poora suite hara reh gaya tha, kyunki
+        // test ki row me column ka DB default pehle se baitha tha.)
+        //
+        // Is liye yahan khud null-safe parha ja raha hai. `$show` ko badalna ghalat hota: wo har
+        // doosre toggle par asar dalta, aur un me se kai ka durust default FALSE hai.
+        $stars = $layout === null ? true : (bool) ($layout->show_heading_stars ?? true);
+        $kotLabel = match ($eventType) {
+            'cancel' => 'CANCEL KOT #' . $sequenceNo,
+            'addition' => 'ADDITION KOT #' . $sequenceNo,
+            'duplicate' => 'DUPLICATE KOT #' . $sequenceNo,
+            default => 'KOT #' . ($sequenceNo ?: 1),
         };
+        $heading = $stars ? '*** ' . $kotLabel . ' ***' : $kotLabel;
         // The heading (KOT / CANCEL KOT / ADDITION KOT) reads at the same big scale as the order
         // type and category below it — a cancel ticket the kitchen can read across the pass.
         $out .= $this->scaled($heading, $big, true, true);
         if ($eventType === 'duplicate') {
             $out .= $this->center('DUPLICATE ' . max($copyNo, 1)) . "\n";
         }
-        $out .= $this->scaled('** ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . ' **', $big, true, true);
+        $orderTypeLabel = strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE'));
+        $out .= $this->scaled($stars ? '** ' . $orderTypeLabel . ' **' : $orderTypeLabel, $big, true, true);
         // One ticket per category — name the category so the station knows the slip is theirs.
         // The show_category_header toggle (default ON) lets a single-station kitchen drop this line.
         if ($show('show_category_header', true) && ! empty($payload['kot_category'])) {

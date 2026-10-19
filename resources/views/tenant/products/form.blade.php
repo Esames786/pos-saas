@@ -22,15 +22,25 @@
     $isCateringMaterials = $base === '/catering/materials';
 
     // Detect the current product's setup mode from its existing flags (edit screens).
+    //
+    // PRODUCT-FORM-ROLE-1 — the ROLE picks the card, never the shape.
+    //
+    // `product_kind` is what a product IS (sale item, raw material, packaging, service);
+    // `product_type` is only its shape (simple / recipe / hybrid / service). Testing the shape
+    // FIRST meant anything stored as type=service was forced into the "Service Item" card —
+    // "Sold in POS, no stock" — even a purchased, stock-tracked packaging material. That card
+    // then hid the Purchasable and Track Stock boxes which are the whole point of such an item,
+    // so the screen contradicted its own badges. Shape now settles only the one question it can
+    // answer: a plain POS item, or a POS item sold without stock.
     $detectMode = function ($p) use ($mfgAvailable, $kitchenAvailable) {
         if (! $p) return 'pos_sale';
         $kind = $p->product_kind ?? 'sale_item';
-        if ($p->product_type === 'service' || $kind === 'service')      return 'service';
+        if ($kind === 'service')            return 'service';
         if ($kind === 'raw_material')      return ($p->can_be_bom_component && $mfgAvailable) ? 'mfg_raw' : 'raw_material';
         if ($kind === 'packaging_material') return 'packaging';
         if ($kind === 'finished_good')      return $mfgAvailable ? 'mfg_fg' : 'advanced';
         if ($kind === 'sale_item' && $p->inventory_consumption_method === 'recipe') return 'recipe';
-        if ($kind === 'sale_item')          return 'pos_sale';
+        if ($kind === 'sale_item')          return $p->product_type === 'service' ? 'service' : 'pos_sale';
         return 'advanced';
     };
     $currentMode = old('_setup_mode', $detectMode($product ?? null));
@@ -623,6 +633,8 @@
     var MFG = {{ $mfgAvailable ? 'true' : 'false' }};
     var KITCHEN = {{ $kitchenAvailable ? 'true' : 'false' }};
     var CONTEXT = {!! json_encode($context) !!};
+    // PRODUCT-FORM-ROLE-1: a card click on an EXISTING product rewrites its flags, so it asks first.
+    var IS_EDIT = {{ $product ? 'true' : 'false' }};
 
     // groups always-visible regardless of mode
     var ALL_GROUPS = ['sell','pos','tax','purchase','pack','stock','batch','kitchen','mfg','role'];
@@ -652,6 +664,17 @@
             if (!MFG)     groups = groups.filter(function (g) { return g !== 'mfg'; });
             if (!KITCHEN) groups = groups.filter(function (g) { return g !== 'kitchen'; });
         }
+
+        // PRODUCT-FORM-ROLE-1: a setting that is ALREADY ON is never hidden.
+        //
+        // Concealing a field that is SET is what made a mis-detected product unreadable: the
+        // badges said "Stock Tracked" while the control that says so was not on the page. A mode
+        // may leave a group out of the default view; it may not hide a flag the product carries.
+        // Read AFTER applyDefaults(), so deliberately switching to a type that turns purchasing
+        // off does collapse the group — the rule protects existing state, not a stale reading.
+        if (isChecked('is_purchasable')   && groups.indexOf('purchase') === -1) groups.push('purchase');
+        if (isChecked('is_stock_tracked') && groups.indexOf('stock')    === -1) groups.push('stock');
+
         groups.push('always');
         return groups;
     }
@@ -709,6 +732,13 @@
     }
 
     // Show/hide every .pf using (group ∈ mode) AND its data-link condition.
+    //
+    // PRODUCT-FORM-ROLE-1 — this MUST stay a CSS hide (`style.display`): never a Blade
+    // conditional around these inputs, and never removeChild(). A hidden checkbox is still in
+    // the form and still posts its checked state, which is the only reason a hidden Purchasable
+    // survives a Save:
+    // `ProductController` reads `!empty($data['is_purchasable'])`, so a field that is not
+    // POSTED is stored as false. Stop rendering these and every hidden flag silently clears.
     function renderVisibility(groups) {
         document.querySelectorAll('.pf').forEach(function (f) {
             var pg = f.getAttribute('data-pg') || 'always';
@@ -770,8 +800,24 @@
     }
     window.posUpdateChips = updateChips;
 
+    // PRODUCT-FORM-ROLE-1: on an EXISTING product a card click resets role, POS visibility,
+    // purchasing, stock tracking and consumption in one stroke. The detected card is already
+    // drawn as active, so "clicking it to confirm the type" was enough to wreck a live product
+    // with no warning. Ask first; on cancel change nothing at all — not even the mode.
     document.querySelectorAll('#pmode-cards .pmode-card').forEach(function (card) {
-        card.addEventListener('click', function () { applyMode(card.getAttribute('data-mode'), true); });
+        card.addEventListener('click', function () {
+            var mode = card.getAttribute('data-mode');
+            if (IS_EDIT && MODES[mode] && MODES[mode].def) {
+                var el = card.querySelector('.pmode-title');
+                var title = (el ? el.textContent : mode).trim();
+                if (! window.confirm('Switch this product to "' + title + '"?
+
+Its role, POS visibility, purchasing, stock tracking and consumption will be reset to that type\'s defaults.')) {
+                    return;
+                }
+            }
+            applyMode(mode, true);
+        });
     });
 
     // Linked control checkboxes re-evaluate dependent field visibility (+ chips).

@@ -1,0 +1,436 @@
+<!doctype html>
+<!--
+  Catering ke graahak ka paisa: kis lamhe ledger me utarta hai, dues kahan
+  bante hain, aur wo abhi kahan nazar aate hain.
+
+  27 September 2026 — tamam aadad Kashif Kitchen ke LIVE khaaton se, farzi nahi.
+
+  Ye file khud-mukhtar hai: email me bhej dein, browser me khul jayegi. Sirf
+  font Google se aate hain; internet na ho to fallback font chal jate hain aur
+  safha phir bhi theek parha jata hai.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+<title>Catering Dues &amp; Ledger</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+  :root{
+    color-scheme: light;
+    --paper:#f7f4ee;       /* warm ledger paper */
+    --card:#fffdf9;
+    --ink:#16212e;
+    --ink-soft:#4a5462;
+    --faint:#7d766a;       /* warm grey, biased to the brass */
+    --rule:#ddd6c9;
+    --rule-hard:#16212e;
+    --brass:#a8762d;       /* accent */
+    --brass-wash:#f3e8d2;
+    --due:#9c3524;         /* money owed to us */
+    --due-wash:#f7e3de;
+    --held:#26614a;        /* money we hold */
+    --held-wash:#dcebe3;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --paper:#12171d; --card:#19202a; --ink:#eef1f4; --ink-soft:#b3bcc7;
+      --faint:#8d8578; --rule:#2c3541; --rule-hard:#59636f;
+      --brass:#d9a24a; --brass-wash:#2e2517;
+      --due:#e08a78; --due-wash:#3a221d;
+      --held:#79c2a1; --held-wash:#183026;
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --paper:#12171d; --card:#19202a; --ink:#eef1f4; --ink-soft:#b3bcc7;
+    --faint:#8d8578; --rule:#2c3541; --rule-hard:#59636f;
+    --brass:#d9a24a; --brass-wash:#2e2517;
+    --due:#e08a78; --due-wash:#3a221d;
+    --held:#79c2a1; --held-wash:#183026;
+  }
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
+    font-size:16px; line-height:1.6; margin:0;
+  }
+  .wrap{max-width:1000px; margin:0 auto; padding-inline:20px; padding-block:40px 72px;}
+  h1,h2,h3{font-family:'Bitter', Georgia, serif; text-wrap:balance; margin:0;}
+  h1{font-size:clamp(28px,4.4vw,42px); line-height:1.15; font-weight:700; letter-spacing:-.01em;}
+  h2{font-size:clamp(20px,2.6vw,26px); font-weight:700; margin-top:8px;}
+  h3{font-size:17px; font-weight:700;}
+  .eyebrow{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--brass); font-weight:600;}
+  .lede{font-size:18px; color:var(--ink-soft); max-width:62ch; margin-top:14px;}
+  .num{font-family:'JetBrains Mono', ui-monospace, monospace; font-variant-numeric:tabular-nums;}
+  section{margin-top:52px;}
+  .rule{height:2px; background:var(--rule-hard); opacity:.85; margin-top:10px;}
+  .sub{color:var(--faint); font-size:14px; margin-top:6px;}
+
+  /* the two contradicting numbers */
+  .clash{display:grid; grid-template-columns:1fr auto 1fr; gap:18px; align-items:stretch; margin-top:24px;}
+  @media (max-width:640px){ .clash{grid-template-columns:1fr;} .clash .vs{justify-self:center;} }
+  .claim{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:20px 22px;}
+  .claim.due{border-left:5px solid var(--due);}
+  .claim.led{border-left:5px solid var(--held);}
+  .claim .who{font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); font-weight:600;}
+  .claim .fig{font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums;
+              font-size:clamp(26px,4.6vw,38px); font-weight:700; line-height:1.1; margin-top:8px;}
+  .claim.due .fig{color:var(--due);} .claim.led .fig{color:var(--held);}
+  .claim p{margin:10px 0 0; font-size:14px; color:var(--ink-soft);}
+  .vs{display:flex; align-items:center; justify-content:center; font-family:'Bitter',serif;
+      font-weight:700; color:var(--faint); font-size:15px;}
+
+  .callout{background:var(--brass-wash); border:1px solid var(--brass); border-radius:10px;
+           padding:18px 22px; margin-top:24px;}
+  .callout strong{font-family:'Bitter',serif;}
+
+  /* stage flow */
+  .stages{display:flex; flex-direction:column; gap:0; margin-top:26px;}
+  .stage{display:grid; grid-template-columns:44px 1fr; gap:18px; position:relative;}
+  .stage:not(:last-child){padding-bottom:26px;}
+  .stage:not(:last-child)::after{content:""; position:absolute; left:21px; top:38px; bottom:0;
+                                 width:2px; background:var(--rule);}
+  .dot{width:44px; height:38px; display:flex; align-items:center; justify-content:center;
+       font-family:'JetBrains Mono',monospace; font-weight:700; font-size:14px;
+       color:var(--brass); background:var(--brass-wash); border:1px solid var(--brass);
+       border-radius:8px; z-index:1;}
+  .stage.hit .dot{color:var(--card); background:var(--rule-hard); border-color:var(--rule-hard);}
+  .stage h3{margin-bottom:2px;}
+  .stage p{margin:4px 0 0; color:var(--ink-soft); font-size:15px;}
+  .entry{margin-top:10px; background:var(--card); border:1px solid var(--rule); border-radius:8px;
+         overflow-x:auto;}
+  .entry table{border-collapse:collapse; width:100%; min-width:380px;}
+  .entry td{padding:7px 12px; font-size:14px; border-bottom:1px solid var(--rule);}
+  .entry tr:last-child td{border-bottom:0;}
+  .entry .acct{font-family:'JetBrains Mono',monospace; font-weight:700; width:62px; color:var(--brass);}
+  .entry .side{font-family:'JetBrains Mono',monospace; width:30px; color:var(--faint); font-weight:700;}
+  .noentry{margin-top:10px; font-size:14px; color:var(--faint); font-style:italic;}
+
+  table.grid{border-collapse:collapse; width:100%; margin-top:18px; background:var(--card);
+             border:1px solid var(--rule); border-radius:10px; overflow:hidden;}
+  .scroll{overflow-x:auto; margin-top:18px;}
+  .scroll table.grid{margin-top:0; min-width:560px;}
+  table.grid th{text-align:left; font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+                color:var(--faint); font-weight:600; padding:10px 14px; border-bottom:2px solid var(--rule-hard);}
+  table.grid td{padding:9px 14px; border-bottom:1px solid var(--rule); font-size:15px;}
+  table.grid tr:last-child td{border-bottom:0;}
+  table.grid td.n{text-align:right; font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums;}
+  .tag{display:inline-block; font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+       font-weight:700; padding:2px 8px; border-radius:20px; white-space:nowrap;}
+  .tag.yes{background:var(--held-wash); color:var(--held);}
+  .tag.no{background:var(--due-wash); color:var(--due);}
+  .tag.part{background:var(--brass-wash); color:var(--brass);}
+
+  .cols{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px; margin-top:20px;}
+  .box{background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:18px 20px;}
+  .box h3{margin-bottom:8px;}
+  .box ul{margin:8px 0 0; padding-left:20px; color:var(--ink-soft); font-size:15px;}
+  .box li{margin-bottom:6px;}
+  .box.warn{border-left:5px solid var(--due);}
+  .box.ok{border-left:5px solid var(--held);}
+  footer{margin-top:64px; padding-top:20px; border-top:1px solid var(--rule);
+         font-size:13px; color:var(--faint);}
+  code{font-family:'JetBrains Mono',monospace; font-size:.88em; background:var(--brass-wash);
+       color:var(--ink); padding:1px 5px; border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Kashif Kitchen · 27 September 2026 · live figures</div>
+  <h1>Catering dues and the ledger</h1>
+  <p class="lede">Ek booking par “balance due” dikhta hai, aur khaate me wahi raqam nahi milti.
+  Ye galti nahi — do alag cheezein hain. Ye safha batata hai ke paisa kis lamhe khaate me
+  utarta hai, dues kahan bante hain, aur abhi wo kahan kahan nazar aate hain.</p>
+
+  <section>
+    <div class="eyebrow">Sab se pehle</div>
+    <h2>Do adad jo aapas me nahi milte</h2>
+    <div class="rule"></div>
+
+    <div class="clash">
+      <div class="claim due">
+        <div class="who">Bookings kehti hain</div>
+        <div class="fig num">7,533,134</div>
+        <p>71 bookings par “balance due”. Ye har booking ki screen par nazar aata hai.</p>
+      </div>
+      <div class="vs">magar</div>
+      <div class="claim led">
+        <div class="who">Khaata (1300 Receivable) kehta hai</div>
+        <div class="fig num">0.00</div>
+        <p>Dr 527,605 aur Cr 527,605 — poora barabar. Kisi ka kuch baqi nahi.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Wajah ek satar me:</strong> booking ka “balance due” <em>quotation</em> ka adad hai.
+      Khaate ko us ka pata tab chalta hai jab <strong>final invoice</strong> banti hai. Un 71
+      bookings me se <strong>ek ki bhi invoice nahi bani</strong> — is liye khaate me wo raqam
+      hai hi nahi. Ab tak sirf <span class="num">2</span> invoices bani hain
+      (<span class="num">527,605</span>), aur dono poori wasool ho chuki hain.
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Safar</div>
+    <h2>Paisa kis lamhe khaate me utarta hai</h2>
+    <div class="rule"></div>
+    <p class="sub">Har qadam par likha hai ke ledger hit hota hai ya nahi. Sirf teen qadam khaata
+    chhoote hain — baqi bookkeeping ke lehaz se khamosh hain.</p>
+
+    <div class="stages">
+
+      <div class="stage">
+        <div class="dot">1</div>
+        <div>
+          <h3>Booking banti hai · quotation par raqam aati hai</h3>
+          <p>Graahak ke saath tay hua kaam aur us ki qeemat. Booking par “balance due” yahin
+          se banta hai: <code>billed − net received</code>.</p>
+          <div class="noentry">Khaate me kuch nahi jata. Quotation ek wada hai, lein-dein nahi.</div>
+        </div>
+      </div>
+
+      <div class="stage hit">
+        <div class="dot">2</div>
+        <div>
+          <h3>Advance wasool hua · Record Advance</h3>
+          <p>Graahak ne paisa diya. Ye abhi aap ki <em>kamai</em> nahi — aap ke paas <em>amaanat</em>
+          hai, kyunke kaam abhi hua hi nahi.</p>
+          <div class="entry"><table>
+            <tr><td class="acct">1500</td><td class="side">Dr</td><td>Undeposited Funds <span class="sub">(ya jo cash/bank chuna gaya)</span></td></tr>
+            <tr><td class="acct">2300</td><td class="side">Cr</td><td>Customer Advances — <strong>zimmedari</strong>, kamai nahi</td></tr>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="stage hit">
+        <div class="dot">3</div>
+        <div>
+          <h3>Final invoice jaari hui · yahi wo lamha hai</h3>
+          <p><strong>Yahan due asli banta hai.</strong> Is se pehle wo sirf quotation par likha ek
+          adad tha; ab graahak par qarz hai aur kamai aap ki ho gayi.</p>
+          <div class="entry"><table>
+            <tr><td class="acct">1300</td><td class="side">Dr</td><td>Accounts Receivable — poori raqam</td></tr>
+            <tr><td class="acct">4160</td><td class="side">Cr</td><td>Catering Revenue</td></tr>
+            <tr><td class="acct">4130</td><td class="side">Cr</td><td>Service charges <span class="sub">(agar li gayi hon)</span></td></tr>
+            <tr><td class="acct">2200</td><td class="side">Cr</td><td>Tax <span class="sub">(agar ho)</span></td></tr>
+            <tr><td class="acct">4200</td><td class="side">Dr</td><td>Discount <span class="sub">(agar diya ho)</span></td></tr>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="stage hit">
+        <div class="dot">4</div>
+        <div>
+          <h3>Pehle liya hua advance invoice par lagta hai</h3>
+          <p>Jo amaanat 2300 me pari thi, wo ab us qarz ko kam karti hai jo abhi abhi bana.</p>
+          <div class="entry"><table>
+            <tr><td class="acct">2300</td><td class="side">Dr</td><td>Customer Advances — amaanat khatam</td></tr>
+            <tr><td class="acct">1300</td><td class="side">Cr</td><td>Receivable — utna qarz kam</td></tr>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="stage hit">
+        <div class="dot">5</div>
+        <div>
+          <h3>Raqam wapas ki gayi · Refund</h3>
+          <p>Yahan do soortein hain, aur inhe milana nahi chahiye: jo paisa kisi bill par laga hi
+          nahi tha, wo amaanat se wapas jata hai; aur jo bill ko cover kar raha tha, us ke wapas
+          jaane par <em>qarz lautt aata hai</em>.</p>
+          <div class="entry"><table>
+            <tr><td class="acct">2300</td><td class="side">Dr</td><td>Jitna abhi amaanat tha</td></tr>
+            <tr><td class="acct">1300</td><td class="side">Dr</td><td>Jitna bill par laga hua tha — qarz wapas</td></tr>
+            <tr><td class="acct">—</td><td class="side">Cr</td><td>cash / bank — poori raqam bahar</td></tr>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="stage hit">
+        <div class="dot">6</div>
+        <div>
+          <h3>Store se maal nikla · Material Issue</h3>
+          <p>Ye graahak ke paise ka nahi, <em>lagat</em> ka qadam hai.</p>
+          <div class="entry"><table>
+            <tr><td class="acct">5200</td><td class="side">Dr</td><td>Catering COGS</td></tr>
+            <tr><td class="acct">1400</td><td class="side">Cr</td><td>Inventory</td></tr>
+          </table></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Live</div>
+    <h2>Abhi paisa kahan para hai</h2>
+    <div class="rule"></div>
+    <p class="sub">Ye Kashif Kitchen ke asli khaate hain, aaj ke.</p>
+
+    <div class="scroll">
+      <table class="grid">
+        <thead><tr><th>Khaata</th><th>Naam</th><th class="n">Debit</th><th class="n">Credit</th><th class="n">Net</th><th>Iska matlab</th></tr></thead>
+        <tbody>
+          <tr><td class="num">2300</td><td>Customer Advances</td><td class="n">3,175</td><td class="n">315,895</td>
+              <td class="n" style="color:var(--held);font-weight:700">312,720</td>
+              <td>Itni <strong>amaanat</strong> aap ke paas hai — 7 bookings ka paisa jin ki invoice nahi bani</td></tr>
+          <tr><td class="num">1500</td><td>Undeposited Funds</td><td class="n">359,605</td><td class="n">3,175</td>
+              <td class="n">356,430</td><td>Wasool hua paisa jo abhi kisi cash/bank khaate me nahi daala gaya</td></tr>
+          <tr><td class="num">1300</td><td>Accounts Receivable</td><td class="n">527,605</td><td class="n">527,605</td>
+              <td class="n" style="font-weight:700">0</td><td>Jo invoice bani thi, poori wasool ho gayi</td></tr>
+          <tr><td class="num">4160</td><td>Catering Revenue</td><td class="n">0</td><td class="n">525,105</td>
+              <td class="n">525,105</td><td>Ab tak ki kamai — yani wohi 2 invoices</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cols">
+      <div class="box ok">
+        <h3>Jo khaate me hai</h3>
+        <ul>
+          <li><span class="num">312,720</span> amaanat (2300) — 7 bookings</li>
+          <li><span class="num">525,105</span> kamai (4160) — 2 invoices</li>
+          <li><span class="num">0</span> wasool talab (1300)</li>
+        </ul>
+      </div>
+      <div class="box warn">
+        <h3>Jo khaate me nahi hai</h3>
+        <ul>
+          <li><span class="num">7,533,134</span> — 71 bookings ka “due”</li>
+          <li>Wajah: <strong>kisi ki final invoice nahi bani</strong></li>
+          <li>Ye abhi wada hai, qarz nahi</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Misaal</div>
+    <h2>Ek booking, qadam ba qadam</h2>
+    <div class="rule"></div>
+    <p class="sub">EV-20260921-0018 — MR. Fazal Mairaj. Asli booking, asli aadad.</p>
+
+    <div class="scroll">
+      <table class="grid">
+        <thead><tr><th>Kya hua</th><th class="n">Raqam</th><th>Khaata</th><th>Booking par due</th><th>1300 par</th></tr></thead>
+        <tbody>
+          <tr><td>Quotation tay hui</td><td class="n">300,000</td><td><span class="tag no">kuch nahi</span></td>
+              <td class="num">300,000</td><td class="num">0</td></tr>
+          <tr><td>Advance mila</td><td class="n">100,000</td><td><span class="tag part">Dr 1500 · Cr 2300</span></td>
+              <td class="num">200,000</td><td class="num">0</td></tr>
+          <tr><td><em>Aaj yahin khari hai</em></td><td class="n">—</td><td><span class="tag no">invoice nahi bani</span></td>
+              <td class="num" style="color:var(--due);font-weight:700">200,000</td>
+              <td class="num" style="font-weight:700">0</td></tr>
+          <tr><td>Final invoice banti (agar)</td><td class="n">300,000</td><td><span class="tag yes">Dr 1300 · Cr 4160</span></td>
+              <td class="num">200,000</td><td class="num">300,000</td></tr>
+          <tr><td>Advance us par lagta</td><td class="n">100,000</td><td><span class="tag yes">Dr 2300 · Cr 1300</span></td>
+              <td class="num">200,000</td><td class="num" style="color:var(--due);font-weight:700">200,000</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sub">Aakhri satar par jaa kar dono adad milte hain. Us se pehle booking “200,000 baqi”
+    kehti rahegi aur khaata khamosh rahega — kyunke bookkeeping ke lehaz se abhi tak koi qarz
+    bana hi nahi.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">Visibility</div>
+    <h2>Dues abhi kahan nazar aate hain</h2>
+    <div class="rule"></div>
+
+    <div class="scroll">
+      <table class="grid">
+        <thead><tr><th>Jagah</th><th>Kya dikhata hai</th><th>Haalat</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Booking ki screen</strong></td>
+              <td>Us booking ka billed, received, balance due, credit</td>
+              <td><span class="tag yes">hai</span></td></tr>
+          <tr><td><strong>Dashboard tile</strong> — Outstanding Balance</td>
+              <td>Tamam khuli bookings ke due ka jama. Completed / closed / cancelled shaamil nahi.</td>
+              <td><span class="tag yes">hai</span></td></tr>
+          <tr><td><strong>Events list</strong> — Position column</td>
+              <td>Har row par “recv” aur “due”</td>
+              <td><span class="tag yes">hai</span></td></tr>
+          <tr><td><strong>Money Owed to Customers</strong></td>
+              <td>Wo paisa jo <em>aap</em> par hai (credit) — ye dues ka ulta hai</td>
+              <td><span class="tag part">ulta hisaab</span></td></tr>
+          <tr><td><strong>Finance → Customer Payments</strong></td>
+              <td>POS ki udhaari wasooli. Catering ka paisa is me nahi aata.</td>
+              <td><span class="tag no">catering ka nahi</span></td></tr>
+          <tr><td><strong>Graahak ke naam se ek fehrist</strong><br><span class="sub">“is customer par kitna baqi hai”</span></td>
+              <td>Kahin nahi. Har booking alag alag dekhni parti hai.</td>
+              <td><span class="tag no">nahi hai</span></td></tr>
+          <tr><td><strong>Trial Balance / General Ledger</strong></td>
+              <td>Sirf wo jin ki invoice ban chuki. Baqi 7.53M yahan nahi.</td>
+              <td><span class="tag part">adhoora</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <strong>To “bahir visibility nahi” waqai sach hai — magar ek khaas shakl me.</strong>
+      Booking-dar-booking dues teen jagah nazar aate hain. Jo <em>nahi</em> hai wo ye:
+      ek graahak ka naam le kar ye dekhna ke us par kul kitna baqi hai, aur wo kis kis booking se
+      bana. Kashif Kitchen par 4,855 customers hain aur 71 bookings par paisa khara hai — ye
+      fehrist banaye baghair wasooli ka peecha karna mushkil hai.
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Aage kya</div>
+    <h2>Dues bahir dikhane ke teen raaste</h2>
+    <div class="rule"></div>
+    <p class="sub">Teenon alag cheezein hain aur alag alag masle hal karte hain. Ek doosre ka
+    mutabadil nahi.</p>
+
+    <div class="cols">
+      <div class="box">
+        <h3>1 · Customer Dues fehrist</h3>
+        <p class="sub" style="margin-top:0">Naya safha</p>
+        <ul>
+          <li>Ek row per graahak: kul billed, wasool, baqi</li>
+          <li>Khol kar us ki bookings</li>
+          <li>Phone number saath — wasooli ke liye</li>
+          <li>Quotation wale aur invoice wale dues <strong>alag</strong>, warna wohi confusion</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3>2 · Booking par graahak ka kul</h3>
+        <p class="sub" style="margin-top:0">Mojooda screen par ek satar</p>
+        <ul>
+          <li>“Is graahak par doosri bookings me bhi <span class="num">X</span> baqi hai”</li>
+          <li>Advance lete waqt saamne rehta hai</li>
+          <li>Sab se sasta kaam</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3>3 · Invoice waqt par banwana</h3>
+        <p class="sub" style="margin-top:0">Amal ka masla, code ka nahi</p>
+        <ul>
+          <li>71 bookings ki invoice nahi bani</li>
+          <li>Isi wajah se khaata khamosh hai</li>
+          <li>Invoice banti rahe to 1300 khud sach bolne lagega</li>
+          <li>Trial Balance bhi tab poora hoga</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Tamam aadad 27 September 2026 ko Kashif Kitchen ke live khaaton se liye gaye
+    (<span class="num">75</span> bookings par paisa, billed <span class="num">8,373,459</span>,
+    wasool <span class="num">840,325</span>). GL ke naam code se: 1300 Accounts Receivable,
+    1500 Undeposited Funds, 2300 Customer Advances, 4130 Service Charges, 4160 Catering Revenue,
+    4200 Discounts, 5200 Catering COGS, 1400 Inventory.
+  </footer>
+</div>
+</body>
+</html>

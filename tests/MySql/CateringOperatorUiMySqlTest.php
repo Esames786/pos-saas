@@ -157,6 +157,7 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
             'position' => $finance->position($event),
             'headline' => $finance->headline($event),
             'ledger' => $finance->ledger($event),
+            'voidedAdvances' => $finance->voidedAdvances($event),
         ])->render();
     }
 
@@ -844,6 +845,13 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
      * materials there are. A second material starts again at the Material column
      * — it never opens a second group of five columns sideways, because a
      * material is a CHILD of the line being punched, not a line of its own.
+     *
+     * PUNCH-ENTRY-FOOTER-1 (27 Sep) ne is block ki CHAURAI kam ki. Teraan
+     * columns par "Save Row" horizontal scroll ke peeche chala jata tha:
+     * operator punch karta aur phir Save dhoondne ke liye safha khiskata.
+     * Kitchen Instructions, Additional Note, Line Amount aur Action ab table
+     * ke neeche ek footer strip me hain — table 13 se 9 columns par aa gayi,
+     * aur dono text ke khanon ko pehle se zyada jagah mil gayi.
      */
     public function test_the_entry_area_is_one_block_with_the_materials_stacked(): void
     {
@@ -855,8 +863,8 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertNotNull($group, 'Material Breakdown must span exactly five columns');
         $this->assertSame('Material Breakdown', trim($group->textContent));
 
-        $this->assertSame(8, $xp->query('//table[@id="punch-table"]/thead/tr[1]/th[@rowspan="2"]')->length,
-            'the eight product-level headings span both header rows; the ninth is the group');
+        $this->assertSame(4, $xp->query('//table[@id="punch-table"]/thead/tr[1]/th[@rowspan="2"]')->length,
+            'the four product-level headings span both header rows; the fifth is the group');
 
         $heads = [];
         foreach ($xp->query('//table[@id="punch-table"]/thead/tr/th') as $th) {
@@ -864,9 +872,20 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         }
         $this->assertSame([
             'Item', 'Qty', 'System Rate', 'Customer Rate', 'Material Breakdown',
-            'Kitchen Instructions', 'Additional Note', 'Line Amount', 'Action',
             'Material', 'Rate', 'Required Qty', 'Own', 'Party',
         ], $heads);
+
+        // PUNCH-ENTRY-FOOTER-1 — aur wo chaar khane gum nahi huye, table se
+        // BAHAR chale gaye. Ye farq ginti se nahi, jagah se sabit hota hai:
+        // agar tail kisi din wapas table ke andar aa gaya to wo dobara ek
+        // column hai, chahe uska id wahi rahe.
+        $this->assertSame(0, $xp->query('//table[@id="punch-table"]//*[@id="punch-tail"]')->length,
+            'the entry tail must sit OUTSIDE the table, otherwise it is still a column');
+
+        foreach (['punch-instr-ids', 'punch-instr', 'punch-live-amount', 'punch-commit', 'punch-cancel'] as $id) {
+            $this->assertSame(1, $xp->query('//*[@id="punch-tail"]//*[@id="'.$id.'"]')->length,
+                "'{$id}' ko footer me hona chahiye — ye khana hataya nahi gaya, hilaya gaya hai");
+        }
 
         // The product cells are rendered ONCE, in Blade, and never rebuilt: the
         // item picker is a select2 and redrawing it would tear out the control
@@ -880,6 +899,47 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
             "and the product cells' span is adjusted to match");
         $this->assertStringNotContainsString('punch-item', $render,
             'the item picker is never re-rendered');
+    }
+
+    /**
+     * PUNCH-ENTRY-FRAME-1 — entry block EK table lagta hai, teen tukre nahi.
+     *
+     * Malik ne poore block ke gird laal daira bana kar likha: "is ko ek table
+     * mein, dark edges karo." Table, footer ke khane aur validation ki satar
+     * ab ek frame ke andar hain, aur frame ka kinara gehra hai.
+     *
+     * AUR FRAME KUCH KAATTA NAHI. Isi safhe par ye keeda ek dafa pakra ja chuka
+     * hai: `.table-responsive` ka overflow Actions ka dropdown kaat deta tha.
+     * Frame ke andar Kitchen Instructions ek select2 hai — us par `overflow`
+     * lagana wohi ghalti dobara karna hoga. Gol kinare aksar `overflow: hidden`
+     * ke saath aate hain, is liye ye assert yahan likha gaya hai, comment me
+     * nahi: comment koi torta nahi, test torta hai.
+     */
+    public function test_the_entry_block_is_one_framed_table_that_does_not_clip_its_dropdowns(): void
+    {
+        $html = $this->render($this->booking());
+        $xp = $this->linesTableXPath($html);
+
+        foreach ([
+            'table[@id="punch-table"]' => 'punch ki table',
+            '*[@id="punch-tail"]' => 'footer ke khane',
+            '*[@id="punch-live"]' => 'validation ki satar',
+        ] as $what => $label) {
+            $this->assertSame(1, $xp->query('//*[@id="punch-frame"]//'.$what)->length,
+                "{$label} frame ke ANDAR honi chahiye — warna block phir teen tukre hai");
+        }
+
+        // Kinara gehra ho, warna "dark edges" ka koi matlab hi nahi.
+        $this->assertMatchesRegularExpression(
+            '/#punch-frame\s*\{[^}]*border:\s*1px solid var\(--punch-edge\)/', $html,
+            'frame ka kinara apne gehre rang par ho');
+        $this->assertMatchesRegularExpression('/--punch-edge:\s*#[0-9a-fA-F]{6}/', $html,
+            'aur wo rang ek hi jagah tay ho — warna kal do kinare do rang ho jayenge');
+
+        preg_match('/#punch-frame\s*\{([^}]*)\}/', $html, $m);
+        $this->assertNotEmpty($m, 'frame ka apna rule mojood ho');
+        $this->assertStringNotContainsString('overflow', $m[1],
+            'frame par overflow dropdown ko kaat deta hai — ye keeda is safhe par pehle pakra ja chuka hai');
     }
 
     /**

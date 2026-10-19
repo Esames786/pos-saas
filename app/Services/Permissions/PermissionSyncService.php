@@ -127,6 +127,24 @@ class PermissionSyncService
         'tenant.printing.layouts.index' => 'tenant.printing.layouts',
         'tenant.printing.layouts.store' => 'tenant.printing.layouts',
         'tenant.printing.layouts.preview' => 'tenant.printing.layouts',
+        // CUSTOMER-PAYMENTS-MODULE-1 (28 Sep): ye screen graahak se paisa
+        // RECEIVABLE ke khilaf leti hai — yani POS/sales ke udhaar ke khilaf.
+        // Ek caterer ka paisa catering advance ke zariye aata hai aur event
+        // par post hota hai, is liye Kashif Kitchen par ye screen sirf uljhan
+        // thi. Apni module key milne se plan us ek tenant se ise band kar
+        // sakta hai, baghair poora finance module chheene.
+        //
+        // YE JAGAH JAAN-BOOJH KAR CHUNI GAYI HAI. Mapping migration me bhi
+        // likhi jati hai, magar wo tikti nahi: deploy.sh har deploy par
+        // `system:routes-sync` chalata hai, jo har route ka module_key YAHIN
+        // se DOBARA likh deta hai. Sirf migration par bharosa karne se ye
+        // mapping agle deploy par khud-ba-khud `tenant.finance` par wapas
+        // chali jati — aur screen Kashif Kitchen par bina kisi wajah ke
+        // dobara nazar aane lagti.
+        'tenant.finance.customer-payments.index' => 'tenant.finance.customer-payments',
+        'tenant.finance.customer-payments.create' => 'tenant.finance.customer-payments',
+        'tenant.finance.customer-payments.store' => 'tenant.finance.customer-payments',
+        'tenant.finance.customer-payments.show' => 'tenant.finance.customer-payments',
     ];
 
     public function moduleKey(string $routeName): string

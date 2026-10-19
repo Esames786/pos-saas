@@ -30,6 +30,89 @@
     #punch-table thead th.punch-mat-group { background: #f0f8f3; color: #2b7a5b; }
     #punch-table thead th.punch-mat-col { background: #f7fbf9; }
     #punch-table .form-control, #punch-table .form-select { min-height: 34px; font-size: 13px; }
+    /* PUNCH-GRID-LEGIBILITY-1 (27 Sep) — malik: "interface thora bold karna
+       hai, rows me professional colors, aur chhoti screen par bhi sab andar
+       aaye aur bold ho."
+
+       Har column ab `min-width` par hai, `width` par nahi: browser `width` ko
+       tajweez samajhta hai aur jagah kam ho to us se neeche le jata hai —
+       isi liye Qty ka khana sikuṛ kar sirf spinner reh gaya tha. `min-width`
+       farsh hai: ab tang screen par table KHUD SCROLL hoti hai (wrapper par
+       table-responsive pehle se hai) aur koi khana kuchla nahi jata. */
+
+    /* Jo number parha jata hai wo bold aur qatar me seedha — tabular-nums ke
+       baghair 1 aur 7 alag chaurai lete hain aur qatar tirchi lagti hai. */
+    #punch-table input[type=number], #lines-table input[type=number],
+    #punch-table .text-end, #lines-table .text-end {
+        font-variant-numeric: tabular-nums;
+    }
+    #punch-table input[type=number], #lines-table input[type=number] {
+        font-weight: 600;
+    }
+    #punch-table #punch-live-rate { font-size: 15px; }
+
+    /* Rows: halka zebra aur hover. Rang sirf itna ke qatar aankh se na
+       phisle — ye kaam ki grid hai, dashboard nahi. */
+    /* `tr.line-row` likhna meri ghalti thi — wo class markup me hai hi nahi,
+       aur rule khamoshi se kuch na karta. Asal qatarein #lines-body ki
+       seedhi aulad hain; cost-details wali qatar us se alag rakhni hai,
+       warna khuli tafseel bhi zebra me aa kar qatar tor deti hai. */
+    #lines-body > tr:not(.cost-details-row):nth-of-type(even) > td { background: var(--bs-tertiary-bg, #fafbfc); }
+    #lines-body > tr:not(.cost-details-row):hover > td { background: #eef4ff; }
+    #lines-table thead th {
+        background: var(--bs-tertiary-bg, #f6f7f9); font-weight: 600; font-size: 12px;
+        color: var(--bs-secondary-color, #5b6470); white-space: nowrap;
+        border-bottom: 2px solid var(--bs-border-color, #dee2e6);
+    }
+    /* Item ka naam wohi cheez hai jo operator sab se pehle dhoondta hai. */
+    #lines-table tbody td:first-child { font-weight: 600; }
+
+    /* Chhoti screen: table apne wrapper me scroll kare, aur us ka kinara
+       nazar aaye — warna operator ko pata hi nahi chalta ke daayen aur
+       columns hain. */
+    #lines-table-wrap {
+        border: 1px solid var(--bs-border-color, #dee2e6); border-radius: 6px;
+    }
+
+    /* PUNCH-ENTRY-FRAME-1 (27 Sep) — malik ne poore entry block ke gird ek
+       laal daira bana kar likha: "is ko ek table mein, dark edges karo."
+
+       Block teen tukron me bata hua tha — table, uske neeche khulay hue
+       footer ke khane, aur uske neeche validation ki satar — aur teeno ke
+       kinare itne halke thay ke safhe me ghul jate thay. Nazar ko ye ek cheez
+       nahi lagti thi, teen lagti thi.
+
+       Ab teeno EK frame ke andar hain, aur frame ka kinara gehra hai. Andar
+       ki lakeerein jaan-boojh kar halki rakhi gayi hain: gehra bahar, halka
+       andar — isi se aankh ko "ye ek table hai" ka ehsaas hota hai. Agar
+       andar ki lakeerein bhi gehri kar dein to grid jaal ban jati hai aur
+       adad parhna mushkil ho jata hai.
+
+       GOL KINARE AUR `overflow: hidden` JAAN-BOOJH KAR NAHI. Isi safhe par
+       ek dafa yehi keeda pakra ja chuka hai: `.table-responsive` ka
+       `overflow-x: auto` dropdown ko kaat deta tha. Frame ke andar Kitchen
+       Instructions ek select2 hai — us par `overflow: hidden` lagana wohi
+       ghalti dobara karna hota. Seedhe kinare waise bhi ERP grid par zyada
+       theek lagte hain. */
+    #punch-bar { --punch-edge: #8b95a1; }
+    #punch-frame { border: 1px solid var(--punch-edge); background: #fff; }
+    #punch-frame > .table-responsive { border: 0; border-radius: 0; }
+    #punch-table > :not(caption) > * > * { border-color: #e1e5ea; }
+    #punch-table thead th { border-bottom: 2px solid var(--punch-edge); }
+    #punch-tail {
+        border-top: 1px solid var(--punch-edge);
+        margin: 0; padding: .55rem .35rem;
+        background: var(--bs-tertiary-bg, #f8f9fa);
+    }
+    #punch-live { margin: 0; padding: .4rem .6rem; background: #fff; }
+    /* Khali satar apni jagah na ghere — punch se pehle yahan kuch hota hi
+       nahi, aur ek khali patti frame ko neeche se dhundla kar deti hai. */
+    #punch-live:not(:empty) { border-top: 1px dashed var(--punch-edge); }
+    #punch-live:empty { display: none; }
+    @media (max-width: 991.98px) {
+        #punch-table th, #punch-table td { padding: .3rem .4rem; }
+        #punch-table .form-control, #punch-table .form-select { font-size: 12.5px; }
+    }
     /* The Material Breakdown reads as one section — a hairline down each side,
        and only a dotted rule BETWEEN materials so the product cells beside them
        are never cut through. */
@@ -190,7 +273,7 @@
                 ])
             @endcan
         @endif
-        @if($event->isOpen())
+        @if($event->isCommerciallyOpen())
             @can('tenant.catering.events.edit')
                 {{-- KASHIF-CATERING-NO-RELOAD-2: editing happens beside the work,
                      in an offcanvas — the operator never leaves the booking. --}}
@@ -274,20 +357,92 @@
                     <li>{{ $blocker }}</li>
                 @endforeach
             </ul>
+
+            {{-- CATERING-ADOPT-PUNCHED-RATE-1 — the way THROUGH the wall.
+
+                 Before this, a dish with no cost block could only be fixed by
+                 leaving the booking, opening Cost Blocks and adding a part by
+                 hand. What operators actually added was an empty block at rate
+                 0, purely to open the door — "Chatni", "Paratha (Pcs)" and
+                 "Decoration" on the live tenant all carry one, and Decoration
+                 sold for 45,000 with a cost basis of nothing.
+
+                 So the offer is made where the wall is, carrying the rate the
+                 operator already typed on this quotation. --}}
+            {{-- `$estimate` is NOT a variable this view has — the first version
+                 of this block used it, the URL came out as
+                 /catering/estimates//send, and the button did nothing. The
+                 estimate here is the event's current one, and it is named in
+                 the condition too so the form cannot render without it. --}}
+            @if(! empty($rateOffers) && $isDraft && $event->currentEstimate)
+                @can('tenant.catering.estimates.send')
+                <form method="POST" action="{{ url('/catering/estimates/' . $event->currentEstimate->id . '/send') }}"
+                      class="mt-3 pt-3 border-top">
+                    @csrf
+                    <div class="fw-semibold fs-13 mb-2">
+                        Yahin se rate de sakte hain — wohi jo aap ne is quotation par likha hai:
+                    </div>
+
+                    @foreach($rateOffers as $offer)
+                        <label class="d-flex align-items-start gap-2 mb-1 fs-13">
+                            <input type="checkbox" class="form-check-input mt-1 flex-shrink-0"
+                                   name="adopt_punched_rate[]" value="{{ $offer['product_id'] }}" checked>
+                            <span>
+                                <strong>{{ $offer['name'] }}</strong> —
+                                is quotation ka rate <strong>{{ number_format($offer['rate'], 2) }}</strong>@if($offer['unit']) / {{ $offer['unit'] }}@endif
+                                ko hi is dish ka rate bana dein
+                            </span>
+                        </label>
+                    @endforeach
+
+                    {{-- Said before anything happens, because this is the part an
+                         operator would not guess: one booking's price becomes the
+                         dish's price on every quotation after it. --}}
+                    <div class="alert alert-warning py-2 px-3 mt-2 mb-2 fs-13">
+                        <i class="ti ti-alert-triangle me-1"></i>
+                        Ye rate <strong>aage banne wali har quotation</strong> par bhi lagega — sirf is booking par nahi.
+                        Cost Blocks screen se jab chahein badal sakte hain.
+                    </div>
+
+                    <button type="submit" class="btn btn-sm btn-warning"
+                            onclick="return confirm('Chune hue dishes ka rate is quotation wala bana kar quotation bhej dein?\n\nYe rate aage ki har quotation par bhi lagega.')">
+                        <i class="ti ti-check me-1"></i>Rate bana kar quotation bhejo
+                    </button>
+                </form>
+                @endcan
+            @endif
         </div>
     @elseif($isDraft)
-        <div class="alert alert-success py-2">
-            <i class="ti ti-shield-check me-1"></i>Costing basis complete — every material has an effective Catering Material Rate.
+        {{-- COSTING-STATUS-COMPACT-1 (27 Sep) — malik: "remove this success and
+             warning or show it in toast so space will be free on this screen".
+
+             Green banner poori chaurai le kar ye kehta tha ke sab theek hai —
+             yani jab karne ko kuch nahi hota, tab sab se zyada jagah leta tha.
+             Ab ek line. --}}
+        <div class="d-flex align-items-center gap-2 text-success fs-13 mb-2">
+            <i class="ti ti-shield-check"></i>Costing basis complete
         </div>
     @endif
     @if($costingReadiness['warnings'] !== [])
-        <div class="alert alert-warning py-2">
-            <div class="fw-bold">Costing notes (do not block sending):</div>
-            <ul class="mb-0">
-                @foreach($costingReadiness['warnings'] as $warning)
-                    <li>{{ $warning }}</li>
-                @endforeach
-            </ul>
+        {{-- TOAST JAAN-BOOJH KAR NAHI. Toast ghayab ho jata hai, aur ye asal
+             maloomat hai — kis dish ka rate qeemat me kuch nahi jor raha. Jo
+             cheez operator ko dobara parhni par sakti hai wo safhe par rehni
+             chahiye, bas chhoti shakl me: ginti bahar, tafseel click par. --}}
+        <div class="mb-2">
+            <button class="btn btn-sm btn-link text-warning-emphasis p-0 fs-13 text-decoration-none"
+                    type="button" data-bs-toggle="collapse" data-bs-target="#costing-notes">
+                <i class="ti ti-alert-triangle me-1"></i>{{ count($costingReadiness['warnings']) }}
+                costing {{ \Illuminate\Support\Str::plural('note', count($costingReadiness['warnings'])) }}
+                <span class="text-body-secondary">— bhejne se rokte nahi</span>
+                <i class="ti ti-chevron-down ms-1"></i>
+            </button>
+            <div class="collapse" id="costing-notes">
+                <ul class="mb-0 mt-1 fs-13 text-body-secondary">
+                    @foreach($costingReadiness['warnings'] as $warning)
+                        <li>{{ $warning }}</li>
+                    @endforeach
+                </ul>
+            </div>
         </div>
     @endif
 @endif
@@ -367,7 +522,7 @@
             @unless($isDraft)<i class="ti ti-lock ms-1" title="Commercially immutable"></i>@endunless
         </h5>
         <div class="d-flex gap-2">
-            @if($isDraft && $event->isOpen())
+            @if($isDraft && $event->isCommerciallyOpen())
                 @can('tenant.catering.estimates.reprice')
                     {{-- RECALC-ASKS-TO-SAVE-1: this posts to the server and the
                          workspace is re-rendered from what the server HAS. Rows
@@ -420,7 +575,7 @@
                     </form>
                 @endcan
             @endunless
-            @if(! $isDraft && $event->isOpen())
+            @if(! $isDraft && $event->isCommerciallyOpen())
                 @can('tenant.catering.estimates.revise')
                     {{-- CATERING-REVISION-MONEY-1 — a revision is a FINANCIAL act
                          once money has been received, because what the customer
@@ -440,7 +595,7 @@
         </div>
     </div>
 
-    @if($isDraft && $event->isOpen())
+    @if($isDraft && $event->isCommerciallyOpen())
     {{-- ── Draft estimate builder ─────────────────────────────────────── --}}
     @can('tenant.catering.estimates.update')
     <form method="POST" action="{{ url('/catering/estimates/' . $current->id) }}" id="estimate-form">
@@ -463,26 +618,26 @@
                     <span class="fs-12 text-muted">Item chunein — uske material neeche ki taraf, unhi columns me barhte hain.</span>
                     <span class="fs-12 text-muted"><kbd>Enter</kbd> next · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> save · <kbd>Esc</kbd> cancel</span>
                 </div>
+                {{-- PUNCH-ENTRY-FRAME-1 — table, footer ke khane aur validation
+                     ki satar EK frame ke andar, taake ye teen cheezein nahi,
+                     ek table lagey. --}}
+                <div id="punch-frame">
                 <div class="table-responsive">
                     <table class="table table-sm mb-0 align-middle" id="punch-table">
                         <thead>
                             <tr>
                                 <th rowspan="2" style="min-width:250px;">Item</th>
-                                <th rowspan="2" style="width:95px;" class="text-end">Qty</th>
-                                <th rowspan="2" style="width:105px;" class="text-end">System Rate</th>
-                                <th rowspan="2" style="width:115px;" class="text-end">Customer Rate</th>
+                                <th rowspan="2" style="min-width:110px;" class="text-end">Qty</th>
+                                <th rowspan="2" style="min-width:110px;" class="text-end">System Rate</th>
+                                <th rowspan="2" style="min-width:120px;" class="text-end">Customer Rate</th>
                                 <th colspan="5" class="text-center punch-mat-group">Material Breakdown</th>
-                                <th rowspan="2" style="min-width:170px;">Kitchen Instructions</th>
-                                <th rowspan="2" style="min-width:160px;">Additional Note</th>
-                                <th rowspan="2" style="width:110px;" class="text-end">Line Amount</th>
-                                <th rowspan="2" style="width:130px;">Action</th>
                             </tr>
                             <tr>
                                 <th class="punch-mat-col" style="min-width:160px;">Material</th>
-                                <th class="punch-mat-col text-end" style="width:95px;">Rate</th>
-                                <th class="punch-mat-col text-end" style="width:105px;">Required Qty</th>
-                                <th class="punch-mat-col text-end" style="width:95px;">Own</th>
-                                <th class="punch-mat-col text-end" style="width:95px;">Party</th>
+                                <th class="punch-mat-col text-end" style="min-width:100px;">Rate</th>
+                                <th class="punch-mat-col text-end" style="min-width:110px;">Required Qty</th>
+                                <th class="punch-mat-col text-end" style="min-width:100px;">Own</th>
+                                <th class="punch-mat-col text-end" style="min-width:100px;">Party</th>
                             </tr>
                         </thead>
                         <tbody id="punch-body">
@@ -514,46 +669,56 @@
                                            class="form-control form-control-sm text-end d-none punch-step" placeholder="system">
                                 </td>
                                 <td class="punch-mat-cell text-muted fs-12" colspan="5">Item chunte hi is ke material yahan aa jayenge.</td>
-                                <td class="punch-span">
-                                    {{-- The managed vocabulary, right in the punch — the same
-                                         list the line carries afterwards. --}}
-                                    <select id="punch-instr-ids" class="form-select form-select-sm d-none punch-step" multiple
-                                            data-placeholder="Select / type instruction…">
-                                        @foreach($activeInstructions as $instr)
-                                            <option value="{{ $instr->id }}">{{ $instr->label }}</option>
-                                        @endforeach
-                                    </select>
-                                </td>
-                                <td class="punch-span">
-                                    <input id="punch-instr" type="text" class="form-control form-control-sm d-none punch-step"
-                                           placeholder="Select / type note…">
-                                </td>
-                                <td class="punch-span text-end">
-                                    <strong id="punch-live-amount" class="d-none punch-step">0.00</strong>
-                                </td>
-                                <td class="punch-span text-nowrap">
-                                    <button type="button" class="btn btn-warning btn-sm fw-bold d-none punch-step" id="punch-commit">Save Row</button>
-                                    <button type="button" class="btn btn-link btn-sm text-muted p-0 ms-2 d-none punch-step" id="punch-cancel">Esc</button>
-                                </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-                <div id="punch-live" class="fs-13 text-muted mt-2"></div>
+                {{-- PUNCH-ENTRY-FOOTER-1 — ye chaar khane pehle table ke daayen
+                     sire par thay, jahan "Save Row" safhe se bahar nikal jata tha.
+                     Ab entry block ke neeche, poori chaurai me: dono text ke khanon
+                     ko zyada jagah, aur Save hamesha nazar me. --}}
+                <div id="punch-tail" class="row g-2 align-items-end">
+                    <div class="col-12 col-lg-5">
+                        <label class="form-label fs-12 text-muted mb-1">Kitchen Instructions</label>
+                        {{-- The managed vocabulary, right in the punch — the same
+                             list the line carries afterwards. --}}
+                        <select id="punch-instr-ids" class="form-select form-select-sm d-none punch-step" multiple
+                                data-placeholder="Select / type instruction…">
+                            @foreach($activeInstructions as $instr)
+                                <option value="{{ $instr->id }}">{{ $instr->label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-12 col-lg-4">
+                        <label class="form-label fs-12 text-muted mb-1">Additional Note</label>
+                        <input id="punch-instr" type="text" class="form-control form-control-sm d-none punch-step"
+                               placeholder="Select / type note…">
+                    </div>
+                    <div class="col-6 col-lg-1 text-end">
+                        <div class="form-label fs-12 text-muted mb-1">Line Amount</div>
+                        <strong id="punch-live-amount" class="d-none punch-step fs-15">0.00</strong>
+                    </div>
+                    <div class="col-6 col-lg-2 text-end text-nowrap">
+                        <button type="button" class="btn btn-warning btn-sm fw-bold d-none punch-step" id="punch-commit">Save Row</button>
+                        <button type="button" class="btn btn-link btn-sm text-muted p-0 ms-2 d-none punch-step" id="punch-cancel">Esc</button>
+                    </div>
+                </div>
+                <div id="punch-live" class="fs-13 text-muted"></div>
+                </div>
             </div>
-            <div class="table-responsive">
+            <div class="table-responsive" id="lines-table-wrap">
                 <table class="table mb-0" id="lines-table">
                     <thead>
                         <tr>
                             <th style="min-width:170px;">Item</th>
                             <th style="min-width:110px;">Urdu Name</th>
-                            <th style="width:80px;" class="text-end">Qty</th>
-                            <th style="width:85px;">Unit</th>
-                            <th style="width:100px;" class="text-end"
+                            <th style="min-width:90px;" class="text-end">Qty</th>
+                            <th style="min-width:90px;">Unit</th>
+                            <th style="min-width:105px;" class="text-end"
                                 data-bs-toggle="tooltip" title="System Calculated Rate: what the configured materials and making charges work out to per selling unit.">System Rate</th>
-                            <th style="width:115px;" class="text-end"
+                            <th style="min-width:120px;" class="text-end"
                                 data-bs-toggle="tooltip" title="Customer Quoted Rate: what the customer actually pays per selling unit. It follows the system rate unless an agreed override is recorded.">Customer Rate</th>
-                            <th style="width:100px;" class="text-end">Amount</th>
+                            <th style="min-width:105px;" class="text-end">Amount</th>
                             <th style="min-width:140px;">Instructions</th>
                             <th style="width:36px;"></th>
                         </tr>
@@ -915,16 +1080,66 @@
             <div class="card-body p-0">
                 <table class="table table-sm mb-0">
                     <tbody>
+                        {{-- CATERING-ADVANCE-VOID-1 — darj shuda receipt ki ghalti
+                             theek karne ka raasta. Pehle koi nahi tha: receipt
+                             ek baar darj ho jaye to bas ho gayi.
+
+                             Do alag karwaiyan hain aur ye farq jaan-boojh kar
+                             hai. Reference sirf ek label hai — usay badalne se
+                             paisa nahi hilta. Amount ke saath paisa hilta hai,
+                             is liye wo badli NAHI jati: receipt ulti hoti hai
+                             aur sahi nayi darj hoti hai. --}}
+                        @php $mayVoid = ! $event->finalInvoice; @endphp
                         @forelse($event->advances as $advance)
                         <tr>
                             <td>{{ $advance->received_date->format('d M Y') }}</td>
                             <td>{{ $advance->paymentMethod?->name ?? '—' }}</td>
                             <td class="text-muted">{{ $advance->reference }}</td>
                             <td class="text-end">{{ number_format($advance->amount, 2) }}</td>
+                            <td class="text-end pe-2" style="width:1%; white-space:nowrap;">
+                                @can('tenant.catering.advances.update-reference')
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-muted adv-ref-btn"
+                                            data-id="{{ $advance->id }}"
+                                            data-reference="{{ $advance->reference }}"
+                                            data-notes="{{ $advance->notes }}"
+                                            title="Slip number ya note theek karein. Rakam nahi badalti aur koi entry nahi banti.">
+                                        <i class="ti ti-pencil"></i>
+                                    </button>
+                                @endcan
+                                @if($mayVoid)
+                                    @can('tenant.catering.advances.void')
+                                        <button type="button" class="btn btn-link btn-sm p-0 text-danger ms-2 adv-void-btn"
+                                                data-id="{{ $advance->id }}"
+                                                data-amount="{{ number_format($advance->amount, 2) }}"
+                                                data-date="{{ $advance->received_date->format('d M Y') }}"
+                                                title="Ghalat darj hui receipt ko ulta karein — journal ulti hoti hai aur cash/bank wapas ho jata hai.">
+                                            <i class="ti ti-ban"></i>
+                                        </button>
+                                    @endcan
+                                @endif
+                            </td>
                         </tr>
                         @empty
-                        <tr><td class="text-center text-muted py-3">No advances recorded.</td></tr>
+                        <tr><td colspan="5" class="text-center text-muted py-3">No advances recorded.</td></tr>
                         @endforelse
+
+                        {{-- Ulti hui receipts yahan NAZAR aati hain magar kisi
+                             ginti me nahi. Inhein chhupa dena aasan tha aur
+                             ghalat hota: screen par ek khala reh jata aur koi
+                             na jaanta ke us din paisa aaya tha aur phir wapas
+                             gaya. --}}
+                        @foreach($voidedAdvances as $voided)
+                        <tr class="text-muted">
+                            <td><s>{{ $voided->received_date->format('d M Y') }}</s></td>
+                            <td><s>{{ $voided->paymentMethod?->name ?? '—' }}</s></td>
+                            <td>
+                                <span class="badge bg-danger-subtle text-danger-emphasis fs-11">VOIDED</span>
+                                <span class="fs-11">{{ $voided->void_reason }}</span>
+                            </td>
+                            <td class="text-end"><s>{{ number_format($voided->amount, 2) }}</s></td>
+                            <td></td>
+                        </tr>
+                        @endforeach
 
                         @foreach($event->refunds as $refund)
                         <tr class="text-warning-emphasis">
@@ -932,6 +1147,7 @@
                             <td>Refund · {{ $refund->paymentMethod?->name ?? '—' }}</td>
                             <td class="text-muted">{{ $refund->refund_no }}</td>
                             <td class="text-end">({{ number_format($refund->amount, 2) }})</td>
+                            <td></td>
                         </tr>
                         @endforeach
 
@@ -939,6 +1155,7 @@
                         <tr class="fw-bold">
                             <td colspan="3">Received{{ $position['refunded'] > 0 ? ', less refunds' : '' }}</td>
                             <td class="text-end">{{ number_format($position['net_received'], 2) }}</td>
+                            <td></td>
                         </tr>
                         <tr class="fw-bold">
                             <td colspan="3">
@@ -951,6 +1168,7 @@
                                 </span>
                             </td>
                             <td class="text-end text-{{ $headline['tone'] }}">{{ number_format($headline['amount'], 2) }}</td>
+                            <td></td>
                         </tr>
                         @endif
                     </tbody>
@@ -974,6 +1192,23 @@
         <div class="card h-100">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 class="mb-0">Production</h5>
+                {{-- CATERING-EDIT-AFTER-RELEASE-1 (1 Oct) — ye tanbeeh wo cheez hai jo
+                     release ke baad editing ko qabil-e-bardasht banati hai.
+
+                     Ab quotation release ke BAAD bhi badli ja sakti hai (malik ki
+                     farmaish — graahak aksar usi din item barha deta hai). Magar jo
+                     kaghaz bawarchi-khane me laga hua hai wo purani quotation ka hai,
+                     aur us ka chup chaap purana ho jana sab se bura nateeja hota:
+                     bawarchi 10 KG pakata aur bill 12 KG ka banta, aur kisi ko pata
+                     bhi na chalta.
+
+                     Ginti version se nahi, release ke apne `catering_estimate_id` se
+                     hoti hai — yani us se jo us parche ne WAQAI istemaal kiya tha. --}}
+                @if($event->hasStaleRelease())
+                    <span class="badge bg-warning-transparent text-warning fs-12">
+                        <i class="ti ti-alert-triangle me-1"></i>quotation revised after release
+                    </span>
+                @endif
                 @if($current && ! $current->isDraft() && in_array($event->status, ['quoted', 'confirmed', 'production_ready']))
                     @can('tenant.catering.production-releases.store')
                         <form method="POST" action="{{ url('/catering/events/' . $event->id . '/production-releases') }}">
@@ -1290,6 +1525,14 @@
 @endcan
 @endif
 
+{{-- CATERING-ADVANCE-VOID-1 — ulta karne aur reference theek karne ke parche.
+     Jaan-boojh kar Record Advance ke "booking cancelled nahi" aur "balance
+     baqi hai" wali shart se BAHAR: ghalat darj hui receipt theek karni padti
+     hai chahe booking ki haalat kuch bhi ho. --}}
+@canany(['tenant.catering.advances.void', 'tenant.catering.advances.update-reference'])
+    @include('tenant.catering.partials.advance-fix-modals', ['returnCustomer' => null])
+@endcanany
+
 {{-- ── Refund the customer ───────────────────────────────────────────────
      Deliberately OUTSIDE the "not cancelled" guard above. A cancelled booking
      is precisely when someone needs their money back, so the one action that
@@ -1461,7 +1704,7 @@
                         {{-- KASHIF-EVENT-HISTORY-2: bring this version back as
                              the new current draft. Never a rewrite — the trail
                              only moves forward. --}}
-                        @if($version->status === \App\Models\Tenant\CateringEstimate::STATUS_SUPERSEDED && $event->isOpen())
+                        @if($version->status === \App\Models\Tenant\CateringEstimate::STATUS_SUPERSEDED && $event->isCommerciallyOpen())
                             @can('tenant.catering.estimates.restore-version')
                             <span data-act="{{ url('/catering/estimates/' . $version->id . '/restore-version') }}"
                                   data-act-method="POST">
@@ -1481,7 +1724,7 @@
 </div>
 @endif
 @can('tenant.catering.events.edit')
-@if($event->isOpen())
+@if($event->isCommerciallyOpen())
 {{-- KASHIF-CATERING-NO-RELOAD-2 — Edit Event beside the work. data-no-ajax
      keeps the generic workspace engine away: this form has its OWN handler,
      because a validation mistake must keep the panel open with every typed
@@ -1580,7 +1823,7 @@
                             </section>
                         @endif
 
-                        @if($i > 0 && $event->isOpen())
+                        @if($i > 0 && $event->isCommerciallyOpen())
                             @can('tenant.catering.events.revisions.revert')
                             <div class="mt-2"
                                  data-act="{{ url('/catering/events/' . $event->id . '/revisions/' . $rev->id . '/revert') }}"
@@ -2053,7 +2296,7 @@ document.addEventListener('keydown', function (e) {
     }
 });
 </script>
-@if($current && $isDraft && $event->isOpen())
+@if($current && $isDraft && $event->isCommerciallyOpen())
 @php
     // Build the JS payloads in PHP, NOT inline inside @json(...). Blade matches a directive
     // argument with a RECURSIVE paren regex; on a long multi-line payload that

@@ -81,10 +81,30 @@
                     <input type="text" name="customer_name_ur" class="form-control" dir="rtl" lang="ur"
                            value="{{ old('customer_name_ur', $event?->customer_name_ur) }}">
                 </div>
+                {{-- CATERING-PHONE-2-1 (27 Sep) — phone LAZMI.
+
+                     Graahak ki pehchan phone par bunti hai: customer usi se
+                     dhoonda ya banaya jata hai. Phone ke baghair booking kisi
+                     ke khaate me jati hi nahi — prod par aisi 11 bookings
+                     mili jin par naam to tha magar phone nahi, aur un ka
+                     balance nikalna mumkin hi nahi tha. --}}
                 <div class="col-md-4">
-                    <label class="form-label">Phone</label>
-                    <input type="text" name="customer_phone" class="form-control"
-                           value="{{ old('customer_phone', $event?->customer_phone) }}">
+                    <label class="form-label">Phone <span class="text-danger">*</span></label>
+                    <input type="text" name="customer_phone" class="form-control js-phone" required
+                           inputmode="tel" value="{{ old('customer_phone', $event?->customer_phone) }}">
+                    <div class="form-text fs-12">Theek 11 adad. Isi se graahak pehchana jata hai.</div>
+                    <div class="invalid-feedback d-block fs-12 js-phone-msg"></div>
+                </div>
+                {{-- Doosra number — marzi ka. Ye sirf sahulat nahi: ab tak jahan
+                     do number thay wahan dono EK hi khaane me thoos diye jate
+                     thay ("0312-0080000  0312-0090000"), jo na dial hota hai
+                     na dhoonda ja sakta hai. --}}
+                <div class="col-md-4">
+                    <label class="form-label">Phone 2 <span class="text-muted fs-12">(marzi ka)</span></label>
+                    <input type="text" name="customer_phone_2" class="form-control js-phone"
+                           inputmode="tel" value="{{ old('customer_phone_2', $event?->customer_phone_2) }}">
+                    <div class="form-text fs-12">Marzi ka — magar likha jaye to theek 11 adad. Pehchan pehle number se hi hoti hai.</div>
+                    <div class="invalid-feedback d-block fs-12 js-phone-msg"></div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Email</label>
@@ -200,6 +220,22 @@
                         </div>
                     @endif
                 </div>
+                {{-- KITCHEN-SHEET-A5-1 (27 Sep) — khana yahan se NIKLEGA kab.
+
+                     Service Time wo waqt hai jab mehmaan khate hain; bawarchi-
+                     khane ka asal sawal doosra hai. Purane software ke parche
+                     par ye waqt mojood tha, hamare par nahi — is liye malik
+                     usay haath se likhte rahe.
+
+                     Marzi ka: purani bookings me hai hi nahi, aur khali hone
+                     par kaghaz us satar ko chhapta hi nahi. --}}
+                <div class="col-md-3">
+                    <label class="form-label">Dispatch Time</label>
+                    <input type="time" name="dispatch_time" class="form-control"
+                           aria-label="Select dispatch time"
+                           value="{{ old('dispatch_time', $event?->dispatch_time ? \Carbon\Carbon::parse($event->dispatch_time)->format('H:i') : '') }}">
+                    <div class="form-text fs-12">Khana kitchen se nikalne ka waqt.</div>
+                </div>
                 <div class="col-md-6">
                     <label class="form-label">Venue</label>
                     <input type="text" name="venue" class="form-control"
@@ -214,8 +250,18 @@
                          operator sees it and can clear it, which is the difference
                          between a suggestion and a fabrication. --}}
                     <label class="form-label">PAX (guests)</label>
+                    {{-- CUSTOMER-SEARCH-PUNCT-1 (1 Oct) — nayi booking par ye khaana
+                         KHALI rehta hai. Pehle 100 bhara hua aata tha, aur client ne
+                         kaha "pax ko zero type ay, by default 100 aa raha hai" —
+                         operator ko har baar pehle 100 mitana parta tha, aur jo bhool
+                         jaye us ki booking par 100 mehmaan darj ho jate.
+
+                         Khali chhora ja raha hai, 0 nahi: 0 bhi mitana parta hai. Jo
+                         khaana khali jaye usay controller khud 0 bana deta hai
+                         (`$data['pax'] = … === '' ? 0 : …`), is liye mehfooz qeemat
+                         wohi rehti hai. --}}
                     <input type="number" name="pax" class="form-control" min="0"
-                           value="{{ old('pax', $event?->pax ?? 100) }}">
+                           value="{{ old('pax', $event?->pax) }}">
                 </div>
                 <div class="col-12">
                     <label class="form-label">Notes</label>
@@ -246,3 +292,65 @@
         </div>
     </div>
 </div>
+
+{{-- CATERING-PHONE-11-1 (29 Sep) — malik: "on tab switch validation error
+     bhi dikhe ke tum ne kam digits daale hain."
+
+     Ghalti khaane se NIKALTE waqt nazar aati hai, likhte waqt nahi: aadha
+     likha hua number hamesha "ghalat" hota hai, aur har harf par laal
+     dikhana operator ko sirf tang karta hai. Isi liye `blur` par.
+
+     Ye server ke qaide ki JAGAH nahi — us ki naqal hai, taake jawab foran
+     mile. Faisla wahin hota hai jahan hota tha (controller ka
+     `phoneDigits()`), aur ginti yahan bhi ADADON par hai, likhi hui shakl par
+     nahi: "0312-295 1623" bilkul durust hai.
+
+     Barhne se bhi roka ja raha hai — magar `maxlength` se NAHI. Wo HARF ginta
+     hai, aur "0312-2951623" me barah harf hain; maxlength=11 aisa number
+     likhne hi na deta. Is liye adad gine jate hain aur sirf barhwan ADAD
+     rukta hai. --}}
+@once
+@push('scripts')
+<script>
+(function () {
+    var NEEDED = 11;
+    var digitsOf = function (v) { return (v || '').replace(/\D+/g, ''); };
+
+    document.querySelectorAll('.js-phone').forEach(function (input) {
+        var msg = input.parentElement.querySelector('.js-phone-msg');
+        if (! msg) { return; }
+
+        var say = function (text) {
+            msg.textContent = text || '';
+            input.classList.toggle('is-invalid', !! text);
+        };
+
+        // Barhwan adad rok do — aur sirf adad, taake dash aur space likhe ja saken.
+        input.addEventListener('input', function () {
+            if (digitsOf(input.value).length > NEEDED) {
+                var kept = '', n = 0;
+                for (var i = 0; i < input.value.length; i++) {
+                    var ch = input.value[i];
+                    if (/\d/.test(ch)) { if (n >= NEEDED) { continue; } n++; }
+                    kept += ch;
+                }
+                input.value = kept;
+            }
+            if (input.classList.contains('is-invalid')) { say(''); }
+        });
+
+        input.addEventListener('blur', function () {
+            var n = digitsOf(input.value).length;
+            if (n === 0) {
+                // Khali doosra number bilkul jaiz hai; pehla number `required`
+                // se pakra jata hai, is liye yahan use ghalat nahi kehna.
+                say('');
+                return;
+            }
+            say(n === NEEDED ? '' : 'Theek ' + NEEDED + ' adad chahiyen — abhi ' + n + ' hain.');
+        });
+    });
+})();
+</script>
+@endpush
+@endonce

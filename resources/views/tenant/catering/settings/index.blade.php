@@ -48,6 +48,72 @@
                         unaffected.
                     </div>
                 </div>
+
+                {{-- KITCHEN-SHEET-PAPER-SETTING-1 (27 Sep) — har kaghaz ka apna size.
+
+                     Malik ka printer do tray rakhta hai: neeche A4, upar chhota
+                     kaghaz. Driver "Automatically Select" par ho to wo job ke
+                     SIZE se tray chun leta hai — is liye document ka apna size
+                     batana kaafi hai aur operator ko beech me kuch badalna nahi
+                     parta. Tray browser se nahi chuni ja sakti; size ja sakta
+                     hai, aur yehi hamara hissa hai.
+
+                     Do alag setting, ek nahi: ye do MUKHTALIF logon ke kaghaz
+                     hain. Kitchen sheet bawarchi ke haath me jati hai — chhoti
+                     behtar. Quotation graahak ko jati hai — A4 hi rehni
+                     chahiye. Ek hi setting dono par lagti to ek ko theek karne
+                     par doosri bigadti. --}}
+                <div class="col-md-6">
+                    <label class="form-label" for="kitchen-sheet-paper">Kitchen Sheet — kaghaz ka size</label>
+                    <select name="kitchen_sheet_paper" id="kitchen-sheet-paper" class="form-select">
+                        @foreach(\App\Models\Tenant\CateringSetting::PAPER_SIZES as $value => $label)
+                            <option value="{{ $value }}"
+                                @selected(old('kitchen_sheet_paper', $settings->kitchen_sheet_paper ?? 'a5_portrait') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <div class="form-text">
+                        Bawarchi-khane ka parcha. <strong>Default A5 chaura</strong> — purane
+                        software jaisa, A4 ka aadha. Document ye size print job ke saath khud
+                        bhejta hai; printer ki tray me size darj ho aur driver "Automatically
+                        Select" par ho, to printer khud sahi tray uthata hai.
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label" for="quotation-paper">Quotation / Estimate — kaghaz ka size</label>
+                    <select name="quotation_paper" id="quotation-paper" class="form-select">
+                        @foreach(\App\Models\Tenant\CateringSetting::PAPER_SIZES as $value => $label)
+                            <option value="{{ $value }}"
+                                @selected(old('quotation_paper', $settings->quotation_paper ?? 'a4_portrait') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <div class="form-text">
+                        Graahak ko diya jane wala kaghaz — draft estimate, quotation aur booking
+                        confirmation. <strong>Default A4 lamba.</strong>
+                    </div>
+                </div>
+
+                {{-- KITCHEN-SHEET-REQUIREMENTS-TOGGLE-1 (26 Sep) — band haalat me
+                     aata hai, kyunke bawarchi ye table nahi parhta aur ye safhe ki
+                     jagah kha raha tha. Jise store ki planning chahiye wo khol le. --}}
+                <div class="col-md-6">
+                    <label class="form-label">Kitchen Sheet — Raw Material Requirements</label>
+                    <div class="form-check form-switch mt-2">
+                        <input type="checkbox" value="1" name="show_kitchen_requirements" id="show-kitchen-requirements"
+                               class="form-check-input"
+                               {{ old('show_kitchen_requirements', $settings->show_kitchen_requirements) ? 'checked' : '' }}>
+                        <label class="form-check-label" for="show-kitchen-requirements">
+                            Print the consolidated requirements table
+                        </label>
+                    </div>
+                    <div class="form-text">
+                        Kitchen sheet ke neeche wali planning table — har material ka poori booking
+                        par jama. <strong>Default band hai:</strong> bawarchi upar wali dish list se
+                        kaam karta hai, aur ye table kaghaz leti hai. Store se issue karne wala bhi
+                        yehi sheet chhapta ho to khol dein.
+                    </div>
+                </div>
+
                 <div class="col-md-6">
                     <label class="form-label">Default Service Charge %</label>
                     <input type="number" step="0.01" min="0" max="100" name="default_service_charge_percent" class="form-control"

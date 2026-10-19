@@ -186,7 +186,9 @@
 
 @can('tenant.catering.commercial-rates.store')
 <div class="modal fade" id="rateModal" tabindex="-1">
-    <div class="modal-dialog">
+    {{-- Malik: "modal ko size xl karo." Do chunav, ginti, aur pichli rates —
+         sab ek saath dekhne ke liye chaurai chahiye. --}}
+    <div class="modal-dialog modal-xl">
         <form method="POST" action="{{ url('/catering/commercial-rates') }}" class="modal-content"
               data-rate-history='@json($historyByMaterial ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)'>
             @csrf
@@ -243,6 +245,103 @@
                         </div>
                     </div>
 
+                    {{-- RATE-APPLY-ON-SAVE-1 (28 Sep) — malik: "rate change karte
+                         he do checkbox dedo, click karne pe sab pe apply ho jaye."
+
+                         Pehle rate LIKHNA aur rate LAGANA do alag safhe thay, aur
+                         doosra safha itna lamba tha ke us ka asal button neeche
+                         dab jata tha. Ab chunav wahin hai jahan rate likha jata
+                         hai.
+
+                         Har tick ke saath GINTI likhi hai. Ek tick jis ke saath
+                         koi adad na ho wo chunav nahi, andaza hai — aur yahan
+                         andaza lagana ek hi click me sau qeematein hila deta
+                         hai. --}}
+                    <div class="col-12">
+                        <div class="border rounded p-2" id="rate-apply-choices"
+                             data-block-counts='@json($blockCounts ?? [], JSON_UNESCAPED_SLASHES)'>
+                            {{-- Malik ne is poore hisse par laal cross laga kar
+                                 likha: "COLLAPSED".
+
+                                 Band hai, magar KHALI NAHI. Unwaan par kul ginti
+                                 likhi rehti hai, is liye band haalat me bhi ye
+                                 nazar aata hai ke save kitni dishes ko chhuega —
+                                 aur "Sab par" bahar hi rehta hai, kyunke rozana
+                                 ka kaam wahi ek tick hai. Andar ki do satrein
+                                 sirf tab chahiyen jab operator un me se ek
+                                 chhorna chahe.
+
+                                 Ginti chhupa dena aasan tha aur ghalat hota: phir
+                                 ye "chhupana" nahi, "mitana" hota. --}}
+                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <span class="fw-semibold fs-13" role="button"
+                                      data-bs-toggle="collapse" data-bs-target="#apply-which">
+                                    Save karte hi kin dishes par lag jaye?
+                                    <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1"
+                                          data-count="total">—</span>
+                                    <i class="ti ti-chevron-down ms-1 text-muted"></i>
+                                </span>
+                                {{-- "Sab par" apna koi alag amal nahi hai — sirf
+                                     andar wale dono ko ek saath uthata aur girata
+                                     hai. Ek teesra raasta banane ka matlab hota
+                                     teesri jagah jo kal in dono se alag ho jati. --}}
+                                <div class="form-check form-check-inline m-0">
+                                    <input class="form-check-input" type="checkbox" id="apply-all" checked>
+                                    <label class="form-check-label fs-13 fw-semibold" for="apply-all">Sab par</label>
+                                </div>
+                            </div>
+
+                            <div class="collapse mt-2" id="apply-which">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="apply_following"
+                                       value="1" id="apply-following" checked>
+                                <label class="form-check-label fs-13" for="apply-following">
+                                    Jo dishes pehle se house rate par hain
+                                    <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1"
+                                          data-count="book">—</span>
+                                </label>
+                            </div>
+
+                            <div class="form-check mt-1">
+                                <input class="form-check-input" type="checkbox" name="apply_manual"
+                                       value="1" id="apply-manual" checked>
+                                <label class="form-check-label fs-13" for="apply-manual">
+                                    Jo haath se likhi gayi hain, unhe bhi house rate par le aao
+                                    <span class="badge bg-warning-subtle text-warning-emphasis ms-1"
+                                          data-count="manual">—</span>
+                                </label>
+                            </div>
+
+                            </div>
+
+                            {{-- Malik: "neeche ki detail hide ho, collapse ho, show
+                                 karne pe pata ho neeche kya hai."
+
+                                 Tafseel chhupi hai, magar us ka UNWAAN nazar aata
+                                 hai — warna ye chhupana nahi, mitana hota. Jo
+                                 operator pehli baar ye safha khol raha hai usay
+                                 parhna chahiye; jo rozana kholta hai usay har baar
+                                 nahi. --}}
+                            <button class="btn btn-link btn-sm p-0 fs-12 text-decoration-none mt-2" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#apply-notes">
+                                <i class="ti ti-info-circle me-1"></i>Ye kya karega?
+                                <i class="ti ti-chevron-down ms-1"></i>
+                            </button>
+                            <div class="collapse" id="apply-notes">
+                                <div class="fs-12 text-body-secondary mt-1">
+                                    <div>
+                                        <strong>Haath wali dishes:</strong> in ka rate kisi ne alag rakha tha.
+                                        Tick lagane par wo house rate par aa jayengi. Har tabdeeli log me darj hoti hai.
+                                    </div>
+                                    <div class="mt-1">
+                                        <strong>Pehle se bani hui quotations kisi soorat nahi badaltin</strong> —
+                                        un ke liye impact screen hai, jahan har booking ka pehle/baad ka total dikhta hai.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     @include('tenant.catering.partials.rate-history-panel', [
                         'historyLabel' => 'Is material ki pichli house rates',
                     ])
@@ -255,5 +354,88 @@
         </form>
     </div>
 </div>
+
+{{-- Ginti material ke sath badalti hai. Alag IIFE — history panel ka apna
+     handler hai aur us me ghusna dono ko aapas me uljha deta. --}}
+<script>
+    (function () {
+        const box = document.getElementById('rate-apply-choices');
+        if (! box) return;
+        const form = box.closest('form');
+        const product = form ? form.querySelector('[name=product_id]') : null;
+        if (! product) return;
+
+        let counts = {};
+        try {
+            counts = JSON.parse(box.dataset.blockCounts || '{}');
+        } catch (e) {
+            return; // Kharab data modal ko sath le kar na doobe.
+        }
+
+        function paint() {
+            const row = counts[product.value] || {book: 0, manual: 0};
+            const total = (row.book || 0) + (row.manual || 0);
+
+            box.querySelectorAll('[data-count]').forEach(function (el) {
+                const n = el.dataset.count === 'total' ? total : (row[el.dataset.count] || 0);
+                el.textContent = n === 1 ? '1 dish' : n + ' dishes';
+
+                const check = el.closest('.form-check');
+                if (! check) return; // unwaan wali ginti ka apna koi tick nahi
+
+                // MALIK: "all pe check pehle se ho jaise hai, main item pe select
+                // karun." Pehle yahan keeda tha: ginti 0 par tick hata diya jata
+                // tha aur material chunne par DOBARA NAHI lagta tha — yani chunav
+                // ke baad sab khali mil te. Ab har material par default wapas aa
+                // jata hai, aur jis par kuch hai hi nahi us par tick ka matlab
+                // hi nahi.
+                const input = check.querySelector('input');
+                input.disabled = n === 0;
+                input.checked = n > 0;
+            });
+        }
+
+        // "Sab par" ka apna koi asar nahi — wo sirf dono ko ek saath uthata hai,
+        // aur agar koi ek haath se hata diya jaye to khud bhi utar jata hai.
+        const all = document.getElementById('apply-all');
+        const boxes = Array.from(box.querySelectorAll('input[name^=apply_]'));
+
+        function syncAll() {
+            const live = boxes.filter(b => ! b.disabled);
+            all.checked = live.length > 0 && live.every(b => b.checked);
+            all.disabled = live.length === 0;
+        }
+
+        all.addEventListener('change', function () {
+            boxes.forEach(function (b) { if (! b.disabled) b.checked = all.checked; });
+        });
+        boxes.forEach(b => b.addEventListener('change', syncAll));
+
+        product.addEventListener('change', function () { paint(); syncAll(); });
+        paint();
+        syncAll();
+
+        // Ab dono tick DEFAULT ON hain (malik ki sarih maang). Is liye save par
+        // ek confirm lazmi hai jo GINTI bolta hai: ek default-on tick wo cheez
+        // hai jo bina dekhe chal jati hai, aur yahan us ka matlab ek click me
+        // sau qeematein hai.
+        form.addEventListener('submit', function (e) {
+            const row = counts[product.value] || {book: 0, manual: 0};
+            const f = document.getElementById('apply-following');
+            const m = document.getElementById('apply-manual');
+            const parts = [];
+            if (f && f.checked && ! f.disabled && row.book) parts.push(row.book + ' dishes jo pehle se house rate par hain');
+            if (m && m.checked && ! m.disabled && row.manual) parts.push(row.manual + ' dishes jo haath se likhi gayi hain');
+            if (! parts.length) return;
+
+            const rate = form.querySelector('[name=rate]');
+            if (! confirm('Ye rate (' + (rate ? rate.value : '') + ') in par lag jayega:\n\n· '
+                    + parts.join('\n· ')
+                    + '\n\nKisi dish ka rate BARH bhi sakta hai aur GIR bhi. Pehle se bani hui quotations nahi badlengi.\n\nAage barhein?')) {
+                e.preventDefault();
+            }
+        });
+    })();
+</script>
 @endcan
 @endsection

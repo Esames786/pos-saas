@@ -836,14 +836,43 @@
                                 </a>
                             </li>
                         @endcan
-                        @can('tenant.finance.customer-payments.index')
-                            @php $a = $isIn('finance/customer-payments*'); @endphp
-                            <li class="{{ $a ? 'active' : '' }}">
-                                <a href="{{ url('/finance/customer-payments') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-coin fs-16 me-2"></i><span>Customer Payments</span>
-                                </a>
-                            </li>
-                        @endcan
+                        {{-- CUSTOMER-PAYMENTS-MODULE-1 (28 Sep) — apne module par.
+                             Ek caterer graahak se paisa catering advance ke zariye
+                             leta hai, receivable ke khilaf nahi, is liye Kashif
+                             Kitchen ke plan par ye module band hai.
+
+                             `@can` akela kaafi NAHI — dekho is file ke sar par likhi
+                             wajah, aur is se bhi ahem: deploy.sh har deploy par har
+                             Owner ko saari permissions dobara de deta hai, is liye
+                             permission hatana kabhi tikta hi nahi. Module tikta
+                             hai. --}}
+                        {{-- CATERING-CUSTOMER-BALANCES-1 (28 Sep) — Finance ke neeche
+                             dikhta hai magar gate CATERING par hai, finance par nahi.
+                             Wajah: is screen ka saara data catering events ka hai, aur
+                             jis tenant ke paas catering nahi us ke liye ye hamesha
+                             khali rahegi. Malik ne jagah yehi maangi thi: "is module ko
+                             hum finance section mai as customer catering balance kar ke
+                             daldain gay." --}}
+                        @if($hasModule('catering'))
+                            @can('tenant.catering.customer-balances.index')
+                                @php $a = $isIn('catering/customer-balances*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/catering/customer-balances') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-users fs-16 me-2"></i><span>Customer Catering Balances</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        @endif
+                        @if($hasModule('customer_payments'))
+                            @can('tenant.finance.customer-payments.index')
+                                @php $a = $isIn('finance/customer-payments*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/customer-payments') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-coin fs-16 me-2"></i><span>Customer Payments</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        @endif
                         @can('tenant.finance.opening-balances.index')
                             @php $a = $isIn('finance/opening-balances*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">

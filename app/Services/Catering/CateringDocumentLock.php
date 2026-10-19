@@ -204,6 +204,55 @@ class CateringDocumentLock
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
+     * Kya is quotation ki QEEMAT abhi bhi durust ki ja sakti hai?
+     *
+     * Ye `isCommerciallyOpen` se JAAN-BOOJH KAR chaurha hai, aur us ki nakal
+     * nahi — do alag sawal hain, aur unhe ek rakhna dono ko ghalat kar deta:
+     *
+     *   "Lines badal sakti hain?"  — release ke baad NAHI. Bawarchi-khane ke
+     *   paas parcha ja chuka hai; item ya qty badalna us parche ko jhoota kar
+     *   deta hai.
+     *
+     *   "Qeemat durust ho sakti hai?" — INVOICE BAN-NE TAK HAAN. Rate ek
+     *   karobari adad hai, kitchen ka nahi. Kitchen sheet par qeemat chhapti
+     *   hi nahi. Agar rate ghalat tha to usay bill banne se PEHLE theek karna
+     *   hi wahid mauqa hai — us ke baad graahak ke haath me ek bill hoga aur
+     *   system me doosra.
+     *
+     * Is liye yahan deewar event ka status nahi, FINAL INVOICE hai. Sirf wo
+     * bookings bahar hain jo khatam ho chuki (completed/closed) ya mansookh
+     * (cancelled) — un me durusti ka koi matlab hi nahi.
+     *
+     * Ye qanoon yahan rakha gaya hai, kisi screen me nahi: agar kal koi teesra
+     * sawal aaya to wo bhi yahin aayega, aur teeno ek doosre ke saamne rahenge.
+     */
+    public function isRepriceable(CateringEstimate $estimate): bool
+    {
+        $event = $estimate->event;
+
+        if ($event === null) {
+            return false;
+        }
+
+        if (in_array($event->status, [
+            CateringEvent::STATUS_COMPLETED,
+            CateringEvent::STATUS_CLOSED,
+            CateringEvent::STATUS_CANCELLED,
+        ], true)) {
+            return false;
+        }
+
+        // Wohi ehtiyat jo isCommerciallyOpen me hai: lock ke neeche hal hua
+        // invoice tarjeeh rakhta hai, kyunke transaction ke andar ek aam read
+        // us tasveer se jawab deta hai jo intezar se pehle thi.
+        $invoice = $event->relationLoaded('finalInvoice')
+            ? $event->getRelation('finalInvoice')
+            : $event->finalInvoice()->first();
+
+        return $invoice === null;
+    }
+
+    /**
      * Is this booking still open to commercial change at all — regardless of
      * what the quotation's own status says?
      *
@@ -211,11 +260,65 @@ class CateringDocumentLock
      * justified it: revise after invoicing and v2 is a draft on an invoiced
      * event, where "it is a draft" would otherwise read as permission.
      */
+    /**
+     * Wohi do jaanchein jo `assertEditable()` lagata hai, magar BINA us ke ke
+     * "draft hona chahiye" wali shart — kyunke revise ka maqsad hi ek
+     * GHAIR-draft version ko aage barhana hai.
+     *
+     * Alag method is liye hai ke revise() `assertEditable()` se guzar hi nahi
+     * sakta: wahan pehli hi satar draft maangti hai aur revise wahin ruk
+     * jata.
+     */
+    public function assertRevisable(CateringEstimate $estimate): void
+    {
+        if (! $this->isCommerciallyOpen($estimate)) {
+            throw new RuntimeException(
+                'This booking is closed to commercial change — it has been invoiced, completed or cancelled.'
+            );
+        }
+
+        $this->assertMayEditAfterRelease($estimate);
+    }
+    /**
+     * CATERING-EDIT-AFTER-RELEASE-1 — release ke baad badalna ek ALAG ikhtiyar
+     * hai.
+     *
+     * Ye yahan hai, controllers me nahi, aur ye jaan-boojh kar hai. Quotation
+     * chhe raaston se badalti hai — edit, reprice, revise, restore-version,
+     * revert, aur line-level update — aur chhe jagah ek hi jaanch likhne ka
+     * matlab hai ke ek na ek din koi ek jagah bhool jayegi. Har raasta yahan
+     * se guzarta hai.
+     *
+     * BINA LOGIN WALE RAASTE (console, queue, seeder) is se bahar hain. Wahan
+     * koi user hota hi nahi, aur unhe rokne se har command aur test ruk jata.
+     * Wo raaste pehle se mehfooz hain; HTTP par user hamesha hota hai.
+     */
+    private function assertMayEditAfterRelease(CateringEstimate $estimate): void
+    {
+        if ($estimate->event?->status !== CateringEvent::STATUS_RELEASED) {
+            return;
+        }
+
+        $user = auth()->user();
+        if ($user === null || $user->can('tenant.catering.estimates.edit-after-release')) {
+            return;
+        }
+
+        throw new RuntimeException(
+            'Production for this booking has already been released, so changing the quotation '
+            .'needs the edit-after-release permission — the kitchen sheet already out would no '
+            .'longer match the bill.'
+        );
+    }
     public function isCommerciallyOpen(CateringEstimate $estimate): bool
     {
         $event = $estimate->event;
 
-        if ($event === null || ! $event->isOpen()) {
+        // CATERING-EDIT-AFTER-RELEASE-1 (1 Oct): `released` ab bhi khula hai.
+        // Dekho CateringEvent::isCommerciallyOpen() — wahan likha hai ke ye
+        // `isOpen()` se alag kyun hai (calendar usi se "overdue" tay karta
+        // hai). Invoice ki hadd neeche waise hi qayam hai.
+        if ($event === null || ! $event->isCommerciallyOpen()) {
             return false;
         }
 
@@ -250,6 +353,8 @@ class CateringDocumentLock
                 'This booking is closed to commercial change — it has been invoiced, completed or cancelled.'
             );
         }
+
+        $this->assertMayEditAfterRelease($estimate);
     }
 
     /**

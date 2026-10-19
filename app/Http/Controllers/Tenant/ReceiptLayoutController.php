@@ -54,6 +54,7 @@ class ReceiptLayoutController extends Controller
             'show_order_type'        => ['nullable', 'boolean'],
             'show_column_dividers'   => ['nullable', 'boolean'],
             'show_category_header'   => ['nullable', 'boolean'],
+            'show_heading_stars'     => ['nullable', 'boolean'],
             'header_text'            => ['nullable', 'string', 'max:500'],
             'footer_text'            => ['nullable', 'string', 'max:500'],
             'font_size'              => ['required', 'integer', 'min:8', 'max:24'],

@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Tenant\Catering;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\CateringEstimate;
+use App\Models\Tenant\CateringEvent;
 use App\Models\Tenant\CateringFinalInvoice;
 use App\Models\Tenant\CateringProductionRelease;
 use App\Models\Tenant\CateringSetting;
 use App\Models\Tenant\Printer;
 use App\Services\Catering\CateringDocumentPrintService;
 use App\Services\Catering\CateringFinancialPositionService;
+use App\Services\Catering\CateringProductionReleaseService;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Http\Request;
@@ -74,6 +76,31 @@ class CateringDocumentController extends Controller
             'release' => $cateringProductionRelease,
             'lang' => $lang,
             'businessName' => $this->businessName(),
+        ]);
+    }
+
+    /**
+     * KITCHEN-SHEET-PREVIEW-1 — wohi parcha, production release se PEHLE.
+     *
+     * Malik ki farmaish (27 Sep). SIRF CHHAPNE KE LIYE: ye raasta kuch mehfooz
+     * nahi karta — na release banti hai, na release number kharch hota hai, na
+     * event ka status hilta hai, na koi snapshot jamta hai. Isi liye ye GET hai
+     * aur service ki `preview()` bulati hai, `release()` nahi.
+     *
+     * Kaghaz khud oopar likhta hai ke wo abhi jaari nahi hua. Ye is feature ka
+     * sab se bara khatra hai: deewar par laga hua preview agar asli parche jaisa
+     * lage to bawarchi-khane ke paas do sach ho jayenge.
+     */
+    public function kitchenSheetPreview(Request $request, CateringEvent $cateringEvent)
+    {
+        return view('tenant.catering.documents.kitchen-sheet', [
+            'release' => app(CateringProductionReleaseService::class)->preview($cateringEvent),
+            'lang' => $this->language($request),
+            'businessName' => $this->businessName(),
+            // Koi `preview` jhanda nahi bheja ja raha: kaghaz khud dekh leta
+            // hai ke release mehfooz hui hai ya nahi (`$release->exists`). Ek
+            // jhanda har naye caller par dobara sahi likhna parta — aur bulk
+            // wala raasta usay bhool jata.
         ]);
     }
 

@@ -19,17 +19,26 @@
      either one knowing about the other. --}}
 <div class="col-12 rate-history-wrap d-none">
     <div class="border rounded p-2 bg-light-subtle">
-        <div class="d-flex justify-content-between align-items-center mb-1">
+        {{-- Unwaan hamesha nazar me, tafseel band. Ginti bhi unwaan par hai, is
+             liye kholne se pehle pata hota hai ke neeche kitna hai — chhupana
+             tabhi theek hai jab wo dikhe ke kya chhupa hai. --}}
+        <div class="d-flex justify-content-between align-items-center" role="button"
+             data-bs-toggle="collapse" data-bs-target=".rate-history-body">
             <span class="fw-semibold fs-13">
                 <i class="ti ti-history me-1"></i>{{ $historyLabel ?? 'Pichli rates' }}
             </span>
-            <span class="fs-12 text-body-secondary rate-history-count"></span>
+            <span class="fs-12 text-body-secondary">
+                <span class="rate-history-count"></span>
+                <i class="ti ti-chevron-down ms-1"></i>
+            </span>
         </div>
-        <div class="rate-history-rows fs-13"></div>
+        <div class="collapse rate-history-body">
+        <div class="rate-history-rows fs-13 mt-1"></div>
         <div class="fs-12 text-body-secondary mt-1">
             {{-- Said out loud because the button LOOKS like it applies something. --}}
             "Use this" sirf ooper ke khane bharta hai — rate aur unit. <strong>Tareekh nahi
             badalti</strong>, aur record karne tak kuch nahi hota.
+        </div>
         </div>
     </div>
 </div>

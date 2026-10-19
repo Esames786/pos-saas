@@ -39,6 +39,7 @@ class PermissionCatalogService
         'deactivate', 'regenerate-token', 'default', 'verify', 'reset-password', 'manager-pin',
         'bulk-import', 'test-print', 'pairing-code', 'download-windows', 'sync', 'void-kot-item',
         'handovers', 'local-mode', 'reprint', 'overpay', 'beyond-credit', 'move-back',
+        'edit-after-release', 'void',
     ];
 
     /**
@@ -118,12 +119,28 @@ class PermissionCatalogService
         // that is covering a bill — which puts the balance due back up — is
         // another, and must not arrive free with the first.
         'tenant.catering.refunds.beyond-credit' => 'Refund Beyond Credit',
+        // Quotation badalna aur RELEASE KE BAAD quotation badalna do alag
+        // cheezein hain. Doosri me kitchen sheet pehle hi nikal chuka hota
+        // hai, is liye wo 'Create / Edit Estimate' ke saath muft nahi
+        // milni chahiye — bilkul usi tarah jaise 'Take More Than Due'
+        // 'Record Advance' ke saath nahi milti.
+        'tenant.catering.estimates.edit-after-release' => 'Edit After Release',
+        // Receipt lena aur receipt ULTA karna do alag ikhtiyar hain: ulta
+        // karne se cash/bank ka balance ghatta hai, yani paisa kitabon se
+        // nikalta hai. Isi liye 'Record Advance' ke saath muft nahi.
+        'tenant.catering.advances.void' => 'Void Receipt',
+        // Sirf slip number / notes theek karna — paisa nahi hilta, is liye
+        // ye receipt lene wale ke saath hi rehta hai.
+        'tenant.catering.advances.update-reference' => 'Record Advance',
         'tenant.catering.production-releases.store' => 'Release Production',
         'tenant.catering.production-releases.show' => 'Release Production',
         'tenant.catering.production-releases.print' => 'Print / Reprint',
         'tenant.catering.production-releases.reprint' => 'Print / Reprint',
         'tenant.catering.documents.estimate' => 'Print / Reprint',
         'tenant.catering.documents.kitchen-sheet' => 'Print / Reprint',
+        // KITCHEN-SHEET-PREVIEW-1: wohi parcha, release se pehle. Sirf chhapne
+        // ke liye — kuch mehfooz nahi hota.
+        'tenant.catering.documents.kitchen-sheet-preview' => 'Print / Reprint',
         'tenant.catering.documents.final-invoice' => 'Print / Reprint',
         // Bulk print runs compose the same documents for a selected set of
         // bookings — same grant family as the single-document prints.

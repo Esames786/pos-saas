@@ -10,6 +10,14 @@ Route::domain(config('tenancy.central_domain'))
 
         Route::get('/pricing', [PublicSiteController::class, 'pricing'])->name('public.pricing');
 
+        // WHATSAPP-REPORT-CHANNEL-1: the first hop of a report link. The approved template button
+        // carries ONE fixed base URL for every tenant, so this cannot be a subdomain — a per-tenant
+        // base would need its own approved template for every customer. All this does is look the
+        // token up and send the reader to the tenant that owns it, where the page is an ordinary
+        // tenant page with an ordinary tenant connection.
+        Route::get('/r/{token}', [\App\Http\Controllers\ReportShareController::class, 'redirect'])
+            ->where('token', '(?:\{\{1\}\})?[A-Za-z0-9]{16,64}')->name('report.share');
+
         Route::get('/features', [PublicSiteController::class, 'features'])->name('public.features');
 
         Route::get('/demos', [PublicSiteController::class, 'demos'])->name('public.demos');

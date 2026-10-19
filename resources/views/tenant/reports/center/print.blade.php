@@ -263,6 +263,10 @@
     .name { font-weight: bold; }
     .total { font-weight: bold; background: #f2f2f2; }
     @endif
+    /* QUICK-REPORT-WAITER-NULL-1 — the banner a narrowed report wears. Border + centre only:
+       it has to survive dompdf (the nightly PDF) and a 72mm roll alike, so no flex, no grid. */
+    .narrowed { text-align: center; font-weight: bold; margin: 6px 0; padding: 3px;
+                border: 1px dashed #000; }
     .no-print { text-align: center; margin: 8px 0; }
     @media print { .no-print { display: none; } }
 </style>
@@ -278,6 +282,17 @@
     {{ $filters['date_from'] }} → {{ $filters['date_to'] }}<br>
     Generated {{ app(\App\Support\TenantClock::class)->now()->format('d-M-Y H:i') }}
 </div>
+
+{{-- QUICK-REPORT-WAITER-NULL-1: a report narrowed by waiter or order type used to look
+     identical to the whole day. It says so now. --}}
+@if(!empty($narrowing ?? []))
+<div class="narrowed">
+    PARTIAL — NOT THE WHOLE DAY<br>
+    @foreach($narrowing as $line)
+        {{ $line }}<br>
+    @endforeach
+</div>
+@endif
 
 @if($has('overview') && $overview)
 <h2>OVERALL</h2>

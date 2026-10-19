@@ -11,37 +11,90 @@
     <span>{{ $release->release_no }} · {{ $release->released_at->format('d M Y g:i A') }}</span>
 </div>
 
+{{-- KITCHEN-SHEET-PREVIEW-1 — is parche ka sab se ahem hissa.
+
+     Release se pehle chhapa hua parcha deewar par lag jata hai aur asli parche
+     jaisa dikhta hai. Us surat me bawarchi-khane ke paas do sach ho jate hain,
+     aur purana wala nazar nahi aata ke purana hai. Is liye preview khud kehta
+     hai ke wo kya hai — sar par, aur har safhe par (yehi ghalti draft estimate
+     par CAT-DOC-001 me pehle ho chuki hai).
+
+     Shart `! $release->exists` hai, koi alag jhanda nahi: jo release database
+     me MEHFOOZ HI NAHI HUI, wo preview hai — aur ye baat ghalat ho hi nahi
+     sakti. Ek alag `$preview` variable har naye callerpar dobara sahi likhna
+     parta, aur bulk wala raasta usay bhool jata.
+
+     Border aur weight se banaya gaya hai, background se nahi: browser print
+     par background rang gira dete hain. --}}
+{{-- CATERING-EDIT-AFTER-RELEASE-1 (1 Oct) — PURANA PARCHA khud bolay.
+
+     Quotation ab release ke baad bhi badal sakti hai. Jo parcha pehle nikal
+     chuka, wo us tabdeeli ko nahi jaanta — aur bawarchi screen nahi dekhta,
+     wo deewar par laga hua kaghaz dekhta hai. Is liye kaghaz KHUD kehta hai
+     ke us ke baad sauda badla hai.
+
+     Wohi dalil preview wale band ki hai jo neeche likhi hai: bawarchi-khane
+     ke paas do sach ho jayen aur purana wala nazar na aaye — yehi sab se
+     khatarnak surat hai. --}}
+@if($release->exists && $release->catering_estimate_id
+    && $release->event?->currentEstimate
+    && $release->catering_estimate_id !== $release->event->currentEstimate->id)
+    <div class="preview-band">
+        <strong>{{ $t('QUOTATION CHANGED AFTER THIS SHEET', 'یہ پرچہ نکلنے کے بعد سودا بدلا ہے') }}</strong>
+        <span>{{ $t('check the current quotation', 'موجودہ کوٹیشن دیکھ لیں') }}</span>
+    </div>
+@endif
+@if(! $release->exists)
+    {{-- EK hi satar. A5 par ye band TEEN satrein kha raha tha — yani teen
+         khane. Kaam wohi karta hai: nazar aata hai aur nazarandaz nahi hota. --}}
+    <div class="preview-band">
+        <strong>{{ $t('PREVIEW — PRODUCTION NOT RELEASED YET', 'پیش نظر — پروڈکشن جاری نہیں ہوئی') }}</strong>
+        <span>{{ $t('figures can still change', 'اعداد ابھی بدل سکتے ہیں') }}</span>
+    </div>
+@endif
+
+{{-- KITCHEN-SHEET-A5-1 (27 Sep, doosra daur) — sar purane software ki
+     tarteeb par.
+
+     Pehli koshish me sab kuch OOPER thoos diya tha: pata, dono waqt, SERVICE,
+     venue, PAX. Do kharabiyan hui jo malik ne foran pakar lin — sar itna
+     bhari ho gaya ke ek safhe par sirf 10 satrein bachin (purane parche par
+     14 aati hain), aur label apni value se chipak gaye ("12:00 PMSERVE").
+
+     Ab wohi tarteeb jo purana software barson se chala raha hai, aur jise
+     bawarchi-khana parhna jaanta hai:
+        OOPER  →  booking no · GRAAHAK KA NAAM (bara) · phone · tareekh
+        BEECH  →  khana
+        NEECHE →  SERVICE + waqt (baayen), pata/venue (dayen)
+
+     Sar me sirf wo jo pehli nazar me chahiye. Baqi sab neeche, jahan purane
+     parche par hai. --}}
 <div class="head">
-    <div>
-        <div class="label">{{ $t('Customer / Event', 'کسٹمر / تقریب') }}</div>
+    <div class="h-l">
+        <div class="bno">{{ $snapshot['event_no'] ?? '' }}</div>
+        @if(!empty($snapshot['event_type']))<div class="etype">{{ $snapshot['event_type'] }}</div>@endif
+    </div>
+    <div class="h-c">
         <div class="customer">
             @if($isUr && !empty($snapshot['customer_name_ur']))
                 <span class="ur">{{ $snapshot['customer_name_ur'] }}</span>
             @else
                 {{ $snapshot['customer_name'] ?? '' }}
                 @if($isBoth && !empty($snapshot['customer_name_ur']))
-                    <span class="ur" style="font-size:22px;"> — {{ $snapshot['customer_name_ur'] }}</span>
+                    <span class="ur"> — {{ $snapshot['customer_name_ur'] }}</span>
                 @endif
             @endif
         </div>
-        <div class="badge-row">
-            <span><span class="label">{{ $t('Event #', 'تقریب نمبر') }}</span> <strong>{{ $snapshot['event_no'] ?? '' }}</strong></span>
-            @if(!empty($snapshot['event_type']))<span><strong>{{ $snapshot['event_type'] }}</strong></span>@endif
-            @if(!empty($snapshot['customer_phone']))<span dir="ltr">{{ $snapshot['customer_phone'] }}</span>@endif
-        </div>
-    </div>
-    <div>
-        <div class="label">{{ $t('Date & Time', 'تاریخ و وقت') }}</div>
-        <div class="big">{{ \Carbon\Carbon::parse($snapshot['event_date'])->format('D, d M Y') }}</div>
-        @if(!empty($snapshot['service_time']))
-            <div class="big">{{ \Carbon\Carbon::parse($snapshot['service_time'])->format('g:i A') }}</div>
+        @if(!empty($snapshot['customer_phone']))
+            <div class="phone" dir="ltr">{{ $snapshot['customer_phone'] }}</div>
         @endif
     </div>
-    <div>
-        <div class="label">{{ $t('Venue', 'مقام') }}</div>
-        <div class="big">{{ $snapshot['venue'] ?? '—' }}</div>
-        <div class="label" style="margin-top: 6px;">{{ $t('Guests (PAX)', 'مہمان') }}</div>
-        <div class="big">{{ number_format($snapshot['pax'] ?? 0) }}</div>
+    <div class="h-r">
+        {{-- PAX yahan se hata diya gaya (malik, 27 Sep): bawarchi khane ki
+             GINTI se kaam karta hai — har dish ke saamne us ki apni miqdaar
+             likhi hai — mehmaanon ki ginti se nahi. Wo adad quotation ka hai,
+             is parche ka nahi. --}}
+        <div class="edate">{{ \Carbon\Carbon::parse($snapshot['event_date'])->format('D, d M Y') }}</div>
     </div>
 </div>
 
@@ -75,34 +128,53 @@
         Sirf tashreeh ke liye ek directive ka naam likhne se hi ye file compile
         hona band ho gayi thi. Is liye upar ki saari baatein lafzon me hain,
         misaal ki shakl me nahi. --}}
+{{-- KITCHEN-SHEET-NO-COURSE-HEADINGS-1 (26 Sep) — TARTEEB rahi, UNWAAN gaye.
+
+     18 Sep ko course ke unwaan is dalil par daale gaye the ke bawarchi
+     course-dar-course pakata hai. Malik ne 26 Sep ko wo dalil rad kar di:
+     "category hata do, need nahi, aur space aa jayega" — do khanon wale sheet
+     par do pattiyan aa rahi thin, aur jagah wahi cheez kha rahi thi jis ki
+     shikayat thi.
+
+     TARTEEB PAR KOI ASAR NAHI. Khane ab bhi usi silsile me chhapte hain jo
+     client ne 21 Sep ko maanga tha (starter → biryani → gravy → BBQ → …), is
+     liye groups() ki jagah sort() — wohi helper, wohi tarteeb, sirf sar-naame
+     nahi. Estimate ka kaghaz pehle se yehi karta hai. --}}
 @php
-    $courses = \App\Support\Catering\CourseOrder::groups($release->lines);
+    $orderedLines = \App\Support\Catering\CourseOrder::sort($release->lines);
 @endphp
     <table class="items">
         <thead>
             <tr>
-                <th class="sr" style="width: 30px;">#</th>
-                <th class="num" style="width: 104px;">{{ $t('Qty', 'مقدار') }}</th>
-                <th>{{ $t('Item', 'آئٹم') }}</th>
-                <th style="width: 34%;">{{ $t('Instructions', 'ہدایات') }}</th>
-                <th style="width: 58px;">{{ $t('Done', 'مکمل') }}</th>
+                <th class="sr" style="width: 5%;">#</th>
+                <th class="num" style="width: 16%;">{{ $t("Qty", "مقدار") }}</th>
+                {{-- Item par chaurai AB LIKHI HUI hai (42%), pehle ye baqi sab ke baad
+                     bachi hui jagah leta tha. Malik ne 42% maanga; teen fisad un do
+                     khaanon se liye gaye jin ka content is daur me chhota hua —
+                     Party/Own (label ab 11px) aur Done. Qty aur Instructions waise
+                     hi hain, is liye un se kuch nahi liya gaya.
+                     Jama: 5 + 16 + 42 + 19 + 13 + 5 = 100. --}}
+                <th style="width: 42%;">{{ $t('Item', 'آئٹم') }}</th>
+                <th style="width: 19%;">{{ $t("Instructions", "ہدایات") }}</th>
+                {{-- KITCHEN-SHEET-A5-1 (teesra daur) — "Done" ka khaana gaya,
+                     us ki jagah maal. Malik: "done wali column hatado, us ki
+                     jagah part ya own upar neeche dikha do."
+
+                     Tick box ki jagah wo khabar aa gayi jo bawarchi ko kaam
+                     se pehle chahiye: maal kis ka hai aur kitna. --}}
+                <th class="supply" style="width: 13%;">{{ $t('Party / Own', 'پارٹی / اپنا') }}</th>
+                {{-- Tick box wapas, magar ab APNE khaane me — malik: "add new
+                     column of checkbox that you remove, also add as separate
+                     column". Pehle ye maal ki jagah par tha; ab dono hain. --}}
+                <th class="done" style="width: 5%;">{{ $t('Done', 'مکمل') }}</th>
             </tr>
         </thead>
         <tbody>
             @php $sr = 0; @endphp
-            @foreach($courses as $course)
-            {{-- Bawarchi ek waqt me ek course banata hai; ye patti us ko batati
-                 hai ke ye hissa kahan se shuru hota hai aur kitne item hain. --}}
-            <tr class="course">
-                <td colspan="5">
-                    <span class="course-name">{{ $course['name'] }}</span>
-                    <span class="course-count">{{ $course['lines']->count() }}</span>
-                </td>
-            </tr>
-            @foreach($course['lines'] as $line)
+            @foreach($orderedLines as $line)
             <tr>
                 <td class="sr">{{ ++$sr }}</td>
-                <td class="num"><span class="qty">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }} {{ $line->unit_code }}</span></td>
+                <td class="num"><span class="qty" dir="ltr">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }} {{ $line->unit_code }}</span></td>
                 <td>
                     @if($isUr && $line->item_name_ur)
                         <div class="item-ur ur">{{ $line->item_name_ur }}</div>
@@ -113,23 +185,35 @@
                         @endif
                     @endif
 
-                    {{-- KASHIF-KITCHEN-MATERIALS-1: what this dish takes and who
-                         brings it, in the same words the customer's quotation
-                         uses. Read from the release SNAPSHOT — releases frozen
-                         before this existed carry nothing and print as before. --}}
+                </td>
+                {{-- Is khaane me SIRF hidayaat — malik: "instruction mai sirf
+                     instruction ae aur kuch na ae". Maal pehle yahan aata tha;
+                     ab uska apna khaana hai. --}}
+                <td class="instructions">{{ $line->instructions }}</td>
+                {{-- Maal: Party upar, Own neeche. Jis dish par kuch nahi, us
+                     ka khaana khali rehta hai — khali jagah bhi ek khabar hai
+                     (kuch alag nahi karna). --}}
+                <td class="supply">
                     @include('tenant.catering.documents.partials.line-materials', [
                         'materials' => $line->materials_snapshot ?? [],
+                        'compact' => true,
                     ])
                 </td>
-                <td class="instructions">{{ $line->instructions }}</td>
-                <td style="text-align:center; font-size: 18px;">☐</td>
+                <td class="done">☐</td>
             </tr>
-            @endforeach
             @endforeach
         </tbody>
     </table>
 
-@if(!empty($requirements))
+{{-- KITCHEN-SHEET-REQUIREMENTS-TOGGLE-1 (26 Sep) — bawarchi is table ko nahi
+     parhta, wo sirf jagah leti hai. Ab ye Catering Settings ka switch hai aur
+     BAND haalat me aata hai; jise planning ka hisaab chahiye wo khol le.
+
+     Setting se parha ja raha hai, view ko diye gaye kisi variable se nahi: ye
+     partial teen jagah se render hoti hai (tanha document, bulk composition,
+     aur network print), aur teenon ko alag alag yaad rakhna hi wo tareeqa hai
+     jis se ek jagah switch kaam karna chhor deta hai. --}}
+@if(!empty($requirements) && \App\Models\Tenant\CateringSetting::tenantDefault()->show_kitchen_requirements)
 <div class="req">
     <h3>{{ $t('Consolidated Raw Material Requirements (planning)', 'مجموعی خام مال کی ضروریات') }}</h3>
     <table class="req-table">
@@ -182,3 +266,41 @@
     </table>
 </div>
 @endif
+
+{{-- KITCHEN-SHEET-A5-1 (doosra daur) — parche ka PAER, purane software ki
+     tarah.
+
+     Malik: "address neeche aa raha hai, service time bhi neeche, services
+     charges ka service bhi neeche, departure aur us ka time bhi neeche."
+     Purane parche par bilkul yehi hai: baayen "SERVICE / 9:00 PM", dayen
+     "CANDLE BANQUET JOHAR".
+
+     Ye cheezein pehle SAR me thin aur sar ko itna bhari kar rahi thin ke ek
+     safhe par sirf 10 satrein bachti thin. Neeche aa kar wo jagah khane ko
+     mil gayi — aur bawarchi ke liye tarteeb bhi durust hui: pehle khana,
+     phir "kab aur kahan". --}}
+{{-- KITCHEN-SHEET-PREVIEW-TRUTH-1 (29 Sep) — malik: "urdu footer bhi aise
+     hi aae, aur time English me jaise English ka aata hai."
+
+     Poore paer par `dir="ltr"`: is se SERVICE/SERVE/DEPARTURE baayen aur
+     venue/pata dayen aate hain — bilkul English parche jaisa — chahe
+     baqi safha RTL ho. Lafz bhi tarjuma nahi hote (neeche dekho): purane
+     software par bhi paer ke ye lafz Latin hain, aur bawarchi-khana unhe
+     isi shakl me pehchanta hai. --}}
+<div class="foot" dir="ltr">
+    <div class="foot-l">
+        @if($snapshot['has_service_charge'] ?? false)
+            <span class="svc">SERVICE</span>
+        @endif
+        @if(!empty($snapshot['service_time']))
+            <span class="ft"><span class="ftl">SERVE</span><span class="ftv" dir="ltr">{{ \Carbon\Carbon::parse($snapshot['service_time'])->format('g:i A') }}</span></span>
+        @endif
+        @if(!empty($snapshot['dispatch_time']))
+            <span class="ft"><span class="ftl">DEPARTURE</span><span class="ftv" dir="ltr">{{ \Carbon\Carbon::parse($snapshot['dispatch_time'])->format('g:i A') }}</span></span>
+        @endif
+    </div>
+    <div class="foot-r">
+        @if(!empty($snapshot['venue']))<div class="venue">{{ $snapshot['venue'] }}</div>@endif
+        @if(!empty($snapshot['customer_address']))<div class="addr">{{ $snapshot['customer_address'] }}</div>@endif
+    </div>
+</div>

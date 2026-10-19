@@ -42,8 +42,14 @@ class GoodsReceiptController extends Controller
     {
         $branches     = Branch::orderBy('name')->get();
         $suppliers    = Supplier::where('status', 'active')->orderBy('name')->get();
+        // GRN-PICKER-GUARD-1: a GRN receives PURCHASED goods, so the picker offers only what is
+        // bought. It used to offer every active product — the whole menu — and on two tenants
+        // literally every item in the list blew up on Post, because receiving calls
+        // InventoryService and a sale-only item is not stock tracked. Same rule the purchase
+        // lookup already applies (ProductLookupController, context=purchase).
         $products     = Product::with(['unit', 'variants'])
             ->where('status', 'active')
+            ->where('is_purchasable', true)
             ->orderBy('name')
             ->get();
         $openOrders   = PurchaseOrder::with(['supplier', 'lines.product'])
@@ -135,6 +141,19 @@ class GoodsReceiptController extends Controller
             $product = $productMap[$line['product_id']] ?? null;
             if (! $product) {
                 continue;
+            }
+            // GRN-PICKER-GUARD-1: receiving a line calls InventoryService::postIn(), which throws a
+            // raw RuntimeException on a product that is not stock tracked — and that reached the
+            // client as a 500 error page. A purchasable-but-untracked product is a real and
+            // legitimate state (a freight charge, or a drink whose inventory has not been started
+            // yet), so this is a thing to SAY, not to crash on. Checked here, before anything is
+            // written, so nothing is half-received.
+            if (! $product->is_stock_tracked) {
+                throw ValidationException::withMessages([
+                    "lines.$i.product_id" => "{$product->name} does not track stock, so it cannot be "
+                        . 'received on a GRN. Turn on Track Stock for it, or put this cost on a '
+                        . 'Purchase Bill instead.',
+                ]);
             }
             if ($product->requires_batch && empty($line['batch_no'])) {
                 throw ValidationException::withMessages([

@@ -20,6 +20,10 @@ class SalesReportDocumentService
             'paper' => '80mm',
             'filters' => $filters,
             'sections' => $sections,
+            // QUICK-REPORT-WAITER-NULL-1: the filters that leave no trace on the page, named
+            // so a narrowed report cannot pass for a full one. Empty for an unfiltered report,
+            // so the Report Center and the nightly PDF print exactly as before.
+            'narrowing' => $this->engine->describeNarrowing($filters),
             // BRIDGE-DEALS-1: a section that leaves the deals out cannot close to NET SALES on
             // charges alone — it needs the deals named on their own line.
             'bridge' => $summary + ['deals_net' => $this->engine->dealsNet($filters)],

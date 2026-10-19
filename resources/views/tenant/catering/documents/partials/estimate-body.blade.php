@@ -95,7 +95,7 @@
         <h4>{{ $t('Event', 'تقریب') }}</h4>
         @if($event->event_type)<div class="meta-row"><span class="k">{{ $t('Type', 'قسم') }}</span><span class="v cap">{{ $event->event_type }}</span></div>@endif
         <div class="meta-row"><span class="k">{{ $t('Date', 'تاریخ') }}</span><span>{{ $event->event_date->format('l, d F Y') }}</span></div>
-        @if($event->service_time)<div class="meta-row"><span class="k">{{ $t('Time', 'وقت') }}</span><span>{{ \Carbon\Carbon::parse($event->service_time)->format('g:i A') }}</span></div>@endif
+        @if($event->service_time)<div class="meta-row"><span class="k">{{ $t('Time', 'وقت') }}</span><span dir="ltr">{{ \Carbon\Carbon::parse($event->service_time)->format('g:i A') }}</span></div>@endif
         @if($event->venue)<div class="meta-row"><span class="k">{{ $t('Venue', 'مقام') }}</span><span class="v cap">{{ $event->venue }}</span></div>@endif
         <div class="meta-row"><span class="k">{{ $t('Guests (PAX)', 'مہمان') }}</span><span><strong>{{ number_format($event->pax) }}</strong></span></div>
     </div>

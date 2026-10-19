@@ -38,8 +38,36 @@ class CateringAdvance extends Model
      */
     public bool $allowOverpayment = false;
 
+    /** Ye receipt ulti ja chuki hai? */
+    public function isVoided(): bool
+    {
+        return $this->voided_at !== null;
+    }
+
     protected static function booted(): void
     {
+        /**
+         * CATERING-ADVANCE-VOID-1 — ULTI HUI RECEIPT HAR GINTI SE BAHAR.
+         *
+         * Ye global scope is poore kaam ka sab se ahem hissa hai, aur wajah
+         * naap kar nikli hai: advances ka paisa NAU jagah gina jata hai —
+         * position(), calendar ki do queries, customer balances, do
+         * controllers aur kuch screenein. Har jagah alag se `whereNull`
+         * likhne ka matlab hai ke ek na ek jagah bhool jayegi, aur wahan ulti
+         * hui rakam KHAMOSHI se ginti me reh jati — graahak ke zimme kam
+         * paisa dikhta aur kisi ko pata na chalta.
+         *
+         * Is liye faisla yahan EK BAAR hota hai. Jise ulti hui receipt DEKHNI
+         * ho — jaise ledger, kyunke wahan us ka hona hi khabar hai — wo
+         * `withoutGlobalScope('notVoided')` likh kar sarih tor par maange.
+         *
+         * Bhoolna ab "rakam ghayab" nahi, "satar nazar nahi aayi" banata hai.
+         * Doosri ghalti pehli se kahin kam khatarnak hai.
+         */
+        static::addGlobalScope('notVoided', function ($query) {
+            $query->whereNull($query->getQuery()->from.'.voided_at');
+        });
+
         static::creating(function (CateringAdvance $advance) {
             // A receipt is money coming IN. Money going out is a refund — its
             // own document, with its own number, authority and reason — and
@@ -123,6 +151,7 @@ class CateringAdvance extends Model
         'reference',
         'notes',
         'credit_portion',
+        'void_reason',
         'overpayment_reason',
         'recorded_by_user_id',
         'posting_type',
@@ -137,6 +166,7 @@ class CateringAdvance extends Model
             'amount' => 'decimal:2',
             'received_date' => 'date',
             'gl_posted_at' => 'datetime',
+            'voided_at' => 'datetime',
         ];
     }
 

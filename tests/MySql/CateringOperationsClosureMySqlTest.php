@@ -67,6 +67,12 @@ class CateringOperationsClosureMySqlTest extends MySqlTenantTestCase
         View::share('errors', new \Illuminate\Support\ViewErrorBag);
 
         $this->cleanTenant([
+            // catering_settings is a per-tenant SINGLETON, and the kitchen-sheet
+            // test below switches one of its flags on. Left behind it would stay
+            // on for every test after it — and for the next RUN of this file.
+            // CateringMailQueueMySqlTest carries the same note for the same
+            // reason; this is the second time that row has needed saying.
+            'catering_settings',
             'catering_material_issue_events', 'catering_material_issue_lines', 'catering_material_issues',
             'catering_production_release_lines', 'catering_production_releases',
             'catering_estimate_line_cost_blocks', 'catering_estimate_lines', 'catering_estimates',
@@ -196,25 +202,55 @@ class CateringOperationsClosureMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta(10.0, $req['Chicken']['required_qty'], 0.001);
     }
 
-    public function test_the_kitchen_sheet_still_asks_for_customer_supplied_material(): void
+    /**
+     * KITCHEN-SHEET-REQUIREMENTS-TOGGLE-1 (26 Sep) — the consolidated
+     * requirements table is now OFF by default, at the owner's request. This
+     * test read it unconditionally and went red.
+     *
+     * What it exists to protect has NOT changed, and matters more than the
+     * table: a material the CUSTOMER brings must never look like ours to fetch.
+     * So both states are checked, and the OFF state first — that is what the
+     * kitchen prints today.
+     */
+    public function test_the_kitchen_sheet_still_says_who_brings_the_material(): void
     {
         $estimate = $this->booking('Supplied sheet');
         $this->lineBlocks->setCustomerSupplied($this->snapshot($estimate, 'Rice'), true);
         $release = $this->release($estimate);
 
-        $html = View::make('tenant.catering.documents.kitchen-sheet', [
+        // OFF — the default, and what the kitchen prints today.
+        $off = $this->kitchenSheetHtml($release);
+        $this->assertStringNotContainsString('Kitchen Needs', $off, 'planning table band hai');
+        // KITCHEN-SHEET-A5-1 (27 Sep): ye usool QAYAM hai — planning table
+        // band karne se bhi ye baat gayab nahi honi chahiye ke maal graahak
+        // laa raha hai, warna bawarchi hamare store ki taraf chala jayega.
+        //
+        // Sirf JAGAH aur LAFZ badle. Pehle dish ki hidayaat me
+        // "CUSTOMER SUPPLIES: Rice …" likha aata tha; malik ne kaha hidayaat
+        // me sirf hidayaat aayen. Ab maal ka apna khaana hai jis me
+        // "Party <qty>" likha hota hai, aur maal ka NAAM nahi — bawarchi usay
+        // dish ke naam se jaanta hai.
+        $this->assertStringContainsString('class="supply-line"', $off,
+            'maal ka khaana mojood ho — planning table band hone se ye gayab na ho');
+        $this->assertStringContainsString('Party', $off,
+            'aur us me saaf likha ho ke maal graahak laa raha hai');
+
+        // ON — whoever issues from the store can still have the totals.
+        \App\Models\Tenant\CateringSetting::tenantDefault()->update(['show_kitchen_requirements' => true]);
+        $on = $this->kitchenSheetHtml($release);
+        $this->assertStringContainsString('Kitchen Needs', $on);
+        $this->assertStringContainsString('From Our Store', $on);
+        $this->assertStringContainsString('Customer supplied', $on);
+    }
+
+    private function kitchenSheetHtml(\App\Models\Tenant\CateringProductionRelease $release): string
+    {
+        return View::make('tenant.catering.documents.kitchen-sheet', [
             'release' => $release->fresh(['lines', 'event']),
             'event' => $release->event,
             'lang' => 'en',
             'businessName' => 'Test Caterer',
         ])->render();
-
-        $this->assertStringContainsString('Rice', $html,
-            'a material the customer brings must not disappear from the kitchen sheet');
-        $this->assertStringContainsString('Kitchen Needs', $html);
-        $this->assertStringContainsString('From Our Store', $html);
-        $this->assertStringContainsString('Customer supplied', $html,
-            'and the sheet must say who is bringing it, or the kitchen will chase our store for it');
     }
 
     /**
@@ -251,8 +287,16 @@ class CateringOperationsClosureMySqlTest extends MySqlTenantTestCase
 
         // The dishes themselves are still all there — the guard must be able to
         // tell "no headings" apart from "no sheet".
-        $this->assertStringContainsString('Rice', $html);
-        $this->assertStringContainsString('Chicken', $html);
+        //
+        // Ye do assert pehle 'Rice' aur 'Chicken' dhoondte thay, jo is fixture
+        // me DISH nahi balke KHAAM MAAL hain (RM-RICE, RM-CHK) — comment kuch
+        // aur keh raha tha aur code kuch aur parakh raha tha. 27 Sep se
+        // kitchen sheet maal ka naam chhapti hi nahi (sirf "Party 4 KG"), is
+        // liye ab wo dish ka naam dekhte hain — jo shuru se maqsad tha.
+        $this->assertStringContainsString('Chicken Biryani', $html,
+            'parcha waqai bana hai — warna oopar wale "koi station bar nahi" khali safhe par bhi pass ho jate');
+        $this->assertStringContainsString('class="supply-line"', $html,
+            'aur maal ka khaana bhi bhara hai');
     }
 
     public function test_the_release_screen_shows_both_figures(): void

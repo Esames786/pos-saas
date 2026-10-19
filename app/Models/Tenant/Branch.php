@@ -27,6 +27,9 @@ class Branch extends Model
         'manual_discount_approval_mode',
         'sales_return_approval_mode',
         'hide_amounts_from_operators',
+        // WHATSAPP-REPORT-CHANNEL-1: NULL here means "ask the tenant", not "no channels".
+        'report_channels',
+        'report_whatsapp',
         'receipt_footer',
         'status',
         'sales_operating_mode',
@@ -43,6 +46,9 @@ class Branch extends Model
             'show_tax_number_on_invoice' => 'boolean',
             'allow_negative_stock' => 'boolean',
             'hide_amounts_from_operators' => 'boolean',
+            // json lists; cast so a reader never has to remember to decode them.
+            'report_channels' => 'array',
+            'report_whatsapp' => 'array',
             'local_edge_activated_at' => 'datetime',
             'local_edge_suspended_at' => 'datetime',
         ];

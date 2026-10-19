@@ -1641,6 +1641,12 @@
                         @elseif($key === 'waiters')
                         <div class="qr-panel ms-4 mt-1" id="qr-panel-waiters">
                             <div class="small text-muted mb-1">Leave all unticked = every waiter.</div>
+                            {{-- QUICK-REPORT-WAITER-NULL-1: a waiter is attached on dine-in only, so
+                                 picking waiters hides every counter order unless "No waiter" is ticked
+                                 too. Saying it here is the difference between a choice and a trap. --}}
+                            <div class="small text-warning mb-1">
+                                <i class="ti ti-alert-triangle me-1"></i>Takeaway / Delivery orders carry no waiter — tick <strong>No waiter</strong> to keep them.
+                            </div>
                             <div class="d-flex flex-wrap gap-2">
                                 @foreach($waiters as $w)
                                     <div class="form-check form-check-inline me-0">
@@ -1648,6 +1654,10 @@
                                         <label class="form-check-label small" for="qr-w-{{ $w->id }}">{{ $w->name }}</label>
                                     </div>
                                 @endforeach
+                                <div class="form-check form-check-inline me-0">
+                                    <input class="form-check-input qr-waiter" type="checkbox" value="{{ \App\Services\Reports\SalesReportEngine::WAITER_NONE }}" id="qr-w-none">
+                                    <label class="form-check-label small fst-italic" for="qr-w-none">No waiter (counter)</label>
+                                </div>
                             </div>
                         </div>
                         @elseif($key === 'order_types')
@@ -1710,6 +1720,19 @@
     };
     var checked = function (sel) { return Array.prototype.map.call(document.querySelectorAll(sel + ':checked'), function (c) { return c.value; }); };
 
+    // QUICK-REPORT-WAITER-NULL-1 — ticking EVERY box means the same as ticking none.
+    //
+    // The panel promises "Leave all unticked = every waiter", so the two ways of saying
+    // "everything" have to agree. They did not: a saved selection of all six waiters quietly cut a
+    // counter's Quick Report in half every day for a month, because an order with no waiter matches
+    // no waiter id. Sending nothing also keeps a SAVED selection honest over time — an order type
+    // added next year is included, instead of being excluded by a list written before it existed.
+    var checkedUnlessAll = function (sel) {
+        var all = Array.prototype.slice.call(document.querySelectorAll(sel));
+        var on = all.filter(function (c) { return c.checked; });
+        return (all.length && on.length === all.length) ? [] : on.map(function (c) { return c.value; });
+    };
+
     // Section checkbox → show/hide its sub-filter panel.
     document.querySelectorAll('.qr-section[data-panel]').forEach(function (cb) {
         var panel = document.getElementById(cb.getAttribute('data-panel'));
@@ -1766,8 +1789,8 @@
             branch_ids: (function () { var v = (document.getElementById('qr-branch') || {}).value; return v ? [v] : []; })(),
             sections: checked('.qr-section'),
             category_ids: checked('.qr-category'),
-            waiter_ids: checked('.qr-waiter'),
-            order_types: checked('.qr-ordertype'),
+            waiter_ids: checkedUnlessAll('.qr-waiter'),
+            order_types: checkedUnlessAll('.qr-ordertype'),
             all_items: allItems.checked ? 1 : 0,
             product_ids: allItems.checked ? [] : Object.keys(chosenItems),
             printer_id: document.getElementById('qr-printer').value,
@@ -2605,6 +2628,32 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
+    // PRODUCT-TILE-SKU-1: the SKU line earns its place only when it says something the name does not.
+    //
+    // Serves BOTH tiles: a product carries a `sku`, a deal carries a `code`, and both print in
+    // the same slot under the name. Measured before wiring the deal tile: 272 of 1,557 products
+    // repeat their own name, but 0 of 90 deals do — every deal code is a real one
+    // (KF-PLAT-ALFAHAM-H, TK-D1). So today this changes no deal tile at all; it is wired so the
+    // rule cannot disagree with itself the day someone files a deal whose code is just its name.
+    //
+    // A SKU exists to TELL THINGS APART. On some tenants every SKU is just the name in capitals, so
+    // each tile printed the same words twice; on others it is a real code (KF-001, RM-BEEF) or a
+    // scannable barcode, and hiding it would take away something the counter actually reads. So the
+    // decision is per PRODUCT - not per tenant, and not a setting anyone has to keep true: rename a
+    // product tomorrow and the tile re-decides by itself.
+    //
+    // Letters and digits only, because a name like "Biryani (1/2 kg)" is stored as BIRYANI-12-KG and
+    // comparing punctuation would make two identical things look different.
+    //
+    // Search and barcode scanning still read product.sku and are deliberately untouched - a hidden
+    // SKU is still findable, it is only not written on the tile.
+    function labelSaysSomethingNew(label, name) {
+        var flat = function (v) { return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+        var code = flat(label);
+
+        return code === '' || code !== flat(name);
+    }
+
     function hasModifierGroups(product) {
         return activeModifierGroups(product).length > 0;
     }
@@ -2796,7 +2845,9 @@ document.addEventListener('DOMContentLoaded', function () {
             button.innerHTML =
                 '<div class="product-avatar"><i class="ti ti-package"></i></div>' +
                 '<div class="fw-bold mb-1 product-name">' + escapeHtml(combo.name) + '</div>' +
-                '<div class="text-muted small mb-2">' + escapeHtml(combo.code || 'Combo') + '</div>' +
+                (labelSaysSomethingNew(combo.code, combo.name)
+                    ? '<div class="text-muted small mb-2">' + escapeHtml(combo.code || 'Combo') + '</div>'
+                    : '') +
                 '<div class="tile-footer">' +
                     '<span class="fw-bold product-price">' + money(combo.price) + '</span>' +
                     '<span class="stock-badge ' + badgeClass + '">' + badgeText + '</span>' +
@@ -2829,7 +2880,9 @@ document.addEventListener('DOMContentLoaded', function () {
             button.innerHTML =
                 avatarHtml +
                 '<div class="fw-bold mb-1 product-name">' + escapeHtml(product.name) + '</div>' +
-                '<div class="text-muted small mb-2">' + escapeHtml(product.sku || 'No SKU') + '</div>' +
+                (labelSaysSomethingNew(product.sku, product.name)
+                    ? '<div class="text-muted small mb-2">' + escapeHtml(product.sku || 'No SKU') + '</div>'
+                    : '') +
                 '<div class="tile-footer">' +
                     '<span class="fw-bold product-price">' + money(price) + '</span>' +
                     '<span class="stock-badge ' + stockClass + '">' + stockText + '</span>' +

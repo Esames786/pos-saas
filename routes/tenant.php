@@ -112,6 +112,15 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
     ->middleware(['tenant.only'])
     ->group(function () {
 
+    // WHATSAPP-REPORT-CHANNEL-1: a shared report opens HERE, on the tenant subdomain, after the
+    // central /r/{token} redirect. Deliberately OUTSIDE auth: the owner reads it from WhatsApp
+    // without logging in. The token is what grants access — it is random, it expires, and the
+    // controller refuses it on any subdomain but the one that owns it.
+    Route::get('/r/{token}', [\App\Http\Controllers\ReportShareController::class, 'show'])
+        ->where('token', '[A-Za-z0-9]{16,64}')->name('tenant.report.share');
+    Route::get('/r/{token}/pdf', [\App\Http\Controllers\ReportShareController::class, 'pdf'])
+        ->where('token', '[A-Za-z0-9]{16,64}')->name('tenant.report.share.pdf');
+
         Route::get('/login', [AuthController::class, 'showLogin'])->name('tenant.login');
         Route::post('/login', [AuthController::class, 'login'])->name('tenant.login.post');
 
@@ -930,6 +939,21 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::put('/catering/profiles/{cateringProductProfile}/blocks', [\App\Http\Controllers\Tenant\Catering\CateringCostBlockController::class, 'update'])->name('tenant.catering.cost-blocks.update');
 
                     Route::post('/catering/events/{cateringEvent}/advances', [\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class, 'store'])->name('tenant.catering.advances.store');
+                    // CATERING-ADVANCE-VOID-1 (1 Oct) — darj shuda receipt ki
+                    // ghalti theek karne ke do raaste.
+                    //
+                    // VOID: amount ghalat ho to usay EDIT nahi kiya jata — receipt
+                    // ulti hoti hai (journal reversal + cash/bank wapas) aur sahi
+                    // nayi darj hoti hai. Amount ko chup chaap badal dena kitabon
+                    // me ek adad aur screen par doosra chhor deta.
+                    //
+                    // REFERENCE: sirf slip number / notes — in ka ledger se koi
+                    // taluq nahi, is liye un ke liye paisa hilana bemani hai.
+                    //
+                    // Dono raaste booking ki screen aur Customer Catering Balances
+                    // dono se chalte hain — ek hi endpoint, do darwaze.
+                    Route::post('/catering/advances/{cateringAdvance}/void', [\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class, 'void'])->name('tenant.catering.advances.void');
+                    Route::post('/catering/advances/{cateringAdvance}/reference', [\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class, 'updateReference'])->name('tenant.catering.advances.update-reference');
 
                     // KASHIF-CATERING-CUSTOMER-CREDIT-1: the one catering action that
                     // pays money OUT, behind its own permission for that reason.
@@ -961,6 +985,12 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
 
                     Route::get('/catering/documents/estimate/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'estimate'])->name('tenant.catering.documents.estimate');
                     Route::get('/catering/documents/kitchen-sheet/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheet'])->name('tenant.catering.documents.kitchen-sheet');
+                    // KITCHEN-SHEET-PREVIEW-1: wohi parcha, release se pehle. Alag
+                    // route is liye ke binding EVENT par hai, release par nahi.
+                    // Alag route ka matlab alag permission hai — migration
+                    // 2026_09_27_000001 wo har us role ko deti hai jis ke paas
+                    // asli kitchen sheet pehle se hai.
+                    Route::get('/catering/documents/kitchen-sheet-preview/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheetPreview'])->name('tenant.catering.documents.kitchen-sheet-preview');
                     Route::get('/catering/documents/final-invoice/{cateringFinalInvoice}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'finalInvoice'])->name('tenant.catering.documents.final-invoice');
 
                     // KASHIF-CATERING-OPERATOR-UI-1: bulk documents for a selected set
@@ -976,6 +1006,16 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     // here rather than printed as mojibake.
                     Route::post('/catering/documents/estimate/{cateringEstimate}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printEstimate'])->name('tenant.catering.documents.estimate-print');
                     Route::post('/catering/documents/final-invoice/{cateringFinalInvoice}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printFinalInvoice'])->name('tenant.catering.documents.final-invoice-print');
+
+                    // CATERING-CUSTOMER-BALANCES-1 (28 Sep) — graahak ka hisaab,
+                    // booking ke bahar se. Read-only: paisa yahan se nahi liya
+                    // jata, wo event ke against advance service ka kaam hai.
+                    //
+                    // Naam `tenant.catering.*` hai chahe sidebar par Finance ke
+                    // neeche dikhe: module route ke NAAM se tay hota hai, aur ye
+                    // screen catering ki hai.
+                    Route::get('/catering/customer-balances', [\App\Http\Controllers\Tenant\Catering\CateringCustomerBalanceController::class, 'index'])->name('tenant.catering.customer-balances.index');
+                    Route::get('/catering/customer-balances/{customer}', [\App\Http\Controllers\Tenant\Catering\CateringCustomerBalanceController::class, 'show'])->name('tenant.catering.customer-balances.show');
 
                     Route::get('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'index'])->name('tenant.catering.printer-mappings.index');
                     Route::post('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'store'])->name('tenant.catering.printer-mappings.store');

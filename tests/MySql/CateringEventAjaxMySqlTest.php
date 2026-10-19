@@ -254,6 +254,7 @@ class CateringEventAjaxMySqlTest extends MySqlTenantTestCase
             'position' => app(\App\Services\Catering\CateringFinancialPositionService::class)->position($event),
             'headline' => app(\App\Services\Catering\CateringFinancialPositionService::class)->headline($event),
             'ledger' => app(\App\Services\Catering\CateringFinancialPositionService::class)->ledger($event),
+            'voidedAdvances' => app(\App\Services\Catering\CateringFinancialPositionService::class)->voidedAdvances($event),
         ])->render();
 
         $this->assertStringContainsString('data-bs-target="#editEventOffcanvas"', $html,
