@@ -66,10 +66,12 @@ class PharmacyDemoSeeder
         $this->seedCategories();
         $this->seedSuppliers();
         $this->seedProducts();
+        $this->seedPacks();
         $this->seedCustomers();
         $this->seedPurchases();
         $this->seedSales();
         $this->seedReturns();
+        $this->openTodaysShift();
 
         return $this->counts;
     }
@@ -677,6 +679,72 @@ class PharmacyDemoSeeder
             }
         }
         $this->counts['returns'] = count($made) . ' (' . implode(', ', $made) . ')';
+    }
+
+    /**
+     * PHARMACY-PACKS-1 — the strip and the box of each medicine, read from its "pack on the shelf" text
+     * ("Box 200 = 20 strips x 10"). Stock stays in tablets; the packs only name bigger amounts of them.
+     * Boxes carry a barcode (in-store EAN-13 range); strips have none, as in a real shop. Prices are left
+     * empty = size × the tablet price, which is how a box's printed price is worked out anyway.
+     */
+    private function seedPacks(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::connection('tenant')->hasTable('product_pack_units')) {
+            $this->counts['packs'] = 'skipped (no pack table)';
+
+            return;
+        }
+        $made = 0;
+        foreach ($this->products() as $i => [$sku, , , , , , , $pack]) {
+            $product = Product::where('sku', $sku)->first();
+            if (! $product || $product->packUnits()->exists()) {
+                continue;
+            }
+            $boxCode = $this->ean13('2009200' . str_pad((string) ($i + 1), 5, '0', STR_PAD_LEFT));
+            $packs = [];
+            if (preg_match('/^Box (\d+) = (\d+) strips? x (\d+)$/', $pack, $m)) {
+                [$total, $perStrip] = [(int) $m[1], (int) $m[3]];
+                $packs[] = ['name' => 'Strip', 'factor' => $perStrip, 'can_buy' => false, 'barcode' => null];
+                if ($total > $perStrip) {
+                    $packs[] = ['name' => 'Box', 'factor' => $total, 'can_buy' => true, 'barcode' => $boxCode];
+                }
+            } elseif (preg_match('/^Box (\d+)( pairs)?$/', $pack, $m)) {
+                $packs[] = ['name' => 'Box', 'factor' => (int) $m[1], 'can_buy' => true, 'barcode' => $boxCode];
+            } elseif (preg_match('/^Bottle (\d+) tablets$/', $pack, $m)) {
+                $packs[] = ['name' => 'Bottle', 'factor' => (int) $m[1], 'can_buy' => true, 'barcode' => null];
+            }
+            if (! $packs) {
+                continue;
+            }
+            \App\Support\PackUnits::sync($product, [
+                'base_name' => \App\Support\PackUnits::baseName($product->unit_id),
+                'base_sell' => true,
+                'packs'     => array_map(fn ($p) => $p + ['id' => null, 'sale_price' => null, 'can_sell' => true], $packs),
+            ]);
+            $made++;
+        }
+        $this->counts['packs'] = $made . ' items with strip / box packs';
+    }
+
+    /**
+     * The counter is ready when the demo opens: every login is on Counter 1 and its shift is open for
+     * today (the nightly reset otherwise left "No terminal · No Open Shift" and the POS refused to sell).
+     * Runs last, so none of the seeded history above belongs to this shift.
+     */
+    private function openTodaysShift(): void
+    {
+        $terminal = Terminal::where('code', 'C1')->first();
+        if (! $this->branch || ! $terminal || ! $this->owner) {
+            return;
+        }
+        if (\Illuminate\Support\Facades\Schema::connection('tenant')->hasColumn('users', 'default_terminal_id')) {
+            User::query()->update(['default_terminal_id' => $terminal->id]);
+        }
+        $shifts = app(\App\Services\Sales\ShiftService::class);
+        if (! $shifts->activeShiftForTerminal($terminal)) {
+            $shifts->open($this->branch, $terminal, $this->owner->id, 5000, 'Opened for the demo (nightly reset)');
+        }
+        $this->counts['shift'] = 'Counter 1 open for today (Rs 5,000 opening cash)';
     }
 
     private function ean13(string $twelve): string

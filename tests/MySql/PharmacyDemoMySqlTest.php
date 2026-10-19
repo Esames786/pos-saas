@@ -160,6 +160,16 @@ class PharmacyDemoMySqlTest extends MySqlTenantTestCase
             $this->assertSame(['takeaway'], $user->effectiveAllowedOrderTypes());
         }
         $this->assertSame(1, Terminal::where('code', 'C1')->count());
+
+        // PHARMACY-PACKS-1: strips and boxes, read from each medicine's pack text; stock stays in tablets.
+        $packs = fn (string $sku) => Product::where('sku', $sku)->firstOrFail()->packUnits()->get()->map(fn ($p) => $p->name . ':' . $p->factor)->all();
+        $this->assertSame(['Tablet:1', 'Strip:10', 'Box:200'], $packs('PH-PNL500'));
+        $this->assertSame(['Tablet:1', 'Strip:6'], $packs('PH-AUG625'), 'a box of one strip is just the strip');
+        $this->assertSame(['Piece:1', 'Box:100'], $packs('PH-SYR5'));
+        $this->assertSame([], $packs('PH-CALSY'), 'a syrup bottle has no packs');
+        $box = Product::where('sku', 'PH-PNL500')->firstOrFail()->packUnits()->where('factor', 200)->firstOrFail();
+        $this->assertMatchesRegularExpression('/^2009200\d{6}$/', (string) $box->barcode, 'the box carries its own barcode');
+        $this->assertSame(0, DB::connection('tenant')->table('product_barcodes')->where('barcode', $box->barcode)->count(), 'never mixed with single-item barcodes');
     }
 
     /** The near-expiry syrup is sold first: FEFO takes the older batch before the restock. */
@@ -211,11 +221,11 @@ class PharmacyDemoMySqlTest extends MySqlTenantTestCase
         $branchId = (int) $c->table('branches')->orderBy('id')->value('id');
         $terminal = Terminal::where('code', 'C1')->firstOrFail();
 
-        $open = $this->owner()->post('http://' . $this->host . '/shifts/open', [
-            'branch_id' => $branchId, 'terminal_id' => $terminal->id, 'opening_cash' => 5000,
-        ]);
-        $open->assertSessionHasNoErrors();
-        $this->assertSame(1, $c->table('shifts')->where('terminal_id', $terminal->id)->where('status', 'open')->count(), 'shift opened on the demo');
+        // The demo starts the day with Counter 1 open (the reset used to leave "No Open Shift"), and
+        // every login is on Counter 1.
+        $this->assertSame(1, $c->table('shifts')->where('terminal_id', $terminal->id)->where('status', 'open')->count(), 'the demo opens with Counter 1 ready');
+        $this->assertStringNotContainsString('No Open Shift', $pos);
+        $this->assertSame((int) $terminal->id, (int) $this->ownerUser()->default_terminal_id);
 
         $panadol = Product::where('sku', 'PH-PNL500')->firstOrFail();
         $syrup = Product::where('sku', 'PH-CALSY')->firstOrFail();
@@ -286,7 +296,12 @@ class PharmacyDemoMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection('tenant');
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        return $this->actingAs(User::on('tenant')->where('email', 'owner@pharmacydemo.com')->firstOrFail(), 'tenant');
+        return $this->actingAs($this->ownerUser(), 'tenant');
+    }
+
+    private function ownerUser(): User
+    {
+        return User::on('tenant')->where('email', 'owner@pharmacydemo.com')->firstOrFail();
     }
 
     private function rowOf(string $html, string $needle): string

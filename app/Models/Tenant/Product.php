@@ -225,6 +225,12 @@ class Product extends Model
         return $this->hasMany(ProductBarcode::class);
     }
 
+    /** PHARMACY-PACKS-1 — smallest first; the factor-1 row is the product's own unit. */
+    public function packUnits()
+    {
+        return $this->hasMany(ProductPackUnit::class)->orderBy('factor');
+    }
+
     public function branchPrices()
     {
         return $this->hasMany(ProductBranchPrice::class);
