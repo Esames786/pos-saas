@@ -78,6 +78,12 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('id="review-pay-btn"', $pos, 'the same Review & Pay window');
         $this->assertStringContainsString('id="hold-sale-btn"', $pos);
         $this->assertStringContainsString('id="save-draft-btn"', $pos);
+        // the shortcut list is one click (or Ctrl+/) away, and says the easy keys
+        $this->assertStringContainsString('id="medKeysModal"', $pos);
+        $this->assertStringContainsString('id="med-keys-btn"', $pos);
+        foreach (['Pay now (exact cash) and print', 'Hold sale (Ctrl+H too)', 'Held list — recall (Ctrl+L too)', 'Remove the item'] as $says) {
+            $this->assertStringContainsString($says, $pos);
+        }
         $this->assertScriptsParse($pos);
 
         $this->setFeatures(['product_screen_v2' => true, 'packs' => true]);
@@ -87,6 +93,7 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString('id="med-rx-box"', $off);
         $this->assertStringNotContainsString('.med-list-h', $off, 'no counter styles either');
         $this->assertStringNotContainsString('id="med-notes"', $off);
+        $this->assertStringNotContainsString('id="medKeysModal"', $off, 'no new keys or windows on any other counter');
         $this->assertStringContainsString('>Products</h2>', $off);
         $this->assertScriptsParse($off);
     }
