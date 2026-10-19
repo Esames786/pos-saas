@@ -156,6 +156,35 @@
     #med-subs:empty { display: none; }
     #medKeysModal td { white-space: normal; vertical-align: middle; }
     #medKeysModal td:first-child { white-space: nowrap; width: 1%; padding-right: 14px; }
+
+    /* MEDICAL-COUNTER-UX-1: more medicines in view — one tight row each, more room for the cart. */
+    .med-line-wrap { padding: .35rem 0; }
+    .med-line { display: grid; grid-template-columns: minmax(0, 1fr) auto 70px 22px; gap: 6px; align-items: center; }
+    .med-l-main { min-width: 0; }
+    .med-l-name { font-weight: 700; font-size: .9rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .med-l-sub { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+    .med-l-sub .med-chip { font-size: .66rem; padding: 0 6px; }
+    .med-l-boxes { display: flex; gap: 4px; }
+    .med-l-boxes .med-box { width: 56px; margin: 0; }
+    .med-l-boxes .med-box input { height: 30px; }
+    .med-l-amt { text-align: right; font-variant-numeric: tabular-nums; font-size: .9rem; white-space: nowrap; }
+    .med-l-x { line-height: 1; }
+    /* categories on ONE line (slide sideways) so the list shows more medicines */
+    #parent-category-strip, #child-category-strip { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+    #parent-category-strip .category-pill, #child-category-strip .category-pill { flex: 0 0 auto; min-height: 34px; }
+    /* the yellow "Recalled" bar only when a bill IS recalled (its d-flex used to beat display:none) */
+    #recalled-order-bar[style*="display:none"], #recalled-order-bar[style*="display: none"] { display: none !important; }
+    /* slimmer action buttons: the cart gets the height */
+    .pos-actions .btn { min-height: 36px; padding-top: .3rem; padding-bottom: .3rem; }
+    .pos-actions .btn-lg { font-size: .95rem; }
+    .med-pick button:focus { outline: 3px solid #092c4c; outline-offset: 1px; }
+    /* the action buttons flow into TWO rows instead of three */
+    .pos-actions { display: flex !important; flex-wrap: wrap; gap: 6px; }
+    .pos-actions > .row { display: contents; }
+    .pos-actions .col, .pos-actions .col-auto { flex: 1 1 auto; width: auto; max-width: none; padding: 0; margin: 0; }
+    .pos-actions .col-auto { flex: 0 0 auto; }
+    .pos-actions [hidden], .pos-actions .col[style*="display:none"], .pos-actions .col[style*="display: none"] { display: none !important; }
+    #med-rx-box .form-control { height: 30px; }
 @endif
 
     /* TABLE-WORKSPACE-WIDTH-1 — ye POS ka sab se bhara modal hai: ek floor par 20+ table cards,
@@ -825,11 +854,9 @@
                 @if($medicalCounter ?? false)
                     {{-- MEDICAL-COUNTER-1: shown while a medicine that needs a prescription is in the cart.
                          Doctor and patient go on the bill's notes; the sale waits for "Prescription seen". --}}
-                    <div id="med-rx-box" class="border rounded p-2 mt-2" style="display:none;background:#fff6f5;border-color:#f5c6c2 !important">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <strong class="small" style="color:#8e1c14" id="med-rx-title">Prescription</strong>
-                        </div>
-                        <div class="d-flex gap-1">
+                    <div id="med-rx-box" class="border rounded px-2 py-1 mt-1" style="display:none;background:#fff6f5;border-color:#f5c6c2 !important">
+                        <div class="d-flex gap-1 align-items-center">
+                            <span class="med-chip med-rx flex-shrink-0" id="med-rx-title" title="Prescription">Rx</span>
                             <input type="text" class="form-control form-control-sm" id="med-rx-doctor" placeholder="Doctor" aria-label="Doctor's name" maxlength="80">
                             <input type="text" class="form-control form-control-sm" id="med-rx-patient" placeholder="Patient" aria-label="Patient's name" maxlength="80">
                             <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" id="med-rx-seen" aria-pressed="false">Seen?</button>
@@ -863,7 +890,7 @@
                                                 <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Same box on the row above / below</td></tr>
                                                 <tr><td><kbd>+</kbd> <kbd>−</kbd></td><td>One more / one less (in the scan box: the last item)</td></tr>
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>Del</kbd></td><td>Remove the item (in the scan box: the last one)</td></tr>
-                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>E</kbd> or <kbd>F6</kbd></td><td>Change the batch (expiry)</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>E</kbd> or <kbd>F6</kbd></td><td>Change the batch (expiry): <kbd>←</kbd> <kbd>→</kbd> choose, <kbd>Enter</kbd> takes it, <kbd>Esc</kbd> closes</td></tr>
                                                 <tr><td><kbd>Esc</kbd></td><td>Back to the scan box</td></tr>
                                             </tbody></table>
                                         </div>
@@ -3776,6 +3803,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var medLastScan = 0;       // a scanner's Enter right after a matched code is not "open Review & Pay"
     var medAlertAt = 0;        // when the last "Not available" popup opened / closed
     var medLastBox = null;     // the cart box the cashier was last in (the cursor comes back to it)
+    var medPickOpened = false; // the batch picker takes the cursor only at the moment it opens
     var medRx = { doctor: '', patient: '', seen: false };
 
     function medGroupKey(productId, variantId) { return productId + ':' + (variantId || 0); }
@@ -4074,15 +4102,18 @@ document.addEventListener('DOMContentLoaded', function () {
         var amount = g.items.reduce(function (t, it) {
             return t + Number(it.quantity) * Number(it.unit_price) - Number(it.discount_amount || 0) + Number(it.tax_amount || 0);
         }, 0);
-        var msgs = [];
-        medBatches(p, v).filter(function (b) { return b.expired; }).forEach(function (b) {
-            msgs.push('<span class="text-danger">Batch ' + escapeHtml(b.no) + ' (expired ' + escapeHtml(b.exp || '') + ', ' + escapeHtml(medWords(p, v, b.qty)) + ') is skipped — expired stock is never sold.</span>');
-        });
+        // Notes about the batches are small chips (full text on hover); only "not enough" is a red line.
+        var chips = [];
+        var expired = medBatches(p, v).filter(function (b) { return b.expired; });
+        if (expired.length) {
+            chips.push('<span class="med-chip med-exp" title="' + escapeHtml(expired.map(function (b) { return b.no + ' (expired ' + (b.exp || '') + ', ' + medWords(p, v, b.qty) + ')'; }).join(', ') + ' — expired stock is never sold') + '">'
+                + expired.length + (expired.length === 1 ? ' expired batch skipped' : ' expired batches skipped') + '</span>');
+        }
         if (plan.parts.length > 1) {
-            msgs.push('<span>Takes ' + plan.parts.map(function (x) { return escapeHtml(medQtyText(x.take) + ' ' + ((p.med || {}).base_name || '') + ' from ' + x.no); }).join(', then ') + '.</span>');
+            chips.push('<span class="med-chip med-near" title="' + escapeHtml('Takes ' + plan.parts.map(function (x) { return medQtyText(x.take) + ' ' + ((p.med || {}).base_name || '') + ' from ' + x.no; }).join(', then ')) + '">from ' + plan.parts.length + ' batches</span>');
         }
         var avail = medAvailable(p, v);
-        if (avail !== null && need > avail + 0.0001) msgs.push('<b class="text-danger">' + escapeHtml(medShortText(p, v, avail)) + '</b>');
+        var shortHtml = (avail !== null && need > avail + 0.0001) ? '<div class="med-msg text-danger fw-bold">' + escapeHtml(medShortText(p, v, avail)) + '</div>' : '';
 
         // one box per pack, plus any recalled pack that is no longer set up on the item
         var boxes = packs.map(function (pk) {
@@ -4096,34 +4127,33 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         var row = document.createElement('div');
-        row.className = 'cart-row';
+        row.className = 'cart-row med-line-wrap';
         var batchHtml = '';
         if (medBatches(p, v).length) {
             var st = first ? medExpState(first) : 'expired';
-            batchHtml = '<button type="button" class="' + medChip(st) + '" data-med-batch="' + gk + '" aria-expanded="' + (medPick === gk ? 'true' : 'false') + '" title="Change batch (F6)">'
-                + (first ? 'B: ' + escapeHtml(first.no) + (first.exp ? ' · exp ' + escapeHtml(first.exp) : '') + (st === 'near' ? ' · sell first' : '') + (chosen ? ' · picked' : '') : 'No batch that can be sold')
+            batchHtml = '<button type="button" class="' + medChip(st) + '" data-med-batch="' + gk + '" aria-expanded="' + (medPick === gk ? 'true' : 'false') + '" title="Change batch (Ctrl+E)">'
+                + (first ? escapeHtml(first.no) + (first.exp ? ' · ' + escapeHtml(first.exp) : '') + (st === 'near' ? ' · sell first' : '') + (chosen ? ' · picked' : '') : 'No batch that can be sold')
                 + ' ▾</button>';
         }
+        var sub = [p.generic, p.med && p.med.strength].filter(Boolean).join(' · ');
         row.innerHTML =
-            '<div class="d-flex justify-content-between gap-2">'
-                + '<div class="min-w-0"><div class="fw-bold">' + escapeHtml(p.name) + '</div>'
-                + ((p.generic || (p.med && p.med.strength)) ? '<div class="med-sub">' + escapeHtml([p.generic, p.med && p.med.strength].filter(Boolean).join(' · ')) + '</div>' : '')
+            '<div class="med-line">'
+                + '<div class="med-l-main">'
+                    + '<div class="med-l-name" title="' + escapeHtml(p.name + (sub ? ' — ' + sub : '')) + '">' + escapeHtml(p.name) + (p.med && p.med.rx ? ' <span class="med-chip med-rx">Rx</span>' : '') + '</div>'
+                    + '<div class="med-l-sub">' + batchHtml + chips.join('') + '</div>'
                 + '</div>'
-                + '<div class="d-flex gap-1 align-items-start"><strong class="text-nowrap">' + money(amount) + '</strong>'
-                + '<button type="button" class="btn btn-sm btn-outline-danger" data-med-remove="' + gk + '" title="Remove item"><i class="ti ti-x"></i></button></div>'
-            + '</div>'
-            + '<div class="d-flex justify-content-between align-items-end gap-2 flex-wrap mt-1">'
-                + '<div class="d-flex gap-1 flex-wrap align-items-center">' + batchHtml + (p.med && p.med.rx ? '<span class="med-chip med-rx">Rx</span>' : '') + '</div>'
-                + '<div class="d-flex gap-1">' + boxes.map(function (b) {
+                + '<div class="med-l-boxes">' + boxes.map(function (b) {
                     var k = b.item ? b.item.key : cartKey(p, v, [], b.pk.id);
-                    return '<label class="med-box"><span>' + escapeHtml(b.pk.name.toUpperCase() + ' ' + money(b.pk.price)) + '</span>'
+                    return '<label class="med-box"><span title="' + escapeHtml(b.pk.name + ' ' + money(b.pk.price)) + '">' + escapeHtml(b.pk.name.toUpperCase() + ' ' + money(b.pk.price)) + '</span>'
                         + '<input type="text" inputmode="decimal" class="form-control form-control-sm" placeholder="0" autocomplete="off"'
                         + ' data-med-box="' + escapeHtml(k) + '" data-med-group="' + gk + '" data-med-pack="' + (b.pk.id || '') + '"'
                         + ' aria-label="' + escapeHtml(p.name + ', how many ' + b.pk.name) + '"'
                         + ' value="' + (b.item ? medQtyText(b.item.quantity) : '') + '"></label>';
                 }).join('') + '</div>'
+                + '<strong class="med-l-amt">' + money(amount) + '</strong>'
+                + '<button type="button" class="btn btn-sm btn-link text-danger p-0 med-l-x" data-med-remove="' + gk + '" title="Remove (Ctrl+Del)" aria-label="Remove ' + escapeHtml(p.name) + '"><i class="ti ti-x"></i></button>'
             + '</div>'
-            + (msgs.length ? '<div class="med-msg mt-1">' + msgs.join('<br>') + '</div>' : '');
+            + shortHtml;
 
         if (medPick === gk) {
             var pick = document.createElement('div');
@@ -4263,7 +4293,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
         cartItemsEl.querySelectorAll('[data-med-batch]').forEach(function (btn) {
-            btn.addEventListener('click', function () { medPick = medPick === btn.dataset.medBatch ? null : btn.dataset.medBatch; renderCart(); });
+            btn.addEventListener('click', function () { medPick = medPick === btn.dataset.medBatch ? null : btn.dataset.medBatch; medPickOpened = !!medPick; renderCart(); });
         });
         cartItemsEl.querySelectorAll('[data-med-choose]').forEach(function (btn) {
             btn.addEventListener('click', function () {
@@ -4275,10 +4305,35 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (b && b.expired) { toast('warning', b.no + ' has expired — it cannot be sold. Send it back on a purchase return.'); return; }
                 g.items.forEach(function (it) { it.inventory_batch_id = batchId; });
                 medPick = null;
+                medFocus = (g.items[0] || {}).key || null;   // back to this medicine's box
                 renderCart();
                 if (b) toast('info', g.product.name + ': sells from ' + b.no + ' first, then the oldest expiry.');
             });
         });
+
+        // Batch picker by keyboard: ← → (↑ ↓) to choose, Enter takes it, Esc closes it.
+        var pickBtns = Array.prototype.slice.call(cartItemsEl.querySelectorAll('.med-pick button'));
+        pickBtns.forEach(function (btn, i) {
+            btn.addEventListener('keydown', function (e) {
+                if (['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].indexOf(e.key) !== -1) {
+                    e.preventDefault();
+                    var step = (e.key === 'ArrowRight' || e.key === 'ArrowDown') ? 1 : -1;
+                    pickBtns[(i + step + pickBtns.length) % pickBtns.length].focus();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var gk = medPick;
+                    medPick = null;
+                    medFocus = (medItemsOf(gk)[0] || {}).key || null;
+                    renderCart();
+                }
+            });
+        });
+        if (pickBtns.length && medPickOpened && !medFocus) {
+            medPickOpened = false;
+            (cartItemsEl.querySelector('.med-pick button.on') || cartItemsEl.querySelector('.med-pick button:not(.off)') || pickBtns[0]).focus();
+        }
+        medPickOpened = false;
 
         if (medFocus) {
             var el = cartItemsEl.querySelector('[data-med-box="' + String(medFocus).replace(/"/g, '\\"') + '"]');
@@ -4307,7 +4362,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!box) return;
         var rx = medRxItems();
         box.style.display = rx.length ? '' : 'none';
-        document.getElementById('med-rx-title').textContent = 'Prescription — ' + rx.map(function (p) { return p.name; }).join(', ');
+        var rxTitle = document.getElementById('med-rx-title');
+        rxTitle.textContent = 'Rx';
+        rxTitle.title = 'Prescription needed — ' + rx.map(function (p) { return p.name; }).join(', ');
         var d = document.getElementById('med-rx-doctor'), pt = document.getElementById('med-rx-patient'), seen = document.getElementById('med-rx-seen');
         if (document.activeElement !== d) d.value = medRx.doctor;
         if (document.activeElement !== pt) pt.value = medRx.patient;
@@ -4528,7 +4585,7 @@ document.addEventListener('DOMContentLoaded', function () {
             else if (act === 'hold') click('hold-sale-btn');
             else if (act === 'draft') click('save-draft-btn');
             else if (act === 'held') click('held-orders-btn');
-            else if (act === 'batch') { var gk = medLastGroup(); if (gk) { medPick = medPick ? null : gk; renderCart(); } }
+            else if (act === 'batch') { var gk = medLastGroup(); if (gk) { medPick = medPick ? null : gk; medPickOpened = !!medPick; renderCart(); } }
             else if (act === 'discount') {
                 // the pay window puts the cursor on Tendered when it opens; Ctrl+D moves it to the discount after that
                 pay.addEventListener('shown.bs.modal', function () {
@@ -4562,6 +4619,19 @@ document.addEventListener('DOMContentLoaded', function () {
             var hs = document.getElementById('med-held-search');
             if (hs) { hs.value = ''; hs.focus(); }
         });
+        // The counter fills the screen: the panels end just above the bottom edge (no empty strip below).
+        var medFit = function () {
+            var shell = document.querySelector('.pos-shell');
+            if (!shell || window.innerWidth < 1200) return;
+            var h = Math.max(480, window.innerHeight - shell.getBoundingClientRect().top - 12);
+            shell.style.height = h + 'px';
+            var panel = document.querySelector('.cart-panel');
+            if (panel) { panel.style.height = h + 'px'; panel.style.top = '0px'; }
+        };
+        medFit();
+        window.addEventListener('resize', medFit);
+        window.addEventListener('load', medFit);
+
         // When the counter opens (or is refreshed) the cursor is in the scan box.
         var medFocusScan = function () { if (!document.querySelector('.modal.show') && medFocusLost() || document.activeElement === document.body) { searchEl.focus(); } };
         if (document.readyState === 'complete') setTimeout(medFocusScan, 250);
