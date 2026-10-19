@@ -1,31 +1,31 @@
 {
-    "built_at": "2026-10-19T10:57:48+00:00",
+    "built_at": "2026-10-19T12:22:04+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
-    "prod_branch_head": "831338b0",
+    "prod_branch_head": "0bffda21",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas",
             "branch": "feat/14d-2-plan-upgrade-requests",
-            "head": "831338b0",
+            "head": "0bffda21",
             "behind_prod": 0,
             "ahead_of_prod": 0,
-            "last_commit": "2026-10-19\u00b7Merge PRODUCT-SCREEN-TABS-1: full-width form, What will happen inside Review",
+            "last_commit": "2026-10-19\u00b7Merge PRODUCT-SCREEN-PARITY-1: hidden-from-counter kept, every old box on the new screen, plain products list",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-catering",
             "branch": "feat/catering-stacked-material-row-20260909",
-            "head": "831338b0",
-            "behind_prod": 0,
+            "head": "39333d6f",
+            "behind_prod": 3,
             "ahead_of_prod": 0,
-            "last_commit": "2026-10-19\u00b7Merge PRODUCT-SCREEN-TABS-1: full-width form, What will happen inside Review",
-            "uncommitted_files": 11
+            "last_commit": "2026-10-19\u00b7DOC-TOOLBAR-OFF-PAPER-1: screen ke button kaghaz se bahar, har document par",
+            "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
             "head": "9abf7b5a",
-            "behind_prod": 41,
+            "behind_prod": 45,
             "ahead_of_prod": 170,
             "last_commit": "2026-10-19\u00b7Merge canonical a9499a10 (chunk 10, D8): PHARMACY-DEMO-1 \u2014 medical-store demo tenant, no 'Print Kitchen Order?' prompt on a counter without a kitchen (kitchenTickets), expiry report + returned medicine goes back into the batch it was sold from (SalesReturnService::batchTheSaleTookFrom, auto-merged into the Edge-modified service).",
             "uncommitted_files": 0
@@ -34,7 +34,7 @@
             "path": "D:/laragon2/www/pos-saas-masterui",
             "branch": "fix/usage-snapshot-after-demo-reset-20261019",
             "head": "002ee25e",
-            "behind_prod": 20,
+            "behind_prod": 24,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7MASTER-UNIVERSE-1: daily usage reading moves after the demo reset (09:45 PKT)",
             "uncommitted_files": 0
@@ -42,17 +42,17 @@
         {
             "path": "D:/laragon2/www/pos-saas-packs",
             "branch": "feat/pharmacy-packs-20261019",
-            "head": "5f02d053",
-            "behind_prod": 13,
-            "ahead_of_prod": 0,
-            "last_commit": "2026-10-19\u00b7PRODUCT-SCREEN-TABS-1: the side box goes \u2014 the form takes the full width; \"What will happen\" moves into the Review tab",
-            "uncommitted_files": 5
+            "head": "95923405",
+            "behind_prod": 0,
+            "ahead_of_prod": 2,
+            "last_commit": "2026-10-19\u00b7Merge remote-tracking branch 'origin/feat/14d-2-plan-upgrade-requests' into feat/pharmacy-packs-20261019",
+            "uncommitted_files": 3
         },
         {
             "path": "D:/laragon2/www/pos-saas-pharmademo",
             "branch": "feat/pharmacy-demo-20261018",
             "head": "dc84b937",
-            "behind_prod": 41,
+            "behind_prod": 45,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP-1: bird's-eye system map + standing rule for every session",
             "uncommitted_files": 0
@@ -61,7 +61,7 @@
             "path": "D:/laragon2/www/pos-saas-primary",
             "branch": "feat/primary-business-v2-20261019",
             "head": "e99cd7a2",
-            "behind_prod": 36,
+            "behind_prod": 40,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP: rebuilt after PRIMARY-BUSINESS-1 + PRODUCT-SCREEN-V2 (tenant_setting_changes, products.generic_name/strength/needs_prescription)",
             "uncommitted_files": 0
@@ -70,7 +70,7 @@
             "path": "D:/laragon2/www/pos-saas-qrwaiter",
             "branch": "feat/report-delivery-v2-20261019",
             "head": "3680be32",
-            "behind_prod": 8,
+            "behind_prod": 12,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7REPORT-DELIVERY-V2-1: system map rebuilt after merging PHARMACY-PACKS-1",
             "uncommitted_files": 0
@@ -79,7 +79,7 @@
             "path": "D:/laragon2/www/pos-saas-hideamounts",
             "branch": "fix/billing-hide-void-20261017",
             "head": "37515a12",
-            "behind_prod": 56,
+            "behind_prod": 60,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7BILLING-HIDE-VOID-1: void invoice tenant ko nahi dikhti",
             "uncommitted_files": 0
@@ -88,7 +88,7 @@
             "path": "D:/laragon2/www/pos-saas-partnershare",
             "branch": "feat/partner-share-report-20261014",
             "head": "cbe5616b",
-            "behind_prod": 44,
+            "behind_prod": 48,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7PARTNER-SHARE-1: plan doc \u2014 test aur suite ki ginti, purani misaal par label",
             "uncommitted_files": 0
@@ -97,7 +97,7 @@
             "path": "D:/laragon2/www/pos-saas-pharmacy-audit",
             "branch": "(detached)",
             "head": "70c4e434",
-            "behind_prod": 43,
+            "behind_prod": 47,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7Merge PARTNER-SHARE-1: ek dish, do kitchen \u2014 Partner Share rates + Report Center section",
             "uncommitted_files": 0
@@ -106,7 +106,7 @@
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
             "head": "c0741579",
-            "behind_prod": 65,
+            "behind_prod": 69,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-16\u00b7AREA-WINDOW-LAYOUT-1: area list hamesha nazar aaye (kam se kam ~4 rows), qareebi jagahen aik scroll row me",
             "uncommitted_files": 0
@@ -115,7 +115,7 @@
             "path": "D:/laragon2/www/pos-saas-catlist",
             "branch": "feat/kk-purchase-items-import-20261014",
             "head": "7e5d8dea",
-            "behind_prod": 118,
+            "behind_prod": 122,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-14\u00b7PURCHASE-ITEMS-IMPORT-1: purane software ke khareed wale items, mehfooz jhandon ke saath",
             "uncommitted_files": 0
@@ -124,7 +124,7 @@
             "path": "D:/laragon2/www/pos-saas-web-i18n",
             "branch": "feat/recaptcha-trial-20261008",
             "head": "a8191e1d",
-            "behind_prod": 221,
+            "behind_prod": 225,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-08\u00b7RECAPTCHA-TRIAL-1: Start Trial par \"I'm not a robot\" (reCAPTCHA v2), en + ar",
             "uncommitted_files": 0
@@ -133,7 +133,7 @@
             "path": "D:/laragon2/www/pos-saas-voice",
             "branch": "research/voice-ordering-agent",
             "head": "79c76679",
-            "behind_prod": 263,
+            "behind_prod": 267,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-05\u00b7VOICE-ORDER-1: vendor options + bahar wale mashware ki do ghaltiyan darj",
             "uncommitted_files": 0
@@ -142,7 +142,7 @@
             "path": "D:/laragon2/www/pos-saas-video",
             "branch": "feat/demo-video-pipeline",
             "head": "04dfd5c4",
-            "behind_prod": 326,
+            "behind_prod": 330,
             "ahead_of_prod": 13,
             "last_commit": "2026-09-29\u00b7DEMO-VIDEO-13: khapat ab bikri ka 30% (hadaf), aur document number ke takraao se bachao",
             "uncommitted_files": 2
@@ -151,7 +151,7 @@
             "path": "D:/laragon2/www/pos-saas-tawakal",
             "branch": "feat/tawakal_kashif",
             "head": "b4870c0e",
-            "behind_prod": 527,
+            "behind_prod": 531,
             "ahead_of_prod": 0,
             "last_commit": "2026-09-06\u00b7Merge prod branch into tawakal \u2014 76 commits ka pichla kaam",
             "uncommitted_files": 0
@@ -160,7 +160,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/history-urdu-ux",
             "branch": "fix/catering-history-urdu-ux-20260829",
             "head": "da8e2ed3",
-            "behind_prod": 656,
+            "behind_prod": 660,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7Improve catering operator UX and Urdu print readability",
             "uncommitted_files": 0
@@ -169,7 +169,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/quoted-rate-persistence",
             "branch": "fix/catering-quoted-rate-persistence-20260828",
             "head": "e020c390",
-            "behind_prod": 662,
+            "behind_prod": 666,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7fix(catering): persist punched customer rates",
             "uncommitted_files": 0
@@ -178,7 +178,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/catering-client-feedback",
             "branch": "fix/catering-client-feedback-20260827",
             "head": "893d8e44",
-            "behind_prod": 675,
+            "behind_prod": 679,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-27\u00b7fix(catering): tighten time and item entry UX",
             "uncommitted_files": 0
@@ -187,7 +187,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert-v2",
             "branch": "(detached)",
             "head": "ec09b6a6",
-            "behind_prod": 724,
+            "behind_prod": 728,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-22\u00b7KASHIF-LEGACY-ALIGN-5/6: Complimentary in one click, and a bill you can read",
             "uncommitted_files": 1
@@ -196,7 +196,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-parity",
             "branch": "feat/catering-operator-completion-v1",
             "head": "008ba947",
-            "behind_prod": 744,
+            "behind_prod": 748,
             "ahead_of_prod": 4,
             "last_commit": "2026-08-22\u00b7CATERING: keep event create and edit inside the operator workspace",
             "uncommitted_files": 0
@@ -205,7 +205,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-catalogue",
             "branch": "data/kashif-catalogue-prep-v1",
             "head": "73807eb9",
-            "behind_prod": 747,
+            "behind_prod": 751,
             "ahead_of_prod": 1,
             "last_commit": "2026-08-21\u00b7CATERING: transcribe the Kashif catalogue without inventing prices",
             "uncommitted_files": 0
@@ -214,7 +214,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-product",
             "branch": "audit/catering-product-completeness-v1",
             "head": "ef184b6a",
-            "behind_prod": 793,
+            "behind_prod": 797,
             "ahead_of_prod": 18,
             "last_commit": "2026-08-21\u00b7AUDIT: assess Catering product completeness",
             "uncommitted_files": 0
@@ -223,7 +223,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex",
             "branch": "audit/catering-e2e-qa-v1",
             "head": "f8fa2205",
-            "behind_prod": 793,
+            "behind_prod": 797,
             "ahead_of_prod": 13,
             "last_commit": "2026-08-20\u00b7DOCS: preserve independent Catering architecture audit",
             "uncommitted_files": 0
@@ -232,7 +232,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert",
             "branch": "audit/catering-rate-impact-cert-v1",
             "head": "55ad8d5e",
-            "behind_prod": 793,
+            "behind_prod": 797,
             "ahead_of_prod": 17,
             "last_commit": "2026-08-20\u00b7TEST: expose Catering draft writer send races",
             "uncommitted_files": 0
@@ -241,7 +241,7 @@
             "path": "D:/laragon2/www/pos-saas-cloud",
             "branch": "feat/cloud-billing-onboarding-v1",
             "head": "9c30ea46",
-            "behind_prod": 859,
+            "behind_prod": 863,
             "ahead_of_prod": 8,
             "last_commit": "2026-08-15\u00b7CLOUD-BILLING E2E: real monthly + yearly signup lifecycle (throwaway tenants)",
             "uncommitted_files": 0
@@ -249,135 +249,135 @@
     ],
     "plans": [
         {
-            "file": "docs/plans/one-product-screen-master-controls-2026-10-19.md",
-            "title": "Ek Product Screen + Bingoo Master Controls \u2014 Plan (v2)",
-            "modified": "2026-10-19"
-        },
-        {
-            "file": "docs/plans/online-ordering-website-2026-10-14.md",
-            "title": "ONLINE-ORDERING-1 \u2014 Tenant ki apni ordering website (pehle Kashif Food)",
-            "modified": "2026-10-19"
-        },
-        {
-            "file": "docs/plans/partner-share-report-2026-10-14.md",
-            "title": "PARTNER-SHARE-1 \u2014 Partner share report (ek dish, do kitchen)",
-            "modified": "2026-10-19"
-        },
-        {
-            "file": "docs/plans/pharmacy-packs-2026-10-19.md",
-            "title": "Pharmacy packs (box \u00b7 strip \u00b7 tablet) \u2014 step 1 of 4",
-            "modified": "2026-10-19"
-        },
-        {
-            "file": "docs/plans/product-screen-tabs-2026-10-19.md",
-            "title": "Product screen in tabs \u2014 one screen, no scrolling",
-            "modified": "2026-10-19"
-        },
-        {
-            "file": "docs/plans/report-delivery-v2-2026-10-19.md",
-            "title": "REPORT-DELIVERY-V2-1 \u2014 one \"Daily report delivery\" card, sent when the day's last shift closes",
+            "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
+            "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
             "modified": "2026-10-19"
         },
         {
             "file": "docs/plans/cash-book-report-2026-10-10.md",
             "title": "CASH-BOOK-REPORT-1 \u2014 Cash Book report: kitna aaya, kitna gaya, kis cash/bank me, tareekh-war",
-            "modified": "2026-10-10"
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/product-form-business-area-2026-10-07.md",
-            "title": "PRODUCT-FORM-AREA-1 \u2014 Product form: pehle \"kis kaam ka product\", phir us ke cards",
-            "modified": "2026-10-09"
+            "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
+            "title": "Catering product model \u2014 what is wrong, and the work to fix it",
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/saas-billing-and-whatsapp-usage-2026-10-09.md",
-            "title": "SaaS billing zinda karna + WhatsApp usage ki alag invoice",
-            "modified": "2026-10-09"
+            "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
+            "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/supplier-running-account-2026-10-08.md",
-            "title": "SUPPLIER-RUNNING-ACCOUNT-1 \u2014 Supplier ko general payment, balance se zyada bhi",
-            "modified": "2026-10-09"
+            "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
+            "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/trial-signup-queue-2026-10-07.md",
-            "title": "TRIAL-SIGNUP-QUEUE-1 \u2014 Free trial: form foran wapas, workspace queue me, email foran",
-            "modified": "2026-10-09"
+            "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
+            "title": "Two order counts on one dashboard \u2014 research",
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/website-i18n-geo-pricing-2026-10-07.md",
-            "title": "WEBSITE-I18N-GEO-1 \u2014 bingoopos.com: Arabic, har mulk ki qeemat (per branch), custom plan, cookies, yearly bug",
-            "modified": "2026-10-09"
-        },
-        {
-            "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
-            "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
-            "modified": "2026-10-06"
+            "file": "docs/plans/deals-as-their-own-report-heads-2026-09-02.md",
+            "title": "Deals belong under their own heads \u2014 research",
+            "modified": "2026-10-19"
         },
         {
             "file": "docs/plans/grn-extra-charges-2026-10-02.md",
             "title": "GRN-EXTRA-CHARGES-1 \u2014 cartage ko product ki jagah \"Extra Charges\" banana",
-            "modified": "2026-10-06"
+            "modified": "2026-10-19"
         },
         {
             "file": "docs/plans/held-sale-dead-session-2026-09-12.md",
             "title": "HELD-SALE-DEAD-SESSION-1 \u2014 band table par bill hold ho jata hai, phir kabhi pay nahi hota",
-            "modified": "2026-10-06"
+            "modified": "2026-10-19"
+        },
+        {
+            "file": "docs/plans/hide-amounts-from-operators-2026-09-01.md",
+            "title": "Hide the money from the counter \u2014 research before building",
+            "modified": "2026-10-19"
+        },
+        {
+            "file": "docs/plans/items-by-category-section-2026-09-03.md",
+            "title": "ITEMS-BY-CATEGORY-1 \u2014 Item ka category-wise breakup, apne alag section me",
+            "modified": "2026-10-19"
+        },
+        {
+            "file": "docs/plans/items-in-category-sequence-2026-09-03.md",
+            "title": "ITEM-CATEGORY-SEQUENCE \u2014 Item report category ki tarteeb me, purane software ki tarah",
+            "modified": "2026-10-19"
+        },
+        {
+            "file": "docs/plans/kashif-client-feedback-2026-09-15.md",
+            "title": "Client feedback, 15 September \u2014 chaar cheezen",
+            "modified": "2026-10-19"
+        },
+        {
+            "file": "docs/plans/kashif-document-pdf-2026-09-09.md",
+            "title": "Quotation ka PDF \u2014 aur ek hadd jo chhupai nahi gayi",
+            "modified": "2026-10-19"
+        },
+        {
+            "file": "docs/plans/kashif-event-history-revert-2026-08-23.md",
+            "title": "Event Change History + Revert \u2014 research + implementation plan",
+            "modified": "2026-10-19"
+        },
+        {
+            "file": "docs/plans/kashif-food-first-floor-tables-2026-08-30.md",
+            "title": "Kashif Food \u2014 dine-in floors & tables",
+            "modified": "2026-10-19"
+        },
+        {
+            "file": "docs/plans/kashif-food-operator-permission-hide-2026-08-31.md",
+            "title": "KASHIF-OPERATOR-HIDE \u2014 jo owner ne screenshots par cross kiya",
+            "modified": "2026-10-19"
         },
         {
             "file": "docs/plans/kashif-foods-pulao-subcategories-2026-09-17.md",
             "title": "KF-PULAO-SUBCAT-1 \u2014 The Kashif Foods: \"Chicken Pulao\" \u2192 \"Pulao\" + Chicken / Beef",
-            "modified": "2026-10-06"
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/kot-heading-stars-toggle-2026-09-26.md",
-            "title": "KOT-HEADING-STARS-1 \u2014 `*** KOT #1 ***` ke sitare, aur wo per-branch qaabu me",
-            "modified": "2026-10-06"
+            "file": "docs/plans/kashif-hide-amounts-gap-2026-09-04.md",
+            "title": "Kashif Food \u2014 \"*** kyun nahi aa raha\" (research)",
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/manager-approval-combo-void-2026-09-19.md",
-            "title": "MANAGER-APPROVAL-COMBO-VOID-1 \u2014 \"Manager approval does not authorize this action\"",
-            "modified": "2026-10-06"
+            "file": "docs/plans/kashif-inline-table-editor-2026-09-09.md",
+            "title": "In-table editor \u2014 pehle FLOW MAP, phir plan",
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/pos-reminder-pause-2026-10-05.md",
-            "title": "POS-REMINDER-PAUSE-1 \u2014 pause Reminder slips for one terminal, for the rest of the shift",
-            "modified": "2026-10-06"
+            "file": "docs/plans/kashif-kitchen-go-live-2026-09-05.md",
+            "title": "Kashif Kitchen go-live \u2014 research + plan",
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/pos-tile-sku-2026-09-29.md",
-            "title": "PRODUCT-TILE-SKU-1 \u2014 POS tile par SKU sirf tab jab wo kuch kehti ho",
-            "modified": "2026-10-06"
+            "file": "docs/plans/kashif-kot-routing-requests-2026-09-03.md",
+            "title": "Kashif Food \u2014 chaar KOT routing ki farmaishein",
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/print-job-autoclose-stuck-2026-09-11.md",
-            "title": "Jo parchi ek ghante se atki rahe, wo khud band ho jaye",
-            "modified": "2026-10-06"
+            "file": "docs/plans/kashif-legacy-alignment-2026-08-22.md",
+            "title": "Kashif \u2014 Legacy-Software Alignment (design, before any code)",
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/quick-report-waiter-filter-2026-09-28.md",
-            "title": "QUICK-REPORT-WAITER-NULL-1 \u2014 \"Quick Report sirf mere order type ka dikha raha hai\"",
-            "modified": "2026-10-06"
+            "file": "docs/plans/kashif-legacy-item-screen-2026-08-22.md",
+            "title": "Kashif \u2014 Old-Software ITEM Screen, on the new system (implementation plan)",
+            "modified": "2026-10-19"
         },
         {
-            "file": "docs/plans/reminder-deal-name-only-2026-09-28.md",
-            "title": "REMINDER-DEAL-NAME-ONLY-1 \u2014 reminder par deal ka sirf naam, aur naam ka font chhota",
-            "modified": "2026-10-06"
-        },
-        {
-            "file": "docs/plans/sales-analytics-dashboard-2026-09-13.md",
-            "title": "SALES-ANALYTICS-1 \u2014 graphs wala sales aur growth ka safha (Owner-only)",
-            "modified": "2026-10-06"
-        },
-        {
-            "file": "docs/plans/supplier-finance-direct-2026-09-08.md",
-            "title": "SUPPLIER-FINANCE-DIRECT-1 \u2014 Supplier ko FINANCE mein seedha shamil karna",
-            "modified": "2026-10-06"
+            "file": "docs/plans/kashif-lines-table-14-columns-2026-09-09.md",
+            "title": "Lines table \u2192 14 columns: qadam 4 ka asal naqsha",
+            "modified": "2026-10-19"
         }
     ],
-    "git": "831338b0",
+    "git": "95923405",
     "source": {
-        "tenant_db": "pos_test_tenant_qrw",
-        "master_db": "pos_test_master_qrw"
+        "tenant_db": "pos_test_tenant_mui",
+        "master_db": "pos_test_master_mui"
     },
     "counts": {
         "tables": 225,
@@ -2902,6 +2902,14 @@
                     "why": "model Branch"
                 },
                 {
+                    "route": "tenant.catering.material-rates.index",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.material-rates.store",
+                    "why": "via TenantClock"
+                },
+                {
                     "route": "tenant.catering.material-issues.store",
                     "why": "via CateringMaterialIssueService"
                 },
@@ -3190,7 +3198,7 @@
                     "why": "model Branch"
                 }
             ],
-            "used_by_count": 459
+            "used_by_count": 461
         },
         {
             "name": "cache",
@@ -18873,8 +18881,93 @@
             "models": [
                 "ProductPackUnit"
             ],
-            "used_by": [],
-            "used_by_count": 0
+            "used_by": [
+                {
+                    "route": "tenant.products.index",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.products.create",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.products.store",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.products.show",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.products.edit",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.products.update",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.products.destroy",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.product-barcodes.store",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.product-barcodes.generate",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.product-barcodes.destroy",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.api.catalog.barcode.lookup",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.catering.materials.index",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.catering.materials.create",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.catering.materials.store",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.catering.materials.edit",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.catering.materials.update",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.manufacturing.products.index",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.manufacturing.products.create",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.manufacturing.products.store",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.manufacturing.products.edit",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.manufacturing.products.update",
+                    "why": "via PackUnits"
+                }
+            ],
+            "used_by_count": 21
         },
         {
             "name": "product_translations",
@@ -27150,12 +27243,36 @@
                     "why": "model Shift"
                 },
                 {
+                    "route": "tenant.pos.index",
+                    "why": "via TenantClock"
+                },
+                {
                     "route": "tenant.pos.store",
                     "why": "model Shift"
                 },
                 {
                     "route": "tenant.pos.printing.retry",
                     "why": "model Shift"
+                },
+                {
+                    "route": "tenant.pos.quick-report.settings",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.pos.quick-report.save-settings",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.pos.quick-report.print",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.pos.quick-report.email",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.pos.quick-report.send-to-network",
+                    "why": "via TenantClock"
                 },
                 {
                     "route": "tenant.sales-orders.index",
@@ -27266,6 +27383,34 @@
                     "why": "via ShiftService"
                 },
                 {
+                    "route": "tenant.api.pos.totals.quote",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.api.pos.bill-preview",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.api.pos.table-board",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.api.pos.website-orders",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.api.pos.website-orders.hold",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.api.pos.website-orders.verify",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.api.pos.recent-sales",
+                    "why": "via TenantClock"
+                },
+                {
                     "route": "tenant.api.pos.shift-status",
                     "why": "model Shift"
                 },
@@ -27278,15 +27423,99 @@
                     "why": "via ShiftService"
                 },
                 {
+                    "route": "tenant.reports.analytics",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.reports.center.index",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.reports.center.export",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.reports.center.print",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.reports.center.send-to-network",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.reports.center.email",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.reports.center.channels",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.reports.center.schedules.store",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.reports.center.schedules.destroy",
+                    "why": "via TenantClock"
+                },
+                {
                     "route": "tenant.reports.shifts",
                     "why": "model Shift"
                 },
                 {
                     "route": "tenant.reports.daily-closings",
                     "why": "model Shift"
+                },
+                {
+                    "route": "tenant.catering.events.index",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.create",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.store",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.show",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.edit",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.update",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.confirm",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.cancel",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.move-back",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.revisions.revert",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.material-rates.index",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.material-rates.store",
+                    "why": "via TenantClock"
                 }
             ],
-            "used_by_count": 48
+            "used_by_count": 82
         },
         {
             "name": "stock_adjustment_lines",
@@ -31093,6 +31322,18 @@
                     "why": "model Unit"
                 },
                 {
+                    "route": "tenant.product-barcodes.store",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.product-barcodes.generate",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.product-barcodes.destroy",
+                    "why": "via PackUnits"
+                },
+                {
                     "route": "tenant.products.bulk-import.create",
                     "why": "model Unit"
                 },
@@ -31537,7 +31778,7 @@
                     "why": "model Unit"
                 }
             ],
-            "used_by_count": 131
+            "used_by_count": 134
         },
         {
             "name": "user_printer_settings",
@@ -32659,9 +32900,57 @@
                 {
                     "route": "tenant.reports.sales.riders",
                     "why": "model User"
+                },
+                {
+                    "route": "tenant.catering.events.index",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.create",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.store",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.show",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.edit",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.update",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.confirm",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.cancel",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.move-back",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.events.revisions.revert",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.material-rates.index",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.catering.material-rates.store",
+                    "why": "via TenantClock"
                 }
             ],
-            "used_by_count": 141
+            "used_by_count": 153
         },
         {
             "name": "void_reasons",
@@ -37448,6 +37737,90 @@
                     "why": "via TenantSubscriptionAccessService"
                 },
                 {
+                    "route": "tenant.products.index",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.products.create",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.products.store",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.products.show",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.products.edit",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.products.update",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.products.destroy",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.product-barcodes.store",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.product-barcodes.generate",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.product-barcodes.destroy",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.purchase-orders.index",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.purchase-orders.create",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.purchase-orders.store",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.purchase-orders.show",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.purchase-orders.approve",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.purchase-orders.cancel",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.goods-receipts.index",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.goods-receipts.create",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.goods-receipts.store",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.goods-receipts.show",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.goods-receipts.void",
+                    "why": "via TenantFeatures"
+                },
+                {
                     "route": "tenant.billing.index",
                     "why": "via SubscriptionBillingService"
                 },
@@ -37492,6 +37865,10 @@
                     "why": "via EdgePairingService"
                 },
                 {
+                    "route": "tenant.api.catalog.barcode.lookup",
+                    "why": "via Business"
+                },
+                {
                     "route": "tenant.reports.center.index",
                     "why": "via WhatsAppChannel"
                 },
@@ -37522,9 +37899,49 @@
                 {
                     "route": "tenant.reports.center.schedules.destroy",
                     "why": "via WhatsAppChannel"
+                },
+                {
+                    "route": "tenant.catering.materials.index",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.catering.materials.create",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.catering.materials.store",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.catering.materials.edit",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.catering.materials.update",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.manufacturing.products.index",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.manufacturing.products.create",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.manufacturing.products.store",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.manufacturing.products.edit",
+                    "why": "via Business"
+                },
+                {
+                    "route": "tenant.manufacturing.products.update",
+                    "why": "via Business"
                 }
             ],
-            "used_by_count": 96
+            "used_by_count": 128
         },
         {
             "name": "users",
@@ -40311,7 +40728,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -40334,7 +40753,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -40357,7 +40778,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -40380,7 +40803,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -40403,7 +40828,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -40426,7 +40853,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -40449,7 +40878,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -40595,7 +41026,10 @@
             "tables": [
                 "products",
                 "product_barcodes",
-                "product_variants"
+                "product_variants",
+                "product_pack_units",
+                "units",
+                "tenants"
             ]
         },
         {
@@ -40607,7 +41041,10 @@
             "tables": [
                 "products",
                 "product_barcodes",
-                "product_variants"
+                "product_variants",
+                "product_pack_units",
+                "units",
+                "tenants"
             ]
         },
         {
@@ -40619,7 +41056,10 @@
             "tables": [
                 "products",
                 "product_barcodes",
-                "product_variants"
+                "product_variants",
+                "product_pack_units",
+                "units",
+                "tenants"
             ]
         },
         {
@@ -41815,7 +42255,8 @@
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments"
+                "supplier_payments",
+                "tenants"
             ]
         },
         {
@@ -41836,7 +42277,8 @@
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments"
+                "supplier_payments",
+                "tenants"
             ]
         },
         {
@@ -41857,7 +42299,8 @@
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments"
+                "supplier_payments",
+                "tenants"
             ]
         },
         {
@@ -41878,7 +42321,8 @@
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments"
+                "supplier_payments",
+                "tenants"
             ]
         },
         {
@@ -41899,7 +42343,8 @@
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments"
+                "supplier_payments",
+                "tenants"
             ]
         },
         {
@@ -41920,7 +42365,8 @@
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments"
+                "supplier_payments",
+                "tenants"
             ]
         },
         {
@@ -41941,7 +42387,8 @@
                 "stock_balances",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments"
+                "supplier_payments",
+                "tenants"
             ]
         },
         {
@@ -41962,7 +42409,8 @@
                 "stock_balances",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments"
+                "supplier_payments",
+                "tenants"
             ]
         },
         {
@@ -41983,7 +42431,8 @@
                 "stock_balances",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments"
+                "supplier_payments",
+                "tenants"
             ]
         },
         {
@@ -42004,7 +42453,8 @@
                 "stock_balances",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments"
+                "supplier_payments",
+                "tenants"
             ]
         },
         {
@@ -42025,7 +42475,8 @@
                 "stock_balances",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments"
+                "supplier_payments",
+                "tenants"
             ]
         },
         {
@@ -42881,7 +43332,8 @@
                 "terminal_printer_settings",
                 "users",
                 "units",
-                "unit_conversions"
+                "unit_conversions",
+                "shifts"
             ]
         },
         {
@@ -42997,7 +43449,8 @@
                 "share_partners",
                 "share_rates",
                 "products",
-                "terminals"
+                "terminals",
+                "shifts"
             ]
         },
         {
@@ -43021,7 +43474,8 @@
                 "share_partners",
                 "share_rates",
                 "products",
-                "terminals"
+                "terminals",
+                "shifts"
             ]
         },
         {
@@ -43045,7 +43499,8 @@
                 "share_partners",
                 "share_rates",
                 "products",
-                "terminals"
+                "terminals",
+                "shifts"
             ]
         },
         {
@@ -43069,7 +43524,8 @@
                 "share_partners",
                 "share_rates",
                 "products",
-                "terminals"
+                "terminals",
+                "shifts"
             ]
         },
         {
@@ -43093,7 +43549,8 @@
                 "share_partners",
                 "share_rates",
                 "products",
-                "terminals"
+                "terminals",
+                "shifts"
             ]
         },
         {
@@ -44166,7 +44623,8 @@
                 "terminal_printer_settings",
                 "users",
                 "units",
-                "unit_conversions"
+                "unit_conversions",
+                "shifts"
             ]
         },
         {
@@ -44197,7 +44655,8 @@
                 "terminal_printer_settings",
                 "users",
                 "units",
-                "unit_conversions"
+                "unit_conversions",
+                "shifts"
             ]
         },
         {
@@ -44228,7 +44687,8 @@
                 "terminal_printer_settings",
                 "users",
                 "units",
-                "unit_conversions"
+                "unit_conversions",
+                "shifts"
             ]
         },
         {
@@ -44251,7 +44711,8 @@
                 "share_rates",
                 "products",
                 "combos",
-                "terminals"
+                "terminals",
+                "shifts"
             ]
         },
         {
@@ -44274,7 +44735,8 @@
                 "share_rates",
                 "products",
                 "combos",
-                "terminals"
+                "terminals",
+                "shifts"
             ]
         },
         {
@@ -44297,7 +44759,8 @@
                 "share_rates",
                 "products",
                 "combos",
-                "terminals"
+                "terminals",
+                "shifts"
             ]
         },
         {
@@ -44328,7 +44791,8 @@
                 "terminal_printer_settings",
                 "users",
                 "units",
-                "unit_conversions"
+                "unit_conversions",
+                "shifts"
             ]
         },
         {
@@ -45570,7 +46034,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -45591,7 +46057,8 @@
                 "sale_payments",
                 "sales_orders",
                 "sales_order_lines",
-                "sales_returns"
+                "sales_returns",
+                "shifts"
             ]
         },
         {
@@ -45627,7 +46094,8 @@
                 "stock_ledgers",
                 "print_jobs",
                 "receipt_layout_settings",
-                "sales_orders"
+                "sales_orders",
+                "shifts"
             ]
         },
         {
@@ -45663,7 +46131,8 @@
                 "stock_ledgers",
                 "print_jobs",
                 "receipt_layout_settings",
-                "sales_orders"
+                "sales_orders",
+                "shifts"
             ]
         },
         {
@@ -45699,7 +46168,8 @@
                 "stock_ledgers",
                 "print_jobs",
                 "receipt_layout_settings",
-                "sales_orders"
+                "sales_orders",
+                "shifts"
             ]
         },
         {
@@ -45735,7 +46205,8 @@
                 "stock_ledgers",
                 "print_jobs",
                 "receipt_layout_settings",
-                "sales_orders"
+                "sales_orders",
+                "shifts"
             ]
         },
         {
@@ -45771,7 +46242,8 @@
                 "stock_ledgers",
                 "print_jobs",
                 "receipt_layout_settings",
-                "sales_orders"
+                "sales_orders",
+                "shifts"
             ]
         },
         {
@@ -45807,7 +46279,8 @@
                 "stock_ledgers",
                 "print_jobs",
                 "receipt_layout_settings",
-                "sales_orders"
+                "sales_orders",
+                "shifts"
             ]
         },
         {
@@ -45843,7 +46316,8 @@
                 "stock_ledgers",
                 "print_jobs",
                 "receipt_layout_settings",
-                "sales_orders"
+                "sales_orders",
+                "shifts"
             ]
         },
         {
@@ -45879,7 +46353,8 @@
                 "stock_ledgers",
                 "print_jobs",
                 "receipt_layout_settings",
-                "sales_orders"
+                "sales_orders",
+                "shifts"
             ]
         },
         {
@@ -47330,6 +47805,8 @@
                 "products",
                 "catering_advances",
                 "catering_final_invoices",
+                "shifts",
+                "users",
                 "catering_email_logs",
                 "catering_settings"
             ]
@@ -47359,6 +47836,8 @@
                 "products",
                 "catering_advances",
                 "catering_final_invoices",
+                "shifts",
+                "users",
                 "catering_email_logs",
                 "catering_settings"
             ]
@@ -47388,6 +47867,8 @@
                 "products",
                 "catering_advances",
                 "catering_final_invoices",
+                "shifts",
+                "users",
                 "catering_email_logs",
                 "catering_settings"
             ]
@@ -47417,6 +47898,8 @@
                 "products",
                 "catering_advances",
                 "catering_final_invoices",
+                "shifts",
+                "users",
                 "catering_email_logs",
                 "catering_settings"
             ]
@@ -47446,6 +47929,8 @@
                 "products",
                 "catering_advances",
                 "catering_final_invoices",
+                "shifts",
+                "users",
                 "catering_email_logs",
                 "catering_settings"
             ]
@@ -47475,6 +47960,8 @@
                 "products",
                 "catering_advances",
                 "catering_final_invoices",
+                "shifts",
+                "users",
                 "catering_email_logs",
                 "catering_settings"
             ]
@@ -47504,6 +47991,8 @@
                 "products",
                 "catering_advances",
                 "catering_final_invoices",
+                "shifts",
+                "users",
                 "catering_email_logs",
                 "catering_settings"
             ]
@@ -47533,6 +48022,8 @@
                 "products",
                 "catering_advances",
                 "catering_final_invoices",
+                "shifts",
+                "users",
                 "catering_email_logs",
                 "catering_settings"
             ]
@@ -47562,6 +48053,8 @@
                 "products",
                 "catering_advances",
                 "catering_final_invoices",
+                "shifts",
+                "users",
                 "catering_email_logs",
                 "catering_settings"
             ]
@@ -47721,6 +48214,8 @@
                 "products",
                 "catering_advances",
                 "catering_final_invoices",
+                "shifts",
+                "users",
                 "catering_email_logs",
                 "catering_settings"
             ]
@@ -47869,7 +48364,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -47892,7 +48389,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -47915,7 +48414,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -47938,7 +48439,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -47961,7 +48464,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -47973,7 +48478,10 @@
             "tables": [
                 "catering_material_rates",
                 "products",
-                "units"
+                "units",
+                "branches",
+                "shifts",
+                "users"
             ]
         },
         {
@@ -47985,7 +48493,10 @@
             "tables": [
                 "catering_material_rates",
                 "products",
-                "units"
+                "units",
+                "branches",
+                "shifts",
+                "users"
             ]
         },
         {
@@ -48949,7 +49460,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -48972,7 +49485,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -48995,7 +49510,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -49018,7 +49535,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
@@ -49041,7 +49560,9 @@
                 "stock_ledgers",
                 "units",
                 "product_branch_prices",
-                "combos"
+                "tenants",
+                "combos",
+                "product_pack_units"
             ]
         },
         {
