@@ -2,11 +2,13 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Edge\EdgeTenantMigrationManifest;
 use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeRuntime;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use PDO;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -96,7 +98,23 @@ class EdgeLocalDbInitCommand extends Command
 
             $migrator->setOutput($this->output);
             // Real tenant schema first, then the Edge-only migrations (edge_local_meta …).
-            $migrator->run([database_path('migrations/tenant')]);
+            // OWNER DECISION D7: the tenant group runs ONLY the manifest-approved set (EDGE_REQUIRED / EDGE_SCHEMA_SAFE).
+            // An unclassified file is a RELEASE BLOCKER (abort before any migration); a CLOUD_ONLY file (never in a
+            // package — the artifact builder excludes it) is skipped with record and never executed on an appliance.
+            $files = $migrator->getMigrationFiles([database_path('migrations/tenant')]);
+            $plan = EdgeTenantMigrationManifest::load()->plan(['tenant' => array_values(array_diff(array_keys($files), $migrator->getRepository()->getRan()))]);
+            if ($plan['blockers'] !== []) {
+                throw new RuntimeException('SCHEMA_INIT_UNCLASSIFIED_MIGRATION: RELEASE BLOCKER — tenant migration(s) without a manifest classification: '
+                    . implode(', ', $plan['blockers']) . ' (nothing was applied).');
+            }
+            foreach ($plan['skip'] as $name) {
+                $this->warn("  SKIP_CLOUD_ONLY {$name} (recorded, never executed on an appliance)");
+            }
+            $this->line('  migration plan: run ' . count($plan['run']) . ', skip ' . count($plan['skip']) . ', plan_hash ' . $plan['plan_hash']);
+            $approved = array_values(array_intersect_key($files, array_flip($plan['run'])));
+            if ($approved !== []) {
+                $migrator->run($approved);
+            }
             $migrator->run([database_path('migrations/edge')]);
         });
     }

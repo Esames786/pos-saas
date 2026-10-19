@@ -69,7 +69,36 @@ class EdgeArtifactBuilder
         $list = array_keys($files);
         sort($list);
 
-        return $list;
+        return $this->applyTenantMigrationManifest($root, $list);
+    }
+
+    /**
+     * OWNER DECISION D7 — the Edge tenant-migration manifest governs what ships: CLOUD_ONLY tenant migrations are
+     * REMOVED from the plan (so they cannot exist on an appliance), and an UNCLASSIFIED tenant migration refuses the
+     * plan (RELEASE BLOCKER). A tree that carries tenant migrations without a manifest is refused the same way; a
+     * synthetic test tree without tenant migrations is unaffected. Set config 'tenant_migration_manifest' => false
+     * only in unit tests of the builder mechanics.
+     */
+    private function applyTenantMigrationManifest(string $root, array $list): array
+    {
+        if (($this->config['tenant_migration_manifest'] ?? true) === false) {
+            return $list;
+        }
+        $tenant = array_values(array_filter($list, fn ($rel) => preg_match('#^database/migrations/tenant/[^/]+\.php$#', $rel) === 1));
+        if ($tenant === []) {
+            return $list;
+        }
+        if (! EdgeTenantMigrationManifest::existsIn($root)) {
+            throw new RuntimeException('ARTIFACT_MIGRATION_MANIFEST_MISSING: the tree ships tenant migrations but has no ' . EdgeTenantMigrationManifest::FILE . ' (RELEASE BLOCKER).');
+        }
+        $manifest = EdgeTenantMigrationManifest::load($root);
+        $blockers = array_filter($manifest->artifactProblems($tenant), fn ($p) => str_starts_with($p, 'UNCLASSIFIED'));
+        if ($blockers !== []) {
+            throw new RuntimeException('ARTIFACT_UNCLASSIFIED_TENANT_MIGRATION: RELEASE BLOCKER — ' . implode('; ', $blockers));
+        }
+        $excluded = array_flip($manifest->packageExcludedPaths());
+
+        return array_values(array_filter($list, fn ($rel) => ! isset($excluded[$rel])));
     }
 
     /** Forbidden paths present in a plan (empty = clean). Paths only, never contents. */

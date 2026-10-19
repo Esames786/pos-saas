@@ -5,6 +5,7 @@ namespace App\Services\Edge;
 use App\Support\EdgeRuntime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -16,6 +17,9 @@ use RuntimeException;
  *   2. take + verify an encrypted PRE-UPDATE backup (refuse the update if it fails);
  *   3. stage the new artifact into a NEW versioned directory (the active runtime is never overwritten in
  *      place) and re-verify its manifest hash;
+ *   3c. OWNER DECISION D7 — the NEW runtime prints its EXACT migration plan (manifest classification + decision per
+ *      pending migration); an unclassified migration, a missing approval hash on a non-empty plan, or a plan hash that
+ *      differs from the pre-install report (`dryRun()` / `--expected-plan-hash`) STOPS the update before the switch;
  *   4. ATOMIC switch of the `current` pointer (temp file + rename) to the new version;
  *   5. forward-only schema upgrade;
  *   6. record success.
@@ -38,7 +42,49 @@ class EdgeUpdateInstaller
     ) {
     }
 
-    public function install(array $package, string $stagedArtifactDir, string $performedBy): array
+    /**
+     * OWNER DECISION D7 — the PRE-INSTALL VERDICT: verify the signed package (zero mutation) and print the EXACT migration
+     * plan the NEW runtime would execute (its own manifest + files against THIS appliance's migrations table), with the
+     * plan hash the real install must be given back (`--expected-plan-hash`). Recorded on edge_local_updates as
+     * result=dry_run so the appliance keeps the verdict it was approved against. Nothing is staged or switched.
+     *
+     * @return array{result:string,from_version:string,to_version:string,schema_before:string,plan:array,plan_hash:string,verdict:string}
+     */
+    public function dryRun(array $package, string $stagedArtifactDir, string $performedBy): array
+    {
+        if (! EdgeRuntime::isBranchServer()) {
+            throw new RuntimeException('UPDATE_NOT_BRANCH_SERVER: appliance update runs only on a Branch Server.');
+        }
+        $currentVersion = (string) config('edge.app_version');
+        $currentSchema = (string) config('edge.config_schema');
+        $audit = $this->audit($package, $currentVersion, $currentSchema, $performedBy . ' (dry-run)');
+        try {
+            $this->verifier->verify($package, $stagedArtifactDir, $currentVersion, $currentSchema);
+        } catch (\Throwable $e) {
+            $this->record($audit, 'refused', $this->code($e), null, $currentSchema);
+            throw $e;
+        }
+        $this->prepareRuntimeDirs($stagedArtifactDir);
+        try {
+            $plan = $this->migrationPlan($stagedArtifactDir);
+        } catch (\Throwable $e) {
+            $this->record($audit, 'refused', 'UPDATE_MIGRATION_PLAN_FAILED', null, $currentSchema);
+            throw new RuntimeException('UPDATE_MIGRATION_PLAN_FAILED: ' . $e->getMessage());
+        }
+        $this->record($audit, 'dry_run', $plan['verdict'] === EdgeTenantMigrationManifest::VERDICT_OK ? null : 'UPDATE_MIGRATION_PLAN_BLOCKED', null, $currentSchema, $plan, null);
+
+        return [
+            'result' => 'dry_run',
+            'from_version' => $currentVersion,
+            'to_version' => $audit['to_version'],
+            'schema_before' => $currentSchema,
+            'plan' => $plan,
+            'plan_hash' => (string) $plan['plan_hash'],
+            'verdict' => (string) $plan['verdict'],
+        ];
+    }
+
+    public function install(array $package, string $stagedArtifactDir, string $performedBy, ?string $expectedPlanHash = null): array
     {
         if (! EdgeRuntime::isBranchServer()) {
             throw new RuntimeException('UPDATE_NOT_BRANCH_SERVER: appliance update runs only on a Branch Server.');
@@ -46,16 +92,8 @@ class EdgeUpdateInstaller
         $currentVersion = (string) config('edge.app_version');
         $currentSchema = (string) config('edge.config_schema');
         $to = (string) (($package['payload'] ?? [])['edge_app_version'] ?? '');
-        $audit = [
-            'update_uuid' => (string) Str::ulid(),
-            'from_version' => $currentVersion,
-            'to_version' => $to,
-            'package_hash' => (string) ($package['signature'] ?? ''),
-            'artifact_manifest_hash' => (string) (($package['payload'] ?? [])['artifact_manifest_hash'] ?? ''),
-            'schema_before' => $currentSchema,
-            'performed_by' => mb_substr($performedBy, 0, 191),
-            'started_at' => now(),
-        ];
+        $audit = $this->audit($package, $currentVersion, $currentSchema, $performedBy);
+        $expectedPlanHash = $expectedPlanHash !== null && trim($expectedPlanHash) !== '' ? trim($expectedPlanHash) : null;
 
         // 1. VERIFY — zero mutation before this passes.
         try {
@@ -94,6 +132,31 @@ class EdgeUpdateInstaller
         // 3b. The staged runtime must be able to BOOT on its own before the switch: writable runtime dirs and, for a dev/test
         //     package whose app\vendor is a junction to the shared closure, the same junction (a release ships real files).
         $this->prepareStagedRuntime($stagedArtifactDir, $versionDir);
+
+        // 3c. OWNER DECISION D7 — the EXACT migration plan, computed by the NEW runtime from the staged files BEFORE the
+        //     switch, must be the plan the owner approved (the pre-install report's hash). Unclassified = RELEASE BLOCKER;
+        //     a non-empty plan without an expected hash is unconfirmed; a differing hash stops the update. The previous
+        //     version stays active in every one of these cases (nothing has been switched).
+        try {
+            $plan = $this->migrationPlan($versionDir);
+        } catch (\Throwable $e) {
+            $this->record($audit, 'failed', 'UPDATE_MIGRATION_PLAN_FAILED', 'none', $currentSchema);
+            throw new RuntimeException('UPDATE_MIGRATION_PLAN_FAILED: ' . $e->getMessage());
+        }
+        $planHash = (string) ($plan['plan_hash'] ?? '');
+        if (($plan['verdict'] ?? null) !== EdgeTenantMigrationManifest::VERDICT_OK) {
+            $this->record($audit, 'failed', 'UPDATE_MIGRATION_PLAN_BLOCKED', 'none', $currentSchema, $plan, $expectedPlanHash);
+            throw new RuntimeException('UPDATE_MIGRATION_PLAN_BLOCKED: RELEASE BLOCKER — unclassified tenant migration(s) in the new runtime: ' . implode(', ', (array) ($plan['blockers'] ?? [])));
+        }
+        if ($expectedPlanHash === null && ($plan['entries'] ?? []) !== []) {
+            $this->record($audit, 'failed', 'UPDATE_MIGRATION_PLAN_UNCONFIRMED', 'none', $currentSchema, $plan, null);
+            throw new RuntimeException('UPDATE_MIGRATION_PLAN_UNCONFIRMED: the update carries ' . count($plan['entries']) . ' pending migration(s) but no --expected-plan-hash from the pre-install dry-run was given (actual plan ' . $planHash . ').');
+        }
+        if ($expectedPlanHash !== null && ! hash_equals($expectedPlanHash, $planHash)) {
+            $this->record($audit, 'failed', 'UPDATE_MIGRATION_PLAN_MISMATCH', 'none', $currentSchema, $plan, $expectedPlanHash);
+            throw new RuntimeException("UPDATE_MIGRATION_PLAN_MISMATCH: the actual migration plan [{$planHash}] differs from the pre-install report [{$expectedPlanHash}] — the update stops; re-run the dry-run and get the new plan approved.");
+        }
+
         // 4. ATOMIC switch.
         $this->switchPointer($root, $this->safe($to));
 
@@ -108,13 +171,13 @@ class EdgeUpdateInstaller
             } else {
                 $rollback = 'restore_required';                          // recover from the pre-update backup
             }
-            $this->record($audit, 'rolled_back', 'UPDATE_SCHEMA_UPGRADE_FAILED', $rollback, $currentSchema);
+            $this->record($audit, 'rolled_back', 'UPDATE_SCHEMA_UPGRADE_FAILED', $rollback, $currentSchema, $plan, $expectedPlanHash);
             throw new RuntimeException('UPDATE_SCHEMA_UPGRADE_FAILED (rollback=' . $rollback . '): ' . $e->getMessage());
         }
 
         // 6. Success.
         $this->startWorkers();
-        $this->record($audit, 'applied', null, 'none', $schemaAfter);
+        $this->record($audit, 'applied', null, 'none', $schemaAfter, $plan, $expectedPlanHash);
 
         return [
             'result' => 'applied',
@@ -123,6 +186,23 @@ class EdgeUpdateInstaller
             'active_version' => $this->currentPointer($root),
             'pre_update_backup' => $backup->path,
             'schema_after' => $schemaAfter,
+            'plan_hash' => $planHash,
+            'migrations_run' => (array) ($plan['run'] ?? []),
+            'migrations_skipped' => (array) ($plan['skip'] ?? []),
+        ];
+    }
+
+    private function audit(array $package, string $currentVersion, string $currentSchema, string $performedBy): array
+    {
+        return [
+            'update_uuid' => (string) Str::ulid(),
+            'from_version' => $currentVersion,
+            'to_version' => (string) (($package['payload'] ?? [])['edge_app_version'] ?? ''),
+            'package_hash' => (string) ($package['signature'] ?? ''),
+            'artifact_manifest_hash' => (string) (($package['payload'] ?? [])['artifact_manifest_hash'] ?? ''),
+            'schema_before' => $currentSchema,
+            'performed_by' => mb_substr($performedBy, 0, 191),
+            'started_at' => now(),
         ];
     }
 
@@ -218,12 +298,7 @@ class EdgeUpdateInstaller
      */
     private function prepareStagedRuntime(string $stagedArtifactDir, string $versionDir): void
     {
-        foreach (['bootstrap/cache', 'storage/framework/cache/data', 'storage/framework/views', 'storage/framework/sessions', 'storage/logs', 'storage/app'] as $dir) {
-            $path = $versionDir . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $dir);
-            if (! is_dir($path)) {
-                @mkdir($path, 0775, true);
-            }
-        }
+        $this->prepareRuntimeDirs($versionDir);
         $srcVendor = $stagedArtifactDir . DIRECTORY_SEPARATOR . 'vendor';
         $dstVendor = $versionDir . DIRECTORY_SEPARATOR . 'vendor';
         if (DIRECTORY_SEPARATOR !== '\\' || is_dir($dstVendor) || ! is_dir($srcVendor) || ! $this->isReparsePoint($srcVendor)) {
@@ -240,6 +315,65 @@ class EdgeUpdateInstaller
             throw new RuntimeException('UPDATE_STAGE_FAILED: could not re-link the dev vendor junction for the staged runtime: ' . mb_substr(implode(' ', $out), 0, 200));
         }
     }
+    /** The writable runtime directories a copied/staged runtime lacks (directories only — never a file the manifest hashes). */
+    private function prepareRuntimeDirs(string $runtimeDir): void
+    {
+        foreach (['bootstrap/cache', 'storage/framework/cache/data', 'storage/framework/views', 'storage/framework/sessions', 'storage/logs', 'storage/app'] as $dir) {
+            $path = $runtimeDir . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $dir);
+            if (! is_dir($path)) {
+                @mkdir($path, 0775, true);
+            }
+        }
+    }
+
+    /**
+     * OWNER DECISION D7 — the exact migration plan of a runtime directory, computed by THAT runtime's own artisan
+     * (`edge:local:schema-upgrade --dry-run --json`: its manifest, its migration files, this appliance's migrations
+     * table). Test-overridable seam (the mini artifacts of EdgeUpdaterMySqlTest carry no runnable runtime).
+     *
+     * @return array the edge-migration-plan-v1 document (entries, run, skip, blockers, plan_hash, verdict)
+     */
+    protected function migrationPlan(string $runtimeDir): array
+    {
+        [$code, $out, $err] = $this->runInRuntime($runtimeDir, ['edge:local:schema-upgrade', '--dry-run', '--json', '--no-interaction']);
+        $plan = null;
+        foreach (array_reverse(preg_split('/\r?\n/', trim($out))) as $line) {
+            if (str_starts_with(trim($line), '{')) {
+                $plan = json_decode(trim($line), true);
+                break;
+            }
+        }
+        Log::info('[edge-update] migration plan from the new runtime', ['runtime_dir' => $runtimeDir, 'exit' => $code, 'plan_hash' => $plan['plan_hash'] ?? null, 'verdict' => $plan['verdict'] ?? null]);
+        if (! is_array($plan) || ($plan['format'] ?? null) !== EdgeTenantMigrationManifest::PLAN_FORMAT || ! isset($plan['plan_hash'], $plan['verdict'], $plan['entries'])) {
+            throw new RuntimeException('the new runtime did not print a ' . EdgeTenantMigrationManifest::PLAN_FORMAT . ' document (exit ' . $code . '): ' . mb_substr(trim($out . "\n" . $err), 0, 1500));
+        }
+
+        return $plan;
+    }
+
+    /** Run the given artisan command inside a runtime directory with the appliance environment; [exit, stdout, stderr]. */
+    private function runInRuntime(string $runtimeDir, array $args): array
+    {
+        $artisan = $runtimeDir . DIRECTORY_SEPARATOR . 'artisan';
+        if (! is_file($artisan)) {
+            throw new RuntimeException("the runtime has no artisan launcher at [{$artisan}].");
+        }
+        $cmd = array_merge([PHP_BINARY, $artisan], $args);
+        $spec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        $env = array_merge(getenv(), array_filter(['BINGOO_EDGE_ENV_DIR' => getenv('BINGOO_EDGE_ENV_DIR') ?: null]));
+        $proc = proc_open($cmd, $spec, $pipes, $runtimeDir, $env);   // array form: no shell, no quoting ambiguity (Windows-safe)
+        if (! is_resource($proc)) {
+            throw new RuntimeException('could not start the runtime at [' . $runtimeDir . '].');
+        }
+        fclose($pipes[0]);
+        $out = (string) stream_get_contents($pipes[1]);
+        $err = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        return [proc_close($proc), $out, $err];
+    }
+
     /** Windows junction / mount point detection (PHP reports some reparse points as directories, not links). */
     private function isReparsePoint(string $path): bool
     {
@@ -311,9 +445,9 @@ class EdgeUpdateInstaller
         return rtrim($root, "/\\");
     }
 
-    private function record(array $audit, string $result, ?string $failureCode, ?string $rollback, ?string $schemaAfter): void
+    private function record(array $audit, string $result, ?string $failureCode, ?string $rollback, ?string $schemaAfter, ?array $plan = null, ?string $expectedPlanHash = null): void
     {
-        DB::connection(self::CONN)->table('edge_local_updates')->insert(array_merge($audit, [
+        $row = array_merge($audit, [
             'result' => $result,
             'failure_code' => $failureCode,
             'rollback_result' => $rollback,
@@ -321,7 +455,28 @@ class EdgeUpdateInstaller
             'completed_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),
-        ]));
+        ]);
+        // D7 plan columns arrive with 2026_10_19_000001 (edge) — an older appliance recording a refusal BEFORE its own
+        // upgrade ran does not have them yet; the plan is then in the log only.
+        if ($plan !== null && $this->hasPlanColumns()) {
+            $row['migration_plan_hash'] = mb_substr((string) ($plan['plan_hash'] ?? ''), 0, 80);
+            $row['expected_plan_hash'] = $expectedPlanHash !== null ? mb_substr($expectedPlanHash, 0, 80) : null;
+            $row['migration_plan'] = json_encode([
+                'format' => $plan['format'] ?? null, 'manifest_version' => $plan['manifest_version'] ?? null,
+                'verdict' => $plan['verdict'] ?? null, 'entries' => $plan['entries'] ?? [],
+                'run' => $plan['run'] ?? [], 'skip' => $plan['skip'] ?? [], 'blockers' => $plan['blockers'] ?? [],
+            ], JSON_UNESCAPED_SLASHES);
+        }
+        DB::connection(self::CONN)->table('edge_local_updates')->insert($row);
+    }
+
+    private function hasPlanColumns(): bool
+    {
+        try {
+            return Schema::connection(self::CONN)->hasColumn('edge_local_updates', 'migration_plan_hash');
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     private function code(\Throwable $e): ?string

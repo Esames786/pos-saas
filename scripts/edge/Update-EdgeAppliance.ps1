@@ -14,7 +14,8 @@ param(
     [string]$UpdateFile,
     [switch]$NoServices,
     [switch]$NoGateway,
-    [switch]$AllowLocalActive
+    [switch]$AllowLocalActive,
+    [string]$ExpectedPlanHash
 )
 $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -59,8 +60,38 @@ if (-not $NoServices -and (Test-Path $planFile)) {
     & (Join-Path $scriptDir 'Register-EdgeServices.ps1') @stopArgs
 }
 
-# 4. apply (signature -> tamper -> version/schema/target -> pre-update backup -> stage -> switch -> schema upgrade)
-& $php $launcher edge:local:update $UpdateFile (Join-Path $PackageRoot 'app') --no-interaction
+# 4a. OWNER DECISION D7 - PRE-INSTALL VERDICT: verify the package and print the EXACT migration plan the new runtime
+#     would execute (classification + decision per pending migration, plan hash) BEFORE anything is applied.
+#     Pass -ExpectedPlanHash (the plan_hash of the approved pre-install report) for a LAB/production update: the
+#     update STOPS when the actual plan differs. Without it the plan printed here is self-confirmed (dev/test only).
+$dryLines = & $php $launcher edge:local:update $UpdateFile (Join-Path $PackageRoot 'app') --dry-run --json --no-interaction
+$dryCode = $LASTEXITCODE
+$dryJson = ($dryLines | Where-Object { $_ -is [string] -and $_.TrimStart().StartsWith('{') } | Select-Object -Last 1)
+if ($dryCode -ne 0 -or -not $dryJson) {
+    if (-not $NoServices -and (Test-Path $planFile)) { & (Join-Path $scriptDir 'Register-EdgeServices.ps1') -Action Start -PlanFile $planFile }
+    Write-Host ($dryLines -join "`n")
+    Fail 'pre-install dry-run refused (package verification or migration plan; see the message above)'
+}
+$verdict = $dryJson | ConvertFrom-Json
+Write-Host "Migration plan ($($verdict.plan.format), manifest $($verdict.plan.manifest_version)): run $($verdict.plan.run.Count), skip $($verdict.plan.skip.Count), blockers $($verdict.plan.blockers.Count)"
+foreach ($e in $verdict.plan.entries) { Write-Host ("  {0,-18} {1,-18} {2}" -f $e.decision, $e.classification, $e.migration) }
+Write-Host "PLAN_HASH=$($verdict.plan_hash)   verdict=$($verdict.verdict)"
+if ($verdict.verdict -ne 'OK') {
+    if (-not $NoServices -and (Test-Path $planFile)) { & (Join-Path $scriptDir 'Register-EdgeServices.ps1') -Action Start -PlanFile $planFile }
+    Fail 'RELEASE BLOCKER - the new runtime carries an unclassified tenant migration'
+}
+if ($ExpectedPlanHash) {
+    if ($ExpectedPlanHash -ne [string]$verdict.plan_hash) {
+        if (-not $NoServices -and (Test-Path $planFile)) { & (Join-Path $scriptDir 'Register-EdgeServices.ps1') -Action Start -PlanFile $planFile }
+        Fail "the actual migration plan [$($verdict.plan_hash)] differs from the approved pre-install report [$ExpectedPlanHash] - update stopped"
+    }
+} else {
+    $ExpectedPlanHash = [string]$verdict.plan_hash
+    if ($verdict.plan.entries.Count -gt 0) { Write-Host 'WARNING: no -ExpectedPlanHash given - the plan above is self-confirmed (acceptable for dev/test only; a LAB update passes the approved report hash).' -ForegroundColor Yellow }
+}
+
+# 4b. apply (signature -> tamper -> version/schema/target -> pre-update backup -> stage -> PLAN CHECK -> switch -> schema upgrade)
+& $php $launcher edge:local:update $UpdateFile (Join-Path $PackageRoot 'app') "--expected-plan-hash=$ExpectedPlanHash" --no-interaction
 $code = $LASTEXITCODE
 if ($code -ne 0) {
     if (-not $NoServices -and (Test-Path $planFile)) { & (Join-Path $scriptDir 'Register-EdgeServices.ps1') -Action Start -PlanFile $planFile }

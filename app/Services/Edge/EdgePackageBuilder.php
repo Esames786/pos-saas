@@ -265,13 +265,31 @@ class EdgePackageBuilder
         }
         $marker = json_decode((string) @file_get_contents($dir . '/app/edge-build-manifest.json'), true) ?: [];
         $markerOk = ($marker['runtime_mode_supported'] ?? null) === 'branch_server';
+        // OWNER DECISION D7 — every tenant migration in the package must be classified (manifest shipped with the package);
+        // a CLOUD_ONLY one must not be there at all. Audited against the PACKAGE's own manifest (the runtime that will run them).
+        $migrationProblems = [];
+        $tenantMigrations = array_values(array_filter(glob($dir . '/app/database/migrations/tenant/*.php') ?: [], 'is_file'));
+        if ($tenantMigrations !== []) {
+            if (! EdgeTenantMigrationManifest::existsIn($dir . '/app')) {
+                $migrationProblems[] = 'the package ships tenant migrations without ' . EdgeTenantMigrationManifest::FILE . ' (RELEASE BLOCKER)';
+            } else {
+                try {
+                    $migrationProblems = EdgeTenantMigrationManifest::load($dir . '/app')
+                        ->artifactProblems(array_map(fn ($p) => 'database/migrations/tenant/' . basename($p), $tenantMigrations));
+                } catch (\Throwable $e) {
+                    $migrationProblems[] = $e->getMessage();
+                }
+            }
+        }
 
         return [
-            'ok' => $hits === [] && $cloudPresent === [] && $edgeMissing === [] && $markerOk,
+            'ok' => $hits === [] && $cloudPresent === [] && $edgeMissing === [] && $markerOk && $migrationProblems === [],
             'forbidden_hits' => array_slice(array_values(array_unique($hits)), 0, 50),
             'cloud_only_present' => $cloudPresent,
             'edge_runtime_missing' => $edgeMissing,
             'artifact_marker_branch_server' => $markerOk,
+            'tenant_migrations_audited' => count($tenantMigrations),
+            'tenant_migration_problems' => array_slice($migrationProblems, 0, 50),
         ];
     }
 

@@ -100,6 +100,12 @@ class EdgeUpdaterMySqlTest extends MySqlTenantTestCase
     private function installer(): EdgeUpdateInstaller
     {
         return new class(app(EdgeUpdateVerifier::class), app(EdgeUpdatePackageService::class), app(EdgeBackupService::class)) extends EdgeUpdateInstaller {
+            /** D7 seam: the mini artifact has no runtime to print a plan; "nothing pending" needs no approval hash (EdgeUpdatePlanHashMySqlTest covers the rest). */
+            protected function migrationPlan(string $runtimeDir): array
+            {
+                return \App\Services\Edge\EdgeTenantMigrationManifest::load()->plan(['tenant' => [], 'edge' => []]);
+            }
+
             protected function applySchemaUpgrade(string $versionDir): string
             {
                 app(\App\Services\Edge\EdgeLocalSchemaUpgrader::class)->upgrade();
@@ -241,6 +247,11 @@ class EdgeUpdaterMySqlTest extends MySqlTenantTestCase
 
         $art = $this->makeArtifact();
         $failing = new class(app(EdgeUpdateVerifier::class), app(EdgeUpdatePackageService::class), app(EdgeBackupService::class)) extends EdgeUpdateInstaller {
+            protected function migrationPlan(string $runtimeDir): array
+            {
+                return \App\Services\Edge\EdgeTenantMigrationManifest::load()->plan(['tenant' => [], 'edge' => []]);
+            }
+
             protected function applySchemaUpgrade(string $versionDir): string
             {
                 throw new \RuntimeException('forced schema upgrade failure');
