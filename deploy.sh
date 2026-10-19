@@ -78,9 +78,20 @@ $PHP artisan optimize:clear
 # (www-data) could not overwrite when a request needed to recompile — 500-ing the whole site (Khatri
 # outage 2026-08-28: "file_put_contents(storage/framework/views/…): Permission denied"). Fall back to
 # root (then the [8] chown fixes ownership) if www-data cannot run artisan on this host.
-if sudo -u www-data $PHP artisan --version >/dev/null 2>&1; then RUNWEB="sudo -u www-data $PHP"; else RUNWEB="$PHP"; fi
-$RUNWEB artisan config:cache
-$RUNWEB artisan route:cache
+if sudo -u www-data $PHP artisan --version >/dev/null 2>&1; then RUNWEB="sudo -u www-data $PHP"; RUNAS="sudo -u www-data"; else RUNWEB="$PHP"; RUNAS=""; fi
+# DEPLOY-ATOMIC-CACHE-1 (19 Oct): at the dinner rush one request read routes-v7.php while route:cache was
+# still writing it (ParseError "Unclosed '('", 16:33:19 UTC). So the config and route caches are written to
+# a temp file first and renamed into place in ONE step: a request sees the old file or the new one, never
+# half of one. Laravel takes the path from APP_CONFIG_CACHE / APP_ROUTES_CACHE (relative to the app).
+build_cache() {   # $1 artisan command · $2 the env var naming its file · $3 the real file
+    local tmp="${3%.php}.next.php"
+    rm -f "$tmp"
+    $RUNAS env "$2=$tmp" $PHP artisan "$1"
+    $PHP -l "$tmp" >/dev/null
+    mv -f "$tmp" "$3"
+}
+build_cache config:cache APP_CONFIG_CACHE bootstrap/cache/config.php
+build_cache route:cache APP_ROUTES_CACHE bootstrap/cache/routes-v7.php
 $RUNWEB artisan view:cache
 # Workers cache booted code — tell them to restart (no-op if none running).
 $PHP artisan queue:restart || true
