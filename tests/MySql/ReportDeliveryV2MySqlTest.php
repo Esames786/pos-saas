@@ -155,6 +155,8 @@ class ReportDeliveryV2MySqlTest extends MySqlTenantTestCase
         // The real PHP-FPM order: the response has gone to the cashier, then Laravel runs its
         // terminating callbacks — which is where the report is sent.
         app()->terminate();
+        $this->assertSame('0', (string) ini_get('max_execution_time'),
+            'the send may raise a web request\'s limit, never arm one on a CLI process (it would kill the run)');
     }
 
     private function runs(): array

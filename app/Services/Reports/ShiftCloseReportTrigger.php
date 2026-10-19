@@ -63,8 +63,13 @@ final class ShiftCloseReportTrigger
             app()->terminating(function () use ($tenant, $dates) {
                 try {
                     // The cashier already has the response; give the send room to finish. The nightly
-                    // send takes ~15 s for Kashif Food (PDF + seven WhatsApp numbers).
-                    @set_time_limit(180);
+                    // send takes ~15 s for Kashif Food (PDF + seven WhatsApp numbers). Only RAISE a limit
+                    // that exists: under CLI (artisan, tests) there is none, and arming one would put a
+                    // 3-minute kill on the whole process — the same trap SystemUsageController avoids.
+                    $limit = (int) ini_get('max_execution_time');
+                    if ($limit > 0 && $limit < 180) {
+                        @set_time_limit(180);
+                    }
                     @ignore_user_abort(true);
 
                     if (! app()->bound('tenant') || (int) app('tenant')->id !== (int) $tenant->id) {
