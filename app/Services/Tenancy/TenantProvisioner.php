@@ -991,6 +991,21 @@ class TenantProvisioner
         // provision (deploy.sh grants every route-catalog permission to Owner — newer ones
         // like tenant.reports.center.* were wiped by onboarding re-runs; found on prod 2026-08-09).
         $role->givePermissionTo($tenantPermissions);
+
+        // Every route permission deploy.sh and Master's "Sync" give the Owner (route_catalogs).
+        // Without it a tenant built between two deploys — a trial signup, or a demo after its
+        // nightly reset — lacked every screen newer than the list above (Report Center, Close
+        // Branch, Cash Book…) until the next deploy: pharmacydemo's Owner was 180 short on 19 Oct.
+        // The plan's modules still decide what actually opens.
+        $catalog = DB::connection('master')->table('route_catalogs')
+            ->where('route_name', 'like', 'tenant.%')->pluck('route_name')->all();
+        if ($catalog) {
+            $existing = Permission::where('guard_name', 'tenant')->pluck('name')->all();
+            foreach (array_diff($catalog, $existing) as $permission) {
+                Permission::create(['name' => $permission, 'guard_name' => 'tenant']);
+            }
+            $role->givePermissionTo($catalog);
+        }
         $owner->syncRoles([$role]);
 
         // Seed the default Chart of Accounts (FIN-2). Idempotent; tenant DB is active here.

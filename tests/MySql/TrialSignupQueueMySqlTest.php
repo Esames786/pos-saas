@@ -64,6 +64,7 @@ class TrialSignupQueueMySqlTest extends MySqlTenantTestCase
         $master->table('subscriptions')->whereIn('tenant_id', $ids)->delete();
         $master->table('tenants')->whereIn('id', $ids)->delete();
         $master->table('plans')->where('code', 'like', 'trialtest-%')->delete();
+        $master->table('route_catalogs')->where('route_name', 'like', 'tenant.trialtest-%')->delete();
         $master->table('jobs')->where('payload', 'like', '%trialtest%')->delete();
         foreach ($master->select("SHOW DATABASES LIKE 'pos\\_tenant\\_trialtest%'") as $row) {
             $master->statement('DROP DATABASE IF EXISTS `' . array_values((array) $row)[0] . '`');
@@ -159,6 +160,12 @@ class TrialSignupQueueMySqlTest extends MySqlTenantTestCase
         $tenantConnectionBefore = config('database.connections.tenant');
         $loginUrl = 'https://' . $code . '.example.test/login';
 
+        // A route newer than the provisioner's own list: the Owner gets it from the route catalog, as
+        // deploy.sh gives it, instead of waiting for the next deploy (pharmacydemo after its nightly reset).
+        $catalogOnly = 'tenant.trialtest-catalog-only.index';
+        DB::connection('master')->table('route_catalogs')->updateOrInsert(['route_name' => $catalogOnly],
+            ['uri' => 'trialtest-catalog-only', 'method' => 'GET', 'created_at' => now(), 'updated_at' => now()]);
+
         // The real provisioner, the real migrations, a real database.
         (new ProvisionTrialWorkspaceJob($tenant->id, Hash::make(self::PASSWORD), $loginUrl, 'Trial Test Kitchen', $code . '@example.test'))
             ->handle(app(SelfSignupService::class));
@@ -167,6 +174,14 @@ class TrialSignupQueueMySqlTest extends MySqlTenantTestCase
         $this->assertTrue($this->databaseExists($code));
         $hash = DB::connection('master')->table('pos_tenant_' . $code . '.users')->where('email', $code . '@example.test')->value('password');
         $this->assertTrue(Hash::check(self::PASSWORD, (string) $hash), 'the owner signs in with the password typed at signup — hashed once, not twice');
+
+        $db = 'pos_tenant_' . $code;
+        $ownerHas = DB::connection('master')->table($db . '.role_has_permissions as rp')
+            ->join($db . '.roles as r', 'r.id', '=', 'rp.role_id')
+            ->join($db . '.permissions as p', 'p.id', '=', 'rp.permission_id')
+            ->where('r.name', 'Owner')->pluck('p.name')->all();
+        $this->assertContains($catalogOnly, $ownerHas, 'a new Owner holds every route permission deploy gives, not only the hand-written list');
+        $this->assertContains('tenant.dashboard', $ownerHas);
 
         $this->assertSame($tenantConnectionBefore, config('database.connections.tenant'),
             'the worker serves every tenant: the tenant connection must be put back');
