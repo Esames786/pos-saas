@@ -225,6 +225,9 @@ class PharmacyDemoMySqlTest extends MySqlTenantTestCase
         // every login is on Counter 1.
         $this->assertSame(1, $c->table('shifts')->where('terminal_id', $terminal->id)->where('status', 'open')->count(), 'the demo opens with Counter 1 ready');
         $this->assertStringNotContainsString('No Open Shift', $pos);
+        // The header said "No terminal" even with Counter 1 picked: it is now refreshed after the pick.
+        $this->assertStringContainsString('window.__posUpdateContext = updateContextSummary', $pos);
+        $this->assertStringContainsString('if (window.__posUpdateContext) window.__posUpdateContext();', $pos);
         $this->assertSame((int) $terminal->id, (int) $this->ownerUser()->default_terminal_id);
 
         $panadol = Product::where('sku', 'PH-PNL500')->firstOrFail();

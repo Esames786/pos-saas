@@ -17,7 +17,8 @@
     .pv2 .pack-list { list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:10px; }
     .pv2 .pack-row { border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:#FBFCFD; }
     .pv2 .pack-row > fieldset > legend { font-size:.95rem; font-weight:800; color:var(--navy); float:none; width:auto; margin:0 0 6px; padding:0; }
-    .pv2 .pack-grid { display:grid; grid-template-columns:minmax(120px,1.1fr) minmax(150px,1.2fr) minmax(120px,1fr) minmax(220px,1.6fr); gap:10px; align-items:end; }
+    .pv2 .pack-grid { display:grid; grid-template-columns:minmax(120px,1fr) minmax(150px,1fr) minmax(120px,1fr); gap:10px; align-items:end; }
+    .pv2 .pack-grid .pack-bc { grid-column:1 / -1; max-width:560px; }
     .pv2 .pack-grid .form-label { font-size:.85rem; margin-bottom:2px; }
     .pv2 .pack-holds { display:flex; align-items:center; gap:6px; }
     .pv2 .pack-holds input { max-width:90px; }
@@ -30,7 +31,7 @@
     .pv2 .presets button { border:1px dashed #B8902E; background:#fff; color:#6B5310; border-radius:999px; padding:6px 14px; font-weight:700; }
     .pv2 .presets button:focus-visible { outline:3px solid var(--navy); outline-offset:2px; }
     .pv2 .pack-remove { border:0; background:transparent; color:var(--bad); font-weight:700; }
-    @media (max-width: 767px) { .pv2 .pack-grid { grid-template-columns:1fr 1fr; } }
+    @media (max-width: 767px) { .pv2 .pack-grid { grid-template-columns:1fr 1fr; } .pv2 .pack-grid .pack-bc { max-width:none; } }
 </style>
 @endpush
 
