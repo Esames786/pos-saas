@@ -58,7 +58,8 @@ class PurchaseOrderController extends Controller
     {
         // PURCHASING-V2-1: the new entry area posts packs; turned into today's lines first (no bonus on a PO).
         if ($request->boolean('_entry_v2')) {
-            $request->merge(['lines' => \App\Support\PackLines::toLines((array) $request->input('lines', []), 'quantity_ordered', false)]);
+            $request->merge(['lines' => \App\Support\PackLines::toLines((array) $request->input('lines', []), 'quantity_ordered', false, null,
+                ['type' => $request->input('bill_disc_type'), 'value' => $request->input('bill_disc')])]);
         }
 
         // Drop fully-blank rows before validation so empty lines never trigger
@@ -87,6 +88,7 @@ class PurchaseOrderController extends Controller
             'lines.*.pack_unit_id'     => 'nullable|integer',
             'lines.*.pack_factor'      => 'nullable|integer|min:1',
             'lines.*.base_quantity'    => 'nullable|numeric|min:0',
+            'lines.*.entry_json'       => 'nullable|array',
         ]);
 
         $validLines = collect($data['lines'])->filter(fn($l) => !empty($l['product_id']));
@@ -127,6 +129,7 @@ class PurchaseOrderController extends Controller
                     'pack_unit_id'       => $line['pack_unit_id'] ?? null,
                     'pack_factor'        => $line['pack_factor'] ?? null,
                     'base_quantity'      => $line['base_quantity'] ?? null,
+                    'entry_json'         => $line['entry_json'] ?? null,
                 ]);
             }
         });

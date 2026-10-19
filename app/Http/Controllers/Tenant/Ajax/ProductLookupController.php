@@ -295,6 +295,10 @@ class ProductLookupController extends Controller
                 'unit_set'     => (bool) $p->unit_id,
                 'scanned_pack' => $withPacks && $q !== '' ? (string) ($p->packUnits->firstWhere('barcode', $q)?->id ?? '') : '',
                 'last_cost'    => $supplierId > 0 ? self::lastCost($p->id, $supplierId) : null,
+                // PURCHASE-DISCOUNTS-1: the item's usual buying discount and scheme (product screen).
+                'buy_disc'     => $p->purchase_discount_value !== null && (float) $p->purchase_discount_value > 0
+                    ? ['type' => $p->purchase_discount_type === 'amount' ? 'amount' : 'percent', 'value' => (float) $p->purchase_discount_value] : null,
+                'buy_scheme'   => $p->purchase_scheme_buy ? $p->purchase_scheme_buy . '+' . (int) $p->purchase_scheme_free : null,
             ] : []));
         });
 
@@ -312,8 +316,13 @@ class ProductLookupController extends Controller
             ->where('g.supplier_id', $supplierId)->where('g.status', 'posted')
             ->where('l.product_id', $productId)->where('l.unit_cost', '>', 0)
             ->orderByDesc('g.receipt_date')->orderByDesc('l.id')
-            ->first(['l.unit_cost', 'g.receipt_date']);
+            ->first(['l.unit_cost', 'g.receipt_date', 'l.entry_json']);
+        if (! $row) {
+            return null;
+        }
+        // PURCHASE-DISCOUNTS-1: the new screens keep what was typed (pack, price, disc, scheme) — "the last deal".
+        $deal = $row->entry_json ? json_decode((string) $row->entry_json, true) : null;
 
-        return $row ? ['unit_cost' => (float) $row->unit_cost, 'date' => (string) $row->receipt_date] : null;
+        return ['unit_cost' => (float) $row->unit_cost, 'date' => (string) $row->receipt_date, 'deal' => is_array($deal) ? $deal : null];
     }
 }

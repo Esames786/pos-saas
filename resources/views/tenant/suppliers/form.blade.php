@@ -79,6 +79,18 @@
                 @error('payment_terms_days') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
 
+            @if(\App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PURCHASING_V2))
+                {{-- PURCHASE-DISCOUNTS-1: fills the disc % on the new GRN / PO when the item and the last deal say nothing. --}}
+                <div class="col-md-4">
+                    <label for="default_discount_percent" class="form-label">Usual discount % <span class="text-muted small" lang="ur">عام رعایت</span></label>
+                    <input id="default_discount_percent" inputmode="decimal" name="default_discount_percent"
+                           class="form-control @error('default_discount_percent') is-invalid @enderror"
+                           value="{{ old('default_discount_percent', $supplier?->default_discount_percent !== null ? rtrim(rtrim((string) $supplier->default_discount_percent, '0'), '.') : '') }}" placeholder="e.g. 5">
+                    <div class="form-text">What this supplier usually takes off. The GRN and order fill it in; you can change it on the line.</div>
+                    @error('default_discount_percent') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                </div>
+            @endif
+
             <div class="col-md-4">
                 <label for="status" class="form-label required">Status</label>
                 <select id="status" name="status" required

@@ -89,6 +89,8 @@ class GoodsReceiptController extends Controller
                         'batch_no'               => '',
                         'expiry_date'            => '',
                         'pack_unit_id'           => $line->pack_unit_id ?? null,
+                        // PURCHASE-DISCOUNTS-1: what the order said — disc and scheme come with "Receive".
+                        'entry_json'             => $line->entry_json ?? null,
                     ];
                 }
             }
@@ -112,7 +114,8 @@ class GoodsReceiptController extends Controller
         // today's lines (tablets, net cost per tablet) before anything else reads them. The old screen
         // does not send _entry_v2 and is untouched.
         if ($request->boolean('_entry_v2')) {
-            $request->merge(['lines' => \App\Support\PackLines::toLines((array) $request->input('lines', []), 'quantity_received', true, (int) $request->input('branch_id'))]);
+            $request->merge(['lines' => \App\Support\PackLines::toLines((array) $request->input('lines', []), 'quantity_received', true, (int) $request->input('branch_id'),
+                ['type' => $request->input('bill_disc_type'), 'value' => $request->input('bill_disc')])]);
         }
 
         // Drop fully-blank rows before validation (robust even if client JS is bypassed).
@@ -147,6 +150,7 @@ class GoodsReceiptController extends Controller
             'lines.*.pack_unit_id'         => 'nullable|integer',
             'lines.*.pack_factor'          => 'nullable|integer|min:1',
             'lines.*.base_quantity'        => 'nullable|numeric|min:0',
+            'lines.*.entry_json'           => 'nullable|array',
         ]);
 
         $validLines = collect($data['lines'])->filter(fn($l) => !empty($l['product_id']));
@@ -218,6 +222,7 @@ class GoodsReceiptController extends Controller
                     'pack_unit_id'            => $line['pack_unit_id'] ?? null,
                     'pack_factor'             => $line['pack_factor'] ?? null,
                     'base_quantity'           => $line['base_quantity'] ?? null,
+                    'entry_json'              => $line['entry_json'] ?? null,
                 ]);
             }
 

@@ -45,6 +45,9 @@ class Product extends Model
         'product_kind', 'is_pos_visible', 'can_be_bom_component',
         'can_be_bom_output', 'is_manufactured_finished_good',
         'purchase_unit_id', 'purchase_pack_size',
+        // PURCHASE-DISCOUNTS-1: the usual discount and scheme when buying it; the usual discount when selling it.
+        'purchase_discount_type', 'purchase_discount_value', 'purchase_scheme_buy', 'purchase_scheme_free',
+        'sale_discount_type', 'sale_discount_value',
         // ONLINE-ORDERING-1: website ki apni qeemat (null = POS ki qeemat) aur website par jagah.
         'website_price',
         'show_on_website', 'website_card_name', 'website_size_label', 'website_category_id',

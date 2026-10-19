@@ -358,6 +358,33 @@
                                             <input id="default_purchase_price" name="default_purchase_price" inputmode="decimal" class="form-control form-control-lg" value="{{ $saved('default_purchase_price') }}" aria-describedby="bp-help">
                                             <div id="bp-help" class="help">What you pay the supplier for one. Goods receipts (GRN) fill this in later. <span class="ur-inline">خرید کی قیمت</span></div>
                                         </div>
+                                        {{-- PURCHASE-DISCOUNTS-1 (owner: "product level discount fixed ya % pehle se"). The new GRN / order
+                                             fill these in; the last deal with the supplier comes first, and the line can always change. --}}
+                                        @php
+                                            $pdType = old('purchase_discount_type', $product?->purchase_discount_type ?? 'percent');
+                                            $pdVal = old('purchase_discount_value', $product?->purchase_discount_value !== null ? rtrim(rtrim((string) $product->purchase_discount_value, '0'), '.') : '');
+                                            $pScheme = old('purchase_scheme', $product?->purchase_scheme_buy ? $product->purchase_scheme_buy . '+' . (int) $product->purchase_scheme_free : '');
+                                        @endphp
+                                        <div class="col-md-6">
+                                            <label class="form-label" for="purchase_discount_value">Usual discount when buying</label>
+                                            <div class="input-group input-group-lg">
+                                                <input id="purchase_discount_value" name="purchase_discount_value" inputmode="decimal" class="form-control @error('purchase_discount_value') is-invalid @enderror" value="{{ $pdVal }}" placeholder="e.g. 5" aria-describedby="pd-help">
+                                                <select name="purchase_discount_type" class="form-select" style="max-width:96px" aria-label="Percent or rupees">
+                                                    <option value="percent" @selected($pdType !== 'amount')>%</option>
+                                                    <option value="amount" @selected($pdType === 'amount')>Rs</option>
+                                                </select>
+                                            </div>
+                                            <div id="pd-help" class="help">The GRN fills it in; you can change it on the line. <span class="ur-inline">خرید پر عام رعایت</span></div>
+                                            @error('purchase_discount_value')<div class="text-danger small">{{ $message }}</div>@enderror
+                                        </div>
+                                        @if(in_array($business, [\App\Support\Business::PHARMACY, \App\Support\Business::MART], true))
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="purchase_scheme">Usual scheme</label>
+                                                <input id="purchase_scheme" name="purchase_scheme" class="form-control form-control-lg @error('purchase_scheme') is-invalid @enderror" value="{{ $pScheme }}" placeholder="10+1" aria-describedby="ps-help" autocomplete="off">
+                                                <div id="ps-help" class="help">Buy 10, get 1 free — the GRN adds the free quantity by itself. <span class="ur-inline">اسکیم</span></div>
+                                                @error('purchase_scheme')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                            </div>
+                                        @endif
                                     </div>
                                 @elseif($q === 'stock')
                                     <div class="row g-3">
@@ -841,7 +868,9 @@
         var price = val('#default_selling_price');
         row('Sold to customers', yes('_sell') ? (price ? 'Yes, Rs ' + price : 'Yes — price not written yet') : 'No', 'selling', yes('_sell') && !price);
         if (yes('_sell')) row('Button on the counter', yes('_pos') ? 'Yes' : 'Hidden — sold in deals, as an add-on or online', 'selling');
-        row('Bought from a supplier', yes('_buy') ? 'Yes' + (val('#default_purchase_price') ? ', Rs ' + val('#default_purchase_price') : '') : 'No', 'selling');
+        row('Bought from a supplier', yes('_buy') ? 'Yes' + (val('#default_purchase_price') ? ', Rs ' + val('#default_purchase_price') : '')
+            + (val('#purchase_discount_value') ? ', usual discount ' + (selText('[name="purchase_discount_type"]') === 'Rs' ? 'Rs ' + val('#purchase_discount_value') : val('#purchase_discount_value') + '%') : '')
+            + (val('#purchase_scheme') ? ', scheme ' + val('#purchase_scheme') : '') : 'No', 'selling');
         row('Stock counted', yes('_stock') ? 'Yes' : 'No', 'selling');
         if (shown(form.querySelector('[data-q="expiry"]'))) row('Batch and expiry', yes('_expiry') ? 'Yes' : 'No', 'selling');
         if (shown(form.querySelector('[data-q="recipe"]'))) row('Made from a recipe', yes('_recipe') ? 'Yes' : 'No', 'selling');

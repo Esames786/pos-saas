@@ -329,6 +329,29 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────────────
 
+    public function test_the_usual_buying_discount_and_scheme_save_from_the_new_screen_only(): void
+    {
+        // PURCHASE-DISCOUNTS-1: "product level discount fixed ya %" — saved on the product, filled into the GRN.
+        $this->setTenant('pharmacy', true);
+        $page = $this->page('/products/create')->assertOk()->getContent();
+        $this->assertStringContainsString('name="purchase_discount_value"', $page);
+        $this->assertStringContainsString('name="purchase_scheme"', $page, 'a pharmacy is asked for the usual scheme');
+
+        $this->postAs('/products', $this->form(['_card' => 'medicine', 'name' => 'Disc Tab 10mg', 'default_selling_price' => '9', 'default_purchase_price' => '7',
+            '_rx' => '0', '_buy' => '1', 'purchase_discount_value' => '4', 'purchase_discount_type' => 'percent', 'purchase_scheme' => '10 + 2']))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $p = Product::where('name', 'Disc Tab 10mg')->firstOrFail();
+        $this->assertSame(['percent', 4.0, 10, 2], [$p->purchase_discount_type, (float) $p->purchase_discount_value, (int) $p->purchase_scheme_buy, (int) $p->purchase_scheme_free]);
+
+        $this->postAs('/products', $this->form(['_card' => 'medicine', 'name' => 'Disc Tab 20mg', 'default_selling_price' => '9', '_rx' => '0', '_buy' => '1',
+            'purchase_discount_value' => '120', 'purchase_discount_type' => 'percent']))->assertSessionHasErrors('purchase_discount_value');
+        $this->postAs('/products', $this->form(['_card' => 'medicine', 'name' => 'Disc Tab 30mg', 'default_selling_price' => '9', '_rx' => '0', '_buy' => '1',
+            'purchase_discount_value' => '', 'purchase_scheme' => '10x1']))->assertSessionHasErrors('purchase_scheme');
+
+        $this->setTenant('restaurant', true);
+        $this->assertStringNotContainsString('name="purchase_scheme"', $this->page('/products/create')->assertOk()->getContent(), 'a restaurant is not asked about schemes');
+    }
+
     private function form(array $over): array
     {
         return array_merge(['_form_v2' => '1', 'status' => 'active', 'sku' => '', 'category_id' => '', 'unit_id' => '', '_tax' => '0'], $over);
