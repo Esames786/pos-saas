@@ -1,6 +1,7 @@
 # Purchase and returns — round 2 (19 Oct 2026, evening)
 
-Owner tried the new GRN screen on `pharmacydemo` and asked for the next round. This page lists what he
+Owner tried the new GRN screen on `pharmacydemo` and asked for the next round. Before / after view for the
+owner: https://claude.ai/code/artifact/a166e2af-0c15-4730-a926-6fd371cd5f5d (Claude Doc). This page lists what he
 asked, what the system does today (read from the code and the system map), what other software does, and
 the plan in order. Rules from [owner product rules]: no new screens (the same page adds and edits), plain
 words, pictures, the business decides what is shown, Master switch per tenant, live tenants OFF until he
@@ -157,6 +158,11 @@ Returns. A role sees only the tabs it may open. A small count shows what waits, 
   the cursor moves to the quantity.
 - **Type a new batch number** and it is made on the spot; its expiry (MM/YY) is asked right there.
 - A 2D code scan still fills both.
+- **Batches made beforehand** (owner: "system mai already batch banane ka option"):
+  - the existing Inventory → Batches page (today a list only) gets "+ New batch" (item, branch, batch no.,
+    expiry) and "change expiry";
+  - the product screen shows that item's batches;
+  - every batch made there appears in the batch box. No new page.
 
 ### 5.4 Save without reload
 - Post saves in the background and stays on the page.
@@ -170,8 +176,15 @@ Returns. A role sees only the tabs it may open. A small count shows what waits, 
   (Receive is already there).
 
 ### 5.5 Discounts on purchase
+- **On the product** (owner: "product level discount fixed ya %"): the product screen gets a "Price & discount"
+  card.
+  - **When buying:** disc % or Rs, and a scheme (10 + 1).
+  - **When selling:** disc % or Rs.
+  - These fill the PO / GRN line and the counter line by themselves.
 - **On a line:** disc % or Rs (one box with a %/Rs switch), plus **scheme**: "10 + 1" fills the free
   quantity.
+- **At the counter:** today only a whole-bill discount (Rs or %) and Promotions. Add a line discount (% or Rs),
+  from the product's selling discount or typed. The branch's discount-approval rule stays.
 - **On the bill (GRN):** disc % or Rs, plus extra charges (already there).
 - **Tax rows:** sales tax, further tax, advance tax (236H) are rows the business sets once (name + %, before
   or after discount). The rates change each Finance Act, so they are never numbers in code.
@@ -215,7 +228,8 @@ Returns. A role sees only the tabs it may open. A small count shows what waits, 
 - **Without a bill** (as Square and Shopify do it):
   - search the item; the price is today's price, and never more than it;
   - a reason is required;
-  - needs its own permission ("Return without bill"), off for every role until the owner gives it;
+  - anyone who can open Sales Returns can do it — owner, 19 Oct: *"jis ko screen ka access hoga wo saray kaam
+    kar sakta hai"*; no extra permission inside a screen;
   - the refund is cash, card or store credit.
 - **Mixed / exchange:** return lines plus new items in one go at the counter (later step).
 - **Each line asks "Back on the shelf?"** (Yes / No — throw away). The default comes from the business:
@@ -268,7 +282,8 @@ permission / plan snapshots, the system map rebuilt.
 
 ## 8. Owner decisions
 
-1. Return without a bill: which roles may do it, and is store credit wanted?
+1. ~~Who may return without a bill~~ — **answered 19 Oct: whoever can open the screen does all of its work.**
+   Still open: is store credit wanted as a refund choice?
 2. Sales return default "Back on the shelf?" per business (table in 5.7) — OK?
 3. Trade discount lowers the stock cost (standard) — OK?
 4. Tax rows on purchase (1% sales tax, further tax, 236H) — wanted in the first release, or later?
