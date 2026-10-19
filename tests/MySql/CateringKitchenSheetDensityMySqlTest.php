@@ -332,7 +332,7 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
     // ── helpers ────────────────────────────────────────────────────────────
 
     /** Wohi renderer jo CateringDocumentController::asPdf() chalata hai. */
-    private function pagesFor(int $count, string $lang): int
+    private function pagesFor(int $count, string $lang, bool $party = false): int
     {
         $options = new Options;
         $options->set('defaultFont', 'DejaVu Sans');
@@ -361,16 +361,16 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
         $html = str_replace('</head>',
             '<style>body{width:auto!important;min-height:0!important;margin:0!important;'
             .'padding:0!important;box-shadow:none!important}</style></head>',
-            $this->sheetHtml($count, $lang));
+            $this->sheetHtml($count, $lang, $party));
         $pdf->loadHtml($html, 'UTF-8');
         $pdf->render();
 
         return $pdf->getCanvas()->get_page_count();
     }
 
-    private function sheetHtml(int $count, string $lang): string
+    private function sheetHtml(int $count, string $lang, bool $party = false): string
     {
-        $release = $this->releaseWith($count);
+        $release = $this->releaseWith($count, $party);
 
         return view('tenant.catering.documents.kitchen-sheet', [
             'release' => $release,
@@ -381,7 +381,7 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
     }
 
     /** Asli raasta: quotation banao, bhejo, qubool karo, confirm karo, release karo. */
-    private function releaseWith(int $count): \App\Models\Tenant\CateringProductionRelease
+    private function releaseWith(int $count, bool $party = false): \App\Models\Tenant\CateringProductionRelease
     {
         $courses = array_keys(self::COURSES);
         $lines = [];
@@ -432,6 +432,25 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
 
         $estimate = $event->currentEstimate;
         $estimates->saveDraftLines($estimate, $lines);
+
+        // KITCHEN-SHEET-STACKED-TAG-1 — bina maal ke koi kaala dabba banta hi
+        // NAHI, aur bina dabbe ke ye naap us badlav ko dekh hi nahi sakti jo
+        // dabbe ki bulandi badalta hai. Pehle yahan maal tha hi nahi: density
+        // ka poora test hara rehta chahe dabba teen satron ka ho jata.
+        if ($party) {
+            foreach ($estimate->refresh()->lines as $k => $line) {
+                \App\Models\Tenant\CateringEstimateLineCostBlock::create([
+                    'catering_estimate_line_id' => $line->id,
+                    'label' => "Maal {$k}", 'material_name' => "Maal {$k}", 'unit_code' => 'KG',
+                    'block_type' => \App\Models\Tenant\CateringProductCostBlock::TYPE_MATERIAL,
+                    'charge_basis' => \App\Models\Tenant\CateringProductCostBlock::BASIS_PER_UNIT,
+                    'rate_basis' => \App\Models\Tenant\CateringProductCostBlock::RATE_PER_MATERIAL_UNIT,
+                    'rate' => 120, 'quantity_per_unit' => 1.2,
+                    'default_material_qty' => 120, 'event_material_qty' => 120,
+                    'is_customer_supplied' => true, 'amount' => 0, 'sort_order' => 1,
+                ]);
+            }
+        }
         $estimates->markSent($estimate->refresh());
         $estimates->markAccepted($estimate->refresh());
         $estimates->confirmEvent($event->refresh());
@@ -440,5 +459,50 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
             ->release(CateringEvent::find($event->id));
 
         return $release->load(['lines', 'event']);
+    }
+
+    /**
+     * KITCHEN-SHEET-STACKED-TAG-1 (4 Oct) — kaala dabba ab DO satron ka hai.
+     *
+     * Malik: "party ke neeche 15 KG aaye, lekin isi tarah dark me."
+     *
+     * Ye jaanch khoobsurti ki nahi, JAGAH ki hai. Row ki bulandi us ke sab se
+     * lambe khane se banti hai, aur isi file me pehle se likha hai ke 18px ka
+     * tick box AKELA hi safhe se do satrein kha gaya tha. Dabba ek satar se do
+     * satron ka karna bilkul wohi khatra hai.
+     *
+     * Is liye wohi band yahan dobara lagaya ja raha hai, magar is baar har line
+     * par graahak ka maal mojood hai — yani dabba waqai banta hai.
+     */
+    public function test_the_stacked_party_tag_does_not_cost_a_row(): void
+    {
+        $this->assertSame(1, $this->pagesFor(8, 'ur', party: true),
+            'kaala dabba do satron ka hua to safha phool gaya — 8 khane bhi ek safhe par nahi aate');
+
+        $this->assertSame(2, $this->pagesFor(12, 'ur', party: true),
+            'aur dusri taraf se bhi bandha hua: 12 khane ek safhe par aa gaye to kuch kas gaya hai');
+    }
+
+    /** Aur dabbe ke andar DO alag hisse hon — warna wo kabhi do satron me baith hi nahi sakta. */
+    public function test_the_tag_carries_its_label_and_measure_as_separate_blocks(): void
+    {
+        $html = $this->sheetHtml(2, 'ur', party: true);
+
+        $this->assertMatchesRegularExpression(
+            '/<span class="sup-tag"[^>]*>\s*<span class="sup-lbl">[^<]+<\/span>\s*<span class="sup-qty"[^>]*>[^<]+<\/span>/u',
+            $html,
+            'label aur naap alag block hon — ek hi span me rahe to wo kabhi neeche nahi aayega'
+        );
+
+        $css = file_get_contents(resource_path('views/tenant/catering/documents/partials/kitchen-sheet-style.blade.php'));
+        $this->assertMatchesRegularExpression('/\.sup-tag \.sup-lbl, \.sup-tag \.sup-qty \{[^}]*display: block/', $css,
+            'dono hisse block hon');
+        $this->assertMatchesRegularExpression('/\.sup-tag \.sup-lbl, \.sup-tag \.sup-qty \{[^}]*white-space: nowrap/', $css,
+            'aur har hissa khud apne beech se na toote — "15 KG" do satron me nahi bat-na chahiye');
+
+        // Dabba kaala hi rahe — malik ne shakl nahi, SIRF tarteeb badalne ko kaha tha.
+        $this->assertMatchesRegularExpression('/\.sup-tag \{[^}]*background: #111827/', $css, 'dabba kaala rahe');
+        $this->assertMatchesRegularExpression('/\.sup-tag \{[^}]*print-color-adjust: exact/', $css,
+            'aur chhapte waqt bhi kaala rahe — warna printer rang gira deta hai');
     }
 }

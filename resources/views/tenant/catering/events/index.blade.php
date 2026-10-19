@@ -281,16 +281,11 @@
                             @endif
                         </td>
                         <td>
-                            @php
-                                $badge = match($event->status) {
-                                    'confirmed', 'production_ready', 'released' => 'success',
-                                    'quoted' => 'info',
-                                    'completed', 'closed' => 'dark',
-                                    'cancelled' => 'danger',
-                                    default => 'secondary',
-                                };
-                            @endphp
-                            <span class="badge bg-{{ $badge }}">{{ ucwords(str_replace('_', ' ', $event->status)) }}</span>
+                            {{-- Rang aur naam dono model se — ab Customer Catering
+                                 Balances bhi wahi parhti hai, is liye yahan naql
+                                 nahi rehni chahiye. --}}
+                            @php $ev = \App\Models\Tenant\CateringEvent::class; @endphp
+                            <span class="badge bg-{{ $ev::statusBadge($event->status) }}">{{ $ev::statusLabel($event->status) }}</span>
                         </td>
                         <td class="fs-12">{{ app(\App\Services\Catering\CateringCalendarService::class)->nextAction($event) }}</td>
                         {{-- KASHIF-EVENT-ACTIONS-1 — the actions an operator was

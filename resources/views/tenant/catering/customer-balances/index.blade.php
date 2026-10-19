@@ -55,10 +55,45 @@
                         @endforeach
                     </select>
                 </div>
+                {{-- CATERING-BALANCES-STATUS-FILTER-1 — malik: "yahan event status
+                     waghera dikha do, us ke filter ke hisaab se customer show
+                     hon."
+
+                     "Still open" sab se upar hai kyunke yehi wo sawal hai jis
+                     ke liye ye screen kholi jati hai: kis CHALTI HUI booking par
+                     paisa baqi hai. Us ki apni tareef nahi likhi ja rahi —
+                     `CateringEvent::OPEN_STATUSES` pehle se mojood hai. --}}
+                <div class="col-sm-4 col-md-3">
+                    <label class="form-label fs-13 mb-1">Booking status</label>
+                    <select name="status" class="form-select">
+                        <option value="">All statuses</option>
+                        <option value="open" @selected($status === 'open')>Still open (inquiry → confirmed)</option>
+                        @foreach(\App\Models\Tenant\CateringEvent::STATUSES as $s)
+                            <option value="{{ $s }}" @selected($status === $s)>{{ \App\Models\Tenant\CateringEvent::statusLabel($s) }}</option>
+                        @endforeach
+                    </select>
+                </div>
                 <div class="col-sm-3 col-md-2">
                     <button class="btn btn-primary w-100">Go</button>
                 </div>
             </form>
+
+            {{-- Filter lagte hi in adad ka MATLAB badal jata hai: ab ye graahak
+                 ka poora hisaab nahi, sirf in bookings ka hai. Ye baat chhupayi
+                 nahi ja sakti — warna "Balance 9,59,597" parhne wala samajhta
+                 hai ke graahak par itna baqi hai. --}}
+            @if($status !== '')
+                <div class="alert alert-info d-flex align-items-start gap-2 py-2 px-3 fs-13">
+                    <i class="ti ti-filter mt-1"></i>
+                    <div>
+                        Showing only
+                        <strong>{{ $status === 'open' ? 'still open' : \App\Models\Tenant\CateringEvent::statusLabel($status) }}</strong>
+                        bookings. <strong>Billed, Received, Balance and Credit below count these bookings only</strong> —
+                        they are not the customer's full position.
+                        <a href="{{ url('/catering/customer-balances') }}" class="ms-1">Clear filter</a>
+                    </div>
+                </div>
+            @endif
 
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
@@ -66,6 +101,7 @@
                         <tr>
                             <th>Customer</th>
                             <th>Phone</th>
+                            <th>Booking status</th>
                             <th class="text-center">Events</th>
                             <th class="text-end">Billed</th>
                             <th class="text-end">Received</th>
@@ -77,7 +113,12 @@
                         @forelse($rows as $row)
                             <tr>
                                 <td>
-                                    <a href="{{ url('/catering/customer-balances/'.$row['customer_id']) }}"
+                                    {{-- Filter andar bhi saath jata hai: jis haalat
+                                         ke graahak dekh kar click kiya, wahi
+                                         bookings tafseel me bhi milni chahiyen,
+                                         warna adad badal jate hain. --}}
+                                    <a href="{{ url('/catering/customer-balances/'.$row['customer_id'])
+                                        .($status !== '' ? '?status='.$status : '') }}"
                                        class="fw-semibold text-decoration-none">{{ $row['name'] }}</a>
                                     @if($row['last_event_date'])
                                         <div class="text-muted fs-12">
@@ -86,6 +127,19 @@
                                     @endif
                                 </td>
                                 <td dir="ltr">{{ $row['phone'] ?: '—' }}</td>
+                                {{-- Ek graahak ke kai event ho sakte hain aur har
+                                     ek apni haalat me, is liye yahan EK status
+                                     nahi likha ja sakta — ginti likhi jati hai.
+                                     Rang aur naam dono model se aate hain, taake
+                                     bookings ki fehrist aur ye screen ek hi
+                                     zabaan bolein. --}}
+                                <td>
+                                    @foreach($row['status_counts'] as $s => $n)
+                                        <span class="badge bg-{{ \App\Models\Tenant\CateringEvent::statusBadge($s) }} fs-11 me-1">
+                                            {{ $n > 1 ? $n.' ' : '' }}{{ \App\Models\Tenant\CateringEvent::statusLabel($s) }}
+                                        </span>
+                                    @endforeach
+                                </td>
                                 <td class="text-center">{{ $row['events'] }}</td>
                                 <td class="text-end">{{ number_format($row['billed'], 2) }}</td>
                                 <td class="text-end">{{ number_format($row['received'], 2) }}</td>
@@ -105,13 +159,24 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="7" class="text-center text-muted py-4">No linked catering customers yet.</td></tr>
+                            {{-- Khali screen ki WAJAH batani zaroori hai. Filter
+                                 ke sabab khali hone par "abhi koi graahak nahi"
+                                 kehna jhoot hai — graahak mojood hain, bas is
+                                 haalat me koi booking nahi. --}}
+                            <tr><td colspan="8" class="text-center text-muted py-4">
+                                @if($status !== '')
+                                    No customer has a booking in this status.
+                                    <a href="{{ url('/catering/customer-balances') }}">Clear the filter</a>
+                                @else
+                                    No linked catering customers yet.
+                                @endif
+                            </td></tr>
                         @endforelse
                     </tbody>
                     @if($rows->isNotEmpty())
                         <tfoot>
                             <tr class="fw-semibold border-top">
-                                <td colspan="3">{{ $rows->count() }} customer{{ $rows->count() === 1 ? '' : 's' }}</td>
+                                <td colspan="4">{{ $rows->count() }} customer{{ $rows->count() === 1 ? '' : 's' }}</td>
                                 <td class="text-end">{{ number_format($totals['billed'], 2) }}</td>
                                 <td class="text-end">{{ number_format($totals['received'], 2) }}</td>
                                 <td class="text-end">{{ number_format($totals['balance'], 2) }}</td>

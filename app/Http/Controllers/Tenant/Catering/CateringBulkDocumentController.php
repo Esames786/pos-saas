@@ -31,6 +31,91 @@ class CateringBulkDocumentController extends Controller
 {
     public const MAX_SELECTION = 40;
 
+    /**
+     * Wo printers jo A4/A5 document chhap sakte hain — aur koi nahi.
+     *
+     * Thermal yahan pesh karna ek aisa chunao dena hota jo POST mana kar deta;
+     * ek A4 laser par ESC/POS bytes bhejne ka natija safhe bhar kachra hai.
+     */
+    private function documentPrinters()
+    {
+        return \App\Models\Tenant\Printer::documentCapable()->orderBy('name')->get(['id', 'name']);
+    }
+
+    /**
+     * CATERING-SEND-TO-PRINTER-1 — "Send to network", wahin jahan Print hai.
+     *
+     * Malik: "jaise abhi preview HTML ka khulta hai, wahan send to network ka
+     * option de dena — jaise manual option diya hua hai."
+     *
+     * Pehle maine ye buttons booking ki screen par rakhe the. Wo ghalat jagah
+     * thi: operator kaam YAHIN karta hai — preview kholta hai aur Print dabata
+     * hai. Jo control us ke haath ke paas na ho, wo mojood hone ke baraabar
+     * nahi.
+     *
+     * Ek hi raasta teenon kaghazon ke liye, kyunke teenon ka sawal ek hi hai:
+     * "ye jo safha khula hai, isay printer par bhej do." Teen alag routes ka
+     * matlab teen alag permissions hota, jo har tenant par har role ko haath se
+     * deni partin.
+     */
+    public function printToNetwork(Request $request)
+    {
+        $data = $request->validate([
+            'kind' => ['required', 'string', 'in:quotation,kitchen_sheet,address_sheet'],
+            'printer_id' => ['required', 'integer', 'exists:printers,id'],
+            'ids' => ['required', 'array', 'min:1', 'max:'.self::MAX_SELECTION],
+            'ids.*' => ['integer'],
+            'reprint' => ['nullable', 'boolean'],
+        ]);
+
+        $printer = \App\Models\Tenant\Printer::where('is_active', true)->find($data['printer_id']);
+        $queue = app(\App\Services\Catering\CateringDocumentQueueService::class);
+
+        try {
+            // Shart pehle, ek hi baar: ye printer document chhap bhi sakta hai
+            // ya nahi. Har booking par alag poochhna wahi jawab chaalis baar
+            // deta — aur aadha kaam kar ke rukta.
+            $queue->assertCanPrintDocuments($printer);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['print' => $e->getMessage()]);
+        }
+
+        $events = $this->selectedEvents($request, ['currentEstimate.lines']);
+        $reprint = (bool) ($data['reprint'] ?? false);
+        $userId = $request->user()?->id;
+
+        $queued = 0;
+        $failed = [];
+
+        foreach ($events as $event) {
+            try {
+                match ($data['kind']) {
+                    'quotation' => $queue->queueQuotation(
+                        $event->currentEstimate()->firstOrFail(), $printer, $userId, $reprint
+                    ),
+                    'kitchen_sheet' => $queue->queueKitchenSheetForEvent($event, $printer, $userId, $reprint),
+                    'address_sheet' => $queue->queueAddressSheet($event, $printer, $userId, $reprint),
+                };
+                $queued++;
+            } catch (\Throwable $e) {
+                // Ek booking ka ruk jana baqi sab ko nahi rokta — magar chup
+                // chaap bhi nahi guzarta: operator ko jaan'na chahiye ke kis ka
+                // kaghaz nahi gaya.
+                $failed[] = $event->event_no;
+            }
+        }
+
+        $message = $queued.' '.\Illuminate\Support\Str::plural('document', $queued)
+            .' queued to '.$printer->name
+            .'. Kagaz ka size document se liya gaya — finance par kuch post nahi hua.';
+
+        if ($failed !== []) {
+            $message .= ' Nahi bheji ja sakin: '.implode(', ', $failed).'.';
+        }
+
+        return back()->with('status', $message);
+    }
+
     /** One page (or more) per selected booking's CURRENT estimate. */
     public function quotations(Request $request, CateringFinancialPositionService $positions)
     {
@@ -49,6 +134,8 @@ class CateringBulkDocumentController extends Controller
 
         return view('tenant.catering.documents.bulk-quotations', [
             'documents' => $documents,
+            'printers' => $this->documentPrinters(),
+            'ids' => $events->pluck('id')->all(),
             'lang' => $this->language($request),
             'businessName' => $this->businessName(),
             'skipped' => $events->count() - $documents->count(),
@@ -124,6 +211,8 @@ class CateringBulkDocumentController extends Controller
 
         return view('tenant.catering.documents.bulk-kitchen-sheets', [
             'releases' => $releases->values(),
+            'printers' => $this->documentPrinters(),
+            'ids' => $events->pluck('id')->all(),
             'lang' => $this->language($request),
             'businessName' => $this->businessName(),
             'skippedEvents' => $skipped,
@@ -137,6 +226,8 @@ class CateringBulkDocumentController extends Controller
 
         return view('tenant.catering.documents.address-sheet', [
             'events' => $events,
+            'printers' => $this->documentPrinters(),
+            'ids' => $events->pluck('id')->all(),
             'businessName' => $this->businessName(),
         ]);
     }

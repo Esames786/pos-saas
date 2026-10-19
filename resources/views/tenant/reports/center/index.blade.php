@@ -547,6 +547,11 @@
     <div class="alert alert-secondary py-2 small">Z Report preset: Overview + Order Types + Categories + Waiters + Payments + Cash &amp; Bank for the selected day. Use <strong>Print Thermal</strong> for the familiar end-of-day slip.</div>
 @endif
 
+{{-- Gated to whoever may SAVE it. On khatribiryani SEVEN roles can open this page — Delivery, Dine
+     In, Takeaway, Quick Sale and Accounts among them — while only Owner holds
+     tenant.reports.center.channels. Showing this card to them would put the owner's and managers'
+     personal mobile numbers on a delivery rider's screen, and then refuse their Save with a 403. --}}
+@can('tenant.reports.center.channels')
 {{-- WHATSAPP-REPORT-CHANNEL-1: where the reports go. Tenant-wide on purpose — the two POS buttons
      and the nightly cron all read this one answer, so a per-schedule setting would leave the others
      quietly on something else. --}}
@@ -600,6 +605,7 @@
         link to the full report; that link expires after 48 hours.
     </div>
 </div></div>
+@endcan
 
 {{-- ── schedules ── --}}
 <div class="card mb-4"><div class="card-body">

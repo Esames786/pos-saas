@@ -24,9 +24,10 @@
 </head>
 <body>
     <div class="bulk-toolbar">
-        <button onclick="window.print()" style="padding:6px 18px;font-size:14px;cursor:pointer">
+        <button onclick="window.print()" class="doc-btn">
             Print {{ $documents->count() }} {{ \Illuminate\Support\Str::plural('quotation', $documents->count()) }}
         </button>
+            @include('tenant.catering.documents.partials.send-to-network', ['kind' => 'quotation'])
         @if(($skipped ?? 0) > 0)
             <div style="color:#92400e;font-size:12px;margin-top:4px">
                 {{ $skipped }} selected {{ \Illuminate\Support\Str::plural('booking', $skipped) }} had no priced quotation and {{ $skipped === 1 ? 'was' : 'were' }} skipped.

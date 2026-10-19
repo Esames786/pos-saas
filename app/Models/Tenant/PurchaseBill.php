@@ -11,7 +11,7 @@ class PurchaseBill extends Model
 
     protected $fillable = [
         'bill_no', 'supplier_invoice_no', 'supplier_id', 'branch_id', 'purchase_order_id', 'goods_receipt_id',
-        'bill_date', 'due_date', 'status', 'subtotal', 'discount_total', 'tax_total',
+        'bill_date', 'due_date', 'status', 'subtotal', 'extra_charges', 'discount_total', 'tax_total',
         'grand_total', 'amount_paid', 'balance_due', 'notes',
         'posted_by_user_id', 'posted_at',
     ];

@@ -20,6 +20,11 @@ use RuntimeException;
  */
 final class WhatsAppChannel implements ReportChannel
 {
+    /** The original 5-variable summary. Approved 30 Sep 2026. */
+    public const TEMPLATE_SUMMARY = 'daily_sales_report';
+
+    /** The full OVERALL + CASH FROM SALES block, as the PDF prints it. */
+    public const TEMPLATE_DETAILED = 'daily_sales_report_v2';
     public function __construct(
         private readonly WhatsAppClient $client,
         private readonly SalesReportEngine $engine,
@@ -48,16 +53,15 @@ final class WhatsAppChannel implements ReportChannel
         $overview = $this->engine->overview($delivery->filters);
         $url = $this->links->create($tenant, $delivery->filters, $delivery->sections, $delivery->label);
 
+        $template = (string) config('services.whatsapp.template');
+
         $components = [
             [
                 'type' => 'body',
-                'parameters' => array_map(fn ($t) => ['type' => 'text', 'text' => $t], [
-                    $delivery->businessName,
-                    $delivery->label,
-                    number_format((float) ($overview['net_sales'] ?? 0), 0),
-                    number_format((float) ($overview['orders'] ?? 0), 0),
-                    number_format((float) ($overview['cash_collected'] ?? 0), 0),
-                ]),
+                'parameters' => array_map(
+                    fn ($t) => ['type' => 'text', 'text' => $t],
+                    $this->bodyParams($template, $delivery, $overview),
+                ),
             ],
             [
                 // The approved button is a Dynamic URL: Meta appends this to the fixed base, so only
@@ -75,7 +79,7 @@ final class WhatsAppChannel implements ReportChannel
             try {
                 $this->client->sendTemplate(
                     $number,
-                    (string) config('services.whatsapp.template'),
+                    $template,
                     (string) config('services.whatsapp.language'),
                     $components,
                 );
@@ -91,6 +95,70 @@ final class WhatsAppChannel implements ReportChannel
         }
     }
 
+    /**
+     * The body variables, in the order the APPROVED template declares them.
+     *
+     * Keyed by template name because the template is frozen the moment Meta approves it: a different
+     * set of figures is a different template, not a different call. Keeping both here means the new
+     * one can be submitted and reviewed while the old one keeps sending, and the switch is one line
+     * in .env — no deploy, no window where reports stop.
+     *
+     * An unknown name throws rather than guessing a shape. Sending the wrong number of parameters
+     * gets a 400 from Meta that says nothing about .env, and every report would fail at once.
+     *
+     * Figures and formatting match the PDF's OVERALL / CASH FROM SALES block exactly (print.blade.php
+     * lines 300-320). The owner reads both; two renderings of "the same day" that disagree by a
+     * rounding rule cost more trust than they save characters.
+     *
+     * @param  array<string, mixed> $o
+     * @return list<string>
+     */
+    private function bodyParams(string $template, ReportDelivery $delivery, array $o): array
+    {
+        // Same formatters the PDF uses: money to 2dp with separators, qty with trailing zeros cut.
+        $money = fn (string $k) => number_format((float) ($o[$k] ?? 0), 2);
+        $qty = fn (string $k) => rtrim(rtrim(number_format((float) ($o[$k] ?? 0), 3, '.', ''), '0'), '.');
+
+        return match ($template) {
+            self::TEMPLATE_SUMMARY => [
+                $delivery->businessName,
+                $delivery->label,
+                number_format((float) ($o['net_sales'] ?? 0), 0),
+                number_format((float) ($o['orders'] ?? 0), 0),
+                // UNCHANGED on purpose, and this deploy must not move it. The label here reads
+                // "Cash collected" and is frozen until Meta approves a new template, so putting the
+                // net figure under it would swap one wrong reading for another. TEMPLATE_DETAILED
+                // carries BOTH, each under its own name — the fix belongs there, not here.
+                number_format((float) ($o['cash_collected'] ?? 0), 0),
+            ],
+            self::TEMPLATE_DETAILED => [
+                $delivery->businessName,
+                $delivery->label,
+                number_format((float) ($o['orders'] ?? 0), 0),
+                $qty('sold_qty'),
+                $qty('returned_qty'),
+                $qty('net_qty'),
+                $money('gross_sales'),
+                // The minus signs live in the template's STATIC text, exactly as the PDF renders
+                // them, so these stay plain positive numbers.
+                $money('discount'),
+                $money('tax'),
+                $money('service_charge'),
+                $money('delivery_charge'),
+                $money('tips'),
+                $money('grand_total'),
+                $money('returns_amount'),
+                $money('net_sales'),
+                $money('cash_collected'),
+                $money('cash_refunds'),
+                $money('net_cash_from_sales'),
+            ],
+            default => throw new RuntimeException(
+                'Unknown WhatsApp template "'.$template.'". WHATSAPP_TEMPLATE must be one of: '
+                .self::TEMPLATE_SUMMARY.', '.self::TEMPLATE_DETAILED.'.'
+            ),
+        };
+    }
     /**
      * PUBLIC and static on purpose: the settings screen normalises with the EXACT same rule when it
      * saves. Two copies would drift, and the day they did a number would save happily and then never

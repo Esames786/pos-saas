@@ -43,9 +43,25 @@
                         </label>
                     </div>
 
+                    @php
+                        // CATERING-SEND-TO-PRINTER-1 — ye tanbeeh IS fehrist par
+                        // munhasir hai. Jahan koi thermal printer hai hi nahi,
+                        // wahan "Urdu nahi chhap sakti" likhna jhoot hai: A4/A5
+                        // par wo bilkul theek chhapti hai, aur ye poora kaam usi
+                        // ke liye hua hai. Ek aisi tanbeeh jo har waqt likhi ho,
+                        // parhi jana chhor deti hai.
+                        $anyThermal = collect($printers)->contains(
+                            fn ($p) => ($p->printer_type ?? null) !== \App\Models\Tenant\Printer::TYPE_WINDOWS
+                        );
+                    @endphp
                     <div class="alert alert-light border py-2 px-2 fs-12 mb-2">
-                        <i class="ti ti-language-off me-1"></i><strong>English only.</strong>
-                        A thermal printer cannot render Urdu — use the A4 document for that.
+                        @if($anyThermal)
+                            <i class="ti ti-language-off me-1"></i><strong>Thermal is English only.</strong>
+                            A thermal printer cannot render Urdu — pick an A4/A5 printer for that.
+                        @else
+                            <i class="ti ti-printer me-1"></i><strong>Paper size is set for you.</strong>
+                            The document decides A4 or A5 — you do not have to pick it.
+                        @endif
                         <span class="d-block mt-1 text-muted">
                             <i class="ti ti-cash-off me-1"></i>Printing posts nothing to finance and moves no stock.
                         </span>

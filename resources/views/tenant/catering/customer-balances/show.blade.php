@@ -36,6 +36,23 @@
         @error($bag)<div class="alert alert-danger py-2 px-3 fs-13">{{ $message }}</div>@enderror
     @endforeach
 
+    {{-- CATERING-BALANCES-STATUS-FILTER-1 — filter fehrist se yahan tak saath
+         aaya hai, is liye upar likhe adad bhi SIRF in bookings ke hain. Ye
+         kehna lazmi hai: tafseel ka safha wo jagah hai jahan log paisa lete
+         aur refund karte hain, aur adhura total dekh kar faisla karna yahan
+         sab se mehnga parta hai. --}}
+    @if(($status ?? '') !== '')
+        <div class="alert alert-info d-flex align-items-start gap-2 py-2 px-3 fs-13">
+            <i class="ti ti-filter mt-1"></i>
+            <div>
+                Filtered to
+                <strong>{{ $status === 'open' ? 'still open' : \App\Models\Tenant\CateringEvent::statusLabel($status) }}</strong>
+                bookings — the figures below cover these only, not this customer's full position.
+                <a href="{{ url('/catering/customer-balances/'.$customer->id) }}" class="ms-1">Show all bookings</a>
+            </div>
+        </div>
+    @endif
+
     <div class="card mb-3">
         <div class="card-body">
             <div class="d-flex flex-wrap justify-content-between gap-3">
@@ -115,7 +132,16 @@
                                     </div>
                                 </td>
                                 <td>{{ $event->event_date?->format('d M Y') }}</td>
-                                <td><span class="badge bg-light text-dark fs-12">{{ $event->status }}</span></td>
+                                {{-- Pehle yahan kaccha khaana chhapta tha
+                                     ("production_ready") aur rang bhi alag tha.
+                                     Ab naam aur rang dono model se — wohi jo
+                                     bookings ki fehrist aur Balances dikhati
+                                     hain. --}}
+                                <td>
+                                    <span class="badge bg-{{ \App\Models\Tenant\CateringEvent::statusBadge($event->status) }} fs-12">
+                                        {{ \App\Models\Tenant\CateringEvent::statusLabel($event->status) }}
+                                    </span>
+                                </td>
                                 <td class="text-end">{{ number_format($row['billed'], 2) }}</td>
                                 <td class="text-end">{{ number_format($row['received'], 2) }}</td>
                                 <td class="text-end">

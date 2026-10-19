@@ -10,6 +10,7 @@ use App\Models\Tenant\CateringProductionRelease;
 use App\Models\Tenant\CateringSetting;
 use App\Models\Tenant\Printer;
 use App\Services\Catering\CateringDocumentPrintService;
+use App\Services\Catering\CateringDocumentQueueService;
 use App\Services\Catering\CateringFinancialPositionService;
 use App\Services\Catering\CateringProductionReleaseService;
 use Dompdf\Dompdf;
@@ -183,9 +184,15 @@ class CateringDocumentController extends Controller
      */
     public function printEstimate(Request $request, CateringEstimate $cateringEstimate)
     {
-        return $this->queueDocument($request, fn (Printer $printer, string $lang, bool $reprint) => app(CateringDocumentPrintService::class)
-            ->queueEstimate($cateringEstimate, $printer, $lang, $request->user()?->id, $reprint));
+        return $this->queueDocument($request, fn (Printer $printer, string $lang, bool $reprint) => $printer->printer_type === Printer::TYPE_WINDOWS
+            // A4/A5 par poora document — Urdu samet, agent ke Chrome se.
+            ? app(CateringDocumentQueueService::class)
+                ->queueQuotation($cateringEstimate, $printer, $request->user()?->id, $reprint)
+            // Thermal par wohi purana English slip — ek harf nahi badla.
+            : app(CateringDocumentPrintService::class)
+                ->queueEstimate($cateringEstimate, $printer, $lang, $request->user()?->id, $reprint));
     }
+
 
     public function printFinalInvoice(Request $request, CateringFinalInvoice $cateringFinalInvoice)
     {
@@ -213,7 +220,13 @@ class CateringDocumentController extends Controller
         // Refuse rather than emit bytes the printer cannot render. Saying no
         // here is the honest outcome; a page of mojibake would look like the
         // feature worked.
-        if (! app(CateringDocumentPrintService::class)->supportsThermal($lang)) {
+        //
+        // CATERING-SEND-TO-PRINTER-1 — magar ye shart SIRF THERMAL par lagti
+        // hai. A4/A5 printer par document agent ke Chrome se banta hai, is liye
+        // wahan Urdu bilkul theek chhapti hai. Yahan wo rok laga chhorna us
+        // feature ko maar dena hota jis ke liye ye poora kaam hua hai.
+        if ($printer->printer_type !== Printer::TYPE_WINDOWS
+            && ! app(CateringDocumentPrintService::class)->supportsThermal($lang)) {
             return back()->withErrors([
                 'print' => 'Thermal printing is English only — this transport cannot render Urdu. '
                     .'Use the A4 document for Urdu or bilingual output.',

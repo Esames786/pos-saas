@@ -24,6 +24,22 @@
                     <div class="col-md-3"><small class="text-muted d-block">Entry Date</small>{{ optional($journalEntry->entry_date)->format('Y-m-d') }}</div>
                     <div class="col-md-3"><small class="text-muted d-block">Source</small>{{ str_replace('_', ' ', $journalEntry->source_type ?? '—') }}</div>
                     <div class="col-md-3"><small class="text-muted d-block">Source #</small>{{ $journalEntry->source_no ?: '—' }}</div>
+                    {{-- JOURNAL-EVENT-REF-1: an accountant opening a catering journal could not tell
+                         which event it was for. Linked only when the user may open the booking —
+                         Accounts users often hold no catering permission — but the number always shows. --}}
+                    @if($event ?? null)
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Event</small>
+                            @can('tenant.catering.events.show')
+                                <a href="{{ url('/catering/events/' . $event['event_id']) }}">{{ $event['event_no'] }}</a>
+                            @else
+                                {{ $event['event_no'] }}
+                            @endcan
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted d-block">Customer</small>{{ $event['customer_name'] ?: '—' }}
+                        </div>
+                    @endif
                     <div class="col-md-3"><small class="text-muted d-block">Posted By</small>{{ $journalEntry->postedBy->name ?? '—' }}</div>
                     <div class="col-12"><small class="text-muted d-block">Description</small>{{ $journalEntry->description }}</div>
                     @if($journalEntry->reversedEntry)

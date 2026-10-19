@@ -8,7 +8,24 @@
 
 <div class="doc-meta">
     <span>{{ $businessName }} — {{ $t('KITCHEN / SERVICE SHEET', 'کچن شیٹ') }}</span>
-    <span>{{ $release->release_no }} · {{ $release->released_at->format('d M Y g:i A') }}</span>
+    {{-- KITCHEN-SHEET-OWN-BARE-1 (2 Oct) — client: "preview wali line hata
+         do, us ki jagah print time likh do."
+
+         Pehle yahan parche ke BANNE ka waqt aata tha, aur preview par us ke
+         saath lafz PREVIEW bhi. Deewar par laga parcha do tareekhein dikha
+         raha tha — ek event ki, ek yahan ki — aur bawarchi ko sirf PEHLI se
+         kaam hai. Ab yahan sirf CHHAPNE ka waqt hai, saaf lafzon ke saath
+         ke ye kya hai.
+
+         Release number rehta hai: wohi ek cheez hai jis se ye parcha apne
+         record se milaya ja sakta hai. --}}
+    {{-- `dir="ltr"` LAZMI: is satar me Urdu lafz aur Latin tareekh saath
+         hain, aur RTL safhe par wo ulti tarteeb me lag kar
+         "Oct 2026 6:55 PM 02 · چھپا" ban jati thi. Ye wohi bidi kharabi hai
+         jo waqt, miqdaar, maal aur PARTY ke dabbe par pehle pakri ja chuki
+         hai — ab paanchwin jagah. Jahan bhi RTL safhe par adad aur harf
+         saath likhe jayen, unhe apna LTR khaana chahiye. --}}
+    <span dir="ltr">{{ $release->exists ? $release->release_no.' · ' : '' }}{{ $t('Printed', 'چھپا') }} {{ app(\App\Support\TenantClock::class)->now()->format('d M Y g:i A') }}</span>
 </div>
 
 {{-- KITCHEN-SHEET-PREVIEW-1 — is parche ka sab se ahem hissa.
