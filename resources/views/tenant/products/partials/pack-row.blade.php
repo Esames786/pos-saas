@@ -24,7 +24,7 @@
                 <input id="pack-{{ $i }}-price" name="packs[{{ $i }}][price]" data-f="price" inputmode="decimal"
                        class="form-control @error('packs.' . $i . '.price') is-invalid @enderror" value="{{ $row['price'] ?? '' }}" placeholder="Auto">
             </div>
-            <div>
+            <div class="pack-bc">
                 <label class="form-label" for="pack-{{ $i }}-barcode">Barcode on this pack</label>
                 <div class="input-group">
                     <input id="pack-{{ $i }}-barcode" name="packs[{{ $i }}][barcode]" data-f="barcode" inputmode="numeric" autocomplete="off"

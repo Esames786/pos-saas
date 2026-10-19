@@ -2600,6 +2600,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (candidate) terminalEl.value = candidate;
         updateTerminalWarning();
+        // The header ("Branch · Terminal") was written before this pick and said "No terminal".
+        if (window.__posUpdateContext) window.__posUpdateContext();
     }
 
     if (terminalEl) {
@@ -7284,6 +7286,8 @@ document.addEventListener('DOMContentLoaded', function () {
         const el = $id(id);
         if (el) el.addEventListener('change', updateContextSummary);
     });
+    // Also called when the page picks the terminal by itself (autoSelectTerminal), whichever runs first.
+    window.__posUpdateContext = updateContextSummary;
     updateContextSummary();
 
     /* modal opens: clean slate, focused on the one box */
