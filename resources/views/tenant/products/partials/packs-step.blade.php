@@ -36,7 +36,7 @@
 @endpush
 
 <fieldset class="step" id="packs-step">
-    <legend>4. Packs</legend>
+    <legend>Packs</legend>
     <span class="ur">پیک — ڈبہ، پتہ، گولی</span>
 
     <div class="q" data-q="packs">

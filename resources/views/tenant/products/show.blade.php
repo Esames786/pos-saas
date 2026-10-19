@@ -208,7 +208,7 @@
     <div class="card mb-4">
         <div class="card-header d-flex align-items-center justify-content-between">
             <strong>Packs</strong>
-            @can('tenant.products.edit')<a href="{{ url('/products/' . $product->id . '/edit') }}#packs-step" class="btn btn-sm btn-outline-primary">Change packs</a>@endcan
+            @can('tenant.products.edit')<a href="{{ url('/products/' . $product->id . '/edit') }}#packs" class="btn btn-sm btn-outline-primary">Change packs</a>@endcan
         </div>
         <div class="table-responsive">
             <table class="table table-sm mb-0 align-middle">

@@ -90,14 +90,53 @@ class PackUnitsMySqlTest extends MySqlTenantTestCase
         $this->setTenant(['product_screen_v2' => true, 'packs' => false]);
         $off = $this->page('/products/create')->assertOk()->getContent();
         $this->assertStringNotContainsString('id="packs-step"', $off);
-        $this->assertStringContainsString('4. Code and barcode', $off, 'without packs the screen is exactly as before');
+        $this->assertSame(['type', 'details', 'selling', 'code', 'review'], $this->tabsOf($off), 'without packs: no Packs tab');
 
         $this->setTenant(['product_screen_v2' => true, 'packs' => true]);
         $on = $this->page('/products/create')->assertOk()->getContent();
         $this->assertStringContainsString('id="packs-step"', $on);
         $this->assertStringContainsString('Does it come in packs?', $on);
         $this->assertStringContainsString('Tablet → Strip → Box', $on, 'the pharmacy quick start');
-        $this->assertStringContainsString('5. Code and barcode', $on);
+        $this->assertSame(['type', 'details', 'selling', 'packs', 'code', 'review'], $this->tabsOf($on));
+    }
+
+    /**
+     * PRODUCT-SCREEN-TABS-1: one row of tabs, each tab pointing at a panel that is on the page (ARIA tabs);
+     * only the first panel shows at load; one form and one save bar for all of them.
+     */
+    public function test_the_screen_is_tabs_over_one_form_with_one_save_bar(): void
+    {
+        $html = $this->page('/products/create')->assertOk()->getContent();
+        $this->assertSame(1, substr_count($html, 'role="tablist"'));
+        foreach ($this->tabsOf($html) as $i => $key) {
+            $this->assertMatchesRegularExpression('/id="tab-' . $key . '" aria-controls="tp-' . $key . '" aria-selected="' . ($i === 0 ? 'true' : 'false') . '"/', $html);
+            $this->assertMatchesRegularExpression('/<section class="tp" id="tp-' . $key . '" role="tabpanel" aria-labelledby="tab-' . $key . '" tabindex="-1"' . ($i === 0 ? '>' : ' hidden>') . '/', $html, "{$key} panel");
+        }
+        // One form holds every panel: switching tabs never loses what was typed, one Save sends it all.
+        $start = strpos($html, 'id="pv2-form"');
+        $end = strpos($html, '</form>', $start);
+        $this->assertSame(1, substr_count($html, 'id="pv2-form"'));
+        foreach ($this->tabsOf($html) as $key) {
+            $at = strpos($html, 'id="tp-' . $key . '"');
+            $this->assertTrue($at > $start && $at < $end, "{$key} panel is inside the product form");
+        }
+        $this->assertTrue(strpos($html, 'class="savebar"') < $end, 'the save bar is inside the product form too');
+        $this->assertStringContainsString('class="savebar"', $html);
+        $this->assertStringContainsString('id="pv2-review"', $html, 'the Review tab lists every answer');
+        $this->assertStringContainsString('Ctrl + Enter saves', $html);
+
+        // The edit screen is the same tabs, and the product page's "Change packs" opens the Packs tab.
+        $p = $this->saved('Tabbed Edit', [['Strip', '10']]);
+        $this->assertSame(['type', 'details', 'selling', 'packs', 'code', 'review'], $this->tabsOf($this->page('/products/' . $p->id . '/edit')->getContent()));
+        $this->assertStringContainsString('/products/' . $p->id . '/edit#packs"', $this->page('/products/' . $p->id)->getContent());
+    }
+
+    /** @return list<string> the tab keys, in order */
+    private function tabsOf(string $html): array
+    {
+        preg_match_all('/role="tab" id="tab-([a-z]+)"/', $html, $m);
+
+        return $m[1];
     }
 
     // ── what a save writes ────────────────────────────────────────────────────────────────────────
