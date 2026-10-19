@@ -13,8 +13,9 @@ use App\Models\Master\Tenant;
 final class TenantFeatures
 {
     public const PRODUCT_SCREEN_V2 = 'product_screen_v2';
+    public const PACKS = 'packs';
 
-    /** @return array<string, array{label:string, says:string, where:string}> */
+    /** @return array<string, array{label:string, says:string, where:string, needs?:list<string>}> */
     public static function all(): array
     {
         return [
@@ -22,6 +23,13 @@ final class TenantFeatures
                 'label' => 'New product screen',
                 'says'  => 'One simple screen to add and edit products: pictures first, yes/no questions, code and barcode on the same screen.',
                 'where' => 'Products → Add / Edit',
+            ],
+            // PHARMACY-PACKS-1
+            self::PACKS => [
+                'label' => 'Packs (box · strip · tablet)',
+                'says'  => 'Say how an item is packed — 1 box = 10 strips, 1 strip = 10 tablets — with a price and a barcode for each pack. Stock is still counted in the smallest unit.',
+                'where' => 'Products → Add / Edit (new product screen)',
+                'needs' => [self::PRODUCT_SCREEN_V2],
             ],
         ];
     }

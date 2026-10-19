@@ -89,6 +89,18 @@ class TenantBusinessService
     /** @param array<string,bool> $wanted every known switch, on or off */
     public function setFeatures(Tenant $tenant, array $wanted, ?int $userId): int
     {
+        // A switch that builds on another (Packs live inside the new product screen) cannot be on alone.
+        $all = TenantFeatures::all();
+        foreach ($all as $key => $f) {
+            foreach ($f['needs'] ?? [] as $need) {
+                if (! empty($wanted[$key]) && empty($wanted[$need])) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'features' => '"' . $f['label'] . '" needs "' . ($all[$need]['label'] ?? $need) . '" — switch that on too, or leave both off.',
+                    ]);
+                }
+            }
+        }
+
         $current = $tenant->features ?? [];
         $changed = 0;
         DB::connection('master')->transaction(function () use ($tenant, $wanted, $userId, &$current, &$changed) {

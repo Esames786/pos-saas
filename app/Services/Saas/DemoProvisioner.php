@@ -111,7 +111,9 @@ class DemoProvisioner
                 'trial_ends_at' => $farFuture,
                 'primary_business' => self::PRIMARY_BUSINESS[$industry] ?? null,
                 // Demos show the newest screens; live customers get them when the owner switches them on.
-                'features'      => [\App\Support\TenantFeatures::PRODUCT_SCREEN_V2 => true],
+                // The pharmacy demo also shows packs (box / strip / tablet) — PHARMACY-PACKS-1.
+                'features'      => [\App\Support\TenantFeatures::PRODUCT_SCREEN_V2 => true]
+                    + ((self::PRIMARY_BUSINESS[$industry] ?? null) === \App\Support\Business::PHARMACY ? [\App\Support\TenantFeatures::PACKS => true] : []),
             ]);
 
             TenantDomain::create([

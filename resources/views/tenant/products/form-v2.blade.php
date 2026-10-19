@@ -296,8 +296,12 @@
                     </div>
                 </fieldset>
 
+                @if($packsOn)
+                    @include('tenant.products.partials.packs-step')
+                @endif
+
                 <fieldset class="step">
-                    <legend>4. Code and barcode</legend>
+                    <legend>{{ $packsOn ? '5' : '4' }}. Code and barcode</legend>
                     <span class="ur">کوڈ اور بارکوڈ</span>
                     <div class="row g-3 mt-1">
                         <div class="col-md-6">
@@ -429,6 +433,7 @@
         if (val('_recipe')) w.push('When it sells, the items in its recipe are taken out of stock.');
         if (c.medicine) w.push('The counter will find it by its salt too.');
         if (val('_barcode')) w.push('Scanning its barcode at the counter adds it to the bill.');
+        if (window.pv2PackWhat) window.pv2PackWhat().forEach(function (t) { w.push(t); });
         if (val('_tax')) w.push('Tax is added on every sale.');
         var list = document.getElementById('what-list'); list.innerHTML = '';
         w.forEach(function (t) { var li = document.createElement('li'); li.textContent = t; list.appendChild(li); });
@@ -458,9 +463,25 @@
         var svg = ean13Svg(v);
         box.innerHTML = svg || '<span class="help">Saved as typed (' + v.replace(/[<>&]/g, '') + '). Labels print best with a 13-digit EAN code.</span>';
     }
-    document.getElementById('make-barcode').addEventListener('click', function () {
+    // Shared with the Packs step (each pack has its own barcode and labels).
+    window.pv2MakeEan = function () {
         var d = '20'; for (var i = 0; i < 10; i++) d += Math.floor(Math.random() * 10);
-        document.getElementById('barcode').value = d + checkDigit(d);
+        return d + checkDigit(d);
+    };
+    window.pv2PrintLabels = function (code, name, price) {
+        var svg = ean13Svg(code);
+        if (!svg) { alert('Make or scan a 13-digit barcode first.'); return; }
+        var n = Math.max(1, Math.min(200, parseInt(document.getElementById('label-count').value, 10) || 1));
+        name = (name || '').replace(/[<>&]/g, '');
+        price = String(price || '').replace(/[<>&]/g, '');
+        var one = '<div class="lb"><div class="n">' + name + '</div>' + svg + (price ? '<div class="p">Rs ' + price + '</div>' : '') + '</div>';
+        var w = window.open('', '_blank', 'width=800,height=600');
+        if (!w) { alert('Allow pop-ups to print labels.'); return; }
+        w.document.write('<!doctype html><title>Labels</title><style>body{margin:8mm;font-family:Arial,sans-serif}.lb{display:inline-block;width:50mm;height:30mm;margin:1mm;padding:1mm;border:1px dashed #ccc;text-align:center;overflow:hidden;box-sizing:border-box}.lb svg{width:100%;height:17mm}.n{font-size:9pt;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.p{font-size:10pt;font-weight:bold}@media print{.lb{border:none}}</style>' + new Array(n + 1).join(one) + '<script>window.onload=function(){window.print()}<\/script>');
+        w.document.close();
+    };
+    document.getElementById('make-barcode').addEventListener('click', function () {
+        document.getElementById('barcode').value = window.pv2MakeEan();
         document.getElementById('_barcode_made').value = '1';
         refresh();
         document.getElementById('barcode').focus();
@@ -470,16 +491,8 @@
         var s = document.getElementById('sku'); s.value = NEXT[card().key] || ''; s.focus();
     });
     document.getElementById('print-labels').addEventListener('click', function () {
-        var code = (document.getElementById('barcode').value || '').trim(), svg = ean13Svg(code);
-        if (!svg) { alert('Make or scan a 13-digit barcode first.'); return; }
-        var n = Math.max(1, Math.min(200, parseInt(document.getElementById('label-count').value, 10) || 1));
-        var name = (document.getElementById('name').value || '').replace(/[<>&]/g, '');
-        var price = (document.getElementById('default_selling_price') || {}).value || '';
-        var one = '<div class="lb"><div class="n">' + name + '</div>' + svg + (price ? '<div class="p">Rs ' + price.replace(/[<>&]/g, '') + '</div>' : '') + '</div>';
-        var w = window.open('', '_blank', 'width=800,height=600');
-        if (!w) { alert('Allow pop-ups to print labels.'); return; }
-        w.document.write('<!doctype html><title>Labels</title><style>body{margin:8mm;font-family:Arial,sans-serif}.lb{display:inline-block;width:50mm;height:30mm;margin:1mm;padding:1mm;border:1px dashed #ccc;text-align:center;overflow:hidden;box-sizing:border-box}.lb svg{width:100%;height:17mm}.n{font-size:9pt;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.p{font-size:10pt;font-weight:bold}@media print{.lb{border:none}}</style>' + new Array(n + 1).join(one) + '<script>window.onload=function(){window.print()}<\/script>');
-        w.document.close();
+        window.pv2PrintLabels((document.getElementById('barcode').value || '').trim(),
+            document.getElementById('name').value || '', (document.getElementById('default_selling_price') || {}).value || '');
     });
 
     form.addEventListener('change', function (e) {
