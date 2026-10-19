@@ -1,6 +1,201 @@
 # ONLINE-ORDERING-1 — Tenant ki apni ordering website (pehle Kashif Food)
 
-Date: 2026-10-14 (do round ke faisle) · Status: **plan, abhi kuch bana nahi** · Research: `docs/research/kashiffood-website/`
+Date: 2026-10-14 (teen round ke faisle) · Status: **Phase 1–4b bane (branch `feat/online-ordering-20261014`,
+push/deploy NAHI; Phase 5 ka app hissa bhi bana, server hissa go-live par)** · Research: `docs/research/kashiffood-website/`
+
+## 0. Phase 1 — jo bana (15 Oct)
+
+- Master `platform_settings` + `BillingRates` (WhatsApp rate/laagat, website commission %); WhatsApp ke teeno
+  parhne wale isi se; platform admin → **Billing Rates** screen. Pehli bharai `.env` ki maujooda qeemat se.
+- Master `geo_areas`: Karachi ke 74 areas (75 me "FB Area Block 7" do dafa tha).
+- Module `online_ordering` (kisi plan par khud nahi; `ROLLOUT_GATED_MODULE_KEYS`). MasterSeeder ka purana
+  quick_sale/standard loop aur teeno onboard commands ab gated modules ko na on karte na off.
+- Tenant: `web_settings`, `web_order_routes`, `delivery_zones`, `products/combos.website_price`.
+- Screens: **Online Ordering → Website Settings** (on/off, branch tareeqa, ETA, waqt, order type → terminal +
+  backup, auto-cancel, WhatsApp toggles, contact) aur **Delivery Areas** (master list, tick, branch, fee,
+  min order, free above, ETA). Website bina delivery terminal ke on nahi hoti.
+- Product + deal form par **Website Price** (sirf module wale plan par; khaana na ho to save purani qeemat
+  nahi mitata; POS qeemat kabhi nahi chhuti).
+- `online-ordering:import-areas {tenant} {file} --branch= [--yes]` — purani website ki area JSON se fees
+  (dry run default; duplicate par pehla rakhta hai aur batata hai).
+- (Phase 1 me `show_on_website` nahi tha — Phase 2a ke faisle ke baad aaya, neeche.)
+
+## 0b. Phase 2a — website menu MOJOODA catalog se (owner, 15 Oct)
+
+Owner ke sawal/faisle: "alag website product ya category screen to nahi ban rahe? catalog ki screen pehle se hai";
+"live ke baad modifier web ki tarah add karoge to POS par reflection aayegi?"; "recall par modifier chalega?";
+**"bas mera POS kharab na ho is poore website ke process me"**.
+
+- **Koi nayi screen nahi.** Category, product aur deal ki mojooda screens par "Website" hissa (sirf module wale
+  plan par): show on website, card naam + size label (aik card naam = aik card ke sizes), website category
+  (khaali = POS category; POS ki tarteeb nahi badalti), tag, Popular Items, website order, **website photo aur
+  website description alag** (POS tile apni tasveer rakhta hai — product ki POS photo POS tile par dikhti hai,
+  website ki tasveerein waha daalne se counter badal jata), website price (Phase 1). Category: show on website,
+  website naam, tarteeb, waqt (Midnight 00:00–04:00).
+- **Add-ons = POS ke Modifier Groups**, har group par "Show on: POS only / Website only / POS + Website"
+  (`modifier_groups.channel`, default `pos` → har mojooda group waisa hi). "Website only" group POS ko bheja hi
+  nahi jata (`POSController` filter) — cashier ko koi naya popup nahi. Deal par group sirf website ke liye
+  (`combo_modifier_group`).
+- **Recall:** POS cart modifiers order line ke SAVED data se banata hai (product ke groups se nahi), server bhi
+  line ke modifiers waise hi save karta hai, KOT/bill par chhapte hain → website-only modifier recall/hold/KOT
+  par chalega. Kami: line ka "modifier edit" (pencil) sirf POS groups dikhata hai → Phase 3 me recall kiye
+  website order par website groups bhi dikhayenge.
+- Kashif Food POS me aaj sirf 1 modifier group: "Steak Side" (French Fries / Vegetable Rice, muft, 6 steaks),
+  30 din me 0 dafa use. Deals par POS modifier ka nizam nahi tha.
+- `online-ordering:import-menu {tenant} {menu} --map= --crawl= --images= [--yes]`: sirf `website_*`,
+  show_on_website, "Website only" groups aur pivots likhta hai; POS naam/qeemat/tasveer/category kabhi nahi.
+- **Read-only "Website Menu" preview** (edit nahi): menu jaisa customer dekhega + "POS par hai, website par nahi".
+- **POS safety rule:** har column ikhtiyari, default = aaj ka rawayya; POS par sirf aik server-side filter;
+  har commit se pehle POS ke saare tests (POS, held/recall, drafts, deals, modifiers, KOT/printing, sales,
+  shifts, tables, delivery, riders, reset — 664). Edge (live nahi) abhi nahi chhua: **Edge live karne se pehle
+  bootstrap me `modifier_groups.channel` bhejna zaroori**, warna Edge POS par website-only group dikhega.
+- Tests: `OnlineOrderingSetupMySqlTest` (14), `BillingRatesScreenMySqlTest` (4), `WhatsAppUsageLedgerMySqlTest`
+  (13, rate wala hissa naya). Sabotage: 5 guards toR kar dekhe, har aik ne apna test laal kiya.
+- **Prod par activation ke qadam (jab malik kahe):** deploy → `kashif_restaurant` plan par module on →
+  `online-ordering:import-areas kashiffood <webarea.json> --branch=MAIN` (pehle dry run) → Website Settings me
+  Delivery terminal → Sting/Al-Faham website price. (**Midnight Deal 17 prod par bana diya 15 Oct: combo #76 `KF-MID-GARLICSHASH`**, #75 ki cheezein, Midnight, 1,550.)
+
+## 0c. Phase 2c/3 — website order POS par: code se nikli haqeeqatein (15 Oct, read-only trace)
+
+- **Likhne ka raasta:** draft/held sirf `HeldSaleController::store()` me likha jata hai (inline, HTTP + logged-in
+  user par mabni; koi service nahi). Status hamesha `held`, draft = `is_draft=true`. KOT **browser** bhejta hai
+  (Hold ke baad `/printing/jobs/kot/{sale}`), server nahi — server par bana draft KOT nahi bhejta; cashier ke Hold
+  par poori KOT jati hai (`kot_sent_quantity=0`).
+- **⚠ Mera pehla bayan ghalat tha:** "server Held par rider nullable leta hai" — sach ye hai ke
+  `validateDeliveryAttribution` **own channel ke delivery order par rider LAZMI** karta hai (Hold par bhi).
+  Faisla: POS ka code nahi badlega — cashier ka Hold/Pay waise hi rider maangega (malik ka usool). Sirf
+  website ka apna service (draft banana, aur WhatsApp link se auto-Held) bina rider ke likhta hai; rider phir
+  website modal se mojooda "rider badlo" endpoint (`tenant.sales-orders.rider.update`) se.
+- **Website order ka service:** `WebsiteOrderService` — POS draft jaisi HUBAHU rows (header + lines, deal =
+  `combo_header` poori qeemat + `component` 0 par, modifiers JSON `{modifier_group_id, modifier_group_name,
+  modifier_id, name, price_delta}`, `unit_price` me modifier shamil), routed terminal + us ki KHULI shift,
+  business_date shift ka, sale_no `HS-…`, `order_source='website'` (enum migration), channel "Website",
+  customer `CustomerDirectory::findOrCreateByPhone`, address snapshot. Guard test: **aik hi cart POS ke
+  HeldSaleController se aur website service se — line rows barabar** (ids/waqt chhoR kar).
+- **Recall par jo mit jata hai (POS ke 3 write paths):** re-Hold `notes`/`customer_email` null kar deta hai; Pay
+  `order_source` ko `pos` likh deta hai aur terminal/shift paying counter par le jata hai. Is liye: website ki
+  saari tafseel (pin, landmark, customer note, website token) **alag column `web_meta` (JSON)** me jise POS
+  kabhi nahi likhta; aur **Pay par `order_source='website'` bacha rahe** (SalesOrderController me aik shart +
+  test) — warna commission aur reports se website order gayab.
+- **Delivery fee:** branch par `delivery_charge_locked` ho to POS re-Hold/Pay par fee branch default se badal
+  deta hai → website order ki area fee mit jayegi. **Kashif Food (prod, 15 Oct): lock OFF**, default 0 — fee
+  har order par likhi jati hai (30 din: 3,008 delivery orders, 1,261 par fee). Is liye abhi exception ki zaroorat
+  nahi; lock wale tenant ke liye baad me.
+- **"Website" channel pehle se hai** Kashif Food par (id 3, `own`, 0%) — shayad aaj website (indolj) ke order
+  cashier haath se isi par daalte hain. Naya channel NAHI banana; naam "Website" wala dhoondo, na ho to banao.
+  Purane haath wale orders `order_source='pos'` hain → 1% commission sirf nayi website (`order_source='website'`) par.
+- Kashif Food: 9 active riders; terminal T1 ka naam hi "Delivery" hai.
+- **Idempotency:** held path par koi nahi, aur `client_uuid` Pay par overwrite hota hai → website ka apna
+  `web_order_key` (unique).
+- **Held list:** `terminal_id` ke baghair order terminal-bound cashier ko dikhta hi nahi → routed terminal par
+  stamp. Held/draft order shift band hone ko rokta hai (mojooda usool) → bina dekhe koi website order nahi rehta.
+- **Auto-cancel:** `KotCancellationService::cancelHeldOrder` ko requesting user chahiye → system/owner user.
+
+## 0d. Asli domain (malik, 15 Oct): kashiffood.com = sirf ordering website, POS bingoopos par
+
+- `tenant_domains` me **domain ki qism**: `app` (POS/admin, `*.bingoopos.com`) aur `website` (client ka apna
+  domain, jaise `kashiffood.com` + `www`). Central ke "Domains" box me aaj sirf `____.bingoopos.com` banta hai —
+  wahan "Website domain" (poora domain) ka option + DNS ki hidayat (A record → server IP).
+- Tenant routes `Route::domain('{subdomain}.bingoopos.com')` par hain, is liye `kashiffood.com` un se match nahi
+  karta. Website domain ke liye **alag route group** jo host se tenant pehchane (sirf `website` qism ke domain)
+  aur **sirf** website ke public raaste khole (`/`, menu, checkout, order status) — login/POS/admin kabhi
+  nahi. `www` → bina-www par redirect.
+- Test ke liye website `kashiffood.bingoopos.com/order` par bhi (POS ke saath, login ke baghair public).
+- **Prod aaj (read-only, 15 Oct):** nginx ka aik hi site `bingoopos` — `server_name bingoopos.com *.bingoopos.com`,
+  root `/var/www/html/pos-saas/public`, aik cert `bingoopos.com` (HTTP-01, SAN list). `bingoo-cert-sync` master ke
+  active domains me se sirf `*.bingoopos.com` uthata hai, aur jo naam DNS par server ko point na kare usay
+  chhoR deta hai.
+- **SSL/nginx (mashwara):** har website domain ka **alag cert** (`--cert-name kashiffood.com`, `-d kashiffood.com
+  -d www.kashiffood.com`) aur alag nginx block (wohi root). Is tarah kisi client ki DNS ghalti `bingoopos.com` ke
+  cert ko kabhi na chhue. Pehli issue ke liye port 80 par aik default block jo `/.well-known/acme-challenge` serve
+  kare. cert-sync ko "website" qism ke domains ke liye aage barhana: DNS server par aaye → cert → nginx block →
+  `nginx -t` → reload.
+- **Cut-over:** test `kashiffood.bingoopos.com/order` par → platform admin me `kashiffood.com` "Website domain" →
+  client TTL kam kare aur sirf **A records** (apex + www) server IP par (nameservers/MX na badlen — email chalti
+  rahe) → cert-sync khud SSL + nginx → purani indolj site ke links (`/product/…`, `/category/…`) nayi pages par
+  301 redirect (Google ranking bache).
+- WhatsApp confirm link `https://bingoopos.com/o/{token}` (Meta template ka pakka base) → tenant ke website
+  domain ke confirm page par redirect.
+
+## 0e. Phase 2b–4b — jo bana (15 Oct, local; push/deploy NAHI)
+
+- **Website (2b):** `/order` (tenant ke subdomain par, login ke baghair) — purani tarteeb, area popup, item popup,
+  cart drawer, lazy images, scroll par halki animation (`prefers-reduced-motion` ka khayal), dobara aane wale
+  customer ka naam/number/pata browser me yaad. Menu `/order/menu` (JSON, throttle).
+- **Checkout (2c):** server qeemat khud nikalta hai (browser ki qeemat kabhi nahi), area → branch → terminal,
+  min order, delivery fee / free above, waqt aur staffed shift ki jaanch, customer `findOrCreateByPhone`.
+  Order = POS ka **Draft** (status `held`, `is_draft`), `order_source = website`, "Website" channel (own).
+  Lines/totals POS ke apne "Save as draft" jaise — test: dono raaste se aik hi cart, line-by-line barabar. Pay
+  `order_source` website hi rakhta hai. Dobara bheja checkout (`web_order_key`) dugna order nahi banata.
+- **POS (3):** Held Orders ke saath "Website" button (sirf module par) + ghanti; modal sirf **receive**: naye
+  Draft, Hold (rider lazmi — POS ka apna server rule), Recall (normal cart), Cancel. `online-ordering:auto-cancel`
+  har minute — client ki minute setting, OFF = kabhi nahi; sirf Draft, KOT gaya ho to haath nahi.
+- **WhatsApp + confirm link (4):** teen template (`web_order_received` + Confirm button, `web_order_confirmed`,
+  `web_order_cancelled`), har aik client ke toggle se; har message aik dafa (`web_meta.wa`); jawab bhejne ke
+  BAAD (customer/cashier ka intezar nahi); fail ho to register me `failed`, order kabhi nahi rukta; WhatsApp
+  lagaya hi na ho (token nahi) to koshish hi nahi — na row, na bill. Bill usi `whatsapp_messages` register me
+  (`source = website`, master rate). "Confirmed" message dono raaston se: link se, ya cashier ka apna Hold.
+  Cancel message: POS cancel aur auto-cancel dono.
+- **Confirm link:** button `https://bingoopos.com/o/{tenant}.{token}` → central `/o/…` (Meta ka `{{1}}` saath
+  aaye to bhi) → tenant ka `/order/confirm/{token}`. GET kuch nahi badalta (bots/preview); safha khud POST karta
+  hai. 30 minute; aik dafa; order Draft → Held (`is_draft` false) aur KOT POS ke apne print raaste
+  (`PrintJobService::queueKot`) se routed terminal par. Shift band ho to "hum jald confirm karenge" — order
+  waisa hi Draft. Rider phir bhi cashier Hold/Recall par chunta hai (link se Held hue order par "Rider baqi").
+- **1% + invoice lines (4b):** master `subscription_invoice_lines` (invoice → har service ki har din ki aik
+  line) aur `website_order_charges` (record: paid website order apne business din par, return apne din par
+  minus — wohi ginti jo sales report ka net sale). Aik mahana usage invoice (`addon`, draft → mahina khatam par
+  issued) me WhatsApp aur Website orders alag lines/subtotal. Total = SUM(lines), har raat record se dobara
+  (`UsageInvoiceService::refresh`) — koi command doosre ki lines nahi mitata. Khula mahina order cancel/return
+  par khud theek; band mahina nahi hilta, us ke baad ka return agle mahine minus.
+  Commands: `billing:website-commission [--month] [--tenant] [--yes]` (raat 03:40 PKT, WhatsApp 03:30 ke baad),
+  `billing:usage-lines-backfill [--tenant] [--yes]` (purani WhatsApp invoices ki lines — har invoice ka
+  SUM(lines) = purana total, warna kuch nahi likhta; total nahi chhuta). Dashboard card "Usage is mahine":
+  WhatsApp + Website orders alag (website na ho to purana WhatsApp card bilkul waisa). Tenant `/billing` aur
+  platform admin invoice par "Charges" (service subtotal, khol kar din-wise). `/whatsapp-usage` par "Website
+  orders (1%)". Naya "Website" channel `commission_percent` = 1 (sirf "By Channel" report; GL nahi — trace kiya).
+- **Deploy ke qadam (jab malik kahe):** migrate (master: lines/charges/whatsapp source; tenant: website fields) →
+  `billing:usage-lines-backfill` (dry run → `--yes`; saboot table dekhein) → module on → Kashif Food setup
+  (0b ka aakhri bullet) → Meta par 3 template approve (section 10) **phir** toggles on. Prod ka purana "Website"
+  channel (#3, own) reuse hota hai — us ka commission % malik ki marzi (aaj ka qeemat chhuyi nahi).
+- **15 Oct, malik ke round 2 ke baad:** POS "Website orders" chhota — har order aik line (tap par detail), tabs New / Confirmed /
+  Paid today / Cancelled today; Recall bina screen reload (Held Orders wala `recallHeldSale`). Website: area list me delivery
+  charges nahi (cart/checkout me dikhte hain); pehli dafa location khud maangi jati hai, "Use my current location" dobara
+  maangta hai (Block ho to allow karne ka tareeqa); OpenStreetMap (hamare server se, cache) naam se area, warna qareebi
+  (`geo_areas.lat/lng`, 5 km — malik); checkout par OSM map + draggable pin; "Cash on delivery" saaf (order par `web_meta.payment = cash`
+  + Cash payment method, notes me CASH ON DELIVERY). Menu import: jis section ki POS category nahi (Deals, Family Deals, Meals,
+  Midnight Deals…) wo ab chhoRa nahi jata — usi naam ki category, warna nayi "sirf website" (POS par tab nahi).
+- **Go-live ke naye qadam:** `online-ordering:geocode-areas --city=Karachi` (dry run → `--yes`, ~1 request/second) aur
+  `online-ordering:import-menu` prod ke catalog par (pehle dry run — deals ab saath aate hain).
+- **Abhi baqi:** server ka domain hissa (0f — go-live par), recall par website add-ons ka pencil, Edge bootstrap me
+  `modifier_groups.channel`, rider ke baad ka safar, pick-up order ke liye "confirmed" message ka apna template
+  (aaj ka template "delivery time" kehta hai — 99% orders delivery).
+
+## 0f. Phase 5 — client ka apna domain (bana 15 Oct, local; server ka hissa go-live par)
+
+- **App (bana, test):** `tenant_domains.kind` = `app` (POS/admin, aaj ke saare) | `website` (client ka domain).
+  Platform admin → tenant → Domains → **Add Website Domain** (jaisa bhi chipkayein — `https://www.KashifFood.com/menu`
+  → `kashiffood.com`; bingoopos.com ya us ka subdomain mana; website domain kabhi primary nahi, kyunke POS ke links
+  primary se bante hain).
+- `IdentifyTenant` (har request): website domain → `website.host` nishaan + session cookie usi host ka (warna prod ka
+  `.bingoopos.com` cookie browser rad karta aur checkout ka CSRF kabhi na chalta); `www.kashiffood.com` → 301
+  `kashiffood.com` (raasta + query saath).
+- Raaste: `routes/tenant.php` ke AAKHIR me domain se azad group `website.host` ke peeche — sirf `/` (website),
+  `/order` → `/`, `/order/menu.json`, checkout, status, confirm; purane indolj links `/product/…` `/category/…` → 301
+  `/`. Login/POS/admin/API client ke domain par 404. `bingoopos.com` aur `*.bingoopos.com` par kuch nahi badla
+  (test + `route:cache` ke saath curl se jaancha).
+- WhatsApp "Confirm Order" (`bingoopos.com/o/…`) ab client ke domain par le jata hai (ho to), warna subdomain.
+- **Server (go-live par, malik ki ijazat se — repo me nahi):**
+  1. Platform admin me `kashiffood.com` "Website domain" (status active).
+  2. Client DNS: sirf **A records** `@` aur `www` → `187.77.140.39` (TTL pehle kam); nameservers/MX nahi badalne.
+  3. `dig +short kashiffood.com` aur `www` = server IP — tab tak aage nahi.
+  4. Alag cert: `certbot certonly --webroot -w /var/www/html/pos-saas/public --cert-name kashiffood.com -d kashiffood.com -d www.kashiffood.com`
+     (bingoopos.com ka cert nahi chhuta).
+  5. Alag nginx block (`/etc/nginx/sites-available/website-kashiffood.com`): `server_name kashiffood.com www.kashiffood.com;`,
+     wohi `root` aur PHP-FPM block jo `bingoopos` site ka hai, cert `/etc/letsencrypt/live/kashiffood.com/`; 80 → 443.
+     `nginx -t` → reload.
+  6. Smoke: `https://kashiffood.com/` website; `/login` 404; `https://www.kashiffood.com/` → 301; `/product/x` → 301;
+     `https://kashiffood.bingoopos.com/login` waisa hi.
+  7. Baad me (ikhtiyari): `bingoo-cert-sync` ko website domains ke liye aage barhana (yahi 4–5 khud).
 
 ## 1. Ek line me
 
@@ -232,7 +427,7 @@ base URL hamara apna domain, aakhir me token: `https://bingoopos.com/o/{{1}}`. O
 1. **`web_order_received`** (Draft) — Body: `Hi {{1}}, thank you for ordering from {{2}}. Your order {{3}} for Rs {{4}}
    has been received. Please tap Confirm Order below so our kitchen can start preparing it. If you did not place this
    order, please ignore this message.` · Button (URL, dynamic): **Confirm Order** → `https://bingoopos.com/o/{{1}}`
-   · Samples: Ahmed · Kashif Foods · HS-1023 · 1,550 · button: `a8F3kQ`
+   · Samples: Ahmed · Kashif Foods · HS-1023 · 1,550 · button: `kashiffood.a8F3kQ…` (tenant code + 40 harf token)
 2. **`web_order_confirmed`** (Held) — Body: `Hi {{1}}, your order {{2}} from {{3}} is confirmed and our kitchen has
    started. Estimated delivery time is {{4}} minutes. For any help, call us at {{5}}. Thank you.` · Samples: Ahmed ·
    HS-1023 · Kashif Foods · 45 · 0300 0000000

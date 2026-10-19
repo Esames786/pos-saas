@@ -101,8 +101,8 @@ class WhatsAppBackfillUsageCommand extends Command
         }
 
         // ── 4. Dikhao ─────────────────────────────────────────────────────────────────────────
-        $rate = (float) config('services.whatsapp.rate_pkr');
-        $cost = (float) config('services.whatsapp.cost_pkr');
+        $rate = app(\App\Services\Saas\BillingRates::class)->whatsappRatePkr();
+        $cost = app(\App\Services\Saas\BillingRates::class)->whatsappCostPkr();
         $grandBillable = 0;
         $grandAmount = 0.0;
 

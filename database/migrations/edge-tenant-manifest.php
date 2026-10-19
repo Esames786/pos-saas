@@ -2974,7 +2974,6 @@ return [
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_online_ordering_tables_upgrade_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'MIXED migration: adds products.website_price and combos.website_price (bootstrap sections, whole-row upsert) AND creates the Cloud-only web_settings / web_order_routes / delivery_zones tables, which stay EMPTY on the appliance (their models/controllers are excluded from the artifact). Recommend a canonical split next time.',
         ],
         '2026_10_14_000002_create_partner_share_tables' => [
@@ -3022,7 +3021,6 @@ return [
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_website_fields_on_catalog_upgrade_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'categories/products/combos/modifier_groups are bootstrap sections (whole-row upsert); ModifierGroup::channel is a model scope on the shared POS path; combo_modifier_group is a Combo relation table.',
         ],
         '2026_10_15_000002_add_website_order_fields_to_sales_orders' => [
@@ -3038,7 +3036,6 @@ return [
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_website_order_fields_on_sales_orders_upgrade_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'sales_orders is THE operational table: widens order_source ENUM (+website, raw ALTER, in-place) and adds nullable web_order_key/web_token (unique) + web_meta. The appliance never writes website orders; carried so a local sale row and a Cloud row keep the same shape. Unique index builds scan the table (medium lock risk on a large appliance DB — run while the branch is handed back).',
         ],
         '2026_10_16_000001_add_branding_to_web_settings' => [
@@ -3054,7 +3051,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Online ordering (web_settings exists empty on the appliance from the mixed create migration; never read there).',
         ],
         '2026_10_16_000002_add_popular_auto_to_web_settings' => [
@@ -3070,7 +3066,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Online ordering.',
         ],
         '2026_10_16_000003_add_terminal_ids_to_web_order_routes' => [
@@ -3086,7 +3081,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => true,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Online ordering; rewrites web_order_routes rows (data rewrite, Cloud only).',
         ],
         '2026_10_16_000004_add_places_to_delivery_zones' => [
@@ -3102,7 +3096,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Online ordering.',
         ],
         '2026_10_16_000005_add_seo_and_pages_to_web_settings' => [
@@ -3118,7 +3111,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Online ordering.',
         ],
         '2026_10_16_000006_create_delivery_zone_places_table' => [

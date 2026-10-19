@@ -402,6 +402,12 @@ class SalesOrderController extends Controller
                             'branch_id' => 'A recalled order cannot be moved to another branch.',
                         ]);
                     }
+                    // ONLINE-ORDERING-1: a website order stays a website order when the counter takes the
+                    // money. The POS form always posts order_source=pos; without this the order would
+                    // vanish from website reports and from the monthly website commission.
+                    if ($sale->order_source === 'website') {
+                        $saleFields['order_source'] = 'website';
+                    }
                     $existingLines = $sale->lines()->get()->keyBy('id');
                     $providedLineIds = collect($resolvedLines)->pluck('sales_order_line_id')->filter()
                         ->map(fn ($id) => (int) $id)->unique();

@@ -60,6 +60,9 @@ class EdgePosRuntimeFactory
         // (/edge/local/api/pos/reminder-pause via the shared ReminderPauseService + the `reminder` key on shift-status).
         // The shared print plumbing (PrintJobService / DirectPayPrintOrchestrator) already honours a paused shift row.
         'reminderPause' => false,
+        // CANONICAL MERGE (D8): ONLINE-ORDERING-1 — website orders need the Cloud (D4: Cloud-only; the bell renders disabled in the
+        // same slot with the hint, the inbox partial's polling never starts on a runtime without the route).
+        'websiteOrders' => false,
     ];
 
     /**
@@ -88,6 +91,7 @@ class EdgePosRuntimeFactory
         'shiftBranchWide' => 'Opening shifts for several terminals at once runs on the Online POS — this Branch Server opens the shift of its own terminal.',
         'shortageVoucher' => 'The shortage is recorded on this shift. The Branch Server does not raise the finance draft expense voucher; finance settles it from the shift record.',
         'reminderPause' => 'Pausing Reminder slips runs on the Online POS for now — this Branch Server prints reminders as configured.',
+        'websiteOrders' => 'Website orders arrive on the Online POS — a website order needs the Cloud, so this Branch Server does not take them.',
         'modeChip' => null,
         'connection' => null,
     ];
@@ -334,6 +338,10 @@ class EdgePosRuntimeFactory
             'purchaseReturnsPage' => $may([EdgeLocalPurchaseReturnService::PERM_STORE, EdgeLocalPurchaseReturnService::PERM_POST]) ? $p . '/purchase-returns' : null,
             // CANONICAL MERGE (D8): POS-REMINDER-PAUSE-1 — capability reminderPause (null until team D2 builds the twin).
             'reminderPause' => null,
+            // CANONICAL MERGE (D8): ONLINE-ORDERING-1 — capability websiteOrders (Cloud-only, D4).
+            'websiteOrders' => null,
+            'websiteOrderHold' => null,
+            'websiteOrderVerify' => null,
         ];
     }
 

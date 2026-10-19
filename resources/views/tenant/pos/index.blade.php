@@ -847,6 +847,23 @@
                             <i class="ti ti-layout-list"></i>
                         </button>
                     </div>
+                    {{-- ONLINE-ORDERING-1: website orders (bell + badge). Only on a plan with Online Ordering;
+                         stays hidden until this counter is routed for website orders or one is waiting.
+                         CANONICAL MERGE (D8): the inbox is the Cloud capability `websiteOrders` (owner D4: a website order needs the
+                         Cloud). The Online POS draws it for a plan with Online Ordering; a runtime without the capability draws the
+                         SAME slot disabled with the runtime hint (identical geometry — the slot stays hidden until routed). --}}
+                    @php
+                        $websiteOrdersSlot = $posRuntime->can('websiteOrders') ? \App\Support\OnlineOrdering::enabledForTenant() : true;
+                    @endphp
+                    @if($websiteOrdersSlot)
+                    <div class="col-auto" hidden>
+                        <button type="button" class="btn btn-outline-danger btn-lg px-3 position-relative" id="web-orders-btn"
+                                @disabled(! $posRuntime->can('websiteOrders')) title="{{ $posRuntime->can('websiteOrders') ? 'Website orders' : $posRuntime->capabilityHint('websiteOrders') }}">
+                            <i class="ti ti-world-www"></i>
+                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="web-orders-badge" hidden>0</span>
+                        </button>
+                    </div>
+                    @endif
                 </div>
                 <div class="row g-2">
                     <div class="col">
@@ -6946,8 +6963,17 @@ document.addEventListener('DOMContentLoaded', function () {
     updateRecalledBar();
     updateStartFreshLabel();
     if (_currentHeldSaleId) lockOrderControls();
+
+    // ONLINE-ORDERING-1: the website-orders inbox (its own script block) reuses the POS's OWN KOT-after-Hold,
+    // cancel and toast — so a website order is held, printed and cancelled exactly like a counter order.
+    window.posWebBridge = { handleKotAfterSale: handleKotAfterSale, cancelHeldSaleFromModal: cancelHeldSaleFromModal, toast: toast, recallHeldSale: recallHeldSale };
 });
 </script>
+{{-- CANONICAL MERGE (D8): same include rule as the bell slot (capability websiteOrders); the partial's own JS stops when the
+     runtime offers no websiteOrders route, so the Branch Server never polls a Cloud endpoint. --}}
+@if($websiteOrdersSlot ?? false)
+    @include('tenant.pos.partials.website-orders')
+@endif
 
 {{-- CUSTOMER-UX-2: one-box customer flow (search → attach, or type-and-add) + chip + charge defaults --}}
 <script>

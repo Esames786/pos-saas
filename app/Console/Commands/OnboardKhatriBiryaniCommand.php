@@ -153,7 +153,9 @@ class OnboardKhatriBiryaniCommand extends Command
             PlanModule::updateOrCreate(['plan_id' => $plan->id, 'module_id' => $id], ['is_enabled' => true]);
         }
         // everything NOT in the set is explicitly disabled (manufacturing, offline_edge, erp_extensions).
-        foreach (Module::whereNotIn('key', self::PLAN_MODULES)->get() as $off) {
+        // ONLINE-ORDERING-1: rollout-gated modules plan administration ka faisla — yahan se band nahi.
+        foreach (Module::whereNotIn('key', self::PLAN_MODULES)
+            ->whereNotIn('key', \Database\Seeders\MasterSeeder::ROLLOUT_GATED_MODULE_KEYS)->get() as $off) {
             PlanModule::updateOrCreate(['plan_id' => $plan->id, 'module_id' => $off->id], ['is_enabled' => false]);
         }
         foreach (self::PLAN_FEATURES as $key => $value) {

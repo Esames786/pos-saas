@@ -61,6 +61,9 @@ final class PosRuntime implements JsonSerializable
         // Cloud: /api/pos/reminder-pause; Edge: null (capability reminderPause off) until team D2 builds the Branch Server twin
         // through the shared ReminderPauseService. The view NEVER hard-codes the Cloud URL (owner: no Cloud literal in the shared view).
         'reminderPause',
+        // CANONICAL MERGE (D8) — ONLINE-ORDERING-1 (canonical bd84466d…): the POS website-orders inbox (list / hold / verify).
+        // Cloud: tenant.api.pos.website-orders*; Edge: null — a website order needs the Cloud (capability websiteOrders off, D4).
+        'websiteOrders', 'websiteOrderHold', 'websiteOrderVerify',
     ];
 
     /** Every capability flag the shared view may ask for. Factories MUST define all of them. */
@@ -70,6 +73,8 @@ final class PosRuntime implements JsonSerializable
         'salesReturn', 'shiftPages', 'promotions', 'tips', 'tableMerge', 'reservations', 'deadSessionRecovery', 'printHere',
         // CANONICAL MERGE (D8): POS-REMINDER-PAUSE-1 — pause / resume Reminder slips from the counter (Edge: off until D2).
         'reminderPause',
+        // CANONICAL MERGE (D8): ONLINE-ORDERING-1 — the website-orders inbox is a Cloud capability (D4: Cloud-only, same slot on Edge).
+        'websiteOrders',
     ];
 
     /**

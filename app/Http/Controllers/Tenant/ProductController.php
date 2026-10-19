@@ -89,6 +89,7 @@ class ProductController extends Controller
             'flagOptions' => self::FLAG_FILTERS,
             'chosenRoles' => $chosenRoles,
             'chosenFlags' => $chosenFlags,
+            'listsEveryKind' => $context === 'catalog' && ! $this->materialsHaveTheirOwnList(),
         ]);
     }
 
@@ -133,6 +134,9 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $data = $this->validated($request);
+        // ONLINE-ORDERING-1: website hissa pehle validate — POS product adhoora save na ho.
+        $website = app(\App\Services\OnlineOrdering\WebsiteFields::class);
+        $website->validate($request);
         $data['image_path'] = $this->handleImageUpload($request);
 
         $product = DB::transaction(function () use ($data, $request) {
@@ -174,6 +178,8 @@ class ProductController extends Controller
             return $product;
         });
 
+        $website->apply($request, $product);
+
         return redirect($this->productRedirectUrl($request, $product))->with('status', 'Product created successfully.');
     }
 
@@ -207,6 +213,9 @@ class ProductController extends Controller
     public function update(Request $request, Product $product)
     {
         $data = $this->validated($request, $product);
+        // ONLINE-ORDERING-1: website hissa pehle validate — POS product adhoora save na ho.
+        $website = app(\App\Services\OnlineOrdering\WebsiteFields::class);
+        $website->validate($request);
 
         // POS-UX-1: replace / remove the product image.
         if ($request->boolean('remove_image') && $product->image_path) {
@@ -237,6 +246,8 @@ class ProductController extends Controller
                 ]);
             }
         });
+
+        $website->apply($request, $product);
 
         return redirect($this->productRedirectUrl($request, $product))->with('status', 'Product updated successfully.');
     }
@@ -291,6 +302,8 @@ class ProductController extends Controller
             'product_type'           => ['required', Rule::in(['simple', 'recipe', 'hybrid', 'service'])],
             'default_purchase_price' => ['nullable', 'numeric', 'min:0'],
             'default_selling_price'  => ['required', 'numeric', 'min:0'],
+            // ONLINE-ORDERING-1: website ki apni qeemat; khaali = POS ki qeemat.
+            'website_price'          => ['nullable', 'numeric', 'min:0'],
             // KITCHEN-RECIPE-COST-1 recipe-costing pack fields
             'purchase_unit_id'       => ['nullable', 'exists:units,id'],
             'purchase_pack_size'     => ['nullable', 'numeric', 'min:0'],
@@ -366,7 +379,7 @@ class ProductController extends Controller
             $consumptionMethod = 'none';
         }
 
-        return [
+        $fields = [
             'category_id'            => $data['category_id'] ?? null,
             'unit_id'                => $data['unit_id'] ?? null,
             'sku'                    => strtoupper(trim($data['sku'])),
@@ -399,6 +412,14 @@ class ProductController extends Controller
             'shelf_life_days'             => isset($data['shelf_life_days']) ? (int) $data['shelf_life_days'] : null,
             'default_wastage_percent'     => $data['default_wastage_percent'] ?? 0,
         ];
+
+        // ONLINE-ORDERING-1: khaana sirf "Online Ordering" wale plan par dikhta hai. Jahan form par
+        // khaana hi nahi, wahan save purani website price ko mitaye nahi — sirf aane par likho.
+        if ($request->exists('website_price')) {
+            $fields['website_price'] = (isset($data['website_price']) && $data['website_price'] !== '') ? $data['website_price'] : null;
+        }
+
+        return $fields;
     }
 
     private function productContext(Request $request): string
@@ -458,6 +479,13 @@ class ProductController extends Controller
             return;
         }
 
+        // PRODUCT-LIST-EVERY-KIND-1 — the catalog hides ingredients and factory items because they
+        // have a list of their own. A restaurant plan has neither list, yet its Add screen offers
+        // "Ingredient / Raw Material": Khatri's ICE-BERG saved fine and then could be found nowhere.
+        if (! $this->materialsHaveTheirOwnList()) {
+            return;
+        }
+
         $query->where(function ($q) {
             $q->where('is_pos_visible', true)
                 ->orWhere('is_sellable', true)
@@ -478,6 +506,24 @@ class ProductController extends Controller
                     Product::KIND_FINISHED_GOOD,
                 ]);
         });
+    }
+
+    /**
+     * Can this user open Manufacturing Products or Catering Materials? Plan AND role, as the form's
+     * areas and the sidebar decide. With no tenant bound (only the test harness) the plan is unknown:
+     * yes, so the catalog keeps hiding them as it always did.
+     */
+    private function materialsHaveTheirOwnList(): bool
+    {
+        $subscription = app()->bound('tenant') ? app('tenant')->subscription : null;
+        if (! $subscription) {
+            return true;
+        }
+        $modules = $subscription->loadMissing('plan.enabledModules')->plan?->enabledModules->pluck('key')->all() ?? [];
+        $user = auth()->user();
+
+        return (in_array('manufacturing', $modules, true) && (bool) $user?->can('tenant.manufacturing.products.index'))
+            || (in_array('catering', $modules, true) && (bool) $user?->can('tenant.catering.materials.index'));
     }
 
     private function isCateringMaterials(Request $request): bool

@@ -269,6 +269,9 @@ class TenantResetTransactionsCommand extends Command
         // The managed kitchen-instruction vocabulary — how the kitchen is told
         // things, not what was sold. Master data, kept.
         'catering_instructions',
+        // ONLINE-ORDERING-1: the ordering website's setup — hours, which terminal rings,
+        // delivery areas and fees, deal add-ons. Configuration, not sales: kept.
+        'web_settings', 'web_order_routes', 'delivery_zones', 'combo_modifier_group',
     ];
 
     /** Tenant tables this command has no opinion about — surfaced as a warning. */

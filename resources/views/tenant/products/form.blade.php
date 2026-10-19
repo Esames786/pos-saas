@@ -705,6 +705,12 @@
             </div>
             </div>
 
+            {{-- ONLINE-ORDERING-1: website placement in its own card at the bottom (owner) — only on a plan with
+                 Online Ordering, and never changes the POS. No pf class: the card-type script leaves it alone. --}}
+            @if(\App\Support\OnlineOrdering::enabledForTenant())
+                @include('tenant.partials.website-fields', array_merge(['model' => $product, 'kind' => 'product'], \App\Services\OnlineOrdering\WebsiteFields::formData()))
+            @endif
+
             <div class="mt-4 d-flex gap-2">
                 <button type="submit" class="btn btn-primary">Save Product</button>
                 <a href="{{ $backUrl }}" class="btn btn-light">Cancel</a>

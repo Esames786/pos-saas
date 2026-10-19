@@ -80,6 +80,8 @@ $app = Application::configure(basePath: dirname(__DIR__))
             'public.locale' => \App\Http\Middleware\SetPublicLocale::class,
             'public.suggest' => \App\Http\Middleware\SuggestPublicLanguage::class,
             'tenant.only' => TenantOnly::class,
+            // ONLINE-ORDERING-1 (Phase 5): client ke apne domain par sirf ordering website.
+            'website.host' => \App\Http\Middleware\WebsiteDomainOnly::class,
             'route.permission' => EnsureRoutePermission::class,
             'tenant.subscription.access' => EnsureTenantSubscriptionAccess::class,
             'prevent.demo.mutation' => PreventDemoMutation::class,

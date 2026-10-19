@@ -121,6 +121,10 @@ final class CloudPosRuntimeFactory
             'purchaseReturnsPage' => null,
             // POS-REMINDER-PAUSE-1 (canonical 4175db4f): pause / resume the selected terminal's Reminder slips (tenant.api.pos.reminder-pause).
             'reminderPause' => '/api/pos/reminder-pause',
+            // ONLINE-ORDERING-1 (canonical bd84466d, 9e26fe74): the website-orders inbox of the counter (WebsiteOrderInboxController).
+            'websiteOrders' => '/api/pos/website-orders',
+            'websiteOrderHold' => '/api/pos/website-orders/{salesOrder}/hold',
+            'websiteOrderVerify' => '/api/pos/website-orders/{salesOrder}/verify',
         ]);
 
         return new PosRuntime(

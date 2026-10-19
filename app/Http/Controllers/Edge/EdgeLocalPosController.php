@@ -615,6 +615,9 @@ class EdgeLocalPosController extends Controller
         $groupRows = DB::connection('tenant')->table('product_modifier_group as pmg')
             ->join('modifier_groups as g', 'g.id', '=', 'pmg.modifier_group_id')
             ->whereIn('pmg.product_id', $ids)->where('g.status', 'active')
+            // ONLINE-ORDERING-1 parity (canonical 66019bf7, merge D8): a "Website only" add-on group never reaches the counter —
+            // the SAME rule as ModifierGroup::showsOnPos() (null channel = pos), so both runtimes build the same tiles.
+            ->where(fn ($q) => $q->whereNull('g.channel')->orWhere('g.channel', '!=', 'website'))
             ->where(fn ($q) => $q->whereNull('g.branch_id')->orWhere('g.branch_id', $branchId))
             ->orderBy('pmg.sort_order')->orderBy('g.sort_order')
             ->get(['pmg.product_id', 'pmg.sort_order as pivot_sort', 'g.id', 'g.branch_id', 'g.name', 'g.min_select', 'g.max_select', 'g.is_required', 'g.sort_order']);

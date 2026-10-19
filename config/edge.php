@@ -520,6 +520,20 @@ return [
             'resources/views/emails/catering',
             'resources/views/central/subscription-requests',
             'resources/views/tenant/supplier-payments',
+            // CANONICAL MERGE (D8, 19 Oct 2026) — ONLINE-ORDERING-1 is a Cloud-only domain (the customer's ordering website, the
+            // POS website-orders inbox, delivery areas / places + OpenStreetMap lookups, the WhatsApp notifier, the menu / branding
+            // importers, the 1% usage billing). A website order needs the Cloud; the Branch Server never hosts any of it
+            // (PosRuntime capability websiteOrders is OFF on Edge — owner D4). KEPT on purpose: App\Support\OnlineOrdering (the
+            // plan-module check the shared cashier view reads), the Web* / DeliveryZone models (schema coherence, never
+            // instantiated on the appliance) and the WebsiteDomainOnly middleware (a lazy alias string the branch-server route
+            // set never resolves). The tenant manifest records AreaLocator as the CLOUD_ONLY class dependency of the
+            // delivery-zone-places migration, so this exclusion is also what EdgeTenantMigrationManifestTest proves.
+            'app/Services/OnlineOrdering',
+            'app/Http/Controllers/Website',
+            'app/Http/Controllers/Tenant/OnlineOrdering',
+            'app/Console/Commands/OnlineOrdering*.php',
+            'resources/views/website',
+            'resources/views/tenant/online-ordering',
             'storage/logs/*',
             'storage/framework/cache/*',
             'storage/framework/sessions/*',

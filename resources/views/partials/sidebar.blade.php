@@ -140,6 +140,15 @@
                                     </a>
                                 </li>
                             @endcan
+                            @can('central.billing-rates.edit')
+                                @php $a = $isIn('billing-rates*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/billing-rates') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-receipt-tax fs-16 me-2"></i>
+                                        <span>Billing Rates</span>
+                                    </a>
+                                </li>
+                            @endcan
                             @can('central.subscription-requests.index')
                                 @php $a = $isIn('subscription-requests*'); @endphp
                                 <li class="{{ $a ? 'active' : '' }}">
@@ -543,6 +552,47 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/sales-ledger') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-report-money fs-16 me-2"></i><span>Sales Ledger</span>
+                                </a>
+                            </li>
+                        @endcan
+                    </ul>
+                </li>
+                @endcanany
+                @endif
+
+                {{-- ── ONLINE ORDERING ─────────────────────────────────────────── --}}
+                {{-- ONLINE-ORDERING-1: plan module aur permission dono — Owner ke paas har
+                     permission hoti hai, plan faisla karta hai. --}}
+                @if($hasModule('online_ordering'))
+                @canany(['tenant.online-ordering.settings.edit','tenant.online-ordering.areas.index','tenant.online-ordering.menu.index'])
+                <li class="submenu">
+                    <a href="javascript:void(0);">
+                        <i class="ti ti-world-www fs-16 me-2"></i>
+                        <span>Online Ordering</span>
+                        <span class="menu-arrow"></span>
+                    </a>
+                    <ul style="display:none;">
+                        @can('tenant.online-ordering.settings.edit')
+                            @php $a = $isIn('online-ordering/settings*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/online-ordering/settings') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-settings fs-16 me-2"></i><span>Website Settings</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.online-ordering.areas.index')
+                            @php $a = $isIn('online-ordering/areas*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/online-ordering/areas') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-map-pin fs-16 me-2"></i><span>Delivery Areas</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.online-ordering.menu.index')
+                            @php $a = $isIn('online-ordering/menu*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/online-ordering/menu') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-layout-grid fs-16 me-2"></i><span>Website Menu</span>
                                 </a>
                             </li>
                         @endcan

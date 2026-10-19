@@ -293,8 +293,10 @@ class POSController extends Controller
             }
 
             $recipe = $recipeAvailability->forProduct($product, $branches, $stockLookup);
+            // ONLINE-ORDERING-1: "Website only" add-on group counter par kabhi na aaye — cashier ko
+            // popup na khule aur kaam waisa hi rahe. Mojooda har group 'pos' hai, to aaj kuch nahi badalta.
             $modifierGroups = $product->modifierGroups
-                ? $product->modifierGroups->map(function ($group) {
+                ? $product->modifierGroups->filter(fn ($group) => $group->showsOnPos())->map(function ($group) {
                     return [
                         'id'          => (int) $group->id,
                         'branch_id'   => $group->branch_id ? (int) $group->branch_id : null,

@@ -1949,6 +1949,8 @@ class EdgeLocalPosService
             ->join('product_modifier_group as pmg', 'pmg.modifier_group_id', '=', 'modifier_groups.id')
             ->where('pmg.product_id', $product->id)
             ->where('modifier_groups.status', 'active')
+            // ONLINE-ORDERING-1 parity (merge D8): a website-only group is neither offered nor required at the till (showsOnPos()).
+            ->where(fn ($q) => $q->whereNull('modifier_groups.channel')->orWhere('modifier_groups.channel', '!=', 'website'))
             ->where(fn ($q) => $q->whereNull('modifier_groups.branch_id')->orWhere('modifier_groups.branch_id', $branchId))
             ->orderBy('pmg.sort_order')->orderBy('modifier_groups.sort_order')
             ->get(['modifier_groups.*', 'pmg.sort_order as pivot_sort']);

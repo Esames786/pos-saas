@@ -90,6 +90,7 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
         'customerCreate' => ['selectors' => ['//*[@id="qa-save"]'], 'hint' => true],
         'customerAddressCreate' => ['selectors' => ['//*[@id="new-addr-save"]'], 'hint' => true],
         'reminderPause' => ['selectors' => ['//*[@id="pos-reminder-toggle"]'], 'hint' => true], // POS-REMINDER-PAUSE-1 (canonical merge D8)
+        'websiteOrders' => ['selectors' => ['//*[@id="web-orders-btn"]'], 'hint' => true], // ONLINE-ORDERING-1 (canonical merge D8, D4)
     ];
 
     /** Capabilities the page JS gates (POS.can) — no Blade @disabled site; the runtime flag + null route are asserted. */
@@ -643,6 +644,11 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
         $key = $m->table('route_catalogs')->where('route_name', 'tenant.pos.index')->value('module_key');
         if ($key && ($module = Module::forRouteModuleKey($key)->first())) {
             $m->table('plan_modules')->updateOrInsert(['plan_id' => $planId, 'module_id' => $module->id], ['is_enabled' => 1]);
+        }
+        // CANONICAL MERGE (D8): the website-orders bell (capability websiteOrders) renders on a plan with Online Ordering — attach the
+        // module when the master DB carries it (registered by a master migration), so the Cloud render has the slot the Edge mirrors.
+        if ($oo = Module::query()->where('key', \App\Support\OnlineOrdering::MODULE_KEY)->first()) {
+            $m->table('plan_modules')->updateOrInsert(['plan_id' => $planId, 'module_id' => $oo->id], ['is_enabled' => 1]);
         }
         $m->table('subscriptions')->insert(['tenant_id' => $this->masterTenantId, 'plan_id' => $planId, 'status' => 'active', 'current_period_ends_at' => now()->addYear(), 'created_at' => now(), 'updated_at' => now()]);
     }

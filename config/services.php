@@ -22,11 +22,28 @@ return [
         'template'        => env('WHATSAPP_TEMPLATE', 'daily_sales_report'),
         'language'        => env('WHATSAPP_TEMPLATE_LANG', 'en'),
 
+        // ONLINE-ORDERING-1: website order messages — Meta par jis naam se approve hue (naam badla nahi ja sakta).
+        'web_templates'   => [
+            'received'  => env('WHATSAPP_WEB_TPL_RECEIVED', 'web_order_received'),
+            'confirmed' => env('WHATSAPP_WEB_TPL_CONFIRMED', 'web_order_confirmed'),
+            'cancelled' => env('WHATSAPP_WEB_TPL_CANCELLED', 'web_order_cancelled'),
+        ],
+
         // Tenant se per message kitna liya jata hai, aur hamein kitna paRta hai. DONO har usage row
         // par likhe jate hain, wahan se parhe nahi jate — rate badle to purane invoice nahi hilne
         // chahiyen, aur margin naapa jana chahiye, farz nahi kiya jana.
+        //
+        // ONLINE-ORDERING-1: asal rate ab master `platform_settings` me hai (platform admin →
+        // Billing rates). Ye do sirf SAHARA hain jab wahan row na ho — parhna hamesha
+        // `App\Services\Saas\BillingRates` se.
         'rate_pkr'        => env('WHATSAPP_RATE_PKR', 9.85),
         'cost_pkr'        => env('WHATSAPP_COST_PKR', 5.95),
+    ],
+
+    // ONLINE-ORDERING-1: website orders par Bingoo ka commission (%). Asal qeemat master
+    // `platform_settings` me; ye sirf sahara. Parhna `App\Services\Saas\BillingRates` se.
+    'online_ordering' => [
+        'commission_percent' => env('WEBSITE_ORDER_COMMISSION_PERCENT', 1),
     ],
 
 

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Central\BillingRatesController;
 use App\Http\Controllers\Central\DashboardController;
 use App\Http\Controllers\Central\InvoiceController;
 use App\Http\Controllers\Central\WhatsAppUsageController;
@@ -98,6 +99,11 @@ Route::domain(config('tenancy.central_domain'))
                 // ⚠️ deploy.sh nayi permission sirf Owner/super ko deta hai — kisi aur ko chahiye to
                 // alag se additive grant chalana paRega.
                 Route::get('/whatsapp-usage', [WhatsAppUsageController::class, 'index'])->name('central.whatsapp-usage.index');
+
+                // ONLINE-ORDERING-1 — Billing rates (WhatsApp fi message + website commission %),
+                // `.env` ke bajaye master me (malik ka faisla).
+                Route::get('/billing-rates', [BillingRatesController::class, 'edit'])->name('central.billing-rates.edit');
+                Route::put('/billing-rates', [BillingRatesController::class, 'update'])->name('central.billing-rates.update');
 
                 Route::get('/invoices', [InvoiceController::class, 'index'])->name('central.invoices.index');
                 Route::get('/tenants/{tenant}/invoices/create', [InvoiceController::class, 'create'])->name('central.tenants.invoices.create');
