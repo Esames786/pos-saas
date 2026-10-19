@@ -2659,7 +2659,6 @@ return [
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_kot_heading_stars_toggle_upgrades_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'receipt_layout_settings is a bootstrap section (whole rows upserted) and the shared KOT template + EscPosPayloadService read show_heading_stars on the appliance.',
         ],
         '2026_09_26_000001_add_show_kitchen_requirements_to_catering_settings' => [
@@ -2675,7 +2674,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Catering (excluded module).',
         ],
         '2026_09_27_000001_kitchen_sheet_preview_permission' => [
@@ -2691,7 +2689,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Seeds a Catering permission; the appliance receives its permission graph from the Cloud bootstrap, never from a seed.',
         ],
         '2026_09_27_000002_add_dispatch_time_to_catering_events' => [
@@ -2707,7 +2704,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Catering (excluded module).',
         ],
         '2026_09_27_000003_add_document_paper_sizes_to_catering_settings' => [
@@ -2723,7 +2719,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Catering (excluded module).',
         ],
         '2026_09_27_000004_add_second_phone_to_catering_events' => [
@@ -2739,7 +2734,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Catering (excluded module).',
         ],
         '2026_09_30_000001_add_channel_to_report_schedule_runs' => [
@@ -2755,7 +2749,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => true,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Scheduled report delivery runs on the Cloud only (Reports controllers excluded). Replaces a unique index (dropUnique) → non-additive → owner review, but it never executes on the appliance.',
         ],
         '2026_09_30_000002_add_report_channels_to_branches' => [
@@ -2771,7 +2764,6 @@ return [
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_report_channels_on_branches_upgrades_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Cloud report-delivery columns, but `branches` is the bootstrap `branch` section: the refresh ships the WHOLE row, so the appliance must carry the columns or the upsert fails. The appliance never reads them.',
         ],
         '2026_10_01_000001_add_catering_edit_after_release_permission' => [
@@ -2787,7 +2779,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Seeds a Catering permission.',
         ],
         '2026_10_01_000002_add_void_to_catering_advances' => [
@@ -2803,7 +2794,6 @@ return [
             'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'PENDING_MERGE_FROM' => '99e9365',
             'NOTE' => 'Catering (excluded module).',
         ],
         '2026_10_02_000001_add_extra_charges_to_goods_receipts' => [
