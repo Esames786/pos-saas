@@ -15,6 +15,8 @@ final class TenantFeatures
     public const PRODUCT_SCREEN_V2 = 'product_screen_v2';
     public const PACKS = 'packs';
 
+    public const REPORT_DELIVERY_V2 = 'report_delivery_v2';
+
     /** @return array<string, array{label:string, says:string, where:string, needs?:list<string>}> */
     public static function all(): array
     {
@@ -30,6 +32,12 @@ final class TenantFeatures
                 'says'  => 'Say how an item is packed — 1 box = 10 strips, 1 strip = 10 tablets — with a price and a barcode for each pack. Stock is still counted in the smallest unit.',
                 'where' => 'Products → Add / Edit (new product screen)',
                 'needs' => [self::PRODUCT_SCREEN_V2],
+            ],
+            // REPORT-DELIVERY-V2-1
+            self::REPORT_DELIVERY_V2 => [
+                'label' => 'New daily report delivery',
+                'says'  => 'One card to turn WhatsApp and Email on, add numbers with names, see the price per message, and send the daily report the moment the last shift of the day closes.',
+                'where' => 'Reports → Sales Report Center → Daily report delivery',
             ],
         ];
     }
