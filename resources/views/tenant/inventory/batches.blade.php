@@ -100,7 +100,8 @@
             @forelse($batches as $batch)
                 @php
                     $isExpired  = $batch->expiry_date && $batch->expiry_date->isPast();
-                    $isExpiring = !$isExpired && $batch->expiry_date && $batch->expiry_date->diffInDays(now()) <= 30;
+                    // Within the next 30 days. (diffInDays is signed now, so "<= 30" was true for EVERY future date.)
+                    $isExpiring = !$isExpired && $batch->expiry_date && $batch->expiry_date->lte(now()->addDays(30));
                 @endphp
                 <tr class="{{ $isExpired ? 'table-danger' : ($isExpiring ? 'table-warning' : '') }}" data-batch="{{ $batch->id }}">
                     <td>{{ $batch->branch?->name ?? '—' }}</td>

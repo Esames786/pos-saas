@@ -36,9 +36,9 @@ final class TenantFeatures
             ],
             // PURCHASING-V2-1
             self::PURCHASING_V2 => [
-                'label' => 'New purchase screens (PO & GRN)',
-                'says'  => 'Type purchase lines in one entry area: scan or search, and each item shows its own boxes (box · strip · tablet, batch, expiry, bonus); Ctrl+Enter puts the line in the list.',
-                'where' => 'Purchasing → Purchase Orders and GRN → New',
+                'label' => 'New purchase screens (PO, GRN & Returns)',
+                'says'  => 'Type purchase and return lines in one entry area: scan or search, and each item shows its own boxes (box · strip · tablet, batch, expiry, bonus); Ctrl+Enter puts the line in the list. A return leaves from the batch picked.',
+                'where' => 'Purchasing → Purchase Orders, GRN and Returns → New; tabs on every purchasing page; Inventory → Batches',
             ],
             // REPORT-DELIVERY-V2-1
             self::REPORT_DELIVERY_V2 => [

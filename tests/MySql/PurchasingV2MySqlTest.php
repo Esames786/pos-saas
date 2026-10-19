@@ -283,6 +283,7 @@ class PurchasingV2MySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('id="bt-new-btn"', $page);
         $this->assertStringContainsString('2 Box', $page, 'stock left, in packs');
         $this->assertStringContainsString('data-exp-edit="' . $made->json('id') . '"', $page);
+        $this->assertStringNotContainsString('bg-warning text-dark ms-1">Expiring', $page, 'a batch two years away is not "expiring" (the old signed-days bug)');
 
         $clerk = $this->clerk('grnonly2', ['tenant.goods-receipts.create']);
         $this->callAs($clerk, 'POST', '/inventory/batches', ['product_id' => $p->id, 'branch_id' => $branch, 'batch_no' => 'PRE-3', 'expiry' => '11/28'], true)->assertStatus(403);
@@ -333,7 +334,195 @@ class PurchasingV2MySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('class="form-select', $off, 'the old supplier list is back');
     }
 
+    public function test_a_kitchen_grn_in_kg_sacks_and_items_without_a_batch_posts_like_the_old_screen(): void
+    {
+        // Owner, 19 Oct: "ye new GRN/PO restaurant, kitchen waghera ke liye bhi theek chale".
+        $kg = Unit::updateOrCreate(['code' => 'KG'], ['name' => 'Kilogram', 'unit_type' => 'weight', 'base_factor' => 1, 'is_base' => true, 'is_active' => true]);
+        $ltr = Unit::updateOrCreate(['code' => 'LTR'], ['name' => 'Litre', 'unit_type' => 'volume', 'base_factor' => 1, 'is_base' => true, 'is_active' => true]);
+        $sack = Unit::updateOrCreate(['code' => 'SACK'], ['name' => 'Sack', 'unit_type' => 'quantity', 'base_factor' => 1, 'is_base' => false, 'is_active' => true]);
+        $make = function (string $name, int $unitId, array $extra = []) {
+            $sku = 'KT-' . strtoupper(substr(md5($name), 0, 6));
+            $p = Product::create($extra + ['sku' => $sku, 'name' => $name, 'slug' => \Illuminate\Support\Str::slug($name), 'unit_id' => $unitId, 'product_type' => 'simple',
+                'product_kind' => 'sale_item', 'inventory_consumption_method' => 'stock_item', 'is_sellable' => false, 'is_pos_visible' => false, 'is_purchasable' => true,
+                'is_stock_tracked' => true, 'has_expiry' => false, 'requires_batch' => false, 'default_selling_price' => 0, 'default_purchase_price' => 100, 'status' => 'active']);
+            ProductVariant::create(['product_id' => $p->id, 'sku' => $sku, 'name' => $name, 'is_default' => true, 'is_active' => true]);
+
+            return $p->fresh();
+        };
+        $chicken = $make('Kitchen Chicken', $kg->id);
+        $rice = $make('Kitchen Rice', $kg->id, ['purchase_unit_id' => $sack->id, 'purchase_pack_size' => 50]);
+        $milk = $make('Kitchen Milk', $ltr->id, ['has_expiry' => true]);
+        $gas = $make('Kitchen Gas', $kg->id, ['is_stock_tracked' => false]);
+
+        // The lookup offers the sack beside the kilogram, and decimals for kg.
+        $found = $this->page('/ajax/products?context=purchase&rich=1&packs=1&branch_id=' . DB::connection('tenant')->table('branches')->value('id') . '&q=Kitchen%20Rice')->assertOk()->json('results');
+        $packs = collect($found)->firstWhere('id', $rice->id)['packs'];
+        $this->assertSame(['buy', 'base'], array_column($packs, 'key'));
+        $this->assertSame('50 Kilogram', $packs[0]['holds']);
+        $this->assertTrue(collect($found)->firstWhere('id', $rice->id)['allow_decimal']);
+
+        $this->postAs('/goods-receipts', $this->grn([
+            ['product_id' => $chicken->id, 'buy_pack' => 'base', 'price' => '650', 'packs' => ['base' => '12.5']],
+            ['product_id' => $rice->id, 'buy_pack' => 'buy', 'price' => '9000', 'note' => 'one sack torn', 'packs' => ['buy' => '2', 'base' => '5']],
+            ['product_id' => $milk->id, 'buy_pack' => 'base', 'price' => '220', 'expiry' => now('Asia/Karachi')->addMonths(2)->format('m/y'), 'packs' => ['base' => '20']],
+            ['product_id' => $gas->id, 'buy_pack' => 'base', 'price' => '3500', 'packs' => ['base' => '1']],
+        ]))->assertRedirect()->assertSessionHasNoErrors();
+
+        $c = DB::connection('tenant');
+        $grn = (int) GoodsReceipt::max('id');
+        $line = fn ($p) => $c->table('goods_receipt_lines')->where('goods_receipt_id', $grn)->where('product_id', $p->id)->first();
+        $stock = fn ($p) => (float) $c->table('stock_balances')->where('product_id', $p->id)->sum('quantity_on_hand');
+
+        $this->assertEquals(12.5, (float) $line($chicken)->quantity_received, 'kg with a decimal');
+        $this->assertEquals(650, (float) $line($chicken)->unit_cost);
+        $this->assertNull($line($chicken)->batch_no, 'no batch asked for an item that keeps none');
+        $this->assertEquals(12.5, $stock($chicken));
+
+        $this->assertEquals(105, (float) $line($rice)->quantity_received, '2 sacks of 50 kg + 5 kg');
+        $this->assertEquals(180, (float) $line($rice)->unit_cost, '9,000 a sack over 50 kg');
+        $this->assertSame(50, (int) $line($rice)->pack_factor);
+        $this->assertStringContainsString('2 Sack 5 Kilogram @ 9000 / Sack · one sack torn', $line($rice)->notes, 'the line\'s own note is kept');
+        $this->assertEquals(105, $stock($rice));
+
+        $this->assertNotNull($line($milk)->expiry_date, 'expiry kept');
+        $this->assertEquals(20, $stock($milk), 'an expiry item needs no batch number (the old screen\'s rule)');
+
+        $this->assertSame(0, (int) $line($gas)->affects_stock, 'purchase-only: bought, not stocked');
+        $this->assertEquals(0, $stock($gas));
+    }
+
+    // ── PURCHASE-RETURN-V2 ───────────────────────────────────────────────────────────────────────────
+
+    public function test_a_return_in_packs_leaves_from_the_batch_picked_not_the_oldest(): void
+    {
+        [$p, $box, $strip] = $this->medicine('Retbatch Med');
+        $c = DB::connection('tenant');
+        $branch = (int) $c->table('branches')->value('id');
+        $this->postAs('/goods-receipts', $this->grn([
+            ['product_id' => $p->id, 'batch_no' => 'RB-OLD', 'expiry' => '03/27', 'buy_pack' => (string) $box->id, 'price' => '800', 'packs' => [(string) $box->id => '1']],
+            ['product_id' => $p->id, 'batch_no' => 'RB-NEW', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '900', 'packs' => [(string) $box->id => '2']],
+        ]))->assertSessionHasNoErrors();
+        $old = (int) $c->table('inventory_batches')->where('product_id', $p->id)->where('batch_no', 'RB-OLD')->value('id');
+        $new = (int) $c->table('inventory_batches')->where('product_id', $p->id)->where('batch_no', 'RB-NEW')->value('id');
+        $owed = (float) $this->supplier()->fresh()->current_balance;
+
+        $r = $this->callAs(null, 'POST', '/purchase-returns', $this->ret([
+            ['product_id' => $p->id, 'inventory_batch_id' => $new, 'buy_pack' => (string) $box->id, 'price' => '900', 'reason_code' => 'damaged',
+             'packs' => [(string) $box->id => '1', (string) $strip->id => '5']],
+        ], ['_post' => '1']), true)->assertOk();
+        $this->assertTrue($r->json('posted'));
+        $this->assertStringStartsWith('PRET-', $r->json('number'));
+
+        $inBatch = fn (int $id) => (float) $c->table('stock_balances')->where('inventory_batch_id', $id)->sum('quantity_on_hand');
+        $this->assertEquals(150, $inBatch($new), '1 Box 5 Strip = 250 tablets left batch RB-NEW');
+        $this->assertEquals(200, $inBatch($old), 'the oldest batch is untouched (oldest-first would have taken it)');
+
+        $line = $c->table('purchase_return_lines')->where('purchase_return_id', $r->json('id'))->first();
+        $this->assertSame($new, (int) $line->inventory_batch_id);
+        $this->assertEquals(250, (float) $line->quantity);
+        $this->assertEquals(4.5, (float) $line->unit_cost, '900 / Box over 200 tablets');
+        $this->assertSame(200, (int) $line->pack_factor);
+        $this->assertStringContainsString('1 Box 5 Strip @ 900 / Box · B:RB-NEW EXP:09/28', $line->notes);
+        $this->assertEquals(round($owed - 1125, 2), round((float) $this->supplier()->fresh()->current_balance, 2), 'the supplier is owed 250 × 4.5 less');
+
+        $this->assertStringContainsString('1 Box 5 Strip @ 900 / Box', $this->page('/purchase-returns/' . $r->json('id'))->assertOk()->getContent(), 'the return page says it in packs');
+    }
+
+    public function test_a_return_never_takes_more_than_its_batch_holds_and_always_says_why(): void
+    {
+        [$p, $box] = $this->medicine('Retguard Med');
+        $c = DB::connection('tenant');
+        $this->postAs('/goods-receipts', $this->grn([['product_id' => $p->id, 'batch_no' => 'RG-1', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '900', 'packs' => [(string) $box->id => '2']]]))->assertSessionHasNoErrors();
+        $batch = (int) $c->table('inventory_batches')->where('product_id', $p->id)->where('batch_no', 'RG-1')->value('id');
+        $before = $c->table('purchase_returns')->count();
+        $line = fn (array $over) => array_merge(['product_id' => $p->id, 'inventory_batch_id' => $batch, 'buy_pack' => (string) $box->id, 'price' => '900', 'reason_code' => 'expired', 'packs' => [(string) $box->id => '1']], $over);
+
+        $r = $this->callAs(null, 'POST', '/purchase-returns', $this->ret([$line(['packs' => [(string) $box->id => '3']])], ['_post' => '1']), true)->assertStatus(422);
+        $this->assertStringContainsString('has only 2 Box left', $r->json('errors')['lines.0.packs'][0]);
+        $this->callAs(null, 'POST', '/purchase-returns', $this->ret([$line(['reason_code' => ''])]), true)->assertStatus(422)->assertJsonValidationErrors('lines.0.reason_code');
+        $this->callAs(null, 'POST', '/purchase-returns', $this->ret([$line(['inventory_batch_id' => ''])]), true)->assertStatus(422)->assertJsonValidationErrors('lines.0.batch_no');
+        // Two lines of the same batch count together.
+        $this->callAs(null, 'POST', '/purchase-returns', $this->ret([$line([]), $line(['packs' => [(string) $box->id => '2']])]), true)->assertStatus(422)->assertJsonValidationErrors('lines.1.packs');
+        $this->assertSame($before, $c->table('purchase_returns')->count(), 'nothing saved, no draft left behind');
+    }
+
+    public function test_a_return_from_a_grn_keeps_its_rate_and_takes_extra_items_too(): void
+    {
+        [$p, $box] = $this->medicine('Retgrn Med');
+        [$q, $qbox] = $this->medicine('Retextra Med');
+        $c = DB::connection('tenant');
+        $this->postAs('/goods-receipts', $this->grn([['product_id' => $p->id, 'batch_no' => 'RX-1', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '1000', 'packs' => [(string) $box->id => '2']]]))->assertSessionHasNoErrors();
+        $grnId = (int) GoodsReceipt::max('id');
+        $this->postAs('/goods-receipts', $this->grn([['product_id' => $q->id, 'batch_no' => 'RX-2', 'expiry' => '09/28', 'buy_pack' => (string) $qbox->id, 'price' => '600', 'packs' => [(string) $qbox->id => '1']]]))->assertSessionHasNoErrors();
+        $grnLine = (int) $c->table('goods_receipt_lines')->where('goods_receipt_id', $grnId)->value('id');
+        $b1 = (int) $c->table('inventory_batches')->where('product_id', $p->id)->where('batch_no', 'RX-1')->value('id');
+        $b2 = (int) $c->table('inventory_batches')->where('product_id', $q->id)->where('batch_no', 'RX-2')->value('id');
+
+        $page = $this->page('/purchase-returns/create?goods_receipt_id=' . $grnId)->assertOk()->getContent();
+        $this->assertStringContainsString('From the receipt', $page);
+        $this->assertStringContainsString('"batch_no":"RX-1"', $page, 'the receipt line carries its batch');
+
+        $r = $this->callAs(null, 'POST', '/purchase-returns', $this->ret([
+            ['product_id' => $p->id, 'source_line_id' => $grnLine, 'inventory_batch_id' => $b1, 'buy_pack' => (string) $box->id, 'price' => '1000', 'reason_code' => 'expired', 'packs' => [(string) $box->id => '1']],
+            ['product_id' => $q->id, 'inventory_batch_id' => $b2, 'buy_pack' => (string) $qbox->id, 'price' => '600', 'reason_code' => 'wrong_item', 'packs' => [(string) $qbox->id => '1']],
+        ], ['goods_receipt_id' => $grnId, '_post' => '0']), true)->assertOk();
+        $this->assertFalse($r->json('posted'), 'Save as draft');
+        $lines = $c->table('purchase_return_lines')->where('purchase_return_id', $r->json('id'))->orderBy('id')->get();
+        $this->assertSame([$grnLine, null], [$lines[0]->source_line_id ? (int) $lines[0]->source_line_id : null, $lines[1]->source_line_id]);
+        $this->assertSame(['expired', 'wrong_item'], [$lines[0]->reason_code, $lines[1]->reason_code]);
+        $this->assertEquals(400, (float) $c->table('stock_balances')->where('inventory_batch_id', $b1)->sum('quantity_on_hand'), 'a draft moves no stock');
+    }
+
+    public function test_the_expiry_sweep_lists_only_this_suppliers_batches_that_run_out_by_then(): void
+    {
+        [$p, $box] = $this->medicine('Sweep Med');
+        $c = DB::connection('tenant');
+        $branch = (int) $c->table('branches')->value('id');
+        $soon = now('Asia/Karachi')->addMonth();
+        $this->postAs('/goods-receipts', $this->grn([
+            ['product_id' => $p->id, 'batch_no' => 'SW-SOON', 'expiry' => $soon->format('m/y'), 'buy_pack' => (string) $box->id, 'price' => '700', 'packs' => [(string) $box->id => '1']],
+            ['product_id' => $p->id, 'batch_no' => 'SW-LATE', 'expiry' => '09/29', 'buy_pack' => (string) $box->id, 'price' => '700', 'packs' => [(string) $box->id => '1']],
+        ]))->assertSessionHasNoErrors();
+        $other = Supplier::firstOrCreate(['code' => 'PV2-S2'], ['name' => 'Other Distributor', 'status' => 'active', 'opening_balance' => 0, 'current_balance' => 0]);
+
+        $url = '/ajax/batches?branch_id=' . $branch . '&before=' . $soon->format('Y-m') . '&supplier_id=';
+        $rows = $this->page($url . $this->supplier()->id)->assertOk()->json('batches');
+        $this->assertSame(['SW-SOON'], array_values(array_filter(array_column($rows, 'batch_no'), fn ($b) => str_starts_with($b, 'SW-'))));
+        $this->assertSame('Sweep Med', collect($rows)->firstWhere('batch_no', 'SW-SOON')['product']);
+        $this->assertEquals(3.5, collect($rows)->firstWhere('batch_no', 'SW-SOON')['unit_cost'], 'what one tablet of it cost');
+        $this->assertSame([], $this->page($url . $other->id)->json('batches'), "another supplier's goods never show");
+    }
+
+    public function test_the_old_return_screen_and_its_post_are_untouched_without_the_switch(): void
+    {
+        [$p, $box] = $this->medicine('Retold Med');
+        $c = DB::connection('tenant');
+        $this->postAs('/goods-receipts', $this->grn([
+            ['product_id' => $p->id, 'batch_no' => 'RO-A', 'expiry' => '03/27', 'buy_pack' => (string) $box->id, 'price' => '800', 'packs' => [(string) $box->id => '1']],
+            ['product_id' => $p->id, 'batch_no' => 'RO-B', 'expiry' => '09/28', 'buy_pack' => (string) $box->id, 'price' => '800', 'packs' => [(string) $box->id => '1']],
+        ]))->assertSessionHasNoErrors();
+        $this->setFeatures(['product_screen_v2' => true, 'packs' => true, 'purchasing_v2' => false]);
+        $page = $this->page('/purchase-returns/create')->assertOk()->getContent();
+        $this->assertStringContainsString('pret-line-template', $page, 'the old page');
+        $this->assertStringNotContainsString('id="ea"', $page);
+
+        // The old post: a draft, then Post — stock leaves oldest-first exactly as before, no batch on the line.
+        $this->postAs('/purchase-returns', ['branch_id' => $c->table('branches')->value('id'), 'supplier_id' => $this->supplier()->id, 'return_date' => now()->toDateString(),
+            'reason_code' => 'damaged', 'lines' => [['product_id' => $p->id, 'quantity' => '50', 'unit_cost' => '4']]])->assertRedirect();
+        $ret = (int) $c->table('purchase_returns')->max('id');
+        $this->postAs('/purchase-returns/' . $ret . '/post')->assertRedirect();
+        $a = (int) $c->table('inventory_batches')->where('product_id', $p->id)->where('batch_no', 'RO-A')->value('id');
+        $this->assertEquals(150, (float) $c->table('stock_balances')->where('inventory_batch_id', $a)->sum('quantity_on_hand'), 'oldest first, as before');
+        $this->assertNull($c->table('purchase_return_lines')->where('purchase_return_id', $ret)->value('inventory_batch_id'));
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────────────────────────
+
+    private function ret(array $lines, array $extra = []): array
+    {
+        return $extra + ['_entry_v2' => '1', 'branch_id' => DB::connection('tenant')->table('branches')->value('id'), 'supplier_id' => $this->supplier()->id,
+            'return_date' => now()->toDateString(), 'lines' => $lines];
+    }
 
     /** A user holding only these permissions (the owner's rule is tested with screen permissions only). */
     private function clerk(string $code, array $permissions): User

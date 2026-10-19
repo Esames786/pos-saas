@@ -22,6 +22,8 @@ class PurchaseReturnLine extends Model
         'line_total',
         'reason_code',
         'notes',
+        // PURCHASE-RETURN-V2
+        'pack_unit_id', 'pack_factor', 'base_quantity',
     ];
 
     protected function casts(): array
