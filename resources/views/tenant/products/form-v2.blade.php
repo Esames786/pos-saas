@@ -87,7 +87,7 @@
     .pv2 .q-body { padding:12px 0 6px; }
     .pv2 .form-label { font-weight:700; }
     .pv2 .help { color:var(--ink2); font-size:.85rem; }
-    .pv2 .what { position:sticky; top:150px; background:var(--navy); color:#fff; border-radius:14px; padding:16px 18px; }
+    .pv2 .what { background:var(--navy); color:#fff; border-radius:14px; padding:16px 18px; }
     .pv2 .what h2 { font-size:1rem; color:#F2DFA8; margin:0 0 8px; font-weight:800; }
     .pv2 .what li { margin-bottom:6px; }
     .pv2 .note { background:var(--goldbg); border:1px solid #F2DFA8; border-radius:10px; padding:10px 12px; color:#6B5310; }
@@ -181,7 +181,7 @@
         <div class="visually-hidden" aria-live="polite" id="pv2-tab-live"></div>
 
         <div class="row g-3">
-            <div class="col-lg-8">
+            <div class="col-12">
 
                 <section class="tp" id="tp-type" role="tabpanel" aria-labelledby="tab-type" tabindex="-1">
                 <fieldset class="step">
@@ -432,6 +432,11 @@
                         <legend>Check before saving</legend>
                         <span class="ur">محفوظ کرنے سے پہلے دیکھ لیں</span>
                         <dl class="review" id="pv2-review"></dl>
+                        {{-- "What will happen" lives here now: the owner (19 Oct) found the side box took too much room. --}}
+                        <div class="what mt-3" role="region" aria-labelledby="what-title">
+                            <h2 id="what-title">What will happen <span class="ur-inline" style="color:#F2DFA8">کیا ہوگا</span></h2>
+                            <ul id="what-list" class="mb-0 ps-3"></ul>
+                        </div>
                         <p class="help mt-2 mb-0">Nothing is saved until you press Save. <span class="ur-inline">سیو دبانے تک کچھ محفوظ نہیں ہوتا</span></p>
                     </fieldset>
                 </section>
@@ -443,13 +448,6 @@
                     <span class="hint d-none d-xl-inline">Ctrl + Enter saves</span>
                     <button type="submit" class="btn btn-primary btn-big" id="pv2-save">Save <span class="ur-inline" style="color:#fff">محفوظ کریں</span></button>
                     <button type="submit" name="_after" value="new" class="btn btn-outline-primary btn-big d-none d-sm-inline-block">Save and add another</button>
-                </div>
-            </div>
-
-            <div class="col-lg-4">
-                <div class="what" role="complementary" aria-labelledby="what-title">
-                    <h2 id="what-title">What will happen <span class="ur-inline" style="color:#F2DFA8">کیا ہوگا</span></h2>
-                    <ul id="what-list" aria-live="polite" class="mb-0 ps-3"></ul>
                 </div>
             </div>
         </div>
