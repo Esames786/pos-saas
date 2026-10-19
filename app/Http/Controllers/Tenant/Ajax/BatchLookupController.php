@@ -112,7 +112,8 @@ class BatchLookupController extends Controller
             ->all();
     }
 
-    private static function row(InventoryBatch $b, ?object $s, Carbon $today): array
+    // TenantClock::now() is a Carbon\Carbon, not the Illuminate\Support one — accept any Carbon date.
+    private static function row(InventoryBatch $b, ?object $s, \Carbon\CarbonInterface $today): array
     {
         $exp = $b->expiry_date;
 
