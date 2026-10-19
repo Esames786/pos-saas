@@ -8,7 +8,7 @@ use Throwable;
 
 class DemoProvisionCommand extends Command
 {
-    protected $signature = 'demo:provision {industry : retail|inventory|restaurant|restaurant_pro|enterprise} {--fresh : Recreate if the demo tenant already exists}';
+    protected $signature = 'demo:provision {industry : retail|inventory|restaurant|restaurant_pro|enterprise|finance|pharmacy} {--fresh : Recreate if the demo tenant already exists}';
 
     protected $description = 'Provision a public industry demo tenant (reuses TenantProvisioner).';
 

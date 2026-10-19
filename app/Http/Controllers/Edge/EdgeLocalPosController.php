@@ -215,7 +215,21 @@ class EdgeLocalPosController extends Controller
                     'auto_print_kot' => (bool) $s->auto_print_kot,
                 ])),
             'activeMode' => $requestedMode,
+            'kitchenTickets' => $this->kitchenTicketsOn(),
         ];
+    }
+
+    /**
+     * PHARMACY-DEMO-1 twin (canonical POSController::kitchenTicketsOn, merge D8) — does this counter feed a kitchen? Online
+     * answers from the plan's modules (restaurant / kitchen_display / kitchen_inventory) or an active KOT-capable printer. The
+     * appliance carries no plan-module list, so the SAME two signals it does carry decide: an active KOT-capable printer
+     * (printers are a bootstrap section) or a configured dine-in board (restaurant floors are a bootstrap section — every
+     * live restaurant tenant has one). A medical store / shop has neither → no "Print Kitchen Order?" prompt, as on Online.
+     */
+    private function kitchenTicketsOn(): bool
+    {
+        return \App\Models\Tenant\Printer::on('tenant')->where('is_active', true)->whereIn('print_role', ['kot', 'both'])->exists()
+            || \App\Models\Tenant\RestaurantFloor::on('tenant')->exists();
     }
 
     /**

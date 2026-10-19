@@ -80,6 +80,7 @@ class SharedPosViewRenderTest extends TestCase
             'receiptLayouts' => collect(),
             'terminalPrintConfig' => collect(),
             'activeMode' => 'takeaway',
+            'kitchenTickets' => true, // PHARMACY-DEMO-1 (canonical merge D8)
         ]);
     }
 

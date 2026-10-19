@@ -423,7 +423,7 @@ is half-built (e.g. its per-tenant stored DB user is `root`, or its status is
 >
 > Industry → tenant_code: retail→retaildemo, inventory→inventorydemo,
 > restaurant→restaurantdemo, restaurant_pro→restaurantprodemo,
-> enterprise→enterprisedemo, finance→financedemo.
+> enterprise→enterprisedemo, finance→financedemo, pharmacy→pharmacydemo (PHARMACY-DEMO-1).
 
 ```bash
 php artisan config:clear                       # ensure live .env (new_admin) is used

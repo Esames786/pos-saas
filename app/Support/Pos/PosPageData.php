@@ -40,6 +40,9 @@ final class PosPageData
         'receiptLayouts' => 'Collection|array — branch_id → {header_text, footer_text, paper_size, show_branch_name}',
         'terminalPrintConfig' => 'Collection|array — terminal_id → {auto_print_receipt, auto_print_kot}',
         'activeMode' => 'string — the order type tab active on load',
+        // CANONICAL MERGE (D8): PHARMACY-DEMO-1 (canonical a9499a10) — false only where the counter feeds no kitchen (no restaurant /
+        // kitchen module and no printer takes KOTs); the page then never asks "Print Kitchen Order?". Edge twin: EdgeLocalPosController.
+        'kitchenTickets' => 'bool — PHARMACY-DEMO-1: does this counter feed a kitchen at all (KOT prompt + title)',
     ];
 
     /** @param  array<string,mixed>  $data */

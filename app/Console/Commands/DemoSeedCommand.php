@@ -7,6 +7,7 @@ use App\Services\Tenancy\TenancyManager;
 use Database\Seeders\Demos\EnterpriseDemoSeeder;
 use Database\Seeders\Demos\FinanceDemoSeeder;
 use Database\Seeders\Demos\InventoryDemoSeeder;
+use Database\Seeders\Demos\PharmacyDemoSeeder;
 use Database\Seeders\Demos\RestaurantDemoSeeder;
 use Database\Seeders\Demos\RestaurantProDemoSeeder;
 use Database\Seeders\Demos\RetailDemoSeeder;
@@ -16,7 +17,7 @@ use Throwable;
 
 class DemoSeedCommand extends Command
 {
-    protected $signature = 'demo:seed {industry : retail|inventory|restaurant|restaurant_pro|enterprise} {--fresh-data : Clear demo-created sample data first (not yet implemented)}';
+    protected $signature = 'demo:seed {industry : retail|inventory|restaurant|restaurant_pro|enterprise|finance|pharmacy} {--fresh-data : Clear demo-created sample data first (not yet implemented)}';
 
     protected $description = 'Seed rich industry sample data into an existing demo tenant.';
 
@@ -27,6 +28,7 @@ class DemoSeedCommand extends Command
         'restaurant_pro' => RestaurantProDemoSeeder::class,
         'enterprise'     => EnterpriseDemoSeeder::class,
         'finance'        => FinanceDemoSeeder::class,
+        'pharmacy'       => PharmacyDemoSeeder::class,
     ];
 
     public function handle(TenancyManager $tenancy): int
