@@ -33,8 +33,15 @@ class EdgeStandbyFreshnessService
     ) {
     }
 
-    /** One standby tick: refresh whatever the last heartbeat proved to be behind. Never throws; reports per area. */
-    public function tick(): array
+    /**
+     * One standby tick: refresh whatever the last heartbeat proved to be behind. Never throws; reports per area.
+     *
+     * @param  string  $performedBy  audit attribution of a baseline cutover / refresh this tick performs — the authority worker
+     *                               ('authority-worker') or the handback orchestrator's inline tick ('handback-orchestrator');
+     *                               O1 (21 Oct 2026) showed the two can run the same tick concurrently and the audit row
+     *                               could not tell them apart.
+     */
+    public function tick(string $performedBy = 'authority-worker'): array
     {
         $meta = $this->context->current();
         if (! $meta || (string) $meta->authority_state !== EdgeAuthorityService::STANDBY) {
@@ -53,7 +60,7 @@ class EdgeStandbyFreshnessService
         }
         $stock = 'current';
         try {
-            $stock = $this->refreshStockIfBehind();
+            $stock = $this->refreshStockIfBehind($performedBy);
         } catch (Throwable $e) {
             $stock = 'error:' . mb_substr($e->getMessage(), 0, 160);
         }
@@ -135,7 +142,7 @@ class EdgeStandbyFreshnessService
      * Stock freshness proof: the Cloud's stock watermark moved → the appliance pulls a fresh baseline and accepts it
      * (initial / cutover / standby refresh) — the local selling position follows the Cloud (100 → 95 → 92).
      */
-    public function refreshStockIfBehind(): string
+    public function refreshStockIfBehind(string $performedBy = 'authority-worker'): string
     {
         $meta = $this->context->requireCurrent();
         if ((string) $meta->authority_state !== EdgeAuthorityService::STANDBY) {
@@ -165,10 +172,34 @@ class EdgeStandbyFreshnessService
             ]);
             $kind = 'initial';
         } elseif ($accepted === null) {
-            $this->cutover->acceptCutover($package, 'authority-worker', 'warm standby: config revision moved — baseline at the new watermark');
+            try {
+                $this->cutover->acceptCutover($package, $performedBy, 'warm standby: config revision moved — baseline at the new watermark');
+            } catch (RuntimeException $e) {
+                // O1 (owner §4-8, 21 Oct 2026): two ticks can race on the same cutover — the authority worker's tick and the
+                // handback orchestrator's inline tick after the state flips to standby. Both read "revision moved", both fetch
+                // their own package (a fresh baseline_uuid each, the same items), the row lock serialises them and the loser
+                // is refused with CUTOVER_ALREADY_DONE after the winner inserted. Nothing was written by the loser and the
+                // appliance IS at the current revision, so this is the idempotent outcome, not an error — PROVIDED the accepted
+                // baseline is really at this revision and at the watermark this tick set out to reach. Anything else rethrows.
+                if (! str_starts_with($e->getMessage(), 'CUTOVER_ALREADY_DONE')) {
+                    throw $e;
+                }
+                $winner = $this->baselines->currentAccepted();
+                $target = (string) ($position['stock_watermark'] ?? '');
+                $advertised = $this->context->requireCurrent()->standby_stock_watermark_seen;
+                $atTarget = $winner !== null
+                    && (string) ($winner->stock_watermark ?? '') !== ''
+                    && in_array((string) $winner->stock_watermark, array_filter([$target, $advertised !== null ? (string) $advertised : null]), true);
+                if (! $atTarget) {
+                    throw $e;
+                }
+                $this->context->requireCurrent()->forceFill(['standby_stock_refreshed_at' => now()])->save();
+
+                return 'already_current';
+            }
             $kind = 'cutover';
         } else {
-            $this->cutover->acceptStandbyRefresh($package, 'authority-worker');
+            $this->cutover->acceptStandbyRefresh($package, $performedBy);
             $kind = 'standby';
         }
         $this->context->requireCurrent()->forceFill(['standby_stock_refreshed_at' => now()])->save();

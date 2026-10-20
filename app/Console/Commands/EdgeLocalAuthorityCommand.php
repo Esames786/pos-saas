@@ -83,6 +83,9 @@ class EdgeLocalAuthorityCommand extends Command
                     $r = $orchestrator->run($by);
                     if ($r['status'] === EdgeHandbackOrchestrator::HANDED_BACK) {
                         $this->info('Authority handed back to the Cloud — the appliance is a warm standby again.');
+                        // O1 (21 Oct 2026): the orchestrator's inline freshness tick was invisible — an `error:` there could
+                        // only be found in the worker's log. Print it, so the operator sees what the first standby tick did.
+                        $this->line('freshness: ' . json_encode($r['freshness'] ?? [], JSON_UNESCAPED_SLASHES));
 
                         return self::SUCCESS;
                     }

@@ -7,7 +7,10 @@ use App\Models\Tenant\Product;
 use App\Services\Edge\BranchOperatingModeService;
 use App\Services\Edge\EdgeAuthorityService;
 use App\Services\Edge\EdgeAuthorityTick;
+use App\Services\Edge\EdgeBaselineClient;
+use App\Services\Edge\EdgeBaselineCutoverService;
 use App\Services\Edge\EdgeBaselineIssuanceService;
+use App\Services\Edge\EdgeBranchContext;
 use App\Services\Inventory\InventoryService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
@@ -271,5 +274,80 @@ class EdgeStandbyFreshnessHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame('Widget Deluxe', $this->asEdge(fn () => (string) DB::connection('tenant')->table('products')->where('id', $this->productId)->value('name')));
         $this->assertSame((string) $meta->source_revision, (string) $this->acceptedBaseline()->source_revision);
         $this->assertTrue($this->asEdge(fn () => $this->authority()->freshness()['ok']));
+    }
+    /**
+     * O1 (owner §4-8, 21 Oct 2026) — reproduced on the disposable pair: after a handback the orchestrator's INLINE freshness tick
+     * and the authority worker's tick race on the same cutover. Both see "revision moved", both fetch their own package (a fresh
+     * baseline_uuid each, the same items and watermark), the row lock serialises them and the loser is refused with
+     * CUTOVER_ALREADY_DONE after the winner inserted. The loser wrote nothing and the appliance IS at the current revision —
+     * the worker status must say `already_current`, never `error:`; no second baseline, no second cutover audit row, freshness ok,
+     * the operational position equal to the Cloud's.
+     */
+    public function test_a_second_baseline_issued_for_the_same_revision_is_reported_already_current_not_as_an_error(): void
+    {
+        $this->tick(); // revision 1 applied == advertised; baseline at revision 1 (100)
+        $this->cloudSells(5); // 100 → 95 on the Cloud
+        $r = $this->tick(); // heartbeat sees the new watermark → standby refresh at the same revision
+        $this->assertSame('refreshed:standby', $r['work']['stock'], json_encode($r['work']));
+        $cutoversBefore = $this->asEdge(fn () => DB::connection('tenant')->table('edge_baseline_cutovers')->count());
+
+        // The exact race: the config revision moves (→ 2) and TWO ticks run the cutover. Bind a cutover service whose acceptCutover
+        // first performs the COMPETING cutover (the winner: its own fetch → its own baseline_uuid) and only then runs the real
+        // acceptCutover with the loser's package — the row lock serialises exactly like two processes do.
+        $this->cloudSells(3); // 95 → 92, so the cutover carries a NEW position too
+        $this->asCloud(fn () => DB::connection('tenant')->table('products')->where('id', $this->productId)->update(['name' => 'Widget Ultra', 'updated_at' => now()->addSeconds(2)]));
+        $racer = new class(app(EdgeBranchContext::class)) extends EdgeBaselineCutoverService {
+            public int $competingCutovers = 0;
+
+            public function acceptCutover(array $package, string $performedBy, ?string $reason = null): object
+            {
+                if ($this->competingCutovers === 0) {
+                    $this->competingCutovers++;
+                    $meta = app(EdgeBranchContext::class)->requireCurrent();
+                    $winner = app(EdgeBaselineClient::class)->fetch((string) $meta->source_revision, (int) $meta->activation_epoch); // its OWN baseline_uuid
+                    parent::acceptCutover($winner, 'authority-worker', 'the competing tick (winner)');
+                }
+
+                return parent::acceptCutover($package, $performedBy, $reason); // the loser → CUTOVER_ALREADY_DONE inside the real service
+            }
+        };
+        $r = $this->asEdge(function () use ($racer) {
+            app()->instance(EdgeBaselineCutoverService::class, $racer);
+            try {
+                return app()->make(EdgeAuthorityTick::class)->run('test-worker');
+            } finally {
+                app()->forgetInstance(EdgeBaselineCutoverService::class);
+            }
+        });
+        $this->assertSame(1, $racer->competingCutovers, 'the competing cutover ran exactly once, between the fetch and the accept of the losing tick');
+        $this->assertSame('refreshed:1->2', $r['work']['config'], json_encode($r['work']));
+        $this->assertSame('already_current', $r['work']['stock'], 'the loser reports the idempotent outcome, not error:CUTOVER_ALREADY_DONE — ' . json_encode($r['work']));
+
+        // One accepted baseline (the winner's), at revision 2, at the advertised watermark; exactly ONE new cutover audit row.
+        $rows = $this->asEdge(fn () => DB::connection('tenant')->table('edge_operational_stock_baselines')->where('status', 'accepted')->get());
+        $this->assertCount(1, $rows, 'never two accepted baselines for one binding');
+        $meta = $this->edgeMeta();
+        $this->assertSame((string) $meta->source_revision, (string) $rows[0]->source_revision);
+        $this->assertSame((string) $meta->standby_stock_watermark_seen, (string) $rows[0]->stock_watermark);
+        $this->assertSame($cutoversBefore + 1, $this->asEdge(fn () => DB::connection('tenant')->table('edge_baseline_cutovers')->count()), 'the loser added no cutover audit row');
+        $this->assertNotNull($meta->standby_stock_refreshed_at, 'the loser still stamps the refresh time — the appliance is provably fresh');
+        $this->assertTrue($this->asEdge(fn () => $this->authority()->freshness()['ok']), 'STANDBY_FRESH_ENOUGH holds after the race');
+        $this->assertSame(92.0, $this->operationalOnHand(), 'the operational position equals the Cloud position');
+        $next = $this->tick();
+        $this->assertSame('current', $next['work']['stock'], json_encode($next['work']));
+
+        // Any OTHER cutover refusal keeps surfacing as an error (nothing else is swallowed): a package for the wrong epoch.
+        $message = $this->asEdge(function () {
+            $meta = app(EdgeBranchContext::class)->requireCurrent();
+            try {
+                app(EdgeBaselineCutoverService::class)->acceptCutover(['baseline_uuid' => 'x', 'branch_id' => (int) $meta->branch_id, 'activation_epoch' => 99, 'source_revision' => (string) $meta->source_revision, 'content_hash' => 'y', 'items' => []], 'test', null);
+
+                return 'no exception';
+            } catch (\RuntimeException $e) {
+                return $e->getMessage();
+            }
+        });
+        $this->assertStringStartsWith('CUTOVER_', $message);
+        $this->assertStringStartsNotWith('CUTOVER_ALREADY_DONE', $message);
     }
 }

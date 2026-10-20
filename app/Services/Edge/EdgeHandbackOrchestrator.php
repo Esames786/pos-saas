@@ -171,7 +171,9 @@ class EdgeHandbackOrchestrator
         }
 
         // 13 resume warm standby: the Cloud position now includes every offline sale — pull config/baseline freshness.
-        $fresh = $this->freshness->tick();
+        // Attributed as the orchestrator (O1, 21 Oct 2026): the authority worker's own tick may race this one on the same
+        // cutover; the loser reports `already_current`, and the audit row names which caller won.
+        $fresh = $this->freshness->tick('handback-orchestrator');
         $state = $this->states->evaluate();
 
         return ['status' => self::HANDED_BACK, 'cloud' => $result['cloud'] ?? null, 'reservations' => $reservations, 'freshness' => $fresh, 'state' => $state];
