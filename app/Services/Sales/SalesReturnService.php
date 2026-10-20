@@ -17,6 +17,9 @@ use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\StockLedger;
 use App\Services\Finance\JournalPostingService;
 use App\Services\Inventory\InventoryService;
+use App\Support\AlreadySubmitted;
+use App\Support\SubmissionKey;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 class SalesReturnService
@@ -37,6 +40,9 @@ class SalesReturnService
         // REFUND-SHIFT-1: the open shift of the counter that pays the refund (the caller resolves it).
         // Null = the sale's own shift while it is still open, as before; neither = no shift.
         ?int $refundShiftId = null,
+        // UB-06: the key the form was drawn with + a fingerprint of what it asked for. Null = posted as before.
+        ?string $submissionKey = null,
+        ?string $submissionHash = null,
     ): SalesReturn {
         // Defence in depth behind the request validation. A return with no refund method posts
         // Dr revenue / Cr 1500 Undeposited Funds and writes NO cash-bank movement, so the money
@@ -45,13 +51,18 @@ class SalesReturnService
             throw new \RuntimeException('Select how the refund was paid — a return cannot be posted without a refund method.');
         }
 
-        $salesReturn = DB::connection('tenant')->transaction(function () use (
-            $salesOrder, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId
+        $key = SubmissionKey::usable($submissionKey, 'sales_returns');
+        $this->refuseIfPosted($key, $submissionHash);
+
+        $salesReturn = $this->postedOnce($key, $submissionHash, fn () => DB::connection('tenant')->transaction(function () use (
+            $salesOrder, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId, $key, $submissionHash
         ) {
             $salesOrder = SalesOrder::query()
                 ->whereKey($salesOrder->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+            // UB-06: two posts of one form queue on the sale's lock — the second finds the first here.
+            $this->refuseIfPosted($key, $submissionHash);
             $salesOrder->load('branch');
             $salesOrder->setRelation('lines', SalesOrderLine::query()
                 ->where('sales_order_id', $salesOrder->id)
@@ -72,8 +83,7 @@ class SalesReturnService
             $businessDate = $refundShift?->business_date
                 ?? app(\App\Support\TenantClock::class)->currentBusinessDate($salesOrder->branch);
 
-            $salesReturn = SalesReturn::create([
-                'return_no'          => $this->salesService->nextReturnNo(),
+            $salesReturn = $this->createReturn([
                 'sales_order_id'     => $salesOrder->id,
                 'branch_id'          => $salesOrder->branch_id,
                 'return_date'        => now(),
@@ -89,7 +99,7 @@ class SalesReturnService
                 'status'             => 'posted',
                 'created_by_user_id' => $userId,
                 'reason'             => $reason,
-            ]);
+            ] + $this->submissionColumns($key, $submissionHash));
 
             $subtotal = 0;
             $discount = 0;
@@ -248,7 +258,7 @@ class SalesReturnService
             $this->updateShiftForReturn($refundShift, $refundMethod, $grandTotal);
 
             return $salesReturn->fresh();
-        });
+        }));
 
         // FIN-7C: GL reversal + operational cash/bank refund. Idempotent + safe
         // (JournalPostingService catches/reports — never breaks return processing).
@@ -279,13 +289,19 @@ class SalesReturnService
         ?float $refundAmount,
         int $userId,
         ?int $refundShiftId = null,
+        ?string $submissionKey = null,
+        ?string $submissionHash = null,
     ): SalesReturn {
         if (trim($reason) === '') {
             throw new \RuntimeException('Write why the item is coming back — a return without a bill needs a reason.');
         }
 
-        $salesReturn = DB::connection('tenant')->transaction(function () use (
-            $branch, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId
+        // UB-06: nothing else limits a return without a bill, so the form's key is all that stops a second post.
+        $key = SubmissionKey::usable($submissionKey, 'sales_returns');
+        $this->refuseIfPosted($key, $submissionHash);
+
+        $salesReturn = $this->postedOnce($key, $submissionHash, fn () => DB::connection('tenant')->transaction(function () use (
+            $branch, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId, $key, $submissionHash
         ) {
             $refundShift = $refundShiftId
                 ? Shift::query()->whereKey($refundShiftId)->where('branch_id', $branch->id)->where('status', 'open')->lockForUpdate()->first()
@@ -293,8 +309,7 @@ class SalesReturnService
             $businessDate = $refundShift?->business_date
                 ?? app(\App\Support\TenantClock::class)->currentBusinessDate($branch);
 
-            $salesReturn = SalesReturn::create([
-                'return_no'          => $this->salesService->nextReturnNo(),
+            $salesReturn = $this->createReturn([
                 'sales_order_id'     => null,
                 'branch_id'          => $branch->id,
                 'return_date'        => now(),
@@ -310,7 +325,7 @@ class SalesReturnService
                 'status'             => 'posted',
                 'created_by_user_id' => $userId,
                 'reason'             => $reason,
-            ]);
+            ] + $this->submissionColumns($key, $submissionHash));
 
             $pricing = app(SalePricingService::class);
             $subtotal = 0.0;
@@ -354,7 +369,11 @@ class SalesReturnService
                 }
 
                 $tracked = (bool) $product->is_stock_tracked;
-                $restock = $tracked && (! array_key_exists('restock', $lineData) || filter_var($lineData['restock'], FILTER_VALIDATE_BOOLEAN));
+                // UB-04: an item with an expiry (a medicine) that comes back with no bill is of unknown condition — it
+                // goes back on the shelf only when the cashier says so; unsaid = thrown away.
+                $restock = $tracked && (array_key_exists('restock', $lineData)
+                    ? filter_var($lineData['restock'], FILTER_VALIDATE_BOOLEAN)
+                    : ! $product->has_expiry);
                 $baseQty = round($qty * $factor, 3);
 
                 // The batch it goes back into: one the cashier picked, or the one printed on the strip.
@@ -379,6 +398,7 @@ class SalesReturnService
                     if ($product->has_expiry && ($batchNo === null || ! $expiry)) {
                         throw new \RuntimeException($product->name . ' has an expiry: pick its batch, or type the batch and expiry printed on it.');
                     }
+                    $this->refuseExpiredRestock($branch, $product, $batchNo, $expiry ?: null);
                 }
 
                 $baseCost = $this->noBillCost($branch, $product, $variant, $batchNo);
@@ -459,12 +479,87 @@ class SalesReturnService
             $this->updateShiftForReturn($refundShift, $refundMethod, $grandTotal);
 
             return $salesReturn->fresh();
-        });
+        }));
 
         $this->journalPosting->postSalesReturn($salesReturn, $userId);
         $this->journalPosting->postSalesReturnCashBankMovement($salesReturn, $userId);
 
         return $salesReturn;
+    }
+
+    /**
+     * UB-06 — run the posting once per form. Two posts that raced past the first look both reach the insert; the unique
+     * key lets one through and turns the other into "already posted" (its transaction has rolled back — nothing moved).
+     *
+     * @template T
+     * @param  callable(): T  $post
+     * @return T
+     */
+    private function postedOnce(?string $key, ?string $hash, callable $post): mixed
+    {
+        try {
+            return $post();
+        } catch (QueryException $e) {
+            if ($key !== null && SubmissionKey::isDuplicate($e)) {
+                $this->refuseIfPosted($key, $hash);
+            }
+            throw $e;
+        }
+    }
+
+    /** UB-06: this form was posted before → its return (same items) or a refusal (other items). */
+    private function refuseIfPosted(?string $key, ?string $hash): void
+    {
+        if ($key === null) {
+            return;
+        }
+        $existing = SalesReturn::query()->where('submission_key', $key)->first();
+        if ($existing) {
+            throw new AlreadySubmitted($existing, $hash !== null && hash_equals((string) $existing->submission_hash, $hash));
+        }
+    }
+
+    /**
+     * The return row, numbered. The number is "SR-<second>-<3 random digits>": two returns in the same second picked the
+     * same number about once in 900 times, and the second one failed with a 500. A taken number now draws another
+     * (MySQL undoes only the failed insert, not the transaction). A clash on the form key is not a number clash — it
+     * goes to postedOnce().
+     */
+    private function createReturn(array $attributes): SalesReturn
+    {
+        for ($try = 1; ; $try++) {
+            try {
+                return SalesReturn::create(['return_no' => $this->salesService->nextReturnNo()] + $attributes);
+            } catch (QueryException $e) {
+                if ($try >= 5 || ! SubmissionKey::duplicateOn($e, 'return_no')) {
+                    throw $e;
+                }
+            }
+        }
+    }
+
+    /** @return array<string, string|null> the key columns for the insert — none when the form sent no key */
+    private function submissionColumns(?string $key, ?string $hash): array
+    {
+        return $key === null ? [] : ['submission_key' => $key, 'submission_hash' => $hash];
+    }
+
+    /**
+     * UB-04 — expired stock never goes back on the shelf. The counter would not sell it, but it would still count as
+     * stock and value. Today = the branch's business day, the same day the counter tests expiry against.
+     */
+    private function refuseExpiredRestock(Branch $branch, Product $product, ?string $batchNo, ?string $expiry): void
+    {
+        if (! $expiry) {
+            return;
+        }
+        $clock = app(\App\Support\TenantClock::class);
+        $today = $clock->now($clock->businessTimezone($branch))->toDateString();
+        if ($expiry < $today) {
+            throw new \RuntimeException($product->name . ': batch ' . ($batchNo ?: '—') . ' expired on '
+                . \Illuminate\Support\Carbon::parse($expiry)->format('d M Y')
+                . ' — expired stock cannot go back on the shelf. Choose "Thrown away".');
+        }
     }
 
     /** RETURN-NO-BILL-1: the cost of one base unit going back in — its batch's, else the item's, else its buying price. */
@@ -558,6 +653,7 @@ class SalesReturnService
                 ? InventoryBatch::query()->whereKey($orderLine->inventory_batch_id)->whereNotNull('expiry_date')->first()
                 : null)
             ?? $this->batchTheSaleTookFrom($salesOrder, $orderLine, $product);
+        $this->refuseExpiredRestock($salesOrder->branch, $product, $batch?->batch_no, $batch?->expiry_date?->toDateString());
 
         $this->inventoryService->postIn(
             branch:        $salesOrder->branch,
