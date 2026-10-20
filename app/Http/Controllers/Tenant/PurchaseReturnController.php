@@ -172,7 +172,7 @@ class PurchaseReturnController extends Controller
             }
         } catch (\Illuminate\Database\QueryException $e) {
             // Two posts of one form raced past the look above: the unique key let one through.
-            if ($key && \App\Support\SubmissionKey::isDuplicate($e)
+            if ($key && \App\Support\SubmissionKey::isDuplicate($e, $key)
                 && ($existing = PurchaseReturn::query()->where('submission_key', $key)->first())) {
                 return $this->alreadyPosted($request, $existing, hash_equals((string) $existing->submission_hash, (string) $hash));
             }

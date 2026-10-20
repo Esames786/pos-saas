@@ -352,6 +352,180 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString('name="purchase_scheme"', $this->page('/products/create')->assertOk()->getContent(), 'a restaurant is not asked about schemes');
     }
 
+    // ── UB-10: the stock unit is fixed once stock or purchases ran in it ─────────────────────────
+
+    public function test_a_unit_with_history_never_changes_on_either_screen_or_behind_them(): void
+    {
+        [$each, $kg] = [$this->unit('UG-EA', 'Each', 'quantity'), $this->unit('UG-KG', 'Kilogram', 'weight')];
+        $this->setTenant('mart', true);
+        $this->postAs('/products', $this->form(['_card' => 'packed', 'name' => 'Unit Guard Rice', 'default_selling_price' => '100', '_stock' => '1', '_buy' => '1', 'unit_id' => (string) $each]))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $p = Product::where('name', 'Unit Guard Rice')->firstOrFail();
+        $edit = fn (array $over) => $this->form($over + ['_card' => 'packed', 'name' => 'Unit Guard Rice', 'sku' => $p->sku, 'default_selling_price' => '100', '_stock' => '1', '_buy' => '1']);
+
+        // No history yet: the unit may still change, as always.
+        $this->putAs('/products/' . $p->id, $edit(['unit_id' => (string) $kg]))->assertSessionHasNoErrors();
+        $this->assertSame($kg, (int) $p->fresh()->unit_id, 'nothing ran in it yet — free to change');
+
+        $this->stockMoved($p->fresh());
+
+        // The new screen.
+        $this->putAs('/products/' . $p->id, $edit(['unit_id' => (string) $each]))->assertSessionHasErrors('unit_id');
+        $this->assertStringContainsString('ran in Kilogram', (string) session('errors')->first('unit_id'));
+        $this->putAs('/products/' . $p->id, $edit(['unit_id' => '']))->assertSessionHasErrors('unit_id');
+        // The old screen.
+        $this->setTenant('mart', false);
+        $this->putAs('/products/' . $p->id, ['sku' => $p->sku, 'name' => 'Unit Guard Rice', 'product_type' => 'simple', 'default_selling_price' => '100',
+            'status' => 'active', 'unit_id' => (string) $each])->assertSessionHasErrors('unit_id');
+        // Behind every screen (an import, a script, an API): the model itself refuses.
+        try {
+            $p->fresh()->update(['unit_id' => $each]);
+            $this->fail('the model must refuse a unit change on an item with history');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertArrayHasKey('unit_id', $e->errors());
+        }
+        $this->assertSame($kg, (int) $p->fresh()->unit_id, 'still Kilogram');
+
+        // Everything else still saves.
+        $this->setTenant('mart', true);
+        $this->putAs('/products/' . $p->id, $edit(['unit_id' => (string) $kg, 'default_selling_price' => '120']))->assertSessionHasNoErrors();
+        $this->assertEquals(120, $p->fresh()->default_selling_price);
+    }
+
+    public function test_opening_an_item_and_saving_it_unchanged_changes_nothing(): void
+    {
+        // Roadmap A02, through the real edit page: what the page draws is posted back exactly as a browser would.
+        $each = $this->unit('A02-EA', 'Each', 'quantity');
+        $this->setTenant('mart', true);
+        $this->postAs('/products', $this->form(['_card' => 'packed', 'name' => 'A02 Juice 1L', 'default_selling_price' => '180', 'default_purchase_price' => '150',
+            '_stock' => '1', '_buy' => '1', 'unit_id' => (string) $each, '_tax' => '1', 'tax_rate_percent' => '17', 'reorder_level' => '6']))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $p = Product::where('name', 'A02 Juice 1L')->firstOrFail();
+        $this->stockMoved($p);
+        $snap = fn () => [
+            'product' => collect(Product::findOrFail($p->id)->getAttributes())->except(['updated_at'])->all(),
+            'variants' => ProductVariant::where('product_id', $p->id)->get()->map(fn ($v) => collect($v->getAttributes())->except(['updated_at'])->all())->all(),
+            'barcodes' => ProductBarcode::where('product_id', $p->id)->get()->map(fn ($b) => collect($b->getAttributes())->except(['updated_at'])->all())->all(),
+            'translations' => DB::connection('tenant')->table('product_translations')->where('product_id', $p->id)->get(['language_code', 'name', 'description'])->all(),
+        ];
+        $before = $snap();
+
+        $form = $this->formOnPage($this->page('/products/' . $p->id . '/edit')->assertOk()->getContent(), '/products/' . $p->id);
+        $this->call('POST', 'http://' . $this->host . '/products/' . $p->id, $form)->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertEquals($before, $snap(), 'open + save with no edits: no unit, kind, price, tax, code or name changed');
+    }
+
+    public function test_an_item_on_a_unit_switched_off_keeps_it_when_saved_unchanged(): void
+    {
+        // The edit lists only active units: an item on a unit that was switched off drew "— Piece —" and the save
+        // silently took its unit away. Its own unit is now always in the list.
+        $box = $this->unit('OFF-BOX', 'Old Box', 'quantity');
+        $this->setTenant('mart', true);
+        $this->postAs('/products', $this->form(['_card' => 'packed', 'name' => 'Old Box Item', 'default_selling_price' => '50', 'unit_id' => (string) $box]))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $p = Product::where('name', 'Old Box Item')->firstOrFail();
+        DB::connection('tenant')->table('units')->where('id', $box)->update(['is_active' => 0]);
+
+        $form = $this->formOnPage($this->page('/products/' . $p->id . '/edit')->assertOk()->getContent(), '/products/' . $p->id);
+        $this->assertSame((string) $box, $form['unit_id'] ?? null, 'the page still shows its own unit');
+        $this->call('POST', 'http://' . $this->host . '/products/' . $p->id, $form)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($box, (int) $p->fresh()->unit_id);
+    }
+
+    public function test_the_bulk_import_keeps_the_unit_of_an_item_with_history(): void
+    {
+        $each = $this->unit('IMP-EA', 'IMP-EA', 'quantity');
+        $this->setTenant('mart', true);
+        $this->postAs('/products', $this->form(['_card' => 'packed', 'name' => 'Imported Tea', 'sku' => 'IMP-TEA', 'default_selling_price' => '90', '_stock' => '1', 'unit_id' => (string) $each]))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->postAs('/products', $this->form(['_card' => 'packed', 'name' => 'Imported Salt', 'sku' => 'IMP-SALT', 'default_selling_price' => '40', '_stock' => '1', 'unit_id' => (string) $each]))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $tea = Product::where('sku', 'IMP-TEA')->firstOrFail();
+        $this->stockMoved($tea);   // Salt has no history
+
+        $csv = "sku,name,category,unit,product_type,purchase_price,selling_price,barcode\nIMP-TEA,Imported Tea,,IMP-KG,simple,70,95,\nIMP-SALT,Imported Salt,,IMP-KG,simple,30,45,\n";
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('items.csv', $csv);
+        $this->asOwner()->call('POST', 'http://' . $this->host . '/products-bulk-import', [], [], ['csv_file' => $file])->assertRedirect();
+
+        $this->assertSame($each, (int) $tea->fresh()->unit_id, 'stock already ran in IMP-EA — the import keeps it');
+        $this->assertEquals(95, $tea->fresh()->default_selling_price, 'the rest of the row is imported as before');
+        $kg = (int) DB::connection('tenant')->table('units')->where('code', 'IMP-KG')->value('id');
+        $this->assertSame($kg, (int) Product::where('sku', 'IMP-SALT')->value('unit_id'), 'no history: the unit changes, as before');
+        $this->assertStringContainsString('1 kept its unit', (string) session('status'));
+    }
+
+    private function unit(string $code, string $name, string $type): int
+    {
+        return (int) DB::connection('tenant')->table('units')->insertGetId(['code' => $code, 'name' => $name, 'unit_type' => $type,
+            'base_factor' => 1, 'is_base' => 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    private function stockMoved(Product $p): void
+    {
+        DB::connection('tenant')->table('stock_ledgers')->insert([
+            'branch_id' => DB::connection('tenant')->table('branches')->value('id'), 'product_id' => $p->id, 'product_variant_id' => $p->defaultVariant?->id,
+            'movement_type' => 'opening_stock', 'direction' => 'in', 'quantity' => 10, 'unit_cost' => 80, 'total_cost' => 800,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    /**
+     * The fields of the form posting to $action, as a browser sends them: hidden/text inputs, checked radios and
+     * checkboxes, each select's selected option (else its first), textareas — parsed the way PHP parses a post.
+     */
+    private function formOnPage(string $html, string $action): array
+    {
+        $dom = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $dom->loadHTML('<?xml encoding="utf-8"?>' . $html);
+        libxml_clear_errors();
+        $form = null;
+        $xpath = new \DOMXPath($dom);
+        foreach ($dom->getElementsByTagName('form') as $f) {
+            // the save form — never the delete form that posts to the same address
+            if (str_ends_with(parse_url($f->getAttribute('action'), PHP_URL_PATH) ?? '', $action)
+                && $xpath->query('.//input[@name="_method"][@value="PUT" or @value="put" or @value="PATCH"]', $f)->length) {
+                $form = $f;
+                break;
+            }
+        }
+        $this->assertNotNull($form, "the save form posting to {$action}");
+        $pairs = [];
+        foreach ($xpath->query('.//input|.//select|.//textarea', $form) as $el) {
+            $name = $el->getAttribute('name');
+            if ($name === '' || $el->hasAttribute('disabled')) {
+                continue;
+            }
+            if ($el->nodeName === 'select') {
+                $opts = $xpath->query('.//option', $el);
+                $picked = null;
+                foreach ($opts as $o) {
+                    if ($o->hasAttribute('selected')) {
+                        $picked = $o;
+                    }
+                }
+                $picked ??= $opts->item(0);
+                $value = $picked ? ($picked->hasAttribute('value') ? $picked->getAttribute('value') : $picked->textContent) : '';
+            } elseif ($el->nodeName === 'textarea') {
+                $value = $el->textContent;
+            } else {
+                $type = strtolower($el->getAttribute('type') ?: 'text');
+                if (in_array($type, ['radio', 'checkbox'], true) && ! $el->hasAttribute('checked')) {
+                    continue;
+                }
+                if (in_array($type, ['submit', 'button', 'file', 'image', 'reset'], true)) {
+                    continue;
+                }
+                $value = $el->hasAttribute('value') ? $el->getAttribute('value') : ($type === 'checkbox' || $type === 'radio' ? 'on' : '');
+            }
+            $pairs[] = rawurlencode($name) . '=' . rawurlencode($value);
+        }
+        parse_str(implode('&', $pairs), $out);
+
+        return $out;
+    }
+
     private function form(array $over): array
     {
         return array_merge(['_form_v2' => '1', 'status' => 'active', 'sku' => '', 'category_id' => '', 'unit_id' => '', '_tax' => '0'], $over);

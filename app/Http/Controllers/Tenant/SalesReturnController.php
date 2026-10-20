@@ -397,7 +397,8 @@ class SalesReturnController extends Controller
             'branch_id'                  => ['required', 'integer', 'exists:branches,id'],
             'reason'                     => ['required', 'string', 'max:500'],
             'refund_method'              => ['required', Rule::in(['cash', 'bank_transfer', 'card', 'other'])],
-            'refund_amount'              => ['nullable', 'numeric', 'min:0'],
+            // UB-04: stated, never filled in by itself (the screen shows it, the server checks it against the lines)
+            'refund_amount'              => ['required', 'numeric', 'min:0'],
             'lines'                      => ['required', 'array', 'min:1'],
             'lines.*.product_id'         => ['required', 'integer', 'exists:products,id'],
             'lines.*.product_variant_id' => ['nullable', 'integer'],
@@ -413,6 +414,7 @@ class SalesReturnController extends Controller
             'submission_key'             => SubmissionKey::rule(),
         ], [
             'reason.required' => 'Write why the item is coming back — a return without a bill needs a reason.',
+            'refund_amount.required' => 'Write the refund amount — a return without a bill is paid only what is stated.',
         ]);
 
         $branch = Branch::findOrFail($data['branch_id']);

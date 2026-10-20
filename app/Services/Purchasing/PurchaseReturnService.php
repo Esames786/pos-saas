@@ -320,10 +320,11 @@ class PurchaseReturnService
     private function createNumbered(array $attributes): PurchaseReturn
     {
         for ($try = 1; ; $try++) {
+            $no = $this->nextReturnNo();
             try {
-                return PurchaseReturn::create(['return_no' => $this->nextReturnNo()] + $attributes);
+                return PurchaseReturn::create(['return_no' => $no] + $attributes);
             } catch (\Illuminate\Database\QueryException $e) {
-                if ($try >= 5 || ! \App\Support\SubmissionKey::duplicateOn($e, 'return_no')) {
+                if ($try >= 5 || ! \App\Support\SubmissionKey::duplicateValue($e, $no)) {
                     throw $e;
                 }
             }

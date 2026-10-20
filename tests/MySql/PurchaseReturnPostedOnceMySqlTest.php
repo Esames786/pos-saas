@@ -130,6 +130,34 @@ class PurchaseReturnPostedOnceMySqlTest extends MySqlTenantTestCase
         $this->assertNull(PurchaseReturn::whereNotNull('submission_key')->value('id'), 'no key on the old screen');
     }
 
+    public function test_a_return_number_already_taken_draws_another(): void
+    {
+        // The full suite caught it: three drafts in one second drew the same "PRET-<second>-<3 digits>". The clash is on
+        // the index pret_no_unique — a name that does not say "return_no" — so it is recognised by the number itself.
+        [, $grnLine] = $this->receiptOf(5);
+        $taken = $this->draft($grnLine, 1)->return_no;
+        $svc = new class($taken, app(InventoryService::class), app(\App\Services\Purchasing\PurchasingService::class)) extends PurchaseReturnService {
+            private array $numbers;
+
+            public function __construct(string $taken, InventoryService $i, \App\Services\Purchasing\PurchasingService $p)
+            {
+                parent::__construct($i, $p);
+                $this->numbers = [$taken, 'PRET-TEST-FRESH-1'];
+            }
+
+            public function nextReturnNo(): string
+            {
+                return array_shift($this->numbers) ?? parent::nextReturnNo();
+            }
+        };
+
+        $second = $svc->createDraft(['branch_id' => $this->branchId, 'supplier_id' => $this->supplierId, 'return_date' => now()->toDateString(), 'reason_code' => 'damaged'],
+            [['product_id' => $this->productId, 'source_line_id' => $grnLine, 'quantity' => 1, 'unit_cost' => 40]], $this->userId);
+
+        $this->assertSame('PRET-TEST-FRESH-1', $second->return_no, 'the taken number was skipped');
+        $this->assertSame(2, PurchaseReturn::count());
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     /** @return array{0:int, 1:int} goods receipt, its one line — $qty received at 40 */

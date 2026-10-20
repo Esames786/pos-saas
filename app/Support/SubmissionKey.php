@@ -65,19 +65,20 @@ final class SubmissionKey
     }
 
     /** The insert failed only because another post already holds this key. */
-    public static function isDuplicate(QueryException $e): bool
+    public static function isDuplicate(QueryException $e, string $key): bool
     {
-        return self::duplicateOn($e, self::FIELD);
+        return self::duplicateValue($e, $key);
     }
 
     /**
-     * A unique clash on this column. Read from the driver's own message ("Duplicate entry 'x' for key
-     * 'sales_returns.sales_returns_return_no_unique'"), never from getMessage(): that one carries the whole SQL, which
-     * names every column of the insert — every clash would look like a clash on every column.
+     * A unique clash on exactly this value. Read from the driver's own message — MySQL: "Duplicate entry 'x' for key
+     * 'purchase_returns.pret_no_unique'" — by the VALUE that was inserted: index names do not follow the column
+     * (pret_no_unique holds return_no), and getMessage() carries the whole SQL, which names every column of the insert.
      */
-    public static function duplicateOn(QueryException $e, string $column): bool
+    public static function duplicateValue(QueryException $e, string $value): bool
     {
-        return ($e->errorInfo[0] ?? null) === '23000' && str_contains((string) ($e->errorInfo[2] ?? ''), $column);
+        return ($e->errorInfo[0] ?? null) === '23000' && $value !== ''
+            && str_contains((string) ($e->errorInfo[2] ?? ''), "'" . $value . "'");
     }
 
     /** Sorted keys, numbers as numbers, so "1" and 1 and 1.0 fingerprint the same. */

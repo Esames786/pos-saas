@@ -262,6 +262,48 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta($stock, $this->stock($syrup), 0.001, 'nothing expired came back into stock');
     }
 
+    public function test_without_a_bill_the_refund_is_stated_and_stock_comes_back_only_at_a_known_cost(): void
+    {
+        // Owner, 21 Oct: today's price is a ceiling, not the refund; an unknown cost is refused, never guessed or zero.
+        $soap = $this->stocked('Known Soap');
+        $syrup = $this->stocked('Batch Syrup', ['has_expiry' => 1], 'BS1', now()->addYear()->toDateString());
+        $count = DB::table('sales_returns')->count();
+
+        try {
+            $this->postNoBill([['product_id' => $soap, 'quantity' => 1, 'unit_price' => 100, 'restock' => 1]], stateRefund: false);
+            $this->fail('a refund nobody stated must be refused');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('refund amount', $e->getMessage());
+        }
+
+        $unknown = [
+            'a new batch typed off the strip (its cost here is unknown)' => [$syrup, ['batch_no' => 'NEW-BATCH', 'expiry' => now()->addYear()->format('m/y')]],
+            'an item whose own stock row has no cost' => [$this->stocked('Free Sample', [], null, null, 0), []],
+        ];
+        foreach ($unknown as $what => [$product, $batch]) {
+            try {
+                $this->postNoBill([['product_id' => $product, 'quantity' => 1, 'unit_price' => 100, 'restock' => 1] + $batch]);
+                $this->fail($what . ': must not go back on the shelf');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('not known', $e->getMessage(), $what);
+                $this->assertStringContainsString('Thrown away', $e->getMessage());
+            }
+        }
+        $this->assertSame($count, DB::table('sales_returns')->count(), 'nothing posted');
+
+        // Known costs: the soap's own row, the syrup's own batch (typed, and in stock here).
+        $r = $this->postNoBill([
+            ['product_id' => $soap, 'quantity' => 2, 'unit_price' => 90, 'restock' => 1],
+            ['product_id' => $syrup, 'quantity' => 1, 'unit_price' => 100, 'restock' => 1, 'batch_no' => 'BS1', 'expiry' => now()->addYear()->format('m/y')],
+        ]);
+        $lines = DB::table('sales_return_lines')->where('sales_return_id', $r->id)->get()->keyBy('product_id');
+        $this->assertEqualsWithDelta(40, (float) $lines[$soap]->unit_cost, 0.0001, 'its own cost, not its price');
+        $this->assertEqualsWithDelta(40, (float) $lines[$syrup]->unit_cost, 0.0001, 'the batch BS1 cost');
+        $this->assertEqualsWithDelta(280, (float) $r->grand_total, 0.001, 'the refund stated: 2 × 90 + 100');
+        // Thrown away needs no cost at all.
+        $this->postNoBill([['product_id' => $syrup, 'quantity' => 1, 'unit_price' => 100, 'restock' => 0, 'batch_no' => 'NEW-BATCH', 'expiry' => '09/30']]);
+    }
+
     public function test_a_return_number_already_taken_draws_another_instead_of_failing(): void
     {
         // Two returns in the same second used to pick the same "SR-<second>-<3 digits>" about once in 900 — the second
@@ -303,13 +345,13 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
         return [$p, $sale, $line];
     }
 
-    private function stocked(string $name, array $attrs = [], ?string $batchNo = null, ?string $expiry = null): int
+    private function stocked(string $name, array $attrs = [], ?string $batchNo = null, ?string $expiry = null, float $cost = 40): int
     {
         $p = $this->makeProduct($this->makeCategory(), ['name' => $name, 'is_stock_tracked' => 1, 'is_sellable' => 1,
             'inventory_consumption_method' => 'stock_item', 'default_selling_price' => 100] + $attrs);
         app(InventoryService::class)->postIn(
             branch: Branch::findOrFail($this->branchId), product: Product::findOrFail($p), variant: null,
-            quantity: 50, unitCost: 40, movementType: 'opening_stock', referenceType: 'test', batchNo: $batchNo, expiryDate: $expiry,
+            quantity: 50, unitCost: $cost, movementType: 'opening_stock', referenceType: 'test', batchNo: $batchNo, expiryDate: $expiry,
         );
 
         return $p;
@@ -323,10 +365,13 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
         );
     }
 
-    private function postNoBill(array $lines, ?string $key = null, ?string $hash = null)
+    /** The refund is stated, as the screen does: the lines' total (these test items carry no tax). */
+    private function postNoBill(array $lines, ?string $key = null, ?string $hash = null, bool $stateRefund = true)
     {
+        $refund = $stateRefund ? round(array_sum(array_map(fn ($l) => (float) $l['quantity'] * (float) $l['unit_price'], $lines)), 2) : null;
+
         return app(SalesReturnService::class)->processNoBillReturn(
-            Branch::findOrFail($this->branchId), $lines, 'test', 'cash', null, $this->userId,
+            Branch::findOrFail($this->branchId), $lines, 'test', 'cash', $refund, $this->userId,
             submissionKey: $key, submissionHash: $hash,
         );
     }

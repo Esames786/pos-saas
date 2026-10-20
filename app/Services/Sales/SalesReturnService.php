@@ -295,6 +295,11 @@ class SalesReturnService
         if (trim($reason) === '') {
             throw new \RuntimeException('Write why the item is coming back — a return without a bill needs a reason.');
         }
+        // UB-04 (owner, 21 Oct): the refund is a figure someone states, never filled in by itself — today's price is
+        // only the ceiling, checked per line below.
+        if ($refundAmount === null) {
+            throw new \RuntimeException('Write the refund amount — a return without a bill is paid only what is stated.');
+        }
 
         // UB-06: nothing else limits a return without a bill, so the form's key is all that stops a second post.
         $key = SubmissionKey::usable($submissionKey, 'sales_returns');
@@ -402,6 +407,12 @@ class SalesReturnService
                 }
 
                 $baseCost = $this->noBillCost($branch, $product, $variant, $batchNo);
+                // UB-04 (owner, 21 Oct): back on the shelf only at a cost that is known — never guessed, never zero.
+                if ($restock && $baseCost === null) {
+                    throw new \RuntimeException($product->name . ': what it cost here is not known'
+                        . ($batchNo !== null ? ' (batch ' . $batchNo . ' is not in stock at this branch)' : '')
+                        . ' — it cannot go back on the shelf without a cost. Choose "Thrown away", or bring it in with a goods receipt.');
+                }
                 $lineSubtotal = round($qty * $price, 2);
                 $lineTax = round($pricing->resolveTaxAmount($product, $qty, $price, 0, null), 2);
 
@@ -419,7 +430,7 @@ class SalesReturnService
                     'pack_unit_id'        => $pack?->id,
                     'pack_factor'         => $pack ? $factor : null,
                     'base_quantity'       => $pack ? $baseQty : null,
-                    'unit_cost'           => $tracked ? round($baseCost * $factor, 4) : null,
+                    'unit_cost'           => $tracked && $baseCost !== null ? round($baseCost * $factor, 4) : null,
                 ]);
 
                 if ($restock) {
@@ -500,7 +511,7 @@ class SalesReturnService
         try {
             return $post();
         } catch (QueryException $e) {
-            if ($key !== null && SubmissionKey::isDuplicate($e)) {
+            if ($key !== null && SubmissionKey::isDuplicate($e, $key)) {
                 $this->refuseIfPosted($key, $hash);
             }
             throw $e;
@@ -528,10 +539,11 @@ class SalesReturnService
     private function createReturn(array $attributes): SalesReturn
     {
         for ($try = 1; ; $try++) {
+            $no = $this->salesService->nextReturnNo();
             try {
-                return SalesReturn::create(['return_no' => $this->salesService->nextReturnNo()] + $attributes);
+                return SalesReturn::create(['return_no' => $no] + $attributes);
             } catch (QueryException $e) {
-                if ($try >= 5 || ! SubmissionKey::duplicateOn($e, 'return_no')) {
+                if ($try >= 5 || ! SubmissionKey::duplicateValue($e, $no)) {
                     throw $e;
                 }
             }
@@ -562,8 +574,15 @@ class SalesReturnService
         }
     }
 
-    /** RETURN-NO-BILL-1: the cost of one base unit going back in — its batch's, else the item's, else its buying price. */
-    private function noBillCost(Branch $branch, Product $product, ?ProductVariant $variant, ?string $batchNo): float
+    /**
+     * RETURN-NO-BILL-1 / UB-04 — what one base unit going back on the shelf cost, or null when that is not known.
+     *
+     * A batch named (picked, or typed off the strip): THAT batch's own cost at this branch. An item kept without
+     * batches: its own stock row's cost. Nothing else (owner, 21 Oct): not another batch's cost (this used to take
+     * whichever batch was updated last), not the buying price on the item card, never zero — an unknown cost is
+     * refused, not guessed, so stock never comes back at a made-up value.
+     */
+    private function noBillCost(Branch $branch, Product $product, ?ProductVariant $variant, ?string $batchNo): ?float
     {
         $rows = StockBalance::query()->where('branch_id', $branch->id)->where('product_id', $product->id)
             ->where('product_variant_id', $variant?->id)->where('average_cost', '>', 0);
@@ -571,16 +590,11 @@ class SalesReturnService
             $batchId = InventoryBatch::query()->where('branch_id', $branch->id)->where('product_id', $product->id)
                 ->where('batch_key', $this->inventoryService->batchKey((int) $branch->id, (int) $product->id, $variant?->id, $batchNo))->value('id');
             $own = $batchId ? (float) (clone $rows)->where('inventory_batch_id', $batchId)->value('average_cost') : 0.0;
-            if ($own > 0) {
-                return $own;
-            }
-        }
-        $any = (float) $rows->orderByDesc('updated_at')->value('average_cost');
-        if ($any > 0) {
-            return $any;
+        } else {
+            $own = (float) (clone $rows)->whereNull('inventory_batch_id')->value('average_cost');
         }
 
-        return (float) ($variant?->purchase_price ?? 0) ?: (float) ($product->default_purchase_price ?? 0);
+        return $own > 0 ? $own : null;
     }
 
     /**
