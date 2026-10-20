@@ -91,6 +91,16 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString('id="med-keys-btn"', $pos, 'the key line beside the list is gone');
         $this->assertStringContainsString("h: 'held'", $pos, 'Ctrl+H opens the held orders');
         $this->assertStringNotContainsString("r: 'held'", $pos, 'Ctrl+R stays the browser refresh');
+        // MEDICAL-COUNTER-RX-POPUP-1: the prescription is asked in a popup (Enter / Enter saves, Ctrl+Q opens it)
+        $this->assertStringContainsString('id="medRxModal"', $pos);
+        $this->assertStringContainsString('id="med-rx-seen">✓ Prescription seen (Enter)', $pos);
+        $this->assertStringContainsString('if (firstOfMedicine) medAskRxFor(product);', $pos, 'it opens when an Rx medicine comes into the cart');
+        $this->assertStringContainsString("e.target.closest('#review-pay-btn')", $pos, 'Review & Pay asks first when not seen');
+        $this->assertStringContainsString("lower === 'q' && e.ctrlKey", $pos);
+        $this->assertStringNotContainsString('placeholder="Doctor"', $pos, 'no doctor / patient boxes squeezed under the cart any more');
+        // quantity boxes: numbers only (a point only for an item sold loose by weight)
+        $this->assertStringContainsString("inputmode=\"' + (dec ? 'decimal' : 'numeric') + '\"", $pos);
+        $this->assertStringContainsString("clean = was.replace(dec ? /[^0-9.]/g : /[^0-9]/g, '')", $pos);
         $this->assertScriptsParse($pos);
 
         // RX-BRANCH-SETTING-1: the branch decides whether the counter asks for the prescription.
@@ -111,6 +121,7 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('const medicalCounter = false', $off);
         $this->assertStringNotContainsString('"med":{', $off, 'switch off = today\'s payload');
         $this->assertStringNotContainsString('id="med-rx-box"', $off);
+        $this->assertStringNotContainsString('id="medRxModal"', $off, 'no prescription popup on any other counter');
         $this->assertStringNotContainsString('.med-list-h', $off, 'no counter styles either');
         $this->assertStringNotContainsString('id="med-notes"', $off);
         $this->assertStringNotContainsString('id="medKeysModal"', $off, 'no new keys or windows on any other counter');

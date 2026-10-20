@@ -184,7 +184,6 @@
     .pos-actions .col, .pos-actions .col-auto { flex: 1 1 auto; width: auto; max-width: none; padding: 0; margin: 0; }
     .pos-actions .col-auto { flex: 0 0 auto; }
     .pos-actions [hidden], .pos-actions .col[style*="display:none"], .pos-actions .col[style*="display: none"] { display: none !important; }
-    #med-rx-box .form-control { height: 30px; }
 @endif
 
     /* TABLE-WORKSPACE-WIDTH-1 — ye POS ka sab se bhara modal hai: ek floor par 20+ table cards,
@@ -846,13 +845,39 @@
                 </div>
                 @if($medicalCounter ?? false)
                     {{-- MEDICAL-COUNTER-1: shown while a medicine that needs a prescription is in the cart.
-                         Doctor and patient go on the bill's notes; the sale waits for "Prescription seen". --}}
+                         Doctor and patient go on the bill's notes; the sale waits for "Prescription seen".
+                         MEDICAL-COUNTER-RX-POPUP-1 (owner, 20 Oct): asked in a popup when such a medicine is added —
+                         Enter / Enter saves, no mouse; here only one line says what was entered. --}}
                     <div id="med-rx-box" class="border rounded px-2 py-1 mt-1" style="display:none;background:#fff6f5;border-color:#f5c6c2 !important">
                         <div class="d-flex gap-1 align-items-center">
                             <span class="med-chip med-rx flex-shrink-0" id="med-rx-title" title="Prescription">Rx</span>
-                            <input type="text" class="form-control form-control-sm" id="med-rx-doctor" placeholder="Doctor" aria-label="Doctor's name" maxlength="80">
-                            <input type="text" class="form-control form-control-sm" id="med-rx-patient" placeholder="Patient" aria-label="Patient's name" maxlength="80">
-                            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" id="med-rx-seen" aria-pressed="false">Seen?</button>
+                            <span class="small text-truncate flex-grow-1" id="med-rx-summary">Prescription not seen yet</span>
+                            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" id="med-rx-open" aria-pressed="false" title="Prescription (Ctrl+Q)">Seen? <kbd class="ms-1">Ctrl+Q</kbd></button>
+                        </div>
+                    </div>
+
+                    {{-- MEDICAL-COUNTER-RX-POPUP-1: Doctor → Enter → Patient → Enter = seen and saved; Ctrl+Enter saves; Esc = later. --}}
+                    <div class="modal fade" id="medRxModal" tabindex="-1" aria-labelledby="medRxModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header py-2">
+                                    <h2 class="modal-title h5" id="medRxModalLabel"><span class="med-chip med-rx me-1">Rx</span> Prescription</h2>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" tabindex="-1"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="small mb-3" id="med-rx-list"></p>
+                                    <label for="med-rx-doctor" class="form-label small mb-1">Doctor</label>
+                                    <input type="text" class="form-control mb-2" id="med-rx-doctor" maxlength="80" autocomplete="off">
+                                    <label for="med-rx-patient" class="form-label small mb-1">Patient</label>
+                                    <input type="text" class="form-control" id="med-rx-patient" maxlength="80" autocomplete="off">
+                                    <p class="small text-muted mt-2 mb-0"><kbd>Enter</kbd> next box, then save · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> save · <kbd>Esc</kbd> later</p>
+                                </div>
+                                <div class="modal-footer py-2">
+                                    {{-- Tab goes Doctor → Patient → Seen only; Esc is "later" --}}
+                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" tabindex="-1">Later (Esc)</button>
+                                    <button type="button" class="btn btn-success" id="med-rx-seen">✓ Prescription seen (Enter)</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -898,6 +923,7 @@
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>D</kbd> or <kbd>F8</kbd></td><td>Discount</td></tr>
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>B</kbd> or <kbd>F9</kbd></td><td>Bill preview</td></tr>
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>U</kbd> or <kbd>F3</kbd></td><td>Customer</td></tr>
+                                                <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>Q</kbd></td><td>Prescription — doctor, patient, “Seen”</td></tr>
                                                 <tr><td class="text-nowrap"><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Calculator</td></tr>
                                                 <tr><td class="text-nowrap"><kbd>Alt</kbd>+<kbd>N</kbd></td><td>New sale</td></tr>
                                             </tbody></table>
@@ -913,8 +939,8 @@
                                                 <tr><td>Type / scan</td><td>Bill no, its barcode (BL…), customer or item</td></tr>
                                                 <tr><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>Enter</kbd></td><td>Choose and bring it back</td></tr>
                                             </tbody></table>
-                                            <h3 class="h6">Prescription box</h3>
-                                            <p class="mb-3"><kbd>Enter</kbd> moves Doctor → Patient → ticks “Seen” and goes back to the scan box.</p>
+                                            <h3 class="h6">Prescription (Rx) popup</h3>
+                                            <p class="mb-3">Opens by itself when a medicine marked Rx is added (and at Review &amp; Pay if not seen yet). <kbd>Enter</kbd> Doctor → Patient → saves “Seen”; <kbd>Ctrl</kbd>+<kbd>Enter</kbd> saves; <kbd>Esc</kbd> later. Open it again: <kbd>Ctrl</kbd>+<kbd>Q</kbd>.</p>
                                             <h3 class="h6">Popups</h3>
                                             <p class="mb-0"><kbd>Enter</kbd> = OK. The cursor then goes back to the box you were in.</p>
                                         </div>
@@ -3802,7 +3828,10 @@ document.addEventListener('DOMContentLoaded', function () {
     var medAlertAt = 0;        // when the last "Not available" popup opened / closed
     var medLastBox = null;     // the cart box the cashier was last in (the cursor comes back to it)
     var medPickOpened = false; // the batch picker takes the cursor only at the moment it opens
-    var medRx = { doctor: '', patient: '', seen: false };
+    var medRx = { doctor: '', patient: '', seen: false, okFor: [] };   // okFor: the Rx medicines "seen" covers
+    var medRxThen = null;      // 'pay' = the Review & Pay window opens after the prescription is saved
+    var medRxBack = null;      // where the cursor was when the prescription popup opened
+    var medRxSaved = false;
 
     function medGroupKey(productId, variantId) { return productId + ':' + (variantId || 0); }
 
@@ -4029,6 +4058,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             backorderToast(product.name);
         }
+        var firstOfMedicine = !items.length && qty > 0;   // this medicine just came into the cart
         if (item) {
             if (qty <= 0) cart.splice(cart.indexOf(item), 1);
             else { item.quantity = qty; item.tax_amount = lineTax(product, qty, item.unit_price, item.discount_amount || 0); }
@@ -4060,6 +4090,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if (focusAfter) medFocus = key;
         renderCart();
+        if (firstOfMedicine) medAskRxFor(product);
         return true;
     }
 
@@ -4142,9 +4173,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 + '</div>'
                 + '<div class="med-l-boxes">' + boxes.map(function (b) {
                     var k = b.item ? b.item.key : cartKey(p, v, [], b.pk.id);
+                    // numbers only; a point only where the item is sold loose by weight / volume (owner, 20 Oct)
+                    var dec = b.pk.factor === 1 && isMeasurableProduct(p);
                     return '<label class="med-box"><span title="' + escapeHtml(b.pk.name + ' ' + money(b.pk.price)) + '">' + escapeHtml(b.pk.name.toUpperCase() + ' ' + money(b.pk.price)) + '</span>'
-                        + '<input type="text" inputmode="decimal" class="form-control form-control-sm" placeholder="0" autocomplete="off"'
-                        + ' data-med-box="' + escapeHtml(k) + '" data-med-group="' + gk + '" data-med-pack="' + (b.pk.id || '') + '"'
+                        + '<input type="text" inputmode="' + (dec ? 'decimal' : 'numeric') + '" class="form-control form-control-sm" placeholder="0" autocomplete="off"'
+                        + ' data-med-box="' + escapeHtml(k) + '" data-med-group="' + gk + '" data-med-pack="' + (b.pk.id || '') + '" data-med-dec="' + (dec ? '1' : '0') + '"'
                         + ' aria-label="' + escapeHtml(p.name + ', how many ' + b.pk.name) + '"'
                         + ' value="' + (b.item ? medQtyText(b.item.quantity) : '') + '"></label>';
                 }).join('') + '</div>'
@@ -4223,8 +4256,26 @@ document.addEventListener('DOMContentLoaded', function () {
         var allBoxes = function () { return Array.prototype.slice.call(cartItemsEl.querySelectorAll('[data-med-box]')); };
         cartItemsEl.querySelectorAll('[data-med-box]').forEach(function (input) {
             input.addEventListener('change', function () { apply(input); });
+            // Numbers only (a pasted "2 strips" keeps its 2); one point only where the item is sold loose by weight.
+            input.addEventListener('input', function () {
+                var dec = input.dataset.medDec === '1';
+                var was = input.value;
+                var clean = was.replace(dec ? /[^0-9.]/g : /[^0-9]/g, '');
+                var dot = clean.indexOf('.');
+                if (dot !== -1) clean = clean.slice(0, dot + 1) + clean.slice(dot + 1).replace(/\./g, '');
+                if (clean === was) return;
+                var at = Math.max(0, (input.selectionStart || clean.length) - (was.length - clean.length));
+                input.value = clean;
+                try { input.setSelectionRange(at, at); } catch (err) { /* not every input type allows it */ }
+            });
             input.addEventListener('keydown', function (e) {
                 var k = e.key;
+                // A letter or a sign never gets in (the keys below — + − Enter Tab arrows — still work).
+                if (k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && k !== '+' && k !== '-'
+                    && !/[0-9]/.test(k) && !(k === '.' && input.dataset.medDec === '1')) {
+                    e.preventDefault();
+                    return;
+                }
                 var boxes = allBoxes();
                 var at = boxes.indexOf(input);
                 var keyOf = function (el) { return el ? el.dataset.medBox : null; };
@@ -4361,27 +4412,73 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!box) return;
         var rx = medRxItems();
         box.style.display = rx.length ? '' : 'none';
-        var rxTitle = document.getElementById('med-rx-title');
-        rxTitle.textContent = 'Rx';
-        rxTitle.title = 'Prescription needed — ' + rx.map(function (p) { return p.name; }).join(', ');
-        var d = document.getElementById('med-rx-doctor'), pt = document.getElementById('med-rx-patient'), seen = document.getElementById('med-rx-seen');
-        if (document.activeElement !== d) d.value = medRx.doctor;
-        if (document.activeElement !== pt) pt.value = medRx.patient;
-        seen.textContent = medRx.seen ? '✓ Seen' : 'Seen?';
-        seen.setAttribute('aria-pressed', medRx.seen ? 'true' : 'false');
-        seen.className = 'btn btn-sm text-nowrap ' + (medRx.seen ? 'btn-success' : 'btn-outline-danger');
+        var names = rx.map(function (p) { return p.name; }).join(', ');
+        document.getElementById('med-rx-title').title = 'Prescription needed — ' + names;
+        var doctor = String(medRx.doctor || '').replace(/^dr\.?\s+/i, '');
+        var who = [doctor ? 'Dr ' + doctor : '', medRx.patient ? 'Patient ' + medRx.patient : ''].filter(Boolean).join(' · ');
+        var summary = document.getElementById('med-rx-summary');
+        if (summary) {
+            summary.textContent = (medRx.seen ? '✓ Seen' : 'Not seen yet') + (who ? ' — ' + who : '');
+            summary.title = summary.textContent;
+        }
+        var open = document.getElementById('med-rx-open');
+        if (open) {
+            open.innerHTML = (medRx.seen ? 'Change' : 'Seen?') + ' <kbd class="ms-1">Ctrl+Q</kbd>';
+            open.setAttribute('aria-pressed', medRx.seen ? 'true' : 'false');
+            open.className = 'btn btn-sm text-nowrap ' + (medRx.seen ? 'btn-outline-success' : 'btn-outline-danger');
+        }
+        var list = document.getElementById('med-rx-list');
+        if (list) list.textContent = 'Needs a prescription: ' + names;
         var notes = document.getElementById('med-notes');
         if (notes) notes.value = medNotes();
     }
 
+    // Paying waits for "seen": the popup asks, and the Review & Pay window opens after it is saved.
     function medRxReady() {
-        var rx = medRxItems();
-        if (!rx.length || medRx.seen) return true;
-        var pay = bootstrap.Modal.getInstance(document.getElementById('paymentModal'));
-        if (pay) pay.hide();
-        medAlert(rx[0].name + ' needs a prescription. Look at it, then tick “Seen” under the cart (Ctrl+Enter pays after that).',
-            null, medRx.doctor ? 'med-rx-seen' : 'med-rx-doctor');
+        if (!medRxItems().length || medRx.seen) return true;
+        var payEl = document.getElementById('paymentModal');
+        if (payEl && payEl.classList.contains('show')) {
+            payEl.addEventListener('hidden.bs.modal', function () { medOpenRx('pay'); }, { once: true });
+            bootstrap.Modal.getOrCreateInstance(payEl).hide();
+        } else {
+            medOpenRx('pay');
+        }
         return false;
+    }
+
+    // A medicine marked Rx came into the cart: ask now, unless "seen" already covers it.
+    function medAskRxFor(product) {
+        if (!(product && product.med && product.med.rx) || !medRxItems().length) return;   // not Rx, or the branch does not ask
+        if (medRx.seen && medRx.okFor.indexOf(Number(product.id)) !== -1) return;
+        medRx.seen = false;
+        medSyncRx();
+        medOpenRx(null);
+    }
+
+    function medOpenRx(then) {
+        var m = document.getElementById('medRxModal');
+        if (!m) return;
+        if (!medRxItems().length) { toast('info', 'No medicine in the cart needs a prescription.'); return; }
+        if (m.classList.contains('show')) return;
+        var a = document.activeElement;
+        medRxBack = a && a.dataset && a.dataset.medBox ? { box: a.dataset.medBox, id: null }
+            : { box: null, id: a && a !== document.body && a.id ? a.id : null };
+        medRxThen = then || null;
+        medRxSaved = false;
+        document.getElementById('med-rx-doctor').value = medRx.doctor || '';
+        document.getElementById('med-rx-patient').value = medRx.patient || '';
+        medSyncRx();
+        bootstrap.Modal.getOrCreateInstance(m).show();
+    }
+
+    function medRxSave() {
+        medRx.doctor = document.getElementById('med-rx-doctor').value.trim();
+        medRx.patient = document.getElementById('med-rx-patient').value.trim();
+        medRx.seen = true;
+        medRx.okFor = medRxItems().map(function (p) { return Number(p.id); });
+        medRxSaved = true;
+        medSyncRx();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('medRxModal')).hide();
     }
 
     /* popups and the cursor — a popup owns the cursor (Enter = OK); after it, the cursor is back where it was */
@@ -4442,21 +4539,51 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function medRxFromNotes(notes) {
         var m = String(notes || '').match(/^Rx: Dr (.*?) · Patient (.*)$/);
-        medRx = { doctor: m && m[1] !== '—' ? m[1] : '', patient: m && m[2] !== '—' ? m[2] : '', seen: false };
+        medRx = { doctor: m && m[1] !== '—' ? m[1] : '', patient: m && m[2] !== '—' ? m[2] : '', seen: false, okFor: [] };
     }
 
     function medResetBill() {
-        medRx = { doctor: '', patient: '', seen: false };
+        medRx = { doctor: '', patient: '', seen: false, okFor: [] };
         medPick = null;
         medFocus = null;
     }
 
     if (medicalCounter) {
-        var rxDoctor = document.getElementById('med-rx-doctor');
-        var rxPatient = document.getElementById('med-rx-patient');
-        if (rxDoctor) rxDoctor.addEventListener('input', function () { medRx.doctor = rxDoctor.value.trim(); medSyncRx(); });
-        if (rxPatient) rxPatient.addEventListener('input', function () { medRx.patient = rxPatient.value.trim(); medSyncRx(); });
-        document.getElementById('med-rx-seen')?.addEventListener('click', function () { medRx.seen = !medRx.seen; medSyncRx(); });
+        // Prescription popup: Doctor → Enter → Patient → Enter = seen and saved; Ctrl+Enter saves; Esc = later.
+        // The cursor opens on the first empty box (on "seen" when both are filled), and goes back after.
+        var rxModal = document.getElementById('medRxModal');
+        document.getElementById('med-rx-open')?.addEventListener('click', function () { medOpenRx(null); });
+        document.getElementById('med-rx-seen')?.addEventListener('click', medRxSave);
+        rxModal?.addEventListener('shown.bs.modal', function () {
+            var d = document.getElementById('med-rx-doctor'), pt = document.getElementById('med-rx-patient');
+            var target = !d.value.trim() ? d : (!pt.value.trim() ? pt : document.getElementById('med-rx-seen'));
+            target.focus();
+            if (target.select) target.select();
+        });
+        rxModal?.addEventListener('hidden.bs.modal', function () {
+            var then = medRxThen, back = medRxBack || {};
+            medRxThen = null;
+            medRxBack = null;
+            if (then === 'pay' && medRxSaved) { setTimeout(function () { document.getElementById('review-pay-btn')?.click(); }, 30); return; }
+            medRestoreFocus(back.box || null, back.id || null);
+        });
+        rxModal?.addEventListener('keydown', function (e) {
+            var c = e.ctrlKey || e.metaKey;
+            if (c && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); medRxSave(); return; }
+            // the counter's own Ctrl keys wait while this is open (copy / paste still work)
+            if (c) { e.stopPropagation(); if (/^[sdphbeulfmq\/]$/i.test(e.key)) e.preventDefault(); return; }
+            if (e.key !== 'Enter') return;
+            if (e.target.id === 'med-rx-doctor') { e.preventDefault(); document.getElementById('med-rx-patient').focus(); }
+            else if (e.target.id === 'med-rx-patient') { e.preventDefault(); medRxSave(); }
+        });
+        // Review & Pay (button, Ctrl+P, F10) asks for the prescription first when it is not seen yet.
+        document.addEventListener('click', function (e) {
+            var btn = e.target && e.target.closest ? e.target.closest('#review-pay-btn') : null;
+            if (!btn || medRx.seen || !medRxItems().length) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            medOpenRx('pay');
+        }, true);
 
         // ↑ ↓ choose in the list, Enter adds it; an empty search + Enter opens Review & Pay.
         searchEl.addEventListener('keydown', function (e) {
@@ -4543,6 +4670,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (e.altKey && !c && lower === 'n') return 'new';
             if (!c || e.altKey) return null;
             if (lower === 's') return e.shiftKey ? 'draft' : 'hold';
+            if (lower === 'q' && e.ctrlKey && !e.shiftKey) return 'rx';   // Ctrl only (Cmd+Q closes the browser on a Mac)
             return { p: 'pay', h: 'held', d: 'discount', b: 'preview', e: 'batch', u: 'customer', '/': 'keys' }[lower] || null;
         };
         var medAction = { F1: 'keys', F2: 'search', F3: 'customer', F4: 'hold', F5: 'held', F6: 'batch', F7: 'draft', F8: 'discount', F9: 'preview', F10: 'pay' };
@@ -4596,17 +4724,9 @@ document.addEventListener('DOMContentLoaded', function () {
             else if (act === 'pay') click('review-pay-btn');
             else if (act === 'new') click('new-sale-btn');
             else if (act === 'keys') medOpenKeys();
+            else if (act === 'rx') medOpenRx(null);
         });
         document.querySelectorAll('[data-med-keys]').forEach(function (b) { b.addEventListener('click', medOpenKeys); });
-
-        // Prescription box: Enter moves Doctor → Patient → "Seen" (ticked) → back to the scan box.
-        rxDoctor?.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); rxPatient?.focus(); } });
-        rxPatient?.addEventListener('keydown', function (e) {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            if (!medRx.seen) { medRx.seen = true; medSyncRx(); }
-            searchEl.focus();
-        });
 
         // After the customer window (a customer added or chosen) the cursor is back in the scan box.
         document.getElementById('customerModal')?.addEventListener('hidden.bs.modal', function () {
