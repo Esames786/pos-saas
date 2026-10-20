@@ -568,6 +568,26 @@ await wf('W01', 'login and POS renders', async (rec) => {
   facts.modes = await offeredModes();
   facts.header_buttons = { report: await vis('#pos-report-btn'), return: await vis('#pos-return-btn'), quick_report: await vis('#pos-quick-report-btn'), customer: await vis('#pos-customer-btn'), view_tables: await vis('#view-tables-btn') };
   note(rec, facts.status_slot); note(rec, facts.terminal); note(rec, { shift_badge: facts.shift_badge_initial, modes: facts.modes.map(m => m.type), header_buttons: facts.header_buttons });
+  // CANONICAL MERGE (D8, 20 Oct 2026) — the controls the merged shared view added, read as FACTS in the same slots on both runtimes
+  // (the W01 verdict rules above are unchanged): the Reminder switch (#pos-reminder-toggle — capability reminderPause, Edge ON since
+  // D2), the website-orders bell (#web-orders-btn — capability websiteOrders, Cloud-only D4: present + disabled with hint on Edge,
+  // present + enabled on a Cloud plan with Online Ordering, absent on a Cloud plan without it), Send to owner (#qr-email, the
+  // quick-report e-mail capability), the PRODUCT-TILE-SKU-1 line (a .text-muted.small.mb-2 right after .product-name — rendered only
+  // where the SKU says something the name does not) and the medical-counter chrome (#med-keys-btn / #med-subs — off on every appliance).
+  facts.merged_controls = await page.evaluate(() => {
+    const q = (id) => document.getElementById(id);
+    const rem = q('pos-reminder-toggle'), bell = q('web-orders-btn'), owner = q('qr-email'), wrap = q('pos-reminder-status');
+    const tiles = Array.from(document.querySelectorAll('#product-grid .product-tile'));
+    const skuTiles = tiles.filter(t => t.querySelector('.product-name + .text-muted.small.mb-2'));
+    return {
+      reminder_toggle: rem ? { present: true, disabled_now: rem.disabled, disabled_attr_in_markup: rem.hasAttribute('disabled') && !rem.dataset.paused, title: rem.getAttribute('title'), text: rem.textContent.trim(), wrap_visible: !!wrap && wrap.style.display !== 'none' } : { present: false },
+      website_orders_bell: bell ? { present: true, disabled: bell.disabled, title: bell.getAttribute('title'), modal_present: !!q('webOrdersModal') } : { present: false, modal_present: !!q('webOrdersModal') },
+      send_to_owner: owner ? { present: true, disabled: owner.disabled, title: owner.getAttribute('title'), text: owner.textContent.trim() } : { present: false },
+      tiles: tiles.length, tiles_with_sku_line: skuTiles.length, sku_samples: skuTiles.slice(0, 3).map(t => ({ name: t.querySelector('.product-name')?.textContent.trim(), sku: t.querySelector('.product-name + .text-muted.small.mb-2')?.textContent.trim() })),
+      medical_counter_chrome: !!(q('med-keys-btn') || q('med-subs')),
+    };
+  }).catch(() => null);
+  note(rec, { merged_controls: facts.merged_controls });
   step(rec, 'status slot has text', !!facts.status_slot.state, facts.status_slot);
   step(rec, 'terminal badge has text', !!facts.terminal.terminal_label || !!facts.terminal.terminal_id, facts.terminal);
   await disabledCensus('W01 main page (incl. hidden modals)');
@@ -653,6 +673,96 @@ await wf('W02', 'shift open via separate page', async (rec) => {
   step(rec, 'POS shows Shift open (shift-status open=true + badge "Shift open")', st2.api.open === true && /shift open/i.test(st2.badge), st2);
   await shot(rec, 'pos-shift-open');
 });
+
+// ── W18 (opt-in; D2 browser proof, 20 Oct 2026) — the Reminder switch on the OPEN shift, same control on both runtimes ────
+// Runs only when listed in --only (e.g. --only W01,W02,W18,W16) so the 17-workflow gate counts stay unchanged. Verdict rules:
+//  • contract: POS_RUNTIME.capabilities.reminderPause + routes.reminderPause (Cloud: its API route; Branch Server: the D2 twin;
+//    null = capability off → the control must be rendered disabled with the hint → EXPECTED-DIFFERENCE, never a click).
+//  • the SERVER render of #pos-reminder-toggle is read from the page HTML as served (no `disabled` attribute, no capability title)
+//    — the view's shift-status JS later disables it when the shift is closed / the user lacks the permission / no Reminder rule.
+//  • the shift-status JSON must carry the `reminder` block {available, paused, paused_by, paused_at, can_toggle} (Online's shape).
+//  • when the switch is VISIBLE and enabled (a Reminder print rule exists for this terminal + an open shift + the permission):
+//    click → Swal "Pause Reminder slips…" → Pause → POST reminderPause → 200 {reminder.paused:true} AND the button reads
+//    "Reminder OFF" (data-paused=1); click again → 200 {reminder.paused:false} AND "Reminder ON". Each exchange is recorded.
+//  • when the switch is hidden (ReminderPauseService::statusFor → available=false: no active Reminder rule on this terminal — the
+//    SAME shared rule hides it on both runtimes) or disabled, the endpoint is probed directly from the page session (same
+//    CSRF) so the contract is still recorded: 200 + reminder block (paused compared only when available), 403 → PERMISSION/DATA
+//    (the permission tenant.pos.pause-reminders), 422 {code: STANDBY} on Edge → EXPECTED-DIFFERENCE (expected negative).
+const W18_TITLE = 'reminder pause on the open shift (D2)';
+if (only && only.includes('W18')) await wf('W18', W18_TITLE, async (rec) => {
+  await gotoPos();
+  const st = await shiftState();
+  const tid = st.terminal_id;
+  const cap = { capability: RT?.capabilities?.reminderPause ?? null, route: RT?.routes?.reminderPause ?? null, hint: RT?.labels?.['capability.reminderPause'] || null };
+  const html = await page.evaluate(async (u) => { const r = await fetch(u, { credentials: 'same-origin', headers: { Accept: 'text/html' } }); return (await r.text()); }, base + posPath).catch(() => '');
+  const m = html.match(/<button[^>]*id="pos-reminder-toggle"[^>]*>/);
+  const serverRender = { found: !!m, disabled_attr: m ? /\sdisabled(\s|=|>)/.test(m[0]) : null, title: m ? ((m[0].match(/title="([^"]*)"/) || [])[1] ?? null) : null };
+  const remStatus = async () => { const ss = await probe(base + route('shiftStatus') + '?terminal_id=' + encodeURIComponent(tid), { method: 'GET' }); return { status: ss.status, open: ss.body?.open ?? null, reminder: ss.body?.reminder ?? null, keys: ss.body ? Object.keys(ss.body) : null }; };
+  const dom = () => page.evaluate(() => { const w = document.getElementById('pos-reminder-status'), b = document.getElementById('pos-reminder-toggle'); return { wrap_present: !!w, wrap_visible: !!w && w.style.display !== 'none' && w.offsetParent !== null, btn_disabled: b ? b.disabled : null, btn_text: b ? b.textContent.trim() : null, paused: b ? (b.dataset.paused ?? null) : null, title: b ? b.title : null }; }).catch(() => null);
+  const s0 = await remStatus(); const d0 = await dom();
+  facts.w18 = { contract: cap, server_render: serverRender, shift: st.api, reminder_initial: s0.reminder, dom_initial: d0, exchanges: [] };
+  note(rec, facts.w18);
+  const REM_KEYS = ['available', 'paused', 'paused_by', 'paused_at', 'can_toggle'];
+  step(rec, 'shift-status carries the reminder block {available, paused, paused_by, paused_at, can_toggle}', !!s0.reminder && REM_KEYS.every(k => k in s0.reminder), s0);
+  if (cap.capability === false || !cap.route) {
+    const disabledWithHint = serverRender.found && serverRender.disabled_attr === true && !!serverRender.title;
+    step(rec, 'capability reminderPause off: the same control rendered disabled with the hint', disabledWithHint, serverRender);
+    rec.status = disabledWithHint ? 'EXPECTED-DIFFERENCE' : 'FAIL'; rec.reason = disabledWithHint ? `reminderPause off on this runtime: control disabled with hint "${serverRender.title}"` : `reminderPause off but the control is not disabled-with-hint: ${JSON.stringify(serverRender)}`;
+    await shot(rec, 'capability-off'); return;
+  }
+  step(rec, 'runtime contract: capability reminderPause ON + route', cap.capability === true && !!cap.route, cap);
+  step(rec, 'control rendered ENABLED by the server (no disabled attribute, no capability hint)', serverRender.found && serverRender.disabled_attr === false && !serverRender.title, serverRender);
+  await shot(rec, 'before');
+  const pausePath = cap.route.split('?')[0];
+  const isPause = (r) => r.request().method() === 'POST' && pathOf(r.url()) === pausePath;
+  const record = async (label, status, body, via) => { const ex = { label, via, status, ok: body?.ok ?? null, code: body?.code ?? null, message: body?.message ?? null, reminder: body?.reminder ?? null, errors: body?.errors ?? null, toasts: await drainToasts(), dom: await dom() }; facts.w18.exchanges.push(ex); return ex; };
+  if (!st.api.open) {
+    // no open shift: on Edge the authority gate answers BEFORE the shift lookup (STANDBY = the expected negative); otherwise the
+    // shared ShiftException text ("no open shift") is recorded and the workflow is skipped (run W02 first)
+    const pr = await probe(base + cap.route, { method: 'POST', body: { terminal_id: Number(tid), paused: true } });
+    const ex = await record('pause-without-open-shift', pr.status, pr.body, 'probe');
+    if (mode === 'edge' && pr.status === 422 && pr.body?.code === 'STANDBY') { rec.steps.push({ step: 'STANDBY refusal: reminder-pause answers 422 {code: STANDBY} while the Cloud holds the branch lease (expected negative)', ok: true, detail: ex, probe: true }); rec.status = 'EXPECTED-DIFFERENCE'; rec.reason = `appliance is STANDBY: reminder-pause refused 422 STANDBY "${pr.body?.message}" — control rendered enabled by the server (D2), shift closed`; await shot(rec, 'standby-refused'); return; }
+    throw new SkipError(`no open shift on terminal ${tid} (reminder-pause answered ${pr.status} ${pr.body?.message || ''}) — run W02 first`);
+  }
+  if (d0 && d0.wrap_visible && d0.btn_disabled === false) {
+    // through the UI — pause (Swal question → Pause) then resume (direct)
+    await loc('#pos-reminder-toggle').click();
+    const sw = await waitSwal(8000).catch(() => null);
+    note(rec, { swal: sw });
+    step(rec, 'pause asks for confirmation ("Pause Reminder slips on this terminal?")', !!sw && /pause reminder/i.test(sw.title), sw);
+    const [res1] = await Promise.all([waitResponse(isPause, 20000), swalClick('confirm')]);
+    const j1 = await jsonOf(res1); await sleep(800);
+    const ex1 = await record('pause', j1.status, j1.body, 'ui');
+    step(rec, 'pause POST → 200 {reminder.paused: true}', j1.status === 200 && j1.body?.reminder?.paused === true, ex1);
+    step(rec, 'button reads "Reminder OFF" (data-paused=1)', ex1.dom?.paused === '1' && /reminder off/i.test(ex1.dom?.btn_text || ''), ex1.dom);
+    const s1 = await remStatus(); step(rec, 'shift-status reflects paused=true', s1.reminder?.paused === true, s1);
+    await shot(rec, 'paused');
+    const [res2] = await Promise.all([waitResponse(isPause, 20000), loc('#pos-reminder-toggle').click()]);
+    const j2 = await jsonOf(res2); await sleep(800);
+    const ex2 = await record('resume', j2.status, j2.body, 'ui');
+    step(rec, 'resume POST → 200 {reminder.paused: false}', j2.status === 200 && j2.body?.reminder?.paused === false, ex2);
+    step(rec, 'button reads "Reminder ON" (data-paused=0)', ex2.dom?.paused === '0' && /reminder on/i.test(ex2.dom?.btn_text || ''), ex2.dom);
+    const s2 = await remStatus(); step(rec, 'shift-status reflects paused=false', s2.reminder?.paused === false, s2);
+    await shot(rec, 'resumed');
+    return;
+  }
+  // the switch is hidden (available=false: no Reminder print rule for this terminal) or disabled (can_toggle=false) — DATA/PERMISSION
+  // precondition, identical shared rule on both runtimes; the endpoint contract is still proven from the page session
+  rec.classification = d0 && !d0.wrap_visible ? 'DATA-PRECONDITION' : 'PERMISSION/DATA';
+  note(rec, d0 && !d0.wrap_visible ? 'switch hidden: ReminderPauseService::statusFor available=false (no active Reminder print rule routes this terminal) — probing the endpoint directly' : `switch disabled (can_toggle=${s0.reminder?.can_toggle}) — probing the endpoint directly`);
+  const p1 = await probe(base + cap.route, { method: 'POST', body: { terminal_id: Number(tid), paused: true } });
+  const e1 = await record('pause', p1.status, p1.body, 'probe');
+  if (p1.status === 403) { step(rec, 'pause refused 403 (permission tenant.pos.pause-reminders missing for this operator)', false, e1); rec.classification = 'PERMISSION/DATA'; await shot(rec, 'pause-403'); return; }
+  const avail = !!p1.body?.reminder?.available;
+  step(rec, 'pause POST → 200 + reminder block' + (avail ? ' {paused: true}' : ' (available=false: paused not reportable without a Reminder rule)'), p1.status === 200 && !!p1.body?.reminder && REM_KEYS.every(k => k in p1.body.reminder) && (!avail || p1.body.reminder.paused === true), e1);
+  const s1 = await remStatus(); note(rec, { shift_status_after_pause: s1 });
+  await shot(rec, 'paused-probe');
+  const p2 = await probe(base + cap.route, { method: 'POST', body: { terminal_id: Number(tid), paused: false } });
+  const e2 = await record('resume', p2.status, p2.body, 'probe');
+  step(rec, 'resume POST → 200 + reminder block {paused: false}', p2.status === 200 && p2.body?.reminder?.paused === false, e2);
+  await shot(rec, 'resumed-probe');
+});
+else { const r = mkRec('W18', W18_TITLE); r.status = 'SKIP'; r.reason = 'opt-in: list W18 in --only (after W02 — the pause is a stamp on the open shift)'; r.finished_at = new Date().toISOString(); report.workflows.W18 = r; }
 
 await wf('W03', 'cash walk-in sale', async (rec) => {
   await gotoPos();
