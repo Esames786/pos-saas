@@ -96,7 +96,11 @@ class PosScreenRendersHttpMySqlTest extends MySqlTenantTestCase
         // POS-REMINDER-PAUSE-1: the Reminder switch sits in the context row and talks to its endpoint.
         $html = $res->getContent();
         $this->assertStringContainsString('id="pos-reminder-toggle"', $html);
-        $this->assertStringContainsString('/api/pos/reminder-pause', $html);
+        // Since the shared cashier view (Phase 3 / canonical merge) the endpoint reaches the page through the runtime contract
+        // (window.POS_RUNTIME.routes.reminderPause → POS.route('reminderPause')), never as a literal in the Blade: on the Cloud
+        // the route is still /api/pos/reminder-pause and the switch is enabled (capability reminderPause).
+        $this->assertStringContainsString('"reminderPause":"\/api\/pos\/reminder-pause"', $html, 'the Cloud runtime carries the reminder-pause endpoint');
+        $this->assertMatchesRegularExpression('/id="pos-reminder-toggle"(?![^>]*\sdisabled)/', $html, 'the switch is enabled on the Cloud');
     }
 
     /**
