@@ -296,7 +296,8 @@ class EdgeSupplierFinanceAuthorityMySqlTest extends MySqlTenantTestCase
         $this->refuse(fn () => $journal([['cloud_account_id' => $expense, 'debit' => 500], ['cloud_account_id' => $ap, 'credit' => 400, 'cloud_supplier_id' => $this->supplierAId]]), 'not balanced');
         $this->refuse(fn () => $journal([['cloud_account_id' => 999999, 'debit' => 500], ['cloud_account_id' => $ap, 'credit' => 500, 'cloud_supplier_id' => $this->supplierAId]]), 'active account');
         $this->refuse(fn () => $journal([['cloud_account_id' => $ap, 'debit' => 10001, 'cloud_supplier_id' => $this->supplierAId], ['cloud_account_id' => $expense, 'credit' => 10001]]), 'advance');
-        $this->refuse(fn () => $journal([['cloud_account_id' => $ap, 'debit' => 100, 'cloud_supplier_id' => $this->supplierAId], ['cloud_account_id' => $expense, 'credit' => 100, 'cloud_cash_bank_account_id' => $this->tillCbId]]), 'mapped to chart account');
+        // D1 — R1 now speaks with the canonical Online message (ManualJournalRules), not the former Edge-only wording.
+        $this->refuse(fn () => $journal([['cloud_account_id' => $ap, 'debit' => 100, 'cloud_supplier_id' => $this->supplierAId], ['cloud_account_id' => $expense, 'credit' => 100, 'cloud_cash_bank_account_id' => $this->tillCbId]]), 'Main Till is linked to 1110 Main Cash Drawer. Choose it on the 1110 line, not on 6100 Rent Expense.', 'lines.1.cloud_cash_bank_account_id');
         $this->refuse(fn () => $journal([['cloud_account_id' => $ap, 'debit' => 100, 'cloud_supplier_id' => $this->supplierInactiveId], ['cloud_account_id' => $expense, 'credit' => 100]]), 'inactive');
         $this->refuse(fn () => $journal([['cloud_account_id' => $expense, 'debit' => 100]]), 'at least two lines');
         $this->assertSame($count, DB::table(EdgeSupplierFinanceCacheService::T_EVENTS)->count(), 'refusals record nothing');

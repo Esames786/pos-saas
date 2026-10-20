@@ -39,6 +39,12 @@ use Throwable;
  */
 class EdgeInboundSupplierFinanceIngestionService
 {
+    /**
+     * D1 — the envelope's journal violates a canonical manual-journal rule (ManualJournalRules R1–R3 / R5) the till
+     * enforces before building an envelope. Terminal (EdgeIngestionVerdicts): the immutable envelope can never pass.
+     */
+    public const JOURNAL_RULE_REFUSED = 'JOURNAL_RULE_REFUSED';
+
     public function __construct(
         private readonly EdgeBootstrapService $canonical,
         private readonly EdgeActivationEpochService $epochs,
@@ -286,7 +292,20 @@ class EdgeInboundSupplierFinanceIngestionService
             throw new IngestionRefusal('AP_SUPPLIER_REQUIRED', collect($e->errors())->flatten()->first() ?? 'an Accounts Payable line must name its supplier');
         }
         try {
+            // D1 — the canonical manual-journal rules (ManualJournalRules R1–R3 / R5) are the SAME rule object the till
+            // ran against its replica before it built this envelope, so a compliant appliance never produces a violating
+            // envelope; this is defence in depth (an older appliance, a hand-made envelope). The guard also returns the
+            // lines as the Cloud will post them (R2: the single drawer linked to a cash GL line auto-filled, exactly as
+            // the Online form does) — those are what the finance verifier must find posted. A violation is REFUSED with an
+            // explicit, terminal code — never silently posted, never retried as if the envelope could change.
+            $data = $this->manualJournals->guard($data);
+        } catch (ValidationException $e) {
+            throw new IngestionRefusal(self::JOURNAL_RULE_REFUSED, collect($e->errors())->flatten()->first() ?? 'the journal violates a manual-journal rule');
+        }
+        try {
             $entry = $this->manualJournals->post($data, (int) $actor->id);
+        } catch (ValidationException $e) {
+            throw new IngestionRefusal(self::JOURNAL_RULE_REFUSED, collect($e->errors())->flatten()->first() ?? 'the journal violates a manual-journal rule');
         } catch (InvalidArgumentException $e) {
             throw new IngestionRefusal('JOURNAL_INVALID', $e->getMessage());
         } catch (RuntimeException $e) {

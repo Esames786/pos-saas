@@ -2,9 +2,11 @@
 
 namespace App\Services\Finance;
 
+use App\Models\Tenant\Account;
 use App\Models\Tenant\CashBankAccount;
 use App\Models\Tenant\CashBankAccountTransaction;
 use App\Models\Tenant\JournalEntry;
+use App\Support\EdgeRuntime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -18,8 +20,14 @@ use RuntimeException;
  * mirror of every Accounts Payable line — all in one tenant transaction. Behaviour is the controller's,
  * unchanged; the controller now delegates here.
  *
+ * D1 (owner decision, 20 Oct 2026) — this service is also the ONE enforcement point of the manual-journal business
+ * rules: post() runs the canonical guards (ManualJournalRules — R1–R3 cash lines, R5 narration, the AP-supplier rule)
+ * before anything is written, and reverse() owns the reverse rules (row lock, posted-manual-journal-only, the
+ * already-reversed refusal that never posts twice). The Online controller is a thin caller; the Edge ingestion posts
+ * through here; the Edge till runs the same ManualJournalRules against its replica before building the envelope.
+ *
  * GL is Cloud accounting authority: JournalService refuses to post on a Branch Server, so this service can
- * never post there either.
+ * never post there either (and fails closed itself before touching the database).
  */
 class ManualJournalService
 {
@@ -70,14 +78,57 @@ class ManualJournalService
     }
 
     /**
-     * Post a manual journal: GL + cash/bank movements + supplier subledger mirror, one transaction.
+     * D1 — the ONE manual-journal rule set, applied to a shape-validated journal BEFORE anything is written:
+     *
+     *   • debit XOR credit per line, and every Accounts Payable line names its supplier (SUPPLIER-FINANCE-DIRECT-1);
+     *   • R5 — the narration is real (ManualJournalRules::guardNarration);
+     *   • R1–R3 — Cash/Bank only on its own line, a drawer required / auto-filled on a drawer's GL account, no group
+     *     head (ManualJournalRules::guardCashLines against the tenant chart).
+     *
+     * post() always runs it; callers that need the lines AS THEY WILL BE POSTED (the Edge ingestion hands them to its
+     * finance verifier) call it first. Keys are the form's: `description`, `lines.<i>.account_id`,
+     * `lines.<i>.cash_bank_account_id`, `lines.<i>.supplier_id`, `lines.<i>.debit`.
+     *
+     * @return array $data with the R2 auto-filled drawers written into lines.*.cash_bank_account_id
+     *
+     * @throws ValidationException
+     */
+    public function guard(array $data): array
+    {
+        $lines = is_array($data['lines'] ?? null) ? $data['lines'] : [];
+
+        $this->assertApLinesNameTheirSupplier($lines);
+        ManualJournalRules::guardNarration((string) ($data['description'] ?? ''));
+        $data['lines'] = ManualJournalRules::guardCashLines($lines, $this->chart());
+
+        return $data;
+    }
+
+    /** The tenant chart as ManualJournalRules reads it — every account (display order) and every drawer. */
+    public function chart(): ManualJournalChart
+    {
+        return new ManualJournalChart(
+            Account::query()->orderBy('sort_order')->orderBy('code')->get(['id', 'code', 'name', 'parent_id', 'is_active'])->toArray(),
+            CashBankAccount::query()->get(['id', 'name', 'account_id', 'is_active'])->toArray(),
+        );
+    }
+
+    /**
+     * Post a manual journal: GL + cash/bank movements + supplier subledger mirror, one transaction — after guard().
      *
      * @param array $data ['entry_date', 'description', 'reference_no'?, 'lines' => [[account_id, branch_id?, cash_bank_account_id?,
      *                    counterparty_type?, supplier_id?, description?, debit?, credit?], ...]]
+     *
+     * @throws ValidationException a rule refused the journal — nothing was written
      */
     public function post(array $data, ?int $userId = null): JournalEntry
     {
+        $this->assertCloud('posting');
+
         return DB::connection('tenant')->transaction(function () use ($data, $userId) {
+            // The single enforcement point (Online form, Edge ingestion): a refusal rolls back before any write.
+            $data = $this->guard($data);
+
             $lines = $this->normalizeLines($data['lines']);
             $sourceId = $this->nextManualJournalId();
 
@@ -106,16 +157,67 @@ class ManualJournalService
         });
     }
 
-    /** Reverse a posted manual journal: GL reversal + cash/bank counter-movements + subledger mirror of the reversal. */
+    /**
+     * Reverse a posted manual journal: GL reversal + cash/bank counter-movements + subledger mirror of the reversal.
+     *
+     * D1 — the reverse rules live HERE (canonical MANUAL-JOURNAL-CASH-LINE-GUARD-1 ed581520 + B3):
+     *   • the original row is locked for the whole transaction, so two tabs pressing Reverse at once serialise — the
+     *     second meets the reversal the first made;
+     *   • only a POSTED `manual_journal` that is not itself a reversal may be reversed (NOT_MANUAL_JOURNAL / NOT_POSTED /
+     *     IS_REVERSAL);
+     *   • an entry that already has a reversal is refused with ALREADY_REVERSED carrying that reversal — "Reverse pressed
+     *     twice posts nothing": no GL row, no cash counter-movement, no subledger mirror. A replayed reversal is idempotent.
+     * Reverse is deliberately free of R1–R3/R5: reversing an old wrong entry is the remedy for it.
+     *
+     * @throws ManualJournalReversalRefused
+     */
     public function reverse(JournalEntry $entry, string $reason, ?int $userId = null): JournalEntry
     {
+        $this->assertCloud('reversal');
+
         return DB::connection('tenant')->transaction(function () use ($entry, $reason, $userId) {
-            $reversal = $this->journal->reverse($entry, $reason, $userId);
-            $this->reverseCashBankLines($entry, $userId);
+            /** @var JournalEntry|null $locked */
+            $locked = JournalEntry::whereKey($entry->getKey())->lockForUpdate()->first();
+
+            if (! $locked || $locked->source_type !== self::SOURCE_TYPE) {
+                throw new ManualJournalReversalRefused(ManualJournalReversalRefused::NOT_MANUAL_JOURNAL, 'Only a manual journal can be reversed here.');
+            }
+            if ($locked->status !== 'posted') {
+                throw new ManualJournalReversalRefused(ManualJournalReversalRefused::NOT_POSTED, $locked->entry_no . ' is not posted, so there is nothing to reverse.');
+            }
+            if ($locked->is_reversal) {
+                throw new ManualJournalReversalRefused(ManualJournalReversalRefused::IS_REVERSAL, $locked->entry_no . ' is itself a reversal and cannot be reversed again.');
+            }
+
+            $existing = JournalEntry::where('reversed_entry_id', $locked->id)->first();
+            if ($existing) {
+                throw new ManualJournalReversalRefused(
+                    ManualJournalReversalRefused::ALREADY_REVERSED,
+                    $locked->entry_no . ' was already reversed by ' . $existing->entry_no . ' — nothing was posted again.',
+                    $existing,
+                );
+            }
+
+            $reversal = $this->journal->reverse($locked, $reason, $userId);
+            $this->reverseCashBankLines($locked, $userId);
             $this->supplierPayable->mirrorApLinesToSupplierLedger($reversal, $userId);
 
             return $reversal;
         });
+    }
+
+    /** The reversal of a manual journal, if one exists (read-only; what the already-reversed refusal carries). */
+    public function reversalOf(JournalEntry $entry): ?JournalEntry
+    {
+        return JournalEntry::where('reversed_entry_id', $entry->getKey())->first();
+    }
+
+    /** GL mutation is Cloud authority — fail closed on a Branch Server before touching the database. */
+    private function assertCloud(string $what): void
+    {
+        if (EdgeRuntime::isBranchServer()) {
+            throw new RuntimeException("Manual journal {$what} must not run on a Branch Server — the Cloud posts the official journal.");
+        }
     }
 
     public function normalizeLines(array $lines): array

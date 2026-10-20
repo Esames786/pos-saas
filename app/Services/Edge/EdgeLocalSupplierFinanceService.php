@@ -4,6 +4,8 @@ namespace App\Services\Edge;
 
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\User;
+use App\Services\Finance\ManualJournalChart;
+use App\Services\Finance\ManualJournalRules;
 use App\Support\EdgeRuntime;
 use App\Support\EdgeUserAuthz;
 use Illuminate\Support\Carbon;
@@ -300,6 +302,13 @@ class EdgeLocalSupplierFinanceService
             if (! $fresh['ok']) {
                 throw ValidationException::withMessages(['lines' => 'Chart of accounts / supplier information is not current on this branch server — post this journal on the Online POS or ask a supervisor. (' . implode('; ', $fresh['reasons']) . ')']);
             }
+            // D1 — the canonical manual-journal rules (ManualJournalRules: R5 narration; R1 drawer only on its own GL line,
+            // R2 drawer required / auto-filled on a drawer's GL account, R3 no group head) run HERE against the replica
+            // chart with the Online messages, so the till can never build an envelope the Cloud's ManualJournalService
+            // would refuse (the Cloud re-runs them anyway: JOURNAL_RULE_REFUSED is defence in depth). After the freshness
+            // gate on purpose: a stale chart says "post this Online", not a rule verdict read from stale data.
+            ManualJournalRules::guardNarration($description);
+            $rawLines = $this->applyCanonicalCashLineRules($rawLines);
             $apIds = $this->cache->apAccountIds();
             $lines = [];
             $payableBySupplier = [];   // cloud_supplier_id → delta (credit AP = +payable, debit AP = −payable)
@@ -391,6 +400,44 @@ class EdgeLocalSupplierFinanceService
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * D1 — ManualJournalRules::guardCashLines (R1–R3) over the replica chart (edge_supplier_finance_accounts with their
+     * parent, edge_supplier_finance_cash_bank_accounts with their coa_account_id). The till's rows carry Cloud ids under
+     * `cloud_*` keys; they are mapped to the canonical keys for the rule and back afterwards (the R2 auto-filled drawer
+     * lands in cloud_cash_bank_account_id so the envelope carries it and the local cash effect is projected). Error keys
+     * are translated to the till's field names; the messages are the canonical ones.
+     */
+    private function applyCanonicalCashLineRules(array $rawLines): array
+    {
+        $chart = new ManualJournalChart(
+            array_map(fn (array $a) => ['id' => $a['cloud_account_id'], 'code' => $a['code'], 'name' => $a['name'], 'parent_id' => $a['parent_cloud_account_id'], 'is_active' => $a['is_active']], $this->cache->accounts(false)),
+            array_map(fn (array $c) => ['id' => $c['cloud_cash_bank_account_id'], 'name' => $c['name'], 'account_id' => $c['coa_account_id'], 'is_active' => $c['is_active']], $this->cache->cashBankAccounts(false)),
+        );
+        $canonical = [];
+        foreach ($rawLines as $i => $l) {
+            $canonical[$i] = [
+                'account_id' => (int) ($l['cloud_account_id'] ?? 0),
+                'cash_bank_account_id' => (int) ($l['cloud_cash_bank_account_id'] ?? 0) ?: null,
+                'debit' => round((float) ($l['debit'] ?? 0), 4),
+                'credit' => round((float) ($l['credit'] ?? 0), 4),
+            ];
+        }
+        try {
+            $guarded = ManualJournalRules::guardCashLines($canonical, $chart);
+        } catch (ValidationException $e) {
+            $errors = [];
+            foreach ($e->errors() as $key => $messages) {
+                $errors[preg_replace('/^lines\.(\d+)\.(account_id|cash_bank_account_id)$/', 'lines.$1.cloud_$2', (string) $key)] = $messages;
+            }
+            throw ValidationException::withMessages($errors);
+        }
+        foreach ($guarded as $i => $g) {
+            $rawLines[$i]['cloud_cash_bank_account_id'] = ! empty($g['cash_bank_account_id']) ? (int) $g['cash_bank_account_id'] : null;
+        }
+
+        return $rawLines;
+    }
 
     private function guardMutation(User $user, string $permission): \App\Models\Edge\EdgeLocalMeta
     {
