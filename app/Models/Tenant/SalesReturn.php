@@ -24,6 +24,9 @@ class SalesReturn extends Model
         'status',
         'created_by_user_id',
         'reason',
+        // REFUND-SHIFT-1: the shift / counter whose drawer paid the refund
+        'shift_id',
+        'terminal_id',
     ];
 
     protected function casts(): array
