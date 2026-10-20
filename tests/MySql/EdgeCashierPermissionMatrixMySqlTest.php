@@ -242,6 +242,13 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
         $shiftId = (int) DB::connection('tenant')->table('shifts')->where('status', 'open')->value('id');
         $this->assertGreaterThan(0, $shiftId);
         $this->assertWorkflowOk($this->getJson('/edge/local/pos/shift'), 'shift status');
+        // D2: pause + resume the terminal's Reminder slips (the template carries tenant.pos.pause-reminders — D3).
+        $paused = $this->assertWorkflowOk($this->postJson('/edge/local/pos/reminder-pause', ['terminal_id' => $this->terminalA, 'paused' => true]), 'reminder pause');
+        $this->assertTrue((bool) $paused->json('reminder.can_toggle'));
+        // Counter A has no Reminder rule, so Online's statusFor() answers available=false (no switch shown) — the stamp is still on the row.
+        $this->assertNotNull(DB::connection('tenant')->table('shifts')->where('id', $shiftId)->value('reminders_paused_at'), 'the local shift row carries the pause');
+        $this->assertWorkflowOk($this->postJson('/edge/local/pos/reminder-pause', ['terminal_id' => $this->terminalA, 'paused' => false]), 'reminder resume');
+        $this->assertNull(DB::connection('tenant')->table('shifts')->where('id', $shiftId)->value('reminders_paused_at'));
 
         // Cash sale + printing (receipt queue, KOT print queue).
         $sale = $this->cashSale(3);
@@ -359,6 +366,9 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
                 },
             ],
             'tenant.pos.quick-report-send' => [fn () => $this->getJson('/edge/local/pos/quick-report/options'), false],
+            // D2/D3 (20 Oct 2026): the reminder-pause twin (same permission as Online's ShiftController::posReminderPause); paused=false
+            // keeps the open shift's state unchanged on the reprobe.
+            'tenant.pos.pause-reminders' => [fn () => $this->postJson('/edge/local/pos/reminder-pause', ['terminal_id' => $this->terminalA, 'paused' => false]), true],
             // Phase 4: the quick-store permission gates BOTH twins (quick-store + add-address); the probe is the quick-store.
             'tenant.pos.customers.quick-store' => [fn () => $this->postJson('/edge/local/pos/customers/quick-store', ['name' => 'Probe Customer', 'phone' => '0300' . random_int(1000000, 9999999)]), true],
             'tenant.pos.void-kot-item' => [fn () => $this->voidOne($voidSale, $voidLine), 'errors.permission'],
@@ -485,12 +495,21 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
             $this->assertSame(0, $roles[$name]['users']);
             $this->assertSame(1, $roles['Counter Staff']['users']);
             $this->assertEqualsCanonicalizing(array_values(array_diff(PosPermissionCatalog::cashier(), ['tenant.pos.index', 'tenant.pos.store', 'tenant.held-sales.store'])), $roles['Counter Staff']['missing']);
+            // D3 (20 Oct 2026): the newly catalogued pause-reminders permission is reported separately — never granted.
+            $this->assertSame(['tenant.pos.pause-reminders'], $roles['Counter Staff']['missing_recent_additions'], 'the custom role lacks the newly catalogued permission');
+            $this->assertSame([], $roles[$name]['missing_recent_additions'], 'the fresh template holds it');
+            $recent = collect($report['tenants'][0]['recent_additions'])->keyBy('permission');
+            $this->assertSame(['tenant.pos.pause-reminders'], $recent->keys()->all());
+            $this->assertSame([['role' => 'Counter Staff', 'users' => 1]], $recent['tenant.pos.pause-reminders']['roles_missing']);
+            $this->assertSame(1, $recent['tenant.pos.pause-reminders']['users_affected']);
+            $this->assertSame('D3', $recent['tenant.pos.pause-reminders']['decision']);
 
             // Human-readable form too.
             $this->assertSame(0, Artisan::call('permissions:audit-cashier-roles', ['--tenant' => $code]));
             $text = Artisan::output();
             $this->assertStringContainsString('Counter Staff', $text);
             $this->assertStringContainsString('nothing is granted', $text);
+            $this->assertStringContainsString('newly catalogued since 2026-10-20 (D3): tenant.pos.pause-reminders — missing in 1 role(s) / 1 user(s): "Counter Staff" (1)', $text);
         } finally {
             // TenancyManager::deactivate() leaves `master` as default — restore the harness state.
             config(['database.connections.tenant.database' => $this->tenantDb]);

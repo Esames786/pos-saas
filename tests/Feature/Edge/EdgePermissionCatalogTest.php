@@ -128,6 +128,7 @@ class EdgePermissionCatalogTest extends TestCase
         // The owner-approved cashier set (A6) — the explicit list, so a silent removal fails loudly.
         foreach ([
             'tenant.pos.index', 'tenant.pos.store', 'tenant.pos.change-terminal', 'tenant.pos.customers.quick-store', 'tenant.pos.quick-report-send',
+            'tenant.pos.pause-reminders', // D3 (20 Oct 2026): POS-REMINDER-PAUSE-1 — new tenants' template; existing tenants audited, never granted
             'tenant.pos.void-kot-item', 'tenant.held-sales.store', 'tenant.held-sales.cancel', 'tenant.held-sales.reattach-table',
             'tenant.sales-orders.split-bill.store', 'tenant.api.manager-approvals.verify',
             'tenant.restaurant.table-sessions.open', 'tenant.restaurant.table-sessions.close', 'tenant.restaurant.table-sessions.show',
@@ -145,6 +146,38 @@ class EdgePermissionCatalogTest extends TestCase
         foreach (PosPermissionCatalog::finance() as $finance) {
             $this->assertNotContains($finance, PosPermissionCatalog::cashier(), "finance permission {$finance} leaked into the cashier template");
         }
+    }
+
+    /**
+     * D3 (owner, 20 Oct 2026) — tenant.pos.pause-reminders is catalogued for the cashier template (new tenants) and marked as a
+     * post-provisioning addition (existing tenants: audited by permissions:audit-cashier-roles, never granted); the Edge twin's
+     * check site (EdgeLocalShiftController::posReminderPause → denyUnlessCan(ReminderPauseService::PERMISSION)) is what the
+     * scanner sees, and the permission is the SAME string Online's ReminderPauseService checks.
+     */
+    public function test_pause_reminders_is_a_cashier_template_addition_checked_by_the_edge_twin(): void
+    {
+        $this->assertSame('tenant.pos.pause-reminders', \App\Services\Printing\ReminderPauseService::PERMISSION);
+        $this->assertContains(\App\Services\Printing\ReminderPauseService::PERMISSION, PosPermissionCatalog::cashier());
+        foreach (PosPermissionCatalog::CASHIER_TEMPLATE_ADDITIONS as $permission => $meta) {
+            $this->assertContains($permission, PosPermissionCatalog::cashier(), "{$permission}: a template addition must be in the cashier template");
+            $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $meta['since']);
+            $this->assertNotSame('', trim($meta['decision']));
+            $this->assertNotSame('', trim($meta['note']));
+        }
+        $this->assertArrayHasKey('tenant.pos.pause-reminders', PosPermissionCatalog::CASHIER_TEMPLATE_ADDITIONS);
+
+        $checked = $this->scanChecks();
+        $this->assertArrayHasKey('tenant.pos.pause-reminders', $checked, 'the scanner must see the Edge reminder-pause twin check');
+        $this->assertContains('app/Http/Controllers/Edge/EdgeLocalShiftController.php', $checked['tenant.pos.pause-reminders']);
+        // The catalogue documents the Online owner and the D3 grant policy.
+        $online = PosPermissionCatalog::describe('tenant.pos.pause-reminders')['online'];
+        $this->assertStringContainsString('tenant.api.pos.reminder-pause', $online);
+        $this->assertStringContainsString('2026_10_05_000002_add_reminder_pause_to_shifts', $online);
+        // The provisioner grants nothing beyond the template to an existing tenant (the audit is the only path — read-only).
+        $src = (string) file_get_contents(base_path('app/Console/Commands/PermissionsAuditCashierRolesCommand.php'));
+        $this->assertStringContainsString('CASHIER_TEMPLATE_ADDITIONS', $src, 'the audit reports the newly catalogued permissions separately');
+        $this->assertStringNotContainsString('givePermissionTo', $src);
+        $this->assertStringNotContainsString('->insert(', $src);
     }
 
     public function test_the_provisioner_builds_the_cashier_template_from_the_catalogue_for_new_tenants_only(): void

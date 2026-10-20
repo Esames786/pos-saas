@@ -103,6 +103,8 @@ class EdgeDevInstanceSeedMySqlTest extends MySqlTenantTestCase
         foreach (\App\Support\Pos\PosPermissionCatalog::all() as $p) {
             $this->grantEdgePermission($managerId, $p);
         }
+        // D3 (20 Oct 2026): the catalogue now carries tenant.pos.pause-reminders — DEVCASH1 can work the Reminder switch on the dev instance.
+        $this->assertTrue(\App\Models\Tenant\User::on('tenant')->find($cashierId)->can(\App\Services\Printing\ReminderPauseService::PERMISSION), 'DEVCASH1 holds the reminder-pause permission');
 
         // ── units, categories (parent + child) ───────────────────────────────────────────────────────────────────
         $pc = $t('units')->insertGetId(['code' => 'pc', 'name' => 'Piece', 'unit_type' => 'quantity', 'base_factor' => 1, 'is_base' => 1, 'is_active' => 1, 'created_at' => $now, 'updated_at' => $now]);

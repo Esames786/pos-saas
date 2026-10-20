@@ -161,4 +161,34 @@ class EdgeCashierQuickReportParityHttpMySqlTest extends MySqlTenantTestCase
         $this->getJson('/edge/local/pos/quick-report/settings')->assertForbidden();
         $this->postJson('/edge/local/pos/quick-report/save-settings', ['sections' => ['overview']])->assertForbidden();
     }
+
+    /**
+     * D6 (owner, 20 Oct 2026) — partner share is NOT on the Branch Server in this release: the capability `partnerShare` is OFF
+     * in the Edge runtime (Cloud ON), the quick report strips the section by that capability and never computes it (the
+     * share_partners / share_rates tables are CLOUD_ONLY — they do not exist here), the options list is Online's SECTIONS
+     * (no Partner Share box on either runtime), and the interim CLOUD_ONLY_SECTIONS guard is gone.
+     */
+    public function test_partner_share_is_a_cloud_only_capability_the_edge_quick_report_never_computes(): void
+    {
+        $date = $this->trade();
+        $caps = app(\App\Services\Edge\EdgePosRuntimeFactory::class)->capabilities();
+        $this->assertFalse($caps['partnerShare'], 'the Branch Server runtime turns partnerShare off');
+        $this->assertTrue(app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make()->can('partnerShare'), 'the Cloud runtime keeps it on');
+
+        $options = $this->getJson('/edge/local/pos/quick-report/options')->assertOk();
+        $this->assertSame(\App\Http\Controllers\Tenant\PosQuickReportController::SECTIONS, $options->json('sections'));
+        $this->assertNotContains('partner_share', $options->json('sections'));
+
+        // A request that asks for the section anyway (a stale saved selection, a hand-made call) is served without it.
+        $view = $this->get('/edge/local/pos/quick-report/view?date=' . $date . '&sections[]=overview&sections[]=partner_share')->assertOk()->getContent();
+        $this->assertStringNotContainsStringIgnoringCase('partner', $view, 'the thermal page never renders a partner-share section on the appliance');
+        $this->assertStringContainsString('QR Branch', $view, 'the report still renders (header)');
+        // Asking ONLY for the stripped section falls back to the full allowed list (never an empty report, never the section).
+        $only = $this->get('/edge/local/pos/quick-report/view?date=' . $date . '&sections[]=partner_share&all_items=1')->assertOk()->getContent();
+        $this->assertStringNotContainsStringIgnoringCase('partner', $only);
+        $this->assertStringContainsString('Chicken Karahi', $only, 'the full allowed section list was served instead');
+
+        $this->assertSame(['overview'], \App\Http\Controllers\Edge\EdgeQuickReportController::sectionsAllowed(['overview', 'partner_share'], $caps));
+        $this->assertFalse(defined(\App\Http\Controllers\Edge\EdgeQuickReportController::class . '::CLOUD_ONLY_SECTIONS'), 'the interim guard is replaced by the capability');
+    }
 }

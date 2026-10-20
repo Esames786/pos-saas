@@ -97,6 +97,18 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
     public const JS_GATED_CAPABILITIES = ['changeRider' => 'salesOrderShow'];
 
     /**
+     * D6 (owner, 20 Oct 2026) — SERVER-SIDE capabilities: OFF on the Branch Server, but NO cashier control binds to them on EITHER
+     * runtime, so there is nothing for the view to disable (adding a control would change Online's geometry). The Edge
+     * endpoint enforces them instead; the gate asserts Cloud ON / Edge OFF, that the shared view sources carry no site for them,
+     * and (per entry) the server rule. capability => [enforcer, assertion of the rule].
+     */
+    public const SERVER_ONLY_CAPABILITIES = [
+        // PARTNER-SHARE-1: the quick-report modal has no Partner Share section on Online (PosQuickReportController::SECTIONS) — the
+        // section lives in the Reports Centre (capability `reports`); the Edge quick report strips it by this flag and never computes it.
+        'partnerShare' => 'EdgeQuickReportController::CAPABILITY_SECTIONS[partner_share] (sectionsAllowed strips it while off)',
+    ];
+
+    /**
      * The OLD Edge page's own control ids (resources/views/edge/pos/** minus the shared views) — frozen BEFORE the folder was
      * deleted (Stage B, 6 Oct 2026); this list is now the only reference to the old page. Neither render nor the shared
      * sources may ever carry one of them.
@@ -332,12 +344,20 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
         $edgeDom = $this->xpath($edge);
         $cloudDom = $this->xpath($cloud);
 
-        $covered = array_merge(array_keys(self::CAPABILITY_CONTROLS), array_keys(self::JS_GATED_CAPABILITIES));
+        $covered = array_merge(array_keys(self::CAPABILITY_CONTROLS), array_keys(self::JS_GATED_CAPABILITIES), array_keys(self::SERVER_ONLY_CAPABILITIES));
         foreach (PosRuntime::CAPABILITY_KEYS as $key) {
             $this->assertTrue($cloudRt['capabilities'][$key], "Cloud: capability {$key} is on");
             $this->assertArrayHasKey($key, EdgePosRuntimeFactory::CAPABILITIES, "EdgePosRuntimeFactory::CAPABILITIES must define {$key}");
             $expectedEdge = EdgePosRuntimeFactory::CAPABILITIES[$key];
             $this->assertSame($expectedEdge, $edgeRt['capabilities'][$key], "Edge: capability {$key} must follow the factory matrix");
+            if (isset(self::SERVER_ONLY_CAPABILITIES[$key])) {
+                // D6: no control on either runtime — identical geometry by construction; the Edge endpoint enforces the capability.
+                $this->assertFalse($expectedEdge, "{$key}: a server-only capability is OFF on the Branch Server (otherwise it would not be listed here)");
+                $this->assertStringNotContainsString("can('{$key}')", $edge, "{$key}: the shared view must not gate a control on a server-only capability");
+                $this->assertStringNotContainsString("can('{$key}')", $cloud);
+                $this->assertArrayHasKey('capability.' . $key, $edgeRt['labels'], "{$key}: the Edge runtime still carries the hint for a server refusal");
+                continue;
+            }
             if (! in_array($key, $covered, true)) {
                 // No gate in the view: the capability must be ON for the Branch Server (otherwise an off capability would
                 // render an enabled control — a gap the matrix must never open silently).
@@ -427,6 +447,76 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
             $this->assertNotNull($this->allowlistedRouteFor($rt['routes'][$key]), "{$key} is an allowlisted Edge route");
         }
         $this->advertiseCloudCapabilities(null);
+    }
+
+    /**
+     * (c3) Owner decisions D2 / D4 / D6 (20 Oct 2026) — the three capability differences settled in this release:
+     *   D2 reminderPause ON on both runtimes: the SAME #pos-reminder-toggle renders enabled in the same slot, no off-hint label,
+     *      the Edge route is the allowlisted local twin (never the Cloud path);
+     *   D4 websiteOrders Cloud-only: the SAME component (#web-orders-btn + the website-orders partial incl. #webOrdersModal) is in both
+     *      renders when the plan carries Online Ordering, disabled + hint on Edge, every websiteOrders* route null on Edge and the
+     *      Edge render carries no `/api/pos/website-orders` literal — a capability difference, never a layout difference;
+     *   D6 partnerShare Cloud-only, server-side: the Edge quick report strips `partner_share` by the capability, the Cloud keeps it.
+     */
+    public function test_c3_reminder_pause_is_local_website_orders_and_partner_share_are_cloud_only_capabilities(): void
+    {
+        // The allowlist lookup needs the branch_server route table (renderBoth boots the Cloud afterwards), so it runs first.
+        $edgeOnly = $this->runtimeFrom($this->renderEdge());
+        $this->assertSame('/edge/local/pos/reminder-pause', $edgeOnly['routes']['reminderPause']);
+        $this->assertSame('edge.local.pos.reminder.pause', $this->allowlistedRouteFor($edgeOnly['routes']['reminderPause']), 'the twin is an allowlisted edge.local.* route');
+
+        [$edge, $cloud] = $this->renderBoth()[''];
+        $edgeRt = $this->runtimeFrom($edge);
+        $cloudRt = $this->runtimeFrom($cloud);
+        $edgeDom = $this->xpath($edge);
+        $cloudDom = $this->xpath($cloud);
+
+        // D2
+        $this->assertTrue($edgeRt['capabilities']['reminderPause']);
+        $this->assertTrue($cloudRt['capabilities']['reminderPause']);
+        $this->assertSame('/edge/local/pos/reminder-pause', $edgeRt['routes']['reminderPause']);
+        $this->assertSame('/api/pos/reminder-pause', $cloudRt['routes']['reminderPause']);
+        $this->assertArrayNotHasKey('capability.reminderPause', $edgeRt['labels'], 'no off-hint for a capability that is on');
+        $this->assertArrayNotHasKey('reminderPause', EdgePosRuntimeFactory::LABELS, 'the stale "runs on the Online POS" hint is gone');
+        foreach ([$edgeDom, $cloudDom] as $dom) {
+            $toggle = $dom->query('//*[@id="pos-reminder-toggle"]');
+            $this->assertSame(1, $toggle->length);
+            $this->assertFalse($toggle->item(0)->hasAttribute('disabled'), 'the reminder toggle is enabled on both runtimes (the badge JS decides per shift/permission)');
+            $this->assertFalse($toggle->item(0)->hasAttribute('title'));
+        }
+        $this->assertStringNotContainsString('/api/pos/reminder-pause', $edge, 'the Edge render never carries the Cloud reminder-pause path');
+
+        // D4
+        $this->assertFalse($edgeRt['capabilities']['websiteOrders']);
+        $this->assertTrue($cloudRt['capabilities']['websiteOrders']);
+        foreach (['websiteOrders', 'websiteOrderHold', 'websiteOrderVerify'] as $route) {
+            $this->assertNull($edgeRt['routes'][$route], "Edge: {$route} is null (Cloud-only)");
+            $this->assertNotNull($cloudRt['routes'][$route], "Cloud: {$route} is routed");
+        }
+        $this->assertStringNotContainsString('/api/pos/website-orders', $edge, 'no Cloud website-orders endpoint is reachable from the Edge render');
+        foreach (['//*[@id="web-orders-btn"]', '//*[@id="webOrdersModal"]', '//*[@id="web-orders-body"]'] as $xp) {
+            $this->assertSame($cloudDom->query($xp)->length, $edgeDom->query($xp)->length, "{$xp}: the SAME component renders on both runtimes (zero geometry delta)");
+            $this->assertSame(1, $cloudDom->query($xp)->length, "{$xp}: present on the Cloud render (the gate plan carries Online Ordering)");
+        }
+        $bell = $edgeDom->query('//*[@id="web-orders-btn"]')->item(0);
+        $this->assertTrue($bell->hasAttribute('disabled'));
+        $this->assertSame(EdgePosRuntimeFactory::LABELS['websiteOrders'], $bell->getAttribute('title'));
+        $this->assertFalse($cloudDom->query('//*[@id="web-orders-btn"]')->item(0)->hasAttribute('disabled'));
+        $this->assertStringContainsString("POS.route('websiteOrders')", $edge, 'the partial takes its endpoints from the runtime (null on Edge → its JS stops)');
+
+        // D6
+        $this->assertFalse($edgeRt['capabilities']['partnerShare']);
+        $this->assertTrue($cloudRt['capabilities']['partnerShare']);
+        $this->assertSame(['partner_share' => 'partnerShare'], \App\Http\Controllers\Edge\EdgeQuickReportController::CAPABILITY_SECTIONS);
+        $this->assertSame(['overview', 'items'], \App\Http\Controllers\Edge\EdgeQuickReportController::sectionsAllowed(['overview', 'partner_share', 'items'], $edgeRt['capabilities']), 'the Edge quick report never computes partner share');
+        $this->assertSame(['overview', 'partner_share', 'items'], \App\Http\Controllers\Edge\EdgeQuickReportController::sectionsAllowed(['overview', 'partner_share', 'items'], $cloudRt['capabilities']), 'the Cloud keeps it');
+        $this->assertNotContains('partner_share', \App\Http\Controllers\Tenant\PosQuickReportController::SECTIONS, 'Online quick report has no Partner Share section — no box to disable, identical geometry');
+        // No control binds to it on either runtime (the runtime JSON island legitimately carries the capability flag + the Edge hint).
+        $partnerControl = '//*[contains(translate(@id,"PARTNER","partner"),"partner") or contains(translate(@name,"PARTNER","partner"),"partner") or contains(translate(@value,"PARTNER","partner"),"partner")]';
+        $this->assertSame(0, $edgeDom->query($partnerControl)->length, 'no partner-share control on the Edge render');
+        $this->assertSame(0, $cloudDom->query($partnerControl)->length, 'no partner-share control on the Cloud render');
+        $this->assertArrayHasKey('capability.partnerShare', $edgeRt['labels'], 'the Edge runtime carries the server-refusal hint');
+        $this->assertArrayNotHasKey('capability.partnerShare', $cloudRt['labels']);
     }
 
     /**

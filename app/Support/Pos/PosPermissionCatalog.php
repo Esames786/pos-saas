@@ -68,6 +68,11 @@ final class PosPermissionCatalog
             'edge' => 'EdgeQuickReportController::PERMISSION (guard → denyUnlessCan {message, permission} 403 on every JSON quick-report action; HTML 403 on the thermal page) + canQuickReport page flag',
             'online' => 'synthetic — PosQuickReportController (migration 2026_08_27_000001_add_pos_quick_report_permission)',
         ],
+        'tenant.pos.pause-reminders' => [
+            'groups' => ['cashier'],
+            'edge' => 'EdgeLocalShiftController@posReminderPause (denyUnlessCan(ReminderPauseService::PERMISSION) {message, permission} 403 — D2 twin POST /edge/local/pos/reminder-pause, edge.local.pos.reminder.pause) + ReminderPauseService::statusFor can_toggle on the shift-status badge (both runtimes)',
+            'online' => 'POST /api/pos/reminder-pause — ShiftController@posReminderPause (route tenant.api.pos.reminder-pause is permission-exempt; the controller checks ReminderPauseService::PERMISSION) — synthetic, seeded by migration 2026_10_05_000002_add_reminder_pause_to_shifts (which grants Owner + roles holding tenant.held-sales.store ONCE on the Cloud; this catalogue grants nothing — owner D3: new tenants get it through the Cashier (Counter) template, existing tenants are reported by permissions:audit-cashier-roles)',
+        ],
         'tenant.pos.void-kot-item' => [
             'groups' => ['cashier'],
             'edge' => 'KotCancellationService::assertCancellationPermission (the REQUESTING cashier, held revise with void_items / cancel) + EdgeLocalPosService::MANAGER_ACTION_PERMISSIONS (the approving manager must hold it too for void_kot_item(s) — eligibility itself is users.may_approve_pos, Phase 3)',
@@ -263,6 +268,21 @@ final class PosPermissionCatalog
         'tenant.restaurant.floors.index' => 'Manage Floors → Cloud restaurant management iframe',
         'tenant.restaurant.tables.index' => 'Manage Tables → Cloud restaurant management iframe',
         'tenant.sales-orders.show' => 'sales-returns index/show link to the Online sales-order detail page — no Edge route (Edge hides the link)',
+    ];
+
+    /**
+     * Cashier-template permissions catalogued AFTER tenants were already provisioned with the template (owner D3, 20 Oct 2026):
+     * a NEW tenant's `Cashier (Counter)` role includes them (cashier()); an EXISTING tenant is never granted them silently —
+     * `permissions:audit-cashier-roles` lists them separately so an owner sees which cashier roles still lack each one.
+     *
+     * @var array<string, array{since: string, decision: string, note: string}>
+     */
+    public const CASHIER_TEMPLATE_ADDITIONS = [
+        'tenant.pos.pause-reminders' => [
+            'since' => '2026-10-20',
+            'decision' => 'D3',
+            'note' => 'POS-REMINDER-PAUSE-1: pause / resume the terminal\'s Reminder slips until its shift closes (Online POS and Branch Server alike). The Cloud migration granted it once to Owner and to roles holding tenant.held-sales.store; a role created or trimmed since must be granted it by the tenant.',
+        ],
     ];
 
     /** @return list<string> the `Cashier (Counter)` template. */

@@ -68,10 +68,20 @@ class EdgeSharedPosRegressionStaticGateTest extends TestCase
         foreach (EdgePosRuntimeFactory::CAPABILITIES as $key => $on) {
             $this->assertContains($key, PosRuntime::CAPABILITY_KEYS);
             if (! $on) {
+                if (isset(Gate::SERVER_ONLY_CAPABILITIES[$key])) {
+                    // D6: a server-side capability — no control binds to it on EITHER runtime (nothing to disable; adding a control
+                    // would change Online's geometry). The render gate (test_c) asserts Cloud ON / Edge OFF and the server rule.
+                    $this->assertFalse(in_array($key, $bladeGated, true) || in_array($key, $jsGated, true), "capability {$key} is declared server-only but the view gates a control on it — move it to CAPABILITY_CONTROLS / JS_GATED_CAPABILITIES");
+                    $this->assertArrayHasKey($key, EdgePosRuntimeFactory::LABELS, "server-only capability {$key} still needs a refusal hint");
+                    continue;
+                }
                 $this->assertTrue(in_array($key, $bladeGated, true) || in_array($key, $jsGated, true), "capability {$key} is OFF on Edge but nothing in the view gates on it");
                 $this->assertArrayHasKey($key, EdgePosRuntimeFactory::LABELS, "capability {$key} is OFF on Edge and needs a hint label");
             }
         }
+        // D2: reminderPause is ON on the Branch Server and keeps its Blade gate (a runtime with it off still renders the control disabled).
+        $this->assertTrue(EdgePosRuntimeFactory::CAPABILITIES['reminderPause']);
+        $this->assertContains('reminderPause', $bladeGated);
         $this->assertEqualsCanonicalizing(PosRuntime::CAPABILITY_KEYS, array_keys(EdgePosRuntimeFactory::CAPABILITIES));
     }
 

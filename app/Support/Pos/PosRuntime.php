@@ -71,10 +71,16 @@ final class PosRuntime implements JsonSerializable
         'reports', 'quickReport', 'quickReportEmail', 'quickReportNetwork', 'manageFloorsTables', 'branchSelect',
         'nonCashTender', 'tipOnPaidSale', 'customerCreate', 'customerAddressCreate', 'changeRider', 'splitBill',
         'salesReturn', 'shiftPages', 'promotions', 'tips', 'tableMerge', 'reservations', 'deadSessionRecovery', 'printHere',
-        // CANONICAL MERGE (D8): POS-REMINDER-PAUSE-1 — pause / resume Reminder slips from the counter (Edge: off until D2).
+        // POS-REMINDER-PAUSE-1 — pause / resume Reminder slips from the counter. Cloud ON; Edge ON since D2 (20 Oct 2026): the
+        // Branch Server twin stamps the LOCAL open shift through the shared ReminderPauseService (no Cloud call).
         'reminderPause',
         // CANONICAL MERGE (D8): ONLINE-ORDERING-1 — the website-orders inbox is a Cloud capability (D4: Cloud-only, same slot on Edge).
         'websiteOrders',
+        // D6 (20 Oct 2026): PARTNER-SHARE-1 — the partner-share report section. Cloud ON; Edge OFF (share_partners / share_rates are
+        // CLOUD_ONLY tables, bootstrap stays v8). SERVER-SIDE capability: no cashier control binds to it on either runtime (the
+        // quick-report modal has no Partner Share box — Online PosQuickReportController::SECTIONS excludes it); the Edge quick
+        // report strips the section by this flag (EdgeQuickReportController::CAPABILITY_SECTIONS).
+        'partnerShare',
     ];
 
     /**

@@ -191,6 +191,7 @@ return [
         'quick_report',               // Quick Report view / print here / network on the canonical engine (e-mail = Internet)
         'shift_denomination_count',   // W4: shift close with the Online denomination count + closing notes (no shortage voucher)
         'offline_customer_create',    // PHASE 4: add customer / address at the till (customer_uuid + phone_normalized + address_uuid), new_customer envelope v3 when the Cloud advertises customer_create
+        'local_reminder_pause',       // D2 (20 Oct 2026): POS-REMINDER-PAUSE-1 on the local shift row (shared ReminderPauseService; shift-scoped, never crosses a boundary)
     ],
 
     /*
@@ -233,6 +234,7 @@ return [
         'edge.local.pos.sync.summary',
         'edge.local.pos.shift.open',
         'edge.local.pos.shift.close',
+        'edge.local.pos.reminder.pause',                  // D2 (20 Oct 2026): POS-REMINDER-PAUSE-1 twin — local shift row, shared ReminderPauseService
         'edge.local.pos.sales.store',
         'edge.local.pos.preview.bill',
         // EDGE-LOCAL-POS-1 restaurant layer (each name deliberate).

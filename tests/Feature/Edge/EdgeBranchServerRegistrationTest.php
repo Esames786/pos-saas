@@ -101,6 +101,7 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/shift',
             'edge/local/pos/shift/open',
             'edge/local/pos/shift/close',
+            'edge/local/pos/reminder-pause',                  // D2 (deliberately approved, 20 Oct 2026): POS-REMINDER-PAUSE-1 twin on the local shift row
             'edge/local/pos/sales',
             // EDGE-LOCAL-POS-1 restaurant layer (deliberately approved).
             'edge/local/pos/restaurant/board',

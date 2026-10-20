@@ -40,12 +40,15 @@ class EdgeQuickReportController extends Controller
     public const SECTIONS = PosQuickReportController::SECTIONS;
 
     /**
-     * CANONICAL MERGE (D8, 19 Oct 2026) — PARTNER-SHARE-1: the shared SalesReportEngine reads share_partners / share_rates for
-     * this section, and both tables are CLOUD_ONLY in the Edge tenant-migration manifest (D7) — they do not exist on the
-     * appliance. The section stays in the modal (same geometry as Online) but is never computed here; owner decision D6
-     * (bootstrap sections vs. a capability that disables the box) replaces this guard.
+     * D6 (owner decision, 20 Oct 2026) — report sections that exist only while a shared-runtime CAPABILITY is on:
+     * section key → PosRuntime capability. PARTNER-SHARE-1: the shared SalesReportEngine reads share_partners / share_rates
+     * for `partner_share`, both CLOUD_ONLY tables in the Edge tenant-migration manifest (D7) — they do not exist on the
+     * appliance and are NOT shipped in this release (bootstrap stays v8). EdgePosRuntimeFactory::CAPABILITIES['partnerShare']
+     * is OFF, so the section is stripped from every request here and never computed; the Cloud factory turns it ON and
+     * Tenant\PosQuickReportController is untouched. The quick-report modal has no Partner Share box on either runtime (Online
+     * SECTIONS exclude it — the section lives in the Reports Centre, capability `reports`), so the geometry is identical.
      */
-    public const CLOUD_ONLY_SECTIONS = ['partner_share'];
+    public const CAPABILITY_SECTIONS = ['partner_share' => 'partnerShare'];
 
     private const PERMISSION = 'tenant.pos.quick-report-send';
 
@@ -114,9 +117,27 @@ class EdgeQuickReportController extends Controller
             'include_open' => true,
         ]);
         $sections = array_values(array_intersect((array) $request->input('sections', self::SECTIONS), self::SECTIONS)) ?: self::SECTIONS;
-        $sections = array_values(array_diff($sections, self::CLOUD_ONLY_SECTIONS)) ?: array_values(array_diff(self::SECTIONS, self::CLOUD_ONLY_SECTIONS));
+        $sections = self::sectionsAllowed($sections, app(\App\Services\Edge\EdgePosRuntimeFactory::class)->capabilities())
+            ?: self::sectionsAllowed(self::SECTIONS, app(\App\Services\Edge\EdgePosRuntimeFactory::class)->capabilities());
 
         return [$filters, $sections, (string) $date, $branch];
+    }
+
+    /**
+     * D6 — drop every section whose capability (CAPABILITY_SECTIONS) is off in the given runtime capability matrix. Pure, so
+     * the regression gate can assert the rule against EdgePosRuntimeFactory::CAPABILITIES without a request.
+     *
+     * @param  list<string>  $sections
+     * @param  array<string,bool>  $capabilities
+     * @return list<string>
+     */
+    public static function sectionsAllowed(array $sections, array $capabilities): array
+    {
+        return array_values(array_filter($sections, function (string $section) use ($capabilities): bool {
+            $capability = self::CAPABILITY_SECTIONS[$section] ?? null;
+
+            return $capability === null || (bool) ($capabilities[$capability] ?? false);
+        }));
     }
 
     /** What the modal needs: sections, today's business date, filter books, network printers, and the truthful email state. */

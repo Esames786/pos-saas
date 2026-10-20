@@ -56,13 +56,18 @@ class EdgePosRuntimeFactory
         'reservations' => true,
         'deadSessionRecovery' => true,
         'printHere' => true,
-        // CANONICAL MERGE (D8, 19 Oct 2026): POS-REMINDER-PAUSE-1 — OFF until team D2 builds the Edge twin
-        // (/edge/local/api/pos/reminder-pause via the shared ReminderPauseService + the `reminder` key on shift-status).
-        // The shared print plumbing (PrintJobService / DirectPayPrintOrchestrator) already honours a paused shift row.
-        'reminderPause' => false,
+        // D2 (owner, 20 Oct 2026): POS-REMINDER-PAUSE-1 is LOCAL — EdgeLocalShiftController::posReminderPause stamps the appliance's
+        // open shift row through the shared ReminderPauseService and the shared print plumbing (PrintJobService /
+        // DirectPayPrintOrchestrator) honours it; shift-status carries the real `reminder` block. Same control, same state, no Cloud call.
+        'reminderPause' => true,
         // CANONICAL MERGE (D8): ONLINE-ORDERING-1 — website orders need the Cloud (D4: Cloud-only; the bell renders disabled in the
         // same slot with the hint, the inbox partial's polling never starts on a runtime without the route).
         'websiteOrders' => false,
+        // D6 (owner, 20 Oct 2026): PARTNER-SHARE-1 is NOT on the Branch Server in this release — share_partners / share_rates are
+        // CLOUD_ONLY tables (manifest D7), bootstrap stays v8. No cashier control binds to it on either runtime (the Online quick
+        // report has no Partner Share section; the section lives in the Reports Centre = capability `reports`); the Edge quick
+        // report strips the section by THIS flag (EdgeQuickReportController::CAPABILITY_SECTIONS) and never computes it.
+        'partnerShare' => false,
     ];
 
     /**
@@ -90,8 +95,8 @@ class EdgePosRuntimeFactory
         'refundOnlineRequired' => 'Refunding it the same way needs the Online POS; a cash refund from this till is possible where the business allows it.',
         'shiftBranchWide' => 'Opening shifts for several terminals at once runs on the Online POS — this Branch Server opens the shift of its own terminal.',
         'shortageVoucher' => 'The shortage is recorded on this shift. The Branch Server does not raise the finance draft expense voucher; finance settles it from the shift record.',
-        'reminderPause' => 'Pausing Reminder slips runs on the Online POS for now — this Branch Server prints reminders as configured.',
         'websiteOrders' => 'Website orders arrive on the Online POS — a website order needs the Cloud, so this Branch Server does not take them.',
+        'partnerShare' => 'Partner share is a Cloud report section — this Branch Server\'s Quick Report does not compute it; open the Online Reports Centre.',
         'modeChip' => null,
         'connection' => null,
     ];
@@ -336,8 +341,8 @@ class EdgePosRuntimeFactory
             'supplierFinancePage' => $may([EdgeLocalSupplierFinanceService::PERM_LEDGER, EdgeLocalSupplierFinanceService::PERM_PAYMENT]) ? $p . '/suppliers' : null,
             'financeJournalPage' => $may([EdgeLocalSupplierFinanceService::PERM_JOURNAL]) ? $p . '/finance/journal' : null,
             'purchaseReturnsPage' => $may([EdgeLocalPurchaseReturnService::PERM_STORE, EdgeLocalPurchaseReturnService::PERM_POST]) ? $p . '/purchase-returns' : null,
-            // CANONICAL MERGE (D8): POS-REMINDER-PAUSE-1 — capability reminderPause (null until team D2 builds the twin).
-            'reminderPause' => null,
+            // D2 (20 Oct 2026): POS-REMINDER-PAUSE-1 twin — EdgeLocalShiftController::posReminderPause (edge.local.pos.reminder.pause).
+            'reminderPause' => $p . '/reminder-pause',
             // CANONICAL MERGE (D8): ONLINE-ORDERING-1 — capability websiteOrders (Cloud-only, D4).
             'websiteOrders' => null,
             'websiteOrderHold' => null,

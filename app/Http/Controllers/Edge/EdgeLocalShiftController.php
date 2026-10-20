@@ -10,7 +10,9 @@ use App\Models\Tenant\CashCountLine;
 use App\Models\Tenant\Currency;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
+use App\Services\Edge\EdgeAuthorityService;
 use App\Services\Edge\EdgeBranchContext;
+use App\Services\Printing\ReminderPauseService;
 use App\Services\Sales\ShiftService;
 use App\Support\AmountVisibility;
 use App\Support\TenantClock;
@@ -311,7 +313,8 @@ class EdgeLocalShiftController extends Controller
                 'timezone' => app(TenantClock::class)->businessTimezone($this->branch()),
                 'opened_at' => null, 'opened_at_display' => null, 'server_epoch_ms' => (int) round(microtime(true) * 1000),
                 'open_url' => '/edge/local/pos/shifts/open', 'shift' => null,
-                'reminder' => null, // POS-REMINDER-PAUSE-1 twin key (null = no Reminder switch on the Branch Server yet; team D2)
+                // POS-REMINDER-PAUSE-1 (D2): Online posStatus answers statusFor(null terminal) here — the `available=false` block.
+                'reminder' => app(ReminderPauseService::class)->statusFor(null, auth('tenant')->user()),
             ]);
         }
         $terminal = $this->selectedTerminal($request);
@@ -348,10 +351,62 @@ class EdgeLocalShiftController extends Controller
                 'total_sales' => $maySeeAmounts ? (float) $open->total_sales : null,
                 'expected_cash' => $maySeeAmounts ? (float) $open->expected_cash : null,
             ] : null,
-            // CANONICAL MERGE (D8): Online posStatus carries `reminder` (ReminderPauseService::statusFor). null here = the page hides
-            // the switch (renderReminderStatus(null)); team D2 replaces it with the shared service's status + the pause twin route.
-            'reminder' => null,
+            // POS-REMINDER-PAUSE-1 (D2, 20 Oct 2026): the SAME `reminder` block Online posStatus carries, from the SAME shared
+            // service over the LOCAL shift row — {available, paused, paused_by, paused_at, can_toggle}. The shared page's
+            // renderReminderStatus() shows the identical badge state on both runtimes; another counter's toggle shows up on
+            // the next poll exactly as on Online.
+            'reminder' => app(ReminderPauseService::class)->statusFor($terminal, auth('tenant')->user()),
         ]);
+    }
+
+    /**
+     * D2 (owner decision, 20 Oct 2026) — the Branch Server twin of Online `POST /api/pos/reminder-pause`
+     * (ShiftController::posReminderPause): pause / resume the selected terminal's Reminder slips until its shift closes.
+     *
+     * SAME request ({terminal_id, paused}), SAME permission (`tenant.pos.pause-reminders`, checked in the controller because
+     * Online's `tenant.api.pos.*` routes are exempt from route permissions), SAME response ({reminder: statusFor()}), SAME
+     * rule engine: the shared ReminderPauseService stamps shifts.reminders_paused_at / _by_user_id on the LOCAL open shift
+     * row inside a locked transaction, and the shared PrintJobService (KOT reminder plan, cancellation reminder, Review & Pay
+     * orchestrator) already reads that stamp through isPausedForTerminal() — so the appliance's reminder plan honours the
+     * pause exactly as the Cloud's does, with no Cloud call.
+     *
+     * Gates in order: validation → permission (403 {message, permission}) → the selected terminal (W-B: adopts the page's
+     * terminal_id, 422 INVALID_TERMINAL / 403 terminal authority) → the branch-authority lease (STANDBY → 422 {ok:false,
+     * code: STANDBY} like every Edge mutation) → no open shift (422 {message}, Online's ShiftException text).
+     *
+     * RECONCILIATION (documented in docs/status/edge-d2-d3-reminder-pause-and-capabilities.md): the pause is a stamp on the
+     * appliance's OPEN shift and ends with that shift. A handback is BLOCKED while any appliance shift is open
+     * (EdgeHandbackOrchestrator OPEN_SHIFTS), so no paused shift can ever be live when the Cloud becomes the writer again;
+     * the Cloud's own shift row — opened by the Online cashier after the handback — starts with Reminder ON by Online's own
+     * "new shift starts clean" rule. Nothing about the pause rides the sale envelope or the handback payload on purpose:
+     * it is operational state of one terminal's shift, never money or inventory.
+     */
+    public function posReminderPause(Request $request, ReminderPauseService $pause, EdgeAuthorityService $authority): JsonResponse
+    {
+        $data = $request->validate([
+            'terminal_id' => ['required', 'integer'],
+            'paused' => ['required', 'boolean'],
+        ]);
+        if ($denied = $this->denyUnlessCan(ReminderPauseService::PERMISSION, 'You are not allowed to pause Reminder slips.')) {
+            return $denied;
+        }
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return $terminal;
+        }
+        try {
+            $authority->assertLocalMutationAllowed();
+        } catch (\RuntimeException $e) {
+            return response()->json(['ok' => false, 'code' => 'STANDBY', 'message' => $e->getMessage()], 422);
+        }
+        $user = auth('tenant')->user();
+        try {
+            $pause->setPaused($terminal, $user, (bool) $data['paused']);
+        } catch (ShiftException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['reminder' => $pause->statusFor($terminal, $user)]);
     }
 
     /**

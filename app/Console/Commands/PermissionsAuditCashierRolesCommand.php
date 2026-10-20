@@ -88,8 +88,16 @@ class PermissionsAuditCashierRolesCommand extends Command
                 $status = $r['missing'] === [] ? 'COMPLETE' : count($r['missing']) . ' missing';
                 $this->line("  role \"{$r['role']}\" ({$r['users']} user(s)): {$status}");
                 foreach ($r['missing'] as $p) {
-                    $this->line("    - {$p}");
+                    $this->line('    - ' . $p . (in_array($p, $r['missing_recent_additions'] ?? [], true) ? '  (newly catalogued — not granted to existing tenants)' : ''));
                 }
+            }
+            // D3: the newly catalogued cashier permissions, role by role — what the owner would grant by hand.
+            foreach ($t['recent_additions'] ?? [] as $a) {
+                $who = $a['roles_missing'] === []
+                    ? 'every cashier-like role holds it'
+                    : 'missing in ' . count($a['roles_missing']) . ' role(s) / ' . $a['users_affected'] . ' user(s): '
+                        . implode(', ', array_map(fn ($r) => "\"{$r['role']}\" ({$r['users']})", $a['roles_missing']));
+                $this->line("  newly catalogued since {$a['since']} ({$a['decision']}): {$a['permission']} — {$who}");
             }
         }
 
@@ -119,17 +127,37 @@ class PermissionsAuditCashierRolesCommand extends Command
                 ->join('permissions as p', 'p.id', '=', 'rhp.permission_id')
                 ->where('rhp.role_id', $role->id)
                 ->pluck('p.name')->all();
+            $missing = array_values(array_diff($catalogue, $held));
             $roles[] = [
                 'role' => (string) $role->name,
                 'role_id' => (int) $role->id,
                 'users' => (int) $conn->table('model_has_roles')->where('role_id', $role->id)->count(),
-                'missing' => array_values(array_diff($catalogue, $held)),
+                'missing' => $missing,
+                // D3 (20 Oct 2026): the subset of `missing` that was catalogued after this tenant may have been provisioned —
+                // never granted here; the owner decides per role.
+                'missing_recent_additions' => array_values(array_intersect($missing, array_keys(PosPermissionCatalog::CASHIER_TEMPLATE_ADDITIONS))),
+            ];
+        }
+
+        // D3: one line per newly catalogued cashier permission — which cashier-like roles (and how many users) still lack it.
+        $recent = [];
+        foreach (PosPermissionCatalog::CASHIER_TEMPLATE_ADDITIONS as $permission => $meta) {
+            $lacking = array_values(array_filter($roles, fn ($r) => in_array($permission, $r['missing'], true)));
+            $recent[] = [
+                'permission' => $permission,
+                'since' => $meta['since'],
+                'decision' => $meta['decision'],
+                'note' => $meta['note'],
+                'known_to_tenant' => in_array($permission, $known, true),
+                'roles_missing' => array_map(fn ($r) => ['role' => $r['role'], 'users' => $r['users']], $lacking),
+                'users_affected' => array_sum(array_map(fn ($r) => $r['users'], $lacking)),
             ];
         }
 
         return [
             'permissions_unknown_to_tenant' => array_values(array_diff($catalogue, $known)),
             'roles' => $roles,
+            'recent_additions' => $recent,
         ];
     }
 }

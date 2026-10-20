@@ -652,8 +652,8 @@
                      closes. Hidden on a terminal with no Reminder rule; the state rides on the
                      shift-status poll, so a toggle at another POS shows up here too. --}}
                 <div id="pos-reminder-status" class="small" style="display:none">
-                    {{-- CANONICAL MERGE (D8): the same control in the same slot on both runtimes; the Branch Server renders it
-                         disabled with the runtime hint while capability reminderPause is off (team D2 builds the twin). --}}
+                    {{-- POS-RUNTIME: the same control in the same slot on both runtimes, gated by capability reminderPause (Cloud ON;
+                         Branch Server ON since D2 — its twin stamps the local shift; a runtime with it off renders this disabled + hint). --}}
                     <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="pos-reminder-toggle"
                             @disabled(! $posRuntime->can('reminderPause')) @unless($posRuntime->can('reminderPause')) title="{{ $posRuntime->capabilityHint('reminderPause') }}" @endunless></button>
                 </div>
@@ -2671,13 +2671,14 @@ document.addEventListener('DOMContentLoaded', function () {
             reminderBtn.title = 'Reminder slips print on this terminal.';
         }
         // The state is always visible; only a permitted user on an open shift can change it.
-        // CANONICAL MERGE (D8): a runtime without the endpoint (Edge until D2) keeps the control disabled whatever the badge says.
+        // POS-RUNTIME: a runtime without the endpoint (capability reminderPause off) keeps the control disabled whatever the badge says.
         reminderBtn.disabled = !r.can_toggle || !shiftOpen || !POS.route('reminderPause');
     }
 
     function sendReminderPause(paused) {
         if (!terminalEl || !terminalEl.value) return;
-        // CANONICAL MERGE (D8): the endpoint comes from the runtime (Cloud: /api/pos/reminder-pause; Edge: null = capability off).
+        // POS-RUNTIME: the endpoint comes from the runtime (Cloud: its tenant.api.pos.reminder-pause route; Branch Server: the D2
+        // twin on the local shift row; null = capability off). No literal path lives in this shared view.
         if (!POS.route('reminderPause')) { toast('error', POS.hintText('reminderPause')); return; }
         reminderBtn.disabled = true;
         fetch(POS.route('reminderPause'), {

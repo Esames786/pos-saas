@@ -54,6 +54,9 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::get('/sync/summary', [EdgeLocalPosController::class, 'syncSummary'])->name('sync.summary');
         Route::post('/shift/open', [EdgeLocalShiftController::class, 'openShift'])->name('shift.open');
         Route::post('/shift/close', [EdgeLocalShiftController::class, 'closeShift'])->name('shift.close');
+        // D2 (owner, 20 Oct 2026) — POS-REMINDER-PAUSE-1 twin of Online `POST /api/pos/reminder-pause` (tenant.api.pos.reminder-pause):
+        // pause / resume the selected terminal's Reminder slips on the LOCAL open shift row through the shared ReminderPauseService.
+        Route::post('/reminder-pause', [EdgeLocalShiftController::class, 'posReminderPause'])->name('reminder.pause');
         Route::post('/sales', [EdgeLocalPosController::class, 'storeSale'])->name('sales.store');
         // ONLINE-POS PARITY — Preview Bill (zero-mutation running bill).
         Route::post('/preview-bill', [EdgeLocalPosController::class, 'previewBill'])->name('preview.bill');

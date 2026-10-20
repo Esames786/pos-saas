@@ -18,6 +18,7 @@ class EdgeLocalPosRouteCensusTest extends TestCase
         'edge.local.pos.shift.status',
         'edge.local.pos.shift.open',
         'edge.local.pos.shift.close',
+        'edge.local.pos.reminder.pause', // D2: POS-REMINDER-PAUSE-1 twin
         'edge.local.pos.sales.store',
         'edge.local.pos.restaurant.board',
         'edge.local.pos.restaurant.table.open',
