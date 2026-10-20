@@ -150,4 +150,34 @@ class DepartmentHandoverTest extends MySqlTenantTestCase
         $this->assertSame(DepartmentHandover::STATUS_REVERSED, $handover->fresh()->status);
         $this->assertEqualsWithDelta(10000, (float) $cash->fresh()->current_balance, 0.001, 'cash restored to 10000');
     }
+
+    /** VOID-ON-ORIGINAL-DATE-1 — a wrong handover is wiped on its entries' own dates, days later. */
+    public function test_a_wrong_handover_is_wiped_on_its_own_dates(): void
+    {
+        $dept = Department::find($this->deptId);
+        $postedOn = now()->toDateString();
+        $cash = CashBankAccount::create([
+            'account_id' => Account::where('code', '1110')->first()->id, 'name' => 'Main Drawer', 'code' => 'CASH',
+            'account_type' => 'cash', 'current_balance' => 10000, 'is_active' => 1,
+        ]);
+        $handover = $this->service()->postHandover($dept, $postedOn, $postedOn);
+        $this->service()->postPayout($handover->fresh(), $cash->id);
+
+        // Three days later somebody finds it was wrong.
+        \Illuminate\Support\Carbon::setTestNow(now()->addDays(3));
+        try {
+            $handover = $handover->fresh();
+            $this->service()->reverse($handover, 'wrong department', null, \App\Support\VoidDate::ORIGINAL);
+
+            foreach ([$handover->payout_journal_entry_id, $handover->reclass_journal_entry_id] as $id) {
+                $rev = JournalEntry::where('reversed_entry_id', $id)->sole();
+                $this->assertSame($postedOn, $rev->entry_date->toDateString(), 'reversal on the entry\'s own date, not today');
+            }
+            $back = DB::connection('tenant')->table('cash_bank_account_transactions')->where('transaction_type', 'dept_handover_payout_reversal')->sole();
+            $this->assertSame($postedOn, \Illuminate\Support\Carbon::parse($back->transaction_date)->toDateString());
+            $this->assertEqualsWithDelta(10000, (float) $cash->fresh()->current_balance, 0.001);
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
+    }
 }

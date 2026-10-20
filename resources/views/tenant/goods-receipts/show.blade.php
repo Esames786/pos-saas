@@ -19,9 +19,7 @@
                  told what they are owed, and the way back is a Purchase Return. --}}
             @can('tenant.goods-receipts.void')
                 <form method="POST" action="{{ url('/goods-receipts/' . $goodsReceipt->id . '/void') }}"
-                      onsubmit="return confirm('Void {{ $goodsReceipt->grn_no }}?
-
-The stock it brought in will be taken back out. The receipt stays on record as voided. This cannot be undone.');">
+                      onsubmit="return confirm('Void {{ $goodsReceipt->grn_no }}?\n\nThe stock it brought in will be taken back out TODAY. Stock cannot be taken out on an old date without changing what it cost, so a stock void is never back-dated. The receipt stays on record as voided. This cannot be undone.');">
                     @csrf
                     <input type="hidden" name="void_reason" value="Voided from GRN screen">
                     <button type="submit" class="btn btn-outline-danger">Void Receipt</button>

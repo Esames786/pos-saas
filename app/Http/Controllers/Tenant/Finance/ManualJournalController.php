@@ -170,9 +170,12 @@ class ManualJournalController extends Controller
         }
 
         $reason = $request->input('reason', 'Manual reversal');
+        // VOID-ON-ORIGINAL-DATE-1: a wrong journal is wiped on its own date; a right one reversed today (default).
+        $request->validate(['void_date_mode' => \App\Support\VoidDate::rule()]);
+        $mode = \App\Support\VoidDate::mode($request->input('void_date_mode'));
 
         try {
-            $reversal = DB::connection('tenant')->transaction(function () use ($manualJournal, $reason) {
+            $reversal = DB::connection('tenant')->transaction(function () use ($manualJournal, $reason, $mode) {
                 // Do tabs se ek saath Reverse: asal satar par taala, taake doosri request pehli ke
                 // commit ka intezar kare aur JournalService::reverse() ko bani hui reversal mile.
                 JournalEntry::whereKey($manualJournal->id)->lockForUpdate()->first();
@@ -180,11 +183,12 @@ class ManualJournalController extends Controller
                 $reversal = $this->journal->reverse(
                     $manualJournal,
                     $reason,
-                    Auth::guard('tenant')->id()
+                    Auth::guard('tenant')->id(),
+                    \App\Support\VoidDate::resolve($mode, $manualJournal->entry_date)
                 );
 
                 // Reverse the cash/bank operational movements too.
-                $this->reverseCashBankLines($manualJournal, Auth::guard('tenant')->id());
+                $this->reverseCashBankLines($manualJournal, Auth::guard('tenant')->id(), $mode);
 
                 // Supplier subledger bhi palte. JournalService::reverse() counterparty ko reversal
                 // ki satrein par saath le jata hai, is liye yahan wohi aaina ulta chal jata hai:
@@ -199,7 +203,8 @@ class ManualJournalController extends Controller
 
         // CASH-BOOK-VOID-1: Cash Book se aaya reverse wapas Cash Book par.
         return redirect(\App\Support\CashBookReturn::from($request) ?? url('/finance/manual-journals/' . $reversal->id))
-            ->with('status', 'Reversal ' . $reversal->entry_no . ' posted for ' . $manualJournal->entry_no . '.');
+            ->with('status', 'Reversal ' . $reversal->entry_no . ' posted for ' . $manualJournal->entry_no
+                . ($mode === \App\Support\VoidDate::ORIGINAL ? ' on its own date (' . $reversal->entry_date->format('d M Y') . ').' : ', dated today.'));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
@@ -449,7 +454,7 @@ class ManualJournalController extends Controller
         }
     }
 
-    private function reverseCashBankLines(JournalEntry $entry, ?int $userId): void
+    private function reverseCashBankLines(JournalEntry $entry, ?int $userId, string $dateMode = \App\Support\VoidDate::TODAY): void
     {
         $txns = CashBankAccountTransaction::query()
             ->where('reference_type', 'manual_journal')
@@ -478,7 +483,7 @@ class ManualJournalController extends Controller
 
             CashBankAccountTransaction::create([
                 'cash_bank_account_id' => $cash->id,
-                'transaction_date'     => now()->toDateString(),
+                'transaction_date'     => \App\Support\VoidDate::resolve($dateMode, $txn->transaction_date),
                 'direction'            => $reverseDir,
                 'amount'               => $txn->amount,
                 'balance_after'        => $newBalance,

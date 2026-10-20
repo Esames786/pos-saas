@@ -254,9 +254,9 @@ class CateringFinalInvoiceService
      * use jaaiz taur par paar karta hai — wo receipts bhi usi saans me ulti
      * karta hai, is liye AR wapas sifar par aa jata hai.
      */
-    private function voidInvoiceRow(CateringFinalInvoice $invoice, string $reason, ?int $userId): CateringFinalInvoice
+    private function voidInvoiceRow(CateringFinalInvoice $invoice, string $reason, ?int $userId, string $dateMode = \App\Support\VoidDate::TODAY): CateringFinalInvoice
     {
-        return DB::connection('tenant')->transaction(function () use ($invoice, $reason, $userId) {
+        return DB::connection('tenant')->transaction(function () use ($invoice, $reason, $userId, $dateMode) {
             $event = $invoice->event()->first();
 
             foreach (['catering_final_invoice', 'catering_advance_application'] as $source) {
@@ -269,7 +269,8 @@ class CateringFinalInvoiceService
                     continue;
                 }
 
-                $this->journal->reverse($entry, $reason, $userId);
+                // VOID-ON-ORIGINAL-DATE-1: each entry wiped on its own date, or reversed today (default).
+                $this->journal->reverse($entry, $reason, $userId, \App\Support\VoidDate::resolve($dateMode, $entry->entry_date));
             }
 
             if ($invoice->journal_entry_id && ! $this->journal->findPostedForSource('catering_final_invoice', $invoice->id)) {
@@ -397,7 +398,7 @@ class CateringFinalInvoiceService
      *
      * @return array<string, mixed> kya kya hua, dikhane ke liye
      */
-    public function voidEntireBooking(CateringEvent $event, string $reason, ?int $userId = null): array
+    public function voidEntireBooking(CateringEvent $event, string $reason, ?int $userId = null, string $dateMode = \App\Support\VoidDate::TODAY): array
     {
         $reason = trim($reason);
 
@@ -405,23 +406,24 @@ class CateringFinalInvoiceService
             throw new RuntimeException('A void needs a reason — six months from now nobody remembers why.');
         }
 
-        return DB::connection('tenant')->transaction(function () use ($event, $reason, $userId) {
+        return DB::connection('tenant')->transaction(function () use ($event, $reason, $userId, $dateMode) {
             $kiya = ['invoice' => null, 'receipts' => [], 'cancelled' => false];
 
             // 1) Bill — pehle, taake receipts ka pehra sach ho jaye.
             $invoice = CateringFinalInvoice::where('catering_event_id', $event->id)->first();
 
             if ($invoice) {
-                $this->voidInvoiceRow($invoice, $reason, $userId);
+                $this->voidInvoiceRow($invoice, $reason, $userId, $dateMode);
                 $kiya['invoice'] = $invoice->invoice_no;
             }
 
             // 2) Har receipt — wohi raasta jo akela bhi chalta hai, is liye
-            //    cash/bank aur GL dono usi tarah wapas hote hain.
+            //    cash/bank aur GL dono usi tarah wapas hote hain. Wrong booking → every
+            //    piece wiped on its OWN date when the person chose that.
             $advances = app(\App\Services\Catering\CateringAdvanceService::class);
 
             foreach ($event->advances()->get() as $receipt) {
-                $advances->void($receipt, $reason, $userId);
+                $advances->void($receipt, $reason, $userId, $dateMode);
                 $kiya['receipts'][] = (float) $receipt->amount;
             }
 

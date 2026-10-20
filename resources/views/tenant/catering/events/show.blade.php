@@ -1952,9 +1952,12 @@
 
                             <div class="fs-12 text-muted mb-3">
                                 {{ $voidPreview['entries'] }} ulti entries banengi. Purani entries
-                                <strong>mitengi nahi</strong> — dono tareekh me nazar aayengi.
+                                <strong>mitengi nahi</strong> — record par rehti hain.
                                 Ye wapas nahi hota.
                             </div>
+
+                            {{-- VOID-ON-ORIGINAL-DATE-1: a test/wrong booking is wiped on each entry's own date. --}}
+                            @include('partials.void-date-choice', ['originalDate' => null, 'idPrefix' => 'evall'])
 
                             <div class="mb-3">
                                 <label class="form-label fs-13 mb-1">Wajah <span class="text-danger">*</span></label>

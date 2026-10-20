@@ -834,8 +834,13 @@ class JournalPostingService
         return (bool) ($product ?? Product::find($line->product_id))?->is_stock_tracked;
     }
 
-    /** Reverse the posted journal for an event (used by void flows). Idempotent; safe. */
-    public function reverseForSource(string $sourceType, int $sourceId, string $reason, ?int $userId = null): ?JournalEntry
+    /**
+     * Reverse the posted journal for an event (used by void flows). Idempotent; safe.
+     *
+     * VOID-ON-ORIGINAL-DATE-1 — `$dateMode` = VoidDate::ORIGINAL dates the reversal on the entry's OWN date
+     * (a wrong entry wiped where it happened); TODAY (default) keeps the old behaviour.
+     */
+    public function reverseForSource(string $sourceType, int $sourceId, string $reason, ?int $userId = null, string $dateMode = \App\Support\VoidDate::TODAY): ?JournalEntry
     {
         try {
             $entry = $this->journal->findPostedForSource($sourceType, $sourceId);
@@ -843,7 +848,7 @@ class JournalPostingService
                 return null;
             }
 
-            return $this->journal->reverse($entry, $reason, $userId);
+            return $this->journal->reverse($entry, $reason, $userId, \App\Support\VoidDate::resolve($dateMode, $entry->entry_date));
         } catch (Throwable $e) {
             report($e);
 

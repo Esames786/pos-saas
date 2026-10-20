@@ -150,6 +150,7 @@
                             <p class="text-muted small">Voiding reverses the cash/bank transaction and restores the balance.</p>
                             <form method="POST" action="{{ url('/finance/expenses/' . $expenseVoucher->id . '/void') }}" onsubmit="return confirm('Void this voucher? The cash/bank balance will be restored.')">
                                 @csrf
+                                @include('partials.void-date-choice', ['originalDate' => $expenseVoucher->payment_date ?? $expenseVoucher->expense_date, 'idPrefix' => 'exp'])
                                 <div class="mb-2">
                                     <label class="form-label" for="void_reason">Reason (optional)</label>
                                     <textarea name="void_reason" id="void_reason" class="form-control" rows="2"></textarea>

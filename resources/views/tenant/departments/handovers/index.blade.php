@@ -107,6 +107,13 @@
                                     <form method="POST" action="{{ url('/departments/handovers/' . $h->id . '/reverse') }}" class="d-inline"
                                           onsubmit="return confirm('Reverse handover DH-{{ $h->id }}? This restores the sales (and cash, if paid).');">
                                         @csrf
+                                        {{-- VOID-ON-ORIGINAL-DATE-1: the same question, compact for a table row. --}}
+                                        <select name="void_date_mode" class="form-select form-select-sm d-inline-block w-auto" required
+                                                aria-label="Which day should this be undone on?" title="Kis din ulta ho?">
+                                            <option value="">Undo on…</option>
+                                            <option value="{{ \App\Support\VoidDate::ORIGINAL }}">Its own date (wrong entry)</option>
+                                            <option value="{{ \App\Support\VoidDate::TODAY }}">Today (it was right)</option>
+                                        </select>
                                         <button type="submit" class="btn btn-outline-danger btn-sm">Reverse</button>
                                     </form>
                                     @endcan

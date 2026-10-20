@@ -119,10 +119,11 @@
                         <div class="modal-body">
                             <div class="alert alert-warning small">
                                 {{ number_format((float) $supplierPayment->amount, 2) }} comes back into
-                                {{ $supplierPayment->cashBankAccount?->name ?? 'the cash/bank account' }} today,
+                                {{ $supplierPayment->cashBankAccount?->name ?? 'the cash/bank account' }},
                                 {{ $supplierPayment->supplier?->name }} owes it again, and any bill it paid opens again.
                                 The payment stays on record, marked voided.
                             </div>
+                            @include('partials.void-date-choice', ['originalDate' => $supplierPayment->payment_date, 'idPrefix' => 'pay'])
                             <label for="void-payment-reason" class="form-label">Why is it being voided? <span class="text-danger">*</span></label>
                             <textarea name="reason" id="void-payment-reason" class="form-control" rows="2" required minlength="3" maxlength="500"
                                 placeholder="e.g. entered twice, wrong amount, wrong supplier"></textarea>

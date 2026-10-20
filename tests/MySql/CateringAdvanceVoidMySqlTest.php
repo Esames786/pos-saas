@@ -106,7 +106,7 @@ class CateringAdvanceVoidMySqlTest extends MySqlTenantTestCase
         $this->paymentMethodId = $this->makePaymentMethod(['cash_bank_account_id' => $this->cashBankId]);
     }
 
-    private function bookingWithReceipt(float $total, float $received): array
+    private function bookingWithReceipt(float $total, float $received, ?string $receivedOn = null): array
     {
         $event = $this->estimates->createEvent([
             'branch_id' => $this->branchId,
@@ -128,7 +128,7 @@ class CateringAdvanceVoidMySqlTest extends MySqlTenantTestCase
 
         $advance = $this->advances->record($event->refresh(), [
             'amount' => $received,
-            'received_date' => now()->toDateString(),
+            'received_date' => $receivedOn ?? now()->toDateString(),
             'payment_method_id' => $this->paymentMethodId,
             'reference' => 'SLIP-WRONG',
         ]);
@@ -140,6 +140,31 @@ class CateringAdvanceVoidMySqlTest extends MySqlTenantTestCase
     {
         return round((float) DB::connection('tenant')->table('cash_bank_accounts')
             ->where('id', $this->cashBankId)->value('current_balance'), 2);
+    }
+
+    /** VOID-ON-ORIGINAL-DATE-1 — a wrong receipt leaves the books on the day it came in. */
+    public function test_a_wrong_receipt_is_wiped_on_the_day_it_came_in(): void
+    {
+        $day = now()->subDays(3)->toDateString();
+        [, $advance] = $this->bookingWithReceipt(100000, 40000, $day);
+
+        $voided = $this->advances->void($advance, 'ghalat receipt', null, \App\Support\VoidDate::ORIGINAL);
+
+        $out = DB::connection('tenant')->table('cash_bank_account_transactions')
+            ->where('reference_type', 'catering_advance')->where('reference_id', $advance->id)
+            ->where('transaction_type', 'catering_advance_void_reversal')->sole();
+        $this->assertSame($day, \Illuminate\Support\Carbon::parse($out->transaction_date)->toDateString(), 'cash leaves on the receipt day');
+        $this->assertNotNull($voided->void_journal_entry_id);
+        $this->assertSame($day, \Illuminate\Support\Carbon::parse(
+            DB::connection('tenant')->table('journal_entries')->where('id', $voided->void_journal_entry_id)->value('entry_date'))->toDateString(),
+            'and so does the GL reversal');
+        $this->assertSame(0.0, $this->cashBalance());
+
+        // "It was right" — today, exactly as before.
+        [, $second] = $this->bookingWithReceipt(50000, 10000, $day);
+        $this->advances->void($second, 'customer took it back', null, \App\Support\VoidDate::TODAY);
+        $this->assertSame(now()->toDateString(), \Illuminate\Support\Carbon::parse(DB::connection('tenant')->table('cash_bank_account_transactions')
+            ->where('reference_id', $second->id)->where('transaction_type', 'catering_advance_void_reversal')->value('transaction_date'))->toDateString());
     }
 
     /** Ulta karna: journal ulti, cash wapas, receipt nishan-zada. */

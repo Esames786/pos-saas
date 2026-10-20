@@ -101,16 +101,22 @@ class OpeningBalanceController extends Controller
 
     public function void(Request $request, OpeningBalanceBatch $openingBalanceBatch)
     {
-        $data = $request->validate(['void_reason' => ['nullable', 'string', 'max:1000']]);
+        $data = $request->validate([
+            'void_reason' => ['nullable', 'string', 'max:1000'],
+            // VOID-ON-ORIGINAL-DATE-1: wipe on the opening date, or reverse today (default).
+            'void_date_mode' => \App\Support\VoidDate::rule(),
+        ]);
+        $mode = \App\Support\VoidDate::mode($data['void_date_mode'] ?? null);
 
         try {
-            $this->service->void($openingBalanceBatch, Auth::guard('tenant')->id(), $data['void_reason'] ?? null);
+            $this->service->void($openingBalanceBatch, Auth::guard('tenant')->id(), $data['void_reason'] ?? null, $mode);
         } catch (Throwable $e) {
             return back()->withErrors(['batch' => $e->getMessage()]);
         }
 
         return redirect(url('/finance/opening-balances/' . $openingBalanceBatch->id))
-            ->with('status', 'Opening balance voided — journal reversed and cash/bank restored.');
+            ->with('status', 'Opening balance voided — journal reversed and cash/bank restored'
+                . ($mode === \App\Support\VoidDate::ORIGINAL ? ' on its opening date.' : ', dated today.'));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

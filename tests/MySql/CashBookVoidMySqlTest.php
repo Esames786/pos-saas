@@ -270,6 +270,106 @@ class CashBookVoidMySqlTest extends MySqlTenantTestCase
     }
 
     // ══════════════════════════════════════════════════════════════════════════════
+    // VOID-ON-ORIGINAL-DATE-1 — "kis din ulta ho?" Ghalat entry apni tareekh par mitti hai
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    public function test_ghalat_payment_apni_tareekh_par_mitti_hai_aur_us_din_ka_hisaab_saaf(): void
+    {
+        $day = now()->subDays(5)->toDateString();
+        $payment = $this->pay(3000, null, $day);
+
+        $this->voidPayment($payment, 'wrong payment', ['void_date_mode' => 'original'])->assertSessionHasNoErrors();
+
+        $original = JournalEntry::where('source_type', 'supplier_payment')->where('source_id', $payment->id)->sole();
+        $reversal = JournalEntry::where('reversed_entry_id', $original->id)->sole();
+        $this->assertSame($day, $reversal->entry_date->toDateString(), 'GL ki ulti entry payment ke din');
+        $back = CashBankAccountTransaction::where('reference_type', 'supplier_payment')->where('reference_id', $payment->id)
+            ->where('transaction_type', 'supplier_payment_void_reversal')->sole();
+        $this->assertSame($day, \Illuminate\Support\Carbon::parse($back->transaction_date)->toDateString(), 'paisa usi din drawer me wapas');
+
+        // Us din ki Cash Book: payment aur us ki wapsi dono usi din — us din ke baad ka koi balance nahi hilta.
+        $sameDay = CashBankAccountTransaction::where('cash_bank_account_id', $this->drawerId)->where('transaction_date', $day)->get();
+        $this->assertSame(0.0, round($sameDay->sum(fn ($r) => $r->direction === 'in' ? (float) $r->amount : -(float) $r->amount), 2));
+        $this->assertSame(0.0, $this->tbDiff());
+        $this->assertSame($this->payable(), $this->apFromGl(), 'GL ka AP = subledger');
+    }
+
+    public function test_sahi_payment_aaj_ulti_hoti_hai_aur_purane_din_waise_rehte_hain(): void
+    {
+        $day = now()->subDays(5)->toDateString();
+        $payment = $this->pay(2000, null, $day);
+
+        $this->voidPayment($payment, 'supplier returned the money', ['void_date_mode' => 'today'])->assertSessionHasNoErrors();
+
+        $original = JournalEntry::where('source_type', 'supplier_payment')->where('source_id', $payment->id)->sole();
+        $this->assertSame(now()->toDateString(), JournalEntry::where('reversed_entry_id', $original->id)->sole()->entry_date->toDateString());
+        $back = CashBankAccountTransaction::where('reference_id', $payment->id)->where('transaction_type', 'supplier_payment_void_reversal')->sole();
+        $this->assertSame(now()->toDateString(), \Illuminate\Support\Carbon::parse($back->transaction_date)->toDateString());
+    }
+
+    public function test_jawab_na_bhejne_wala_purana_raasta_aaj_hi_ulta_karta_hai(): void
+    {
+        // Koi purana caller (ya purana khula hua form) sawal ka jawab nahi bhejta — us ka kaam pehle jaisa rahe.
+        $payment = $this->pay(1500, null, now()->subDays(3)->toDateString());
+        $this->voidPayment($payment, 'old form')->assertSessionHasNoErrors();
+
+        $back = CashBankAccountTransaction::where('reference_id', $payment->id)->where('transaction_type', 'supplier_payment_void_reversal')->sole();
+        $this->assertSame(now()->toDateString(), \Illuminate\Support\Carbon::parse($back->transaction_date)->toDateString());
+    }
+
+    public function test_anjaan_jawab_rad_hota_hai_aur_kuch_nahi_badalta(): void
+    {
+        $payment = $this->pay(1200);
+        $this->voidPayment($payment, 'bad answer', ['void_date_mode' => 'yesterday'])->assertSessionHasErrors('void_date_mode');
+
+        $this->assertNull($payment->fresh()->voided_at);
+        $this->assertSame(0, CashBankAccountTransaction::where('reference_id', $payment->id)->where('transaction_type', 'supplier_payment_void_reversal')->count());
+    }
+
+    public function test_ghalat_manual_journal_apni_tareekh_par_mitta_hai(): void
+    {
+        $day = now()->subDays(4)->toDateString();
+        $journal = $this->manualJournal(900, $day);
+
+        $this->actingAsOwner()->post('http://' . $this->host . '/finance/manual-journals/' . $journal->id . '/reverse',
+            ['reason' => 'posted to the wrong account', 'void_date_mode' => 'original'])->assertSessionHasNoErrors();
+
+        $reversal = JournalEntry::where('reversed_entry_id', $journal->id)->sole();
+        $this->assertSame($day, $reversal->entry_date->toDateString());
+        $back = CashBankAccountTransaction::where('transaction_type', 'manual_journal_reversal')->sole();
+        $this->assertSame($day, \Illuminate\Support\Carbon::parse($back->transaction_date)->toDateString());
+        $this->assertSame(self::OPENING, $this->drawer());
+    }
+
+    public function test_ghalat_expense_ka_paisa_usi_din_wapas(): void
+    {
+        $day = now()->subDays(6)->toDateString();
+        $id = $this->expenseRow(700, $day);
+
+        $this->actingAsOwner()->post('http://' . $this->host . '/finance/expenses/' . $id . '/void',
+            ['void_reason' => 'entered twice', 'void_date_mode' => 'original'])->assertSessionHasNoErrors();
+
+        $back = CashBankAccountTransaction::where('reference_type', 'expense_voucher')->where('reference_id', $id)
+            ->where('transaction_type', 'expense_void_reversal')->sole();
+        $this->assertSame($day, \Illuminate\Support\Carbon::parse($back->transaction_date)->toDateString());
+    }
+
+    public function test_har_void_ki_screen_sawal_poochti_hai(): void
+    {
+        $payment = $this->pay(800);
+
+        $page = $this->actingAsOwner()->get('http://' . $this->host . '/supplier-payments/' . $payment->id)->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/name="void_date_mode" value="original"[^>]*required/', $page);
+        $this->assertMatchesRegularExpression('/name="void_date_mode" value="today"[^>]*required/', $page);
+        $this->assertDoesNotMatchRegularExpression('/name="void_date_mode"[^>]*\bchecked\b/', $page, 'nothing is pre-picked — the person must answer');
+
+        $book = $this->cashBook();
+        $this->assertMatchesRegularExpression('/name="void_date_mode" value="original"/', $book);
+        $this->assertStringContainsString('data-vd-original-text', $book);
+        $this->assertInlineScriptsParse($book, 'Cash Book with the void question', 'void_date_mode');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
     // helpers
     // ══════════════════════════════════════════════════════════════════════════════
 
@@ -311,7 +411,7 @@ class CashBookVoidMySqlTest extends MySqlTenantTestCase
         return $bill->fresh();
     }
 
-    private function pay(float $amount, ?int $billId = null): SupplierPayment
+    private function pay(float $amount, ?int $billId = null, ?string $date = null): SupplierPayment
     {
         // Payment kabhi advance na banaye (switch OFF par ye mana hai) — pehle utna payable khada karo.
         if ((float) Supplier::find($this->supplierId)->current_balance < $amount && ! $billId
@@ -321,15 +421,15 @@ class CashBookVoidMySqlTest extends MySqlTenantTestCase
 
         return app(SupplierPayableService::class)->recordPayment([
             'supplier_id' => $this->supplierId, 'branch_id' => $this->branchId, 'cash_bank_account_id' => $this->drawerId,
-            'purchase_bill_id' => $billId, 'payment_date' => now()->toDateString(), 'amount' => $amount, 'payment_method' => 'cash',
+            'purchase_bill_id' => $billId, 'payment_date' => $date ?? now()->toDateString(), 'amount' => $amount, 'payment_method' => 'cash',
         ], $this->ownerId);
     }
 
     /** Manual journal ASLI HTTP se: Dr 6800 / Cr 1110 drawer ki satar par. */
-    private function manualJournal(float $amount): JournalEntry
+    private function manualJournal(float $amount, ?string $date = null): JournalEntry
     {
         $this->actingAsOwner()->post('http://' . $this->host . '/finance/manual-journals', [
-            'entry_date' => now()->toDateString(), 'description' => 'Misc cash expense', 'reference_no' => '',
+            'entry_date' => $date ?? now()->toDateString(), 'description' => 'Misc cash expense', 'reference_no' => '',
             'lines' => [
                 ['account_id' => $this->accId('6800'), 'debit' => $amount, 'credit' => 0],
                 ['account_id' => $this->accId('1110'), 'debit' => 0, 'credit' => $amount, 'cash_bank_account_id' => $this->drawerId],
@@ -340,17 +440,17 @@ class CashBookVoidMySqlTest extends MySqlTenantTestCase
     }
 
     /** Ek posted expense ki cash satar — Cash Book par button dikhane ke liye kaafi. */
-    private function expenseRow(float $amount): int
+    private function expenseRow(float $amount, ?string $date = null): int
     {
         $c = DB::connection('tenant');
         $id = $c->table('expense_vouchers')->insertGetId([
             'voucher_no' => 'EXP-' . Str::upper(Str::random(6)), 'branch_id' => $this->branchId,
-            'cash_bank_account_id' => $this->drawerId, 'expense_date' => now()->toDateString(),
+            'cash_bank_account_id' => $this->drawerId, 'expense_date' => $date ?? now()->toDateString(),
             'payee_name' => 'Stationery shop', 'status' => 'posted', 'subtotal' => $amount, 'tax_amount' => 0,
             'total_amount' => $amount, 'created_at' => now(), 'updated_at' => now(),
         ]);
         CashBankAccountTransaction::create([
-            'cash_bank_account_id' => $this->drawerId, 'transaction_date' => now()->toDateString(), 'direction' => 'out',
+            'cash_bank_account_id' => $this->drawerId, 'transaction_date' => $date ?? now()->toDateString(), 'direction' => 'out',
             'amount' => $amount, 'balance_after' => $this->drawer() - $amount, 'transaction_type' => 'expense_payment',
             'reference_type' => 'expense_voucher', 'reference_id' => $id, 'notes' => 'Expense',
         ]);

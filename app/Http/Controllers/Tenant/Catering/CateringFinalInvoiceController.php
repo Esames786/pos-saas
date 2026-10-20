@@ -78,6 +78,8 @@ class CateringFinalInvoiceController extends Controller
         $data = $request->validate([
             'reason' => ['required', 'string', 'max:500'],
             'confirm_event_no' => ['required', 'string'],
+            // VOID-ON-ORIGINAL-DATE-1: wipe every piece on its own date, or reverse today (default).
+            'void_date_mode' => \App\Support\VoidDate::rule(),
         ], [], [
             'reason' => 'wajah',
             'confirm_event_no' => 'booking ka number',
@@ -92,8 +94,8 @@ class CateringFinalInvoiceController extends Controller
 
         try {
             $kiya = app(\App\Services\Catering\CateringFinalInvoiceService::class)
-                ->voidEntireBooking($cateringEvent, $data['reason'], $request->user()?->id);
-        } catch (RuntimeException $e) {
+                ->voidEntireBooking($cateringEvent, $data['reason'], $request->user()?->id, \App\Support\VoidDate::mode($data['void_date_mode'] ?? null));
+        } catch (RuntimeException|\InvalidArgumentException $e) {
             return back()->withErrors(['void' => $e->getMessage()]);
         }
 

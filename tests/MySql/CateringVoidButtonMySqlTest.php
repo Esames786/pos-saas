@@ -159,6 +159,41 @@ class CateringVoidButtonMySqlTest extends MySqlTenantTestCase
         $this->assertTrue($event->fresh()->isCancelled());
     }
 
+    /** VOID-ON-ORIGINAL-DATE-1 — a test booking is wiped piece by piece on each piece's own date. */
+    public function test_a_wrong_booking_is_wiped_on_each_entrys_own_date(): void
+    {
+        $event = $this->invoicedBooking();
+        $c = DB::connection('tenant');
+        $originals = $c->table('journal_entries')->where('is_reversal', 0)
+            ->whereIn('source_type', ['catering_final_invoice', 'catering_advance_application', 'catering_advance', 'catering_settlement', 'catering_split_receipt'])
+            ->pluck('entry_date', 'id');
+        $this->assertNotEmpty($originals);
+
+        $this->sendVoid($event, ['reason' => 'test entry thi', 'confirm_event_no' => $event->event_no, 'void_date_mode' => 'original']);
+
+        $checked = 0;
+        $dates = [];
+        foreach ($originals as $id => $date) {
+            $rev = $c->table('journal_entries')->where('reversed_entry_id', $id)->first();
+            if ($rev) {
+                $checked++;
+                $dates[] = \Illuminate\Support\Carbon::parse($date)->toDateString();
+                $this->assertSame(\Illuminate\Support\Carbon::parse($date)->toDateString(), \Illuminate\Support\Carbon::parse($rev->entry_date)->toDateString(),
+                    'each reversal sits on its own entry\'s date');
+            }
+        }
+        $this->assertGreaterThanOrEqual(2, $checked, 'the invoice AND the receipt were reversed');
+        $this->assertContains(now()->subDays(2)->toDateString(), $dates, 'the receipt\'s reversal is on the receipt day, not today');
+        $receiptDay = now()->subDays(2)->toDateString();
+        $cashBack = $c->table('cash_bank_account_transactions')->where('transaction_type', 'catering_advance_void_reversal')->value('transaction_date');
+        if ($cashBack !== null) {
+            $this->assertSame($receiptDay, \Illuminate\Support\Carbon::parse($cashBack)->toDateString(), 'the receipt money leaves on the receipt day');
+        }
+        foreach (['4160', '1300', '1110'] as $code) {
+            $this->assertEqualsWithDelta(0.0, $this->accountMovement($code), 0.01);
+        }
+    }
+
     /**
      * Dabba jo adad dikhata hai, wo WAHI hon jo asal me hote hain.
      *

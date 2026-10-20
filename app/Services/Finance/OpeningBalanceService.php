@@ -145,18 +145,19 @@ class OpeningBalanceService
      * Void a posted batch: reverse the GL journal and any cash/bank opening movement.
      * Originals are kept; reversals net them to zero. Idempotent.
      */
-    public function void(OpeningBalanceBatch $batch, ?int $userId = null, ?string $reason = null): OpeningBalanceBatch
+    public function void(OpeningBalanceBatch $batch, ?int $userId = null, ?string $reason = null, string $dateMode = \App\Support\VoidDate::TODAY): OpeningBalanceBatch
     {
         // BUG-063 FIX: run cash/bank reversal AND GL reversal inside the same
         // transaction so a GL failure cannot leave cash/bank reversed but GL intact.
-        $batch = DB::transaction(function () use ($batch, $userId, $reason) {
+        $batch = DB::transaction(function () use ($batch, $userId, $reason, $dateMode) {
             $batch = OpeningBalanceBatch::whereKey($batch->id)->lockForUpdate()->firstOrFail();
 
             if (! $batch->isPosted()) {
                 throw new RuntimeException('Only posted batches can be voided.');
             }
 
-            $this->syncCashBankOnVoid($batch, $userId);
+            // VOID-ON-ORIGINAL-DATE-1: a wrong opening is wiped on its opening date; default today.
+            $this->syncCashBankOnVoid($batch, $userId, \App\Support\VoidDate::resolve($dateMode, $batch->opening_date));
 
             // GL reversal inside the transaction — JournalService::reverse() uses
             // DB::connection('tenant')->transaction() internally (savepoint), which is
@@ -168,7 +169,8 @@ class OpeningBalanceService
                     $this->journal->reverse(
                         $originalEntry,
                         $reason ?? ('Opening balance batch ' . $batch->batch_no . ' voided'),
-                        $userId
+                        $userId,
+                        \App\Support\VoidDate::resolve($dateMode, $originalEntry->entry_date)
                     );
                 }
             }
@@ -272,7 +274,7 @@ class OpeningBalanceService
     }
 
     /** Reverse cash/bank opening movements on void. Keeps originals; idempotent. */
-    private function syncCashBankOnVoid(OpeningBalanceBatch $batch, ?int $userId): void
+    private function syncCashBankOnVoid(OpeningBalanceBatch $batch, ?int $userId, ?string $onDate = null): void
     {
         $alreadyReversed = CashBankAccountTransaction::query()
             ->where('reference_type', 'opening_balance')
@@ -310,7 +312,7 @@ class OpeningBalanceService
 
             CashBankAccountTransaction::create([
                 'cash_bank_account_id' => $cash->id,
-                'transaction_date'     => now()->toDateString(),
+                'transaction_date'     => $onDate ?? now()->toDateString(),
                 'direction'            => $direction,
                 'amount'               => $amount,
                 'balance_after'        => $newBalance,

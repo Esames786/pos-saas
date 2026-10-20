@@ -81,13 +81,17 @@ class DepartmentHandoverController extends Controller
     public function reverse(Request $request, DepartmentHandover $handover)
     {
         $reason = (string) $request->input('reason', 'Handover reversed');
+        // VOID-ON-ORIGINAL-DATE-1: wipe on each entry's own date, or reverse today (default).
+        $request->validate(['void_date_mode' => \App\Support\VoidDate::rule()]);
+        $mode = \App\Support\VoidDate::mode($request->input('void_date_mode'));
 
         try {
-            $this->service->reverse($handover, $reason, Auth::guard('tenant')->id());
+            $this->service->reverse($handover, $reason, Auth::guard('tenant')->id(), $mode);
         } catch (Throwable $e) {
             return back()->withErrors(['handover' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'Handover DH-' . $handover->id . ' reversed.');
+        return back()->with('status', 'Handover DH-' . $handover->id . ' reversed'
+            . ($mode === \App\Support\VoidDate::ORIGINAL ? ' on its own dates.' : ', dated today.'));
     }
 }
