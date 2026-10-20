@@ -162,6 +162,8 @@ class SalesReturnController extends Controller
             // 0.001"). Zero lines are simply skipped by SalesReturnService; the guard below keeps a
             // return with NOTHING selected from posting.
             'lines.*.quantity'            => ['required', 'numeric', 'min:0'],
+            // RETURN-RESTOCK-1: back on the shelf (1, the default) or thrown away (0)
+            'lines.*.restock'             => ['nullable', 'boolean'],
             // RETURN-MANAGER-APPROVAL-1: present only when the branch asks for it. Validated as an
             // existing row so a typed id cannot reach the lookup below and 500.
             'manager_approval_id'         => ['nullable', 'integer', 'exists:manager_approvals,id'],

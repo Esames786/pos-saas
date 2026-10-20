@@ -128,6 +128,12 @@ class SalesReturnService
                     : min(round(($remainingTax / $returnable) * $qty, 2), round($remainingTax, 2));
                 $lineTotal = round($lineSubtotal - $lineDiscount + $lineTax, 2);
 
+                // RETURN-RESTOCK-1: back on the shelf (the default — every caller before this) or thrown away
+                // (an opened strip, yesterday's bread, a dish): nothing goes back to stock, and the cost stays
+                // a loss (the GL reverses COGS only for restocked lines).
+                $restock = ! array_key_exists('restock', $lineData) || filter_var($lineData['restock'], FILTER_VALIDATE_BOOLEAN);
+                $factor = $orderLine->base_quantity !== null && (int) $orderLine->pack_factor > 0 ? (int) $orderLine->pack_factor : null;
+
                 $salesReturn->lines()->create([
                     'sales_order_line_id' => $orderLine->id,
                     'product_id'          => $orderLine->product_id,
@@ -137,6 +143,11 @@ class SalesReturnService
                     'discount_amount'     => $lineDiscount,
                     'tax_amount'          => $lineTax,
                     'line_total'          => $lineTotal,
+                    'restocked'           => $restock,
+                    // MEDICAL-COUNTER-1: a line sold in a pack comes back in that pack ("1 Strip" = 10 tablets)
+                    'pack_unit_id'        => $factor ? $orderLine->pack_unit_id : null,
+                    'pack_factor'         => $factor,
+                    'base_quantity'       => $factor ? round($qty * $factor, 3) : null,
                 ]);
 
                 $orderLine->increment('returned_quantity', $qty);
@@ -147,10 +158,12 @@ class SalesReturnService
                     $children = $salesOrder->lines->where('parent_sales_order_line_id', $orderLine->id);
                     foreach ($children as $child) {
                         $childReturnQty = round(((float) $child->quantity / $originalQty) * $qty, 6);
-                        $this->restoreStock($salesOrder, $salesReturn, $child, $childReturnQty, $userId);
+                        if ($restock) {
+                            $this->restoreStock($salesOrder, $salesReturn, $child, $childReturnQty, $userId);
+                        }
                         $child->increment('returned_quantity', $childReturnQty);
                     }
-                } else {
+                } elseif ($restock) {
                     $this->restoreStock($salesOrder, $salesReturn, $orderLine, $qty, $userId);
                 }
 

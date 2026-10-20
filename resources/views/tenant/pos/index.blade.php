@@ -802,22 +802,15 @@
             </div>
 
             {{-- POS-UX-2: heading + shortcuts on one slim line --}}
+            @if($medicalCounter ?? false)
+                {{-- MEDICAL-COUNTER-UX-1: the list has its own column header and the keys live in the top
+                     "Shortcuts" button — no second key line (owner, 20 Oct: one bar, more space). --}}
+                <h2 id="products_heading" class="visually-hidden">Items</h2>
+            @else
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                <h2 id="products_heading" class="h6 mb-0">{{ ($medicalCounter ?? false) ? 'Items' : 'Products' }}</h2>
-                @if($medicalCounter ?? false)
-                    {{-- MEDICAL-COUNTER-1: the everyday keys (left hand), and the full list a click / Ctrl+/ away. --}}
-                    <span class="small text-muted d-flex align-items-center gap-2 flex-wrap">
-                        <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> pay</span>
-                        <span><kbd>Ctrl</kbd>+<kbd>S</kbd> hold</span>
-                        <span><kbd>Ctrl</kbd>+<kbd>H</kbd> held orders</span>
-                        <span><kbd>Ctrl</kbd>+<kbd>D</kbd> discount</span>
-                        <span><kbd>+</kbd><kbd>−</kbd> qty</span>
-                        <button type="button" class="btn btn-sm btn-outline-dark py-0" id="med-keys-btn" data-med-keys title="All shortcut keys (Ctrl+/ or F1)">
-                            <i class="ti ti-keyboard me-1"></i>Shortcuts
-                        </button>
-                    </span>
-                @endif
+                <h2 id="products_heading" class="h6 mb-0">Products</h2>
             </div>
+            @endif
             <div class="product-grid" id="product-grid" aria-live="polite"></div>
             @if($medicalCounter ?? false)
                 <div id="med-subs" aria-live="polite"></div>
@@ -2379,6 +2372,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const heldSale   = @json($heldSaleJson);
     // MEDICAL-COUNTER-1: the medical-store counter (Master switch). Off = this page works exactly as before.
     const medicalCounter = @json((bool) ($medicalCounter ?? false));
+    // RX-BRANCH-SETTING-1: per branch — does the counter ask for the prescription? (medical counter only)
+    const medAskRx = @json(($medicalCounter ?? false) ? $branches->mapWithKeys(fn ($b) => [(string) $b->id => (bool) ($b->ask_prescription ?? true)]) : (object) []);
     const branchCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_cancellation_approval_mode ?? 'manager_required']));
     const branchLineCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_line_cancellation_approval_mode ?: ($branch->held_kot_cancellation_approval_mode ?? 'manager_required')]));
     const branchManualDiscountModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->manual_discount_approval_mode ?? 'manager_required']));
@@ -4349,6 +4344,7 @@ document.addEventListener('DOMContentLoaded', function () {
     /* prescription */
 
     function medRxItems() {
+        if (medAskRx[String(selectedBranchId())] === false) return [];   // this branch does not ask
         return cart.filter(function (it) { return it.product && it.product.med && it.product.med.rx && it.line_kind !== 'component'; })
             .map(function (it) { return it.product; })
             .filter(function (p, i, all) { return all.indexOf(p) === i; });
