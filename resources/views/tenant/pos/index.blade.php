@@ -4695,34 +4695,34 @@ document.addEventListener('DOMContentLoaded', function () {
             var popup = document.querySelector('.swal2-container .swal2-popup');
             if (popup && !popup.classList.contains('swal2-toast')) return;   // a question on screen answers first
             if (!payOpen && document.querySelector('.modal.show')) return;   // another window is open
-            var click = function (id) { var b = document.getElementById(id); if (b && !b.disabled) b.click(); };
+            var medClick = function (id) { var b = document.getElementById(id); if (b && !b.disabled) b.click(); };
             // a number typed in a cart box counts before any action (a refused one stops it)
             var a = document.activeElement;
             if (a && a.dataset && a.dataset.medBox) { a.dispatchEvent(new Event('change')); if (Date.now() - medAlertAt < 600) return; }
             if (payOpen) {
-                if (key === 'F10') click('complete-sale-btn');
+                if (key === 'F10') medClick('complete-sale-btn');
                 else if (act === 'pay') { /* Ctrl+P here: today's handler puts the cursor on the payment method */ }
-                else if (act === 'preview') click('payment-bill-preview-btn');
+                else if (act === 'preview') medClick('payment-bill-preview-btn');
                 else if (act === 'discount') document.getElementById('manual-discount-value')?.focus();
                 else if (act === 'keys') medOpenKeys();
                 return;
             }
             if (act === 'search') { searchEl.focus(); searchEl.select(); }
-            else if (act === 'customer') click('pos-customer-btn');
-            else if (act === 'hold') click('hold-sale-btn');
-            else if (act === 'draft') click('save-draft-btn');
-            else if (act === 'held') click('held-orders-btn');
+            else if (act === 'customer') medClick('pos-customer-btn');
+            else if (act === 'hold') medClick('hold-sale-btn');
+            else if (act === 'draft') medClick('save-draft-btn');
+            else if (act === 'held') medClick('held-orders-btn');
             else if (act === 'batch') { var gk = medLastGroup(); if (gk) { medPick = medPick ? null : gk; medPickOpened = !!medPick; renderCart(); } }
             else if (act === 'discount') {
                 // the pay window puts the cursor on Tendered when it opens; Ctrl+D moves it to the discount after that
                 pay.addEventListener('shown.bs.modal', function () {
                     setTimeout(function () { var d = document.getElementById('manual-discount-value'); if (d) { d.focus(); d.select(); } }, 60);
                 }, { once: true });
-                click('review-pay-btn');
+                medClick('review-pay-btn');
             }
-            else if (act === 'preview') click('bill-preview-btn');
-            else if (act === 'pay') click('review-pay-btn');
-            else if (act === 'new') click('new-sale-btn');
+            else if (act === 'preview') medClick('bill-preview-btn');
+            else if (act === 'pay') medClick('review-pay-btn');
+            else if (act === 'new') medClick('new-sale-btn');
             else if (act === 'keys') medOpenKeys();
             else if (act === 'rx') medOpenRx(null);
         });
