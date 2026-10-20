@@ -9,6 +9,7 @@
  *
  * Usage: php sales_return_worker.php <job.json>
  *   job: {mode: "bill"|"no_bill", sale_id?, branch_id, user_id, lines, key?, hash?}
+ *        {mode: "supplier_post", return_id, user_id} — posts one supplier-return draft
  */
 
 $root = dirname(__DIR__, 3);
@@ -30,6 +31,12 @@ DB::setDefaultConnection('tenant');
 $job = json_decode((string) file_get_contents($argv[1] ?? ''), true);
 
 try {
+    if ($job['mode'] === 'supplier_post') {   // post one supplier-return draft (PurchaseReturnPostedOnceMySqlTest)
+        $posted = app(App\Services\Purchasing\PurchaseReturnService::class)
+            ->post(App\Models\Tenant\PurchaseReturn::findOrFail($job['return_id']), (int) $job['user_id']);
+        fwrite(STDOUT, 'POSTED:' . $posted->id . "\n");
+        exit(0);
+    }
     $service = app(App\Services\Sales\SalesReturnService::class);
     $return = $job['mode'] === 'no_bill'
         ? $service->processNoBillReturn(

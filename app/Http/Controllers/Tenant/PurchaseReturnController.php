@@ -141,9 +141,21 @@ class PurchaseReturnController extends Controller
         $data = $this->validated($request);
         $return = null;
 
+        // UB-06: "Post return" on the new screen saves and posts in one go — the one path where a retried request
+        // (no answer came back, the screen says "press Post again") would post a SECOND return. Its form key stops
+        // that: the same form again gets the return it already made; the same key with other lines is refused.
+        $request->validate([\App\Support\SubmissionKey::FIELD => \App\Support\SubmissionKey::rule()]);
+        $key = $request->boolean('_entry_v2') && $request->boolean('_post')
+            ? \App\Support\SubmissionKey::usable($request->input(\App\Support\SubmissionKey::FIELD), 'purchase_returns')
+            : null;
+        $hash = $key ? \App\Support\SubmissionKey::hash(\Illuminate\Support\Arr::except($request->all(), ['_token', \App\Support\SubmissionKey::FIELD])) : null;
+        if ($key && ($existing = PurchaseReturn::query()->where('submission_key', $key)->first())) {
+            return $this->alreadyPosted($request, $existing, hash_equals((string) $existing->submission_hash, (string) $hash));
+        }
+
         try {
             $return = $this->service->createDraft(
-                $data,
+                $data + ($key ? ['submission_key' => $key, 'submission_hash' => $hash] : []),
                 $request->input('lines', []),
                 auth('tenant')->id()
             );
@@ -158,6 +170,13 @@ class PurchaseReturnController extends Controller
                     throw $e;
                 }
             }
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Two posts of one form raced past the look above: the unique key let one through.
+            if ($key && \App\Support\SubmissionKey::isDuplicate($e)
+                && ($existing = PurchaseReturn::query()->where('submission_key', $key)->first())) {
+                return $this->alreadyPosted($request, $existing, hash_equals((string) $existing->submission_hash, (string) $hash));
+            }
+            throw $e;
         } catch (RuntimeException $e) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => $e->getMessage(), 'errors' => ['return' => [$e->getMessage()]]], 422);
@@ -168,7 +187,7 @@ class PurchaseReturnController extends Controller
 
         if ($request->expectsJson()) {
             return response()->json(['ok' => true, 'id' => $return->id, 'number' => $return->return_no, 'posted' => $return->isPosted(),
-                'url' => url('/purchase-returns/' . $return->id)]);
+                'url' => url('/purchase-returns/' . $return->id), 'next_key' => \App\Support\SubmissionKey::fresh()]);
         }
 
         return redirect(url('/purchase-returns/' . $return->id))
@@ -247,6 +266,27 @@ class PurchaseReturnController extends Controller
     }
 
     // ── Internals ────────────────────────────────────────────────────────────
+
+    /**
+     * UB-06: this form already made a return. The same lines → that return (nothing posted twice). Other lines →
+     * refused with nothing posted; a new key comes back so posting them is a deliberate second return.
+     */
+    private function alreadyPosted(Request $request, PurchaseReturn $existing, bool $same)
+    {
+        if (! $same) {
+            $message = 'This form was already posted as return ' . $existing->return_no . '. Nothing more was posted — press Post again to make a second return with these lines.';
+
+            return $request->expectsJson()
+                ? response()->json(['message' => $message, 'errors' => ['return' => [$message]], 'next_key' => \App\Support\SubmissionKey::fresh()], 422)
+                : back()->withInput($request->except(\App\Support\SubmissionKey::FIELD))->withErrors(['return' => $message]);
+        }
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'already' => true, 'id' => $existing->id, 'number' => $existing->return_no,
+                'posted' => $existing->isPosted(), 'url' => url('/purchase-returns/' . $existing->id), 'next_key' => \App\Support\SubmissionKey::fresh()]);
+        }
+
+        return redirect(url('/purchase-returns/' . $existing->id))->with('status', 'Return ' . $existing->return_no . ' was already posted — nothing was posted twice.');
+    }
 
     private function validated(Request $request, bool $forUpdate = false): array
     {
