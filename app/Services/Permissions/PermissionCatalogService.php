@@ -213,7 +213,14 @@ class PermissionCatalogService
             [$moduleKey, $feature, $bucket, $label, $shared] = $placed;
 
             if ($entitledModuleKeys !== null && ! in_array($moduleKey, $entitledModuleKeys, true)) {
-                continue; // non-entitled module: hidden AND unmanaged — existing grants survive untouched
+                // STARTER-PLAN-COUNTER-1: a screen that opens with any of several modules is filed under one the
+                // plan has (shifts on a POS-only plan show under POS), so the roles there can be given it.
+                $routeKey = implode('.', array_slice(explode('.', $name), 0, 2));
+                $moduleKey = collect(\App\Services\Saas\TenantSubscriptionAccessService::anyOfModulesFor($routeKey))
+                    ->first(fn ($k) => in_array($k, $entitledModuleKeys, true));
+                if ($moduleKey === null) {
+                    continue; // non-entitled module: hidden AND unmanaged — existing grants survive untouched
+                }
             }
 
             $managed[] = $name;
