@@ -112,14 +112,14 @@ class CateringAdvanceService
      * raha hai, IDEMPOTENCE samet: dobara chalane par doosra reversal nahi
      * banta. Ye ahem hai — do baar daba dena paisa dobara wapas kar deta.
      */
-    public function void(CateringAdvance $advance, string $reason, ?int $userId = null): CateringAdvance
+    public function void(CateringAdvance $advance, string $reason, ?int $userId = null, string $dateMode = \App\Support\VoidDate::TODAY): CateringAdvance
     {
         $reason = trim($reason);
         if ($reason === '') {
             throw new RuntimeException('Ulta karne ki wajah likhna lazmi hai — ye record ka hissa banti hai.');
         }
 
-        $advance = DB::connection('tenant')->transaction(function () use ($advance, $reason, $userId) {
+        $advance = DB::connection('tenant')->transaction(function () use ($advance, $reason, $userId, $dateMode) {
             $locked = CateringAdvance::withoutGlobalScope('notVoided')
                 ->whereKey($advance->id)->lockForUpdate()->firstOrFail();
 
@@ -150,10 +150,15 @@ class CateringAdvanceService
                 if (! $alreadyReversed) {
                     $cash = CashBankAccount::whereKey($locked->cash_bank_account_id)->lockForUpdate()->firstOrFail();
                     $newBalance = (float) $cash->current_balance - (float) $locked->amount;
+                    // VOID-ON-ORIGINAL-DATE-1: a wrong receipt leaves the drawer on the day it came in.
+                    $receivedOn = CashBankAccountTransaction::query()
+                        ->where('reference_type', 'catering_advance')->where('reference_id', $locked->id)
+                        ->where('transaction_type', 'customer_payment')->value('transaction_date')
+                        ?? $locked->received_date;
 
                     CashBankAccountTransaction::create([
                         'cash_bank_account_id' => $cash->id,
-                        'transaction_date' => now()->toDateString(),
+                        'transaction_date' => \App\Support\VoidDate::resolve($dateMode, $receivedOn),
                         'direction' => 'out',
                         'amount' => $locked->amount,
                         'balance_after' => $newBalance,
@@ -198,7 +203,7 @@ class CateringAdvanceService
             ? 'catering_settlement'
             : 'catering_advance';
 
-        $entry = $this->journalPosting->reverseForSource($sourceType, $advance->id, $reason, $userId);
+        $entry = $this->journalPosting->reverseForSource($sourceType, $advance->id, $reason, $userId, $dateMode);
         if ($entry) {
             CateringAdvance::withoutGlobalScope('notVoided')
                 ->whereKey($advance->id)->update(['void_journal_entry_id' => $entry->id]);

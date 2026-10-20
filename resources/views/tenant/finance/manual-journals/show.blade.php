@@ -189,12 +189,9 @@
                             flipped. The original entry is kept unchanged. Cash/bank balances are also
                             reversed if this journal had cash/bank lines.
                         </p>
-                        {{-- JournalService::reverse() reversal ko AAJ ki tareekh deta hai — asal ki nahi. --}}
-                        <p class="small mb-3">
-                            <i class="ti ti-calendar me-1"></i>The reversal is dated <strong>today
-                            ({{ now()->format('Y-m-d') }})</strong>, not {{ optional($manualJournal->entry_date)->format('Y-m-d') }}.
-                            The Cash Book shows the correction on today's date.
-                        </p>
+                        {{-- VOID-ON-ORIGINAL-DATE-1: the person picks the reversal's date — the entry's own date
+                             (a wrong entry) or today (a right one being undone). --}}
+                        @include('partials.void-date-choice', ['originalDate' => $manualJournal->entry_date, 'idPrefix' => 'mj'])
                         <div class="mb-3">
                             <label class="form-label" for="reason">Reason <small class="text-muted">(optional)</small></label>
                             <input type="text" id="reason" name="reason" class="form-control"

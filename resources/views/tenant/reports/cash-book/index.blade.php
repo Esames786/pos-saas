@@ -226,10 +226,12 @@
                         <dt class="col-4">Amount</dt><dd class="col-8 fw-semibold" id="cbv-amount"></dd>
                     </dl>
                     <div class="alert alert-warning small mb-3" id="cbv-effect"></div>
+                    {{-- VOID-ON-ORIGINAL-DATE-1: the row's own date is filled in when the modal opens. --}}
+                    @include('partials.void-date-choice', ['originalDate' => null, 'idPrefix' => 'cbv'])
                     <label for="cash-book-void-reason" class="form-label">Why is it being voided? <span class="text-danger">*</span></label>
                     <textarea name="reason" id="cash-book-void-reason" class="form-control" rows="2" required minlength="3" maxlength="255"
                         placeholder="e.g. entered twice, wrong amount, wrong drawer"></textarea>
-                    <div class="form-text">The original entry stays in the books, marked voided. The money moves back today, with your reason on it.</div>
+                    <div class="form-text">The original entry stays in the books, marked voided, with your reason on it.</div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
@@ -256,13 +258,13 @@ document.addEventListener('DOMContentLoaded', function () {
         var amt = d.amount, drawer = d.drawer;
         switch (d.kind) {
             case 'supplier_payment':
-                return amt + ' comes back into ' + drawer + ' today, the supplier owes it again, and any bill it paid opens again.';
+                return amt + ' comes back into ' + drawer + ', the supplier owes it again, and any bill it paid opens again.';
             case 'catering_receipt':
-                return amt + ' goes back out of ' + drawer + ' today and the customer owes it again. Not possible once the booking\'s final invoice is issued — use Refund then.';
+                return amt + ' goes back out of ' + drawer + ' and the customer owes it again. Not possible once the booking\'s final invoice is issued — use Refund then.';
             case 'expense':
-                return amt + ' comes back into ' + drawer + ' today and the expense leaves the books.';
+                return amt + ' comes back into ' + drawer + ' and the expense leaves the books.';
             case 'manual_journal':
-                return 'The whole journal ' + d.ref + ' is reversed — all its lines, not only this one — dated today.';
+                return 'The whole journal ' + d.ref + ' is reversed — all its lines, not only this one.';
         }
         return '';
     }
@@ -279,6 +281,9 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('cbv-amount').textContent = (d.direction === 'in' ? 'In ' : 'Out ') + d.amount + ' · ' + d.drawer;
         document.getElementById('cbv-effect').textContent = effect(d);
         document.getElementById('cash-book-void-reason').value = '';
+        // Ask afresh for every row, with that row's own date.
+        form.querySelectorAll('[name=void_date_mode]').forEach(function (r) { r.checked = false; });
+        form.querySelectorAll('[data-vd-original-text]').forEach(function (el) { el.textContent = d.date || 'its own date'; });
         modal.show();
     });
 

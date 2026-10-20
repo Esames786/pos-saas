@@ -27,8 +27,11 @@
         @endif
         @if(!in_array($salesOrder->status, ['paid', 'cancelled', 'returned']))
             @can('tenant.sales-orders.cancel')
+                {{-- VOID-ON-ORIGINAL-DATE-1: a sale is always undone today — its shift's counted cash and its
+                     stock cost belong to the day they happened. --}}
                 <form method="POST" action="{{ url('/sales-orders/' . $salesOrder->id . '/cancel') }}"
-                      onsubmit="return confirm('Cancel this sale?')">
+                      onsubmit="return confirm('Cancel this sale?\n\nIt is undone TODAY. A sale is never back-dated, because its shift and its stock belong to the day they happened.')"
+                      title="A sale is always undone today — never back-dated">
                     @csrf
                     <button class="btn btn-danger" type="submit">Cancel Sale</button>
                 </form>

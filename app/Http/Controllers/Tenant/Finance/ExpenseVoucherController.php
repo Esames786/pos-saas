@@ -240,17 +240,21 @@ class ExpenseVoucherController extends Controller
     {
         $data = $request->validate([
             'void_reason' => ['nullable', 'string', 'max:1000'],
+            // VOID-ON-ORIGINAL-DATE-1: wipe on the voucher's own date, or reverse today (default).
+            'void_date_mode' => \App\Support\VoidDate::rule(),
         ]);
+        $mode = \App\Support\VoidDate::mode($data['void_date_mode'] ?? null);
 
         try {
-            $this->expenses->void($expenseVoucher, Auth::guard('tenant')->id(), $data['void_reason'] ?? null);
+            $this->expenses->void($expenseVoucher, Auth::guard('tenant')->id(), $data['void_reason'] ?? null, $mode);
         } catch (Throwable $e) {
             return back()->withErrors(['voucher' => $e->getMessage()]);
         }
 
         // CASH-BOOK-VOID-1: Cash Book se aaya void wapas Cash Book par.
         return redirect(\App\Support\CashBookReturn::from($request) ?? url('/finance/expenses/' . $expenseVoucher->id))
-            ->with('status', 'Expense voucher ' . $expenseVoucher->voucher_no . ' voided — cash/bank balance restored.');
+            ->with('status', 'Expense voucher ' . $expenseVoucher->voucher_no . ' voided — cash/bank balance restored'
+                . ($mode === \App\Support\VoidDate::ORIGINAL ? ' on the voucher\'s own date.' : ', dated today.'));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

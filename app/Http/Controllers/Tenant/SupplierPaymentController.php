@@ -137,16 +137,22 @@ class SupplierPaymentController extends Controller
     {
         $data = $request->validate([
             'reason' => ['required', 'string', 'min:3', 'max:500'],
+            // VOID-ON-ORIGINAL-DATE-1: wipe on the payment's own date, or reverse today (default).
+            'void_date_mode' => \App\Support\VoidDate::rule(),
         ]);
+        $mode = \App\Support\VoidDate::mode($data['void_date_mode'] ?? null);
 
         try {
-            app(SupplierPayableService::class)->voidPayment($supplierPayment, $data['reason'], auth('tenant')->id());
-        } catch (\RuntimeException $e) {
+            app(SupplierPayableService::class)->voidPayment($supplierPayment, $data['reason'], auth('tenant')->id(), $mode);
+        } catch (\RuntimeException|\InvalidArgumentException $e) {
             return back()->withErrors(['payment' => $e->getMessage()]);
         }
 
         $status = 'Payment ' . $supplierPayment->payment_no . ' voided — '
-            . number_format((float) $supplierPayment->amount, 2) . ' is back in the cash/bank account and on the supplier\'s balance.';
+            . number_format((float) $supplierPayment->amount, 2) . ' is back in the cash/bank account and on the supplier\'s balance'
+            . ($mode === \App\Support\VoidDate::ORIGINAL
+                ? ', on the payment\'s own date (' . \Illuminate\Support\Carbon::parse($supplierPayment->payment_date)->format('d M Y') . ').'
+                : ', dated today.');
 
         return redirect(\App\Support\CashBookReturn::from($request) ?? url('/supplier-payments/' . $supplierPayment->id))
             ->with('status', $status);

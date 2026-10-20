@@ -488,6 +488,9 @@
                         </div>
                         <div class="fs-12 text-muted mb-3" id="cbVoidNote"></div>
 
+                        {{-- VOID-ON-ORIGINAL-DATE-1: a test/wrong booking is wiped on each entry's own date. --}}
+                        @include('partials.void-date-choice', ['originalDate' => null, 'idPrefix' => 'cball'])
+
                         <div class="mb-3">
                             <label class="form-label fs-13 mb-1">Wajah <span class="text-danger">*</span></label>
                             <input type="text" name="reason" class="form-control" required maxlength="500"

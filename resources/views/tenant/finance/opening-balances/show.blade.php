@@ -135,6 +135,7 @@
                             <p class="text-muted small">Voiding reverses the opening journal and restores any cash/bank balance. The original entries are kept.</p>
                             <form method="POST" action="{{ url('/finance/opening-balances/' . $batch->id . '/void') }}" onsubmit="return confirm('Void this opening balance? The journal will be reversed.')">
                                 @csrf
+                                @include('partials.void-date-choice', ['originalDate' => $batch->opening_date, 'idPrefix' => 'ob'])
                                 <div class="mb-2">
                                     <label class="form-label" for="void_reason">Reason (optional)</label>
                                     <textarea name="void_reason" id="void_reason" class="form-control" rows="2"></textarea>
