@@ -39,6 +39,7 @@ class PosScriptScopeRegressionTest extends TestCase
         'isArray', 'from', 'call', 'apply', 'bind', 'finally', 'all', 'resolve', 'reject',
         'startsWith', 'endsWith', 'padStart', 'repeat', 'hasOwnProperty', 'find', 'some', 'every',
         'concat', 'charAt', 'substring', 'setAttribute', 'removeAttribute', 'getAttribute',
+        'click', // DOM method (element.click()) — the main block also has a `var click` helper of its own, which is not what the customer block calls
         // blade/template helpers and common single-letter callback params
         'url', 'route', 'asset', 'csrf_token', 's', 'r', 'c', 'a', 'b', 'e', 'j', 'q', 'x',
     ];
@@ -115,10 +116,14 @@ class PosScriptScopeRegressionTest extends TestCase
         $mainIndex = null;
         $customerIndex = null;
         foreach ($scripts as $i => $script) {
-            if (str_contains($script, "document.addEventListener('DOMContentLoaded'")) {
+            // The MAIN block is the first one that boots on DOMContentLoaded (the customer block registers its own
+            // DOMContentLoaded hook since the #ctx-terminal-name fix, so "the last block with the string" is no longer it).
+            if ($mainIndex === null && str_contains($script, "document.addEventListener('DOMContentLoaded'")) {
                 $mainIndex = $i;
             }
-            if (str_contains($script, '/pos/customers/quick-store')) {
+            // The customer block posts to the quick-store endpoint — a Blade literal before the shared view, the runtime route key
+            // (POS.api('customerQuickStore')) since it; either form identifies the block.
+            if (str_contains($script, '/pos/customers/quick-store') || str_contains($script, 'customerQuickStore')) {
                 $customerIndex = $i;
             }
         }

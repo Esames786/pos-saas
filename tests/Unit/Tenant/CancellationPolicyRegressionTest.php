@@ -35,8 +35,17 @@ class CancellationPolicyRegressionTest extends TestCase
         $this->assertStringContainsString('const branchLineCancellationModes =', $view);
         $this->assertGreaterThanOrEqual(2, substr_count($view, "currentCancellationMode('line')"));
         $this->assertStringContainsString("const lineRequiresPin = currentCancellationMode('line') !== 'auto_approve';", $view);
-        $this->assertStringContainsString('id="swal-manager-pin" class="swal2-input" placeholder="Manager code" maxlength="64"', $view);
+        // Since the shared cashier view (Phase 2) the manager prompt is built by the runtime (PIN on the Cloud, employee code +
+        // credential on a Branch Server): the view calls the shared builder, and the builder still renders Online's PIN input
+        // (#swal-manager-pin, swal2-input, "Manager code", 64 characters — a manager CODE, never an 8-digit numeric PIN).
+        $runtime = file_get_contents(resource_path('views/tenant/pos/js/pos-runtime.blade.php'));
+        $this->assertStringContainsString('POS.managerCredentialFieldsHtml()', $view);
+        $this->assertStringContainsString("'swal-manager-pin'", $runtime);
+        $this->assertStringContainsString('class="swal2-input"', $runtime);
+        $this->assertStringContainsString("'Manager code'", $runtime);
+        $this->assertStringContainsString('maxlength="64"', $runtime);
         $this->assertStringNotContainsString('inputmode="numeric" maxlength="8"', $view);
+        $this->assertStringNotContainsString('inputmode="numeric" maxlength="8"', $runtime);
         $this->assertStringContainsString("'pin'             => ['required', 'string', 'min:4', 'max:64']", $userController);
     }
 }
