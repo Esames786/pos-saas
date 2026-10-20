@@ -101,8 +101,8 @@ unchanged) and W01 `facts.merged_controls` (reminder switch, website-orders bell
 7. F-FB1 (D2/D3 precondition, not a defect): on a tenant upgraded to the merged tree the Reminder switch appears only where a
    `print_role=reminder` mapping routes the terminal AND the cashier holds `tenant.pos.pause-reminders`; the LAB copy has neither, so the
    LAB update checklist needs the grant (owner approval — D3 forbids a silent grant) and, if the switch is wanted, a Reminder rule.
-8. O1 (observation): the first STANDBY tick after the handback logged stock `CUTOVER_ALREADY_DONE` (a baseline already accepted at the
-   current revision); the next tick was `current` and STOCK_AUTHORITY_READY stayed true — self-healing, worth a look before the LAB update.
+8. O1 — CLOSED 21 Oct 2026 (owner §4-8): reproduced on the disposable pair, verdict PURELY_IDEMPOTENT (two ticks racing one cutover; the
+   loser wrote nothing); focused follow-up b3648abd reports `already_current` + attribution + regression test — docs/status/edge-o1-cutover-race.md.
 
 ## 5. Disposable infrastructure (left running, LAB untouched)
 
