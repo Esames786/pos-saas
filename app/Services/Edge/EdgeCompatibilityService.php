@@ -34,6 +34,11 @@ class EdgeCompatibilityService
         // purpose — 'sales_returns_cash' is cash refunds only, so the broad Cloud 'returns' feature (card/bank/provider
         // refunds included) stays explicitly unavailable offline below; likewise 'purchase_returns_grn' vs 'purchasing'.
         'sales_returns_cash', 'supplier_finance_events', 'purchase_returns_grn', 'quick_report', 'shift_denomination_count',
+        // Owner §4-3 (21 Oct 2026, informational only): PHASE 4 add-customer at the till (customer_uuid + phone_normalized +
+        // address_uuid, new_customer envelope v3) and the D2 reminder-pause twin on the local shift — declared by the appliance
+        // build (config/edge.php) since 6 / 20 Oct; listed here so the Cloud's compatibility view gives them a verdict too.
+        // No authority, takeover, heartbeat-fencing or sync semantics ride on this list.
+        'offline_customer_create', 'local_reminder_pause',
         // Known Cloud features with NO (full) offline implementation (explicitly unavailable offline).
         'returns', 'card_payments', 'aggregator_delivery', 'customer_credit',
         'purchasing', 'manufacturing', 'stock_operations', 'cloud_manager_approval',

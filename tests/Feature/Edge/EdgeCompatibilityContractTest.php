@@ -42,6 +42,14 @@ class EdgeCompatibilityContractTest extends TestCase
         // Implemented capabilities are compatible; unimplemented Cloud features are EXPLICITLY offline-unavailable.
         $this->assertSame(EdgeCompatibilityService::COMPATIBLE, $result['features']['config_refresh']);
         $this->assertSame(EdgeCompatibilityService::COMPATIBLE, $result['features']['local_pos_cash_sales']);
+        // Owner §4-3 (21 Oct 2026): the two newest offline features the build declares get a verdict on the Cloud too.
+        $this->assertSame(EdgeCompatibilityService::COMPATIBLE, $result['features']['offline_customer_create']);
+        $this->assertSame(EdgeCompatibilityService::COMPATIBLE, $result['features']['local_reminder_pause']);
+        // Every capability the appliance build declares is a feature the Cloud classifies — a new capability can never be
+        // shipped undeclared on the Cloud side again (the W4 audit finding).
+        foreach ((array) config('edge.capabilities') as $declared) {
+            $this->assertContains($declared, EdgeCompatibilityService::CLOUD_OFFLINE_FEATURES, "capability {$declared} has no Cloud verdict");
+        }
         $this->assertSame(EdgeCompatibilityService::FEATURE_UNAVAILABLE_OFFLINE, $result['features']['returns']);
         $this->assertSame(EdgeCompatibilityService::FEATURE_UNAVAILABLE_OFFLINE, $result['features']['card_payments']);
         $this->assertSame(EdgeCompatibilityService::FEATURE_UNAVAILABLE_OFFLINE, $result['features']['manufacturing']);
