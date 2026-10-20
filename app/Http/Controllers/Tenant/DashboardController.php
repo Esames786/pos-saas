@@ -198,7 +198,7 @@ class DashboardController extends Controller
                 ->where('sales_orders.status', 'paid')
                 ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
                 ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser, 'sales_orders')))
-                ->selectRaw('sales_order_lines.product_name, SUM(sales_order_lines.quantity) as qty_sold, SUM(sales_order_lines.line_total) as revenue')
+                ->selectRaw('sales_order_lines.product_name, SUM(COALESCE(sales_order_lines.base_quantity, sales_order_lines.quantity)) as qty_sold, SUM(sales_order_lines.line_total) as revenue')
                 ->groupBy('sales_order_lines.product_name')
                 ->orderByDesc('qty_sold')
                 ->limit(5)

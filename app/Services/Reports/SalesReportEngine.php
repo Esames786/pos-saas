@@ -382,8 +382,10 @@ class SalesReportEngine
              COALESCE(SUM(o.tip_amount),0) as tips,
              COALESCE(SUM(o.grand_total),0) as grand_total'
         )->first();
-        $soldQty = (float) $this->linesBase($f)->sum('l.quantity');
-        $returnedQty = (float) $this->returnLinesBase($f)->sum('rl.quantity');
+        // PACK-QTY-REPORTS-1: quantities in the item's own unit. A line sold in a pack ("2 Strip") keeps its tablets in
+        // base_quantity; every other line has it NULL and counts `quantity` exactly as before. Same rule below.
+        $soldQty = (float) $this->linesBase($f)->sum(DB::raw('COALESCE(l.base_quantity, l.quantity)'));
+        $returnedQty = (float) $this->returnLinesBase($f)->sum(DB::raw('COALESCE(rl.base_quantity, rl.quantity)'));
         $returns = (float) $this->returnsBase($f)->sum('r.grand_total');
         $refundsRecorded = (float) $this->returnsBase($f)->sum('r.refund_amount');
         $cashRefunds = (float) $this->returnsBase($f)->where('r.refund_method', 'cash')->sum('r.refund_amount');
@@ -439,8 +441,8 @@ class SalesReportEngine
              COALESCE(SUM(l.tax_amount),0) as tax,
              COALESCE(SUM(l.line_total),0) as net'
         )->first();
-        $soldQty = (float) $this->linesBase($f)->sum('l.quantity');
-        $returnedQty = (float) $this->returnLinesBase($f)->sum('rl.quantity');
+        $soldQty = (float) $this->linesBase($f)->sum(DB::raw('COALESCE(l.base_quantity, l.quantity)'));
+        $returnedQty = (float) $this->returnLinesBase($f)->sum(DB::raw('COALESCE(rl.base_quantity, rl.quantity)'));
         $returns = (float) $this->returnLinesBase($f)->sum('rl.line_total');
         $billed = (float) $m->net;
         $netSales = $billed - $returns;
@@ -480,7 +482,7 @@ class SalesReportEngine
                 $cat . ' as category_id,
                  MAX(c.name) as category_name, MAX(c.parent_id) as parent_id,
                  COUNT(DISTINCT o.id) as orders,
-                 COALESCE(SUM(l.quantity),0) as sold_qty,
+                 COALESCE(SUM(COALESCE(l.base_quantity, l.quantity)),0) as sold_qty,
                  COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
                  COALESCE(SUM(l.discount_amount),0) as discount,
                  COALESCE(SUM(l.tax_amount),0) as tax,
@@ -610,7 +612,7 @@ class SalesReportEngine
                  -- ITEMS-BY-CATEGORY-1: the id travels with the name, so a row can be filed under
                  -- its ROOT head without a second query guessing the head from a string.
                  MAX(c.id) as category_id,
-                 COALESCE(SUM(l.quantity),0) as sold_qty,
+                 COALESCE(SUM(COALESCE(l.base_quantity, l.quantity)),0) as sold_qty,
                  COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
                  COALESCE(SUM(l.discount_amount),0) as discount,
                  COALESCE(SUM(l.tax_amount),0) as tax,
@@ -628,7 +630,7 @@ class SalesReportEngine
                  COALESCE(MAX(cb.name), MAX(ol.product_name)) as item,
                  MAX(v.name) as variant, MAX(c.name) as category,
                  MAX(c.id) as category_id,
-                 COALESCE(SUM(rl.quantity),0) as returned_qty,
+                 COALESCE(SUM(COALESCE(rl.base_quantity, rl.quantity)),0) as returned_qty,
                  COALESCE(SUM(rl.line_total),0) as returns_amount'
             )->get()->keyBy($key);
 
@@ -840,7 +842,7 @@ class SalesReportEngine
                  MAX(cb.name) as deal,
                  MAX(c.name) as head,
                  COUNT(DISTINCT o.id) as orders,
-                 COALESCE(SUM(l.quantity),0) as sold_qty,
+                 COALESCE(SUM(COALESCE(l.base_quantity, l.quantity)),0) as sold_qty,
                  COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
                  COALESCE(SUM(l.discount_amount),0) as discount,
                  COALESCE(SUM(l.line_total),0) as net'
@@ -1061,13 +1063,13 @@ class SalesReportEngine
                  COALESCE(SUM(o.grand_total),0) as grand_total"
             )->get();
         $qty = $this->linesBase($f)->groupBy(DB::raw($column))
-            ->selectRaw("$column as dim, COALESCE(SUM(l.quantity),0) as sold_qty")
+            ->selectRaw("$column as dim, COALESCE(SUM(COALESCE(l.base_quantity, l.quantity)),0) as sold_qty")
             ->get()->keyBy('dim');
         $returns = $this->returnsBase($f)->groupBy(DB::raw($column))
             ->selectRaw("$column as dim, COALESCE(SUM(r.grand_total),0) as amount")
             ->get()->keyBy('dim');
         $returnQty = $this->returnLinesBase($f)->groupBy(DB::raw($column))
-            ->selectRaw("$column as dim, COALESCE(SUM(rl.quantity),0) as quantity")
+            ->selectRaw("$column as dim, COALESCE(SUM(COALESCE(rl.base_quantity, rl.quantity)),0) as quantity")
             ->get()->keyBy('dim');
 
         $rows = $rows->keyBy('dim');
@@ -1108,11 +1110,11 @@ class SalesReportEngine
             ->selectRaw(
                 "$column as dim,
                  COUNT(DISTINCT o.id) as orders,
-                 COALESCE(SUM(l.quantity),0) as sold_qty,
+                 COALESCE(SUM(COALESCE(l.base_quantity, l.quantity)),0) as sold_qty,
                  COALESCE(SUM(l.line_total),0) as net"
             )->get()->keyBy('dim');
         $returns = $this->returnLinesBase($f)->groupBy(DB::raw($column))
-            ->selectRaw("$column as dim, COALESCE(SUM(rl.line_total),0) as amount, COALESCE(SUM(rl.quantity),0) as quantity")
+            ->selectRaw("$column as dim, COALESCE(SUM(rl.line_total),0) as amount, COALESCE(SUM(COALESCE(rl.base_quantity, rl.quantity)),0) as quantity")
             ->get()->keyBy('dim');
 
         return $rows->keys()->merge($returns->keys())->unique()->map(function ($dim) use ($rows, $returns, $label) {
@@ -1243,7 +1245,7 @@ class SalesReportEngine
             // rl.line_total is the FINAL refunded line value (subtotal − discount + tax) since
             // 2026_08_11_000004 normalised the column and backfilled history. Adding tax again
             // here — as this did while line_total was ex-tax — double-counts it.
-            ->selectRaw("$column as dim, COALESCE(SUM(rl.quantity),0) as quantity, COALESCE(SUM(rl.line_total),0) as amount")
+            ->selectRaw("$column as dim, COALESCE(SUM(COALESCE(rl.base_quantity, rl.quantity)),0) as quantity, COALESCE(SUM(rl.line_total),0) as amount")
             ->get();
         $map = [];
         foreach ($rows as $r) {

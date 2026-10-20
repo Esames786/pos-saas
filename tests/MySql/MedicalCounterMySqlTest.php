@@ -11,6 +11,7 @@ use App\Models\Tenant\SalesOrderLine;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\User;
 use App\Services\Inventory\InventoryService;
+use App\Services\Reports\SalesReportEngine;
 use App\Services\Tenancy\TenantProvisioner;
 use App\Support\CounterPacks;
 use Database\Seeders\Demos\PharmacyDemoSeeder;
@@ -302,6 +303,50 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         } finally {
             DB::connection('tenant')->table('receipt_layout_settings')->where('document_type', 'receipt')->update(['show_bill_barcode' => 0]);
         }
+    }
+
+    public function test_reports_count_tablets_so_strips_and_loose_tablets_add_up(): void
+    {
+        // PACK-QTY-REPORTS-1: "2 Strip" + "3 Tablet" sold is 23 tablets, never "5"; a returned Strip is 10 back.
+        [$p, $strip] = $this->panadol();
+        $engine = app(SalesReportEngine::class);
+        $f = $engine->normalizeFilters([
+            'date_from' => now()->subDays(3)->toDateString(), 'date_to' => now()->addDays(3)->toDateString(), 'branch_ids' => [$this->branchId()],
+        ]);
+        $item = fn (string $k) => (float) collect($engine->byItem($f))->where('product_id', $p->id)->sum($k);
+        $cat = function (string $k) use ($engine, $f, $p) {
+            foreach ($engine->byCategory($f) as $root) {
+                foreach ($root['children'] ?? [] as $c) {
+                    if ((int) $c['id'] === (int) $p->category_id) {
+                        return (float) ($c[$k] ?? 0);
+                    }
+                }
+            }
+
+            return 0.0;
+        };
+        $before = ['item' => $item('sold_qty'), 'all' => (float) $engine->overview($f)['sold_qty'], 'cat' => $cat('sold_qty'),
+            'item_ret' => $item('returned_qty'), 'all_ret' => (float) $engine->overview($f)['returned_qty']];
+
+        $sale = $this->sell([
+            ['product_id' => $p->id, 'quantity' => 2, 'unit_price' => 52.5, 'pack_unit_id' => $strip->id],
+            ['product_id' => $p->id, 'quantity' => 3, 'unit_price' => 5.25],
+        ], 120.75);
+        $this->assertTrue($sale->isSuccessful(), Str::limit($sale->getContent(), 300));
+
+        $this->assertEqualsWithDelta(23, $item('sold_qty') - $before['item'], 0.001, 'items report: 2 Strip + 3 Tablet = 23 tablets');
+        $this->assertEqualsWithDelta(23, (float) $engine->overview($f)['sold_qty'] - $before['all'], 0.001, 'summary: 23 tablets');
+        $this->assertEqualsWithDelta(23, $cat('sold_qty') - $before['cat'], 0.001, 'category: 23 tablets');
+
+        $order = SalesOrder::where('status', 'paid')->latest('id')->firstOrFail();
+        $packLine = $order->lines()->whereNotNull('pack_factor')->firstOrFail();
+        $this->owner()->post($this->url('/sales-returns'), [
+            'sales_order_id' => $order->id, 'reason' => 'Wrong strength', 'refund_method' => 'cash', 'refund_amount' => 52.5,
+            'lines' => [['sales_order_line_id' => $packLine->id, 'quantity' => 1]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertEqualsWithDelta(10, $item('returned_qty') - $before['item_ret'], 0.001, 'one Strip back = 10 tablets');
+        $this->assertEqualsWithDelta(10, (float) $engine->overview($f)['returned_qty'] - $before['all_ret'], 0.001);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
