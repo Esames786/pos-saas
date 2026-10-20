@@ -165,6 +165,8 @@ class SalesReturnController extends Controller
             // RETURN-MANAGER-APPROVAL-1: present only when the branch asks for it. Validated as an
             // existing row so a typed id cannot reach the lookup below and 500.
             'manager_approval_id'         => ['nullable', 'integer', 'exists:manager_approvals,id'],
+            // REFUND-SHIFT-1: the counter paying the refund (the POS passes the one it is on).
+            'terminal_id'                 => ['nullable', 'integer'],
         ]);
 
         if (collect($data['lines'])->sum(fn ($l) => (float) ($l['quantity'] ?? 0)) <= 0) {
@@ -248,12 +250,39 @@ class SalesReturnController extends Controller
                 refundMethod: $data['refund_method'] ?? null,
                 refundAmount: isset($data['refund_amount']) ? (float) $data['refund_amount'] : null,
                 userId:       auth('tenant')->id(),
+                refundShiftId: $this->refundShiftId($salesOrder, $data['terminal_id'] ?? null),
             );
         } catch (\RuntimeException $e) {
             return back()->withErrors(['return' => $e->getMessage()])->withInput();
         }
 
         return redirect(url('/sales-returns/' . $salesReturn->id))->with('status', 'Sales return posted.');
+    }
+
+    /**
+     * REFUND-SHIFT-1 — which open shift pays this refund (its drawer gives the cash), in this order:
+     *   1. the counter the POS is on (passed as terminal_id), when it is this branch's and its shift is open;
+     *   2. the user's own counter (default terminal), same rule;
+     *   3. the branch's only open shift, or else the user's own open shift in the branch.
+     * Null = the service falls back to the sale's own shift while it is still open (today's rule), else none.
+     */
+    private function refundShiftId(SalesOrder $salesOrder, mixed $terminalId): ?int
+    {
+        $shifts = app(\App\Services\Sales\ShiftService::class);
+        $user = auth('tenant')->user();
+        foreach (array_filter([(int) $terminalId, (int) ($user?->default_terminal_id ?? 0)]) as $id) {
+            $terminal = \App\Models\Tenant\Terminal::query()->whereKey($id)->where('branch_id', $salesOrder->branch_id)->first();
+            if ($terminal && ($shift = $shifts->activeShiftForTerminal($terminal))) {
+                return (int) $shift->id;
+            }
+        }
+        $open = \App\Models\Tenant\Shift::query()->where('branch_id', $salesOrder->branch_id)->where('status', 'open')->get(['id', 'opened_by_user_id']);
+        if ($open->count() === 1) {
+            return (int) $open->first()->id;
+        }
+        $mine = $open->where('opened_by_user_id', $user?->id)->sortByDesc('id')->first();
+
+        return $mine ? (int) $mine->id : null;
     }
 
     public function show(SalesReturn $salesReturn)

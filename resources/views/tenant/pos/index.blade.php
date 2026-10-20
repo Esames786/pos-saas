@@ -1711,6 +1711,9 @@
     if (!modalEl || !btn || !frame) return;
     modalEl.addEventListener('show.bs.modal', function () {
         var url = btn.getAttribute('data-return-url');
+        // REFUND-SHIFT-1: the refund comes out of THIS counter's drawer — its shift gets the refund
+        var term = (document.getElementById('terminal_id') || {}).value;
+        if (term) url += '&terminal_id=' + encodeURIComponent(term);
         if (newTab) newTab.href = url;
         if (frame.getAttribute('src') === 'about:blank') frame.src = url;   // lazy-load once per open
     });
