@@ -1,40 +1,40 @@
 {
-    "built_at": "2026-10-20T13:05:52+00:00",
+    "built_at": "2026-10-20T17:06:36+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
-    "prod_branch_head": "a0079107",
+    "prod_branch_head": "00d15053",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas",
             "branch": "feat/14d-2-plan-upgrade-requests",
-            "head": "a0079107",
+            "head": "00d15053",
             "behind_prod": 0,
             "ahead_of_prod": 0,
-            "last_commit": "2026-10-20\u00b7Merge MEDICAL-COUNTER-RX-POPUP-1: prescription in a popup (Enter/Enter, Ctrl+Q); quantity boxes numbers only",
+            "last_commit": "2026-10-20\u00b7Merge MASTER-NEW-SCREENS-1: Master shows pictures of the new screens and which switch shows them",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
-            "head": "42bee1ae",
-            "behind_prod": 16,
-            "ahead_of_prod": 180,
-            "last_commit": "2026-10-20\u00b7tests: two canonical static POS regression tests follow the shared cashier view - the manager prompt is built by the runtime (POS.managerCredentialFieldsHtml; the runtime partial still renders #swal-manager-pin / Manager code / 64 chars), the customer script block is located by its runtime route key, the main block is the first DOMContentLoaded block, element.click() is a DOM method",
-            "uncommitted_files": 2
+            "head": "de596bb5",
+            "behind_prod": 20,
+            "ahead_of_prod": 181,
+            "last_commit": "2026-10-20\u00b7docs: merged-tree reconciliation report (owner D1-D8 final section) + Team FB browser/baseline evidence + opt-in W18 harness workflow",
+            "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-packs",
             "branch": "feat/pharmacy-packs-20261019",
-            "head": "a0079107",
+            "head": "00d15053",
             "behind_prod": 0,
             "ahead_of_prod": 0,
-            "last_commit": "2026-10-20\u00b7Merge MEDICAL-COUNTER-RX-POPUP-1: prescription in a popup (Enter/Enter, Ctrl+Q); quantity boxes numbers only",
-            "uncommitted_files": 6
+            "last_commit": "2026-10-20\u00b7Merge MASTER-NEW-SCREENS-1: Master shows pictures of the new screens and which switch shows them",
+            "uncommitted_files": 5
         },
         {
             "path": "D:/laragon2/www/pos-saas-qrwaiter",
             "branch": "feat/void-on-original-date-20261020",
             "head": "f637694b",
-            "behind_prod": 3,
+            "behind_prod": 7,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-20\u00b7VOID-ON-ORIGINAL-DATE-1: system map rebuilt",
             "uncommitted_files": 0
@@ -43,7 +43,7 @@
             "path": "D:/laragon2/www/pos-saas-video",
             "branch": "feat/demo-video-pipeline",
             "head": "8839a77d",
-            "behind_prod": 386,
+            "behind_prod": 390,
             "ahead_of_prod": 16,
             "last_commit": "2026-10-20\u00b7MARKETING-2: poora feature brief (codebase se nikala) + char karobar ke banner prompts",
             "uncommitted_files": 0
@@ -52,7 +52,7 @@
             "path": "D:/laragon2/www/pos-saas-catering",
             "branch": "feat/catering-stacked-material-row-20260909",
             "head": "39333d6f",
-            "behind_prod": 59,
+            "behind_prod": 63,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7DOC-TOOLBAR-OFF-PAPER-1: screen ke button kaghaz se bahar, har document par",
             "uncommitted_files": 0
@@ -61,7 +61,7 @@
             "path": "D:/laragon2/www/pos-saas-masterui",
             "branch": "fix/usage-snapshot-after-demo-reset-20261019",
             "head": "002ee25e",
-            "behind_prod": 80,
+            "behind_prod": 84,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7MASTER-UNIVERSE-1: daily usage reading moves after the demo reset (09:45 PKT)",
             "uncommitted_files": 0
@@ -70,7 +70,7 @@
             "path": "D:/laragon2/www/pos-saas-pharmademo",
             "branch": "feat/pharmacy-demo-20261018",
             "head": "dc84b937",
-            "behind_prod": 101,
+            "behind_prod": 105,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP-1: bird's-eye system map + standing rule for every session",
             "uncommitted_files": 0
@@ -79,7 +79,7 @@
             "path": "D:/laragon2/www/pos-saas-primary",
             "branch": "feat/primary-business-v2-20261019",
             "head": "e99cd7a2",
-            "behind_prod": 96,
+            "behind_prod": 100,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP: rebuilt after PRIMARY-BUSINESS-1 + PRODUCT-SCREEN-V2 (tenant_setting_changes, products.generic_name/strength/needs_prescription)",
             "uncommitted_files": 0
@@ -88,7 +88,7 @@
             "path": "D:/laragon2/www/pos-saas-hideamounts",
             "branch": "fix/billing-hide-void-20261017",
             "head": "37515a12",
-            "behind_prod": 116,
+            "behind_prod": 120,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7BILLING-HIDE-VOID-1: void invoice tenant ko nahi dikhti",
             "uncommitted_files": 0
@@ -97,7 +97,7 @@
             "path": "D:/laragon2/www/pos-saas-partnershare",
             "branch": "feat/partner-share-report-20261014",
             "head": "cbe5616b",
-            "behind_prod": 104,
+            "behind_prod": 108,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7PARTNER-SHARE-1: plan doc \u2014 test aur suite ki ginti, purani misaal par label",
             "uncommitted_files": 0
@@ -106,7 +106,7 @@
             "path": "D:/laragon2/www/pos-saas-pharmacy-audit",
             "branch": "(detached)",
             "head": "70c4e434",
-            "behind_prod": 103,
+            "behind_prod": 107,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7Merge PARTNER-SHARE-1: ek dish, do kitchen \u2014 Partner Share rates + Report Center section",
             "uncommitted_files": 0
@@ -115,7 +115,7 @@
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
             "head": "c0741579",
-            "behind_prod": 125,
+            "behind_prod": 129,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-16\u00b7AREA-WINDOW-LAYOUT-1: area list hamesha nazar aaye (kam se kam ~4 rows), qareebi jagahen aik scroll row me",
             "uncommitted_files": 0
@@ -124,7 +124,7 @@
             "path": "D:/laragon2/www/pos-saas-catlist",
             "branch": "feat/kk-purchase-items-import-20261014",
             "head": "7e5d8dea",
-            "behind_prod": 178,
+            "behind_prod": 182,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-14\u00b7PURCHASE-ITEMS-IMPORT-1: purane software ke khareed wale items, mehfooz jhandon ke saath",
             "uncommitted_files": 0
@@ -133,7 +133,7 @@
             "path": "D:/laragon2/www/pos-saas-web-i18n",
             "branch": "feat/recaptcha-trial-20261008",
             "head": "a8191e1d",
-            "behind_prod": 281,
+            "behind_prod": 285,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-08\u00b7RECAPTCHA-TRIAL-1: Start Trial par \"I'm not a robot\" (reCAPTCHA v2), en + ar",
             "uncommitted_files": 0
@@ -142,7 +142,7 @@
             "path": "D:/laragon2/www/pos-saas-voice",
             "branch": "research/voice-ordering-agent",
             "head": "79c76679",
-            "behind_prod": 323,
+            "behind_prod": 327,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-05\u00b7VOICE-ORDER-1: vendor options + bahar wale mashware ki do ghaltiyan darj",
             "uncommitted_files": 0
@@ -151,7 +151,7 @@
             "path": "D:/laragon2/www/pos-saas-tawakal",
             "branch": "feat/tawakal_kashif",
             "head": "b4870c0e",
-            "behind_prod": 587,
+            "behind_prod": 591,
             "ahead_of_prod": 0,
             "last_commit": "2026-09-06\u00b7Merge prod branch into tawakal \u2014 76 commits ka pichla kaam",
             "uncommitted_files": 0
@@ -160,7 +160,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/history-urdu-ux",
             "branch": "fix/catering-history-urdu-ux-20260829",
             "head": "da8e2ed3",
-            "behind_prod": 716,
+            "behind_prod": 720,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7Improve catering operator UX and Urdu print readability",
             "uncommitted_files": 0
@@ -169,7 +169,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/quoted-rate-persistence",
             "branch": "fix/catering-quoted-rate-persistence-20260828",
             "head": "e020c390",
-            "behind_prod": 722,
+            "behind_prod": 726,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7fix(catering): persist punched customer rates",
             "uncommitted_files": 0
@@ -178,7 +178,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/catering-client-feedback",
             "branch": "fix/catering-client-feedback-20260827",
             "head": "893d8e44",
-            "behind_prod": 735,
+            "behind_prod": 739,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-27\u00b7fix(catering): tighten time and item entry UX",
             "uncommitted_files": 0
@@ -187,7 +187,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert-v2",
             "branch": "(detached)",
             "head": "ec09b6a6",
-            "behind_prod": 784,
+            "behind_prod": 788,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-22\u00b7KASHIF-LEGACY-ALIGN-5/6: Complimentary in one click, and a bill you can read",
             "uncommitted_files": 1
@@ -196,7 +196,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-parity",
             "branch": "feat/catering-operator-completion-v1",
             "head": "008ba947",
-            "behind_prod": 804,
+            "behind_prod": 808,
             "ahead_of_prod": 4,
             "last_commit": "2026-08-22\u00b7CATERING: keep event create and edit inside the operator workspace",
             "uncommitted_files": 0
@@ -205,7 +205,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-catalogue",
             "branch": "data/kashif-catalogue-prep-v1",
             "head": "73807eb9",
-            "behind_prod": 807,
+            "behind_prod": 811,
             "ahead_of_prod": 1,
             "last_commit": "2026-08-21\u00b7CATERING: transcribe the Kashif catalogue without inventing prices",
             "uncommitted_files": 0
@@ -214,7 +214,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-product",
             "branch": "audit/catering-product-completeness-v1",
             "head": "ef184b6a",
-            "behind_prod": 853,
+            "behind_prod": 857,
             "ahead_of_prod": 18,
             "last_commit": "2026-08-21\u00b7AUDIT: assess Catering product completeness",
             "uncommitted_files": 0
@@ -223,7 +223,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex",
             "branch": "audit/catering-e2e-qa-v1",
             "head": "f8fa2205",
-            "behind_prod": 853,
+            "behind_prod": 857,
             "ahead_of_prod": 13,
             "last_commit": "2026-08-20\u00b7DOCS: preserve independent Catering architecture audit",
             "uncommitted_files": 0
@@ -232,7 +232,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert",
             "branch": "audit/catering-rate-impact-cert-v1",
             "head": "55ad8d5e",
-            "behind_prod": 853,
+            "behind_prod": 857,
             "ahead_of_prod": 17,
             "last_commit": "2026-08-20\u00b7TEST: expose Catering draft writer send races",
             "uncommitted_files": 0
@@ -241,13 +241,18 @@
             "path": "D:/laragon2/www/pos-saas-cloud",
             "branch": "feat/cloud-billing-onboarding-v1",
             "head": "9c30ea46",
-            "behind_prod": 919,
+            "behind_prod": 923,
             "ahead_of_prod": 8,
             "last_commit": "2026-08-15\u00b7CLOUD-BILLING E2E: real monthly + yearly signup lifecycle (throwaway tenants)",
             "uncommitted_files": 0
         }
     ],
     "plans": [
+        {
+            "file": "docs/plans/grn-void-and-starter-shifts-2026-10-20.md",
+            "title": "GRN void + starter plans' counter (20 Oct 2026)",
+            "modified": "2026-10-20"
+        },
         {
             "file": "docs/plans/purchase-and-returns-round2-2026-10-19.md",
             "title": "Purchase and returns \u2014 round 2 (19 Oct 2026, evening)",
@@ -367,14 +372,9 @@
             "file": "docs/plans/kashif-kot-routing-requests-2026-09-03.md",
             "title": "Kashif Food \u2014 chaar KOT routing ki farmaishein",
             "modified": "2026-10-19"
-        },
-        {
-            "file": "docs/plans/kashif-legacy-alignment-2026-08-22.md",
-            "title": "Kashif \u2014 Legacy-Software Alignment (design, before any code)",
-            "modified": "2026-10-19"
         }
     ],
-    "git": "a0079107",
+    "git": "00d15053",
     "source": {
         "tenant_db": "pos_test_tenant_mui_medc",
         "master_db": "pos_test_master_mui"
@@ -28466,86 +28466,6 @@
                     "why": "via DepartmentInventoryService"
                 },
                 {
-                    "route": "tenant.purchase-orders.index",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.purchase-orders.create",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.purchase-orders.store",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.purchase-orders.show",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.purchase-orders.approve",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.purchase-orders.cancel",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.goods-receipts.index",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.goods-receipts.create",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.goods-receipts.store",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.goods-receipts.show",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.goods-receipts.void",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.purchase-bills.index",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.purchase-bills.create",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.purchase-bills.store",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.purchase-bills.show",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.supplier-payments.index",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.supplier-payments.create",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.supplier-payments.store",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.supplier-payments.show",
-                    "why": "via PurchasingService"
-                },
-                {
-                    "route": "tenant.supplier-payments.void",
-                    "why": "via PurchasingService"
-                },
-                {
                     "route": "tenant.purchase-returns.index",
                     "why": "model StockBalance"
                 },
@@ -28786,7 +28706,7 @@
                     "why": "model StockBalance"
                 }
             ],
-            "used_by_count": 130
+            "used_by_count": 110
         },
         {
             "name": "stock_count_lines",
@@ -43054,7 +42974,6 @@
                 "suppliers",
                 "goods_receipts",
                 "purchase_bills",
-                "stock_balances",
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
@@ -43077,7 +42996,6 @@
                 "suppliers",
                 "goods_receipts",
                 "purchase_bills",
-                "stock_balances",
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
@@ -43100,7 +43018,6 @@
                 "suppliers",
                 "goods_receipts",
                 "purchase_bills",
-                "stock_balances",
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
@@ -43123,7 +43040,6 @@
                 "suppliers",
                 "goods_receipts",
                 "purchase_bills",
-                "stock_balances",
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
@@ -43146,7 +43062,6 @@
                 "suppliers",
                 "goods_receipts",
                 "purchase_bills",
-                "stock_balances",
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
@@ -43169,7 +43084,6 @@
                 "suppliers",
                 "goods_receipts",
                 "purchase_bills",
-                "stock_balances",
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
@@ -43193,7 +43107,6 @@
                 "stock_ledgers",
                 "suppliers",
                 "purchase_bills",
-                "stock_balances",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
                 "supplier_payments",
@@ -43216,7 +43129,6 @@
                 "stock_ledgers",
                 "suppliers",
                 "purchase_bills",
-                "stock_balances",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
                 "supplier_payments",
@@ -43239,7 +43151,6 @@
                 "stock_ledgers",
                 "suppliers",
                 "purchase_bills",
-                "stock_balances",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
                 "supplier_payments",
@@ -43262,7 +43173,6 @@
                 "stock_ledgers",
                 "suppliers",
                 "purchase_bills",
-                "stock_balances",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
                 "supplier_payments",
@@ -43285,7 +43195,6 @@
                 "stock_ledgers",
                 "suppliers",
                 "purchase_bills",
-                "stock_balances",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
                 "supplier_payments",
@@ -43306,7 +43215,6 @@
                 "purchase_bill_lines",
                 "suppliers",
                 "purchase_orders",
-                "stock_balances",
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
@@ -43341,7 +43249,6 @@
                 "purchase_bill_lines",
                 "suppliers",
                 "purchase_orders",
-                "stock_balances",
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
@@ -43376,7 +43283,6 @@
                 "purchase_bill_lines",
                 "suppliers",
                 "purchase_orders",
-                "stock_balances",
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
@@ -43411,7 +43317,6 @@
                 "purchase_bill_lines",
                 "suppliers",
                 "purchase_orders",
-                "stock_balances",
                 "stock_ledgers",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
@@ -43453,7 +43358,6 @@
                 "supplier_ledgers",
                 "goods_receipts",
                 "purchase_orders",
-                "stock_balances",
                 "stock_ledgers"
             ]
         },
@@ -43477,7 +43381,6 @@
                 "supplier_ledgers",
                 "goods_receipts",
                 "purchase_orders",
-                "stock_balances",
                 "stock_ledgers"
             ]
         },
@@ -43501,7 +43404,6 @@
                 "supplier_ledgers",
                 "goods_receipts",
                 "purchase_orders",
-                "stock_balances",
                 "stock_ledgers"
             ]
         },
@@ -43525,7 +43427,6 @@
                 "supplier_ledgers",
                 "goods_receipts",
                 "purchase_orders",
-                "stock_balances",
                 "stock_ledgers"
             ]
         },
@@ -43549,7 +43450,6 @@
                 "supplier_ledgers",
                 "goods_receipts",
                 "purchase_orders",
-                "stock_balances",
                 "stock_ledgers"
             ]
         },
