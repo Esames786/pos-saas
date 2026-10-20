@@ -28,6 +28,12 @@ class TenantBusinessController extends Controller
         ]);
     }
 
+    /** UB-10: read-only — which items the new screens take as they are (Master, before a switch goes on). */
+    public function readiness(Tenant $tenant)
+    {
+        return response()->json($this->service->readiness($tenant));
+    }
+
     public function updateBusiness(Request $request, Tenant $tenant)
     {
         $data = $request->validate([

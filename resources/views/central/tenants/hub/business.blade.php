@@ -161,6 +161,49 @@
     @endcan
 </section>
 
+@can('central.tenants.readiness')
+{{-- UB-10: read-only — which items the new purchase screens and the pack counter take as they are. Nothing is fixed
+     from here: an item that is not ready keeps its old screens; changing its unit is a separate, approved decision. --}}
+<section class="mu-panel" id="readiness">
+    <h2>Items ready for the new screens?</h2>
+    <p class="mu-panel-sub">Check before turning on the new purchase screens or the pack counter. Reading only — nothing is changed. An item that is not ready keeps its old screens.</p>
+    <button type="button" class="btn btn-outline-primary" id="rd-check" data-url="{{ route('central.tenants.readiness', $tenant) }}">
+        <i class="ti ti-list-check me-1" aria-hidden="true"></i>Check items
+    </button>
+    <div id="rd-out" class="mt-3" aria-live="polite"></div>
+</section>
+@push('scripts')
+<script>
+/* UB-10 — readiness, read on demand (it reads the tenant's own database). */
+(function () {
+    var btn = document.getElementById('rd-check'), out = document.getElementById('rd-out');
+    if (!btn || !out) return;
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+    var WORDS = { ready: ['Ready', 'is-on'], limited: ['Limited', 'is-off'], blocked: ['Blocked', 'is-off'] };
+    btn.addEventListener('click', function () {
+        btn.disabled = true; out.innerHTML = '<div class="mu-empty">Reading the items…</div>';
+        fetch(btn.dataset.url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                btn.disabled = false;
+                if (!d || !d.ok) { out.innerHTML = '<div class="mu-empty">' + esc((d && d.error) || 'Could not read this tenant right now.') + '</div>'; return; }
+                var s = d.summary || {}, html = '<p><b>' + Number(d.checked || 0).toLocaleString() + '</b> items that are bought or kept in stock: '
+                    + ['ready', 'limited', 'blocked'].map(function (k) { return '<span class="mu-pill ' + WORDS[k][1] + '">' + WORDS[k][0] + ' ' + Number(s[k] || 0).toLocaleString() + '</span>'; }).join(' ') + '</p>';
+                if (!(d.items || []).length) { out.innerHTML = html + '<div class="mu-empty">Every item is ready.</div>'; return; }
+                html += '<div class="table-responsive"><table class="table table-sm align-top"><thead><tr><th>Item</th><th>Unit</th><th>Status</th><th>Why</th></tr></thead><tbody>'
+                    + d.items.map(function (it) {
+                        return '<tr><td>' + esc(it.name) + '</td><td>' + esc(it.unit) + '</td><td><span class="mu-pill ' + (WORDS[it.status] || WORDS.limited)[1] + '">' + esc((WORDS[it.status] || WORDS.limited)[0]) + '</span></td><td>'
+                            + (it.reasons || []).map(esc).join('<br>') + '</td></tr>';
+                    }).join('') + '</tbody></table></div>';
+                if (d.more) html += '<p class="mu-note">And ' + Number(d.more).toLocaleString() + ' more.</p>';
+                out.innerHTML = html;
+            }, function () { btn.disabled = false; out.innerHTML = '<div class="mu-empty">Could not read this tenant right now — try again.</div>'; });
+    });
+})();
+</script>
+@endpush
+@endcan
+
 <section class="mu-panel" id="history">
     <h2>History</h2>
     <p class="mu-panel-sub">Who changed what, and when.</p>

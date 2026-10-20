@@ -181,6 +181,8 @@ class MasterSeeder extends Seeder
             'central.tenants.business.impact',
             'central.tenants.business.update',
             'central.tenants.features.update',
+            // UB-10 — read-only readiness of a tenant's items for the new screens.
+            'central.tenants.readiness',
 
             // MASTER-UNIVERSE-1 — dashboard "Refresh now" (read-only usage snapshot) and adding a
             // branch from the tenant hub.
