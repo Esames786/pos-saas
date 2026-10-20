@@ -208,6 +208,66 @@ class InventoryService
         });
     }
 
+    /**
+     * GRN-VOID-OWN-BATCH-1: take back exactly what one receipt entry brought in — from the stock row it filled
+     * (branch + product + variant + batch) and nowhere else, at the cost it came in at. Refuses when that row no
+     * longer holds it (sold or moved: a Purchase Return or a Stock Adjustment is the way then). An entry that has
+     * already been reversed is left alone (null), so nothing is ever taken back twice.
+     */
+    public function reverseReceiptEntry(
+        StockLedger $in,
+        ?string $referenceNo = null,
+        ?string $notes = null,
+        ?int $userId = null,
+        string $movementType = 'adjustment_out',
+    ): ?StockLedger {
+        $branch = Branch::findOrFail($in->branch_id);
+        $this->operatingMode->assertOfficialStockMutationAllowed($branch);
+
+        return DB::connection('tenant')->transaction(function () use ($in, $referenceNo, $notes, $userId, $movementType) {
+            if (StockLedger::where('reversal_of_id', $in->id)->lockForUpdate()->exists()) {
+                return null;
+            }
+
+            $qty = (float) $in->quantity;
+            $key = $this->balanceKey((int) $in->branch_id, (int) $in->product_id, $in->product_variant_id, $in->inventory_batch_id);
+            $balance = StockBalance::where('balance_key', $key)->lockForUpdate()->first();
+            $onHand = (float) ($balance?->quantity_on_hand ?? 0);
+
+            if (! $balance || $onHand + 0.0001 < $qty) {
+                $fmt = fn (float $n) => rtrim(rtrim(number_format($n, 3), '0'), '.');
+                $batchNo = $in->inventory_batch_id ? InventoryBatch::whereKey($in->inventory_batch_id)->value('batch_no') : null;
+                throw new RuntimeException(
+                    (Product::whereKey($in->product_id)->value('name') ?? 'This item') . ' no longer has the quantity this receipt brought in '
+                    . '(' . $fmt($qty) . ' needed, ' . $fmt($onHand) . ' on hand' . ($batchNo ? ' in batch ' . $batchNo : '') . '), '
+                    . 'so the receipt cannot be voided. Use a Purchase Return or a Stock Adjustment.'
+                );
+            }
+
+            $newQty = $onHand - $qty;
+            $balance->update(['quantity_on_hand' => $newQty]);
+
+            return StockLedger::create([
+                'branch_id'          => $in->branch_id,
+                'product_id'         => $in->product_id,
+                'product_variant_id' => $in->product_variant_id,
+                'inventory_batch_id' => $in->inventory_batch_id,
+                'movement_type'      => $movementType,
+                'direction'          => 'out',
+                'quantity'           => $qty,
+                'unit_cost'          => $in->unit_cost,
+                'total_cost'         => $in->total_cost,
+                'balance_after'      => $newQty,
+                'reference_type'     => $in->reference_type,
+                'reference_id'       => $in->reference_id,
+                'reference_no'       => $referenceNo ?? $in->reference_no,
+                'reversal_of_id'     => $in->id,
+                'notes'              => $notes,
+                'created_by_user_id' => $userId,
+            ]);
+        });
+    }
+
     public function transfer(
         Branch $fromBranch,
         Branch $toBranch,

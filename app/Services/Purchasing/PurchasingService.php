@@ -9,7 +9,6 @@ use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\Supplier;
 use App\Models\Tenant\SupplierLedger;
 use App\Models\Tenant\SupplierPayment;
-use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\StockLedger;
 use App\Services\Inventory\InventoryService;
 use Illuminate\Support\Facades\DB;
@@ -212,64 +211,25 @@ class PurchasingService
         }
 
         DB::connection('tenant')->transaction(function () use ($grn, $userId, $reason) {
-            foreach ($grn->lines as $line) {
-                $received = (float) $line->quantity_received;
-                if ($received <= 0) {
-                    continue;
-                }
+            // GRN-VOID-OWN-BATCH-1: every stock entry of this receipt, each exactly once — no longer per line by
+            // product (two lines of the same item, e.g. two batches or a free line, each took back BOTH entries) —
+            // and each from the exact stock row it filled (it used to come off every batch and variant of the
+            // item). The entries carry the LANDED cost the receipt was posted at, which is what comes back out.
+            $entries = StockLedger::query()
+                ->where('reference_type', GoodsReceipt::class)
+                ->where('reference_id', $grn->id)
+                ->where('direction', 'in')
+                ->whereNull('reversal_of_id')
+                ->orderBy('id')
+                ->get();
 
-                // The receipt's own ledger rows carry the LANDED cost it was posted at, which is
-                // what has to come back out — recomputing it would quietly value the reversal
-                // differently from the receipt and leave the stock carrying a cost nobody booked.
-                $entries = StockLedger::query()
-                    ->where('reference_type', GoodsReceipt::class)
-                    ->where('reference_id', $grn->id)
-                    ->where('product_id', $line->product_id)
-                    ->where('direction', 'in')
-                    ->whereNull('reversal_of_id')
-                    ->get();
-
-                foreach ($entries as $entry) {
-                    $onHand = (float) StockBalance::query()
-                        ->where('branch_id', $entry->branch_id)
-                        ->where('product_id', $entry->product_id)
-                        ->sum('quantity_on_hand');
-
-                    if ($onHand < (float) $entry->quantity) {
-                        throw new RuntimeException(
-                            $line->product?->name . ' no longer has the quantity this receipt brought in '
-                            . '(' . rtrim(rtrim(number_format((float) $entry->quantity, 3), '0'), '.') . ' needed, '
-                            . rtrim(rtrim(number_format($onHand, 3), '0'), '.') . ' on hand), '
-                            . 'so the receipt cannot be voided. Use a Purchase Return or a Stock Adjustment.'
-                        );
-                    }
-
-                    $balance = $onHand - (float) $entry->quantity;
-
-                    StockLedger::create([
-                        'branch_id'          => $entry->branch_id,
-                        'product_id'         => $entry->product_id,
-                        'product_variant_id' => $entry->product_variant_id,
-                        'inventory_batch_id' => $entry->inventory_batch_id,
-                        'movement_type'      => 'adjustment_out',
-                        'direction'          => 'out',
-                        'quantity'           => $entry->quantity,
-                        'unit_cost'          => $entry->unit_cost,
-                        'total_cost'         => $entry->total_cost,
-                        'balance_after'      => $balance,
-                        'reference_type'     => GoodsReceipt::class,
-                        'reference_id'       => $grn->id,
-                        'reference_no'       => $grn->grn_no,
-                        'reversal_of_id'     => $entry->id,
-                        'notes'              => 'Goods receipt voided' . ($reason ? ' — ' . $reason : ''),
-                        'created_by_user_id' => $userId,
-                    ]);
-
-                    StockBalance::query()
-                        ->where('branch_id', $entry->branch_id)
-                        ->where('product_id', $entry->product_id)
-                        ->decrement('quantity_on_hand', (float) $entry->quantity);
-                }
+            foreach ($entries as $entry) {
+                $this->inventoryService->reverseReceiptEntry(
+                    $entry,
+                    referenceNo: $grn->grn_no,
+                    notes: 'Goods receipt voided' . ($reason ? ' — ' . $reason : ''),
+                    userId: $userId,
+                );
             }
 
             $grn->forceFill([
