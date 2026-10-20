@@ -19,7 +19,12 @@ final class TenantFeatures
 
     public const REPORT_DELIVERY_V2 = 'report_delivery_v2';
 
-    /** @return array<string, array{label:string, says:string, where:string, needs?:list<string>}> */
+    /**
+     * shots (MASTER-NEW-SCREENS-1): pictures of the screens the switch shows, slug => caption
+     * (public/assets/img/screens/<slug>.jpg), drawn beside the switch in Master.
+     *
+     * @return array<string, array{label:string, says:string, where:string, needs?:list<string>, shots?:array<string,string>}>
+     */
     public static function all(): array
     {
         return [
@@ -27,6 +32,7 @@ final class TenantFeatures
                 'label' => 'New product screen',
                 'says'  => 'One simple screen to add and edit products: pictures first, yes/no questions, code and barcode on the same screen.',
                 'where' => 'Products → Add / Edit',
+                'shots' => ['product-new' => 'Add / edit in tabs', 'product-review' => 'Review before saving'],
             ],
             // PHARMACY-PACKS-1
             self::PACKS => [
@@ -34,20 +40,23 @@ final class TenantFeatures
                 'says'  => 'Say how an item is packed — 1 box = 10 strips, 1 strip = 10 tablets — with a price and a barcode for each pack. Stock is still counted in the smallest unit.',
                 'where' => 'Products → Add / Edit (new product screen)',
                 'needs' => [self::PRODUCT_SCREEN_V2],
+                'shots' => ['product-packs' => 'Packs tab'],
             ],
             // PURCHASING-V2-1
             self::PURCHASING_V2 => [
                 'label' => 'New purchase screens (PO, GRN & Returns)',
                 'says'  => 'Type purchase and return lines in one entry area: scan or search, and each item shows its own boxes (box · strip · tablet, batch, expiry, bonus); Ctrl+Enter puts the line in the list. A return leaves from the batch picked.',
                 'where' => 'Purchasing → Purchase Orders, GRN and Returns → New; tabs on every purchasing page; Inventory → Batches',
+                'shots' => ['grn-entry' => 'GRN entry area', 'purchase-return' => 'Purchase return', 'batches' => 'Batches'],
             ],
             // REPORT-DELIVERY-V2-1
             // MEDICAL-COUNTER-1
             self::MEDICAL_COUNTER => [
                 'label' => 'Pack & batch counter (medical store, mart)',
                 'says'  => 'On the counter each medicine sells as Box, Strip or Tablet; the bill shows the batch and expiry; an expired batch is never sold; a scanned box sells a box.',
-                'where' => 'Sales → POS',
+                'where' => 'Sales → POS; Branches → Edit → "Ask for the prescription at the counter"',
                 'needs' => [self::PACKS],
+                'shots' => ['medical-counter' => 'The counter', 'counter-rx' => 'Prescription popup', 'counter-batch' => 'Change batch', 'bill-preview' => 'The bill'],
             ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',

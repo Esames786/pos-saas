@@ -37,6 +37,7 @@
                             <span class="mu-pill {{ $module->is_active ? 'is-on' : 'is-off' }}">{{ $module->is_active ? 'Active' : 'Inactive' }}</span>
                         </div>
                         <p class="mu-module-desc">{{ $row['description'] }}</p>
+                        @include('central.partials.screen-shots', ['shots' => $row['newer'] ?? [], 'title' => 'Newer screens', 'small' => true])
                         <div class="mu-module-meta">
                             <span>{{ $row['screens'] }} screens · {{ $row['permissions'] }} permissions</span>
                             <span>{{ $row['plans'] }} {{ $row['plans'] === 1 ? 'plan' : 'plans' }}</span>
