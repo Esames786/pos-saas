@@ -42,13 +42,18 @@
                 <tr>
                     <td><code>{{ $return->return_no }}</code></td>
                     <td>
-                        @can('tenant.sales-orders.show')
-                            <a href="{{ url('/sales-orders/' . $return->order?->id) }}">
-                                <code>{{ $return->order?->sale_no }}</code>
-                            </a>
+                        {{-- RETURN-NO-BILL-1: a return without a bill has no sale to link to --}}
+                        @if(! $return->order)
+                            <span class="badge bg-warning-subtle text-warning-emphasis">No bill</span>
                         @else
-                            <code>{{ $return->order?->sale_no }}</code>
-                        @endcan
+                            @can('tenant.sales-orders.show')
+                                <a href="{{ url('/sales-orders/' . $return->order->id) }}">
+                                    <code>{{ $return->order->sale_no }}</code>
+                                </a>
+                            @else
+                                <code>{{ $return->order->sale_no }}</code>
+                            @endcan
+                        @endif
                     </td>
                     <td>{{ $return->branch?->name }}</td>
                     <td>{{ app(\App\Support\TenantClock::class)->format(

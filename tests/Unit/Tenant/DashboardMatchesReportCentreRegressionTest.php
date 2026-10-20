@@ -91,10 +91,12 @@ class DashboardMatchesReportCentreRegressionTest extends TestCase
     {
         $code = $this->service();
 
-        $this->assertStringContainsString("join('sales_orders', 'sales_orders.id', '=', 'sales_returns.sales_order_id')", $code);
-        $this->assertStringContainsString("where('sales_orders.terminal_id'", $code);
+        // RETURN-NO-BILL-1: LEFT join, so a return without a bill still counts; the counter and cashier are the
+        // sale's first (every return with a bill unchanged), the return's own when it has no sale.
+        $this->assertStringContainsString("leftJoin('sales_orders', 'sales_orders.id', '=', 'sales_returns.sales_order_id')", $code);
+        $this->assertStringContainsString('COALESCE(sales_orders.terminal_id, sales_returns.terminal_id) = ?', $code);
         $this->assertStringContainsString("where('sales_orders.order_type'", $code);
-        $this->assertStringContainsString("where('sales_orders.created_by_user_id'", $code);
+        $this->assertStringContainsString('COALESCE(sales_orders.created_by_user_id, sales_returns.created_by_user_id) = ?', $code);
     }
 
     public function test_the_tile_shows_its_working_when_there_were_returns(): void

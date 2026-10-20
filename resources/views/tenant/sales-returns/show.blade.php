@@ -20,13 +20,19 @@
 
             <dt class="col-sm-3">Original Sale</dt>
             <dd class="col-sm-9">
-                @can('tenant.sales-orders.show')
-                    <a href="{{ url('/sales-orders/' . $salesReturn->order?->id) }}">
-                        <code>{{ $salesReturn->order?->sale_no }}</code>
-                    </a>
+                {{-- RETURN-NO-BILL-1: a return without a bill has no sale to link to --}}
+                @if(! $salesReturn->order)
+                    <span class="badge bg-warning-subtle text-warning-emphasis">No bill</span>
+                    <span class="text-muted small ms-1">returned without a bill, at today's price at most</span>
                 @else
-                    <code>{{ $salesReturn->order?->sale_no }}</code>
-                @endcan
+                    @can('tenant.sales-orders.show')
+                        <a href="{{ url('/sales-orders/' . $salesReturn->order->id) }}">
+                            <code>{{ $salesReturn->order->sale_no }}</code>
+                        </a>
+                    @else
+                        <code>{{ $salesReturn->order->sale_no }}</code>
+                    @endcan
+                @endif
             </dd>
 
             <dt class="col-sm-3">Branch</dt>

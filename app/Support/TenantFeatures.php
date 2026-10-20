@@ -16,6 +16,7 @@ final class TenantFeatures
     public const PACKS = 'packs';
     public const PURCHASING_V2 = 'purchasing_v2';
     public const MEDICAL_COUNTER = 'medical_counter';
+    public const RETURN_NO_BILL = 'return_no_bill';
 
     public const REPORT_DELIVERY_V2 = 'report_delivery_v2';
 
@@ -57,6 +58,13 @@ final class TenantFeatures
                 'where' => 'Sales → POS; Branches → Edit → "Ask for the prescription at the counter"',
                 'needs' => [self::PACKS],
                 'shots' => ['medical-counter' => 'The counter', 'counter-rx' => 'Prescription popup', 'counter-batch' => 'Change batch', 'bill-preview' => 'The bill'],
+            ],
+            // RETURN-NO-BILL-1: money goes back with no sale behind it — a business choice, off until switched on.
+            self::RETURN_NO_BILL => [
+                'label' => 'Return without a bill',
+                'says'  => 'A customer can bring an item back without the bill: today\'s price at most, back into its batch or thrown away, a reason every time, and the branch\'s manager PIN when it asks for one.',
+                'where' => 'Sales → Sales Returns → New → "Without bill" (also from the POS Return button)',
+                'shots' => ['return-no-bill' => 'Return without a bill'],
             ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',

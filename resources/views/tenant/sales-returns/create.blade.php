@@ -16,17 +16,51 @@
 @endpush
 
 @section('content')
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
+@php
+    // RETURN-NO-BILL-1: two ways on one screen. The tabs keep what the POS passed (embed, its counter).
+    $mode = $mode ?? 'bill';
+    $noBillOn = \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::RETURN_NO_BILL);
+    $keep = array_filter(['embed' => request('embed'), 'terminal_id' => request('terminal_id')]);
+    $tabUrl = fn (array $extra) => url('/sales-returns/create') . (($q = http_build_query($keep + $extra)) !== '' ? '?' . $q : '');
+@endphp
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
     <div>
         <h1 class="mb-1">Create Sales Return</h1>
-        <p class="fw-medium text-muted mb-0">Search a paid sale, review its details, then return items — stock comes back and refunds post to the ledger.</p>
+        <p class="fw-medium text-muted mb-0">
+            @if($mode === 'no_bill')
+                The customer has no bill: add the items coming back, at today's price at most — stock goes back into its batch and the refund posts to the ledger.
+            @else
+                Search a paid sale, review its details, then return items — stock comes back and refunds post to the ledger.
+            @endif
+        </p>
     </div>
     <a href="{{ url('/sales-returns') }}" class="btn btn-light">Back</a>
 </div>
 
+@if($noBillOn)
+<nav class="mb-3" aria-label="How the item comes back">
+    <ul class="nav nav-pills gap-2">
+        <li class="nav-item">
+            <a class="nav-link {{ $mode === 'bill' ? 'active' : 'border' }}" href="{{ $tabUrl([]) }}" @if($mode === 'bill') aria-current="page" @endif>
+                <i class="ti ti-receipt me-1" aria-hidden="true"></i>With bill
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {{ $mode === 'no_bill' ? 'active' : 'border' }}" href="{{ $tabUrl(['mode' => 'no_bill']) }}" @if($mode === 'no_bill') aria-current="page" @endif>
+                <i class="ti ti-receipt-off me-1" aria-hidden="true"></i>Without bill
+            </a>
+        </li>
+    </ul>
+</nav>
+@endif
+
 @if($errors->any())
     <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
 @endif
+
+@if($mode === 'no_bill')
+    @include('tenant.sales-returns.partials.no-bill')
+@else
 
 {{-- Step 1: find sale — searchable, branch-scoped --}}
 <div class="card mb-3 {{ $salesOrder ? '' : 'border-primary-subtle' }}">
@@ -467,4 +501,5 @@
 })();
 </script>
 @endpush
+@endif
 @endsection

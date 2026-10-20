@@ -22,6 +22,9 @@ class SalesReturnLine extends Model
         'restocked',
         // MEDICAL-COUNTER-1: returned in the pack it was sold in (quantity = packs, base_quantity = tablets)
         'pack_unit_id', 'pack_factor', 'base_quantity',
+        // RETURN-NO-BILL-1: the cost it went back in at (per pack / unit returned) and the batch it went into.
+        // A return with a bill leaves both empty and keeps reading the cost from its sale line.
+        'unit_cost', 'inventory_batch_id',
     ];
 
     protected function casts(): array
@@ -32,6 +35,7 @@ class SalesReturnLine extends Model
             'discount_amount' => 'decimal:2',
             'tax_amount'      => 'decimal:2',
             'line_total'      => 'decimal:2',
+            'unit_cost'       => 'decimal:4',
             'restocked'       => 'boolean',
         ];
     }
