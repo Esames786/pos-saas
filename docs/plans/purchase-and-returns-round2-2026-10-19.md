@@ -475,16 +475,60 @@ Answered 20 Oct (night):
 - Tests: RefundShiftMySqlTest 5/26. Back to the old rule, it goes red.
 
 **Next.**
-- **Back on the shelf yes / no per line.**
-  - "No" writes a wastage line, and the GL must then NOT reverse COGS (`postSalesReturn` always posts
-    Dr 1400 / Cr 5100 today).
-  - Packs and units on the return page (the line's pack name; Strip / Tablet boxes).
+- **Back on the shelf yes / no per line — BUILT 20 Oct (RETURN-RESTOCK-1).**
+  - Each stock-kept line on the return page has "Back on shelf" (default) or "Thrown away" under its Return Qty
+    (a perishable starts at "Thrown away"). A dish (no stock) is not asked.
+  - "Thrown away": no stock comes back, and `postSalesReturn` skips that line's COGS reversal, so its cost stays
+    a loss and 1400 Inventory holds nothing for goods in the bin. The line keeps `restocked = 0`
+    (migration `2026_10_20_000005`, shipped first); no separate wastage entry.
+  - The return line keeps its pack (`pack_unit_id`, `pack_factor`, `base_quantity`); the page shows
+    "1 Strip = 10 Tablet" and steps in whole packs.
+  - Tests: ReturnRestockMySqlTest 4/19 (red with the old rule).
 - **Return without a bill.**
   - `sales_returns.sales_order_id` and `sales_return_lines.sales_order_line_id` are NOT NULL today.
   - About 10 reports inner-join `sales_orders` (SalesReportEngine returnsBase / returnLinesBase,
     SalesReportService, RestaurantReportService, the returns list).
   - Needs nullable keys, left joins, and today's price as the cap. A bigger step.
-- **Branch tax.** Questions for the owner:
-  1. Is the tax inside the price (inclusive) or added on top of the bill?
-  2. A lower rate on card than on cash (as PRA: 5% card / 16% cash for restaurants)?
-  - A product with its own rate keeps it (recommended).
+- **Branch tax** — see section 11.
+
+## 10. RX-BRANCH-SETTING-1 (built 20 Oct)
+
+- Owner: "doctor / patient / seen kya cheez hai — product se link hai ya force? Branch setting mein daal do, pharmacy
+  tenant ke liye; off karun to na poochhe."
+- It is product-linked: the box shows when a medicine marked "needs prescription" (`products.needs_prescription`) is
+  in the cart. In the demo, the antibiotics.
+- Now each branch decides: Branches → Edit → "Ask for the prescription at the counter" (`branches.ask_prescription`,
+  migration `2026_10_20_000006`, default 1 = today's behaviour, shipped first).
+  - Shown and saved only where the medical-store counter is on. Other tenants never see or post it.
+  - Off: the counter does not ask, even for a "needs prescription" medicine.
+- Also: the second Shortcuts button beside "Items" is removed; one button stays in the top bar.
+
+## 11. Branch tax — findings and the questions
+
+**What is there today.**
+- `branches.is_tax_enabled`, `tax_registration_no`, `show_tax_number_on_invoice` are on the branch form, but nothing
+  reads `is_tax_enabled` (only the Edge bootstrap copies it). The switch does nothing.
+- Product tax: `products.is_taxable` + `tax_rate_percent`, always added on top of the price.
+  - The POS works it out in the page; the server keeps a positive tax the page sends, else works it out from the
+    product (`SalePricingService::resolveTaxAmount`).
+- GL: Cr 2200 Sales tax payable. Revenue = grand + discount − tax − service − tip − delivery, so tax inside the
+  price also books right, as long as grand and tax are right. A return reverses its share of tax already.
+
+**Live today** (read-only probe on prod, 20 Oct): all 13 active tenants have every branch switch OFF and no tax
+number. 0 of about 32,000 sales in 30 days carried tax. Only retaildemo has taxed products (13 at 17%).
+So a branch tax that starts OFF changes nobody's bill.
+
+**Proposed.**
+- Branches → Edit → "Tax on the bill" (the existing switch made real): rate %, inside the price or on top,
+  and the tax number on the bill (already there).
+- When on, every line is taxed at the branch rate, except:
+  - a product with its own rate keeps its rate;
+  - a product marked "No tax" (e.g. a tax-free medicine) is not taxed.
+- The bill shows "Sales tax 16%: …" (on top) or "Includes tax …" (inside the price).
+- Touches: POS totals, the 3 write paths + recall (order, hold, split), `SalePricingService`, receipt + bill preview +
+  ESC/POS, returns, the tax column in reports, Edge bootstrap.
+
+**Questions for the owner.**
+1. Inside the price or on top? (Medicine MRP usually already includes tax.) Or a choice per branch?
+2. A lower rate on card than on cash (as PRA: 5% card / 16% cash for restaurants) — needed now?
+3. Tax-free items: mark them "No tax" on the product?
