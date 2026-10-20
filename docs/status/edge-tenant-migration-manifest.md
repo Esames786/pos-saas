@@ -446,7 +446,17 @@ migrations (§2) + `2026_10_06_000001_edge_phase4_offline_customer_identity` + t
 `2026_10_19_000001_add_migration_plan_to_edge_local_updates`); no CLOUD_ONLY file can be in the package. The pre-install report must
 re-run the dry-run on a copy of the LAB DB and quote the hash.
 
-## 7. Owner decisions requested
+## 7. Owner decisions requested — ALL DECIDED 21 Oct 2026 (owner approval "FINAL PRE-RELEASE EXECUTION")
+
+| # | Owner decision (21 Oct 2026) | Additional requirement |
+|---|---|---|
+| D7-1 | **APPROVED, OPTION A** — `2026_10_06_000001_edge_phase4_offline_customer_identity` stays EDGE_REQUIRED / SHIP_AND_RUN; the three OWNER_REVIEW_REQUIRED CLOUD_ONLY migrations are acknowledged CLOUD_ONLY and never execute on the appliance. | The pre-install dry-run on a COPY of the LAB appliance DB must record for the identity migration: customer rows examined; customer rows backfilled; address rows affected; alias table creation status; wall-clock duration; final migration plan hash. No installation may proceed if the actual plan differs from the approved pre-install plan (`UPDATE_MIGRATION_PLAN_MISMATCH` already enforces this). |
+| D7-2 | **APPROVED, OPTION A** — the five baseline Cloud-side empty tables stay EDGE_SCHEMA_SAFE; no reclassification this release; fresh and upgraded appliance schemas stay consistent. | — |
+| D7-3 | **APPROVED, OPTION A** — `2026_10_14_000001_create_online_ordering_tables` stays EDGE_REQUIRED (the `website_price` columns are required by the shared config refresh; the three unused Online Ordering tables may remain empty on the appliance). | Canonical-hygiene note recorded (§7a): the mixed migration could be split in a later generation; this release is NOT delayed for it. |
+| D7-4 | **APPROVED, OPTION C** — `2026_10_15_000002_add_website_order_fields_to_sales_orders` may run ONLY while the appliance is STANDBY / handed back. | For this release: never `-AllowLocalActive`; never migrate while Edge is the branch writer; the copy dry-run records the `sales_orders` row count and the actual ALTER wall time; both go into the pre-install report. Any attempt to run it during LOCAL_ACTIVE is an operational refusal. |
+| D7-5 | **APPROVED, OPTION A** — baseline rule accepted: every migration already applied to the 0.7.0 appliance baseline remains part of the established appliance schema for this manifest generation; the 21 historical rewrite/destructive entries are not reopened. | — |
+
+Defaults as originally proposed (kept for the record):
 
 | # | Decision | Default in this manifest |
 |---|---|---|
@@ -455,6 +465,13 @@ re-run the dry-run on a copy of the LAB DB and quote the hash.
 | D7-3 | The mixed canonical migration `2026_10_14_000001_create_online_ordering_tables` (rule 8): accept as EDGE_REQUIRED (three empty Cloud-only tables on the appliance) or ask canonical to split it. | accept |
 | D7-4 | `2026_10_15_000002_add_website_order_fields_to_sales_orders` on the appliance's largest table (ENUM widen + two unique indexes, LOCK_RISK medium): run during the handed-back window only (the update script already refuses LOCAL_ACTIVE without `-AllowLocalActive`). | run while handed back |
 | D7-5 | Baseline rule itself (§1.5): no 0.7.0 migration is CLOUD_ONLY in this version; 21 baseline destructive/rewrite entries are listed for the record only. | accept |
+
+### 7a. Canonical-hygiene note (D7-3, not for this release)
+
+`2026_10_14_000001_create_online_ordering_tables` mixes bootstrap-section columns (`products.website_price`, `combos.website_price`) with three
+Cloud-only tables. A later canonical generation could split it into a section-columns migration and a Cloud-only migration (a NEW pair, the old
+file guarded as a no-op where already applied). Until then the appliance carries the three tables empty. Owner: "Do NOT delay this release for
+that cleanup."
 
 ## 8. Canonical MASTER migrations — do any affect the Cloud-side Edge API?
 

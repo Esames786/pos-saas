@@ -50,6 +50,18 @@ Edge-only *additive* labels that are not capabilities: `nonCashTenderShort`, `re
   (adding one would change Online's modal), so the gates carry a `SERVER_ONLY_CAPABILITIES` class that asserts: Cloud ON, Edge OFF,
   no view site, the server rule. Bootstrap stays v8 — no `share_partners` / `share_rates` sections.
 
+## 2a. Owner decision §4-2 (21 Oct 2026) — Medical Counter and Purchasing-V2 are NOT built offline in this release
+
+- **Medical counter (MEDICAL-COUNTER-1/-KEYS/-UX/-RX-POPUP, PHARMACY-PACKS-1): capability OFF on every Branch Server.** `PosPageData`
+  key `medicalCounter` is `false` on the Edge runtime, so none of the medical chrome, pack/batch/Rx fields or shortcut handlers render or
+  run in Local Mode — no silent medical / batch / prescription behaviour at the till. The schema it needs
+  (`product_pack_units`, `sales_order_lines.inventory_batch_id/batch_note`, `sales_returns.shift_id/terminal_id`) IS on the appliance
+  (EDGE_REQUIRED, D7), so a later twin needs no new migration. Bootstrap stays v8, the sale envelope stays v3 — no version bump for this.
+- **Purchasing-V2 (batch-picked purchase return, purchase discounts, GRN void by own batch): Cloud-only screens, excluded from the
+  artifact.** The Cloud-specific workflow is never presented as supported offline. The current F3 Edge purchase-return twin
+  (`purchase_returns_grn`: return against a mirrored goods receipt, posted pending sync) keeps the behaviour already tested; the `products`
+  discount columns reach the appliance through the proven upgrade + the next refresh.
+- Both become later Edge capability phases after the current Restaurant / General POS release is certified.
 ## 3. How to add a capability (so the gates stay green)
 
 1. `PosRuntime::CAPABILITY_KEYS` += key; `EdgePosRuntimeFactory::CAPABILITIES[key]` = the Branch Server verdict (Cloud factory fills every key ON).

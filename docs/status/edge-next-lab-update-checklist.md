@@ -14,6 +14,30 @@ LAB Cloud (:9701, export of 7b8f886) and the LAB data are NOT touched by this do
 | 0.4 | Signed package + `edge:local:update` / rollback dry-runs on a COPY of the dev appliance DB (never the LAB) + pre-install report (§8-style) | not run |
 | 0.5 | Full Edge MySQL gate, Feature/Edge, Feature/Pos, both browser suites, same-dataset geometry/pixel pairs — green on the reconciled tree | partly (green on the Edge branch; must be repeated after reconciliation) |
 
+## 0a. Owner-CONFIRMED LAB path (21 Oct 2026, "FINAL PRE-RELEASE EXECUTION" §4-5) — do not reverse the Cloud/appliance order
+
+1. Build the signed release.
+2. `edge:audit-package` = OK (`tenant_migration_problems: []`).
+3. Restore/copy the LAB appliance DB into a DISPOSABLE dry-run DB (never the LAB DB itself).
+4. Run the exact migration/update dry-run (`edge:local:update <package.json> <artifact> --dry-run`) against that copy.
+5. Produce the pre-install report including `PLAN_HASH` and the D7-1 / D7-4 measurements below.
+6. Owner reviews and explicitly approves.
+7. Update the LAB Cloud FIRST (`Start-LabCloud.ps1 -Stop`, then `-Worktree <export of the release commit>`).
+8. Apply the LAB-only data corrections (§1 step 2 below, including the §4-7 Reminder precondition).
+9. Confirm the Cloud advertises bootstrap v8 / capabilities including `customer_create` (heartbeat ACK, `/settings/offline-edge`).
+10. Update the appliance with `-ExpectedPlanHash sha256:…` (the hash from step 5; a different plan stops the update).
+11. Run the second-laptop paired acceptance (same dataset).
+12. Controlled Local Mode exercise ONLY when separately approved by the owner.
+13. Sync / reconcile.
+14. Controlled handback.
+
+**Pre-install report — mandatory measurements from the step-4 dry-run on the COPY (owner D7-1 / D7-4):**
+
+| Item | For | Record |
+|---|---|---|
+| `2026_10_06_000001_edge_phase4_offline_customer_identity` | D7-1 | customer rows examined; customer rows backfilled (`phone_normalized`); address rows affected (`address_uuid` stays NULL on the appliance for pre-existing rows — F1 rule); `customer_uuid_aliases` creation status; wall-clock duration |
+| `2026_10_15_000002_add_website_order_fields_to_sales_orders` | D7-4 | `sales_orders` row count on the copy; actual ALTER wall time (ENUM widen + two unique indexes); confirmation the appliance is STANDBY at install time; `-AllowLocalActive` NOT used |
+| whole plan | D7 | `PLAN_HASH=sha256:…` (edge-migration-plan-v1); CLOUD_ONLY files absent from the package; 0 unclassified |
 ## 1. Order of the LAB update (Cloud FIRST, then the appliance)
 
 The appliance on 0.7.0 reports bootstrap v7. A Cloud on the new build classifies it `software_update_required` and refuses a v8 package
@@ -32,6 +56,11 @@ cleanly (the appliance keeps its last applied revision), so the Cloud can go fir
    - Cashier role / tenant permissions: create the missing permission rows `tenant.shifts.create`, `tenant.shifts.close-form`,
      `tenant.sales-orders.split-bill`, `tenant.pos.customers.quick-store` (the LAB tenant came from `lab-cloud.php`, not
      TenantProvisioner) and grant them to the LAB cashier `LAB2C5D` (user id 1) — nothing else.
+   - **§4-7 (owner, 21 Oct 2026 — for the LAB certification step ONLY, NOT applied now):** grant cashier `LAB2C5D` (user id 1) exactly
+     `tenant.pos.pause-reminders` (D3: existing tenants are not granted silently — this is the explicit LAB grant), and create ONE LAB-only
+     synthetic `category_printer_mappings` row: `print_role = reminder`, terminal = LAB terminal 1, printer = LAB FakePrinter
+     (`supports_reminder = true`), all categories, active. Purpose: W18 (Reminder pause) can be VISIBLY exercised on the real LAB
+     appliance. No other permission, no other mapping.
    - Verify with `permissions:audit-cashier-roles --tenant=<lab tenant>` (read-only report) before and after.
 3. **Config refresh** on the still-0.7.0 appliance is EXPECTED to be refused (`SCHEMA_UNSUPPORTED`, bounded backoff) — record it; the
    appliance keeps working on its last revision. Do not force anything.
