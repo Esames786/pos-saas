@@ -532,3 +532,21 @@ So a branch tax that starts OFF changes nobody's bill.
 1. Inside the price or on top? (Medicine MRP usually already includes tax.) Or a choice per branch?
 2. A lower rate on card than on cash (as PRA: 5% card / 16% cash for restaurants) — needed now?
 3. Tax-free items: mark them "No tax" on the product?
+
+## 12. PACK-QTY-REPORTS-1 — tablet totals in reports (20 Oct)
+
+**The bug.** Report quantities add up `sales_order_lines.quantity`. On the medical counter a pack line keeps
+`quantity` in packs ("2 Strip") and `base_quantity` in tablets (20); a loose line keeps `quantity` in tablets and no
+`base_quantity`. So "2 Strip + 3 Tablet" showed as 5 sold; it is 23 tablets.
+
+**The rule.** Count `COALESCE(base_quantity, quantity)` — the item's own unit (tablets). Lines without a pack have
+`base_quantity` NULL, so every other tenant's numbers stay exactly as they are. Amounts (`quantity × unit_price`) were
+already right and do not change.
+
+**Impact (system map).**
+- Tables read only: `sales_order_lines`, `sales_return_lines` (`base_quantity` on both, live since 19–20 Oct).
+- `SalesReportEngine`: overview (+ narrowed), categories, items, items by category, waiters / order types / counters
+  (sold and returned). The POS quick report and the Report Center read these.
+- `SalesReportService` (older sales report), `DashboardController` top products, `DepartmentReportService` sold qty.
+- Left as they are: deals (a deal is never a pack), the partner-share sheet (Rs per piece), voided-line counts.
+- Tests: MedicalCounterMySqlTest (new: 2 Strip + 3 Tablet = 23, a returned Strip = 10), plus every report test file.
