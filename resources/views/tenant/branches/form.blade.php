@@ -124,6 +124,23 @@
                     </div>
                 </div>
 
+                @if(\App\Support\CounterPacks::enabled())
+                {{-- RX-BRANCH-SETTING-1: medical-store counters only (pharmacy tenants) --}}
+                <div class="col-md-12">
+                    <div class="form-check form-switch">
+                        <input type="hidden" name="ask_prescription" value="0">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                            id="ask_prescription" name="ask_prescription" value="1"
+                            @checked(old('ask_prescription', $branch?->ask_prescription ?? true))>
+                        <label class="form-check-label" for="ask_prescription">Ask for the prescription at the counter</label>
+                    </div>
+                    <div class="form-text">
+                        When a medicine marked "needs prescription" is in the cart, the counter asks for the doctor and the
+                        patient and waits for "Seen" before payment. Switch off and the counter does not ask.
+                    </div>
+                </div>
+                @endif
+
                 <div class="col-md-12">
                     <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" role="switch"
