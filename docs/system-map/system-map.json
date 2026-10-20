@@ -1,24 +1,24 @@
 {
-    "built_at": "2026-10-20T21:45:38+00:00",
+    "built_at": "2026-10-20T23:05:34+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "025728d8",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
-            "head": "4d025f7b",
+            "head": "ecefd7dd",
             "behind_prod": 30,
-            "ahead_of_prod": 182,
-            "last_commit": "2026-10-21\u00b7EDGE: the Cloud compatibility classifier lists offline_customer_create and local_reminder_pause (owner \u00a74-3, informational only)",
+            "ahead_of_prod": 186,
+            "last_commit": "2026-10-21\u00b7docs: O1 cutover-race record (reproduced on the disposable pair, PURELY_IDEMPOTENT, follow-up b3648abd) and \u00a74 item 8 closed in the merged-tree report",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-qrwaiter",
             "branch": "feat/unified-business-20261021",
-            "head": "582f4b70",
+            "head": "c0df44cb",
             "behind_prod": 0,
-            "ahead_of_prod": 3,
-            "last_commit": "2026-10-21\u00b7UB-10 + UB-08 + UB-05 (W2/W1): read-only readiness in Master, standard units, the supplier-return matrix pinned",
+            "ahead_of_prod": 5,
+            "last_commit": "2026-10-21\u00b7UB-10 + UB-04 (W2/W1): a unit with history never changes on any write path; a no-bill return states its refund and restocks only at a known cost",
             "uncommitted_files": 0
         },
         {
@@ -37,6 +37,15 @@
             "behind_prod": 3,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-20\u00b7Docs: return without a bill built (plan section 13); system map rebuilt",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-ubbase",
+            "branch": "(detached)",
+            "head": "025728d8",
+            "behind_prod": 0,
+            "ahead_of_prod": 0,
+            "last_commit": "2026-10-20\u00b7Merge RETURN-NO-BILL-1: return without a bill (Master switch \"Return without a bill\", pharmacydemo only)",
             "uncommitted_files": 0
         },
         {
@@ -264,6 +273,11 @@
             "modified": "2026-10-20"
         },
         {
+            "file": "docs/plans/supplier-net-bill-2026-10-21.md",
+            "title": "Supplier bill net of an earlier return \u2014 posting matrix (design, 21 Oct 2026)",
+            "modified": "2026-10-20"
+        },
+        {
             "file": "docs/plans/unified-business-contracts-2026-10-21.md",
             "title": "Unified business \u2014 contracts (UB-03), 21 Oct 2026",
             "modified": "2026-10-20"
@@ -367,14 +381,9 @@
             "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
             "title": "Catering product model \u2014 what is wrong, and the work to fix it",
             "modified": "2026-09-28"
-        },
-        {
-            "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
-            "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
-            "modified": "2026-09-28"
         }
     ],
-    "git": "582f4b70",
+    "git": "c0df44cb",
     "source": {
         "tenant_db": "pos_test_tenant_qrw",
         "master_db": "pos_test_master_qrw"
