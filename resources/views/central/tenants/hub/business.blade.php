@@ -21,6 +21,10 @@
     $canChange = (bool) auth('central')->user()?->can('central.tenants.business.update');
     $canImpact = (bool) auth('central')->user()?->can('central.tenants.business.impact');
     $impactUrl = $canImpact ? route('central.tenants.business.impact', $tenant) : null;
+    // MASTER-NEW-SCREENS-1: the pictures of the screens a switch shows (only those with a picture file)
+    $featureShots = fn (array $f) => collect($f['shots'] ?? [])
+        ->map(fn ($caption, $slug) => ['url' => \App\Services\Central\ModuleCatalogService::screenPicture($slug), 'caption' => $caption, 'switch' => null])
+        ->filter(fn ($s) => $s['url'] !== null)->values()->all();
     $settingWords = function ($row) use ($businesses, $features) {
         if ($row->setting === 'primary_business') {
             return ['Business type', $businesses[$row->old_value]['label'] ?? ($row->old_value ?: 'Not set'), $businesses[$row->new_value]['label'] ?? ($row->new_value ?: 'Not set')];
@@ -129,6 +133,7 @@
                         <strong>{{ $f['label'] }}</strong>
                         <span>{{ $f['says'] }}</span>
                         <em>Where: {{ $f['where'] }} · now <b>{{ $on ? 'ON' : 'OFF' }}</b>@if(! empty($f['needs'])) · needs: {{ collect($f['needs'])->map(fn ($n) => $features[$n]['label'] ?? $n)->implode(', ') }}@endif</em>
+                        @include('central.partials.screen-shots', ['shots' => $featureShots($f), 'small' => true])
                     </div>
                     <div class="form-check form-switch m-0">
                         <input type="hidden" name="features[{{ $key }}]" value="0">
@@ -147,7 +152,9 @@
         @foreach($features as $key => $f)
             @php $on = (bool) (($tenant->features ?? [])[$key] ?? false); @endphp
             <div class="mu-switch">
-                <div class="mu-switch-text"><strong>{{ $f['label'] }}</strong><span>{{ $f['says'] }}</span><em>Where: {{ $f['where'] }}</em></div>
+                <div class="mu-switch-text"><strong>{{ $f['label'] }}</strong><span>{{ $f['says'] }}</span><em>Where: {{ $f['where'] }}</em>
+                    @include('central.partials.screen-shots', ['shots' => $featureShots($f), 'small' => true])
+                </div>
                 <span class="mu-pill {{ $on ? 'is-on' : 'is-off' }}">{{ $on ? 'ON' : 'OFF' }}</span>
             </div>
         @endforeach

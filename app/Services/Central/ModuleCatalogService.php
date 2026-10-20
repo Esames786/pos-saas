@@ -101,10 +101,68 @@ class ModuleCatalogService
     }
 
     /**
+     * MASTER-NEW-SCREENS-1: screens added after a module's picture was taken (18–20 Oct), each with the tenant
+     * switch that shows it (null = every tenant that has the module). Pictures: public/assets/img/screens/<slug>.jpg.
+     *
+     * @var array<string, list<array{0:string, 1:string, 2:?string}>>  module key => [slug, caption, switch key]
+     */
+    public const NEWER_SCREENS = [
+        'pos' => [
+            ['medical-counter', 'Medical-store counter: Box · Strip · Tablet, batch, expiry', 'medical_counter'],
+            ['counter-rx', 'Prescription popup — Enter, Enter', 'medical_counter'],
+            ['bill-preview', 'Bill: pack, batch and expiry on each line', 'medical_counter'],
+            ['sales-return', 'Return: back on shelf or thrown away', null],
+        ],
+        'catalog' => [
+            ['product-new', 'New product screen in tabs', 'product_screen_v2'],
+            ['product-packs', 'Packs: Box · Strip · Tablet, each with its price and barcode', 'packs'],
+        ],
+        'purchasing' => [
+            ['grn-entry', 'GRN: boxes, strips, batch, expiry, scheme, discount', 'purchasing_v2'],
+            ['po-new', 'Purchase order: the same entry area', 'purchasing_v2'],
+            ['purchase-return', 'Purchase return from the batch picked', 'purchasing_v2'],
+        ],
+        'inventory' => [
+            ['batches', 'Batches: make one before the goods come, change expiry', 'purchasing_v2'],
+            ['expiry', 'Expiry report', null],
+        ],
+        'printing' => [
+            ['layouts-barcode', 'Bill number as a big barcode (layout switch)', null],
+        ],
+        'multi_branch' => [
+            ['branch-rx', 'Branch: ask for the prescription at the counter', 'medical_counter'],
+        ],
+    ];
+
+    /** Public URL of a newer screen's picture (public/assets/img/screens/<slug>.jpg), or null. */
+    public static function screenPicture(string $slug): ?string
+    {
+        $rel = 'assets/img/screens/' . $slug . '.jpg';
+
+        return is_file(public_path($rel)) ? asset($rel) : null;
+    }
+
+    /** @return list<array{url:string, caption:string, switch:?string}> a module's newer screens that have a picture */
+    public static function newerScreens(string $key): array
+    {
+        $features = \App\Support\TenantFeatures::all();
+        $out = [];
+        foreach (self::NEWER_SCREENS[$key] ?? [] as [$slug, $caption, $switch]) {
+            $url = self::screenPicture($slug);
+            if ($url !== null) {
+                $out[] = ['url' => $url, 'caption' => $caption, 'switch' => $switch ? ($features[$switch]['label'] ?? $switch) : null];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Every module with its numbers, in display order.
      *
      * @return Collection<int, array{module:Module, description:string, screens:int, permissions:int,
-     *   main_screens:array<int,string>, plans:int, tenants:int, image:?string}>
+     *   main_screens:array<int,string>, plans:int, tenants:int, image:?string,
+     *   newer:list<array{url:string, caption:string, switch:?string}>}>
      */
     public function all(bool $activeOnly = false): Collection
     {
@@ -141,6 +199,7 @@ class ModuleCatalogService
                 'plans'        => $plans[$m->id] ?? 0,
                 'tenants'      => $tenants[$m->id] ?? 0,
                 'image'        => self::image($m->key),
+                'newer'        => self::newerScreens($m->key),
             ];
         });
     }

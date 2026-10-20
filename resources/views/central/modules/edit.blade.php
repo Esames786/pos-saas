@@ -36,6 +36,7 @@
                 @if($stats['main_screens'] !== [])
                     <p class="mu-module-screens mb-0"><b>Turning this on gives these screens in the sidebar:</b> {{ implode(', ', $stats['main_screens']) }}</p>
                 @endif
+                @include('central.partials.screen-shots', ['shots' => $stats['newer'] ?? [], 'title' => 'Newer screens — click a picture to see it full size'])
             </div>
         </div>
     </section>

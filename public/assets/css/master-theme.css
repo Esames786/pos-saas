@@ -417,6 +417,17 @@ body.master-ui .mu-switch .mu-switch-text span { color: var(--mu-text-2); font-s
 body.master-ui .mu-switch .mu-switch-text em { display: block; font-style: normal; color: var(--mu-text-3); font-size: 11.5px; margin-top: 2px; }
 body.master-ui .mu-switch .form-switch .form-check-input { width: 3.2em; height: 1.7em; cursor: pointer; }
 
+/* MASTER-NEW-SCREENS-1: small pictures of newer screens (a click opens the full picture) */
+body.master-ui .mu-shots { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+body.master-ui .mu-shots-title { flex-basis: 100%; font-size: 11.5px; font-weight: 800; color: var(--mu-text-2); text-transform: uppercase; letter-spacing: .04em; }
+body.master-ui .mu-shots a { display: flex; flex-direction: column; gap: 3px; width: 150px; text-decoration: none; color: var(--mu-text-2); font-size: 11.5px; line-height: 1.3; }
+body.master-ui .mu-shots img { width: 150px; height: 90px; object-fit: cover; object-position: top left; border-radius: 8px; border: 1px solid var(--mu-border-soft); background: var(--mu-surface-2); }
+body.master-ui .mu-shots a:hover img, body.master-ui .mu-shots a:focus-visible img { border-color: #6f8fbd; box-shadow: 0 0 0 2px rgba(111, 143, 189, .35); }
+body.master-ui .mu-shots em { font-style: normal; font-size: 10.5px; color: var(--mu-text-3); }
+body.master-ui .mu-shots.is-small a { width: 104px; font-size: 10.5px; }
+body.master-ui .mu-shots.is-small img { width: 104px; height: 62px; }
+body.master-ui .mu-switch .mu-shots { margin-bottom: 2px; }
+
 /* Timeline (history) */
 body.master-ui .mu-timeline { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 2px solid var(--mu-border); }
 body.master-ui .mu-timeline li { position: relative; padding: 0 0 12px 12px; font-size: 12.5px; color: var(--mu-text-2); }
