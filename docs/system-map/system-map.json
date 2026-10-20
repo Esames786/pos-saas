@@ -1,22 +1,22 @@
 {
-    "built_at": "2026-10-20T17:06:36+00:00",
+    "built_at": "2026-10-20T18:40:50+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
-    "prod_branch_head": "00d15053",
+    "prod_branch_head": "88f7c9f5",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas",
             "branch": "feat/14d-2-plan-upgrade-requests",
-            "head": "00d15053",
+            "head": "88f7c9f5",
             "behind_prod": 0,
             "ahead_of_prod": 0,
-            "last_commit": "2026-10-20\u00b7Merge MASTER-NEW-SCREENS-1: Master shows pictures of the new screens and which switch shows them",
+            "last_commit": "2026-10-20\u00b7Merge RETURN-NO-BILL-1 schema + medClick rename: return sale links nullable, return line unit_cost / batch",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
             "head": "de596bb5",
-            "behind_prod": 20,
+            "behind_prod": 27,
             "ahead_of_prod": 181,
             "last_commit": "2026-10-20\u00b7docs: merged-tree reconciliation report (owner D1-D8 final section) + Team FB browser/baseline evidence + opt-in W18 harness workflow",
             "uncommitted_files": 0
@@ -24,26 +24,26 @@
         {
             "path": "D:/laragon2/www/pos-saas-packs",
             "branch": "feat/pharmacy-packs-20261019",
-            "head": "00d15053",
-            "behind_prod": 0,
+            "head": "a37b15ad",
+            "behind_prod": 2,
             "ahead_of_prod": 0,
-            "last_commit": "2026-10-20\u00b7Merge MASTER-NEW-SCREENS-1: Master shows pictures of the new screens and which switch shows them",
-            "uncommitted_files": 5
+            "last_commit": "2026-10-20\u00b7RETURN-NO-BILL-1 (schema first): a return can be recorded without a bill",
+            "uncommitted_files": 17
         },
         {
             "path": "D:/laragon2/www/pos-saas-qrwaiter",
-            "branch": "feat/void-on-original-date-20261020",
-            "head": "f637694b",
-            "behind_prod": 7,
+            "branch": "plan/units-packs-20261020",
+            "head": "88f7c9f5",
+            "behind_prod": 0,
             "ahead_of_prod": 0,
-            "last_commit": "2026-10-20\u00b7VOID-ON-ORIGINAL-DATE-1: system map rebuilt",
+            "last_commit": "2026-10-20\u00b7Merge RETURN-NO-BILL-1 schema + medClick rename: return sale links nullable, return line unit_cost / batch",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-video",
             "branch": "feat/demo-video-pipeline",
             "head": "8839a77d",
-            "behind_prod": 390,
+            "behind_prod": 397,
             "ahead_of_prod": 16,
             "last_commit": "2026-10-20\u00b7MARKETING-2: poora feature brief (codebase se nikala) + char karobar ke banner prompts",
             "uncommitted_files": 0
@@ -52,7 +52,7 @@
             "path": "D:/laragon2/www/pos-saas-catering",
             "branch": "feat/catering-stacked-material-row-20260909",
             "head": "39333d6f",
-            "behind_prod": 63,
+            "behind_prod": 70,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7DOC-TOOLBAR-OFF-PAPER-1: screen ke button kaghaz se bahar, har document par",
             "uncommitted_files": 0
@@ -61,7 +61,7 @@
             "path": "D:/laragon2/www/pos-saas-masterui",
             "branch": "fix/usage-snapshot-after-demo-reset-20261019",
             "head": "002ee25e",
-            "behind_prod": 84,
+            "behind_prod": 91,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7MASTER-UNIVERSE-1: daily usage reading moves after the demo reset (09:45 PKT)",
             "uncommitted_files": 0
@@ -70,7 +70,7 @@
             "path": "D:/laragon2/www/pos-saas-pharmademo",
             "branch": "feat/pharmacy-demo-20261018",
             "head": "dc84b937",
-            "behind_prod": 105,
+            "behind_prod": 112,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP-1: bird's-eye system map + standing rule for every session",
             "uncommitted_files": 0
@@ -79,7 +79,7 @@
             "path": "D:/laragon2/www/pos-saas-primary",
             "branch": "feat/primary-business-v2-20261019",
             "head": "e99cd7a2",
-            "behind_prod": 100,
+            "behind_prod": 107,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP: rebuilt after PRIMARY-BUSINESS-1 + PRODUCT-SCREEN-V2 (tenant_setting_changes, products.generic_name/strength/needs_prescription)",
             "uncommitted_files": 0
@@ -88,7 +88,7 @@
             "path": "D:/laragon2/www/pos-saas-hideamounts",
             "branch": "fix/billing-hide-void-20261017",
             "head": "37515a12",
-            "behind_prod": 120,
+            "behind_prod": 127,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7BILLING-HIDE-VOID-1: void invoice tenant ko nahi dikhti",
             "uncommitted_files": 0
@@ -97,7 +97,7 @@
             "path": "D:/laragon2/www/pos-saas-partnershare",
             "branch": "feat/partner-share-report-20261014",
             "head": "cbe5616b",
-            "behind_prod": 108,
+            "behind_prod": 115,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7PARTNER-SHARE-1: plan doc \u2014 test aur suite ki ginti, purani misaal par label",
             "uncommitted_files": 0
@@ -106,7 +106,7 @@
             "path": "D:/laragon2/www/pos-saas-pharmacy-audit",
             "branch": "(detached)",
             "head": "70c4e434",
-            "behind_prod": 107,
+            "behind_prod": 114,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7Merge PARTNER-SHARE-1: ek dish, do kitchen \u2014 Partner Share rates + Report Center section",
             "uncommitted_files": 0
@@ -115,7 +115,7 @@
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
             "head": "c0741579",
-            "behind_prod": 129,
+            "behind_prod": 136,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-16\u00b7AREA-WINDOW-LAYOUT-1: area list hamesha nazar aaye (kam se kam ~4 rows), qareebi jagahen aik scroll row me",
             "uncommitted_files": 0
@@ -124,7 +124,7 @@
             "path": "D:/laragon2/www/pos-saas-catlist",
             "branch": "feat/kk-purchase-items-import-20261014",
             "head": "7e5d8dea",
-            "behind_prod": 182,
+            "behind_prod": 189,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-14\u00b7PURCHASE-ITEMS-IMPORT-1: purane software ke khareed wale items, mehfooz jhandon ke saath",
             "uncommitted_files": 0
@@ -133,7 +133,7 @@
             "path": "D:/laragon2/www/pos-saas-web-i18n",
             "branch": "feat/recaptcha-trial-20261008",
             "head": "a8191e1d",
-            "behind_prod": 285,
+            "behind_prod": 292,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-08\u00b7RECAPTCHA-TRIAL-1: Start Trial par \"I'm not a robot\" (reCAPTCHA v2), en + ar",
             "uncommitted_files": 0
@@ -142,7 +142,7 @@
             "path": "D:/laragon2/www/pos-saas-voice",
             "branch": "research/voice-ordering-agent",
             "head": "79c76679",
-            "behind_prod": 327,
+            "behind_prod": 334,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-05\u00b7VOICE-ORDER-1: vendor options + bahar wale mashware ki do ghaltiyan darj",
             "uncommitted_files": 0
@@ -151,7 +151,7 @@
             "path": "D:/laragon2/www/pos-saas-tawakal",
             "branch": "feat/tawakal_kashif",
             "head": "b4870c0e",
-            "behind_prod": 591,
+            "behind_prod": 598,
             "ahead_of_prod": 0,
             "last_commit": "2026-09-06\u00b7Merge prod branch into tawakal \u2014 76 commits ka pichla kaam",
             "uncommitted_files": 0
@@ -160,7 +160,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/history-urdu-ux",
             "branch": "fix/catering-history-urdu-ux-20260829",
             "head": "da8e2ed3",
-            "behind_prod": 720,
+            "behind_prod": 727,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7Improve catering operator UX and Urdu print readability",
             "uncommitted_files": 0
@@ -169,7 +169,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/quoted-rate-persistence",
             "branch": "fix/catering-quoted-rate-persistence-20260828",
             "head": "e020c390",
-            "behind_prod": 726,
+            "behind_prod": 733,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7fix(catering): persist punched customer rates",
             "uncommitted_files": 0
@@ -178,7 +178,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/catering-client-feedback",
             "branch": "fix/catering-client-feedback-20260827",
             "head": "893d8e44",
-            "behind_prod": 739,
+            "behind_prod": 746,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-27\u00b7fix(catering): tighten time and item entry UX",
             "uncommitted_files": 0
@@ -187,7 +187,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert-v2",
             "branch": "(detached)",
             "head": "ec09b6a6",
-            "behind_prod": 788,
+            "behind_prod": 795,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-22\u00b7KASHIF-LEGACY-ALIGN-5/6: Complimentary in one click, and a bill you can read",
             "uncommitted_files": 1
@@ -196,7 +196,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-parity",
             "branch": "feat/catering-operator-completion-v1",
             "head": "008ba947",
-            "behind_prod": 808,
+            "behind_prod": 815,
             "ahead_of_prod": 4,
             "last_commit": "2026-08-22\u00b7CATERING: keep event create and edit inside the operator workspace",
             "uncommitted_files": 0
@@ -205,7 +205,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-catalogue",
             "branch": "data/kashif-catalogue-prep-v1",
             "head": "73807eb9",
-            "behind_prod": 811,
+            "behind_prod": 818,
             "ahead_of_prod": 1,
             "last_commit": "2026-08-21\u00b7CATERING: transcribe the Kashif catalogue without inventing prices",
             "uncommitted_files": 0
@@ -214,7 +214,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-product",
             "branch": "audit/catering-product-completeness-v1",
             "head": "ef184b6a",
-            "behind_prod": 857,
+            "behind_prod": 864,
             "ahead_of_prod": 18,
             "last_commit": "2026-08-21\u00b7AUDIT: assess Catering product completeness",
             "uncommitted_files": 0
@@ -223,7 +223,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex",
             "branch": "audit/catering-e2e-qa-v1",
             "head": "f8fa2205",
-            "behind_prod": 857,
+            "behind_prod": 864,
             "ahead_of_prod": 13,
             "last_commit": "2026-08-20\u00b7DOCS: preserve independent Catering architecture audit",
             "uncommitted_files": 0
@@ -232,7 +232,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert",
             "branch": "audit/catering-rate-impact-cert-v1",
             "head": "55ad8d5e",
-            "behind_prod": 857,
+            "behind_prod": 864,
             "ahead_of_prod": 17,
             "last_commit": "2026-08-20\u00b7TEST: expose Catering draft writer send races",
             "uncommitted_files": 0
@@ -241,7 +241,7 @@
             "path": "D:/laragon2/www/pos-saas-cloud",
             "branch": "feat/cloud-billing-onboarding-v1",
             "head": "9c30ea46",
-            "behind_prod": 923,
+            "behind_prod": 930,
             "ahead_of_prod": 8,
             "last_commit": "2026-08-15\u00b7CLOUD-BILLING E2E: real monthly + yearly signup lifecycle (throwaway tenants)",
             "uncommitted_files": 0
@@ -374,7 +374,7 @@
             "modified": "2026-10-19"
         }
     ],
-    "git": "00d15053",
+    "git": "a37b15ad",
     "source": {
         "tenant_db": "pos_test_tenant_mui_medc",
         "master_db": "pos_test_master_mui"
@@ -382,7 +382,7 @@
     "counts": {
         "tables": 225,
         "foreign_keys": 425,
-        "inferred_links": 210,
+        "inferred_links": 211,
         "screens": 730
     },
     "tables": [
@@ -13506,6 +13506,10 @@
                 {
                     "table": "sales_order_lines",
                     "col": "inventory_batch_id"
+                },
+                {
+                    "table": "sales_return_lines",
+                    "col": "inventory_batch_id"
                 }
             ],
             "models": [
@@ -13722,19 +13726,19 @@
                 },
                 {
                     "route": "tenant.sales-returns.index",
-                    "why": "via SalesReturnService"
+                    "why": "model InventoryBatch"
                 },
                 {
                     "route": "tenant.sales-returns.create",
-                    "why": "via SalesReturnService"
+                    "why": "model InventoryBatch"
                 },
                 {
                     "route": "tenant.sales-returns.store",
-                    "why": "via SalesReturnService"
+                    "why": "model InventoryBatch"
                 },
                 {
                     "route": "tenant.sales-returns.show",
-                    "why": "via SalesReturnService"
+                    "why": "model InventoryBatch"
                 },
                 {
                     "route": "tenant.kitchen.wastages.index",
@@ -18827,6 +18831,22 @@
                     "why": "via PackUnits"
                 },
                 {
+                    "route": "tenant.sales-returns.index",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.sales-returns.create",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.sales-returns.store",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.sales-returns.show",
+                    "why": "via PackUnits"
+                },
+                {
                     "route": "tenant.api.catalog.barcode.lookup",
                     "why": "model ProductBarcode"
                 },
@@ -18871,7 +18891,7 @@
                     "why": "model ProductBarcode"
                 }
             ],
-            "used_by_count": 31
+            "used_by_count": 35
         },
         {
             "name": "product_branch_prices",
@@ -19194,6 +19214,22 @@
                     "why": "via CounterPacks"
                 },
                 {
+                    "route": "tenant.sales-returns.index",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.create",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.store",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.show",
+                    "why": "via SalesReturnService"
+                },
+                {
                     "route": "tenant.held-sales.index",
                     "why": "via CounterPacks"
                 },
@@ -19286,7 +19322,7 @@
                     "why": "via PackUnits"
                 }
             ],
-            "used_by_count": 57
+            "used_by_count": 61
         },
         {
             "name": "product_translations",
@@ -19911,6 +19947,22 @@
                     "why": "via InventoryService"
                 },
                 {
+                    "route": "tenant.sales-returns.index",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.create",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.store",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.show",
+                    "why": "via SalesReturnService"
+                },
+                {
                     "route": "tenant.held-sales.index",
                     "why": "model ProductVariant"
                 },
@@ -20035,7 +20087,7 @@
                     "why": "via ConsumptionPostingService"
                 }
             ],
-            "used_by_count": 97
+            "used_by_count": 101
         },
         {
             "name": "production_orders",
@@ -21338,6 +21390,22 @@
                     "why": "model Product"
                 },
                 {
+                    "route": "tenant.sales-returns.index",
+                    "why": "model Product"
+                },
+                {
+                    "route": "tenant.sales-returns.create",
+                    "why": "model Product"
+                },
+                {
+                    "route": "tenant.sales-returns.store",
+                    "why": "model Product"
+                },
+                {
+                    "route": "tenant.sales-returns.show",
+                    "why": "model Product"
+                },
+                {
                     "route": "tenant.held-sales.index",
                     "why": "model Product"
                 },
@@ -22050,7 +22118,7 @@
                     "why": "model Product"
                 }
             ],
-            "used_by_count": 341
+            "used_by_count": 345
         },
         {
             "name": "promotion_targets",
@@ -27047,7 +27115,9 @@
                 "pack_unit_id bigint unsigned",
                 "pack_factor int unsigned",
                 "base_quantity decimal(15,3)",
-                "restocked tinyint(1)"
+                "restocked tinyint(1)",
+                "unit_cost decimal(15,4)",
+                "inventory_batch_id bigint unsigned"
             ],
             "fk_out": [
                 {
@@ -27075,6 +27145,10 @@
                 {
                     "col": "pack_unit_id",
                     "table": "units"
+                },
+                {
+                    "col": "inventory_batch_id",
+                    "table": "inventory_batches"
                 }
             ],
             "domain": "Sales & POS",
@@ -27083,8 +27157,25 @@
             "models": [
                 "SalesReturnLine"
             ],
-            "used_by": [],
-            "used_by_count": 0
+            "used_by": [
+                {
+                    "route": "tenant.sales-returns.index",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.create",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.store",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.show",
+                    "why": "via SalesReturnService"
+                }
+            ],
+            "used_by_count": 4
         },
         {
             "name": "sales_returns",
@@ -28534,6 +28625,22 @@
                     "why": "via InventoryService"
                 },
                 {
+                    "route": "tenant.sales-returns.index",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.create",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.store",
+                    "why": "via SalesReturnService"
+                },
+                {
+                    "route": "tenant.sales-returns.show",
+                    "why": "via SalesReturnService"
+                },
+                {
                     "route": "tenant.held-sales.index",
                     "why": "via CounterPacks"
                 },
@@ -28706,7 +28813,7 @@
                     "why": "model StockBalance"
                 }
             ],
-            "used_by_count": 110
+            "used_by_count": 114
         },
         {
             "name": "stock_count_lines",
@@ -31893,6 +32000,22 @@
                     "why": "via UnitConversionService"
                 },
                 {
+                    "route": "tenant.sales-returns.index",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.sales-returns.create",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.sales-returns.store",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.sales-returns.show",
+                    "why": "via PackUnits"
+                },
+                {
                     "route": "tenant.api.pos.totals.quote",
                     "why": "via UnitConversionService"
                 },
@@ -32325,7 +32448,7 @@
                     "why": "model Unit"
                 }
             ],
-            "used_by_count": 141
+            "used_by_count": 145
         },
         {
             "name": "user_printer_settings",
@@ -38428,6 +38551,22 @@
                     "why": "via TenantFeatures"
                 },
                 {
+                    "route": "tenant.sales-returns.index",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.sales-returns.create",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.sales-returns.store",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.sales-returns.show",
+                    "why": "via TenantFeatures"
+                },
+                {
                     "route": "tenant.billing.index",
                     "why": "via SubscriptionBillingService"
                 },
@@ -38548,7 +38687,7 @@
                     "why": "via Business"
                 }
             ],
-            "used_by_count": 143
+            "used_by_count": 147
         },
         {
             "name": "users",
@@ -44531,17 +44670,25 @@
             "group": "tenant.sales-returns",
             "tables": [
                 "branches",
+                "inventory_batches",
                 "manager_approvals",
+                "products",
                 "sales_orders",
                 "sales_returns",
                 "shifts",
                 "terminals",
-                "inventory_batches",
+                "product_pack_units",
+                "product_variants",
                 "sales_ledgers",
                 "sales_order_lines",
+                "sales_return_lines",
+                "stock_balances",
                 "stock_ledgers",
                 "users",
+                "tenants",
                 "manager_pins",
+                "product_barcodes",
+                "units",
                 "restaurant_tables",
                 "restaurant_table_sessions"
             ]
@@ -44554,17 +44701,25 @@
             "group": "tenant.sales-returns",
             "tables": [
                 "branches",
+                "inventory_batches",
                 "manager_approvals",
+                "products",
                 "sales_orders",
                 "sales_returns",
                 "shifts",
                 "terminals",
-                "inventory_batches",
+                "product_pack_units",
+                "product_variants",
                 "sales_ledgers",
                 "sales_order_lines",
+                "sales_return_lines",
+                "stock_balances",
                 "stock_ledgers",
                 "users",
+                "tenants",
                 "manager_pins",
+                "product_barcodes",
+                "units",
                 "restaurant_tables",
                 "restaurant_table_sessions"
             ]
@@ -44577,17 +44732,25 @@
             "group": "tenant.sales-returns",
             "tables": [
                 "branches",
+                "inventory_batches",
                 "manager_approvals",
+                "products",
                 "sales_orders",
                 "sales_returns",
                 "shifts",
                 "terminals",
-                "inventory_batches",
+                "product_pack_units",
+                "product_variants",
                 "sales_ledgers",
                 "sales_order_lines",
+                "sales_return_lines",
+                "stock_balances",
                 "stock_ledgers",
                 "users",
+                "tenants",
                 "manager_pins",
+                "product_barcodes",
+                "units",
                 "restaurant_tables",
                 "restaurant_table_sessions"
             ]
@@ -44600,17 +44763,25 @@
             "group": "tenant.sales-returns",
             "tables": [
                 "branches",
+                "inventory_batches",
                 "manager_approvals",
+                "products",
                 "sales_orders",
                 "sales_returns",
                 "shifts",
                 "terminals",
-                "inventory_batches",
+                "product_pack_units",
+                "product_variants",
                 "sales_ledgers",
                 "sales_order_lines",
+                "sales_return_lines",
+                "stock_balances",
                 "stock_ledgers",
                 "users",
+                "tenants",
                 "manager_pins",
+                "product_barcodes",
+                "units",
                 "restaurant_tables",
                 "restaurant_table_sessions"
             ]

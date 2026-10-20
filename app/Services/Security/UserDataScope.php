@@ -233,6 +233,27 @@ class UserDataScope
         return $query;
     }
 
+    /**
+     * RETURN-NO-BILL-1: returns in the user's scope (a SalesReturn query). A return with a bill is in scope through
+     * its sale, exactly as before; one without a bill has no sale, so its own branch and counter decide (it belongs to
+     * no order type, so an order-type scope does not hide it).
+     */
+    public function applyToReturns($query, ?User $user)
+    {
+        return $query->where(function ($w) use ($user) {
+            $w->whereHas('order', fn ($so) => $this->applyToSales($so, $user))
+                ->orWhere(function ($nb) use ($user) {
+                    $nb->whereNull('sales_returns.sales_order_id');
+                    if ($this->hasBranchAssignments($user)) {
+                        $nb->whereIn('sales_returns.branch_id', $this->branchIds($user));
+                    }
+                    if ($terminals = $this->terminalIds($user)) {
+                        $nb->whereIn('sales_returns.terminal_id', $terminals);
+                    }
+                });
+        });
+    }
+
     /** True when this specific sale is outside the user's scope (403 guard for show/print pages). */
     public function deniesSale(?User $user, $sale): bool
     {

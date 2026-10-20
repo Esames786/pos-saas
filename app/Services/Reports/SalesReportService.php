@@ -80,15 +80,18 @@ class SalesReportService
     {
         $branchIds = $this->resolveBranchIds($filters);
 
+        // RETURN-NO-BILL-1: LEFT join — a return without a bill has no sale and must still come off. The counter and
+        // the cashier are the SALE's (unchanged for every return with a bill), the return's own when there is none;
+        // a chosen order type means returns of that kind of sale (none without a bill).
         return \App\Models\Tenant\SalesReturn::query()
-            ->join('sales_orders', 'sales_orders.id', '=', 'sales_returns.sales_order_id')
+            ->leftJoin('sales_orders', 'sales_orders.id', '=', 'sales_returns.sales_order_id')
             ->where('sales_returns.status', 'posted')
             ->when($branchIds, fn ($q) => $q->whereIn('sales_returns.branch_id', $branchIds))
             ->when(!empty($filters['date_from']), fn ($q) => $q->whereRaw('COALESCE(sales_returns.business_date, DATE(sales_returns.return_date)) >= ?', [$filters['date_from']]))
             ->when(!empty($filters['date_to']),   fn ($q) => $q->whereRaw('COALESCE(sales_returns.business_date, DATE(sales_returns.return_date)) <= ?', [$filters['date_to']]))
-            ->when(!empty($filters['terminal_id']), fn ($q) => $q->where('sales_orders.terminal_id', $filters['terminal_id']))
+            ->when(!empty($filters['terminal_id']), fn ($q) => $q->whereRaw('COALESCE(sales_orders.terminal_id, sales_returns.terminal_id) = ?', [$filters['terminal_id']]))
             ->when(!empty($filters['order_type']), fn ($q) => $q->where('sales_orders.order_type', $filters['order_type']))
-            ->when(!empty($filters['cashier_id']), fn ($q) => $q->where('sales_orders.created_by_user_id', $filters['cashier_id']))
+            ->when(!empty($filters['cashier_id']), fn ($q) => $q->whereRaw('COALESCE(sales_orders.created_by_user_id, sales_returns.created_by_user_id) = ?', [$filters['cashier_id']]))
             ->selectRaw('COALESCE(sales_returns.business_date, DATE(sales_returns.return_date)) as day, COALESCE(SUM(sales_returns.grand_total), 0) as amount')
             ->groupByRaw('COALESCE(sales_returns.business_date, DATE(sales_returns.return_date))')
             ->pluck('amount', 'day')
@@ -216,7 +219,7 @@ class SalesReportService
             ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v));
         // A return's order type / terminal live on its originating sales order, so scope through it.
         if ($scope->isScoped($scopeUser)) {
-            $returnQuery->whereHas('order', fn ($so) => $scope->applyToSales($so, $scopeUser));
+            $scope->applyToReturns($returnQuery, $scopeUser);   // RETURN-NO-BILL-1: one without a bill by its own branch / counter
         }
 
         if ($branchId) {
@@ -450,7 +453,7 @@ class SalesReportService
 
         // A return's order type / terminal live on its originating sales order, so scope through it.
         if ($scope->isScoped($scopeUser)) {
-            $returnQuery->whereHas('order', fn ($so) => $scope->applyToSales($so, $scopeUser));
+            $scope->applyToReturns($returnQuery, $scopeUser);   // RETURN-NO-BILL-1: one without a bill by its own branch / counter
         }
 
         // ⚠️ Return ka apna `order_type` khaana nahi hota — wo us ke ASAL bill par hota hai. Agar ye

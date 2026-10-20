@@ -422,7 +422,9 @@ class JournalPostingService
 
             $return->loadMissing(['order', 'lines.orderLine']);
 
-            $revenueCode = in_array($return->order?->order_type, ['dine_in', 'takeaway', 'delivery'], true) ? '4120' : '4110';
+            // RETURN-NO-BILL-1: a return without a bill came back over a counter, where every sale is booked as
+            // takeaway / dine-in / delivery (4120) — reversing 4110 would leave 4120 too high and 4110 below zero.
+            $revenueCode = ! $return->order || in_array($return->order->order_type, ['dine_in', 'takeaway', 'delivery'], true) ? '4120' : '4110';
 
             // BUG-027 FIX (GL): resolve refund account from original sale payment method
             // mapping instead of hardcoded CASH-MAIN/BANK-MAIN codes which break for any
@@ -486,7 +488,8 @@ class JournalPostingService
                 if ($line->restocked === false || $line->restocked === 0 || $line->restocked === '0') {
                     continue;
                 }
-                $cogs += (float) $line->quantity * (float) ($line->orderLine?->unit_cost ?? 0);
+                // RETURN-NO-BILL-1: a line that kept the cost it went back in at (no sale line to read) uses it.
+                $cogs += (float) $line->quantity * (float) ($line->unit_cost ?? $line->orderLine?->unit_cost ?? 0);
             }
             $cogs = round($cogs, 4);
             if ($cogs > 0) {

@@ -185,7 +185,8 @@ class RefundShiftMySqlTest extends MySqlTenantTestCase
     {
         $m = new \ReflectionMethod(SalesReturnController::class, 'refundShiftId');
 
-        return $m->invoke(app(SalesReturnController::class), $order, $terminalId);
+        // RETURN-NO-BILL-1: the controller asks by branch (a return without a bill has no sale).
+        return $m->invoke(app(SalesReturnController::class), (int) $order->branch_id, $terminalId);
     }
 
     private function report(string $day, array $extra = []): array

@@ -588,3 +588,24 @@ NULLABLE (FKs kept). Relaxing NOT NULL is invisible to today's code. Small table
 - Tests: 1 unit test asserts the INNER join text (`DashboardMatchesReportCentreRegressionTest`); ~20 test files insert
   returns with a sale (unchanged — a bill return stays exactly as today).
 - No Edge code touches returns.
+
+**Built 20 Oct (RETURN-NO-BILL-1).** Schema shipped first (`88f7c9f5`, 13/13 tenants). Then:
+- Master switch **"Return without a bill"** (`return_no_bill`), off for every tenant; on for pharmacydemo (also in
+  DemoProvisioner, so the nightly rebuild keeps it). Off = no tab, and the search / save answer 404.
+- Same screen: Sales Returns → New gets **With bill · Without bill** (the POS Return button opens the same page, its
+  counter and `embed` kept). Item search is the screen's own JSON (`?mode=no_bill&lookup=`), so no new permission.
+- `SalesReturnService::processNoBillReturn`: no variant named = the item's default variant (where its stock sits);
+  whole packs; price ≤ today's pack price (branch price → variant → item; a pack's own price, else factor × base);
+  item with an expiry put back on the shelf needs its batch (picked, or typed batch + MM/YY → month end); cost =
+  that batch's average, else the item's, else its buying price; the line keeps `unit_cost` and `inventory_batch_id`;
+  refund into the counter's open shift (REFUND-SHIFT-1); sales ledger row without a sale; GL as any return.
+- GL: no sale → revenue 4120 (every counter sale is booked there); COGS reversal reads the line's own cost first.
+- Reports: the two engine joins and the old summary join are LEFT; cashier = sale's, else the return's; counter
+  (old summary) = sale's, else the return's; item name falls back to the product's; an operator's order-type scope
+  keeps his returns without a bill (`UserDataScope::applyToReturns` — also the returns list and the daily figures).
+  The sales ledger page keeps hiding rows without a sale from counter-limited users (deliberate, it has no counter).
+- Views: list and return page say "No bill" instead of a link to nothing.
+- Tests (MedicalCounterMySqlTest +3): stock back into the batch picked, line cost + batch kept, shift pays it, GL
+  4120 / cash / 1400 / 5100 balanced, report counts the 10 tablets, "No bill" in the list; price above today's,
+  missing batch, missing reason refused and nothing posted; thrown away = no stock; typed batch 09/28 → 2028-09-30;
+  switch off = no tab and 404. Proven red: old GL (4120 = 0) and old report join (0 tablets instead of 10).

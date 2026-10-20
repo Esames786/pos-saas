@@ -371,6 +371,105 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
     }
 
     /** @return array{0: Product, 1: ProductPackUnit} */
+    public function test_a_return_without_a_bill_puts_its_tablets_back_into_the_batch_and_books_it(): void
+    {
+        // RETURN-NO-BILL-1
+        $this->setFeatures(self::ON + ['return_no_bill' => true]);
+        [$p, $strip] = $this->panadol();
+        $batch = $this->liveBatches($p)->first();
+        $before = $this->batchQty($batch);
+        $shift = \App\Models\Tenant\Shift::where('terminal_id', $this->terminal()->id)->where('status', 'open')->firstOrFail();
+        $cashRefundsBefore = (float) $shift->total_cash_refunds;
+        $engine = app(SalesReportEngine::class);
+        $f = $engine->normalizeFilters(['date_from' => now()->subDays(3)->toDateString(), 'date_to' => now()->addDays(3)->toDateString(), 'branch_ids' => [$this->branchId()]]);
+        $reportBefore = $engine->overview($f);
+
+        // The screen's own search: today's price of each pack, and the item's batches here.
+        $items = $this->owner()->getJson($this->url('/sales-returns/create?mode=no_bill&branch_id=' . $this->branchId() . '&lookup=Panadol'))->assertOk()->json('items');
+        $hit = collect($items)->firstWhere('product_id', $p->id);
+        $this->assertNotNull($hit, 'Panadol is found');
+        $this->assertSame('Strip', collect($hit['units'])->firstWhere('id', $strip->id)['name']);
+        $this->assertEqualsWithDelta(52.5, collect($hit['units'])->firstWhere('id', $strip->id)['price'], 0.001, "today's Strip price");
+        $this->assertContains($batch->id, array_column($hit['batches'], 'id'));
+        $this->assertNotNull($hit['variant_id'], 'its default variant — where its stock sits');
+
+        $this->owner()->post($this->url('/sales-returns'), [
+            'mode' => 'no_bill', 'branch_id' => $this->branchId(), 'terminal_id' => $this->terminal()->id,
+            'reason' => 'Doctor changed the medicine', 'refund_method' => 'cash', 'refund_amount' => 52.5,
+            'lines' => [['product_id' => $p->id, 'product_variant_id' => $hit['variant_id'], 'pack_unit_id' => $strip->id,
+                'quantity' => 1, 'unit_price' => 52.5, 'restock' => 1, 'inventory_batch_id' => $batch->id]],
+        ])->assertSessionHasNoErrors();
+
+        $return = \App\Models\Tenant\SalesReturn::latest('id')->firstOrFail();
+        $this->assertNull($return->sales_order_id, 'no bill behind it');
+        $this->assertEqualsWithDelta(52.5, (float) $return->grand_total, 0.001);
+        $this->assertEqualsWithDelta($before + 10, $this->batchQty($batch), 0.001, '1 Strip = 10 tablets back into the batch picked');
+        $line = $return->lines()->firstOrFail();
+        $this->assertSame(10, (int) $line->pack_factor);
+        $this->assertSame((int) $batch->id, (int) $line->inventory_batch_id);
+        $this->assertGreaterThan(0, (float) $line->unit_cost, 'it keeps the cost it went back in at');
+
+        // REFUND-SHIFT-1: the counter's open shift pays it.
+        $this->assertSame((int) $shift->id, (int) $return->shift_id);
+        $this->assertEqualsWithDelta($cashRefundsBefore + 52.5, (float) $shift->fresh()->total_cash_refunds, 0.001);
+
+        // The books: counter sales (4120) back, cash out, and the cost back into stock.
+        $gl = [];
+        foreach (DB::connection('tenant')->table('journal_lines')->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->where('journal_entries.source_type', 'sales_return')->where('journal_entries.source_id', $return->id)
+            ->get(['accounts.code', 'journal_lines.debit', 'journal_lines.credit']) as $l) {
+            $gl[$l->code] = ['debit' => ($gl[$l->code]['debit'] ?? 0) + (float) $l->debit, 'credit' => ($gl[$l->code]['credit'] ?? 0) + (float) $l->credit];
+        }
+        $this->assertEqualsWithDelta(52.5, $gl['4120']['debit'] ?? 0, 0.001, 'counter sales come back');
+        $this->assertEqualsWithDelta((float) $line->unit_cost, $gl['1400']['debit'] ?? 0, 0.001, 'its cost back into Inventory');
+        $this->assertEqualsWithDelta((float) $line->unit_cost, $gl['5100']['credit'] ?? 0, 0.001);
+        $this->assertEqualsWithDelta(array_sum(array_column($gl, 'debit')), array_sum(array_column($gl, 'credit')), 0.001, 'balanced');
+
+        // Reports count it: the refund and its 10 tablets.
+        $reportAfter = $engine->overview($f);
+        $this->assertEqualsWithDelta(10, $reportAfter['returned_qty'] - $reportBefore['returned_qty'], 0.001, 'a return without a bill is not dropped');
+        $this->assertStringContainsString('No bill', $this->owner()->get($this->url('/sales-returns'))->getContent());
+    }
+
+    public function test_a_return_without_a_bill_never_pays_more_than_today_and_needs_its_batch_and_a_reason(): void
+    {
+        $this->setFeatures(self::ON + ['return_no_bill' => true]);
+        [$p, $strip] = $this->panadol();
+        $base = ['mode' => 'no_bill', 'branch_id' => $this->branchId(), 'refund_method' => 'cash', 'reason' => 'Wrong strength'];
+        $line = ['product_id' => $p->id, 'pack_unit_id' => $strip->id, 'quantity' => 1, 'restock' => 1];
+        $count = \App\Models\Tenant\SalesReturn::count();
+
+        $this->owner()->post($this->url('/sales-returns'), $base + ['lines' => [$line + ['unit_price' => 60, 'inventory_batch_id' => $this->liveBatches($p)->first()->id]]])
+            ->assertSessionHasErrors('return');
+        $this->assertStringContainsString('52.50 today', (string) session('errors')->first('return'), 'more than today\'s price is refused');
+
+        $this->owner()->post($this->url('/sales-returns'), $base + ['lines' => [$line + ['unit_price' => 52.5]]])->assertSessionHasErrors('return');
+        $this->assertStringContainsString('pick its batch', (string) session('errors')->first('return'), 'a medicine with an expiry needs its batch');
+
+        $this->owner()->post($this->url('/sales-returns'), ['reason' => ''] + $base + ['lines' => [$line + ['unit_price' => 52.5]]])->assertSessionHasErrors('reason');
+        $this->assertSame($count, \App\Models\Tenant\SalesReturn::count(), 'nothing was posted');
+
+        // Thrown away: no tablets back, no cost reversal — and a typed batch from the strip works too.
+        $stockBefore = $this->stock($p);
+        $this->owner()->post($this->url('/sales-returns'), $base + ['refund_amount' => 52.5, 'lines' => [['restock' => 0] + $line + ['unit_price' => 52.5]]])->assertSessionHasNoErrors();
+        $this->assertEqualsWithDelta($stockBefore, $this->stock($p), 0.001, 'thrown away: nothing back in stock');
+        $this->owner()->post($this->url('/sales-returns'), $base + ['refund_amount' => 50, 'lines' => [$line + ['unit_price' => 50, 'batch_no' => 'PNLNEW1', 'expiry' => '09/28']]])->assertSessionHasNoErrors();
+        $this->assertSame('2028-09-30', InventoryBatch::where('batch_no', 'PNLNEW1')->firstOrFail()->expiry_date->toDateString(), 'typed from the strip: MM/YY = month end');
+        $this->assertEqualsWithDelta($stockBefore + 10, $this->stock($p), 0.001);
+    }
+
+    public function test_without_the_switch_there_is_no_return_without_a_bill(): void
+    {
+        $this->setFeatures(self::ON);   // return_no_bill off
+        $page = $this->owner()->get($this->url('/sales-returns/create'))->assertOk()->getContent();
+        $this->assertStringNotContainsString('Without bill', $page, 'no tab');
+        $this->owner()->get($this->url('/sales-returns/create?mode=no_bill'))->assertNotFound();
+        [$p, $strip] = $this->panadol();
+        $this->owner()->post($this->url('/sales-returns'), ['mode' => 'no_bill', 'branch_id' => $this->branchId(), 'refund_method' => 'cash', 'reason' => 'x',
+            'lines' => [['product_id' => $p->id, 'quantity' => 1, 'unit_price' => 5]]])->assertNotFound();
+    }
+
     private function panadol(): array
     {
         $p = Product::where('sku', 'PH-PNL500')->firstOrFail();
