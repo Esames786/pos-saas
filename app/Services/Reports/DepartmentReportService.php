@@ -55,7 +55,7 @@ class DepartmentReportService
                 DB::raw('MAX(p.name) as product_name'),
                 DB::raw('MAX(p.sku) as product_sku'),
                 DB::raw('MAX(p.category_id) as category_id'),
-                DB::raw('SUM(l.quantity) as qty_sold'),
+                DB::raw('SUM(COALESCE(l.base_quantity, l.quantity)) as qty_sold'),
                 DB::raw('SUM(l.discount_amount) as discount_total'),
                 DB::raw('SUM(l.line_total) as net_total'),
                 DB::raw('SUM(l.cost_total) as cogs_total'),

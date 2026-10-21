@@ -356,6 +356,10 @@ class MasterUniverseMySqlTest extends MySqlTenantTestCase
         // Switches.
         $this->assertStringContainsString('New product screen', $html);
         $this->assertStringContainsString('name="features[product_screen_v2]"', $html);
+        // MASTER-NEW-SCREENS-1: each switch shows pictures of the screens it opens (a click = full size).
+        $this->assertStringContainsString('assets/img/screens/medical-counter.jpg', $html);
+        $this->assertStringContainsString('alt="Prescription popup"', $html);
+        $this->assertStringContainsString('assets/img/screens/grn-entry.jpg', $html);
         // Modules tab: on/off from the plan, counts, plain sentence.
         $this->assertStringContainsString('Widget Studio', $html);
         $this->assertStringContainsString('2 screens · 3 permissions', $html);
@@ -509,6 +513,15 @@ class MasterUniverseMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('Widgets for the test.', $html);
         $this->assertStringContainsString('2 screens · 3 permissions', $html);
         $this->assertMatchesRegularExpression('/<span>1 plan<\/span>\s*<span>1 tenant<\/span>/', $html);
+        // MASTER-NEW-SCREENS-1: modules show their newer screens, each with the switch that shows it.
+        $this->assertStringContainsString('Newer screens', $html);
+        $this->assertStringContainsString('assets/img/screens/sales-return.jpg', $html);
+        $this->assertStringContainsString('Switch: Pack &amp; batch counter (medical store, mart)', $html);
+        foreach (\App\Services\Central\ModuleCatalogService::NEWER_SCREENS as $key => $list) {
+            foreach ($list as [$slug]) {
+                $this->assertFileExists(public_path('assets/img/screens/' . $slug . '.jpg'), "the picture of {$key} → {$slug} is in the repo");
+            }
+        }
 
         $module = Module::where('key', self::MODULE)->first();
         $edit = $this->actingAs($admin, 'central')->get($this->host . '/modules/' . $module->id . '/edit')->assertOk()->getContent();

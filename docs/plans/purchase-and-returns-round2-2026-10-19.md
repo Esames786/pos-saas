@@ -532,3 +532,59 @@ So a branch tax that starts OFF changes nobody's bill.
 1. Inside the price or on top? (Medicine MRP usually already includes tax.) Or a choice per branch?
 2. A lower rate on card than on cash (as PRA: 5% card / 16% cash for restaurants) — needed now?
 3. Tax-free items: mark them "No tax" on the product?
+
+## 12. PACK-QTY-REPORTS-1 — tablet totals in reports (20 Oct)
+
+**The bug.** Report quantities add up `sales_order_lines.quantity`. On the medical counter a pack line keeps
+`quantity` in packs ("2 Strip") and `base_quantity` in tablets (20); a loose line keeps `quantity` in tablets and no
+`base_quantity`. So "2 Strip + 3 Tablet" showed as 5 sold; it is 23 tablets.
+
+**The rule.** Count `COALESCE(base_quantity, quantity)` — the item's own unit (tablets). Lines without a pack have
+`base_quantity` NULL, so every other tenant's numbers stay exactly as they are. Amounts (`quantity × unit_price`) were
+already right and do not change.
+
+**Impact (system map).**
+- Tables read only: `sales_order_lines`, `sales_return_lines` (`base_quantity` on both, live since 19–20 Oct).
+- `SalesReportEngine`: overview (+ narrowed), categories, items, items by category, waiters / order types / counters
+  (sold and returned). The POS quick report and the Report Center read these.
+- `SalesReportService` (older sales report), `DashboardController` top products, `DepartmentReportService` sold qty.
+- Left as they are: deals (a deal is never a pack), the partner-share sheet (Rs per piece), voided-line counts.
+- Tests: MedicalCounterMySqlTest (new: 2 Strip + 3 Tablet = 23, a returned Strip = 10), plus every report test file.
+
+## 13. RETURN-NO-BILL-1 — a return without a bill (plan, 20 Oct)
+
+Owner, 20 Oct: "okay continue next" (roadmap: return without a bill, then demo data). Owner's earlier rules apply:
+whoever can open the return screen can do it (no separate permission); the branch's manager-PIN setting for returns
+applies as for any return; refund = paid out the way the customer is refunded today (cash by default), no store credit.
+
+**The screen (no new screen).** Sales → Sales Returns → New (and the POS Return button) gets two ways at the top:
+**With bill** (today) · **Without bill**. Without bill:
+- scan or search the item; quantity in its packs (Box · Strip · Tablet);
+- price = today's price of that pack, can be lowered, never raised (the cap);
+- batch: pick one of the item's batches or type the batch + expiry from the strip — required for an item with expiry;
+- back on shelf / thrown away (as RETURN-RESTOCK-1); reason required; refund method.
+
+**Stock and books.** Back on shelf = stock in to that batch at the batch's (else the item's) current average cost;
+GL Dr revenue 4110 (+ its tax share when the item is taxed), Cr cash/bank (the refund method's account), and
+Dr 1400 / Cr 5100 at the same cost (no sale line to read a cost from — today it would reverse 0). Thrown away = no
+stock in, no cost reversal. The refund goes into the counter's open shift and day, as REFUND-SHIFT-1.
+
+**Schema (first, alone):** `sales_returns.sales_order_id` and `sales_return_lines.sales_order_line_id` become
+NULLABLE (FKs kept). Relaxing NOT NULL is invisible to today's code. Small tables; MySQL INPLACE, lock_wait_timeout 10.
+
+**Impact (system map + a full read of every reader, 20 Oct):**
+- 4 INNER joins return → sale drop a no-bill return: `SalesReportEngine::returnsBase` (:284) and `returnLinesBase`
+  (:309) — 17 report call sites inherit them (overview, categories, items, deals, partner share, waiters, order
+  types, POS quick report, dashboard, WhatsApp/email report) — `SalesReportService::returnsByBusinessDay` (:84), and
+  `UsageInvoiceService` (:173, website orders only — stays INNER on purpose). → LEFT joins; terminal / shift from the
+  return first (already), cashier = COALESCE(sale's, return's), item name falls back to the product's.
+- 4 `whereHas('order')` scope filters (dashboard tile, daily stats ×2, returns list) hide a no-bill return from a
+  cashier limited to his counter → no-bill returns scoped by the return's own terminal / branch.
+- Write path is bill-only: `SalesReturnController` (validation `required|exists`, findOrFail, branch / Edge /
+  approval from the sale), `SalesReturnService::processReturn(SalesOrder …)` → a sibling `processNoBillReturn`.
+- `JournalPostingService::postSalesReturn`: COGS reversal reads `orderLine->unit_cost` (0 without a line) → the
+  return line keeps its own `unit_cost`.
+- Views: returns list / show link to `/sales-orders/` with no number → "No bill".
+- Tests: 1 unit test asserts the INNER join text (`DashboardMatchesReportCentreRegressionTest`); ~20 test files insert
+  returns with a sale (unchanged — a bill return stays exactly as today).
+- No Edge code touches returns.

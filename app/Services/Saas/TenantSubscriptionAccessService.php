@@ -66,6 +66,15 @@ class TenantSubscriptionAccessService
         'tenant.payment-methods' => ['pos', 'catering'],
         'tenant.printing.category-mappings' => ['pos', 'restaurant'],
         'tenant.printing.layouts' => ['pos', 'restaurant'],
+        // STARTER-PLAN-COUNTER-1: the POS sells only on an open shift at a counter, so a POS plan needs its branch,
+        // its counters, shifts and the day closing — even without the Branches module (retail_starter,
+        // inventory_store, restaurant_starter, quick_sale had none and could not sell). How MANY branches and
+        // counters stays the plan's branch_limit / terminal_limit. Not a move: catering keeps them through
+        // multi_branch without pos. Currencies stay multi_branch only.
+        'tenant.branches' => ['multi_branch', 'pos'],
+        'tenant.terminals' => ['multi_branch', 'pos'],
+        'tenant.shifts' => ['multi_branch', 'pos'],
+        'tenant.daily-closings' => ['multi_branch', 'pos'],
     ];
 
     /** Any-of module keys for a route key — used by the sidebar so UI and routes agree. */

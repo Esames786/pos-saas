@@ -130,7 +130,7 @@ class SalesReportService
                 MAX(sales_order_lines.product_name) as product_name,
                 MAX(COALESCE(sales_order_lines.variant_name, \'\')) as variant_name,
                 MAX(COALESCE(categories.name, \'Uncategorised\')) as category_name,
-                COALESCE(SUM(sales_order_lines.quantity), 0)                              as qty_sold,
+                COALESCE(SUM(COALESCE(sales_order_lines.base_quantity, sales_order_lines.quantity)), 0) as qty_sold,
                 COALESCE(SUM(sales_order_lines.quantity * sales_order_lines.unit_price), 0) as gross_amount,
                 COALESCE(SUM(sales_order_lines.discount_amount), 0)                      as total_discount,
                 COALESCE(SUM(sales_order_lines.tax_amount), 0)                           as total_tax,
