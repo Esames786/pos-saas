@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\NormalizesBranchIds;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Services\Finance\FinancialExportService;
+use App\Services\Finance\TrialBalanceLayout;
 use App\Services\Finance\TrialBalancePartyService;
 use App\Support\CsvStreamer;
 use Dompdf\Dompdf;
@@ -19,6 +20,7 @@ class TrialBalanceController extends Controller
     public function __construct(
         private FinancialExportService $exportService,
         private TrialBalancePartyService $partyService,
+        private TrialBalanceLayout $layout,
     ) {}
 
     /**
@@ -52,11 +54,18 @@ class TrialBalanceController extends Controller
             ? $this->partyService->partiesFor($from, $to, $branchIds, array_column($tb['rows'], 'account_id'))
             : [];
 
+        // TB-SECTION-HEADS-1: grouped under the heads of the books, parents over their children, a
+        // subtotal per head. Default ON; group=0 is the flat list (and the flat CSV) as before.
+        $grouped = (string) $request->input('group', '1') !== '0';
+        $sections = $grouped ? $this->layout->sections($tb['rows']) : [];
+
         if ($request->boolean('export_csv')) {
-            return $this->csv($tb, $parties, $from, $to, $branchIds);
+            return $grouped
+                ? $this->groupedCsv($tb, $sections, $parties, $from, $to, $branchIds)
+                : $this->csv($tb, $parties, $from, $to, $branchIds);
         }
         if ($request->query('format') === 'pdf') {
-            return $this->pdf($tb, $parties, $from, $to, $branchIds);
+            return $this->pdf($tb, $parties, $from, $to, $branchIds, $grouped, $sections);
         }
 
         return view('tenant.finance.trial-balance.index', [
@@ -69,6 +78,8 @@ class TrialBalanceController extends Controller
             'selectedBranchIds' => $branchIds ?? [],
             'parties'           => $parties,
             'showParties'       => $showParties,
+            'grouped'           => $grouped,
+            'sections'          => $sections,
         ]);
     }
 
@@ -132,17 +143,61 @@ class TrialBalanceController extends Controller
             fputcsv($fp, ['', '', 'Difference', '', '', '', $n($tb['difference'])]);
         });
     }
+
+    /**
+     * TB-SECTION-HEADS-1 — the grouped CSV. Every row says what it is ("Row"): a SUM of Debit or Credit
+     * over the "Account" rows equals the grand total; Head, Party and Subtotal rows are summaries.
+     */
+    private function groupedCsv(array $tb, array $sections, array $parties, string $from, string $to, ?array $branchIds)
+    {
+        $header = CsvStreamer::financeHeader('Trial Balance', [
+            'From'   => $from,
+            'To'     => $to,
+            'Branch' => $this->branchLabel($branchIds),
+        ]);
+
+        return CsvStreamer::download('trial-balance-' . $from . '-to-' . $to . '.csv', $header, function ($fp) use ($tb, $sections, $parties) {
+            $n = fn (float $v) => number_format($v, 2, '.', '');
+            $money = fn (array $r) => [
+                self::sided($r['opening_debit'], $r['opening_credit'], false),
+                $n($r['period_debit']), $n($r['period_credit']),
+                self::sided($r['closing_debit'], $r['closing_credit'], false),
+            ];
+            fputcsv($fp, ['Section', 'Row', 'Level', 'Code', 'Account', 'Opening', 'Debit', 'Credit', 'Balance']);
+            foreach ($sections as $s) {
+                foreach ($s['lines'] as $l) {
+                    fputcsv($fp, [$s['label'], $l['kind'] === 'head' ? 'Head' : 'Account', $l['depth'], $l['code'], $l['name'], ...$money($l)]);
+                    if ($l['kind'] !== 'head') {
+                        foreach ($parties[$l['account_id']] ?? [] as $p) {
+                            fputcsv($fp, [$s['label'], 'Party', $l['depth'] + 1, '', $p['label'], ...$money($p)]);
+                        }
+                    }
+                }
+                fputcsv($fp, [$s['label'], 'Subtotal', 0, '', 'Total ' . $s['label'], ...$money($s['subtotal'])]);
+            }
+            $t = $tb['totals'];
+            fputcsv($fp, [
+                '', 'Total', '', '', 'TOTAL',
+                $n($t['opening_debit']) . ' Dr / ' . $n($t['opening_credit']) . ' Cr',
+                $n($t['period_debit']), $n($t['period_credit']),
+                $n($t['closing_debit']) . ' Dr / ' . $n($t['closing_credit']) . ' Cr',
+            ]);
+            fputcsv($fp, ['', 'Difference', '', '', '', '', '', '', $n($tb['difference'])]);
+        });
+    }
     /**
      * Part 2 — Print. A4 portrait, column headings on every page, "Page X of Y", the totals block
      * kept on one page, signature lines. Dompdf, as the Sales Report PDF already uses.
      */
-    private function pdf(array $tb, array $parties, string $from, string $to, ?array $branchIds)
+    private function pdf(array $tb, array $parties, string $from, string $to, ?array $branchIds, bool $grouped = false, array $sections = [])
     {
         $html = view('tenant.finance.trial-balance.print', [
             'rows'        => $tb['rows'],
             'totals'      => $tb['totals'],
             'difference'  => $tb['difference'],
             'parties'     => $parties,
+            'grouped'     => $grouped,
+            'sections'    => $sections,
             'from'        => $from,
             'to'          => $to,
             'branchLabel' => $this->branchLabel($branchIds),
