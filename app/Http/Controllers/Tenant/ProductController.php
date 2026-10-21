@@ -226,10 +226,21 @@ class ProductController extends Controller
                 ? 'Edit Material'
                 : ($context === 'manufacturing' ? 'Edit Manufacturing Product' : 'Edit Product'),
             'categories'  => Category::where('is_active', true)->orderBy('name')->get(),
-            'units'       => Unit::where('is_active', true)->orderBy('name')->get(),
+            'units'       => $this->unitsFor($product),
             'context'     => $context,
             'contextBase' => $this->contextBaseUrl($request, $context),
         ]);
+    }
+
+    /**
+     * UB-10: the units an edit offers — the active ones, and always the item's own. A unit switched off used to be
+     * missing, so the select showed "— Piece —" and an unchanged save took the item's unit away.
+     */
+    private function unitsFor(?Product $product)
+    {
+        return Unit::query()
+            ->where(fn ($q) => $q->where('is_active', true)->when($product?->unit_id, fn ($w, $id) => $w->orWhere('id', $id)))
+            ->orderBy('name')->get();
     }
 
     public function update(Request $request, Product $product)
@@ -370,6 +381,11 @@ class ProductController extends Controller
             'can_be_bom_output'             => ['nullable', 'boolean'],
             'is_manufactured_finished_good' => ['nullable', 'boolean'],
         ]);
+
+        // UB-10: an item whose stock or purchases already ran in one unit keeps it (the model refuses it too).
+        if ($product) {
+            \App\Support\StockUnitGuard::refuseChange($product, $data['unit_id'] ?? null);
+        }
 
         $slugBase = Str::slug($data['name']);
         $slug = $slugBase;
@@ -656,7 +672,7 @@ class ProductController extends Controller
             'cards'           => $cards,
             'currentCard'     => $card,
             'categories'      => Category::where('is_active', true)->orderBy('name')->get(),
-            'units'           => Unit::where('is_active', true)->orderBy('name')->get(),
+            'units'           => $this->unitsFor($product),
             'barcode'         => $variant?->barcode ?? $product?->barcodes()->where('is_primary', true)->value('barcode'),
             'reorderLevel'    => $variant?->reorder_level,
             'reorderQuantity' => $variant?->reorder_quantity,

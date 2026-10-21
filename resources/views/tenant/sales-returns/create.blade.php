@@ -132,6 +132,8 @@
 {{-- Step 3: select lines to return --}}
 <form method="POST" action="{{ url('/sales-returns') }}" novalidate id="return-form">
     @csrf
+    {{-- UB-06: this form is posted once — a double click or a retry shows the return it already made --}}
+    <input type="hidden" name="submission_key" value="{{ old('submission_key') ?: \App\Support\SubmissionKey::fresh() }}">
     <input type="hidden" name="sales_order_id" value="{{ $salesOrder->id }}">
     {{-- REFUND-SHIFT-1: the counter paying the refund (the POS Return button passes the one it is on) --}}
     <input type="hidden" name="terminal_id" value="{{ request()->integer('terminal_id') ?: '' }}">

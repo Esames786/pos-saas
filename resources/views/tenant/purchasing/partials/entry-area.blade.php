@@ -87,6 +87,8 @@
 
 <div class="ea" id="ea" data-mode="{{ $mode }}">
     <input type="hidden" name="_entry_v2" value="1">
+    {{-- UB-06: this form is posted once — "press Post again" after a lost answer shows what was already posted --}}
+    <input type="hidden" name="submission_key" id="ea-key" value="{{ \App\Support\SubmissionKey::fresh() }}">
 
     @if($isGrn && count($poLines))
         <div class="card mb-3"><div class="card-body py-2">
@@ -648,7 +650,8 @@
         if (!draftReady) return;
         try {
             if (!LINES.length) { localStorage.removeItem(DRAFT_KEY); return; }
-            localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), supplier: ($('supplier_id') || {}).value || '', branch: ($('branch_id') || {}).value || '', lines: LINES }));
+            // UB-06: the form key travels with the unsaved lines — a reload after a lost answer must not post them twice
+            localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), supplier: ($('supplier_id') || {}).value || '', branch: ($('branch_id') || {}).value || '', lines: LINES, key: ($('ea-key') || {}).value || '' }));
         } catch (e) {}
     }
     function offerDraft() {
@@ -661,6 +664,7 @@
         $('ea-draft-yes').addEventListener('click', function () {
             if (d.supplier && window.__supplierBox) window.__supplierBox.pick(d.supplier);
             var br = $('branch_id'); if (br && d.branch && !br.value) { br.value = d.branch; br.dispatchEvent(new Event('change', { bubbles: true })); }
+            if (d.key && !LINES.length && $('ea-key')) $('ea-key').value = d.key;
             LINES = LINES.concat(d.lines); bar.hidden = true; drawGrid(); drawPo(); search.focus();
         });
         $('ea-draft-no').addEventListener('click', function () { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} bar.hidden = true; search.focus(); });
@@ -785,12 +789,19 @@
     // ── Post without leaving the page (owner: "reloading kam, ajax") ───────────────────────────────
     function saveErr(list) { var b = $('ea-saveerr'); b.innerHTML = list.map(function (m) { return '<div>' + esc(m) + '</div>'; }).join(''); b.hidden = !list.length; if (list.length) b.scrollIntoView({ block: 'center' }); }
     function busy(v) { form.querySelectorAll('button[type="submit"]').forEach(function (b) { b.disabled = v; }); if (v) $('ea-count').innerHTML = '<span class="ea-sign">Saving…</span>'; }
+    // UB-06: a new form key once this one has posted (the next lines are another document); kept on a failure.
+    function newKey(next) {
+        if (next) return next;
+        try { var a = new Uint8Array(16); crypto.getRandomValues(a); return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
+        catch (e) { return (Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).slice(0, 40); }
+    }
     function done(d) {
+        if ($('ea-key')) $('ea-key').value = newKey(d.next_key);
         saved = true; LINES = []; rowErr = {}; editAt = null; drawGrid();
         try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
         if ($('ea-po')) $('ea-po').closest('.card').hidden = true;
         var box = $('ea-done');
-        box.innerHTML = '<div class="d-flex flex-wrap align-items-center gap-2"><b style="font-size:1.05rem">✓ ' + esc(d.number) + (IS_RET ? (d.posted ? ' posted — stock is out and the supplier owes you less.' : ' saved as a draft — open it to post.') : ' saved.') + '</b>'
+        box.innerHTML = '<div class="d-flex flex-wrap align-items-center gap-2"><b style="font-size:1.05rem">✓ ' + esc(d.number) + (d.already ? ' was already posted — nothing was posted twice.' : (IS_RET ? (d.posted ? ' posted — stock is out and the supplier owes you less.' : ' saved as a draft — open it to post.') : ' saved.')) + '</b>'
             + '<a class="btn btn-sm btn-success" href="' + esc(d.url) + '">Open it</a>'
             + '<a class="btn btn-sm btn-outline-dark" href="' + esc(NEW_URL) + '">New ' + (IS_RET ? 'return' : (IS_GRN ? 'GRN' : 'order')) + '</a>'
             + '<span class="text-muted small">Or add more lines below and Post again for another one.</span></div>';
@@ -799,6 +810,7 @@
     var LINE_FIELD = /^lines\.(\d+)\.(packs|price|disc|free|expiry_date|batch_no|product_id)$/;
     function failed(x) {
         busy(false);
+        if (x.d && x.d.next_key && $('ea-key')) $('ea-key').value = x.d.next_key;   // the same key with other lines: refused, a new one given
         if (x.status === 422) {
             var errs = (x.d && x.d.errors) || {}, top = []; rowErr = {};
             Object.keys(errs).forEach(function (k) { var m = LINE_FIELD.exec(k); if (m && LINES[+m[1]]) rowErr[+m[1]] = errs[k][0]; else top.push(errs[k][0]); });

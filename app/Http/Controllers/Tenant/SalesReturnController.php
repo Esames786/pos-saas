@@ -7,6 +7,8 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesReturn;
 use App\Services\Sales\SalesReturnService;
+use App\Support\AlreadySubmitted;
+use App\Support\SubmissionKey;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -184,10 +186,19 @@ class SalesReturnController extends Controller
             'manager_approval_id'         => ['nullable', 'integer', 'exists:manager_approvals,id'],
             // REFUND-SHIFT-1: the counter paying the refund (the POS passes the one it is on).
             'terminal_id'                 => ['nullable', 'integer'],
+            // UB-06: the key this form was drawn with (posted once)
+            'submission_key'              => SubmissionKey::rule(),
         ]);
 
         if (collect($data['lines'])->sum(fn ($l) => (float) ($l['quantity'] ?? 0)) <= 0) {
             return back()->withErrors(['return' => 'Enter a return quantity for at least one item.'])->withInput();
+        }
+
+        // UB-06: the same form again (double click, retry, Back + Submit) → the return it already made, before a
+        // manager approval is spent on it.
+        $submissionHash = $this->submissionHash($data);
+        if ($answer = $this->alreadyPosted($data['submission_key'] ?? null, $submissionHash, $request)) {
+            return $answer;
         }
 
         $scope = app(\App\Services\Security\UserDataScope::class);
@@ -268,7 +279,11 @@ class SalesReturnController extends Controller
                 refundAmount: isset($data['refund_amount']) ? (float) $data['refund_amount'] : null,
                 userId:       auth('tenant')->id(),
                 refundShiftId: $this->refundShiftId((int) $salesOrder->branch_id, $data['terminal_id'] ?? null),
+                submissionKey: $data['submission_key'] ?? null,
+                submissionHash: $submissionHash,
             );
+        } catch (AlreadySubmitted $e) {
+            return $this->answerAlreadySubmitted($e, $request);
         } catch (\RuntimeException $e) {
             return back()->withErrors(['return' => $e->getMessage()])->withInput();
         }
@@ -382,7 +397,8 @@ class SalesReturnController extends Controller
             'branch_id'                  => ['required', 'integer', 'exists:branches,id'],
             'reason'                     => ['required', 'string', 'max:500'],
             'refund_method'              => ['required', Rule::in(['cash', 'bank_transfer', 'card', 'other'])],
-            'refund_amount'              => ['nullable', 'numeric', 'min:0'],
+            // UB-04: stated, never filled in by itself (the screen shows it, the server checks it against the lines)
+            'refund_amount'              => ['required', 'numeric', 'min:0'],
             'lines'                      => ['required', 'array', 'min:1'],
             'lines.*.product_id'         => ['required', 'integer', 'exists:products,id'],
             'lines.*.product_variant_id' => ['nullable', 'integer'],
@@ -395,14 +411,21 @@ class SalesReturnController extends Controller
             'lines.*.expiry'             => ['nullable', 'string', 'max:10'],
             'manager_approval_id'        => ['nullable', 'integer', 'exists:manager_approvals,id'],
             'terminal_id'                => ['nullable', 'integer'],
+            'submission_key'             => SubmissionKey::rule(),
         ], [
             'reason.required' => 'Write why the item is coming back — a return without a bill needs a reason.',
+            'refund_amount.required' => 'Write the refund amount — a return without a bill is paid only what is stated.',
         ]);
 
         $branch = Branch::findOrFail($data['branch_id']);
         app(\App\Services\Edge\BranchOperatingModeService::class)->assertSaleMutationAllowed($branch);
         if (! $this->userCanAccessBranch((int) $branch->id)) {
             return back()->withErrors(['return' => 'That branch is not one you are assigned to.'])->withInput();
+        }
+
+        $submissionHash = $this->submissionHash($data + ['mode' => 'no_bill']);
+        if ($answer = $this->alreadyPosted($data['submission_key'] ?? null, $submissionHash, $request)) {
+            return $answer;
         }
 
         // The branch's manager-PIN setting applies exactly as for a return with a bill, bound to the refund amount.
@@ -436,12 +459,49 @@ class SalesReturnController extends Controller
                 refundAmount:  isset($data['refund_amount']) ? (float) $data['refund_amount'] : null,
                 userId:        (int) auth('tenant')->id(),
                 refundShiftId: $this->refundShiftId((int) $branch->id, $data['terminal_id'] ?? null),
+                submissionKey: $data['submission_key'] ?? null,
+                submissionHash: $submissionHash,
             );
+        } catch (AlreadySubmitted $e) {
+            return $this->answerAlreadySubmitted($e, $request);
         } catch (\RuntimeException $e) {
             return back()->withErrors(['return' => $e->getMessage()])->withInput();
         }
 
         return redirect(url('/sales-returns/' . $salesReturn->id))->with('status', 'Return without a bill posted.');
+    }
+
+    /** UB-06: what the form asked for — everything it posted except its key and the one-time manager approval. */
+    private function submissionHash(array $data): string
+    {
+        return SubmissionKey::hash(\Illuminate\Support\Arr::except($data, ['submission_key', 'manager_approval_id']));
+    }
+
+    /** UB-06: the response when this form's key already made a return; null = not posted before. */
+    private function alreadyPosted(?string $key, string $hash, Request $request)
+    {
+        $key = SubmissionKey::usable($key, 'sales_returns');
+        $existing = $key ? SalesReturn::query()->where('submission_key', $key)->first() : null;
+
+        return $existing
+            ? $this->answerAlreadySubmitted(new AlreadySubmitted($existing, hash_equals((string) $existing->submission_hash, $hash)), $request)
+            : null;
+    }
+
+    /**
+     * The same form again = show the return it made ("nothing was posted twice"). The same key with other items = refuse,
+     * and give the form back with a NEW key, so posting those items is a deliberate second return.
+     */
+    private function answerAlreadySubmitted(AlreadySubmitted $e, Request $request)
+    {
+        if ($e->same) {
+            return redirect(url('/sales-returns/' . $e->record->getKey()))
+                ->with('status', 'Return ' . $e->record->return_no . ' was already posted — nothing was posted twice.');
+        }
+
+        return back()->withErrors(['return' => 'This form was already posted as return ' . $e->record->return_no
+            . '. Nothing more was posted. Check the items and post again to make a second return.'])
+            ->withInput($request->except(SubmissionKey::FIELD));
     }
 
     /**

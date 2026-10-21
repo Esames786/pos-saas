@@ -27,6 +27,9 @@ class SalesReturn extends Model
         // REFUND-SHIFT-1: the shift / counter whose drawer paid the refund
         'shift_id',
         'terminal_id',
+        // UB-06: the form this return was posted from (posted once)
+        'submission_key',
+        'submission_hash',
     ];
 
     protected function casts(): array
