@@ -44,3 +44,22 @@ Skipped (8), each for its reason:
   rate 400" cartage lines are the likely cause) — for the accountant.
 
 `--yes` only after the owner approves this output.
+
+## Run on khatribiryani — 21 Oct (owner's go through the business developer: "packaging ko cost me daldain; stock abhi kisi ka track nh krna ha")
+
+| Step | Evidence |
+|---|---|
+| Backup | `tenants:backup --tenant=khatribiryani` 14:13 UTC → `backups/20261021_141304` (222.7 MB); again 14:23 → `backups/20261021_142330` |
+| Fresh dry run 14:13 | the same plan as 11:44 (11 ready, 8 skipped); nothing written |
+| `--all-purchased --yes` 14:13:34 | 11 items made purchase-only; 120 reclass journals on their bill dates; 11 stock-out rows; 1400 56,32,483.71 → 25,49,809.92; tb_diff 0 |
+| Cost by month | 5100-3 Oct +29,23,653 · 5100-2 Aug +30,300 · Sep +10,342.16 · Oct +97,078.64 · 5100-1 Sep +4,980 · Oct +16,320; net profit Aug −30,300 · Sep −15,322.16 · Oct −30,37,051.64 — exactly the cost moved |
+| Found after the run | #94 KHATRI BIRYANI BEEF had "Track Stock" unticked at 07:34 UTC (old form, before the guard went live) with 599.5 / Rs 7,02,450 left in stock and 1400; the command skipped it as already purchase-only |
+| Fix `f860c0cf`, deployed `958c36ad` 14:23 | the command also picks an item switched off with stock left; test + 2 sabotages red; roles unchanged; smoke tb_diff 0 everywhere; no log error |
+| `--products=94 --yes` 14:23:45 | 15 journals, 1 stock-out row; 1400 → 18,47,359.92; 5100-3 Oct +7,02,450; tb_diff 0 |
+| Reconciliation | every other tenant identical before/after both runs; khatribiryani changed only in 1400, stock and the new journal / stock rows |
+
+**Left in 1400 (18,47,359.92), each for a reason the client must clear first:** BEEF CHUNGAIZI PULAOW, BIRYANI MASALA
+CHICKEN AALOO, SINGAPORIAN RICE, CHICKEN — no category with a cost head; 7 UP DIET (CRT) and BIG APPLE (CRT) on
+GRN-20261013083826-106 and Container 750 ML on GRN-20261013083425-477 — received but not billed; Spoon — its bills put
+20,819.10 into 1400 but its receipts brought 21,219.10 into stock (400 apart: the old "Spoon, qty 1, rate 400" cartage
+lines). Once cleared, `--all-purchased --yes` takes them; nothing else changes.
