@@ -1,4 +1,24 @@
-# Supplier bill net of an earlier return — posting matrix (design, 21 Oct 2026)
+# Supplier bill net of an earlier return — posting matrix (21 Oct 2026)
+
+> **Built** as SUPPLIER-NET-BILL-1 (`PurchaseBillService`, `SupplierNetBillMySqlTest`). Differences from the design below:
+> bills cannot be voided in this system, so the "netted bill voided" case does not exist; a return is netted whole
+> (a supplier who took off part of it is recorded with the discount field).
+>
+> **Owner, 21 Oct — a credit that already sits on another bill is never moved silently** (replaces "moved off it first"
+> in the running-account row below):
+> - it settled a bill that is now **fully paid** → "already less the returns" is **blocked** and the screen says why
+>   (that bill would reopen); the invoice is recorded as "Sab maal ka invoice" or the accountant sorts that bill first;
+> - it sits on a bill that is **still open** → the review says it in words — "Bill X se Rs 200 allocation hatay ga; uska
+>   outstanding 300 se 500 ho jayega" — and posting needs a tick from a person who may void supplier payments
+>   (`tenant.supplier-payments.void`). Each move writes `supplier_credit_reallocations` (new bill, return, from-bill,
+>   amount, outstanding before → after, who confirmed, when) before the allocation is released. Without the tick, or
+>   without that permission, the server refuses (not only the screen).
+>
+> **Screen (owner's UI/UX rules, same day):** compact supplier/receipt strip; items in the main area (a long list
+> scrolls in its own box); a sticky summary on the right — Received value → Return adjustment → Actual supplier invoice
+> → Paid now (supplier credit) → Remaining — with one navy "Review bill". A normal bill asks nothing; the two-option
+> question appears only when a return came before the bill, nothing pre-picked, and amounts wait for the answer. The
+> return is subtracted once: from the invoice (net) or as credit paying it (full), never both.
 
 Owner, 21 Oct: record the ACTUAL supplier invoice. Both must end at payable 800:
 
