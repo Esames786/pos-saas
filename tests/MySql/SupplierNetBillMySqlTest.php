@@ -28,6 +28,7 @@ use Tests\MySql\Support\RacesWorkers;
 class SupplierNetBillMySqlTest extends MySqlTenantTestCase
 {
     use RacesWorkers;
+    use \Tests\MySql\Support\ParsesInlineScripts;
 
     private int $branchId;
 
@@ -43,7 +44,7 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection('tenant');
         $this->cleanTenant([
             'journal_lines', 'journal_entries', 'supplier_ledgers', 'supplier_credit_allocations', 'supplier_payments',
-            'purchase_bill_return_nettings', 'cash_bank_account_transactions', 'cash_bank_accounts',
+            'purchase_bill_return_nettings', 'supplier_credit_reallocations', 'cash_bank_account_transactions', 'cash_bank_accounts',
             'purchase_return_lines', 'purchase_returns', 'purchase_bill_lines', 'purchase_bills', 'purchasing_settings',
             'goods_receipt_lines', 'goods_receipts', 'stock_ledgers', 'stock_balances', 'inventory_batches',
             'products', 'categories', 'units', 'suppliers', 'accounts', 'branches', 'users',
@@ -107,22 +108,85 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta(800, $this->gl('1400'), 0.001, 'inventory = 8 × 100');
     }
 
-    public function test_a_return_that_had_settled_an_older_bill_moves_to_the_net_invoice(): void
+    public function test_a_return_that_had_settled_an_older_open_bill_moves_only_on_an_authorized_confirmation(): void
     {
         // An older open bill of 500 for the same supplier: the return made before the new bill settled it (oldest first).
         $older = $this->receive([[5, 100]]);
         $olderBill = $this->bill($older, null);
         $grn = $this->receive([[10, 100]]);
         $this->returnOf($grn, 2);
-        $this->assertEqualsWithDelta(300, (float) $olderBill->fresh()->balance_due, 0.001, 'today: the 200 went to the older bill');
+        $this->assertEqualsWithDelta(300, (float) $olderBill->fresh()->balance_due, 0.001, 'the 200 went to the older bill');
+        $preview = app(PurchaseBillService::class)->preview($grn);
+        $this->assertSame(['bill_no' => $olderBill->bill_no, 'amount' => 200.0, 'due_now' => 300.0, 'due_after' => 500.0, 'settled' => false],
+            collect($preview['returns'][0]['allocations'][0])->only(['bill_no', 'amount', 'due_now', 'due_after', 'settled'])->all(), 'the screen says where the credit is');
 
-        $bill = $this->bill($grn, 'netted');
+        // Owner, 21 Oct: never moved silently — the confirmation names the bill and its outstanding before and after.
+        try {
+            $this->bill($grn, 'netted');
+            $this->fail('moving a credit off another bill needs an explicit confirmation');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString($olderBill->bill_no . ' se Rs 200.00 allocation hatay ga; uska outstanding 300.00 se 500.00 ho jayega', $e->errors()['confirm_reallocation'][0]);
+        }
+        try {
+            $this->bill($grn, 'netted', confirm: true, mayReallocate: false);
+            $this->fail('only an authorized person may move it');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('void supplier payments', $e->errors()['confirm_reallocation'][0]);
+        }
+        $this->assertSame(0, PurchaseBill::where('goods_receipt_id', $grn->id)->count(), 'nothing posted by either refusal');
+        $this->assertEqualsWithDelta(300, (float) $olderBill->fresh()->balance_due, 0.001, 'and nothing moved');
+
+        $bill = $this->bill($grn, 'netted', confirm: true);
 
         $this->assertEqualsWithDelta(500, (float) $olderBill->fresh()->balance_due, 0.001, 'the supplier never credited the older bill — it owes 500 again');
         $this->assertEqualsWithDelta(800, (float) $bill->fresh()->balance_due, 0.001);
         $this->assertEqualsWithDelta(1300, $this->supplierOwes(), 0.001, '500 + 800');
         $this->assertEqualsWithDelta(1300, (float) PurchaseBill::where('supplier_id', $this->supplierId)->sum('balance_due'), 0.001, 'bills agree with the ledger');
         $this->assertBooksAgree(1300, 1300);
+        $audit = DB::table('supplier_credit_reallocations')->where('purchase_bill_id', $bill->id)->get();
+        $this->assertCount(1, $audit, 'the move is written down');
+        $this->assertSame([(int) $olderBill->id, 200.0, 300.0, 500.0, $this->userId],
+            [(int) $audit[0]->from_purchase_bill_id, (float) $audit[0]->amount, (float) $audit[0]->from_due_before, (float) $audit[0]->from_due_after, (int) $audit[0]->confirmed_by]);
+    }
+
+    public function test_a_credit_that_settled_a_fully_paid_bill_is_never_taken_back(): void
+    {
+        // The older bill of 200 is fully settled by the return's credit: reopening it is refused, and said why.
+        $older = $this->receive([[2, 100]]);
+        $olderBill = $this->bill($older, null);
+        $grn = $this->receive([[10, 100]]);
+        $this->returnOf($grn, 2);
+        $this->assertSame('paid', $olderBill->fresh()->status, 'the 200 credit paid the older bill in full');
+
+        $preview = app(PurchaseBillService::class)->preview($grn);
+        $this->assertStringContainsString('fully paid', (string) $preview['blocked']);
+        try {
+            $this->bill($grn, 'netted', confirm: true);
+            $this->fail('a settled bill is never reopened');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('fully paid', $e->errors()['returns_on_invoice'][0]);
+        }
+        $this->assertSame('paid', $olderBill->fresh()->status, 'untouched');
+
+        $bill = $this->bill($grn, 'separate');   // the honest way: the invoice for everything, the return stays a credit
+        $this->assertEqualsWithDelta(1000, (float) $bill->fresh()->balance_due, 0.001, 'its credit is already spent on the older bill');
+        $this->assertEqualsWithDelta(1000, $this->supplierOwes(), 0.001);
+    }
+
+    public function test_the_screen_shows_the_credit_the_bill_will_really_use(): void
+    {
+        // The summary's "Paid now (supplier credit)" comes from preview(): it must be what posting actually does.
+        foreach (['separate' => 200.0, 'netted' => 0.0] as $choice => $expected) {
+            // a supplier of its own each time: the first round's credit must not settle the second round's bill
+            $this->supplierId = Supplier::create(['code' => 'NB-' . Str::upper(Str::random(5)), 'name' => 'Preview ' . $choice, 'status' => 'active',
+                'opening_balance' => 0, 'current_balance' => 0])->id;
+            $grn = $this->receive([[10, 100]]);
+            $this->returnOf($grn, 2);
+            $credit = app(PurchaseBillService::class)->preview($grn)['credit'][$choice];
+            $this->assertEqualsWithDelta($expected, $credit, 0.001, $choice);
+            $bill = $this->bill($grn, $choice);
+            $this->assertEqualsWithDelta($credit, (float) $bill->fresh()->amount_paid, 0.001, $choice . ': the preview is what posted');
+        }
     }
 
     public function test_free_goods_returned_leave_nothing_to_net(): void
@@ -177,6 +241,89 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta(800, $this->supplierOwes(), 0.001);
     }
 
+    // ── UI (the real bill screen, rendered through its controller) ───────────
+
+    public function test_ui_a_normal_bill_asks_nothing_and_shows_what_it_will_post(): void
+    {
+        $html = $this->billPage($this->receive([[10, 100]]));
+
+        $this->assertStringNotContainsString('id="returns-on-invoice"', $html, 'no extra question on a normal bill');
+        $this->assertMatchesRegularExpression('/id="bill-total-preview" data-base="1000(\.0+)?">1,000\.00</', $html, 'the invoice the bill will post');
+        $this->assertStringContainsString('<button type="button" class="pb-btn" id="pb-review">Review bill</button>', $html, 'one dominant action');
+        $this->assertSame(2, substr_count($html, 'pb-num pb-sel'), 'discount and tax select their value on focus');
+        $this->assertStringContainsString('<span>Receipt <b>', $html, 'the compact receipt strip');
+        $this->assertStringContainsString('/ Piece</span>', $html, 'rate basis shown');
+        $this->assertInlineScriptsParse($html, 'supplier bill', 'pb-form');
+    }
+
+    public function test_ui_a_receipt_with_a_return_asks_and_picks_nothing(): void
+    {
+        $grn = $this->receive([[10, 100]]);
+        $this->returnOf($grn, 2);
+        $html = $this->billPage($grn);
+
+        $this->assertStringContainsString('id="returns-on-invoice"', $html);
+        $this->assertStringContainsString('<b>Sab maal ka invoice</b>', $html);
+        $this->assertStringContainsString('<b>Wapsi ghata kar invoice</b>', $html);
+        $this->assertSame(2, preg_match_all('/<input[^>]*name="returns_on_invoice"/', $html), 'two options');
+        $this->assertDoesNotMatchRegularExpression('/<input[^>]*name="returns_on_invoice"[^>]*\schecked/', $html, 'nothing pre-picked');
+        $this->assertMatchesRegularExpression('/id="bill-total-preview" data-base="1000(\.0+)?">—</', $html, 'no total until the question is answered');
+        $this->assertStringContainsString('data-credit-separate="200"', $html, 'separate: the return credit pays 200 of it');
+        $this->assertStringContainsString('data-credit-netted="0"', $html, 'netted: no credit left to use');
+    }
+
+    public function test_ui_a_credit_on_another_bill_is_spelled_out_and_needs_an_authorized_tick(): void
+    {
+        $olderBill = $this->bill($this->receive([[5, 100]]), null);
+        $grn = $this->receive([[10, 100]]);
+        $this->returnOf($grn, 2);
+
+        $html = $this->billPage($grn, $this->userWith('tenant.supplier-payments.void'));
+        $this->assertStringContainsString('its outstanding goes 300.00 → 500.00', $html, 'said on the screen');
+        $this->assertStringContainsString('<b>' . $olderBill->bill_no . '</b> se Rs 200.00 allocation hatay ga; uska outstanding 300.00 se 500.00 ho jayega.', $html, 'said again on review');
+        $this->assertStringContainsString('name="confirm_reallocation"', $html, 'the tick for an authorized person');
+
+        $plain = $this->billPage($grn, $this->userWith(null));
+        $this->assertStringNotContainsString('name="confirm_reallocation"', $plain, 'no tick for anyone else');
+        $this->assertStringContainsString('Only someone who can void supplier payments can move a credit between bills.', $plain);
+    }
+
+    public function test_ui_a_settled_bill_blocks_the_net_option_with_the_reason(): void
+    {
+        $this->bill($this->receive([[2, 100]]), null);
+        $grn = $this->receive([[10, 100]]);
+        $this->returnOf($grn, 2);
+        $html = $this->billPage($grn);
+
+        $this->assertMatchesRegularExpression('/id="roi-netted"[^>]*\bdisabled\b/', $html, 'the net option cannot be picked');
+        $this->assertStringContainsString('which is now fully paid', $html, 'and the screen says why');
+        $this->assertDoesNotMatchRegularExpression('/id="roi-separate"[^>]*\bdisabled\b/', $html, 'the other way stays open');
+    }
+
+    private function billPage(GoodsReceipt $grn, ?\App\Models\Tenant\User $user = null): string
+    {
+        $request = \Illuminate\Http\Request::create('/purchase-bills/create', 'GET', ['goods_receipt_id' => $grn->id]);
+        if ($user) {
+            auth('tenant')->setUser($user);
+            $request->setUserResolver(fn () => $user);
+        }
+        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+
+        return app(\App\Http\Controllers\Tenant\PurchaseBillController::class)->create($request)->render();
+    }
+
+    private function userWith(?string $permission): \App\Models\Tenant\User
+    {
+        $user = \App\Models\Tenant\User::create(['name' => 'Bills ' . uniqid(), 'email' => 'b' . uniqid() . '@test.local', 'password' => bcrypt('x'), 'status' => 'active']);
+        if ($permission) {
+            \Spatie\Permission\Models\Permission::findOrCreate($permission, 'tenant');
+            $user->givePermissionTo($permission);
+        }
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+
+        return $user->fresh();
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     /** @param list<array{0:float,1:float}> $lines qty, unit cost */
@@ -192,11 +339,11 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
         return $grn->fresh();
     }
 
-    private function bill(GoodsReceipt $grn, ?string $returnsOnInvoice): PurchaseBill
+    private function bill(GoodsReceipt $grn, ?string $returnsOnInvoice, bool $confirm = false, bool $mayReallocate = true): PurchaseBill
     {
         return app(PurchaseBillService::class)->createFromReceipt($grn, array_filter([
-            'bill_date' => now()->toDateString(), 'returns_on_invoice' => $returnsOnInvoice,
-        ], fn ($v) => $v !== null), $this->userId);
+            'bill_date' => now()->toDateString(), 'returns_on_invoice' => $returnsOnInvoice, 'confirm_reallocation' => $confirm ? '1' : null,
+        ], fn ($v) => $v !== null), $this->userId, $mayReallocate);
     }
 
     private function returnOf(GoodsReceipt $grn, float $qty, int $lineIndex = 0): PurchaseReturn

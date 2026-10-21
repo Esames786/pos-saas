@@ -48,15 +48,22 @@ class PurchaseBillController extends Controller
 
         $goodsReceipt = null;
         if ($request->filled('goods_receipt_id')) {
-            $goodsReceipt = GoodsReceipt::with(['supplier', 'branch', 'lines.product', 'lines.variant'])
+            $goodsReceipt = GoodsReceipt::with(['supplier', 'branch', 'lines.product.unit', 'lines.variant'])
                 ->whereDoesntHave('bill')
                 ->find($request->goods_receipt_id);
         }
 
-        // SUPPLIER-NET-BILL-1: goods that went back from this receipt before its bill — the form asks how the invoice treats them.
-        $returnsToAsk = $goodsReceipt ? app(PurchaseBillService::class)->returnsToAsk($goodsReceipt) : [];
+        // SUPPLIER-NET-BILL-1: what the bill will post (summary), the returns it asks about, the bills their credit sits on.
+        $preview = $goodsReceipt ? app(PurchaseBillService::class)->preview($goodsReceipt) : null;
+        $canReallocate = $this->canReallocate($request);
 
-        return view('tenant.purchase-bills.create', compact('receipts', 'goodsReceipt', 'returnsToAsk'));
+        return view('tenant.purchase-bills.create', compact('receipts', 'goodsReceipt', 'preview', 'canReallocate'));
+    }
+
+    /** Moving a return credit off another bill: the people who may already undo supplier money (owner, 21 Oct). */
+    private function canReallocate(Request $request): bool
+    {
+        return (bool) $request->user('tenant')?->can('tenant.supplier-payments.void');
     }
 
     public function store(Request $request)
@@ -71,12 +78,16 @@ class PurchaseBillController extends Controller
             'notes'               => 'nullable|string|max:1000',
             // SUPPLIER-NET-BILL-1: asked only when goods from the receipt went back before its bill
             'returns_on_invoice'  => 'nullable|in:' . PurchaseBillService::SEPARATE . ',' . PurchaseBillService::NETTED,
+            // ticked on review when a return's credit moves off another bill
+            'confirm_reallocation' => 'nullable|boolean',
+        ], [
+            'due_date.after_or_equal' => 'The due date cannot be before the bill date.',
         ]);
 
         $grn = GoodsReceipt::findOrFail($data['goods_receipt_id']);
 
         try {
-            app(PurchaseBillService::class)->createFromReceipt($grn, $data, auth('tenant')->id());
+            app(PurchaseBillService::class)->createFromReceipt($grn, $data, auth('tenant')->id(), $this->canReallocate($request));
         } catch (\RuntimeException $e) {
             // e.g. a bill already exists for this receipt (a second post of the same form, or two people at once)
             return back()->withErrors(['goods_receipt_id' => $e->getMessage()])->withInput();
