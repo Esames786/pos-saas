@@ -175,20 +175,22 @@ class DepartmentHandoverService
     }
 
     /** Reverse a handover (and its payout, if settled), restoring income and cash/bank. */
-    public function reverse(DepartmentHandover $handover, string $reason, ?int $userId = null): DepartmentHandover
+    public function reverse(DepartmentHandover $handover, string $reason, ?int $userId = null, string $dateMode = \App\Support\VoidDate::TODAY): DepartmentHandover
     {
         if ($handover->status === DepartmentHandover::STATUS_REVERSED) {
             throw new RuntimeException('This handover is already reversed.');
         }
 
-        return DB::connection('tenant')->transaction(function () use ($handover, $reason, $userId) {
+        return DB::connection('tenant')->transaction(function () use ($handover, $reason, $userId, $dateMode) {
             // Reverse the payout first (restores cash/bank), then the reclass (restores income).
+            // VOID-ON-ORIGINAL-DATE-1: a wrong handover is wiped on each entry's own date; default today.
             if ($handover->payout_journal_entry_id && $handover->payoutEntry) {
-                $this->journal->reverse($handover->payoutEntry, $reason, $userId);
-                $this->reversePayoutCashBank($handover, $userId);
+                $payoutOn = \App\Support\VoidDate::resolve($dateMode, $handover->payoutEntry->entry_date);
+                $this->journal->reverse($handover->payoutEntry, $reason, $userId, $payoutOn);
+                $this->reversePayoutCashBank($handover, $userId, $payoutOn);
             }
             if ($handover->reclass_journal_entry_id && $handover->reclassEntry) {
-                $this->journal->reverse($handover->reclassEntry, $reason, $userId);
+                $this->journal->reverse($handover->reclassEntry, $reason, $userId, \App\Support\VoidDate::resolve($dateMode, $handover->reclassEntry->entry_date));
             }
 
             $handover->update([
@@ -202,7 +204,7 @@ class DepartmentHandoverService
         });
     }
 
-    private function reversePayoutCashBank(DepartmentHandover $handover, ?int $userId): void
+    private function reversePayoutCashBank(DepartmentHandover $handover, ?int $userId, ?string $onDate = null): void
     {
         if (! $handover->payout_cash_bank_account_id) {
             return;
@@ -216,7 +218,7 @@ class DepartmentHandoverService
 
         CashBankAccountTransaction::create([
             'cash_bank_account_id' => $cash->id,
-            'transaction_date'     => now()->toDateString(),
+            'transaction_date'     => $onDate ?? now()->toDateString(),
             'direction'            => 'in',
             'amount'               => $amount,
             'balance_after'        => $newBalance,

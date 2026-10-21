@@ -141,13 +141,18 @@ class ManualJournalController extends Controller
     public function reverse(Request $request, JournalEntry $manualJournal)
     {
         $reason = $request->input('reason', 'Manual reversal');
+        // VOID-ON-ORIGINAL-DATE-1: a wrong journal is wiped on its own date; a right one reversed today (default).
+        $request->validate(['void_date_mode' => \App\Support\VoidDate::rule()]);
+        $mode = \App\Support\VoidDate::mode($request->input('void_date_mode'));
 
         try {
             // ONE official path, ONE rule set (D1): ManualJournalService::reverse locks the original row (two tabs pressing
             // Reverse at once serialise), accepts only a posted manual journal that is not itself a reversal, and refuses
             // an entry that already has a reversal without posting anything — then GL reversal + cash/bank counter-movements
             // + supplier subledger mirror, the same authority the Edge supplier-finance ingestion posts through.
-            $reversal = $this->manualJournals->reverse($manualJournal, $reason, Auth::guard('tenant')->id());
+            // VOID-ON-ORIGINAL-DATE-1 (canonical, merged 22 Oct 2026): the date mode rides the SAME service call — a wrong entry
+            // wiped on its own date, a right one reversed today; the service dates the GL reversal and the cash/bank counter-movements.
+            $reversal = $this->manualJournals->reverse($manualJournal, $reason, Auth::guard('tenant')->id(), $mode);
         } catch (ManualJournalReversalRefused $e) {
             // Dobara dabaya gaya Reverse kuch nahi banata (B3) — user ko us reversal par le jao jo pehle ban chuki hai.
             // Pehle ye error ke saath wapas bhejta tha aur reversal ka safha 404 tha, is liye user ko pata hi nahi
@@ -165,7 +170,8 @@ class ManualJournalController extends Controller
 
         // CASH-BOOK-VOID-1: Cash Book se aaya reverse wapas Cash Book par.
         return redirect(\App\Support\CashBookReturn::from($request) ?? url('/finance/manual-journals/' . $reversal->id))
-            ->with('status', 'Reversal ' . $reversal->entry_no . ' posted for ' . $manualJournal->entry_no . '.');
+            ->with('status', 'Reversal ' . $reversal->entry_no . ' posted for ' . $manualJournal->entry_no
+                . ($mode === \App\Support\VoidDate::ORIGINAL ? ' on its own date (' . $reversal->entry_date->format('d M Y') . ').' : ', dated today.'));
     }
 
     private function validateData(Request $request): array

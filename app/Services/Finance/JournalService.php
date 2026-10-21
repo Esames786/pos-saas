@@ -77,8 +77,11 @@ class JournalService
      * Reverse a posted entry by creating a new entry with debits/credits flipped.
      * Idempotent: returns the existing reversal if one already exists. The original
      * is never deleted; both stay posted and net to zero in the ledger.
+     *
+     * VOID-ON-ORIGINAL-DATE-1 — `$onDate` dates the reversal (a "wrong entry" is wiped on the day it
+     * happened, so that day's balances come out right). Null = today, exactly as before.
      */
-    public function reverse(JournalEntry $entry, string $reason, ?int $userId = null): JournalEntry
+    public function reverse(JournalEntry $entry, string $reason, ?int $userId = null, ?string $onDate = null): JournalEntry
     {
         // EDGE-LOCAL-POS-1 (H9) — GL mutation (reversal) is Cloud authority; fail closed on a Branch Server.
         if (\App\Support\EdgeRuntime::isBranchServer()) {
@@ -89,12 +92,16 @@ class JournalService
             return $existing;
         }
 
-        return DB::connection('tenant')->transaction(function () use ($entry, $reason, $userId) {
+        $date = $onDate !== null && $onDate !== ''
+            ? \Illuminate\Support\Carbon::parse($onDate)->toDateString()
+            : now()->toDateString();
+
+        return DB::connection('tenant')->transaction(function () use ($entry, $reason, $userId, $date) {
             $entry->loadMissing('lines');
 
             $reversal = JournalEntry::create([
-                'entry_no'          => $this->nextEntryNo(now()->toDateString()),
-                'entry_date'        => now()->toDateString(),
+                'entry_no'          => $this->nextEntryNo($date),
+                'entry_date'        => $date,
                 'source_type'       => $entry->source_type . '_reversal',
                 'source_id'         => $entry->source_id,
                 'source_no'         => $entry->source_no,

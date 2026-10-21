@@ -171,11 +171,17 @@ class ManualJournalService
      *
      * @throws ManualJournalReversalRefused
      */
-    public function reverse(JournalEntry $entry, string $reason, ?int $userId = null): JournalEntry
+    public function reverse(JournalEntry $entry, string $reason, ?int $userId = null, string $dateMode = \App\Support\VoidDate::TODAY): JournalEntry
     {
         $this->assertCloud('reversal');
+        // VOID-ON-ORIGINAL-DATE-1 (canonical, merged into the D1 service 22 Oct 2026): ORIGINAL dates the reversal — GL entry AND the
+        // cash/bank counter-movements — on the entry's own date (a wrong entry wiped where it happened); TODAY (default, and what the
+        // Edge supplier-finance ingestion uses) keeps the old behaviour. One rule set, every caller.
+        if (! in_array($dateMode, \App\Support\VoidDate::MODES, true)) {
+            throw new \InvalidArgumentException('Unknown void date mode: ' . $dateMode);
+        }
 
-        return DB::connection('tenant')->transaction(function () use ($entry, $reason, $userId) {
+        return DB::connection('tenant')->transaction(function () use ($entry, $reason, $userId, $dateMode) {
             /** @var JournalEntry|null $locked */
             $locked = JournalEntry::whereKey($entry->getKey())->lockForUpdate()->first();
 
@@ -198,8 +204,8 @@ class ManualJournalService
                 );
             }
 
-            $reversal = $this->journal->reverse($locked, $reason, $userId);
-            $this->reverseCashBankLines($locked, $userId);
+            $reversal = $this->journal->reverse($locked, $reason, $userId, \App\Support\VoidDate::resolve($dateMode, $locked->entry_date));
+            $this->reverseCashBankLines($locked, $userId, $dateMode);
             $this->supplierPayable->mirrorApLinesToSupplierLedger($reversal, $userId);
 
             return $reversal;
@@ -286,7 +292,7 @@ class ManualJournalService
         }
     }
 
-    private function reverseCashBankLines(JournalEntry $entry, ?int $userId): void
+    private function reverseCashBankLines(JournalEntry $entry, ?int $userId, string $dateMode = \App\Support\VoidDate::TODAY): void
     {
         $txns = CashBankAccountTransaction::query()
             ->where('reference_type', 'manual_journal')
@@ -313,7 +319,7 @@ class ManualJournalService
 
             CashBankAccountTransaction::create([
                 'cash_bank_account_id' => $cash->id,
-                'transaction_date'     => now()->toDateString(),
+                'transaction_date'     => \App\Support\VoidDate::resolve($dateMode, $txn->transaction_date),
                 'direction'            => $reverseDir,
                 'amount'               => $txn->amount,
                 'balance_after'        => $newBalance,

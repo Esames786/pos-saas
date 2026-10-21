@@ -123,14 +123,17 @@ class CateringAdvanceController extends Controller
             // baad "ye reversal kyun hua" ka jawab sirf yahin milega.
             'reason' => ['required', 'string', 'min:3', 'max:255'],
             'return_customer' => ['nullable', 'integer'],
+            // VOID-ON-ORIGINAL-DATE-1: wipe on the receipt's own date, or reverse today (default).
+            'void_date_mode' => \App\Support\VoidDate::rule(),
         ]);
 
         $eventId = $cateringAdvance->catering_event_id;
+        $mode = \App\Support\VoidDate::mode($data['void_date_mode'] ?? null);
 
         try {
             app(\App\Services\Catering\CateringAdvanceService::class)
-                ->void($cateringAdvance, $data['reason'], $request->user()?->id);
-        } catch (\RuntimeException $e) {
+                ->void($cateringAdvance, $data['reason'], $request->user()?->id, $mode);
+        } catch (\RuntimeException|\InvalidArgumentException $e) {
             return back()->withErrors(['advance' => $e->getMessage()]);
         }
 

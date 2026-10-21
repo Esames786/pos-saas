@@ -41,6 +41,8 @@
                     <strong>VOIDED</strong> nishan ke saath rehti hai.
                     Sahi rakam is ke baad nayi receipt se darj karein.
                 </div>
+                {{-- VOID-ON-ORIGINAL-DATE-1: the receipt's own date is filled in when the modal opens. --}}
+                @include('partials.void-date-choice', ['originalDate' => null, 'idPrefix' => 'adv'])
                 <label class="form-label">Wajah <span class="text-danger">*</span></label>
                 <input type="text" name="reason" class="form-control" maxlength="255" required
                        placeholder="jaise: amount ghalat daal diya tha / duplicate entry">
@@ -104,6 +106,9 @@
             voidForm.querySelector('[name=reason]').value = '';
             document.getElementById('adv-void-amount').textContent = v.dataset.amount || '';
             document.getElementById('adv-void-date').textContent = v.dataset.date ? ' · ' + v.dataset.date : '';
+            // The question is asked afresh for every receipt, with that receipt's own date.
+            voidForm.querySelectorAll('[name=void_date_mode]').forEach(function (r) { r.checked = false; });
+            voidForm.querySelectorAll('[data-vd-original-text]').forEach(function (el) { el.textContent = v.dataset.date || 'its own date'; });
             bootstrap.Modal.getOrCreateInstance(document.getElementById('advVoidModal')).show();
             return;
         }

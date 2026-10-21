@@ -102,9 +102,7 @@
                             @if(!$receipt->bill && $receipt->status === 'posted')
                                 @can('tenant.goods-receipts.void')
                                     <form method="POST" action="{{ url('/goods-receipts/' . $receipt->id . '/void') }}"
-                                          onsubmit="return confirm('Void {{ $receipt->grn_no }}?
-
-The stock it brought in will be taken back out. The receipt stays on record as voided. This cannot be undone.');">
+                                          onsubmit="return confirm('Void {{ $receipt->grn_no }}?\n\nThe stock it brought in will be taken back out TODAY. Stock cannot be taken out on an old date without changing what it cost, so a stock void is never back-dated. The receipt stays on record as voided. This cannot be undone.');">
                                         @csrf
                                         <input type="hidden" name="void_reason" value="Voided from GRN list">
                                         <button type="submit" class="btn btn-sm btn-outline-danger">Void</button>

@@ -103,9 +103,9 @@ class ExpenseService
      * Void a posted voucher: refund the cash/bank account, record a reversal txn.
      * Idempotent — never creates a second reversal for the same voucher.
      */
-    public function void(ExpenseVoucher $voucher, ?int $userId = null, ?string $reason = null): ExpenseVoucher
+    public function void(ExpenseVoucher $voucher, ?int $userId = null, ?string $reason = null, string $dateMode = \App\Support\VoidDate::TODAY): ExpenseVoucher
     {
-        $voucher = DB::transaction(function () use ($voucher, $userId, $reason) {
+        $voucher = DB::transaction(function () use ($voucher, $userId, $reason, $dateMode) {
             $voucher = ExpenseVoucher::whereKey($voucher->id)->lockForUpdate()->firstOrFail();
 
             if (! $voucher->isPosted()) {
@@ -122,10 +122,15 @@ class ExpenseService
                 $cash = CashBankAccount::whereKey($voucher->cash_bank_account_id)->lockForUpdate()->firstOrFail();
 
                 $newBalance = (float) $cash->current_balance + (float) $voucher->total_amount;
+                // VOID-ON-ORIGINAL-DATE-1: a wrong expense comes back on the day it was paid out.
+                $paidOn = CashBankAccountTransaction::query()
+                    ->where('reference_type', 'expense_voucher')->where('reference_id', $voucher->id)
+                    ->where('transaction_type', 'expense_payment')->value('transaction_date')
+                    ?? ($voucher->payment_date ?? $voucher->expense_date);
 
                 CashBankAccountTransaction::create([
                     'cash_bank_account_id' => $cash->id,
-                    'transaction_date'     => now()->toDateString(),
+                    'transaction_date'     => \App\Support\VoidDate::resolve($dateMode, $paidOn),
                     'direction'            => 'in',
                     'amount'               => $voucher->total_amount,
                     'balance_after'        => $newBalance,
@@ -150,7 +155,7 @@ class ExpenseService
         });
 
         // Reverse the GL journal (FIN-7) — idempotent + safe.
-        $this->journalPosting->reverseForSource('expense_voucher', $voucher->id, $reason ?? 'Expense voucher voided', $userId);
+        $this->journalPosting->reverseForSource('expense_voucher', $voucher->id, $reason ?? 'Expense voucher voided', $userId, $dateMode);
 
         return $voucher;
     }

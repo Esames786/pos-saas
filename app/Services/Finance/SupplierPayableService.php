@@ -11,6 +11,7 @@ use App\Models\Tenant\Supplier;
 use App\Models\Tenant\SupplierLedger;
 use App\Models\Tenant\SupplierPayment;
 use App\Services\Purchasing\PurchasingService;
+use App\Support\VoidDate;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -111,15 +112,19 @@ class SupplierPayableService
      *
      * Payment ka row rehta hai; `voided_at` us par nishan hai. Do bar dabane par doosra reversal nahi
      * banta — row ka taala aur `voided_at` ki jaanch pehle hoti hai.
+     *
+     * VOID-ON-ORIGINAL-DATE-1 — `$dateMode` = VoidDate::ORIGINAL: GL reversal aur cash wapsi payment ki
+     * APNI tareekh par (ghalat entry usi din mit jati hai). TODAY (default): aaj, pehle ki tarah.
+     * Supplier subledger me kaarobari tareekh ka khana hi nahi — wahan sirf waqt darj hota hai.
      */
-    public function voidPayment(SupplierPayment $payment, string $reason, ?int $userId = null): SupplierPayment
+    public function voidPayment(SupplierPayment $payment, string $reason, ?int $userId = null, string $dateMode = VoidDate::TODAY): SupplierPayment
     {
         $reason = trim($reason);
         if (mb_strlen($reason) < 3) {
             throw new RuntimeException('Write why this payment is being voided (at least 3 characters) — it becomes part of the record.');
         }
 
-        return DB::connection('tenant')->transaction(function () use ($payment, $reason, $userId) {
+        return DB::connection('tenant')->transaction(function () use ($payment, $reason, $userId, $dateMode) {
             $locked = SupplierPayment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->voided_at !== null) {
@@ -139,7 +144,7 @@ class SupplierPayableService
                 throw new RuntimeException('Payment ' . $locked->payment_no . ' has no general-ledger entry, so it cannot be '
                     . 'voided safely. Nothing was changed.');
             }
-            $reversal = app(JournalService::class)->reverse($entry, $note, $userId);
+            $reversal = app(JournalService::class)->reverse($entry, $note, $userId, VoidDate::resolve($dateMode, $entry->entry_date));
 
             // 2. Supplier subledger — payable wapas barha.
             $this->purchasing->postSupplierLedger(
@@ -152,9 +157,10 @@ class SupplierPayableService
 
             // 4. Cash/bank — sirf tab jab payment ne waqai drawer se paisa nikala tha.
             if ($locked->cash_bank_account_id) {
-                $paidOut = CashBankAccountTransaction::query()
+                $paidOutRow = CashBankAccountTransaction::query()
                     ->where('reference_type', 'supplier_payment')->where('reference_id', $locked->id)
-                    ->where('transaction_type', 'supplier_payment')->exists();
+                    ->where('transaction_type', 'supplier_payment')->first();
+                $paidOut = $paidOutRow !== null;
                 $alreadyBack = CashBankAccountTransaction::query()
                     ->where('reference_type', 'supplier_payment')->where('reference_id', $locked->id)
                     ->where('transaction_type', 'supplier_payment_void_reversal')->exists();
@@ -165,7 +171,8 @@ class SupplierPayableService
 
                     CashBankAccountTransaction::create([
                         'cash_bank_account_id' => $cash->id,
-                        'transaction_date'     => now()->toDateString(),
+                        // Money comes back on the day it left when the payment was a wrong entry.
+                        'transaction_date'     => VoidDate::resolve($dateMode, $paidOutRow->transaction_date ?? $locked->payment_date),
                         'direction'            => 'in',
                         'amount'               => $locked->amount,
                         'balance_after'        => $newBalance,
