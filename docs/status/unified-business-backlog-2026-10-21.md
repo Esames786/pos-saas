@@ -20,6 +20,23 @@ Kept honest on purpose: nothing here is "all green". Status words: implemented /
    - decimal pack sizes for kg / litre items (needs new decimal columns beside the whole-number ones, all readers);
    - legacy lines read by their own meaning (purchase lines hold base units; counter sale lines hold packs).
    The loose-weight counter is NOT released before these.
+
+   **Slice A (22 Oct, implemented + tested on the branch; not merged, not deployed)** —
+   `docs/plans/units-packs-w2-slice-a-2026-10-22.md`:
+   - kg/g, L/ml, m/cm convert without a row (`UnitConversionService` → `StandardUnits`);
+   - the POS no longer reads an unconvertible recipe line in the wrong unit;
+   - stock with no variant and on the default variant is one stock for a stock-out (the old vs new GRN screen trap);
+   - journeys proven over HTTP in `UnitsAndPacksJourneyMySqlTest`: medicine 200 → 170 → 180, carton 48 → 45 → 46 at
+     the carton's own price, loose rice 25 → 24.750 → 24.850, gram recipe on kg stock, a packet with no rule refused,
+     mixed old/new stock.
+
+   Production census: nothing on a live tenant changes. Still open:
+   - decimal pack sizes;
+   - grams typed at the counter;
+   - a server rule for parts on counted items (census first);
+   - the supplier return reusing the GRN line's own pack;
+   - the POS payload's stock figures: the product figure counts only no-variant rows, and each variant only its own
+     rows (display; not changed).
 3. **W3** one product screen — recipe / catering setup inside the existing form; Add = Edit; hidden fields never reset.
 4. **W4** simple purchase — one entry: receipt, the actual bill, optional payment; PO optional; stock never doubled.
 5. **W5 → W6/W7** — mart counter; reports / prints; whole demo journeys; then an approved pilot tenant.

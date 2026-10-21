@@ -110,11 +110,13 @@ class InventoryService
             $ledgers = [];
             $lastConsumedCost = null;
 
+            // UB-W2 (22 Oct): no variant and the default variant are one stock (see plainVariantIds).
+            $variantIds = $this->plainVariantIds($product, $variant);
             $balances = StockBalance::query()
-                ->with('batch')
+                ->with(['batch', 'variant'])
                 ->where('branch_id', $branch->id)
                 ->where('product_id', $product->id)
-                ->where('product_variant_id', $variant?->id)
+                ->where(fn ($q) => $this->whereVariantIn($q, $variantIds))
                 ->where('quantity_on_hand', '>', 0)
                 ->when($onlyBatchId, fn ($q) => $q->where('inventory_batch_id', $onlyBatchId))
                 ->get()
@@ -132,10 +134,11 @@ class InventoryService
 
                 $consumeQty = min((float) $balance->quantity_on_hand, $remaining);
 
+                // The row it read is the row it takes from, and the stock book says which one.
                 $ledgers[] = $this->postMovement(
                     branch: $branch,
                     product: $product,
-                    variant: $variant,
+                    variant: $balance->product_variant_id ? $balance->variant : null,
                     batch: $balance->batch,
                     movementType: $movementType,
                     direction: 'out',
@@ -157,7 +160,7 @@ class InventoryService
 
             if ($remaining > 0.0001 && $skipExpired) {
                 $expired = (float) StockBalance::query()->where('branch_id', $branch->id)->where('product_id', $product->id)
-                    ->where('product_variant_id', $variant?->id)->where('quantity_on_hand', '>', 0)
+                    ->where(fn ($q) => $this->whereVariantIn($q, $variantIds))->where('quantity_on_hand', '>', 0)
                     ->whereHas('batch', fn ($b) => $b->whereNotNull('expiry_date')->whereDate('expiry_date', '<', $today))->sum('quantity_on_hand');
                 $unit = ' ' . ($product->unit?->name ?: 'units');
                 throw new RuntimeException($product->name . ': only ' . round($quantity - $remaining, 3) . $unit . ' left that is not expired'
@@ -516,6 +519,39 @@ class InventoryService
         }
 
         return 0.0;
+    }
+
+    /**
+     * UB-W2 (22 Oct) — "plain" stock: a line with no variant and a line in the product's default variant mean the same
+     * goods. The new GRN screen and the POS write the default variant; the old GRN screen, opening stock and recipe
+     * lines write none. Matched exactly, a recipe could not find rice bought on the new screen, and a POS sale could not
+     * find stock bought on the old one. Taking from both is the same stock either way; a real second variant (Large /
+     * Small) still takes only its own rows. Nothing already written is changed.
+     *
+     * @return array<int, int|null>
+     */
+    private function plainVariantIds(Product $product, ?ProductVariant $variant): array
+    {
+        $defaultId = $product->defaultVariant()->value('id');
+
+        if ($variant === null || ($defaultId && (int) $variant->id === (int) $defaultId)) {
+            return $defaultId ? [null, (int) $defaultId] : [null];
+        }
+
+        return [(int) $variant->id];
+    }
+
+    private function whereVariantIn($query, array $variantIds)
+    {
+        $named = array_values(array_filter($variantIds, fn ($id) => $id !== null));
+        if ($named) {
+            $query->whereIn('product_variant_id', $named);
+        }
+        if (in_array(null, $variantIds, true)) {
+            $query->orWhereNull('product_variant_id');
+        }
+
+        return $query;
     }
 
     private function ensureStockTracked(Product $product): void

@@ -249,6 +249,19 @@ class POSController extends Controller
         foreach ($stockRows as $row) {
             $stockLookup[(int) $row->branch_id][(int) $row->product_id][(int) ($row->product_variant_id ?: 0)] = (float) $row->qty;
         }
+        // UB-W2 (22 Oct): no variant and the default variant are one stock — the sale takes from both
+        // (InventoryService::plainVariantIds), so the count of what can be made reads both too.
+        $defaultVariantIds = \App\Models\Tenant\ProductVariant::where('is_default', true)->pluck('id', 'product_id');
+        foreach ($stockLookup as $branchKey => $byProduct) {
+            foreach ($byProduct as $productKey => $byVariant) {
+                $defaultId = (int) ($defaultVariantIds[$productKey] ?? 0);
+                if ($defaultId && isset($byVariant[$defaultId])) {
+                    $plain = ($byVariant[0] ?? 0.0) + $byVariant[$defaultId];
+                    $stockLookup[$branchKey][$productKey][0] = $plain;
+                    $stockLookup[$branchKey][$productKey][$defaultId] = $plain;
+                }
+            }
+        }
 
         $unitConversion = app(UnitConversionService::class);
 
@@ -634,7 +647,11 @@ class POSController extends Controller
                     try {
                         $requiredPerBatch = $unitConversion->convert($requiredPerBatch, $ing->unit, $ip->unit);
                     } catch (\Throwable) {
-                        // no conversion path — use as-is
+                        // UB-08 (22 Oct): no conversion path means the sale is refused (RecipeConsumptionService), so
+                        // none can be made. It used to read the figure in the wrong unit (250 g as 250 kg).
+                        $minUnits = 0;
+                        $limitName = $ip->name;
+                        break;
                     }
                 }
 
