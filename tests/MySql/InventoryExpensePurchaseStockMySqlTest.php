@@ -228,16 +228,21 @@ class InventoryExpensePurchaseStockMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection('tenant');
     }
 
-    /** Register this test's DB as a tenant so the command can activate it (as the TB party test does). */
+    private ?string $code = null;
+
+    /**
+     * Register this test's DB as a tenant so the command can activate it — and put master back as it was afterwards
+     * (master persists between runs; a mapping left behind breaks the next test that registers the same DB).
+     */
     private function tenantCode(): string
     {
-        $master = DB::connection('master');
-        $code = $master->table('tenants')->join('tenant_databases as d', 'd.tenant_id', '=', 'tenants.id')
-            ->where('d.db_database', $this->tenantDb)->value('tenants.tenant_code');
-        if (! $code) {
-            $code = 'exptest' . substr(md5($this->tenantDb), 0, 6);
-            $master->table('tenants')->updateOrInsert(['tenant_code' => $code], ['business_name' => 'Expense Stock Test', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        if ($this->code) {
+            return $this->code;
         }
+        $master = DB::connection('master');
+        $previous = $master->table('tenant_databases')->where('db_database', $this->tenantDb)->first();   // another test's, if any
+        $code = 'exptest' . substr(md5($this->tenantDb), 0, 6);
+        $master->table('tenants')->updateOrInsert(['tenant_code' => $code], ['business_name' => 'Expense Stock Test', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
         $tenantId = $master->table('tenants')->where('tenant_code', $code)->value('id');
         $cfg = config('database.connections.tenant');
         $master->table('tenant_databases')->where('db_database', $this->tenantDb)->delete();
@@ -247,7 +252,14 @@ class InventoryExpensePurchaseStockMySqlTest extends MySqlTenantTestCase
             'db_password' => Crypt::encryptString((string) ($cfg['password'] ?? '')),
             'migration_status' => 'completed', 'created_at' => now(), 'updated_at' => now(),
         ]);
+        $this->beforeApplicationDestroyed(function () use ($master, $tenantId, $previous) {
+            $master->table('tenant_databases')->where('tenant_id', $tenantId)->delete();
+            $master->table('tenants')->where('id', $tenantId)->delete();
+            if ($previous && (int) $previous->tenant_id !== (int) $tenantId) {
+                $master->table('tenant_databases')->insert((array) $previous);
+            }
+        });
 
-        return $code;
+        return $this->code = $code;
     }
 }
