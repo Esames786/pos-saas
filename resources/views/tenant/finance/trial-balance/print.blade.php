@@ -21,6 +21,10 @@
     .acct td { font-weight: bold; }
     .party td { color: #444; font-size: 8pt; }
     .party .name { padding-left: 14px; }
+    .sect th { background: none; border-bottom: 1px solid #333; padding-top: 8px; text-transform: uppercase; letter-spacing: .04em; }
+    .head td { font-weight: bold; }
+    .leaf td { font-weight: normal; }
+    .sub td { font-weight: bold; border-top: 1.5px solid #333; border-bottom: none; }
     .totals { margin-top: 10px; page-break-inside: avoid; }
     .totals td { border: 1px solid #bbb; padding: 4px; }
     .totals .label { background: #f3f3f3; font-weight: bold; }
@@ -41,8 +45,10 @@
         <thead>
             <tr>
                 <th style="width:9%">Code</th>
-                <th style="width:31%">Account</th>
+                <th style="width:{{ ($grouped ?? false) ? 40 : 31 }}%">Account</th>
+                @unless($grouped ?? false)
                 <th style="width:9%">Type</th>
+                @endunless
                 <th class="r" style="width:13%">Opening</th>
                 <th class="r" style="width:12%">Debit</th>
                 <th class="r" style="width:12%">Credit</th>
@@ -50,6 +56,42 @@
             </tr>
         </thead>
         <tbody>
+        @if($grouped ?? false)
+        {{-- TB-SECTION-HEADS-1: the same heads, parents and subtotals as the screen. --}}
+        @foreach($sections as $s)
+            <tr class="sect"><th colspan="6">{{ $s['label'] }}</th></tr>
+            @foreach($s['lines'] as $l)
+            <tr class="{{ $l['kind'] === 'head' ? 'head' : 'leaf' }}">
+                <td>{{ $l['code'] }}</td>
+                <td style="padding-left: {{ 4 + $l['depth'] * 12 }}px">{{ $l['name'] }}</td>
+                <td class="r">{{ $sided($l['opening_debit'], $l['opening_credit']) }}</td>
+                <td class="r">{{ $l['period_debit'] > 0 ? number_format($l['period_debit'], 2) : '' }}</td>
+                <td class="r">{{ $l['period_credit'] > 0 ? number_format($l['period_credit'], 2) : '' }}</td>
+                <td class="r">{{ $sided($l['closing_debit'], $l['closing_credit']) }}</td>
+            </tr>
+            @if($l['kind'] !== 'head')
+            @foreach($parties[$l['account_id']] ?? [] as $p)
+            <tr class="party">
+                <td></td>
+                <td style="padding-left: {{ 16 + $l['depth'] * 12 }}px">{{ $p['label'] }}</td>
+                <td class="r">{{ $sided($p['opening_debit'], $p['opening_credit']) }}</td>
+                <td class="r">{{ $p['period_debit'] > 0 ? number_format($p['period_debit'], 2) : '' }}</td>
+                <td class="r">{{ $p['period_credit'] > 0 ? number_format($p['period_credit'], 2) : '' }}</td>
+                <td class="r">{{ $sided($p['closing_debit'], $p['closing_credit']) }}</td>
+            </tr>
+            @endforeach
+            @endif
+            @endforeach
+            <tr class="sub">
+                <td></td>
+                <td>Total {{ $s['label'] }}</td>
+                <td class="r">{{ $sided($s['subtotal']['opening_debit'], $s['subtotal']['opening_credit']) }}</td>
+                <td class="r">{{ number_format($s['subtotal']['period_debit'], 2) }}</td>
+                <td class="r">{{ number_format($s['subtotal']['period_credit'], 2) }}</td>
+                <td class="r">{{ $sided($s['subtotal']['closing_debit'], $s['subtotal']['closing_credit']) }}</td>
+            </tr>
+        @endforeach
+        @else
         @foreach($rows as $r)
             <tr class="acct">
                 <td>{{ $r['code'] }}</td>
@@ -72,6 +114,7 @@
             </tr>
             @endforeach
         @endforeach
+        @endif
         </tbody>
     </table>
 

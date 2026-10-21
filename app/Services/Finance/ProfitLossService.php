@@ -71,7 +71,7 @@ class ProfitLossService
                 continue;
             }
 
-            $isCogs = str_starts_with((string) $account->code, '5');
+            $isCogs = AccountSections::isCostOfSales($account->type, $account->code);   // the Trial Balance uses the same rule
 
             if ($account->type === 'income') {
                 if ($account->normal_balance === 'debit') {

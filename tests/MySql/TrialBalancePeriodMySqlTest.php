@@ -186,7 +186,8 @@ class TrialBalancePeriodMySqlTest extends MySqlTenantTestCase
 
     public function test_the_csv_has_seven_columns_and_the_screens_numbers(): void
     {
-        $response = $this->page(['date_from' => '2026-10-06', 'date_to' => '2026-10-06', 'export_csv' => 1]);
+        // The flat list (group=0) keeps today's seven columns; the grouped CSV is TrialBalanceSectionHeadsMySqlTest's.
+        $response = $this->page(['date_from' => '2026-10-06', 'date_to' => '2026-10-06', 'export_csv' => 1, 'group' => 0]);
         ob_start();
         $response->sendContent();
         $csv = (string) ob_get_clean();

@@ -340,6 +340,16 @@ class ProductController extends Controller
         if ($isV2) {
             $request->merge(\App\Support\ProductCards::resolve(\App\Support\Business::of(), $request->all(), $product));
             $this->guardScreenV2($request, $product);
+        } elseif ($product && $product->is_stock_tracked && ! $request->boolean('is_stock_tracked')) {
+            // KHATRI-STOCK-TO-PNL-1: on the old form, unticking "Track Stock" while stock is on hand would leave
+            // that stock and its 1400 value in the books with no way back. The new screen already refuses this.
+            $onHand = (float) \App\Models\Tenant\StockBalance::where('product_id', $product->id)->sum('quantity_on_hand');
+            if (abs($onHand) > 0.0005) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'is_stock_tracked' => 'This item still has ' . rtrim(rtrim(number_format($onHand, 3), '0'), '.') . ' in stock, so stock cannot be switched off here — '
+                        . 'its value would stay in the books. Ask Bingoo support to move it to cost first. (اسٹاک ابھی باقی ہے)',
+                ]);
+            }
         }
 
         $data = $request->validate([
