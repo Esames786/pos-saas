@@ -24,7 +24,7 @@ class SalesReturnController extends Controller
         $scope = app(\App\Services\Security\UserDataScope::class);
         $user = auth('tenant')->user();
         if ($scope->isScoped($user)) {
-            $query->whereHas('order', fn ($q) => $scope->applyToSales($q, $user));
+            $scope->applyToReturns($query, $user);   // RETURN-NO-BILL-1: one without a bill by its own branch / counter
         }
 
         // Date range on the RETURN date, in the branch's local day (Today / Yesterday / custom).
@@ -63,6 +63,17 @@ class SalesReturnController extends Controller
 
     public function create(Request $request, SalesReturnService $salesReturnService)
     {
+        // RETURN-NO-BILL-1: the same screen, second way — "Without bill". Its item search answers here too (JSON),
+        // so whoever can open the return screen can do it (owner: no separate permission).
+        if ($request->input('mode') === 'no_bill') {
+            abort_unless(\App\Support\TenantFeatures::on(\App\Support\TenantFeatures::RETURN_NO_BILL), 404);
+            if ($request->filled('lookup') && $request->expectsJson()) {
+                return response()->json(['items' => $this->noBillLookup((string) $request->input('lookup'), (int) $request->input('branch_id'))]);
+            }
+
+            return $this->createNoBill($request);
+        }
+
         $salesOrder = null;
         $scope = app(\App\Services\Security\UserDataScope::class);
         $user = auth('tenant')->user();
@@ -148,6 +159,10 @@ class SalesReturnController extends Controller
 
     public function store(Request $request, SalesReturnService $salesReturnService)
     {
+        if ($request->input('mode') === 'no_bill') {
+            return $this->storeNoBill($request, $salesReturnService);
+        }
+
         $data = $request->validate([
             'sales_order_id'              => ['required', 'exists:sales_orders,id'],
             'reason'                      => ['nullable', 'string'],
@@ -252,13 +267,181 @@ class SalesReturnController extends Controller
                 refundMethod: $data['refund_method'] ?? null,
                 refundAmount: isset($data['refund_amount']) ? (float) $data['refund_amount'] : null,
                 userId:       auth('tenant')->id(),
-                refundShiftId: $this->refundShiftId($salesOrder, $data['terminal_id'] ?? null),
+                refundShiftId: $this->refundShiftId((int) $salesOrder->branch_id, $data['terminal_id'] ?? null),
             );
         } catch (\RuntimeException $e) {
             return back()->withErrors(['return' => $e->getMessage()])->withInput();
         }
 
         return redirect(url('/sales-returns/' . $salesReturn->id))->with('status', 'Sales return posted.');
+    }
+
+    /** RETURN-NO-BILL-1: the "Without bill" way — pick the branch, then the items. */
+    private function createNoBill(Request $request)
+    {
+        $user = auth('tenant')->user();
+        $assigned = $user?->branches()->pluck('branches.id') ?? collect();
+        $branches = Branch::query()->where('status', 'active')
+            ->when($assigned->isNotEmpty(), fn ($q) => $q->whereIn('id', $assigned))
+            ->orderBy('name')->get(['id', 'name', 'sales_return_approval_mode']);
+
+        // The counter the POS is on decides the branch; else the user's own branch; else the first.
+        $terminalBranch = $request->filled('terminal_id')
+            ? \App\Models\Tenant\Terminal::query()->whereKey((int) $request->input('terminal_id'))->value('branch_id')
+            : null;
+        $branchId = (int) (old('branch_id') ?: $terminalBranch ?: $user?->default_branch_id ?: $branches->first()?->id);
+        if (! $branches->contains('id', $branchId)) {
+            $branchId = (int) $branches->first()?->id;
+        }
+
+        return view('tenant.sales-returns.create', [
+            'mode'                 => 'no_bill',
+            'salesOrder'           => null,
+            'returnAllocations'    => collect(),
+            'outstandingDelivery'  => 0.0,
+            'defaultRefundMethod'  => 'cash',
+            'needsManagerApproval' => false,
+            'noBillBranches'       => $branches,
+            'noBillBranchId'       => $branchId,
+            'noBillApproval'       => $branches->mapWithKeys(fn ($b) => [(string) $b->id => ($b->sales_return_approval_mode ?? Branch::SALES_RETURN_AUTO_APPROVE) !== Branch::SALES_RETURN_AUTO_APPROVE]),
+        ]);
+    }
+
+    /**
+     * RETURN-NO-BILL-1: items for the "Without bill" search — what it is sold in today (its unit, and its packs where
+     * packs are on) at today's price in this branch, and its batches here (to put it back into). Sellable items only.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function noBillLookup(string $q, int $branchId): array
+    {
+        $q = trim($q);
+        if ($q === '' || ! $branchId || ! $this->userCanAccessBranch($branchId)) {
+            return [];
+        }
+        $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
+        $products = \App\Models\Tenant\Product::query()
+            ->with(['unit', 'variants', 'packUnits'])
+            ->where('is_sellable', true)
+            ->where(function ($w) use ($q, $like) {
+                $w->where('name', 'like', $like)->orWhere('sku', $q)->orWhere('generic_name', 'like', $like)
+                    ->orWhereHas('barcodes', fn ($b) => $b->where('barcode', $q));
+            })
+            ->orderBy('name')->limit(12)->get();
+
+        $pricing = app(\App\Services\Sales\SalePricingService::class);
+        $packsOn = \App\Support\PackUnits::enabled();
+        $out = [];
+        foreach ($products as $product) {
+            // One variant (most items) = its default one, where its stock and batches sit; several = each its own row.
+            $many = $product->variants->count() > 1;
+            $variants = $many ? $product->variants : collect([$product->variants->firstWhere('is_default', true) ?? $product->variants->first()]);
+            foreach ($variants as $variant) {
+                $base = round($pricing->resolveSellingPrice($product, $variant, $branchId, null), 2);
+                $units = [['id' => null, 'name' => $product->unit?->name ?: 'Unit', 'factor' => 1, 'price' => $base]];
+                if ($packsOn) {
+                    foreach ($product->packUnits->filter(fn ($p) => $p->can_sell && (int) $p->factor > 1)->sortByDesc('factor') as $pack) {
+                        $units[] = ['id' => (int) $pack->id, 'name' => $pack->name, 'factor' => (int) $pack->factor,
+                            'price' => round($pack->sale_price !== null ? (float) $pack->sale_price : $pack->factor * $base, 2)];
+                    }
+                }
+                $batches = \App\Models\Tenant\InventoryBatch::query()
+                    ->where('branch_id', $branchId)->where('product_id', $product->id)
+                    ->where('product_variant_id', $variant?->id)
+                    ->orderByRaw('expiry_date IS NULL')->orderBy('expiry_date')->limit(20)
+                    ->get(['id', 'batch_no', 'expiry_date'])
+                    ->map(fn ($b) => ['id' => (int) $b->id, 'no' => $b->batch_no, 'exp' => $b->expiry_date?->format('m/y')])
+                    ->values()->all();
+                $out[] = [
+                    'product_id' => (int) $product->id,
+                    'variant_id' => $variant?->id ? (int) $variant->id : null,
+                    'name'       => $product->name . ($many && $variant ? ' — ' . $variant->name : ''),
+                    'units'      => $units,
+                    'tracked'    => (bool) $product->is_stock_tracked,
+                    'has_expiry' => (bool) $product->has_expiry,
+                    'shelf'      => ! $product->is_perishable,
+                    'loose'      => $product->unit && $product->unit->unit_type !== 'quantity',
+                    // the item's own tax, added on top exactly as SalePricingService does, so the page shows the
+                    // refund the server will post
+                    'tax'        => $product->is_taxable ? (float) $product->tax_rate_percent : 0.0,
+                    'batches'    => $batches,
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /** RETURN-NO-BILL-1: post a return without a bill. */
+    private function storeNoBill(Request $request, SalesReturnService $salesReturnService)
+    {
+        // Master switch "Return without a bill" — off for every tenant until switched on.
+        abort_unless(\App\Support\TenantFeatures::on(\App\Support\TenantFeatures::RETURN_NO_BILL), 404);
+
+        $data = $request->validate([
+            'branch_id'                  => ['required', 'integer', 'exists:branches,id'],
+            'reason'                     => ['required', 'string', 'max:500'],
+            'refund_method'              => ['required', Rule::in(['cash', 'bank_transfer', 'card', 'other'])],
+            'refund_amount'              => ['nullable', 'numeric', 'min:0'],
+            'lines'                      => ['required', 'array', 'min:1'],
+            'lines.*.product_id'         => ['required', 'integer', 'exists:products,id'],
+            'lines.*.product_variant_id' => ['nullable', 'integer'],
+            'lines.*.pack_unit_id'       => ['nullable', 'integer'],
+            'lines.*.quantity'           => ['required', 'numeric', 'min:0'],
+            'lines.*.unit_price'         => ['required', 'numeric', 'min:0'],
+            'lines.*.restock'            => ['nullable', 'boolean'],
+            'lines.*.inventory_batch_id' => ['nullable', 'integer'],
+            'lines.*.batch_no'           => ['nullable', 'string', 'max:100'],
+            'lines.*.expiry'             => ['nullable', 'string', 'max:10'],
+            'manager_approval_id'        => ['nullable', 'integer', 'exists:manager_approvals,id'],
+            'terminal_id'                => ['nullable', 'integer'],
+        ], [
+            'reason.required' => 'Write why the item is coming back — a return without a bill needs a reason.',
+        ]);
+
+        $branch = Branch::findOrFail($data['branch_id']);
+        app(\App\Services\Edge\BranchOperatingModeService::class)->assertSaleMutationAllowed($branch);
+        if (! $this->userCanAccessBranch((int) $branch->id)) {
+            return back()->withErrors(['return' => 'That branch is not one you are assigned to.'])->withInput();
+        }
+
+        // The branch's manager-PIN setting applies exactly as for a return with a bill, bound to the refund amount.
+        if (($branch->sales_return_approval_mode ?? Branch::SALES_RETURN_AUTO_APPROVE) !== Branch::SALES_RETURN_AUTO_APPROVE) {
+            if (! isset($data['refund_amount']) || empty($data['manager_approval_id'])) {
+                return back()->withErrors(['manager_approval_id' => 'Manager approval is required to post a return at this branch.'])->withInput();
+            }
+            try {
+                app(\App\Services\Sales\ManagerApprovalService::class)->consume(
+                    \App\Models\Tenant\ManagerApproval::findOrFail($data['manager_approval_id']),
+                    'sales_return',
+                    (int) auth('tenant')->id(),
+                    [
+                        'sales_order_id' => null,
+                        'branch_id'      => (int) $branch->id,
+                        'refund_method'  => (string) $data['refund_method'],
+                        'refund_amount'  => round((float) $data['refund_amount'], 2),
+                    ]
+                );
+            } catch (\RuntimeException $exception) {
+                return back()->withErrors(['manager_approval_id' => $exception->getMessage()])->withInput();
+            }
+        }
+
+        try {
+            $salesReturn = $salesReturnService->processNoBillReturn(
+                branch:        $branch,
+                lines:         $data['lines'],
+                reason:        $data['reason'],
+                refundMethod:  $data['refund_method'],
+                refundAmount:  isset($data['refund_amount']) ? (float) $data['refund_amount'] : null,
+                userId:        (int) auth('tenant')->id(),
+                refundShiftId: $this->refundShiftId((int) $branch->id, $data['terminal_id'] ?? null),
+            );
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['return' => $e->getMessage()])->withInput();
+        }
+
+        return redirect(url('/sales-returns/' . $salesReturn->id))->with('status', 'Return without a bill posted.');
     }
 
     /**
@@ -268,17 +451,17 @@ class SalesReturnController extends Controller
      *   3. the branch's only open shift, or else the user's own open shift in the branch.
      * Null = the service falls back to the sale's own shift while it is still open (today's rule), else none.
      */
-    private function refundShiftId(SalesOrder $salesOrder, mixed $terminalId): ?int
+    private function refundShiftId(int $branchId, mixed $terminalId): ?int
     {
         $shifts = app(\App\Services\Sales\ShiftService::class);
         $user = auth('tenant')->user();
         foreach (array_filter([(int) $terminalId, (int) ($user?->default_terminal_id ?? 0)]) as $id) {
-            $terminal = \App\Models\Tenant\Terminal::query()->whereKey($id)->where('branch_id', $salesOrder->branch_id)->first();
+            $terminal = \App\Models\Tenant\Terminal::query()->whereKey($id)->where('branch_id', $branchId)->first();
             if ($terminal && ($shift = $shifts->activeShiftForTerminal($terminal))) {
                 return (int) $shift->id;
             }
         }
-        $open = \App\Models\Tenant\Shift::query()->where('branch_id', $salesOrder->branch_id)->where('status', 'open')->get(['id', 'opened_by_user_id']);
+        $open = \App\Models\Tenant\Shift::query()->where('branch_id', $branchId)->where('status', 'open')->get(['id', 'opened_by_user_id']);
         if ($open->count() === 1) {
             return (int) $open->first()->id;
         }

@@ -112,6 +112,7 @@ class ModuleCatalogService
             ['counter-rx', 'Prescription popup — Enter, Enter', 'medical_counter'],
             ['bill-preview', 'Bill: pack, batch and expiry on each line', 'medical_counter'],
             ['sales-return', 'Return: back on shelf or thrown away', null],
+            ['return-no-bill', 'Return without a bill: today\'s price at most, its batch, a reason', 'return_no_bill'],
         ],
         'catalog' => [
             ['product-new', 'New product screen in tabs', 'product_screen_v2'],

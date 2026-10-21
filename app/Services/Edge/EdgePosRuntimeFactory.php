@@ -68,6 +68,9 @@ class EdgePosRuntimeFactory
         // report has no Partner Share section; the section lives in the Reports Centre = capability `reports`); the Edge quick
         // report strips the section by THIS flag (EdgeQuickReportController::CAPABILITY_SECTIONS) and never computes it.
         'partnerShare' => false,
+        // CANONICAL 025728d8 (22 Oct 2026): RETURN-NO-BILL-1 is a Cloud-only way of returning (no sale to read from; today's price,
+        // batch pick, Master switch). The appliance has no twin and no route; the shared return screen hides the tab by this flag.
+        'returnWithoutBill' => false,
     ];
 
     /**
@@ -96,6 +99,7 @@ class EdgePosRuntimeFactory
         'shiftBranchWide' => 'Opening shifts for several terminals at once runs on the Online POS — this Branch Server opens the shift of its own terminal.',
         'shortageVoucher' => 'The shortage is recorded on this shift. The Branch Server does not raise the finance draft expense voucher; finance settles it from the shift record.',
         'websiteOrders' => 'Website orders arrive on the Online POS — a website order needs the Cloud, so this Branch Server does not take them.',
+        'returnWithoutBill' => 'A return without a bill is recorded on the Online POS — it needs the Cloud (today\'s price, the batch it goes back to); this Branch Server returns against a bill only.',
         'partnerShare' => 'Partner share is a Cloud report section — this Branch Server\'s Quick Report does not compute it; open the Online Reports Centre.',
         'modeChip' => null,
         'connection' => null,

@@ -22,12 +22,16 @@
 
             <dt class="col-sm-3">Original Sale</dt>
             <dd class="col-sm-9">
-                @if($posRuntime->route('salesOrderShow') !== null && \Illuminate\Support\Facades\Gate::allows('tenant.sales-orders.show'))
-                    <a href="{{ $posRuntime->route('salesOrderShow', ['sale' => $salesReturn->order?->id]) }}">
-                        <code>{{ $salesReturn->order?->sale_no }}</code>
+                {{-- RETURN-NO-BILL-1: a return without a bill has no sale to link to; the link itself is the runtime's (none on Edge) --}}
+                @if(! $salesReturn->order)
+                    <span class="badge bg-warning-subtle text-warning-emphasis">No bill</span>
+                    <span class="text-muted small ms-1">returned without a bill, at today's price at most</span>
+                @elseif($posRuntime->route('salesOrderShow') !== null && \Illuminate\Support\Facades\Gate::allows('tenant.sales-orders.show'))
+                    <a href="{{ $posRuntime->route('salesOrderShow', ['sale' => $salesReturn->order->id]) }}">
+                        <code>{{ $salesReturn->order->sale_no }}</code>
                     </a>
                 @else
-                    <code>{{ $salesReturn->order?->sale_no }}</code>
+                    <code>{{ $salesReturn->order->sale_no }}</code>
                 @endif
             </dd>
 

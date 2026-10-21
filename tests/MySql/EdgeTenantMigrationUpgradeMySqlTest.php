@@ -342,6 +342,49 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
                 $this->assertTrue($schema->hasColumn('sales_returns', 'terminal_id'));
             });
     }
+
+    // ── CANONICAL 025728d8 (owner CANONICAL_RELEASE_FREEZE, 22 Oct 2026) ──────────────────────────────────────────────────
+
+    public function test_restocked_on_sales_return_lines_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_20_000005_add_restocked_to_sales_return_lines', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            fn () => $this->dropColumns('sales_return_lines', ['restocked']),
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('sales_return_lines', 'restocked'));
+                // today's behaviour for every row the appliance writes without a restock choice: back on the shelf
+                $this->assertSame('1', (string) $conn->selectOne("SELECT COLUMN_DEFAULT AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sales_return_lines' AND column_name = 'restocked'")->d);
+            });
+    }
+
+    public function test_ask_prescription_on_branches_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_20_000006_add_ask_prescription_to_branches', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            fn () => $this->dropColumns('branches', ['ask_prescription']),
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('branches', 'ask_prescription'), 'the bootstrap branch section can upsert the whole row');
+                $this->assertSame(1, (int) $conn->table('branches')->value('ask_prescription'));
+            });
+    }
+
+    public function test_return_without_bill_schema_upgrades_an_older_appliance(): void
+    {
+        $nullable = fn ($conn, string $table, string $col) => ($conn->selectOne('SELECT IS_NULLABLE AS n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?', [$table, $col])->n ?? 'NO') === 'YES';
+        $this->proveUpgrade('2026_10_20_000007_return_without_bill_schema', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn) {
+                // an older appliance: both links NOT NULL, no unit_cost / inventory_batch_id on return lines
+                $this->dropColumns('sales_return_lines', ['unit_cost', 'inventory_batch_id']);
+                $conn->statement('ALTER TABLE sales_returns MODIFY sales_order_id BIGINT UNSIGNED NOT NULL');
+                $conn->statement('ALTER TABLE sales_return_lines MODIFY sales_order_line_id BIGINT UNSIGNED NOT NULL');
+            },
+            function ($conn, $schema) use ($nullable) {
+                $this->assertTrue($nullable($conn, 'sales_returns', 'sales_order_id'), 'NON-ADDITIVE step (owner review D7-6): the link is nullable after');
+                $this->assertTrue($nullable($conn, 'sales_return_lines', 'sales_order_line_id'));
+                $this->assertTrue($schema->hasColumn('sales_return_lines', 'unit_cost'));
+                $this->assertTrue($schema->hasColumn('sales_return_lines', 'inventory_batch_id'));
+                // the foreign keys stayed
+                $this->assertGreaterThanOrEqual(1, (int) $conn->selectOne("SELECT COUNT(*) AS c FROM information_schema.key_column_usage WHERE table_schema = DATABASE() AND table_name = 'sales_returns' AND column_name = 'sales_order_id' AND referenced_table_name IS NOT NULL")->c);
+            });
+    }
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void
@@ -367,6 +410,9 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             '2026_10_19_000002_create_product_pack_units', '2026_10_20_000001_add_purchase_discounts',
             '2026_10_20_000002_add_sale_line_batch', '2026_10_20_000003_add_bill_barcode_toggle',
             '2026_10_20_000004_add_refund_shift_to_sales_returns',
+            // CANONICAL_RELEASE_FREEZE 025728d8 (22 Oct 2026)
+            '2026_10_20_000005_add_restocked_to_sales_return_lines', '2026_10_20_000006_add_ask_prescription_to_branches',
+            '2026_10_20_000007_return_without_bill_schema',
         ];
         foreach ($canonicalRun as $name) {
             $this->assertFalse($m->entry($name)['BASELINE'] ?? true, $name);

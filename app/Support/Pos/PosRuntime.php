@@ -81,6 +81,10 @@ final class PosRuntime implements JsonSerializable
         // quick-report modal has no Partner Share box — Online PosQuickReportController::SECTIONS excludes it); the Edge quick
         // report strips the section by this flag (EdgeQuickReportController::CAPABILITY_SECTIONS).
         'partnerShare',
+        // CANONICAL 025728d8 (22 Oct 2026): RETURN-NO-BILL-1 — a return without a bill (Master switch). Cloud ON; Edge OFF: the Branch
+        // Server has no processNoBillReturn twin, so the shared return screen renders the "Without bill" way only where this is ON.
+        // SERVER-SIDE class: no control on the cashier page binds to it (the site is the shared sales-returns/create screen).
+        'returnWithoutBill',
     ];
 
     /**

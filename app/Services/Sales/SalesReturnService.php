@@ -2,12 +2,18 @@
 
 namespace App\Services\Sales;
 
+use App\Models\Tenant\Branch;
 use App\Models\Tenant\InventoryBatch;
+use App\Models\Tenant\Product;
+use App\Models\Tenant\ProductPackUnit;
+use App\Models\Tenant\ProductVariant;
 use App\Models\Tenant\SalesLedger;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesOrderLine;
 use App\Models\Tenant\SalesReturn;
+use App\Models\Tenant\SalesReturnLine;
 use App\Models\Tenant\Shift;
+use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\StockLedger;
 use App\Services\Finance\JournalPostingService;
 use App\Services\Inventory\InventoryService;
@@ -310,6 +316,262 @@ class SalesReturnService
         $this->journalPosting->postSalesReturnCashBankMovement($salesReturn, $userId);
 
         return $salesReturn;
+    }
+
+    /**
+     * RETURN-NO-BILL-1 — the customer brings an item back without the bill.
+     *
+     * Each line names the item, the pack it comes back in (Box / Strip / Tablet, or the item's own unit), how many, and
+     * the price paid back — at most TODAY's price of that pack (there is no sale to read a price from). Back on the
+     * shelf = stock in to the batch named (picked, or typed from the strip — required for an item with an expiry) at
+     * that batch's cost, else the item's; thrown away = nothing back in stock and no cost reversal (RETURN-RESTOCK-1).
+     * The refund goes into the counter's open shift and day (REFUND-SHIFT-1) and is booked like any return; the line
+     * keeps the cost it went back in at, so the books reverse exactly that.
+     *
+     * @param  list<array{product_id:int, product_variant_id?:?int, pack_unit_id?:?int, quantity:float|string,
+     *   unit_price:float|string, restock?:mixed, inventory_batch_id?:?int, batch_no?:?string, expiry?:?string}>  $lines
+     */
+    public function processNoBillReturn(
+        Branch $branch,
+        array $lines,
+        string $reason,
+        string $refundMethod,
+        ?float $refundAmount,
+        int $userId,
+        ?int $refundShiftId = null,
+    ): SalesReturn {
+        if (trim($reason) === '') {
+            throw new \RuntimeException('Write why the item is coming back — a return without a bill needs a reason.');
+        }
+
+        $salesReturn = DB::connection('tenant')->transaction(function () use (
+            $branch, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId
+        ) {
+            $refundShift = $refundShiftId
+                ? Shift::query()->whereKey($refundShiftId)->where('branch_id', $branch->id)->where('status', 'open')->lockForUpdate()->first()
+                : null;
+            $businessDate = $refundShift?->business_date
+                ?? app(\App\Support\TenantClock::class)->currentBusinessDate($branch);
+
+            $salesReturn = SalesReturn::create([
+                'return_no'          => $this->salesService->nextReturnNo(),
+                'sales_order_id'     => null,
+                'branch_id'          => $branch->id,
+                'return_date'        => now(),
+                'business_date'      => $businessDate instanceof \DateTimeInterface ? $businessDate->format('Y-m-d') : $businessDate,
+                'shift_id'           => $refundShift?->id,
+                'terminal_id'        => $refundShift?->terminal_id,
+                'subtotal'           => 0,
+                'discount_amount'    => 0,
+                'tax_amount'         => 0,
+                'grand_total'        => 0,
+                'refund_method'      => $refundMethod,
+                'refund_amount'      => $refundAmount ?? 0,
+                'status'             => 'posted',
+                'created_by_user_id' => $userId,
+                'reason'             => $reason,
+            ]);
+
+            $pricing = app(SalePricingService::class);
+            $subtotal = 0.0;
+            $tax = 0.0;
+            $processed = 0;
+
+            foreach ($lines as $lineData) {
+                $qty = round((float) ($lineData['quantity'] ?? 0), 3);
+                if ($qty <= 0) {
+                    continue;
+                }
+
+                $product = Product::with(['unit', 'packUnits', 'defaultVariant'])->findOrFail((int) $lineData['product_id']);
+                // No variant named = the item's default one: that is where its stock sits and where the counter sells
+                // from (stock filed under "no variant" would never be sold — the PURCHASING-V2 lesson).
+                $variant = ! empty($lineData['product_variant_id'])
+                    ? ProductVariant::query()->whereKey((int) $lineData['product_variant_id'])->where('product_id', $product->id)->firstOrFail()
+                    : $product->defaultVariant;
+                $pack = ! empty($lineData['pack_unit_id'])
+                    ? $product->packUnits->first(fn (ProductPackUnit $p) => (int) $p->id === (int) $lineData['pack_unit_id'] && $p->can_sell)
+                    : null;
+                if (! empty($lineData['pack_unit_id']) && ! $pack) {
+                    throw new \RuntimeException($product->name . ': that pack is not sold.');
+                }
+                $factor = $pack ? (int) $pack->factor : 1;
+                $unitName = $pack ? $pack->name : ($product->unit?->name ?: 'unit');
+
+                // Whole packs; a loose item sold by weight / volume may come back in parts.
+                $loose = ! $pack && $product->unit && $product->unit->unit_type !== 'quantity';
+                if (! $loose && abs($qty - round($qty)) > 0.0005) {
+                    throw new \RuntimeException($product->name . ': ' . $unitName . ' comes back whole — ' . $qty . ' is not a whole number.');
+                }
+
+                // Today's price of that pack is the most that can be paid back.
+                $base = $pricing->resolveSellingPrice($product, $variant, (int) $branch->id, null);
+                $cap = round($pack ? ($pack->sale_price !== null ? (float) $pack->sale_price : $factor * $base) : $base, 2);
+                $price = round((float) $lineData['unit_price'], 2);
+                if ($price > $cap + 0.005) {
+                    throw new \RuntimeException($product->name . ': 1 ' . $unitName . ' is ' . number_format($cap, 2)
+                        . ' today — without a bill no more than that can be paid back.');
+                }
+
+                $tracked = (bool) $product->is_stock_tracked;
+                $restock = $tracked && (! array_key_exists('restock', $lineData) || filter_var($lineData['restock'], FILTER_VALIDATE_BOOLEAN));
+                $baseQty = round($qty * $factor, 3);
+
+                // The batch it goes back into: one the cashier picked, or the one printed on the strip.
+                $batchNo = null;
+                $expiry = null;
+                if ($restock) {
+                    if (! empty($lineData['inventory_batch_id'])) {
+                        $picked = InventoryBatch::query()->whereKey((int) $lineData['inventory_batch_id'])
+                            ->where('branch_id', $branch->id)->where('product_id', $product->id)->first();
+                        if (! $picked) {
+                            throw new \RuntimeException($product->name . ': that batch is not this branch\'s batch of it.');
+                        }
+                        $batchNo = $picked->batch_no;
+                        $expiry = $picked->expiry_date?->toDateString();
+                    } elseif (trim((string) ($lineData['batch_no'] ?? '')) !== '') {
+                        $batchNo = trim((string) $lineData['batch_no']);
+                        $expiry = \App\Support\PackLines::expiry($lineData['expiry'] ?? null);
+                        if ($expiry === false) {
+                            throw new \RuntimeException($product->name . ': write the expiry as MM/YY, e.g. 09/28.');
+                        }
+                    }
+                    if ($product->has_expiry && ($batchNo === null || ! $expiry)) {
+                        throw new \RuntimeException($product->name . ' has an expiry: pick its batch, or type the batch and expiry printed on it.');
+                    }
+                }
+
+                $baseCost = $this->noBillCost($branch, $product, $variant, $batchNo);
+                $lineSubtotal = round($qty * $price, 2);
+                $lineTax = round($pricing->resolveTaxAmount($product, $qty, $price, 0, null), 2);
+
+                $returnLine = SalesReturnLine::create([
+                    'sales_return_id'     => $salesReturn->id,
+                    'sales_order_line_id' => null,
+                    'product_id'          => $product->id,
+                    'product_variant_id'  => $variant?->id,
+                    'quantity'            => $qty,
+                    'unit_price'          => $price,
+                    'discount_amount'     => 0,
+                    'tax_amount'          => $lineTax,
+                    'line_total'          => round($lineSubtotal + $lineTax, 2),
+                    'restocked'           => $restock,
+                    'pack_unit_id'        => $pack?->id,
+                    'pack_factor'         => $pack ? $factor : null,
+                    'base_quantity'       => $pack ? $baseQty : null,
+                    'unit_cost'           => $tracked ? round($baseCost * $factor, 4) : null,
+                ]);
+
+                if ($restock) {
+                    $ledger = $this->inventoryService->postIn(
+                        branch:        $branch,
+                        product:       $product,
+                        variant:       $variant,
+                        quantity:      $baseQty,
+                        unitCost:      $baseCost,
+                        movementType:  'sale_return',
+                        referenceType: 'sales_return',
+                        referenceId:   $salesReturn->id,
+                        referenceNo:   $salesReturn->return_no,
+                        batchNo:       $batchNo,
+                        expiryDate:    $expiry ?: null,
+                        notes:         'Return without a bill',
+                        userId:        $userId,
+                    );
+                    $returnLine->update(['inventory_batch_id' => $ledger->inventory_batch_id]);
+                }
+
+                $subtotal += $lineSubtotal;
+                $tax += $lineTax;
+                $processed++;
+            }
+
+            if ($processed === 0) {
+                throw new \RuntimeException('Add at least one item with a quantity.');
+            }
+
+            $subtotal = round($subtotal, 2);
+            $tax = round($tax, 2);
+            $grandTotal = round($subtotal + $tax, 2);
+            if ($refundAmount !== null && abs($refundAmount - $grandTotal) > 0.01) {
+                throw new \RuntimeException('Refund amount must match the calculated refund of ' . number_format($grandTotal, 2) . '.');
+            }
+
+            $salesReturn->update([
+                'subtotal'      => $subtotal,
+                'tax_amount'    => $tax,
+                'grand_total'   => $grandTotal,
+                'refund_amount' => $grandTotal,
+            ]);
+
+            SalesLedger::create([
+                'branch_id'          => $branch->id,
+                'sales_order_id'     => null,
+                'sale_payment_id'    => null,
+                'entry_type'         => 'sale_return',
+                'direction'          => 'debit',
+                'amount'             => $grandTotal,
+                'reference_no'       => $salesReturn->return_no,
+                'created_by_user_id' => $userId,
+                'notes'              => 'Sales return (no bill)',
+            ]);
+
+            $this->updateShiftForReturn($refundShift, $refundMethod, $grandTotal);
+
+            return $salesReturn->fresh();
+        });
+
+        $this->journalPosting->postSalesReturn($salesReturn, $userId);
+        $this->journalPosting->postSalesReturnCashBankMovement($salesReturn, $userId);
+
+        return $salesReturn;
+    }
+
+    /** RETURN-NO-BILL-1: the cost of one base unit going back in — its batch's, else the item's, else its buying price. */
+    private function noBillCost(Branch $branch, Product $product, ?ProductVariant $variant, ?string $batchNo): float
+    {
+        $rows = StockBalance::query()->where('branch_id', $branch->id)->where('product_id', $product->id)
+            ->where('product_variant_id', $variant?->id)->where('average_cost', '>', 0);
+        if ($batchNo !== null) {
+            $batchId = InventoryBatch::query()->where('branch_id', $branch->id)->where('product_id', $product->id)
+                ->where('batch_key', $this->inventoryService->batchKey((int) $branch->id, (int) $product->id, $variant?->id, $batchNo))->value('id');
+            $own = $batchId ? (float) (clone $rows)->where('inventory_batch_id', $batchId)->value('average_cost') : 0.0;
+            if ($own > 0) {
+                return $own;
+            }
+        }
+        $any = (float) $rows->orderByDesc('updated_at')->value('average_cost');
+        if ($any > 0) {
+            return $any;
+        }
+
+        return (float) ($variant?->purchase_price ?? 0) ?: (float) ($product->default_purchase_price ?? 0);
+    }
+
+    /**
+     * Does this return leave nothing of the order behind?
+     *
+     * Compares what has ALREADY been returned plus what this return takes against the original
+     * quantities. Only then is the delivery charge given back — a partial return keeps it, because
+     * the rider still made the trip for the items the customer kept.
+     */
+    private function returnCompletesOrder(SalesOrder $salesOrder): bool
+    {
+        // Called AFTER the line loop, which has already incremented returned_quantity on each
+        // line it processed (increment() syncs the in-memory attribute as well as the row), so
+        // this return's own quantities are counted here — adding them again would make a half
+        // return look complete and refund the delivery charge early.
+        foreach ($salesOrder->lines as $line) {
+            if (in_array($line->line_kind, ['component', 'modifier'], true)) {
+                continue;   // not customer-facing; they follow their parent
+            }
+
+            if ((float) $line->returned_quantity + 0.000001 < (float) $line->quantity) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

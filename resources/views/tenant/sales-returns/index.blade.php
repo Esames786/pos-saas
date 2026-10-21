@@ -44,12 +44,15 @@
                 <tr>
                     <td><code>{{ $return->return_no }}</code></td>
                     <td>
-                        @if($posRuntime->route('salesOrderShow') !== null && \Illuminate\Support\Facades\Gate::allows('tenant.sales-orders.show'))
-                            <a href="{{ $posRuntime->route('salesOrderShow', ['sale' => $return->order?->id]) }}">
-                                <code>{{ $return->order?->sale_no }}</code>
+                        {{-- RETURN-NO-BILL-1: a return without a bill has no sale to link to; the link itself is the runtime's (none on Edge) --}}
+                        @if(! $return->order)
+                            <span class="badge bg-warning-subtle text-warning-emphasis">No bill</span>
+                        @elseif($posRuntime->route('salesOrderShow') !== null && \Illuminate\Support\Facades\Gate::allows('tenant.sales-orders.show'))
+                            <a href="{{ $posRuntime->route('salesOrderShow', ['sale' => $return->order->id]) }}">
+                                <code>{{ $return->order->sale_no }}</code>
                             </a>
                         @else
-                            <code>{{ $return->order?->sale_no }}</code>
+                            <code>{{ $return->order->sale_no }}</code>
                         @endif
                     </td>
                     <td>{{ $return->branch?->name }}</td>

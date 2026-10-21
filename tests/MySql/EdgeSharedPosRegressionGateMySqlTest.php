@@ -106,6 +106,10 @@ class EdgeSharedPosRegressionGateMySqlTest extends MySqlTenantTestCase
         // PARTNER-SHARE-1: the quick-report modal has no Partner Share section on Online (PosQuickReportController::SECTIONS) — the
         // section lives in the Reports Centre (capability `reports`); the Edge quick report strips it by this flag and never computes it.
         'partnerShare' => 'EdgeQuickReportController::CAPABILITY_SECTIONS[partner_share] (sectionsAllowed strips it while off)',
+        // RETURN-NO-BILL-1 (canonical 025728d8, 22 Oct 2026): the "Without bill" way lives on the shared sales-returns/create screen (a
+        // secondary shared screen, gated there by $posRuntime->can('returnWithoutBill') AND the Cloud feature switch) and on the Cloud
+        // SalesReturnController no-bill store route; the Edge runtime has neither the route nor a twin — no cashier-page control binds to it.
+        'returnWithoutBill' => 'sales-returns/create.blade.php $noBillOn = TenantFeatures::on(RETURN_NO_BILL) && $posRuntime->can(returnWithoutBill); no Edge route',
     ];
 
     /**

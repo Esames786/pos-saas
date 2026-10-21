@@ -45,7 +45,7 @@
 */
 
 return [
-    'manifest_version' => 'edge-tenant-migration-manifest@2026-10-20.1',
+    'manifest_version' => 'edge-tenant-migration-manifest@2026-10-22.1',
     'meta' => [
         'baseline_release' => '0.7.0-edge',
         'baseline_commit' => '7b8f886',
@@ -54,7 +54,9 @@ return [
         'pending_merge_base' => 'b529c95',
         // CANONICAL MERGE (D8): canonical was integrated INTO the Edge branch up to this head; migrations after 99e9365 were
         // classified as the merge landed them (see the entries marked "CANONICAL MERGE (D8, 20 Oct 2026)").
-        'merged_canonical' => 'ccc67fa1',
+        // CANONICAL_RELEASE_FREEZE (owner, 22 Oct 2026): canonical 025728d8 integrated in 5 chunks; the three migrations after ccc67fa1
+        // were classified from the integration matrix (docs/status/edge-canonical-025728d8-integration-matrix.md §2) as they landed.
+        'merged_canonical' => '025728d8',
         'governs' => 'database/migrations/tenant',
         'bootstrap_section_tables' => [
             'branches', 'units', 'currencies', 'currency_denominations', 'categories', 'products', 'product_variants',
@@ -3253,6 +3255,51 @@ return [
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
             'NOTE' => 'REFUND-SHIFT-1 (schema step): sales_returns is an OPERATIONAL table the appliance writes (shared SalesReturnService via EdgeLocalReturnService); shift_id / terminal_id nullable, ALGORITHM=INSTANT. The refund-to-shift behaviour itself is a later canonical step — the Edge return twin must carry the same two columns when it lands (handover item).',
+        ],
+        '2026_10_20_000005_add_restocked_to_sales_return_lines' => [
+            'MIGRATION' => '2026_10_20_000005_add_restocked_to_sales_return_lines',
+            'CLASSIFICATION' => 'EDGE_REQUIRED',
+            'TABLES_CHANGED' => ['sales_return_lines'],
+            'EDGE_CODE_REFERENCES' => ['SalesReturnService', 'JournalPostingService', 'EdgeLocalReturnService', 'EdgeInboundReturnIngestionService'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'low',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
+            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_restocked_on_sales_return_lines_upgrades_an_older_appliance',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'CANONICAL 025728d8 (22 Oct 2026) RETURN-RESTOCK-1: sales_return_lines is an OPERATIONAL table the appliance writes (EdgeLocalReturnService); restocked TINYINT(1) NOT NULL DEFAULT 1, ALGORITHM=INSTANT, no row touched. The shared SalesReturnService / JournalPostingService read it on both runtimes (stock-in + COGS reversal only when restocked); the Edge till sends no restock key = restocked (today\'s behaviour).',
+        ],
+        '2026_10_20_000006_add_ask_prescription_to_branches' => [
+            'MIGRATION' => '2026_10_20_000006_add_ask_prescription_to_branches',
+            'CLASSIFICATION' => 'EDGE_REQUIRED',
+            'TABLES_CHANGED' => ['branches'],
+            'EDGE_CODE_REFERENCES' => ['Branch', 'EdgeLocalBootstrapImporter (branch section, whole-row upsert)', 'EdgeLocalConfigRefreshApplier'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'low',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
+            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_ask_prescription_on_branches_upgrades_an_older_appliance',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'CANONICAL 025728d8 (22 Oct 2026) RX-BRANCH-SETTING-1: branches is the bootstrap/refresh `branch` section (WHOLE-ROW upsert) — the column must exist on the appliance before the next refresh; ask_prescription TINYINT(1) NOT NULL DEFAULT 1, INSTANT. Read by the shared POS only where medicalCounter is on (false on every appliance).',
+        ],
+        '2026_10_20_000007_return_without_bill_schema' => [
+            'MIGRATION' => '2026_10_20_000007_return_without_bill_schema',
+            'CLASSIFICATION' => 'EDGE_REQUIRED',
+            'TABLES_CHANGED' => ['sales_returns', 'sales_return_lines'],
+            'EDGE_CODE_REFERENCES' => ['SalesReturnService', 'SalesReturn', 'SalesReturnLine', 'JournalPostingService', 'EdgeLocalReturnService', 'EdgeInboundReturnIngestionService'],
+            'ADDITIVE_ONLY' => false,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'low',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
+            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_return_without_bill_schema_upgrades_an_older_appliance',
+            'OWNER_REVIEW_REQUIRED' => true,
+            'BASELINE' => false,
+            'NOTE' => 'CANONICAL 025728d8 (22 Oct 2026) RETURN-NO-BILL-1 (schema): NON-ADDITIVE — sales_returns.sales_order_id and sales_return_lines.sales_order_line_id become NULLable (MODIFY, ALGORITHM=INPLACE, LOCK=NONE, lock_wait_timeout 10, FKs kept) + sales_return_lines.unit_cost DECIMAL(15,4) NULL and inventory_batch_id BIGINT NULL (INSTANT). No row is touched; the appliance never writes a NULL there (no no-bill twin — capability returnWithoutBill OFF). Owner review D7-6 (integration matrix §2): recommended EDGE_REQUIRED / SHIP_AND_RUN; the shared models and services assume the columns exist.',
         ],
     ],
 ];

@@ -280,14 +280,17 @@ class SalesReportEngine
      *  return_date only as a fallback for un-backfilled rows) constrained to the same branch scope. */
     private function returnsBase(array $f)
     {
+        // RETURN-NO-BILL-1: LEFT join — a return without a bill has no sale (o.* is NULL) and must still count.
+        // A chosen order type / waiter means returns of THAT kind of sale (none without a bill); an operator's
+        // order-type SCOPE still shows him his returns without a bill; the cashier is the one who posted it.
         return DB::connection('tenant')->table('sales_returns as r')
-            ->join('sales_orders as o', 'o.id', '=', 'r.sales_order_id')
+            ->leftJoin('sales_orders as o', 'o.id', '=', 'r.sales_order_id')
             ->where('r.status', 'posted')
             ->whereRaw('COALESCE(r.business_date, DATE(r.return_date)) >= ?', [$f['date_from']])
             ->whereRaw('COALESCE(r.business_date, DATE(r.return_date)) <= ?', [$f['date_to']])
             ->when($f['branch_ids'], fn ($q) => $q->whereIn('r.branch_id', $f['branch_ids']))
             ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
-            ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
+            ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->where(fn ($w) => $w->whereIn('o.order_type', $f['allowed_order_types'])->orWhereNull('r.sales_order_id')))
             ->when($f['order_types'], fn ($q) => $q->whereIn('o.order_type', $f['order_types']))
             ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
             ->when($f['waiter_ids'], fn ($q) => $this->applyWaiterIds($q, $f['waiter_ids']))
@@ -295,7 +298,7 @@ class SalesReportEngine
             // from 20 Oct); older returns carry none and keep falling back to the sale's own, so no past figure moves.
             ->when($f['terminal_id'], fn ($q) => $q->whereRaw('COALESCE(r.terminal_id, o.terminal_id) = ?', [$f['terminal_id']]))
             ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn(DB::raw('COALESCE(r.terminal_id, o.terminal_id)'), $f['allowed_terminal_ids']))
-            ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))
+            ->when($f['cashier_id'], fn ($q) => $q->whereRaw('COALESCE(o.created_by_user_id, r.created_by_user_id) = ?', [$f['cashier_id']]))
             ->when($f['shift_id'], fn ($q) => $q->whereRaw('COALESCE(r.shift_id, o.shift_id) = ?', [$f['shift_id']]));
     }
 
@@ -306,7 +309,8 @@ class SalesReportEngine
 
         return $this->returnsBase($f)
             ->join('sales_return_lines as rl', 'rl.sales_return_id', '=', 'r.id')
-            ->join('sales_order_lines as ol', 'ol.id', '=', 'rl.sales_order_line_id')
+            // RETURN-NO-BILL-1: LEFT — a line returned without a bill has no sale line (no deal, its own name).
+            ->leftJoin('sales_order_lines as ol', 'ol.id', '=', 'rl.sales_order_line_id')
             ->leftJoin('products as p', 'p.id', '=', 'rl.product_id')
             // DEAL-CATEGORY-1: the combo comes off the ORIGINAL sale line, so a refunded deal
             // credits back to the same head it was sold under.
@@ -627,7 +631,7 @@ class SalesReportEngine
             ->groupBy('rl.product_id', 'rl.product_variant_id', 'ol.combo_id')
             ->selectRaw(
                 'rl.product_id, rl.product_variant_id, ol.combo_id,
-                 COALESCE(MAX(cb.name), MAX(ol.product_name)) as item,
+                 COALESCE(MAX(cb.name), MAX(ol.product_name), MAX(p.name)) as item,
                  MAX(v.name) as variant, MAX(c.name) as category,
                  MAX(c.id) as category_id,
                  COALESCE(SUM(COALESCE(rl.base_quantity, rl.quantity)),0) as returned_qty,

@@ -189,7 +189,8 @@ class EdgeTenantMigrationManifestTest extends TestCase
         // chunk 12: + add_sale_line_batch (EDGE_REQUIRED).
         // chunk 13: + add_bill_barcode_toggle (EDGE_REQUIRED).
         // chunk 14: + add_refund_shift_to_sales_returns (EDGE_REQUIRED).
-        $this->assertSame(212, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6)');
+        // CANONICAL_RELEASE_FREEZE 025728d8 (22 Oct 2026): + restocked, ask_prescription, return_without_bill_schema (EDGE_REQUIRED ×3).
+        $this->assertSame(215, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6) + 025728d8 (3)');
         $this->assertSame(24, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
         $baselineCloudOnly = array_filter($m->entries(), fn ($e) => ($e['BASELINE'] ?? false) && $e['CLASSIFICATION'] === EdgeTenantMigrationManifest::CLOUD_ONLY);
         $this->assertSame([], array_keys($baselineCloudOnly), 'baseline rule: no 0.7.0 migration is CLOUD_ONLY in this manifest version');
