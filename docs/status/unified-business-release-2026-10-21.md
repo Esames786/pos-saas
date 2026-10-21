@@ -13,7 +13,8 @@ Branch `feat/unified-business-20261021` (worktree `pos-saas-qrwaiter`), on top o
 | `f17e01eb` | supplier return never more than its receipt line brought in (two at once); "Post return" posted once; PRET number clash |
 | `582f4b70` | read-only readiness in Master; StandardUnits; supplier-return matrix pinned; test isolation fix |
 | `dbe9fd64` | system map |
-| (next) | stock unit fixed once stock / purchases ran in it — every write path; no-bill refund conditions; system map |
+| `c0df44cb` | stock unit fixed once stock / purchases ran in it — every write path; no-bill refund conditions; number clash by value |
+| `e7c8e62f` | system map (the commit the final suites ran on) |
 
 Not in this release: supplier bill net of a return (designed separately, see below), W3–W7.
 
@@ -41,10 +42,11 @@ The code checks the column before writing it, so a tenant the migration has not 
 
 | Gate | Evidence |
 |---|---|
-| Full MySQL suite green on the FINAL commit | |
-| Default suite (Unit + Feature) — no new failure vs production | |
-| Double click / retry / concurrent return — real MySQL, two OS processes | |
-| Feature-OFF path and old-document readers | |
+| Full MySQL suite green on the FINAL commit | `e7c8e62f`: 2,318 tests, 1 failure = `SalesAnalyticsMySqlTest` (known 19–24 UTC flake; fails the same on production `025728d8` at the same hour, 22:32 UTC); rerun at 00:00:37 UTC on `e7c8e62f`: OK (16 tests) |
+| Default suite (Unit + Feature) — no new failure vs production | 230 tests, 3 failures — the same 3 fail on production `025728d8` (run in a temp worktree): catering sidebar, ESC/POS report payload, rider reassignment |
+| Double click / retry / concurrent return — real MySQL, two OS processes | `SalesReturnPostedOnceMySqlTest` (bill form twice at once; no-bill form twice at once; two people one bill), `PurchaseReturnPostedOnceMySqlTest` (one receipt line, two returns at once) — each with "both queued behind the lock" proven |
+| Feature-OFF path and old-document readers | no key = posts as before; column missing = posts as before; old supplier-return screen (draft → Post) as before; switch off = no no-bill return (404); a return with no key reads on the list, its page and the sale's return screen, and still counts toward what is left (`MedicalCounterMySqlTest`) |
+| Sabotage | 18 guards broken one by one: 16 turned the test red. 2 stayed green because a second guard covers the same case: the sale's lines are locked as well as the sale (removing both locks: red), and the Product model refuses a unit change as well as the screen does (removing the model's: red) |
 | Production MySQL version / tables / locking reviewed | MySQL 8.0.46, INSTANT row versions 0, tables ≤ 294 rows (above) |
 | Backups of every live tenant taken just before | |
 | Release commits recorded | this file |
