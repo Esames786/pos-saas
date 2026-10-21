@@ -35,7 +35,7 @@ Deleted old Edge POS (`resources/views/edge/pos/**`) did NOT return (static gate
 | Fast contract suites (manifest, PosRuntime, SharedSecondaryScreens, shared-view static gate, compatibility) | 34 / 4,931 green |
 | Migration manifest validator + upgrade tests (incl. the 3 new) | inside the gates above (EdgeTenantMigrationManifestTest 215/24; EdgeTenantMigrationUpgradeMySqlTest 19 incl. restocked / ask_prescription / return_without_bill_schema) |
 | O1 regression | the freshness / cutover / handback files are untouched by the merge; the regression test ran inside the full gate |
-| Browser (Team FB2) | see `docs/status/edge-087278e9-browser-and-baseline.md` |
+| Browser (Team FB2, `docs/status/edge-087278e9-browser-and-baseline.md`) | ONLINE 17/17 PASS (+W03M); EDGE 17/17 PASS on 8095 (+W18; W15 EXPECTED-DIFFERENCE, never paired) + the paired 8096 STANDBY and Local-Mode WRITER runs PASS; W15 ×5 PASS on the pair (new customer uuid 01M5GANDG2… → Cloud customer 17, alias + replay + refresh reconciliation); W18 PASS on both runtimes; Online pixel reference RECAPTURED on 087278e9 (vs 768ac71: no state changed for a UI reason); Edge vs Online pixels: 9/12 identical at 1366, 08/11/13@1024 STATE, 06 DATA, zero unintentional drift; GEOMETRY NONE (998 boxes, 0 px); 8096 plan hash sha256:fbfdfe4fcbd00f988277cb4b4c4f54e4f43e87dd1e75c258d187869b0568f0b1 (RUN 3 / SKIP 24); LAB sales_orders 5 |
 
 ## 3. Handovers created by this integration (owner items)
 
