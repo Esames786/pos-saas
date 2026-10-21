@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * WIPES (truncate, ids restart at 1): sales + payments + returns + KOTs + cancellations,
  * shifts + daily closings, GL journals, cash/bank + customer/supplier ledgers + payments,
- * expenses, opening balances, purchasing (PO/GRN/bills/returns), all stock movement +
+ * expenses, opening balances, purchasing (PO/GRN/bills/returns, invoice nettings, credit moves), all stock movement +
  * balances + counts + transfers + batches, kitchen/manufacturing transactions, department
  * stock/handovers, print jobs, schedule runs. Restaurant tables reset to 'available'.
  *
@@ -29,7 +29,8 @@ use Illuminate\Support\Facades\Schema;
  * incomplete for a catering tenant but unsafe: it truncated the journals and stock
  * ledgers those documents referenced and left the documents behind.
  *
- * Triple-guarded: --yes, --confirm=<tenant_code> must match, refuses on a Branch Server.
+ * Triple-guarded: --yes, --confirm=<tenant_code> must match, refuses on a Branch Server. Refuses, before deleting
+ * anything, when any tenant table is not classified as wipe or keep.
  * ALWAYS take a DB backup before running this on a real tenant.
  */
 class TenantResetTransactionsCommand extends Command
@@ -56,6 +57,10 @@ class TenantResetTransactionsCommand extends Command
         'expense_voucher_lines', 'expense_vouchers', 'opening_balance_lines', 'opening_balance_batches',
         'department_handovers',
         // purchasing (SUPPLIER-RUNNING-ACCOUNT-1: which credit settled which bill — goes with them)
+        // SUPPLIER-NET-BILL-1: a return deducted on an invoice, and a credit moved off another bill to allow it.
+        // Both point at bills and returns wiped below; left behind, a new return reusing an old id would collide
+        // with the netting row's unique key.
+        'supplier_credit_reallocations', 'purchase_bill_return_nettings',
         'supplier_credit_allocations',
         'purchase_bill_lines', 'purchase_bills', 'goods_receipt_lines', 'goods_receipts',
         'purchase_return_lines', 'purchase_returns', 'purchase_order_lines', 'purchase_orders',
@@ -152,10 +157,14 @@ class TenantResetTransactionsCommand extends Command
         // COVERAGE AUDIT: every tenant table must be a deliberate decision — wiped, or knowingly
         // kept. A table added later (a new document, a new setting) would otherwise drift out of
         // this command silently and either survive a reset it should not, or be missed here.
+        // FAIL CLOSED (22 Oct): this used to warn and carry on deleting. It now stops before the
+        // first destructive statement, so an unknown table can never be half-reset.
         $unclassified = $this->unclassifiedTables();
         if ($unclassified !== []) {
-            $this->warn('Tables not classified as wipe/keep (verify before trusting this reset): '
-                .implode(', ', $unclassified));
+            $this->error('Reset stopped before anything was deleted. These tables are not classified as wipe or keep: '
+                .implode(', ', $unclassified).'. Nothing was changed; the reset must be updated for them before it can run.');
+
+            return self::FAILURE;
         }
 
         $before = [];
@@ -216,7 +225,7 @@ class TenantResetTransactionsCommand extends Command
     /**
      * Master/config tables that are deliberately KEPT but are not worth asserting a count on
      * (the sentinels above are the ones we prove). Anything outside these three lists is
-     * reported so a newly added table can never silently escape this command's contract.
+     * refused (the reset stops before deleting) so a newly added table can never silently escape this command's contract.
      */
     private const KNOWN_KEPT = [
         'migrations', 'cache', 'cache_locks', 'sessions', 'password_reset_tokens', 'languages',
@@ -267,7 +276,7 @@ class TenantResetTransactionsCommand extends Command
         'delivery_zone_places', 'web_branch_settings', 'delivery_fee_bands',
     ];
 
-    /** Tenant tables this command has no opinion about — surfaced as a warning. */
+    /** Tenant tables this command has no opinion about — any one of them stops the reset before it deletes. */
     private function unclassifiedTables(): array
     {
         $all = array_map(
