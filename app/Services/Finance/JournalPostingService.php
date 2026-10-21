@@ -478,8 +478,14 @@ class JournalPostingService
             $lines[] = ['account_id' => $creditAccountId, 'branch_id' => $return->branch_id, 'description' => 'Refund '.$return->return_no, 'debit' => 0, 'credit' => $grand];
 
             // COGS reversal — returned goods go back into inventory (balanced pair).
+            // RETURN-RESTOCK-1: only the lines that went BACK ON THE SHELF. A line thrown away put nothing back
+            // in stock, so its cost stays in COGS (a loss); reversing it would leave 1400 Inventory holding
+            // value for goods that are in the bin.
             $cogs = 0.0;
             foreach ($return->lines as $line) {
+                if ($line->restocked === false || $line->restocked === 0 || $line->restocked === '0') {
+                    continue;
+                }
                 $cogs += (float) $line->quantity * (float) ($line->orderLine?->unit_cost ?? 0);
             }
             $cogs = round($cogs, 4);

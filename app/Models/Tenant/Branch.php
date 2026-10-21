@@ -20,6 +20,8 @@ class Branch extends Model
         'is_tax_enabled',
         'show_tax_number_on_invoice',
         'allow_negative_stock',
+        // RX-BRANCH-SETTING-1: the medical counter asks for the prescription (doctor, patient, "seen")
+        'ask_prescription',
         'default_delivery_charge',
         'delivery_charge_locked',
         'held_kot_cancellation_approval_mode',
@@ -45,6 +47,7 @@ class Branch extends Model
             'is_tax_enabled' => 'boolean',
             'show_tax_number_on_invoice' => 'boolean',
             'allow_negative_stock' => 'boolean',
+            'ask_prescription' => 'boolean',
             'hide_amounts_from_operators' => 'boolean',
             // json lists; cast so a reader never has to remember to decode them.
             'report_channels' => 'array',

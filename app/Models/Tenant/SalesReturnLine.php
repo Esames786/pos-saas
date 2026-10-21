@@ -18,6 +18,10 @@ class SalesReturnLine extends Model
         'discount_amount',
         'tax_amount',
         'line_total',
+        // RETURN-RESTOCK-1: back on the shelf (1) or thrown away (0)
+        'restocked',
+        // MEDICAL-COUNTER-1: returned in the pack it was sold in (quantity = packs, base_quantity = tablets)
+        'pack_unit_id', 'pack_factor', 'base_quantity',
     ];
 
     protected function casts(): array
@@ -28,6 +32,7 @@ class SalesReturnLine extends Model
             'discount_amount' => 'decimal:2',
             'tax_amount'      => 'decimal:2',
             'line_total'      => 'decimal:2',
+            'restocked'       => 'boolean',
         ];
     }
 

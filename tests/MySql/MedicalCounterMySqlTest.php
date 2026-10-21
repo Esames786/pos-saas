@@ -80,17 +80,31 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('id="save-draft-btn"', $pos);
         // the shortcut list is one click (or Ctrl+/) away, and says the easy keys
         $this->assertStringContainsString('id="medKeysModal"', $pos);
-        $this->assertStringContainsString('id="med-keys-btn"', $pos);
+        $this->assertStringContainsString('data-med-keys title="All shortcut keys', $pos, 'the top-bar Shortcuts button');
         foreach (['Pay now (exact cash) and print', '<td>Hold sale</td>', 'Held orders — recall (Ctrl+L too)', 'Remove the item', 'A bill held at another counter comes up here'] as $says) {
             $this->assertStringContainsString($says, $pos);
         }
         $this->assertStringContainsString('id="med-held-search"', $pos, 'Held Orders has its search / scan box');
         $this->assertSame(2, DB::connection('tenant')->table('receipt_layout_settings')->whereIn('document_type', ['receipt', 'kot'])
             ->where('show_bill_barcode', 1)->count(), 'the pharmacy demo prints the bill barcode on its bill and KOT (and keeps it after the nightly reset)');
-        $this->assertSame(2, substr_count($pos, 'data-med-keys title="All shortcut keys'), 'the Shortcuts button is in the top bar too');
+        $this->assertSame(1, substr_count($pos, 'data-med-keys title="All shortcut keys'), 'ONE Shortcuts button, in the top bar (owner: no second key line)');
+        $this->assertStringNotContainsString('id="med-keys-btn"', $pos, 'the key line beside the list is gone');
         $this->assertStringContainsString("h: 'held'", $pos, 'Ctrl+H opens the held orders');
         $this->assertStringNotContainsString("r: 'held'", $pos, 'Ctrl+R stays the browser refresh');
         $this->assertScriptsParse($pos);
+
+        // RX-BRANCH-SETTING-1: the branch decides whether the counter asks for the prescription.
+        $b = (string) $this->branchId();
+        $this->assertStringContainsString('const medAskRx = {"' . $b . '":true}', $pos, 'asks by default');
+        $edit = $this->owner()->get($this->url('/branches/' . $b . '/edit'))->assertOk()->getContent();
+        $this->assertStringContainsString('id="ask_prescription"', $edit, 'the switch is on the branch screen of a pharmacy tenant');
+        DB::connection('tenant')->table('branches')->where('id', $b)->update(['ask_prescription' => 0]);
+        try {
+            $noAsk = $this->owner()->get($this->url('/pos'))->assertOk()->getContent();
+            $this->assertStringContainsString('const medAskRx = {"' . $b . '":false}', $noAsk, 'switched off: the counter does not ask');
+        } finally {
+            DB::connection('tenant')->table('branches')->where('id', $b)->update(['ask_prescription' => 1]);
+        }
 
         $this->setFeatures(['product_screen_v2' => true, 'packs' => true]);
         $off = $this->owner()->get($this->url('/pos'))->assertOk()->getContent();
@@ -103,6 +117,9 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString('id="med-held-search"', $off);
         $this->assertStringNotContainsString('data-med-keys title=', $off, 'no Shortcuts button on any other counter');
         $this->assertStringContainsString('>Products</h2>', $off);
+        $this->assertStringContainsString('const medAskRx = {}', $off, 'no prescription setting read on any other counter');
+        $this->assertStringNotContainsString('id="ask_prescription"', $this->owner()->get($this->url('/branches/' . $this->branchId() . '/edit'))->getContent(),
+            'and no prescription switch on their branch screen');
         $this->assertScriptsParse($off);
     }
 

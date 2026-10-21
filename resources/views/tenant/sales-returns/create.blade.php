@@ -112,7 +112,8 @@
         <div class="card-body table-responsive p-0">
             <table class="table table-nowrap align-middle mb-0">
                 <caption class="visually-hidden">Sale lines available to return</caption>
-                <thead class="table-light">
+                {{-- Headings may wrap to two lines so the whole row fits the card without a sideways scroll. --}}
+                <thead class="table-light" style="white-space:normal">
                 <tr>
                     <th scope="col">Product</th>
                     <th scope="col">Variant</th>
@@ -138,6 +139,16 @@
                         $qtyStep = $qtyUnit
                             ? ($qtyUnit->unit_type !== 'quantity' ? '0.001' : '1')
                             : (fmod((float) $line->quantity, 1.0) === 0.0 ? '1' : '0.001');
+                        // MEDICAL-COUNTER-1: a line sold in a pack ("2 Strip") is returned in whole packs.
+                        $inPack = $line->base_quantity !== null && (int) $line->pack_factor > 0;
+                        if ($inPack) {
+                            $qtyStep = '1';
+                        }
+                        $qtyUnitLabel = $line->unit_code ?: $qtyUnit?->code;
+                        $qtyText = fn ($q) => rtrim(rtrim(number_format((float) $q, 3, '.', ''), '0'), '.') . ($qtyUnitLabel ? ' ' . $qtyUnitLabel : '');
+                        // RETURN-RESTOCK-1: only goods that sit on a shelf are asked; a perishable starts at "No".
+                        $askShelf = (bool) ($line->product?->is_stock_tracked);
+                        $shelfDefault = ! ($line->product?->is_perishable);
                         $canReturn = $returnable > 0;
                     @endphp
                     <tr class="return-line"
@@ -150,12 +161,13 @@
                             <input type="hidden" name="lines[{{ $i }}][sales_order_line_id]" value="{{ $line->id }}">
                             {{ $line->product_name }}
                         </td>
-                        <td>{{ $line->variant_name ?? '—' }}</td>
+                        <td>{{ ($line->variant_name && $line->variant_name !== $line->product_name) ? $line->variant_name : '—' }}</td>
                         <td class="text-end">{{ number_format($line->unit_price, 2) }}</td>
-                        <td class="text-end">{{ number_format($line->quantity, 3) }}</td>
-                        <td class="text-end">{{ number_format($line->returned_quantity, 3) }}</td>
+                        <td class="text-end">{{ $qtyText($line->quantity) }}</td>
+                        <td class="text-end">{{ $qtyText($line->returned_quantity) }}</td>
                         <td class="text-end">
-                            <span class="badge {{ $returnable > 0 ? 'bg-success-subtle text-success-emphasis' : 'bg-secondary-subtle text-secondary-emphasis' }}">{{ number_format($returnable, 3) }}</span>
+                            <span class="badge {{ $returnable > 0 ? 'bg-success-subtle text-success-emphasis' : 'bg-secondary-subtle text-secondary-emphasis' }}">{{ $qtyText($returnable) }}</span>
+                            @if($inPack)<small class="d-block text-muted">1 {{ $line->unit_code }} = {{ (int) $line->pack_factor }} {{ $qtyUnit?->name ?? 'units' }}</small>@endif
                         </td>
                         <td>
                             {{-- Unit-aware stepper: the −/+ buttons jump by exactly one sold unit (whole = 1,
@@ -179,6 +191,15 @@
                             @unless($canReturn)
                                 <small class="text-muted d-block text-end mt-1">Fully returned</small>
                             @endunless
+                            @if($askShelf && $canReturn)
+                                {{-- RETURN-RESTOCK-1: under the stepper, not a column of its own (the row must fit the card).
+                                     Back on shelf = back in stock (its own batch); thrown away = opened, spoilt. --}}
+                                <select name="lines[{{ $i }}][restock]" class="form-select form-select-sm mt-1" style="width:172px;margin-left:auto"
+                                        aria-label="Does {{ $line->product_name }} go back on the shelf?">
+                                    <option value="1" @selected($shelfDefault)>Back on shelf</option>
+                                    <option value="0" @selected(! $shelfDefault)>Thrown away</option>
+                                </select>
+                            @endif
                         </td>
                         <td class="text-end line-refund">0.00</td>
                     </tr>

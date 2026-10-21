@@ -120,6 +120,7 @@ class BranchController extends Controller
             'is_tax_enabled'             => ['nullable', 'boolean'],
             'show_tax_number_on_invoice' => ['nullable', 'boolean'],
             'allow_negative_stock'       => ['nullable', 'boolean'],
+            'ask_prescription'           => ['nullable', 'boolean'],
             'default_delivery_charge'    => ['nullable', 'numeric', 'min:0', 'max:99999'],
             'delivery_charge_locked'     => ['nullable', 'boolean'],
             'held_kot_cancellation_approval_mode' => ['nullable', Rule::in([
@@ -145,6 +146,13 @@ class BranchController extends Controller
         // Unchecked checkbox is absent from the request; force an explicit value
         // so turning the setting OFF actually persists false.
         $data['allow_negative_stock'] = $request->boolean('allow_negative_stock');
+        // RX-BRANCH-SETTING-1: the form shows this only on the medical-store counter (pharmacy tenants); elsewhere
+        // it is not posted and the saved value stays as it is.
+        if (\App\Support\CounterPacks::enabled()) {
+            $data['ask_prescription'] = $request->boolean('ask_prescription');
+        } else {
+            unset($data['ask_prescription']);
+        }
         // HIDE-AMOUNTS-1: same reason — without this, unticking the box would leave it ticked.
         $data['hide_amounts_from_operators'] = $request->boolean('hide_amounts_from_operators');
         $data['delivery_charge_locked'] = $request->boolean('delivery_charge_locked');
