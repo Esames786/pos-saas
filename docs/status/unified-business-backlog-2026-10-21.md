@@ -8,6 +8,11 @@ Kept honest on purpose: nothing here is "all green". Status words: implemented /
    before bill, free goods, credit on an open bill moved only with an authorized tick + audit row, credit on a paid bill
    blocked, two-process race; UI: page-render tests + a Chrome walkthrough with screenshots); not merged, not deployed.
    Bills cannot be voided in this system today, so "a netted bill voided" does not apply.
+   Review (21 Oct) gaps closed on the branch: GL inside the transaction (failure saves nothing, retry works), partial
+   deduction, blocked net invoice no longer pushes a full invoice; purchasing UI in English with one set of terms and
+   a "How to use this screen" guide. Open owner decisions: an authorized "reopen a paid invoice" path (not built —
+   blocked as the owner ruled); keep or drop the small Urdu-script helper lines. Not done in this step: one
+   simple-purchase workspace and a shorter sidebar (W4).
 2. **Units / packs completed end to end (W2)** — the release protected units; it did NOT finish the quantity system.
    Still to prove or build, through purchase → stock → counter sale → return → report:
    - box → strip → tablet and kg → gram by one rule everywhere (`StandardUnits` exists, wired nowhere yet);
