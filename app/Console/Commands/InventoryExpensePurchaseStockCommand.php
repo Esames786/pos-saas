@@ -111,6 +111,9 @@ class InventoryExpensePurchaseStockCommand extends Command
             $done++;
             $head = $codes[$plan['account']] ?? ('#' . $plan['account']);
             $this->line(sprintf('  %s → %s', $title, $head));
+            if ($plan['note'] ?? null) {
+                $this->line('      · ' . $plan['note']);
+            }
             $months = [];
             foreach ($plan['moves'] as $m) {
                 $months[substr($m['date'], 0, 7)] = round(($months[substr($m['date'], 0, 7)] ?? 0) + $m['amount'], 4);
@@ -157,7 +160,10 @@ class InventoryExpensePurchaseStockCommand extends Command
         if ($this->option('products')) {
             $match($query, $tokens($this->option('products')));
         } else {
-            $query->where('is_stock_tracked', true)->whereIn('id', DB::connection('tenant')->table('goods_receipt_lines as gl')
+            // stock-tracked items — and items whose tracking was switched off with stock still left (the old form allowed it)
+            $query->where(fn ($w) => $w->where('is_stock_tracked', true)
+                ->orWhereIn('id', DB::connection('tenant')->table('stock_balances')->where('quantity_on_hand', '!=', 0)->select('product_id')))
+                ->whereIn('id', DB::connection('tenant')->table('goods_receipt_lines as gl')
                 ->join('goods_receipts as g', 'g.id', '=', 'gl.goods_receipt_id')->where('g.status', 'posted')
                 ->where(fn ($w) => $w->whereNull('gl.affects_stock')->orWhere('gl.affects_stock', true))
                 ->distinct()->select('gl.product_id'));
@@ -176,8 +182,21 @@ class InventoryExpensePurchaseStockCommand extends Command
     {
         $c = DB::connection('tenant');
         $refuse = [];
+        $note = null;
         if (! $product->is_stock_tracked) {
-            return ['refuse' => ['already purchase-only (not counting stock) — nothing to do']];
+            // Tracking switched off while stock was left (Khatri #94, 21 Oct, through the old form): its stock and its
+            // bills' share of 1400 stay behind for ever. Clean those up the same way; otherwise there is nothing to do.
+            $left = abs((float) $c->table('stock_balances')->where('product_id', $product->id)->sum('quantity_on_hand'));
+            $unmoved = $c->table('goods_receipt_lines as gl')->join('goods_receipts as g', 'g.id', '=', 'gl.goods_receipt_id')
+                ->where('g.status', 'posted')->where('gl.product_id', $product->id)
+                ->where(fn ($w) => $w->whereNull('gl.affects_stock')->orWhere('gl.affects_stock', true))
+                ->whereExists(fn ($q) => $q->selectRaw('1')->from('purchase_bills as b')->whereColumn('b.goods_receipt_id', 'g.id'))
+                ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('journal_entries as e')->where('e.source_type', self::SOURCE)->whereColumn('e.source_id', 'gl.id'))
+                ->exists();
+            if ($left <= 0.0005 && ! $unmoved) {
+                return ['refuse' => ['already purchase-only (not counting stock) — nothing to do']];
+            }
+            $note = 'stock tracking was already switched off, but its stock and its cost in 1400 were left behind — cleaned up now';
         }
 
         $account = $this->explicitCostAccount($product, $costs);
@@ -247,7 +266,7 @@ class InventoryExpensePurchaseStockCommand extends Command
             ->groupBy('branch_id', 'product_variant_id')
             ->selectRaw('branch_id, product_variant_id, SUM(quantity_on_hand) qty, SUM(quantity_on_hand * average_cost) value')->get();
 
-        return ['refuse' => [], 'account' => $account, 'moves' => $moves, 'gl' => round($gl, 4), 'ledger_in' => round($ledgerIn, 4),
+        return ['refuse' => [], 'note' => $note, 'account' => $account, 'moves' => $moves, 'gl' => round($gl, 4), 'ledger_in' => round($ledgerIn, 4),
             'onhand' => $onHand, 'qty' => (float) $onHand->sum('qty'), 'onhand_value' => round((float) $onHand->sum('value'), 4)];
     }
 
@@ -260,6 +279,9 @@ class InventoryExpensePurchaseStockCommand extends Command
                     ['account_code' => '1400', 'branch_id' => $m['branch_id'], 'description' => 'Out of inventory: ' . $product->name, 'debit' => 0, 'credit' => $m['amount']],
                 ]);
         }
+        // InventoryService takes stock out only of an item that counts stock: an item switched off with stock left counts it
+        // again for this write-out, in memory only — it is saved as not counting stock just below, in the same transaction.
+        $product->is_stock_tracked = true;
         foreach ($plan['onhand'] as $b) {
             $inventory->postOutFefo(
                 Branch::findOrFail($b->branch_id),
