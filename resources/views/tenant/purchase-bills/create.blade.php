@@ -161,13 +161,45 @@
                             + round((float) ($goodsReceipt->extra_charges ?? 0), 4);
                         $billNow = $billBase - (float) old('discount_amount', 0) + (float) old('tax_amount', 0);
                     @endphp
+                    @php $returnsTotal = collect($returnsToAsk ?? [])->sum('amount'); @endphp
+                    @if($returnsTotal > 0)
+                    <tr id="bill-less-returns-row" @if(old('returns_on_invoice') !== 'netted') hidden @endif>
+                        <td colspan="4" class="text-end">Less goods returned before this bill <span class="text-muted small fw-normal">(the invoice already takes them off)</span></td>
+                        <td class="text-end">− {{ number_format($returnsTotal, 2) }}</td>
+                    </tr>
+                    @endif
                     <tr class="fw-bold">
                         <td colspan="4" class="text-end">Bill Total <span class="text-muted small fw-normal">(goods + charges − discount + tax)</span></td>
-                        <td class="text-end"><span id="bill-total-preview" data-base="{{ $billBase }}">{{ number_format($billNow, 2) }}</span></td>
+                        <td class="text-end"><span id="bill-total-preview" data-base="{{ $billBase }}" data-returns="{{ $returnsTotal }}">{{ number_format($billNow - (old('returns_on_invoice') === 'netted' ? $returnsTotal : 0), 2) }}</span></td>
                     </tr>
                 </tfoot>
             </table>
         </div>
+        @if(! empty($returnsToAsk))
+        {{-- SUPPLIER-NET-BILL-1: nothing pre-picked — the two answers move the supplier's balance differently. --}}
+        <fieldset class="card-body border-top" id="returns-on-invoice">
+            <legend class="form-label fw-semibold mb-1" style="font-size:inherit">Goods from this receipt went back before this bill. What does the supplier's invoice say? <span class="text-danger">*</span></legend>
+            <div class="small text-muted mb-2">
+                @foreach($returnsToAsk as $r)
+                    {{ $r['return_no'] }} ({{ $r['date'] }}): {{ number_format($r['amount'], 2) }}@if(! $loop->last) · @endif
+                @endforeach
+                — already credited to the supplier.
+            </div>
+            <div class="d-grid gap-2">
+                <label class="border rounded-3 p-2 d-flex gap-2 align-items-start" for="roi-separate" style="cursor:pointer">
+                    <input class="form-check-input mt-1" type="radio" name="returns_on_invoice" value="separate" id="roi-separate" required @checked(old('returns_on_invoice') === 'separate')>
+                    <span><span class="fw-semibold d-block">For everything received</span>
+                        <span class="small text-muted d-block">The invoice charges all the goods; the return stays a credit and is taken off once.</span></span>
+                </label>
+                <label class="border rounded-3 p-2 d-flex gap-2 align-items-start" for="roi-netted" style="cursor:pointer">
+                    <input class="form-check-input mt-1" type="radio" name="returns_on_invoice" value="netted" id="roi-netted" required @checked(old('returns_on_invoice') === 'netted')>
+                    <span><span class="fw-semibold d-block">Already less the returns</span>
+                        <span class="small text-muted d-block">The supplier took the returned goods off this invoice; the credit is used here and nowhere else.</span></span>
+                </label>
+            </div>
+            @error('returns_on_invoice') <div class="text-danger small mt-1">{{ $message }}</div> @enderror
+        </fieldset>
+        @endif
         <div class="card-footer small text-muted">
             <i class="ti ti-info-circle me-1"></i>Bill-level discount/tax above adjust the payable total. Posting the bill creates the supplier payable — <strong>stock will not update again</strong>.
         </div>
@@ -192,13 +224,18 @@
     if (!out) return;
     var num = function (id) { var el = document.getElementById(id); var n = Number(el && el.value || 0); return Number.isFinite(n) ? n : 0; };
     var render = function () {
-        var total = Number(out.dataset.base || 0) - num('discount_amount') + num('tax_amount');
+        // SUPPLIER-NET-BILL-1: "already less the returns" takes them off the total shown
+        var netted = !!document.querySelector('input[name="returns_on_invoice"][value="netted"]:checked');
+        var lessRow = document.getElementById('bill-less-returns-row');
+        if (lessRow) lessRow.hidden = !netted;
+        var total = Number(out.dataset.base || 0) - num('discount_amount') + num('tax_amount') - (netted ? Number(out.dataset.returns || 0) : 0);
         out.textContent = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
     ['discount_amount', 'tax_amount'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.addEventListener('input', render);
     });
+    document.querySelectorAll('input[name="returns_on_invoice"]').forEach(function (el) { el.addEventListener('change', render); });
 })();
 </script>
 @endpush

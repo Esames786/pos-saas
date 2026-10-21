@@ -31,6 +31,15 @@ DB::setDefaultConnection('tenant');
 $job = json_decode((string) file_get_contents($argv[1] ?? ''), true);
 
 try {
+    if ($job['mode'] === 'bill_post') {   // the bill for one receipt (SupplierNetBillMySqlTest)
+        $bill = app(App\Services\Purchasing\PurchaseBillService::class)->createFromReceipt(
+            App\Models\Tenant\GoodsReceipt::findOrFail($job['grn_id']),
+            array_filter(['bill_date' => now()->toDateString(), 'returns_on_invoice' => $job['choice'] ?? null], fn ($v) => $v !== null),
+            (int) $job['user_id'],
+        );
+        fwrite(STDOUT, 'POSTED:' . $bill->id . "\n");
+        exit(0);
+    }
     if ($job['mode'] === 'supplier_post') {   // post one supplier-return draft (PurchaseReturnPostedOnceMySqlTest)
         $posted = app(App\Services\Purchasing\PurchaseReturnService::class)
             ->post(App\Models\Tenant\PurchaseReturn::findOrFail($job['return_id']), (int) $job['user_id']);

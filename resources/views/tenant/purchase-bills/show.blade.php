@@ -72,6 +72,12 @@
                 <dd class="col-sm-9">{{ number_format($purchaseBill->tax_total, 2) }}</dd>
             @endif
 
+            {{-- SUPPLIER-NET-BILL-1: returns this invoice already takes off (each credited once, here) --}}
+            @foreach($purchaseBill->nettings as $netting)
+                <dt class="col-sm-3">Less return</dt>
+                <dd class="col-sm-9">− {{ number_format((float) $netting->amount, 2) }}
+                    <span class="text-muted small">{{ $netting->purchaseReturn?->return_no }} — already taken off by the supplier</span></dd>
+            @endforeach
             <dt class="col-sm-3">Grand Total</dt>
             <dd class="col-sm-9"><strong>{{ number_format($purchaseBill->grand_total, 2) }}</strong></dd>
 

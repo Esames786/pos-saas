@@ -6,11 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\GoodsReceipt;
 use App\Models\Tenant\PurchaseBill;
-use App\Models\Tenant\PurchaseBillLine;
 use App\Models\Tenant\Supplier;
+use App\Services\Purchasing\PurchaseBillService;
 use App\Services\Purchasing\PurchasingService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class PurchaseBillController extends Controller
 {
@@ -54,7 +53,10 @@ class PurchaseBillController extends Controller
                 ->find($request->goods_receipt_id);
         }
 
-        return view('tenant.purchase-bills.create', compact('receipts', 'goodsReceipt'));
+        // SUPPLIER-NET-BILL-1: goods that went back from this receipt before its bill — the form asks how the invoice treats them.
+        $returnsToAsk = $goodsReceipt ? app(PurchaseBillService::class)->returnsToAsk($goodsReceipt) : [];
+
+        return view('tenant.purchase-bills.create', compact('receipts', 'goodsReceipt', 'returnsToAsk'));
     }
 
     public function store(Request $request)
@@ -67,77 +69,17 @@ class PurchaseBillController extends Controller
             'discount_amount'     => 'nullable|numeric|min:0',
             'tax_amount'          => 'nullable|numeric|min:0',
             'notes'               => 'nullable|string|max:1000',
+            // SUPPLIER-NET-BILL-1: asked only when goods from the receipt went back before its bill
+            'returns_on_invoice'  => 'nullable|in:' . PurchaseBillService::SEPARATE . ',' . PurchaseBillService::NETTED,
         ]);
 
-        $grn = GoodsReceipt::with(['lines.product', 'supplier', 'branch'])
-            ->findOrFail($data['goods_receipt_id']);
+        $grn = GoodsReceipt::findOrFail($data['goods_receipt_id']);
 
-        if ($grn->bill) {
-            return back()->withErrors(['goods_receipt_id' => 'A bill already exists for this GRN.'])->withInput();
-        }
-
-        $userId = auth('tenant')->id();
-
-        $purchaseBill = null;
-
-        DB::connection('tenant')->transaction(function () use ($data, $grn, $userId, &$purchaseBill) {
-            $subtotal   = $grn->lines->sum(fn($l) => $l->quantity_received * $l->unit_cost);
-            // GRN-BILL-CHARGES-1: the receipt's cartage/labour is part of what the supplier
-            // charged, so it is part of what we owe them. Leaving it out made the payable short
-            // by exactly the charge. The GL stays balanced on its own because postPurchaseBill()
-            // debits 1400 Inventory and credits 2100 Payable with the SAME grand_total — and
-            // debiting inventory is right, since the GRN already put this charge into stock cost.
-            $charges    = round((float) ($grn->extra_charges ?? 0), 4);
-            $discTotal  = (float) ($data['discount_amount'] ?? 0);
-            $taxTotal   = (float) ($data['tax_amount'] ?? 0);
-            $grandTotal = $subtotal + $charges - $discTotal + $taxTotal;
-
-            $purchaseBill = PurchaseBill::create([
-                'bill_no'             => $this->purchasingService->nextBillNo(),
-                'supplier_invoice_no' => $data['supplier_invoice_no'] ?? null,
-                'supplier_id'         => $grn->supplier_id,
-                'branch_id'           => $grn->branch_id,
-                'purchase_order_id'   => $grn->purchase_order_id,
-                'goods_receipt_id'    => $grn->id,
-                'bill_date'           => $data['bill_date'],
-                'due_date'            => $data['due_date'] ?? null,
-                'status'              => 'posted',
-                'subtotal'            => $subtotal,
-                'extra_charges'       => $charges,
-                'discount_total'      => $discTotal,
-                'tax_total'           => $taxTotal,
-                'grand_total'         => $grandTotal,
-                'amount_paid'         => 0,
-                'balance_due'         => $grandTotal,
-                'notes'               => $data['notes'] ?? null,
-                'posted_by_user_id'   => $userId,
-                'posted_at'           => now(),
-            ]);
-
-            foreach ($grn->lines as $line) {
-                $lineTotal = $line->quantity_received * $line->unit_cost;
-                PurchaseBillLine::create([
-                    'purchase_bill_id'   => $purchaseBill->id,
-                    'product_id'         => $line->product_id,
-                    'product_variant_id' => $line->product_variant_id,
-                    'quantity'           => $line->quantity_received,
-                    'unit_cost'          => $line->unit_cost,
-                    'discount_amount'    => 0,
-                    'tax_amount'         => 0,
-                    'line_total'         => $lineTotal,
-                ]);
-            }
-
-            $purchaseBill->load('supplier');
-            // BUG-044 FIX: postBill() calls supplier ledger (operational) inside tx,
-            // but GL journal posting is intentionally called OUTSIDE (below) so that
-            // a GL failure never rolls back the operational bill creation.
-            $this->purchasingService->postBillOperational($purchaseBill, $userId);
-        });
-
-        // GL journal outside the transaction — idempotent + safe (never throws).
-        if ($purchaseBill) {
-            app(\App\Services\Finance\JournalPostingService::class)->postPurchaseBill($purchaseBill, $userId);
+        try {
+            app(PurchaseBillService::class)->createFromReceipt($grn, $data, auth('tenant')->id());
+        } catch (\RuntimeException $e) {
+            // e.g. a bill already exists for this receipt (a second post of the same form, or two people at once)
+            return back()->withErrors(['goods_receipt_id' => $e->getMessage()])->withInput();
         }
 
         return redirect(url('/purchase-bills'))->with('status', 'Purchase bill posted.');
@@ -148,6 +90,7 @@ class PurchaseBillController extends Controller
         $purchaseBill->load([
             'supplier', 'branch', 'purchaseOrder', 'goodsReceipt',
             'lines.product', 'lines.variant', 'postedBy', 'payments.postedBy',
+            'nettings.purchaseReturn',
         ]);
         return view('tenant.purchase-bills.show', compact('purchaseBill'));
     }

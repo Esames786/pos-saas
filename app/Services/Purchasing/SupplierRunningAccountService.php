@@ -107,9 +107,14 @@ class SupplierRunningAccountService
             $credits[] = ['type' => SupplierCreditAllocation::SOURCE_PAYMENT, 'id' => (int) $p->id,
                 'date' => (string) $p->payment_date?->toDateString(), 'amount' => (float) $p->amount];
         }
+        // SUPPLIER-NET-BILL-1: a return an invoice already takes off is spent — it is never offered again.
+        $netted = \Illuminate\Support\Facades\Schema::connection('tenant')->hasTable('purchase_bill_return_nettings')
+            ? \App\Models\Tenant\PurchaseBillReturnNetting::where('supplier_id', $supplierId)->pluck('amount', 'purchase_return_id')
+            : collect();
         foreach (PurchaseReturn::where('supplier_id', $supplierId)->where('status', 'posted')->get(['id', 'return_date', 'grand_total']) as $r) {
             $credits[] = ['type' => SupplierCreditAllocation::SOURCE_RETURN, 'id' => (int) $r->id,
-                'date' => (string) \Illuminate\Support\Carbon::parse($r->return_date)->toDateString(), 'amount' => (float) $r->grand_total];
+                'date' => (string) \Illuminate\Support\Carbon::parse($r->return_date)->toDateString(),
+                'amount' => (float) $r->grand_total - (float) ($netted[$r->id] ?? 0)];
         }
 
         $open = [];
@@ -153,6 +158,27 @@ class SupplierRunningAccountService
             'amount'           => $amount,
         ]);
         $this->recomputeBill($bill);
+    }
+
+    /**
+     * SUPPLIER-NET-BILL-1 — take a credit back off the bills it settled, because its source is now spent elsewhere (a
+     * return the supplier's next invoice already takes off). A return made before its own bill settles the supplier's
+     * OLDEST open bills; the supplier never credited those, so they owe that amount again. Allocations are this
+     * account's working rows (a bill's paid = their sum), not posted documents: the return itself is never touched.
+     * Called inside the transaction that holds the supplier row.
+     */
+    public function releaseCredit(string $sourceType, int $sourceId): void
+    {
+        $rows = SupplierCreditAllocation::query()->where('source_type', $sourceType)->where('source_id', $sourceId);
+        $billIds = (clone $rows)->pluck('purchase_bill_id')->unique()->sort()->values();
+        if ($billIds->isEmpty()) {
+            return;
+        }
+        $bills = PurchaseBill::query()->whereIn('id', $billIds)->orderBy('id')->lockForUpdate()->get();
+        $rows->delete();
+        foreach ($bills as $bill) {
+            $this->recomputeBill($bill);
+        }
     }
 
     /** A bill's paid amount is the sum of its allocations — the one rule every bill follows here. */
