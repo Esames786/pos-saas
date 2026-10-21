@@ -437,10 +437,54 @@ permission / plan snapshots, the system map rebuilt.
 
 ## 8. Owner decisions
 
-1. ~~Who may return without a bill~~ — **answered 19 Oct: whoever can open the screen does all of its work.**
-   Still open: is store credit wanted as a refund choice?
-2. Sales return default "Back on the shelf?" per business (table in 5.7) — OK?
-3. Trade discount lowers the stock cost (standard) — OK?
-4. Tax rows on purchase (1% sales tax, further tax, 236H) — wanted in the first release, or later?
-5. Customer khata (udhaar) on the counter — wanted now, later, or not?
-6. "Internet connected" purchasing (from 19 Oct) — still open.
+Answered 20 Oct (night):
+
+1. **Refund:** "jo recommended ho … bas day closing mein return aa raha ho".
+   - The refund is paid the way the customer paid (usually cash from the drawer). No store credit (no khata,
+     point 5).
+   - Built as REFUND-SHIFT-1 (section 9): the refund goes into the shift open at the counter that pays it, so it
+     reaches that day's closing.
+2. **"Back on the shelf?" defaults per business (5.7):** yes, as recommended.
+3. Trade discount lowers stock cost — taken by default (step 3).
+4. **Tax:** product tax exists. Wanted: a **branch tax** — when switched on for a branch, it applies on the
+   bill. Two questions before building (section 9).
+5. **Customer khata:** not wanted.
+6. **Live tenants on the new screens / removing old screens:** later, not now.
+7. "Internet connected" purchasing (from 19 Oct) — still open.
+
+## 9. REFUND-SHIFT-1 (built 20 Oct) and what is next
+
+**The bug (every tenant).**
+- A return adjusted only the ORIGINAL sale's shift, and only while that shift was open, on the original
+  sale's business day (REPORT-BUSINESS-DATE-1, Aug).
+- A bill from yesterday returned today reached no shift and no day closing. The cash left today's drawer, so
+  today's closing looked short.
+- It also lowered the closed day's figures after the fact.
+
+**The rule now.**
+- The refund goes into the open shift of the counter paying it, on that shift's business day.
+  - Counter order: the POS counter the Return window was opened from; else the user's own counter; else the
+    branch's only open shift, or the user's own open shift there.
+  - Else the sale's own shift while it is still open (the old rule).
+  - Else no shift, booked on the branch's current day — never a past, closed day.
+- After midnight on an evening shift still open, the refund stays on the evening's day, so
+  REPORT-BUSINESS-DATE-1's case still holds.
+- The return keeps `shift_id` / `terminal_id` (migration `2026_10_20_000004`, shipped first). The report's shift
+  and counter filters read them, falling back to the sale's own for older returns, so no past figure moves.
+- GL and the cash book follow the return's day (`bookOnReturn`).
+- Tests: RefundShiftMySqlTest 5/26. Back to the old rule, it goes red.
+
+**Next.**
+- **Back on the shelf yes / no per line.**
+  - "No" writes a wastage line, and the GL must then NOT reverse COGS (`postSalesReturn` always posts
+    Dr 1400 / Cr 5100 today).
+  - Packs and units on the return page (the line's pack name; Strip / Tablet boxes).
+- **Return without a bill.**
+  - `sales_returns.sales_order_id` and `sales_return_lines.sales_order_line_id` are NOT NULL today.
+  - About 10 reports inner-join `sales_orders` (SalesReportEngine returnsBase / returnLinesBase,
+    SalesReportService, RestaurantReportService, the returns list).
+  - Needs nullable keys, left joins, and today's price as the cap. A bigger step.
+- **Branch tax.** Questions for the owner:
+  1. Is the tax inside the price (inclusive) or added on top of the bill?
+  2. A lower rate on card than on cash (as PRA: 5% card / 16% cash for restaurants)?
+  - A product with its own rate keeps it (recommended).

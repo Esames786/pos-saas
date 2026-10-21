@@ -151,6 +151,9 @@ class SalesReturnService
         ?string $refundMethod,
         ?float $refundAmount,
         int $userId,
+        // REFUND-SHIFT-1: the open shift of the counter that pays the refund (the caller resolves it).
+        // Null = the sale's own shift while it is still open, as before; neither = no shift.
+        ?int $refundShiftId = null,
     ): SalesReturn {
         // Defence in depth behind the request validation. A return with no refund method posts
         // Dr revenue / Cr 1500 Undeposited Funds and writes NO cash-bank movement, so the money
@@ -160,7 +163,7 @@ class SalesReturnService
         }
 
         $salesReturn = DB::connection('tenant')->transaction(function () use (
-            $salesOrder, $lines, $reason, $refundMethod, $refundAmount, $userId
+            $salesOrder, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId
         ) {
             $salesOrder = SalesOrder::query()
                 ->whereKey($salesOrder->id)
@@ -175,15 +178,27 @@ class SalesReturnService
 
             $computed = $this->computeReturn($salesOrder, $lines);
 
+            // REFUND-SHIFT-1 — the drawer that pays the refund, and the day it belongs to.
+            //
+            // REPORT-BUSINESS-DATE-1 anchored a return to the ORIGINAL sale's day, through that sale's shift —
+            // right while that shift is open (a refund after midnight books to the evening's day), but a bill
+            // from yesterday returned today reached no shift and no day closing at all, and changed a closed
+            // day's figures. Now the refund goes into the shift open at the counter paying it, on THAT shift's
+            // business day (after midnight on an evening shift = the evening's day, as before); without one,
+            // the sale's own shift while still open (today's rule); without either, no shift, and the
+            // branch's current business day — never a past, closed day.
+            $refundShift = $this->refundShift($salesOrder, $refundShiftId);
+            $businessDate = $refundShift?->business_date
+                ?? app(\App\Support\TenantClock::class)->currentBusinessDate($salesOrder->branch);
+
             $salesReturn = SalesReturn::create([
                 'return_no'          => $this->salesService->nextReturnNo(),
                 'sales_order_id'     => $salesOrder->id,
                 'branch_id'          => $salesOrder->branch_id,
                 'return_date'        => now(),
-                // Anchor the return to the SAME business day as the order it reverses (and whose
-                // shift cash it adjusts below) — never the wall-clock date. So a refund punched
-                // after midnight on a still-open pre-midnight shift books to that shift's day.
-                'business_date'      => $salesOrder->business_date,
+                'business_date'      => $businessDate instanceof \DateTimeInterface ? $businessDate->format('Y-m-d') : $businessDate,
+                'shift_id'           => $refundShift?->id,
+                'terminal_id'        => $refundShift?->terminal_id,
                 'subtotal'           => 0,
                 'discount_amount'    => 0,
                 'tax_amount'         => 0,
@@ -267,7 +282,7 @@ class SalesReturnService
                 'notes'              => 'Sales return',
             ]);
 
-            $this->updateShiftForReturn($salesOrder, $refundMethod, $grandTotal);
+            $this->updateShiftForReturn($refundShift, $refundMethod, $grandTotal);
 
             return $salesReturn->fresh();
         });
@@ -378,15 +393,29 @@ class SalesReturnService
             ->first();
     }
 
-    private function updateShiftForReturn(SalesOrder $salesOrder, ?string $refundMethod, float $grandTotal): void
+    /**
+     * REFUND-SHIFT-1 — the open shift that pays this refund: the one the caller named (this branch, open),
+     * else the sale's own shift while it is still open, else none. Locked, so a close cannot slip in between.
+     */
+    private function refundShift(SalesOrder $salesOrder, ?int $refundShiftId): ?Shift
     {
-        if (!$salesOrder->shift_id) {
-            return;
+        foreach (array_filter([$refundShiftId, $salesOrder->shift_id]) as $id) {
+            $shift = Shift::query()->whereKey($id)
+                ->where('branch_id', $salesOrder->branch_id)
+                ->where('status', 'open')
+                ->lockForUpdate()
+                ->first();
+            if ($shift) {
+                return $shift;
+            }
         }
 
-        $shift = Shift::find($salesOrder->shift_id);
+        return null;
+    }
 
-        if (!$shift || $shift->status !== 'open') {
+    private function updateShiftForReturn(?Shift $shift, ?string $refundMethod, float $grandTotal): void
+    {
+        if (! $shift) {
             return;
         }
 

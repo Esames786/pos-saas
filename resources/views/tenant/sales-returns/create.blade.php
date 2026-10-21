@@ -101,6 +101,8 @@
 <form method="POST" action="{{ $posRuntime->route('salesReturnStore') }}" novalidate id="return-form">
     @csrf
     <input type="hidden" name="sales_order_id" value="{{ $salesOrder->id }}">
+    {{-- REFUND-SHIFT-1: the counter paying the refund (the POS Return button passes the one it is on) --}}
+    <input type="hidden" name="terminal_id" value="{{ request()->integer('terminal_id') ?: '' }}">
 
     <div class="card mb-3">
         <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -268,7 +270,11 @@
                 },
             },
         }).on('select2:select', function (e) {
-            window.location = @json($posRuntime->route('salesReturnCreatePage')) + '?sales_order_id=' + e.params.data.id;
+            // keep how the page was opened (inside the POS window, and its counter) when another bill is picked — through the
+            // runtime route (the shared screen is rendered on both runtimes; Edge has no /sales-returns/create URL)
+            var keep = new URLSearchParams(window.location.search);
+            keep.set('sales_order_id', e.params.data.id);
+            window.location = @json($posRuntime->route('salesReturnCreatePage')) + '?' + keep.toString();
         });
     }
 

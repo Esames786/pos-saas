@@ -291,10 +291,12 @@ class SalesReportEngine
             ->when($f['order_types'], fn ($q) => $q->whereIn('o.order_type', $f['order_types']))
             ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
             ->when($f['waiter_ids'], fn ($q) => $this->applyWaiterIds($q, $f['waiter_ids']))
-            ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
-            ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn('o.terminal_id', $f['allowed_terminal_ids']))
+            // REFUND-SHIFT-1: a refund belongs to the counter / shift whose drawer PAID it (recorded on the return
+            // from 20 Oct); older returns carry none and keep falling back to the sale's own, so no past figure moves.
+            ->when($f['terminal_id'], fn ($q) => $q->whereRaw('COALESCE(r.terminal_id, o.terminal_id) = ?', [$f['terminal_id']]))
+            ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn(DB::raw('COALESCE(r.terminal_id, o.terminal_id)'), $f['allowed_terminal_ids']))
             ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))
-            ->when($f['shift_id'], fn ($q) => $q->where('o.shift_id', $f['shift_id']));
+            ->when($f['shift_id'], fn ($q) => $q->whereRaw('COALESCE(r.shift_id, o.shift_id) = ?', [$f['shift_id']]));
     }
 
     /** Period return lines with the same sale-side filters as returnsBase(). */
