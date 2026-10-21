@@ -6,20 +6,21 @@
 @php
     $purTabs = [
         ['perm' => 'tenant.suppliers.index',         'url' => '/suppliers',         'label' => 'Suppliers',     'ur' => 'سپلائر',   'icon' => 'ti-users',          'on' => 'tenant.suppliers.*'],
-        ['perm' => 'tenant.purchase-orders.index',   'url' => '/purchase-orders',   'label' => 'Orders',        'ur' => 'آرڈر',     'icon' => 'ti-clipboard-list', 'on' => 'tenant.purchase-orders.*'],
-        ['perm' => 'tenant.goods-receipts.index',    'url' => '/goods-receipts',    'label' => 'Receive (GRN)', 'ur' => 'مال وصولی', 'icon' => 'ti-truck-delivery', 'on' => 'tenant.goods-receipts.*'],
-        ['perm' => 'tenant.purchase-bills.index',    'url' => '/purchase-bills',    'label' => 'Bills',         'ur' => 'بل',       'icon' => 'ti-file-invoice',   'on' => 'tenant.purchase-bills.*'],
+        ['perm' => 'tenant.purchase-orders.index',   'url' => '/purchase-orders',   'label' => 'Purchase Orders', 'ur' => 'آرڈر',     'icon' => 'ti-clipboard-list', 'on' => 'tenant.purchase-orders.*'],
+        ['perm' => 'tenant.goods-receipts.index',    'url' => '/goods-receipts',    'label' => 'Goods Receipts', 'ur' => 'مال وصولی', 'icon' => 'ti-truck-delivery', 'on' => 'tenant.goods-receipts.*'],
+        ['perm' => 'tenant.purchase-bills.index',    'url' => '/purchase-bills',    'label' => 'Supplier Invoices', 'ur' => 'بل',       'icon' => 'ti-file-invoice',   'on' => 'tenant.purchase-bills.*'],
         ['perm' => 'tenant.supplier-payments.index', 'url' => '/supplier-payments', 'label' => 'Payments',      'ur' => 'ادائیگی',  'icon' => 'ti-cash',           'on' => 'tenant.supplier-payments.*'],
-        ['perm' => 'tenant.purchase-returns.index',  'url' => '/purchase-returns',  'label' => 'Returns',       'ur' => 'واپسی',    'icon' => 'ti-arrow-back-up',  'on' => 'tenant.purchase-returns.*'],
+        ['perm' => 'tenant.purchase-returns.index',  'url' => '/purchase-returns',  'label' => 'Supplier Returns', 'ur' => 'واپسی',    'icon' => 'ti-arrow-back-up',  'on' => 'tenant.purchase-returns.*'],
     ];
     $purUser = auth('tenant')->user();
     $purWaiting = [
         'tenant.purchase-orders.index' => [\App\Models\Tenant\PurchaseOrder::whereIn('status', ['approved', 'partially_received'])->count(), 'to receive'],
-        'tenant.purchase-bills.index'  => [\App\Models\Tenant\GoodsReceipt::where('status', 'posted')->whereDoesntHave('bill')->count(), 'to bill'],
+        'tenant.purchase-bills.index'  => [\App\Models\Tenant\GoodsReceipt::where('status', 'posted')->whereDoesntHave('bill')->count(), 'to invoice'],
     ];
 @endphp
 <style>
-    .pur-tabs { display:flex; gap:6px; overflow-x:auto; padding:4px; margin:0 0 16px; background:#fff; border:1px solid #E6E9EF; border-radius:12px; }
+    /* position: the hidden "to invoice" words inside a tab are absolute — without it they escape the scroller and widen the page on a phone */
+    .pur-tabs { position:relative; display:flex; gap:6px; overflow-x:auto; padding:4px; margin:0 0 16px; background:#fff; border:1px solid #E6E9EF; border-radius:12px; }
     .pur-tab { display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:9px; color:#1B2A4A; font-weight:700; white-space:nowrap; text-decoration:none; }
     .pur-tab:hover { background:#F6F1E4; color:#1B2A4A; }
     .pur-tab:focus-visible { outline:3px solid #B8902E; outline-offset:1px; }

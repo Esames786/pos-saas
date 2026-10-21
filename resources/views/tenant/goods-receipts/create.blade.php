@@ -1,23 +1,31 @@
 @extends('layouts.app')
 
-@section('title', 'Create GRN')
+@section('title', 'New Goods Receipt')
 
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">Create Goods Receipt Note</h1>
+        <h1 class="mb-1">New Goods Receipt</h1>
         <p class="fw-medium text-muted mb-0">Step 2 of the purchasing flow — receive goods into a branch.</p>
     </div>
     <a href="{{ url('/goods-receipts') }}" class="btn btn-light">Back</a>
 </div>
 
+@include('tenant.purchasing.partials.how-to-use', ['guide' => [
+    'what' => 'Record the goods that arrived from a supplier. They go into stock at the chosen branch straight away.',
+    'steps' => ['Choose the supplier and the branch (and the Purchase Order, if there is one).', 'Add each item with the quantity received and its rate; batch and expiry where the item asks for them.', 'Add extra charges (cartage, labour) if the supplier charged them.', 'Post the goods receipt, then record the Supplier Invoice for it.'],
+    'effects' => ['Stock' => 'Goes up by what you received, at its cost; extra charges are spread over the items by value.', 'Supplier balance' => 'No change yet — it goes up when the Supplier Invoice is recorded.', 'Payments' => 'None.'],
+    'example' => '10 cartons arrive at Rs 500 each with Rs 200 cartage: stock goes up by 10 cartons at Rs 520 each. Then record the supplier\'s invoice of Rs 5,200.',
+    'blocked' => ['An item that is not bought (not marked as purchasable) cannot be received.', 'A quantity of zero, or a missing supplier or branch.'],
+]])
+
 <div class="card border-success-subtle mb-3">
     <div class="card-body d-flex flex-wrap align-items-start gap-3 py-2">
         <span class="badge bg-success-subtle text-success-emphasis mt-1"><i class="ti ti-package-import me-1"></i>Updates stock</span>
         <div class="small">
-            A <strong>Goods Receipt (GRN)</strong> receives stock into the selected branch — posting it <strong>increases inventory</strong> (purchase movement) immediately.
+            A <strong>Goods Receipt</strong> receives stock into the selected branch — posting it <strong>increases inventory</strong> (purchase movement) immediately.
             If this came from a PO, quantities should match the supplier's actual delivery.
-            <div class="text-muted mt-1">Flow: PO → <strong>GRN</strong> (receives stock) → Purchase Bill (payable) → Supplier Payment.</div>
+            <div class="text-muted mt-1">Flow: Purchase Order (optional) → <strong>Goods Receipt</strong> (stock) → Supplier Invoice (what you owe) → Payment.</div>
         </div>
     </div>
 </div>
@@ -28,7 +36,7 @@
 
 @if($purchaseOrder)
     <div class="alert alert-info" role="status">
-        Creating GRN from PO <strong>{{ $purchaseOrder->po_no }}</strong>. Lines are still editable.
+        Creating the goods receipt from purchase order <strong>{{ $purchaseOrder->po_no }}</strong>. Lines are still editable.
     </div>
 @endif
 
@@ -128,7 +136,7 @@
                 'showDiscountTax' => false,
                 'showNotes'       => true,
                 'prefillLines'    => $prefillLines ?? [],
-                'stockEffect'     => 'Stock effect: posting this GRN will INCREASE the selected branch stock by the received quantity. Items that do not track stock are recorded as a purchase only — no stock, their cost goes to expense at the bill.',
+                'stockEffect'     => 'Stock effect: posting this goods receipt will INCREASE the selected branch stock by the received quantity. Items that do not track stock are recorded as a purchase only — no stock, their cost goes to expense at the bill.',
                 'extraChargesInput'     => 'extra_charges',
                 'extraChargesNoteInput' => 'extra_charges_note',
             ])
@@ -139,7 +147,7 @@
     @error('lines') <div class="alert alert-danger" role="alert">{{ $message }}</div> @enderror
 
     <div class="d-flex gap-2">
-        <button class="btn btn-primary" type="submit" id="grn-post-btn">Post GRN</button>
+        <button class="btn btn-primary" type="submit" id="grn-post-btn">Post goods receipt</button>
         <a href="{{ url('/goods-receipts') }}" class="btn btn-light">Cancel</a>
     </div>
 </form>
@@ -157,11 +165,11 @@
         if (!form || !window.Swal) return; // no Swal → normal submit
         e.preventDefault();
         Swal.fire({
-            title: 'Post this GRN?',
+            title: 'Post this goods receipt?',
             text: 'Goods will be received and stock updated immediately.',
             icon: 'question',
             showCancelButton: true,
-            confirmButtonText: 'Post GRN',
+            confirmButtonText: 'Post goods receipt',
             cancelButtonText: 'Cancel',
             confirmButtonColor: '#0d6efd'
         }).then(function (r) {

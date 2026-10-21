@@ -445,7 +445,7 @@
                             @php $a = $isIn('goods-receipts*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/goods-receipts') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-truck-delivery fs-16 me-2"></i><span>GRN</span>
+                                    <i class="ti ti-truck-delivery fs-16 me-2"></i><span>Goods Receipts</span>
                                 </a>
                             </li>
                         @endcan
@@ -453,7 +453,7 @@
                             @php $a = $isIn('purchase-bills*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/purchase-bills') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-file-invoice fs-16 me-2"></i><span>Purchase Bills</span>
+                                    <i class="ti ti-file-invoice fs-16 me-2"></i><span>Supplier Invoices</span>
                                 </a>
                             </li>
                         @endcan
@@ -469,7 +469,7 @@
                             @php $a = $isIn('purchase-returns*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/purchase-returns') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-truck-return fs-16 me-2"></i><span>Purchase Returns</span>
+                                    <i class="ti ti-truck-return fs-16 me-2"></i><span>Supplier Returns</span>
                                 </a>
                             </li>
                         @endcan

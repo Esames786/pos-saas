@@ -171,7 +171,7 @@
             @endif
             <tr id="ea-t-rnd-r" hidden><td title="The cost of one unit is kept to 4 decimals; the bill reads quantity × that cost.">Rounding (paisa)</td><td id="ea-t-rnd"></td></tr>
             @if($isGrn)<tr id="ea-t-chg-r" hidden><td>Extra charges (cartage, labour…)</td><td id="ea-t-chg"></td></tr>@endif
-            <tr class="grand"><td>{{ $isRet ? 'Supplier owes you less by' : ($isGrn ? 'Total of this GRN' : 'Order total') }}</td><td id="ea-total">Rs 0</td></tr>
+            <tr class="grand"><td>{{ $isRet ? 'Supplier owes you less by' : ($isGrn ? 'Total of this goods receipt' : 'Order total') }}</td><td id="ea-total">Rs 0</td></tr>
         </table>
     </div>
     <div id="ea-hidden"></div>
@@ -803,7 +803,7 @@
         var box = $('ea-done');
         box.innerHTML = '<div class="d-flex flex-wrap align-items-center gap-2"><b style="font-size:1.05rem">✓ ' + esc(d.number) + (d.already ? ' was already posted — nothing was posted twice.' : (IS_RET ? (d.posted ? ' posted — stock is out and the supplier owes you less.' : ' saved as a draft — open it to post.') : ' saved.')) + '</b>'
             + '<a class="btn btn-sm btn-success" href="' + esc(d.url) + '">Open it</a>'
-            + '<a class="btn btn-sm btn-outline-dark" href="' + esc(NEW_URL) + '">New ' + (IS_RET ? 'return' : (IS_GRN ? 'GRN' : 'order')) + '</a>'
+            + '<a class="btn btn-sm btn-outline-dark" href="' + esc(NEW_URL) + '">New ' + (IS_RET ? 'return' : (IS_GRN ? 'goods receipt' : 'order')) + '</a>'
             + '<span class="text-muted small">Or add more lines below and Post again for another one.</span></div>';
         box.hidden = false; box.focus(); box.scrollIntoView({ block: 'center' });
     }
@@ -868,7 +868,7 @@
         var rnd = IS_RET ? 0 : total - (goods - bill);
         var parts = (bill > 0 ? ' − bill discount ' + money(bill) : '') + (Math.abs(rnd) >= 0.005 ? (rnd < 0 ? ' − ' : ' + ') + 'rounding ' + money(Math.abs(rnd)) : '') + (charges > 0 ? ' + charges ' + money(charges) : '');
         var what = IS_RET ? 'Stock leaves these batches, and this supplier will owe you <b>' + money(total) + '</b> less.'
-            : (IS_GRN ? 'Stock goes up by these quantities. The supplier\'s bill comes from this GRN: <b>' + money(total + charges) + '</b>' + (parts ? ' (goods ' + money(goods) + parts + '; spread over the goods by value)' : '') + '.'
+            : (IS_GRN ? 'Stock goes up by these quantities. The supplier\'s invoice comes from this goods receipt: <b>' + money(total + charges) + '</b>' + (parts ? ' (goods ' + money(goods) + parts + '; spread over the goods by value)' : '') + '.'
                 : 'Nothing moves yet — this is the order to send. Total <b>' + money(total) + '</b>' + (bill > 0 ? ' (goods ' + money(goods) + ' − bill discount ' + money(bill) + ')' : '') + '.');
         $('ea-pv-title').textContent = IS_RET ? 'Check the return' : (IS_GRN ? 'Check the goods received' : 'Check the order');
         $('ea-pv-body').innerHTML = '<div class="ea-pv-who"><span>Supplier: <b>' + esc(($('sup-q') || {}).value || selText('supplier_id')) + '</b></span><span>Branch: <b>' + esc(selText('branch_id')) + '</b></span><span>Date: <b>' + esc(date) + '</b></span>'
@@ -876,7 +876,7 @@
             + '<div class="table-responsive"><table class="table table-sm align-middle mb-2"><thead class="table-light">' + head + '</thead><tbody>' + rows.join('') + '</tbody></table></div>'
             + (warn.length ? '<div class="ea-warn mb-2" style="background:#FFF4D6;color:#6B5310">' + warn.map(esc).join('<br>') + '</div>' : '')
             + '<div class="d-flex justify-content-between flex-wrap gap-2 align-items-center"><span>' + what + '</span><b style="font-size:1.3rem;color:var(--navy)">' + LINES.length + ' line' + (LINES.length === 1 ? '' : 's') + ' · ' + money(total + charges) + '</b></div>';
-        var main = IS_RET ? 'Post return' : (IS_GRN ? 'Post GRN' : 'Save order');
+        var main = IS_RET ? 'Post return' : (IS_GRN ? 'Post goods receipt' : 'Save order');
         $('ea-pv-btns').innerHTML = '<button type="button" class="btn btn-primary" data-pv="main">' + main + ' <span class="ea-kbd ms-1">Enter</span></button>'
             + (IS_RET ? '<button type="button" class="btn btn-outline-dark" data-pv="draft">Save as draft</button>' : '')
             + '<button type="button" class="btn btn-light" data-pv="back">Back to edit <span class="ea-kbd ms-1">Esc</span></button>';

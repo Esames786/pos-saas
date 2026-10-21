@@ -1,11 +1,11 @@
 @extends('layouts.app')
 
-@section('title', 'Purchase Returns')
+@section('title', 'Supplier Returns')
 
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">Purchase Returns</h1>
+        <h1 class="mb-1">Supplier Returns</h1>
         <p class="fw-medium text-muted mb-0">Return goods to suppliers — reduces branch stock and the supplier payable.</p>
     </div>
     @can('tenant.purchase-returns.create')
@@ -73,7 +73,7 @@
             <caption class="visually-hidden">Purchase returns list</caption>
             <thead class="table-light">
                 <tr>
-                    <th>Return No</th><th>Date</th><th>Branch</th><th>Supplier</th><th>Source GRN</th>
+                    <th>Return No</th><th>Date</th><th>Branch</th><th>Supplier</th><th>Source Goods Receipt</th>
                     <th class="text-end">Lines</th><th class="text-end">Total</th><th>Status</th><th>Posted</th>
                     <th class="text-end">Action</th>
                 </tr>
