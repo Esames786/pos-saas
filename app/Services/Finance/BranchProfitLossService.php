@@ -68,7 +68,7 @@ class BranchProfitLossService
 
             $debit  = (float) $s->total_debit;
             $credit = (float) $s->total_credit;
-            $isCogs = str_starts_with((string) $s->code, '5');
+            $isCogs = AccountSections::isCostOfSales($s->type, $s->code);
 
             if ($s->type === 'income') {
                 if ($s->normal_balance === 'debit') {
