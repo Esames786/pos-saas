@@ -221,6 +221,25 @@ class InventoryExpensePurchaseStockMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1, (int) DB::table('products')->where('id', $this->beef)->value('is_stock_tracked'), 'unchanged');
     }
 
+    public function test_an_item_switched_off_with_stock_left_is_cleaned_up_too(): void
+    {
+        // Khatri #94, 21 Oct: "Track Stock" unticked on the old form while 599.5 were on hand — its stock and its bills'
+        // share of 1400 were left behind. --all-purchased finds it, moves the cost on the bill dates, writes the stock out.
+        DB::table('products')->where('id', $this->beef)->update(['is_stock_tracked' => 0]);
+        $this->assertSame(1600.0, $this->gl('1400'), 'still stuck after the switch');
+
+        $out = $this->cmd(['--all-purchased' => true, '--yes' => true]);
+
+        $this->assertStringContainsString('stock tracking was already switched off, but its stock and its cost in 1400 were left behind', $out);
+        $this->assertSame(0.0, $this->gl('1400'));
+        $this->assertSame(1600.0, $this->gl('5100-3'));
+        $this->assertSame(['2026-09-10', '2026-10-05'], DB::table('journal_entries')->where('source_type', InventoryExpensePurchaseStockCommand::SOURCE)
+            ->orderBy('entry_date')->pluck('entry_date')->map(fn ($d) => substr((string) $d, 0, 10))->all());
+        $this->assertSame(0.0, (float) DB::table('stock_balances')->where('product_id', $this->beef)->sum('quantity_on_hand'));
+        $this->assertSame(0, (int) DB::table('products')->where('id', $this->beef)->value('is_stock_tracked'), 'still not counting stock');
+        $this->assertStringContainsString('already purchase-only', $this->cmd(['--products' => (string) $this->beef, '--yes' => true]), 'and once done, nothing more');
+    }
+
     public function test_it_needs_a_tenant_and_a_product_list(): void
     {
         $this->assertSame(1, Artisan::call('inventory:expense-purchase-stock', ['tenant_code' => 'no-such-tenant', '--all-purchased' => true]));
