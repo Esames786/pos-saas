@@ -78,10 +78,14 @@ class PurchaseBillController extends Controller
             'notes'               => 'nullable|string|max:1000',
             // SUPPLIER-NET-BILL-1: asked only when goods from the receipt went back before its bill
             'returns_on_invoice'  => 'nullable|in:' . PurchaseBillService::SEPARATE . ',' . PurchaseBillService::NETTED,
-            // ticked on review when a return's credit moves off another bill
+            // net invoice: what the supplier deducted for each return (partial allowed; empty = the whole return)
+            'netted_amounts'      => 'nullable|array',
+            'netted_amounts.*'    => 'nullable|numeric|min:0',
+            // ticked on review when a return's credit moves off another invoice
             'confirm_reallocation' => 'nullable|boolean',
         ], [
-            'due_date.after_or_equal' => 'The due date cannot be before the bill date.',
+            'due_date.after_or_equal' => 'The due date cannot be before the invoice date.',
+            'netted_amounts.*.numeric' => 'The amount deducted must be a number.',
         ]);
 
         $grn = GoodsReceipt::findOrFail($data['goods_receipt_id']);
@@ -89,11 +93,11 @@ class PurchaseBillController extends Controller
         try {
             app(PurchaseBillService::class)->createFromReceipt($grn, $data, auth('tenant')->id(), $this->canReallocate($request));
         } catch (\RuntimeException $e) {
-            // e.g. a bill already exists for this receipt (a second post of the same form, or two people at once)
+            // an invoice already recorded for this receipt, or its accounting entry could not post (nothing was saved)
             return back()->withErrors(['goods_receipt_id' => $e->getMessage()])->withInput();
         }
 
-        return redirect(url('/purchase-bills'))->with('status', 'Purchase bill posted.');
+        return redirect(url('/purchase-bills'))->with('status', 'Supplier invoice recorded.');
     }
 
     public function show(PurchaseBill $purchaseBill)

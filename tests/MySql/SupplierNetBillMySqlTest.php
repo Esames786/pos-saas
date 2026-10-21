@@ -29,6 +29,7 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
 {
     use RacesWorkers;
     use \Tests\MySql\Support\ParsesInlineScripts;
+    use \Tests\MySql\Support\AssertsPlainEnglish;
 
     private int $branchId;
 
@@ -125,7 +126,7 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
             $this->bill($grn, 'netted');
             $this->fail('moving a credit off another bill needs an explicit confirmation');
         } catch (ValidationException $e) {
-            $this->assertStringContainsString($olderBill->bill_no . ' se Rs 200.00 allocation hatay ga; uska outstanding 300.00 se 500.00 ho jayega', $e->errors()['confirm_reallocation'][0]);
+            $this->assertStringContainsString('Rs 200.00 of this credit will be moved off ' . $olderBill->bill_no . ': its outstanding goes from 300.00 to 500.00', $e->errors()['confirm_reallocation'][0]);
         }
         try {
             $this->bill($grn, 'netted', confirm: true, mayReallocate: false);
@@ -164,7 +165,11 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
             $this->bill($grn, 'netted', confirm: true);
             $this->fail('a settled bill is never reopened');
         } catch (ValidationException $e) {
-            $this->assertStringContainsString('fully paid', $e->errors()['returns_on_invoice'][0]);
+            $why = $e->errors()['returns_on_invoice'][0];
+            $this->assertStringContainsString('fully paid', $why);
+            // review, 21 Oct: never pushed to a full invoice the supplier did not send
+            $this->assertStringContainsString('If the supplier deducted this return on this invoice, do not record it as a full invoice', $why);
+            $this->assertStringContainsString('leave this goods receipt without an invoice', $why);
         }
         $this->assertSame('paid', $olderBill->fresh()->status, 'untouched');
 
@@ -241,6 +246,233 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta(800, $this->supplierOwes(), 0.001);
     }
 
+    // ── review, 21 Oct: accounting failure, partial deduction ────────────────
+
+    public function test_an_accounting_entry_that_cannot_post_saves_nothing_and_posting_again_works(): void
+    {
+        // A move off an older open bill is in play too, so the audit row and the credit move must roll back as well.
+        $olderBill = $this->bill($this->receive([[5, 100]]), null);
+        $grn = $this->receive([[10, 100]]);
+        $this->returnOf($grn, 2);
+        $before = $this->snapshot($olderBill);
+        DB::table('accounts')->where('code', '2100')->update(['is_active' => 0]);   // a real failure: payable cannot be posted to
+
+        $response = $this->postInvoice($grn, ['returns_on_invoice' => 'netted', 'confirm_reallocation' => '1', 'supplier_invoice_no' => 'INV-77']);
+
+        $this->assertTrue($response->isRedirect(), 'back to the form');
+        $this->assertStringContainsString('could not be posted, so nothing was saved', session('errors')->first('goods_receipt_id'));
+        $this->assertSame('INV-77', session()->getOldInput('supplier_invoice_no'), 'what was typed comes back');
+        $this->assertSame($before, $this->snapshot($olderBill), 'no invoice, line, ledger row, journal, netting or audit row; no credit moved');
+
+        // A plain invoice (no return, so no netting entry to fail as well): its own journal is what is checked.
+        $plain = $this->receive([[3, 100]]);
+        try {
+            $this->bill($plain, null);
+            $this->fail('an invoice whose accounting entry did not post must not be saved');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('accounting entry for this invoice could not be posted', $e->getMessage());
+        }
+        $this->assertSame(0, PurchaseBill::where('goods_receipt_id', $plain->id)->count());
+
+        DB::table('accounts')->where('code', '2100')->update(['is_active' => 1]);
+        $bill = $this->bill($grn, 'netted', confirm: true);   // posting again, once the cause is fixed
+        $this->assertEqualsWithDelta(800, (float) $bill->grand_total, 0.001);
+        $this->assertSame(1, DB::table('journal_entries')->where('source_type', 'purchase_bill')->where('source_id', $bill->id)->count());
+        $this->assertBooksAgree(1300, 1300);
+    }
+
+    public function test_a_deducted_return_whose_entry_cannot_post_saves_nothing_either(): void
+    {
+        // Only the netting journal fails (the invoice's own journal posts): still all or nothing.
+        $grn = $this->receive([[10, 100]]);
+        $this->returnOf($grn, 2);
+        $this->app->bind(\App\Services\Finance\JournalPostingService::class, fn ($app) => new class($app->make(\App\Services\Finance\JournalService::class)) extends \App\Services\Finance\JournalPostingService {
+            public function postPurchaseBillReturnNetting(\App\Models\Tenant\PurchaseBillReturnNetting $netting, ?int $userId = null): ?\App\Models\Tenant\JournalEntry
+            {
+                return null;   // as its safe-catch does when the entry cannot post
+            }
+        });
+        $journals = DB::table('journal_entries')->count();
+
+        try {
+            $this->bill($grn, 'netted');
+            $this->fail('an invoice whose deducted return has no accounting entry must not be saved');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('deducted return could not be posted, so nothing was saved', $e->getMessage());
+        }
+        $this->assertSame(0, PurchaseBill::count());
+        $this->assertSame(0, DB::table('purchase_bill_return_nettings')->count());
+        $this->assertSame($journals, DB::table('journal_entries')->count(), 'the invoice journal that did post is rolled back too');
+        $this->assertEqualsWithDelta(-200, $this->supplierOwes(), 0.001, 'only the return, as before');
+    }
+
+    public function test_an_invoice_number_already_taken_draws_another(): void
+    {
+        // "BILL-<second>-<3 digits>": two invoices in one second clash about 1 in 900 — that made a test flaky, and a
+        // person would have seen a database error. The number generator hands out a taken number first here.
+        $first = $this->bill($this->receive([[1, 100]]), null);
+        $taken = (string) $first->bill_no;
+        $this->app->bind(PurchasingService::class, fn ($app) => new class($app->make(\App\Services\Inventory\InventoryService::class), $taken) extends PurchasingService {
+            private int $calls = 0;
+
+            public function __construct(\App\Services\Inventory\InventoryService $inventory, private string $taken)
+            {
+                parent::__construct($inventory);
+            }
+
+            public function nextBillNo(): string
+            {
+                return $this->calls++ === 0 ? $this->taken : parent::nextBillNo();
+            }
+        });
+
+        $second = $this->bill($this->receive([[2, 100]]), null);
+
+        $this->assertNotSame($taken, $second->bill_no, 'it drew another number');
+        $this->assertSame(2, PurchaseBill::count());
+        $this->assertEqualsWithDelta(200, (float) $second->grand_total, 0.001);
+    }
+
+    public function test_deducting_only_the_unused_credit_never_touches_a_settled_bill(): void
+    {
+        // The return's 200: 150 settled an older invoice (now paid), 50 is unused. Deducting 50 takes only the unused 50.
+        $olderBill = $this->bill($this->receive([[3, 50]]), null);
+        $grn = $this->receive([[10, 100]]);
+        $this->returnOf($grn, 2);
+        $this->assertSame('paid', $olderBill->fresh()->status);
+
+        $bill = $this->bill($grn, 'netted', deducted: 50);
+
+        $this->assertSame('paid', $olderBill->fresh()->status, 'the settled invoice is not reopened');
+        $this->assertSame(0, DB::table('supplier_credit_reallocations')->count(), 'nothing moved');
+        $this->assertEqualsWithDelta(950, (float) $bill->fresh()->balance_due, 0.001);
+        $this->assertEqualsWithDelta(950, $this->supplierOwes(), 0.001);
+        $this->assertBooksAgree(950, 950);
+    }
+
+    public function test_a_supplier_who_deducted_only_part_of_the_return(): void
+    {
+        // Return 200; the supplier took only 100 off this invoice.
+        $grn = $this->receive([[10, 100]]);
+        $this->returnOf($grn, 2);
+        $bill = $this->bill($grn, 'netted', deducted: 100)->fresh();
+
+        $this->assertEqualsWithDelta(900, (float) $bill->grand_total, 0.001, 'the invoice as the supplier wrote it');
+        $this->assertEqualsWithDelta(100, (float) $bill->amount_paid, 0.001, 'the other 100 stays supplier credit and is applied');
+        $this->assertEqualsWithDelta(800, (float) $bill->balance_due, 0.001);
+        $this->assertEqualsWithDelta(100.0, (float) DB::table('purchase_bill_return_nettings')->value('amount'), 0.0001, 'never more than deducted');
+        $this->assertEqualsWithDelta(0.0, (float) DB::table('purchase_bills')->where('id', $bill->id)->value('discount_total'), 0.0001, 'not recorded as a discount');
+        $this->assertBooksAgree(800, 800);
+    }
+
+    public function test_a_partial_deduction_moves_only_what_it_needs_off_another_bill(): void
+    {
+        $olderBill = $this->bill($this->receive([[5, 100]]), null);   // 500; the return's 200 then pays it down to 300
+        $grn = $this->receive([[10, 100]]);
+        $this->returnOf($grn, 2);
+
+        try {
+            $this->bill($grn, 'netted', deducted: 100);
+            $this->fail('a move needs the confirmation');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('Rs 100.00 of this credit will be moved off ' . $olderBill->bill_no . ': its outstanding goes from 300.00 to 400.00',
+                $e->errors()['confirm_reallocation'][0]);
+        }
+        $bill = $this->bill($grn, 'netted', confirm: true, deducted: 100);
+
+        $this->assertEqualsWithDelta(400, (float) $olderBill->fresh()->balance_due, 0.001, 'only 100 came back off it; 100 still pays it');
+        $this->assertEqualsWithDelta(900, (float) $bill->fresh()->balance_due, 0.001);
+        $this->assertEqualsWithDelta(1300, $this->supplierOwes(), 0.001, '400 + 900');
+        $this->assertEqualsWithDelta(1300, (float) PurchaseBill::where('supplier_id', $this->supplierId)->sum('balance_due'), 0.001);
+        $this->assertBooksAgree(1300, 1300);
+        $audit = DB::table('supplier_credit_reallocations')->where('purchase_bill_id', $bill->id)->sole();
+        $this->assertSame([100.0, 300.0, 400.0], [(float) $audit->amount, (float) $audit->from_due_before, (float) $audit->from_due_after]);
+    }
+
+    public function test_a_deduction_must_be_more_than_zero_and_not_more_than_the_return(): void
+    {
+        $grn = $this->receive([[10, 100]]);
+        $return = $this->returnOf($grn, 2);
+        foreach ([250, 0, -5] as $wrong) {
+            try {
+                $this->bill($grn, 'netted', deducted: $wrong);
+                $this->fail("deducted {$wrong} of a 200 return");
+            } catch (ValidationException $e) {
+                $this->assertStringContainsString('not more than the return (200.00)', $e->errors()['netted_amounts.' . $return->id][0]);
+            }
+        }
+        $this->assertSame(0, PurchaseBill::count(), 'nothing posted');
+    }
+
+    public function test_ui_every_state_reads_in_plain_english(): void
+    {
+        $normal = $this->receive([[10, 100]]);
+        $this->assertNoRomanUrdu($this->billPage($normal), 'normal invoice');
+        $this->assertNoRomanUrdu($this->billPage(null), 'choose a goods receipt');
+
+        $this->bill($this->receive([[5, 100]]), null);
+        $grn = $this->receive([[10, 100]]);
+        $this->returnOf($grn, 2);
+        $this->assertNoRomanUrdu($this->billPage($grn, $this->userWith('tenant.supplier-payments.void')), 'return asked, credit move with the tick');
+        $this->assertNoRomanUrdu($this->billPage($grn, $this->userWith(null)), 'credit move without the authority');
+
+        // every message the server can send back, shown on the form
+        $messages = [];
+        foreach ([
+            fn () => $this->bill($grn, null),
+            fn () => $this->bill($grn, 'netted'),
+            fn () => $this->bill($grn, 'netted', confirm: true, mayReallocate: false),
+            fn () => $this->bill($grn, 'netted', confirm: true, deducted: 999),
+        ] as $attempt) {
+            try {
+                $attempt();
+            } catch (ValidationException $e) {
+                foreach ($e->errors() as $key => $m) {
+                    $messages[$key . '#' . count($messages)] = $m[0];
+                }
+            }
+        }
+        $this->assertCount(4, $messages, 'each attempt refused with its message');
+        $this->assertNoRomanUrdu('<p>' . implode('</p><p>', $messages) . '</p>', 'validation and confirmation messages');
+        $this->assertNoRomanUrdu($this->billPage($grn, $this->userWith('tenant.supplier-payments.void'), ['due_date' => 'The due date cannot be before the invoice date.']
+            + array_combine(array_map(fn ($k) => explode('#', $k)[0], array_keys($messages)), array_values($messages))), 'the form showing them');
+
+        // a supplier of its own: the return's credit then pays (and settles) that supplier's only other invoice
+        $this->supplierId = Supplier::create(['code' => 'NB-' . Str::upper(Str::random(5)), 'name' => 'Blocked case', 'status' => 'active',
+            'opening_balance' => 0, 'current_balance' => 0])->id;
+        $this->bill($this->receive([[2, 100]]), null);
+        $blocked = $this->receive([[10, 100]]);
+        $this->returnOf($blocked, 2);
+        $html = $this->billPage($blocked);
+        $this->assertStringContainsString('Net invoice is not available', $html);
+        $this->assertNoRomanUrdu($html, 'net invoice blocked');
+    }
+
+    /** What a failed post must leave exactly as it was. */
+    private function snapshot(PurchaseBill $olderBill): array
+    {
+        return [
+            'bills' => DB::table('purchase_bills')->count(), 'lines' => DB::table('purchase_bill_lines')->count(),
+            'ledger' => DB::table('supplier_ledgers')->count(), 'journals' => DB::table('journal_entries')->count(),
+            'nettings' => DB::table('purchase_bill_return_nettings')->count(), 'audit' => DB::table('supplier_credit_reallocations')->count(),
+            'allocations' => [DB::table('supplier_credit_allocations')->count(), round((float) DB::table('supplier_credit_allocations')->sum('amount'), 4)],
+            'supplier_owes' => $this->supplierOwes(), 'older_due' => round((float) $olderBill->fresh()->balance_due, 4),
+        ];
+    }
+
+    /** The invoice form posted through its controller, as an authorized person would. */
+    private function postInvoice(GoodsReceipt $grn, array $fields): \Symfony\Component\HttpFoundation\Response
+    {
+        $user = $this->userWith('tenant.supplier-payments.void');
+        $request = \Illuminate\Http\Request::create('/purchase-bills', 'POST', ['goods_receipt_id' => $grn->id, 'bill_date' => now()->toDateString()] + $fields);
+        $request->setLaravelSession(app('session.store'));
+        $request->setUserResolver(fn () => $user);
+        auth('tenant')->setUser($user);
+        $this->app->instance('request', $request);
+
+        return app(\App\Http\Controllers\Tenant\PurchaseBillController::class)->store($request);
+    }
+
     // ── UI (the real bill screen, rendered through its controller) ───────────
 
     public function test_ui_a_normal_bill_asks_nothing_and_shows_what_it_will_post(): void
@@ -249,9 +481,10 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
 
         $this->assertStringNotContainsString('id="returns-on-invoice"', $html, 'no extra question on a normal bill');
         $this->assertMatchesRegularExpression('/id="bill-total-preview" data-base="1000(\.0+)?">1,000\.00</', $html, 'the invoice the bill will post');
-        $this->assertStringContainsString('<button type="button" class="pb-btn" id="pb-review">Review bill</button>', $html, 'one dominant action');
+        $this->assertStringContainsString('<button type="button" class="pb-btn" id="pb-review">Review invoice</button>', $html, 'one dominant action');
         $this->assertSame(2, substr_count($html, 'pb-num pb-sel'), 'discount and tax select their value on focus');
-        $this->assertStringContainsString('<span>Receipt <b>', $html, 'the compact receipt strip');
+        $this->assertStringContainsString('<span>Goods receipt <b>', $html, 'the compact receipt strip');
+        $this->assertMatchesRegularExpression('/<details class="htu" id="how-to-use">\s*<summary>How to use this screen<\/summary>/', $html, 'the guide is there, closed');
         $this->assertStringContainsString('/ Piece</span>', $html, 'rate basis shown');
         $this->assertInlineScriptsParse($html, 'supplier bill', 'pb-form');
     }
@@ -263,8 +496,9 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
         $html = $this->billPage($grn);
 
         $this->assertStringContainsString('id="returns-on-invoice"', $html);
-        $this->assertStringContainsString('<b>Sab maal ka invoice</b>', $html);
-        $this->assertStringContainsString('<b>Wapsi ghata kar invoice</b>', $html);
+        $this->assertStringContainsString('<b>Full invoice — before returns</b>', $html);
+        $this->assertStringContainsString('<b>Net invoice — returns already deducted</b>', $html);
+        $this->assertMatchesRegularExpression('/<input id="ded-\d+" name="netted_amounts\[\d+\]"[^>]*value="200.00"/', $html, 'what was deducted, filled with the whole return');
         $this->assertSame(2, preg_match_all('/<input[^>]*name="returns_on_invoice"/', $html), 'two options');
         $this->assertDoesNotMatchRegularExpression('/<input[^>]*name="returns_on_invoice"[^>]*\schecked/', $html, 'nothing pre-picked');
         $this->assertMatchesRegularExpression('/id="bill-total-preview" data-base="1000(\.0+)?">—</', $html, 'no total until the question is answered');
@@ -279,13 +513,13 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
         $this->returnOf($grn, 2);
 
         $html = $this->billPage($grn, $this->userWith('tenant.supplier-payments.void'));
-        $this->assertStringContainsString('its outstanding goes 300.00 → 500.00', $html, 'said on the screen');
-        $this->assertStringContainsString('<b>' . $olderBill->bill_no . '</b> se Rs 200.00 allocation hatay ga; uska outstanding 300.00 se 500.00 ho jayega.', $html, 'said again on review');
+        $this->assertStringContainsString('A net invoice moves 200.00 off it: its outstanding goes from 300.00 to 500.00. You confirm this on the review.', $html, 'said on the screen');
+        $this->assertStringContainsString('"bill_no":"' . $olderBill->bill_no . '"', $html, 'the review is built from the same plan');
         $this->assertStringContainsString('name="confirm_reallocation"', $html, 'the tick for an authorized person');
 
         $plain = $this->billPage($grn, $this->userWith(null));
         $this->assertStringNotContainsString('name="confirm_reallocation"', $plain, 'no tick for anyone else');
-        $this->assertStringContainsString('Only someone who can void supplier payments can move a credit between bills.', $plain);
+        $this->assertStringContainsString('Only a person who can void supplier payments can move a credit between invoices.', $plain);
     }
 
     public function test_ui_a_settled_bill_blocks_the_net_option_with_the_reason(): void
@@ -300,14 +534,15 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
         $this->assertDoesNotMatchRegularExpression('/id="roi-separate"[^>]*\bdisabled\b/', $html, 'the other way stays open');
     }
 
-    private function billPage(GoodsReceipt $grn, ?\App\Models\Tenant\User $user = null): string
+    /** @param array<string,string> $errors messages to show on the form, as after a refused post */
+    private function billPage(?GoodsReceipt $grn, ?\App\Models\Tenant\User $user = null, array $errors = []): string
     {
-        $request = \Illuminate\Http\Request::create('/purchase-bills/create', 'GET', ['goods_receipt_id' => $grn->id]);
+        $request = \Illuminate\Http\Request::create('/purchase-bills/create', 'GET', $grn ? ['goods_receipt_id' => $grn->id] : []);
         if ($user) {
             auth('tenant')->setUser($user);
             $request->setUserResolver(fn () => $user);
         }
-        view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+        view()->share('errors', (new \Illuminate\Support\ViewErrorBag)->put('default', new \Illuminate\Support\MessageBag($errors)));
 
         return app(\App\Http\Controllers\Tenant\PurchaseBillController::class)->create($request)->render();
     }
@@ -339,10 +574,14 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
         return $grn->fresh();
     }
 
-    private function bill(GoodsReceipt $grn, ?string $returnsOnInvoice, bool $confirm = false, bool $mayReallocate = true): PurchaseBill
+    private function bill(GoodsReceipt $grn, ?string $returnsOnInvoice, bool $confirm = false, bool $mayReallocate = true, ?float $deducted = null): PurchaseBill
     {
+        // $deducted: what the supplier took off this invoice for the receipt's (first) return — null = the whole return
+        $amounts = $deducted === null ? null : [(int) \App\Models\Tenant\PurchaseReturn::where('goods_receipt_id', $grn->id)->orderBy('id')->value('id') => (string) $deducted];
+
         return app(PurchaseBillService::class)->createFromReceipt($grn, array_filter([
             'bill_date' => now()->toDateString(), 'returns_on_invoice' => $returnsOnInvoice, 'confirm_reallocation' => $confirm ? '1' : null,
+            'netted_amounts' => $amounts,
         ], fn ($v) => $v !== null), $this->userId, $mayReallocate);
     }
 

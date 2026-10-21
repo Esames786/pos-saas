@@ -181,6 +181,37 @@ class SupplierRunningAccountService
         }
     }
 
+    /**
+     * SUPPLIER-NET-BILL-1 (partial deduction) — take back only PART of a credit: the given amount off each given bill,
+     * newest allocation row first; whatever stays allocated keeps settling that bill. Called inside the transaction that
+     * holds the supplier row, with the bills already locked by the caller.
+     *
+     * @param  array<int, float>  $amountsByBill  purchase bill id => amount to take back from it
+     */
+    public function releaseCreditFrom(string $sourceType, int $sourceId, array $amountsByBill): void
+    {
+        foreach ($amountsByBill as $billId => $amount) {
+            $left = round((float) $amount, 4);
+            $rows = SupplierCreditAllocation::query()->where('source_type', $sourceType)->where('source_id', $sourceId)
+                ->where('purchase_bill_id', $billId)->orderByDesc('id')->lockForUpdate()->get();
+            foreach ($rows as $row) {
+                if ($left <= self::CENT) {
+                    break;
+                }
+                $take = min($left, round((float) $row->amount, 4));
+                $rest = round((float) $row->amount - $take, 4);
+                $rest > self::CENT ? $row->update(['amount' => $rest]) : $row->delete();
+                $left = round($left - $take, 4);
+            }
+            if ($left > self::CENT) {
+                throw new \RuntimeException('Supplier credit to take back is more than this bill holds — nothing was saved.');
+            }
+            if ($bill = PurchaseBill::query()->whereKey($billId)->first()) {
+                $this->recomputeBill($bill);
+            }
+        }
+    }
+
     /** A bill's paid amount is the sum of its allocations — the one rule every bill follows here. */
     public function recomputeBill(PurchaseBill $bill): void
     {
