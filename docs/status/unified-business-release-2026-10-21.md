@@ -48,9 +48,13 @@ The code checks the column before writing it, so a tenant the migration has not 
 | Feature-OFF path and old-document readers | no key = posts as before; column missing = posts as before; old supplier-return screen (draft → Post) as before; switch off = no no-bill return (404); a return with no key reads on the list, its page and the sale's return screen, and still counts toward what is left (`MedicalCounterMySqlTest`) |
 | Sabotage | 18 guards broken one by one: 16 turned the test red. 2 stayed green because a second guard covers the same case: the sale's lines are locked as well as the sale (removing both locks: red), and the Product model refuses a unit change as well as the screen does (removing the model's: red) |
 | Production MySQL version / tables / locking reviewed | MySQL 8.0.46, INSTANT row versions 0, tables ≤ 294 rows (above) |
-| Backups of every live tenant taken just before | |
-| Release commits recorded | this file |
-| Post-deploy reconciliation (before vs after) | |
+| Backups of every live tenant taken just before | `tenants:backup --no-storage`, 00:02 UTC 21 Oct: master + 13 tenants OK → `storage/app/private/backups/20261021_000232` (khatribiryani 219.8 MB, kashiffood 319.8 MB) |
+| Release commits recorded | this file; merged as `5c49790c` (only these 7 commits on `025728d8`), pushed, origin = HEAD verified |
+| Deploy | `bash deploy.sh` 00:03 UTC: HEAD `5c49790c`, migrations OK on 13 / 13 tenants, 0 skipped |
+| Post-deploy smoke | tb_diff 0.00, neg_on_disallowed 0, department_negative 0 on every tenant; return forms carry the key; product edits open with their own unit; both columns present everywhere; no error in the log after the deploy |
+| Permissions | snapshot before / after: no role lost a permission, no user lost a role; Super Admin gained `central.tenants.readiness` |
+| Post-deploy reconciliation (before vs after) | 00:02 vs 00:04 UTC: **identical on all 13 tenants** — books, stock, suppliers, customers, cash/bank (the three old differences unchanged), sales and returns of 7 days, document counts |
+| Activation | none — no switch changed; "return without a bill" still pharmacydemo only |
 
 ## Post-deploy reconciliation
 
