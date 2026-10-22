@@ -72,3 +72,29 @@ return re-using the GRN line's pack (today it uses the current pack, which canno
   conversion" moves its broken pair from GM→KG (now a standard pair) to GM→PKT (no rule at all), so it still proves
   that a missing conversion refuses the send. Re-run: catering costing / lifecycle / material issue, recipe consumption,
   Edge operational stock, medical counter, purchasing v2, master readiness.
+
+## Stock-path evidence (22 Oct, reviewer's list) — branch `feat/unified-w2-slice-a-evidence-20261022`, tests only
+
+`tests/MySql/PlainStockVariantsMySqlTest.php` exercises the real `InventoryService` on the candidate's code, which is
+unchanged. The worker gains a `stock_out` mode for the race. It proves:
+
+- **Real second variant isolated.** A 5 kg bag variant is never taken for plain stock, and plain stock is never taken
+  for it.
+- **Branch isolated.** Another branch's stock is never read for this branch's sale, even when it holds the nearest
+  expiry. The stock key alone would also stop it leaving.
+- **FEFO and expiry across both kinds of row.**
+  - The nearest expiry goes first.
+  - An expired batch is never sold, and the refusal names what is expired.
+  - The batch the cashier picked goes first, whichever row it sits on.
+- **Cost.** Every leg is written against the row it left, at that row's own cost and balance. Each row equals its own
+  stock-book lines, and no row goes below zero.
+- **Reversal.** A GRN void still takes back only from the row it filled, and refuses once that row has been sold from.
+- **Concurrency.** Two sales of 6 against 5 + 5 at the same moment (separate OS processes, queued on the row lock):
+  one posts, the other is refused, 4 left, 6 out in the stock book.
+
+Sabotages, each red:
+- no variant filter;
+- no branch filter in the FEFO read (red only after adding the nearest-expiry-in-another-branch case);
+- each leg written against the asked row instead of the row read;
+- no row lock;
+- no expiry filter.
