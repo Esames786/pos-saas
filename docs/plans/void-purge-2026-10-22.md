@@ -79,3 +79,14 @@ kashifkitchen's stored cash balance already sits 5,02,500 above its rows, and a 
 
 An Owner can make a recorded cash movement disappear from every screen. The only trace is the Owner-only log with
 the hidden copy. This must be stated to the owner before the switch is turned on.
+
+## Owner's decision (22 Oct, after the build)
+
+- Switch **ON for kashifkitchen and khatribiryani**. Every other tenant stays OFF.
+- Who may delete, besides the Owner role (which deploy.sh gives both permissions):
+  - kashifkitchen: one non-Owner user, granted on the user only, so the other users with the same role do not get it;
+  - khatribiryani: the Accounts role (every accounts user).
+- Users who may delete also get the "Deleted entries" list, because the screen goes there after a delete.
+- kashifkitchen's existing voids: the client asked that voided entries do not show anywhere. A dry run lists which
+  ones qualify (voided on their own date) and which stay, with the reason. They are removed only after the owner has
+  seen that list. khatribiryani: access only, nothing removed.
