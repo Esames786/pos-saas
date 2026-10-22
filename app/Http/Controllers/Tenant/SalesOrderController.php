@@ -909,6 +909,9 @@ class SalesOrderController extends Controller
             'payments.*.notes'                 => ['nullable', 'string'],
         ]);
 
+        // W2-B: every line's quantity made exact (3 decimals) and counted items whole, before price, stock or KOT reads it.
+        $data['lines'] = \App\Support\LineQuantity::prepareSaleLines($data['lines']);
+
         return $this->validateDeliveryAttribution($data);
     }
 
