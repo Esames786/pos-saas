@@ -30,6 +30,7 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
     use RacesWorkers;
     use \Tests\MySql\Support\ParsesInlineScripts;
     use \Tests\MySql\Support\AssertsPlainEnglish;
+    use \Tests\MySql\Support\RegistersTestTenant;
 
     private int $branchId;
 
@@ -449,6 +450,63 @@ class SupplierNetBillMySqlTest extends MySqlTenantTestCase
     }
 
     /** What a failed post must leave exactly as it was. */
+    /**
+     * A transaction reset (the owner's "start the real business" reset, or a demo cleared for the next visitor) must take
+     * a deducted return and a moved credit with the bills and returns they point at, and change nothing else: every kept
+     * table — products, suppliers, accounts, users, roles, permissions, settings — byte-identical. Afterwards a new
+     * return and a new net invoice post as if the tenant were new (ids restart; nothing left to collide with).
+     * Runs only against this test's own disposable tenant database.
+     */
+    public function test_a_transaction_reset_wipes_nettings_and_credit_moves_and_keeps_every_master_row(): void
+    {
+        $older = $this->receive([[5, 100]]);
+        $this->bill($older, null);
+        $grn = $this->receive([[10, 100]]);
+        $this->returnOf($grn, 2);
+        $this->bill($grn, 'netted', confirm: true);
+        $c = DB::connection('tenant');
+        $this->assertSame(1, $c->table('purchase_bill_return_nettings')->count(), 'precondition: a real deducted return');
+        $this->assertSame(1, $c->table('supplier_credit_reallocations')->count(), 'precondition: a real credit move');
+
+        // A role on the user, so the permission tables hold something the reset must leave alone.
+        $role = $c->table('roles')->where('guard_name', 'tenant')->value('id')
+            ?: $c->table('roles')->insertGetId(['name' => 'Accounts', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now()]);
+        $c->table('model_has_roles')->insert(['role_id' => $role, 'model_type' => \App\Models\Tenant\User::class, 'model_id' => $this->userId]);
+
+        $code = $this->registerTestTenant('rsttest');
+        $r = new \ReflectionClass(\App\Console\Commands\TenantResetTransactionsCommand::class);
+        // What must survive is stated HERE as well as read from the command, so a command that starts wiping one of
+        // these is caught even though its own lists moved with it.
+        $mustSurvive = ['roles', 'permissions', 'role_has_permissions', 'model_has_roles', 'model_has_permissions', 'users',
+            'products', 'categories', 'units', 'suppliers', 'accounts', 'branches', 'purchasing_settings'];
+        $kept = array_values(array_unique(array_diff(array_merge($mustSurvive, $r->getConstant('KEEP_SENTINELS'), $r->getConstant('KNOWN_KEPT')),
+            ['cache', 'cache_locks', 'sessions'])));
+        $keptBefore = $this->tableFingerprints($kept);
+        $masterBefore = $this->tableFingerprints(['tenants', 'tenant_databases', 'plans', 'plan_modules', 'subscriptions'], 'master');
+        $this->assertGreaterThan(0, (int) explode(':', $keptBefore['role_has_permissions'] ?? '0')[0] + (int) explode(':', $keptBefore['model_has_roles'])[0],
+            'the permission tables must hold rows, or "unchanged" proves nothing');
+
+        $exit = \Illuminate\Support\Facades\Artisan::call('tenant:reset-transactions', ['tenant_code' => $code, '--yes' => true, '--confirm' => $code]);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+        $this->assertSame(0, $exit, 'the reset must run: ' . $output);
+        DB::setDefaultConnection('tenant');
+
+        foreach (['purchase_bill_return_nettings', 'supplier_credit_reallocations', 'supplier_credit_allocations', 'purchase_bills',
+            'purchase_returns', 'goods_receipts', 'supplier_ledgers', 'journal_entries', 'stock_ledgers'] as $table) {
+            $this->assertSame(0, $c->table($table)->count(), "{$table} must be wiped with the documents it belongs to");
+        }
+        $this->assertSame($keptBefore, $this->tableFingerprints($kept), 'every kept table — master data, permissions, settings — byte-identical');
+        $this->assertSame($masterBefore, $this->tableFingerprints(['tenants', 'tenant_databases', 'plans', 'plan_modules', 'subscriptions'], 'master'),
+            'the reset never touches master');
+
+        // Start again: a new return and a new net invoice post cleanly.
+        $fresh = $this->receive([[4, 100]]);
+        $this->returnOf($fresh, 1);
+        $bill = $this->bill($fresh, 'netted');
+        $this->assertEqualsWithDelta(300, (float) $bill->fresh()->grand_total, 0.001, '400 received, 100 deducted');
+        $this->assertSame(1, $c->table('purchase_bill_return_nettings')->count());
+    }
+
     private function snapshot(PurchaseBill $olderBill): array
     {
         return [
