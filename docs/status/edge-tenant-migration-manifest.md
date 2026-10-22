@@ -466,6 +466,30 @@ Defaults as originally proposed (kept for the record):
 | D7-4 | `2026_10_15_000002_add_website_order_fields_to_sales_orders` on the appliance's largest table (ENUM widen + two unique indexes, LOCK_RISK medium): run during the handed-back window only (the update script already refuses LOCAL_ACTIVE without `-AllowLocalActive`). | run while handed back |
 | D7-5 | Baseline rule itself (§1.5): no 0.7.0 migration is CLOUD_ONLY in this version; 21 baseline destructive/rewrite entries are listed for the record only. | accept |
 
+### 7b. D7-6 — `2026_10_20_000007_return_without_bill_schema` = OWNER_APPROVED_NON_ADDITIVE (22 Oct 2026)
+
+Owner approval with a non-additive gate. ACTUAL change (inspected): `sales_returns.sales_order_id` and `sales_return_lines.sales_order_line_id`
+become NULLable (MySQL `MODIFY … NULL, ALGORITHM=INPLACE, LOCK=NONE`, `lock_wait_timeout 10`; FKs kept) + `sales_return_lines.unit_cost`
+DECIMAL(15,4) NULL and `inventory_batch_id` BIGINT UNSIGNED NULL (INSTANT). **DATA_REWRITE=NO** — no UPDATE/DELETE, no row transformation;
+`down()` only drops the two added columns. Gates: upgrade from the 0.7.0 shape
+(`EdgeTenantMigrationUpgradeMySqlTest::test_return_without_bill_schema_upgrades_an_older_appliance`, which now also asserts the upgraded
+appliance ends with the clean-install column shape), sales-return / return-without-bill / return ingestion + replay suites green on the merged
+tree. The appliance never writes a NULL there (capability `returnWithoutBill` OFF).
+
+### 7c. POST_FREEZE_EXCEPTION — canonical 59787ff6 CATEGORY-PARENT-GUARD-1, scope `categories.updated_by` only (22 Oct 2026)
+
+`2026_10_21_000020_add_updated_by_to_categories` taken alone (unsignedBigInteger NULL, no FK, no backfill). **Correction found while proving the
+gate:** the Cloud exports every section through an EXPLICIT column list (`EdgeBootstrapService` `$rows($q, [cols])`; categories = id, parent_id,
+branch_id, code, name, slug, sort_order, is_active), so `updated_by` never travels and the refresh from a Cloud at 59787ff6+ applies WITHOUT the
+column — the STOP item was not a real refresh blocker. The column is still shipped for schema parity and classified **EDGE_SCHEMA_SAFE** (rule 3:
+additive, carried without use; SHIP_AND_RUN). Coverage: upgrade test + `EdgeConfigRefreshMySqlTest` (a Cloud category row carrying `updated_by`
+applies on the update and the insert path, the appliance keeps NULL, and the exported key set is asserted = the contract) + clean-install/upgraded
+schema equivalence. The export whitelist IS the first half of the EXPLICIT_REFRESH_SECTION_SCHEMA_CONTRACT below (the generation advertising and
+the fail-closed rule for Edge-required fields are the missing half). The guard logic, controller and view of that canonical commit are DEFER_TO_NEXT_RELEASE. Future
+design item (owner): **EXPLICIT_REFRESH_SECTION_SCHEMA_CONTRACT** — per-section supported-field contract, unknown OPTIONAL Cloud fields ignored
+safely, Edge-REQUIRED fields fail closed, Cloud advertises the section generation, the appliance reports its supported generation, tests prove
+no silent loss of an Edge-required field. Not in this release.
+
 ### 7a. Canonical-hygiene note (D7-3, not for this release)
 
 `2026_10_14_000001_create_online_ordering_tables` mixes bootstrap-section columns (`products.website_price`, `combos.website_price`) with three

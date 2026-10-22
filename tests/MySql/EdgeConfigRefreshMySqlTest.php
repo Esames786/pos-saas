@@ -285,6 +285,10 @@ class EdgeConfigRefreshMySqlTest extends MySqlTenantTestCase
             $conn->table('product_branch_prices')->where('id', $i['price'])->update(['selling_price' => 550]);
             $conn->table('combo_components')->where('id', $i['component'])->update(['quantity' => 2]);
             $conn->table('combos')->where('id', $i['combo'])->update(['category_id' => $i['cat']]); // Stage B gap A: filing a deal to a category reaches the appliance
+            // POST_FREEZE_EXCEPTION 59787ff6 (owner, 22 Oct 2026): a Cloud category row that INCLUDES updated_by (CATEGORY-PARENT-GUARD-1)
+            // travels whole and applies — update path (the existing category) and insert path (a new sub-category) alike.
+            $conn->table('categories')->where('id', $i['cat'])->update(['updated_by' => $i['mgr']]);
+            $conn->table('categories')->insert(['name' => 'Sides', 'code' => 'SIDES', 'slug' => 'sides', 'parent_id' => $i['cat'], 'is_active' => 1, 'sort_order' => 2, 'updated_by' => $i['mgr'], 'created_at' => now(), 'updated_at' => now()]);
             $conn->table('recipe_ingredients')->where('id', $i['ingredient'])->update(['quantity' => 180]);
             $conn->table('modifiers')->where('id', $i['modifier'])->update(['price_delta' => 75]);
             $conn->table('printers')->where('id', $i['printer_k'])->update(['ip_address' => '10.0.0.99']);
@@ -324,7 +328,8 @@ class EdgeConfigRefreshMySqlTest extends MySqlTenantTestCase
         $i = $this->ids;
         $conn = DB::connection('tenant');
 
-        $this->importer()->import($this->packageV2());
+        $packageV2 = $this->packageV2();
+        $this->importer()->import($packageV2);
 
         // Revision advanced; refresh metadata recorded; initial bootstrap record untouched.
         $meta = $this->meta();
@@ -338,6 +343,16 @@ class EdgeConfigRefreshMySqlTest extends MySqlTenantTestCase
         $this->assertSame(550.0, (float) $conn->table('product_branch_prices')->where('id', $i['price'])->value('selling_price'));
         $this->assertSame(2.0, (float) $conn->table('combo_components')->where('id', $i['component'])->value('quantity'));
         $this->assertSame((int) $i['cat'], (int) $conn->table('combos')->where('id', $i['combo'])->value('category_id'), 'gap A: combos.category_id travels in the refresh and the applier upserts it');
+        // CATEGORY_UPDATED_BY_REFRESH (owner exception gate, corrected 22 Oct 2026): the Cloud export is an EXPLICIT column list per section
+        // (EdgeBootstrapService $rows($q, [cols]) — categories: id, parent_id, branch_id, code, name, slug, sort_order, is_active), so a Cloud
+        // category row that carries updated_by (CATEGORY-PARENT-GUARD-1) still applies on both paths and the column never travels: the
+        // appliance keeps NULL. (The applier inserts the PAYLOAD row whole — the payload is already the contract.)
+        $this->assertNull($conn->table('categories')->where('id', $i['cat'])->value('updated_by'), 'update path: a Cloud row with updated_by applies; the column is not exported');
+        $this->assertSame((int) $i['cat'], (int) $conn->table('categories')->where('code', 'SIDES')->value('parent_id'), 'insert path: a new Cloud category row with updated_by applies whole');
+        $this->assertNull($conn->table('categories')->where('code', 'SIDES')->value('updated_by'));
+        $exportedKeys = array_keys($packageV2['sections']['categories'][0]);
+        $this->assertNotContains('updated_by', $exportedKeys, 'the categories section contract does not carry updated_by');
+        $this->assertEqualsCanonicalizing(['id', 'parent_id', 'branch_id', 'code', 'name', 'slug', 'sort_order', 'is_active'], $exportedKeys);
         $this->assertSame(180.0, (float) $conn->table('recipe_ingredients')->where('id', $i['ingredient'])->value('quantity'));
         $this->assertSame(75.0, (float) $conn->table('modifiers')->where('id', $i['modifier'])->value('price_delta'));
         $this->assertSame('10.0.0.99', $conn->table('printers')->where('id', $i['printer_k'])->value('ip_address'));
