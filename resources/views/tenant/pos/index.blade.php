@@ -7535,13 +7535,23 @@ document.addEventListener('DOMContentLoaded', function () {
             .finally(function () { setButtonBusy(button, false); });
     }
 
+    // MOVE-TABLE-CART-1 (22 Oct, Kashif Food): after a move the POS steps into the moved table. If the
+    // cart holds anything else (a quick sale that was just held, another table's bill) it is NOT this
+    // table's order, so clear it first, the same as opening or continuing a table does. Without this
+    // the next Hold saved a car's quick sale onto table 32.
+    function enterMovedTableSession(session) {
+        var current = (document.getElementById('restaurant_table_session_id') || {}).value || '';
+        if (String(current) !== String(session.id)) clearCart();
+        applyTableSession(session);
+    }
+
     function showTableMove(sessionId, sourceTableId) {
         showTableWorkspaceView('table-workspace-move');
         var body = document.getElementById('table-workspace-move-body');
         var targets = Array.from(tableBoardEl.querySelectorAll('[data-open-table="1"]')).filter(function (button) { return String(button.dataset.tableId) !== String(sourceTableId); });
         body.innerHTML = '<h3 class="h5 mb-3">Move Table</h3>' + (targets.length ? '<div class="table-action-list">' + targets.map(function (button) { return '<button type="button" class="btn btn-outline-primary p-3" data-move-target="' + escapeHtml(button.dataset.tableId) + '">' + escapeHtml(button.dataset.tableNo) + '</button>'; }).join('') + '</div>' : '<div class="alert alert-light border">No eligible destination table is currently available.</div>');
         body.querySelectorAll('[data-move-target]').forEach(function (button) {
-            button.addEventListener('click', function () { postTableOperation('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/move', { target_table_id: button.dataset.moveTarget }, function (data) { applyTableSession(data.session); refreshTableBoard(data.session.id); showTableWorkspaceView('table-workspace-board'); }, button); });
+            button.addEventListener('click', function () { postTableOperation('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/move', { target_table_id: button.dataset.moveTarget }, function (data) { enterMovedTableSession(data.session); refreshTableBoard(data.session.id); showTableWorkspaceView('table-workspace-board'); }, button); });
         });
     }
 

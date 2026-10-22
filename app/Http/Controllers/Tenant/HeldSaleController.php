@@ -535,6 +535,22 @@ class HeldSaleController extends Controller
                 ]);
             }
 
+            // MOVE-TABLE-CART-1: a held bill stays where it was made. The POS locks the order type and
+            // table once a bill is held, so a save that names ANOTHER table session can only be a stale
+            // cart. 22 Oct, Kashif Food: after Move Table the cart still held a car's quick sale, and the
+            // next Hold re-homed it onto table 32 next to that table's own bill. Moving or merging tables
+            // keeps or rewrites the bill's own session, so those never trip this.
+            if ($tableSession && (int) $sale->restaurant_table_session_id !== (int) $tableSession->id) {
+                $here = 'Table ' . ($tableSession->table?->table_no ?? $tableSession->restaurant_table_id);
+                $there = $sale->restaurant_table_session_id
+                    ? 'belongs to Table ' . (RestaurantTable::find($sale->restaurant_table_id)?->table_no ?? $sale->restaurant_table_id)
+                    : 'is a ' . (['quick_sale' => 'Quick Sale', 'takeaway' => 'Takeaway', 'delivery' => 'Delivery'][$sale->order_type] ?? 'separate') . ' bill';
+                throw ValidationException::withMessages([
+                    'held_sale_id' => "Bill {$sale->sale_no} {$there}, not {$here}. Nothing was saved. "
+                        . "Press Add Round, then add the items for {$here} again.",
+                ]);
+            }
+
             $existingLines = $sale->lines()->get()->keyBy('id');
             $providedLineIds = $lines->pluck('sales_order_line_id')->filter()->map(fn ($id) => (int) $id)->unique();
             $foreignLineIds = $providedLineIds->diff($existingLines->keys()->map(fn ($id) => (int) $id));
