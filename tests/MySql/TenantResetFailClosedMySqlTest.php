@@ -69,6 +69,34 @@ class TenantResetFailClosedMySqlTest extends MySqlTenantTestCase
     }
 
     /**
+     * Classifying the Branch Server's tables as kept must never make a reset possible ON a Branch Server: the command
+     * refuses there before it looks at a single table, Edge schema present or not, and every row stays where it was.
+     */
+    public function test_a_branch_server_still_refuses_the_reset_and_nothing_moves(): void
+    {
+        Artisan::call('migrate', ['--database' => 'tenant', '--path' => 'database/migrations/edge', '--force' => true]);
+        $c = DB::connection('tenant');
+        $c->table('supplier_credit_reallocations')->insert(['purchase_bill_id' => 1, 'purchase_return_id' => 1, 'from_purchase_bill_id' => 2,
+            'amount' => 200, 'from_due_before' => 300, 'from_due_after' => 500, 'created_at' => now(), 'updated_at' => now()]);
+        $all = array_map(fn ($row) => array_values((array) $row)[0], $c->select('SHOW TABLES'));
+        $before = $this->tableFingerprints($all);
+        $code = $this->registerTestTenant('rstbs');
+
+        config(['app.role' => 'branch_server']);
+        try {
+            $exit = Artisan::call('tenant:reset-transactions', ['tenant_code' => $code, '--yes' => true, '--confirm' => $code]);
+            $output = Artisan::output();
+        } finally {
+            config(['app.role' => 'cloud']);
+        }
+        DB::setDefaultConnection('tenant');
+
+        $this->assertNotSame(0, $exit, 'a Branch Server never runs a transaction reset');
+        $this->assertStringContainsString('never runs on a Branch Server', $output);
+        $this->assertSame($before, $this->tableFingerprints($all), 'every row of every table is exactly where it was');
+    }
+
+    /**
      * The Branch Server's own tables (database/migrations/edge) are classified too. The whole-schema check in
      * CateringTenantResetMySqlTest sees only the tables present when it runs, and the Edge tests add these to the
      * shared test database later — the full suite found seven of them unclassified (22 Oct). Built here on purpose,

@@ -68,9 +68,23 @@ depends on test order.
 
 Re-run with Edge tests first, then the reset tests: 59 / 59. Sabotage (Edge tables unclassified again) → red.
 
-## Seen, not changed (outside this narrow fix)
+## Separate reset defect — RESET-BALANCES-1 (open, not fixed; reviewer, 22 Oct)
 
-A reset keeps master rows as they are, including stored running balances: `suppliers.current_balance`,
-`customers.current_balance`, and `cash_bank_accounts.current_balance`. Their ledgers are wiped, so after a reset those stored balances
-no longer match an empty ledger. This is pre-existing. It needs its own decision (zero them, or recompute) and its own
-step.
+**The reset is not financially safe yet.** It keeps master rows as they are, including stored running balances:
+
+- `suppliers.current_balance`
+- `customers.current_balance`
+- `cash_bank_accounts.current_balance`
+
+It also deletes the ledgers, journals and opening-balance batches those balances came from. After a reset, every such
+balance disagrees with its (now empty) ledger: a supplier still "owes" 1,300 with no bill behind it.
+
+"Master rows unchanged" (what the tests prove) means the rows were preserved. It does not mean the books are correct.
+
+- Pre-existing. It is not caused or changed by this fix.
+- **Do not reset any live tenant.** Do not zero or recalculate balances automatically.
+- Before the reset is called production-ready, agree how these should behave after a reset: the `opening_balance`
+  columns, the stored current balances, and anything else derived from wiped transactions (for example stock-derived
+  values or customer credit).
+- The Branch Server refusal stays tested: `test_a_branch_server_still_refuses_the_reset_and_nothing_moves`.
+  Classifying the Edge tables as kept does not let a reset run on a Branch Server.
