@@ -253,6 +253,11 @@ class TenantResetTransactionsCommand extends Command
         // decision, which is precisely what this command's contract forbids.
         'customer_translations', 'supplier_translations',
         'edge_local_meta', 'edge_local_user_credentials',
+        // Branch Server local tables (database/migrations/edge). They never exist on a cloud tenant, and this command
+        // refuses to run on a Branch Server, so a reset has no business with them: kept, untouched. Listed so that a
+        // database that once hosted the Edge schema (a test database) is not mistaken for drift by the fail-closed check.
+        'edge_auth_audit', 'edge_consumed_assertions', 'edge_local_print_deliveries', 'edge_local_print_worker_state',
+        'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_operational_stock_movements',
         // Catering CONFIGURATION, kept for the same reason recipes are: it
         // describes how the business quotes and costs, not what it has sold.
         // The Material Rate Book in particular is a caterer's price list — losing

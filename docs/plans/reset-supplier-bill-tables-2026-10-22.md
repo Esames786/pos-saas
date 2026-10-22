@@ -50,6 +50,24 @@ No migration. No schema change. No reset is run on any live tenant.
   - `tests/MySql/Support/RegistersTestTenant` maps a disposable tenant code to the test database and puts master back
     afterwards.
 
+## Found by the frozen full suite on `c09d4f8d` (fail-closed working as intended)
+
+The full suite ran 2,366 tests: 2 failures, 1 skip (GeoIP file), 1 PHPUnit deprecation. Both failures were the new
+reset tests. By the time they ran, the Edge tests had built the Branch Server schema (`database/migrations/edge`) in
+the shared test database. Seven of those tables were unclassified, and fail-closed refused to reset:
+
+- `edge_auth_audit`, `edge_consumed_assertions`
+- `edge_local_print_deliveries`, `edge_local_print_worker_state`
+- `edge_operational_stock_balances`, `edge_operational_stock_baselines`, `edge_operational_stock_movements`
+
+These tables never exist on a cloud tenant: the production census found 0 unclassified tables. The command also
+refuses to run on a Branch Server. So they are classified as **kept** (never touched), like the two Edge tables
+already listed. The whole-schema check in `CateringTenantResetMySqlTest` only sees the tables present when it runs.
+A new `test_the_branch_server_tables_are_classified_too` builds the Edge schema itself, so the answer no longer
+depends on test order.
+
+Re-run with Edge tests first, then the reset tests: 59 / 59. Sabotage (Edge tables unclassified again) → red.
+
 ## Seen, not changed (outside this narrow fix)
 
 A reset keeps master rows as they are, including stored running balances: `suppliers.current_balance`,

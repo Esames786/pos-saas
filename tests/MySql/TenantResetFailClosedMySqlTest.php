@@ -67,4 +67,22 @@ class TenantResetFailClosedMySqlTest extends MySqlTenantTestCase
         $this->assertSame(0, $exit, Artisan::output());
         $this->assertSame(0, $c->table('supplier_credit_reallocations')->count());
     }
+
+    /**
+     * The Branch Server's own tables (database/migrations/edge) are classified too. The whole-schema check in
+     * CateringTenantResetMySqlTest sees only the tables present when it runs, and the Edge tests add these to the
+     * shared test database later — the full suite found seven of them unclassified (22 Oct). Built here on purpose,
+     * so the answer never depends on test order.
+     */
+    public function test_the_branch_server_tables_are_classified_too(): void
+    {
+        $this->assertSame(0, Artisan::call('migrate', ['--database' => 'tenant', '--path' => 'database/migrations/edge', '--force' => true]),
+            'the Edge schema must build here: ' . Artisan::output());
+        $all = array_map(fn ($row) => array_values((array) $row)[0], DB::connection('tenant')->select('SHOW TABLES'));
+        $this->assertNotEmpty(array_filter($all, fn ($t) => str_starts_with($t, 'edge_operational_')), 'the Edge tables must exist for this to mean anything');
+
+        $r = new \ReflectionClass(\App\Console\Commands\TenantResetTransactionsCommand::class);
+        $classified = array_merge($r->getConstant('WIPE_TABLES'), $r->getConstant('KEEP_SENTINELS'), $r->getConstant('KNOWN_KEPT'));
+        $this->assertSame([], array_values(array_diff($all, $classified)), 'every table, Edge ones included, is a deliberate wipe or keep');
+    }
 }
