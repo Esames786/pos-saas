@@ -506,10 +506,13 @@ class ManualJournalController extends Controller
      */
     private function nextManualJournalId(): int
     {
-        return (int) DB::connection('tenant')
+        $highest = (int) DB::connection('tenant')
             ->table('journal_entries')
             ->where('source_type', 'manual_journal')
-            ->max('source_id') + 1;
+            ->max('source_id');
+
+        // VOID-PURGE-1: a deleted manual journal's number is never reused.
+        return max($highest, \App\Support\PurgedNumbers::highestInt(\App\Support\PurgedNumbers::MANUAL_JOURNAL)) + 1;
     }
 
     private function formData(): array
