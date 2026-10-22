@@ -212,12 +212,13 @@
                             <div class="input-group return-qty-group" style="width:172px;margin-left:auto">
                                 <button type="button" class="btn btn-outline-secondary return-step" data-dir="-1"
                                         tabindex="-1" aria-label="Decrease return quantity" {{ $canReturn ? '' : 'disabled' }}>&minus;</button>
+                                {{-- W2-B: after a refusal the cashier gets back what they typed, not zeros. --}}
                                 <input type="number" step="{{ $qtyStep }}" min="0" max="{{ $returnable }}"
                                        name="lines[{{ $i }}][quantity]"
                                        class="form-control text-center return-qty"
                                        data-step="{{ $qtyStep }}"
                                        aria-label="Return quantity for {{ $line->product_name }}"
-                                       value="0"
+                                       value="{{ old('lines.' . $i . '.quantity', 0) }}"
                                        {{ $canReturn ? '' : 'readonly' }}>
                                 <button type="button" class="btn btn-outline-secondary return-step" data-dir="1"
                                         tabindex="-1" aria-label="Increase return quantity" {{ $canReturn ? '' : 'disabled' }}>+</button>
@@ -230,8 +231,9 @@
                                      Back on shelf = back in stock (its own batch); thrown away = opened, spoilt. --}}
                                 <select name="lines[{{ $i }}][restock]" class="form-select form-select-sm mt-1" style="width:172px;margin-left:auto"
                                         aria-label="Does {{ $line->product_name }} go back on the shelf?">
-                                    <option value="1" @selected($shelfDefault)>Back on shelf</option>
-                                    <option value="0" @selected(! $shelfDefault)>Thrown away</option>
+                                    @php $shelfPick = (string) old('lines.' . $i . '.restock', $shelfDefault ? '1' : '0'); @endphp
+                                    <option value="1" @selected($shelfPick === '1')>Back on shelf</option>
+                                    <option value="0" @selected($shelfPick === '0')>Thrown away</option>
                                 </select>
                             @endif
                         </td>

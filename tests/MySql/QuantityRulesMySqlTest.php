@@ -197,6 +197,32 @@ class QuantityRulesMySqlTest extends MySqlTenantTestCase
         $this->assertEquals(1, (float) $line->fresh()->returned_quantity, 'the line is closed');
     }
 
+    /** After a refusal the return screen gives back what the cashier typed — the quantity and the shelf choice — not zeros. */
+    public function test_a_refused_return_gives_back_what_was_typed(): void
+    {
+        $tab = Unit::updateOrCreate(['code' => 'TAB'], ['name' => 'Tablet', 'unit_type' => 'quantity', 'base_factor' => 1, 'is_base' => true, 'is_active' => true]);
+        $med = $this->product('Rules Retained Med', $tab->id, ['has_expiry' => true, 'requires_batch' => true, 'default_selling_price' => 10]);
+        ProductPackUnit::create(['product_id' => $med->id, 'name' => 'Tablet', 'factor' => 1, 'can_sell' => true, 'can_buy' => true]);
+        $strip = ProductPackUnit::create(['product_id' => $med->id, 'name' => 'Strip', 'factor' => 10, 'can_sell' => true, 'can_buy' => true]);
+        $this->receive([['product_id' => $med->id, 'batch_no' => 'rt-1', 'expiry' => now('Asia/Karachi')->addYear()->format('m/y'),
+            'buy_pack' => (string) $strip->id, 'price' => '90', 'packs' => [(string) $strip->id => '5']]]);
+        $this->assertTrue($this->sell([['product_id' => $med->id, 'quantity' => 3, 'unit_price' => 95, 'pack_unit_id' => $strip->id]], 285)->isSuccessful());
+        $line = $this->lastSale()->lines()->firstOrFail();
+        $create = $this->url('/sales-returns/create?sales_order_id=' . $line->sales_order_id);
+
+        $this->owner()->from($create)->post($this->url('/sales-returns'), [
+            'sales_order_id' => $line->sales_order_id, 'reason' => 'typed and refused', 'refund_method' => 'cash', 'refund_amount' => 47.5,
+            'submission_key' => \App\Support\SubmissionKey::fresh(), 'lines' => [['sales_order_line_id' => $line->id, 'quantity' => 0.5, 'restock' => 0]],
+        ])->assertRedirect($create)->assertSessionHasErrors();
+
+        $html = $this->owner()->get($create)->assertOk()->getContent();
+        $this->assertSame(1, preg_match('#<input[^>]*name="lines\[0\]\[quantity\]"[^>]*>#s', $html, $box), 'the return screen must have the quantity box');
+        $this->assertStringContainsString('value="0.5"', $box[0], 'the typed quantity is back in its box');
+        $this->assertSame(1, preg_match('#<select name="lines\[0\]\[restock\]".*?</select>#s', $html, $shelf));
+        $this->assertMatchesRegularExpression('#<option value="0"\s+selected#', $shelf[0], 'and so is the shelf choice (thrown away)');
+        $this->assertStringContainsString('typed and refused', $html, 'and the reason');
+    }
+
     private function holdPayload(array $lines): array
     {
         return ['branch_id' => $this->branchId(), 'terminal_id' => Terminal::where('code', 'C1')->firstOrFail()->id, 'order_type' => 'takeaway',
