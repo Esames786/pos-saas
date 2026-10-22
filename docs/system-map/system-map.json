@@ -1,15 +1,69 @@
 {
-    "built_at": "2026-10-21T23:07:29+00:00",
+    "built_at": "2026-10-22T07:54:28+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "59787ff6",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
-            "head": "2d239623",
+            "head": "da7ed87a",
             "behind_prod": 22,
-            "ahead_of_prod": 193,
-            "last_commit": "2026-10-22\u00b7docs: canonical 025728d8 merge report (5 chunks, 9 hunks recorded, manifest 215: 124/67/24, gates on 087278e9: full Edge MySQL 721/9,754 with one load-induced pacing re-run green, Feature/Edge 190, Feature/Pos 31, canonical suites 189/1,346; handovers H1 + D7-6; final freeze check: canonical 59787ff6 = 21 commits after the freeze, CATEGORY-PARENT-GUARD-1 categories.updated_by classified CRITICAL by the schema rule (whole-row section refresh), the rest DEFER) + returnWithoutBill row in the capability matrix",
+            "ahead_of_prod": 194,
+            "last_commit": "2026-10-22\u00b7docs: Team FB2 browser + baseline gates on 087278e9 (Online 17/17, Edge 17/17 + paired writer/standby runs, W15 x5 PASS, W18 PASS both, Online pixel reference recaptured with no UI-caused change, Edge vs Online pixels zero unintentional drift, geometry NONE 998 boxes, 8096 D7 plan hash sha256:fbfdfe4f...); merge report \u00a72 browser row filled",
+            "uncommitted_files": 20
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-integ",
+            "branch": "integration/unified-w2-20261022",
+            "head": "3ef30735",
+            "behind_prod": 0,
+            "ahead_of_prod": 20,
+            "last_commit": "2026-10-22\u00b7Integration: merge feat/w2b-quantity-rules-20261022 (0831cd41) \u2014 isolated candidate, not a release merge",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-resetfix",
+            "branch": "fix/reset-supplier-bill-tables-20261022",
+            "head": "2f001380",
+            "behind_prod": 0,
+            "ahead_of_prod": 14,
+            "last_commit": "2026-10-22\u00b7Reset: the Branch Server refusal stays tested; the stored-balance gap recorded as its own defect (RESET-BALANCES-1)",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-verify-0831",
+            "branch": "(detached)",
+            "head": "0831cd41",
+            "behind_prod": 0,
+            "ahead_of_prod": 12,
+            "last_commit": "2026-10-22\u00b7W2-B: quantity rules on the server \u2014 exact once (3 decimals), counted items whole, returns say what is left",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-verify-c09d",
+            "branch": "(detached)",
+            "head": "c09d4f8d",
+            "behind_prod": 0,
+            "ahead_of_prod": 12,
+            "last_commit": "2026-10-22\u00b7Transaction reset: wipe the supplier-invoice nettings and credit moves; stop before deleting on any unclassified table",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-verify-cb27",
+            "branch": "(detached)",
+            "head": "cb27c9e4",
+            "behind_prod": 0,
+            "ahead_of_prod": 13,
+            "last_commit": "2026-10-22\u00b7W2 candidate evidence (tests only): plain stock keeps variants, branches, FEFO/expiry, costs, reversals and races right",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-verify-f90c",
+            "branch": "(detached)",
+            "head": "f90cdd62",
+            "behind_prod": 0,
+            "ahead_of_prod": 13,
+            "last_commit": "2026-10-22\u00b7Transaction reset: classify the Branch Server's own tables as kept; prove it without depending on test order",
             "uncommitted_files": 0
         },
         {
@@ -19,6 +73,24 @@
             "behind_prod": 0,
             "ahead_of_prod": 12,
             "last_commit": "2026-10-22\u00b7W2 slice A (candidate): kg/g by rule, one plain stock for no-variant and default-variant rows, unit journeys proven",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-w2a-ev",
+            "branch": "feat/unified-w2-slice-a-evidence-20261022",
+            "head": "cb27c9e4",
+            "behind_prod": 0,
+            "ahead_of_prod": 13,
+            "last_commit": "2026-10-22\u00b7W2 candidate evidence (tests only): plain stock keeps variants, branches, FEFO/expiry, costs, reversals and races right",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-w2b",
+            "branch": "feat/w2b-quantity-rules-20261022",
+            "head": "0831cd41",
+            "behind_prod": 0,
+            "ahead_of_prod": 12,
+            "last_commit": "2026-10-22\u00b7W2-B: quantity rules on the server \u2014 exact once (3 decimals), counted items whole, returns say what is left",
             "uncommitted_files": 0
         },
         {
@@ -47,15 +119,6 @@
             "ahead_of_prod": 11,
             "last_commit": "2026-10-21\u00b7Merge production (59787ff6: category parent guard) into the unified branch",
             "uncommitted_files": 4
-        },
-        {
-            "path": "D:/laragon2/www/pos-saas-resetfix",
-            "branch": "fix/reset-supplier-bill-tables-20261022",
-            "head": "5441ead2",
-            "behind_prod": 0,
-            "ahead_of_prod": 11,
-            "last_commit": "2026-10-21\u00b7Merge production (59787ff6: category parent guard) into the unified branch",
-            "uncommitted_files": 2
         },
         {
             "path": "D:/laragon2/www/pos-saas-verify-5441",
@@ -287,133 +350,133 @@
         {
             "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
             "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/cash-book-report-2026-10-10.md",
             "title": "CASH-BOOK-REPORT-1 \u2014 Cash Book report: kitna aaya, kitna gaya, kis cash/bank me, tareekh-war",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/category-parent-guard-2026-10-21.md",
             "title": "CATEGORY-PARENT-GUARD-1 \u2014 a category can never sit inside its own sub-category (21 Oct 2026)",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
             "title": "Catering product model \u2014 what is wrong, and the work to fix it",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
             "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
             "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
             "title": "Two order counts on one dashboard \u2014 research",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/deals-as-their-own-report-heads-2026-09-02.md",
             "title": "Deals belong under their own heads \u2014 research",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/grn-extra-charges-2026-10-02.md",
             "title": "GRN-EXTRA-CHARGES-1 \u2014 cartage ko product ki jagah \"Extra Charges\" banana",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/grn-void-and-starter-shifts-2026-10-20.md",
             "title": "GRN void + starter plans' counter (20 Oct 2026)",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/held-sale-dead-session-2026-09-12.md",
             "title": "HELD-SALE-DEAD-SESSION-1 \u2014 band table par bill hold ho jata hai, phir kabhi pay nahi hota",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/hide-amounts-from-operators-2026-09-01.md",
             "title": "Hide the money from the counter \u2014 research before building",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/items-by-category-section-2026-09-03.md",
             "title": "ITEMS-BY-CATEGORY-1 \u2014 Item ka category-wise breakup, apne alag section me",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/items-in-category-sequence-2026-09-03.md",
             "title": "ITEM-CATEGORY-SEQUENCE \u2014 Item report category ki tarteeb me, purane software ki tarah",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/kashif-client-feedback-2026-09-15.md",
             "title": "Client feedback, 15 September \u2014 chaar cheezen",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/kashif-document-pdf-2026-09-09.md",
             "title": "Quotation ka PDF \u2014 aur ek hadd jo chhupai nahi gayi",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/kashif-event-history-revert-2026-08-23.md",
             "title": "Event Change History + Revert \u2014 research + implementation plan",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/kashif-food-first-floor-tables-2026-08-30.md",
             "title": "Kashif Food \u2014 dine-in floors & tables",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/kashif-food-operator-permission-hide-2026-08-31.md",
             "title": "KASHIF-OPERATOR-HIDE \u2014 jo owner ne screenshots par cross kiya",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/kashif-foods-pulao-subcategories-2026-09-17.md",
             "title": "KF-PULAO-SUBCAT-1 \u2014 The Kashif Foods: \"Chicken Pulao\" \u2192 \"Pulao\" + Chicken / Beef",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/kashif-hide-amounts-gap-2026-09-04.md",
             "title": "Kashif Food \u2014 \"*** kyun nahi aa raha\" (research)",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/kashif-inline-table-editor-2026-09-09.md",
             "title": "In-table editor \u2014 pehle FLOW MAP, phir plan",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/kashif-kitchen-go-live-2026-09-05.md",
             "title": "Kashif Kitchen go-live \u2014 research + plan",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/kashif-kot-routing-requests-2026-09-03.md",
             "title": "Kashif Food \u2014 chaar KOT routing ki farmaishein",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/kashif-legacy-alignment-2026-08-22.md",
             "title": "Kashif \u2014 Legacy-Software Alignment (design, before any code)",
-            "modified": "2026-10-21"
+            "modified": "2026-10-22"
         }
     ],
-    "git": "5441ead2",
+    "git": "3ef30735",
     "source": {
-        "tenant_db": "pos_test_tenant_rf",
-        "master_db": "pos_test_master_rf"
+        "tenant_db": "pos_test_tenant_int",
+        "master_db": "pos_test_master_int"
     },
     "counts": {
         "tables": 227,
@@ -19784,6 +19847,10 @@
                     "why": "via DepartmentCountService"
                 },
                 {
+                    "route": "tenant.pos.index",
+                    "why": "model ProductVariant"
+                },
+                {
                     "route": "tenant.pos.store",
                     "why": "via InventoryService"
                 },
@@ -19857,6 +19924,22 @@
                 },
                 {
                     "route": "tenant.api.pos.table-sessions",
+                    "why": "model ProductVariant"
+                },
+                {
+                    "route": "tenant.api.pos.totals.quote",
+                    "why": "model ProductVariant"
+                },
+                {
+                    "route": "tenant.api.pos.bill-preview",
+                    "why": "model ProductVariant"
+                },
+                {
+                    "route": "tenant.api.pos.table-board",
+                    "why": "model ProductVariant"
+                },
+                {
+                    "route": "tenant.api.pos.recent-sales",
                     "why": "model ProductVariant"
                 },
                 {
@@ -19956,7 +20039,7 @@
                     "why": "via ConsumptionPostingService"
                 }
             ],
-            "used_by_count": 101
+            "used_by_count": 106
         },
         {
             "name": "production_orders",
@@ -21263,6 +21346,14 @@
                     "why": "model Product"
                 },
                 {
+                    "route": "tenant.sales-orders.split-bill",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.sales-orders.split-bill.store",
+                    "why": "via LineQuantity"
+                },
+                {
                     "route": "tenant.held-sales.index",
                     "why": "model Product"
                 },
@@ -21975,7 +22066,7 @@
                     "why": "model Product"
                 }
             ],
-            "used_by_count": 342
+            "used_by_count": 344
         },
         {
             "name": "promotion_targets",
@@ -32019,6 +32110,38 @@
                     "why": "via UnitConversionService"
                 },
                 {
+                    "route": "tenant.pos.store",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.pos.printing.retry",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.sales-orders.index",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.sales-orders.create",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.sales-orders.store",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.sales-orders.show",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.sales-orders.rider.update",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.sales-orders.cancel",
+                    "why": "via LineQuantity"
+                },
+                {
                     "route": "tenant.sales-returns.index",
                     "why": "via PackUnits"
                 },
@@ -32035,6 +32158,42 @@
                     "why": "via PackUnits"
                 },
                 {
+                    "route": "tenant.sales-orders.split-bill",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.sales-orders.split-bill.store",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.held-sales.index",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.held-sales.create",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.held-sales.store",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.held-sales.cancel",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.held-sales.reattach-table",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.api.pos.held-sales",
+                    "why": "via LineQuantity"
+                },
+                {
+                    "route": "tenant.api.pos.table-sessions",
+                    "why": "via LineQuantity"
+                },
+                {
                     "route": "tenant.api.pos.totals.quote",
                     "why": "via UnitConversionService"
                 },
@@ -32049,6 +32208,10 @@
                 {
                     "route": "tenant.api.pos.recent-sales",
                     "why": "via UnitConversionService"
+                },
+                {
+                    "route": "tenant.api.pos.table-sessions.open-orders",
+                    "why": "via LineQuantity"
                 },
                 {
                     "route": "tenant.unit-conversions.index",
@@ -32467,7 +32630,7 @@
                     "why": "model Unit"
                 }
             ],
-            "used_by_count": 145
+            "used_by_count": 163
         },
         {
             "name": "user_printer_settings",
@@ -44200,6 +44363,7 @@
                 "payment_methods",
                 "printers",
                 "products",
+                "product_variants",
                 "receipt_layout_settings",
                 "restaurant_floors",
                 "restaurant_tables",
@@ -44250,7 +44414,8 @@
                 "kot_batches",
                 "sales_order_line_cancellations",
                 "void_reasons",
-                "product_pack_units"
+                "product_pack_units",
+                "units"
             ]
         },
         {
@@ -44286,7 +44451,8 @@
                 "kot_batches",
                 "sales_order_line_cancellations",
                 "void_reasons",
-                "product_pack_units"
+                "product_pack_units",
+                "units"
             ]
         },
         {
@@ -44469,7 +44635,8 @@
                 "kot_batches",
                 "sales_order_line_cancellations",
                 "void_reasons",
-                "product_pack_units"
+                "product_pack_units",
+                "units"
             ]
         },
         {
@@ -44505,7 +44672,8 @@
                 "kot_batches",
                 "sales_order_line_cancellations",
                 "void_reasons",
-                "product_pack_units"
+                "product_pack_units",
+                "units"
             ]
         },
         {
@@ -44541,7 +44709,8 @@
                 "kot_batches",
                 "sales_order_line_cancellations",
                 "void_reasons",
-                "product_pack_units"
+                "product_pack_units",
+                "units"
             ]
         },
         {
@@ -44577,7 +44746,8 @@
                 "kot_batches",
                 "sales_order_line_cancellations",
                 "void_reasons",
-                "product_pack_units"
+                "product_pack_units",
+                "units"
             ]
         },
         {
@@ -44613,7 +44783,8 @@
                 "kot_batches",
                 "sales_order_line_cancellations",
                 "void_reasons",
-                "product_pack_units"
+                "product_pack_units",
+                "units"
             ]
         },
         {
@@ -44649,7 +44820,8 @@
                 "kot_batches",
                 "sales_order_line_cancellations",
                 "void_reasons",
-                "product_pack_units"
+                "product_pack_units",
+                "units"
             ]
         },
         {
@@ -45302,7 +45474,9 @@
                 "modifiers",
                 "restaurant_tables",
                 "restaurant_table_sessions",
-                "sales_ledgers"
+                "sales_ledgers",
+                "products",
+                "units"
             ]
         },
         {
@@ -45320,7 +45494,9 @@
                 "modifiers",
                 "restaurant_tables",
                 "restaurant_table_sessions",
-                "sales_ledgers"
+                "sales_ledgers",
+                "products",
+                "units"
             ]
         },
         {
@@ -45347,6 +45523,7 @@
                 "users",
                 "void_reasons",
                 "shifts",
+                "units",
                 "product_pack_units",
                 "stock_balances"
             ]
@@ -45375,6 +45552,7 @@
                 "users",
                 "void_reasons",
                 "shifts",
+                "units",
                 "product_pack_units",
                 "stock_balances"
             ]
@@ -45403,6 +45581,7 @@
                 "users",
                 "void_reasons",
                 "shifts",
+                "units",
                 "product_pack_units",
                 "stock_balances"
             ]
@@ -45431,6 +45610,7 @@
                 "users",
                 "void_reasons",
                 "shifts",
+                "units",
                 "product_pack_units",
                 "stock_balances"
             ]
@@ -45459,6 +45639,7 @@
                 "users",
                 "void_reasons",
                 "shifts",
+                "units",
                 "product_pack_units",
                 "stock_balances"
             ]
@@ -45487,6 +45668,7 @@
                 "users",
                 "void_reasons",
                 "shifts",
+                "units",
                 "product_pack_units",
                 "stock_balances"
             ]
@@ -45515,6 +45697,7 @@
                 "users",
                 "void_reasons",
                 "shifts",
+                "units",
                 "product_pack_units",
                 "stock_balances"
             ]
@@ -45554,6 +45737,7 @@
                 "payment_methods",
                 "printers",
                 "products",
+                "product_variants",
                 "receipt_layout_settings",
                 "restaurant_floors",
                 "restaurant_tables",
@@ -45587,6 +45771,7 @@
                 "payment_methods",
                 "printers",
                 "products",
+                "product_variants",
                 "receipt_layout_settings",
                 "restaurant_floors",
                 "restaurant_tables",
@@ -45620,6 +45805,7 @@
                 "payment_methods",
                 "printers",
                 "products",
+                "product_variants",
                 "receipt_layout_settings",
                 "restaurant_floors",
                 "restaurant_tables",
@@ -45725,6 +45911,7 @@
                 "payment_methods",
                 "printers",
                 "products",
+                "product_variants",
                 "receipt_layout_settings",
                 "restaurant_floors",
                 "restaurant_tables",
@@ -45818,6 +46005,7 @@
                 "users",
                 "void_reasons",
                 "shifts",
+                "units",
                 "product_pack_units",
                 "stock_balances"
             ]
