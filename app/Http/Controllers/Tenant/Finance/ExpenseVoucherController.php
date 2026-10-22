@@ -310,6 +310,12 @@ class ExpenseVoucherController extends Controller
             ->orderByDesc('voucher_no')
             ->value('voucher_no');
 
+        // VOID-PURGE-1: a deleted voucher's number is never reused.
+        $purged = \App\Support\PurgedNumbers::highest(\App\Support\PurgedNumbers::EXPENSE_VOUCHER, $prefix);
+        if ($purged !== null && ($last === null || strcmp($purged, $last) > 0)) {
+            $last = $purged;
+        }
+
         $seq = $last ? ((int) substr($last, strlen($prefix))) + 1 : 1;
 
         return $prefix . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);

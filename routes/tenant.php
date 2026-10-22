@@ -905,6 +905,12 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/finance/manual-journals/{manualJournal}', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'show'])->name('tenant.finance.manual-journals.show');
                 Route::post('/finance/manual-journals/{manualJournal}/reverse', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'reverse'])->middleware('prevent.duplicate.submit')->name('tenant.finance.manual-journals.reverse');
 
+                // VOID-PURGE-1: the Owner deletes, permanently, an entry already voided on its own date (Master switch, off by default).
+                Route::post('/finance/voided-entries/{type}/{id}/purge', [\App\Http\Controllers\Tenant\Finance\VoidPurgeController::class, 'purge'])
+                    ->whereIn('type', ['manual_journal', 'expense', 'supplier_payment', 'catering_receipt'])->whereNumber('id')
+                    ->middleware('prevent.duplicate.submit')->name('tenant.finance.voided-entries.purge');
+                Route::get('/finance/voided-entries', [\App\Http\Controllers\Tenant\Finance\VoidPurgeController::class, 'index'])->name('tenant.finance.voided-entries.index');
+
                 // Finance — Opening Balances / Owner Capital (FIN-13)
                 Route::get('/finance/opening-balances', [OpeningBalanceController::class, 'index'])->name('tenant.finance.opening-balances.index');
                 Route::get('/finance/opening-balances/create', [OpeningBalanceController::class, 'create'])->name('tenant.finance.opening-balances.create');

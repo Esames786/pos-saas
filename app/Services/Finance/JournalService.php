@@ -263,6 +263,12 @@ class JournalService
             ->orderByDesc('entry_no')
             ->value('entry_no');
 
+        // VOID-PURGE-1: a number that belonged to a permanently deleted entry is never handed out again.
+        $purged = \App\Support\PurgedNumbers::highest(\App\Support\PurgedNumbers::JOURNAL_ENTRY, $prefix);
+        if ($purged !== null && ($last === null || strcmp($purged, $last) > 0)) {
+            $last = $purged;
+        }
+
         $seq = $last ? ((int) substr($last, strlen($prefix))) + 1 : 1;
 
         return $prefix . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
