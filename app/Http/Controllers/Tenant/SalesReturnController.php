@@ -207,6 +207,14 @@ class SalesReturnController extends Controller
             return back()->withErrors(['return' => 'That sale belongs to a branch you are not assigned to.'])->withInput();
         }
 
+        // REFUND-SHIFT-H1 (owner, 22 Oct 2026): the drawer that pays is the counter's open shift — never the original
+        // sale's shift (that is the sale's provenance). Resolved BEFORE a manager approval is consumed, so a refused
+        // cash refund burns no approval; the same refusal text the Edge till shows.
+        $refundShiftId = $this->refundShiftId((int) $salesOrder->branch_id, $data['terminal_id'] ?? null);
+        if ($data['refund_method'] === 'cash' && $refundShiftId === null) {
+            return back()->withErrors(['return' => SalesReturnService::CASH_REFUND_NEEDS_SHIFT])->withInput();
+        }
+
         // RETURN-MANAGER-APPROVAL-1 — a branch may require a manager before money goes back.
         //
         // Posting a return hands cash over, puts stock back on the shelf and writes to the ledger,
@@ -267,7 +275,8 @@ class SalesReturnController extends Controller
                 refundMethod: $data['refund_method'] ?? null,
                 refundAmount: isset($data['refund_amount']) ? (float) $data['refund_amount'] : null,
                 userId:       auth('tenant')->id(),
-                refundShiftId: $this->refundShiftId((int) $salesOrder->branch_id, $data['terminal_id'] ?? null),
+                refundShiftId: $refundShiftId,
+                saleShiftFallback: false,   // REFUND-SHIFT-H1: the sale's own shift never pays a refund from this form
             );
         } catch (\RuntimeException $e) {
             return back()->withErrors(['return' => $e->getMessage()])->withInput();
@@ -405,6 +414,12 @@ class SalesReturnController extends Controller
             return back()->withErrors(['return' => 'That branch is not one you are assigned to.'])->withInput();
         }
 
+        // REFUND-SHIFT-H1: cash needs the counter's open shift (resolved before the approval is consumed — see store()).
+        $refundShiftId = $this->refundShiftId((int) $branch->id, $data['terminal_id'] ?? null);
+        if ($data['refund_method'] === 'cash' && $refundShiftId === null) {
+            return back()->withErrors(['return' => SalesReturnService::CASH_REFUND_NEEDS_SHIFT])->withInput();
+        }
+
         // The branch's manager-PIN setting applies exactly as for a return with a bill, bound to the refund amount.
         if (($branch->sales_return_approval_mode ?? Branch::SALES_RETURN_AUTO_APPROVE) !== Branch::SALES_RETURN_AUTO_APPROVE) {
             if (! isset($data['refund_amount']) || empty($data['manager_approval_id'])) {
@@ -435,7 +450,7 @@ class SalesReturnController extends Controller
                 refundMethod:  $data['refund_method'],
                 refundAmount:  isset($data['refund_amount']) ? (float) $data['refund_amount'] : null,
                 userId:        (int) auth('tenant')->id(),
-                refundShiftId: $this->refundShiftId((int) $branch->id, $data['terminal_id'] ?? null),
+                refundShiftId: $refundShiftId,
             );
         } catch (\RuntimeException $e) {
             return back()->withErrors(['return' => $e->getMessage()])->withInput();
@@ -449,7 +464,8 @@ class SalesReturnController extends Controller
      *   1. the counter the POS is on (passed as terminal_id), when it is this branch's and its shift is open;
      *   2. the user's own counter (default terminal), same rule;
      *   3. the branch's only open shift, or else the user's own open shift in the branch.
-     * Null = the service falls back to the sale's own shift while it is still open (today's rule), else none.
+     * Null = no paying shift: a cash refund is refused (REFUND-SHIFT-H1 — the sale's own shift is never used from
+     * this form), a card / bank / other refund posts with no shift on the branch's current business day.
      */
     private function refundShiftId(int $branchId, mixed $terminalId): ?int
     {

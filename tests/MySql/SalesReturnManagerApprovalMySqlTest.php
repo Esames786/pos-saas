@@ -50,12 +50,19 @@ class SalesReturnManagerApprovalMySqlTest extends MySqlTenantTestCase
         $this->cleanTenant([
             'manager_approvals', 'manager_pins', 'sales_return_lines', 'sales_returns',
             'sale_payments', 'sales_order_lines', 'sales_orders', 'stock_balances',
-            'products', 'categories', 'terminals', 'model_has_roles', 'branches', 'users',
+            'products', 'categories', 'shifts', 'terminals', 'model_has_roles', 'branches', 'users',
         ]);
 
         $this->branchId = $this->makeBranch();
         $this->cashierId = $this->makeUser(['employee_code' => 'CA' . Str::random(4), 'name' => 'Cashier']);
         $this->managerId = $this->makeUser(['employee_code' => 'MG' . Str::random(4), 'name' => 'Manager']);
+        // REFUND-SHIFT-H1: the cash refunds posted here leave an open shift's drawer (the branch's only one → it pays).
+        DB::connection('tenant')->table('shifts')->insert([
+            'shift_uuid' => strtoupper(bin2hex(random_bytes(13))), 'branch_id' => $this->branchId, 'terminal_id' => $this->makeTerminal($this->branchId),
+            'opened_by_user_id' => $this->cashierId, 'opening_cash' => 0, 'total_sales' => 0, 'total_cash' => 0, 'total_refunds' => 0, 'total_cash_refunds' => 0,
+            'expected_cash' => 0, 'status' => 'open', 'business_date' => now()->toDateString(), 'timezone_name' => 'Asia/Karachi',
+            'opened_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
 
         DB::connection('tenant')->table('users')->whereIn('id', [$this->cashierId, $this->managerId])
             ->update(['default_branch_id' => $this->branchId]);

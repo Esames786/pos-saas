@@ -30,14 +30,28 @@ class ReturnRestockMySqlTest extends MySqlTenantTestCase
         parent::setUp();
         DB::setDefaultConnection('tenant');
         $this->cleanTenant([
-            'cash_bank_account_transactions', 'journal_lines', 'journal_entries', 'sales_ledgers',
+            'cash_bank_account_transactions', 'cash_bank_accounts', 'journal_lines', 'journal_entries', 'sales_ledgers',
             'sales_return_lines', 'sales_returns', 'sale_payments', 'sales_order_lines',
             'sales_orders', 'stock_ledgers', 'stock_balances', 'inventory_batches',
-            'products', 'categories', 'accounts', 'branches', 'users',
+            'products', 'categories', 'accounts', 'shifts', 'terminals', 'branches', 'users',
         ]);
         (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
         $this->branchId = $this->makeBranch();
         $this->userId = $this->makeUser();
+        $this->shiftId = $this->openShift();
+    }
+
+    private int $shiftId;
+
+    /** REFUND-SHIFT-H1: a cash refund needs an open shift on a counter of the branch — the drawer the cash leaves. */
+    private function openShift(): int
+    {
+        return (int) DB::connection('tenant')->table('shifts')->insertGetId([
+            'shift_uuid' => strtoupper(bin2hex(random_bytes(13))), 'branch_id' => $this->branchId, 'terminal_id' => $this->makeTerminal($this->branchId),
+            'opened_by_user_id' => $this->userId, 'opening_cash' => 0, 'total_sales' => 0, 'total_cash' => 0, 'total_refunds' => 0, 'total_cash_refunds' => 0,
+            'expected_cash' => 0, 'status' => 'open', 'business_date' => now()->toDateString(), 'timezone_name' => 'Asia/Karachi',
+            'opened_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     public function test_back_on_the_shelf_or_thrown_away_moves_stock_and_cost_accordingly(): void
@@ -53,7 +67,7 @@ class ReturnRestockMySqlTest extends MySqlTenantTestCase
         $return = app(SalesReturnService::class)->processReturn(
             SalesOrder::findOrFail($sale),
             [['sales_order_line_id' => $l1, 'quantity' => 1, 'restock' => '1'], ['sales_order_line_id' => $l2, 'quantity' => 1, 'restock' => '0']],
-            'test', 'cash', 250, $this->userId,
+            'test', 'cash', 250, $this->userId, $this->shiftId,
         );
 
         $this->assertEqualsWithDelta($before1 + 1, $this->stock($sealed), 0.001, 'Yes: back in stock');
@@ -76,7 +90,7 @@ class ReturnRestockMySqlTest extends MySqlTenantTestCase
         $line = $this->makeSaleLine($sale, $p, ['quantity' => 1, 'unit_price' => 100, 'line_total' => 100, 'unit_cost' => 50, 'cost_total' => 50]);
         $before = $this->stock($p);
 
-        $return = app(SalesReturnService::class)->processReturn(SalesOrder::findOrFail($sale), [['sales_order_line_id' => $line, 'quantity' => 1]], 'test', 'cash', null, $this->userId);
+        $return = app(SalesReturnService::class)->processReturn(SalesOrder::findOrFail($sale), [['sales_order_line_id' => $line, 'quantity' => 1]], 'test', 'cash', null, $this->userId, $this->shiftId);
 
         $this->assertEqualsWithDelta($before + 1, $this->stock($p), 0.001);
         $this->assertTrue(SalesReturnLine::where('sales_return_id', $return->id)->first()->restocked);
@@ -91,7 +105,7 @@ class ReturnRestockMySqlTest extends MySqlTenantTestCase
             'pack_unit_id' => 999, 'pack_factor' => 10, 'base_quantity' => 20, 'unit_code' => 'Strip']);
         $before = $this->stock($p);
 
-        $return = app(SalesReturnService::class)->processReturn(SalesOrder::findOrFail($sale), [['sales_order_line_id' => $line, 'quantity' => 1]], 'test', 'cash', null, $this->userId);
+        $return = app(SalesReturnService::class)->processReturn(SalesOrder::findOrFail($sale), [['sales_order_line_id' => $line, 'quantity' => 1]], 'test', 'cash', null, $this->userId, $this->shiftId);
 
         $rl = SalesReturnLine::where('sales_return_id', $return->id)->first();
         $this->assertSame(10, (int) $rl->pack_factor);

@@ -57,6 +57,8 @@ return [
         // CANONICAL_RELEASE_FREEZE (owner, 22 Oct 2026): canonical 025728d8 integrated in 5 chunks; the three migrations after ccc67fa1
         // were classified from the integration matrix (docs/status/edge-canonical-025728d8-integration-matrix.md §2) as they landed.
         'merged_canonical' => '025728d8',
+        // POST_FREEZE_EXCEPTION (owner, 22 Oct 2026): canonical 59787ff6 CATEGORY-PARENT-GUARD-1, scope = categories.updated_by only.
+        'post_freeze_exception' => ['commit' => '59787ff6', 'scope' => 'categories.updated_by compatibility only'],
         'governs' => 'database/migrations/tenant',
         'bootstrap_section_tables' => [
             'branches', 'units', 'currencies', 'currency_denominations', 'categories', 'products', 'product_variants',
@@ -3300,6 +3302,37 @@ return [
             'OWNER_REVIEW_REQUIRED' => true,
             'BASELINE' => false,
             'NOTE' => 'CANONICAL 025728d8 (22 Oct 2026) RETURN-NO-BILL-1 (schema): NON-ADDITIVE — sales_returns.sales_order_id and sales_return_lines.sales_order_line_id become NULLable (MODIFY, ALGORITHM=INPLACE, LOCK=NONE, lock_wait_timeout 10, FKs kept) + sales_return_lines.unit_cost DECIMAL(15,4) NULL and inventory_batch_id BIGINT NULL (INSTANT). No row is touched; the appliance never writes a NULL there (no no-bill twin — capability returnWithoutBill OFF). Owner review D7-6 (integration matrix §2): recommended EDGE_REQUIRED / SHIP_AND_RUN; the shared models and services assume the columns exist.',
+        ],
+        '2026_10_21_000020_add_updated_by_to_categories' => [
+            'MIGRATION' => '2026_10_21_000020_add_updated_by_to_categories',
+            'CLASSIFICATION' => 'EDGE_SCHEMA_SAFE',
+            'TABLES_CHANGED' => ['categories'],
+            'EDGE_CODE_REFERENCES' => ['none on the appliance — the categories section export is an explicit column list without updated_by (EdgeBootstrapService); Category model only'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'low',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
+            'UPGRADE_TEST' => ['Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_updated_by_on_categories_upgrades_an_older_appliance', 'Tests\\MySql\\EdgeConfigRefreshMySqlTest::test_refresh_applies_updates_inserts_tombstones_and_preserves_operational_history'],
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'POST_FREEZE_EXCEPTION (owner, 22 Oct 2026): canonical 59787ff6 CATEGORY-PARENT-GUARD-1 — ONLY this column is taken (unsignedBigInteger NULL, no FK, no backfill), for schema parity with the Cloud. CORRECTED while proving it: the Cloud exports each section through an EXPLICIT column list (categories: id, parent_id, branch_id, code, name, slug, sort_order, is_active), so updated_by never travels and a refresh from a Cloud at 59787ff6+ applies WITHOUT this column (EdgeConfigRefreshMySqlTest proves it). Hence EDGE_SCHEMA_SAFE by rule 3 (additive, carried without use), not EDGE_REQUIRED; it still ships and runs. The guard logic, controller and view stay canonical-only (DEFER_TO_NEXT_RELEASE).',
+        ],
+        // REFUND-SHIFT-H1 (owner decision H1, 22 Oct 2026): the paying shift's STABLE identity on every return row.
+        '2026_10_22_000001_add_processing_shift_uuid_to_sales_returns' => [
+            'MIGRATION' => '2026_10_22_000001_add_processing_shift_uuid_to_sales_returns',
+            'CLASSIFICATION' => 'EDGE_REQUIRED',
+            'TABLES_CHANGED' => ['sales_returns'],
+            'EDGE_CODE_REFERENCES' => ['SalesReturnService', 'SalesReturn', 'EdgeLocalReturnService', 'EdgeReturnEnvelopeBuilder (edge-return-envelope-v2 processing_shift)', 'EdgeInboundReturnIngestionService'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'low',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
+            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_processing_shift_uuid_on_sales_returns_upgrades_an_older_appliance',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'REFUND-SHIFT-H1 (owner, 22 Oct 2026): "the shift that actually pays the refund owns the refund cash movement". sales_returns is OPERATIONAL on both runtimes: the Edge till writes its local processing shift (shift_id / terminal_id / business_date + this stable shift_uuid) and the Cloud writes the identity the v2 return event carries (shift_id only when a Cloud shifts row with that uuid exists — none until an Edge-shift mirror lands). CHAR(26) NULL + index, ALGORITHM=INSTANT / INPLACE LOCK=NONE, no FK, no row touched.',
         ],
     ],
 ];

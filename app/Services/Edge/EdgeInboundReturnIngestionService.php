@@ -35,6 +35,9 @@ class EdgeInboundReturnIngestionService
 {
     public const SUPPORTED_SCHEMA = EdgeReturnEnvelopeBuilder::SCHEMA;
 
+    /** Every return-envelope generation the Cloud ingests: v2 (H1 processing shift) and v1 (appliances built before H1). */
+    public const SUPPORTED_SCHEMAS = [EdgeReturnEnvelopeBuilder::SCHEMA, EdgeReturnEnvelopeBuilder::SCHEMA_V1];
+
     public function __construct(
         private readonly EdgeBootstrapService $canonical,
         private readonly EdgeActivationEpochService $epochs,
@@ -53,7 +56,7 @@ class EdgeInboundReturnIngestionService
         if (! EdgeIdentity::isValid($returnUuid, EdgeIdentity::FORMAT_ULID)) {
             return $this->refuse($envelope, 'RETURN_UUID_INVALID', 'the envelope has no valid canonical return_uuid');
         }
-        if ((string) ($envelope['envelope_schema_version'] ?? '') !== self::SUPPORTED_SCHEMA) {
+        if (! in_array((string) ($envelope['envelope_schema_version'] ?? ''), self::SUPPORTED_SCHEMAS, true)) {
             return $this->refuse($envelope, 'SCHEMA_UNSUPPORTED', 'unsupported return envelope schema version');
         }
         if (! $this->hashMatches($envelope, $contentHash)) {
@@ -97,10 +100,20 @@ class EdgeInboundReturnIngestionService
                         throw new IngestionRefusal('REFUND_METHOD_UNSUPPORTED', 'the envelope refund method is not a known method');
                     }
                     $refundAmount = round((float) ($envelope['totals']['grand_total'] ?? $envelope['refund_amount'] ?? 0), 2);
+                    $processing = $this->resolveProcessingShift($envelope, $branch);
 
                     // THE OFFICIAL RETURN AUTHORITY — same effects as Online: validation, FEFO stock in, ledger, shift, GL, cash/bank.
+                    // REFUND-SHIFT-H1: the refund is attributed to the PROCESSING shift by stable identity (never to the original
+                    // sale's Cloud shift — saleShiftFallback false, no numeric id); see resolveProcessingShift for v1 events.
                     try {
-                        $return = $this->returns->processReturn($sale, $lines, $envelope['reason'] ?? null, $refundMethod, $refundAmount, (int) $actor->id);
+                        $return = $this->returns->processReturn(
+                            $sale, $lines, $envelope['reason'] ?? null, $refundMethod, $refundAmount, (int) $actor->id,
+                            refundShiftId: $processing['legacy_terminal_shift_id'],
+                            processingShiftUuid: $processing['shift_uuid'],
+                            saleShiftFallback: false,
+                            processingShiftFacts: $processing['facts'],
+                            legacyCashWithoutShift: $processing['legacy'],
+                        );
                     } catch (RuntimeException $e) {
                         throw new IngestionRefusal('RETURN_REFUSED', $e->getMessage());
                     }
@@ -240,6 +253,49 @@ class EdgeInboundReturnIngestionService
         }
 
         return $out;
+    }
+
+    /**
+     * REFUND-SHIFT-H1 — the shift that PAID the refund, as the event names it.
+     *
+     * v2: `processing_shift.shift_uuid` is the appliance's local processing shift by STABLE identity. The Cloud return
+     * row keeps that identity (+ the counter and the business day the event states); SalesReturnService attributes the
+     * money to a Cloud `shifts` row with that uuid when one exists (none today — an Edge-shift mirror is a later step),
+     * else to no shift. A v2 CASH event with no processing shift is refused by the service (a post-H1 appliance never
+     * emits one — it refuses the cash refund at the till).
+     *
+     * v1 LIMITATION (appliances built before H1): the event carries only `actor.terminal_id` and a numeric local
+     * `actor.shift_id` that must NOT be used across systems. The Cloud does not fail closed on such an event — the cash
+     * did leave a local drawer — and attributes it by COUNTER only: the open Cloud shift on that terminal if there is
+     * one, else no shift and no identity (the limitation that v2 removes). Nothing else may take the legacy path.
+     *
+     * @return array{shift_uuid:?string, legacy_terminal_shift_id:?int, facts:?array, legacy:bool}
+     */
+    private function resolveProcessingShift(array $envelope, Branch $branch): array
+    {
+        if ((string) ($envelope['envelope_schema_version'] ?? '') === EdgeReturnEnvelopeBuilder::SCHEMA_V1) {
+            $terminalId = (int) ($envelope['actor']['terminal_id'] ?? 0);
+            $open = $terminalId > 0
+                ? \App\Models\Tenant\Shift::on('tenant')->where('branch_id', $branch->id)->where('terminal_id', $terminalId)->where('status', 'open')->latest('id')->value('id')
+                : null;
+
+            return ['shift_uuid' => null, 'legacy_terminal_shift_id' => $open ? (int) $open : null, 'facts' => $terminalId > 0 ? ['terminal_id' => $terminalId, 'business_date' => null] : null, 'legacy' => true];
+        }
+        $block = is_array($envelope['processing_shift'] ?? null) ? $envelope['processing_shift'] : null;
+        $uuid = $block ? trim((string) ($block['shift_uuid'] ?? '')) : '';
+        if ($block && ! EdgeIdentity::isValid($uuid, EdgeIdentity::FORMAT_ULID)) {
+            throw new IngestionRefusal('RETURN_INVALID', 'the processing shift identity is not a valid shift_uuid');
+        }
+
+        return [
+            'shift_uuid' => $uuid !== '' ? $uuid : null,
+            'legacy_terminal_shift_id' => null,
+            'facts' => $block ? [
+                'terminal_id' => ! empty($block['terminal_id']) ? (int) $block['terminal_id'] : null,
+                'business_date' => ! empty($block['business_date']) ? (string) $block['business_date'] : null,
+            ] : null,
+            'legacy' => false,
+        ];
     }
 
     private function resolveActor(array $envelope): User

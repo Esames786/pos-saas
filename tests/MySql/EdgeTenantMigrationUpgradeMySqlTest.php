@@ -67,6 +67,10 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             $this->markTestSkipped("{$migration} is pending merge from canonical " . $manifest->pendingMergeFrom($migration) . ' — this upgrade test activates when the file lands.');
         }
         $conn = DB::connection('tenant');
+        // Owner D7-6 / exception gate (22 Oct 2026): a CLEAN install (this freshly migrated tenant DB) and an UPGRADED appliance must end
+        // with the same schema — snapshot the touched tables' columns before making the DB older, compare after the upgrade.
+        $manifestTables = (array) ($manifest->entry($migration)['TABLES_CHANGED'] ?? []);
+        $fresh = $this->columnShape($conn, $manifestTables);
         $makeOlder($conn, Schema::connection('tenant'));
         $conn->table('migrations')->where('migration', $migration)->delete();
 
@@ -78,12 +82,29 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
         $this->assertContains($migration, $result['applied']);
         $this->assertTrue($conn->table('migrations')->where('migration', $migration)->exists());
         $assertForward($conn, Schema::connection('tenant'));
+        $this->assertSame($fresh, $this->columnShape($conn, $manifestTables), "{$migration}: the upgraded appliance ends with the clean-install schema (name, type, nullability, default) on " . implode(', ', $manifestTables));
 
         $meta = EdgeLocalMeta::current();
         $this->assertNull($meta->last_error);
         $this->assertSame('paid', $conn->table('sales_orders')->where('id', $this->paidId)->value('status'), 'operational rows survive');
         $this->assertSame(1, $conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->count());
         $this->assertSame([], $upgrader->upgrade()['applied'], 'idempotent');
+    }
+
+    /** name → [type, nullable, default] per column of the given tables (information_schema, ordered by name) — the clean-install shape. */
+    private function columnShape($conn, array $tables): array
+    {
+        $out = [];
+        foreach ($tables as $t) {
+            if (! Schema::connection('tenant')->hasTable($t)) {
+                continue;
+            }
+            foreach ($conn->select('SELECT column_name AS c, column_type AS ty, is_nullable AS n, column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? ORDER BY column_name', [$t]) as $r) {
+                $out[$t][$r->c] = [$r->ty, $r->n, $r->d];
+            }
+        }
+
+        return $out;
     }
 
     private function dropColumns(string $table, array $columns): void
@@ -385,6 +406,36 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
                 $this->assertGreaterThanOrEqual(1, (int) $conn->selectOne("SELECT COUNT(*) AS c FROM information_schema.key_column_usage WHERE table_schema = DATABASE() AND table_name = 'sales_returns' AND column_name = 'sales_order_id' AND referenced_table_name IS NOT NULL")->c);
             });
     }
+    /** POST_FREEZE_EXCEPTION 59787ff6 (owner, 22 Oct 2026): categories.updated_by — the whole-row categories refresh needs the column. */
+    public function test_updated_by_on_categories_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_21_000020_add_updated_by_to_categories', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            fn () => $this->dropColumns('categories', ['updated_by']),
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('categories', 'updated_by'), 'schema parity with the Cloud (the section export never carries it)');
+                $this->assertSame('YES', $conn->selectOne("SELECT IS_NULLABLE AS n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'categories' AND column_name = 'updated_by'")->n);
+            });
+    }
+
+    /** REFUND-SHIFT-H1 (owner decision H1, 22 Oct 2026): sales_returns.processing_shift_uuid — the paying shift's stable identity. */
+    public function test_processing_shift_uuid_on_sales_returns_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_22_000001_add_processing_shift_uuid_to_sales_returns', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn, $schema) {
+                if ($schema->hasColumn('sales_returns', 'processing_shift_uuid')) {
+                    $schema->table('sales_returns', fn (Blueprint $t) => $t->dropIndex('sales_returns_processing_shift_uuid_index'));
+                }
+                $this->dropColumns('sales_returns', ['processing_shift_uuid']);
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('sales_returns', 'processing_shift_uuid'), 'the Edge till and the Cloud both write the paying shift\'s shift_uuid');
+                $col = $conn->selectOne("SELECT COLUMN_TYPE AS t, IS_NULLABLE AS n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sales_returns' AND column_name = 'processing_shift_uuid'");
+                $this->assertSame('char(26)', strtolower((string) $col->t));
+                $this->assertSame('YES', $col->n, 'NULL on every pre-H1 row');
+                $this->assertSame(1, (int) $conn->selectOne("SELECT COUNT(*) AS c FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'sales_returns' AND index_name = 'sales_returns_processing_shift_uuid_index'")->c, 'indexed: the future mirror resolves by identity');
+            });
+    }
+
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void
@@ -413,11 +464,16 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             // CANONICAL_RELEASE_FREEZE 025728d8 (22 Oct 2026)
             '2026_10_20_000005_add_restocked_to_sales_return_lines', '2026_10_20_000006_add_ask_prescription_to_branches',
             '2026_10_20_000007_return_without_bill_schema',
+            // POST_FREEZE_EXCEPTION 59787ff6 (owner, 22 Oct 2026)
+            '2026_10_21_000020_add_updated_by_to_categories',
+            // REFUND-SHIFT-H1 (owner decision H1, 22 Oct 2026)
+            '2026_10_22_000001_add_processing_shift_uuid_to_sales_returns',
         ];
         foreach ($canonicalRun as $name) {
             $this->assertFalse($m->entry($name)['BASELINE'] ?? true, $name);
             $this->assertSame(EdgeTenantMigrationManifest::DECISION_RUN, $m->decisionFor($name), $name);
-            $this->assertStringStartsWith('Tests\MySql\EdgeTenantMigrationUpgradeMySqlTest::test_', (string) $m->entry($name)['UPGRADE_TEST'], $name);
+            // an entry may name several tests (a list); the FIRST must be an upgrade proof of this class
+            $this->assertStringStartsWith('Tests\MySql\EdgeTenantMigrationUpgradeMySqlTest::test_', (string) ((array) $m->entry($name)['UPGRADE_TEST'])[0], $name);
         }
     }
 }

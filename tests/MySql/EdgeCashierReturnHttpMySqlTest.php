@@ -127,6 +127,28 @@ class EdgeCashierReturnHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame(500.0 + 300.0 - 100.0, (float) $this->getJson('/edge/local/pos/shift/summary')->assertOk()->json('breakup.expected_cash'));
     }
 
+    /**
+     * REFUND-SHIFT-H1 (owner decision H1, 22 Oct 2026) — the real route: no OPEN shift on the cashier's selected terminal →
+     * the cash refund is refused with the SAME message the Online form shows, even though the sale's own shift exists
+     * (closed here — the sale's shift is provenance, never the refund's drawer). Nothing is posted, no event is queued.
+     */
+    public function test_a_cash_refund_with_no_open_shift_on_the_selected_terminal_is_refused_with_the_shared_message(): void
+    {
+        $this->grantEdgePermission($this->userId, 'tenant.sales-returns.store');
+        $sale = $this->cashSale(2);
+        $saleId = (int) $this->getJson('/edge/local/pos/returns/search?q=' . urlencode(substr((string) $sale['sale_no'], 0, 8)))->assertOk()->json('sales.0.id');
+        $view = $this->getJson('/edge/local/pos/returns/sales/' . $saleId)->assertOk()->json();
+        DB::table('shifts')->where('status', 'open')->update(['status' => 'closed', 'closed_at' => now(), 'closed_by_user_id' => $this->userId]);
+
+        $this->postJson('/edge/local/pos/returns', ['sales_order_id' => $saleId, 'refund_method' => 'cash', 'refund_amount' => 100, 'lines' => [['sales_order_line_id' => $view['lines'][0]['sales_order_line_id'], 'quantity' => 1]]])
+            ->assertStatus(422)
+            ->assertJsonPath('message', \App\Services\Sales\SalesReturnService::CASH_REFUND_NEEDS_SHIFT)
+            ->assertJsonPath('errors.shift.0', \App\Services\Sales\SalesReturnService::CASH_REFUND_NEEDS_SHIFT);
+        $this->assertSame(0, DB::table('sales_returns')->count(), 'nothing posted');
+        $this->assertSame(0, DB::table('edge_sync_outbox')->where('envelope_schema_version', EdgeReturnEnvelopeBuilder::SCHEMA)->count(), 'no event queued');
+        $this->assertSame(0.0, (float) DB::table('shifts')->sum('total_refunds'), 'the closed sale shift was never reopened or touched');
+    }
+
     public function test_a_cashier_without_the_return_permission_is_refused(): void
     {
         // W-E: the seeded cashier holds the full catalogue template — model the operator without Return explicitly.

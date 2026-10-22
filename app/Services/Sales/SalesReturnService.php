@@ -21,6 +21,13 @@ use Illuminate\Support\Facades\DB;
 
 class SalesReturnService
 {
+    /**
+     * REFUND-SHIFT-H1 (owner decision H1, 22 Oct 2026): "the shift that actually pays the refund owns the refund cash
+     * movement … do not silently post a cash refund with no shift". ONE user-facing refusal, shown by the Online return
+     * form and the Edge till alike (the Edge twin throws it as a validation message under the key `shift`).
+     */
+    public const CASH_REFUND_NEEDS_SHIFT = 'A cash refund leaves a drawer — open a shift on this counter before refunding in cash.';
+
     public function __construct(
         private readonly InventoryService $inventoryService,
         private readonly SalesService $salesService,
@@ -162,8 +169,22 @@ class SalesReturnService
         ?float $refundAmount,
         int $userId,
         // REFUND-SHIFT-1: the open shift of the counter that pays the refund (the caller resolves it).
-        // Null = the sale's own shift while it is still open, as before; neither = no shift.
         ?int $refundShiftId = null,
+        // REFUND-SHIFT-H1 — the paying shift by STABLE identity (shifts.shift_uuid): an Edge return event names the
+        // appliance's local processing shift this way; the Cloud attributes the refund to the shifts row carrying that
+        // uuid when one exists (open or closed — identity, not state), and keeps the identity on the return row either way.
+        ?string $processingShiftUuid = null,
+        // REFUND-SHIFT-H1 — may the sale's OWN shift pay, while it is still open, when nothing else resolves? The
+        // historical default for callers that say nothing; the Online form and the Edge ingestion pass FALSE (the
+        // owner's rule: the original sale's shift is provenance of the sale, never the drawer of the refund).
+        bool $saleShiftFallback = true,
+        // REFUND-SHIFT-H1 — facts of the identified processing shift for the row when the Cloud holds no shifts row for
+        // it: ['terminal_id' => ?int, 'business_date' => ?'Y-m-d'] (the refund stays on that counter and that day).
+        ?array $processingShiftFacts = null,
+        // REFUND-SHIFT-H1 — LEGACY ONLY: an `edge-return-envelope-v1` event (an appliance built before H1) carries no
+        // shift identity; its cash refund DID leave a local drawer, so the Cloud must not fail closed on it. Nothing
+        // else may pass TRUE (see EdgeInboundReturnIngestionService::resolveProcessingShift).
+        bool $legacyCashWithoutShift = false,
     ): SalesReturn {
         // Defence in depth behind the request validation. A return with no refund method posts
         // Dr revenue / Cr 1500 Undeposited Funds and writes NO cash-bank movement, so the money
@@ -173,7 +194,8 @@ class SalesReturnService
         }
 
         $salesReturn = DB::connection('tenant')->transaction(function () use (
-            $salesOrder, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId
+            $salesOrder, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId,
+            $processingShiftUuid, $saleShiftFallback, $processingShiftFacts, $legacyCashWithoutShift
         ) {
             $salesOrder = SalesOrder::query()
                 ->whereKey($salesOrder->id)
@@ -195,10 +217,19 @@ class SalesReturnService
             // from yesterday returned today reached no shift and no day closing at all, and changed a closed
             // day's figures. Now the refund goes into the shift open at the counter paying it, on THAT shift's
             // business day (after midnight on an evening shift = the evening's day, as before); without one,
-            // the sale's own shift while still open (today's rule); without either, no shift, and the
-            // branch's current business day — never a past, closed day.
-            $refundShift = $this->refundShift($salesOrder, $refundShiftId);
+            // the branch's current business day — never a past, closed day.
+            //
+            // REFUND-SHIFT-H1 (owner, 22 Oct 2026): the PAYING shift is resolved in this order — (a) the open shift the
+            // caller named; (b) the shifts row carrying the processing shift's STABLE identity (shift_uuid); (c) the
+            // sale's own shift, only while open and only for callers that allow the fallback. The original sale's
+            // shift is never read for money otherwise and never mutated. A CASH refund with no paying shift and no
+            // paying-shift identity is refused (never silently posted); a non-cash refund may post without a shift.
+            $refundShift = $this->refundShift(
+                (int) $salesOrder->branch_id, $refundShiftId, $processingShiftUuid, $saleShiftFallback ? $salesOrder->shift_id : null
+            );
+            $this->assertCashRefundHasAPayingShift($refundMethod, $refundShift, $processingShiftUuid, $legacyCashWithoutShift);
             $businessDate = $refundShift?->business_date
+                ?? ($processingShiftFacts['business_date'] ?? null)
                 ?? app(\App\Support\TenantClock::class)->currentBusinessDate($salesOrder->branch);
 
             $salesReturn = SalesReturn::create([
@@ -208,7 +239,9 @@ class SalesReturnService
                 'return_date'        => now(),
                 'business_date'      => $businessDate instanceof \DateTimeInterface ? $businessDate->format('Y-m-d') : $businessDate,
                 'shift_id'           => $refundShift?->id,
-                'terminal_id'        => $refundShift?->terminal_id,
+                'terminal_id'        => $refundShift?->terminal_id ?? ($processingShiftFacts['terminal_id'] ?? null),
+                // the paying shift's stable identity — kept even when this database holds no shifts row for it
+                'processing_shift_uuid' => $refundShift?->shift_uuid ?? $processingShiftUuid,
                 'subtotal'           => 0,
                 'discount_amount'    => 0,
                 'tax_amount'         => 0,
@@ -347,9 +380,9 @@ class SalesReturnService
         $salesReturn = DB::connection('tenant')->transaction(function () use (
             $branch, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId
         ) {
-            $refundShift = $refundShiftId
-                ? Shift::query()->whereKey($refundShiftId)->where('branch_id', $branch->id)->where('status', 'open')->lockForUpdate()->first()
-                : null;
+            // REFUND-SHIFT-H1: no sale, so no fallback — the counter's open shift pays, and cash needs one.
+            $refundShift = $this->refundShift((int) $branch->id, $refundShiftId, null, null);
+            $this->assertCashRefundHasAPayingShift($refundMethod, $refundShift, null, false);
             $businessDate = $refundShift?->business_date
                 ?? app(\App\Support\TenantClock::class)->currentBusinessDate($branch);
 
@@ -361,6 +394,7 @@ class SalesReturnService
                 'business_date'      => $businessDate instanceof \DateTimeInterface ? $businessDate->format('Y-m-d') : $businessDate,
                 'shift_id'           => $refundShift?->id,
                 'terminal_id'        => $refundShift?->terminal_id,
+                'processing_shift_uuid' => $refundShift?->shift_uuid,
                 'subtotal'           => 0,
                 'discount_amount'    => 0,
                 'tax_amount'         => 0,
@@ -673,23 +707,53 @@ class SalesReturnService
     }
 
     /**
-     * REFUND-SHIFT-1 — the open shift that pays this refund: the one the caller named (this branch, open),
-     * else the sale's own shift while it is still open, else none. Locked, so a close cannot slip in between.
+     * REFUND-SHIFT-1 / H1 — the shift that pays this refund, locked so a close cannot slip in between:
+     *   (a) the shift the caller named, while open in this branch;
+     *   (b) the shifts row carrying the processing shift's STABLE identity (shift_uuid), open or closed — an Edge return
+     *       event names its local processing shift this way; on the Cloud the row exists only once Edge shifts are
+     *       mirrored there (none today), so (b) usually resolves nothing and the identity alone is kept on the return;
+     *   (c) the sale's own shift, while open — only when the caller passed it (saleShiftFallback);
+     *   else none.
      */
-    private function refundShift(SalesOrder $salesOrder, ?int $refundShiftId): ?Shift
+    private function refundShift(int $branchId, ?int $refundShiftId, ?string $processingShiftUuid, ?int $saleShiftId): ?Shift
     {
-        foreach (array_filter([$refundShiftId, $salesOrder->shift_id]) as $id) {
-            $shift = Shift::query()->whereKey($id)
-                ->where('branch_id', $salesOrder->branch_id)
-                ->where('status', 'open')
-                ->lockForUpdate()
-                ->first();
+        if ($refundShiftId) {
+            $shift = Shift::query()->whereKey($refundShiftId)->where('branch_id', $branchId)->where('status', 'open')->lockForUpdate()->first();
+            if ($shift) {
+                return $shift;
+            }
+        }
+        if ($processingShiftUuid !== null && $processingShiftUuid !== '') {
+            $shift = Shift::query()->where('shift_uuid', $processingShiftUuid)->where('branch_id', $branchId)->lockForUpdate()->first();
+            if ($shift) {
+                return $shift;
+            }
+        }
+        if ($saleShiftId) {
+            $shift = Shift::query()->whereKey($saleShiftId)->where('branch_id', $branchId)->where('status', 'open')->lockForUpdate()->first();
             if ($shift) {
                 return $shift;
             }
         }
 
         return null;
+    }
+
+    /**
+     * REFUND-SHIFT-H1 — a cash refund leaves a drawer: it needs a paying shift (a resolved row, or at least the
+     * processing shift's identity when this database holds no row for it). Card / bank / other refunds do not move
+     * a drawer and may post without one. $legacy = a pre-H1 Edge event (edge-return-envelope-v1) only.
+     */
+    private function assertCashRefundHasAPayingShift(?string $refundMethod, ?Shift $shift, ?string $processingShiftUuid, bool $legacy): void
+    {
+        if ($refundMethod !== 'cash' || $shift !== null || $legacy) {
+            return;
+        }
+        if ($processingShiftUuid !== null && $processingShiftUuid !== '') {
+            return;
+        }
+
+        throw new \RuntimeException(self::CASH_REFUND_NEEDS_SHIFT);
     }
 
     private function updateShiftForReturn(?Shift $shift, ?string $refundMethod, float $grandTotal): void

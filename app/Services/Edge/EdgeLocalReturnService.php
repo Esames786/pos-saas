@@ -25,8 +25,10 @@ use RuntimeException;
  * one (SalesReturnService::computeReturn) — with offline-correct authority:
  *   - sales it may return: local paid sales it made, and returnable Cloud sales from the warm cache (shadows) while
  *     the cache is provably fresh (fail closed with a business message otherwise; never a synchronous Cloud call);
- *   - refunds: CASH only offline, OUT of the till that physically pays (the original sale's local open shift as Online,
- *     else the current terminal's open shift); card / bank / provider refunds need the Online POS (ONLINE_REQUIRED);
+ *   - refunds: CASH only offline, OUT of the till that physically pays — REFUND-SHIFT-H1 (owner, 22 Oct 2026): the OPEN
+ *     local shift on the cashier's SELECTED terminal, and only that (the original sale's shift is the sale's provenance,
+ *     never the refund's drawer); no open shift there = the cash refund is refused with the Online form's own message;
+ *     card / bank / provider refunds need the Online POS (ONLINE_REQUIRED);
  *   - manager approval exactly as Online when the branch requires it (same action_type, same payload binding, same
  *     single-use/expiry/requester semantics), verified locally against provisioned credentials;
  *   - the local document (sales_returns/lines, returned_quantity), the LOCAL_OPERATIONAL stock return and the
@@ -190,6 +192,14 @@ class EdgeLocalReturnService
             if ($refundAmount !== null && abs($refundAmount - $grandTotal) > 0.01) {
                 throw ValidationException::withMessages(['refund_amount' => 'Refund amount must match the calculated refund of ' . number_format($grandTotal, 2) . '.']);
             }
+
+            // REFUND-SHIFT-H1 — THE PROCESSING SHIFT: the open local shift on the cashier's selected terminal, and only
+            // that (never the sale's own shift — "the shift that actually pays the refund owns the refund cash movement").
+            // Locked, so a close cannot slip in between. Resolved before the approval is consumed, so a refusal burns none.
+            $shift = Shift::on('tenant')->where('branch_id', $branchId)->where('terminal_id', $terminalId)->where('status', 'open')->lockForUpdate()->first();
+            if ($refundMethod === 'cash' && ! $shift) {
+                throw ValidationException::withMessages(['shift' => SalesReturnService::CASH_REFUND_NEEDS_SHIFT]);
+            }
             // Manager approval, bound exactly as Online (sale, branch, method, amount) — single use, expiry, requester.
             $approvalAudit = null;
             if ($needsManager) {
@@ -213,23 +223,21 @@ class EdgeLocalReturnService
                 ];
             }
 
-            // The till that physically pays: the sale's own local open shift (Online rule) else this terminal's open shift.
-            $shift = null;
-            if ($refundMethod === 'cash') {
-                $shift = $sale->shift_id ? Shift::on('tenant')->where('id', $sale->shift_id)->where('status', 'open')->lockForUpdate()->first() : null;
-                $shift = $shift ?: Shift::on('tenant')->where('branch_id', $branchId)->where('terminal_id', $terminalId)->where('status', 'open')->lockForUpdate()->first();
-                if (! $shift) {
-                    throw ValidationException::withMessages(['shift' => 'Open a shift on this terminal before refunding cash — the refund leaves this till.']);
-                }
-            }
-
+            // REFUND-SHIFT-H1: the row remembers the PROCESSING shift (id + terminal + its stable uuid) and books on THAT
+            // shift's business day (Online REFUND-SHIFT-1 rule); without a shift (a non-cash refund, when offline policy
+            // ever allows one) the branch's current business day — never the original sale's day.
+            $businessDate = $shift?->business_date
+                ?? app(\App\Support\TenantClock::class)->currentBusinessDate($branch);
             $returnUuid = (string) Str::ulid();
             $return = SalesReturn::on('tenant')->create([
                 'return_no' => 'SR-' . $branchId . '-' . $terminalId . '-' . $returnUuid,
                 'sales_order_id' => $sale->id,
                 'branch_id' => $branchId,
                 'return_date' => now(),
-                'business_date' => $sale->business_date,                 // Online: the ORDER's business day
+                'business_date' => self::dateString($businessDate),
+                'shift_id' => $shift?->id,
+                'terminal_id' => $shift?->terminal_id ?? $terminalId,
+                'processing_shift_uuid' => $shift?->shift_uuid,
                 'subtotal' => $computed['subtotal'], 'discount_amount' => $computed['discount'], 'tax_amount' => $computed['tax'],
                 'delivery_charge_amount' => $computed['delivery_refund'], 'grand_total' => $grandTotal,
                 'refund_method' => $refundMethod, 'refund_amount' => $grandTotal,
@@ -280,11 +288,20 @@ class EdgeLocalReturnService
                 $sale->update(['status' => $customerLines->sum('returned_quantity') >= $customerLines->sum('quantity') ? 'returned' : 'partially_returned']);
             }
 
-            // CASH REFUND: the local drawer decreases exactly once (this transaction), Online's shift buckets.
+            // THE PROCESSING SHIFT'S buckets move exactly once (this transaction) — Online's SalesReturnService buckets;
+            // the original sale's shift is never read for money and never mutated (REFUND-SHIFT-H1).
             if ($shift) {
                 $shift->increment('total_refunds', $grandTotal);
-                $shift->increment('total_cash_refunds', $grandTotal);
-                $shift->decrement('expected_cash', $grandTotal);
+                if ($refundMethod === 'cash') {
+                    $shift->increment('total_cash_refunds', $grandTotal);
+                    $shift->decrement('expected_cash', $grandTotal);
+                } elseif ($refundMethod === 'card') {
+                    $shift->increment('total_card_refunds', $grandTotal);
+                } elseif ($refundMethod === 'bank_transfer') {
+                    $shift->increment('total_bank_refunds', $grandTotal);
+                } else {
+                    $shift->increment('total_other_refunds', $grandTotal);
+                }
             }
 
             // The immutable RETURN EVENT — one transaction with the document and the operational effect.
@@ -294,9 +311,10 @@ class EdgeLocalReturnService
                 'cloud_sales_order_id' => $mapping ? (int) $mapping->cloud_sales_order_id : null,
                 'sale_uuid' => $shadow ? ($mapping->sale_uuid ?? null) : (string) $sale->sale_uuid,
             ];
+            // v2: the processing shift travels by STABLE identity (shift_uuid), never by its local numeric id.
             $envelope = $this->envelopes->build($return->fresh(), $sale, $meta, $origin, $envelopeLines, $approvalAudit, [
-                'user_id' => (int) $user->id, 'employee_code' => $user->employee_code ?? null, 'terminal_id' => $terminalId, 'shift_id' => $shift?->id,
-            ], $freshness);
+                'user_id' => (int) $user->id, 'employee_code' => $user->employee_code ?? null, 'terminal_id' => $terminalId,
+            ], $freshness, $shift);
             $this->outbox->createForReturn($envelope);
 
             return $this->view($return->fresh(), $sale, $shadow);

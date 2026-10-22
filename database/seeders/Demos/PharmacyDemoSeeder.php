@@ -658,6 +658,13 @@ class PharmacyDemoSeeder
             return;
         }
 
+        // REFUND-SHIFT-H1 (owner, 22 Oct 2026): a cash refund leaves a drawer and is refused without an open shift.
+        // These two are TODAY's returns of older sales, paid out of Counter 1's open shift — the shift the demo opens
+        // for today anyway (opened here first; openTodaysShift is idempotent).
+        $this->openTodaysShift();
+        $counter = Terminal::where('code', 'C1')->first();
+        $payingShift = $counter ? app(\App\Services\Sales\ShiftService::class)->activeShiftForTerminal($counter) : null;
+
         $made = [];
         foreach ([
             ['PH-CALSY', 1,  6, 'Unopened bottle, customer bought a second one by mistake'],
@@ -681,6 +688,7 @@ class PharmacyDemoSeeder
                     'cash',
                     round($qty * (float) $line->unit_price, 2),
                     $this->owner->id,
+                    $payingShift ? (int) $payingShift->id : null,
                 );
                 $made[] = $sale->sale_no;
             } catch (\Throwable $e) {
@@ -738,7 +746,8 @@ class PharmacyDemoSeeder
     /**
      * The counter is ready when the demo opens: every login is on Counter 1 and its shift is open for
      * today (the nightly reset otherwise left "No terminal · No Open Shift" and the POS refused to sell).
-     * Runs last, so none of the seeded history above belongs to this shift.
+     * Runs last, so none of the seeded history above belongs to this shift — except the two returns, which are
+     * today's refunds and pay out of this drawer (REFUND-SHIFT-H1). Idempotent.
      */
     private function openTodaysShift(): void
     {

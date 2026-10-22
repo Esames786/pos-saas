@@ -17,12 +17,23 @@ class SalesReturnIntegrityMySqlTest extends MySqlTenantTestCase
         parent::setUp();
         DB::setDefaultConnection('tenant');
         $this->cleanTenant([
-            'cash_bank_account_transactions', 'journal_lines', 'journal_entries', 'sales_ledgers',
+            'cash_bank_account_transactions', 'cash_bank_accounts', 'journal_lines', 'journal_entries', 'sales_ledgers',
             'sales_return_lines', 'sales_returns', 'sale_payments', 'sales_order_lines',
             'sales_orders', 'stock_ledgers', 'stock_balances', 'inventory_batches',
-            'products', 'categories', 'accounts', 'branches', 'users',
+            'products', 'categories', 'accounts', 'shifts', 'terminals', 'branches', 'users',
         ]);
         (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
+    }
+
+    /** REFUND-SHIFT-H1: a cash refund needs an open shift on a counter of the branch — the drawer the cash leaves. */
+    private function openShift(int $branchId, int $userId): int
+    {
+        return (int) DB::connection('tenant')->table('shifts')->insertGetId([
+            'shift_uuid' => strtoupper(bin2hex(random_bytes(13))), 'branch_id' => $branchId, 'terminal_id' => $this->makeTerminal($branchId),
+            'opened_by_user_id' => $userId, 'opening_cash' => 0, 'total_sales' => 0, 'total_cash' => 0, 'total_refunds' => 0, 'total_cash_refunds' => 0,
+            'expected_cash' => 0, 'status' => 'open', 'business_date' => now()->toDateString(), 'timezone_name' => 'Asia/Karachi',
+            'opened_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     public function test_return_prorates_original_discount_and_tax(): void
@@ -57,6 +68,7 @@ class SalesReturnIntegrityMySqlTest extends MySqlTenantTestCase
             'cash',
             null,
             $userId,
+            $this->openShift($branchId, $userId),   // REFUND-SHIFT-H1: cash leaves an open shift's drawer
         );
 
         $this->assertSame(100.0, (float) $return->subtotal);
@@ -147,10 +159,11 @@ class SalesReturnIntegrityMySqlTest extends MySqlTenantTestCase
         ]);
 
         // Half the order back: the rider still made the trip, so the charge stays.
+        $shiftId = $this->openShift($branchId, $userId);   // REFUND-SHIFT-H1: cash leaves an open shift's drawer
         $partial = app(SalesReturnService::class)->processReturn(
             SalesOrder::findOrFail($saleId),
             [['sales_order_line_id' => $lineId, 'quantity' => 1]],
-            'Partial', 'cash', null, $userId,
+            'Partial', 'cash', null, $userId, $shiftId,
         );
         $this->assertSame(0.0, (float) $partial->delivery_charge_amount);
         $this->assertSame(250.0, (float) $partial->grand_total);
@@ -159,7 +172,7 @@ class SalesReturnIntegrityMySqlTest extends MySqlTenantTestCase
         $final = app(SalesReturnService::class)->processReturn(
             SalesOrder::findOrFail($saleId),
             [['sales_order_line_id' => $lineId, 'quantity' => 1]],
-            'Remainder', 'cash', null, $userId,
+            'Remainder', 'cash', null, $userId, $shiftId,
         );
         $this->assertSame(100.0, (float) $final->delivery_charge_amount);
         $this->assertSame(350.0, (float) $final->grand_total);

@@ -69,7 +69,8 @@ class EdgeSyncSender
         // F2: a supplier-finance event (payment / AP journal) travels the same outbox to the Cloud's supplier-finance ingestion.
         $schema = (string) $row->envelope_schema_version;
         [$urlKey, $envName] = match (true) {
-            $schema === EdgeReturnEnvelopeBuilder::SCHEMA => ['edge.sync.returns_url', 'EDGE_SYNC_RETURNS_URL'],
+            // v2 (H1) and a v1 row still queued from a pre-H1 build travel to the same return ingestion
+            in_array($schema, [EdgeReturnEnvelopeBuilder::SCHEMA, EdgeReturnEnvelopeBuilder::SCHEMA_V1], true) => ['edge.sync.returns_url', 'EDGE_SYNC_RETURNS_URL'],
             EdgeSupplierFinanceEnvelopeBuilder::isFinanceSchema($schema) => ['edge.sync.supplier_finance_url', 'EDGE_SYNC_SUPPLIER_FINANCE_URL'],
             $schema === EdgePurchaseReturnEnvelopeBuilder::SCHEMA => ['edge.sync.purchase_returns_url', 'EDGE_SYNC_PURCHASE_RETURNS_URL'],
             default => ['edge.sync.url', 'EDGE_SYNC_URL'],

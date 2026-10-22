@@ -27,6 +27,8 @@ class SalesReturn extends Model
         // REFUND-SHIFT-1: the shift / counter whose drawer paid the refund
         'shift_id',
         'terminal_id',
+        // REFUND-SHIFT-H1: the paying shift's STABLE identity (shifts.shift_uuid) — the only shift identity that crosses systems
+        'processing_shift_uuid',
     ];
 
     protected function casts(): array
