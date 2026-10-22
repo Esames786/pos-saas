@@ -130,11 +130,19 @@ class SplitBillController extends Controller
                         ->where('sales_order_id', $salesOrder->id)
                         ->findOrFail($lineInput['sales_order_line_id']);
 
-                    $splitQty     = (float) $lineInput['quantity'];
+                    $splitQty     = \App\Support\LineQuantity::normalize($lineInput['quantity'], (string) $heldLine->product_name);
                     $availableQty = (float) $heldLine->quantity;
 
                     if ($splitQty <= 0) {
                         continue;
+                    }
+
+                    // W2-B: a pack line splits in whole packs and a counted item in whole pieces — unless it moves
+                    // everything the line holds (a line split in the past may hold a part).
+                    $countedLine = $heldLine->pack_factor || ! \App\Support\LineQuantity::partsAllowed($heldLine->product?->unit);
+                    if ($countedLine && ! \App\Support\LineQuantity::isWhole($splitQty) && abs($splitQty - $availableQty) > 0.0005) {
+                        throw new RuntimeException(\App\Support\LineQuantity::wholeMessage((string) $heldLine->product_name,
+                            $heldLine->pack_factor ? (string) ($heldLine->unit_code ?: '') : \App\Support\LineQuantity::unitName($heldLine->product?->unit), $splitQty));
                     }
 
                     if ($splitQty > $availableQty + 0.0001) {

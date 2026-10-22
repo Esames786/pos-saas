@@ -323,6 +323,10 @@ class HeldSaleController extends Controller
         $isDraft = (bool) ($data['save_as_draft'] ?? false);
 
         $data = $this->validateDeliveryAttribution($data);
+        // W2-B: the same quantity rules as a paid sale, so a held line can never hold what the sale would refuse.
+        if (isset($data['lines']) && is_array($data['lines'])) {
+            $data['lines'] = \App\Support\LineQuantity::prepareSaleLines($data['lines']);
+        }
 
         if (($data['discount_type'] ?? 'none') !== 'none' || (float) ($data['discount_value'] ?? 0) > 0) {
             throw ValidationException::withMessages([

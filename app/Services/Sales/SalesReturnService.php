@@ -117,18 +117,32 @@ class SalesReturnService
                     throw new \RuntimeException('Component and modifier rows cannot be returned separately. Return their parent sale item.');
                 }
 
-                // BUG-011 FIX: cap against remaining returnable qty, not original qty.
+                // BUG-011: measured against what is still returnable, not the original quantity.
+                // W2-B (22 Oct): asking for more is refused with what is left, in the line's own unit — it used to be
+                // cut down silently to the remainder. A counted line comes back whole, or as everything still left.
                 $alreadyReturned = (float) $orderLine->returned_quantity;
-                $returnable      = (float) $orderLine->quantity - $alreadyReturned;
-
-                if ($returnable <= 0) {
-                    continue; // fully returned already
-                }
-
-                $qty = min((float) $lineData['quantity'], $returnable);
+                $returnable      = round((float) $orderLine->quantity - $alreadyReturned, 3);
+                $name            = (string) $orderLine->product_name;
+                $qty             = \App\Support\LineQuantity::normalize($lineData['quantity'] ?? 0, $name);
                 if ($qty <= 0) {
                     continue;
                 }
+                $packLine = $orderLine->base_quantity !== null && (int) $orderLine->pack_factor > 0;
+                $unit = $packLine ? (string) ($orderLine->unit_code ?: '') : \App\Support\LineQuantity::unitName($orderLine->product?->unit);
+                if ($returnable <= 0.0005) {
+                    throw new \RuntimeException("{$name}: nothing is left to return — all "
+                        . \App\Support\LineQuantity::withUnit((float) $orderLine->quantity, $unit) . ' already came back.');
+                }
+                if ($qty > $returnable + 0.0005) {
+                    throw new \RuntimeException("{$name}: only " . \App\Support\LineQuantity::withUnit($returnable, $unit) . ' can still be returned, not '
+                        . \App\Support\LineQuantity::show($qty) . '.');
+                }
+                $counted = $packLine || ! \App\Support\LineQuantity::partsAllowed($orderLine->product?->unit);
+                if ($counted && ! \App\Support\LineQuantity::isWhole($qty) && abs($qty - $returnable) > 0.0005) {
+                    throw new \RuntimeException("{$name}" . ($unit !== '' ? ": {$unit} comes back whole" : ' comes back in whole numbers') . ' — '
+                        . \App\Support\LineQuantity::show($qty) . ' is not a whole number (or return all ' . \App\Support\LineQuantity::show($returnable) . ' still left).');
+                }
+                $qty = min($qty, $returnable);
 
                 $originalQty = (float) $orderLine->quantity;
                 $lineSubtotal = round($qty * (float) $orderLine->unit_price, 2);
