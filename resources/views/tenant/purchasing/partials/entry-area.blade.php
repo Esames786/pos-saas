@@ -590,6 +590,10 @@
         if (!it.allow_decimal) {
             var bad = it.packs.filter(function (p) { var v = S.qty[p.key]; return v && !/^\d+$/.test(String(v).trim()); })[0];
             if (bad) { msg(bad.name + ': a whole number, please.'); focusField('pack:' + bad.key); return; }
+        } else {
+            // W2-C: kg, litre and metre take up to 3 decimals — the server refuses a 4th instead of rounding it.
+            var long = it.packs.filter(function (p) { var v = S.qty[p.key]; return v && !/^\d*(\.\d{0,3})?$/.test(String(v).trim()); })[0];
+            if (long) { msg(long.name + ': at most 3 decimal places.'); focusField('pack:' + long.key); return; }
         }
         var line = { item: it, qty: Object.assign({}, S.qty), batch: S.batch.trim().toUpperCase(), expiry: normExpiry(S.expiry), free: S.free, price: S.price, buyKey: bp.key, disc: S.disc, poLineId: S.poLineId, variantId: S.variantId,
                      batchId: S.batchId, reason: S.reason, priceFrom: S.priceFrom, note: (S.note || '').trim(), discType: S.discType || 'percent' };

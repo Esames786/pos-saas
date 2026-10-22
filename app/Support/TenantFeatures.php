@@ -17,6 +17,8 @@ final class TenantFeatures
     public const PURCHASING_V2 = 'purchasing_v2';
     public const MEDICAL_COUNTER = 'medical_counter';
     public const RETURN_NO_BILL = 'return_no_bill';
+    // W2-C
+    public const WHOLE_COUNTED_STOCK = 'whole_counted_stock';
 
     public const REPORT_DELIVERY_V2 = 'report_delivery_v2';
 
@@ -65,6 +67,12 @@ final class TenantFeatures
                 'says'  => 'A customer can bring an item back without the bill: today\'s price at most, back into its batch or thrown away, a reason every time, and the branch\'s manager PIN when it asks for one.',
                 'where' => 'Sales → Sales Returns → New → "Without bill" (also from the POS Return button)',
                 'shots' => ['return-no-bill' => 'Return without a bill'],
+            ],
+            // W2-C
+            self::WHOLE_COUNTED_STOCK => [
+                'label' => 'Whole numbers for counted items in purchasing and stock',
+                'says'  => 'A counted item (piece, bottle, box) is bought, returned, moved and counted in whole numbers only, the same as at the counter. Kg, litre and metre items still take up to 3 decimals. Leave it off while some counted items are still bought in parts.',
+                'where' => 'Purchase orders, GRN, supplier returns, stock adjustments, transfers and counts',
             ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',

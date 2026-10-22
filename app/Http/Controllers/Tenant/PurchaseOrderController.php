@@ -90,6 +90,8 @@ class PurchaseOrderController extends Controller
             'lines.*.base_quantity'    => 'nullable|numeric|min:0',
             'lines.*.entry_json'       => 'nullable|array',
         ]);
+        // W2-C: each quantity exact once (3 decimals; counted items whole where switched on) before the total reads it.
+        $data['lines'] = \App\Support\LineQuantity::prepareStockLines($data['lines'], 'quantity_ordered');
 
         $validLines = collect($data['lines'])->filter(fn($l) => !empty($l['product_id']));
         if ($validLines->isEmpty()) {

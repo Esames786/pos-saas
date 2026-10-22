@@ -9,6 +9,7 @@ use App\Models\Tenant\ProductVariant;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\StockLedger;
 use App\Services\Edge\BranchOperatingModeService;
+use App\Support\LineQuantity;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -106,6 +107,9 @@ class InventoryService
         ) {
             $clock = app(\App\Support\TenantClock::class);
             $today = $skipExpired ? $clock->now($clock->businessTimezone($branch))->toDateString() : null;
+            // W2-C: exact to the stored 3 decimals once, so no leg is ever written as 0.000 and each leg's cost is
+            // its stored quantity × cost. A derived quantity (a 4-decimal recipe × plates) is rounded, never refused.
+            $quantity = round($quantity, LineQuantity::DECIMALS);
             $remaining = $quantity;
             $ledgers = [];
             $lastConsumedCost = null;
@@ -155,7 +159,7 @@ class InventoryService
                     $lastConsumedCost = (float) $balance->average_cost;
                 }
 
-                $remaining -= $consumeQty;
+                $remaining = round($remaining - $consumeQty, LineQuantity::DECIMALS);
             }
 
             if ($remaining > 0.0001 && $skipExpired) {
@@ -404,6 +408,9 @@ class InventoryService
         ?int $userId,
         bool $allowNegative = false,
     ): StockLedger {
+        // W2-C: the one place every stock movement passes. The quantity is made exact to the stored 3 decimals here,
+        // and its cost and the new average come from that same number (they used to come from the raw one).
+        $quantity = round($quantity, LineQuantity::DECIMALS);
         if ($quantity <= 0) {
             throw new RuntimeException('Quantity must be greater than zero.');
         }
@@ -464,7 +471,7 @@ class InventoryService
                 'direction'            => $direction,
                 'quantity'             => $quantity,
                 'unit_cost'            => $unitCost,
-                'total_cost'           => $quantity * $unitCost,
+                'total_cost'           => round($quantity * $unitCost, 4),
                 'balance_after'        => $newQty,
                 'reference_type'       => $referenceType,
                 'reference_id'         => $referenceId,

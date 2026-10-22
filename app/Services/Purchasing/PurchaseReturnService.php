@@ -10,6 +10,7 @@ use App\Models\Tenant\PurchaseReturnLine;
 use App\Models\Tenant\StockBalance;
 use App\Services\Finance\JournalPostingService;
 use App\Services\Inventory\InventoryService;
+use App\Support\LineQuantity;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -43,6 +44,9 @@ class PurchaseReturnService
      */
     public function createDraft(array $header, array $lines, ?int $userId = null): PurchaseReturn
     {
+        // W2-C: each quantity exact once (3 decimals; counted items whole where switched on), old and new screen alike.
+        $lines = LineQuantity::prepareStockLines($lines, 'quantity');
+
         return DB::connection('tenant')->transaction(function () use ($header, $lines, $userId) {
             $return = $this->createNumbered([
                 'branch_id'         => (int) $header['branch_id'],
@@ -59,6 +63,7 @@ class PurchaseReturnService
                 : []));
 
             $this->syncLines($return, $lines);
+            $this->assertWithinReceived($return);
             $this->calculateTotals($return);
 
             return $return->fresh(['lines']);
@@ -70,6 +75,7 @@ class PurchaseReturnService
         if (! $return->canEdit()) {
             throw new RuntimeException('Only draft returns can be edited.');
         }
+        $lines = LineQuantity::prepareStockLines($lines, 'quantity');
 
         return DB::connection('tenant')->transaction(function () use ($return, $header, $lines) {
             $return->update([
@@ -80,6 +86,7 @@ class PurchaseReturnService
 
             $return->lines()->delete();
             $this->syncLines($return, $lines);
+            $this->assertWithinReceived($return);
             $this->calculateTotals($return);
 
             return $return->fresh(['lines']);
@@ -128,6 +135,32 @@ class PurchaseReturnService
             ->sum('quantity');
 
         return (float) $grnLine->quantity_received - $alreadyReturned;
+    }
+
+    /**
+     * W2-C: as soon as a draft is saved it says how much of each receipt line can still go back, in the counter's
+     * words. The full check (batch, branch stock) runs again when the return is posted.
+     */
+    private function assertWithinReceived(PurchaseReturn $return): void
+    {
+        $return->load('lines.product.unit');
+        foreach ($return->lines->where('source_line_type', 'goods_receipt_line')->groupBy('source_line_id') as $sourceLineId => $lines) {
+            $grnLine = GoodsReceiptLine::find($sourceLineId);
+            if (! $grnLine) {
+                continue;   // syncLines has already refused a line that does not exist
+            }
+            $requested = round((float) $lines->sum('quantity'), LineQuantity::DECIMALS);
+            $left = round(max($this->returnableForGrnLine($grnLine, $return->id), 0), LineQuantity::DECIMALS);
+            if ($requested <= $left + 0.0005) {
+                continue;
+            }
+            $product = $lines->first()->product;
+            $name = $product?->name ?? ('#' . $grnLine->product_id);
+            $unit = LineQuantity::unitName($product?->unit);
+            throw new RuntimeException($left <= 0.0005
+                ? "{$name}: nothing is left to return on this receipt — all " . LineQuantity::withUnit((float) $grnLine->quantity_received, $unit) . ' already went back.'
+                : "{$name}: only " . LineQuantity::withUnit($left, $unit) . ' can still be returned, not ' . LineQuantity::show($requested) . '.');
+        }
     }
 
     public function validateReturnableQuantities(PurchaseReturn $return): void

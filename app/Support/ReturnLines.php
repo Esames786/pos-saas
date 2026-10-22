@@ -65,6 +65,14 @@ final class ReturnLines
                 $errors["lines.$i.packs"] = "{$name}: how many go back? Type it in any of the boxes.";
                 continue;
             }
+            // W2-C: exact once (a 4th decimal refused; a counted item whole where switched on) before the batch check
+            // and the cost read it.
+            try {
+                $base = LineQuantity::forStock($base, $p->unit, $name, "lines.$i.packs");
+            } catch (ValidationException $e) {
+                $errors["lines.$i.packs"] = (string) collect($e->errors())->flatten()->first();
+                continue;
+            }
 
             $buy = $packs[(string) ($l['buy_pack'] ?? '')] ?? reset($packs);
             $priceRaw = str_replace(',', '', trim((string) ($l['price'] ?? '')));
