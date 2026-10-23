@@ -23,6 +23,8 @@ final class TenantFeatures
     public const WHOLE_COUNTED_STOCK = 'whole_counted_stock';
 
     public const REPORT_DELIVERY_V2 = 'report_delivery_v2';
+    // W3/W4 S4
+    public const PURCHASE_WORKSPACE = 'purchase_workspace';
 
     /**
      * shots (MASTER-NEW-SCREENS-1): pictures of the screens the switch shows, slug => caption
@@ -53,6 +55,13 @@ final class TenantFeatures
                 'says'  => 'Type purchase and return lines in one entry area: scan or search, and each item shows its own boxes (box · strip · tablet, batch, expiry, bonus); Ctrl+Enter puts the line in the list. A return leaves from the batch picked.',
                 'where' => 'Purchasing → Purchase Orders, GRN and Returns → New; tabs on every purchasing page; Inventory → Batches',
                 'shots' => ['grn-entry' => 'GRN entry area', 'purchase-return' => 'Purchase return', 'batches' => 'Batches'],
+            ],
+            // W3/W4 S4
+            self::PURCHASE_WORKSPACE => [
+                'label' => 'One purchase screen',
+                'says'  => 'Record a purchase in one go: the goods that arrived, the supplier\'s invoice and a payment — or only the parts you have today (receive now, invoice later; or invoice goods already received). One Post saves the chosen parts together, or none of them.',
+                'where' => 'Purchasing → New purchase',
+                'needs' => [self::PURCHASING_V2],
             ],
             // REPORT-DELIVERY-V2-1
             // MEDICAL-COUNTER-1

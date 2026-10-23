@@ -197,7 +197,7 @@
     var IS_GRN = root.dataset.mode === 'grn';
     var LOOKUP = @json(url('/ajax/products'));
     var BATCH_URL = @json(url('/ajax/batches'));
-    var NEW_URL = @json(url($isRet ? '/purchase-returns/create' : ($isGrn ? '/goods-receipts/create' : '/purchase-orders/create')));
+    var NEW_URL = @json(url($newUrl ?? ($isRet ? '/purchase-returns/create' : ($isGrn ? '/goods-receipts/create' : '/purchase-orders/create'))));
     var IS_RET = root.dataset.mode === 'return', BATCHY = IS_GRN || IS_RET;
     var BATCHES_PAGE = @json(url('/inventory/batches'));
     var PRODUCT_EDIT = @json(url('/products/__ID__/edit'));
@@ -644,6 +644,9 @@
         $('ea-t-rnd-r').hidden = !(Math.abs(rounding) >= 0.005); $('ea-t-rnd').textContent = (rounding < 0 ? '− ' : '+ ') + money(Math.abs(rounding));
         if ($('ea-t-chg-r')) { $('ea-t-chg-r').hidden = !(charges > 0); $('ea-t-chg').textContent = '+ ' + money(charges); }
         $('ea-total').textContent = money(final + charges);
+        // W3/W4 S4: the total, for a page around the entry area (the purchase workspace).
+        root.dataset.total = String(Math.round((final + charges) * 100) / 100);
+        root.dispatchEvent(new CustomEvent('ea:total', { detail: final + charges }));
         $('ea-count').innerHTML = saved ? '<span class="ea-sign ok">Saved ✓</span>' : (LINES.length + (LINES.length === 1 ? ' line' : ' lines') + (LINES.length ? ' · <span class="ea-sign">Not saved yet</span>' : ''));
         saveDraft();
     }
@@ -805,6 +808,15 @@
         try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
         if ($('ea-po')) $('ea-po').closest('.card').hidden = true;
         var box = $('ea-done');
+        if (d.documents && d.documents.length > 1) {
+            // W3/W4 S4: one Post, several documents — each named, each with its link.
+            box.innerHTML = '<div class="d-flex flex-wrap align-items-center gap-2"><b style="font-size:1.05rem">✓ ' + (d.already ? 'Already posted — nothing was posted twice:' : 'Posted together:') + '</b>'
+                + d.documents.map(function (x) { return '<a class="btn btn-sm btn-success" href="' + esc(x.url) + '">' + esc(x.kind) + ' ' + esc(x.number) + '</a>'; }).join('')
+                + '<a class="btn btn-sm btn-outline-dark" href="' + esc(NEW_URL) + '">New purchase</a></div>';
+            box.hidden = false; box.focus(); box.scrollIntoView({ block: 'center' });
+            if (window.eaDone) window.eaDone(d);
+            return;
+        }
         box.innerHTML = '<div class="d-flex flex-wrap align-items-center gap-2"><b style="font-size:1.05rem">✓ ' + esc(d.number) + (d.already ? ' was already posted — nothing was posted twice.' : (IS_RET ? (d.posted ? ' posted — stock is out and the supplier owes you less.' : ' saved as a draft — open it to post.') : ' saved.')) + '</b>'
             + '<a class="btn btn-sm btn-success" href="' + esc(d.url) + '">Open it</a>'
             + '<a class="btn btn-sm btn-outline-dark" href="' + esc(NEW_URL) + '">New ' + (IS_RET ? 'return' : (IS_GRN ? 'goods receipt' : 'order')) + '</a>'
@@ -815,6 +827,7 @@
     function failed(x) {
         busy(false);
         if (x.d && x.d.next_key && $('ea-key')) $('ea-key').value = x.d.next_key;   // the same key with other lines: refused, a new one given
+        if (window.eaFailed) window.eaFailed(x);
         if (x.status === 422) {
             var errs = (x.d && x.d.errors) || {}, top = []; rowErr = {};
             Object.keys(errs).forEach(function (k) { var m = LINE_FIELD.exec(k); if (m && LINES[+m[1]]) rowErr[+m[1]] = errs[k][0]; else top.push(errs[k][0]); });
@@ -828,6 +841,8 @@
     }
     if (form) form.addEventListener('submit', function (e) {
         e.preventDefault();
+        // W3/W4 S4: a page around the entry area may post the form its own way (it answers true).
+        if (window.eaOwnSubmit && window.eaOwnSubmit(e)) return;
         saveErr([]);
         if (S) { msg(editAt !== null ? 'Press "Update line" (Ctrl+Enter) first, or Clear.' : 'This item is not in the list yet — press Ctrl+Enter, or Clear.'); focusField(fieldOrder[0]); return; }
         if (!LINES.length) { saveErr(['Nothing in the list yet — add an item first.']); search.focus(); return; }
@@ -874,13 +889,15 @@
         var what = IS_RET ? 'Stock leaves these batches, and this supplier will owe you <b>' + money(total) + '</b> less.'
             : (IS_GRN ? 'Stock goes up by these quantities. The supplier\'s invoice comes from this goods receipt: <b>' + money(total + charges) + '</b>' + (parts ? ' (goods ' + money(goods) + parts + '; spread over the goods by value)' : '') + '.'
                 : 'Nothing moves yet — this is the order to send. Total <b>' + money(total) + '</b>' + (bill > 0 ? ' (goods ' + money(goods) + ' − bill discount ' + money(bill) + ')' : '') + '.');
-        $('ea-pv-title').textContent = IS_RET ? 'Check the return' : (IS_GRN ? 'Check the goods received' : 'Check the order');
+        // W3/W4 S4: a page around the entry area adds what else this Post records (invoice, payment).
+        if (window.eaReviewExtra) what = window.eaReviewExtra(total + charges, what);
+        $('ea-pv-title').textContent = IS_RET ? 'Check the return' : (IS_GRN ? (window.eaReviewTitle || 'Check the goods received') : 'Check the order');
         $('ea-pv-body').innerHTML = '<div class="ea-pv-who"><span>Supplier: <b>' + esc(($('sup-q') || {}).value || selText('supplier_id')) + '</b></span><span>Branch: <b>' + esc(selText('branch_id')) + '</b></span><span>Date: <b>' + esc(date) + '</b></span>'
             + (PO_ID ? '<span>Order: <b>' + esc(@json($purchaseOrder?->po_no)) + '</b></span>' : '') + (IS_RET && @json($goodsReceipt?->grn_no ?? null) ? '<span>Receipt: <b>' + esc(@json($goodsReceipt?->grn_no ?? null)) + '</b></span>' : '') + '</div>'
             + '<div class="table-responsive"><table class="table table-sm align-middle mb-2"><thead class="table-light">' + head + '</thead><tbody>' + rows.join('') + '</tbody></table></div>'
             + (warn.length ? '<div class="ea-warn mb-2" style="background:#FFF4D6;color:#6B5310">' + warn.map(esc).join('<br>') + '</div>' : '')
             + '<div class="d-flex justify-content-between flex-wrap gap-2 align-items-center"><span>' + what + '</span><b style="font-size:1.3rem;color:var(--navy)">' + LINES.length + ' line' + (LINES.length === 1 ? '' : 's') + ' · ' + money(total + charges) + '</b></div>';
-        var main = IS_RET ? 'Post return' : (IS_GRN ? 'Post goods receipt' : 'Save order');
+        var main = IS_RET ? 'Post return' : (IS_GRN ? (window.eaPostLabel || 'Post goods receipt') : 'Save order');
         $('ea-pv-btns').innerHTML = '<button type="button" class="btn btn-primary" data-pv="main">' + main + ' <span class="ea-kbd ms-1">Enter</span></button>'
             + (IS_RET ? '<button type="button" class="btn btn-outline-dark" data-pv="draft">Save as draft</button>' : '')
             + '<button type="button" class="btn btn-light" data-pv="back">Back to edit <span class="ea-kbd ms-1">Esc</span></button>';

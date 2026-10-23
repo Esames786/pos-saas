@@ -151,6 +151,12 @@ class PermissionSyncService
         'tenant.finance.customer-payments.create' => 'tenant.finance.customer-payments',
         'tenant.finance.customer-payments.store' => 'tenant.finance.customer-payments',
         'tenant.finance.customer-payments.show' => 'tenant.finance.customer-payments',
+        // W3/W4 S4: the purchase workspace is purchasing. Its routes live under /purchases, whose two-segment key no
+        // module owns; here (re-applied by every routes-sync) they belong to the purchasing module like the Goods
+        // Receipt screen whose work they start.
+        'tenant.purchases.workspace' => 'tenant.goods-receipts',
+        'tenant.purchases.workspace.store' => 'tenant.goods-receipts',
+        'tenant.purchases.workspace.receipt' => 'tenant.goods-receipts',
     ];
 
     public function moduleKey(string $routeName): string

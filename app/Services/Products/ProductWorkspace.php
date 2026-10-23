@@ -3,7 +3,6 @@
 namespace App\Services\Products;
 
 use App\Http\Controllers\Tenant\Catering\CateringCommercialRateController;
-use App\Models\Master\Tenant;
 use App\Models\Tenant\CateringProductCostBlock;
 use App\Models\Tenant\CateringProductProfile;
 use App\Models\Tenant\ManufacturingBom;
@@ -16,7 +15,6 @@ use App\Services\Catering\CateringCostBlockWriter;
 use App\Services\Catering\CateringProfileWriter;
 use App\Services\Kitchen\RecipeWriter;
 use App\Services\Manufacturing\BomWriter;
-use App\Services\Saas\TenantSubscriptionAccessService;
 use App\Support\Business;
 use App\Support\ProductCards;
 use Illuminate\Http\Request;
@@ -78,13 +76,7 @@ final class ProductWorkspace
     /** The two checks a screen's own route makes: the plan has its module, and the user holds its permission. */
     public function allows(string $routeName): bool
     {
-        $user = auth('tenant')->user();
-        if (! $user || ! $user->can($routeName)) {
-            return false;
-        }
-        $tenant = app()->bound('tenant') ? app('tenant') : null;
-
-        return ! $tenant instanceof Tenant || app(TenantSubscriptionAccessService::class)->check($tenant, $routeName)['allowed'];
+        return \App\Support\ScreenAccess::allows($routeName);
     }
 
     /** The recipe the workspace edits: the product's active one, else its newest. */
