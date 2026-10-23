@@ -10,7 +10,10 @@ use App\Models\Tenant\Product;
 use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\Supplier;
 use App\Services\Purchasing\PurchasingService;
+use App\Support\SubmissionKey;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -191,10 +194,21 @@ class GoodsReceiptController extends Controller
 
         $userId = auth('tenant')->id();
 
+        // W3/W4 S0: one form, one receipt. The same form posted again — a double click, or a retry after an answer
+        // that never arrived (the screen itself says "press Post again") — gets the receipt it already made, never a
+        // second one with the stock doubled. The same key with other lines is refused. A form without a key (a tab
+        // opened before this release) posts exactly as before.
+        $request->validate([SubmissionKey::FIELD => SubmissionKey::rule()]);
+        $key = SubmissionKey::usable($request->input(SubmissionKey::FIELD), 'goods_receipts');
+        $hash = $key ? SubmissionKey::hash(Arr::except($request->all(), ['_token', SubmissionKey::FIELD])) : null;
+        if ($key && ($existing = GoodsReceipt::query()->where('submission_key', $key)->first())) {
+            return $this->alreadyPosted($request, $existing, hash_equals((string) $existing->submission_hash, (string) $hash));
+        }
+
         $grn = null;
-        DB::connection('tenant')->transaction(function () use ($data, $validLines, $userId, $productMap, &$grn) {
-            $grn = GoodsReceipt::create([
-                'grn_no'            => $this->purchasingService->nextGrnNo(),
+        try {
+        DB::connection('tenant')->transaction(function () use ($data, $validLines, $userId, $productMap, $key, $hash, &$grn) {
+            $grn = $this->createNumbered([
                 'purchase_order_id' => $data['purchase_order_id'] ?? null,
                 'branch_id'         => $data['branch_id'],
                 'supplier_id'       => $data['supplier_id'],
@@ -205,7 +219,7 @@ class GoodsReceiptController extends Controller
                 'extra_charges_note' => $data['extra_charges_note'] ?? null,
                 'posted_by_user_id' => $userId,
                 'posted_at'         => now(),
-            ]);
+            ] + ($key ? ['submission_key' => $key, 'submission_hash' => $hash] : []));
 
             foreach ($validLines as $line) {
                 GoodsReceiptLine::create([
@@ -235,7 +249,9 @@ class GoodsReceiptController extends Controller
 
             if ($grn->purchase_order_id) {
                 $po = PurchaseOrder::with('lines')->find($grn->purchase_order_id);
-                if ($po && $po->status === 'approved') {
+                // W3/W4 S0: a partly received order moves on too — it used to stay "partially received" for ever,
+                // because only an approved order was looked at again.
+                if ($po && in_array($po->status, ['approved', 'partially_received'], true)) {
                     // BUG-062 FIX: only set 'received' when ALL PO lines are fully received.
                     // Compare total ordered vs total received across ALL GRNs for this PO.
                     $totalOrdered  = (float) $po->lines->sum('quantity_ordered');
@@ -258,13 +274,62 @@ class GoodsReceiptController extends Controller
                 }
             }
         });
+        } catch (QueryException $e) {
+            // Two posts of one form raced past the look above: the unique key let only one through.
+            if ($key && SubmissionKey::isDuplicate($e, $key)
+                && ($existing = GoodsReceipt::query()->where('submission_key', $key)->first())) {
+                return $this->alreadyPosted($request, $existing, hash_equals((string) $existing->submission_hash, (string) $hash));
+            }
+            throw $e;
+        }
 
         // PURCHASING-V2-2: the new screen saves without leaving the page.
         if ($request->expectsJson()) {
-            return response()->json(['ok' => true, 'id' => $grn->id, 'number' => $grn->grn_no, 'url' => url('/goods-receipts/' . $grn->id)]);
+            return response()->json(['ok' => true, 'id' => $grn->id, 'number' => $grn->grn_no, 'url' => url('/goods-receipts/' . $grn->id),
+                'next_key' => SubmissionKey::fresh()]);
         }
 
         return redirect(url('/goods-receipts'))->with('status', 'Goods receipt posted.');
+    }
+
+    /**
+     * W3/W4 S0: this form already made a receipt. The same lines → that receipt (nothing posted twice). Other lines
+     * under the same key → refused, with a new key, so pressing Post again makes a second receipt on purpose.
+     */
+    private function alreadyPosted(Request $request, GoodsReceipt $existing, bool $same)
+    {
+        if (! $same) {
+            $message = 'This form was already posted as goods receipt ' . $existing->grn_no . '. Nothing more was posted — press Post again to make a second receipt with these lines.';
+
+            return $request->expectsJson()
+                ? response()->json(['message' => $message, 'errors' => ['receipt' => [$message]], 'next_key' => SubmissionKey::fresh()], 422)
+                : back()->withInput($request->except(SubmissionKey::FIELD))->withErrors(['receipt' => $message]);
+        }
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'already' => true, 'id' => $existing->id, 'number' => $existing->grn_no,
+                'url' => url('/goods-receipts/' . $existing->id), 'next_key' => SubmissionKey::fresh()]);
+        }
+
+        return redirect(url('/goods-receipts'))->with('status', 'Goods receipt ' . $existing->grn_no . ' was already posted — nothing was posted twice.');
+    }
+
+    /**
+     * W3/W4 S0: the receipt row, numbered. "GRN-<second>-<3 digits>" can clash when two receipts are made in the same
+     * second; a number already taken draws another (as supplier invoices do) instead of failing the post. A clash on
+     * anything else — the form key above — is not retried.
+     */
+    private function createNumbered(array $attributes): GoodsReceipt
+    {
+        for ($try = 1; ; $try++) {
+            $no = $this->purchasingService->nextGrnNo();
+            try {
+                return GoodsReceipt::create(['grn_no' => $no] + $attributes);
+            } catch (QueryException $e) {
+                if ($try >= 5 || ! SubmissionKey::duplicateValue($e, $no)) {
+                    throw $e;
+                }
+            }
+        }
     }
 
     /**

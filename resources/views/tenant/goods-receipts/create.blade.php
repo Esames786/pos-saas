@@ -42,6 +42,10 @@
 
 <form method="POST" action="{{ url('/goods-receipts') }}" novalidate>
     @csrf
+    {{-- W3/W4 S0: the old screen's form is posted once too; the new screen's entry area carries its own key. --}}
+    @unless($entryV2 ?? false)
+        <input type="hidden" name="submission_key" value="{{ \App\Support\SubmissionKey::fresh() }}">
+    @endunless
     @if($purchaseOrder)
         <input type="hidden" name="purchase_order_id" value="{{ $purchaseOrder->id }}">
     @endif

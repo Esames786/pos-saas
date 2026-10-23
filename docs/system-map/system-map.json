@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-23T16:54:59+00:00",
+    "built_at": "2026-10-23T17:24:19+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "c5c39cf9",
     "work": [
@@ -33,11 +33,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-unitspacks",
             "branch": "feat/units-packs-batch-20261023",
-            "head": "21dd2218",
+            "head": "23d80320",
             "behind_prod": 6,
-            "ahead_of_prod": 38,
-            "last_commit": "2026-10-23\u00b7Tests make their own master fixtures (cold master DB): billing, category scope, category guard, held-list meta",
-            "uncommitted_files": 11
+            "ahead_of_prod": 39,
+            "last_commit": "2026-10-23\u00b7Units-packs F4 close-out: a total of kg and pieces is never one number; report prints carry units",
+            "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-verify-3b02",
@@ -105,11 +105,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-w3w4",
             "branch": "feat/unified-w3w4-20261023",
-            "head": "bf8f66b4",
+            "head": "d6257abb",
             "behind_prod": 6,
-            "ahead_of_prod": 38,
-            "last_commit": "2026-10-23\u00b7W3/W4 design: one product screen and one purchase workspace (plan, impact map, prototype link)",
-            "uncommitted_files": 0
+            "ahead_of_prod": 41,
+            "last_commit": "2026-10-23\u00b7W3/W4 plan: the reviewer's decisions and tightened points",
+            "uncommitted_files": 6
         },
         {
             "path": "D:/laragon2/www/pos-saas-resetfix",
@@ -581,10 +581,10 @@
             "modified": "2026-10-23"
         }
     ],
-    "git": "21dd2218",
+    "git": "d6257abb",
     "source": {
-        "tenant_db": "pos_test_tenant_up",
-        "master_db": "pos_test_master_up"
+        "tenant_db": "pos_test_tenant_w34",
+        "master_db": "pos_test_master_w34"
     },
     "counts": {
         "tables": 227,
@@ -13277,7 +13277,9 @@
                 "voided_by_user_id bigint unsigned",
                 "void_reason varchar(255)",
                 "created_at timestamp",
-                "updated_at timestamp"
+                "updated_at timestamp",
+                "submission_key varchar(64)",
+                "submission_hash char(64)"
             ],
             "fk_out": [
                 {

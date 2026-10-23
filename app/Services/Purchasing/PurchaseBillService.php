@@ -116,6 +116,11 @@ class PurchaseBillService
         return DB::connection('tenant')->transaction(function () use ($grn, $data, $choice, $userId, $mayReallocate) {
             // One receipt, one invoice: two posts at once queue here; the second finds the first.
             $grn = GoodsReceipt::query()->whereKey($grn->id)->lockForUpdate()->firstOrFail();
+            // W3/W4 S0: a voided receipt brought nothing in, so nothing can be invoiced for it. Only the create
+            // screen's list filtered these out; a crafted or stale post went through. Same lock as voidGrn().
+            if ($grn->status !== 'posted') {
+                throw new RuntimeException('This goods receipt was voided, so no invoice can be recorded for it.');
+            }
             if (PurchaseBill::query()->where('goods_receipt_id', $grn->id)->exists()) {
                 throw new RuntimeException('An invoice is already recorded for this goods receipt.');
             }
