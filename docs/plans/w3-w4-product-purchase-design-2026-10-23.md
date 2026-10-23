@@ -308,6 +308,41 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
   - no sabotage run on the S3c tabs. The run was limited to the focused tests and the demo; the tab sabotages belong
     to the batch checkpoint.
 
+### S4 — the purchase workspace (`6d98263b`, behind `purchase_workspace`, which needs `purchasing_v2`)
+
+- **One screen, one Post** (`/purchases/new`, `App\Services\Purchasing\PurchaseWorkspaceService`):
+  - **goods arriving now:** a Goods Receipt; its Supplier Invoice now **or later** ("No — later" posts the receipt
+    only); a Payment if chosen;
+  - **goods already received:** a posted receipt that waits for its invoice → the invoice (and a payment if
+    chosen). Its stock is never received again. One receipt = one invoice, stated on screen.
+- **All or nothing.** The chosen steps post in ONE transaction, through the screens' own services
+  (`GoodsReceiptService`, `PurchaseBillService::createFromReceipt`, `SupplierPayableService::recordPayment`). Any refusal
+  or failure rolls every step back; the answer names the step and the screen keeps what was typed.
+- **Payment against the server's balance.** The amount is checked against the invoice's own `balance_due` after
+  Supplier Credit, re-read under a row lock inside the Post's transaction — never the screen's figure. Paying more is
+  refused, with a link to Payments for an advance. A payment always pays this purchase's invoice: no invoice, no payment.
+- **Per-step permission, server-side.** The route permission opens the screen only. On every Post each chosen step
+  needs its own screen's permission and the plan's module (`ScreenAccess::allows`): `tenant.goods-receipts.store`,
+  `tenant.purchase-bills.store`, `tenant.supplier-payments.store`. A missing one is refused by name before anything is
+  written; the screen shows only the steps the user may do.
+- **Duplicate submit.** A new delivery's receipt carries the form key (S0's unique `goods_receipts.submission_key`): the
+  same Post again returns the first Post's documents; the same key with other lines is refused with a new key. For goods
+  already received, the receipt's one-invoice rule (locked) refuses a second invoice by number.
+- **The Goods Receipt screen** now checks and posts through `GoodsReceiptService` — the code moved, unchanged.
+- **New routes** (module: purchasing, via `PermissionSyncService::MODULE_KEY_OVERRIDES`): `tenant.purchases.workspace`,
+  `.store`, `.receipt`. deploy.sh grants new permissions to Owner only; other purchasing roles need an additive grant.
+- **Tests:** `PurchaseWorkspaceMySqlTest` 7 / 7 (receive-only; receive + invoice + pay with the supplier, cash and GL
+  once; goods already received without stock again, and a second invoice refused; overpay after Supplier Credit
+  refused with nothing kept; the same Post twice; per-step permissions; no switch, no screen). Purchasing focused set:
+  205 tests; the first run had 65 errors (a `store()` signature change, fixed by constructor injection) and 1 wrong
+  expectation in the new test (a receipt posts no GL entry; fixed); the 10 affected classes re-run 78 / 78.
+- **Browser demo** (frozen verify worktree at `6d98263b`, isolated test store, 20 / 20 checks, desktop and 390 px):
+  a complete purchase (2 items, invoice, Rs 1,000 paid of Rs 1,600 → owed 600); receive now / invoice later (receipt
+  only); that receipt invoiced and paid later (stock not received again); an overpayment refused naming the Payment and
+  "Rs 240.00 after Supplier Credit", with nothing saved.
+- **Not done in S4:** the "New purchase" tab and the single sidebar item (S5); a sabotage run on the workspace (batch
+  checkpoint).
+
 ## Release manifest (draft; nothing pushed, merged, deployed or switched on)
 
 The table says who a part reaches on the day it is deployed. Parts without a switch reach **every tenant at once**, so
@@ -321,7 +356,9 @@ they are listed apart and need their own approval.
 | S2 new-form part: hidden answers kept, misfit roles kept, a saved service saveable, "kept as saved" panel | `94a7e792` | tenants with `product_screen_v2` on | `product_screen_v2` |
 | **S3b screen writers**: Recipes, Bill of materials, Catering Profiles and Cost blocks save through the writers | `f46da6d7`, `77c0613f` | **every tenant** (those four screens) | none |
 | S3c product-form tabs (Recipe, Bill of materials, Event costing) | `77c0613f` | tenants with `product_screen_v2` on | `product_screen_v2` |
-| S4 / S5 | to come | | per the plan |
+| **S4 Goods Receipt screen** on `GoodsReceiptService` (moved, unchanged) | `6d98263b` | **every tenant** (the receipt screen) | none |
+| S4 purchase workspace (`/purchases/new`) | `6d98263b` | tenants with `purchase_workspace` (+ `purchasing_v2`) on — nobody today | `purchase_workspace` |
+| S5 | to come | | per the plan |
 
 What every tenant sees from the no-switch parts:
 
