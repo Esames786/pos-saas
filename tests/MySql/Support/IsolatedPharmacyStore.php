@@ -149,10 +149,21 @@ trait IsolatedPharmacyStore
 
     protected function setFeatures(array $features): void
     {
-        DB::connection('master')->table('tenants')->where('tenant_code', static::STORE_CODE)->update(['primary_business' => 'pharmacy', 'features' => json_encode($features)]);
+        DB::connection('master')->table('tenants')->where('tenant_code', static::STORE_CODE)->update(['primary_business' => $this->storeBusiness(), 'features' => json_encode($features)]);
         if (app()->bound('tenant')) {
             app('tenant')->features = $features;
         }
+    }
+
+    /** W3/W4 S3: a using class may set STORE_BUSINESS / STORE_PLAN; without them the store is the pharmacy demo, as before. */
+    private function storeBusiness(): string
+    {
+        return defined(static::class . '::STORE_BUSINESS') ? static::STORE_BUSINESS : 'pharmacy';
+    }
+
+    private function storePlan(): string
+    {
+        return defined(static::class . '::STORE_PLAN') ? static::STORE_PLAN : 'pharmacy_demo';
     }
 
     private function useStoreDb(): void
@@ -190,7 +201,7 @@ trait IsolatedPharmacyStore
 
         $id = $m->table('tenants')->insertGetId([
             'tenant_code' => static::STORE_CODE, 'business_name' => 'Units Packs Store', 'owner_name' => 'Demo Owner', 'owner_email' => 'owner@pharmacydemo.com',
-            'currency_code' => 'PKR', 'status' => 'active', 'is_demo' => 0, 'primary_business' => 'pharmacy', 'features' => json_encode(static::STORE_FEATURES),
+            'currency_code' => 'PKR', 'status' => 'active', 'is_demo' => 0, 'primary_business' => $this->storeBusiness(), 'features' => json_encode(static::STORE_FEATURES),
             'created_at' => now(), 'updated_at' => now(),
         ]);
         $m->table('tenant_databases')->insert([
@@ -203,7 +214,7 @@ trait IsolatedPharmacyStore
             'tenant_id' => $id, 'domain' => $this->host, 'is_primary' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
         ]);
         $m->table('subscriptions')->insert([
-            'tenant_id' => $id, 'plan_id' => $m->table('plans')->where('code', 'pharmacy_demo')->value('id'),
+            'tenant_id' => $id, 'plan_id' => $m->table('plans')->where('code', $this->storePlan())->value('id'),
             'status' => 'active', 'current_period_ends_at' => now()->addYear(), 'created_at' => now(), 'updated_at' => now(),
         ]);
     }
