@@ -519,6 +519,119 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
         $this->assertSame($box, (int) $p->fresh()->unit_id);
     }
 
+    // ── W3/W4 S2: an edit keeps what the screen does not show — the server decides, not the browser ─────────────
+
+    public function test_an_edit_keeps_a_batch_and_expiry_its_card_does_not_ask_about(): void
+    {
+        // A menu item's card never asks about batch and expiry; this one was saved with both (old form, import).
+        $p = $this->savedWith('restaurant', 'menu_item', 'S2 Bottled Lassi', ['has_expiry' => 1, 'requires_batch' => 1]);
+        $page = $this->page('/products/' . $p->id . '/edit')->assertOk()->getContent();
+        $this->assertStringContainsString('Not shown for this item — kept as saved', $page);
+        $this->assertStringContainsString('Batch &amp; expiry: <b>Yes</b>', $page);
+
+        $this->saveUnchanged($p);
+        $this->assertTrue((bool) $p->fresh()->has_expiry, 'it was saved as "no" before');
+        $this->assertTrue((bool) $p->fresh()->requires_batch);
+    }
+
+    public function test_an_edit_keeps_a_kitchen_items_recipe_its_card_does_not_ask_about(): void
+    {
+        // A kitchen intermediate (raw material made from a recipe); the Kitchen item card does not ask "recipe".
+        $p = $this->savedWith('restaurant', 'kitchen', 'S2 Biryani Masala Base', ['inventory_consumption_method' => 'recipe', 'product_type' => 'recipe']);
+
+        $this->saveUnchanged($p);
+        $this->assertSame('recipe', $p->fresh()->inventory_consumption_method, 'it dropped to stock_item / none before');
+        $this->assertSame('recipe', $p->fresh()->product_type);
+        $this->assertSame('raw_material', $p->fresh()->product_kind);
+    }
+
+    public function test_an_item_no_card_fits_keeps_its_role_until_another_card_is_picked(): void
+    {
+        // A packaging item in a pharmacy: no pharmacy card allows packaging, so the screen falls back to Medicine —
+        // whose locks (sold, stock, expiry) used to re-make it a medicine on an unchanged save.
+        $p = $this->savedWith('pharmacy', 'store_item', 'S2 Carry Bags', ['product_kind' => 'packaging_material', 'is_sellable' => 0, 'is_pos_visible' => 0,
+            'has_expiry' => 0, 'requires_batch' => 0]);
+        $page = $this->page('/products/' . $p->id . '/edit')->assertOk()->getContent();
+        $this->assertStringContainsString('id="pv2-misfit"', $page);
+        $this->assertStringContainsString('Its role (<b>Packaging</b>)', $page);
+
+        $form = $this->saveUnchanged($p);
+        $kept = $p->fresh();
+        $this->assertSame('packaging_material', $kept->product_kind, 'the role is kept');
+        $this->assertFalse((bool) $kept->is_sellable);
+        $this->assertFalse((bool) $kept->has_expiry);
+
+        // Picking another card is a real change, and works as before.
+        $this->call('POST', 'http://' . $this->host . '/products/' . $p->id, ['_card' => 'store_item'] + $form)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame('sale_item', $p->fresh()->product_kind);
+        $this->assertTrue((bool) $p->fresh()->is_sellable);
+    }
+
+    public function test_a_misfit_in_a_factory_keeps_its_factory_flags(): void
+    {
+        // A service in an industry shop: no card allows it, the screen falls back to "Finished product", whose
+        // factory flags (finished good, BOM output) used to be written on an unchanged save.
+        $p = $this->savedWith('industry', 'raw', 'S2 Machine Repair', ['product_kind' => 'service', 'is_sellable' => 1, 'is_purchasable' => 0,
+            'is_stock_tracked' => 0, 'inventory_consumption_method' => 'none', 'can_be_bom_output' => 0, 'can_be_bom_component' => 0, 'is_manufactured_finished_good' => 0]);
+
+        $this->saveUnchanged($p);
+        $kept = $p->fresh();
+        $this->assertSame('service', $kept->product_kind);
+        $this->assertFalse((bool) $kept->is_manufactured_finished_good);
+        $this->assertFalse((bool) $kept->can_be_bom_output);
+    }
+
+    public function test_a_saved_service_with_stock_history_can_still_be_saved(): void
+    {
+        $p = $this->savedWith('restaurant', 'menu_item', 'S2 Hookah Service', ['product_kind' => 'service', 'is_stock_tracked' => 1, 'is_purchasable' => 1,
+            'inventory_consumption_method' => 'stock_item']);
+        $this->stockMoved($p);
+
+        $this->saveUnchanged($p);   // it was refused: "Stock of this item has already moved…"
+        $this->assertTrue((bool) $p->fresh()->is_stock_tracked);
+        $this->assertSame('service', $p->fresh()->product_kind);
+    }
+
+    public function test_an_edit_keeps_a_switched_off_category_and_purchase_unit_on_both_screens(): void
+    {
+        $c = DB::connection('tenant');
+        $shelf = $c->table('categories')->insertGetId(['name' => 'S2 Old Shelf', 'slug' => 's2-old-shelf-' . \Illuminate\Support\Str::random(4), 'is_active' => 1,
+            'created_at' => now(), 'updated_at' => now()]);
+        $sack = $this->unit('S2-SACK', 'S2 Sack', 'quantity');
+        $p = $this->savedWith('restaurant', 'kitchen', 'S2 Rice Sack', ['category_id' => $shelf, 'purchase_unit_id' => $sack, 'purchase_pack_size' => 50]);
+        $c->table('categories')->where('id', $shelf)->update(['is_active' => 0]);
+        $c->table('units')->where('id', $sack)->update(['is_active' => 0]);
+
+        $this->saveUnchanged($p);
+        $this->assertSame($shelf, (int) $p->fresh()->category_id, 'new screen: the category is kept (it was emptied)');
+        $this->assertSame($sack, (int) $p->fresh()->purchase_unit_id, 'new screen: the unit it is bought in is kept');
+
+        $this->setTenant('restaurant', false);
+        $this->saveUnchanged($p);
+        $this->assertSame($shelf, (int) $p->fresh()->category_id, 'old screen: the category is kept too');
+    }
+
+    /** An item made on the new screen with $card, then given saved settings directly (as the old form or an import did). */
+    private function savedWith(string $business, string $card, string $name, array $saved): Product
+    {
+        $this->setTenant($business, true);
+        $this->postAs('/products', $this->form(['_card' => $card, 'name' => $name, 'default_selling_price' => '100', 'default_purchase_price' => '60']))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $p = Product::where('name', $name)->firstOrFail();
+        DB::connection('tenant')->table('products')->where('id', $p->id)->update($saved);
+
+        return $p->fresh();
+    }
+
+    /** Open the edit page and save exactly what it shows. @return array the fields it posted */
+    private function saveUnchanged(Product $p): array
+    {
+        $form = $this->formOnPage($this->page('/products/' . $p->id . '/edit')->assertOk()->getContent(), '/products/' . $p->id);
+        $this->call('POST', 'http://' . $this->host . '/products/' . $p->id, $form)->assertRedirect()->assertSessionHasNoErrors();
+
+        return $form;
+    }
+
     public function test_the_bulk_import_keeps_the_unit_of_an_item_with_history(): void
     {
         $each = $this->unit('IMP-EA', 'IMP-EA', 'quantity');

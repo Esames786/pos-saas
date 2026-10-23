@@ -310,7 +310,7 @@ class ProductController extends Controller
             'title'       => $this->isCateringMaterials($request)
                 ? 'Edit Material'
                 : ($context === 'manufacturing' ? 'Edit Manufacturing Product' : 'Edit Product'),
-            'categories'  => Category::where('is_active', true)->orderBy('name')->get(),
+            'categories'  => $this->categoriesFor($product),
             'units'       => $this->unitsFor($product),
             'context'     => $context,
             'contextBase' => $this->contextBaseUrl($request, $context),
@@ -320,11 +320,25 @@ class ProductController extends Controller
     /**
      * UB-10: the units an edit offers — the active ones, and always the item's own. A unit switched off used to be
      * missing, so the select showed "— Piece —" and an unchanged save took the item's unit away.
+     * W3/W4 S2: the same for the unit it is bought in (purchase_unit_id).
      */
     private function unitsFor(?Product $product)
     {
+        $own = array_values(array_filter([$product?->unit_id, $product?->purchase_unit_id]));
+
         return Unit::query()
-            ->where(fn ($q) => $q->where('is_active', true)->when($product?->unit_id, fn ($w, $id) => $w->orWhere('id', $id)))
+            ->where(fn ($q) => $q->where('is_active', true)->when($own, fn ($w) => $w->orWhereIn('id', $own)))
+            ->orderBy('name')->get();
+    }
+
+    /**
+     * W3/W4 S2: the categories an edit offers — the active ones, and always the item's own. A category switched off was
+     * missing, so the select posted "" and an unchanged save took the item out of its category.
+     */
+    private function categoriesFor(?Product $product)
+    {
+        return Category::query()
+            ->where(fn ($q) => $q->where('is_active', true)->when($product?->category_id, fn ($w, $id) => $w->orWhere('id', $id)))
             ->orderBy('name')->get();
     }
 
@@ -766,8 +780,12 @@ class ProductController extends Controller
             'businessInfo'    => \App\Support\Business::all()[$business] ?? null,
             'cards'           => $cards,
             'currentCard'     => $card,
-            'categories'      => Category::where('is_active', true)->orderBy('name')->get(),
+            'categories'      => $this->categoriesFor($product),
             'units'           => $this->unitsFor($product),
+            // W3/W4 S2: what this edit does not show and keeps as saved, and an item no card here fits.
+            'keptAsSaved'     => $product ? \App\Support\ProductCards::keptAsSaved($business, $product, $card) : [],
+            'misfitRole'      => $product && \App\Support\ProductCards::isMisfit($business, $product, $card)
+                ? (self::PLAIN_ROLES[$product->product_kind ?: Product::KIND_SALE_ITEM] ?? (string) $product->product_kind) : null,
             'barcode'         => $variant?->barcode ?? $product?->barcodes()->where('is_primary', true)->value('barcode'),
             'reorderLevel'    => $variant?->reorder_level,
             'reorderQuantity' => $variant?->reorder_quantity,

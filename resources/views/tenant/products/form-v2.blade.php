@@ -226,6 +226,12 @@
                     @if($isEdit)
                         <p class="help mt-2 mb-0" id="pv2-card-warn" hidden>You are changing the type of a saved item. Past sales and stock stay as they are.</p>
                     @endif
+                    {{-- W3/W4 S2: an item no card here fits keeps its role and every saved setting; only picking another card changes it. --}}
+                    @if($misfitRole ?? null)
+                        <div class="alert alert-warning mt-2 mb-0 py-2" id="pv2-misfit" role="status">
+                            None of these cards fits this item. Its role (<b>{{ $misfitRole }}</b>) and its saved settings are kept as they are. Pick a card only if you want to change it.
+                        </div>
+                    @endif
                 </fieldset>
                 </section>
 
@@ -558,6 +564,18 @@
                         <legend>Check before saving</legend>
                         <span class="ur">محفوظ کرنے سے پہلے دیکھ لیں</span>
                         <dl class="review" id="pv2-review"></dl>
+                        {{-- W3/W4 S2: the server decides what this save may change; everything else keeps its saved value. --}}
+                        @if(! empty($keptAsSaved))
+                            <div class="mt-3" id="pv2-kept" role="region" aria-labelledby="pv2-kept-title">
+                                <h2 class="h6 mb-1" id="pv2-kept-title">Not shown for this item — kept as saved</h2>
+                                <ul class="mb-1 ps-3 small">
+                                    @foreach($keptAsSaved as $words => $value)
+                                        <li>{{ $words }}: <b>{{ $value }}</b></li>
+                                    @endforeach
+                                </ul>
+                                <p class="help mb-0">The server decides which settings this screen may change, from this item's card and the shop's switches. Every other setting keeps its saved value.</p>
+                            </div>
+                        @endif
                         {{-- "What will happen" lives here now: the owner (19 Oct) found the side box took too much room. --}}
                         <div class="what mt-3" role="region" aria-labelledby="what-title">
                             <h2 id="what-title">What will happen <span class="ur-inline" style="color:#F2DFA8">کیا ہوگا</span></h2>
