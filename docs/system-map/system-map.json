@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-23T11:29:36+00:00",
+    "built_at": "2026-10-23T12:08:49+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "c5c39cf9",
     "work": [
@@ -33,11 +33,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-unitspacks",
             "branch": "feat/units-packs-batch-20261023",
-            "head": "b9b6a8fd",
+            "head": "7e85f640",
             "behind_prod": 6,
-            "ahead_of_prod": 32,
-            "last_commit": "2026-10-23\u00b7Units & packs F1 tests: legacy whole-number lines, a sold Bag cannot change size, nested packs at 3 decimals, the size column guard",
-            "uncommitted_files": 8
+            "ahead_of_prod": 33,
+            "last_commit": "2026-10-23\u00b7Units-packs F3: packs at the normal counter (new switch, off by default)",
+            "uncommitted_files": 16
         },
         {
             "path": "D:/laragon2/www/pos-saas-verify-3b02",
@@ -572,7 +572,7 @@
             "modified": "2026-10-23"
         }
     ],
-    "git": "b9b6a8fd",
+    "git": "7e85f640",
     "source": {
         "tenant_db": "pos_test_tenant_up",
         "master_db": "pos_test_master_up"
@@ -18863,6 +18863,10 @@
                     "why": "via PackUnits"
                 },
                 {
+                    "route": "tenant.pos.index",
+                    "why": "via PackUnits"
+                },
+                {
                     "route": "tenant.sales-returns.index",
                     "why": "via PackUnits"
                 },
@@ -18876,6 +18880,22 @@
                 },
                 {
                     "route": "tenant.sales-returns.show",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.api.pos.totals.quote",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.api.pos.bill-preview",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.api.pos.table-board",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.api.pos.recent-sales",
                     "why": "via PackUnits"
                 },
                 {
@@ -18923,7 +18943,7 @@
                     "why": "model ProductBarcode"
                 }
             ],
-            "used_by_count": 35
+            "used_by_count": 40
         },
         {
             "name": "product_branch_prices",
@@ -39066,6 +39086,10 @@
                     "why": "via TenantFeatures"
                 },
                 {
+                    "route": "tenant.pos.index",
+                    "why": "via PackUnits"
+                },
+                {
                     "route": "tenant.sales-returns.index",
                     "why": "via TenantFeatures"
                 },
@@ -39112,6 +39136,22 @@
                 {
                     "route": "tenant.billing.upgrade.cancel",
                     "why": "via SubscriptionChangeRequestService"
+                },
+                {
+                    "route": "tenant.api.pos.totals.quote",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.api.pos.bill-preview",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.api.pos.table-board",
+                    "why": "via PackUnits"
+                },
+                {
+                    "route": "tenant.api.pos.recent-sales",
+                    "why": "via PackUnits"
                 },
                 {
                     "route": "tenant.offline-edge.index",
@@ -39202,7 +39242,7 @@
                     "why": "via Business"
                 }
             ],
-            "used_by_count": 148
+            "used_by_count": 153
         },
         {
             "name": "users",
@@ -44753,6 +44793,8 @@
                 "units",
                 "unit_conversions",
                 "product_pack_units",
+                "product_barcodes",
+                "tenants",
                 "shifts"
             ]
         },
@@ -46131,6 +46173,8 @@
                 "units",
                 "unit_conversions",
                 "product_pack_units",
+                "product_barcodes",
+                "tenants",
                 "shifts"
             ]
         },
@@ -46165,6 +46209,8 @@
                 "units",
                 "unit_conversions",
                 "product_pack_units",
+                "product_barcodes",
+                "tenants",
                 "shifts"
             ]
         },
@@ -46199,6 +46245,8 @@
                 "units",
                 "unit_conversions",
                 "product_pack_units",
+                "product_barcodes",
+                "tenants",
                 "shifts"
             ]
         },
@@ -46305,6 +46353,8 @@
                 "units",
                 "unit_conversions",
                 "product_pack_units",
+                "product_barcodes",
+                "tenants",
                 "shifts"
             ]
         },

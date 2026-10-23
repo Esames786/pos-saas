@@ -18,9 +18,10 @@ class InventoryReportService
     public function valuation(array $filters)
     {
         $branchIds = $this->resolveBranchIds($filters);
+        $packsOn = \App\Support\PackUnits::enabled();
 
         return StockBalance::query()
-            ->with(['product.category', 'variant', 'branch'])
+            ->with(array_merge(['product.category', 'product.unit', 'variant', 'branch'], $packsOn ? ['product.packUnits'] : []))
             ->when($branchIds, fn ($q) => $q->whereIn('branch_id', $branchIds))
             ->where('quantity_on_hand', '>', 0)
             ->orderBy('branch_id')
@@ -33,6 +34,9 @@ class InventoryReportService
                 'sku'           => $row->product?->sku ?? '',
                 'category'      => $row->product?->category?->name ?? 'Uncategorised',
                 'qty_on_hand'   => (float) $row->quantity_on_hand,
+                // UNITS-PACKS F4: what the number is counted in, and the packs it makes where the item has packs.
+                'unit'          => $row->product?->unit?->name ?? '',
+                'packs'         => \App\Support\PackUnits::inWords($row->product, (float) $row->quantity_on_hand, $packsOn),
                 'average_cost'  => (float) $row->average_cost,
                 'total_value'   => round((float) $row->quantity_on_hand * (float) $row->average_cost, 2),
             ]);

@@ -107,6 +107,39 @@ a change to `pack_factor`: kashiffood alone has 62,277 sale lines, and a type ch
 
 Mixed units are never added into one total without saying so.
 
+## As built (23 Oct)
+
+| Feature | Commit | Focused test | Sabotages that turned it red |
+|---|---|---|---|
+| F1 decimal packs | `7308db7e`, tests `b9b6a8fd` | DecimalPacksMySqlTest, PackUnitsMySqlTest | see the F1 report |
+| F2 gram entry | `9ec6b22f`, gate in the F4 commit | GramEntryMySqlTest (4) | GATELQ, GATEPOS |
+| F3 packs at the normal counter | `7e85f640` | CounterPacksMySqlTest (5) | PRICE, HELDPRICE, PACKSON, EXPIRY, PAYLOAD |
+| F4 prints and reports | this commit | UnitsPacksPrintsReportsMySqlTest (4) | WORDS, ENTERED, UNIT, CSVUNIT, DEALRET, INWORDS, VALSWITCH |
+
+Decisions taken while building, each against the rules above:
+
+- **Gram entry comes with the packs switch.** The plan did not name a switch. As first built, the weight popup offered
+  g / kg on every kg item of every tenant, so a live shop's POS would have changed on deploy. Now the popup offers
+  g / kg only with `packs` on (today only pharmacydemo). With it off, the server ignores a posted entry and the
+  quantity sent stands, as before.
+- **The words go under the line, not into the Qty column.** The receipt's Qty column is a few characters wide, and
+  the restaurant thermal layouts are tested column by column. So "2 Bag = 5 Kilogram" and "250 g = 0.25 Kilogram" print as the sub-row the medical
+  counter already uses: thermal, browser receipt and the sale screen, from one helper (`CounterPacks::lineWords`).
+  A plain line prints exactly as before.
+- **The unit name shows for every tenant.** In the item report it is a Unit column, on screen and in the CSV (after
+  Category). In the stock list and the valuation it sits beside the quantity, and the valuation CSV gets Unit and In
+  Packs columns. Pack words ("2 Bag 2.25 Kilogram") show only with packs on, and only for an item that has packs.
+- **Deal returns read the base quantity**, like deal sales. No live number moves: `base_quantity` is written only on
+  pack lines, and a deal header is never a pack line.
+
+Left as they are (open points):
+
+- Category and order-type rows still add quantities across units: kg and pieces in one Sold Qty, as today. The plan's
+  "never without saying so" is not met there yet. The owner should choose: a "mixed units" note, or no quantity on
+  those rows.
+- Partner share counts line quantity (its rates are per menu item, with no packs).
+- The report-centre print and thermal views have no Unit column.
+
 ## Impact (system map, 23 Oct)
 
 - **Tables:**

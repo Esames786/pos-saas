@@ -288,10 +288,10 @@
             @endforeach
         </div>
         <table class="table table-sm">
-            <thead><tr><th>Item</th><th>Variant</th><th>Category</th><th class="text-end">Sold Qty</th><th class="text-end">Ret Qty</th><th class="text-end">Net Qty</th><th class="text-end">Sold Value</th><th class="text-end">Returns</th><th class="text-end">Net Value</th></tr></thead>
+            <thead><tr><th>Item</th><th>Variant</th><th>Category</th><th>Unit</th><th class="text-end">Sold Qty</th><th class="text-end">Ret Qty</th><th class="text-end">Net Qty</th><th class="text-end">Sold Value</th><th class="text-end">Returns</th><th class="text-end">Net Value</th></tr></thead>
             <tbody>
             @foreach($data['items'] as $r)
-                <tr><td>{{ $r->item }}</td><td>{{ $r->variant }}</td><td>{{ $r->category }}</td><td class="text-end">{{ $fmt($r->sold_qty) }}</td><td class="text-end">{{ $fmt($r->returned_qty) }}</td><td class="text-end">{{ $fmt($r->net_qty) }}</td><td class="text-end">{{ $fmt($r->net) }}</td><td class="text-end text-danger">{{ $fmt($r->returns_amount) }}</td><td class="text-end fw-semibold">{{ $fmt($r->net_value) }}</td></tr>
+                <tr><td>{{ $r->item }}</td><td>{{ $r->variant }}</td><td>{{ $r->category }}</td><td>{{ $r->unit }}</td><td class="text-end">{{ $fmt($r->sold_qty) }}</td><td class="text-end">{{ $fmt($r->returned_qty) }}</td><td class="text-end">{{ $fmt($r->net_qty) }}</td><td class="text-end">{{ $fmt($r->net) }}</td><td class="text-end text-danger">{{ $fmt($r->returns_amount) }}</td><td class="text-end fw-semibold">{{ $fmt($r->net_value) }}</td></tr>
             @endforeach
             </tbody>
         </table>

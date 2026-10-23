@@ -94,4 +94,21 @@ class GramEntryMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta(0.001, $products[$rice->id]['entry_units'][0]['to_stock'], 1e-12);
         $this->assertSame([], $products[$soap->id]['entry_units'], 'nothing for a counted item');
     }
+
+    public function test_gram_entry_belongs_to_the_packs_switch_and_off_it_is_todays_counter(): void
+    {
+        $rice = $this->product('GE Rice Off', $this->kg()->id, ['default_selling_price' => 200]);
+        $this->receive($rice, 'base', '150', ['base' => '5'])->assertRedirect()->assertSessionHasNoErrors();
+        $this->setFeatures(['product_screen_v2' => true, 'purchasing_v2' => true]);
+
+        $pos = $this->owner()->get($this->url('/pos?branch_id=' . $this->branchId()))->assertOk()->getContent();
+        $this->assertSame(1, preg_match('/const products\s*=\s*(\[.*?\]);\s*$/m', $pos, $m));
+        $this->assertSame([], collect(json_decode($m[1], true))->firstWhere('id', $rice->id)['entry_units'], 'switch off: the weight popup is today\'s');
+
+        $this->assertTrue($this->sell([['product_id' => $rice->id, 'quantity' => 1, 'unit_price' => 200, 'entered_quantity' => 250, 'entered_unit_code' => 'G']], 200)->isSuccessful());
+        $line = $this->lastSale()->lines()->firstOrFail();
+        $this->assertSame('1.000', (string) $line->quantity, 'switch off: the quantity sent stands, as before');
+        $this->assertNull($line->entered_unit_code);
+        $this->assertEqualsWithDelta(4, $this->stock($rice), 0.0001);
+    }
 }

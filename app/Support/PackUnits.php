@@ -300,6 +300,20 @@ final class PackUnits
         return $sign . implode(' ', $parts);
     }
 
+    /**
+     * UNITS-PACKS F4: "2 Bag 2.25 Kilogram" for a stock quantity of an item that has packs, or null — with the packs
+     * switch off ($packsOn, worked out once by the caller) or for an item without packs, the number stands alone.
+     */
+    public static function inWords(?Product $product, float $quantity, bool $packsOn): ?string
+    {
+        if (! $product || ! $packsOn) {
+            return null;
+        }
+        $packs = $product->packUnits->where('factor', '>', 1);
+
+        return $packs->isEmpty() ? null : self::describe($packs, $quantity, $product->unit?->name ?: 'Piece');
+    }
+
     /** Where a barcode is already used, in words, or null. Packs of $productId itself do not count. */
     public static function barcodeTaken(string $code, ?int $productId): ?string
     {

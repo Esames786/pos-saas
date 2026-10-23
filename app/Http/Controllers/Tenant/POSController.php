@@ -225,6 +225,8 @@ class POSController extends Controller
         // UNITS-PACKS F3: the normal counter with "Packs at the normal counter" gets each item's packs only (no
         // batches, no prescription): a scanned carton sells as 1 Carton. The page itself is unchanged.
         $counterPacks = ! $medicalCounter && \App\Support\CounterPacks::packsOn();
+        // UNITS-PACKS F2: the weight popup offers g / kg only with the packs switch on; off, it is today's popup.
+        $gramEntry = \App\Support\PackUnits::enabled();
         if ($counterPacks) {
             $products->load('packUnits');
         }
@@ -271,7 +273,7 @@ class POSController extends Controller
 
         $unitConversion = app(UnitConversionService::class);
 
-        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion, $medicalCounter, $counterPacks, $batchBalances, $medToday) {
+        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion, $medicalCounter, $counterPacks, $gramEntry, $batchBalances, $medToday) {
             $defaultVariant = $product->defaultVariant ?: $product->variants->first();
 
             $barcodes = $product->barcodes
@@ -370,7 +372,7 @@ class POSController extends Controller
                 'allow_decimal_qty' => $product->unit && $product->unit->unit_type !== 'quantity',
                 'quantity_step'     => $product->unit && $product->unit->unit_type !== 'quantity' ? 0.001 : 1,
                 // UNITS-PACKS F2: the units the weight popup offers (g / kg for a kg item), each with its size in the stock unit.
-                'entry_units'       => \App\Support\StandardUnits::entryUnits($product->unit),
+                'entry_units'       => $gramEntry ? \App\Support\StandardUnits::entryUnits($product->unit) : [],
                 'price'             => (float) ($defaultVariant?->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
                 'is_stock_tracked'  => (bool) $product->is_stock_tracked,
                 // Combo-only components ride in the payload for availability but are NOT grid tiles.

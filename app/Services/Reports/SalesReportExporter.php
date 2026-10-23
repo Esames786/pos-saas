@@ -118,10 +118,10 @@ class SalesReportExporter
 
     private function itemsCsv(array $f): string
     {
-        $rows = [['Item', 'Variant', 'Category', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Sold Value', 'Returns', 'Net Value']];
+        $rows = [['Item', 'Variant', 'Category', 'Unit', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Sold Value', 'Returns', 'Net Value']];
         // DEAL-CATEGORY-1: deals export in a sheet of their own — here they would count twice.
         foreach ($this->engine->byItem($f, 'net', true) as $r) {
-            $rows[] = [$r->item, $r->variant, $r->category, $r->sold_qty, $r->returned_qty, $r->net_qty, $r->gross, $r->discount, $r->tax, $r->net, $r->returns_amount, $r->net_value];
+            $rows[] = [$r->item, $r->variant, $r->category, $r->unit ?? '', $r->sold_qty, $r->returned_qty, $r->net_qty, $r->gross, $r->discount, $r->tax, $r->net, $r->returns_amount, $r->net_value];
         }
 
         return $this->csv($rows);

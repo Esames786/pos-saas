@@ -60,6 +60,8 @@ final class LineQuantity
         $ids = collect($lines)->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
         $products = $ids ? Product::with('unit')->whereIn('id', $ids)->get()->keyBy('id') : collect();
         $packsOn = CounterPacks::packsOn();
+        // UNITS-PACKS F2: g / kg entry comes with the packs switch; with it off a posted entry is ignored, as before.
+        $gramsOn = PackUnits::enabled();
 
         foreach ($lines as $i => $line) {
             if (! is_array($line) || ! isset($line['quantity']) || $line['quantity'] === '') {
@@ -69,7 +71,7 @@ final class LineQuantity
             $label = $product?->name ?? (string) ($line['line_name'] ?? 'Item');
             // UNITS-PACKS F2: "250 g" of a kg item. The server works the stock quantity out itself from what was typed;
             // the screen's own arithmetic is never trusted.
-            if (! empty($line['entered_unit_code']) && empty($line['pack_unit_id']) && isset($line['entered_quantity']) && $line['entered_quantity'] !== '') {
+            if ($gramsOn && ! empty($line['entered_unit_code']) && empty($line['pack_unit_id']) && isset($line['entered_quantity']) && $line['entered_quantity'] !== '') {
                 [$lines[$i]['quantity'], $lines[$i]['entered_quantity'], $lines[$i]['entered_unit_code']]
                     = self::fromEnteredUnit($line, $product, $label, "lines.{$i}.quantity");
                 $line['quantity'] = $lines[$i]['quantity'];

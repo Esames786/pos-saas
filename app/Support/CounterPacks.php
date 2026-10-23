@@ -197,15 +197,31 @@ final class CounterPacks
     }
 
     /** What the bill says under a pack line: "1 Strip = 10 Tablet · B:PN2410-07 EXP:09/28". */
-    public static function receiptLine($line): ?string
+    /**
+     * UNITS-PACKS F4: what a line's number is, in words — "2 Bag = 5 Kilogram" for a line sold in a pack, "250 g =
+     * 0.25 Kilogram" for one typed in grams. A plain line gets null and prints exactly as it always has.
+     */
+    public static function lineWords($line): ?string
     {
-        $parts = [];
+        $num = fn ($n) => rtrim(rtrim(number_format((float) $n, 3, '.', ''), '0'), '.');
+        $unit = $line->product?->unit;
         if ($line->pack_unit_id && self::sizeOf($line) > 1) {
             $pack = ProductPackUnit::find($line->pack_unit_id);
-            $baseName = $line->product?->unit?->name ?: 'Tablet';
-            $parts[] = rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.') . ' ' . ($pack?->name ?? 'Pack')
-                . ' = ' . rtrim(rtrim(number_format((float) $line->base_quantity, 3, '.', ''), '0'), '.') . ' ' . $baseName;
+
+            return $num($line->quantity) . ' ' . ($pack?->name ?? 'Pack') . ' = ' . $num($line->base_quantity) . ' ' . ($unit?->name ?: 'Tablet');
         }
+        $code = (string) ($line->entered_unit_code ?? '');
+        $factor = $code !== '' && $line->entered_quantity !== null ? StandardUnits::codeFactor($code, $unit) : null;
+        if ($factor !== null && abs($factor - 1) > 1e-9) {
+            return trim($num($line->entered_quantity) . ' ' . StandardUnits::entryLabel($code) . ' = ' . $num($line->quantity) . ' ' . ($unit?->name ?? ''));
+        }
+
+        return null;
+    }
+
+    public static function receiptLine($line): ?string
+    {
+        $parts = array_filter([self::lineWords($line)]);
         if ($line->batch_note) {
             $parts[] = 'B:' . $line->batch_note;
         }

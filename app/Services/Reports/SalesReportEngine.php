@@ -606,13 +606,15 @@ class SalesReportEngine
         $rows = $this->linesBase($f)
             ->when($excludeCombos, fn ($q) => $q->whereNull('l.combo_id'))
             ->leftJoin('product_variants as v', 'v.id', '=', 'l.product_variant_id')
+            // UNITS-PACKS F4: the stock unit the quantities are counted in (base quantity, so a Bag counts its kg).
+            ->leftJoin('units as un', 'un.id', '=', 'p.unit_id')
             // `combos as cb` is joined by linesBase() since DEAL-CATEGORY-1 — joining it again
             // here would be a duplicate alias.
             ->groupBy('l.product_id', 'l.product_variant_id', 'l.combo_id')
             ->selectRaw(
                 'l.product_id, l.product_variant_id, l.combo_id,
                  COALESCE(MAX(cb.name), MAX(l.product_name)) as item,
-                 MAX(v.name) as variant, MAX(c.name) as category,
+                 MAX(v.name) as variant, MAX(c.name) as category, MAX(un.name) as unit,
                  -- ITEMS-BY-CATEGORY-1: the id travels with the name, so a row can be filed under
                  -- its ROOT head without a second query guessing the head from a string.
                  MAX(c.id) as category_id,
@@ -624,6 +626,7 @@ class SalesReportEngine
             )->get()->keyBy($key);
         $returnRows = $this->returnLinesBase($f)
             ->leftJoin('product_variants as v', 'v.id', '=', 'rl.product_variant_id')
+            ->leftJoin('units as un', 'un.id', '=', 'p.unit_id')
             // as above — returnLinesBase() already joins `combos as cb` off ol.combo_id.
             // The refund follows the sale: exclude a deal's refund from Items too, or a returned
             // deal would credit a section it was never counted in.
@@ -632,7 +635,7 @@ class SalesReportEngine
             ->selectRaw(
                 'rl.product_id, rl.product_variant_id, ol.combo_id,
                  COALESCE(MAX(cb.name), MAX(ol.product_name), MAX(p.name)) as item,
-                 MAX(v.name) as variant, MAX(c.name) as category,
+                 MAX(v.name) as variant, MAX(c.name) as category, MAX(un.name) as unit,
                  MAX(c.id) as category_id,
                  COALESCE(SUM(COALESCE(rl.base_quantity, rl.quantity)),0) as returned_qty,
                  COALESCE(SUM(rl.line_total),0) as returns_amount'
@@ -642,6 +645,8 @@ class SalesReportEngine
             $sold = $rows->get($key);
             $returned = $returnRows->get($key);
             $row = $sold ?: $returned;
+            // A deal is counted in deals, not in any one item's unit.
+            $row->unit = $row->combo_id ? null : ($sold->unit ?? $returned->unit ?? null);
             $row->sold_qty = (float) ($sold->sold_qty ?? 0);
             $row->returned_qty = (float) ($returned->returned_qty ?? 0);
             $row->net_qty = $row->sold_qty - $row->returned_qty;
@@ -856,7 +861,8 @@ class SalesReportEngine
         $returns = $this->returnLinesBase($f)
             ->whereNotNull('ol.combo_id')
             ->groupBy('ol.combo_id')
-            ->selectRaw('ol.combo_id, COALESCE(SUM(rl.quantity),0) as qty, COALESCE(SUM(rl.line_total),0) as amount')
+            // UNITS-PACKS F4: counted like the sales above (base quantity), so a returned pack takes off what it sold.
+            ->selectRaw('ol.combo_id, COALESCE(SUM(COALESCE(rl.base_quantity, rl.quantity)),0) as qty, COALESCE(SUM(rl.line_total),0) as amount')
             ->get()->keyBy('combo_id');
 
         $out = [];

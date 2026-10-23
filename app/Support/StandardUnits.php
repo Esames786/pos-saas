@@ -82,6 +82,21 @@ final class StandardUnits
         return $out;
     }
 
+    /** UNITS-PACKS F4: the word the counter shows for an entry unit ("g" for G), else the code in small letters. */
+    public static function entryLabel(string $code): string
+    {
+        $code = strtoupper(trim($code));
+        foreach (self::ENTRY as $units) {
+            foreach ($units as [$c, $label]) {
+                if ($c === $code) {
+                    return $label;
+                }
+            }
+        }
+
+        return strtolower($code);
+    }
+
     /** How many of the stock unit one $code is (G for a kg item = 0.001), or null when $code is not in its family. */
     public static function codeFactor(string $code, ?Unit $stock): ?float
     {
