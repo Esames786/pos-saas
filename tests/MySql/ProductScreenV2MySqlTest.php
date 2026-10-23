@@ -311,6 +311,8 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
         $this->assertSame(['S1Q Box Packing'], $names('role=packaging_material'));
         $this->assertSame(['S1Q Box Packing'], $names('beh[bought]=yes&beh[sold]=no'));
         $this->assertCount(4, $names('beh[bought]=maybe'), 'an unknown answer is "Any"');
+        // The Role column reads the role, never the shape: a packaging item whose product_type is "simple".
+        $this->assertStringContainsString('data-role="packaging_material">Packaging</span>', $this->row($this->page('/products?search=S1Q+Box')->getContent(), 'S1Q Box Packing'));
     }
 
     public function test_deals_are_listed_under_combo_and_open_the_existing_deal_editor(): void

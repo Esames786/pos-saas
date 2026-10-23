@@ -230,6 +230,24 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
   UnitsAndPacksJourney, DecimalPacks, PharmacyDemo, InventoryExpensePurchaseStock, PurchaseItemsImport,
   SupplierLedgerDrCr, SupplierOpeningBalanceGl, PayablesFinanceGate.
 
+### S1 — product list (`bf1d8874`, tests `36a987ad` + the role-column pin; behind `product_screen_v2`)
+
+- With the switch off the list is today's. With it on, it is a new partial:
+  - columns Product, Structure, Role (recognisable names), Behaviour badges, Packs (where packs are on), Category,
+    Price, Status;
+  - search, category, role and status in one row; "More filters" holds Structure and each behaviour as Any / Yes / No;
+  - no Type filter, no tick-box pairs, no "old name", no "What it is";
+  - Structure "Combo" lists the deals themselves, each opening the existing deal editor; a deal is never copied into
+    a product.
+- Tests: `ProductScreenV2MySqlTest` 19 / 19. The 19 Oct wording test was changed on purpose, and three tests are new:
+  the Any / Yes / No split, deals, and packs in words. The classes that pin the switched-off list (ProductRoleFilter,
+  ProductListEveryKind, CateringViewRender) are unchanged and green.
+- Sabotages:
+  - red: BEHSKIP, COUNTERNO, COMBO, ROLENAMES, PACKS.
+  - ROLEROW (the Role column reads the shape) stayed **green** the first time. The test item's product_type was also
+    "service", so reading the wrong field gave the right word. The column is now pinned on a packaging item whose
+    type is "simple", and ROLEROW then turned it red.
+
 ## Decisions (reviewer, 23 Oct): these replace the open questions
 
 1. **Deals in Products.** They show as **Structure: Combo**, with a filter. Each row opens the existing deal record and
