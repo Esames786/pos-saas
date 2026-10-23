@@ -248,6 +248,51 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
     "service", so reading the wrong field gave the right word. The column is now pinned on a packaging item whose
     type is "simple", and ROLEROW then turned it red.
 
+### S2 — the product form keeps what it does not show (`94a7e792`)
+
+- The server decides what a save may change; nothing the browser says about which sections it showed is used.
+  - On an edit with the card the server picks for the item, a question that card does not ask keeps its saved
+    answer: batch and expiry on a menu item; recipe on a kitchen item.
+  - An item no card fits keeps its role and every saved answer, and the screen says so.
+  - A saved service keeps its stock and buy answers, so one with stock history can be saved.
+  - A switched-off category and purchase unit stay listed, on both screens.
+  - The review step lists "Not shown for this item — kept as saved".
+- Tests: `ProductScreenV2MySqlTest` 25 / 25, with 6 new open-and-save cases on the rendered page.
+- Sabotages:
+  - red: HIDDEN, MISFIT, SERVICE, CATEGORY, PUNIT.
+  - MFGFLAGS stayed **green**. The path cannot be reached today: a misfit falls back to the business's first card,
+    and no first card is a factory card. The guard is defensive; no test can turn it red.
+
+
+## Release manifest (draft; nothing pushed, merged, deployed or switched on)
+
+The table says who a part reaches on the day it is deployed. Parts without a switch reach **every tenant at once**, so
+they are listed apart and need their own approval.
+
+| Part | Commits | Reaches on deploy | Switch |
+|---|---|---|---|
+| **S0 purchasing safety fixes** | `6e6ea024` + migration `2026_10_24_000001_add_submission_key_to_goods_receipts` | **every tenant** | none |
+| **S2 old-form part**: an edit lists the item's own category and purchase unit even when switched off | in `94a7e792` (`categoriesFor`, `unitsFor`) | **every tenant** (the old product form) | none |
+| S1 product list | `bf1d8874`, `36a987ad`, `c382d488` | tenants with `product_screen_v2` on (today: demo tenants) | `product_screen_v2` |
+| S2 new-form part: hidden answers kept, misfit roles kept, a saved service saveable, "kept as saved" panel | `94a7e792` | tenants with `product_screen_v2` on | `product_screen_v2` |
+| S3 / S4 / S5 | to come | | per the plan |
+
+What every tenant sees from the no-switch parts:
+
+- **S0, goods receipts.**
+  - A second post of the same receipt form returns the first receipt.
+  - A voided receipt cannot be invoiced.
+  - A taken receipt or payment number draws another.
+  - A partly received order becomes "received" when the rest arrives.
+  - A payment against another supplier's invoice is refused.
+- **S0, schema.** The migration adds two nullable columns and a unique index to `goods_receipts`: INSTANT columns and
+  an in-place index. Schema first: the code writes the key only when the column exists.
+- **S2 old form.** A switched-off category or purchase unit is no longer emptied by an unchanged save.
+
+**Owner decision needed before any deploy.** The rollout is either new tenants only (switches on for new sign-ups) or
+existing tenants too. The no-switch parts above reach existing tenants either way. If the owner wants them held back,
+they need a switch, or a separate release.
+
 ## Decisions (reviewer, 23 Oct): these replace the open questions
 
 1. **Deals in Products.** They show as **Structure: Combo**, with a filter. Each row opens the existing deal record and

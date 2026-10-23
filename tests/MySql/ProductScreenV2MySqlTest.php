@@ -569,8 +569,9 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
 
     public function test_a_misfit_in_a_factory_keeps_its_factory_flags(): void
     {
-        // A service in an industry shop: no card allows it, the screen falls back to "Finished product", whose
-        // factory flags (finished good, BOM output) used to be written on an unchanged save.
+        // A service in an industry shop: no card allows it, so it is a misfit and keeps its role and factory flags.
+        // (The fallback card is the business's first one, "Raw material", which has no factory flags: the guard in
+        // resolve() that keeps a misfit's factory flags is defensive — no business's first card is a factory card today.)
         $p = $this->savedWith('industry', 'raw', 'S2 Machine Repair', ['product_kind' => 'service', 'is_sellable' => 1, 'is_purchasable' => 0,
             'is_stock_tracked' => 0, 'inventory_consumption_method' => 'none', 'can_be_bom_output' => 0, 'can_be_bom_component' => 0, 'is_manufactured_finished_good' => 0]);
 
