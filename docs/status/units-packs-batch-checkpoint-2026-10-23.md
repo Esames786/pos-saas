@@ -54,7 +54,8 @@ undone the journey fails:
 |---|---|
 | HEAD, before and after (and around the re-run) | `62e16346`, 0 dirty files |
 | MySQL suite | 2413 tests: 2392 passed first time, 20 red, 1 skipped (VisitorCountry GeoIP file, as in the RC) |
-| The 20 reds | 3 classes that run 3rd, 11th and 12th (BillingMonthlyInvoice, CategoryBranchScope, CategoryParentGuard). They read master rows that the brand-new master DB did not have yet. On the now-warm master, same revision, same DB set: 20 / 20 pass. They were green at the same positions in the RC run, and none touches units or packs. |
+| The 20 reds | 3 classes that run 4th, 12th and 13th: BillingMonthlyInvoice (8 errors), CategoryBranchScope and CategoryParentGuard (12 failures). They depend on master rows that a brand-new master DB does not have yet. BillingMonthlyInvoice takes `Tenant::first()`, and there is no tenant row. The category tests find a route in `route_catalogs` that an earlier class filled, but no matching row in `modules`. |
+| Baseline for the 20 | Not dismissed on a retry. The suite's first 13 classes, in the suite's order, were run on a brand-new DB set at two revisions: the batch base `edf958d9` (DB set `_upf`) and `62e16346` (DB set `_upg`). Both runs: 95 tests, 8 errors, 12 failures. The failing tests are the same 20, name for name, as in the full run. So they come before this batch and depend only on the order of a cold master. On the warm master the same 20 pass. They passed in the RC run, whose master DB was not new. |
 | Default suite | 230 tests, 3 failures, the same 3 as the RC and as the production base |
 | Batch-related classes in the full run | all green: CounterPacks, DecimalPacks, GramEntry, UnitsPacksPrintsReports, PackUnits, MedicalCounter, UnitsAndPacksJourney, PurchasingV2, QuantityRules, W2Combined, PurchaseStockQuantity, SalesReportEngine, ItemsByCategory, ThermalItemLayout, PharmacyDemo |
 
