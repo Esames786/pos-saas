@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-23T12:08:49+00:00",
+    "built_at": "2026-10-23T12:28:22+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "c5c39cf9",
     "work": [
@@ -33,11 +33,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-unitspacks",
             "branch": "feat/units-packs-batch-20261023",
-            "head": "7e85f640",
+            "head": "bd684f07",
             "behind_prod": 6,
-            "ahead_of_prod": 33,
-            "last_commit": "2026-10-23\u00b7Units-packs F3: packs at the normal counter (new switch, off by default)",
-            "uncommitted_files": 16
+            "ahead_of_prod": 34,
+            "last_commit": "2026-10-23\u00b7Units-packs F4: prints and reports say what the number is; gram entry behind the packs switch",
+            "uncommitted_files": 1
         },
         {
             "path": "D:/laragon2/www/pos-saas-verify-3b02",
@@ -69,10 +69,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-verify-upv",
             "branch": "(detached)",
-            "head": "b9b6a8fd",
+            "head": "bd684f07",
             "behind_prod": 6,
-            "ahead_of_prod": 32,
-            "last_commit": "2026-10-23\u00b7Units & packs F1 tests: legacy whole-number lines, a sold Bag cannot change size, nested packs at 3 decimals, the size column guard",
+            "ahead_of_prod": 34,
+            "last_commit": "2026-10-23\u00b7Units-packs F4: prints and reports say what the number is; gram entry behind the packs switch",
             "uncommitted_files": 0
         },
         {
@@ -572,7 +572,7 @@
             "modified": "2026-10-23"
         }
     ],
-    "git": "7e85f640",
+    "git": "bd684f07",
     "source": {
         "tenant_db": "pos_test_tenant_up",
         "master_db": "pos_test_master_up"

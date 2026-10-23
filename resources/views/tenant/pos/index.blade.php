@@ -3812,7 +3812,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 if (newQty <= 0.0001) { requestItemQuantity(i, 0); return; }
                 var stockQty = availableQty(item.product, item.variant);
-                if (stockQty !== null && newQty > stockQty + 0.0001) {
+                // UNITS-PACKS F3: a pack line is counted in its pieces, with the item's other lines beside it.
+                var wanted = item.pack_unit_id && !medicalCounter
+                    ? baseInCart(item.product_id) + (newQty - Number(item.quantity || 0)) * Number(item.pack_factor || 1)
+                    : newQty;
+                if (stockQty !== null && wanted > stockQty + 0.0001) {
                     blockAlert(unavailableMessage(item.product, stockQty));
                     input.value = formatQty(item.quantity, item.product);
                     return;
@@ -7884,8 +7888,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // UNITS-PACKS F3 — packs at the normal counter. A pack line is its own cart line (1 Carton, 2 Bag), counted in whole
     // packs; its price is the pack's own, else its size × the item's price; the server works both out again.
-    function packPrice(product, pack) {
-        return pack.own_price != null ? Number(pack.own_price) : Math.round(Number(pack.factor) * productPrice(product, null) * 100) / 100;
+    function packPrice(product, pack, variant) {
+        return pack.own_price != null ? Number(pack.own_price) : Math.round(Number(pack.factor) * productPrice(product, variant || null) * 100) / 100;
     }
     function baseInCart(productId) {
         return cart.filter(function (i) { return i.product_id === productId; }).reduce(function (t, i) {
@@ -7902,9 +7906,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     function addPackLine(product, pack) {
         ensureSaleUuid();
-        var key = cartKey(product, null, [], pack.id);
+        // The item's own variant, as a tapped tile or a scan picks it: the stock is kept on it.
+        var variant = product.variants && product.variants.length ? product.variants[0] : null;
+        var key = cartKey(product, variant, [], pack.id);
         var existing = cart.find(function (item) { return item.key === key; });
-        var stockQty = availableQty(product, null);
+        var stockQty = availableQty(product, variant);
         if (stockQty !== null && baseInCart(product.id) + Number(pack.factor) > stockQty + 0.0001) {
             if (!branchAllowsNegative()) { blockAlert(unavailableMessage(product, stockQty)); return; }
             backorderToast(product.name);
@@ -7913,11 +7919,11 @@ document.addEventListener('DOMContentLoaded', function () {
             existing.quantity = Number(existing.quantity || 0) + 1;
             existing.tax_amount = lineTax(product, existing.quantity, existing.unit_price, existing.discount_amount || 0);
         } else {
-            var price = packPrice(product, pack);
+            var price = packPrice(product, pack, variant);
             cart.push({
-                key: key, product_id: product.id, product_variant_id: null, name: product.name, variant_name: null,
+                key: key, product_id: product.id, product_variant_id: variant ? variant.id : null, name: product.name, variant_name: variant ? variant.name : null,
                 unit_code: pack.name, quantity: 1, unit_price: price, base_unit_price: price, modifiers: [],
-                discount_amount: 0, tax_amount: lineTax(product, 1, price, 0), product: product, variant: null,
+                discount_amount: 0, tax_amount: lineTax(product, 1, price, 0), product: product, variant: variant,
                 _dbLineId: null, kot_sent: false, kot_sent_quantity: 0,
                 pack_unit_id: pack.id, pack_factor: Number(pack.factor), pack_name: pack.name,
             });

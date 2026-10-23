@@ -132,6 +132,17 @@ Decisions taken while building, each against the rules above:
 - **Deal returns read the base quantity**, like deal sales. No live number moves: `base_quantity` is written only on
   pack lines, and a deal header is never a pack line.
 
+Browser journey (23 Oct, local test store, Chrome). These steps: buy 4 Bag of rice and 2 Carton of cola on the GRN
+screen; at the normal POS, scan the carton and step it with + and −; type 3 cartons; sell rice as 250 g; pay; check
+the sale screen and the receipt; return the carton; check the item report, the stock list and the valuation; turn the
+switches off. All 30 checks pass. The journey found two browser-only faults in F3 that the server tests could not
+see. Both are fixed in the same commit as this note, and the journey fails with each fix undone:
+
+- a scanned carton said "out of stock". The pack line looked up stock without the item's variant, and the stock is
+  kept on the variant. It now takes the item's own variant, as a tapped tile does.
+- typing 3 cartons (72 pieces) against 48 in stock was let through to the server. The typed box compared cartons
+  with pieces. It now counts the pack line in pieces, with the item's other lines beside it.
+
 Left as they are (open points):
 
 - Category and order-type rows still add quantities across units: kg and pieces in one Sold Qty, as today. The plan's
