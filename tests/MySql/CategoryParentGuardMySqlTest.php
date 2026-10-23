@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\MySql\Support\SeedsMasterCatalog;
 use Tests\MySql\Support\TenantFixtures;
 
 /**
@@ -28,6 +29,7 @@ use Tests\MySql\Support\TenantFixtures;
  */
 class CategoryParentGuardMySqlTest extends MySqlTenantTestCase
 {
+    use SeedsMasterCatalog;
     use TenantFixtures;
 
     private string $host;
@@ -280,6 +282,8 @@ class CategoryParentGuardMySqlTest extends MySqlTenantTestCase
     {
         DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
         $m = DB::connection('master');
+        // COLD-MASTER-FIXTURES-1: the modules and route list this test reads, made here on a brand-new master DB.
+        $this->ensureMasterCatalog(['tenant.pos.index', 'tenant.categories.create', 'tenant.categories.store', 'tenant.categories.edit', 'tenant.categories.update']);
 
         $planId = $m->table('plans')->where('code', 'catguard-plan')->value('id')
             ?: $m->table('plans')->insertGetId([
