@@ -169,9 +169,9 @@
     .pv2 .ws-errors { margin-bottom:10px; }
     .pv2 .ws-table th { font-size:.8rem; color:var(--ink2); font-weight:700; white-space:nowrap; }
     .pv2 .ws-table td.ws-item, .pv2 .ws-table td.ws-mat { min-width:220px; }
-    .pv2 .ws-table td.ws-label, .pv2 .ws-table td.ws-part { min-width:150px; }
+    .pv2 .ws-table td.ws-label, .pv2 .ws-table td.ws-part { min-width:160px; }
     .pv2 .ws-table td.ws-qty { width:120px; min-width:100px; }
-    .pv2 .ws-table td.ws-unitcell { width:160px; min-width:120px; }
+    .pv2 .ws-table td.ws-unitcell { width:180px; min-width:150px; }
     .pv2 .ws-table td.ws-cost { white-space:nowrap; font-variant-numeric:tabular-nums; }
     .pv2 .ws-table td.ws-rm { width:1%; white-space:nowrap; }
     @media (max-width: 575px) {

@@ -16,7 +16,7 @@
     <td class="ws-part" data-label="Kind">
         <label class="visually-hidden" for="cb-{{ $k }}-type">Kind</label>
         <select class="form-select" id="cb-{{ $k }}-type" name="{{ $n }}[block_type]" data-f="type">
-            <option value="charge" @selected(! $isMaterial)>Charge (work, gas…)</option>
+            <option value="charge" @selected(! $isMaterial)>Charge</option>
             <option value="material" @selected($isMaterial)>Material</option>
         </select>
     </td>
@@ -55,7 +55,7 @@
     <td class="ws-part" data-label="Charged">
         <label class="visually-hidden" for="cb-{{ $k }}-basis">Charged</label>
         <select class="form-select" id="cb-{{ $k }}-basis" name="{{ $n }}[charge_basis]">
-            <option value="per_unit" @selected(($l['charge_basis'] ?? 'per_unit') === 'per_unit')>for every unit</option>
+            <option value="per_unit" @selected(($l['charge_basis'] ?? 'per_unit') === 'per_unit')>per unit</option>
             <option value="lump_sum" @selected(($l['charge_basis'] ?? '') === 'lump_sum')>once per order</option>
         </select>
     </td>

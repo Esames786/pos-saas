@@ -264,6 +264,50 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
     and no first card is a factory card. The guard is defensive; no test can turn it red.
 
 
+### S3 — recipe, BOM and event costing inside the product form (`a3ab8d2b`, `f46da6d7`, `77c0613f`)
+
+- **S3a, pins first.** `RecipeBomSaveCharacterizationMySqlTest` pins today's recipe and BOM saves, quirks included,
+  before any code moved.
+- **S3b, one writer per document**, shared by its own screen and the product form:
+
+  | Writer | Moved from | What changes for that screen |
+  |---|---|---|
+  | `Kitchen\RecipeWriter` | `RecipeController` store / update | one transaction around header and lines |
+  | `Manufacturing\BomWriter` | `BomController` store / update | one transaction; a line without a unit box saves "no unit" instead of a 500 |
+  | `Catering\CateringCostBlockWriter` | `CateringCostBlockController::update` | refusals thrown (same words, same redirect back) |
+  | `Catering\CateringProfileWriter` | `CateringProductProfileController` | refusal thrown; the Urdu name written only when posted (the screen always posts it) |
+
+  Each writer also answers `unchanged()`. Sabotages on the recipe and BOM writers (13): 12 red; CONTROL, a comment
+  only, green.
+- **S3c, the tabs** (`App\Services\Products\ProductWorkspace`, behind `product_screen_v2`): Recipe, Bill of materials
+  and Event costing, saved with the product in its own transaction.
+  - **Server-decided.** A tab is offered when a card of the business needs it, the plan has the module and the user
+    holds that screen's permission (`App\Support\ScreenAccess`: the two checks its route makes). The same checks run
+    on every save; a crafted section without them is ignored.
+  - **Untouched = unwritten.** Each tab posts a fingerprint of what it showed. An untouched tab writes nothing, so
+    line and block ids stay. A tab changed on its own screen after the page opened is refused, not overwritten.
+  - **Hidden settings kept:**
+    - recipe numbers, notes and overhead; each line's cost override and order types;
+    - the BOM's number, name, version, status and notes; each line's notes;
+    - the profile's switches, pricing, labels and the Urdu name;
+    - each block's rate basis, rate source and role. A block that follows the house rate book keeps its rate.
+  - **All or nothing.** A refusal in any tab rolls the whole save back, the product too.
+- **Tests:**
+  - `ProductWorkspaceMySqlTest` 11 / 11, through the real edit page as a browser posts it.
+  - The focused run with the catering, product-screen and recipe / BOM files: 134 / 134.
+  - One deliberate update: `CateringMaterialRateBasisMySqlTest` now reads its source check from the writer.
+- **Browser demo** (frozen verify worktree at `77c0613f`, isolated test store, 25 / 25 checks, desktop and 390 px):
+  - an existing restaurant dish: Recipe tab edited (a quantity changed, an ingredient added; the line's cost override
+    and order type and the report numbers kept; the price kept; a re-save left the line ids as they were);
+  - a factory chair: BOM tab edited (number, version, status, notes and a line note kept);
+  - a catering dish: Event costing edited (Making rate changed, a Gas block added, the station set; the book-linked
+    chicken rate, the switches, label and Urdu name kept).
+- **Not done in S3** (carried, not hidden):
+  - Catering Materials and Manufacturing Products still open the old form;
+  - the new form still shows its Urdu helper lines (decision 6: English-only);
+  - no sabotage run on the S3c tabs. The run was limited to the focused tests and the demo; the tab sabotages belong
+    to the batch checkpoint.
+
 ## Release manifest (draft; nothing pushed, merged, deployed or switched on)
 
 The table says who a part reaches on the day it is deployed. Parts without a switch reach **every tenant at once**, so
@@ -275,7 +319,9 @@ they are listed apart and need their own approval.
 | **S2 old-form part**: an edit lists the item's own category and purchase unit even when switched off | in `94a7e792` (`categoriesFor`, `unitsFor`) | **every tenant** (the old product form) | none |
 | S1 product list | `bf1d8874`, `36a987ad`, `c382d488` | tenants with `product_screen_v2` on (today: demo tenants) | `product_screen_v2` |
 | S2 new-form part: hidden answers kept, misfit roles kept, a saved service saveable, "kept as saved" panel | `94a7e792` | tenants with `product_screen_v2` on | `product_screen_v2` |
-| S3 / S4 / S5 | to come | | per the plan |
+| **S3b screen writers**: Recipes, Bill of materials, Catering Profiles and Cost blocks save through the writers | `f46da6d7`, `77c0613f` | **every tenant** (those four screens) | none |
+| S3c product-form tabs (Recipe, Bill of materials, Event costing) | `77c0613f` | tenants with `product_screen_v2` on | `product_screen_v2` |
+| S4 / S5 | to come | | per the plan |
 
 What every tenant sees from the no-switch parts:
 
@@ -288,6 +334,8 @@ What every tenant sees from the no-switch parts:
 - **S0, schema.** The migration adds two nullable columns and a unique index to `goods_receipts`: INSTANT columns and
   an in-place index. Schema first: the code writes the key only when the column exists.
 - **S2 old form.** A switched-off category or purchase unit is no longer emptied by an unchanged save.
+- **S3b, the four screens.** The same saves and the same refusal words. A recipe or BOM save is now all or nothing.
+  A BOM line without a unit box saves instead of giving an error page.
 
 **Owner decision needed before any deploy.** The rollout is either new tenants only (switches on for new sign-ups) or
 existing tenants too. The no-switch parts above reach existing tenants either way. If the owner wants them held back,
