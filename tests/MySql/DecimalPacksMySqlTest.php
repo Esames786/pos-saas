@@ -112,6 +112,80 @@ class DecimalPacksMySqlTest extends MySqlTenantTestCase
         $this->assertSame('2 Bag 1 Kilogram', PackUnits::describe($rice->packUnits()->get(), 6.0, 'Kilogram'));
     }
 
+    /* ── what was already written stays as it was ───────────────────────── */
+
+    public function test_a_legacy_whole_pack_line_without_pack_size_is_read_and_returned_by_its_whole_factor(): void
+    {
+        $pills = $this->product('DP Pills', $this->piece()->id, ['default_selling_price' => 10]);
+        ProductPackUnit::create(['product_id' => $pills->id, 'name' => 'Piece', 'factor' => 1, 'can_sell' => true, 'can_buy' => true]);
+        $strip = ProductPackUnit::create(['product_id' => $pills->id, 'name' => 'Strip', 'factor' => 10, 'sale_price' => 90, 'can_sell' => true, 'can_buy' => true]);
+        $this->receive($pills, (string) $strip->id, '80', [(string) $strip->id => '5'])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertTrue($this->sell([['product_id' => $pills->id, 'quantity' => 2, 'pack_unit_id' => $strip->id]], 180)->isSuccessful());
+        $line = $this->lastSale()->lines()->firstOrFail();
+        $this->assertSame('10.0000', (string) $line->pack_size);
+        $this->assertSame(10, (int) $line->pack_factor, 'a whole size still fills the whole-number column');
+        $this->assertEqualsWithDelta(30.0, $this->stock($pills), 0.0001);
+
+        // A line written before 23 Oct has only pack_factor. It is read, and returned, by that number.
+        DB::connection('tenant')->table('sales_order_lines')->where('id', $line->id)->update(['pack_size' => null]);
+        $legacy = $line->fresh();
+        $this->assertSame(10.0, \App\Support\CounterPacks::sizeOf($legacy));
+        $this->assertSame(20.0, \App\Support\CounterPacks::baseOf($legacy));
+        $this->giveBack($line->sales_order_id, $line->id, 1, 90)->assertSessionHasNoErrors();
+        $this->assertEqualsWithDelta(40.0, $this->stock($pills), 0.0001, 'one Strip back = 10 pieces');
+    }
+
+    public function test_a_bag_on_a_sale_cannot_change_size_and_the_sold_line_keeps_its_2_5(): void
+    {
+        $row = fn (array $over) => $over + ['price' => '', 'barcode' => '', 'sell' => '1', 'buy' => '1'];
+        $this->owner()->post($this->url('/products'), $this->form('DP Rice Locked', $this->kg()->id, [$row(['name' => 'Bag', 'contains' => '2.5'])]))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $rice = Product::where('name', 'DP Rice Locked')->firstOrFail();
+        $bag = $rice->packUnits()->where('name', 'Bag')->firstOrFail();
+        $this->receive($rice, (string) $bag->id, '600', [(string) $bag->id => '2'], $this->lot())->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertTrue($this->sell([['product_id' => $rice->id, 'quantity' => 1, 'pack_unit_id' => $bag->id]], 750)->isSuccessful());
+        $line = $this->lastSale()->lines()->firstOrFail();
+
+        $this->owner()->put($this->url('/products/' . $rice->id), $this->form('DP Rice Locked', $this->kg()->id, [$row(['id' => (string) $bag->id, 'name' => 'Bag', 'contains' => '3'])]))
+            ->assertRedirect()->assertSessionHasErrors('_packs');
+        $this->assertSame(2.5, (float) $bag->fresh()->factor, 'the Bag keeps its size');
+        $this->assertSame('2.5000', (string) $line->fresh()->pack_size, 'and so does the line it was sold on');
+    }
+
+    public function test_nested_packs_and_three_decimals_come_in_exactly_and_the_pack_wording_is_only_a_way_of_saying_the_stock(): void
+    {
+        $row = fn (string $name, string $contains) => ['name' => $name, 'contains' => $contains, 'price' => '', 'barcode' => '', 'sell' => '1', 'buy' => '1'];
+        $this->owner()->post($this->url('/products'), $this->form('DP Lentils', $this->kg()->id, [$row('Bag', '1.125'), $row('Sack', '4')]))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $lentils = Product::where('name', 'DP Lentils')->firstOrFail();
+        [$bag, $sack] = [$lentils->packUnits()->where('name', 'Bag')->firstOrFail(), $lentils->packUnits()->where('name', 'Sack')->firstOrFail()];
+        $this->assertSame([1.125, 4.5], [(float) $bag->factor, (float) $sack->factor], '1 Sack = 4 Bag = 4.5 kg');
+
+        $this->receive($lentils, (string) $sack->id, '900', [(string) $sack->id => '2', (string) $bag->id => '3'], $this->lot())->assertRedirect()->assertSessionHasNoErrors();
+        $grn = DB::connection('tenant')->table('goods_receipt_lines')->where('product_id', $lentils->id)->orderByDesc('id')->first();
+        $this->assertSame('12.375', (string) $grn->quantity_received, '2 Sack + 3 Bag = 9 + 3.375 kg, exactly');
+        $this->assertEqualsWithDelta(200.0, (float) $grn->unit_cost, 0.0001, '900 a Sack = 200 a kg');
+
+        $rows = DB::connection('tenant')->table('stock_balances')->where('product_id', $lentils->id)->get();
+        $this->assertEqualsWithDelta(12.375, (float) $rows->sum('quantity_on_hand'), 0.0001, 'one stock, in kg');
+        $this->assertSame('2 Sack 3 Bag', PackUnits::describe($lentils->packUnits()->get(), 12.375, 'Kilogram'), 'said in packs, nothing else stored');
+
+        $this->owner()->post($this->url('/products'), $this->form('DP Too Fine', $this->kg()->id, [$row('Bag', '1.1115')]))->assertSessionHasErrors('packs.0.contains');
+    }
+
+    public function test_code_shipped_before_its_column_simply_leaves_the_size_out(): void
+    {
+        $this->assertSame([], \App\Support\CounterPacks::sizeColumns('stock_ledgers', 2.5), 'a table without pack_size gets nothing');
+        $this->assertSame(['pack_size' => 2.5], \App\Support\CounterPacks::sizeColumns('goods_receipt_lines', 2.5));
+        $this->assertSame([], \App\Support\CounterPacks::sizeColumns('goods_receipt_lines', null), 'no pack, no size');
+    }
+
+    /** A batch and expiry: the pharmacy store's product screen makes a new item batch-tracked (the business decides). */
+    private function lot(): array
+    {
+        return ['batch_no' => 'DP' . strtoupper(Str::random(5)), 'expiry' => now()->addYears(2)->format('m/y')];
+    }
+
     /** A product-screen form; $packs answers "Yes, it comes in packs". */
     private function form(string $name, int $unitId, array $packs): array
     {

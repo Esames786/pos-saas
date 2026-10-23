@@ -87,11 +87,11 @@ trait IsolatedPharmacyStore
         return Supplier::firstOrCreate(['code' => strtoupper(static::STORE_CODE) . '-S1'], ['name' => 'Store Supplier', 'status' => 'active', 'opening_balance' => 0, 'current_balance' => 0]);
     }
 
-    /** A GRN on the new screen: $packs = [pack key => how many], priced per $buyPack. */
-    protected function receive(Product $p, string $buyPack, string $price, array $packs)
+    /** A GRN on the new screen: $packs = [pack key => how many], priced per $buyPack; $extra = batch_no, expiry (MM/YY). */
+    protected function receive(Product $p, string $buyPack, string $price, array $packs, array $extra = [])
     {
         return $this->owner()->post($this->url('/goods-receipts'), ['_entry_v2' => '1', 'branch_id' => $this->branchId(), 'supplier_id' => $this->supplier()->id,
-            'receipt_date' => now()->toDateString(), 'lines' => [['product_id' => $p->id, 'buy_pack' => $buyPack, 'price' => $price, 'packs' => $packs]]]);
+            'receipt_date' => now()->toDateString(), 'lines' => [$extra + ['product_id' => $p->id, 'buy_pack' => $buyPack, 'price' => $price, 'packs' => $packs]]]);
     }
 
     protected function sell(array $lines, float $total)
