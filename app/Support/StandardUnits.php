@@ -109,6 +109,23 @@ final class StandardUnits
         return self::FAMILIES[$family][$code] / self::FAMILIES[$family][self::code($stock)];
     }
 
+    /** Report wording: kg, litre and metre, the size each family's quantities are added up in. */
+    public const REPORT_UNITS = ['weight' => 'kg', 'volume' => 'L', 'length' => 'm'];
+
+    /**
+     * UNITS-PACKS F4 (mixed units): $qty of $unit in its family's report unit — 500 g = 0.5 kg — as [family, qty], or
+     * null for a unit that is not a recognised standard one (pieces, boxes, a tenant's own unit).
+     */
+    public static function inReportUnit(?Unit $unit, float $qty): ?array
+    {
+        $family = self::family($unit);
+        if ($family === null) {
+            return null;
+        }
+
+        return [$family, $qty * self::FAMILIES[$family][self::code($unit)] / 1000];
+    }
+
     /** A unit that holds part quantities (1.250 kg) — the type, as every screen already decides it. */
     public static function allowsParts(?Unit $unit): bool
     {

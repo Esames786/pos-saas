@@ -61,11 +61,99 @@ undone the journey fails:
 
 A first full run, on `bd684f07`, was stopped when the journey changed the code. It is void.
 
+
+## Review corrections (23 Oct, later)
+
+The reviewer's reading stands: the full run on `62e16346` did **not** pass outright. 20 tests failed on the first run
+and passed only on a warm database. That result stays recorded above. These corrections close the gaps the review
+named.
+
+### 1. The 20 cold-database failures: the tests now make their own master fixtures (`21dd2218`, test-only)
+
+- `SeedsMasterCatalog::ensureMasterCatalog(routes)`: when the routes or their modules are missing, the test itself
+  runs MasterSeeder and `system:routes-sync`. Both are idempotent, and deploy.sh runs them on every deploy.
+- BillingMonthlyInvoice now uses its own tenant and plan. Before, it borrowed `Tenant::first()`, which is none on a
+  fresh master, and on a warm master it rewrote another test's subscription.
+- PosHeldListDeliveryMeta had the same pattern and got the same fix.
+
+Verified on `pos-saas-verify-upv`, detached at `21dd2218`, with no reliance on earlier tests. The commit and a clean
+tree were checked before and after.
+
+| Run | DB set | Result |
+|---|---|---|
+| BillingMonthlyInvoice alone | `_uh1` (new) | 8 / 8 |
+| CategoryBranchScope alone | `_uh2` (new) | 7 / 7 |
+| CategoryParentGuard alone | `_uh3` (new) | 5 / 5 (101 assertions: the module check now really runs) |
+| PosHeldListDeliveryMeta alone | `_uh4` (new) | 5 / 5 |
+| The suite's first 13 classes, in order | `_uh5` (new) | 95 tests: the 20 pass; 1 error elsewhere (below) |
+
+**The 1 error is a separate, older defect.** `CashBookVoidMySqlTest` hit a duplicate payment number
+`PAY-20261023142746-513`. Payment numbers are `PAY-<YmdHis>-<3 random digits>` with no retry, so two payments made in
+the same second can collide. This is a real defect that pre-dates this batch, not a fixture problem. It is kept as its
+own ticket, and the W4 plan's slice S0 fixes it: receipt and payment numbers retry on a clash, as invoice numbers
+already do. The hour-long suite was not repeated for this test-only correction.
+
+### 2. Mixed units are never one number
+
+- **Rule (`QtyMix`).**
+  - kg / g, litre / ml and metre / cm each add up in one unit, so 500 g + 1 kg = 1.5 kg.
+  - Every counted unit adds up as pieces.
+  - A total with one kind of unit shows a number: a count as before, a measured total with its unit ("12.5 kg").
+  - Two or more kinds show their parts ("5.25 kg · 26 pcs"). The thermal print shows "mixed" in the narrow column and
+    puts the parts on their own line.
+  - A row built without a mix (old callers, fixtures) shows today's number.
+- **Covered.**
+  - Report Centre screen: overview, categories, items by category, order types and waiters, order-type combinations,
+    and every total row.
+  - CSV: a cell stays a number unless the total is mixed.
+  - A4 and thermal print views.
+  - The ESC/POS report sent to a network printer.
+  - The dashboard's category card.
+  - The WhatsApp detailed report.
+- **Units on prints.** Wherever quantities appear, a kg / litre / metre quantity carries its unit ("0.25 kg"). A count
+  stays a plain number, read as pieces, so a restaurant's prints look exactly as before.
+- **Money totals.** Unchanged. The old numeric quantity fields stay for sorting and for older callers.
+- **Tests.**
+  - `UnitsPacksPrintsReportsMySqlTest::test_a_total_of_kg_and_pieces_is_never_one_number_and_the_prints_say_the_unit`
+    covers the screen, CSV, A4, thermal, ESC/POS (no line wider than the roll) and a counted-only shelf left
+    unchanged.
+  - `DashboardCategoryTodayMySqlTest::test_a_category_of_kg_and_pieces_shows_its_parts_never_one_number`.
+- **Sabotages** (dev worktree, each guard removed in turn, files restored, no marks left):
+  - MIXLABEL: the label always a number.
+  - CATMIX: no split on categories.
+  - CSVCELL: the CSV cell always a number.
+  - ESCTAG: the ESC/POS report ignores the split.
+  - OVCSV: the overview sheet writes the split as a row.
+  - DASH: the dashboard card prints a plain number.
+
+  Each turned its test red. THERMAL (the thermal Sold column ignores the split) stayed green the first time: the test
+  looked for "mixed" anywhere, and the Net column still printed it. The assertion now pins the whole Qty row, column
+  by column, and THERMAL then turned it red (F4 class 5 / 5 green before it).
+- **Related suites.**
+  - 176 MySQL tests across the report, print, dashboard and delivery classes, plus 86 unit tests (Printing, Tenant).
+  - The unit failures were 2 of the 3 known default-suite reds; nothing new.
+  - The MySQL run found a real fault in this change: `ReportDeliveryV2MySqlTest` failed 3 tests. The cause was the
+    e-mailed CSV's overview sheet, which wrote every overview key, the new split arrays included ("Array to string
+    conversion"). It is fixed, the overview sheet is now asserted, and the re-run of the affected classes is 52 / 52.
+
+### 3. What F4 covers, and what it does not yet
+
+F4 is complete for the outputs listed above. It is **not** yet complete for:
+- the KOT-cancellations section of the prints, whose cancelled quantity still adds all items;
+- the partner-share section, which counts line quantity, with rates per menu item.
+
+A WhatsApp detailed message with a mixed total shows its parts. That goes through the same `QtyMix::label` as the
+screen, but has no test of its own.
+
 ## Remaining
 
-- The open points in the plan:
-  - category and order-type rows still add quantities across units, as today;
-  - the report-centre print and thermal views have no Unit column.
+- Closed after the review:
+  - mixed-unit totals;
+  - units on the Report Centre prints.
+
+  See "Review corrections" above.
+- Still open: the cancellations and partner-share quantities, and a WhatsApp test of its own (section 3 above).
+- Separate ticket: payment and goods-receipt numbers that can collide in one second (W3/W4 slice S0).
 - Next phase: the unified product form and the simple purchase workspace, with the product-list Type / Role /
   Behaviour requirements.
 

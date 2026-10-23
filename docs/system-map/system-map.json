@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-23T12:28:22+00:00",
+    "built_at": "2026-10-23T16:54:59+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "c5c39cf9",
     "work": [
@@ -15,10 +15,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
-            "head": "8851bf24",
+            "head": "cdd16d77",
             "behind_prod": 28,
-            "ahead_of_prod": 198,
-            "last_commit": "2026-10-23\u00b7docs: 0.8.0-edge pre-install hold reconciliation (owner, 23 Oct) - the 5-vs-6 sales figures are two databases (LAB Cloud tenant 5 official sales = the 6 appliance-local Local-Mode sales minus 1 cancelled; uuids and outbox ACKs matched row by row); fresh read-only LAB-appliance copy: 6 -> 6, sales rowset MD5 identical, same PLAN_HASH sha256:0ad1e612..., 24 RUN / 0 skip / 0 blockers; package identity + ancestry reconfirmed without rebuild; LAB data-corrections before/after matrix (plan only); Cloud-first compatibility PASS (LAB Cloud tenant 45 + master 23 migrations pending on ac5b168d); category correction + H1 scope accepted, EDGE_SHIFT_MIRROR_TO_CLOUD and EXPLICIT_REFRESH_SECTION_SCHEMA_CONTRACT recorded as future items",
+            "ahead_of_prod": 199,
+            "last_commit": "2026-10-23\u00b7docs: 0.8.0-edge LAB update record - STOPPED at \u00a71: package identity values all MATCH the pinned release, but edge:audit-package now reports two UNLISTED generated cache files (app/bootstrap/cache/packages.php, services.php) written into the package by the pre-install dry-runs; removal refused by the permission classifier -> surfaced to the owner; \u00a72 quiescent backups of the three LAB databases done and restore-verified (stack down since the 20 Oct reboot); facts for the remaining steps recorded (0.7.0 installer has no --dry-run/--expected-plan-hash, Cloud export mechanics, manager-PIN UI needs an admin login, permission names verified)",
             "uncommitted_files": 0
         },
         {
@@ -33,11 +33,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-unitspacks",
             "branch": "feat/units-packs-batch-20261023",
-            "head": "bd684f07",
+            "head": "21dd2218",
             "behind_prod": 6,
-            "ahead_of_prod": 34,
-            "last_commit": "2026-10-23\u00b7Units-packs F4: prints and reports say what the number is; gram entry behind the packs switch",
-            "uncommitted_files": 1
+            "ahead_of_prod": 38,
+            "last_commit": "2026-10-23\u00b7Tests make their own master fixtures (cold master DB): billing, category scope, category guard, held-list meta",
+            "uncommitted_files": 11
         },
         {
             "path": "D:/laragon2/www/pos-saas-verify-3b02",
@@ -69,10 +69,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-verify-upv",
             "branch": "(detached)",
-            "head": "bd684f07",
+            "head": "21dd2218",
             "behind_prod": 6,
-            "ahead_of_prod": 34,
-            "last_commit": "2026-10-23\u00b7Units-packs F4: prints and reports say what the number is; gram entry behind the packs switch",
+            "ahead_of_prod": 38,
+            "last_commit": "2026-10-23\u00b7Tests make their own master fixtures (cold master DB): billing, category scope, category guard, held-list meta",
             "uncommitted_files": 0
         },
         {
@@ -100,6 +100,15 @@
             "behind_prod": 6,
             "ahead_of_prod": 29,
             "last_commit": "2026-10-23\u00b7W2-C closing record: edf958d9 final, evidence per run, the one error read from the log, why the full suite was not repeated",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-w3w4",
+            "branch": "feat/unified-w3w4-20261023",
+            "head": "bf8f66b4",
+            "behind_prod": 6,
+            "ahead_of_prod": 38,
+            "last_commit": "2026-10-23\u00b7W3/W4 design: one product screen and one purchase workspace (plan, impact map, prototype link)",
             "uncommitted_files": 0
         },
         {
@@ -572,7 +581,7 @@
             "modified": "2026-10-23"
         }
     ],
-    "git": "bd684f07",
+    "git": "21dd2218",
     "source": {
         "tenant_db": "pos_test_tenant_up",
         "master_db": "pos_test_master_up"

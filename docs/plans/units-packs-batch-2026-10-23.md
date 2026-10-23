@@ -145,11 +145,16 @@ see. Both are fixed in the same commit as this note, and the journey fails with 
 
 Left as they are (open points):
 
-- Category and order-type rows still add quantities across units: kg and pieces in one Sold Qty, as today. The plan's
-  "never without saying so" is not met there yet. The owner should choose: a "mixed units" note, or no quantity on
-  those rows.
-- Partner share counts line quantity (its rates are per menu item, with no packs).
-- The report-centre print and thermal views have no Unit column.
+- ~~Category and order-type rows add quantities across units.~~ Closed after the review by `QtyMix`.
+  - A total never adds kg and pieces into one number. It shows its parts ("5.25 kg · 26 pcs"); the thermal print
+    shows "mixed" plus a line of parts.
+  - A total of one kind of unit is a number, as before.
+  - This holds on the screen, CSV, A4 and thermal prints, the ESC/POS report, the dashboard card and WhatsApp.
+- ~~The report-centre prints have no units.~~ Closed: a kg / litre / metre quantity carries its unit; a count stays a
+  number.
+- Still open:
+  - partner share counts line quantity (its rates are per menu item, with no packs);
+  - the KOT-cancellations quantity still adds all items.
 
 ## Impact (system map, 23 Oct)
 

@@ -7,6 +7,7 @@ use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductPackUnit;
 use App\Services\Printing\EscPosPayloadService;
 use App\Services\Reports\SalesReportEngine;
+use App\Support\QtyMix;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\MySql\Support\IsolatedPharmacyStore;
@@ -17,7 +18,9 @@ use Tests\MySql\Support\IsolatedPharmacyStore;
  *    the line; a plain line gets nothing new;
  *  - the item sales report and its CSV carry the stock unit beside the quantities, counted in that unit;
  *  - the stock list and the valuation report give the unit and, where the item has packs, the packs in words;
- *  - a deal's returns are counted in the same unit as its sales.
+ *  - a deal's returns are counted in the same unit as its sales;
+ *  - a total of kg and pieces is never one number: the screen, CSV, A4 and thermal prints, the ESC/POS report and the
+ *    dashboard show its parts ("5.25 kg · 26 pcs"); a total of counted items alone looks exactly as before.
  */
 class UnitsPacksPrintsReportsMySqlTest extends MySqlTenantTestCase
 {
@@ -124,6 +127,83 @@ class UnitsPacksPrintsReportsMySqlTest extends MySqlTenantTestCase
         $deal = collect(app(SalesReportEngine::class)->byDeal($this->filters()))->firstWhere('deal', 'UR Rice Deal Box');
         $this->assertEqualsWithDelta(5.0, $deal['sold_qty'], 0.0001);
         $this->assertEqualsWithDelta(2.5, $deal['returned_qty'], 0.0001, 'the bag came back as 2.5 kg, like it sold');
+    }
+
+    public function test_a_total_of_kg_and_pieces_is_never_one_number_and_the_prints_say_the_unit(): void
+    {
+        // One shelf holds rice (kg) and cola (pieces); another holds only soap (pieces).
+        $shelf = $this->category('UR Mixed Shelf');
+        $countedShelf = $this->category('UR Counted Shelf');
+        [$rice, $bag] = $this->rice('UR Rice Mixed');
+        $cola = $this->product('UR Cola Mixed', $this->piece()->id, ['default_selling_price' => 100]);
+        $soap = $this->product('UR Soap Counted', $this->piece()->id, ['default_selling_price' => 90]);
+        Product::whereIn('id', [$rice->id, $cola->id])->update(['category_id' => $shelf]);
+        Product::where('id', $soap->id)->update(['category_id' => $countedShelf]);
+        $this->receive($cola, 'base', '60', ['base' => '30'])->assertRedirect()->assertSessionHasNoErrors();
+        $this->receive($soap, 'base', '60', ['base' => '5'])->assertRedirect()->assertSessionHasNoErrors();
+        $this->sellBagsAndGrams($rice, $bag);   // 2 Bag + 250 g = 5.25 kg
+        $this->assertTrue($this->sell([['product_id' => $cola->id, 'quantity' => 26, 'unit_price' => 100]], 2600)->isSuccessful());
+        $this->assertTrue($this->sell([['product_id' => $soap->id, 'quantity' => 2, 'unit_price' => 90]], 180)->isSuccessful());
+        QtyMix::forget();
+
+        $cats = collect(app(SalesReportEngine::class)->byCategory($this->filters()));
+        $mixed = $cats->firstWhere('name', 'UR Mixed Shelf');
+        $this->assertEqualsWithDelta(31.25, $mixed['sold_qty'], 0.0001, 'the old figure is still there for sorting');
+        $this->assertEqualsWithDelta(5.25, $mixed['sold_mix']['kg'], 0.0001);
+        $this->assertEqualsWithDelta(26, $mixed['sold_mix']['pcs'], 0.0001);
+        $this->assertSame('5.25 kg · 26 pcs', QtyMix::words($mixed['sold_mix']));
+        $this->assertSame(['pcs' => 2.0], QtyMix::parts($cats->firstWhere('name', 'UR Counted Shelf')['sold_mix']));
+
+        // The screen: parts, never 31.25; the counted shelf shows its 2.00 as before.
+        $page = $this->owner()->get($this->url('/reports/center?tab=categories&' . http_build_query($this->dates())))->assertOk()->getContent();
+        $this->assertStringContainsString('5.25 kg · 26.00 pcs', $page);
+        $this->assertStringNotContainsString('31.25', $page);
+        $this->assertMatchesRegularExpression('/UR Counted Shelf<\/td><td class="text-end">\d+<\/td><td class="text-end">2\.00<\/td>/', $page);
+
+        // CSV: a number stays a number; a mixed total is its parts.
+        $csv = $this->owner()->get($this->url('/reports/center/export?sections[]=categories&' . http_build_query($this->dates())))->assertOk()->streamedContent();
+        $rows = collect(array_map('str_getcsv', preg_split('/\r?\n/', trim($csv))));
+        $this->assertSame('5.25 kg · 26 pcs', $rows->first(fn ($r) => ($r[0] ?? '') === 'UR Mixed Shelf')[3]);
+        $this->assertSame('2', $rows->first(fn ($r) => ($r[0] ?? '') === 'UR Counted Shelf')[3]);
+        // The overview sheet: the split is not a row of its own, it decides how the quantity row reads.
+        $ov = $this->owner()->get($this->url('/reports/center/export?sections[]=overview&' . http_build_query($this->dates())))->assertOk()->streamedContent();
+        $ovRows = collect(array_map('str_getcsv', preg_split('/\r?\n/', trim($ov))))->keyBy(0);
+        $this->assertFalse($ovRows->has('Sold Mix'), 'no row of arrays in the overview sheet');
+        $this->assertMatchesRegularExpression('/^\d+(\.\d+)? kg · \d+ pcs$/', (string) $ovRows->get('Sold Qty')[1]);
+
+        // A4 print: the parts, and an item in kg carries its unit.
+        $a4 = $this->owner()->get($this->url('/reports/center/print?mode=a4&sections[]=categories&sections[]=items&' . http_build_query($this->dates())))->assertOk()->getContent();
+        $this->assertStringContainsString('5.25 kg · 26 pcs', $a4);
+        $this->assertMatchesRegularExpression('/UR Rice Mixed \(UR Rice Mixed\)<\/td><td class="amt">5\.25 kg<\/td>/', $a4);
+        $this->assertStringNotContainsString('31.25', $a4);
+
+        // Thermal print view: "mixed" in the narrow column, the parts on a line of their own.
+        $thermal = $this->owner()->get($this->url('/reports/center/print?mode=thermal&sections[]=categories&' . http_build_query($this->dates())))->assertOk()->getContent();
+        // The shelf's Qty row, column by column: Sold mixed, nothing returned, Net mixed — and 31.25 nowhere.
+        $this->assertMatchesRegularExpression('/Qty<\/td><td class="amt">mixed<\/td><td class="amt">0<\/td><td class="amt">mixed<\/td>/', $thermal);
+        $this->assertStringNotContainsString('31.25', $thermal);
+        $this->assertMatchesRegularExpression('/Sold<\/td><td class="amt" colspan="3">5\.25 kg · 26 pcs<\/td>/', $thermal);
+
+        // The ESC/POS report (network printer): the same, and no line wider than the roll.
+        $engine = app(SalesReportEngine::class);
+        $f = $this->filters();
+        $esc = app(EscPosPayloadService::class)->buildReport(['sections' => ['overview', 'categories', 'items'], 'overview' => $engine->overview($f),
+            'categories' => $engine->byCategory($f), 'items' => $engine->byItem($f), 'meta' => ['paper' => '80mm']]);
+        $plain = preg_replace('/\x1B.{1,2}|\x1D.{1,2}/s', '', $esc);
+        $this->assertStringContainsString('mixed', $plain);
+        $this->assertStringContainsString('Sold 5.25 kg · 26 pcs', $plain);
+        $this->assertMatchesRegularExpression('/Qty\s+5\.25 kg/', $plain, 'the rice item prints its kg');
+        $this->assertStringNotContainsString('31.25', $plain);
+        foreach (explode("\n", $plain) as $line) {
+            $this->assertLessThanOrEqual(\App\Support\ThermalLayout::columns('80mm'), mb_strlen($line), "too wide for the roll: [{$line}]");
+        }
+        // The dashboard's category card: DashboardCategoryTodayMySqlTest (the card needs its own fixture).
+    }
+
+    private function category(string $name): int
+    {
+        return (int) DB::connection('tenant')->table('categories')->insertGetId(['name' => $name, 'slug' => Str::slug($name) . '-' . Str::random(4),
+            'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
     }
 
     /** @return array{0: Product, 1: ProductPackUnit} rice at 200 a kg, with a Bag of 2.5 kg and no price of its own */
