@@ -44,10 +44,13 @@ final class RecipeWriter
         ];
     }
 
-    /** @throws \Illuminate\Validation\ValidationException */
-    public function validate(array $input): array
+    /**
+     * @param  array  $attributes  names for the messages (the product form calls a line's product "ingredient")
+     * @throws \Illuminate\Validation\ValidationException
+     */
+    public function validate(array $input, array $attributes = []): array
     {
-        return Validator::make($input, self::rules())->validate();
+        return Validator::make($input, self::rules(), [], $attributes)->validate();
     }
 
     /**

@@ -72,6 +72,10 @@
         ['key' => 'details', 'label' => 'Details',         'ur' => 'تفصیل',           'icon' => 'ti-file-description'],
         ['key' => 'selling', 'label' => 'Selling & stock', 'ur' => 'بیچنا اور اسٹاک', 'icon' => 'ti-building-store'],
         $packsOn ? ['key' => 'packs', 'label' => 'Packs', 'ur' => 'پیک', 'icon' => 'ti-packages'] : null,
+        // W3/W4 S3c: the server decides these three (card, plan module, permission) — App\Services\Products\ProductWorkspace.
+        ($ws['access']['recipe'] ?? false) ? ['key' => 'recipe', 'label' => 'Recipe', 'ur' => '', 'icon' => 'ti-tools-kitchen-2'] : null,
+        ($ws['access']['bom'] ?? false) ? ['key' => 'bom', 'label' => 'Bill of materials', 'ur' => '', 'icon' => 'ti-list-tree'] : null,
+        ($ws['access']['catering'] ?? false) ? ['key' => 'catering', 'label' => 'Event costing', 'ur' => '', 'icon' => 'ti-chef-hat'] : null,
         ['key' => 'code',    'label' => 'Code',            'ur' => 'کوڈ',             'icon' => 'ti-barcode'],
         $websiteOn ? ['key' => 'website', 'label' => 'Website', 'ur' => 'ویب سائٹ', 'icon' => 'ti-world'] : null,
         ['key' => 'review',  'label' => 'Review',          'ur' => 'جائزہ',           'icon' => 'ti-list-check'],
@@ -155,6 +159,28 @@
         .pv2 .tab .tl .ur-inline { display:none; }
         .pv2 .review { grid-template-columns:1fr auto; }
         .pv2 .review dt { grid-column:1 / -1; border-bottom:0; padding-bottom:0; }
+    }
+    /* W3/W4 S3c — the Recipe, Bill of materials and Event costing tabs. On a phone each line becomes a small card. */
+    .pv2 .ws-head { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; }
+    .pv2 .ws-make { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+    .pv2 .ws-make .ws-num { width:110px; }
+    .pv2 .ws-make .ws-unit { width:auto; min-width:120px; }
+    .pv2 .ws-total { color:var(--navy); }
+    .pv2 .ws-errors { margin-bottom:10px; }
+    .pv2 .ws-table th { font-size:.8rem; color:var(--ink2); font-weight:700; white-space:nowrap; }
+    .pv2 .ws-table td.ws-item, .pv2 .ws-table td.ws-mat { min-width:220px; }
+    .pv2 .ws-table td.ws-label, .pv2 .ws-table td.ws-part { min-width:150px; }
+    .pv2 .ws-table td.ws-qty { width:120px; min-width:100px; }
+    .pv2 .ws-table td.ws-unitcell { width:160px; min-width:120px; }
+    .pv2 .ws-table td.ws-cost { white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .pv2 .ws-table td.ws-rm { width:1%; white-space:nowrap; }
+    @media (max-width: 575px) {
+        .pv2 .ws-table thead { display:none; }
+        .pv2 .ws-table tr[data-ws-row] { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); }
+        .pv2 .ws-table tr[data-ws-row] > td { display:block; border:0; padding:0; width:auto; min-width:0; }
+        .pv2 .ws-table td.ws-item, .pv2 .ws-table td.ws-label, .pv2 .ws-table td.ws-mat { grid-column:1 / -1; }
+        .pv2 .ws-table td[data-label]::before { content:attr(data-label); display:block; font-size:.75rem; font-weight:700; color:var(--ink2); margin-bottom:2px; }
+        .pv2 .ws-table td.ws-cost { text-align:left !important; }
     }
 </style>
 @endpush
@@ -407,6 +433,8 @@
                                     </div>
                                 @elseif($q === 'expiry')
                                     <p class="help mb-0">Every goods receipt will ask for the batch number and expiry date, and the counter sells the batch that expires first. <span class="ur-inline">ہر خرید پر بیچ اور ایکسپائری</span></p>
+                                @elseif($q === 'recipe' && ($ws['access']['recipe'] ?? false))
+                                    <p class="help mb-0">Add what it is made from on the <b>Recipe</b> tab — it is saved with the item. When it sells, those items are taken out of stock.</p>
                                 @elseif($q === 'recipe')
                                     <p class="help mb-0">After saving, add what it is made from on the <a href="{{ url('/recipes/create') }}">Recipes</a> screen. When it sells, those items are taken out of stock. <span class="ur-inline">ترکیب بعد میں شامل کریں</span></p>
                                 @endif
@@ -502,6 +530,22 @@
                 @if($packsOn)
                     <section class="tp" id="tp-packs" role="tabpanel" aria-labelledby="tab-packs" tabindex="-1" hidden>
                         @include('tenant.products.partials.packs-step')
+                    </section>
+                @endif
+
+                @if($ws['access']['recipe'] ?? false)
+                    <section class="tp" id="tp-recipe" role="tabpanel" aria-labelledby="tab-recipe" tabindex="-1" hidden>
+                        @include('tenant.products.partials.ws-recipe')
+                    </section>
+                @endif
+                @if($ws['access']['bom'] ?? false)
+                    <section class="tp" id="tp-bom" role="tabpanel" aria-labelledby="tab-bom" tabindex="-1" hidden>
+                        @include('tenant.products.partials.ws-bom')
+                    </section>
+                @endif
+                @if($ws['access']['catering'] ?? false)
+                    <section class="tp" id="tp-catering" role="tabpanel" aria-labelledby="tab-catering" tabindex="-1" hidden>
+                        @include('tenant.products.partials.ws-catering')
                     </section>
                 @endif
 
@@ -897,6 +941,7 @@
             var sum = (document.getElementById('pack-sum') || {}).textContent || '';
             row('Packs', yes('_packs') ? (/=/.test(sum) ? sum : 'Not finished') : 'No', 'packs', yes('_packs') && !/=/.test(sum));
         }
+        if (window.pv2WsReview) window.pv2WsReview(row);
         var next = (document.getElementById('sku-next') || {}).textContent || '';
         row('Item code', val('#sku') || ('Made by Bingoo' + (next ? ' (' + next + ')' : '')), 'code');
         row('Barcode', yes('_barcode') ? (val('#barcode') || 'Not written yet') : 'No', 'code', yes('_barcode') && !val('#barcode'));
@@ -989,5 +1034,7 @@
     var withError = keys.filter(function (k) { return errorsIn(k) > 0; })[0];
     show(withError || (keys.indexOf(hash) >= 0 ? hash : keys[0]), { scroll: false });
 })();
+
+@include('tenant.products.partials.ws-script')
 </script>
 @endpush

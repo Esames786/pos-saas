@@ -29,10 +29,11 @@ final class BomWriter
      * Check a BOM as the screen posts it. A new BOM without a typed number gets the next one. The header is checked
      * first, then the lines, then the two refusals (the product as its own part, a part twice) — the screen's order.
      *
+     * @param  array  $attributes  names for the messages (the product form calls a line's part "material")
      * @return array{0: array, 1: array}  [the header fields to save, the lines]
      * @throws ValidationException
      */
-    public function validate(array $input, ?ManufacturingBom $bom = null): array
+    public function validate(array $input, ?ManufacturingBom $bom = null, array $attributes = []): array
     {
         if (! $bom && trim((string) ($input['bom_no'] ?? '')) === '') {
             $input['bom_no'] = $this->nextNo();
@@ -48,7 +49,7 @@ final class BomWriter
             'status'              => ['required', Rule::in(ManufacturingBom::STATUSES)],
             'effective_from'      => ['nullable', 'date'],
             'notes'               => ['nullable', 'string', 'max:3000'],
-        ])->validate();
+        ], [], $attributes)->validate();
 
         Validator::make($input, [
             'lines'                          => ['required', 'array', 'min:1'],
@@ -58,7 +59,7 @@ final class BomWriter
             'lines.*.wastage_percent'        => ['nullable', 'numeric', 'min:0', 'max:100'],
             'lines.*.sort_order'             => ['nullable', 'integer'],
             'lines.*.notes'                  => ['nullable', 'string', 'max:500'],
-        ])->validate();
+        ], [], $attributes)->validate();
 
         $componentIds = collect($input['lines'])->pluck('component_product_id');
 

@@ -235,9 +235,12 @@ class ProductController extends Controller
         // ONLINE-ORDERING-1: website hissa pehle validate — POS product adhoora save na ho.
         $website = app(\App\Services\OnlineOrdering\WebsiteFields::class);
         $website->validate($request);
+        // W3/W4 S3c: the Recipe / Bill of materials / Event costing tabs — checked now, written in the transaction below.
+        $workspace = app(\App\Services\Products\ProductWorkspace::class);
+        $touched = $this->usesWorkspace($request) ? $workspace->touched($request, null, \App\Support\Business::of()) : [];
         $data['image_path'] = $this->handleImageUpload($request);
 
-        $product = DB::transaction(function () use ($data, $request) {
+        $product = DB::transaction(function () use ($data, $request, $workspace, $touched) {
             $product = Product::create($data);
 
             $product->translations()->updateOrCreate(
@@ -276,6 +279,10 @@ class ProductController extends Controller
 
             if ($this->packsPosted) {
                 \App\Support\PackUnits::sync($product, $this->packPlan);
+            }
+
+            if ($touched) {
+                $workspace->apply($product, $touched, auth('tenant')->id());
             }
 
             return $product;
@@ -348,6 +355,9 @@ class ProductController extends Controller
         // ONLINE-ORDERING-1: website hissa pehle validate — POS product adhoora save na ho.
         $website = app(\App\Services\OnlineOrdering\WebsiteFields::class);
         $website->validate($request);
+        // W3/W4 S3c: the Recipe / Bill of materials / Event costing tabs — checked now, written in the transaction below.
+        $workspace = app(\App\Services\Products\ProductWorkspace::class);
+        $touched = $this->usesWorkspace($request) ? $workspace->touched($request, $product, \App\Support\Business::of()) : [];
 
         // POS-UX-1: replace / remove the product image.
         if ($request->boolean('remove_image') && $product->image_path) {
@@ -361,7 +371,7 @@ class ProductController extends Controller
             $data['image_path'] = $newPath;
         }
 
-        DB::transaction(function () use ($product, $data, $request) {
+        DB::transaction(function () use ($product, $data, $request, $workspace, $touched) {
             $product->update($data);
 
             $product->translations()->updateOrCreate(
@@ -384,6 +394,10 @@ class ProductController extends Controller
 
             if ($this->packsPosted) {
                 \App\Support\PackUnits::sync($product, $this->packPlan);
+            }
+
+            if ($touched) {
+                $workspace->apply($product, $touched, auth('tenant')->id());
             }
         });
 
@@ -755,6 +769,12 @@ class ProductController extends Controller
         return $context === 'manufacturing' ? '/manufacturing/products' : '/products';
     }
 
+    /** W3/W4 S3c — the workspace sections ride only on a post from the new screen, where the owner switched it on. */
+    private function usesWorkspace(Request $request): bool
+    {
+        return $request->boolean('_form_v2') && \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRODUCT_SCREEN_V2);
+    }
+
     /** PRODUCT-SCREEN-V2 — only on the catalog's own Add/Edit, and only where the owner switched it on. */
     private function usesScreenV2(Request $request): bool
     {
@@ -771,6 +791,7 @@ class ProductController extends Controller
             ? \App\Support\ProductCards::detect($business, $product)
             : (isset($cards[(string) $request->query('card')]) ? (string) $request->query('card') : array_key_first($cards));
         $variant = $product?->defaultVariant;
+        $ws = app(\App\Services\Products\ProductWorkspace::class)->screen($product, $business);
         $hasStockHistory = $product ? \App\Models\Tenant\StockLedger::where('product_id', $product->id)->exists() : false;
 
         return [
@@ -783,7 +804,10 @@ class ProductController extends Controller
             'categories'      => $this->categoriesFor($product),
             'units'           => $this->unitsFor($product),
             // W3/W4 S2: what this edit does not show and keeps as saved, and an item no card here fits.
-            'keptAsSaved'     => $product ? \App\Support\ProductCards::keptAsSaved($business, $product, $card) : [],
+            'keptAsSaved'     => ($product ? \App\Support\ProductCards::keptAsSaved($business, $product, $card) : [])
+                + array_fill_keys($ws['kept'], 'kept as saved — changing it needs its own permission or module'),
+            // W3/W4 S3c: the Recipe / Bill of materials / Event costing tabs this user may use here.
+            'ws'              => $ws,
             'misfitRole'      => $product && \App\Support\ProductCards::isMisfit($business, $product, $card)
                 ? (self::PLAIN_ROLES[$product->product_kind ?: Product::KIND_SALE_ITEM] ?? (string) $product->product_kind) : null,
             'barcode'         => $variant?->barcode ?? $product?->barcodes()->where('is_primary', true)->value('barcode'),
