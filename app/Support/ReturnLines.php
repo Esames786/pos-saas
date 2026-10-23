@@ -123,6 +123,7 @@ final class ReturnLines
                 'reason_code'        => $reason,
                 'pack_unit_id'       => $buy['id'],
                 'pack_factor'        => PackLines::wholeOrNull($buy['factor']),
+                'pack_size'          => (float) $buy['factor'],
                 'base_quantity'      => round($base, 3),
                 'notes'              => PackLines::withNote(self::note($packs, $l, $buy, $priceRaw, $batch), $l),
             ];

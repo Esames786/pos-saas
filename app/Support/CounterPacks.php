@@ -14,6 +14,9 @@ use RuntimeException;
  * keeps 2 decimals). Beside it, pack_factor (tablets in one pack) and base_quantity (tablets in the line) —
  * what stock, cost and returns read.
  *
+ * UNITS-PACKS batch (23 Oct): a pack may hold a part (Bag = 2.5 kg). pack_size keeps the exact size; pack_factor (a
+ * whole-number column) is kept only when the size is whole. Read a line's size with self::sizeOf(), never pack_factor.
+ *
  * Only on a tenant with the "Medical-store counter" switch (and packs) on; anywhere else a pack on a posted
  * line is ignored and the line is exactly today's.
  */
@@ -25,7 +28,7 @@ final class CounterPacks
     }
 
     /**
-     * @return array{pack_unit_id:int, pack_factor:int, base_quantity:float, pack_price:float}|null  null = a plain line
+     * @return array{pack_unit_id:int, pack_name:string, pack_factor:?int, pack_size:float, base_quantity:float, pack_price:float}|null  null = a plain line
      */
     public static function resolve(Product $product, array $line, float $quantity): ?array
     {
@@ -44,7 +47,8 @@ final class CounterPacks
         return [
             'pack_unit_id'  => (int) $pack->id,
             'pack_name'     => $pack->name,
-            'pack_factor'   => (int) $pack->factor,
+            'pack_factor'   => self::wholeOrNull($pack->factor),
+            'pack_size'     => (float) $pack->factor,
             'base_quantity' => round($quantity * $pack->factor, 3),
             'pack_price'    => $pack->priceFor($product),
         ];
@@ -87,7 +91,7 @@ final class CounterPacks
             ->map(fn (ProductPackUnit $p) => [
                 'id'      => (int) $p->id,
                 'name'    => $p->name,
-                'factor'  => (int) $p->factor,
+                'factor'  => (float) $p->factor,
                 'price'   => round($p->priceFor($product), 2),
                 // a pack with its own price keeps it; otherwise the counter prices it factor × the item's
                 // branch price, exactly like a loose tablet.
@@ -120,17 +124,44 @@ final class CounterPacks
         ];
     }
 
+    /** The size of the pack a saved line was sold in (2.5 for a 2.5 kg Bag), 0 for a plain line. */
+    public static function sizeOf($line): float
+    {
+        $size = $line->pack_size ?? null;
+
+        return (float) ($size !== null && (float) $size > 0 ? $size : ($line->pack_factor ?? 0));
+    }
+
+    /**
+     * ['pack_size' => …] when the table has the column, else nothing: the column ships before the code that writes it
+     * (schema first), and a line written meanwhile simply has no size, as before.
+     */
+    public static function sizeColumns(string $table, $size): array
+    {
+        static $has = [];
+        $key = \Illuminate\Support\Facades\DB::connection('tenant')->getDatabaseName() . '.' . $table;
+        $has[$key] ??= \Illuminate\Support\Facades\Schema::connection('tenant')->hasColumn($table, 'pack_size');
+
+        return $has[$key] && $size !== null && (float) $size > 0 ? ['pack_size' => round((float) $size, 4)] : [];
+    }
+
+    /** pack_factor is a whole-number column: a size of 2.5 is kept in pack_size only. */
+    public static function wholeOrNull(float $size): ?int
+    {
+        return abs($size - round($size)) < 1e-9 ? (int) round($size) : null;
+    }
+
     /** The stock quantity of a saved line: its tablets when it was sold in a pack, else its quantity. */
     public static function baseOf($line): float
     {
-        return $line->base_quantity !== null && (int) $line->pack_factor > 0 ? (float) $line->base_quantity : (float) $line->quantity;
+        return $line->base_quantity !== null && self::sizeOf($line) > 0 ? (float) $line->base_quantity : (float) $line->quantity;
     }
 
     /** What the bill says under a pack line: "1 Strip = 10 Tablet · B:PN2410-07 EXP:09/28". */
     public static function receiptLine($line): ?string
     {
         $parts = [];
-        if ($line->pack_unit_id && (int) $line->pack_factor > 1) {
+        if ($line->pack_unit_id && self::sizeOf($line) > 1) {
             $pack = ProductPackUnit::find($line->pack_unit_id);
             $baseName = $line->product?->unit?->name ?: 'Tablet';
             $parts[] = rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.') . ' ' . ($pack?->name ?? 'Pack')

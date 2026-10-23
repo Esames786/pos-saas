@@ -58,7 +58,7 @@
                 Stock is counted in <b data-base-name>{{ $packBaseName }}</b> — the "Sold and counted in" unit above. A pack is just a bigger amount of it, with its own price and barcode.
                 <span class="ur-inline">اسٹاک سب سے چھوٹی اکائی میں گنا جاتا ہے</span>
             </p>
-            <p class="help mb-1" data-part-unit-warn hidden role="alert">Packs are for items counted in pieces (tablet, bottle, piece). Change "Sold and counted in" above, or answer "No".</p>
+            <p class="help mb-1" data-part-unit-warn hidden>A kg, litre or metre item: the first pack can hold a part — for example 1 Bag holds 2.5 kg, 1 Bottle holds 1.5 litre. A pack above it holds a whole number of the one before (1 Sack = 10 Bag).</p>
 
             @if(count($packPresets))
                 <div class="presets" role="group" aria-label="Quick start: fill the pack names">
@@ -156,11 +156,14 @@
         var factor = 1, prev = base, chain = [], broken = false;
         rows().forEach(function (li) {
             var name = (li.querySelector('[data-f="name"]').value || '').trim();
-            var n = parseInt(li.querySelector('[data-f="contains"]').value, 10);
+            var raw = (li.querySelector('[data-f="contains"]').value || '').trim();
+            var n = parseFloat(raw);
             li.querySelector('[data-prev]').textContent = prev;
-            // A row that is not a whole number of 2 or more breaks every sum after it.
-            var ok = !broken && n >= 2 && /^\d+$/.test((li.querySelector('[data-f="contains"]').value || '').trim());
-            if (ok) factor = factor * n; else broken = true;
+            // UNITS-PACKS: the first pack of a kg / litre / metre item may hold a part (2.5 kg, up to 3 decimals, more than 1);
+            // every other pack holds a whole number of 2 or more. A row that breaks this breaks every sum after it.
+            var firstPart = partUnit() && li === rows()[0];
+            var ok = !broken && (firstPart ? (n > 1 && /^\d+(\.\d{1,3})?$/.test(raw)) : (n >= 2 && /^\d+$/.test(raw)));
+            if (ok) factor = Math.round(factor * n * 10000) / 10000; else broken = true;
             var label = name || 'this pack';
             li.querySelector('[data-eq]').textContent = ok ? '1 ' + label + ' = ' + factor.toLocaleString('en-PK') + ' ' + base : '';
             var pr = li.querySelector('[data-f="price"]');

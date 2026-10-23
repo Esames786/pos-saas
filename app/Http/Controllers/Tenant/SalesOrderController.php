@@ -255,6 +255,7 @@ class SalesOrderController extends Controller
                         'pack_unit_id'    => $pack['pack_unit_id'] ?? null,
                         'pack_name'       => $pack['pack_name'] ?? null,
                         'pack_factor'     => $pack['pack_factor'] ?? null,
+                        'pack_size'       => $pack['pack_size'] ?? null,
                         'base_quantity'   => $pack['base_quantity'] ?? null,
                         'inventory_batch_id' => $preferBatch,
                     ]);
@@ -567,6 +568,7 @@ class SalesOrderController extends Controller
                         'kot_sent_quantity'  => $sentQuantity,
                         'pack_unit_id'       => $line['pack_unit_id'] ?? null,
                         'pack_factor'        => $line['pack_factor'] ?? null,
+                    ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $line['pack_size'] ?? null) + [
                         'base_quantity'      => $line['base_quantity'] ?? null,
                         'inventory_batch_id' => $line['inventory_batch_id'] ?? null,
                     ]);

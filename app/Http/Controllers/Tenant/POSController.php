@@ -855,6 +855,7 @@ class POSController extends Controller
                 $saleLine->unit_code = mb_substr($pack['pack_name'], 0, 20);
                 $saleLine->pack_unit_id = $pack['pack_unit_id'];
                 $saleLine->pack_factor = $pack['pack_factor'];
+                $saleLine->pack_size = $pack['pack_size'];
                 $saleLine->base_quantity = $pack['base_quantity'];
             }
             if (\App\Support\CounterPacks::enabled() && ! empty($line['batch_note'])) {

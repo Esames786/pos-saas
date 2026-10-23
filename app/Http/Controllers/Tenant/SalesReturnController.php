@@ -355,8 +355,8 @@ class SalesReturnController extends Controller
                 $base = round($pricing->resolveSellingPrice($product, $variant, $branchId, null), 2);
                 $units = [['id' => null, 'name' => $product->unit?->name ?: 'Unit', 'factor' => 1, 'price' => $base]];
                 if ($packsOn) {
-                    foreach ($product->packUnits->filter(fn ($p) => $p->can_sell && (int) $p->factor > 1)->sortByDesc('factor') as $pack) {
-                        $units[] = ['id' => (int) $pack->id, 'name' => $pack->name, 'factor' => (int) $pack->factor,
+                    foreach ($product->packUnits->filter(fn ($p) => $p->can_sell && (float) $p->factor > 1)->sortByDesc('factor') as $pack) {
+                        $units[] = ['id' => (int) $pack->id, 'name' => $pack->name, 'factor' => (float) $pack->factor,
                             'price' => round($pack->sale_price !== null ? (float) $pack->sale_price : $pack->factor * $base, 2)];
                     }
                 }

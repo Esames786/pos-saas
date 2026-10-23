@@ -127,7 +127,7 @@ class SalesReturnService
                 if ($qty <= 0) {
                     continue;
                 }
-                $packLine = $orderLine->base_quantity !== null && (int) $orderLine->pack_factor > 0;
+                $packLine = $orderLine->base_quantity !== null && \App\Support\CounterPacks::sizeOf($orderLine) > 0;
                 $unit = $packLine ? (string) ($orderLine->unit_code ?: '') : \App\Support\LineQuantity::unitName($orderLine->product?->unit);
                 if ($returnable <= 0.0005) {
                     throw new \RuntimeException("{$name}: nothing is left to return — all "
@@ -162,7 +162,7 @@ class SalesReturnService
                 // (an opened strip, yesterday's bread, a dish): nothing goes back to stock, and the cost stays
                 // a loss (the GL reverses COGS only for restocked lines).
                 $restock = ! array_key_exists('restock', $lineData) || filter_var($lineData['restock'], FILTER_VALIDATE_BOOLEAN);
-                $factor = $orderLine->base_quantity !== null && (int) $orderLine->pack_factor > 0 ? (int) $orderLine->pack_factor : null;
+                $factor = $orderLine->base_quantity !== null && \App\Support\CounterPacks::sizeOf($orderLine) > 0 ? \App\Support\CounterPacks::sizeOf($orderLine) : null;
 
                 $salesReturn->lines()->create([
                     'sales_order_line_id' => $orderLine->id,
@@ -176,7 +176,8 @@ class SalesReturnService
                     'restocked'           => $restock,
                     // MEDICAL-COUNTER-1: a line sold in a pack comes back in that pack ("1 Strip" = 10 tablets)
                     'pack_unit_id'        => $factor ? $orderLine->pack_unit_id : null,
-                    'pack_factor'         => $factor,
+                    'pack_factor'         => $factor ? \App\Support\CounterPacks::wholeOrNull($factor) : null,
+                ] + \App\Support\CounterPacks::sizeColumns('sales_return_lines', $factor) + [
                     'base_quantity'       => $factor ? round($qty * $factor, 3) : null,
                 ]);
 
@@ -369,7 +370,7 @@ class SalesReturnService
                 if (! empty($lineData['pack_unit_id']) && ! $pack) {
                     throw new \RuntimeException($product->name . ': that pack is not sold.');
                 }
-                $factor = $pack ? (int) $pack->factor : 1;
+                $factor = $pack ? (float) $pack->factor : 1.0;
                 $unitName = $pack ? $pack->name : ($product->unit?->name ?: 'unit');
 
                 // Whole packs; a loose item sold by weight / volume may come back in parts.
@@ -442,7 +443,8 @@ class SalesReturnService
                     'line_total'          => round($lineSubtotal + $lineTax, 2),
                     'restocked'           => $restock,
                     'pack_unit_id'        => $pack?->id,
-                    'pack_factor'         => $pack ? $factor : null,
+                    'pack_factor'         => $pack ? \App\Support\CounterPacks::wholeOrNull($factor) : null,
+                ] + \App\Support\CounterPacks::sizeColumns('sales_return_lines', $pack ? $factor : null) + [
                     'base_quantity'       => $pack ? $baseQty : null,
                     'unit_cost'           => $tracked && $baseCost !== null ? round($baseCost * $factor, 4) : null,
                 ]);
@@ -676,7 +678,7 @@ class SalesReturnService
 
         // MEDICAL-COUNTER-1: a line sold in a pack ("2 Strip") is returned in that pack, but its TABLETS go
         // back on the shelf (2 × 10), at the cost of one tablet, into the batch the line left from.
-        $factor = $orderLine->base_quantity !== null && (int) $orderLine->pack_factor > 0 ? (int) $orderLine->pack_factor : 1;
+        $factor = $orderLine->base_quantity !== null && \App\Support\CounterPacks::sizeOf($orderLine) > 0 ? \App\Support\CounterPacks::sizeOf($orderLine) : 1.0;
         $batch = ($orderLine->inventory_batch_id && $product->has_expiry
                 ? InventoryBatch::query()->whereKey($orderLine->inventory_batch_id)->whereNotNull('expiry_date')->first()
                 : null)

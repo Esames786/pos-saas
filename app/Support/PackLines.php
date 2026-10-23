@@ -180,6 +180,7 @@ final class PackLines
                 'product_variant_id'     => ($l['product_variant_id'] ?? null) ?: $p->defaultVariant?->id,
                 'pack_unit_id'           => $buy['id'],
                 'pack_factor'            => self::wholeOrNull($buy['factor']),
+                'pack_size'              => (float) $buy['factor'],   // UNITS-PACKS: the exact size (2.5 kg)
             ] + ($isGrn ? [
                 'batch_no'               => ($b = strtoupper(trim((string) ($l['batch_no'] ?? '')))) !== '' ? $b : null,
                 'expiry_date'            => $expiry ?: null,
@@ -286,7 +287,7 @@ final class PackLines
         if ($packsOn && $p->packUnits->isNotEmpty()) {
             $out = [];
             foreach ($p->packUnits->sortByDesc('factor') as $u) {
-                $out[(string) $u->id] = ['id' => $u->id, 'name' => $u->factor === 1 ? ($u->name ?: $baseName) : $u->name, 'factor' => $u->factor, 'can_buy' => (bool) $u->can_buy];
+                $out[(string) $u->id] = ['id' => $u->id, 'name' => \App\Models\Tenant\ProductPackUnit::same((float) $u->factor, 1.0) ? ($u->name ?: $baseName) : $u->name, 'factor' => $u->factor, 'can_buy' => (bool) $u->can_buy];
             }
 
             return $out;
@@ -306,7 +307,7 @@ final class PackLines
         return $out;
     }
 
-    /** pack_factor is a whole-number column: a 12.5 kg "pack" is kept in the note, not there. */
+    /** pack_factor is a whole-number column: a 12.5 kg "pack" keeps its size in pack_size (and the note). */
     public static function wholeOrNull($factor): ?int
     {
         $f = (float) $factor;

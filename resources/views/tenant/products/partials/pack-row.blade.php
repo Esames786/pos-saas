@@ -13,7 +13,7 @@
             <div>
                 <label class="form-label" for="pack-{{ $i }}-contains">One holds</label>
                 <div class="pack-holds">
-                    <input id="pack-{{ $i }}-contains" name="packs[{{ $i }}][contains]" data-f="contains" inputmode="numeric" pattern="[0-9]*"
+                    <input id="pack-{{ $i }}-contains" name="packs[{{ $i }}][contains]" data-f="contains" inputmode="decimal"
                            class="form-control @error('packs.' . $i . '.contains') is-invalid @enderror" value="{{ $row['contains'] ?? '' }}" placeholder="10"
                            aria-describedby="pack-{{ $i }}-eq">
                     <span class="of" data-prev aria-hidden="true">{{ $packBaseName }}</span>

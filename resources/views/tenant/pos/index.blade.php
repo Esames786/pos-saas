@@ -4101,7 +4101,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ? medPacks(product, variant).find(function (p) { return Number(p.id) === Number(line.pack_unit_id); })
             : medPacks(product, variant).find(function (p) { return p.id === null; });
         item.pack_unit_id = line.pack_unit_id ? Number(line.pack_unit_id) : null;
-        item.pack_factor = pk ? pk.factor : (Number(line.pack_factor) || 1);
+        item.pack_factor = pk ? pk.factor : (Number(line.pack_size || line.pack_factor) || 1);   // UNITS-PACKS: a 2.5 kg Bag keeps its size
         item.pack_name = pk ? pk.name : (line.unit_code || '');
         item.inventory_batch_id = line.inventory_batch_id ? Number(line.inventory_batch_id) : null;
     }

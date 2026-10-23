@@ -139,10 +139,10 @@ class SplitBillController extends Controller
 
                     // W2-B: a pack line splits in whole packs and a counted item in whole pieces — unless it moves
                     // everything the line holds (a line split in the past may hold a part).
-                    $countedLine = $heldLine->pack_factor || ! \App\Support\LineQuantity::partsAllowed($heldLine->product?->unit);
+                    $countedLine = \App\Support\CounterPacks::sizeOf($heldLine) > 0 || ! \App\Support\LineQuantity::partsAllowed($heldLine->product?->unit);
                     if ($countedLine && ! \App\Support\LineQuantity::isWhole($splitQty) && abs($splitQty - $availableQty) > 0.0005) {
                         throw new RuntimeException(\App\Support\LineQuantity::wholeMessage((string) $heldLine->product_name,
-                            $heldLine->pack_factor ? (string) ($heldLine->unit_code ?: '') : \App\Support\LineQuantity::unitName($heldLine->product?->unit), $splitQty));
+                            \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? (string) ($heldLine->unit_code ?: '') : \App\Support\LineQuantity::unitName($heldLine->product?->unit), $splitQty));
                     }
 
                     if ($splitQty > $availableQty + 0.0001) {
@@ -182,7 +182,8 @@ class SplitBillController extends Controller
                         // MEDICAL-COUNTER-1: a pack line splits in its own packs; its tablets follow.
                         'pack_unit_id'       => $heldLine->pack_unit_id,
                         'pack_factor'        => $heldLine->pack_factor,
-                        'base_quantity'      => $heldLine->pack_factor ? round($splitQty * (int) $heldLine->pack_factor, 3) : null,
+                    ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $heldLine->pack_size ?? null) + [
+                        'base_quantity'      => \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? round($splitQty * \App\Support\CounterPacks::sizeOf($heldLine), 3) : null,
                         'inventory_batch_id' => $heldLine->inventory_batch_id,
                     ]);
 
@@ -207,7 +208,7 @@ class SplitBillController extends Controller
                             // Without this, kot_sent_quantity > quantity and paying the remainder
                             // is blocked by a spurious "cancellation required" guard.
                             'kot_sent_quantity' => min((float) $heldLine->kot_sent_quantity, $remainingQty),
-                            'base_quantity'     => $heldLine->pack_factor ? round($remainingQty * (int) $heldLine->pack_factor, 3) : $heldLine->base_quantity,
+                            'base_quantity'     => \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? round($remainingQty * \App\Support\CounterPacks::sizeOf($heldLine), 3) : $heldLine->base_quantity,
                         ]);
                     }
                 }

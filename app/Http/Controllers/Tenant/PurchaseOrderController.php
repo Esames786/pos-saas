@@ -87,6 +87,7 @@ class PurchaseOrderController extends Controller
             'lines.*.notes'            => 'nullable|string|max:500',
             'lines.*.pack_unit_id'     => 'nullable|integer',
             'lines.*.pack_factor'      => 'nullable|integer|min:1',
+            'lines.*.pack_size'        => 'nullable|numeric|min:0',
             'lines.*.base_quantity'    => 'nullable|numeric|min:0',
             'lines.*.entry_json'       => 'nullable|array',
         ]);
@@ -130,6 +131,7 @@ class PurchaseOrderController extends Controller
                     'notes'              => $line['notes'] ?? null,
                     'pack_unit_id'       => $line['pack_unit_id'] ?? null,
                     'pack_factor'        => $line['pack_factor'] ?? null,
+                ] + \App\Support\CounterPacks::sizeColumns('purchase_order_lines', $line['pack_size'] ?? null) + [
                     'base_quantity'      => $line['base_quantity'] ?? null,
                     'entry_json'         => $line['entry_json'] ?? null,
                 ]);

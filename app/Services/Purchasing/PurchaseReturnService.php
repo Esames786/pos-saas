@@ -417,6 +417,7 @@ class PurchaseReturnService
                 // PURCHASE-RETURN-V2: the pack it was typed in, for the screen and the paper only.
                 'pack_unit_id'       => $line['pack_unit_id'] ?? null,
                 'pack_factor'        => $line['pack_factor'] ?? null,
+            ] + \App\Support\CounterPacks::sizeColumns('purchase_return_lines', $line['pack_size'] ?? null) + [
                 'base_quantity'      => $line['base_quantity'] ?? null,
             ]);
             $created++;

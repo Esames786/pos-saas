@@ -123,6 +123,7 @@ class HeldSaleController extends Controller
                     // MEDICAL-COUNTER-1: a recalled pack line comes back as the same pack and batch.
                     'pack_unit_id'       => $l->pack_unit_id ? (int) $l->pack_unit_id : null,
                     'pack_factor'        => $l->pack_factor ? (int) $l->pack_factor : null,
+                'pack_size'          => \App\Support\CounterPacks::sizeOf($l) ?: null,
                     'inventory_batch_id' => $l->inventory_batch_id ? (int) $l->inventory_batch_id : null,
                 ])->values(),
             ]),
@@ -242,6 +243,7 @@ class HeldSaleController extends Controller
                 'kitchen_note'       => $l->kitchen_note,
                 'pack_unit_id'       => $l->pack_unit_id ? (int) $l->pack_unit_id : null,
                 'pack_factor'        => $l->pack_factor ? (int) $l->pack_factor : null,
+                'pack_size'          => \App\Support\CounterPacks::sizeOf($l) ?: null,
                 'inventory_batch_id' => $l->inventory_batch_id ? (int) $l->inventory_batch_id : null,
             ])->values(),
         ];
@@ -815,6 +817,7 @@ class HeldSaleController extends Controller
                 'kot_sent_quantity'  => $kotSentQty,
                 'pack_unit_id'       => $pack['pack_unit_id'] ?? null,
                 'pack_factor'        => $pack['pack_factor'] ?? null,
+            ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $pack['pack_size'] ?? null) + [
                 'base_quantity'      => $pack['base_quantity'] ?? null,
                 'inventory_batch_id' => $preferBatch,
             ]);
