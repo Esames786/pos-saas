@@ -41,3 +41,4 @@ Thumbs.db
 # EDGE-RUNTIME-BOUNDARY-HARDEN-1: artifact marker is generated into a built artifact, never the source tree
 edge-build-manifest.json
 .env.edgedryrun
+.env.edgedryfresh
