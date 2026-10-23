@@ -92,9 +92,11 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
    `unitsFor`). The saved one is added back, labelled "(switched off — kept as saved)", the same way UB-10 did for
    `unit_id`.
 4. **Absent means "not on this screen", not "false".** The controller's `!empty($data[…])` / `boolean()` pattern
-   (PC:415-474) is replaced, for the v2 path, by "only fields the form posted are written". The form posts a list of
-   the sections it rendered; the server writes only those.
-5. **Packs "No" deletes only when the Packs section was really on the page** (`_packs` + the section marker posted).
+   (PC:415-474) is replaced, for the v2 path, by a server-side rule. The SERVER works out which fields the chosen card
+   and business may edit, from `ProductCards` and the tenant's switches. It writes only those and keeps every other
+   saved value. Nothing the browser says about which sections it showed is trusted (reviewer, 23 Oct).
+5. **Packs "No" deletes only when the server put the Packs step on that screen** (the packs switch on, and the card
+   offers packs), and `_packs=0` came with it.
    The base row's `can_buy` is no longer rewritten on every save (PackUnits:272-276).
 6. **Recipe / BOM / catering are prefilled from the product:**
    - `recipes/create?product_id=`, `manufacturing/bom/create?finished_product_id=`,
@@ -195,8 +197,8 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
    existing suites.
 2. **S1 — product list presentation** (v2 plain mode). Tests: `ProductListTriStateMySqlTest`, updated
    `ProductRoleFilterMySqlTest` and `ProductScreenV2MySqlTest:262`.
-3. **S2 — form keeps what it does not show** (resolve keeps saved; no silent re-kinding; inactive kept; posted-sections
-   write rule; packs guard). Tests: `ProductFormKeepsSavedMySqlTest` + sabotage of each guard.
+3. **S2 — form keeps what it does not show** (resolve keeps saved; no silent re-kinding; inactive kept; a server-decided
+   editable-field rule; packs guard). Tests: `ProductFormKeepsSavedMySqlTest` + sabotage of each guard.
 4. **S3 — one form for materials and manufacturing**, plus recipe / BOM / catering prefill and return. Tests: render as
    each business; catering vocabulary; a materials-form edit no longer re-kinds.
 5. **S4 — purchase workspace**: `GoodsReceiptService` extraction (old screen unchanged), workspace route / screen, one
@@ -205,13 +207,49 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
 6. **S5 — compact navigation** (single "Purchases" item behind the switch, English label fixes). Tests: the sidebar
    render with the switch on and off, plain English.
 
-## Open questions for the owner
+## Decisions (reviewer, 23 Oct): these replace the open questions
 
-1. **Combos in the product list:** should deals appear in Products as Structure = Combo, or stay only on Deals?
-2. **Tax on a Supplier Invoice:** does it go into the item cost (non-filer tax) or to a separate tax account?
-3. **"Goods already received" in the workspace:** in v1, or do invoices for older receipts stay on Supplier Invoices?
-4. **Overpaying in the workspace:** keep it refused (advances only under Payments), or allow it with a clear "advance"
-   line?
-5. **Recipe editing:** are the prefilled existing screens enough, or must ingredients be edited inside the product form
-   itself (a bigger build)?
-6. **The Urdu-script helper lines** on the purchasing tabs: keep or drop? (Still an open owner decision from 21 Oct.)
+1. **Deals in Products.** They show as **Structure: Combo**, with a filter. Each row opens the existing deal record and
+   editor; a deal is never copied into an ordinary product.
+2. **Tax on a Supplier Invoice.** The existing configured treatment stays as it is. A screen redesign changes no
+   accounting policy, and nothing is inferred from filer / non-filer. S4 records what the code does today; any new
+   tax-treatment choice needs its own approval.
+3. **Goods already received.** This is in the workspace. Picking an existing receipt creates only its invoice and an
+   optional payment, and **never receives stock again**. Today's limits stay and are stated on screen: one receipt =
+   one invoice; no partial or consolidated billing.
+4. **Overpayments.** Blocked in the workspace. The screen explains the remaining balance and links to the separate
+   supplier-advance workflow (Payments). An overpayment is never turned into an advance silently.
+5. **Recipe / BOM / catering editing.** The final product experience edits these inside the product workspace, reusing
+   the existing components and services.
+   - A prefilled link to the existing screen is allowed only as an interim step. It is labelled **"integration
+     pending"** and never reported as "unified form complete".
+   - Unsaved product changes are kept when an editor opens and when it returns.
+6. **Language.** English-only interface and usage guides; the Urdu helper lines are removed. Urdu product names,
+   entered data and explicitly selected Urdu / bilingual prints are kept.
+
+## Tightened (reviewer, 23 Oct)
+
+- **Receive now, invoice later** is an explicit workspace choice. The invoice is never compulsory. One Post is atomic
+  over whichever steps the user chose: receipt only; receipt + invoice; receipt + invoice + payment; or, for goods
+  already received, invoice with or without a payment.
+- **Invoice differences.** Users are never told to rewrite a posted receipt to match a supplier's invoice. A difference
+  the workspace cannot record is explained there, and routed to an authorized adjustment (a Supplier Return or a
+  separate approved process), never to an edit of the receipt.
+- **Permissions.** The workspace route permission opens the screen and grants nothing else. On every Post the server
+  checks each requested step against its own permission: `tenant.goods-receipts.store`,
+  `tenant.purchase-bills.store` and `tenant.supplier-payments.store`. A step the user may not do is refused with its
+  name, and nothing is saved.
+- **Hidden settings (S2).** A browser-supplied list of "rendered sections" is not authorization and is not used. The
+  server decides which fields the chosen card and business may edit, from `ProductCards` and the tenant's switches.
+  It writes only those and keeps every other saved value. Decision 1 of "Product form" above is read this way.
+
+## Closeout boundaries carried forward
+
+- The KOT-cancellation quantities, the partner-share quantities and a WhatsApp-specific mixed-units test stay
+  **pending**. Not every report channel is described as verified.
+- The original cold-database failures stay in the units-packs record. The payment / receipt number collision is a
+  ticket, and S0 fixes it.
+- Port 8125 (the 19 Oct pharmacy session's server) is left running unless its owner or the user says otherwise. The
+  `.env` comparison is recorded in the units-packs record. The pharmacy worktree is not touched again.
+- Design acceptance needs every prototype screen and important state inspected at desktop and phone widths, with
+  screenshots. The link alone is not acceptance.
