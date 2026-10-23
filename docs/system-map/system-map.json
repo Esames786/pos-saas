@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-23T10:15:13+00:00",
+    "built_at": "2026-10-23T11:29:36+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "c5c39cf9",
     "work": [
@@ -10,6 +10,15 @@
             "behind_prod": 0,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-23\u00b7Merge VOID-PURGE-2: the delete answer comes as a popup; a void dated another day goes after a clear yes",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-edge",
+            "branch": "feat/edge-config-refresh-v1",
+            "head": "8851bf24",
+            "behind_prod": 28,
+            "ahead_of_prod": 198,
+            "last_commit": "2026-10-23\u00b7docs: 0.8.0-edge pre-install hold reconciliation (owner, 23 Oct) - the 5-vs-6 sales figures are two databases (LAB Cloud tenant 5 official sales = the 6 appliance-local Local-Mode sales minus 1 cancelled; uuids and outbox ACKs matched row by row); fresh read-only LAB-appliance copy: 6 -> 6, sales rowset MD5 identical, same PLAN_HASH sha256:0ad1e612..., 24 RUN / 0 skip / 0 blockers; package identity + ancestry reconfirmed without rebuild; LAB data-corrections before/after matrix (plan only); Cloud-first compatibility PASS (LAB Cloud tenant 45 + master 23 migrations pending on ac5b168d); category correction + H1 scope accepted, EDGE_SHIFT_MIRROR_TO_CLOUD and EXPLICIT_REFRESH_SECTION_SCHEMA_CONTRACT recorded as future items",
             "uncommitted_files": 0
         },
         {
@@ -24,10 +33,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-unitspacks",
             "branch": "feat/units-packs-batch-20261023",
-            "head": "7308db7e",
+            "head": "b9b6a8fd",
             "behind_prod": 6,
-            "ahead_of_prod": 30,
-            "last_commit": "2026-10-23\u00b7Units & packs F1: decimal packs \u2014 a kg, litre or metre item comes in Bags of 2.5 kg",
+            "ahead_of_prod": 32,
+            "last_commit": "2026-10-23\u00b7Units & packs F1 tests: legacy whole-number lines, a sold Bag cannot change size, nested packs at 3 decimals, the size column guard",
             "uncommitted_files": 8
         },
         {
@@ -58,6 +67,15 @@
             "uncommitted_files": 0
         },
         {
+            "path": "D:/laragon2/www/pos-saas-verify-upv",
+            "branch": "(detached)",
+            "head": "b9b6a8fd",
+            "behind_prod": 6,
+            "ahead_of_prod": 32,
+            "last_commit": "2026-10-23\u00b7Units & packs F1 tests: legacy whole-number lines, a sold Bag cannot change size, nested packs at 3 decimals, the size column guard",
+            "uncommitted_files": 0
+        },
+        {
             "path": "D:/laragon2/www/pos-saas-voidpurge",
             "branch": "feat/void-purge-20261022",
             "head": "e0668729",
@@ -82,15 +100,6 @@
             "behind_prod": 6,
             "ahead_of_prod": 29,
             "last_commit": "2026-10-23\u00b7W2-C closing record: edf958d9 final, evidence per run, the one error read from the log, why the full suite was not repeated",
-            "uncommitted_files": 0
-        },
-        {
-            "path": "D:/laragon2/www/pos-saas-edge",
-            "branch": "feat/edge-config-refresh-v1",
-            "head": "06b2e896",
-            "behind_prod": 28,
-            "ahead_of_prod": 197,
-            "last_commit": "2026-10-22\u00b7docs: Bingoo Edge 0.8.0-edge pre-install report (build from ac5b168d: package hash 91b96c5b..., signed a2eaf8a3d3e66a48, audit OK, source proof 0 mismatches; installer dry-run on a COPY of the LAB appliance DB PLAN_HASH sha256:0ad1e612... 24 RUN / 0 skip / 0 blockers; upgrade apply on the copy with the D7-1/D7-4 measurements; rollback dry-run with the 0.7.0 code; clean-install proof 165 assertions in release mode) + Team FB3 W09 repeat on both runtimes after H1 (refusals byte-equal to the shared text, v2 envelope ingested + replayed, 8096 plan hash sha256:1a7d5145...); .env.edgedryrun ignored",
             "uncommitted_files": 0
         },
         {
@@ -563,7 +572,7 @@
             "modified": "2026-10-23"
         }
     ],
-    "git": "7308db7e",
+    "git": "b9b6a8fd",
     "source": {
         "tenant_db": "pos_test_tenant_up",
         "master_db": "pos_test_master_up"

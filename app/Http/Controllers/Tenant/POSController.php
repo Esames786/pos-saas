@@ -222,6 +222,12 @@ class POSController extends Controller
         // with stock (expired too — the counter says it skips them) and its prescription flag. Off = nothing
         // extra is read and the payload is exactly today's.
         $medicalCounter = \App\Support\CounterPacks::enabled();
+        // UNITS-PACKS F3: the normal counter with "Packs at the normal counter" gets each item's packs only (no
+        // batches, no prescription): a scanned carton sells as 1 Carton. The page itself is unchanged.
+        $counterPacks = ! $medicalCounter && \App\Support\CounterPacks::packsOn();
+        if ($counterPacks) {
+            $products->load('packUnits');
+        }
         $batchBalances = collect();
         $medToday = null;
         if ($medicalCounter) {
@@ -265,7 +271,7 @@ class POSController extends Controller
 
         $unitConversion = app(UnitConversionService::class);
 
-        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion, $medicalCounter, $batchBalances, $medToday) {
+        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion, $medicalCounter, $counterPacks, $batchBalances, $medToday) {
             $defaultVariant = $product->defaultVariant ?: $product->variants->first();
 
             $barcodes = $product->barcodes
@@ -379,7 +385,8 @@ class POSController extends Controller
                 'is_recipe'                     => $recipe['is_recipe'],
                 'makeable_by_branch'            => $recipe['makeable'],
                 'limiting_ingredient_by_branch' => $recipe['limiting'],
-            ] + ($medicalCounter ? ['med' => \App\Support\CounterPacks::payload($product, $batchBalances->get($product->id, collect()), $medToday)] : []);
+            ] + ($medicalCounter ? ['med' => \App\Support\CounterPacks::payload($product, $batchBalances->get($product->id, collect()), $medToday)] : [])
+              + ($counterPacks ? ['packs' => \App\Support\CounterPacks::counterPacks($product)] : []);
         })->values();
 
         $combosPayload = Combo::with(['components.product.unit', 'components.variant'])
@@ -527,6 +534,7 @@ class POSController extends Controller
             'activeMode'       => $requestedMode,
             'kitchenTickets'   => $this->kitchenTicketsOn(),
             'medicalCounter'   => $medicalCounter,
+            'counterPacks'     => $counterPacks,
         ]);
     }
 

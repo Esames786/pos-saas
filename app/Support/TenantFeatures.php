@@ -17,6 +17,8 @@ final class TenantFeatures
     public const PURCHASING_V2 = 'purchasing_v2';
     public const MEDICAL_COUNTER = 'medical_counter';
     public const RETURN_NO_BILL = 'return_no_bill';
+    // UNITS-PACKS F3
+    public const COUNTER_PACKS = 'counter_packs';
     // W2-C
     public const WHOLE_COUNTED_STOCK = 'whole_counted_stock';
 
@@ -73,6 +75,13 @@ final class TenantFeatures
                 'label' => 'Whole numbers for counted items in purchasing and stock',
                 'says'  => 'A counted item (piece, bottle, box) is bought, returned, moved and counted in whole numbers only, the same as at the counter. Kg, litre and metre items still take up to 3 decimals. Leave it off while some counted items are still bought in parts.',
                 'where' => 'Purchase orders, GRN, supplier returns, stock adjustments, transfers and counts',
+            ],
+            // UNITS-PACKS F3
+            self::COUNTER_PACKS => [
+                'label' => 'Packs at the normal counter',
+                'says'  => 'Scan a carton or box barcode at the normal counter and it sells as 1 Carton at the carton\'s price; its pieces leave stock. The counter looks exactly the same. An item with an expiry date never sells from an expired batch here (the medical counter\'s rule). No prescription questions.',
+                'where' => 'POS (scan) · Products → packs',
+                'needs' => [self::PACKS],
             ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',

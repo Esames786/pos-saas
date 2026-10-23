@@ -770,7 +770,11 @@ class HeldSaleController extends Controller
             // MEDICAL-COUNTER-1: a line held in a pack keeps it (and its tablets) for the recall and the sale.
             $pack = $product && (($line['line_kind'] ?? 'standard') === 'standard')
                 ? \App\Support\CounterPacks::resolve($product, (array) $line, (float) $line['quantity']) : null;
-            if ($pack && ! isset($line['unit_price'])) {
+            if ($pack && \App\Support\CounterPacks::serverPricesPacks()) {
+                // UNITS-PACKS F3: the normal counter's pack price is the server's — its own, else size × the branch price.
+                $line['unit_price'] = $pack['pack_own_price'] ? $pack['pack_price']
+                    : round($pack['pack_size'] * app(\App\Services\Sales\SalePricingService::class)->resolveSellingPrice($product, $variant, (int) $sale->branch_id, null), 2);
+            } elseif ($pack && ! isset($line['unit_price'])) {
                 $line['unit_price'] = $pack['pack_price'];
             }
             $preferBatch = $product && (($line['line_kind'] ?? 'standard') === 'standard')

@@ -22,9 +22,47 @@ use RuntimeException;
  */
 final class CounterPacks
 {
+    /** The medical-store counter: its own layout, batches, prescriptions. */
     public static function enabled(): bool
     {
         return TenantFeatures::on(TenantFeatures::MEDICAL_COUNTER) && PackUnits::enabled();
+    }
+
+    /** UNITS-PACKS F3: a line may be sold in a pack — at the medical counter, or at the normal counter with its switch. */
+    public static function packsOn(): bool
+    {
+        return (TenantFeatures::on(TenantFeatures::MEDICAL_COUNTER) || TenantFeatures::on(TenantFeatures::COUNTER_PACKS)) && PackUnits::enabled();
+    }
+
+    /** UNITS-PACKS F3: the normal counter's pack line takes the pack's price from the server, never the screen's. */
+    public static function serverPricesPacks(): bool
+    {
+        return TenantFeatures::on(TenantFeatures::COUNTER_PACKS) && ! TenantFeatures::on(TenantFeatures::MEDICAL_COUNTER) && PackUnits::enabled();
+    }
+
+    /**
+     * UNITS-PACKS F3 (review, 23 Oct): stock safety is not a medical-counter screen feature. Where either counter sells
+     * packs, an item with an expiry date never sells from an expired batch. Prescriptions stay medical-only.
+     */
+    public static function refusesExpired(): bool
+    {
+        return TenantFeatures::on(TenantFeatures::MEDICAL_COUNTER) || TenantFeatures::on(TenantFeatures::COUNTER_PACKS);
+    }
+
+    /**
+     * UNITS-PACKS F3: what the normal counter needs to sell an item's packs: each sellable pack bigger than one piece,
+     * with its own price (null = size × the item's price at that branch, as the server works it out).
+     *
+     * @return list<array{id:int, name:string, factor:float, own_price:?float, barcode:?string}>
+     */
+    public static function counterPacks(Product $product): array
+    {
+        return $product->packUnits
+            ->filter(fn (ProductPackUnit $p) => $p->can_sell && (float) $p->factor > 1)
+            ->sortBy('factor')
+            ->map(fn (ProductPackUnit $p) => ['id' => (int) $p->id, 'name' => $p->name, 'factor' => (float) $p->factor,
+                'own_price' => $p->sale_price !== null ? (float) $p->sale_price : null, 'barcode' => $p->barcode])
+            ->values()->all();
     }
 
     /**
@@ -33,7 +71,7 @@ final class CounterPacks
     public static function resolve(Product $product, array $line, float $quantity): ?array
     {
         $packId = (int) ($line['pack_unit_id'] ?? 0);
-        if ($packId <= 0 || ! self::enabled()) {
+        if ($packId <= 0 || ! self::packsOn()) {
             return null;
         }
         $pack = ProductPackUnit::whereKey($packId)->where('product_id', $product->id)->first();
@@ -51,6 +89,7 @@ final class CounterPacks
             'pack_size'     => (float) $pack->factor,
             'base_quantity' => round($quantity * $pack->factor, 3),
             'pack_price'    => $pack->priceFor($product),
+            'pack_own_price' => $pack->sale_price !== null,
         ];
     }
 

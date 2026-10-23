@@ -59,7 +59,7 @@ final class LineQuantity
     {
         $ids = collect($lines)->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
         $products = $ids ? Product::with('unit')->whereIn('id', $ids)->get()->keyBy('id') : collect();
-        $packsOn = CounterPacks::enabled();
+        $packsOn = CounterPacks::packsOn();
 
         foreach ($lines as $i => $line) {
             if (! is_array($line) || ! isset($line['quantity']) || $line['quantity'] === '') {

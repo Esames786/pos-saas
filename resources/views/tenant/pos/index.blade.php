@@ -2404,6 +2404,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const heldSale   = @json($heldSaleJson);
     // MEDICAL-COUNTER-1: the medical-store counter (Master switch). Off = this page works exactly as before.
     const medicalCounter = @json((bool) ($medicalCounter ?? false));
+    // UNITS-PACKS F3: "Packs at the normal counter" — a scanned carton sells as 1 Carton; the screen is the normal one.
+    const counterPacks = @json((bool) ($counterPacks ?? false));
     // RX-BRANCH-SETTING-1: per branch — does the counter ask for the prescription? (medical counter only)
     const medAskRx = @json(($medicalCounter ?? false) ? $branches->mapWithKeys(fn ($b) => [(string) $b->id => (bool) ($b->ask_prescription ?? true)]) : (object) []);
     const branchCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_cancellation_approval_mode ?? 'manager_required']));
@@ -3623,7 +3625,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 cart.splice(index, 1);
             }
         } else {
-            item.quantity = newQuantity;
+            item.quantity = item.pack_unit_id && !medicalCounter ? Math.max(1, Math.round(newQuantity)) : newQuantity;
             item.entered_quantity = null; item.entered_unit_code = null; item.entered_label = null;
             if (item.line_kind === 'combo_header') updateComboComponents(item.key);
         }
@@ -3781,8 +3783,8 @@ document.addEventListener('DOMContentLoaded', function () {
                         '<button type="button" class="qty-btn" data-minus="' + index + '">-</button>' +
                         '<input type="number" class="form-control form-control-sm text-end" style="width:80px" ' +
                             'data-qty-input="' + index + '" ' +
-                            'step="' + qtyStep(item.product) + '" ' +
-                            'min="' + qtyStep(item.product) + '" ' +
+                            'step="' + lineStep(item) + '" ' +
+                            'min="' + lineStep(item) + '" ' +
                             'value="' + formatQty(item.quantity, item.product) + '">' +
                         (lineUnitLabel(item) ? '<span class="small text-muted">' + lineUnitLabel(item) + '</span>' : '') +
                         '<button type="button" class="qty-btn" data-plus="' + index + '">+</button>' +
@@ -3823,7 +3825,7 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.addEventListener('click', function () {
                 var i    = Number(btn.dataset.plus);
                 var item = cart[i];
-                var step = qtyStep(item.product);
+                var step = lineStep(item);
                 item.quantity = isMeasurableProduct(item.product)
                     ? parseFloat((Number(item.quantity || 0) + step).toFixed(3))
                     : Number(item.quantity || 0) + 1;
@@ -3836,7 +3838,7 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.addEventListener('click', function () {
                 var i    = Number(btn.dataset.minus);
                 var item = cart[i];
-                var step = qtyStep(item.product);
+                var step = lineStep(item);
                 const newQuantity = isMeasurableProduct(item.product)
                     ? parseFloat((Number(item.quantity || 0) - step).toFixed(3))
                     : Number(item.quantity || 0) - 1;
@@ -6561,7 +6563,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const lineKind = line.line_kind || 'standard';
             const key = (lineKind === 'combo_header' || lineKind === 'component')
                 ? 'held-line:' + line.id
-                : cartKey(product, variant, modifiers, medicalCounter ? line.pack_unit_id : null);
+                : cartKey(product, variant, modifiers, (medicalCounter || counterPacks) ? line.pack_unit_id : null);
             const parentKey = line.parent_sales_order_line_id ? recalledLineKeys[line.parent_sales_order_line_id] : '';
             // Honour the STORED price exactly — combo components are 0, and a falsy-OR
             // would wrongly re-price them to full catalog price (inflating the total).
@@ -6607,6 +6609,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 entered_label:      line.entered_unit_code ? enteredLabel(product, line.entered_unit_code) : null,
             });
             if (medicalCounter) medAdoptLine(cart[cart.length - 1], product, variant, line);   // MEDICAL-COUNTER-1
+            else if (counterPacks && line.pack_unit_id) packAdoptLine(cart[cart.length - 1], product, line);   // UNITS-PACKS F3
             recalledLineKeys[line.id] = key;
         });
 
@@ -7879,6 +7882,56 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* search / barcode scan */
 
+    // UNITS-PACKS F3 — packs at the normal counter. A pack line is its own cart line (1 Carton, 2 Bag), counted in whole
+    // packs; its price is the pack's own, else its size × the item's price; the server works both out again.
+    function packPrice(product, pack) {
+        return pack.own_price != null ? Number(pack.own_price) : Math.round(Number(pack.factor) * productPrice(product, null) * 100) / 100;
+    }
+    function baseInCart(productId) {
+        return cart.filter(function (i) { return i.product_id === productId; }).reduce(function (t, i) {
+            return t + Number(i.quantity || 0) * (i.pack_unit_id ? Number(i.pack_factor || 1) : 1);
+        }, 0);
+    }
+    function lineStep(item) { return item.pack_unit_id ? 1 : qtyStep(item.product); }
+    function packScanAdd(code) {
+        for (var i = 0; i < products.length; i++) {
+            var pk = (products[i].packs || []).find(function (k) { return k.barcode && String(k.barcode).toLowerCase() === code; });
+            if (pk) { addPackLine(products[i], pk); return true; }
+        }
+        return false;
+    }
+    function addPackLine(product, pack) {
+        ensureSaleUuid();
+        var key = cartKey(product, null, [], pack.id);
+        var existing = cart.find(function (item) { return item.key === key; });
+        var stockQty = availableQty(product, null);
+        if (stockQty !== null && baseInCart(product.id) + Number(pack.factor) > stockQty + 0.0001) {
+            if (!branchAllowsNegative()) { blockAlert(unavailableMessage(product, stockQty)); return; }
+            backorderToast(product.name);
+        }
+        if (existing) {
+            existing.quantity = Number(existing.quantity || 0) + 1;
+            existing.tax_amount = lineTax(product, existing.quantity, existing.unit_price, existing.discount_amount || 0);
+        } else {
+            var price = packPrice(product, pack);
+            cart.push({
+                key: key, product_id: product.id, product_variant_id: null, name: product.name, variant_name: null,
+                unit_code: pack.name, quantity: 1, unit_price: price, base_unit_price: price, modifiers: [],
+                discount_amount: 0, tax_amount: lineTax(product, 1, price, 0), product: product, variant: null,
+                _dbLineId: null, kot_sent: false, kot_sent_quantity: 0,
+                pack_unit_id: pack.id, pack_factor: Number(pack.factor), pack_name: pack.name,
+            });
+        }
+        renderCart();
+    }
+    // A recalled pack line keeps its pack (and the size it was held at).
+    function packAdoptLine(item, product, line) {
+        var pk = (product.packs || []).find(function (k) { return k.id === Number(line.pack_unit_id); });
+        item.pack_unit_id = Number(line.pack_unit_id);
+        item.pack_factor = Number(line.pack_size || line.pack_factor || (pk && pk.factor) || 1);
+        item.pack_name = line.unit_code || (pk && pk.name) || 'Pack';
+    }
+
     function handlePosBarcodeScan(rawQuery) {
         var query = (rawQuery || '').trim().toLowerCase();
         if (!query) return false;
@@ -7886,6 +7939,13 @@ document.addEventListener('DOMContentLoaded', function () {
         // MEDICAL-COUNTER-1: a pack's own barcode sells that pack (the Box barcode = 1 Box).
         if (medicalCounter && medScanPack(query)) {
             medLastScan = Date.now();
+            searchEl.value = '';
+            searchEl.focus();
+            renderProducts();
+            return true;
+        }
+        // UNITS-PACKS F3: the same at the normal counter — the Carton barcode = 1 Carton, its pieces leave stock.
+        if (counterPacks && packScanAdd(query)) {
             searchEl.value = '';
             searchEl.focus();
             renderProducts();
@@ -8220,7 +8280,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const lineKind = line.line_kind || 'standard';
             const key = (lineKind === 'combo_header' || lineKind === 'component')
                 ? 'held-line:' + line.id
-                : cartKey(product, variant, modifiers, medicalCounter ? line.pack_unit_id : null);
+                : cartKey(product, variant, modifiers, (medicalCounter || counterPacks) ? line.pack_unit_id : null);
             const parentKey = line.parent_sales_order_line_id ? preloadedLineKeys[line.parent_sales_order_line_id] : '';
             // Honour the STORED price exactly (combo components are 0; a falsy-OR re-prices them).
             const unitPrice = (line.unit_price !== undefined && line.unit_price !== null)
@@ -8267,6 +8327,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 entered_label:      line.entered_unit_code ? enteredLabel(product, line.entered_unit_code) : null,
             });
             if (medicalCounter) medAdoptLine(cart[cart.length - 1], product, variant, line);   // MEDICAL-COUNTER-1
+            else if (counterPacks && line.pack_unit_id) packAdoptLine(cart[cart.length - 1], product, line);   // UNITS-PACKS F3
             preloadedLineKeys[line.id] = key;
         });
     }

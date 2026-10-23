@@ -222,7 +222,11 @@ class SalesOrderController extends Controller
                     // MEDICAL-COUNTER-1: a line sold in a pack (Box / Strip / Tablet) — quantity in packs, the
                     // price of one pack; its tablets go beside it for stock. Off = null = today's line.
                     $pack = $lineKind === 'standard' ? \App\Support\CounterPacks::resolve($product, (array) $line, $qty) : null;
-                    if ($pack && $submittedPrice === null) {
+                    if ($pack && \App\Support\CounterPacks::serverPricesPacks()) {
+                        // UNITS-PACKS F3: the normal counter's pack price is the server's — its own, else size × the branch price.
+                        $submittedPrice = $pack['pack_own_price'] ? $pack['pack_price']
+                            : round($pack['pack_size'] * $this->resolveSellingPrice($product, $variant, $branch->id, null), 2);
+                    } elseif ($pack && $submittedPrice === null) {
                         $submittedPrice = $pack['pack_price'];
                     }
                     // …and the batch the cashier picked goes first (checked: this product's, this branch's, not expired).
