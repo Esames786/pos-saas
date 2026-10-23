@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant\Finance;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\PurgedEntry;
+use App\Services\Finance\VoidPurgeNeedsConfirmation;
 use App\Services\Finance\VoidPurgeService;
 use App\Support\TenantFeatures;
 use Illuminate\Http\Request;
@@ -38,18 +39,40 @@ class VoidPurgeController extends Controller
 
         $user = Auth::guard('tenant')->user();
         if (! Hash::check($data['purge_password'], (string) $user->password)) {
-            return back()->withErrors(['purge' => 'The password did not match. Nothing was deleted.']);
+            return $this->refused($request, 'The password did not match. Nothing was deleted.', retry: true);
         }
 
         try {
-            $entry = $this->purge->purge($type, $id, $data['purge_reason'], (int) $user->id, $request->ip());
-        } catch (RuntimeException $e) {
+            $entry = $this->purge->purge($type, $id, $data['purge_reason'], (int) $user->id, $request->ip(), $request->boolean('across_days'));
+        } catch (VoidPurgeNeedsConfirmation $e) {
+            // A void dated another day: the screen asks "Delete anyway?" with the days that change, then sends across_days.
+            if ($request->expectsJson()) {
+                return response()->json(['ok' => false, 'confirm' => true, 'message' => $e->getMessage()], 409);
+            }
+
             return back()->withErrors(['purge' => $e->getMessage()]);
+        } catch (RuntimeException $e) {
+            return $this->refused($request, $e->getMessage());
         }
 
-        return redirect(\App\Support\CashBookReturn::from($request) ?? url('/finance/voided-entries'))
-            ->with('status', VoidPurgeService::TYPES[$type] . ' ' . $entry->document_no
-                . ' and its reversal were deleted permanently. A copy is in Finance → Deleted entries.');
+        $message = VoidPurgeService::TYPES[$type] . ' ' . $entry->document_no
+            . ' and its reversal were deleted permanently. A copy is in Finance → Deleted entries.';
+        $to = \App\Support\CashBookReturn::from($request) ?? url('/finance/voided-entries');
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'message' => $message, 'redirect' => $to]);
+        }
+
+        return redirect($to)->with('status', $message);
+    }
+
+    /** Nothing was deleted: the popup says why (and lets the person try again for a password or reason), or the page does. */
+    private function refused(Request $request, string $why, bool $retry = false)
+    {
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => false, 'retry' => $retry, 'message' => $why, 'errors' => ['purge' => [$why]]], 422);
+        }
+
+        return back()->withErrors(['purge' => $why]);
     }
 
     public function index()

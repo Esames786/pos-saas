@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * VOID-PURGE-1 (22 Oct) — remove, permanently, an entry that was already voided on its own date, together with its
+ * VOID-PURGE-1 (22 Oct) — remove, permanently, an entry that was already voided, together with its
  * reversal, as if neither had happened.
  *
  * Why this is safe: the void already brought every balance back (GL, drawer, supplier, bill). Removing BOTH halves
@@ -22,8 +22,11 @@ use RuntimeException;
  * inserted BETWEEN an original and its reversal (they carried the original's effect); rows after the reversal are
  * untouched (the pair nets to zero). `current_balance` is never written, and is asserted unchanged.
  *
- * Refused, with a plain message, whenever any of that cannot be proven: not voided; voided on a different day ("reverse
- * today"); a half missing; GL that does not net to zero per account; another record pointing at the entries; a type
+ * Voided on a different day ("reverse today"): allowed too (owner, 23 Oct), but only once the person has been told which
+ * days' cash closing changes and said yes (VoidPurgeNeedsConfirmation, then $acrossDays). Those days' closings then read as
+ * if the entry had never been made; every total today is still unchanged.
+ *
+ * Refused, with a plain message, whenever any of that cannot be proven: not voided; a half missing; GL that does not net to zero per account; another record pointing at the entries; a type
  * outside v1. Everything happens in one transaction; any failure leaves every row where it was.
  *
  * Rows are found by their real keys (source_type/source_id, reference_type/reference_id, reversed_entry_id,
@@ -56,8 +59,12 @@ class VoidPurgeService
         return DB::connection('tenant')->getSchemaBuilder()->hasTable('purged_entries') && PurgedNumbers::ready();
     }
 
-    public function purge(string $type, int $id, string $reason, ?int $userId, ?string $ip = null): PurgedEntry
+    /** Set for one purge: the person has seen which days change and said yes. */
+    private bool $acrossDays = false;
+
+    public function purge(string $type, int $id, string $reason, ?int $userId, ?string $ip = null, bool $acrossDays = false): PurgedEntry
     {
+        $this->acrossDays = $acrossDays;
         if (! isset(self::TYPES[$type])) {
             throw new RuntimeException('Only a voided manual journal, expense voucher, supplier payment or catering receipt can be deleted permanently.');
         }
@@ -143,7 +150,7 @@ class VoidPurgeService
             throw new RuntimeException('That expense voucher was not found.');
         }
         if ($voucher->status !== 'void') {
-            throw new RuntimeException('Only a voided expense can be deleted. Void it on its own date first.');
+            throw new RuntimeException('Only a voided expense can be deleted. Void it first.');
         }
         if (str_starts_with((string) $voucher->voucher_no, 'EXP-SHORT-')) {
             throw new RuntimeException('A cash-shortage voucher is made by closing the shift and cannot be deleted.');
@@ -177,7 +184,7 @@ class VoidPurgeService
             throw new RuntimeException('That supplier payment was not found.');
         }
         if ($payment->voided_at === null) {
-            throw new RuntimeException('Only a voided supplier payment can be deleted. Void it on its own date first.');
+            throw new RuntimeException('Only a voided supplier payment can be deleted. Void it first.');
         }
         $plan = $this->newPlan('supplier_payment', $id, (string) $payment->payment_no, $payment->payment_date, (float) $payment->amount);
         $c = DB::connection('tenant');
@@ -223,7 +230,7 @@ class VoidPurgeService
             throw new RuntimeException('That catering receipt was not found.');
         }
         if ($advance->voided_at === null) {
-            throw new RuntimeException('Only a voided catering receipt can be deleted. Void it on its own date first.');
+            throw new RuntimeException('Only a voided catering receipt can be deleted. Void it first.');
         }
         if ($advance->posting_type !== CateringAdvance::POSTING_ADVANCE) {
             throw new RuntimeException('Only a receipt taken before the final invoice can be deleted; this one is part of a settlement.');
@@ -279,13 +286,10 @@ class VoidPurgeService
     {
         $reversal = JournalEntry::where('reversed_entry_id', $original->id)->lockForUpdate()->get();
         if ($reversal->count() !== 1 || $reversal->first()->source_type !== $reversalType || $reversal->first()->status !== 'posted') {
-            throw new RuntimeException('This entry has not been voided (no single reversal found). Void it on its own date first.');
+            throw new RuntimeException('This entry has not been voided (no single reversal found). Void it first.');
         }
         $reversal = $reversal->first();
-        if ($original->entry_date->toDateString() !== $reversal->entry_date->toDateString()) {
-            throw new RuntimeException('This entry was reversed on a different day (' . $reversal->entry_date->format('d M Y')
-                . ', the entry is ' . $original->entry_date->format('d M Y') . '). Only an entry voided on its own date can be deleted.');
-        }
+        $this->sameDayOrConfirmed($plan, $original->entry_date, $reversal->entry_date);
 
         $c = DB::connection('tenant');
         $net = $c->table('journal_lines')->whereIn('journal_entry_id', [$original->id, $reversal->id])
@@ -308,6 +312,26 @@ class VoidPurgeService
         return $reversal;
     }
 
+    /**
+     * Owner, 23 Oct: a void dated another day may be deleted too. Until the person has said yes, stop and say exactly
+     * which days' cash closing changes and by how much; nothing has been changed at that point.
+     */
+    private function sameDayOrConfirmed(array $plan, $entryDate, $voidDate): void
+    {
+        $from = Carbon::parse($entryDate)->startOfDay();
+        $to = Carbon::parse($voidDate)->startOfDay();
+        if ($from->equalTo($to) || $this->acrossDays) {
+            return;
+        }
+        [$first, $after] = $from->lessThan($to) ? [$from, $to] : [$to, $from];
+        $last = $after->copy()->subDay();
+        $days = $first->equalTo($last) ? 'the cash closing of ' . $first->format('d M Y')
+            : "every day's cash closing from " . $first->format('d M') . ' to ' . $last->format('d M Y');
+        throw new VoidPurgeNeedsConfirmation($plan['document_no'] . ' is dated ' . $from->format('d M Y') . ' and was voided on ' . $to->format('d M Y')
+            . '. Deleting both changes ' . $days . ' by Rs ' . number_format((float) $plan['amount'], 2)
+            . '. Every total today stays the same. Delete anyway?');
+    }
+
     /** An expense with no GL original must not have a stray GL reversal either. */
     private function ensureNoOrphanReversal(array $plan, string $reversalType, int $sourceId): void
     {
@@ -327,10 +351,7 @@ class VoidPurgeService
             || abs((float) $reversal->amount - (float) $original->amount) > 0.0001 || $reversal->direction === $original->direction) {
             throw new RuntimeException('The cash reversal does not match the original movement, so the entry is kept.');
         }
-        if (Carbon::parse($original->transaction_date)->toDateString() !== Carbon::parse($reversal->transaction_date)->toDateString()) {
-            throw new RuntimeException('The cash came back on a different day (' . Carbon::parse($reversal->transaction_date)->format('d M Y')
-                . '). Only an entry voided on its own date can be deleted.');
-        }
+        $this->sameDayOrConfirmed($plan, $original->transaction_date, $reversal->transaction_date);
         if ((int) $reversal->id < (int) $original->id) {
             throw new RuntimeException('The cash rows of this entry are out of order, so it is kept. Please contact support.');
         }

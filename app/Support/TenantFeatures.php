@@ -71,7 +71,7 @@ final class TenantFeatures
             ],
             self::VOID_PURGE => [
                 'label' => 'Delete voided entries permanently',
-                'says'  => 'The Owner can delete an entry that was voided on its own date, together with its reversal, so neither shows anywhere. Totals stay the same. A hidden copy is kept and only the Owner can see it. Risk: an Owner can make a cash movement disappear from every screen.',
+                'says'  => 'A user given the permission can delete a voided entry together with its reversal, so neither shows anywhere. Totals today stay the same. When the void was dated another day, the screen first says which days\' cash closing changes and asks to confirm. A hidden copy is kept in Deleted entries. Risk: a recorded cash movement can disappear from every screen.',
                 'where' => 'Cash Book and the entry\'s own page → "Delete permanently" on a voided row; Finance → Deleted entries',
             ],
             self::REPORT_DELIVERY_V2 => [
