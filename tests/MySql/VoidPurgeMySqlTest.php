@@ -223,7 +223,7 @@ class VoidPurgeMySqlTest extends MySqlTenantTestCase
 
         foreach ([
             ['supplier_payment', $live->id, [], 'Only a voided supplier payment can be deleted'],
-            ['supplier_payment', $today->id, [], 'reversed on a different day'],
+            ['supplier_payment', $today->id, [], 'Delete anyway?'],                // asks first, deletes nothing
             ['expense', $shortage->id, [], 'cash-shortage voucher'],
             ['catering_receipt', $settlement->id, [], 'part of a settlement'],
             ['supplier_payment', $own->id, ['purge_password' => 'wrong'], 'The password did not match'],
@@ -240,6 +240,56 @@ class VoidPurgeMySqlTest extends MySqlTenantTestCase
 
         $this->assertSame($snapshot, $this->fingerprint($tables), 'not one row moved');
         $this->assertSame(0, PurgedEntry::count());
+    }
+
+    /* ── a void dated another day (owner, 23 Oct) ─────────────────────────── */
+
+    public function test_a_void_dated_another_day_says_which_days_change_and_goes_only_after_yes(): void
+    {
+        $day = now()->subDays(4)->toDateString();
+        $this->postBill(1000);
+        $wrong = $this->pay(500, null, $day);
+        $between = $this->pay(200, null, now()->subDays(2)->toDateString());   // posted while the wrong one still counted
+        $this->voidPayment($wrong, 'today')->assertSessionHasNoErrors();      // reversed today, four days later
+        $betweenCash = $this->cashRow('supplier_payment', $between->id, 'supplier_payment');
+        $before = $this->books();
+        $c = DB::connection('tenant');
+
+        $ask = $this->purgeJson('supplier_payment', $wrong->id)->assertStatus(409)->assertJson(['ok' => false, 'confirm' => true]);
+        $says = $ask->json('message');
+        $this->assertStringContainsString($wrong->payment_no . ' is dated ' . now()->subDays(4)->format('d M Y') . ' and was voided on ' . now()->format('d M Y'), $says);
+        $this->assertStringContainsString("every day's cash closing from " . now()->subDays(4)->format('d M') . ' to ' . now()->subDay()->format('d M Y') . ' by Rs 500.00', $says);
+        $this->assertStringContainsString('Delete anyway?', $says);
+        $this->assertNotNull($c->table('supplier_payments')->find($wrong->id), 'asking deletes nothing');
+        $this->assertSame(0, PurgedEntry::count());
+
+        $done = $this->purgeJson('supplier_payment', $wrong->id, ['across_days' => '1'])->assertOk()->assertJson(['ok' => true]);
+        $this->assertStringContainsString($wrong->payment_no . ' and its reversal were deleted permanently', $done->json('message'));
+        $this->assertNotEmpty($done->json('redirect'));
+        $this->assertNull($c->table('supplier_payments')->find($wrong->id));
+        $this->assertSame(0, $c->table('journal_entries')->whereIn('source_type', ['supplier_payment', 'supplier_payment_reversal'])->where('source_id', $wrong->id)->count());
+        $this->assertSame(0, $c->table('cash_bank_account_transactions')->where('reference_type', 'supplier_payment')->where('reference_id', $wrong->id)->count());
+        $this->assertSame($before, $this->books(), 'every total today is what it was');
+        $this->assertEqualsWithDelta((float) $betweenCash->balance_after + 500, (float) $this->cashRow('supplier_payment', $between->id, 'supplier_payment')->balance_after, 0.001,
+            'the payment posted in between no longer carries the deleted 500');
+    }
+
+    public function test_the_popup_gets_every_answer_as_json(): void
+    {
+        $this->postBill(1000);
+        $live = $this->pay(300);
+        $this->purgeJson('supplier_payment', $live->id)->assertStatus(422)
+            ->assertJson(['ok' => false, 'retry' => false])->assertJsonPath('errors.purge.0', 'Only a voided supplier payment can be deleted. Void it first.');
+        $own = $this->pay(250, null, now()->subDays(2)->toDateString());
+        $this->voidPayment($own, 'original')->assertSessionHasNoErrors();
+        $this->purgeJson('supplier_payment', $own->id, ['purge_password' => 'wrong'])->assertStatus(422)
+            ->assertJson(['ok' => false, 'retry' => true, 'message' => 'The password did not match. Nothing was deleted.']);
+        $this->purgeJson('supplier_payment', $own->id, ['purge_reason' => 'no'])->assertStatus(422)->assertJsonValidationErrors('purge_reason');
+        $this->assertSame(0, PurgedEntry::count(), 'no answer but yes deletes anything');
+
+        $this->purgeJson('supplier_payment', $own->id)->assertOk()->assertJson(['ok' => true]);
+        $this->assertSame(1, PurgedEntry::count());
+        $this->assertStringContainsString('id="void-purge-across-days"', $this->cashBook(now()->toDateString()), 'the form carries the yes');
     }
 
     public function test_a_failure_halfway_puts_every_row_back(): void
@@ -286,6 +336,12 @@ class VoidPurgeMySqlTest extends MySqlTenantTestCase
     }
 
     /* ── helpers ─────────────────────────────────────────────────────────── */
+
+    private function purgeJson(string $type, int $id, array $override = [])
+    {
+        return $this->actingAsOwner()->postJson($this->url('/finance/voided-entries/' . $type . '/' . $id . '/purge'),
+            $override + ['purge_reason' => 'typed by mistake', 'purge_password' => self::PASSWORD]);
+    }
 
     private function purge(string $type, int $id, array $override = [])
     {

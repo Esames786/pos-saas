@@ -90,3 +90,16 @@ the hidden copy. This must be stated to the owner before the switch is turned on
 - kashifkitchen's existing voids: the client asked that voided entries do not show anywhere. A dry run lists which
   ones qualify (voided on their own date) and which stay, with the reason. They are removed only after the owner has
   seen that list. khatribiryani: access only, nothing removed.
+
+## Owner's decision (23 Oct): voids dated another day may be deleted too; the answer comes as a popup
+
+- "Kholdo option permanent delete ka, koi masla nahi jab sab kuch permission based kar diya hai." A pair whose void is
+  dated another day ("reverse today") can now be deleted as well. Before anything is deleted, the person is told which
+  days' cash closing changes and by how much (VoidPurgeNeedsConfirmation), and must answer "Yes, delete". Those days then
+  read as if the entry had never been made; every total today stays the same (the pair still nets to zero per account,
+  and the running balances in between are shifted exactly as before).
+- Still refused: a live entry; a settlement / final-invoice receipt; a cash-shortage voucher; a payment with an
+  allocation; anything that does not net to zero or that another record points at.
+- The confirmation form is sent in the background. A refusal or the "Delete anyway?" question comes back as a popup
+  (SweetAlert) without reloading the page; a wrong password or missing reason reopens the form. Found because a client
+  pressed Delete twice on JE-20261001-0012 (voided 11 Oct) and did not see the refusal at the top of the Cash Book.
