@@ -4,6 +4,9 @@ namespace Tests\MySql;
 
 use App\Models\Tenant\ManufacturingBom;
 use App\Models\Tenant\Recipe;
+use App\Services\Kitchen\RecipeWriter;
+use App\Services\Manufacturing\BomWriter;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Tests\MySql\Support\IsolatedPharmacyStore;
 
@@ -102,5 +105,51 @@ class RecipeBomSaveCharacterizationMySqlTest extends MySqlTenantTestCase
         $this->owner()->delete($this->url('/manufacturing/bom/' . $bom->id))->assertRedirect();
         $this->assertSame('archived', $bom->fresh()->status, 'Delete archives; the BOM stays');
         $this->assertSame(1, DB::connection('tenant')->table('manufacturing_boms')->where('id', $bom->id)->count());
+    }
+
+    /**
+     * S3b — new with the writers: a save that fails part-way leaves the recipe / BOM exactly as it was (the controllers
+     * had no transaction), and "unchanged" knows a save that would write nothing new — what lets the product workspace
+     * keep the line ids.
+     */
+    public function test_a_failed_writer_save_leaves_the_recipe_and_the_bom_as_they_were(): void
+    {
+        $this->owner();
+        $dish = $this->product('RB Karahi', $this->piece()->id);
+        $salt = $this->product('RB Salt', $this->kg()->id, ['product_kind' => 'raw_material', 'is_sellable' => false]);
+        $recipes = app(RecipeWriter::class);
+        $data = ['product_id' => $dish->id, 'name' => 'RB Karahi recipe', 'yield_quantity' => 1, 'ingredients' => [['product_id' => $salt->id, 'quantity' => 0.01]]];
+        $recipe = $recipes->save(null, $data, true);
+        $lineIds = $recipe->ingredients()->pluck('id')->all();
+
+        $this->assertTrue($recipes->unchanged($recipe->fresh(), $data, true), 'the same recipe posted again is unchanged');
+        $this->assertFalse($recipes->unchanged($recipe->fresh(), ['ingredients' => [['product_id' => $salt->id, 'quantity' => 0.02]]] + $data, true), 'a new quantity is a change');
+        $this->assertFalse($recipes->unchanged($recipe->fresh(), $data, false), 'switching it off is a change');
+
+        try {
+            $recipes->save($recipe, ['name' => 'RB renamed', 'ingredients' => [['product_id' => $salt->id, 'quantity' => 0.02], ['product_id' => 99999999, 'quantity' => 1]]] + $data, true);
+            $this->fail('a line for a product that does not exist must stop the save');
+        } catch (QueryException) {
+        }
+        $this->assertSame('RB Karahi recipe', $recipe->fresh()->name, 'the header change is rolled back');
+        $this->assertSame($lineIds, $recipe->ingredients()->pluck('id')->all(), 'the old lines are still there');
+
+        $boms = app(BomWriter::class);
+        $stool = $this->product('RB Stool', $this->piece()->id, ['product_kind' => 'finished_good', 'can_be_bom_output' => true]);
+        $leg = $this->product('RB Leg', $this->piece()->id, ['product_kind' => 'raw_material', 'is_sellable' => false, 'can_be_bom_component' => true]);
+        $header = ['bom_no' => 'RB-STOOL-1', 'finished_product_id' => $stool->id, 'version' => '1', 'output_quantity' => 1, 'status' => 'active'];
+        $bom = $boms->save(null, $header, [['component_product_id' => $leg->id, 'unit_id' => null, 'quantity' => 4]]);
+        $bomLineIds = $bom->lines()->pluck('id')->all();
+
+        $this->assertTrue($boms->unchanged($bom->fresh(), $header, [['component_product_id' => $leg->id, 'unit_id' => null, 'quantity' => 4]]), 'the same BOM posted again is unchanged');
+        $this->assertFalse($boms->unchanged($bom->fresh(), $header, [['component_product_id' => $leg->id, 'unit_id' => null, 'quantity' => 3]]), 'a new quantity is a change');
+
+        try {
+            $boms->save($bom, ['version' => '2'] + $header, [['component_product_id' => $leg->id, 'quantity' => 3], ['component_product_id' => null, 'quantity' => 1]]);
+            $this->fail('a line without a part must stop the save');
+        } catch (QueryException) {
+        }
+        $this->assertSame('1', (string) $bom->fresh()->version, 'the header change is rolled back');
+        $this->assertSame($bomLineIds, $bom->lines()->pluck('id')->all(), 'the old lines are still there');
     }
 }
