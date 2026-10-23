@@ -568,7 +568,7 @@ class SalesOrderController extends Controller
                         'kot_sent_quantity'  => $sentQuantity,
                         'pack_unit_id'       => $line['pack_unit_id'] ?? null,
                         'pack_factor'        => $line['pack_factor'] ?? null,
-                    ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $line['pack_size'] ?? null) + [
+                    ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $line['pack_size'] ?? null) + \App\Support\LineQuantity::enteredColumns($line) + [
                         'base_quantity'      => $line['base_quantity'] ?? null,
                         'inventory_batch_id' => $line['inventory_batch_id'] ?? null,
                     ]);
@@ -890,6 +890,8 @@ class SalesOrderController extends Controller
             'lines.*.modifiers'          => ['nullable', 'string'],
             // MEDICAL-COUNTER-1: the pack a line is sold in (checked against the product in CounterPacks).
             'lines.*.pack_unit_id'       => ['nullable', 'integer'],
+            'lines.*.entered_quantity'   => ['nullable', 'numeric', 'min:0'],
+            'lines.*.entered_unit_code'  => ['nullable', 'string', 'max:10'],
             'lines.*.inventory_batch_id' => ['nullable', 'integer'],
 
             'void_items'                            => ['nullable', 'array'],

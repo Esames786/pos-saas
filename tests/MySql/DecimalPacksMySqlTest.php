@@ -2,25 +2,12 @@
 
 namespace Tests\MySql;
 
-use App\Models\Master\Tenant;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductPackUnit;
-use App\Models\Tenant\ProductVariant;
-use App\Models\Tenant\SalesOrder;
-use App\Models\Tenant\Supplier;
-use App\Models\Tenant\Terminal;
-use App\Models\Tenant\Unit;
-use App\Models\Tenant\User;
-use App\Services\Tenancy\TenantProvisioner;
-use Database\Seeders\Demos\PharmacyDemoSeeder;
-use Database\Seeders\MasterSeeder;
-use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
-use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
-use Illuminate\Support\Facades\Artisan;
+use App\Support\PackUnits;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use PDO;
-use Spatie\Permission\PermissionRegistrar;
+use Tests\MySql\Support\IsolatedPharmacyStore;
 
 /**
  * UNITS-PACKS batch, feature 1 (23 Oct) — a kg, litre or metre item may come in packs that hold a part: Bag = 2.5 kg.
@@ -32,35 +19,16 @@ use Spatie\Permission\PermissionRegistrar;
  */
 class DecimalPacksMySqlTest extends MySqlTenantTestCase
 {
-    private const CODE = 'dptest';
+    use IsolatedPharmacyStore;
 
-    private const FEATURES = ['product_screen_v2' => true, 'packs' => true, 'purchasing_v2' => true, 'medical_counter' => true];
-
-    private static bool $built = false;
-
-    private string $host;
-    private string $storeDb;
+    private const STORE_CODE = 'dptest';
+    private const STORE_SUFFIX = '_dp';
+    private const STORE_FEATURES = ['product_screen_v2' => true, 'packs' => true, 'purchasing_v2' => true, 'medical_counter' => true];
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->withoutMiddleware([ValidateCsrfToken::class, VerifyCsrfToken::class]);
-        $this->host = self::CODE . '.' . config('tenancy.tenant_base_domain');
-        $this->storeDb = $this->tenantDb . '_dp';
-
-        if (! self::$built) {
-            $this->createStoreDatabase();
-            DB::setDefaultConnection('master');
-            (new MasterSeeder)->run();
-            Artisan::call('system:routes-sync');
-            $this->seedMasterTenant();
-            $this->useStoreDb();
-            $this->buildStore();
-            self::$built = true;
-        } else {
-            $this->useStoreDb();
-        }
-        $this->setFeatures(self::FEATURES);
+        $this->bootStore();
     }
 
     /* ── the product screen ─────────────────────────────────────────────── */
@@ -101,9 +69,7 @@ class DecimalPacksMySqlTest extends MySqlTenantTestCase
         $c = DB::connection('tenant');
 
         // Bought: 4 Bags at 650 a Bag = 10 kg at 260 a kg.
-        $this->owner()->post($this->url('/goods-receipts'), ['_entry_v2' => '1', 'branch_id' => $this->branchId(), 'supplier_id' => $this->supplier()->id,
-            'receipt_date' => now()->toDateString(), 'lines' => [['product_id' => $rice->id, 'buy_pack' => (string) $bag->id, 'price' => '650', 'packs' => [(string) $bag->id => '4']]]])
-            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->receive($rice, (string) $bag->id, '650', [(string) $bag->id => '4'])->assertRedirect()->assertSessionHasNoErrors();
         $grnLine = $c->table('goods_receipt_lines')->where('product_id', $rice->id)->orderByDesc('id')->first();
         $this->assertSame('10.000', (string) $grnLine->quantity_received);
         $this->assertSame('2.5000', (string) $grnLine->pack_size, 'the line keeps the Bag\'s exact size');
@@ -142,11 +108,9 @@ class DecimalPacksMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta(7.5, $this->stock($rice), 0.0001);
 
         // The stock, said in packs: 7.5 kg = 3 Bag.
-        $this->assertSame('3 Bag', \App\Support\PackUnits::describe($rice->packUnits()->get(), 7.5, 'Kilogram'));
-        $this->assertSame('2 Bag 1 Kilogram', \App\Support\PackUnits::describe($rice->packUnits()->get(), 6.0, 'Kilogram'));
+        $this->assertSame('3 Bag', PackUnits::describe($rice->packUnits()->get(), 7.5, 'Kilogram'));
+        $this->assertSame('2 Bag 1 Kilogram', PackUnits::describe($rice->packUnits()->get(), 6.0, 'Kilogram'));
     }
-
-    /* ── helpers ─────────────────────────────────────────────────────────── */
 
     /** A product-screen form; $packs answers "Yes, it comes in packs". */
     private function form(string $name, int $unitId, array $packs): array
@@ -154,150 +118,5 @@ class DecimalPacksMySqlTest extends MySqlTenantTestCase
         return ['_form_v2' => '1', '_card' => 'medicine', 'status' => 'active', 'sku' => '', 'category_id' => '', '_tax' => '0',
             'unit_id' => (string) $unitId, 'name' => $name, 'default_selling_price' => '300', '_buy' => '1', '_barcode' => '0',
             '_packs' => '1', 'pack_base_sell' => '1', 'packs' => $packs];
-    }
-
-    private function kg(): Unit
-    {
-        return Unit::updateOrCreate(['code' => 'KG'], ['name' => 'Kilogram', 'unit_type' => 'weight', 'base_factor' => 1, 'is_base' => true, 'is_active' => true]);
-    }
-
-    private function piece(): Unit
-    {
-        return Unit::updateOrCreate(['code' => 'PC'], ['name' => 'Piece', 'unit_type' => 'quantity', 'base_factor' => 1, 'is_base' => true, 'is_active' => true]);
-    }
-
-    private function product(string $name, int $unitId, array $extra = []): Product
-    {
-        $sku = 'DP-' . strtoupper(substr(md5($name), 0, 6));
-        $p = Product::create($extra + ['sku' => $sku, 'name' => $name, 'slug' => Str::slug($name), 'unit_id' => $unitId, 'product_type' => 'simple',
-            'product_kind' => 'sale_item', 'inventory_consumption_method' => 'stock_item', 'is_sellable' => true, 'is_pos_visible' => true,
-            'is_purchasable' => true, 'is_stock_tracked' => true, 'has_expiry' => false, 'requires_batch' => false, 'default_selling_price' => 0,
-            'status' => 'active']);
-        ProductVariant::create(['product_id' => $p->id, 'sku' => $sku, 'name' => $name, 'is_default' => true, 'is_active' => true]);
-
-        return $p->fresh();
-    }
-
-    private function supplier(): Supplier
-    {
-        return Supplier::firstOrCreate(['code' => 'DP-S1'], ['name' => 'DP Supplier', 'status' => 'active', 'opening_balance' => 0, 'current_balance' => 0]);
-    }
-
-    private function sell(array $lines, float $total)
-    {
-        return $this->owner()->postJson($this->url('/pos'), [
-            'branch_id' => $this->branchId(), 'terminal_id' => Terminal::where('code', 'C1')->firstOrFail()->id, 'order_type' => 'takeaway',
-            'discount_type' => 'none', 'client_uuid' => (string) Str::uuid(), 'lines' => $lines,
-            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
-            'payments' => [['payment_method_id' => (int) DB::connection('tenant')->table('payment_methods')->where('method_type', 'cash')->value('id'),
-                'amount' => $total, 'tendered_amount' => ceil($total / 100) * 100]],
-        ]);
-    }
-
-    private function giveBack(int $orderId, int $lineId, float $qty, float $refund)
-    {
-        return $this->owner()->post($this->url('/sales-returns'), [
-            'sales_order_id' => $orderId, 'reason' => 'customer brought it back', 'refund_method' => 'cash', 'refund_amount' => $refund,
-            'submission_key' => \App\Support\SubmissionKey::fresh(), 'lines' => [['sales_order_line_id' => $lineId, 'quantity' => $qty]],
-        ]);
-    }
-
-    private function lastSale(): SalesOrder
-    {
-        return SalesOrder::where('status', 'paid')->latest('id')->firstOrFail();
-    }
-
-    private function stock(Product $p): float
-    {
-        return (float) DB::connection('tenant')->table('stock_balances')->where('branch_id', $this->branchId())->where('product_id', $p->id)->sum('quantity_on_hand');
-    }
-
-    private function branchId(): int
-    {
-        return (int) DB::connection('tenant')->table('branches')->orderBy('id')->value('id');
-    }
-
-    private function url(string $path): string
-    {
-        return 'http://' . $this->host . $path;
-    }
-
-    private function owner()
-    {
-        DB::setDefaultConnection('tenant');
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
-
-        return $this->actingAs(User::on('tenant')->where('email', 'owner@pharmacydemo.com')->firstOrFail(), 'tenant');
-    }
-
-    private function setFeatures(array $features): void
-    {
-        DB::connection('master')->table('tenants')->where('tenant_code', self::CODE)->update(['primary_business' => 'pharmacy', 'features' => json_encode($features)]);
-        if (app()->bound('tenant')) {
-            app('tenant')->features = $features;
-        }
-    }
-
-    private function useStoreDb(): void
-    {
-        config(['database.connections.tenant.database' => $this->storeDb]);
-        DB::purge('tenant');
-    }
-
-    private function createStoreDatabase(): void
-    {
-        if (stripos($this->storeDb, 'test') === false) {
-            throw new \RuntimeException('the test database name must contain "test"');
-        }
-        $config = config('database.connections.tenant');
-        $pdo = new PDO("mysql:host={$config['host']};port={$config['port']}", $config['username'], $config['password'] ?? '');
-        $pdo->exec('DROP DATABASE IF EXISTS `' . $this->storeDb . '`');
-        $pdo->exec('CREATE DATABASE `' . $this->storeDb . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-        $this->useStoreDb();
-        if (Artisan::call('migrate:fresh', ['--database' => 'tenant', '--path' => 'database/migrations/tenant', '--force' => true]) !== 0) {
-            throw new \RuntimeException('migrations failed: ' . Artisan::output());
-        }
-    }
-
-    private function seedMasterTenant(): void
-    {
-        $m = DB::connection('master');
-        if ($old = $m->table('tenants')->where('tenant_code', self::CODE)->value('id')) {
-            foreach (['tenant_domains', 'tenant_databases', 'subscriptions', 'tenant_setting_changes'] as $t) {
-                $m->table($t)->where('tenant_id', $old)->delete();
-            }
-            $m->table('tenants')->where('id', $old)->delete();
-        }
-        $m->table('tenant_domains')->where('domain', $this->host)->delete();
-        $m->table('tenant_databases')->where('db_database', $this->storeDb)->delete();
-
-        $id = $m->table('tenants')->insertGetId([
-            'tenant_code' => self::CODE, 'business_name' => 'Decimal Packs Test', 'owner_name' => 'Demo Owner', 'owner_email' => 'owner@pharmacydemo.com',
-            'currency_code' => 'PKR', 'status' => 'active', 'is_demo' => 0, 'primary_business' => 'pharmacy', 'features' => json_encode(self::FEATURES),
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
-        $m->table('tenant_databases')->insert([
-            'tenant_id' => $id, 'db_connection' => 'tenant', 'db_host' => config('database.connections.tenant.host'),
-            'db_port' => (int) config('database.connections.tenant.port'), 'db_database' => $this->storeDb,
-            'db_username' => config('database.connections.tenant.username'), 'db_password' => null,
-            'migration_status' => 'completed', 'created_at' => now(), 'updated_at' => now(),
-        ]);
-        $m->table('tenant_domains')->insert([
-            'tenant_id' => $id, 'domain' => $this->host, 'is_primary' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
-        ]);
-        $m->table('subscriptions')->insert([
-            'tenant_id' => $id, 'plan_id' => $m->table('plans')->where('code', 'pharmacy_demo')->value('id'),
-            'status' => 'active', 'current_period_ends_at' => now()->addYear(), 'created_at' => now(), 'updated_at' => now(),
-        ]);
-    }
-
-    private function buildStore(): void
-    {
-        $tenant = Tenant::on('master')->where('tenant_code', self::CODE)->firstOrFail();
-        app()->instance('tenant', $tenant);
-        DB::setDefaultConnection('tenant');
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
-        (new \ReflectionMethod(TenantProvisioner::class, 'seedTenantBaseData'))->invoke(app(TenantProvisioner::class), $tenant, 'demo1234');
-        app(PharmacyDemoSeeder::class)->run();
     }
 }

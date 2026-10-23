@@ -67,6 +67,15 @@ final class LineQuantity
             }
             $product = $products->get((int) ($line['product_id'] ?? 0));
             $label = $product?->name ?? (string) ($line['line_name'] ?? 'Item');
+            // UNITS-PACKS F2: "250 g" of a kg item. The server works the stock quantity out itself from what was typed;
+            // the screen's own arithmetic is never trusted.
+            if (! empty($line['entered_unit_code']) && empty($line['pack_unit_id']) && isset($line['entered_quantity']) && $line['entered_quantity'] !== '') {
+                [$lines[$i]['quantity'], $lines[$i]['entered_quantity'], $lines[$i]['entered_unit_code']]
+                    = self::fromEnteredUnit($line, $product, $label, "lines.{$i}.quantity");
+                $line['quantity'] = $lines[$i]['quantity'];
+            } else {
+                unset($lines[$i]['entered_quantity'], $lines[$i]['entered_unit_code']);
+            }
             $qty = self::normalize($line['quantity'], $label, "lines.{$i}.quantity");
             $lines[$i]['quantity'] = $qty;
 
@@ -79,6 +88,48 @@ final class LineQuantity
         }
 
         return $lines;
+    }
+
+    /**
+     * UNITS-PACKS F2: the typed quantity and unit to write on a sale line, when the table has the columns (they ship
+     * before the code that writes them) and the line was typed in another unit; else nothing.
+     */
+    public static function enteredColumns(array $line): array
+    {
+        static $has = [];
+        $key = \Illuminate\Support\Facades\DB::connection('tenant')->getDatabaseName();
+        $has[$key] ??= \Illuminate\Support\Facades\Schema::connection('tenant')->hasColumn('sales_order_lines', 'entered_unit_code');
+
+        return $has[$key] && ! empty($line['entered_unit_code']) && isset($line['entered_quantity'])
+            ? ['entered_quantity' => $line['entered_quantity'], 'entered_unit_code' => $line['entered_unit_code']] : [];
+    }
+
+    /**
+     * UNITS-PACKS F2 — a quantity typed in another unit of the item's own family ("250 g" for a kg item) as the stock
+     * quantity, plus what was typed. Refused, with nothing written, when the unit is not of the item's family or when the
+     * stock could not keep it exactly (0.5 g is finer than 0.001 kg).
+     *
+     * @return array{0: float, 1: float, 2: string}  stock quantity, entered quantity, entered unit code
+     */
+    private static function fromEnteredUnit(array $line, ?Product $product, string $label, string $field): array
+    {
+        $code = strtoupper(trim((string) $line['entered_unit_code']));
+        $stockUnit = self::unitName($product?->unit) ?: 'its own unit';
+        $factor = $product ? StandardUnits::codeFactor($code, $product->unit) : null;
+        if ($factor === null) {
+            throw ValidationException::withMessages([$field => "{$label} is sold in {$stockUnit} — it cannot be entered in " . strtolower($code) . '.']);
+        }
+        $entered = self::normalize($line['entered_quantity'], $label, $field);
+        if ($entered <= 0) {
+            throw ValidationException::withMessages([$field => "{$label}: how much? Type more than 0."]);
+        }
+        $raw = $entered * $factor;
+        if (abs($raw - round($raw, self::DECIMALS)) > self::NOISE) {
+            throw ValidationException::withMessages([$field => "{$label}: " . self::show($entered, 6) . ' ' . strtolower($code) . " is finer than the stock keeps — {$stockUnit} is kept to 3 decimals, so the smallest step is "
+                . self::show(0.001 / $factor, 6) . ' ' . strtolower($code) . '.']);
+        }
+
+        return [round($raw, self::DECIMALS), $entered, $code];
     }
 
     /**

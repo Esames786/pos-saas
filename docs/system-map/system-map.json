@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-23T09:20:49+00:00",
+    "built_at": "2026-10-23T10:15:13+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "c5c39cf9",
     "work": [
@@ -24,11 +24,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-unitspacks",
             "branch": "feat/units-packs-batch-20261023",
-            "head": "306029df",
+            "head": "7308db7e",
             "behind_prod": 6,
-            "ahead_of_prod": 29,
-            "last_commit": "2026-10-23\u00b7Units & packs batch plan: decimal packs, gram entry, packs on the normal POS, reports \u2014 with the production census",
-            "uncommitted_files": 24
+            "ahead_of_prod": 30,
+            "last_commit": "2026-10-23\u00b7Units & packs F1: decimal packs \u2014 a kg, litre or metre item comes in Bags of 2.5 kg",
+            "uncommitted_files": 8
         },
         {
             "path": "D:/laragon2/www/pos-saas-verify-3b02",
@@ -563,7 +563,7 @@
             "modified": "2026-10-23"
         }
     ],
-    "git": "306029df",
+    "git": "7308db7e",
     "source": {
         "tenant_db": "pos_test_tenant_up",
         "master_db": "pos_test_master_up"
@@ -26034,7 +26034,9 @@
                 "base_quantity decimal(15,3)",
                 "inventory_batch_id bigint unsigned",
                 "batch_note varchar(160)",
-                "pack_size decimal(15,4)"
+                "pack_size decimal(15,4)",
+                "entered_quantity decimal(15,3)",
+                "entered_unit_code varchar(20)"
             ],
             "fk_out": [
                 {

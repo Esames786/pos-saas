@@ -363,6 +363,8 @@ class POSController extends Controller
                 'unit_type'         => $product->unit?->unit_type ?? 'quantity',
                 'allow_decimal_qty' => $product->unit && $product->unit->unit_type !== 'quantity',
                 'quantity_step'     => $product->unit && $product->unit->unit_type !== 'quantity' ? 0.001 : 1,
+                // UNITS-PACKS F2: the units the weight popup offers (g / kg for a kg item), each with its size in the stock unit.
+                'entry_units'       => \App\Support\StandardUnits::entryUnits($product->unit),
                 'price'             => (float) ($defaultVariant?->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
                 'is_stock_tracked'  => (bool) $product->is_stock_tracked,
                 // Combo-only components ride in the payload for availability but are NOT grid tiles.

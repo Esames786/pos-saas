@@ -2279,6 +2279,11 @@
                     <strong id="qty-modal-product-name"></strong>
                     <div class="text-muted" id="qty-modal-price-hint"></div>
                 </div>
+                {{-- UNITS-PACKS F2: a kg item may be typed in grams (250 g); the line still keeps 0.250 kg. --}}
+                <div class="mb-2" id="qty-modal-units-wrap" hidden>
+                    <div class="small text-muted mb-1">Type it in</div>
+                    <div class="btn-group" role="group" aria-label="Unit" id="qty-modal-units"></div>
+                </div>
                 <div class="mb-3">
                     <label for="qty-modal-input" class="form-label">
                         Quantity <span id="qty-modal-unit" class="text-muted fw-normal"></span>
@@ -2286,6 +2291,7 @@
                     <input type="number" id="qty-modal-input"
                            class="form-control form-control-lg text-end"
                            step="0.001" min="0.001" placeholder="0.000">
+                    <div class="text-danger small mt-1" id="qty-modal-error" role="alert" hidden></div>
                 </div>
                 <div class="mb-0">
                     <label for="qty-modal-amount-input" class="form-label small text-muted">Or enter amount</label>
@@ -3209,6 +3215,8 @@ document.addEventListener('DOMContentLoaded', function () {
         qtyInput.min    = product.quantity_step || 0.001;
         qtyInput.value  = '';
         amountInput.value = '';
+        document.getElementById('qty-modal-error').hidden = true;
+        buildQtyModalUnits(product);
 
         if (!_qtyModal) {
             _qtyModal = new bootstrap.Modal(document.getElementById('qtyEntryModal'));
@@ -3222,13 +3230,28 @@ document.addEventListener('DOMContentLoaded', function () {
         var amount = parseFloat(this.value) || 0;
         var price  = productPrice(_qtyModalProduct, _qtyModalVariant);
         if (price > 0 && amount > 0) {
-            document.getElementById('qty-modal-input').value = (amount / price).toFixed(3);
+            var to = _qtyModalUnit ? _qtyModalUnit.to_stock : 1;
+            document.getElementById('qty-modal-input').value = (amount / price / to).toFixed(to < 1 ? Math.max(0, 3 - Math.round(-Math.log10(to))) : 3);
         }
     });
 
     document.getElementById('qty-modal-confirm').addEventListener('click', function () {
         var qty = parseFloat(document.getElementById('qty-modal-input').value) || 0;
         if (qty <= 0) { document.getElementById('qty-modal-input').focus(); return; }
+        var u = _qtyModalUnit;
+        if (u && Math.abs(u.to_stock - 1) > 1e-9) {
+            var raw = qty * u.to_stock, stockQty = Math.round(raw * 1000) / 1000;
+            if (stockQty <= 0 || Math.abs(raw - stockQty) > 1e-7) {
+                var err = document.getElementById('qty-modal-error');
+                err.textContent = 'That is finer than the stock keeps — the smallest step is ' + qtyModalStep(u) + ' ' + u.label + '.';
+                err.hidden = false;
+                document.getElementById('qty-modal-input').focus();
+                return;
+            }
+            if (_qtyModal) _qtyModal.hide();
+            addToCart(_qtyModalProduct, _qtyModalVariant, stockQty, undefined, undefined, { quantity: qty, unit_code: u.code, label: u.label });
+            return;
+        }
         if (_qtyModal) _qtyModal.hide();
         addToCart(_qtyModalProduct, _qtyModalVariant, qty);
     });
@@ -3236,6 +3259,39 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('qty-modal-input').addEventListener('keydown', function (event) {
         if (event.key === 'Enter') { event.preventDefault(); document.getElementById('qty-modal-confirm').click(); }
     });
+
+    // UNITS-PACKS F2: the units the weight popup offers for this item (g / kg), the stock unit picked first.
+    var _qtyModalUnit = null;
+    function qtyModalStep(u) { return Math.round(0.001 / (u ? u.to_stock : 1) * 1000000) / 1000000; }
+    function buildQtyModalUnits(product) {
+        var units = product.entry_units || [], wrap = document.getElementById('qty-modal-units-wrap'), group = document.getElementById('qty-modal-units');
+        group.innerHTML = '';
+        _qtyModalUnit = null;
+        if (units.length < 2) { wrap.hidden = true; return; }
+        units.forEach(function (u) {
+            var b = document.createElement('button');
+            b.type = 'button'; b.className = 'btn btn-outline-primary'; b.textContent = u.label; b.dataset.code = u.code;
+            b.addEventListener('click', function () { pickQtyModalUnit(u); document.getElementById('qty-modal-input').focus(); });
+            group.appendChild(b);
+        });
+        wrap.hidden = false;
+        pickQtyModalUnit(units.find(function (u) { return Math.abs(u.to_stock - 1) < 1e-9; }) || units[units.length - 1]);
+    }
+    function pickQtyModalUnit(u) {
+        _qtyModalUnit = u;
+        document.querySelectorAll('#qty-modal-units button').forEach(function (b) {
+            var on = b.dataset.code === u.code;
+            b.classList.toggle('btn-primary', on); b.classList.toggle('btn-outline-primary', !on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        var input = document.getElementById('qty-modal-input');
+        input.step = qtyModalStep(u); input.min = qtyModalStep(u); input.value = '';
+        document.getElementById('qty-modal-unit').textContent = '(' + u.label + ')';
+        document.getElementById('qty-modal-error').hidden = true;
+    }
+    function enteredLabel(product, code) {
+        var u = ((product && product.entry_units) || []).find(function (x) { return x.code === code; });
+        return u ? u.label : String(code || '').toLowerCase();
+    }
 
     function openModifierModal(product, variant, qty, preselectedIds, editKey) {
         _modifierModalProduct = product;
@@ -3447,7 +3503,7 @@ document.addEventListener('DOMContentLoaded', function () {
         renderCart();
     }
 
-    function addToCart(product, variant, forceQty, selectedModifiers, pack) {
+    function addToCart(product, variant, forceQty, selectedModifiers, pack, entered) {
         // MEDICAL-COUNTER-1: a medicine goes in by its pack (a scanned Box = 1 Box; a click = 1 Strip).
         if (medicalCounter && product && product.med && !hasModifierGroups(product) && !(selectedModifiers && selectedModifiers.length)) {
             medAdd(product, variant, forceQty, pack);
@@ -3491,6 +3547,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 backorderToast(product.name);
             }
             existing.quantity = newQty;
+            existing.entered_quantity = null; existing.entered_unit_code = null; existing.entered_label = null;   // now a sum: said in the stock unit
         } else {
             if (stockQty !== null && addQty > stockQty + 0.0001) {
                 if (!branchAllowsNegative()) {
@@ -3518,6 +3575,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 _dbLineId:          null,
                 kot_sent:           false,
                 kot_sent_quantity:  0,
+                // UNITS-PACKS F2: what the cashier typed ("250 g"); the quantity above is in the stock unit.
+                entered_quantity:   entered ? entered.quantity : null,
+                entered_unit_code:  entered ? entered.unit_code : null,
+                entered_label:      entered ? entered.label : null,
             });
         }
 
@@ -3563,6 +3624,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         } else {
             item.quantity = newQuantity;
+            item.entered_quantity = null; item.entered_unit_code = null; item.entered_label = null;
             if (item.line_kind === 'combo_header') updateComboComponents(item.key);
         }
         renderCart();
@@ -3706,6 +3768,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<div class="d-flex justify-content-between gap-2 mb-2">' +
                     '<div>' +
                         '<div class="fw-bold">' + escapeHtml(item.name) + '</div>' +
+                        (item.entered_unit_code ? '<div class="small text-primary" data-entered>' + escapeHtml(String(Number(item.entered_quantity)) + ' ' + (item.entered_label || enteredLabel(item.product, item.entered_unit_code))) + '</div>' : '') +
                         '<div class="small text-muted">' + escapeHtml(item.variant_name || 'Default') + ' &middot; ' + money(item.unit_price) + (lineUnitLabel(item) ? ' / ' + escapeHtml(lineUnitLabel(item)) : '') + '</div>' +
                         modifierHtml +
                         componentHtml +
@@ -3764,6 +3827,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 item.quantity = isMeasurableProduct(item.product)
                     ? parseFloat((Number(item.quantity || 0) + step).toFixed(3))
                     : Number(item.quantity || 0) + 1;
+                item.entered_quantity = null; item.entered_unit_code = null; item.entered_label = null;
                 if (item.line_kind === 'combo_header') updateComboComponents(item.key);
                 renderCart();
             });
@@ -5141,6 +5205,8 @@ document.addEventListener('DOMContentLoaded', function () {
             // counter posts exactly what it posted before.
             if (item.pack_unit_id) fields.pack_unit_id = item.pack_unit_id;
             if (item.inventory_batch_id) fields.inventory_batch_id = item.inventory_batch_id;
+            // UNITS-PACKS F2: typed in another unit ("250 g"); the server works the quantity out again from this.
+            if (item.entered_unit_code && item.entered_quantity) { fields.entered_quantity = item.entered_quantity; fields.entered_unit_code = item.entered_unit_code; }
             Object.keys(fields).forEach(function (field) {
                 var inp  = document.createElement('input');
                 inp.type = 'hidden';
@@ -6535,6 +6601,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 _dbLineId:          line.id || null,
                 kot_sent:           !!line.kot_sent,
                 kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
+                // UNITS-PACKS F2: a line typed as "250 g" comes back saying 250 g.
+                entered_quantity:   line.entered_unit_code ? Number(line.entered_quantity) : null,
+                entered_unit_code:  line.entered_unit_code || null,
+                entered_label:      line.entered_unit_code ? enteredLabel(product, line.entered_unit_code) : null,
             });
             if (medicalCounter) medAdoptLine(cart[cart.length - 1], product, variant, line);   // MEDICAL-COUNTER-1
             recalledLineKeys[line.id] = key;
@@ -7235,6 +7305,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     line_kind:       it.line_kind || 'standard',
                     variant_name:    it.variant_name || null,
                     modifiers:       normalizeModifiers(it.modifiers || []),
+                    entered_quantity:  it.entered_unit_code ? it.entered_quantity : null,
+                    entered_unit_code: it.entered_unit_code || null,
                 }, medicalCounter ? medPreviewFields(it) : {});
             }),
         };
@@ -8189,6 +8261,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 _dbLineId:          line.id || null,
                 kot_sent:           !!line.kot_sent,
                 kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
+                // UNITS-PACKS F2: a line typed as "250 g" comes back saying 250 g.
+                entered_quantity:   line.entered_unit_code ? Number(line.entered_quantity) : null,
+                entered_unit_code:  line.entered_unit_code || null,
+                entered_label:      line.entered_unit_code ? enteredLabel(product, line.entered_unit_code) : null,
             });
             if (medicalCounter) medAdoptLine(cart[cart.length - 1], product, variant, line);   // MEDICAL-COUNTER-1
             preloadedLineKeys[line.id] = key;

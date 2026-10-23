@@ -44,6 +44,7 @@ class SalesOrderLine extends Model
         'manager_approval_id',
         // MEDICAL-COUNTER-1: the pack a line was sold in (quantity = packs, base_quantity = tablets) and its batch.
         'pack_unit_id', 'pack_factor', 'pack_size', 'base_quantity', 'inventory_batch_id', 'batch_note',
+        'entered_quantity', 'entered_unit_code',
     ];
 
     protected function casts(): array

@@ -55,6 +55,45 @@ final class StandardUnits
         return self::FAMILIES[$family][self::code($from)] / self::FAMILIES[$family][self::code($to)];
     }
 
+    /** UNITS-PACKS F2: the units a cashier may type a quantity in, per family, smallest first: [code, label]. */
+    private const ENTRY = [
+        'weight' => [['G', 'g'], ['KG', 'kg']],
+        'volume' => [['ML', 'ml'], ['L', 'litre']],
+        'length' => [['CM', 'cm'], ['M', 'm']],
+    ];
+
+    /**
+     * UNITS-PACKS F2 — what the counter may offer for an item kept in $stock: "g" and "kg" for a kg item, each with how
+     * many of the stock unit one of it is (g → 0.001 for kg). Empty when the stock unit is not a standard unit.
+     *
+     * @return list<array{code:string, label:string, to_stock:float}>
+     */
+    public static function entryUnits(?Unit $stock): array
+    {
+        $family = self::family($stock);
+        if ($family === null) {
+            return [];
+        }
+        $out = [];
+        foreach (self::ENTRY[$family] as [$code, $label]) {
+            $out[] = ['code' => $code, 'label' => $label, 'to_stock' => self::FAMILIES[$family][$code] / self::FAMILIES[$family][self::code($stock)]];
+        }
+
+        return $out;
+    }
+
+    /** How many of the stock unit one $code is (G for a kg item = 0.001), or null when $code is not in its family. */
+    public static function codeFactor(string $code, ?Unit $stock): ?float
+    {
+        $family = self::family($stock);
+        $code = strtoupper(trim($code));
+        if ($family === null || ! isset(self::FAMILIES[$family][$code])) {
+            return null;
+        }
+
+        return self::FAMILIES[$family][$code] / self::FAMILIES[$family][self::code($stock)];
+    }
+
     /** A unit that holds part quantities (1.250 kg) — the type, as every screen already decides it. */
     public static function allowsParts(?Unit $unit): bool
     {

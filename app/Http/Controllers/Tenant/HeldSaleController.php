@@ -124,6 +124,9 @@ class HeldSaleController extends Controller
                     'pack_unit_id'       => $l->pack_unit_id ? (int) $l->pack_unit_id : null,
                     'pack_factor'        => $l->pack_factor ? (int) $l->pack_factor : null,
                 'pack_size'          => \App\Support\CounterPacks::sizeOf($l) ?: null,
+                // UNITS-PACKS F2: a line typed as "250 g" comes back as 250 g.
+                'entered_quantity'   => $l->entered_quantity !== null ? (float) $l->entered_quantity : null,
+                'entered_unit_code'  => $l->entered_unit_code ?? null,
                     'inventory_batch_id' => $l->inventory_batch_id ? (int) $l->inventory_batch_id : null,
                 ])->values(),
             ]),
@@ -244,6 +247,9 @@ class HeldSaleController extends Controller
                 'pack_unit_id'       => $l->pack_unit_id ? (int) $l->pack_unit_id : null,
                 'pack_factor'        => $l->pack_factor ? (int) $l->pack_factor : null,
                 'pack_size'          => \App\Support\CounterPacks::sizeOf($l) ?: null,
+                // UNITS-PACKS F2: a line typed as "250 g" comes back as 250 g.
+                'entered_quantity'   => $l->entered_quantity !== null ? (float) $l->entered_quantity : null,
+                'entered_unit_code'  => $l->entered_unit_code ?? null,
                 'inventory_batch_id' => $l->inventory_batch_id ? (int) $l->inventory_batch_id : null,
             ])->values(),
         ];
@@ -307,6 +313,8 @@ class HeldSaleController extends Controller
             'lines.*.modifiers'           => 'nullable|string',
             // MEDICAL-COUNTER-1: the pack a line is sold in.
             'lines.*.pack_unit_id'        => 'nullable|integer',
+            'lines.*.entered_quantity'    => 'nullable|numeric|min:0',
+            'lines.*.entered_unit_code'   => 'nullable|string|max:10',
             'lines.*.inventory_batch_id'  => 'nullable|integer',
             'void_items'                  => 'nullable|array',
             'void_items.*.old_line_id'    => 'nullable|integer',
@@ -817,7 +825,7 @@ class HeldSaleController extends Controller
                 'kot_sent_quantity'  => $kotSentQty,
                 'pack_unit_id'       => $pack['pack_unit_id'] ?? null,
                 'pack_factor'        => $pack['pack_factor'] ?? null,
-            ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $pack['pack_size'] ?? null) + [
+            ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $pack['pack_size'] ?? null) + ($pack ? [] : \App\Support\LineQuantity::enteredColumns($line)) + [
                 'base_quantity'      => $pack['base_quantity'] ?? null,
                 'inventory_batch_id' => $preferBatch,
             ]);
