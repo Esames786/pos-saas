@@ -282,6 +282,7 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
             $this->assertStringNotContainsString($gone, $new, "gone from the plain list: {$gone}");
         }
         $this->assertStringContainsString('name="beh[counter]"', $new, 'each behaviour is one Any / Yes / No question');
+        $this->assertMatchesRegularExpression('/<option value="service"[^>]*>Service<\/option>/', $new, 'the Role filter offers the same recognisable names');
 
         $this->assertStringContainsString('Hidden Shashlik', $this->page('/products?flags[]=hidden_from_pos')->getContent(), 'an old link still filters');
     }
