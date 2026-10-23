@@ -269,16 +269,99 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('Role / Visibility', $old);
         $this->assertStringContainsString('Hidden from POS', $old, 'switch off: the list is exactly as before');
 
+        // W3/W4 S1 (deliberate change of the 19 Oct wording): Structure, Role and Behaviour apart, the role names a
+        // shop recognises, behaviour as Any / Yes / No, no "old name" and no "What it is".
         $this->setTenant('restaurant', true);
         $new = $this->page('/products?search=Hidden+Shashlik')->assertOk()->getContent();
-        $this->assertStringContainsString('Where it shows', $new);
-        $this->assertStringContainsString('Sold, no counter button', $new);
-        $this->assertStringContainsString('old name: Service Item', $new);
-        $this->assertStringContainsString('Has a button on the counter', $new, 'the filter ticks are plain words');
-        $this->assertStringContainsString('Service — sold, no stock', $new);
-        $this->assertStringNotContainsString('>POS Visible<', $new);
+        $row = $this->row($new, 'Hidden Shashlik');
+        $this->assertStringContainsString('<td>Simple</td>', $row, 'structure');
+        $this->assertStringContainsString('data-role="service">Service</span>', $row, 'the recognisable role name');
+        $this->assertStringContainsString('>Sold</span>', $row);
+        $this->assertStringNotContainsString('On the counter</span>', $row, 'sold, but no button on the counter');
+        foreach (['old name', 'What it is', 'Where it shows', '>POS Visible<', 'name="product_type"', 'name="flags[]"'] as $gone) {
+            $this->assertStringNotContainsString($gone, $new, "gone from the plain list: {$gone}");
+        }
+        $this->assertStringContainsString('name="beh[counter]"', $new, 'each behaviour is one Any / Yes / No question');
 
-        $this->assertStringContainsString('Hidden Shashlik', $this->page('/products?flags[]=hidden_from_pos')->getContent(), 'same filter underneath');
+        $this->assertStringContainsString('Hidden Shashlik', $this->page('/products?flags[]=hidden_from_pos')->getContent(), 'an old link still filters');
+    }
+
+    public function test_the_plain_list_asks_each_behaviour_any_yes_or_no_and_two_answers_never_contradict(): void
+    {
+        $this->setTenant('restaurant', true);
+        $make = fn (string $name, array $a) => Product::create($a + ['sku' => 'S1-' . substr(md5($name), 0, 6), 'name' => $name, 'slug' => \Illuminate\Support\Str::slug($name),
+            'product_type' => 'simple', 'product_kind' => 'sale_item', 'inventory_consumption_method' => 'stock_item', 'is_sellable' => true,
+            'is_pos_visible' => true, 'is_purchasable' => false, 'is_stock_tracked' => false, 'has_variants' => false, 'default_selling_price' => 10, 'status' => 'active']);
+        $make('S1Q Cola Counter', ['is_purchasable' => true, 'is_stock_tracked' => true]);
+        $make('S1Q Biryani Recipe', ['is_pos_visible' => false, 'product_type' => 'recipe', 'inventory_consumption_method' => 'recipe']);
+        // Bought, not sold (the catalog lists a not-sold item only when it is flagged for the counter; not sold, so
+        // "On the counter" is still No).
+        $make('S1Q Box Packing', ['product_kind' => 'packaging_material', 'is_sellable' => false, 'is_pos_visible' => true, 'is_purchasable' => true, 'is_stock_tracked' => true]);
+        $make('S1Q Karahi Sizes', ['has_variants' => true]);
+        $names = fn (string $q) => collect(['S1Q Cola Counter', 'S1Q Biryani Recipe', 'S1Q Box Packing', 'S1Q Karahi Sizes'])
+            ->filter(fn ($n) => str_contains($this->page('/products?search=S1Q&' . $q)->getContent(), '<b>' . $n . '</b>'))->values()->all();
+
+        $this->assertSame(['S1Q Cola Counter', 'S1Q Box Packing'], $names('beh[bought]=yes'));
+        $this->assertSame(['S1Q Biryani Recipe', 'S1Q Karahi Sizes'], $names('beh[bought]=no'));
+        $this->assertSame(['S1Q Cola Counter', 'S1Q Karahi Sizes'], $names('beh[counter]=yes'));
+        $this->assertSame(['S1Q Biryani Recipe', 'S1Q Box Packing'], $names('beh[counter]=no'), 'Yes and No split the list in two — nothing is in both');
+        $this->assertSame(['S1Q Biryani Recipe'], $names('beh[recipe]=yes'));
+        $this->assertSame(['S1Q Karahi Sizes'], $names('structure=variants'));
+        $this->assertSame(['S1Q Box Packing'], $names('role=packaging_material'));
+        $this->assertSame(['S1Q Box Packing'], $names('beh[bought]=yes&beh[sold]=no'));
+        $this->assertCount(4, $names('beh[bought]=maybe'), 'an unknown answer is "Any"');
+    }
+
+    public function test_deals_are_listed_under_combo_and_open_the_existing_deal_editor(): void
+    {
+        $this->setTenant('restaurant', true);
+        $items = collect(['S1D Rice', 'S1D Drink'])->map(fn ($n) => Product::create(['sku' => 'S1D-' . substr(md5($n), 0, 6), 'name' => $n, 'slug' => \Illuminate\Support\Str::slug($n),
+            'product_type' => 'simple', 'product_kind' => 'sale_item', 'inventory_consumption_method' => 'none', 'is_sellable' => true, 'is_pos_visible' => true,
+            'default_selling_price' => 100, 'status' => 'active']));
+        $combo = DB::connection('tenant')->table('combos')->insertGetId(['name' => 'S1D Family Deal', 'code' => 'S1D-DEAL', 'price' => 2900, 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now()]);
+        foreach ($items as $i) {
+            DB::connection('tenant')->table('combo_components')->insert(['combo_id' => $combo, 'product_id' => $i->id, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $products = Product::count();
+
+        $list = $this->page('/products?search=S1D')->assertOk()->getContent();
+        $this->assertStringContainsString('Deals are listed under Structure "Combo"', $list);
+        $this->assertStringContainsString('?structure=combo', $list);
+
+        $deals = $this->page('/products?structure=combo&search=S1D+Family')->assertOk()->getContent();
+        $row = $this->row($deals, 'S1D Family Deal');
+        $this->assertStringContainsString('a deal · 2 items', $row);
+        $this->assertStringContainsString('/combos/' . $combo . '/edit', $row, 'the existing deal editor');
+        $this->assertStringContainsString('Open deal', $row);
+        $this->assertSame($products, Product::count(), 'a deal is never copied into a product');
+    }
+
+    public function test_the_plain_list_shows_packs_in_words_where_packs_are_on(): void
+    {
+        $kg = \App\Models\Tenant\Unit::updateOrCreate(['code' => 'KG'], ['name' => 'Kilogram', 'unit_type' => 'weight', 'base_factor' => 1, 'is_base' => true, 'is_active' => true]);
+        $rice = Product::create(['sku' => 'S1P-RICE', 'name' => 'S1P Basmati', 'slug' => 's1p-basmati', 'unit_id' => $kg->id, 'product_type' => 'simple',
+            'product_kind' => 'sale_item', 'inventory_consumption_method' => 'stock_item', 'is_sellable' => true, 'is_pos_visible' => true,
+            'is_purchasable' => true, 'is_stock_tracked' => true, 'default_selling_price' => 320, 'status' => 'active']);
+        \App\Models\Tenant\ProductPackUnit::create(['product_id' => $rice->id, 'name' => 'Kilogram', 'factor' => 1, 'can_sell' => true, 'can_buy' => true]);
+        \App\Models\Tenant\ProductPackUnit::create(['product_id' => $rice->id, 'name' => 'Bag', 'factor' => 2.5, 'can_sell' => true, 'can_buy' => true]);
+
+        DB::connection('master')->table('tenants')->where('tenant_code', self::CODE)->update(['primary_business' => 'mart',
+            'features' => json_encode(['product_screen_v2' => true, 'packs' => true])]);
+        $on = $this->page('/products?search=S1P')->assertOk()->getContent();
+        $this->assertStringContainsString('<th scope="col">Packs</th>', $on);
+        $this->assertStringContainsString('Bag = 2.5 Kilogram', $this->row($on, 'S1P Basmati'));
+
+        $this->setTenant('mart', true);   // packs off
+        $this->assertStringNotContainsString('<th scope="col">Packs</th>', $this->page('/products?search=S1P')->getContent());
+    }
+
+    /** The table row of $name on a rendered list. */
+    private function row(string $html, string $name): string
+    {
+        $this->assertSame(1, preg_match('/<tr>\s*<td>(?:<a [^>]*>)?<b>' . preg_quote($name, '/') . '<\/b>.*?<\/tr>/s', $html, $m), "the list shows {$name}");
+
+        return $m[0];
     }
 
     public function test_stock_counting_cannot_be_switched_off_after_stock_moved(): void

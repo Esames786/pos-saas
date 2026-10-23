@@ -79,19 +79,84 @@ class ProductController extends Controller
             };
         }
 
-        // PRODUCT-LIST-PLAIN-1: where the new product screen is on, the list speaks the same plain words —
-        // what each item is (the business's own cards) and where it shows. Same filters underneath.
+        // PRODUCT-LIST-PLAIN-1 / W3/W4 S1: where the new product screen is on, the list keeps three things apart —
+        // STRUCTURE (simple, with variants, a deal), ROLE (the recognisable role names) and BEHAVIOUR (bought, sold,
+        // stock counted, on the counter, recipe-based) — and asks each behaviour Any / Yes / No, so two filters can
+        // never contradict. Presentation and filtering only: no role or flag is changed here.
         $plain = $this->usesScreenV2($request);
         $business = $plain ? \App\Support\Business::of() : null;
-        $kindLabels = $plain ? \App\Support\ProductCards::kindWords($business) : Product::KINDS;
+        $kindLabels = $plain ? self::PLAIN_ROLES : Product::KINDS;
+        $structure = null;
+        $chosenRole = null;
+        $chosenBeh = [];
+        $packsOn = false;
+        $combos = null;
+        if ($plain) {
+            $structure = in_array($request->input('structure'), ['simple', 'variants', 'combo'], true) ? (string) $request->input('structure') : null;
+            if ($structure === 'simple') {
+                $query->where(fn ($q) => $q->where('has_variants', false)->orWhereNull('has_variants'));
+            } elseif ($structure === 'variants') {
+                $query->where('has_variants', true);
+            }
+            $chosenRole = array_key_exists((string) $request->input('role'), self::PLAIN_ROLES) ? (string) $request->input('role') : null;
+            if ($chosenRole !== null) {
+                $query->where(function ($q) use ($chosenRole) {
+                    $q->where('product_kind', $chosenRole);
+                    if ($chosenRole === Product::KIND_SALE_ITEM) {
+                        $q->orWhereNull('product_kind');   // an unset role reads as Sale item
+                    }
+                });
+            }
+            foreach ((array) $request->input('beh', []) as $key => $answer) {
+                if (! array_key_exists((string) $key, self::BEHAVIOURS) || ! in_array($answer, ['yes', 'no'], true)) {
+                    continue;
+                }
+                $chosenBeh[$key] = $answer;
+                $yes = $answer === 'yes';
+                match ($key) {
+                    'bought'  => $query->where('is_purchasable', $yes),
+                    'sold'    => $query->where('is_sellable', $yes),
+                    'stock'   => $query->where('is_stock_tracked', $yes),
+                    // The rule the badge reads (Product::isPosVisible): active, sold, and shown on the counter.
+                    'counter' => $yes
+                        ? $query->where('status', 'active')->where('is_sellable', true)->where('is_pos_visible', true)
+                        : $query->where(fn ($q) => $q->where('status', '!=', 'active')->orWhere('is_sellable', false)->orWhere('is_pos_visible', false)),
+                    'recipe'  => $yes
+                        ? $query->where('inventory_consumption_method', 'recipe')
+                        : $query->where(fn ($q) => $q->where('inventory_consumption_method', '!=', 'recipe')->orWhereNull('inventory_consumption_method')),
+                };
+            }
+            $packsOn = \App\Support\PackUnits::enabled();
+            if ($packsOn) {
+                $query->with('packUnits');
+            }
+            // Deals (combos) are their own records: the Combo filter lists them, each opening the existing deal
+            // editor. A deal is never copied into the products table.
+            if ($structure === 'combo') {
+                $combos = \App\Models\Tenant\Combo::with('category')->withCount('components')
+                    ->when($request->filled('search'), fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', '%' . trim((string) $request->search) . '%')
+                        ->orWhere('code', 'like', '%' . trim((string) $request->search) . '%')))
+                    ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->category_id))
+                    ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+                    ->orderBy('name')->paginate(15)->withQueryString();
+            }
+        }
 
         return view('tenant.products.index', [
+            'plainStructure' => $structure,
+            'plainRole'   => $chosenRole,
+            'plainBeh'    => $chosenBeh,
+            'plainBehaviours' => self::BEHAVIOURS,
+            'plainPacksOn' => $packsOn,
+            'plainCombos' => $combos,
+            'plainDealCount' => $plain && $structure !== 'combo' ? \App\Models\Tenant\Combo::count() : 0,
             'products'    => $query->paginate(15)->withQueryString(),
             'categories'  => Category::where('is_active', true)->orderBy('name')->get(),
             'context'     => $context,
             'contextBase' => $this->contextBaseUrl($request, $context),
             'roleOptions' => collect($kindLabels)
-                ->filter(fn ($label, $kind) => in_array($kind, $kindsHere, true) || in_array($kind, $chosenRoles, true))->all(),
+                ->filter(fn ($label, $kind) => in_array($kind, $kindsHere, true) || in_array($kind, $chosenRoles, true) || $kind === $chosenRole)->all(),
+            'plainRoleNames' => self::PLAIN_ROLES,
             'flagOptions' => $plain ? \App\Support\ProductCards::FLAG_WORDS : self::FLAG_FILTERS,
             'chosenRoles' => $chosenRoles,
             'chosenFlags' => $chosenFlags,
@@ -101,6 +166,26 @@ class ProductController extends Controller
             'plainBusiness' => $business,
         ]);
     }
+
+    /** W3/W4 S1: the role names a shop recognises, the same for every business (the plain list). */
+    private const PLAIN_ROLES = [
+        Product::KIND_SALE_ITEM          => 'Sale item',
+        Product::KIND_RAW_MATERIAL       => 'Raw material',
+        Product::KIND_PACKAGING_MATERIAL => 'Packaging',
+        Product::KIND_SEMI_FINISHED      => 'Semi-finished',
+        Product::KIND_FINISHED_GOOD      => 'Finished good',
+        Product::KIND_SERVICE            => 'Service',
+        Product::KIND_COMBO_VIRTUAL      => 'Deal item',
+    ];
+
+    /** W3/W4 S1: what the system does with an item — each asked Any / Yes / No on the plain list. */
+    private const BEHAVIOURS = [
+        'bought'  => 'Bought',
+        'sold'    => 'Sold',
+        'stock'   => 'Stock counted',
+        'counter' => 'On the counter',
+        'recipe'  => 'Recipe-based',
+    ];
 
     /** PRODUCT-ROLE-FILTER-1: the visibility/behaviour filters, named as their badges are. */
     private const FLAG_FILTERS = [
