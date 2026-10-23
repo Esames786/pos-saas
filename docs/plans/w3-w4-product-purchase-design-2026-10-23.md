@@ -207,6 +207,29 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
 6. **S5 — compact navigation** (single "Purchases" item behind the switch, English label fixes). Tests: the sidebar
    render with the switch on and off, plain English.
 
+## As built
+
+### S0 — purchasing safety fixes (`6e6ea024`, no switch)
+
+| Fix | Guarded by (`PurchasingSafetyMySqlTest`) | Sabotage → red |
+|---|---|---|
+| A goods receipt is posted once per form key. The same form → the first receipt; the same key with other lines → refused with a new key; no key → as before. The old screen sends a key too. | `..._one_form_key_is_one_receipt...` | KEYSKIP |
+| The unique index alone still returns the first receipt (the race path) | same test | KEYRACE, a control: **stays green**, as it must |
+| A voided receipt cannot be invoiced (under the receipt lock) | `test_a_voided_receipt_cannot_be_invoiced` | VOIDBILL |
+| A GRN- / PAY- number already taken draws another | `..._number_already_taken_draws_another` | GRNRETRY, PAYRETRY |
+| A partly received PO becomes "received" when the rest arrives | `..._partly_received_order...` | PODONE |
+| A payment against another supplier's invoice is refused; that invoice stays unpaid | `..._another_suppliers_invoice...` | PAYSUP |
+
+- `voidGrn` re-checks the status and the invoice under the receipt lock. There is no race test for this; it closes
+  the gap the research found.
+- Schema: `goods_receipts.submission_key` + `submission_hash`, nullable, INSTANT, with an in-place unique index. It is
+  written only when the column exists.
+- Related suites: 217 / 217 in 24 classes, on `6e6ea024` with a clean tree before and after (DB set `_w34`). The
+  classes: PurchasingV2, SupplierNetBill, SupplierReturnMatrix, PurchaseReturnPostedOnce / Gl, every Grn*,
+  SupplierFinanceDirect, SupplierRunningAccount, CashBookVoid / Report, PurchaseStockQuantity, W2Combined,
+  UnitsAndPacksJourney, DecimalPacks, PharmacyDemo, InventoryExpensePurchaseStock, PurchaseItemsImport,
+  SupplierLedgerDrCr, SupplierOpeningBalanceGl, PayablesFinanceGate.
+
 ## Decisions (reviewer, 23 Oct): these replace the open questions
 
 1. **Deals in Products.** They show as **Structure: Combo**, with a filter. Each row opens the existing deal record and
