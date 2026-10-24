@@ -7,11 +7,19 @@
 --}}
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
     <div>
-        <h1 class="mb-1">Return to supplier <span class="text-muted fw-normal fs-5" lang="ur">سپلائر کو واپسی</span></h1>
+        <h1 class="mb-1">Supplier Return <span class="text-muted fw-normal fs-5" lang="ur">سپلائر کو واپسی</span></h1>
         <p class="fw-medium text-muted mb-0">Box / Strip / Tablet, from the batch it goes back from. Save a draft, or post it at once.</p>
     </div>
     <a href="{{ url('/purchase-returns') }}" class="btn btn-light">Back</a>
 </div>
+
+@include('tenant.purchasing.partials.how-to-use', ['guide' => [
+    'what' => 'Send goods back to a supplier. Stock goes down and the supplier owes you for them (Supplier Credit).',
+    'steps' => ['Choose the supplier, and the Goods Receipt the goods came on if you know it.', 'Choose each item and the quantity going back (and its batch).', 'Give the reason, then save as a draft or post.'],
+    'effects' => ['Stock' => 'Goes down by what goes back, from the batch picked.', 'Supplier balance' => 'Goes down by the value of the return — a Supplier Credit.', 'Payments' => 'None. The credit pays the supplier\'s open invoices automatically, or the supplier deducts it on their next invoice.'],
+    'example' => '2 boxes at Rs 100 go back: stock goes down by 2 boxes and the supplier owes you Rs 200, which pays Rs 200 of an open invoice.',
+    'blocked' => ['More than was received on that Goods Receipt.', 'More than the batch holds.'],
+]])
 
 @if($errors->any())
     <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
@@ -48,7 +56,7 @@
                 </select>
             </div>
             <div class="col-md-4">
-                <label for="ret-grn" class="form-label">From a receipt (GRN) <span class="text-muted small">— optional</span></label>
+                <label for="ret-grn" class="form-label">From a goods receipt <span class="text-muted small">— optional</span></label>
                 <select id="ret-grn" class="form-select">
                     <option value="">— no receipt: pick items below —</option>
                     @if($goodsReceipt)<option value="{{ $goodsReceipt->id }}" selected>{{ $goodsReceipt->grn_no }} · {{ $goodsReceipt->receipt_date?->format('d M') }}</option>@endif

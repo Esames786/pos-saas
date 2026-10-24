@@ -211,6 +211,19 @@ class PurchasingService
         }
 
         DB::connection('tenant')->transaction(function () use ($grn, $userId, $reason) {
+            // W3/W4 S0: the checks above, again, under the receipt's own lock. An invoice is recorded under the same
+            // lock (PurchaseBillService::createFromReceipt), so a void and an invoice can no longer both pass.
+            $locked = GoodsReceipt::query()->whereKey($grn->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== 'posted') {
+                throw new RuntimeException('This receipt is already voided.');
+            }
+            if (\App\Models\Tenant\PurchaseBill::query()->where('goods_receipt_id', $grn->id)->exists()) {
+                throw new RuntimeException(
+                    'A purchase bill has already been created from this receipt, so it cannot be voided. '
+                    . 'Use a Purchase Return instead.'
+                );
+            }
+
             // GRN-VOID-OWN-BATCH-1: every stock entry of this receipt, each exactly once — no longer per line by
             // product (two lines of the same item, e.g. two batches or a free line, each took back BOTH entries) —
             // and each from the exact stock row it filled (it used to come off every batch and variant of the

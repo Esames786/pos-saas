@@ -42,6 +42,12 @@ class PurchaseBill extends Model
         return $this->belongsTo(GoodsReceipt::class);
     }
 
+    /** SUPPLIER-NET-BILL-1: returns this invoice already takes off. */
+    public function nettings()
+    {
+        return $this->hasMany(PurchaseBillReturnNetting::class, 'purchase_bill_id');
+    }
+
     public function lines()
     {
         return $this->hasMany(PurchaseBillLine::class);

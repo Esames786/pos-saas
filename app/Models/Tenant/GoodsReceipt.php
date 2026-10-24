@@ -14,6 +14,9 @@ class GoodsReceipt extends Model
         'receipt_date', 'status', 'notes', 'posted_by_user_id', 'posted_at',
         'extra_charges', 'extra_charges_note',
         'voided_at', 'voided_by_user_id', 'void_reason',
+        // W3/W4 S0: the form's key (posted once) and a fingerprint of what it asked for. Written only when the
+        // columns exist (SubmissionKey::usable).
+        'submission_key', 'submission_hash',
     ];
 
     protected $casts = [

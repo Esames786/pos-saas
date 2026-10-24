@@ -1,4 +1,30 @@
-# Supplier bill net of an earlier return — posting matrix (design, 21 Oct 2026)
+# Supplier bill net of an earlier return — posting matrix (21 Oct 2026)
+
+> **Built** as SUPPLIER-NET-BILL-1 (`PurchaseBillService`, `SupplierNetBillMySqlTest`). Differences from the design below:
+> bills cannot be voided in this system, so the "netted bill voided" case does not exist. **Review fixes (21 Oct,
+> `docs/plans/supplier-invoice-review-fixes-2026-10-21.md`):** the GL posts inside the same transaction (a journal that
+> cannot post saves nothing); a supplier who deducted only PART of a return is recorded with the amount they deducted
+> (never as a discount) — the return's unused credit is spent first, the rest stays supplier credit; a blocked net
+> invoice no longer tells the person to record a full invoice the supplier did not send.
+>
+> **Owner, 21 Oct — a credit that already sits on another invoice is never moved silently** (replaces "moved off it
+> first" in the running-account row below):
+> - it settled an invoice that is now **fully paid** → "Net invoice — returns already deducted" is **blocked** and the
+>   screen says why (that invoice would reopen): choose "Full invoice — before returns" only if the supplier's invoice
+>   lists everything; if the supplier deducted the return, leave the goods receipt without an invoice and have the
+>   accountant resolve the paid invoice first;
+> - it sits on an invoice that is **still open** → the review says it in words — "Rs 200.00 of this credit will be moved
+>   off Bill X: its outstanding goes from 300.00 to 500.00" — and posting needs a tick from a person who may void
+>   supplier payments (`tenant.supplier-payments.void`). Each move writes `supplier_credit_reallocations` (new invoice,
+>   return, from-invoice, amount, outstanding before → after, who confirmed, when) before the allocation is released.
+>   Without the tick, or without that permission, the server refuses (not only the screen).
+>
+> **Screen:** compact supplier / goods-receipt strip; items in the main area (a long list scrolls in its own box); a
+> sticky summary on the right — Received value → Return adjustment → Actual supplier invoice → Supplier credit applied
+> → Remaining — with one navy "Review invoice"; on a phone a bar at the bottom keeps Remaining and Review invoice on
+> screen. A normal invoice asks nothing; the two-option question appears only when a return came before the invoice,
+> nothing pre-picked. The return is subtracted once: from the invoice (net) or as credit paying it (full), never both.
+> "How to use this screen" (closed by default) on every purchasing task screen.
 
 Owner, 21 Oct: record the ACTUAL supplier invoice. Both must end at payable 800:
 

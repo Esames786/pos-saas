@@ -87,9 +87,12 @@ class PurchaseOrderController extends Controller
             'lines.*.notes'            => 'nullable|string|max:500',
             'lines.*.pack_unit_id'     => 'nullable|integer',
             'lines.*.pack_factor'      => 'nullable|integer|min:1',
+            'lines.*.pack_size'        => 'nullable|numeric|min:0',
             'lines.*.base_quantity'    => 'nullable|numeric|min:0',
             'lines.*.entry_json'       => 'nullable|array',
         ]);
+        // W2-C: each quantity exact once (3 decimals; counted items whole where switched on) before the total reads it.
+        $data['lines'] = \App\Support\LineQuantity::prepareStockLines($data['lines'], 'quantity_ordered');
 
         $validLines = collect($data['lines'])->filter(fn($l) => !empty($l['product_id']));
         if ($validLines->isEmpty()) {
@@ -128,6 +131,7 @@ class PurchaseOrderController extends Controller
                     'notes'              => $line['notes'] ?? null,
                     'pack_unit_id'       => $line['pack_unit_id'] ?? null,
                     'pack_factor'        => $line['pack_factor'] ?? null,
+                ] + \App\Support\CounterPacks::sizeColumns('purchase_order_lines', $line['pack_size'] ?? null) + [
                     'base_quantity'      => $line['base_quantity'] ?? null,
                     'entry_json'         => $line['entry_json'] ?? null,
                 ]);

@@ -52,7 +52,7 @@ class SalesReportExporter
                 foreach ($lines as $line) {
                     $rows[] = $kind === 'waiters'
                         ? [$line['label'], $line['orders'], $line['grand_total'], $line['returns_amount'], $line['net_sales']]
-                        : array_values(array_filter([$line['label'], $line['orders'] ?? null, $line['sold_qty'], $line['returned_qty'], $line['net_qty'], $line['net'], $line['returns_amount'], $line['net_value']], fn ($c) => $c !== null));
+                        : array_values(array_filter([$line['label'], $line['orders'] ?? null, \App\Support\QtyMix::cell((float) $line['sold_qty'], $line['sold_mix'] ?? null), \App\Support\QtyMix::cell((float) $line['returned_qty'], $line['returned_mix'] ?? null), \App\Support\QtyMix::cell((float) $line['net_qty'], $line['net_mix'] ?? null), $line['net'], $line['returns_amount'], $line['net_value']], fn ($c) => $c !== null));
                 }
                 $rows[] = [];
             }
@@ -90,6 +90,13 @@ class SalesReportExporter
         $o = $this->engine->overview($f);
         $rows = [['Metric', 'Value']];
         foreach ($o as $k => $v) {
+            // UNITS-PACKS F4: the split by unit is not a row of its own; it decides how its quantity row reads.
+            if (str_ends_with($k, '_mix')) {
+                continue;
+            }
+            if (str_ends_with($k, '_qty')) {
+                $v = \App\Support\QtyMix::cell((float) $v, $o[substr($k, 0, -4) . '_mix'] ?? null);
+            }
             if ($k === 'payments') {
                 foreach ($v as $method => $amount) {
                     $rows[] = ['Payments: ' . $method, $amount];
@@ -107,9 +114,9 @@ class SalesReportExporter
     {
         $rows = [['Category', 'Child', 'Orders', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Sold Value', 'Returns', 'Net Value']];
         foreach ($this->engine->byCategory($f) as $root) {
-            $rows[] = [$root['name'], '', $root['orders'], $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['gross'], $root['discount'], $root['tax'], $root['net'], $root['returns_amount'], $root['net_value']];
+            $rows[] = [$root['name'], '', $root['orders'], \App\Support\QtyMix::cell((float) $root['sold_qty'], $root['sold_mix'] ?? null), \App\Support\QtyMix::cell((float) $root['returned_qty'], $root['returned_mix'] ?? null), \App\Support\QtyMix::cell((float) $root['net_qty'], $root['net_mix'] ?? null), $root['gross'], $root['discount'], $root['tax'], $root['net'], $root['returns_amount'], $root['net_value']];
             foreach ($root['children'] as $c) {
-                $rows[] = ['', $c['name'], $c['orders'], $c['sold_qty'], $c['returned_qty'], $c['net_qty'], $c['gross'], $c['discount'], $c['tax'], $c['net'], $c['returns_amount'], $c['net_value']];
+                $rows[] = ['', $c['name'], $c['orders'], \App\Support\QtyMix::cell((float) $c['sold_qty'], $c['sold_mix'] ?? null), \App\Support\QtyMix::cell((float) $c['returned_qty'], $c['returned_mix'] ?? null), \App\Support\QtyMix::cell((float) $c['net_qty'], $c['net_mix'] ?? null), $c['gross'], $c['discount'], $c['tax'], $c['net'], $c['returns_amount'], $c['net_value']];
             }
         }
 
@@ -118,10 +125,10 @@ class SalesReportExporter
 
     private function itemsCsv(array $f): string
     {
-        $rows = [['Item', 'Variant', 'Category', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Sold Value', 'Returns', 'Net Value']];
+        $rows = [['Item', 'Variant', 'Category', 'Unit', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Sold Value', 'Returns', 'Net Value']];
         // DEAL-CATEGORY-1: deals export in a sheet of their own — here they would count twice.
         foreach ($this->engine->byItem($f, 'net', true) as $r) {
-            $rows[] = [$r->item, $r->variant, $r->category, $r->sold_qty, $r->returned_qty, $r->net_qty, $r->gross, $r->discount, $r->tax, $r->net, $r->returns_amount, $r->net_value];
+            $rows[] = [$r->item, $r->variant, $r->category, $r->unit ?? '', $r->sold_qty, $r->returned_qty, $r->net_qty, $r->gross, $r->discount, $r->tax, $r->net, $r->returns_amount, $r->net_value];
         }
 
         return $this->csv($rows);
@@ -139,17 +146,17 @@ class SalesReportExporter
         $rows = [['Level', 'Head', 'Sub-Head', 'Item', 'Variant', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Sold Value', 'Returns', 'Net Value']];
 
         foreach ($this->engine->byCategoryItems($f) as $head) {
-            $rows[] = ['HEAD', $head['head'], '', '', '', $head['sold_qty'], $head['returned_qty'], $head['net_qty'],
+            $rows[] = ['HEAD', $head['head'], '', '', '', \App\Support\QtyMix::cell((float) $head['sold_qty'], $head['sold_mix'] ?? null), \App\Support\QtyMix::cell((float) $head['returned_qty'], $head['returned_mix'] ?? null), \App\Support\QtyMix::cell((float) $head['net_qty'], $head['net_mix'] ?? null),
                 $head['gross'], $head['discount'], $head['tax'], $head['net'], $head['returns_amount'], $head['net_value']];
 
             foreach ($head['groups'] as $group) {
                 $sub = $head['nested'] ? $group['name'] : '';
                 if ($head['nested']) {
-                    $rows[] = ['SUB-HEAD', $head['head'], $group['name'], '', '', $group['sold_qty'], $group['returned_qty'], $group['net_qty'],
+                    $rows[] = ['SUB-HEAD', $head['head'], $group['name'], '', '', \App\Support\QtyMix::cell((float) $group['sold_qty'], $group['sold_mix'] ?? null), \App\Support\QtyMix::cell((float) $group['returned_qty'], $group['returned_mix'] ?? null), \App\Support\QtyMix::cell((float) $group['net_qty'], $group['net_mix'] ?? null),
                         $group['gross'], $group['discount'], $group['tax'], $group['net'], $group['returns_amount'], $group['net_value']];
                 }
                 foreach ($group['items'] as $item) {
-                    $rows[] = ['ITEM', $head['head'], $sub, $item['item'], $item['variant'], $item['sold_qty'], $item['returned_qty'], $item['net_qty'],
+                    $rows[] = ['ITEM', $head['head'], $sub, $item['item'], $item['variant'], \App\Support\QtyMix::cell((float) $item['sold_qty'], $item['sold_mix'] ?? null), \App\Support\QtyMix::cell((float) $item['returned_qty'], $item['returned_mix'] ?? null), \App\Support\QtyMix::cell((float) $item['net_qty'], $item['net_mix'] ?? null),
                         $item['gross'], $item['discount'], $item['tax'], $item['net'], $item['returns_amount'], $item['net_value']];
                 }
             }
@@ -166,7 +173,7 @@ class SalesReportExporter
             foreach (['partner_pays' => $p['partner'] . ' pays us', 'we_pay' => 'We pay ' . $p['partner']] as $side => $label) {
                 foreach ($p[$side] as $r) {
                     $rows[] = [$p['partner'], $label, $r['item'], $r['rate'], $r['effective_from'],
-                        $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['amount']];
+                        \App\Support\QtyMix::cell((float) $r['sold_qty'], $r['sold_mix'] ?? null), \App\Support\QtyMix::cell((float) $r['returned_qty'], $r['returned_mix'] ?? null), \App\Support\QtyMix::cell((float) $r['net_qty'], $r['net_mix'] ?? null), $r['amount']];
                 }
             }
             $rows[] = [$p['partner'], $p['partner'] . ' pays us', 'TOTAL', '', '', '', '', '', $p['partner_pays_total']];
@@ -182,8 +189,8 @@ class SalesReportExporter
     {
         $rows = [['Head', 'Deal', 'Orders', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Sold Value', 'Returns', 'Net Value']];
         foreach ($this->engine->byDeal($f) as $r) {
-            $rows[] = [$r['head'], $r['deal'], $r['orders'], $r['sold_qty'], $r['returned_qty'],
-                $r['net_qty'], $r['gross'], $r['discount'], $r['net'], $r['returns_amount'], $r['net_value']];
+            $rows[] = [$r['head'], $r['deal'], $r['orders'], \App\Support\QtyMix::cell((float) $r['sold_qty'], $r['sold_mix'] ?? null), \App\Support\QtyMix::cell((float) $r['returned_qty'], $r['returned_mix'] ?? null),
+                \App\Support\QtyMix::cell((float) $r['net_qty'], $r['net_mix'] ?? null), $r['gross'], $r['discount'], $r['net'], $r['returns_amount'], $r['net_value']];
         }
 
         return $this->csv($rows);
@@ -193,7 +200,7 @@ class SalesReportExporter
     {
         $rows = [[$label, 'Orders', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Service Charge', 'Delivery Charge', 'Grand Total', 'Returns', 'Net Sales']];
         foreach ($data as $r) {
-            $rows[] = [$r['label'], $r['orders'], $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['gross'], $r['discount'], $r['tax'], $r['service_charge'], $r['delivery_charge'], $r['grand_total'], $r['returns_amount'], $r['net_sales']];
+            $rows[] = [$r['label'], $r['orders'], \App\Support\QtyMix::cell((float) $r['sold_qty'], $r['sold_mix'] ?? null), \App\Support\QtyMix::cell((float) $r['returned_qty'], $r['returned_mix'] ?? null), \App\Support\QtyMix::cell((float) $r['net_qty'], $r['net_mix'] ?? null), $r['gross'], $r['discount'], $r['tax'], $r['service_charge'], $r['delivery_charge'], $r['grand_total'], $r['returns_amount'], $r['net_sales']];
         }
 
         return $this->csv($rows);

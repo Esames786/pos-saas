@@ -101,14 +101,23 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
         $before = $this->stock($p);
 
         $this->postBill($sale, [['sales_order_line_id' => $line, 'quantity' => 2]]);
-        $second = $this->postBill($sale, [['sales_order_line_id' => $line, 'quantity' => 2]]);
+        // W2-B (22 Oct, reviewer): a second post for 2 with 1 left used to be cut down silently to 1. It is now refused,
+        // saying what is left, so nobody returns a different quantity than they asked for without being told.
+        try {
+            $this->postBill($sale, [['sales_order_line_id' => $line, 'quantity' => 2]]);
+            $this->fail('asking for more than is left must be refused');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('only 1 ', $e->getMessage());
+            $this->assertStringContainsString('can still be returned, not 2', $e->getMessage());
+        }
+        $second = $this->postBill($sale, [['sales_order_line_id' => $line, 'quantity' => 1]]);
         $this->assertEqualsWithDelta(1, (float) DB::table('sales_return_lines')->where('sales_return_id', $second->id)->value('quantity'), 0.001,
-            'the second is capped at what was left — exactly as before');
+            'what is left can still come back');
         try {
             $this->postBill($sale, [['sales_order_line_id' => $line, 'quantity' => 1]]);
             $this->fail('nothing is left to return');
         } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('returnable', $e->getMessage());
+            $this->assertStringContainsString('nothing is left to return', $e->getMessage());
         }
 
         $this->assertSame(2, DB::table('sales_returns')->count(), 'two returns, as before');
@@ -202,10 +211,13 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
         [$out, $queued] = $this->race('SELECT id FROM sales_orders WHERE id = ? FOR UPDATE', [$sale], [$job(), $job()]);
 
         $this->assertSame(2, $queued, 'both were in flight together: ' . implode(' | ', $out));
-        $this->assertSame(2, $this->countOut($out, 'POSTED:'), 'two different returns: ' . implode(' | ', $out));
-        $this->assertEqualsWithDelta(3, (float) DB::table('sales_return_lines')->sum('quantity'), 0.001, 'each asked for 2 of 3 — together never more than 3');
-        $this->assertEqualsWithDelta(3, (float) DB::table('sales_order_lines')->where('id', $line)->value('returned_quantity'), 0.001);
-        $this->assertEqualsWithDelta($before + 3, $this->stock($p), 0.001);
+        // W2-B (22 Oct): the second used to be cut down silently to the 1 left; it is now refused, saying so.
+        $this->assertSame(1, $this->countOut($out, 'POSTED:'), 'one return posts: ' . implode(' | ', $out));
+        $this->assertSame(1, $this->countOut($out, 'REFUSED:'), 'the other is refused: ' . implode(' | ', $out));
+        $this->assertStringContainsString('only 1 can still be returned, not 2', $this->firstOut($out, 'REFUSED:'));
+        $this->assertEqualsWithDelta(2, (float) DB::table('sales_return_lines')->sum('quantity'), 0.001, 'never more than 3, and nothing nobody asked for');
+        $this->assertEqualsWithDelta(2, (float) DB::table('sales_order_lines')->where('id', $line)->value('returned_quantity'), 0.001);
+        $this->assertEqualsWithDelta($before + 2, $this->stock($p), 0.001);
     }
 
     public function test_a_medicine_back_without_a_bill_is_thrown_away_unless_the_cashier_says_shelf(): void

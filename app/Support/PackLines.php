@@ -70,7 +70,17 @@ final class PackLines
                     $errors["lines.$i.packs"] = "{$name}: {$pack['name']} must be a whole number.";
                     continue 2;
                 }
-                $base += (float) $raw * $pack['factor'];
+                if (($typed = self::exact($raw, null, "{$name} ({$pack['name']})", "lines.$i.packs", false)) === null) {
+                    $errors["lines.$i.packs"] = self::$lastRefusal;
+                    continue 2;
+                }
+                $base += $typed * $pack['factor'];
+            }
+            // W2-C: the quantity the stock will hold, exact once (a 4th decimal refused; a counted item's base — a pack
+            // of 12.5 — whole where the business switched that on). Price and cost below are worked out from it.
+            if ($base > 0 && ($base = self::exact($base, $p->unit, $name, "lines.$i.packs")) === null) {
+                $errors["lines.$i.packs"] = self::$lastRefusal;
+                continue;
             }
 
             // Price: of ONE buying pack. The line discount is a % or Rs off the whole line.
@@ -119,7 +129,10 @@ final class PackLines
                     $errors["lines.$i.free"] = "{$name}: the free quantity must be a whole number of {$buy['name']}.";
                     continue;
                 }
-                $free = (float) $freeRaw * $buy['factor'];
+                if (($free = self::exact((float) $freeRaw * $buy['factor'], $p->unit, $name . ' (free)', "lines.$i.free")) === null) {
+                    $errors["lines.$i.free"] = self::$lastRefusal;
+                    continue;
+                }
             }
 
             if ($base <= 0 && $free <= 0) {
@@ -167,6 +180,7 @@ final class PackLines
                 'product_variant_id'     => ($l['product_variant_id'] ?? null) ?: $p->defaultVariant?->id,
                 'pack_unit_id'           => $buy['id'],
                 'pack_factor'            => self::wholeOrNull($buy['factor']),
+                'pack_size'              => (float) $buy['factor'],   // UNITS-PACKS: the exact size (2.5 kg)
             ] + ($isGrn ? [
                 'batch_no'               => ($b = strtoupper(trim((string) ($l['batch_no'] ?? '')))) !== '' ? $b : null,
                 'expiry_date'            => $expiry ?: null,
@@ -228,6 +242,24 @@ final class PackLines
         return $out;
     }
 
+    /** W2-C: why the last exact() refused, in the counter's words. */
+    private static string $lastRefusal = '';
+
+    /**
+     * W2-C: a quantity made exact to 3 decimals (LineQuantity), or null with the reason kept in $lastRefusal, so the
+     * line's error joins the others on this page. With the counted rule, a counted item must also be whole where switched on.
+     */
+    private static function exact($value, ?\App\Models\Tenant\Unit $unit, string $label, string $field, bool $countedRule = true): ?float
+    {
+        try {
+            return $countedRule ? LineQuantity::forStock($value, $unit, $label, $field) : LineQuantity::normalize($value, $label, $field);
+        } catch (ValidationException $e) {
+            self::$lastRefusal = (string) collect($e->errors())->flatten()->first();
+
+            return null;
+        }
+    }
+
     /** @return array{type:string, value:float}|null|false  null = none, false = not a valid discount */
     private static function billDiscount(?array $in): array|null|false
     {
@@ -255,7 +287,7 @@ final class PackLines
         if ($packsOn && $p->packUnits->isNotEmpty()) {
             $out = [];
             foreach ($p->packUnits->sortByDesc('factor') as $u) {
-                $out[(string) $u->id] = ['id' => $u->id, 'name' => $u->factor === 1 ? ($u->name ?: $baseName) : $u->name, 'factor' => $u->factor, 'can_buy' => (bool) $u->can_buy];
+                $out[(string) $u->id] = ['id' => $u->id, 'name' => \App\Models\Tenant\ProductPackUnit::same((float) $u->factor, 1.0) ? ($u->name ?: $baseName) : $u->name, 'factor' => $u->factor, 'can_buy' => (bool) $u->can_buy];
             }
 
             return $out;
@@ -275,7 +307,7 @@ final class PackLines
         return $out;
     }
 
-    /** pack_factor is a whole-number column: a 12.5 kg "pack" is kept in the note, not there. */
+    /** pack_factor is a whole-number column: a 12.5 kg "pack" keeps its size in pack_size (and the note). */
     public static function wholeOrNull($factor): ?int
     {
         $f = (float) $factor;

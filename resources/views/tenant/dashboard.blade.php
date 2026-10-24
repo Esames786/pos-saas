@@ -357,7 +357,7 @@
                                 @foreach($categoriesToday as $cat)
                                 <tr>
                                     <td>{{ $cat['name'] }}</td>
-                                    <td class="text-end">{{ $fig($cat['net_qty']) }}</td>
+                                    <td class="text-end">{{ \App\Support\QtyMix::label((float) $cat['net_qty'], $cat['net_mix'] ?? null, $fig) }}</td>
                                     <td class="text-end">{{ $fig($cat['net_value']) }}</td>
                                 </tr>
                                 @endforeach
@@ -368,7 +368,7 @@
                                          so this sits a little under the Net Sales tile (Kashif Food 10 Oct:
                                          1,037,450 against 1,043,086.50). The label says so before anyone asks. --}}
                                     <td title="Bill-level charges such as delivery are not in any category">Items total</td>
-                                    <td class="text-end">{{ $fig(array_sum(array_column($categoriesToday, 'net_qty'))) }}</td>
+                                    <td class="text-end">{{ \App\Support\QtyMix::label((float) array_sum(array_column($categoriesToday, 'net_qty')), \App\Support\QtyMix::sum($categoriesToday, 'net_mix', 'net_qty'), $fig) }}</td>
                                     <td class="text-end" id="dashboard-category-total">{{ $fig(array_sum(array_column($categoriesToday, 'net_value'))) }}</td>
                                 </tr>
                             </tfoot>

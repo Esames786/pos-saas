@@ -20,8 +20,9 @@ class InventoryController extends Controller
 {
     public function index(Request $request)
     {
+        $packsOn = PackUnits::enabled();
         $query = StockBalance::query()
-            ->with(['branch', 'product', 'variant', 'batch'])
+            ->with(array_merge(['branch', 'product.unit', 'variant', 'batch'], $packsOn ? ['product.packUnits'] : []))
             ->where('quantity_on_hand', '!=', 0)
             ->latest();
 
@@ -39,6 +40,7 @@ class InventoryController extends Controller
 
         return view('tenant.inventory.index', [
             'balances' => $query->paginate(15)->withQueryString(),
+            'packsOn'  => $packsOn,
             'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
         ]);
     }

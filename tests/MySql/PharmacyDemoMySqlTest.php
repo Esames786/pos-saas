@@ -172,6 +172,21 @@ class PharmacyDemoMySqlTest extends MySqlTenantTestCase
         $this->assertSame(0, DB::connection('tenant')->table('product_barcodes')->where('barcode', $box->barcode)->count(), 'never mixed with single-item barcodes');
     }
 
+    public function test_seeded_purchase_numbers_come_from_the_round_and_distributor_not_a_random_draw(): void
+    {
+        $c = DB::connection('tenant');
+        $grns = $c->table('goods_receipts')->orderBy('id')->pluck('grn_no', 'id');
+        $bills = $c->table('purchase_bills')->orderBy('id')->pluck('bill_no', 'goods_receipt_id');
+
+        $this->assertCount(5, $grns);
+        $this->assertCount(5, $grns->unique(), 'five GRNs made in the same second still have five numbers');
+        $this->assertCount(5, $bills->unique());
+        foreach ($grns as $id => $grnNo) {
+            $this->assertMatchesRegularExpression('/^GRN-\d{8}-S[123][AB]$/', $grnNo, 'the number says the date, distributor and round');
+            $this->assertSame('BILL-' . substr($grnNo, 4), $bills[$id] ?? null, 'each bill carries its own GRN\'s number');
+        }
+    }
+
     /** The near-expiry syrup is sold first: FEFO takes the older batch before the restock. */
     public function test_the_older_syrup_batch_goes_first(): void
     {

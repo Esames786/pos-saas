@@ -1,12 +1,12 @@
 @extends('layouts.app')
 
-@section('title', 'Purchase Bills')
+@section('title', 'Supplier Invoices')
 
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">Purchase Bills</h1>
-        <p class="fw-medium">Purchase bills create supplier payable ledger entries.</p>
+        <h1 class="mb-1">Supplier Invoices</h1>
+        <p class="fw-medium">A supplier invoice records what you owe a supplier for one goods receipt.</p>
     </div>
     @can('tenant.purchase-bills.create')
         <a href="{{ url('/purchase-bills/create') }}" class="btn btn-primary">
@@ -57,12 +57,12 @@
 <div class="card">
     <div class="card-body table-responsive">
         <table class="table table-nowrap align-middle">
-            <caption class="visually-hidden">Purchase bill list</caption>
+            <caption class="visually-hidden">Supplier invoice list</caption>
             <thead>
             <tr>
-                <th scope="col">Bill No</th>
+                <th scope="col">Invoice No</th>
                 <th scope="col">Supplier</th>
-                <th scope="col">GRN</th>
+                <th scope="col">Goods Receipt</th>
                 <th scope="col">Date</th>
                 <th scope="col">Total</th>
                 <th scope="col">Paid</th>
@@ -102,7 +102,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="9" class="text-center text-muted py-4">No purchase bills found.</td>
+                    <td colspan="9" class="text-center text-muted py-4">No supplier invoices found.</td>
                 </tr>
             @endforelse
             </tbody>

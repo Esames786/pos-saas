@@ -22,4 +22,22 @@ final class ScreenAccess
         $user = auth('tenant')->user();
         abort_unless($user && collect($screens)->contains(fn (string $p) => $user->can($p)), 403, 'Permission denied.');
     }
+
+    /**
+     * W3/W4 — may this user do what a screen's route does? The same two checks that route makes: the plan has its
+     * module (TenantSubscriptionAccessService) and the user holds its permission (the route name). For one screen
+     * doing another screen's work — the product form's recipe / BOM / catering tabs, the purchase workspace's steps —
+     * so that work is allowed exactly where its own screen would allow it.
+     */
+    public static function allows(string $routeName): bool
+    {
+        $user = auth('tenant')->user();
+        if (! $user || ! $user->can($routeName)) {
+            return false;
+        }
+        $tenant = app()->bound('tenant') ? app('tenant') : null;
+
+        return ! $tenant instanceof \App\Models\Master\Tenant
+            || app(\App\Services\Saas\TenantSubscriptionAccessService::class)->check($tenant, $routeName)['allowed'];
+    }
 }

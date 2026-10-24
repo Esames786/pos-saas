@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Create Purchase Return')
+@section('title', 'New Supplier Return')
 
 @section('content')
 @if($entryV2 ?? false)
@@ -9,11 +9,19 @@
 @else
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">Create Purchase Return</h1>
+        <h1 class="mb-1">New Supplier Return</h1>
         <p class="fw-medium text-muted mb-0">Return goods to the supplier — saved as a draft first; nothing moves until you Post.</p>
     </div>
     <a href="{{ url('/purchase-returns') }}" class="btn btn-light">Back</a>
 </div>
+
+@include('tenant.purchasing.partials.how-to-use', ['guide' => [
+    'what' => 'Send goods back to a supplier. Stock goes down and the supplier owes you for them (Supplier Credit).',
+    'steps' => ['Choose the supplier, and the Goods Receipt the goods came on if you know it.', 'Choose each item and the quantity going back (and its batch).', 'Give the reason, then save as a draft or post.'],
+    'effects' => ['Stock' => 'Goes down by what goes back, from the batch picked.', 'Supplier balance' => 'Goes down by the value of the return — a Supplier Credit.', 'Payments' => 'None. The credit pays the supplier\'s open invoices automatically, or the supplier deducts it on their next invoice.'],
+    'example' => '2 boxes at Rs 100 go back: stock goes down by 2 boxes and the supplier owes you Rs 200, which pays Rs 200 of an open invoice.',
+    'blocked' => ['More than was received on that Goods Receipt.', 'More than the batch holds.'],
+]])
 
 <div class="card border-warning-subtle mb-3">
     <div class="card-body py-2 small">
@@ -55,7 +63,7 @@
                 @if($goodsReceipt)<input type="hidden" name="supplier_id" value="{{ $goodsReceipt->supplier_id }}">@endif
             </div>
             <div class="col-md-3">
-                <label for="grn-picker" class="form-label">Source GRN <span class="text-muted small">(recommended)</span></label>
+                <label for="grn-picker" class="form-label">Source goods receipt <span class="text-muted small">(recommended)</span></label>
                 <select id="grn-picker" class="form-select">
                     @if($goodsReceipt)
                         <option value="{{ $goodsReceipt->id }}" selected>{{ $goodsReceipt->grn_no }} — {{ $goodsReceipt->supplier?->name }}</option>
@@ -152,7 +160,7 @@
     @else
         {{-- Manual lines (no GRN): AJAX product picker, validated against stock --}}
         <div class="alert alert-warning py-2 px-3 small" id="pret-gate-warn">
-            <i class="ti ti-lock me-1"></i>Select the <strong>Branch and Supplier</strong> above (or pick a Source GRN) to unlock product lines.
+            <i class="ti ti-lock me-1"></i>Select the <strong>Branch and Supplier</strong> above (or pick a source goods receipt) to unlock product lines.
         </div>
         <fieldset id="pret-lines-fieldset" disabled>
             <div class="card mb-3">
@@ -180,7 +188,7 @@
                     </table>
                 </div>
                 <div class="card-footer small text-muted">
-                    <i class="ti ti-info-circle me-1"></i>Without a source receipt, quantities are validated against current branch stock only. Prefer selecting the Source GRN for received/returned tracking.
+                    <i class="ti ti-info-circle me-1"></i>Without a source receipt, quantities are validated against current branch stock only. Prefer selecting the source goods receipt for received/returned tracking.
                 </div>
             </div>
         </fieldset>
@@ -228,7 +236,7 @@
     // GRN picker — choosing a receipt reloads with its returnable lines.
     if ($ && $.fn.select2) {
         $('#grn-picker').select2({
-            width: '100%', placeholder: 'Search GRN no…', allowClear: true, minimumInputLength: 0,
+            width: '100%', placeholder: 'Search goods receipt no…', allowClear: true, minimumInputLength: 0,
             ajax: {
                 url: grnUrl, dataType: 'json', delay: 200, cache: false,
                 data: function (params) {

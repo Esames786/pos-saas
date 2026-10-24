@@ -156,6 +156,23 @@ class DashboardCategoryTodayMySqlTest extends MySqlTenantTestCase
         $this->assertMatchesRegularExpression('/id="dashboard-category-total">\s*4,860\.00/', $html);
     }
 
+    public function test_a_category_of_kg_and_pieces_shows_its_parts_never_one_number(): void
+    {
+        // UNITS-PACKS F4 (mixed units): 1.5 kg of mince joins the 2 boti in Bar-B-Q. 3.5 would be kg + pieces.
+        $units = DB::connection('tenant')->table('units');
+        $kg = $units->where('code', 'KG')->value('id') ?: $units->insertGetId(['code' => 'KG', 'name' => 'Kilogram', 'unit_type' => 'weight',
+            'base_factor' => 1, 'is_base' => 1, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $mince = $this->makeProduct($this->bbq, ['name' => 'Mince', 'unit_id' => $kg]);
+        $sale = $this->makeSale($this->branchId, ['order_type' => 'dine_in', 'grand_total' => 1500]);
+        $this->makeSaleLine($sale, $mince, ['product_name' => 'Mince', 'quantity' => 1.5, 'unit_price' => 1000, 'line_total' => 1500]);
+        \App\Support\QtyMix::forget();
+
+        $html = $this->dashboard($this->grantDetails($this->owner))->render();
+        $this->assertMatchesRegularExpression('/Bar-B-Q<\/td>\s*<td class="text-end">1\.50 kg · 2\.00 pcs<\/td>/', $html);
+        $this->assertMatchesRegularExpression('/Drinks<\/td>\s*<td class="text-end">3\.00<\/td>/', $html, 'pieces alone: exactly as before');
+        $this->assertStringNotContainsString('>3.50<', $html);
+    }
+
     public function test_the_card_agrees_with_the_report_centers_categories_for_today(): void
     {
         $view = $this->dashboard($this->grantDetails($this->owner));

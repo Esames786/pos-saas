@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Create Supplier Payment')
+@section('title', 'New Supplier Payment')
 
 @section('content')
 @php
@@ -9,11 +9,19 @@
 @endphp
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">Create Supplier Payment</h1>
+        <h1 class="mb-1">New Supplier Payment</h1>
         <p class="fw-medium text-muted mb-0">Step 4 of the purchasing flow — pay the supplier.</p>
     </div>
     <a href="{{ url('/supplier-payments') }}" class="btn btn-light">Back</a>
 </div>
+
+@include('tenant.purchasing.partials.how-to-use', ['guide' => [
+    'what' => 'Pay a supplier from a cash or bank account.',
+    'steps' => ['Choose the supplier.', 'Choose the Supplier Invoice you are paying, or leave it to pay their oldest invoices first.', 'Choose the cash or bank account the money leaves from.', 'Enter the amount and date, then save.'],
+    'effects' => ['Stock' => 'No change.', 'Supplier balance' => 'Goes down by the payment; paying more than is owed leaves an advance (Supplier Credit).', 'Payments' => 'The chosen cash or bank account goes down by the amount.'],
+    'example' => 'The supplier is owed Rs 800. Pay Rs 500 from Main Cash: Rs 300 stays owed.',
+    'blocked' => ['No cash or bank account chosen.', 'An amount of zero or less.'],
+]])
 
 <div class="card border-primary-subtle mb-3">
     <div class="card-body d-flex flex-wrap align-items-start gap-3 py-2">
@@ -21,8 +29,8 @@
         <div class="small">
             A <strong>Supplier Payment</strong> reduces the supplier's payable balance and updates the supplier ledger.
             Choose <strong>Pay From (Cash/Bank)</strong> only if money actually leaves that account.
-            <div class="text-muted mt-1">Flow: PO → GRN → Purchase Bill → <strong>Supplier Payment</strong>.</div>
-            <div class="text-muted">A purchase bill is <strong>not</strong> required — a supplier can be paid straight against their outstanding balance.</div>
+            <div class="text-muted mt-1">Flow: Purchase Order (optional) → Goods Receipt → Supplier Invoice → <strong>Payment</strong>.</div>
+            <div class="text-muted">A supplier invoice is <strong>not</strong> required — a supplier can be paid straight against their outstanding balance.</div>
             @if($runningAccount)
                 <div class="text-muted" id="running-account-note">Paid <strong>on account</strong>: a payment settles the supplier's oldest open bills first, and you may pay more than is owed — the extra is kept as an <strong>advance</strong> and used on the next bills.</div>
             @endif
@@ -128,14 +136,14 @@
                     {{-- `selected` sirf jab koi purani qeemat na ho: validation fail hone ke baad
                          old() wala asli option chuna hua aana chahiye, warna operator ka chunaav
                          gum ho jata. --}}
-                    <option value="" disabled hidden @selected(! old('cash_bank_account_id'))>— Cash/bank account chunein —</option>
+                    <option value="" disabled hidden @selected(! old('cash_bank_account_id'))>— Choose the cash or bank account —</option>
                     @foreach($cashBankAccounts as $cba)
                         <option value="{{ $cba->id }}" @selected(old('cash_bank_account_id') == $cba->id)>
                             {{ $cba->code }} — {{ $cba->name }}
                         </option>
                     @endforeach
                 </select>
-                <small class="text-muted">Lazmi — supplier payment ka khaata <strong>Dr Accounts Payable / Cr chuna hua cash&nbsp;/&nbsp;bank</strong> hota hai, is liye paisa kis khaate se nikla ye batana zaroori hai.</small>
+                <small class="text-muted">Required — a supplier payment is recorded as <strong>Dr Accounts Payable / Cr the chosen cash&nbsp;/&nbsp;bank account</strong>, so say which account the money left from.</small>
                 @error('cash_bank_account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
 

@@ -1,23 +1,31 @@
 @extends('layouts.app')
 
-@section('title', 'Create Purchase Order')
+@section('title', 'New Purchase Order')
 
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">Create Purchase Order</h1>
+        <h1 class="mb-1">New Purchase Order</h1>
         <p class="fw-medium text-muted mb-0">Step 1 of the purchasing flow — request goods from a supplier.</p>
     </div>
     <a href="{{ url('/purchase-orders') }}" class="btn btn-light">Back</a>
 </div>
+
+@include('tenant.purchasing.partials.how-to-use', ['guide' => [
+    'what' => 'Write down what you plan to buy from a supplier. A Purchase Order is optional — goods can be received without one.',
+    'steps' => ['Choose the supplier and the branch the goods are for.', 'Add each item with the quantity and rate you agreed.', 'Save the order. When the goods arrive, record them on a Goods Receipt from this order.'],
+    'effects' => ['Stock' => 'No change — stock goes up only when the goods are received.', 'Supplier balance' => 'No change — you owe the supplier only once their invoice is recorded.', 'Payments' => 'None.'],
+    'example' => 'Order 10 boxes at Rs 892 a box. When 8 arrive, record a Goods Receipt for 8: the order then shows 2 still to come.',
+    'blocked' => ['The supplier, the branch or an item\'s quantity is missing.', 'An item that is not bought (not marked as purchasable) cannot be ordered.'],
+]])
 
 <div class="card border-info-subtle mb-3">
     <div class="card-body d-flex flex-wrap align-items-start gap-3 py-2">
         <span class="badge bg-info-subtle text-info-emphasis mt-1"><i class="ti ti-file-text me-1"></i>Request only</span>
         <div class="small">
             A <strong>Purchase Order</strong> is a request to buy goods — it does <strong>not</strong> update stock or accounting.
-            Stock increases only when a <strong>Goods Receipt (GRN)</strong> is posted against it.
-            <div class="text-muted mt-1">Flow: <strong>PO</strong> → GRN (receives stock) → Purchase Bill (payable) → Supplier Payment.</div>
+            Stock increases only when a <strong>Goods Receipt</strong> is posted against it.
+            <div class="text-muted mt-1">Flow: <strong>Purchase Order</strong> (optional) → Goods Receipt (stock) → Supplier Invoice (what you owe) → Payment.</div>
         </div>
     </div>
 </div>
@@ -103,7 +111,7 @@
                 'showBatch'      => false,
                 'showDiscountTax' => true,
                 'showNotes'      => false,
-                'stockEffect'    => 'Stock effect: none. This PO does not change stock — stock updates only when the GRN is posted.',
+                'stockEffect'    => 'Stock effect: none. This order does not change stock — stock updates only when the Goods Receipt is posted.',
             ])
             @endif
         </div>
