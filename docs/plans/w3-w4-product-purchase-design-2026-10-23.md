@@ -343,6 +343,30 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
 - **Not done in S4:** the "New purchase" tab and the single sidebar item (S5); a sabotage run on the workspace (batch
   checkpoint).
 
+### Close-out — one form for every area, English-only, S5 navigation (`5523c42e`)
+
+- **Areas.** Catering Materials and Manufacturing Products Add / Edit open the one product form where
+  `product_screen_v2` is on (their lists unchanged). Each posts to its own routes, so its own permissions apply.
+  - Manufacturing Products shows a factory's cards; a new Catering Material shows the material cards, and a dish card
+    posted there is refused.
+  - An item opened in an area that no offered card fits (a service in Manufacturing Products, a factory good in
+    Catering Materials) keeps its role and every column on an unchanged save — tested on the rendered page.
+  - Switch off: both areas open their old forms.
+- **English-only** (decision 6). The Urdu helper lines are gone from the new product form, its packs step, and the
+  purchasing tabs and supplier box, with the Urdu tails of this form's own messages. Urdu product names, entered data
+  and Urdu / bilingual prints are untouched.
+- **S5.** With the purchase workspace on, the sidebar's purchasing menu is one "Purchases" item (it opens the first
+  purchasing page the role may open), and the tabs row starts with "New purchase" for a role that may open it — on the
+  workspace page too. Off: today's menu. The English label fixes named in the design were not part of this close-out.
+- **Tests, as they happened:**
+  - focused run of 149: 148 passed, 1 failed — `ProductScreenV2MySqlTest` pinned the old rule ("the manufacturing
+    context keeps its own form tonight"); deliberately updated to the new rule. This run also lost about 56 minutes
+    while the laptop was in Modern Standby (10:41–11:37 local, Windows Kernel-Power log), not to the code.
+  - re-run of the 3 affected classes: 43 / 43, with the new area and unchanged-role cases. (The navigation test ran in
+    the 149 run, not in the re-run; the commit message says otherwise.)
+- **S4 record, restated exactly:** the S4 purchasing set of 205 was NOT a clean run — 65 errors and 1 failure; after the
+  fixes only the 10 affected classes were re-run (78 / 78).
+
 ## Release manifest (draft; nothing pushed, merged, deployed or switched on)
 
 The table says who a part reaches on the day it is deployed. Parts without a switch reach **every tenant at once**, so
@@ -358,7 +382,7 @@ they are listed apart and need their own approval.
 | S3c product-form tabs (Recipe, Bill of materials, Event costing) | `77c0613f` | tenants with `product_screen_v2` on | `product_screen_v2` |
 | **S4 Goods Receipt screen** on `GoodsReceiptService` (moved, unchanged) | `6d98263b` | **every tenant** (the receipt screen) | none |
 | S4 purchase workspace (`/purchases/new`) | `6d98263b` | tenants with `purchase_workspace` (+ `purchasing_v2`) on — nobody today | `purchase_workspace` |
-| S5 | to come | | per the plan |
+| Close-out: areas on the one form, English-only, S5 navigation | `5523c42e` | tenants with `product_screen_v2` / `purchase_workspace` on (the purchasing tabs and supplier box lose their Urdu labels wherever `purchasing_v2` is on) | `product_screen_v2`, `purchase_workspace`, `purchasing_v2` |
 
 What every tenant sees from the no-switch parts:
 

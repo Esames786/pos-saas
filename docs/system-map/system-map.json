@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-23T21:18:00+00:00",
+    "built_at": "2026-10-24T07:12:20+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "c5c39cf9",
     "work": [
@@ -15,10 +15,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-w3w4",
             "branch": "feat/unified-w3w4-20261023",
-            "head": "6d98263b",
+            "head": "5523c42e",
             "behind_prod": 6,
-            "ahead_of_prod": 53,
-            "last_commit": "2026-10-24\u00b7W3/W4 S4: the purchase workspace \u2014 receipt, invoice and payment in one Post",
+            "ahead_of_prod": 55,
+            "last_commit": "2026-10-24\u00b7W3/W4 close-out: one form for every area, English-only, compact purchasing navigation",
             "uncommitted_files": 1
         },
         {
@@ -456,6 +456,11 @@
     ],
     "plans": [
         {
+            "file": "docs/plans/w3-w4-product-purchase-design-2026-10-23.md",
+            "title": "W3 / W4 \u2014 one product screen and one purchase workspace (design, 23 Oct 2026)",
+            "modified": "2026-10-24"
+        },
+        {
             "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
             "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
             "modified": "2026-10-23"
@@ -574,14 +579,9 @@
             "file": "docs/plans/kashif-kot-routing-requests-2026-09-03.md",
             "title": "Kashif Food \u2014 chaar KOT routing ki farmaishein",
             "modified": "2026-10-23"
-        },
-        {
-            "file": "docs/plans/kashif-legacy-alignment-2026-08-22.md",
-            "title": "Kashif \u2014 Legacy-Software Alignment (design, before any code)",
-            "modified": "2026-10-23"
         }
     ],
-    "git": "6d98263b",
+    "git": "5523c42e",
     "source": {
         "tenant_db": "pos_test_tenant_w34",
         "master_db": "pos_test_master_w34"
