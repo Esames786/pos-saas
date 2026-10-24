@@ -367,6 +367,38 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
 - **S4 record, restated exactly:** the S4 purchasing set of 205 was NOT a clean run — 65 errors and 1 failure; after the
   fixes only the 10 affected classes were re-run (78 / 78).
 
+### Batch checkpoint (24 Oct) — frozen revision `43598ccb`
+
+- **Full regression** on a detached checkout of `43598ccb` in `pos-saas-verify-upv`, fresh DB set `_w34z`; the freeze
+  file shows HEAD `43598ccb` and a clean tree before and after (07:12–08:49 UTC):
+  - MySQL suite: **2,452 tests, 0 failures, 0 errors** (1 skipped);
+  - default suite: **230 tests, 3 failures** — `CateringClientFeedbackUiRegressionTest`, `EscPosReportPayloadTest`,
+    `DeliveryRiderReassignmentRegressionTest`. The same three fail identically on the production head `c5c39cf9`
+    (re-run on it, 24 Oct); they predate this batch (listed since 8 Oct).
+- **Targeted sabotage** (dev worktree, separate from the verification checkout; sources restored and compared, no
+  marks left). Each removed one guard:
+  - red as required: PRODACCESS and PWSTEP (unauthorized saves); STALE (stale edits); KEEPOVERRIDE, KEEPBOMNOTES and
+    KEEPBOOKRATE (hidden settings); PWKEY (duplicate submission); PWTX and PRODTX (rollback); PAYDUE (the server's
+    balance check);
+  - UNTOUCHED stayed **green**: the writer's own `unchanged()` also refused the re-post, so the test could not tell the
+    tab's check apart. `03e42bf7` (test only, after the freeze) adds a recipe whose saved sort orders have gaps — only
+    the tab's check keeps it: sabotaged red, restored green;
+  - CONTROL (a comment only) green.
+- **Browser journeys** on the isolated test stores, desktop 1366 px and phone 390 px. Served from the dev worktree at
+  `43598ccb` (clean, after the sabotages were restored) because the verify checkout was running the full suite:
+  - S3 product workspace: 25 / 25;
+  - S4 purchase workspace with the S5 navigation: 20 / 20;
+  - **every new switch OFF**: 20 / 20 — Recipes, Bill of materials, Cost blocks and Catering profile screens each
+    saved through their own page (through the shared writers); the old product form; the old Goods Receipt screen
+    (`purchasing_v2` off) and the new one (`purchasing_v2` on, workspace off), each posting stock; today's sidebar;
+    `/purchases/new` 404. The first attempt was 18 / 20: the walk set the old receipt screen's Select2 item box without
+    searching, so the line was blank and the screen correctly refused it; driven as a person does, it posted.
+- **Release boundary.** The switches protect the new screens only. The shared writers (Recipes, Bill of materials,
+  Catering profile and cost blocks), the Goods Receipt screen on `GoodsReceiptService`, the shared entry area's hooks
+  and the English-only purchasing tabs / supplier box reach existing tenants on deploy whatever their switches say.
+  They were exercised with the switches off by the journey above and by the full suite; that is evidence, not a claim
+  that existing tenants are unaffected.
+
 ## Release manifest (draft; nothing pushed, merged, deployed or switched on)
 
 The table says who a part reaches on the day it is deployed. Parts without a switch reach **every tenant at once**, so
