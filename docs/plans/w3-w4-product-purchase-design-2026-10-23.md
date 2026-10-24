@@ -3,7 +3,7 @@
 **Status: design only.** Nothing here is built. Prototype (desktop and phone, clickable):
 https://claude.ai/artifact/7Two4Ssuyt8ETPpCJnPGJP (private until shared).
 Branch `feat/unified-w3w4-20261023` (worktree `pos-saas-w3w4`), on top of the units-packs batch `7321428e`.
-Nothing here changes a live tenant: every new screen is behind a per-tenant Master switch, OFF for live tenants.
+Every new screen is behind a per-tenant Master switch. **Correction (24 Oct, production census):** `product_screen_v2` is already ON for one live tenant (kashiffood) as well as the demo tenants, so S1–S3 reach that tenant on deploy; and the no-switch parts below reach every tenant. See `docs/status/release-manifest-2026-10-24.md` §5.
 
 ## What users gain
 
@@ -139,7 +139,7 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
 
 ## Switches
 
-- **Product list and form:** behind `product_screen_v2` (today on for demo tenants only). Catering Materials /
+- **Product list and form:** behind `product_screen_v2` (production 24 Oct: on for 7 demo tenants **and live kashiffood**). Catering Materials /
   Manufacturing Products opening v2 is also behind it.
 - **Purchase workspace:** a **new** switch `purchase_workspace`, which needs `purchasing_v2`. Off by default and off for
   every live tenant. The sidebar's single "Purchases" item follows the same switch; with it off, the sidebar is today's.
@@ -413,7 +413,7 @@ they are listed apart and need their own approval.
 |---|---|---|---|
 | **S0 purchasing safety fixes** | `6e6ea024` + migration `2026_10_24_000001_add_submission_key_to_goods_receipts` | **every tenant** | none |
 | **S2 old-form part**: an edit lists the item's own category and purchase unit even when switched off | in `94a7e792` (`categoriesFor`, `unitsFor`) | **every tenant** (the old product form) | none |
-| S1 product list | `bf1d8874`, `36a987ad`, `c382d488` | tenants with `product_screen_v2` on (today: demo tenants) | `product_screen_v2` |
+| S1 product list | `bf1d8874`, `36a987ad`, `c382d488` | tenants with `product_screen_v2` on (production 24 Oct: 7 demo tenants + live kashiffood) | `product_screen_v2` |
 | S2 new-form part: hidden answers kept, misfit roles kept, a saved service saveable, "kept as saved" panel | `94a7e792` | tenants with `product_screen_v2` on | `product_screen_v2` |
 | **S3b screen writers**: Recipes, Bill of materials, Catering Profiles and Cost blocks save through the writers | `f46da6d7`, `77c0613f` | **every tenant** (those four screens) | none |
 | S3c product-form tabs (Recipe, Bill of materials, Event costing) | `77c0613f` | tenants with `product_screen_v2` on | `product_screen_v2` |
