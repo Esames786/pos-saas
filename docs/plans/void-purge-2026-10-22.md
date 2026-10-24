@@ -103,3 +103,20 @@ the hidden copy. This must be stated to the owner before the switch is turned on
 - The confirmation form is sent in the background. A refusal or the "Delete anyway?" question comes back as a popup
   (SweetAlert) without reloading the page; a wrong password or missing reason reopens the form. Found because a client
   pressed Delete twice on JE-20261001-0012 (voided 11 Oct) and did not see the refusal at the top of the Cash Book.
+
+## VOID-PURGE-3 (24 Oct) — the "Yes, delete" was turned away
+
+- **Client:** "still can't delete" — the popup said "Not deleted — Nothing was deleted." after "Yes, delete" on a void
+  dated another day (JE-20261001-0012).
+- **Cause:** the Cash Book, the manual journal page and the supplier payment page include the double-submit guard,
+  which stamps one page token (`_submit_token`) on every form — the delete form too — and the delete route runs
+  `prevent.duplicate.submit`. The first post claims the token and gets the question as JSON 409. The guard released a
+  claim only for a redirect with session errors, so the "Yes" (the same form, the same token) was turned away with a
+  redirect, which the popup read as nothing. Production nginx: manual journals 192, 204, 267 → 409 then 302 (23–24
+  Oct); only same-date voids (one post) went through.
+- **Fix** `cc8e32e7`: any 4xx / 5xx answer releases the claim (nothing was done). A token that did something is still
+  turned away; the delete locks its rows in one transaction, so a true double press still deletes once.
+- **Tests:** posted as the page posts them, token included — question then yes: deleted; wrong password then right:
+  deleted; the same token after a done delete: refused. Red on the old guard (302). Full suite on `cc8e32e7` (DB set
+  `_vpf`): MySQL 2351 — 20 cold-master reds (BillingMonthlyInvoice 8, CategoryBranchScope 7, CategoryParentGuard 5),
+  20 / 20 on re-run; default 230 — the 3 reds that fail the same on production `c5c39cf9`.
