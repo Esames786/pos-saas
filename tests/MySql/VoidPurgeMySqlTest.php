@@ -274,6 +274,38 @@ class VoidPurgeMySqlTest extends MySqlTenantTestCase
             'the payment posted in between no longer carries the deleted 500');
     }
 
+    /**
+     * VOID-PURGE-3 (24 Oct, kashifkitchen): the Cash Book stamps one page token (`_submit_token`, the double-submit
+     * guard) on every form, the delete form too. The question "Delete anyway?" (409) kept that token claimed, so the
+     * "Yes" — the same form again — was turned away (302) and the popup said "Nothing was deleted" (prod log: manual
+     * journals 192, 204, 267, 23–24 Oct). Posted here exactly as the page posts it, token included.
+     */
+    public function test_the_yes_after_the_question_goes_through_with_the_pages_own_token(): void
+    {
+        $token = (string) Str::uuid();
+        $c = DB::connection('tenant');
+
+        // A manual journal voided on another day, as the client's JE-20261001-0012.
+        $journal = $this->manualJournal(700, now()->subDays(5)->toDateString());
+        $this->actingAsOwner()->post($this->url('/finance/manual-journals/' . $journal->id . '/reverse'), ['reason' => 'posted twice'])->assertSessionHasNoErrors();
+        $this->purgeJson('manual_journal', $journal->id, ['_submit_token' => $token])->assertStatus(409)->assertJson(['confirm' => true]);
+        $this->purgeJson('manual_journal', $journal->id, ['_submit_token' => $token, 'across_days' => '1'])->assertOk()->assertJson(['ok' => true]);
+        $this->assertNull($c->table('journal_entries')->find($journal->id), 'the yes deleted it');
+
+        // A refusal (wrong password) leaves the same page free to try again.
+        $this->postBill(1000);
+        $own = $this->pay(250, null, now()->subDays(2)->toDateString());
+        $this->voidPayment($own, 'original')->assertSessionHasNoErrors();
+        $token2 = (string) Str::uuid();
+        $this->purgeJson('supplier_payment', $own->id, ['_submit_token' => $token2, 'purge_password' => 'wrong'])->assertStatus(422);
+        $this->purgeJson('supplier_payment', $own->id, ['_submit_token' => $token2])->assertOk()->assertJson(['ok' => true]);
+
+        // What the guard is for still holds: a token that already DID something is turned away.
+        $count = PurgedEntry::count();
+        $this->purgeJson('supplier_payment', $own->id, ['_submit_token' => $token2])->assertStatus(302);
+        $this->assertSame($count, PurgedEntry::count(), 'a repeat of a done delete does nothing');
+    }
+
     public function test_the_popup_gets_every_answer_as_json(): void
     {
         $this->postBill(1000);
