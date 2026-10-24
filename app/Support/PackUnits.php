@@ -121,7 +121,7 @@ final class PackUnits
         $filled = fn ($r) => is_array($r) && collect(['name', 'contains', 'price', 'barcode'])->contains(fn ($k) => trim((string) ($r[$k] ?? '')) !== '');
         $rows = array_values(array_filter((array) ($in['packs'] ?? []), $filled));
         if (! $rows) {
-            throw ValidationException::withMessages(['_packs' => 'Add at least one pack (for example: 1 Strip = 10 ' . $baseName . ') — or answer "No". (کم از کم ایک پیک لکھیں)']);
+            throw ValidationException::withMessages(['_packs' => 'Add at least one pack (for example: 1 Strip = 10 ' . $baseName . ') — or answer "No".']);
         }
         if (count($rows) > self::MAX_PACKS) {
             throw ValidationException::withMessages(['_packs' => 'At most ' . self::MAX_PACKS . ' packs.']);
@@ -228,7 +228,7 @@ final class PackUnits
         $used = self::usedPackIds($touched->pluck('id')->all());
         if ($used) {
             $names = $saved->whereIn('id', $used)->pluck('name')->implode(', ');
-            throw ValidationException::withMessages(['_packs' => "{$names} is already on past bills or receipts, so it cannot be removed or change size. You can still change its price, barcode and name. (پرانے بلوں پر موجود ہے)"]);
+            throw ValidationException::withMessages(['_packs' => "{$names} is already on past bills or receipts, so it cannot be removed or change size. You can still change its price, barcode and name."]);
         }
     }
 

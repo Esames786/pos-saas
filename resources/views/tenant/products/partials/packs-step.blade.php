@@ -37,14 +37,12 @@
 
 <fieldset class="step" id="packs-step">
     <legend>Packs</legend>
-    <span class="ur">پیک — ڈبہ، پتہ، گولی</span>
 
     <div class="q" data-q="packs">
         <div class="q-head">
             <div>
                 <span class="q-text" id="q-packs-label">Does it come in packs?</span>
                 <span class="help d-block">For example: 1 Box = 10 Strip, 1 Strip = 10 Tablet.</span>
-                <span class="ur">کیا یہ پیک میں آتا ہے؟ مثلاً ایک ڈبے میں دس پتے، ایک پتے میں دس گولیاں</span>
             </div>
             <div class="yn" role="radiogroup" aria-labelledby="q-packs-label">
                 <input type="radio" id="q-packs-y" name="_packs" value="1" @checked($packsYes)><label for="q-packs-y">Yes</label>
@@ -56,14 +54,13 @@
         <div class="q-body" data-body="packs" @if(! $packsYes) hidden @endif>
             <p class="help mb-1">
                 Stock is counted in <b data-base-name>{{ $packBaseName }}</b> — the "Sold and counted in" unit above. A pack is just a bigger amount of it, with its own price and barcode.
-                <span class="ur-inline">اسٹاک سب سے چھوٹی اکائی میں گنا جاتا ہے</span>
             </p>
             <p class="help mb-1" data-part-unit-warn hidden>A kg, litre or metre item: the first pack can hold a part — for example 1 Bag holds 2.5 kg, 1 Bottle holds 1.5 litre. A pack above it holds a whole number of the one before (1 Sack = 10 Bag).</p>
 
             @if(count($packPresets))
                 <div class="presets" role="group" aria-label="Quick start: fill the pack names">
                     @foreach($packPresets as $i => $preset)
-                        <button type="button" data-preset="{{ $i }}">{{ $preset['label'] }} <span class="ur-inline">{{ $preset['label_ur'] }}</span></button>
+                        <button type="button" data-preset="{{ $i }}">{{ $preset['label'] }}</button>
                     @endforeach
                 </div>
             @endif
@@ -74,14 +71,14 @@
                 @endforeach
             </ol>
 
-            <button type="button" class="btn btn-outline-primary mt-2" id="add-pack">+ Add a bigger pack <span class="ur-inline">بڑا پیک</span></button>
+            <button type="button" class="btn btn-outline-primary mt-2" id="add-pack">+ Add a bigger pack</button>
 
             <div class="pack-sum" id="pack-sum" aria-live="polite"></div>
 
             <div class="q mt-2">
                 <div class="q-head">
                     <div><span class="q-text" id="q-loose-label">Do you sell a single <span data-base-name>{{ $packBaseName }}</span> (loose)?</span>
-                        <span class="ur">کیا کھلا، ایک ایک کر کے بھی بیچتے ہیں؟</span></div>
+                        </div>
                     <div class="yn" role="radiogroup" aria-labelledby="q-loose-label">
                         <input type="radio" id="loose-y" name="pack_base_sell" value="1" @checked($baseSell)><label for="loose-y">Yes</label>
                         <input type="radio" id="loose-n" name="pack_base_sell" value="0" @checked(! $baseSell)><label for="loose-n">No</label>
@@ -90,7 +87,7 @@
             </div>
 
             @if($packStockSays)
-                <div class="note mt-2">In stock now: <b>{{ $packStockSays }}</b> <span class="ur-inline">ابھی اسٹاک</span></div>
+                <div class="note mt-2">In stock now: <b>{{ $packStockSays }}</b></div>
             @endif
             <p class="help mt-2 mb-0">Coming next: goods receipts and the counter in packs. Until then they keep working in <span data-base-name>{{ $packBaseName }}</span>.</p>
         </div>

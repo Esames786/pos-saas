@@ -187,6 +187,26 @@ class PurchaseWorkspaceMySqlTest extends MySqlTenantTestCase
         $this->page()->assertNotFound();   // it needs the new purchase screens too
     }
 
+    /** S5: one "Purchases" item and a "New purchase" tab where the workspace is on — by role; today's menu where it is off. */
+    public function test_the_compact_purchasing_navigation_follows_the_switch_and_the_role(): void
+    {
+        $html = $this->page()->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('#href="[^"]*/purchases/new" class="[^"]*" id="sidebar-purchases"#', $html, 'one Purchases item, opening the workspace');
+        $this->assertStringNotContainsString('<span>Supplier Payments</span>', $html, 'not the long submenu');
+        $this->assertMatchesRegularExpression('#class="pur-tabs".*?New purchase.*?Suppliers#s', $html, '"New purchase" is the first tab');
+
+        $receiver = $this->roleUser('PW Receipts Only', ['tenant.goods-receipts.index', 'tenant.goods-receipts.create']);
+        $page = $this->actingAs($receiver, 'tenant')->call('GET', $this->url('/goods-receipts'))->assertOk()->getContent();
+        $this->assertStringNotContainsString('New purchase', $page, 'no workspace permission: no tab');
+        $this->assertMatchesRegularExpression('#href="[^"]*/goods-receipts" class="[^"]*" id="sidebar-purchases"#', $page, 'Purchases opens the first page the role may open');
+
+        $this->setFeatures(['product_screen_v2' => true, 'packs' => true, 'purchasing_v2' => true]);
+        $html = $this->owner()->call('GET', $this->url('/goods-receipts'))->assertOk()->getContent();
+        $this->assertStringNotContainsString('id="sidebar-purchases"', $html, 'switched off: today\'s menu');
+        $this->assertStringContainsString('<span>Supplier Payments</span>', $html);
+        $this->assertStringNotContainsString('New purchase', $html);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     /** The goods part of a Post, as the entry area sends it: one line of $count at $price a piece. */

@@ -60,7 +60,12 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
 
     // ── where it appears ─────────────────────────────────────────────────────────────────────────
 
-    public function test_it_appears_only_where_switched_on_and_never_on_catering_or_manufacturing(): void
+    /**
+     * W3/W4 S3d (deliberate update): the manufacturing context used to keep its own form ("tonight"). Decision 7 of the
+     * W3/W4 plan routes Manufacturing Products and Catering Materials into this form too, behind the same switch — off,
+     * every area keeps its old form.
+     */
+    public function test_it_appears_only_where_switched_on_and_the_manufacturing_area_uses_it_too(): void
     {
         $this->setTenant('restaurant', false);
         $old = $this->page('/products/create')->assertOk()->getContent();
@@ -73,7 +78,12 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('name="_form_v2"', $new);
 
         $mfg = $this->page('/products/create?context=manufacturing')->assertOk()->getContent();
-        $this->assertStringNotContainsString('name="_form_v2"', $mfg, 'the manufacturing context keeps its own form tonight');
+        $this->assertStringContainsString('name="_form_v2"', $mfg, 'the manufacturing area opens the one form where it is switched on');
+        $this->assertStringContainsString('<b>Finished product</b>', $mfg, 'with the factory\'s cards');
+
+        $this->setTenant('restaurant', false);
+        $mfgOff = $this->page('/products/create?context=manufacturing')->assertOk()->getContent();
+        $this->assertStringNotContainsString('name="_form_v2"', $mfgOff, 'switched off: the manufacturing area keeps its own form');
     }
 
     public function test_each_business_sees_only_its_own_cards(): void

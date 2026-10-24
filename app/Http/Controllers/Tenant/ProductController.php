@@ -213,7 +213,7 @@ class ProductController extends Controller
         $context = $this->productContext($request);
         $isCateringMaterials = $this->isCateringMaterials($request);
 
-        if ($this->usesScreenV2($request)) {
+        if ($this->usesFormV2($request)) {
             return view('tenant.products.form-v2', $this->screenV2Data(null, $request));
         }
 
@@ -237,7 +237,7 @@ class ProductController extends Controller
         $website->validate($request);
         // W3/W4 S3c: the Recipe / Bill of materials / Event costing tabs — checked now, written in the transaction below.
         $workspace = app(\App\Services\Products\ProductWorkspace::class);
-        $touched = $this->usesWorkspace($request) ? $workspace->touched($request, null, \App\Support\Business::of()) : [];
+        $touched = $this->usesWorkspace($request) ? $workspace->touched($request, null, $this->areaBusiness($request), $this->areaCards($request, null)) : [];
         $data['image_path'] = $this->handleImageUpload($request);
 
         $product = DB::transaction(function () use ($data, $request, $workspace, $touched) {
@@ -308,7 +308,7 @@ class ProductController extends Controller
     {
         $context = $this->productContext($request);
 
-        if ($this->usesScreenV2($request)) {
+        if ($this->usesFormV2($request)) {
             return view('tenant.products.form-v2', $this->screenV2Data($product, $request));
         }
 
@@ -357,7 +357,7 @@ class ProductController extends Controller
         $website->validate($request);
         // W3/W4 S3c: the Recipe / Bill of materials / Event costing tabs — checked now, written in the transaction below.
         $workspace = app(\App\Services\Products\ProductWorkspace::class);
-        $touched = $this->usesWorkspace($request) ? $workspace->touched($request, $product, \App\Support\Business::of()) : [];
+        $touched = $this->usesWorkspace($request) ? $workspace->touched($request, $product, $this->areaBusiness($request), $this->areaCards($request, $product)) : [];
 
         // POS-UX-1: replace / remove the product image.
         if ($request->boolean('remove_image') && $product->image_path) {
@@ -451,7 +451,12 @@ class ProductController extends Controller
         // fields below (locks included), and keeps every field the screen does not show at its saved value.
         $isV2 = $request->boolean('_form_v2');
         if ($isV2) {
-            $request->merge(\App\Support\ProductCards::resolve(\App\Support\Business::of(), $request->all(), $product));
+            $business = $this->areaBusiness($request);
+            // W3/W4 S3d: Catering Materials adds ingredients and disposables; its form offers only those cards.
+            if (! $product && $this->isCateringMaterials($request) && ! isset($this->areaCards($request, null)[(string) $request->input('_card')])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['_card' => 'Catering Materials adds ingredients and disposables. Add a dish from Products.']);
+            }
+            $request->merge(\App\Support\ProductCards::resolve($business, $request->all(), $product));
             $this->guardScreenV2($request, $product);
         } elseif ($product && $product->is_stock_tracked && ! $request->boolean('is_stock_tracked')) {
             // KHATRI-STOCK-TO-PNL-1: on the old form, unticking "Track Stock" while stock is on hand would leave
@@ -775,6 +780,39 @@ class ProductController extends Controller
         return $request->boolean('_form_v2') && \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRODUCT_SCREEN_V2);
     }
 
+    /**
+     * W3/W4 S3d — the one product form opens for Add / Edit in the catalog, Manufacturing Products and Catering Materials,
+     * where the owner switched it on. (usesScreenV2() below still decides the catalog's own list.)
+     */
+    private function usesFormV2(Request $request): bool
+    {
+        return \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRODUCT_SCREEN_V2);
+    }
+
+    /** W3/W4 S3d — whose cards the form shows: Catering Materials a caterer's, Manufacturing Products a factory's. */
+    private function areaBusiness(Request $request): ?string
+    {
+        if ($this->isCateringMaterials($request)) {
+            return \App\Support\Business::CATERING;
+        }
+
+        return $this->productContext($request) === 'manufacturing' ? \App\Support\Business::INDUSTRY : \App\Support\Business::of();
+    }
+
+    /**
+     * W3/W4 S3d — the cards offered. Catering Materials offers its material cards for a new item; an item opened there
+     * keeps the full set, so one no material card fits is never re-kinded by the screen.
+     */
+    private function areaCards(Request $request, ?Product $product): array
+    {
+        $cards = \App\Support\ProductCards::forBusiness($this->areaBusiness($request));
+        if (! $product && $this->isCateringMaterials($request)) {
+            $cards = array_filter($cards, fn ($c) => in_array($c['kind'], [Product::KIND_RAW_MATERIAL, Product::KIND_PACKAGING_MATERIAL], true));
+        }
+
+        return $cards;
+    }
+
     /** PRODUCT-SCREEN-V2 — only on the catalog's own Add/Edit, and only where the owner switched it on. */
     private function usesScreenV2(Request $request): bool
     {
@@ -785,18 +823,22 @@ class ProductController extends Controller
 
     private function screenV2Data(?Product $product, Request $request): array
     {
-        $business = \App\Support\Business::of();
-        $cards = \App\Support\ProductCards::forBusiness($business);
+        $business = $this->areaBusiness($request);
+        $cards = $this->areaCards($request, $product);
         $card = $product
             ? \App\Support\ProductCards::detect($business, $product)
             : (isset($cards[(string) $request->query('card')]) ? (string) $request->query('card') : array_key_first($cards));
         $variant = $product?->defaultVariant;
-        $ws = app(\App\Services\Products\ProductWorkspace::class)->screen($product, $business);
+        $ws = app(\App\Services\Products\ProductWorkspace::class)->screen($product, $business, $cards);
+        $context = $this->productContext($request);
+        $area = $this->isCateringMaterials($request) ? 'material' : ($context === 'manufacturing' ? 'manufacturing product' : 'product');
         $hasStockHistory = $product ? \App\Models\Tenant\StockLedger::where('product_id', $product->id)->exists() : false;
 
         return [
             'product'         => $product,
-            'title'           => $product ? 'Edit product' : 'Add a product',
+            'title'           => $product ? 'Edit ' . $area : 'Add a ' . $area,
+            // W3/W4 S3d: the area's own routes, so its own permissions apply.
+            'formBase'        => $this->contextBaseUrl($request, $context),
             'business'        => $business,
             'businessInfo'    => \App\Support\Business::all()[$business] ?? null,
             'cards'           => $cards,
@@ -848,7 +890,7 @@ class ProductController extends Controller
         $errors = [];
         if ($product && $product->is_stock_tracked && ! $request->boolean('is_stock_tracked')
             && \App\Models\Tenant\StockLedger::where('product_id', $product->id)->exists()) {
-            $errors['_stock'] = 'Stock of this item has already moved, so counting cannot be switched off. (اس چیز کا اسٹاک پہلے سے چل چکا ہے)';
+            $errors['_stock'] = 'Stock of this item has already moved, so counting cannot be switched off.';
         }
         $code = trim((string) $request->input('barcode', ''));
         if ($code !== '' && ProductBarcode::where('barcode', $code)->when($product, fn ($q) => $q->where('product_id', '!=', $product->id))->exists()) {
@@ -897,7 +939,7 @@ class ProductController extends Controller
     private function productRedirectUrl(Request $request, Product $product): string
     {
         if ($request->boolean('_form_v2') && $request->input('_after') === 'new') {
-            return '/products/create?card=' . urlencode((string) $request->input('_card'));
+            return $this->contextBaseUrl($request, $this->productContext($request)) . '/create?card=' . urlencode((string) $request->input('_card'));
         }
 
         // Catering shares the manufacturing context but must land back on its own

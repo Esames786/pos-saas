@@ -4,14 +4,18 @@
     Included once from layouts/app on the six purchasing pages, only when "New purchase screens" is on.
 --}}
 @php
-    $purTabs = [
-        ['perm' => 'tenant.suppliers.index',         'url' => '/suppliers',         'label' => 'Suppliers',     'ur' => 'سپلائر',   'icon' => 'ti-users',          'on' => 'tenant.suppliers.*'],
-        ['perm' => 'tenant.purchase-orders.index',   'url' => '/purchase-orders',   'label' => 'Purchase Orders', 'ur' => 'آرڈر',     'icon' => 'ti-clipboard-list', 'on' => 'tenant.purchase-orders.*'],
-        ['perm' => 'tenant.goods-receipts.index',    'url' => '/goods-receipts',    'label' => 'Goods Receipts', 'ur' => 'مال وصولی', 'icon' => 'ti-truck-delivery', 'on' => 'tenant.goods-receipts.*'],
-        ['perm' => 'tenant.purchase-bills.index',    'url' => '/purchase-bills',    'label' => 'Supplier Invoices', 'ur' => 'بل',       'icon' => 'ti-file-invoice',   'on' => 'tenant.purchase-bills.*'],
-        ['perm' => 'tenant.supplier-payments.index', 'url' => '/supplier-payments', 'label' => 'Payments',      'ur' => 'ادائیگی',  'icon' => 'ti-cash',           'on' => 'tenant.supplier-payments.*'],
-        ['perm' => 'tenant.purchase-returns.index',  'url' => '/purchase-returns',  'label' => 'Supplier Returns', 'ur' => 'واپسی',    'icon' => 'ti-arrow-back-up',  'on' => 'tenant.purchase-returns.*'],
-    ];
+    // W3/W4 S5: "New purchase" comes first — only where the purchase workspace is switched on and the role may open it.
+    $purTabs = array_values(array_filter([
+        \App\Http\Controllers\Tenant\PurchaseWorkspaceController::on()
+            ? ['perm' => 'tenant.purchases.workspace', 'url' => '/purchases/new', 'label' => 'New purchase', 'ur' => '', 'icon' => 'ti-circle-plus', 'on' => 'tenant.purchases.*']
+            : null,
+        ['perm' => 'tenant.suppliers.index',        'url' => '/suppliers',         'label' => 'Suppliers',     'ur' => '',   'icon' => 'ti-users',          'on' => 'tenant.suppliers.*'],
+        ['perm' => 'tenant.purchase-orders.index',   'url' => '/purchase-orders',   'label' => 'Purchase Orders', 'ur' => '',     'icon' => 'ti-clipboard-list', 'on' => 'tenant.purchase-orders.*'],
+        ['perm' => 'tenant.goods-receipts.index',    'url' => '/goods-receipts',    'label' => 'Goods Receipts', 'ur' => '', 'icon' => 'ti-truck-delivery', 'on' => 'tenant.goods-receipts.*'],
+        ['perm' => 'tenant.purchase-bills.index',    'url' => '/purchase-bills',    'label' => 'Supplier Invoices', 'ur' => '',       'icon' => 'ti-file-invoice',   'on' => 'tenant.purchase-bills.*'],
+        ['perm' => 'tenant.supplier-payments.index', 'url' => '/supplier-payments', 'label' => 'Payments',      'ur' => '',  'icon' => 'ti-cash',           'on' => 'tenant.supplier-payments.*'],
+        ['perm' => 'tenant.purchase-returns.index',  'url' => '/purchase-returns',  'label' => 'Supplier Returns', 'ur' => '',    'icon' => 'ti-arrow-back-up',  'on' => 'tenant.purchase-returns.*'],
+    ]));
     $purUser = auth('tenant')->user();
     $purWaiting = [
         'tenant.purchase-orders.index' => [\App\Models\Tenant\PurchaseOrder::whereIn('status', ['approved', 'partially_received'])->count(), 'to receive'],
@@ -35,7 +39,7 @@
             @php [$n, $nWord] = $purWaiting[$t['perm']] ?? [0, '']; $isOn = request()->routeIs($t['on']); @endphp
             <a href="{{ url($t['url']) }}" class="pur-tab {{ $isOn ? 'on' : '' }}" @if($isOn) aria-current="page" @endif>
                 <i class="ti {{ $t['icon'] }}" aria-hidden="true"></i>
-                <span>{{ $t['label'] }} <span class="ur" lang="ur">{{ $t['ur'] }}</span></span>
+                <span>{{ $t['label'] }}</span>
                 @if($n > 0)<span class="n" title="{{ $n }} {{ $nWord }}">{{ $n }}<span class="visually-hidden"> {{ $nWord }}</span></span>@endif
             </a>
         @endif

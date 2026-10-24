@@ -56,11 +56,12 @@ final class ProductWorkspace
     // ── Who may use which section ────────────────────────────────────────────────────────────────────────────────
 
     /** @return array<string, bool>  section => this user may edit it here, for this product */
-    public function access(?Product $product, ?string $business): array
+    public function access(?Product $product, ?string $business, ?array $cards = null): array
     {
-        $cards = ProductCards::forBusiness($business);
+        $cards ??= ProductCards::forBusiness($business);
         $profile = $product ? CateringProductProfile::where('product_id', $product->id)->first() : null;
-        $catering = ($business === Business::CATERING || $profile !== null)
+        // W3/W4 S3d: a caterer's dish card offers it (Catering Materials offers no dish card), or a saved profile.
+        $catering = (($business === Business::CATERING && collect($cards)->contains(fn ($c) => $c['kind'] === Product::KIND_SALE_ITEM)) || $profile !== null)
             && $this->allows($profile ? 'tenant.catering.profiles.update' : 'tenant.catering.profiles.store');
 
         return [
@@ -98,9 +99,9 @@ final class ProductWorkspace
      * Everything the three tabs need. A section the user may not edit is absent; `kept` names the ones this product
      * has and keeps as saved because of that.
      */
-    public function screen(?Product $product, ?string $business): array
+    public function screen(?Product $product, ?string $business, ?array $cards = null): array
     {
-        $access = $this->access($product, $business);
+        $access = $this->access($product, $business, $cards);
         $units = Unit::query()->where('is_active', true)->orderBy('code')->get(['id', 'code', 'name']);
         $out = ['access' => $access, 'units' => $units, 'kept' => []];
 
@@ -298,9 +299,9 @@ final class ProductWorkspace
      * @return array<string, array>
      * @throws ValidationException
      */
-    public function touched(Request $request, ?Product $product, ?string $business): array
+    public function touched(Request $request, ?Product $product, ?string $business, ?array $cards = null): array
     {
-        $access = $this->access($product, $business);
+        $access = $this->access($product, $business, $cards);
         $stale = [];
         $out = [];
         foreach (self::SECTIONS as $s) {

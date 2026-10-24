@@ -308,6 +308,68 @@ class ProductWorkspaceMySqlTest extends MySqlTenantTestCase
         $this->assertSame(['Making'], CateringProductCostBlock::where('product_id', $p->id)->pluck('label')->all());
     }
 
+    // ── One form for Manufacturing Products and Catering Materials (S3d), English-only ─────────────────────────
+
+    public function test_manufacturing_products_and_catering_materials_open_the_one_form_where_it_is_switched_on(): void
+    {
+        $this->business('restaurant');
+        // Manufacturing Products: the factory's cards, its own routes, the BOM tab; no Urdu helper lines.
+        $html = $this->page('/manufacturing/products/create')->assertOk()->getContent();
+        $this->assertStringContainsString('id="pv2-form"', $html);
+        $this->assertStringContainsString('Finished product', $html);
+        $this->assertStringContainsString('id="tp-bom"', $html);
+        $this->assertDoesNotMatchRegularExpression('/class="ur(-inline)?"/', $html, 'English-only: no Urdu helper lines');
+        $form = $this->formOnPage($html, '/manufacturing/products', false);
+        $this->postForm('/manufacturing/products', array_merge($form, ['_card' => 'raw', 'name' => 'WS Area Steel', 'default_selling_price' => '0']))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $steel = Product::where('name', 'WS Area Steel')->firstOrFail();
+        $this->assertSame(['raw_material', true], [$steel->product_kind, (bool) $steel->can_be_bom_component]);
+
+        // An existing factory product opened there and saved unchanged keeps every column.
+        $chair = $this->product('WS Area Chair', $this->piece()->id, ['product_kind' => 'finished_good', 'can_be_bom_output' => true,
+            'is_manufactured_finished_good' => true, 'is_purchasable' => false, 'default_selling_price' => 4000]);
+        $row = fn () => collect((array) DB::connection('tenant')->table('products')->where('id', $chair->id)->first())->except(['updated_at'])->all();
+        $before = $row();
+        $edit = $this->formOnPage($this->page('/manufacturing/products/' . $chair->id . '/edit')->assertOk()->getContent(), '/manufacturing/products/' . $chair->id);
+        $this->owner()->call('POST', $this->url('/manufacturing/products/' . $chair->id), $edit)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($before, $row(), 'opened in Manufacturing Products and saved unchanged: nothing changed');
+
+        // Catering Materials: only the material cards, its own routes, no dish tabs.
+        $html = $this->page('/catering/materials/create')->assertOk()->getContent();
+        $this->assertStringContainsString('Disposables &amp; packing', $html);
+        $this->assertStringNotContainsString('Menu dish', $html);
+        $this->assertStringNotContainsString('id="tp-catering"', $html);
+        $this->assertStringNotContainsString('id="tp-recipe"', $html);
+        $form = $this->formOnPage($html, '/catering/materials', false);
+        $this->postForm('/catering/materials', array_merge($form, ['_card' => 'dish', 'name' => 'WS Area Dish', 'default_selling_price' => '500']))
+            ->assertSessionHasErrors('_card');
+        $this->assertFalse(Product::where('name', 'WS Area Dish')->exists(), 'a dish is not added from Catering Materials');
+        $this->postForm('/catering/materials', array_merge($form, ['_card' => 'ingredient', 'name' => 'WS Area Rice', 'default_selling_price' => '0']))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame('raw_material', Product::where('name', 'WS Area Rice')->value('product_kind'));
+
+        // An item no card of the area fits, opened there and saved unchanged, keeps its role and every column:
+        // a service in Manufacturing Products (factory cards), a factory finished good in Catering Materials.
+        foreach ([['/manufacturing/products', ['product_kind' => 'service', 'product_type' => 'service', 'is_stock_tracked' => false,
+                    'is_purchasable' => false, 'inventory_consumption_method' => 'none', 'default_selling_price' => 300], 'WS Area Service'],
+                  ['/catering/materials', ['product_kind' => 'finished_good', 'can_be_bom_output' => true, 'is_manufactured_finished_good' => true,
+                    'is_purchasable' => false, 'default_selling_price' => 900], 'WS Area Factory Good']] as [$area, $saved, $name]) {
+            $item = $this->product($name, $this->piece()->id, $saved);
+            $rowOf = fn () => collect((array) DB::connection('tenant')->table('products')->where('id', $item->id)->first())->except(['updated_at'])->all();
+            $was = $rowOf();
+            $page = $this->page($area . '/' . $item->id . '/edit')->assertOk()->getContent();
+            $this->assertStringContainsString('id="pv2-misfit"', $page, "{$area}: the screen says no card fits");
+            $this->owner()->call('POST', $this->url($area . '/' . $item->id), $this->formOnPage($page, $area . '/' . $item->id))
+                ->assertRedirect()->assertSessionHasNoErrors();
+            $this->assertSame($was, $rowOf(), "{$area}: saved unchanged, its role ({$saved['product_kind']}) and every column are kept");
+        }
+
+        // Switched off: both open their old forms.
+        $this->setFeatures([]);
+        $this->assertStringNotContainsString('id="pv2-form"', $this->page('/manufacturing/products/create')->assertOk()->getContent());
+        $this->assertStringNotContainsString('id="pv2-form"', $this->page('/catering/materials/create')->assertOk()->getContent());
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     /** @return array{0: Product, 1: Product, 2: Product, 3: Product}  the dish, rice, oil and salt */
