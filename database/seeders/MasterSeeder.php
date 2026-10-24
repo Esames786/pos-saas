@@ -222,6 +222,10 @@ class MasterSeeder extends Seeder
             'central.subscription-requests.show',
             'central.subscription-requests.approve',
             'central.subscription-requests.reject',
+
+            // CONTACT-FORM-1 — enquiries from the public "Contact Sales" form.
+            'central.contact-enquiries.index',
+            'central.contact-enquiries.handled',
         ];
 
         foreach ($permissions as $permission) {

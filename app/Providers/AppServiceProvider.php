@@ -69,6 +69,31 @@ class AppServiceProvider extends ServiceProvider
             return \Illuminate\Cache\RateLimiting\Limit::perMinute(10)->by($key);
         });
 
+        // CONTACT-FORM-1: the public "Contact Sales" form.
+        //
+        // Do taalay, dono zaroori. IP par: ek hi jagah se spam ki baarish rukti hai — magar bohat se
+        // asli log ek hi daftar ya mobile network ke peechhe hote hain, is liye 8, 1 nahi. Email
+        // par: ek bot jo har baar naya proxy badal leta hai magar wohi email bhejta hai, sirf IP
+        // wale taale se nahi rukta.
+        //
+        // Ghanta (per hour), minute nahi: koi insaan ek ghante me aath martaba sales ko nahi likhta,
+        // aur ek bot ke liye ghanta lamba hota hai.
+        //
+        // ⚠️ Throttle validation se PEHLE chalta hai, is liye ghalti se bhari hui koshish bhi ginti
+        // me aati hai — isi liye ginti itni kushada hai, aur isi liye khaali email par email wala
+        // taala lagta hi nahi: warna "email likhna bhool gaya" jaise paanch log mil kar poori site
+        // ka form band kar dete.
+        \Illuminate\Support\Facades\RateLimiter::for('contact-form', function (\Illuminate\Http\Request $request) {
+            $email = \Illuminate\Support\Str::lower(trim((string) $request->input('email')));
+
+            return [
+                \Illuminate\Cache\RateLimiting\Limit::perHour(8)->by('contact-ip:' . $request->ip()),
+                $email === ''
+                    ? \Illuminate\Cache\RateLimiting\Limit::none()
+                    : \Illuminate\Cache\RateLimiting\Limit::perHour(5)->by('contact-email:' . $email),
+            ];
+        });
+
         Paginator::useBootstrapFive();
 
         // The tenant domain constraint uses {subdomain} for wildcard matching only.
