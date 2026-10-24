@@ -55,6 +55,8 @@ class TenantResetTransactionsCommand extends Command
         'journal_lines', 'journal_entries', 'cash_bank_account_transactions',
         'customer_ledgers', 'customer_payments', 'supplier_ledgers', 'supplier_payments',
         'expense_voucher_lines', 'expense_vouchers', 'opening_balance_lines', 'opening_balance_batches',
+        // VOID-PURGE-1: numbers held back from deleted entries — numbering restarts with the transactions.
+        'purged_numbers',
         'department_handovers',
         // purchasing (SUPPLIER-RUNNING-ACCOUNT-1: which credit settled which bill — goes with them)
         // SUPPLIER-NET-BILL-1: a return deducted on an invoice, and a credit moved off another bill to allow it.
@@ -271,6 +273,8 @@ class TenantResetTransactionsCommand extends Command
         // beside it. Losing it to a transaction reset would be losing master
         // data, and every linked dish would forget what the house rate was.
         'catering_material_commercial_rates',
+        // VOID-PURGE-1: the Owner's record of permanently deleted entries — an audit trail, kept across a reset.
+        'purged_entries',
         // The managed kitchen-instruction vocabulary — how the kitchen is told
         // things, not what was sold. Master data, kept.
         'catering_instructions',

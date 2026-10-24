@@ -268,8 +268,9 @@ class CashBookService
     private function voidFor($r, $sales, $expenses, $supplierPayments, $advances, $journals, $reversedJournals): ?array
     {
         $id = $r->reference_id;
+        // VOID-PURGE-1: 'doc' = the document id the permanent delete needs (a manual journal's is its JE id).
         $make = fn (string $kind, ?string $action, string $can, bool $voided, ?string $open = null) =>
-            ['kind' => $kind, 'action' => $action, 'open' => $open, 'can' => $can, 'voided' => $voided];
+            ['kind' => $kind, 'action' => $action, 'open' => $open, 'can' => $can, 'voided' => $voided, 'doc' => (int) $id];
 
         switch ($r->transaction_type) {
             case 'supplier_payment':

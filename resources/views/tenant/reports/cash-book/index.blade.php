@@ -174,6 +174,13 @@
                                     @if($e->void)
                                         @if($e->void['voided'])
                                             <span class="badge bg-secondary">{{ $e->void['kind'] === 'manual_journal' ? 'Reversed' : 'Voided' }}</span>
+                                            @if(in_array($e->void['kind'], ['manual_journal', 'expense', 'supplier_payment', 'catering_receipt'], true))
+                                                @include('tenant.finance.voided-entries.partials.purge-button', [
+                                                    'purgeType' => $e->void['kind'], 'purgeId' => $e->void['doc'],
+                                                    'purgeLabel' => $e->type_label . ' ' . $e->ref, 'purgeAmount' => $money($e->amount),
+                                                    'purgeDate' => \Illuminate\Support\Carbon::parse($e->transaction_date)->format('d M Y'),
+                                                ])
+                                            @endif
                                         @elseif(auth()->user()?->can($e->void['can']))
                                             @if($e->void['action'])
                                                 <button type="button" class="btn btn-sm btn-outline-danger cash-book-void"
@@ -242,6 +249,7 @@
     </div>
 </div>
 
+@include('tenant.finance.voided-entries.partials.purge-modal')
 @include('tenant.catering.partials.submit-guard')
 @endsection
 

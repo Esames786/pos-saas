@@ -26,6 +26,9 @@ final class TenantFeatures
     // W3/W4 S4
     public const PURCHASE_WORKSPACE = 'purchase_workspace';
 
+    // VOID-PURGE-1: the Owner may delete, permanently, an entry already voided on its own date. Off everywhere by default.
+    public const VOID_PURGE = 'void_purge';
+
     /**
      * shots (MASTER-NEW-SCREENS-1): pictures of the screens the switch shows, slug => caption
      * (public/assets/img/screens/<slug>.jpg), drawn beside the switch in Master.
@@ -91,6 +94,12 @@ final class TenantFeatures
                 'says'  => 'Scan a carton or box barcode at the normal counter and it sells as 1 Carton at the carton\'s price; its pieces leave stock. The counter looks exactly the same. An item with an expiry date never sells from an expired batch here (the medical counter\'s rule). No prescription questions.',
                 'where' => 'POS (scan) · Products → packs',
                 'needs' => [self::PACKS],
+            ],
+            // VOID-PURGE-1 (production)
+            self::VOID_PURGE => [
+                'label' => 'Delete voided entries permanently',
+                'says'  => 'A user given the permission can delete a voided entry together with its reversal, so neither shows anywhere. Totals today stay the same. When the void was dated another day, the screen first says which days\' cash closing changes and asks to confirm. A hidden copy is kept in Deleted entries. Risk: a recorded cash movement can disappear from every screen.',
+                'where' => 'Cash Book and the entry\'s own page → "Delete permanently" on a voided row; Finance → Deleted entries',
             ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',

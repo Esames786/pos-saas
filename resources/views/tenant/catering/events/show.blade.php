@@ -1138,7 +1138,13 @@
                                 <span class="fs-11">{{ $voided->void_reason }}</span>
                             </td>
                             <td class="text-end"><s>{{ number_format($voided->amount, 2) }}</s></td>
-                            <td></td>
+                            <td class="text-end">
+                                @if($voided->posting_type === \App\Models\Tenant\CateringAdvance::POSTING_ADVANCE)
+                                    @include('tenant.finance.voided-entries.partials.purge-button', ['purgeType' => 'catering_receipt', 'purgeId' => $voided->id,
+                                        'purgeLabel' => 'Catering receipt #' . $voided->id, 'purgeDate' => $voided->received_date->format('d M Y'),
+                                        'purgeAmount' => number_format($voided->amount, 2)])
+                                @endif
+                            </td>
                         </tr>
                         @endforeach
 
@@ -1986,6 +1992,7 @@
         </div>
     @endif
 @endcan
+@include('tenant.finance.voided-entries.partials.purge-modal')
 @endsection
 
 @push('scripts')
