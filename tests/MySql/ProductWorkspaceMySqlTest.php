@@ -56,6 +56,10 @@ class ProductWorkspaceMySqlTest extends MySqlTenantTestCase
     {
         [$dish, $rice, $oil, $salt] = $this->dishWithRecipe('WS Biryani');
         $recipe = Recipe::where('product_id', $dish->id)->firstOrFail();
+        // As a recipe saved elsewhere can have them: sort orders with gaps (5, 15). An untouched tab must not "tidy" them.
+        // Only the tab's own untouched check stops that write — the writer alone would renumber the lines 0, 1 (batch
+        // close-out: without this, removing that check left the test green).
+        DB::connection('tenant')->table('recipe_ingredients')->where('recipe_id', $recipe->id)->update(['sort_order' => DB::raw('sort_order * 10 + 5')]);
         $before = $this->recipeRows($recipe);
 
         $html = $this->page('/products/' . $dish->id . '/edit')->assertOk()->assertSee('id="tp-recipe"', false)->getContent();
