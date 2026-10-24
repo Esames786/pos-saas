@@ -371,8 +371,10 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
 
 - **Full regression** on a detached checkout of `43598ccb` in `pos-saas-verify-upv`, fresh DB set `_w34z`; the freeze
   file shows HEAD `43598ccb` and a clean tree before and after (07:12–08:49 UTC):
-  - MySQL suite: **2,452 tests, 0 failures, 0 errors** (1 skipped);
-  - default suite: **230 tests, 3 failures** — `CateringClientFeedbackUiRegressionTest`, `EscPosReportPayloadTest`,
+  - MySQL suite, runner summary `Tests: 2452, Assertions: 15518, PHPUnit Deprecations: 1, Skipped: 1.` — **2,451 passed,
+    1 skipped, 2,452 run**;
+  - default suite, runner summary `Tests: 230, Assertions: 35424, Failures: 3, Skipped: 4.` — **223 passed, 3 failed,
+    4 skipped**. The 3 failures — `CateringClientFeedbackUiRegressionTest`, `EscPosReportPayloadTest`,
     `DeliveryRiderReassignmentRegressionTest`. The same three fail identically on the production head `c5c39cf9`
     (re-run on it, 24 Oct); they predate this batch (listed since 8 Oct).
 - **Targeted sabotage** (dev worktree, separate from the verification checkout; sources restored and compared, no
@@ -400,6 +402,9 @@ Nothing here changes a live tenant: every new screen is behind a per-tenant Mast
   that existing tenants are unaffected.
 
 ## Release manifest (draft; nothing pushed, merged, deployed or switched on)
+
+**Superseded by `docs/status/release-manifest-2026-10-24.md`** (the whole candidate: 58 commits, migrations, switches,
+permissions, backups, rollback limits). The table below is kept as the per-slice history.
 
 The table says who a part reaches on the day it is deployed. Parts without a switch reach **every tenant at once**, so
 they are listed apart and need their own approval.
