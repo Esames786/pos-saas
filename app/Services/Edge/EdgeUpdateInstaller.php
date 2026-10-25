@@ -2,6 +2,7 @@
 
 namespace App\Services\Edge;
 
+use App\Support\EdgeApplianceLayout;
 use App\Support\EdgeRuntime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -351,6 +352,30 @@ class EdgeUpdateInstaller
         return $plan;
     }
 
+    /**
+     * PACKAGING-DRYRUN-IMMUTABLE-1 — Laravel honours APP_*_CACHE for every bootstrap cache file. Pointing them at a scratch
+     * directory keyed by the runtime directory keeps a dry-run (or any plan computation) from writing generated files into the
+     * immutable signed artifact. The scratch lives under the appliance's writable logs/data area, never inside a runtime.
+     *
+     * @return array<string,string>
+     */
+    public static function isolatedCacheEnv(string $runtimeDir): array
+    {
+        $base = rtrim(EdgeApplianceLayout::logsDir(), '/\\') . DIRECTORY_SEPARATOR . 'runtime-cache' . DIRECTORY_SEPARATOR . substr(sha1(strtolower(str_replace('\\', '/', $runtimeDir))), 0, 12);
+        if (! is_dir($base)) {
+            @mkdir($base, 0775, true);
+        }
+        $p = fn (string $file) => $base . DIRECTORY_SEPARATOR . $file;
+
+        return [
+            'APP_PACKAGES_CACHE' => $p('packages.php'),
+            'APP_SERVICES_CACHE' => $p('services.php'),
+            'APP_CONFIG_CACHE' => $p('config.php'),
+            'APP_ROUTES_CACHE' => $p('routes-v7.php'),
+            'APP_EVENTS_CACHE' => $p('events.php'),
+        ];
+    }
+
     /** Run the given artisan command inside a runtime directory with the appliance environment; [exit, stdout, stderr]. */
     private function runInRuntime(string $runtimeDir, array $args): array
     {
@@ -360,7 +385,11 @@ class EdgeUpdateInstaller
         }
         $cmd = array_merge([PHP_BINARY, $artisan], $args);
         $spec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-        $env = array_merge(getenv(), array_filter(['BINGOO_EDGE_ENV_DIR' => getenv('BINGOO_EDGE_ENV_DIR') ?: null]));
+        // PACKAGING-DRYRUN-IMMUTABLE-1 (0.8.1): booting the artifact's artisan in place made Laravel write its package-discovery
+        // caches (bootstrap/cache/packages.php, services.php) INTO the signed release directory — two unlisted files that failed
+        // the package audit before the 0.8.0 LAB update. Every artisan run against a runtime directory that is not the active one
+        // therefore points Laravel's cache files at a writable scratch directory under the appliance data root instead.
+        $env = array_merge(getenv(), array_filter(['BINGOO_EDGE_ENV_DIR' => getenv('BINGOO_EDGE_ENV_DIR') ?: null]), self::isolatedCacheEnv($runtimeDir));
         $proc = proc_open($cmd, $spec, $pipes, $runtimeDir, $env);   // array form: no shell, no quoting ambiguity (Windows-safe)
         if (! is_resource($proc)) {
             throw new RuntimeException('could not start the runtime at [' . $runtimeDir . '].');

@@ -342,7 +342,10 @@ class EdgeApplianceHealthService
         return [
             'print_worker' => $print,
             'authority_worker' => $authority,
-            'web_backends' => array_map(fn ($i) => ['worker' => $i, 'listen' => (string) config('edge.web.bind', '127.0.0.1') . ':' . ((int) config('edge.web.port_base', 8090) + $i - 1), 'listening' => $this->portOpen((string) config('edge.web.bind', '127.0.0.1'), (int) config('edge.web.port_base', 8090) + $i - 1)], range(1, max(1, min(8, (int) config('edge.web.workers', 2))))),
+            // F-FB4-1 (0.8.1): a listening port is NOT a live cashier backend — the P4 pipe deadlock left both backends listening
+            // and dead. Each backend is probed over HTTP on its OWN loopback port (bounded timeouts) and its supervisor status file is
+            // read; a backend that listens but does not answer, or whose supervisor reports failing, is a cashier-service problem.
+            'web_backends' => $this->webBackends($meta, $problems),
             'planned_tasks' => $plan,
         ];
     }
@@ -490,6 +493,67 @@ class EdgeApplianceHealthService
         $s = (string) $v;
 
         return strlen($s) > 20 ? substr($s, 0, 16) . '…' : $s;
+    }
+
+    /** F-FB4-1: per-backend liveness (HTTP on the backend's own port) + the supervisor's status file. */
+    private function webBackends(?EdgeLocalMeta $meta, array &$problems): array
+    {
+        $bind = (string) config('edge.web.bind', '127.0.0.1');
+        $base = (int) config('edge.web.port_base', 8090);
+        $rows = [];
+        foreach (range(1, max(1, min(8, (int) config('edge.web.workers', 2)))) as $i) {
+            $port = $base + $i - 1;
+            $listening = $this->portOpen($bind, $port);
+            $responding = $listening && $this->httpAlive($bind, $port);
+            $status = $this->supervisorStatus($i);
+            $rows[] = [
+                'worker' => $i,
+                'listen' => $bind . ':' . $port,
+                'listening' => $listening,
+                'responding' => $responding,
+                'supervisor' => $status,
+            ];
+            if ($meta) {
+                if ($listening && ! $responding) {
+                    $problems[] = "Cashier web backend #{$i} is listening on {$bind}:{$port} but not answering HTTP (hung).";
+                } elseif (! $listening) {
+                    $problems[] = "Cashier web backend #{$i} is not listening on {$bind}:{$port}.";
+                }
+                if (in_array((string) ($status['state'] ?? ''), ['failing'], true)) {
+                    $problems[] = "Cashier web backend #{$i} keeps restarting (" . (int) ($status['restarts_last_10min'] ?? 0) . ' restarts in 10 min; last: ' . (string) ($status['last_restart_reason'] ?? '?') . ').';
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    /** GET the backend's own health route with bounded connect/read timeouts; a 200 status line = alive. */
+    private function httpAlive(string $host, int $port): bool
+    {
+        $target = in_array($host, ['0.0.0.0', '::'], true) ? '127.0.0.1' : $host;
+        $fp = @fsockopen($target, $port, $errno, $errstr, EdgeWebBackendSupervisor::PROBE_CONNECT_TIMEOUT);
+        if (! is_resource($fp)) {
+            return false;
+        }
+        stream_set_timeout($fp, EdgeWebBackendSupervisor::PROBE_READ_TIMEOUT);
+        fwrite($fp, 'GET ' . EdgeWebBackendSupervisor::PROBE_PATH . " HTTP/1.0\r\nHost: {$target}:{$port}\r\nConnection: close\r\nUser-Agent: edge-health/probe\r\n\r\n");
+        $line = fgets($fp, 256);
+        $meta = stream_get_meta_data($fp);
+        fclose($fp);
+
+        return $line !== false && ! ($meta['timed_out'] ?? false) && preg_match('#^HTTP/1\.[01] 200\b#', $line) === 1;
+    }
+
+    private function supervisorStatus(int $worker): ?array
+    {
+        $file = EdgeWebBackendSupervisor::statusFileFor($worker);
+        if (! is_file($file)) {
+            return null;
+        }
+        $json = json_decode((string) @file_get_contents($file), true);
+
+        return is_array($json) ? array_intersect_key($json, array_flip(['state', 'pid', 'restarts', 'restarts_last_10min', 'last_restart_reason', 'last_restart_at', 'last_probe_at', 'updated_at'])) : null;
     }
 
     private function portOpen(string $host, int $port): bool

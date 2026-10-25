@@ -42,3 +42,4 @@ Thumbs.db
 edge-build-manifest.json
 .env.edgedryrun
 .env.edgedryfresh
+.env.edgestress
