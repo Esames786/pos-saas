@@ -45,7 +45,6 @@ final class ReturnLines
                 continue;
             }
             $name = $p->name;
-            $part = in_array($p->unit?->unit_type, ['weight', 'volume', 'length'], true);
             $packs = PackLines::packsOf($p, $packsOn);
 
             $base = 0.0;
@@ -55,7 +54,8 @@ final class ReturnLines
                     continue;
                 }
                 $pack = $packs[(string) $key] ?? null;
-                if (! $pack || ! is_numeric($raw) || (float) $raw < 0 || (! $part && floor((float) $raw) != (float) $raw)) {
+                // ROLLOUT-1: the same rule as the receipt (LineQuantity::packTakesParts).
+                if (! $pack || ! is_numeric($raw) || (float) $raw < 0 || (! LineQuantity::packTakesParts($p->unit, (float) $pack['factor']) && floor((float) $raw) != (float) $raw)) {
                     $errors["lines.$i.packs"] = "{$name}: " . ($pack ? "{$pack['name']} must be a whole number." : 'the quantity must be a number.');
                     continue 2;
                 }

@@ -5,6 +5,7 @@ namespace App\Services\Central;
 use App\Models\Master\Tenant;
 use App\Services\Tenancy\TenancyManager;
 use App\Support\Business;
+use App\Support\TenantFeatureDefaults;
 use App\Support\TenantFeatures;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -90,7 +91,8 @@ class TenantBusinessService
         return $tenant->subscription?->plan?->enabledModules?->pluck('key')->all() ?? [];
     }
 
-    public function changeBusiness(Tenant $tenant, string $business, ?int $userId, ?string $note = null): void
+    /** @return list<string> the switches turned on as this business's defaults (only when the business is set the first time) */
+    public function changeBusiness(Tenant $tenant, string $business, ?int $userId, ?string $note = null): array
     {
         if (! Business::exists($business)) {
             throw new RuntimeException('Unknown business.');
@@ -101,12 +103,56 @@ class TenantBusinessService
         }
         $old = $tenant->primary_business;
         if ($old === $business) {
-            return;
+            return [];
         }
-        DB::connection('master')->transaction(function () use ($tenant, $business, $old, $userId, $note) {
+        $added = [];
+        DB::connection('master')->transaction(function () use ($tenant, $business, $old, $userId, $note, &$added) {
             $tenant->update(['primary_business' => $business]);
             $this->record($tenant, 'primary_business', $old, $business, $userId, $note);
+            // ROLLOUT-1: the business is set for the first time (a signup or a Master-created tenant) — its business
+            // defaults now apply. A later change of business leaves the switches alone.
+            if (! Business::exists($old)) {
+                $added = $this->fillBusinessDefaults($tenant, $business, $userId);
+            }
         });
+
+        return $added;
+    }
+
+    /**
+     * ROLLOUT-1: the business switches (whole numbers, packs, counter packs, medical counter) this business starts
+     * with, added only where the tenant has never set them — a switch already on, or explicitly off, is kept. One whose
+     * needs are off here (packs, when the new product screen was switched off) is left out. Each one added is recorded.
+     */
+    /** @return list<string> the switches added */
+    private function fillBusinessDefaults(Tenant $tenant, string $business, ?int $userId): array
+    {
+        $defaults = array_intersect_key(TenantFeatureDefaults::for($business, $this->planModules($tenant)), array_flip(TenantFeatureDefaults::BUSINESS_SWITCHES));
+        [$after, $added] = TenantFeatureDefaults::fill($tenant->features ?? [], $defaults);
+
+        $all = TenantFeatures::all();
+        do {
+            $dropped = false;
+            foreach ($added as $i => $key) {
+                foreach ($all[$key]['needs'] ?? [] as $need) {
+                    if (empty($after[$need])) {
+                        unset($after[$key], $added[$i]);
+                        $dropped = true;
+                        break;
+                    }
+                }
+            }
+        } while ($dropped);
+
+        if (! $added) {
+            return [];
+        }
+        $tenant->update(['features' => $after]);
+        foreach ($added as $key) {
+            $this->record($tenant, 'feature:' . $key, 'off', 'on', $userId, 'default for ' . Business::label($business));
+        }
+
+        return array_values($added);
     }
 
     /** @param array<string,bool> $wanted every known switch, on or off */

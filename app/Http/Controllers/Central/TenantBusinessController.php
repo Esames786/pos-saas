@@ -45,13 +45,16 @@ class TenantBusinessController extends Controller
             throw ValidationException::withMessages(['confirm_code' => 'Type the tenant code "' . $tenant->tenant_code . '" to confirm.']);
         }
         try {
-            $this->service->changeBusiness($tenant, $data['primary_business'], auth('central')->id(), $data['note'] ?? null);
+            $added = $this->service->changeBusiness($tenant, $data['primary_business'], auth('central')->id(), $data['note'] ?? null);
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['primary_business' => $e->getMessage()]);
         }
+        // ROLLOUT-1: a business set for the first time switches on its defaults — say which, by their Master labels.
+        $labels = array_map(fn ($k) => '"' . (TenantFeatures::all()[$k]['label'] ?? $k) . '"', $added);
 
         return redirect('/tenants/' . $tenant->id . '#business')
-            ->with('status', $tenant->business_name . ' is now: ' . Business::label($data['primary_business']) . '. No data was changed.');
+            ->with('status', $tenant->business_name . ' is now: ' . Business::label($data['primary_business']) . '. No data was changed.'
+                . ($labels ? ' Switched on as this business\'s defaults: ' . implode(', ', $labels) . '.' : ''));
     }
 
     public function updateFeatures(Request $request, Tenant $tenant)
