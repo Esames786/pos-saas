@@ -289,8 +289,9 @@ The scripts in `docs/status/release-2026-10-24-checks/` only read. To run one on
   `factor` goes back to a whole number only while every value is whole.
 - **Production's permanent delete is not reversible by rollback either.** A purged entry stays purged; its copy is in
   `purged_entries`.
-- **Backups.** The step 6 backup is the restore point for a data problem. Restoring a tenant from it loses that
-  tenant's sales since the backup; that is the owner's call, per tenant.
+- **Backups are not an undo button** (corrected 25 Oct). Restoring the step 6 backup after new transactions would
+  lose every sale, purchase and payment made since, unless that activity is recovered first. Fix forward; any
+  restore needs its own recovery plan, approved before anything is restored.
 
 ## 9. Test evidence — the runners' own summaries
 

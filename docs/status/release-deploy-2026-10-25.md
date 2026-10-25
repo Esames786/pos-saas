@@ -177,4 +177,4 @@ Rollback position after the pilot:
 - Live tenants may create workspace documents from the morning of 25 Oct.
 - From then on, code rollback is **not safe**: roll forward only (manifest §8).
 
-The backup `20261024_221237` is the restore point for a data problem, decided per tenant.
+**The backup `20261024_221237` is not an undo button** (reviewer, 25 Oct). Restoring it after new transactions would lose every sale, purchase and payment made since, unless that activity is recovered first. Problems are fixed forward. Any restore needs its own recovery plan: what to recover, from where, who checks it, approved before anything is restored.
