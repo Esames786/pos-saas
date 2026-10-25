@@ -65,10 +65,16 @@ that start ON; their needs are always on too.
   plan is given). The business is not known at creation, so only the module rows apply.
 - **Demo provisioning** (`DemoProvisioner::provision`). The nightly reset calls it with `fresh`, so the reset keeps
   the defaults.
-- **The business is set for the first time** (`TenantBusinessService::changeBusiness`, old value empty). The
-  business rows (`whole_counted_stock`, `packs`, `counter_packs`, `medical_counter`) fill **only switches the tenant
-  has never set**. A switch already on, or explicitly off, is kept. Each change is recorded in
-  `tenant_setting_changes`.
+- **Enrolment** (correction after review, 25 Oct). Each of these three paths enrols the new tenant in the policy with
+  one `tenant_setting_changes` row: setting `feature_defaults`, the switches it started with, and how it was made.
+  No schema change.
+- **The business is set for the first time** (`TenantBusinessService::changeBusiness`, old value empty):
+  - **Enrolled tenant** (made under the policy): the business rows (`whole_counted_stock`, `packs`, `counter_packs`,
+    `medical_counter`) fill **only switches it has never set**. A switch already on, or explicitly off, is kept.
+    Each change is recorded.
+  - **Older tenant** (no enrolment — made before this patch, business never set): **its switches are kept exactly.**
+    The business rows are only **proposed** in Master's message ("Proposed for this business, not switched on …"),
+    for the owner to switch on by hand under Business & switches.
 - **Never on an existing tenant otherwise.** No backfill and no migration. A later business or plan change leaves
   switches alone.
 
@@ -94,7 +100,7 @@ that start ON; their needs are always on too.
 - new `TenantFeatureDefaultsTest` (default suite: the policy table);
 - a local browser walk of the entry area (exact words; parts accepted with the switch off, refused with it on).
 
-## 4. As built — commit `98e383a0` (branch `feat/rollout-completion-20261025`, from production `4b745532`)
+## 4. As built — commits `98e383a0` + `40f0c2ae` (final code) (branch `feat/rollout-completion-20261025`, from production `4b745532`)
 
 Code only. No migration, no new route, no new table; the system map is unchanged (229 tables, 736 screens).
 
@@ -106,8 +112,12 @@ Code only. No migration, no new route, no new table; the system map is unchanged
 | The policy | `app/Support/TenantFeatureDefaults.php` (new) |
 | Where it is used | `SelfSignupService`, `Central\TenantController@store`, `DemoProvisioner::featuresFor`, `TenantBusinessService::changeBusiness` (+ the Master message in `TenantBusinessController`) |
 
-The Master message after a first business set now ends with, for example: `Switched on as this business's
-defaults: "Whole numbers for counted items in purchasing and stock".`
+The Master message after a first business set now ends with, for example:
+- an enrolled tenant: `Switched on as this business's defaults: "Whole numbers for counted items in purchasing and
+  stock".`
+- an older tenant: `Proposed for this business, not switched on (this tenant was made before the defaults policy):
+  "Whole numbers for counted items in purchasing and stock", "Packs (box · strip · tablet)", "Packs at the normal
+  counter" — switch them on under Business & switches if wanted.`
 
 ## 5. Verification
 
@@ -155,6 +165,28 @@ For the inventory and pharmacy demos the defaults came back and **the sample dat
 
 Not run: the full MySQL suite (about 2,460 tests). The patch changes no money or GL path; it changes how purchase quantities are checked and which switches a new tenant starts with, and every class touching those ran.
 
+### Correction after review — commit `40f0c2ae` (final code)
+
+**The review found:** `changeBusiness()` applied the business defaults whenever the previous business was empty. An
+older tenant whose business was never set could get `whole_counted_stock` when its business was first chosen.
+
+**The fix:** business defaults apply automatically only to tenants **enrolled** in the policy at creation. An older
+tenant keeps its switches exactly and is only shown proposals (section 2).
+
+The affected tests ran on the frozen commit (worktree `pos-saas-verify-upv` at `40f0c2ae`, DB set `_rocr`; the freeze
+file shows the same HEAD and a clean tree before and after). As the reviewer asked, there was no new full-suite cycle.
+
+| Suite | Runner summary | Result |
+|---|---|---|
+| MySQL: `RolloutDefaultsMySqlTest`, `MasterUniverseMySqlTest`, `TrialSignupQueueMySqlTest`, `MarketSignupMySqlTest`, `RecaptchaTrialMySqlTest`, `TrialBillingPeriodMySqlTest`, `PharmacyDemoMySqlTest` | `OK, but there were issues!` `Tests: 58, Assertions: 979, PHPUnit Deprecations: 1.` | **58 / 58** |
+| `TenantFeatureDefaultsTest` | `OK (7 tests, 198 assertions)` | 7 / 7 |
+
+The new regression test is `test_an_older_tenant_with_no_business_keeps_its_switches_and_is_only_shown_proposals`.
+- **What it checks:** an older tenant with its own switches, and one with none, have their business set. Their
+  stored switches come out byte-for-byte as before. No switch change is recorded. The message lists the proposals.
+- **Proven able to fail:** with every tenant treated as enrolled, it fails (`Tests: 1, Assertions: 2, Failures: 1`);
+  the code was restored afterwards.
+
 ## 6. What deploying this patch changes, tenant by tenant
 
 **Live tenants:** no switch changes at deploy, and none of their screens behaves differently, with one exception:
@@ -177,7 +209,7 @@ Production switches read on 25 Oct, after the 04:00 UTC demo reset:
 | kashifkitchen (live) | product screen, purchasing, workspace, whole numbers, void purge | unchanged | — |
 | mohsin, demo | product screen, purchasing, workspace, whole numbers | unchanged | — |
 | tawakalkashif (live) | product screen | unchanged | purchasing, workspace, whole numbers: not applicable (no purchasing or stock module) |
-| **khatribiryani (live)** | product screen, void purge | unchanged | **turn on `purchasing_v2` + `purchase_workspace`; keep `whole_counted_stock` OFF**. Its counted items bought in parts (33 receipt + 33 invoice lines) are then taken on the new screens. Do it after the deploy, with a live check of its Goods Receipt screen, on approval |
+| **khatribiryani (live)** | product screen, void purge | unchanged | **turn on `purchasing_v2` + `purchase_workspace`; keep `whole_counted_stock` OFF**. Its counted items bought in parts (33 receipt + 33 invoice lines) are then taken on the new screens. Do it after the deploy and its verification, on approval. Check its screens by rendering them only — **no test transactions on khatribiryani** |
 | retaildemo | product screen | product screen (no stock module: no packs) | — |
 | inventorydemo | product screen | + purchasing, workspace, whole numbers, packs, counter cartons | — |
 | restaurantdemo | product screen | unchanged | — |
@@ -185,5 +217,17 @@ Production switches read on 25 Oct, after the 04:00 UTC demo reset:
 | enterprisedemo, financedemo | product screen | + purchasing, workspace | — |
 | pharmacydemo | product screen, packs, purchasing, medical counter, return without bill | + workspace, whole numbers | — |
 
-**Rollback:** code only. Reverting the commit restores the previous rules for every tenant. Defaults already written
-to tenants created in the meantime stay; they are ordinary switches, changeable in Master.
+**Rollback depends on the activation state** (correction after review, 25 Oct). It is not simply "code only".
+
+- **Before khatribiryani is activated:** reverting the commit restores the previous rules. No live tenant notices
+  except the "Receive" fill for kg remainders, which goes back to dropping the remainder.
+- **After khatribiryani is activated:** reverting the code alone brings back the blocker. Its counted items in parts
+  would be refused again on the new screens it is using.
+  - So a revert must come with a decision for khatribiryani: either keep the code, or switch its `purchasing_v2` and
+    `purchase_workspace` off first, back to the old screens, which take parts.
+  - That is the owner's call: its staff lose the new screens.
+  - Documents already made on the new screens stay valid either way.
+- **Tenants created while the patch was live** keep the switches and the enrolment row they were given. Those are
+  ordinary switches, changeable in Master. A revert does not remove them.
+- **Fix forward is the default.** A backup restore is not a rollback; it needs its own recovery plan
+  (`docs/status/release-deploy-2026-10-25.md`).
