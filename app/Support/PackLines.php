@@ -50,7 +50,6 @@ final class PackLines
                 $errors["lines.$i.product_id"] = 'Line ' . ($i + 1) . ': this item no longer exists.';
                 continue;
             }
-            $part = in_array($p->unit?->unit_type, ['weight', 'volume', 'length'], true);
             $packs = self::packsOf($p, $packsOn);
             $name = $p->name;
 
@@ -66,7 +65,9 @@ final class PackLines
                     $errors["lines.$i.packs"] = "{$name}: the quantity must be a number.";
                     continue 2;
                 }
-                if (! $part && floor((float) $raw) != (float) $raw) {
+                // ROLLOUT-1: kg / litre / metre take parts; a counted item only in a pack of one, while the business
+                // allows parts — the rule the entry area is given too (LineQuantity::packTakesParts).
+                if (! LineQuantity::packTakesParts($p->unit, (float) $pack['factor']) && floor((float) $raw) != (float) $raw) {
                     $errors["lines.$i.packs"] = "{$name}: {$pack['name']} must be a whole number.";
                     continue 2;
                 }
@@ -125,7 +126,7 @@ final class PackLines
             }
             $free = 0.0;
             if ($isGrn && $freeRaw !== '') {
-                if (! is_numeric($freeRaw) || (float) $freeRaw < 0 || (! $part && floor((float) $freeRaw) != (float) $freeRaw)) {
+                if (! is_numeric($freeRaw) || (float) $freeRaw < 0 || (! LineQuantity::packTakesParts($p->unit, (float) $buy['factor']) && floor((float) $freeRaw) != (float) $freeRaw)) {
                     $errors["lines.$i.free"] = "{$name}: the free quantity must be a whole number of {$buy['name']}.";
                     continue;
                 }

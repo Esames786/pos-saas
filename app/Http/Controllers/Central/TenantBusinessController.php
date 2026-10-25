@@ -45,13 +45,21 @@ class TenantBusinessController extends Controller
             throw ValidationException::withMessages(['confirm_code' => 'Type the tenant code "' . $tenant->tenant_code . '" to confirm.']);
         }
         try {
-            $this->service->changeBusiness($tenant, $data['primary_business'], auth('central')->id(), $data['note'] ?? null);
+            $defaults = $this->service->changeBusiness($tenant, $data['primary_business'], auth('central')->id(), $data['note'] ?? null);
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['primary_business' => $e->getMessage()]);
         }
+        // ROLLOUT-1: a business set for the first time — say which switches came on (a new tenant), or which are only
+        // proposed (an older tenant, whose switches are kept as they are), by their Master labels.
+        $labels = fn (array $keys) => implode(', ', array_map(fn ($k) => '"' . (TenantFeatures::all()[$k]['label'] ?? $k) . '"', $keys));
+        $said = $defaults['added'] ? ' Switched on as this business\'s defaults: ' . $labels($defaults['added']) . '.' : '';
+        if ($defaults['proposed']) {
+            $said .= ' Proposed for this business, not switched on (this tenant was made before the defaults policy): '
+                . $labels($defaults['proposed']) . ' — switch them on under Business & switches if wanted.';
+        }
 
         return redirect('/tenants/' . $tenant->id . '#business')
-            ->with('status', $tenant->business_name . ' is now: ' . Business::label($data['primary_business']) . '. No data was changed.');
+            ->with('status', $tenant->business_name . ' is now: ' . Business::label($data['primary_business']) . '. No data was changed.' . $said);
     }
 
     public function updateFeatures(Request $request, Tenant $tenant)

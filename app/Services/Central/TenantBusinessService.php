@@ -5,6 +5,7 @@ namespace App\Services\Central;
 use App\Models\Master\Tenant;
 use App\Services\Tenancy\TenancyManager;
 use App\Support\Business;
+use App\Support\TenantFeatureDefaults;
 use App\Support\TenantFeatures;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -18,6 +19,9 @@ use Throwable;
  */
 class TenantBusinessService
 {
+    /** ROLLOUT-1: the tenant_setting_changes row that enrols a new tenant in the defaults policy. */
+    public const DEFAULTS_ENROLLED = 'feature_defaults';
+
     public function __construct(private TenancyManager $tenancy) {}
 
     /**
@@ -90,7 +94,11 @@ class TenantBusinessService
         return $tenant->subscription?->plan?->enabledModules?->pluck('key')->all() ?? [];
     }
 
-    public function changeBusiness(Tenant $tenant, string $business, ?int $userId, ?string $note = null): void
+    /**
+     * @return array{added: list<string>, proposed: list<string>} when the business is set for the first time: the
+     *         business switches turned on (a tenant made under the defaults policy), or only proposed (an older tenant)
+     */
+    public function changeBusiness(Tenant $tenant, string $business, ?int $userId, ?string $note = null): array
     {
         if (! Business::exists($business)) {
             throw new RuntimeException('Unknown business.');
@@ -100,13 +108,76 @@ class TenantBusinessService
             throw new RuntimeException(Business::label($business) . ' needs these modules in the plan first: ' . implode(', ', $missing) . '. Change the plan, then try again.');
         }
         $old = $tenant->primary_business;
+        $result = ['added' => [], 'proposed' => []];
         if ($old === $business) {
-            return;
+            return $result;
         }
-        DB::connection('master')->transaction(function () use ($tenant, $business, $old, $userId, $note) {
+        DB::connection('master')->transaction(function () use ($tenant, $business, $old, $userId, $note, &$result) {
             $tenant->update(['primary_business' => $business]);
             $this->record($tenant, 'primary_business', $old, $business, $userId, $note);
+            // ROLLOUT-1: the business is set for the first time. A tenant made under the defaults policy (enrolled at
+            // creation) gets its business switches now. An older tenant keeps its switches exactly; they are only
+            // proposed, for the owner to switch on by hand. A later change of business leaves the switches alone.
+            if (! Business::exists($old)) {
+                [$after, $added] = $this->businessDefaults($tenant, $business);
+                if ($added && $this->enrolledInDefaults($tenant)) {
+                    $tenant->update(['features' => $after]);
+                    foreach ($added as $key) {
+                        $this->record($tenant, 'feature:' . $key, 'off', 'on', $userId, 'default for ' . Business::label($business));
+                    }
+                    $result['added'] = $added;
+                } else {
+                    $result['proposed'] = $added;
+                }
+            }
         });
+
+        return $result;
+    }
+
+    /**
+     * ROLLOUT-1: the business switches (whole numbers, packs, counter packs, medical counter) this business starts
+     * with, only where the tenant has never set them — a switch already on, or explicitly off, is kept. One whose needs
+     * would be off (packs, when the new product screen is off) is left out. Writes nothing.
+     *
+     * @return array{0: array<string, bool>, 1: list<string>} [the switches after, the keys added]
+     */
+    private function businessDefaults(Tenant $tenant, string $business): array
+    {
+        $defaults = array_intersect_key(TenantFeatureDefaults::for($business, $this->planModules($tenant)), array_flip(TenantFeatureDefaults::BUSINESS_SWITCHES));
+        [$after, $added] = TenantFeatureDefaults::fill($tenant->features ?? [], $defaults);
+
+        $all = TenantFeatures::all();
+        do {
+            $dropped = false;
+            foreach ($added as $i => $key) {
+                foreach ($all[$key]['needs'] ?? [] as $need) {
+                    if (empty($after[$need])) {
+                        unset($after[$key], $added[$i]);
+                        $dropped = true;
+                        break;
+                    }
+                }
+            }
+        } while ($dropped);
+
+        return [$after, array_values($added)];
+    }
+
+    /**
+     * ROLLOUT-1: a tenant made under the defaults policy — signup, Master create or a demo — is enrolled once, at
+     * creation, with the switches it started with. Only an enrolled tenant gets business defaults automatically.
+     */
+    public function enrollInDefaults(Tenant $tenant, ?int $userId, string $how): void
+    {
+        $on = array_keys(array_filter($tenant->features ?? []));
+        $this->record($tenant, self::DEFAULTS_ENROLLED, null, $on ? implode(', ', $on) : 'none', $userId, $how);
+    }
+
+    public function enrolledInDefaults(Tenant $tenant): bool
+    {
+        return DB::connection('master')->table('tenant_setting_changes')
+            ->where('tenant_id', $tenant->id)->where('setting', self::DEFAULTS_ENROLLED)->exists();
     }
 
     /** @param array<string,bool> $wanted every known switch, on or off */
