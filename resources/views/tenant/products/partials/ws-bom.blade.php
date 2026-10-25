@@ -50,5 +50,9 @@
             <button type="button" class="btn btn-outline-primary" data-ws-add>Add a material</button>
             <span class="help">Saved with the product when you press Save — the same rules as the Bill of materials screen. Its number, version, status and notes stay as they are.</span>
         </div>
+        {{-- PRODUCT-NAV-1: the rest of the BOM, only for a user who may open that screen. --}}
+        @if($b['bom'] && \App\Support\ScreenAccess::allows('tenant.manufacturing.bom.edit'))
+            <p class="help mt-2 mb-0">Number, version, status and notes: <a href="{{ url('/manufacturing/bom/' . $b['bom']->id . '/edit') }}" target="_blank" rel="noopener" data-ws-full="bom-edit">edit them on the Bill of materials screen</a> (a new tab — this page keeps what you typed).</p>
+        @endif
     </div>
 </fieldset>

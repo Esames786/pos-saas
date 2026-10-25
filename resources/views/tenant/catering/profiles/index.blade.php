@@ -113,6 +113,7 @@
                         <td>{{ $profile->production_station ?? '—' }}</td>
                         <td><span class="badge bg-{{ $profile->catering_enabled ? 'success' : 'secondary' }}">{{ $profile->catering_enabled ? 'Yes' : 'No' }}</span></td>
                         <td class="text-end">
+                            @include('partials.edit-in-product', ['productId' => $profile->product_id, 'tab' => 'catering', 'class' => 'btn btn-sm btn-outline-primary'])
                             @can('tenant.catering.cost-blocks.edit')
                                 <a href="{{ url('/catering/profiles/' . $profile->id . '/blocks') }}"
                                    class="btn btn-sm btn-light" data-bs-toggle="tooltip"

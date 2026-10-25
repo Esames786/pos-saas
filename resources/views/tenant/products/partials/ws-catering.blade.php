@@ -92,5 +92,22 @@
                 <p class="help mb-0">Kept as saved — changing cost blocks needs the Cost blocks permission.</p>
             @endif
         @endif
+        {{-- PRODUCT-NAV-1: what this tab does not change, on its own screens — only for a user who may open them. --}}
+        @php
+            $cProfile = $c['profile'] ?? null;
+            $cProfilesOk = $cProfile && \App\Support\ScreenAccess::allows('tenant.catering.profiles.index');
+            $cBlocksOk = $cProfile && \App\Support\ScreenAccess::allows('tenant.catering.cost-blocks.edit');
+        @endphp
+        @if($cProfilesOk || $cBlocksOk)
+            <p class="help mt-2 mb-0">
+                @if($cProfilesOk)
+                    On / off, pricing, labels and instructions: <a href="{{ url('/catering/profiles') . '?q=' . urlencode((string) $product?->name) }}" target="_blank" rel="noopener" data-ws-full="catering-profile">Catering Products</a>.
+                @endif
+                @if($cBlocksOk)
+                    Each block's role and rate source: <a href="{{ url('/catering/profiles/' . $cProfile->id . '/blocks') }}" target="_blank" rel="noopener" data-ws-full="cost-blocks">Cost blocks</a>.
+                @endif
+                (A new tab — this page keeps what you typed.)
+            </p>
+        @endif
     </div>
 </fieldset>
