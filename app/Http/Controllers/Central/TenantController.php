@@ -85,6 +85,8 @@ class TenantController extends Controller
             'trial_ends_at' => $trialDays > 0 ? now()->addDays($trialDays) : null,
             'features'      => $plan ? TenantFeatureDefaults::for(null, $plan->enabledModules->pluck('key')->all()) : null,
         ]);
+        // Enrolled in the defaults policy: its business switches come on when its business is first set.
+        app(TenantBusinessService::class)->enrollInDefaults($tenant, auth('central')->id(), 'new tenant (Master create): switches from the defaults policy');
 
         TenantDomain::create([
             'tenant_id'  => $tenant->id,

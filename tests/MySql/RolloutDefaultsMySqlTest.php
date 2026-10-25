@@ -71,6 +71,9 @@ class RolloutDefaultsMySqlTest extends MySqlTenantTestCase
         $this->assertSame(['product_screen_v2', 'purchase_workspace', 'purchasing_v2'], $this->on($a), 'purchasing in the plan: the purchase screens too');
         $this->assertSame(['product_screen_v2'], $this->on($b));
         $this->assertNull($a->fresh()->primary_business, 'the business is chosen later, so no business switch yet');
+        // Enrolled in the defaults policy at creation, with the switches it started with.
+        $this->assertSame('product_screen_v2, purchasing_v2, purchase_workspace', $this->enrolment($a));
+        $this->assertSame('product_screen_v2', $this->enrolment($b));
         $this->assertSame($others, $this->otherTenants());
     }
 
@@ -89,19 +92,29 @@ class RolloutDefaultsMySqlTest extends MySqlTenantTestCase
 
         $this->assertSame(['product_screen_v2', 'purchase_workspace', 'purchasing_v2'], $this->on(Tenant::where('tenant_code', 'rodmastera')->firstOrFail()));
         $this->assertSame([], $this->on(Tenant::where('tenant_code', 'rodmasterb')->firstOrFail()), 'no plan, no switches');
+        $this->assertSame('product_screen_v2, purchasing_v2, purchase_workspace', $this->enrolment(Tenant::where('tenant_code', 'rodmastera')->firstOrFail()));
+        $this->assertSame('none', $this->enrolment(Tenant::where('tenant_code', 'rodmasterb')->firstOrFail()));
         $this->assertSame($others, $this->otherTenants());
     }
 
     /* ── the business, set for the first time ────────────────────────────── */
 
-    public function test_the_first_business_fills_only_switches_the_tenant_never_set(): void
+    public function test_a_new_tenant_gets_only_the_business_switches_it_never_set(): void
     {
         $others = $this->otherTenants();
         $plan = $this->plan(['pos', 'catalog', 'inventory', 'purchasing']);
         $admin = $this->admin();
+        $make = function (string $code) use ($admin, $plan): Tenant {
+            $this->actingAs($admin, 'central')->post($this->central('/tenants'), [
+                'tenant_code' => $code, 'business_name' => 'Rollout ' . $code, 'currency_code' => 'PKR', 'subdomain' => $code, 'plan_id' => $plan->id,
+            ])->assertRedirect();
 
-        // Packs explicitly OFF; everything else as a signup gets it.
-        $shop = $this->tenantRow('rodbiza', $plan, ['product_screen_v2' => true, 'purchasing_v2' => true, 'purchase_workspace' => true, 'packs' => false]);
+            return Tenant::where('tenant_code', $code)->firstOrFail();
+        };
+
+        // Made in Master (enrolled); the owner then switched packs explicitly OFF.
+        $shop = $make('rodbiza');
+        $shop->update(['features' => $shop->features + ['packs' => false]]);
         $this->actingAs($admin, 'central')->put($this->central('/tenants/' . $shop->id . '/business'), ['primary_business' => 'mart', 'confirm_code' => 'rodbiza'])
             ->assertRedirect()->assertSessionHas('status', fn ($s) => str_contains($s, 'Switched on as this business\'s defaults: "Whole numbers for counted items in purchasing and stock".'));
         $f = $shop->fresh()->features;
@@ -113,20 +126,40 @@ class RolloutDefaultsMySqlTest extends MySqlTenantTestCase
 
         // A later change of business leaves the switches alone.
         $this->actingAs($admin, 'central')->put($this->central('/tenants/' . $shop->id . '/business'), ['primary_business' => 'pharmacy', 'confirm_code' => 'rodbiza'])
-            ->assertRedirect()->assertSessionHas('status', fn ($s) => ! str_contains($s, 'Switched on'));
+            ->assertRedirect()->assertSessionHas('status', fn ($s) => ! str_contains($s, 'Switched on') && ! str_contains($s, 'Proposed'));
         $this->assertSame($f, $shop->fresh()->features);
         $this->assertSame(1, DB::connection('master')->table('tenant_setting_changes')->where('tenant_id', $shop->id)->where('setting', 'like', 'feature:%')->count());
 
-        // A tenant that never set anything (made before this policy): business switches only — packs need the new
-        // product screen, which is not on, so neither packs nor the counter's carton come on.
-        $old = $this->tenantRow('rodbizb', $plan, null);
-        $this->actingAs($admin, 'central')->put($this->central('/tenants/' . $old->id . '/business'), ['primary_business' => 'mart', 'confirm_code' => 'rodbizb'])->assertRedirect();
-        $this->assertSame(['whole_counted_stock'], $this->on($old));
+        // A new restaurant's first business adds nothing: whole numbers are not its policy.
+        $kitchen = $make('rodbizc');
+        $this->actingAs($admin, 'central')->put($this->central('/tenants/' . $kitchen->id . '/business'), ['primary_business' => 'restaurant', 'confirm_code' => 'rodbizc'])
+            ->assertRedirect()->assertSessionHas('status', fn ($s) => ! str_contains($s, 'Switched on') && ! str_contains($s, 'Proposed'));
+        $this->assertSame(['product_screen_v2', 'purchase_workspace', 'purchasing_v2'], $this->on($kitchen));
 
-        // A restaurant's first business adds nothing: whole numbers are not its policy.
-        $kitchen = $this->tenantRow('rodbizc', $plan, ['product_screen_v2' => true]);
-        $this->actingAs($admin, 'central')->put($this->central('/tenants/' . $kitchen->id . '/business'), ['primary_business' => 'restaurant', 'confirm_code' => 'rodbizc'])->assertRedirect();
-        $this->assertSame(['product_screen_v2'], $this->on($kitchen));
+        $this->assertSame($others, $this->otherTenants());
+    }
+
+    public function test_an_older_tenant_with_no_business_keeps_its_switches_and_is_only_shown_proposals(): void
+    {
+        $others = $this->otherTenants();
+        $plan = $this->plan(['pos', 'catalog', 'inventory', 'purchasing']);
+        $admin = $this->admin();
+
+        // Made before the defaults policy (no enrolment), business never set, its own switches.
+        $old = $this->tenantRow('rodolda', $plan, ['product_screen_v2' => true, 'purchasing_v2' => true]);
+        $before = DB::connection('master')->table('tenants')->where('id', $old->id)->value('features');
+        $this->actingAs($admin, 'central')->put($this->central('/tenants/' . $old->id . '/business'), ['primary_business' => 'mart', 'confirm_code' => 'rodolda'])
+            ->assertRedirect()->assertSessionHas('status', fn ($s) => ! str_contains($s, 'Switched on')
+                && str_contains($s, 'Proposed for this business, not switched on (this tenant was made before the defaults policy): "Whole numbers for counted items in purchasing and stock", "Packs (box · strip · tablet)", "Packs at the normal counter"'));
+        $this->assertSame('mart', $old->fresh()->primary_business, 'the business itself is set');
+        $this->assertSame($before, DB::connection('master')->table('tenants')->where('id', $old->id)->value('features'), 'its switches are exactly as stored before');
+        $this->assertSame(0, DB::connection('master')->table('tenant_setting_changes')->where('tenant_id', $old->id)->where('setting', 'like', 'feature:%')->count(), 'no switch recorded as changed');
+
+        // An older tenant that never had any switch keeps none.
+        $bare = $this->tenantRow('rodoldb', $plan, null);
+        $this->actingAs($admin, 'central')->put($this->central('/tenants/' . $bare->id . '/business'), ['primary_business' => 'pharmacy', 'confirm_code' => 'rodoldb'])
+            ->assertRedirect()->assertSessionHas('status', fn ($s) => ! str_contains($s, 'Switched on') && str_contains($s, 'Proposed for this business'));
+        $this->assertNull(DB::connection('master')->table('tenants')->where('id', $bare->id)->value('features'));
 
         $this->assertSame($others, $this->otherTenants());
     }
@@ -172,6 +205,7 @@ class RolloutDefaultsMySqlTest extends MySqlTenantTestCase
             $reset = app(DemoResetService::class)->resetTenantCode($code);
             $this->assertSame($expected, $this->on($reset), "{$industry}: the reset put the defaults back");
             $this->assertTrue((bool) $reset->fresh()->is_demo);
+            $this->assertNotNull($this->enrolment($reset), "{$industry}: the rebuilt demo is enrolled in the defaults policy");
         }
 
         $this->assertSame($others, $this->otherTenants());
@@ -186,6 +220,12 @@ class RolloutDefaultsMySqlTest extends MySqlTenantTestCase
         sort($keys);
 
         return $keys;
+    }
+
+    /** The switches a tenant was enrolled in the defaults policy with, or null when it was never enrolled. */
+    private function enrolment(Tenant $tenant): ?string
+    {
+        return DB::connection('master')->table('tenant_setting_changes')->where('tenant_id', $tenant->id)->where('setting', 'feature_defaults')->value('new_value');
     }
 
     /** Every tenant this class did not make, with its switches exactly as stored. */

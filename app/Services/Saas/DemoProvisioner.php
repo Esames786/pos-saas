@@ -121,6 +121,7 @@ class DemoProvisioner
                 // reset recreates the tenant row, so a switch flipped by hand would not survive it.
                 'features'      => self::featuresFor($industry, $plan),
             ]);
+            app(\App\Services\Central\TenantBusinessService::class)->enrollInDefaults($tenant, null, 'new demo tenant: switches from the defaults policy');
 
             TenantDomain::create([
                 'tenant_id'  => $tenant->id,
