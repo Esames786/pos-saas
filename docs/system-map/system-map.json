@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-24T23:07:59+00:00",
+    "built_at": "2026-10-25T08:37:27+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "4b745532",
     "work": [
@@ -15,11 +15,20 @@
         {
             "path": "D:/laragon2/www/pos-saas-contact",
             "branch": "feat/public-contact-form",
-            "head": "4b745532",
+            "head": "0fc951bf",
             "behind_prod": 0,
-            "ahead_of_prod": 0,
-            "last_commit": "2026-10-25\u00b7Merge UNIFIED-W3W4: unified W2 + supplier net invoice, units & packs, product and purchase workspaces",
-            "uncommitted_files": 9
+            "ahead_of_prod": 2,
+            "last_commit": "2026-10-25\u00b7CONTACT-FORM-1 (2/2): public contact form \u2014 rate-limited, sales@ par jati hai",
+            "uncommitted_files": 6
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-edge",
+            "branch": "feat/edge-config-refresh-v1",
+            "head": "3244a799",
+            "behind_prod": 93,
+            "ahead_of_prod": 202,
+            "last_commit": "2026-10-25\u00b7EDGE 0.8.1 HOTFIX F-FB4-1 (owner): Windows cashier web-backend supervisor - child stdout/stderr to per-backend capped log files (no non-blocking pipe reads on Windows), HTTP liveness with grace + bounded timeouts, restart of the failed backend only with capped exponential back-off, duplicate-port guard, status file, child terminated on stop; health reports HTTP liveness + supervisor state per backend; PACKAGING-DRYRUN-IMMUTABLE-1: installer artisan runs against a non-active runtime carry APP_*_CACHE overrides to a scratch dir",
+            "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-relc",
@@ -31,6 +40,15 @@
             "uncommitted_files": 0
         },
         {
+            "path": "D:/laragon2/www/pos-saas-rollout",
+            "branch": "feat/rollout-completion-20261025",
+            "head": "4b745532",
+            "behind_prod": 0,
+            "ahead_of_prod": 0,
+            "last_commit": "2026-10-25\u00b7Merge UNIFIED-W3W4: unified W2 + supplier net invoice, units & packs, product and purchase workspaces",
+            "uncommitted_files": 0
+        },
+        {
             "path": "D:/laragon2/www/pos-saas-video",
             "branch": "feat/demo-video-pipeline",
             "head": "e0bae109",
@@ -38,15 +56,6 @@
             "ahead_of_prod": 17,
             "last_commit": "2026-10-25\u00b7RESTAURANT-VIDEO-1: poori working video \u2014 har order asli punch hota hai",
             "uncommitted_files": 0
-        },
-        {
-            "path": "D:/laragon2/www/pos-saas-edge",
-            "branch": "feat/edge-config-refresh-v1",
-            "head": "5b132df8",
-            "behind_prod": 93,
-            "ahead_of_prod": 201,
-            "last_commit": "2026-10-24\u00b7docs: 0.8.0-edge LAB acceptance in warm standby (Team FB4) - STOPPED on defect F-FB4-1: the Windows web-backend supervisor (EdgeLocalServeCommand, unchanged since P4, present in 0.7.0 and 0.8.0) wedges both cashier backends after ~37 requests each (stream_set_blocking(false) is unsupported on Windows proc_open pipes -> the parent blocks on stdout, the child's stderr pipe fills) - reproduced outside the LAB; Online acceptance on the LAB Cloud NOT RUNNABLE (TENANT_BASE_DOMAIN=127.0.0.1 + array sessions: the LAB Cloud is an API target, not a browsable POS); W07/W08 blocked by the missing approver PIN; W01 standby PASS with the full capability census; LAB counts unchanged (Cloud 5, appliance 6, outbox 5/5)",
-            "uncommitted_files": 5
         },
         {
             "path": "D:/laragon2/www/pos-saas-verify-upv",
@@ -608,7 +617,7 @@
             "modified": "2026-10-24"
         }
     ],
-    "git": "4b745532",
+    "git": "0fc951bf",
     "source": {
         "tenant_db": "pos_test_tenant_contact",
         "master_db": "pos_test_master_contact"

@@ -15,8 +15,7 @@
 @php
     $contact = config('saas.contact', []);
     $brand = config('saas.brand_name', 'Bingoo');
-    $phone = trim((string) ($contact['phone'] ?? ''));
-    $hasPhone = $phone !== '' && ! str_contains($phone, 'X');
+    $numbers = \App\Support\ContactNumbers::all();
     $sales = $contact['sales_email'] ?? 'sales@bingoopos.com';
     $rtl = app()->getLocale() === 'ar';
 @endphp
@@ -49,9 +48,9 @@
         <p>
             {{ __('In a hurry? Write to us directly:') }}<br>
             <a class="link" href="mailto:{{ $sales }}" dir="ltr">{{ $sales }}</a>
-            @if($hasPhone)
-                <br><span dir="ltr"><strong>{{ $phone }}</strong></span>
-            @endif
+            @foreach($numbers as $number)
+                <br><a class="link" href="{{ $number['wa'] }}" dir="ltr">{{ $number['display'] }}</a>
+            @endforeach
         </p>
         <a class="btn" href="{{ url('/') }}">{{ __('Back to home') }}</a>
     </div>

@@ -102,11 +102,44 @@ class ContactFormMySqlTest extends MySqlTenantTestCase
 
     public function test_a_fake_phone_number_is_hidden_rather_than_shown(): void
     {
-        config(['saas.contact.phone' => '+92 XXX XXXXXXX']);
-        $this->assertStringNotContainsString('XXX XXXXXXX', $this->get($this->central('/contact'))->getContent());
+        // Jo live safhe par 25 Oct tak tha: placeholder + "replace before production".
+        foreach (['', '+92 XXX XXXXXXX'] as $notANumber) {
+            config(['saas.contact.phone' => $notANumber]);
+            $html = $this->get($this->central('/contact'))->assertOk()->getContent();
+            $this->assertStringNotContainsString('XXX XXXXXXX', $html);
+            $this->assertStringNotContainsString('wa.me', $html, 'no number means no WhatsApp button');
+        }
+    }
 
-        config(['saas.contact.phone' => '0332 825 2838']);
-        $this->assertStringContainsString('0332 825 2838', $this->get($this->central('/contact'))->getContent());
+    public function test_both_whatsapp_numbers_show_and_are_tappable(): void
+    {
+        config(['saas.contact.phone' => '923328252838,923331279246']);
+        $html = $this->get($this->central('/contact'))->assertOk()->getContent();
+
+        foreach ([
+            ['923328252838', '+92 332 825 2838'],
+            ['923331279246', '+92 333 127 9246'],
+        ] as [$raw, $display]) {
+            // Parhne wali shakl safhe par, aur dabane par WhatsApp — dono ek hi setting se.
+            $this->assertStringContainsString($display, $html);
+            $this->assertStringContainsString('https://wa.me/' . $raw, $html);
+        }
+    }
+
+    public function test_the_numbers_come_from_one_setting_in_both_shapes(): void
+    {
+        // Ek hi jagah likha jata hai (international, bina '+'), do shaklein yahan se banti hain —
+        // do jagah do shaklein rakhna hi ghalti ki jaR hoti.
+        config(['saas.contact.phone' => ' +92 332-825 2838 ; 923331279246 , 923331279246 ']);
+        $numbers = \App\Support\ContactNumbers::all();
+
+        $this->assertCount(2, $numbers, 'spacing, punctuation and a repeat all collapse');
+        $this->assertSame('923328252838', $numbers[0]['raw']);
+        $this->assertSame('+92 332 825 2838', $numbers[0]['display']);
+        $this->assertSame('https://wa.me/923328252838', $numbers[0]['wa']);
+
+        config(['saas.contact.phone' => '+92 XXX XXXXXXX']);
+        $this->assertSame([], \App\Support\ContactNumbers::all(), 'a placeholder is not a number');
     }
 
     // ── the happy path ──────────────────────────────────────────────────────────────────────

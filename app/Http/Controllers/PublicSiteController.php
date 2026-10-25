@@ -309,7 +309,7 @@ class PublicSiteController extends Controller
                 brand: $brand,
                 name: $enquiry->name,
                 salesEmail: $salesEmail,
-                phone: (string) config('saas.contact.phone') ?: null,
+                phone: \App\Support\ContactNumbers::first()['display'] ?? null,
             ));
 
             $enquiry->forceFill(['notified_at' => now()])->save();

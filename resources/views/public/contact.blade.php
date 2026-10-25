@@ -254,10 +254,9 @@
                     <p class="text-muted mb-4">{{ __('Send us a message below, or reach us directly — whichever is easier.') }}</p>
                     @php
                         $contact = config('saas.contact', []);
-                        // CONTACT-FORM-1: ab ye asli number hai. Jab tak SAAS_CONTACT_PHONE khaali ho,
-                        // jhoota number dikhane se behtar hai ke number ka khana hi na dikhe.
-                        $phone = trim((string) ($contact['phone'] ?? ''));
-                        $hasPhone = $phone !== '' && ! str_contains($phone, 'X');
+                        // CONTACT-FORM-1: SAAS_CONTACT_PHONE khaali ho to number ka khana dikhta hi
+                        // nahi — jhoota "+92 XXX XXXXXXX" chhapne se behtar.
+                        $numbers = \App\Support\ContactNumbers::all();
                     @endphp
                     <div class="row g-3 justify-content-center mb-3">
                         <div class="col-md-4">
@@ -282,11 +281,18 @@
                             </div>
                         </div>
                     </div>
-                    @if($hasPhone)
-                        <p class="text-muted small mb-4">
-                            <i class="ti ti-brand-whatsapp me-1"></i>{{ __('WhatsApp / Phone:') }}
-                            <strong><bdi dir="ltr">{{ $phone }}</bdi></strong>
-                        </p>
+                    @if($numbers)
+                        {{-- Number sirf likha hua nahi — phone par dabate hi WhatsApp khul jata hai. --}}
+                        <div class="d-flex flex-wrap justify-content-center gap-2 mb-4">
+                            @foreach($numbers as $number)
+                                <a href="{{ $number['wa'] }}" target="_blank" rel="noopener"
+                                   class="btn btn-sm d-inline-flex align-items-center gap-2"
+                                   style="background:#25D366;color:#06331C;font-weight:600;">
+                                    <i class="ti ti-brand-whatsapp"></i>
+                                    <bdi dir="ltr">{{ $number['display'] }}</bdi>
+                                </a>
+                            @endforeach
+                        </div>
                     @endif
                     <div class="d-flex flex-wrap justify-content-center gap-2">
                         <a href="{{ $lurl('/start-trial') }}" class="btn btn-primary">{{ __('Start a Self-Service Trial') }}</a>
