@@ -30,7 +30,12 @@ return [
         'sales_email'   => env('SAAS_SALES_EMAIL', 'sales@bingoopos.com'),
         'support_email' => env('SAAS_SUPPORT_EMAIL', 'support@bingoopos.com'),
         'website'       => env('SAAS_WEBSITE_URL', 'https://bingoopos.com'),
-        'phone'         => env('SAAS_CONTACT_PHONE', '+92 XXX XXXXXXX'),
+        // CONTACT-FORM-1: ek ya ZYADA number, comma se alag, poore international shakl me bina
+        // '+' ke — wahi shakl jo wa.me ka link maangta hai (923328252838). Safhe par parhne wali
+        // shakl (+92 332 825 2838) App\Support\ContactNumbers khud bana leta hai.
+        // Default jaan boojh kar KHAALI hai: jhoota "+92 XXX XXXXXXX" chhapne se behtar hai ke
+        // number ka khana hi na dikhe.
+        'phone'         => env('SAAS_CONTACT_PHONE', ''),
     ],
 
     'default_currency' => env('SAAS_DEFAULT_CURRENCY', 'PKR'),

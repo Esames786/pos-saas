@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Central\BillingRatesController;
+use App\Http\Controllers\Central\ContactEnquiryController;
 use App\Http\Controllers\Central\DashboardController;
 use App\Http\Controllers\Central\InvoiceController;
 use App\Http\Controllers\Central\WhatsAppUsageController;
@@ -141,6 +142,10 @@ Route::domain(config('tenancy.central_domain'))
                 Route::get('/subscription-requests/{subscriptionRequest}', [SubscriptionRequestController::class, 'show'])->name('central.subscription-requests.show');
                 Route::post('/subscription-requests/{subscriptionRequest}/approve', [SubscriptionRequestController::class, 'approve'])->name('central.subscription-requests.approve');
                 Route::post('/subscription-requests/{subscriptionRequest}/reject', [SubscriptionRequestController::class, 'reject'])->name('central.subscription-requests.reject');
+
+                // CONTACT-FORM-1 — enquiries from the public "Contact Sales" form.
+                Route::get('/contact-enquiries', [ContactEnquiryController::class, 'index'])->name('central.contact-enquiries.index');
+                Route::post('/contact-enquiries/{contactEnquiry}/handled', [ContactEnquiryController::class, 'handled'])->name('central.contact-enquiries.handled');
 
                 Route::post('/tenants/{tenant}/domains', [TenantDomainController::class, 'store'])
                     ->name('central.tenant-domains.store');

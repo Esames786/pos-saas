@@ -32,6 +32,13 @@ $publicPages = function () {
 
     Route::get('/contact', [PublicSiteController::class, 'contact'])->name('contact');
 
+    // CONTACT-FORM-1: the enquiry form. `throttle:contact-form` is the first of three gates — it
+    // runs before the controller and costs nothing, so a flood never reaches the database. The
+    // other two (honeypot, reCAPTCHA) live in ContactEnquiryRequest.
+    Route::post('/contact', [PublicSiteController::class, 'contactStore'])
+        ->middleware('throttle:contact-form')
+        ->name('contact.store');
+
     // Legal / policy pages (PRD-4)
     Route::get('/terms', [PublicSiteController::class, 'terms'])->name('terms');
     Route::get('/privacy', [PublicSiteController::class, 'privacy'])->name('privacy');

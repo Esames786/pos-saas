@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-25T09:25:48+00:00",
+    "built_at": "2026-10-25T08:37:27+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "4b745532",
     "work": [
@@ -15,11 +15,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-contact",
             "branch": "feat/public-contact-form",
-            "head": "d3c99830",
+            "head": "0fc951bf",
             "behind_prod": 0,
-            "ahead_of_prod": 3,
-            "last_commit": "2026-10-25\u00b7CONTACT-FORM-1: dono WhatsApp number \u2014 ek setting, do shaklein",
-            "uncommitted_files": 0
+            "ahead_of_prod": 2,
+            "last_commit": "2026-10-25\u00b7CONTACT-FORM-1 (2/2): public contact form \u2014 rate-limited, sales@ par jati hai",
+            "uncommitted_files": 6
         },
         {
             "path": "D:/laragon2/www/pos-saas-edge",
@@ -42,19 +42,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-rollout",
             "branch": "feat/rollout-completion-20261025",
-            "head": "98e383a0",
+            "head": "4b745532",
             "behind_prod": 0,
-            "ahead_of_prod": 1,
-            "last_commit": "2026-10-25\u00b7ROLLOUT-1: counted items in parts follow the switch on the new screens; one defaults policy for new tenants",
-            "uncommitted_files": 0
-        },
-        {
-            "path": "D:/laragon2/www/pos-saas-verify-upv",
-            "branch": "(detached)",
-            "head": "98e383a0",
-            "behind_prod": 0,
-            "ahead_of_prod": 1,
-            "last_commit": "2026-10-25\u00b7ROLLOUT-1: counted items in parts follow the switch on the new screens; one defaults policy for new tenants",
+            "ahead_of_prod": 0,
+            "last_commit": "2026-10-25\u00b7Merge UNIFIED-W3W4: unified W2 + supplier net invoice, units & packs, product and purchase workspaces",
             "uncommitted_files": 0
         },
         {
@@ -64,6 +55,15 @@
             "behind_prod": 493,
             "ahead_of_prod": 17,
             "last_commit": "2026-10-25\u00b7RESTAURANT-VIDEO-1: poori working video \u2014 har order asli punch hota hai",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-verify-upv",
+            "branch": "(detached)",
+            "head": "7b4719c6",
+            "behind_prod": 2,
+            "ahead_of_prod": 0,
+            "last_commit": "2026-10-24\u00b7Merge production (ed9a8431: VOID-PURGE-1/2/3) into the release candidate",
             "uncommitted_files": 0
         },
         {
@@ -494,139 +494,139 @@
         {
             "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
             "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/cash-book-report-2026-10-10.md",
             "title": "CASH-BOOK-REPORT-1 \u2014 Cash Book report: kitna aaya, kitna gaya, kis cash/bank me, tareekh-war",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/category-parent-guard-2026-10-21.md",
             "title": "CATEGORY-PARENT-GUARD-1 \u2014 a category can never sit inside its own sub-category (21 Oct 2026)",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
             "title": "Catering product model \u2014 what is wrong, and the work to fix it",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
             "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
             "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
             "title": "Two order counts on one dashboard \u2014 research",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/deals-as-their-own-report-heads-2026-09-02.md",
             "title": "Deals belong under their own heads \u2014 research",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/grn-extra-charges-2026-10-02.md",
             "title": "GRN-EXTRA-CHARGES-1 \u2014 cartage ko product ki jagah \"Extra Charges\" banana",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/grn-void-and-starter-shifts-2026-10-20.md",
             "title": "GRN void + starter plans' counter (20 Oct 2026)",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/held-sale-dead-session-2026-09-12.md",
             "title": "HELD-SALE-DEAD-SESSION-1 \u2014 band table par bill hold ho jata hai, phir kabhi pay nahi hota",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/hide-amounts-from-operators-2026-09-01.md",
             "title": "Hide the money from the counter \u2014 research before building",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/items-by-category-section-2026-09-03.md",
             "title": "ITEMS-BY-CATEGORY-1 \u2014 Item ka category-wise breakup, apne alag section me",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/items-in-category-sequence-2026-09-03.md",
             "title": "ITEM-CATEGORY-SEQUENCE \u2014 Item report category ki tarteeb me, purane software ki tarah",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/kashif-client-feedback-2026-09-15.md",
             "title": "Client feedback, 15 September \u2014 chaar cheezen",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/kashif-document-pdf-2026-09-09.md",
             "title": "Quotation ka PDF \u2014 aur ek hadd jo chhupai nahi gayi",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/kashif-event-history-revert-2026-08-23.md",
             "title": "Event Change History + Revert \u2014 research + implementation plan",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/kashif-food-first-floor-tables-2026-08-30.md",
             "title": "Kashif Food \u2014 dine-in floors & tables",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/kashif-food-operator-permission-hide-2026-08-31.md",
             "title": "KASHIF-OPERATOR-HIDE \u2014 jo owner ne screenshots par cross kiya",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/kashif-foods-pulao-subcategories-2026-09-17.md",
             "title": "KF-PULAO-SUBCAT-1 \u2014 The Kashif Foods: \"Chicken Pulao\" \u2192 \"Pulao\" + Chicken / Beef",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/kashif-hide-amounts-gap-2026-09-04.md",
             "title": "Kashif Food \u2014 \"*** kyun nahi aa raha\" (research)",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/kashif-inline-table-editor-2026-09-09.md",
             "title": "In-table editor \u2014 pehle FLOW MAP, phir plan",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/kashif-kitchen-go-live-2026-09-05.md",
             "title": "Kashif Kitchen go-live \u2014 research + plan",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/kashif-kot-routing-requests-2026-09-03.md",
             "title": "Kashif Food \u2014 chaar KOT routing ki farmaishein",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         },
         {
             "file": "docs/plans/kashif-legacy-alignment-2026-08-22.md",
             "title": "Kashif \u2014 Legacy-Software Alignment (design, before any code)",
-            "modified": "2026-10-25"
+            "modified": "2026-10-24"
         }
     ],
-    "git": "98e383a0",
+    "git": "0fc951bf",
     "source": {
-        "tenant_db": "pos_test_tenant_roc",
-        "master_db": "pos_test_master_roc"
+        "tenant_db": "pos_test_tenant_contact",
+        "master_db": "pos_test_master_contact"
     },
     "counts": {
-        "tables": 229,
+        "tables": 230,
         "foreign_keys": 427,
         "inferred_links": 219,
-        "screens": 736
+        "screens": 738
     },
     "tables": [
         {
@@ -35602,6 +35602,48 @@
             "used_by_count": 0
         },
         {
+            "name": "contact_enquiries",
+            "side": "master",
+            "columns": [
+                "id bigint unsigned",
+                "name varchar(255)",
+                "email varchar(255)",
+                "phone varchar(50)",
+                "business_name varchar(255)",
+                "topic varchar(60)",
+                "message text",
+                "locale varchar(10)",
+                "plan_hint varchar(100)",
+                "ip_address varchar(45)",
+                "user_agent varchar(512)",
+                "status varchar(20)",
+                "handled_at timestamp",
+                "handled_by varchar(255)",
+                "notified_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [],
+            "domain": "Bingoo Master",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "ContactEnquiry"
+            ],
+            "used_by": [
+                {
+                    "route": "central.contact-enquiries.index",
+                    "why": "model ContactEnquiry"
+                },
+                {
+                    "route": "central.contact-enquiries.handled",
+                    "why": "model ContactEnquiry"
+                }
+            ],
+            "used_by_count": 2
+        },
+        {
             "name": "edge_bootstrap_snapshot_sections",
             "side": "master",
             "columns": [
@@ -41527,6 +41569,26 @@
                 "tenants",
                 "plans",
                 "subscription_invoices"
+            ]
+        },
+        {
+            "route": "central.contact-enquiries.index",
+            "uri": "/contact-enquiries",
+            "methods": "GET",
+            "controller": "ContactEnquiryController@index",
+            "group": "central.contact-enquiries",
+            "tables": [
+                "contact_enquiries"
+            ]
+        },
+        {
+            "route": "central.contact-enquiries.handled",
+            "uri": "/contact-enquiries/{contactEnquiry}/handled",
+            "methods": "POST",
+            "controller": "ContactEnquiryController@handled",
+            "group": "central.contact-enquiries",
+            "tables": [
+                "contact_enquiries"
             ]
         },
         {

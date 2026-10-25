@@ -158,6 +158,29 @@
                                     </a>
                                 </li>
                             @endcan
+                            {{-- CONTACT-FORM-1: website enquiries. Unread count is on the link so a
+                                 new lead is visible without opening the page. --}}
+                            @can('central.contact-enquiries.index')
+                                @php
+                                    $a = $isIn('contact-enquiries*');
+                                    // Sidebar har safhe par banta hai — ye ginti har page load par ek
+                                    // query na ban jaye, is liye ek minute ke liye yaad rehti hai.
+                                    $newEnquiries = \Illuminate\Support\Facades\Cache::remember(
+                                        'central.contact-enquiries.new-count',
+                                        60,
+                                        fn () => \App\Models\Master\ContactEnquiry::where('status', \App\Models\Master\ContactEnquiry::STATUS_NEW)->count(),
+                                    );
+                                @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/contact-enquiries') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-mail-forward fs-16 me-2"></i>
+                                        <span>Contact Enquiries</span>
+                                        @if($newEnquiries)
+                                            <span class="badge bg-danger ms-2">{{ $newEnquiries }}</span>
+                                        @endif
+                                    </a>
+                                </li>
+                            @endcan
                             @can('central.routes.index')
                                 @php $a = $isIn('routes*'); @endphp
                                 <li class="{{ $a ? 'active' : '' }}">
