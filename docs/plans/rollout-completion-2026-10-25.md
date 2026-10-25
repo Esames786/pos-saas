@@ -93,3 +93,97 @@ that start ON; their needs are always on too.
   kept, other tenants untouched);
 - new `TenantFeatureDefaultsTest` (default suite: the policy table);
 - a local browser walk of the entry area (exact words; parts accepted with the switch off, refused with it on).
+
+## 4. As built — commit `98e383a0` (branch `feat/rollout-completion-20261025`, from production `4b745532`)
+
+Code only. No migration, no new route, no new table; the system map is unchanged (229 tables, 736 screens).
+
+| Area | Files |
+|---|---|
+| The rule | `app/Support/LineQuantity.php` (`packTakesParts`) |
+| The server's new-screen lines | `app/Support/PackLines.php` (packs, free), `app/Support/ReturnLines.php` |
+| The page | `resources/views/tenant/purchasing/partials/entry-area.blade.php` (one partial: PO, GRN, supplier return, workspace) |
+| The policy | `app/Support/TenantFeatureDefaults.php` (new) |
+| Where it is used | `SelfSignupService`, `Central\TenantController@store`, `DemoProvisioner::featuresFor`, `TenantBusinessService::changeBusiness` (+ the Master message in `TenantBusinessController`) |
+
+The Master message after a first business set now ends with, for example: `Switched on as this business's
+defaults: "Whole numbers for counted items in purchasing and stock".`
+
+## 5. Verification
+
+| Check | Result |
+|---|---|
+| Focused MySQL (`RolloutDefaultsMySqlTest` + `PurchaseStockQuantityMySqlTest`, DB set `_roc`) | `OK, but there were issues!` `Tests: 11, Assertions: 146, PHPUnit Deprecations: 1.` — 11 / 11 |
+| Policy unit test (`TenantFeatureDefaultsTest`) | `OK (7 tests, 198 assertions)` |
+| Every compiled Blade view (`CompiledBladeSyntaxTest`) | `OK (1 test, 3 assertions)` |
+| Local browser walk of the entry area (test store `pwtest`, server from this worktree) | 13 / 13, no page errors |
+| The same walk on the code before this patch (`7b4719c6`, the entry area production runs) | 3 failed: "3 Piece" shown for 2.5; 2.5 refused with the switch OFF; the walk stopped there — it can tell the two apart |
+
+The demo test is the real path: `DemoProvisioner::provision` creates the tenant database, a switch is changed by hand,
+then `DemoResetService::resetTenantCode` (what the nightly reset runs: provision fresh, then `demo:seed`) rebuilds it.
+For the inventory and pharmacy demos the defaults came back and **the sample data seeded with them on**
+(pharmacy: packs, medical counter and whole numbers; inventory: packs, counter cartons and whole numbers).
+
+**The browser walk** (13 checks):
+
+| Switch | What it checked |
+|---|---|
+| OFF | 2.5 pieces shows "2.5 Piece", goes in the list and posts as 2.500, plus 0.500 free |
+| OFF | an order of 2.5 pieces: "Receive" fills 2.5, not 2 |
+| ON | 2.5 still shows "2.5 Piece" (never "3"); refused with "Piece: a whole number, please."; free 0.5 refused with "Free: a whole number of Piece, please."; nothing written |
+| ON | kg still shows "1.25 Kilogram" |
+
+**Sabotage** (each guard broken on purpose, then restored; the worktree was checked clean afterwards):
+
+| Broken | Caught by |
+|---|---|
+| whole numbers bundled with the purchasing module | 2 unit tests |
+| refunds without a bill for a live pharmacy | 2 unit tests |
+| `fill()` overwrites a switch the tenant set | 1 unit test |
+| the parts rule ignores the switch | `test_the_new_screens_take_a_part…` |
+| the page always told "parts allowed" | `test_the_entry_area_is_told_the_switch` |
+| the first-business fill ignores existing choices | `test_the_first_business_fills_only…` |
+| demos back to the old hard-coded switches | `test_every_demo_starts_with_its_business_defaults` |
+| signup sets no switches | `test_a_signup_starts_with_the_screens_its_plan_carries` |
+
+**Related regression:** 40 MySQL classes that touch switches, purchasing, packs, signup, Master or the demos, run on the frozen commit (worktree `pos-saas-verify-upv` at `98e383a0`, DB set `_rocr`; the freeze file shows the same HEAD and a clean tree before and after):
+
+| Suite | Runner summary | Result |
+|---|---|---|
+| MySQL, 40 related classes | `OK, but there were issues!` `Tests: 322, Assertions: 4837, PHPUnit Deprecations: 1, Skipped: 1.` | **321 passed, 1 skipped** (the GeoIP real-file check, the same single skip as earlier full runs) |
+| `tests/Unit` | `FAILURES!` `Tests: 129, Assertions: 748, Failures: 3, Skipped: 4.` | **the three failures that predate this work** (`CateringClientFeedbackUiRegressionTest`, `EscPosReportPayloadTest`, `DeliveryRiderReassignmentRegressionTest`; they fail the same on production) |
+
+Not run: the full MySQL suite (about 2,460 tests). The patch changes no money or GL path; it changes how purchase quantities are checked and which switches a new tenant starts with, and every class touching those ran.
+
+## 6. What deploying this patch changes, tenant by tenant
+
+**Live tenants:** no switch changes at deploy, and none of their screens behaves differently, with one exception:
+- every live tenant with the new purchasing screens has `whole_counted_stock` ON (kashiffood, kashifkitchen, mohsin,
+  demo), so the parts rule answers exactly as today;
+- **the exception, an improvement:** on those tenants, "Receive" from an order with a kg item due in parts (2.5 kg)
+  now fills 2.5 instead of 2.
+
+**Demos:** each one takes the policy at its next nightly reset (04:00 UTC). No manual reset is needed or done.
+
+**New tenants:** the policy (section 2).
+
+## 7. Proposed activation matrix — for review, nothing activated
+
+Production switches read on 25 Oct, after the 04:00 UTC demo reset:
+
+| Tenant | Switches now | After deploy | Proposed after that |
+|---|---|---|---|
+| kashiffood (live) | product screen, purchasing, workspace, whole numbers, report delivery | unchanged | — |
+| kashifkitchen (live) | product screen, purchasing, workspace, whole numbers, void purge | unchanged | — |
+| mohsin, demo | product screen, purchasing, workspace, whole numbers | unchanged | — |
+| tawakalkashif (live) | product screen | unchanged | purchasing, workspace, whole numbers: not applicable (no purchasing or stock module) |
+| **khatribiryani (live)** | product screen, void purge | unchanged | **turn on `purchasing_v2` + `purchase_workspace`; keep `whole_counted_stock` OFF**. Its counted items bought in parts (33 receipt + 33 invoice lines) are then taken on the new screens. Do it after the deploy, with a live check of its Goods Receipt screen, on approval |
+| retaildemo | product screen | product screen (no stock module: no packs) | — |
+| inventorydemo | product screen | + purchasing, workspace, whole numbers, packs, counter cartons | — |
+| restaurantdemo | product screen | unchanged | — |
+| restaurantprodemo | product screen | + purchasing, workspace (restaurant: no whole numbers) | — |
+| enterprisedemo, financedemo | product screen | + purchasing, workspace | — |
+| pharmacydemo | product screen, packs, purchasing, medical counter, return without bill | + workspace, whole numbers | — |
+
+**Rollback:** code only. Reverting the commit restores the previous rules for every tenant. Defaults already written
+to tenants created in the meantime stay; they are ordinary switches, changeable in Master.
