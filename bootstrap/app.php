@@ -12,6 +12,45 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 
+// PACKAGING-DRYRUN-IMMUTABLE-1 (0.8.1, owner §5) — a Branch Server runtime never writes Laravel's bootstrap caches
+// (packages.php, services.php, config/routes/events caches) into its OWN directory: that directory is a signed, immutable
+// artifact (a staged version, or a package booted in place by a pre-install dry-run — which is exactly how the 0.8.0
+// package grew two unlisted cache files that failed `edge:audit-package`). The caches live under the appliance DATA root
+// (<data-root>/logs/runtime-cache/<sha12 of this runtime's path>) instead. This must run BEFORE the application is created
+// (the package manifest path is resolved in the constructor) and must be a RELATIVE path: Laravel only treats values that
+// start with "/" or "\" as absolute, which no Windows drive path does, so the scratch directory is expressed relative to the
+// runtime directory (both live on the same drive on every appliance layout: Program Files + ProgramData, or the LAB tree).
+// A Cloud host never sets BINGOO_EDGE_ENV_DIR: nothing changes there. Explicit APP_*_CACHE values always win.
+$edgeEnvDirEarly = getenv('BINGOO_EDGE_ENV_DIR');
+if (is_string($edgeEnvDirEarly) && $edgeEnvDirEarly !== '' && is_dir($edgeEnvDirEarly)) {
+    $edgeRuntimeDir = str_replace('\\', '/', (string) realpath(dirname(__DIR__)));
+    $edgeScratch = str_replace('\\', '/', dirname(rtrim($edgeEnvDirEarly, "/\\"))) . '/logs/runtime-cache/' . substr(sha1(strtolower($edgeRuntimeDir)), 0, 12);
+    if (! is_dir($edgeScratch)) {
+        @mkdir($edgeScratch, 0775, true);
+    }
+    $edgeScratchReal = is_dir($edgeScratch) ? str_replace('\\', '/', (string) realpath($edgeScratch)) : '';
+    $edgeSameDrive = $edgeScratchReal !== '' && strtolower(substr($edgeScratchReal, 0, 2)) === strtolower(substr($edgeRuntimeDir, 0, 2));
+    if ($edgeSameDrive && is_writable($edgeScratchReal)) {
+        $from = explode('/', trim($edgeRuntimeDir, '/'));
+        $to = explode('/', trim($edgeScratchReal, '/'));
+        while ($from !== [] && $to !== [] && strtolower($from[0]) === strtolower($to[0])) {
+            array_shift($from);
+            array_shift($to);
+        }
+        $edgeRelative = implode('/', array_merge(array_fill(0, count($from), '..'), $to));
+        foreach (['APP_PACKAGES_CACHE' => 'packages.php', 'APP_SERVICES_CACHE' => 'services.php', 'APP_CONFIG_CACHE' => 'config.php', 'APP_ROUTES_CACHE' => 'routes-v7.php', 'APP_EVENTS_CACHE' => 'events.php'] as $edgeKey => $edgeFile) {
+            if (getenv($edgeKey) === false && ! isset($_SERVER[$edgeKey]) && ! isset($_ENV[$edgeKey])) {
+                $edgeValue = $edgeRelative . '/' . $edgeFile;
+                putenv($edgeKey . '=' . $edgeValue);
+                $_ENV[$edgeKey] = $edgeValue;
+                $_SERVER[$edgeKey] = $edgeValue;
+            }
+        }
+    }
+    unset($edgeRuntimeDir, $edgeScratch, $edgeScratchReal, $edgeSameDrive, $from, $to, $edgeRelative, $edgeKey, $edgeFile, $edgeValue);
+}
+unset($edgeEnvDirEarly);
+
 $app = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
