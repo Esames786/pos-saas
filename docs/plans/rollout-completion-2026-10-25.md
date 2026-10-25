@@ -231,3 +231,68 @@ Production switches read on 25 Oct, after the 04:00 UTC demo reset:
   ordinary switches, changeable in Master. A revert does not remove them.
 - **Fix forward is the default.** A backup restore is not a rollback; it needs its own recovery plan
   (`docs/status/release-deploy-2026-10-25.md`).
+
+## 8. Deployment — 25 Oct 2026 (owner's go and reviewer's GO)
+
+**Deployed:** `54bb81f9` (`Merge ROLLOUT-1: …`) on `feat/14d-2-plan-upgrade-requests`. Its files are identical to the
+reviewed `e770cb47` (code `40f0c2ae`). deploy.sh finished at about 16:51 UTC (21:51 Karachi).
+
+**Before:**
+- Production base: server, origin and the local branch all at `4b745532`, the reviewed base. Origin == HEAD
+  (`54bb81f9`) was checked before deploy.
+- Backup `storage/app/private/backups/20261025_164829`: master + 13 tenants, 14 complete dumps, `COVERAGE OK`.
+- Snapshots of switches, permissions and table fingerprints (copies in `/root/release-20261025/` on the server).
+- Smoke clean on all 13 tenants.
+
+**Deploy and after:**
+- `tenants ok=13 skipped=0`.
+- `MIGRATIONS COMPLETE on every tenant` (there were none to run).
+- `SWITCHES OK` (13).
+- `PERMISSIONS OK` (no new permission in this patch).
+- Smoke clean on all 13; screens render for every tenant's Owner.
+- The new entry area is live: kashiffood (whole numbers on) is told "no parts"; pharmacydemo (off) is told "parts
+  allowed".
+
+**Fingerprint.** Ledger debits and credits, stock and supplier balances on rows from before the snapshot are the same
+on all 13 tenants. Three tables were first reported as unexplained; they are explained by live sales during the
+window (`recon_explain.php`):
+- khatribiryani `sales_order_lines` (53,070 → 53,059) and its `kot_batch_lines`;
+- kashiffood `kot_batch_lines`.
+
+What happened:
+- Between 16:48 and 16:51 UTC, cashiers re-saved and paid open orders: 10 at khatribiryani, 8 at kashiffood. The
+  POS replaces an open order's lines when it is saved, so the old lines are deleted and new ones written.
+- The foreign key `kot_batch_lines → sales_order_lines ON DELETE SET NULL` then unlinks their old kitchen-ticket
+  lines in the database, without a timestamp: 28 at khatribiryani, 41 at kashiffood.
+- No completed order was touched.
+- This is long-standing: such unlinked kitchen lines exist since August (khatribiryani over 41,000, kashiffood over
+  57,000). The deploy did not change the POS.
+
+**Activation — khatribiryani** (16:52:30 UTC, through `TenantBusinessService::setFeatures`, recorded with the note
+"ROLLOUT-1: purchasing screens, counted items in parts kept (reviewer + owner approved 25 Oct)"):
+
+| | |
+|---|---|
+| Before | `product_screen_v2`, `void_purge` |
+| After | `product_screen_v2`, `purchasing_v2`, `purchase_workspace`, `void_purge` — **`whole_counted_stock` OFF** |
+| Other tenants | unchanged: the switch diff against the pre-deploy snapshot shows khatribiryani only |
+
+It was checked without posting anything and without changing any data:
+- **Server rule:** an item it has bought in parts (SINGAPORIAN RICE, last received 3.500, no unit, so counted) now
+  takes a part (`khatri_rule.php`).
+- **Receipt page:** it tells the entry area "parts allowed", for the Owner and for Accounts (`entry_flag.php`).
+- **Screens by role:**
+  - Owner: "Purchases" opens `/purchases/new`.
+  - Accounts: "Purchases" opens `/goods-receipts`, and the workspace is closed to it (Owner-only permission).
+  - Dine In and cash: exactly what they had.
+  - The "Manager" probe user also holds the Owner role, so it sees the workspace; no role was changed.
+- **Books:** smoke and fingerprint figures unchanged after the activation.
+- **Timing:** khatribiryani enters receipts between 09:00 and 19:00 Karachi (last 30 days), so its staff first meet
+  the new screens on the morning of 26 Oct.
+
+**Held / still open:**
+- **Demos:** each takes the defaults at its next 04:00 UTC reset. None was reset by hand.
+- **Workspace permissions for non-owner roles:** none granted (Owner only).
+- **Rollback:** fix forward. A code revert now needs khatribiryani's purchasing switches turned off first (section 7).
+- **Carried from the release manifest:** the 3 pre-existing default-suite failures; English label fixes in
+  purchasing; the remaining units & packs items; RESET-BALANCES-1.
