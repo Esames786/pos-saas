@@ -167,3 +167,15 @@ changes. Rolling back is a code revert: moves already made stay as allocation ro
   `test_deleting_a_voided_payment_for_good_takes_its_moves_with_it`). Undo either fix and these fail, along with
   `CateringTenantResetMySqlTest::test_no_tenant_table_is_left_unclassified`.
   Dev run of the clarity, purge and reset classes plus `SupplierNetBillMySqlTest`: 56/56.
+- **Frozen full suite on `920b068c`** (`pos-saas-verify-upv`, warm DB set `_relz`; clean tree before and after):
+  - **MySQL 2499: 4 F + 1 E, all fixed since.** The 4 F are the reset gap above
+    (`CateringTenantReset…unclassified`, `SupplierNetBill…reset…`, `TenantResetFailClosed` ×2). The 1 E is mine:
+    `GrnBillChargesMySqlTest` called `PurchaseBillController::show($bill)`, and `show()` had been changed to take the
+    `Request` first. Fixed in `6cee6964`: the invoice is the first argument again and the request is optional.
+  - **Default 237: 3 F.** These are the three known reds, identical on every earlier baseline (`5978`, the W3/W4
+    checkpoint, PRODUCT-NAV-1): `CateringClientFeedbackUi…sidebar_collapsed`, `EscPosReportPayload…two_decimal`,
+    `DeliveryRiderReassignment…visible`.
+- **Frozen closing run on `6cee6964`, 216/216 green.** It covers every class tied to the change and every class red
+  above: clarity, running account, workspace, GRN ×4, reset ×2, net bill, VoidPurge*, Cash Book void, finance direct,
+  return matrix, Dr/Cr, PurchasingV2, safety, expense stock, posted-once returns, payables gate.
+- **Browser walk again on `6cee6964`: 31/31.**
