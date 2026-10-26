@@ -176,3 +176,32 @@ download for khatribiryani.
     fixed column widths. The P&L's "Particulars" heading used the code font.
 - Every changed Blade view compiled, the generated PHP linted, and each one rendered (the tests render the screen,
   both prints and both PDFs).
+
+## Deployed (26 Oct 2026, 21:01 UTC) — owner: "deploy karo"
+
+**Release.** Merge `f311cb38` (tree identical to the tested branch head `0c97fb10`).
+- Backup `20261026_205924`, COVERAGE OK 13/13.
+- `deploy.sh`: tenants ok = 13, DEPLOY COMPLETE.
+
+**After the deploy** (read-only):
+- **Books and data:**
+  - smoke clean 13/13;
+  - `PERMISSIONS OK` (nothing gained or lost — no new route);
+  - no migration;
+  - `RECONCILIATION OK` (no unexplained difference).
+- **Screens and PDFs**, opened as the Owner (GET only) on every tenant with Finance:
+  - the P&L screen (PDF button and "Show detail" present), the P&L PDF and the TB PDF;
+  - status 200, `application/pdf`, `attachment`, `%PDF`;
+  - the 4 tenants without Finance answer 403, as before.
+- **Khatri, 1–26 Oct:**
+  - **6000's own postings = 8,67,600, with its 11 category lines adding up exactly:** Social Media 3,50,840; staff food
+    (2nd category) 1,59,110; Staff Food 1,53,290; 1% 84,000; Raita 79,100; Cleaning 12,950; DMC 11,000; Friday 6,920;
+    Charity 4,390; TMC 4,000; Police 2,000.
+  - **6200 = 8,83,260, with 4 lines:** Daily wages 7,05,980; Commission 1,23,730; K-Meter 50,550; Bilal Danish 3,000.
+  - Net Profit 6,78,257.54 = statement().
+- **How 6000 reads on Khatri.** Khatri's chart files other expense accounts under 6000 "Expenses", so 6000 is a head
+  (23,42,746 = itself + those children). Its own 8,67,600 shows as "Expenses (direct)" with the 11 lines. This is R1
+  working on their chart.
+- **Probe note.** Running the probe in tinker printed "DateTime::modify(): Failed to parse time string (date_from)" once
+  per tenant. That is the TB route's existing rule `after_or_equal:date_from`, which first tries the field name as a
+  date; the validator catches the warning. Under FPM it is silent: 0 log entries, every page 200. It predates this work.
