@@ -179,3 +179,29 @@ changes. Rolling back is a code revert: moves already made stay as allocation ro
   above: clarity, running account, workspace, GRN ×4, reset ×2, net bill, VoidPurge*, Cash Book void, finance direct,
   return matrix, Dr/Cr, PurchasingV2, safety, expense stock, posted-once returns, payables gate.
 - **Browser walk again on `6cee6964`: 31/31.**
+
+## Deployed (26 Oct 2026) — owner's go-ahead: "if ready and tested to deploy kardo"
+
+| Step | Result |
+|---|---|
+| Before | Production `50d8a8f7`, clean tree, no deploy or backup running |
+| Backup | `tenants:backup --no-storage` (every tenant) → `storage/app/private/backups/20261026_142948`; **COVERAGE OK** (master 13 = schemas 13 = backed up 13). Safety copy, not an undo: problems are fixed forward |
+| Snapshots | permissions (`/tmp/perm_before.json`), every table (`/tmp/recon_before.json`); smoke clean on all 13 |
+| **Deploy 1/2** — `3a3f2596` (table only) | pulled 14:32:54 UTC; `tenants ok=13 skipped=0`, `DEPLOY COMPLETE`. Checked in each tenant DB: `supplier_credit_moves` present, nothing pending, on all 13. Smoke clean on all 13 |
+| **Deploy 2/2** — `6c2c6379` (code + map rebuilt on the merged tree; tree identical to the tested `1b80cfff`) | origin == local checked first; pulled 14:38:04 UTC; `tenants ok=13 skipped=0`, `DEPLOY COMPLETE` |
+| Smoke | `tb_diff=0.00`, `neg_on_disallowed=0`, `department_negative=0` on all 13 |
+| Permissions | `PERMISSIONS OK: no role lost anything, no user lost a role`. Owner +1 (`tenant.purchase-bills.move-credit`) on every tenant |
+| Additive grant | to the roles that already hold `tenant.supplier-payments.void`. On kashifkitchen: Owner (No Amounts), and Owner (No Amounts) + Reports. On khatribiryani: Manager and Accounts. 4 grants, then `system:clear-tenant-permission-cache`; permission diff again: no loss |
+| Fingerprint | 17 "unexplained", every one explained (below). GL, stock and supplier balance sums are the same on every tenant |
+| Screens (read-only probe, Owner, GET only) | 200 everywhere they open, and each says what its switch says: the "where should it go" box / "How this invoice was paid" with the running account ON, the old screens with it OFF. 403 on restaurantdemo / retaildemo (plans without purchasing) and tawakalkashif — every purchasing screen there is 403, untouched ones included, as before |
+
+**The 17 fingerprint lines:**
+- **13 × `role_has_permissions`** — the grants above, exactly the counts in the permission diff. The table has no id
+  column, so the script always flags it.
+- **4 on kashiffood and khatribiryani** — `sales_order_lines` −4 / −9 and `kot_batch_lines` content. These are live
+  POS orders edited during dinner service: an order's lines are replaced, and the ticket line's link to the removed
+  line is set to empty (`ON DELETE SET NULL`). This is the same pattern as the 25 Oct deploy; nothing here touches
+  sales.
+
+No test transaction on any live tenant. Nothing was reset, backfilled or corrected. Rollback is a code revert (fix
+forward); moves made meanwhile stay valid allocation rows.
