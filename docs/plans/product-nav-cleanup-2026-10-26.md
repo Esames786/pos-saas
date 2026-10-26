@@ -89,7 +89,7 @@ manufacturing screens by address but not from the menu.
 |---|---|
 | `ProductNavCleanupMySqlTest` (DB set `_pnv`) | `OK, but there were issues!` `Tests: 5, Assertions: 256, PHPUnit Deprecations: 1.` — 5 / 5 |
 | Sabotage (each guard broken, then restored; tree checked clean) | 3 / 3 caught: the link ignoring the product permission; the sidebar hiding with the switch off; the Event costing tab's links ignoring their permission |
-| Browser walk (local store `pnavtest`, server from this worktree), desktop 1366 + phone 390 | 21 / 21, no page errors |
+| Browser walk (local store `pnavtest`, server from this worktree), desktop 1366 + phone 390 | 19 / 19, no page errors (17 checks in the script, one of them run on 3 pages; this line first said "21 / 21" — a miscount, corrected 26 Oct) |
 | Related MySQL, 24 classes on the frozen commit (sidebar, catering setup and entitlement, product screens, recipes / BOM, purchasing, Master) | `FAILURES!` `Tests: 263, Assertions: 2612, Failures: 1` — 262 passed; the one failure is below |
 | `tests/Unit` | `Tests: 129, Assertions: 748, Failures: 3, Skipped: 4` — the three failures that predate this work |
 
@@ -123,3 +123,37 @@ manufacturing screens by address but not from the menu.
 `FAILURES!` `Tests: 258, Assertions: 2356, Failures: 1` — `ProductScreenV2MySqlTest::test_each_business_sees_only_its_own_cards`, "catering top
 button = POS". So it is an existing test-order dependency on production, and this patch neither causes nor fixes it.
 It is recorded for the backlog, not changed here.
+
+## Release integration — 26 Oct 2026 (reviewer: "suitable for release integration")
+
+**What this release is:** duplicate links removed, product-form shortcuts added, advanced setup screens retained.
+- Three duplicate sidebar links are shown once with `product_screen_v2` ON:
+  - Store Issue (twice under Catering);
+  - Categories and Units (copied under Manufacturing).
+- Recipes, BOM, Catering Products and Cost Blocks get "Edit in product form" (by permission); the product form's tabs
+  link back.
+- **Recipe, BOM and catering setup screens stay.** Some of their fields are still edited only there, so hiding them
+  would remove functionality.
+- Full consolidation of those remaining fields is a separate backlog item, not this release.
+
+**Merge:**
+- Isolated release worktree `pos-saas-navrel`, branch `release/product-nav-20261026`, from production `041ae000`
+  (live code `6c2c6379` + its deploy record, with SUPPLIER-CREDIT-CLARITY-1).
+- `git merge --no-ff origin/feat/product-nav-cleanup-20261026` (`4a99577c`) → **`f9d0174b`**. No conflicts: the two
+  sides share no file.
+- Proof that the merge changed nothing on either side:
+  - `f9d0174b` differs from production only in the 12 PRODUCT-NAV-1 files;
+  - those 12 files are byte-identical to the reviewed `4a99577c`;
+  - no supplier-credit file changed.
+
+**Checks on the merged revision `f9d0174b`** (frozen: clean tree before and after; DB set `_pnv`; real vendor):
+
+| Check | Result |
+|---|---|
+| Related MySQL: the same 24 classes as above + `SupplierCreditClarityMySqlTest` (the sidebar renders on the supplier pages) | `Tests: 280, Assertions: 2768, Failures: 1` — 279 passed. The one failure is the documented baseline `ProductScreenV2MySqlTest::test_each_business_sees_only_its_own_cards` ("catering top button = POS"), not addressed here |
+| `ProductNavCleanupMySqlTest` (inside the run above) | 5 / 5. Switch ON / OFF; Owner and the specialized setup clerk (keeps all four screens, no product link, 403 on product edit); a product clerk without the setup screens gets no back links; all 16 old addresses open (200, never a redirect) for both, switch on and off; operational links present |
+| `tests/Unit` | `Tests: 129, Failures: 3` — the three that predate this work |
+| Browser walk, desktop 1366 + phone 390, server from the release worktree | 19 / 19, no page errors |
+
+No full-suite cycle: integration added no executable change beyond the reviewed 12 files. No permission, switch or
+tenant-data change. Not deployed — waiting for final deployment approval.
