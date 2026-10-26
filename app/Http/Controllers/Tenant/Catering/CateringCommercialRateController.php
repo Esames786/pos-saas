@@ -83,6 +83,11 @@ class CateringCommercialRateController extends Controller
                 ->whereIn('product_kind', self::MATERIAL_KINDS)
                 ->orderBy('name')
                 ->get(['id', 'name', 'sku', 'unit_id']),
+            // COMMERCIAL-RATE-PICKER-1 (owner, 26 Oct): since the purchase items came in (14 Oct) the list holds 1,000+
+            // materials, a handful of them in any dish. It opens on those a dish uses (count = blockCounts) and those
+            // that already have a house rate; "Show all materials" brings back the rest, so a new one can still be priced.
+            'ratedIds' => CateringMaterialCommercialRate::query()->distinct()->pluck('product_id')
+                ->mapWithKeys(fn ($id) => [(int) $id => true])->all(),
             'units' => Unit::where('is_active', true)->orderBy('code')->get(['id', 'code']),
             // CATERING-RATE-HISTORY-1: what the house has charged before, in the
             // modal itself. Asked for on 24 Sep: a caterer prices chicken against

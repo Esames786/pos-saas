@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-26T17:20:06+00:00",
+    "built_at": "2026-10-26T17:48:42+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "041ae000",
     "work": [
@@ -24,11 +24,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-navrel",
             "branch": "release/product-nav-20261026",
-            "head": "f9d0174b",
+            "head": "a6c18deb",
             "behind_prod": 0,
-            "ahead_of_prod": 3,
-            "last_commit": "2026-10-26\u00b7Merge PRODUCT-NAV-1: duplicate product-setup links removed, product-form shortcuts added, advanced setup screens retained",
-            "uncommitted_files": 1
+            "ahead_of_prod": 4,
+            "last_commit": "2026-10-26\u00b7PRODUCT-NAV-1 release integration: record + system map on the merged tree",
+            "uncommitted_files": 6
         },
         {
             "path": "D:/laragon2/www/pos-saas-prodnav",
@@ -42,11 +42,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-ratepick",
             "branch": "feat/commercial-rate-picker-20261026",
-            "head": "041ae000",
+            "head": "4d972430",
             "behind_prod": 0,
-            "ahead_of_prod": 0,
-            "last_commit": "2026-10-26\u00b7Deployment record: SUPPLIER-CREDIT-CLARITY-1 live (3a3f2596 table, 6c2c6379 code)",
-            "uncommitted_files": 2
+            "ahead_of_prod": 1,
+            "last_commit": "2026-10-26\u00b7COMMERCIAL-RATE-PICKER-1: the material list opens on the materials in use, with their dish count, and searches",
+            "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-verify-upv",
@@ -553,6 +553,11 @@
             "modified": "2026-10-26"
         },
         {
+            "file": "docs/plans/commercial-rate-picker-2026-10-26.md",
+            "title": "Commercial rate material picker (COMMERCIAL-RATE-PICKER-1) \u2014 26 Oct 2026",
+            "modified": "2026-10-26"
+        },
+        {
             "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
             "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
             "modified": "2026-10-26"
@@ -646,17 +651,12 @@
             "file": "docs/plans/kashif-kot-routing-requests-2026-09-03.md",
             "title": "Kashif Food \u2014 chaar KOT routing ki farmaishein",
             "modified": "2026-10-26"
-        },
-        {
-            "file": "docs/plans/kashif-legacy-alignment-2026-08-22.md",
-            "title": "Kashif \u2014 Legacy-Software Alignment (design, before any code)",
-            "modified": "2026-10-26"
         }
     ],
-    "git": "f9d0174b",
+    "git": "a6c18deb",
     "source": {
-        "tenant_db": "pos_test_tenant_pnv",
-        "master_db": "pos_test_master_pnv"
+        "tenant_db": "pos_test_tenant_crp",
+        "master_db": "pos_test_master_crp"
     },
     "counts": {
         "tables": 231,
