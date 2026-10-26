@@ -63,6 +63,9 @@ class TenantResetTransactionsCommand extends Command
         // Both point at bills and returns wiped below; left behind, a new return reusing an old id would collide
         // with the netting row's unique key.
         'supplier_credit_reallocations', 'purchase_bill_return_nettings',
+        // SUPPLIER-CREDIT-CLARITY-1: a payment's part moved from one invoice to another by a person — the record of
+        // those moves points at the payments and bills wiped here; kept, it would be a history of invoices that are gone.
+        'supplier_credit_moves',
         'supplier_credit_allocations',
         'purchase_bill_lines', 'purchase_bills', 'goods_receipt_lines', 'goods_receipts',
         'purchase_return_lines', 'purchase_returns', 'purchase_order_lines', 'purchase_orders',

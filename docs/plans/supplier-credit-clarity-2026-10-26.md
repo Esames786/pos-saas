@@ -91,7 +91,12 @@ which is the sum of its open invoices.
 ## Impact
 
 **Tables**
-- New `supplier_credit_moves` (tenant).
+- New `supplier_credit_moves` (tenant). It also had to join two lists of tables:
+  - **`tenant:reset-transactions` wipes it,** with the allocations and invoices it points at. The reset refuses to run
+    while any tenant table is unlisted, so without this every reset (demos, the owner's System reset screen) would
+    have stopped.
+  - **Deleting a voided payment for good** (VOID-PURGE) takes that payment's move records with it, into the hidden
+    copy. No invoice is left naming a payment that is gone. Its void already took it off every invoice.
 - `supplier_credit_allocations`: rows changed only by a move.
 - `purchase_bills.amount_paid / balance_due / status`: recomputed by a move.
 - Nothing else is written differently.
@@ -154,3 +159,11 @@ changes. Rolling back is a code revert: moves already made stay as allocation ro
   - The walk found one real issue, fixed: with one invoice chosen, "Remaining After" showed that invoice's balance
     minus the payment ("Advance 1,300.00") while the list said 300 was left over. On account it is now "Supplier
     Balance After", from the supplier's balance.
+- **Linkage check (after the first commit):** the new table was missing from two lists.
+  - `tenant:reset-transactions` — it fails closed on an unlisted table.
+  - The voided-payment purge.
+
+  Both are fixed and tested (`test_a_transaction_reset_wipes_the_moves_with_the_invoices`,
+  `test_deleting_a_voided_payment_for_good_takes_its_moves_with_it`). Undo either fix and these fail, along with
+  `CateringTenantResetMySqlTest::test_no_tenant_table_is_left_unclassified`.
+  Dev run of the clarity, purge and reset classes plus `SupplierNetBillMySqlTest`: 56/56.

@@ -15,6 +15,7 @@ use App\Models\Tenant\User;
 use App\Services\Finance\SupplierPayableService;
 use App\Services\Purchasing\SupplierRunningAccountService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\MessageBag;
@@ -36,6 +37,7 @@ use Tests\MySql\Support\TenantFixtures;
 class SupplierCreditClarityMySqlTest extends MySqlTenantTestCase
 {
     use ParsesInlineScripts;
+    use Support\RegistersTestTenant;
     use TenantFixtures;
 
     private int $branchId;
@@ -348,6 +350,50 @@ class SupplierCreditClarityMySqlTest extends MySqlTenantTestCase
         } catch (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException) {
             $this->assertSame(0, DB::table('supplier_credit_moves')->count());
         }
+    }
+
+    /** A transaction reset wipes the record of moves with the invoices and payments it points at (it fails closed on an unlisted table). */
+    public function test_a_transaction_reset_wipes_the_moves_with_the_invoices(): void
+    {
+        $a = $this->bill(1000, '2026-10-01');
+        $b = $this->bill(500, '2026-10-02');
+        $payment = $this->pay(600);
+        $this->move($a, $this->userWith('tenant.purchase-bills.move-credit'), ['source' => 'payment:' . $payment->id, 'to_bill_id' => $b->id, 'amount' => 100, 'reason' => 'before a reset']);
+        $c = DB::connection('tenant');
+        $this->assertSame(1, $c->table('supplier_credit_moves')->count(), 'precondition: a real move');
+
+        $code = $this->registerTestTenant('scctest');
+        $exit = Artisan::call('tenant:reset-transactions', ['tenant_code' => $code, '--yes' => true, '--confirm' => $code]);
+        $output = Artisan::output();
+        DB::setDefaultConnection('tenant');
+        $this->assertSame(0, $exit, $output);
+        $this->assertSame([0, 0, 0, 0], [$c->table('supplier_credit_moves')->count(), $c->table('supplier_credit_allocations')->count(),
+            $c->table('purchase_bills')->count(), $c->table('supplier_payments')->count()]);
+        $this->assertSame(1, $c->table('suppliers')->count(), 'the supplier is master data and stays');
+    }
+
+    /** A voided payment deleted for good takes the record of its moves with it — no invoice is left naming it. */
+    public function test_deleting_a_voided_payment_for_good_takes_its_moves_with_it(): void
+    {
+        $a = $this->bill(1000, '2026-10-01');
+        $b = $this->bill(500, '2026-10-02');
+        $payment = $this->pay(600);
+        $kept = $this->pay(50);   // another payment of the supplier: its own record stays
+        $mover = $this->userWith('tenant.purchase-bills.move-credit');
+        $this->move($a, $mover, ['source' => 'payment:' . $payment->id, 'to_bill_id' => $b->id, 'amount' => 100, 'reason' => 'wrong invoice']);
+        $this->move($a, $mover, ['source' => 'payment:' . $kept->id, 'to_bill_id' => $b->id, 'amount' => 50, 'reason' => 'the other one']);
+        $c = DB::connection('tenant');
+        $this->assertSame(2, $c->table('supplier_credit_moves')->count(), 'precondition: two real moves');
+
+        app(SupplierPayableService::class)->voidPayment($payment->fresh(), 'entered on the wrong supplier', null, \App\Support\VoidDate::ORIGINAL);
+        $bills = [$this->billState($a), $this->billState($b)];
+        $entry = app(\App\Services\Finance\VoidPurgeService::class)->purge('supplier_payment', $payment->id, 'client asked to remove it', null, null, true);
+
+        $this->assertSame(0, $c->table('supplier_payments')->where('id', $payment->id)->count());
+        $this->assertSame([(int) $kept->id], $c->table('supplier_credit_moves')->pluck('source_id')->map(fn ($v) => (int) $v)->all(), 'only the other payment\'s move is left');
+        $this->assertSame(1, count($entry->snapshot['tables']['supplier_credit_moves'] ?? []), 'kept in the hidden copy');
+        $this->assertSame($bills, [$this->billState($a), $this->billState($b)], 'no invoice changed');
+        $this->assertStringNotContainsString($payment->payment_no, $this->billShow($a, $mover));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────────────────────────
