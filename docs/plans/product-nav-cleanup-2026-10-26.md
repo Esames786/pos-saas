@@ -157,3 +157,34 @@ It is recorded for the backlog, not changed here.
 
 No full-suite cycle: integration added no executable change beyond the reviewed 12 files. No permission, switch or
 tenant-data change. Not deployed — waiting for final deployment approval.
+
+## Deployed (26 Oct 2026) — together with COMMERCIAL-RATE-PICKER-1
+
+- **Approval:** reviewer GO (combined release) and the owner's "deploy karo".
+- **Combined revision `fd144412`** (production `041ae000` + this + the picker); the system map was rebuilt once.
+- **Checks on `fd144412`, frozen:** focused tests 74/74, this walk 19/19, picker walk 14/14.
+- **Deploy:** backup `20261026_175806` COVERAGE OK (13/13); pulled 18:02:06 UTC; `tenants ok=13`, `DEPLOY COMPLETE`.
+
+**After the deploy** (read-only, GET only):
+- **Books and data:**
+  - smoke clean ×13;
+  - `PERMISSIONS OK` (nothing gained, nothing lost — no new route);
+  - no migration;
+  - GL, stock and supplier sums the same on every tenant. The fingerprint's 4 lines are live POS order edits on
+    kashiffood / tawakalkashif (`sales_order_lines` −5 / −8 and their kitchen-ticket lines), the same pattern as the
+    earlier deploys.
+- **Duplicate links removed where they existed** (new product screen ON on all 13):
+  - kashifkitchen Store Issue 2 → 1;
+  - demo / enterprisedemo / financedemo Manufacturing Categories + Units copies 1 + 1 → 0;
+  - every other menu unchanged.
+- **Specialized users and old bookmarks:** the Owner and every role holding a setup screen opened the 16 old addresses
+  on every tenant, before and after. Every status is identical (39 pages on kashifkitchen across its 3 users, 96 on
+  enterprisedemo, …).
+- **Supplier screens:** the same as after their own deploy; restaurantdemo / retaildemo / tawakalkashif are still 403
+  by their plans, as before.
+
+**Limitations:**
+- Recipe, BOM and catering Cost Blocks screens are kept and still open from their old addresses (by design). Moving
+  their remaining fields into the product form is the separate backlog item.
+- The baseline test failure `ProductScreenV2MySqlTest::test_each_business_sees_only_its_own_cards` remains, not
+  addressed.

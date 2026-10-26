@@ -58,3 +58,14 @@ priced before a dish uses it.
 - **Sabotage:** the "in use" filter and the hand-off were both removed. The walk failed 4 checks: the unused material
   was listed; search found it without Show all; after choosing chicken the count stayed at "0 dishes" and the ticks
   stayed off. Restored, checksum verified; walk 14/14 again.
+
+## Deployed (26 Oct 2026) — together with PRODUCT-NAV-1, revision `fd144412`
+
+- **Same release checks** as recorded in `product-nav-cleanup-2026-10-26.md` → "Deployed": backup `20261026_175806`
+  COVERAGE OK; smoke clean ×13; permissions unchanged; no migration.
+- **kashifkitchen, live, read-only** (the page rendered as the Owner; no rate saved, nothing repriced):
+  - the picker is there, with "Show all materials" and search;
+  - **987 materials, 6 of them in use** (in a dish or with a house rate);
+  - each material's count equals the dish count the page's "kin dishes par lag jaye" box uses (0 mismatches).
+- **Limitation:** choosing a material and the count following it is browser behaviour. It was walked on the exact
+  revision locally (14/14), not clicked on production. Production shows the same script and the same count data.
