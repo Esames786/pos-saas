@@ -9,8 +9,7 @@ use App\Services\Finance\FinancialExportService;
 use App\Services\Finance\TrialBalanceLayout;
 use App\Services\Finance\TrialBalancePartyService;
 use App\Support\CsvStreamer;
-use Dompdf\Dompdf;
-use Dompdf\Options;
+use App\Support\FinancePdf;
 use Illuminate\Http\Request;
 
 class TrialBalanceController extends Controller
@@ -186,41 +185,53 @@ class TrialBalanceController extends Controller
         });
     }
     /**
-     * Part 2 — Print. A4 portrait, column headings on every page, "Page X of Y", the totals block
-     * kept on one page, signature lines. Dompdf, as the Sales Report PDF already uses.
+     * Part 2 — Print; FINANCE-PDF-DOWNLOADS-1 — as the hand-made sample: Debit / Credit pairs for Opening, Transactions
+     * and Closing, a total per head, the Grand Total from the service's totals, the difference in the footer.
+     * Downloaded (attachment), never opened in a blank tab.
      */
     private function pdf(array $tb, array $parties, string $from, string $to, ?array $branchIds, bool $grouped = false, array $sections = [])
     {
         $html = view('tenant.finance.trial-balance.print', [
-            'rows'        => $tb['rows'],
-            'totals'      => $tb['totals'],
-            'difference'  => $tb['difference'],
-            'parties'     => $parties,
-            'grouped'     => $grouped,
-            'sections'    => $sections,
-            'from'        => $from,
-            'to'          => $to,
-            'branchLabel' => $this->branchLabel($branchIds),
-            'company'     => app()->bound('tenant') ? (app('tenant')->business_name ?? '') : '',
+            'rows'          => $tb['rows'],
+            'totals'        => $tb['totals'],
+            'difference'    => $tb['difference'],
+            'parties'       => $parties,
+            'showParties'   => (bool) $parties,
+            'grouped'       => $grouped,
+            'sections'      => $sections,
+            'sectionTotals' => self::sectionTotals($sections),
+            'from'          => $from,
+            'to'            => $to,
+            'branchLabel'   => $this->branchLabel($branchIds),
+            'company'       => app()->bound('tenant') ? (app('tenant')->business_name ?? '') : '',
         ])->render();
 
-        $options = new Options;
-        $options->set('defaultFont', 'DejaVu Sans');
-        $options->set('isRemoteEnabled', false);
-        $options->set('isPhpEnabled', false);
+        return FinancePdf::download($html, 'trial-balance-' . $from . '-to-' . $to . '.pdf');
+    }
 
-        $dompdf = new Dompdf($options);
-        $dompdf->setPaper('a4', 'portrait');
-        $dompdf->loadHtml($html, 'UTF-8');
-        $dompdf->render();
+    /**
+     * A head's total in the PDF's Debit / Credit pairs: each column summed over its ACCOUNT rows (the heads only sum
+     * them again), as an accountant adds a column — the opening and closing debits and credits are not netted.
+     *
+     * @return array<string, array<string,float>> section key => column => amount
+     */
+    public static function sectionTotals(array $sections): array
+    {
+        $cols = ['opening_debit', 'opening_credit', 'period_debit', 'period_credit', 'closing_debit', 'closing_credit'];
+        $out = [];
+        foreach ($sections as $s) {
+            $sum = array_fill_keys($cols, 0.0);
+            foreach ($s['lines'] as $l) {
+                if ($l['kind'] === 'head') {
+                    continue;
+                }
+                foreach ($cols as $c) {
+                    $sum[$c] += (float) $l[$c];
+                }
+            }
+            $out[$s['key']] = array_map(fn ($v) => round($v, 2), $sum);
+        }
 
-        $canvas = $dompdf->getCanvas();
-        $font = $dompdf->getFontMetrics()->getFont('DejaVu Sans');
-        $canvas->page_text($canvas->get_width() - 110, $canvas->get_height() - 28, 'Page {PAGE_NUM} of {PAGE_COUNT}', $font, 8, [0.35, 0.35, 0.35]);
-
-        return response($dompdf->output(), 200, [
-            'Content-Type'        => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="trial-balance-' . $from . '-to-' . $to . '.pdf"',
-        ]);
+        return $out;
     }
 }
