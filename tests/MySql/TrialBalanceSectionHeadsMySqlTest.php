@@ -196,7 +196,7 @@ class TrialBalanceSectionHeadsMySqlTest extends MySqlTenantTestCase
             'grouped' => true, 'sections' => $data['sections'], 'from' => '2026-10-01', 'to' => '2026-10-31', 'branchLabel' => 'All', 'company' => 'Test',
         ])->render();
         foreach (['Assets', 'Liabilities', 'Equity', 'Revenue', 'Cost of Sales', 'Operating Expenses'] as $label) {
-            $this->assertStringContainsString('<tr class="sect"><th colspan="6">' . $label . '</th></tr>', $print);
+            $this->assertStringContainsString('<tr class="sect"><th colspan="8">' . $label . '</th></tr>', $print);
         }
         $this->assertStringContainsString('Total Cost of Sales', $print);
         $pdf = $this->page(['format' => 'pdf']);
