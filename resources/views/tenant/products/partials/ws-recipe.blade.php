@@ -57,8 +57,17 @@
             <button type="button" class="btn btn-outline-primary" data-ws-add>Add an ingredient</button>
             <span class="help">Saved with the product when you press Save — the same rules and cost as the Recipes screen. Cost overrides, order types and report numbers set there stay as they are.</span>
         </div>
-        @if($r['recipe'])
-            <p class="help mt-2 mb-0"><a href="{{ url('/recipes/' . $r['recipe']->id) }}" target="_blank" rel="noopener">Open the full recipe report</a> (a new tab — this page keeps what you typed).</p>
+        {{-- PRODUCT-NAV-1: each link only for a user who may open that screen. --}}
+        @if($r['recipe'] && (\App\Support\ScreenAccess::allows('tenant.recipes.show') || \App\Support\ScreenAccess::allows('tenant.recipes.edit')))
+            <p class="help mt-2 mb-0">
+                @if(\App\Support\ScreenAccess::allows('tenant.recipes.show'))
+                    <a href="{{ url('/recipes/' . $r['recipe']->id) }}" target="_blank" rel="noopener" data-ws-full="recipe-report">Open the full recipe report</a>.
+                @endif
+                @if(\App\Support\ScreenAccess::allows('tenant.recipes.edit'))
+                    Order types, cost overrides and report numbers: <a href="{{ url('/recipes/' . $r['recipe']->id . '/edit') }}" target="_blank" rel="noopener" data-ws-full="recipe-edit">edit them on the Recipes screen</a>.
+                @endif
+                (A new tab — this page keeps what you typed.)
+            </p>
         @endif
     </div>
 </fieldset>
