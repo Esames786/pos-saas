@@ -33,10 +33,20 @@ class PurchaseWorkspaceController extends Controller
             ? PurchaseOrder::with(['supplier', 'branch', 'lines.product', 'lines.variant'])->find($request->purchase_order_id)
             : null;
 
+        // SUPPLIER-CREDIT-CLARITY-1: for suppliers paid ahead, the payments and returns a new invoice would use, oldest
+        // first — the invoice card names them and asks for a tick.
+        $running = app(\App\Services\Purchasing\SupplierRunningAccountService::class);
+        $advances = $running->enabled()
+            ? $suppliers->filter(fn ($s) => (float) $s->current_balance < -0.005)->mapWithKeys(fn ($s) => [$s->id => array_map(
+                fn ($c) => ['type' => $c['type'], 'id' => $c['id'], 'label' => $c['label'], 'date' => $c['date'], 'remaining' => round($c['remaining'], 2)],
+                $running->creditSources((int) $s->id))])->all()
+            : [];
+
         return view('tenant.purchases.workspace', [
             'branches'      => Branch::orderBy('name')->get(),
             'suppliers'     => $suppliers,
             'supplierBox'   => \App\Support\SupplierBox::data($suppliers, true),
+            'advances'      => $advances,
             'purchaseOrder' => $po,
             'prefillLines'  => $po ? $this->orderLinesDue($po) : [],
             // Goods already received: posted receipts that still wait for their invoice (one receipt = one invoice).

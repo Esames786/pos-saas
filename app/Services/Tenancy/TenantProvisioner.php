@@ -482,6 +482,7 @@ class TenantProvisioner
             'tenant.purchase-bills.create',
             'tenant.purchase-bills.store',
             'tenant.purchase-bills.show',
+            'tenant.purchase-bills.move-credit',
 
             'tenant.supplier-payments.index',
             'tenant.supplier-payments.create',

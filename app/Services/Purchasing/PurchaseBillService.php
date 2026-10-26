@@ -87,8 +87,11 @@ class PurchaseBillService
         $full = $returns->mapWithKeys(fn ($r) => [(int) $r->id => round((float) $r->grand_total, 4)])->all();
         $moves = collect($this->planMoves($returns, $full, $allocations));
 
-        $credit = ['enabled' => $this->runningAccount->enabled(), 'balance' => 0.0, 'unallocated' => 0.0, 'separate' => 0.0, 'netted' => 0.0];
+        $credit = ['enabled' => $this->runningAccount->enabled(), 'balance' => 0.0, 'unallocated' => 0.0, 'separate' => 0.0, 'netted' => 0.0, 'sources' => []];
         if ($credit['enabled']) {
+            // SUPPLIER-CREDIT-CLARITY-1: which payments and returns the invoice would use, oldest first — the review names them.
+            $credit['sources'] = array_map(fn ($s) => ['type' => $s['type'], 'id' => $s['id'], 'label' => $s['label'], 'date' => $s['date'], 'remaining' => round($s['remaining'], 2)],
+                $this->runningAccount->creditSources((int) $grn->supplier_id));
             $credit['balance'] = round((float) (\App\Models\Tenant\Supplier::query()->whereKey($grn->supplier_id)->value('current_balance') ?? 0), 2);
             $credit['unallocated'] = round((float) collect($this->runningAccount->unallocatedCredits((int) $grn->supplier_id))->sum('remaining'), 2);
             $credit['separate'] = round(max(0.0, min(-$credit['balance'], $credit['unallocated'])), 2);
@@ -105,15 +108,17 @@ class PurchaseBillService
      *               tax_amount?:mixed, notes?:?string, returns_on_invoice?:?string, netted_amounts?:array<int|string,mixed>,
      *               confirm_reallocation?:mixed}  $data
      * @param  bool  $mayReallocate  the person may move a credit off another invoice (owner: an authorized person only)
+     * @param  bool  $askCredit  SUPPLIER-CREDIT-CLARITY-1: posted from a screen, so an invoice that uses the supplier's
+     *               advance needs the person's tick ($data['confirm_credit']); without it nothing is saved
      */
-    public function createFromReceipt(GoodsReceipt $grn, array $data, ?int $userId = null, bool $mayReallocate = false): PurchaseBill
+    public function createFromReceipt(GoodsReceipt $grn, array $data, ?int $userId = null, bool $mayReallocate = false, bool $askCredit = false): PurchaseBill
     {
         $choice = $data['returns_on_invoice'] ?? null;
         if ($choice !== null && ! in_array($choice, [self::SEPARATE, self::NETTED], true)) {
             throw ValidationException::withMessages(['returns_on_invoice' => 'Choose how the supplier\'s invoice treats the returns.']);
         }
 
-        return DB::connection('tenant')->transaction(function () use ($grn, $data, $choice, $userId, $mayReallocate) {
+        return DB::connection('tenant')->transaction(function () use ($grn, $data, $choice, $userId, $mayReallocate, $askCredit) {
             // One receipt, one invoice: two posts at once queue here; the second finds the first.
             $grn = GoodsReceipt::query()->whereKey($grn->id)->lockForUpdate()->firstOrFail();
             // W3/W4 S0: a voided receipt brought nothing in, so nothing can be invoiced for it. Only the create
@@ -227,6 +232,16 @@ class PurchaseBillService
 
             $bill->load('supplier');
             $this->purchasing->postBillOperational($bill, $userId);
+
+            // SUPPLIER-CREDIT-CLARITY-1 (owner, 26 Oct): the advance an invoice uses is said on the review and ticked by the
+            // person; on a new invoice everything paid is that advance. Without the tick the whole invoice is rolled back.
+            if ($askCredit) {
+                $used = round((float) $bill->fresh()->amount_paid, 2);
+                if ($used > 0.005 && ! filter_var($data['confirm_credit'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    throw new CreditNotConfirmedException('This invoice uses Rs ' . number_format($used, 2) . ' of the supplier\'s advance. '
+                        . 'Tick "Use this advance on this invoice", then post again — nothing was saved.');
+                }
+            }
 
             // Review, 21 Oct: the GL is part of the same transaction. A journal that does not post rolls everything back,
             // so an invoice is never shown as recorded while its accounting entry is missing.

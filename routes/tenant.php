@@ -464,6 +464,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     ->name('tenant.purchase-bills.store');
                 Route::get('/purchase-bills/{purchaseBill}', [PurchaseBillController::class, 'show'])
                     ->name('tenant.purchase-bills.show');
+                // SUPPLIER-CREDIT-CLARITY-1 — move a payment's part on this invoice to another invoice of the supplier.
+                Route::post('/purchase-bills/{purchaseBill}/move-credit', [PurchaseBillController::class, 'moveCredit'])
+                    ->middleware('prevent.duplicate.submit')
+                    ->name('tenant.purchase-bills.move-credit');
 
                 // Supplier Payments
                 Route::get('/supplier-payments', [SupplierPaymentController::class, 'index'])
