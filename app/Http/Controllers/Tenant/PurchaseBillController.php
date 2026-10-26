@@ -108,8 +108,9 @@ class PurchaseBillController extends Controller
         return redirect(url('/purchase-bills'))->with('status', 'Supplier invoice recorded.');
     }
 
-    public function show(Request $request, PurchaseBill $purchaseBill)
+    public function show(PurchaseBill $purchaseBill, ?Request $request = null)
     {
+        $request ??= request();   // the invoice stays the first argument: callers that pass only it keep working
         $purchaseBill->load([
             'supplier', 'branch', 'purchaseOrder', 'goodsReceipt',
             'lines.product', 'lines.variant', 'postedBy', 'payments.postedBy',

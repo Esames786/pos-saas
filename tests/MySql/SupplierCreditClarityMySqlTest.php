@@ -508,7 +508,7 @@ class SupplierCreditClarityMySqlTest extends MySqlTenantTestCase
         $request = Request::create('/purchase-bills/' . $bill->id, 'GET');
         $request->setUserResolver(fn () => $user);
 
-        return app(PurchaseBillController::class)->show($request, $bill->fresh())->render();
+        return app(PurchaseBillController::class)->show($bill->fresh(), $request)->render();
     }
 
     private function userWith(string $permission): User
