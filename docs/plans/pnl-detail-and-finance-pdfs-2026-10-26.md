@@ -143,3 +143,36 @@ Profit, Total Operating Expenses and Net Profit stay exactly `statement()`'s.
 
 **Production after deploy (read-only):** Khatri P&L 1–26 Oct, 6000 and 6200 with their category lines. Both PDFs
 download for khatribiryani.
+
+## Results (26–27 Oct, local)
+
+- **Frozen run on `6f68a12c`** (`pos-saas-verify-upv`, DB set `_relz`, clean tree before and after): **95/95.**
+  - New: `ProfitLossDetailMySqlTest` (9) and the TB PDF tests in `TrialBalancePartyMySqlTest`.
+  - Re-run: `TrialBalancePartyMySqlTest`, `TrialBalancePeriodMySqlTest`, `TrialBalanceSectionHeadsMySqlTest`,
+    `GrnNonStockMySqlTest`, `InventoryExpensePurchaseStockMySqlTest`, `GeneralLedgerTotalsMySqlTest`,
+    `PayablesFinanceGateMySqlTest`, `SupplierCreditClarityMySqlTest`.
+- **Sabotage** (each guard broken, then restored; checksums verified):
+
+  | Guard broken | Caught by |
+  |---|---|
+  | The remainder line "Other" | "the lines still make 3,400" |
+  | The supplier on a bill posting | "a bill names its supplier" |
+  | The attachment header | Both PDF download tests (P&L and TB) |
+  | Head totals counting the head rows | 12,900 instead of 4,500 |
+
+  For the last one, the sabotage showed that no test covered nested heads in the PDF total. A test was added
+  (`TrialBalanceSectionHeadsMySqlTest::test_the_pdf_head_totals_count_each_account_once_under_nested_heads`); it passes
+  on the code and fails on the sabotage.
+- **Both PDFs rendered from a Khatri-like local chart**, through the controllers (1–21 Oct), and read page by page.
+  - **The P&L** matches the hand-made sample's figures exactly: Gross Revenue 8,440,070, Net Revenue 8,435,533, Cost of
+    Sales 615,775, Gross Profit 7,819,758, margin 92.7%.
+    - Category lines appear under 6000 / 6100 / 6200 / 6300, "Other" under 6300, and the supplier under 6500.
+  - **The TB:**
+    - two-row heading, Debit / Credit pairs;
+    - section totals, and a Grand Total balanced in all three pairs;
+    - difference 0.00 in the footer;
+    - "Not linked to a drawer / bank" under the cash account.
+  - **Fixed after the first look:** the TB's account column was squeezed (names wrapping onto three lines); it now has
+    fixed column widths. The P&L's "Particulars" heading used the code font.
+- Every changed Blade view compiled, the generated PHP linted, and each one rendered (the tests render the screen,
+  both prints and both PDFs).
