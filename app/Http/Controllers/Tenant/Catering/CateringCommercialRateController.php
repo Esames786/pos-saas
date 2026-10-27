@@ -9,6 +9,7 @@ use App\Models\Tenant\Product;
 use App\Models\Tenant\Unit;
 use App\Services\Catering\CateringCommercialRateBookService;
 use App\Services\Catering\CateringCommercialRateImpactService;
+use App\Services\Catering\MaterialRateHints;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -64,6 +65,12 @@ class CateringCommercialRateController extends Controller
             ->unique('product_id')
             ->values();
 
+        $materials = Product::query()
+            ->whereIn('product_kind', self::MATERIAL_KINDS)
+            ->orderBy('name')
+            ->get(['id', 'name', 'sku', 'unit_id']);
+        $historyByMaterial = $this->recentHistory();
+
         return view('tenant.catering.commercial-rates.index', [
             'rates' => $current,
             // RATE-APPLY-ON-SAVE-1: har material ki ginti, taake rate likhte
@@ -79,10 +86,7 @@ class CateringCommercialRateController extends Controller
                 ->with(['product:id,name', 'unit:id,code'])
                 ->orderByDesc('effective_from')->orderByDesc('id')
                 ->limit(30)->get(),
-            'materials' => Product::query()
-                ->whereIn('product_kind', self::MATERIAL_KINDS)
-                ->orderBy('name')
-                ->get(['id', 'name', 'sku', 'unit_id']),
+            'materials' => $materials,
             // COMMERCIAL-RATE-PICKER-1 (owner, 26 Oct): since the purchase items came in (14 Oct) the list holds 1,000+
             // materials, a handful of them in any dish. It opens on those a dish uses (count = blockCounts) and those
             // that already have a house rate; "Show all materials" brings back the rest, so a new one can still be priced.
@@ -94,7 +98,9 @@ class CateringCommercialRateController extends Controller
             // what it was yesterday, and having to close the box, read the table
             // at the bottom of the page and open the box again is how the wrong
             // number gets typed.
-            'historyByMaterial' => $this->recentHistory(),
+            'historyByMaterial' => $historyByMaterial,
+            // CATERING-SIMPLIFY-1: the unit a chosen material fills in (its last house rate, its dishes' blocks, its own).
+            'unitDefaults' => app(MaterialRateHints::class)->unitDefaults($materials, $historyByMaterial),
         ]);
     }
 

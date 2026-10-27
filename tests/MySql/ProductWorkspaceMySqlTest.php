@@ -275,7 +275,7 @@ class ProductWorkspaceMySqlTest extends MySqlTenantTestCase
         $this->assertSame('commercial_book', $blocks['Chicken']->commercial_rate_source);
         $profile = CateringProductProfile::where('product_id', $dish->id)->firstOrFail();
         $this->assertSame('BBQ', $profile->production_station);
-        $this->assertSame([false, 'KEEP LABEL', 'fixed'], [(bool) $profile->catering_enabled, $profile->production_label, $profile->pricing_mode], 'what the tab does not show is kept');
+        $this->assertSame([false, 'KEEP LABEL', 'fixed'], [(bool) $profile->catering_enabled, $profile->production_label, $profile->pricing_mode], 'what was not changed is kept (CATERING-SIMPLIFY-1: shown on the tab now; the pricing mode is not)');
         $this->assertSame('بریانی', DB::connection('tenant')->table('product_translations')->where('product_id', $dish->id)->where('language_code', 'ur')->value('name'), 'the Urdu name is kept');
     }
 

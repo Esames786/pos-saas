@@ -190,7 +190,8 @@
          sab ek saath dekhne ke liye chaurai chahiye. --}}
     <div class="modal-dialog modal-xl">
         <form method="POST" action="{{ url('/catering/commercial-rates') }}" class="modal-content"
-              data-rate-history='@json($historyByMaterial ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)'>
+              data-rate-history='@json($historyByMaterial ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_AMP)'
+              data-unit-defaults='@json((object) ($unitDefaults ?? []))'>
             @csrf
             <div class="modal-header">
                 <h5 class="modal-title">Set a commercial rate</h5>
