@@ -362,7 +362,7 @@
                                     <div class="row g-3">
                                         {{-- CATERING-SIMPLIFY-1 (owner, 27 Oct): a caterer's dish priced by cost blocks shows its block
                                              price here, locked, with a way to the blocks — the counter price is not what events charge,
-                                             and changing it changed nothing. The server keeps the stored counter price
+                                             and changing it changed nothing. Saving makes the counter price the block price
                                              (ProductWorkspace::blockPrice). "Priced by" on the Event costing tab switches the lock live. --}}
                                         @php
                                             $lock = $priceLock ?? null;
@@ -370,10 +370,12 @@
                                             $plainRs = fn ($v) => rtrim(rtrim(number_format((float) $v, 2, '.', ''), '0'), '.');
                                             $shownRs = fn ($v) => rtrim(rtrim(number_format((float) $v, 2), '0'), '.');
                                             $posPrice = (float) ($product?->default_selling_price ?? 0);
+                                            // What the box shows while locked: the block price, or (blocks give no price yet) the kept counter price.
+                                            $lockedRs = $lock && (float) $lock['rate'] > 0 ? (float) $lock['rate'] : $posPrice;
                                         @endphp
-                                        <div class="col-md-6" @if($lock && $lock['catering']) data-price-lock data-block-price="{{ $plainRs($lock['rate']) }}" data-pos-price="{{ $plainRs($posPrice) }}" @endif>
+                                        <div class="col-md-6" @if($lock && $lock['catering']) data-price-lock data-block-price="{{ $plainRs($lockedRs) }}" data-pos-price="{{ $plainRs($posPrice) }}" @endif>
                                             <label class="form-label" for="default_selling_price">Selling price (Rs) <span class="text-danger" aria-hidden="true">*</span></label>
-                                            <input id="default_selling_price" name="default_selling_price" inputmode="decimal" class="form-control form-control-lg @error('default_selling_price') is-invalid @enderror" value="{{ $locked ? $plainRs($lock['rate']) : $saved('default_selling_price') }}" aria-describedby="sp-help" @disabled($locked)>
+                                            <input id="default_selling_price" name="default_selling_price" inputmode="decimal" class="form-control form-control-lg @error('default_selling_price') is-invalid @enderror" value="{{ $locked ? $plainRs($lockedRs) : $saved('default_selling_price') }}" aria-describedby="sp-help" @disabled($locked)>
                                             <div id="sp-help" class="help" @if($locked) hidden @endif>The price for one {{ $cardDef['weight'] ? 'kg / litre' : 'piece' }}.</div>
                                             @if($lock && $lock['catering'])
                                                 <div class="help" data-sp-locked @unless($locked) hidden @endunless>
@@ -383,8 +385,10 @@
                                                     @else
                                                         It is changed on the Event costing tab, by someone who may edit it.
                                                     @endif
-                                                    @if($posPrice > 0 && abs($posPrice - (float) $lock['rate']) >= 0.005)
-                                                        <div class="mt-1">Counter (POS) price saved: Rs {{ $shownRs($posPrice) }} — events do not use it.</div>
+                                                    @if($posPrice > 0 && (float) $lock['rate'] <= 0)
+                                                        <div class="mt-1" data-sp-pos>The cost blocks give no price yet, so the counter (POS) price stays Rs {{ $shownRs($posPrice) }}.</div>
+                                                    @elseif(abs($posPrice - (float) $lock['rate']) >= 0.005)
+                                                        <div class="mt-1" data-sp-pos>The counter (POS) price is Rs {{ $shownRs($posPrice) }} now — saving makes it Rs {{ $shownRs($lock['rate']) }}.</div>
                                                     @endif
                                                 </div>
                                             @elseif($lock && $lock['blocks'])

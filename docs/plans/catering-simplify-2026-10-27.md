@@ -33,13 +33,16 @@ Asked by the owner on 27 Oct, after a client changed a dish's **Selling price** 
     (no permission), the line says where the price comes from and has no button.
 - **The live switch.** If the user changes "Priced by" to Recipe on the Event costing tab, the box opens again with the
   saved counter price. Changing it back locks the box again.
-- **On save.** For a locked dish the server ignores any posted `default_selling_price` and keeps the stored one, so a
-  crafted post cannot change it either.
-- **Not changed.** The stored counter price is not written or copied from the blocks. The local copy of the catering
-  tenant has 0 counter orders, and copying would be a write nobody asked for.
-  - If the stored counter price differs from the block price, a small line says so: "Counter (POS) price saved:
-    Rs X — events do not use it."
-  - Open question for the owner: should a save also copy the block price into the counter price? Not done.
+- **On save (owner, 27 Oct: "copy price").** For a locked dish the server ignores any posted `default_selling_price`.
+  Saving the dish makes its counter price the block price, on the product and its default variant (the two places a
+  typed price is written; a product save has no other side effect, only a unit guard).
+  - The price is set again after the Event costing tab is written, so a block changed in the same save moves it.
+  - Blocks that give no price yet (only lump sums, 0) keep the stored counter price. It is never set to 0, and the
+    box shows the kept price.
+  - Until the dish is saved, a line says so: "The counter (POS) price is Rs X now — saving makes it Rs Y."
+  - **Only the product form's save copies.** A block changed on the Cost blocks screen or by the house rate book
+    moves the event price at once, but the counter price follows only at the dish's next save. The line above shows
+    the difference meanwhile.
 - **Other businesses.** A restaurant or other business with a dish that also has a cost-block catering profile keeps
   the box open. A note says events price it from its cost blocks (Rs X).
 
@@ -117,7 +120,8 @@ Asked by the owner on 27 Oct, after a client changed a dish's **Selling price** 
 - **Tables written:**
   - `catering_product_profiles` and `product_translations`: the same writer, only from the product form's save,
     only for the fields that changed;
-  - `products.default_selling_price`: now never written for a locked dish.
+  - `products.default_selling_price` and the default `product_variants.selling_price`: for a locked dish, the block
+    price at each save of the product form (never 0).
 - **Not changed:** no migration, no new route, no new permission, no switch. Quotations, estimate lines, line block
   snapshots, the rate books and the impact screen are not touched.
 - **Who sees it:**
@@ -171,7 +175,8 @@ width).
   - Release: merge, push, check origin == HEAD, then `deploy.sh`.
   - After: smoke, permissions unchanged, reconciliation.
   - A read-only probe that each tenant's four screens open.
-- No data change, so nothing to undo beyond a code revert.
+- No data change at deploy. After it, a caterer's cost-block dish takes its block price as counter price when it is
+  next saved in the product form. Undo = a code revert; prices already copied stay until typed again (fix forward).
 
 ## Results (27 Oct)
 
@@ -198,3 +203,17 @@ width).
 - **Note for the release:** an edit page opened before the deploy and saved after it with an Event costing change
   is refused once ("changed on the Catering screen"). The tab's saved state now includes more fields. Opening the page
   again fixes it.
+
+### Copy price (owner, 27 Oct — "Copy price, then deploy")
+
+- **Built:** a locked dish's save makes the block price its counter price (see "On save" above).
+- **Tests:** `CateringSimplifyMySqlTest` 6 / 6. The lock test now also covers a crafted price, a block changed in the
+  same save (600 → 650), a switch to blocks in the same save, blocks with no price (kept, never 0), and a restaurant
+  (open, typed price saved). The clerk test gets the block price, not the crafted one.
+- **Guards bite:** 4 / 4. Each was broken on purpose, its test failed, and the file was restored (md5 checked):
+  - the locked dish gets the block price;
+  - a posted "Priced by" counts only from a user who may edit the tab;
+  - a block changed in the same save moves the price;
+  - blocks with no price never set it to 0.
+- **Production probe** (`cs_probe.php`, GET only) tried locally: OK on this branch; 8 failures on the production code
+  `d27d31ec`, so it can tell the two apart.

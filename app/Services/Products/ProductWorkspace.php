@@ -80,7 +80,8 @@ final class ProductWorkspace
      * CATERING-SIMPLIFY-1 (owner, 27 Oct) — "selling price disable hona chahiye tha". A dish priced by its cost blocks
      * takes its event price from them (CateringCostBlockService::rateFor, the event screen's order rate); the product's
      * Selling price is the counter (POS) price, which no catering screen reads. For a CATERER that box is locked to the
-     * block price, so nobody changes the wrong number; the stored counter price is kept as it is (never copied).
+     * block price, so nobody changes the wrong number, and saving the dish makes its counter price the block price
+     * (ProductController::blockPriceAfterSave; not while the blocks give no price yet).
      * Elsewhere (a restaurant with an event dish) the box stays open and says what events charge.
      *
      * The costing that decides is the one posted on the Event costing tab when this user may edit it, else the saved one.

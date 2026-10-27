@@ -23,8 +23,9 @@ use Tests\MySql\Support\ReadsFormOnPage;
 /**
  * CATERING-SIMPLIFY-1 (owner, 27 Oct) — one place to price and edit a catering dish, through the real routes and the
  * rendered pages (docs/plans/catering-simplify-2026-10-27.md):
- *  1. a caterer's cost-block dish shows its block price in Selling price, locked; the stored counter price is kept,
- *     whatever is posted — a posted "Priced by" counts only from a user who may edit the Event costing tab;
+ *  1. a caterer's cost-block dish shows its block price in Selling price, locked; saving makes it the counter price,
+ *     whatever is posted (not while the blocks give no price) — a posted "Priced by" counts only from a user who may
+ *     edit the Event costing tab;
  *  2. Catering Products shows one Edit (the product form's Event costing tab) where that form opens;
  *  3. that tab edits what the Catering Products pop-up edited, through the same writer;
  *  4. choosing a material on either rate pop-up fills its unit;
@@ -50,7 +51,7 @@ class CateringSimplifyMySqlTest extends MySqlTenantTestCase
 
     // ── 1. The selling price of a cost-block dish ────────────────────────────────────────────────────────────────
 
-    public function test_a_caterers_cost_block_dish_shows_its_block_price_locked_and_keeps_its_counter_price(): void
+    public function test_a_caterers_cost_block_dish_shows_its_block_price_locked_and_saving_makes_it_the_counter_price(): void
     {
         $dish = $this->blockDish('CS Lock Biryani', 'blocks');   // Making 500 + chicken 0.5 KG × 200 = 600; counter 900
 
@@ -60,14 +61,20 @@ class CateringSimplifyMySqlTest extends MySqlTenantTestCase
         $this->assertSame('600', $box->getAttribute('value'), 'and shows the block price');
         $this->assertStringContainsString('price comes from its cost blocks: <b>Rs 600</b>', $html);
         $this->assertStringContainsString('data-go-tab="catering"', $html, 'with a way to the blocks');
-        $this->assertStringContainsString('Counter (POS) price saved: Rs 900', $html);
+        $this->assertStringContainsString('The counter (POS) price is Rs 900 now — saving makes it Rs 600.', $html);
 
-        // Saved as shown (the locked box posts nothing), then with a crafted price: the counter price stays 900.
+        // Saved (the locked box posts nothing; a crafted price is ignored): the counter price becomes the block price.
         $form = $this->formOnPage($html, '/products/' . $dish->id);
         $this->assertArrayNotHasKey('default_selling_price', $form);
-        $this->save($dish, $form);
         $this->save($dish, array_merge($form, ['default_selling_price' => '1234']));
-        $this->assertEqualsWithDelta(900, (float) $dish->fresh()->default_selling_price, 0.001, 'a crafted price is ignored');
+        $this->assertSame([600.0, 600.0], $this->prices($dish), 'the product and its counter variant');
+        $this->assertSame(0, $this->nodes($this->page('/products/' . $dish->id . '/edit')->getContent(), '//*[@data-sp-pos]'), 'they agree now: no line');
+
+        // A block changed in the same save moves it: Making 550 → 550 + 100.
+        $form = $this->formOnPage($this->page('/products/' . $dish->id . '/edit')->getContent(), '/products/' . $dish->id);
+        $form['cost_blocks']['lines'][$this->blockKey($form, 'Making')]['rate'] = '550';
+        $this->save($dish, $form);
+        $this->assertSame([650.0, 650.0], $this->prices($dish));
 
         // A dish costed by its recipe keeps the box open and saves what is typed.
         CateringProductProfile::where('product_id', $dish->id)->update(['costing_mode' => 'recipe']);
@@ -75,22 +82,33 @@ class CateringSimplifyMySqlTest extends MySqlTenantTestCase
         $this->assertFalse($this->element($html, '//input[@id="default_selling_price"]')->hasAttribute('disabled'));
         $form = $this->formOnPage($html, '/products/' . $dish->id);
         $this->save($dish, array_merge($form, ['default_selling_price' => '950']));
-        $this->assertEqualsWithDelta(950, (float) $dish->fresh()->default_selling_price, 0.001);
+        $this->assertSame([950.0, 950.0], $this->prices($dish));
 
-        // Switching it to cost blocks in the same save locks it: what is typed with the switch is not saved.
+        // Switching it to cost blocks in the same save locks it: the block price, not what was typed with the switch.
         $form['catering']['costing_mode'] = 'blocks';
         $this->save($dish, array_merge($form, ['default_selling_price' => '1500']));
         $this->assertSame('blocks', CateringProductProfile::where('product_id', $dish->id)->value('costing_mode'));
-        $this->assertEqualsWithDelta(950, (float) $dish->fresh()->default_selling_price, 0.001, 'the posted "Priced by" decides');
+        $this->assertSame([650.0, 650.0], $this->prices($dish), 'the posted "Priced by" decides');
 
-        // A restaurant with the same dish: the box stays open and says what events charge.
+        // Blocks that give no price yet (only a lump sum): the box shows the kept counter price, and saving keeps it.
+        $flat = $this->product('CS Lock Stage', $this->kg()->id, ['is_stock_tracked' => false, 'is_purchasable' => false, 'default_selling_price' => 900]);
+        app(CateringProfileWriter::class)->save(null, ['product_id' => $flat->id, 'costing_mode' => 'recipe', 'pricing_mode' => 'fixed']);
+        app(CateringCostBlockWriter::class)->save($flat->id, [['label' => 'Setup', 'block_type' => 'charge', 'charge_basis' => 'lump_sum', 'rate' => 5000]], null);
+        CateringProductProfile::where('product_id', $flat->id)->update(['costing_mode' => 'blocks']);
+        $html = $this->page('/products/' . $flat->id . '/edit')->assertOk()->getContent();
+        $this->assertSame('900', $this->element($html, '//input[@id="default_selling_price"]')->getAttribute('value'));
+        $this->assertStringContainsString('The cost blocks give no price yet, so the counter (POS) price stays Rs 900.', $html);
+        $this->save($flat, $this->formOnPage($html, '/products/' . $flat->id));
+        $this->assertSame([900.0, 900.0], $this->prices($flat), 'never set to 0');
+
+        // A restaurant with the same dish: the box stays open and says what events charge; what is typed is saved.
         $this->business('restaurant');
         $html = $this->page('/products/' . $dish->id . '/edit')->assertOk()->getContent();
         $this->assertFalse($this->element($html, '//input[@id="default_selling_price"]')->hasAttribute('disabled'));
-        $this->assertStringContainsString('Events price this dish from its cost blocks (Rs 600)', $html);
+        $this->assertStringContainsString('Events price this dish from its cost blocks (Rs 650)', $html);
         $this->assertSame(0, $this->nodes($html, '//*[@data-sp-locked]'), 'no lock note');
         $this->save($dish, array_merge($this->formOnPage($html, '/products/' . $dish->id), ['default_selling_price' => '990']));
-        $this->assertEqualsWithDelta(990, (float) $dish->fresh()->default_selling_price, 0.001);
+        $this->assertSame([990.0, 990.0], $this->prices($dish));
     }
 
     public function test_a_user_who_may_not_edit_event_costing_cannot_unlock_the_price_with_a_crafted_post(): void
@@ -108,7 +126,7 @@ class CateringSimplifyMySqlTest extends MySqlTenantTestCase
         $form['catering'] = ['_was' => 'x', 'costing_mode' => 'recipe'];
         $this->actingAs($clerk, 'tenant')->call('POST', $this->url('/products/' . $dish->id), array_merge($form, ['default_selling_price' => '1234']))
             ->assertRedirect()->assertSessionHasNoErrors();
-        $this->assertEqualsWithDelta(900, (float) $dish->fresh()->default_selling_price, 0.001);
+        $this->assertSame([600.0, 600.0], $this->prices($dish), 'still locked: the block price, not the crafted one');
         $this->assertSame('blocks', CateringProductProfile::where('product_id', $dish->id)->value('costing_mode'), 'and the costing is not touched');
     }
 
@@ -290,6 +308,24 @@ class CateringSimplifyMySqlTest extends MySqlTenantTestCase
     private function material(string $name, int $unitId): Product
     {
         return $this->product($name, $unitId, ['product_kind' => 'raw_material', 'is_sellable' => false, 'is_pos_visible' => false]);
+    }
+
+    /** [the product's counter price, its default variant's] — the two places a typed price is written. */
+    private function prices(Product $p): array
+    {
+        $variant = DB::connection('tenant')->table('product_variants')->where('product_id', $p->id)->where('is_default', true)->value('selling_price');
+
+        return [round((float) $p->fresh()->default_selling_price, 2), round((float) $variant, 2)];
+    }
+
+    private function blockKey(array $form, string $label): string|int
+    {
+        foreach ($form['cost_blocks']['lines'] ?? [] as $k => $b) {
+            if (($b['label'] ?? null) === $label) {
+                return $k;
+            }
+        }
+        $this->fail("the block {$label} is on the tab");
     }
 
     /** A goods receipt through the real route, $daysAgo days back. */

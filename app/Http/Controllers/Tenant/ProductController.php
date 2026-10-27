@@ -399,6 +399,10 @@ class ProductController extends Controller
             if ($touched) {
                 $workspace->apply($product, $touched, auth('tenant')->id());
             }
+
+            if ($this->priceLocked) {
+                $this->blockPriceAfterSave($product);
+            }
         });
 
         $website->apply($request, $product);
@@ -450,6 +454,7 @@ class ProductController extends Controller
         // PRODUCT-SCREEN-V2: the new screen posts a card + yes/no answers; the SERVER turns them into the
         // fields below (locks included), and keeps every field the screen does not show at its saved value.
         $isV2 = $request->boolean('_form_v2');
+        $this->priceLocked = false;   // one controller may serve several requests (a queue worker, a test)
         if ($isV2) {
             $business = $this->areaBusiness($request);
             // W3/W4 S3d: Catering Materials adds ingredients and disposables; its form offers only those cards.
@@ -458,10 +463,12 @@ class ProductController extends Controller
             }
             $request->merge(\App\Support\ProductCards::resolve($business, $request->all(), $product));
             $this->guardScreenV2($request, $product);
-            // CATERING-SIMPLIFY-1: a caterer's cost-block dish shows its block price, locked — whatever is posted, the
-            // stored counter price stays as it is (the locked box posts nothing).
-            if ($product && ($this->priceLock($request, $product)['locked'] ?? false)) {
-                $request->merge(['default_selling_price' => $product->default_selling_price ?? 0]);
+            // CATERING-SIMPLIFY-1: a caterer's cost-block dish shows its block price, locked — whatever is posted, its
+            // counter price becomes the block price (owner, 27 Oct: "copy price"), set again after this save's own
+            // block changes (blockPriceAfterSave). Blocks that give no price yet (0) keep the stored one.
+            if ($product && ($lock = $this->priceLock($request, $product)) && $lock['locked']) {
+                $this->priceLocked = true;
+                $request->merge(['default_selling_price' => $lock['rate'] > 0 ? $lock['rate'] : ($product->default_selling_price ?? 0)]);
             }
         } elseif ($product && $product->is_stock_tracked && ! $request->boolean('is_stock_tracked')) {
             // KHATRI-STOCK-TO-PNL-1: on the old form, unticking "Track Stock" while stock is on hand would leave
@@ -659,6 +666,25 @@ class ProductController extends Controller
     private ?array $packPlan = null;
 
     private bool $packsPosted = false;
+
+    /** CATERING-SIMPLIFY-1 — this save is of a caterer's cost-block dish (set by validated()). */
+    private bool $priceLocked = false;
+
+    /**
+     * CATERING-SIMPLIFY-1 — after the Event costing tab is written, the counter price is the block price as now saved
+     * (a block changed in this same save moves it). Written as a typed price is: the product and its default variant.
+     * Blocks that give no price yet (0) leave it as it is.
+     */
+    private function blockPriceAfterSave(Product $product): void
+    {
+        $rate = app(\App\Services\Catering\CateringCostBlockService::class)->rateFor($product->id);
+        $product->refresh();
+        if ($rate <= 0 || abs($rate - (float) $product->default_selling_price) < 0.005) {
+            return;
+        }
+        $product->update(['default_selling_price' => $rate]);
+        $product->defaultVariant?->update(['selling_price' => $rate]);
+    }
 
     private function productContext(Request $request): string
     {
