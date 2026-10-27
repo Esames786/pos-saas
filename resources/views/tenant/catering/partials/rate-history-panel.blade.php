@@ -64,6 +64,19 @@
             const count = form.querySelector('.rate-history-count');
             if (! product || ! wrap || ! rows) return;
 
+            // CATERING-SIMPLIFY-1: choosing a material fills Unit (data-unit-defaults: this book's last rate, else its
+            // dishes' blocks, else the material's own unit). Only when the material CHANGES — a unit the user then
+            // picks stays picked.
+            let unitDefaults = {};
+            try { unitDefaults = JSON.parse(form.dataset.unitDefaults || '{}'); } catch (e) { unitDefaults = {}; }
+            let filledFor = product.value;
+            function fillUnit() {
+                if (product.value === filledFor) return;
+                filledFor = product.value;
+                const u = unitDefaults[product.value];
+                if (unit && u && unit.querySelector('option[value="' + u + '"]')) { unit.value = String(u); }
+            }
+
             const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
                 c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -113,10 +126,11 @@
                 if (rate) { rate.focus(); rate.select(); }
             });
 
+            product.addEventListener('change', fillUnit);
             product.addEventListener('change', render);
             // select2 fires its own event, and the plain select fires neither on
             // programmatic change — so ask jQuery too when it is present.
-            if (window.jQuery) { window.jQuery(product).on('change select2:select', render); }
+            if (window.jQuery) { window.jQuery(product).on('change select2:select', function () { fillUnit(); render(); }); }
             render();
         });
     })();

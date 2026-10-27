@@ -1,7 +1,8 @@
 {{-- W3/W4 S3c — a dish's event costing (its catering profile and cost blocks), edited inside the product form and saved
      with it (ProductWorkspace). Two parts, each with its own "_was": catering[…] for the profile, cost_blocks[lines][…]
-     for the blocks. What is not shown here (profile switches, labels, pricing; each block's rate basis, rate source and
-     role) keeps its saved value. --}}
+     for the blocks. What is not shown here (the pricing mode; each block's rate basis, rate source and role) keeps its
+     saved value. CATERING-SIMPLIFY-1 (27 Oct): the Catering Products pop-up's fields (on / off, party supply, free item,
+     Urdu name, kitchen labels, instructions) are here too, so one Edit edits the whole dish. --}}
 @php
     $c = $ws['catering'];
     $cFromDb = $errors->has('catering.stale') || ! is_array(old('catering'));
@@ -62,6 +63,45 @@
             </div>
         </div>
 
+        {{-- CATERING-SIMPLIFY-1: what the Catering Products pop-up edited, saved through the same writer. --}}
+        @php
+            $yes = fn (string $f) => filter_var($cv($f), FILTER_VALIDATE_BOOLEAN);
+            $switches = [
+                'catering_enabled'   => ['Use it at events?', 'No = a new quotation does not fill in its price and cost blocks.', ''],
+                'allow_party_supply' => ['Customer may bring own meat?', 'Yes = a quotation line can mark the meat as given by the customer.', 'گاہک کا سامان'],
+                'is_complimentary'   => ['Free item?', 'Yes = a new quotation line for it starts at Rs 0.', 'اعزازی'],
+            ];
+        @endphp
+        <div class="row g-3 mb-2" data-ws-profile>
+            @foreach($switches as $f => [$q, $help, $ur])
+                <div class="col-md-4">
+                    <span class="form-label d-block" id="cat-{{ $f }}-label">{{ $q }} @if($ur)<span class="ur-inline">{{ $ur }}</span>@endif</span>
+                    <div class="yn" role="radiogroup" aria-labelledby="cat-{{ $f }}-label">
+                        <input type="radio" name="catering[{{ $f }}]" id="cat-{{ $f }}-y" value="1" @checked($yes($f))><label for="cat-{{ $f }}-y">Yes</label>
+                        <input type="radio" name="catering[{{ $f }}]" id="cat-{{ $f }}-n" value="0" @checked(! $yes($f))><label for="cat-{{ $f }}-n">No</label>
+                    </div>
+                    <div class="help mt-1">{{ $help }}</div>
+                </div>
+            @endforeach
+            <div class="col-md-4">
+                <label class="form-label" for="cat-name-ur">Urdu name</label>
+                <input type="text" maxlength="255" dir="rtl" lang="ur" class="form-control @error('catering.name_ur') is-invalid @enderror" id="cat-name-ur" name="catering[name_ur]" value="{{ $cv('name_ur') }}">
+                <div class="help">On the kitchen sheet and the quotation. Empty = the English name.</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="cat-label">Kitchen label (English)</label>
+                <input type="text" maxlength="255" class="form-control @error('catering.production_label') is-invalid @enderror" id="cat-label" name="catering[production_label]" value="{{ $cv('production_label') }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="cat-label-ur">Kitchen label (Urdu)</label>
+                <input type="text" maxlength="255" dir="rtl" lang="ur" class="form-control @error('catering.production_label_ur') is-invalid @enderror" id="cat-label-ur" name="catering[production_label_ur]" value="{{ $cv('production_label_ur') }}">
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="cat-instructions">Default instructions</label>
+                <textarea maxlength="2000" rows="2" class="form-control @error('catering.instructions') is-invalid @enderror" id="cat-instructions" name="catering[instructions]">{{ $cv('instructions') }}</textarea>
+            </div>
+        </div>
+
         <h3 class="h6 mt-3 mb-1">Cost blocks</h3>
         @if($blocksOn)
             <div data-ws-editor="cost_blocks">
@@ -92,20 +132,15 @@
                 <p class="help mb-0">Kept as saved — changing cost blocks needs the Cost blocks permission.</p>
             @endif
         @endif
-        {{-- PRODUCT-NAV-1: what this tab does not change, on its own screens — only for a user who may open them. --}}
+        {{-- PRODUCT-NAV-1: what this tab does not change, on its own screen — only for a user who may open it.
+             (CATERING-SIMPLIFY-1: on / off, labels and instructions are on this tab now; only the blocks' roles are not.) --}}
         @php
             $cProfile = $c['profile'] ?? null;
-            $cProfilesOk = $cProfile && \App\Support\ScreenAccess::allows('tenant.catering.profiles.index');
             $cBlocksOk = $cProfile && \App\Support\ScreenAccess::allows('tenant.catering.cost-blocks.edit');
         @endphp
-        @if($cProfilesOk || $cBlocksOk)
+        @if($cBlocksOk)
             <p class="help mt-2 mb-0">
-                @if($cProfilesOk)
-                    On / off, pricing, labels and instructions: <a href="{{ url('/catering/profiles') . '?q=' . urlencode((string) $product?->name) }}" target="_blank" rel="noopener" data-ws-full="catering-profile">Catering Products</a>.
-                @endif
-                @if($cBlocksOk)
-                    Each block's role and rate source: <a href="{{ url('/catering/profiles/' . $cProfile->id . '/blocks') }}" target="_blank" rel="noopener" data-ws-full="cost-blocks">Cost blocks</a>.
-                @endif
+                Each block's role and rate source: <a href="{{ url('/catering/profiles/' . $cProfile->id . '/blocks') }}" target="_blank" rel="noopener" data-ws-full="cost-blocks">Cost blocks</a>.
                 (A new tab — this page keeps what you typed.)
             </p>
         @endif

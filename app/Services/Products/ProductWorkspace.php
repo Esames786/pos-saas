@@ -31,8 +31,10 @@ use Illuminate\Validation\ValidationException;
  * changed it: each section posts a fingerprint of what it showed (`_was`), so an untouched section writes nothing (its
  * lines keep their ids), and a section changed on its own screen after this page opened is refused, never overwritten.
  * What a section does not show keeps its saved value: the recipe's name, numbers, notes and overhead, each line's cost
- * override and order types; the BOM's number, name, version, status, date and notes; the profile's switches, pricing
- * and labels; each block's rate basis, rate source and role. A block that follows the house rate book keeps its rate.
+ * override and order types; the BOM's number, name, version, status, date and notes; the profile's pricing mode (fixed,
+ * read by nothing — CAT-PRICE-001); each block's rate basis, rate source and role. (CATERING-SIMPLIFY-1: the profile's
+ * switches, labels, instructions and the Urdu name are shown on the tab now, so the Catering Products pop-up is not
+ * needed to edit them.) A block that follows the house rate book keeps its rate.
  */
 final class ProductWorkspace
 {
@@ -71,6 +73,38 @@ final class ProductWorkspace
                 && $this->allows($product && $this->currentBom($product) ? 'tenant.manufacturing.bom.update' : 'tenant.manufacturing.bom.store'),
             'catering' => $catering,
             'cost_blocks' => $catering && $this->allows('tenant.catering.cost-blocks.update'),
+        ];
+    }
+
+    /**
+     * CATERING-SIMPLIFY-1 (owner, 27 Oct) — "selling price disable hona chahiye tha". A dish priced by its cost blocks
+     * takes its event price from them (CateringCostBlockService::rateFor, the event screen's order rate); the product's
+     * Selling price is the counter (POS) price, which no catering screen reads. For a CATERER that box is locked to the
+     * block price, so nobody changes the wrong number; the stored counter price is kept as it is (never copied).
+     * Elsewhere (a restaurant with an event dish) the box stays open and says what events charge.
+     *
+     * The costing that decides is the one posted on the Event costing tab when this user may edit it, else the saved one.
+     *
+     * @return array{rate: float, catering: bool, blocks: bool, locked: bool}|null  null: an item with no event costing
+     */
+    public function blockPrice(?Product $product, ?string $business, ?string $postedMode = null): ?array
+    {
+        if (! $product || $product->product_kind !== Product::KIND_SALE_ITEM) {
+            return null;
+        }
+        $profile = CateringProductProfile::where('product_id', $product->id)->first();
+        if (! $profile) {
+            return null;
+        }
+        $blocks = (in_array($postedMode, CateringProductProfile::COSTING_MODES, true) ? $postedMode : $profile->costingMode())
+            === CateringProductProfile::COSTING_BLOCKS;
+        $catering = $business === Business::CATERING;
+
+        return [
+            'rate' => app(CateringCostBlockService::class)->rateFor($product->id),
+            'catering' => $catering,
+            'blocks' => $blocks,
+            'locked' => $catering && $blocks,
         ];
     }
 
@@ -135,7 +169,7 @@ final class ProductWorkspace
 
         if ($access['catering']) {
             $profile = $product ? CateringProductProfile::where('product_id', $product->id)->first() : null;
-            $state = $this->profileSaved($profile);
+            $state = $this->profileSaved($profile, $product);
             $out['catering'] = ['state' => $state, 'was' => self::fingerprint($state), 'profile' => $profile];
             $blocks = $product ? app(CateringCostBlockService::class)->blocksFor($product->id) : collect();
             if ($access['cost_blocks']) {
@@ -217,11 +251,16 @@ final class ProductWorkspace
         ];
     }
 
-    private const PROFILE_SHOWN = ['costing_mode', 'default_catering_rate', 'default_quote_unit_id', 'minimum_qty', 'production_station'];
+    private const PROFILE_SHOWN = ['costing_mode', 'default_catering_rate', 'default_quote_unit_id', 'minimum_qty', 'production_station',
+        // CATERING-SIMPLIFY-1: what the Catering Products pop-up edited.
+        'catering_enabled', 'allow_party_supply', 'is_complimentary', 'production_label', 'production_label_ur', 'instructions'];
 
-    private function profileSaved(?CateringProductProfile $profile): array
+    /** The profile as saved, with the product's Urdu name (a product translation, written by the same writer). */
+    private function profileSaved(?CateringProductProfile $profile, ?Product $product): array
     {
-        return $this->profileState($profile ? ['costing_mode' => $profile->costingMode()] + $profile->only(self::PROFILE_SHOWN) : []);
+        $urdu = $product ? \App\Models\Tenant\ProductTranslation::where('product_id', $product->id)->where('language_code', 'ur')->value('name') : null;
+
+        return $this->profileState((['name_ur' => $urdu]) + ($profile ? ['costing_mode' => $profile->costingMode()] + $profile->only(self::PROFILE_SHOWN) : []));
     }
 
     private function profileState(array $p): array
@@ -231,8 +270,29 @@ final class ProductWorkspace
             'default_catering_rate' => self::num($p['default_catering_rate'] ?? null),
             'default_quote_unit_id' => self::id($p['default_quote_unit_id'] ?? null),
             'minimum_qty'           => self::num($p['minimum_qty'] ?? null),
-            'production_station'    => trim((string) ($p['production_station'] ?? '')) ?: null,
+            'production_station'    => self::text($p['production_station'] ?? null),
+            // A new profile starts as the Catering Products screen starts one: on, party supply allowed, not free.
+            'catering_enabled'      => self::flag($p['catering_enabled'] ?? null, true),
+            'allow_party_supply'    => self::flag($p['allow_party_supply'] ?? null, true),
+            'is_complimentary'      => self::flag($p['is_complimentary'] ?? null, false),
+            'production_label'      => self::text($p['production_label'] ?? null),
+            'production_label_ur'   => self::text($p['production_label_ur'] ?? null),
+            'instructions'          => self::text($p['instructions'] ?? null),
+            'name_ur'               => self::text($p['name_ur'] ?? null),
         ];
+    }
+
+    private static function text($v): ?string
+    {
+        return is_scalar($v) && trim((string) $v) !== '' ? trim(str_replace("
+", "
+", (string) $v)) : null;
+    }
+
+    /** A yes / no as posted ("1" / "0") or as saved; nothing at all is the default. */
+    private static function flag($v, bool $default): bool
+    {
+        return $v === null || $v === '' ? $default : filter_var($v, FILTER_VALIDATE_BOOLEAN);
     }
 
     private function blocksSaved(Collection $blocks): array
@@ -321,7 +381,7 @@ final class ProductWorkspace
             $saved = match ($s) {
                 'recipe' => $this->recipeSaved($product ? $this->currentRecipe($product) : null),
                 'bom' => $this->bomSaved($product ? $this->currentBom($product) : null),
-                'catering' => $this->profileSaved($product ? CateringProductProfile::where('product_id', $product->id)->first() : null),
+                'catering' => $this->profileSaved($product ? CateringProductProfile::where('product_id', $product->id)->first() : null, $product),
                 'cost_blocks' => $this->blocksSaved($product ? app(CateringCostBlockService::class)->blocksFor($product->id) : collect()),
             };
             if (self::fingerprint($saved) !== $in['_was']) {
@@ -487,19 +547,15 @@ final class ProductWorkspace
     private function saveProfile(Product $product, array $in): void
     {
         $profile = CateringProductProfile::where('product_id', $product->id)->first();
-        $shown = $this->profileState($in + ($profile ? $this->profileSaved($profile) : []));
+        // What was not posted (the blocks part making a new profile posts nothing) keeps its saved value — the Urdu name
+        // included, so a dish that only gets its first block never loses it.
+        $shown = $this->profileState($in + $this->profileSaved($profile, $product));
         $data = $this->profiles->validate($shown + [
             'product_id' => $product->id,
             // Not shown here — kept from the saved profile; a new one starts as the Catering Profiles screen starts it.
-            // (No name_ur: the Urdu name is left as it is.)
             'pricing_mode'        => $profile?->pricing_mode ?? CateringProductProfile::PRICING_FIXED,
-            'catering_enabled'    => $profile ? (bool) $profile->catering_enabled : true,
-            'allow_party_supply'  => $profile ? (bool) $profile->allow_party_supply : true,
-            'is_complimentary'    => $profile ? (bool) $profile->is_complimentary : false,
-            'production_label'    => $profile?->production_label,
-            'production_label_ur' => $profile?->production_label_ur,
-            'instructions'        => $profile?->instructions,
-        ], $profile, ['default_catering_rate' => 'catering rate', 'minimum_qty' => 'minimum', 'default_quote_unit_id' => 'quoted in']);
+        ], $profile, ['default_catering_rate' => 'catering rate', 'minimum_qty' => 'minimum', 'default_quote_unit_id' => 'quoted in',
+            'production_label' => 'kitchen label', 'production_label_ur' => 'Urdu kitchen label', 'name_ur' => 'Urdu name']);
         $this->profiles->save($profile, $data);
     }
 }

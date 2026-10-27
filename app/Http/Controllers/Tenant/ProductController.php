@@ -458,6 +458,11 @@ class ProductController extends Controller
             }
             $request->merge(\App\Support\ProductCards::resolve($business, $request->all(), $product));
             $this->guardScreenV2($request, $product);
+            // CATERING-SIMPLIFY-1: a caterer's cost-block dish shows its block price, locked — whatever is posted, the
+            // stored counter price stays as it is (the locked box posts nothing).
+            if ($product && ($this->priceLock($request, $product)['locked'] ?? false)) {
+                $request->merge(['default_selling_price' => $product->default_selling_price ?? 0]);
+            }
         } elseif ($product && $product->is_stock_tracked && ! $request->boolean('is_stock_tracked')) {
             // KHATRI-STOCK-TO-PNL-1: on the old form, unticking "Track Stock" while stock is on hand would leave
             // that stock and its 1400 value in the books with no way back. The new screen already refuses this.
@@ -774,6 +779,21 @@ class ProductController extends Controller
         return $context === 'manufacturing' ? '/manufacturing/products' : '/products';
     }
 
+    /**
+     * CATERING-SIMPLIFY-1 — the dish's block price and whether its Selling price is locked to it
+     * (ProductWorkspace::blockPrice). A posted "Priced by" counts only from a user who may edit the Event costing tab.
+     */
+    private function priceLock(Request $request, Product $product): ?array
+    {
+        $workspace = app(\App\Services\Products\ProductWorkspace::class);
+        $business = $this->areaBusiness($request);
+        $mode = $request->input('catering.costing_mode');
+        $mayPost = is_string($mode) && $this->usesWorkspace($request)
+            && $workspace->access($product, $business, $this->areaCards($request, $product))['catering'];
+
+        return $workspace->blockPrice($product, $business, $mayPost ? $mode : null);
+    }
+
     /** W3/W4 S3c — the workspace sections ride only on a post from the new screen, where the owner switched it on. */
     private function usesWorkspace(Request $request): bool
     {
@@ -850,6 +870,11 @@ class ProductController extends Controller
                 + array_fill_keys($ws['kept'], 'kept as saved — changing it needs its own permission or module'),
             // W3/W4 S3c: the Recipe / Bill of materials / Event costing tabs this user may use here.
             'ws'              => $ws,
+            // CATERING-SIMPLIFY-1: a dish's event price from its cost blocks; a caterer's Selling price box is locked to it.
+            // After a refused save the posted "Priced by" decides, as the tab then shows it.
+            'priceLock'       => $product ? app(\App\Services\Products\ProductWorkspace::class)->blockPrice($product, $business,
+                ($ws['access']['catering'] ?? false) && is_string(old('catering.costing_mode')) && ! session('errors')?->has('catering.stale')
+                    ? old('catering.costing_mode') : null) : null,
             'misfitRole'      => $product && \App\Support\ProductCards::isMisfit($business, $product, $card)
                 ? (self::PLAIN_ROLES[$product->product_kind ?: Product::KIND_SALE_ITEM] ?? (string) $product->product_kind) : null,
             'barcode'         => $variant?->barcode ?? $product?->barcodes()->where('is_primary', true)->value('barcode'),
