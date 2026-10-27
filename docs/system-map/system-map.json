@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-27T09:49:48+00:00",
+    "built_at": "2026-10-27T11:41:15+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "d27d31ec",
     "work": [
@@ -15,10 +15,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-catedit",
             "branch": "feat/catering-simplify-20261027",
-            "head": "df80ff05",
+            "head": "05ad890c",
             "behind_prod": 0,
-            "ahead_of_prod": 1,
-            "last_commit": "2026-10-27\u00b7CATERING-SIMPLIFY-1: one place to price and edit a catering dish",
+            "ahead_of_prod": 4,
+            "last_commit": "2026-10-27\u00b7CATERING-SIMPLIFY-1: saving a caterer's cost-block dish makes the block price its counter price",
             "uncommitted_files": 0
         },
         {
@@ -33,10 +33,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-verify-upv",
             "branch": "(detached)",
-            "head": "df80ff05",
+            "head": "05ad890c",
             "behind_prod": 0,
-            "ahead_of_prod": 1,
-            "last_commit": "2026-10-27\u00b7CATERING-SIMPLIFY-1: one place to price and edit a catering dish",
+            "ahead_of_prod": 4,
+            "last_commit": "2026-10-27\u00b7CATERING-SIMPLIFY-1: saving a caterer's cost-block dish makes the block price its counter price",
             "uncommitted_files": 0
         },
         {
@@ -671,7 +671,7 @@
             "modified": "2026-10-27"
         }
     ],
-    "git": "df80ff05",
+    "git": "05ad890c",
     "source": {
         "tenant_db": "pos_test_tenant_cse",
         "master_db": "pos_test_master_cse"
@@ -5628,6 +5628,38 @@
             ],
             "used_by": [
                 {
+                    "route": "tenant.products.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.show",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.update",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.destroy",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.api.catalog.barcode.lookup",
+                    "why": "via CateringCostBlockService"
+                },
+                {
                     "route": "tenant.catering.estimates.update",
                     "why": "via CateringLineCostBlockService"
                 },
@@ -5676,6 +5708,26 @@
                     "why": "model CateringEstimateLineCostBlock"
                 },
                 {
+                    "route": "tenant.catering.materials.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.update",
+                    "why": "via CateringCostBlockService"
+                },
+                {
                     "route": "tenant.catering.commercial-rates.index",
                     "why": "via CateringCommercialRateBookService"
                 },
@@ -5718,9 +5770,29 @@
                 {
                     "route": "tenant.catering.making-adjustment.apply-drafts",
                     "why": "via CateringMakingAdjustmentService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.update",
+                    "why": "via CateringCostBlockService"
                 }
             ],
-            "used_by_count": 23
+            "used_by_count": 41
         },
         {
             "name": "catering_estimate_line_instruction",
@@ -5812,6 +5884,38 @@
             ],
             "used_by": [
                 {
+                    "route": "tenant.products.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.show",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.update",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.destroy",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.api.catalog.barcode.lookup",
+                    "why": "via CateringCostBlockService"
+                },
+                {
                     "route": "tenant.catering.events.index",
                     "why": "via CateringEstimateService"
                 },
@@ -5900,6 +6004,26 @@
                     "why": "model CateringEstimateLine"
                 },
                 {
+                    "route": "tenant.catering.materials.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.update",
+                    "why": "via CateringCostBlockService"
+                },
+                {
                     "route": "tenant.catering.commercial-rates.index",
                     "why": "via CateringCommercialRateBookService"
                 },
@@ -5942,9 +6066,29 @@
                 {
                     "route": "tenant.catering.making-adjustment.apply-drafts",
                     "why": "via CateringMakingAdjustmentService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.update",
+                    "why": "via CateringCostBlockService"
                 }
             ],
-            "used_by_count": 33
+            "used_by_count": 51
         },
         {
             "name": "catering_estimates",
@@ -6025,6 +6169,38 @@
                     "why": "via CateringCalendarService"
                 },
                 {
+                    "route": "tenant.products.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.show",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.update",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.destroy",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.api.catalog.barcode.lookup",
+                    "why": "via CateringCostBlockService"
+                },
+                {
                     "route": "tenant.catering.events.index",
                     "why": "via CateringEstimateService"
                 },
@@ -6111,6 +6287,26 @@
                 {
                     "route": "tenant.catering.estimate-lines.use-calculated-rate",
                     "why": "model CateringEstimate"
+                },
+                {
+                    "route": "tenant.catering.materials.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.update",
+                    "why": "via CateringCostBlockService"
                 },
                 {
                     "route": "tenant.catering.commercial-rates.index",
@@ -6231,9 +6427,29 @@
                 {
                     "route": "tenant.catering.final-invoices.email",
                     "why": "model CateringEstimate"
+                },
+                {
+                    "route": "tenant.manufacturing.products.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.update",
+                    "why": "via CateringCostBlockService"
                 }
             ],
-            "used_by_count": 53
+            "used_by_count": 71
         },
         {
             "name": "catering_event_reminders",
@@ -7484,6 +7700,38 @@
             ],
             "used_by": [
                 {
+                    "route": "tenant.products.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.show",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.update",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.products.destroy",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.api.catalog.barcode.lookup",
+                    "why": "via CateringCostBlockService"
+                },
+                {
                     "route": "tenant.catering.estimates.update",
                     "why": "via CateringLineCostBlockService"
                 },
@@ -7532,6 +7780,26 @@
                     "why": "via CateringLineCostBlockService"
                 },
                 {
+                    "route": "tenant.catering.materials.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.catering.materials.update",
+                    "why": "via CateringCostBlockService"
+                },
+                {
                     "route": "tenant.catering.material-rates.index",
                     "why": "model CateringMaterialRate"
                 },
@@ -7554,9 +7822,29 @@
                 {
                     "route": "tenant.catering.cost-blocks.update",
                     "why": "model CateringMaterialRate"
+                },
+                {
+                    "route": "tenant.manufacturing.products.index",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.create",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.store",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.edit",
+                    "why": "via CateringCostBlockService"
+                },
+                {
+                    "route": "tenant.manufacturing.products.update",
+                    "why": "via CateringCostBlockService"
                 }
             ],
-            "used_by_count": 18
+            "used_by_count": 36
         },
         {
             "name": "catering_printer_mappings",
@@ -43223,7 +43511,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -43254,7 +43546,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -43285,7 +43581,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -43316,7 +43616,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -43347,7 +43651,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -43378,7 +43686,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -43409,7 +43721,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -48913,7 +49229,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -51315,7 +51635,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -51346,7 +51670,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -51377,7 +51705,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -51408,7 +51740,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -51439,7 +51775,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -52419,7 +52759,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -52450,7 +52794,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -52481,7 +52829,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -52512,7 +52864,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
@@ -52543,7 +52899,11 @@
                 "manufacturing_boms",
                 "product_translations",
                 "recipes",
-                "recipe_ingredients"
+                "recipe_ingredients",
+                "catering_estimates",
+                "catering_estimate_lines",
+                "catering_estimate_line_cost_blocks",
+                "catering_material_rates"
             ]
         },
         {
