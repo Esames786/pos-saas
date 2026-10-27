@@ -172,3 +172,29 @@ width).
   - After: smoke, permissions unchanged, reconciliation.
   - A read-only probe that each tenant's four screens open.
 - No data change, so nothing to undo beyond a code revert.
+
+## Results (27 Oct)
+
+- **Built:** `df80ff05`; system map rebuilt `956e67cf`. Not pushed, not deployed.
+- **New tests:** `CateringSimplifyMySqlTest` has 6 tests. With `ProductWorkspace` and `ProductNavCleanup`: 23 / 23 pass.
+- **Each guard bites:** 7 / 7. Each was broken on purpose, its test failed, and the file was restored (md5 checked).
+  1. the stored counter price is kept;
+  2. a posted "Priced by" counts only from a user who may edit the Event costing tab;
+  3. a first block keeps the Urdu name;
+  4. voided receipts are not purchases;
+  5. the pop-up data survives an apostrophe;
+  6. the book's last rate decides the unit first;
+  7. one Edit where the product form opens.
+- **Browser walk:** local test store, desktop 1366 px and phone 390 px, 25 checks pass, no script errors. Save was never
+  pressed.
+- **Frozen related run** at `df80ff05` (detached `pos-saas-verify-upv`, DB set `_relz`, HEAD unchanged, tree clean
+  before and after): 211 tests, 3 fail. All 3 fail the same way on the production base `d27d31ec`:
+  - `GrnVoidMySqlTest` ×2. A billed receipt is still voidable in the test. The void guard is in `voidGrn`; the test
+    makes its bill by calling the controller directly and does not check the answer.
+  - `ProductScreenV2MySqlTest::test_each_business_sees_only_its_own_cards` ("catering top button = POS"). It now also
+    fails alone, on the base.
+- **Unit:** 129 tests, the same 3 known failures as earlier release runs (`CateringClientFeedbackUiRegression`,
+  `EscPosReportPayload`, `DeliveryRiderReassignmentRegression`).
+- **Note for the release:** an edit page opened before the deploy and saved after it with an Event costing change
+  is refused once ("changed on the Catering screen"). The tab's saved state now includes more fields. Opening the page
+  again fixes it.
