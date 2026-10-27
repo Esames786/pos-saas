@@ -217,3 +217,40 @@ width).
   - blocks with no price never set it to 0.
 - **Production probe** (`cs_probe.php`, GET only) tried locally: OK on this branch; 8 failures on the production code
   `d27d31ec`, so it can tell the two apart.
+
+## Deployed (27 Oct 2026, ~12:40 UTC) — owner: "Copy price, then deploy"
+
+**Release.** Merge `a06a5b57` (tree identical to the tested branch head `09ad9e87`; code as frozen-tested at
+`05ad890c`).
+- Backup `20261027_121816`, COVERAGE OK 13/13.
+- `deploy.sh`: nothing to migrate, tenants ok = 13, DEPLOY COMPLETE.
+
+**After the deploy** (read-only):
+- **Smoke:** clean 13 / 13 (tb_diff 0, neg_on_disallowed 0, department_negative 0).
+- **Permissions:** `PERMISSIONS OK`. Nothing gained or lost; no new route.
+- **Reconciliation:** GL, stock and supplier figures identical on every tenant. The script flagged 5 differences, all
+  on the three live restaurants' POS tables (`sales_order_lines` fewer old rows, `kot_batch_lines` changed). They are
+  live use in the window:
+  - an open order saved at the POS deletes its lines and inserts them again (`HeldSaleController`,
+    `SalesOrderController`);
+  - `kot_batch_lines.sales_order_line_id` is ON DELETE SET NULL, which changes the row without `updated_at`.
+  - A read-only check (`recon_explain.php`) shows the gone lines belong to orders saved in the window, which got their
+    lines back:
+
+    | Tenant | Lines gone | Orders saved (paid / held) | Lines re-inserted | KOT links blanked |
+    |---|---|---|---|---|
+    | kashiffood | 16 | 6 / 1 | 18 | 15 |
+    | khatribiryani | 14 | 5 / 2 | 16 | 16 |
+    | tawakalkashif | 3 | 2 / 0 | 3 | 8 |
+
+  - No product and no catering profile was saved in the window.
+- **Probe** (`cs_probe.php`, GET only, as each Owner): PROBE OK on every tenant.
+  - **kashifkitchen:**
+    - Catering Products shows one Edit per row (25 on page 1);
+    - Material Cost Rates: 986 materials with a unit default, 8 with a last purchase;
+    - Commercial Charge Rates OK;
+    - cost-block dish #941: Selling price locked at Rs 1,895.
+  - The other 12 tenants answer 403 on the catering screens, as before (no catering in their plan).
+- **Log:** 0 errors since 12:00 UTC.
+- **Not done:** no dish was saved and no rate was recorded on production. Kashif Kitchen's counter prices change only
+  when each dish is next saved in the product form.
