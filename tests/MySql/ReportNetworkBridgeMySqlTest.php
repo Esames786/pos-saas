@@ -119,6 +119,26 @@ class ReportNetworkBridgeMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /**
+     * REPORT-NETWORK-ITEMS-DEALS-1 — the Report Center's network ITEMS carries the deal lines, so its
+     * total already holds the deal. It must close on delivery alone, never "Plus Deals 500" followed
+     * by "Plus Other Charges -500".
+     */
+    public function test_network_items_with_a_deal_do_not_count_the_deal_twice(): void
+    {
+        $c = DB::connection('tenant');
+        $combo = $c->table('combos')->insertGetId([
+            'branch_id' => $this->branchId, 'code' => 'CB-FAM', 'name' => 'Family Deal', 'price' => 500,
+            'sort_order' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $drink = $this->makeProduct($this->makeCategory(['name' => 'Drinks']), ['name' => 'Soft Drink']);
+        $sale = $this->makeSale($this->branchId, ['order_type' => 'takeaway', 'subtotal' => 500, 'grand_total' => 500, 'paid_amount' => 500]);
+        $this->makeSaleLine($sale, $drink, ['product_name' => 'Family Deal', 'combo_id' => $combo, 'line_kind' => 'combo_header', 'quantity' => 1, 'unit_price' => 500, 'line_total' => 500]);
+        $this->makeSaleLine($sale, $drink, ['product_name' => 'Soft Drink', 'combo_id' => $combo, 'line_kind' => 'component', 'quantity' => 1, 'unit_price' => 0, 'line_total' => 0]);
+
+        $this->assertSame(['Plus Delivery Charge' => 30.0, '= NET SALES' => 830.0], $this->networkLines('items'));
+    }
+
     /** The lines come after the section's total and before the paper cut. */
     public function test_the_lines_sit_under_grand_total_and_before_the_cut(): void
     {

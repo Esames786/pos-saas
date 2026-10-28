@@ -620,10 +620,15 @@ class EscPosPayloadService
                     . $figures($indent2, QtyMix::tag($row->sold_qty, $row->sold_mix ?? null), QtyMix::tag($row->returned_qty, $row->returned_mix ?? null), QtyMix::tag($row->net_qty, $row->net_mix ?? null),
                         $row->net, $row->returns_amount, $row->net_value);
             }
+            // REPORT-NETWORK-ITEMS-DEALS-1: the Report Center sends ITEMS with the deal lines still in
+            // them (the POS Quick Report leaves them out). A total that already holds the deals must
+            // not be handed "Plus Deals" again — that printed Plus Deals 119,425 and then Plus Other
+            // Charges -119,425 to cancel it.
+            $itemsHoldDeals = $items->contains(fn ($row) => ! empty($row->combo_id));
             $out .= "\n" . $big('TOTAL') . "\n" . self::BOLD_ON
                 . $figures('', QtyMix::tag($items->sum('sold_qty'), QtyMix::sum($items, 'sold_mix', 'sold_qty')), QtyMix::tag($items->sum('returned_qty'), QtyMix::sum($items, 'returned_mix', 'returned_qty')), QtyMix::tag($items->sum('net_qty'), QtyMix::sum($items, 'net_mix', 'net_qty')),
                     $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value'))
-                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n" . $bridgeLines((float) $items->sum('net_value'), true);
+                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n" . $bridgeLines((float) $items->sum('net_value'), ! $itemsHoldDeals);
         }
 
         // ITEMS BY CATEGORY — ITEMS-BY-CATEGORY-1, laid out by THERMAL-ITEM-LAYOUT-1.
