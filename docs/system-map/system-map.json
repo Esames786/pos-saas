@@ -1,15 +1,24 @@
 {
-    "built_at": "2026-10-28T07:52:42+00:00",
+    "built_at": "2026-10-28T08:51:13+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "f1a64bb8",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas-reportbridge",
             "branch": "fix/report-network-bridge-20261028",
-            "head": "ba6aaeab",
+            "head": "e891c84f",
             "behind_prod": 0,
-            "ahead_of_prod": 1,
-            "last_commit": "2026-10-28\u00b7REPORT-NETWORK-BRIDGE-1: the report sent to a network printer closes on Delivery Charge / NET SALES like the manual print",
+            "ahead_of_prod": 2,
+            "last_commit": "2026-10-28\u00b7REPORT-NETWORK-BRIDGE-1 docs: proof from the prod print jobs, the two print roads, what was left alone; system map rebuilt",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-tablemove",
+            "branch": "fix/move-table-clears-cart-20261022",
+            "head": "2f38cd0a",
+            "behind_prod": 0,
+            "ahead_of_prod": 6,
+            "last_commit": "2026-10-28\u00b7Merge REPORT-NETWORK-BRIDGE-1 into MOVE-TABLE-CART-1 for one deploy",
             "uncommitted_files": 0
         },
         {
@@ -38,6 +47,15 @@
             "ahead_of_prod": 0,
             "last_commit": "2026-10-27\u00b7PNL-DETAIL-1: a test for the PDF head total under nested heads; results recorded",
             "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-product-parity",
+            "branch": "feat/product-parity-20261028",
+            "head": "f1a64bb8",
+            "behind_prod": 0,
+            "ahead_of_prod": 0,
+            "last_commit": "2026-10-27\u00b7Deployment record: CATERING-SIMPLIFY-1 live (a06a5b57)",
+            "uncommitted_files": 10
         },
         {
             "path": "D:/laragon2/www/pos-saas-verify-upv",
@@ -226,15 +244,6 @@
             "behind_prod": 97,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-22\u00b7Reset: the Branch Server refusal stays tested; the stored-balance gap recorded as its own defect (RESET-BALANCES-1)",
-            "uncommitted_files": 0
-        },
-        {
-            "path": "D:/laragon2/www/pos-saas-tablemove",
-            "branch": "fix/move-table-clears-cart-20261022",
-            "head": "b6cc8149",
-            "behind_prod": 111,
-            "ahead_of_prod": 2,
-            "last_commit": "2026-10-22\u00b7MOVE-TABLE-CART-1 docs: what happened on 22 Oct, the fix, impact from the map, tests; system map rebuilt",
             "uncommitted_files": 0
         },
         {
@@ -555,33 +564,8 @@
     ],
     "plans": [
         {
-            "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
-            "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/cash-book-report-2026-10-10.md",
-            "title": "CASH-BOOK-REPORT-1 \u2014 Cash Book report: kitna aaya, kitna gaya, kis cash/bank me, tareekh-war",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/category-parent-guard-2026-10-21.md",
-            "title": "CATEGORY-PARENT-GUARD-1 \u2014 a category can never sit inside its own sub-category (21 Oct 2026)",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
-            "title": "Catering product model \u2014 what is wrong, and the work to fix it",
-            "modified": "2026-10-28"
-        },
-        {
             "file": "docs/plans/catering-simplify-2026-10-27.md",
             "title": "CATERING-SIMPLIFY-1 \u2014 one place to price and edit a catering dish (27 Oct 2026)",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
-            "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
             "modified": "2026-10-28"
         },
         {
@@ -590,105 +574,130 @@
             "modified": "2026-10-28"
         },
         {
+            "file": "docs/plans/pnl-detail-and-finance-pdfs-2026-10-26.md",
+            "title": "P&L detail + finance PDFs (PNL-DETAIL-1 + FINANCE-PDF-DOWNLOADS-1) \u2014 26 Oct 2026",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/product-nav-cleanup-2026-10-26.md",
+            "title": "Product-setup navigation cleanup (PRODUCT-NAV-1) \u2014 26 Oct 2026",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/report-network-bridge-2026-10-28.md",
+            "title": "REPORT-NETWORK-BRIDGE-1 \u2014 network par bheji report NET SALES tak nahi pahunchti thi",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/reset-supplier-bill-tables-2026-10-22.md",
+            "title": "Transaction reset: supplier-invoice tables + fail closed (22 Oct 2026)",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/rollout-completion-2026-10-25.md",
+            "title": "Rollout completion \u2014 counted items in parts, and one defaults policy (25 Oct 2026)",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/supplier-credit-clarity-2026-10-26.md",
+            "title": "Supplier credit clarity (SUPPLIER-CREDIT-CLARITY-1) \u2014 26 Oct 2026",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/supplier-invoice-review-fixes-2026-10-21.md",
+            "title": "Supplier Invoice \u2014 review fixes before release (21 Oct 2026)",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/supplier-net-bill-2026-10-21.md",
+            "title": "Supplier bill net of an earlier return \u2014 posting matrix (21 Oct 2026)",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/unified-business-contracts-2026-10-21.md",
+            "title": "Unified business \u2014 contracts (UB-03), 21 Oct 2026",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/units-packs-batch-2026-10-23.md",
+            "title": "Units & packs batch \u2014 decimal packs, gram entry, packs on the normal POS, reports (plan, 23 Oct 2026)",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/units-packs-w2-slice-a-2026-10-22.md",
+            "title": "W2 slice A \u2014 one rule for kg/g, L/ml, m/cm + the unit journeys proven end to end (22 Oct 2026)",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/void-purge-2026-10-22.md",
+            "title": "VOID-PURGE-1 \u2014 permanently remove an entry that was voided on its own date (22 Oct 2026)",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/w2-quantity-entry-points-2026-10-22.md",
+            "title": "W2 quantity rules \u2014 where they apply and where they do not yet (22 Oct 2026)",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/w2b-quantity-rules-2026-10-22.md",
+            "title": "W2-B \u2014 quantity rules on the server (22 Oct 2026)",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/w2c-purchase-stock-quantities-2026-10-23.md",
+            "title": "W2-C \u2014 one quantity rule for purchasing and stock (plan, 23 Oct 2026)",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/w3-w4-product-purchase-design-2026-10-23.md",
+            "title": "W3 / W4 \u2014 one product screen and one purchase workspace (design, 23 Oct 2026)",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
+            "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
+            "modified": "2026-10-22"
+        },
+        {
+            "file": "docs/plans/cash-book-report-2026-10-10.md",
+            "title": "CASH-BOOK-REPORT-1 \u2014 Cash Book report: kitna aaya, kitna gaya, kis cash/bank me, tareekh-war",
+            "modified": "2026-10-22"
+        },
+        {
+            "file": "docs/plans/category-parent-guard-2026-10-21.md",
+            "title": "CATEGORY-PARENT-GUARD-1 \u2014 a category can never sit inside its own sub-category (21 Oct 2026)",
+            "modified": "2026-10-22"
+        },
+        {
+            "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
+            "title": "Catering product model \u2014 what is wrong, and the work to fix it",
+            "modified": "2026-10-22"
+        },
+        {
+            "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
+            "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
+            "modified": "2026-10-22"
+        },
+        {
             "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
             "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
-            "modified": "2026-10-28"
+            "modified": "2026-10-22"
         },
         {
             "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
             "title": "Two order counts on one dashboard \u2014 research",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/deals-as-their-own-report-heads-2026-09-02.md",
-            "title": "Deals belong under their own heads \u2014 research",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/grn-extra-charges-2026-10-02.md",
-            "title": "GRN-EXTRA-CHARGES-1 \u2014 cartage ko product ki jagah \"Extra Charges\" banana",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/grn-void-and-starter-shifts-2026-10-20.md",
-            "title": "GRN void + starter plans' counter (20 Oct 2026)",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/held-sale-dead-session-2026-09-12.md",
-            "title": "HELD-SALE-DEAD-SESSION-1 \u2014 band table par bill hold ho jata hai, phir kabhi pay nahi hota",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/hide-amounts-from-operators-2026-09-01.md",
-            "title": "Hide the money from the counter \u2014 research before building",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/items-by-category-section-2026-09-03.md",
-            "title": "ITEMS-BY-CATEGORY-1 \u2014 Item ka category-wise breakup, apne alag section me",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/items-in-category-sequence-2026-09-03.md",
-            "title": "ITEM-CATEGORY-SEQUENCE \u2014 Item report category ki tarteeb me, purane software ki tarah",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/kashif-client-feedback-2026-09-15.md",
-            "title": "Client feedback, 15 September \u2014 chaar cheezen",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/kashif-document-pdf-2026-09-09.md",
-            "title": "Quotation ka PDF \u2014 aur ek hadd jo chhupai nahi gayi",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/kashif-event-history-revert-2026-08-23.md",
-            "title": "Event Change History + Revert \u2014 research + implementation plan",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/kashif-food-first-floor-tables-2026-08-30.md",
-            "title": "Kashif Food \u2014 dine-in floors & tables",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/kashif-food-operator-permission-hide-2026-08-31.md",
-            "title": "KASHIF-OPERATOR-HIDE \u2014 jo owner ne screenshots par cross kiya",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/kashif-foods-pulao-subcategories-2026-09-17.md",
-            "title": "KF-PULAO-SUBCAT-1 \u2014 The Kashif Foods: \"Chicken Pulao\" \u2192 \"Pulao\" + Chicken / Beef",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/kashif-hide-amounts-gap-2026-09-04.md",
-            "title": "Kashif Food \u2014 \"*** kyun nahi aa raha\" (research)",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/kashif-inline-table-editor-2026-09-09.md",
-            "title": "In-table editor \u2014 pehle FLOW MAP, phir plan",
-            "modified": "2026-10-28"
-        },
-        {
-            "file": "docs/plans/kashif-kitchen-go-live-2026-09-05.md",
-            "title": "Kashif Kitchen go-live \u2014 research + plan",
-            "modified": "2026-10-28"
+            "modified": "2026-10-22"
         }
     ],
-    "git": "ba6aaeab",
+    "git": "2f38cd0a",
     "source": {
         "tenant_db": "pos_test_tenant_tblfree",
         "master_db": "pos_test_master_tblfree"
     },
     "counts": {
-        "tables": 231,
-        "foreign_keys": 427,
-        "inferred_links": 223,
+        "tables": 240,
+        "foreign_keys": 430,
+        "inferred_links": 238,
         "screens": 739
     },
     "tables": [
@@ -1581,6 +1590,30 @@
                 },
                 {
                     "table": "department_handovers",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_auth_audit",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_consumed_assertions",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_local_meta",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_local_user_credentials",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_operational_stock_balances",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_operational_stock_baselines",
                     "col": "branch_id"
                 },
                 {
@@ -12944,6 +12977,339 @@
             "used_by_count": 48
         },
         {
+            "name": "edge_auth_audit",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "event varchar(48)",
+                "user_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "activation_epoch bigint unsigned",
+                "issuer_user_id bigint unsigned",
+                "jti varchar(64)",
+                "detail varchar(190)",
+                "ip varchar(45)",
+                "created_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "user_id",
+                    "table": "users"
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                },
+                {
+                    "col": "issuer_user_id",
+                    "table": "users"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_consumed_assertions",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "jti varchar(64)",
+                "purpose varchar(64)",
+                "user_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "activation_epoch bigint unsigned",
+                "consumed_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "user_id",
+                    "table": "users"
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_local_meta",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "singleton_guard tinyint unsigned",
+                "tenant_code varchar(190)",
+                "tenant_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "device_uuid varchar(64)",
+                "activation_epoch bigint unsigned",
+                "bootstrap_snapshot_uuid varchar(64)",
+                "bootstrap_schema varchar(64)",
+                "source_revision varchar(128)",
+                "manifest_hash varchar(128)",
+                "imported_at timestamp",
+                "runtime_state varchar(32)",
+                "last_error text",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "tenant_id",
+                    "table": "tenants",
+                    "cross_db": true
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_local_print_deliveries",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "print_job_id bigint unsigned",
+                "delivery_state varchar(20)",
+                "worker_uuid char(36)",
+                "lease_token char(64)",
+                "claimed_at timestamp",
+                "lease_expires_at timestamp",
+                "failure_count smallint unsigned",
+                "next_attempt_at timestamp",
+                "last_attempt_at timestamp",
+                "last_error varchar(500)",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [
+                {
+                    "col": "print_job_id",
+                    "table": "print_jobs",
+                    "on_delete": "RESTRICT"
+                }
+            ],
+            "inferred_out": [],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_local_print_worker_state",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "singleton_guard tinyint unsigned",
+                "state varchar(20)",
+                "worker_uuid char(36)",
+                "runtime_version varchar(64)",
+                "started_at timestamp",
+                "heartbeat_at timestamp",
+                "stop_requested_at timestamp",
+                "last_graceful_stop_at timestamp",
+                "last_error varchar(500)",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_local_user_credentials",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "user_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "activation_epoch bigint unsigned",
+                "credential_hash varchar(255)",
+                "credential_type varchar(16)",
+                "credential_version int unsigned",
+                "status varchar(16)",
+                "failed_attempts int unsigned",
+                "locked_until timestamp",
+                "enrolled_at timestamp",
+                "last_authenticated_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "user_id",
+                    "table": "users"
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_operational_stock_balances",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "balance_key varchar(64)",
+                "baseline_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "product_id bigint unsigned",
+                "product_variant_id bigint unsigned",
+                "quantity_on_hand decimal(14,3)",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [
+                {
+                    "col": "baseline_id",
+                    "table": "edge_operational_stock_baselines",
+                    "on_delete": "CASCADE"
+                }
+            ],
+            "inferred_out": [
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                },
+                {
+                    "col": "product_id",
+                    "table": "products"
+                },
+                {
+                    "col": "product_variant_id",
+                    "table": "product_variants"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_operational_stock_baselines",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "baseline_uuid char(26)",
+                "branch_id bigint unsigned",
+                "device_uuid varchar(64)",
+                "activation_epoch bigint unsigned",
+                "generation int unsigned",
+                "source_revision varchar(128)",
+                "content_hash varchar(128)",
+                "status varchar(20)",
+                "active_binding_key char(40)",
+                "accepted_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [
+                {
+                    "table": "edge_operational_stock_balances",
+                    "col": "baseline_id",
+                    "on_delete": "CASCADE"
+                },
+                {
+                    "table": "edge_operational_stock_movements",
+                    "col": "baseline_id",
+                    "on_delete": "RESTRICT"
+                }
+            ],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_operational_stock_movements",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "movement_uuid char(26)",
+                "baseline_id bigint unsigned",
+                "sale_uuid char(26)",
+                "line_uuid char(26)",
+                "product_id bigint unsigned",
+                "product_variant_id bigint unsigned",
+                "movement_type varchar(40)",
+                "direction varchar(10)",
+                "quantity decimal(14,3)",
+                "balance_after decimal(14,3)",
+                "activation_epoch bigint unsigned",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [
+                {
+                    "col": "baseline_id",
+                    "table": "edge_operational_stock_baselines",
+                    "on_delete": "RESTRICT"
+                }
+            ],
+            "inferred_out": [
+                {
+                    "col": "product_id",
+                    "table": "products"
+                },
+                {
+                    "col": "product_variant_id",
+                    "table": "product_variants"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
             "name": "expense_categories",
             "side": "tenant",
             "columns": [
@@ -18685,7 +19051,13 @@
                 }
             ],
             "domain": "Printing",
-            "fk_in": [],
+            "fk_in": [
+                {
+                    "table": "edge_local_print_deliveries",
+                    "col": "print_job_id",
+                    "on_delete": "RESTRICT"
+                }
+            ],
             "inferred_in": [],
             "models": [
                 "PrintJob"
@@ -20491,7 +20863,16 @@
                     "on_delete": "SET NULL"
                 }
             ],
-            "inferred_in": [],
+            "inferred_in": [
+                {
+                    "table": "edge_operational_stock_balances",
+                    "col": "product_variant_id"
+                },
+                {
+                    "table": "edge_operational_stock_movements",
+                    "col": "product_variant_id"
+                }
+            ],
             "models": [
                 "ProductVariant"
             ],
@@ -21521,6 +21902,14 @@
                 {
                     "table": "catering_estimate_line_cost_blocks",
                     "col": "material_product_id"
+                },
+                {
+                    "table": "edge_operational_stock_balances",
+                    "col": "product_id"
+                },
+                {
+                    "table": "edge_operational_stock_movements",
+                    "col": "product_id"
                 },
                 {
                     "table": "finished_good_receipt_lines",
@@ -34740,6 +35129,22 @@
                     "col": "created_by_user_id"
                 },
                 {
+                    "table": "edge_auth_audit",
+                    "col": "user_id"
+                },
+                {
+                    "table": "edge_auth_audit",
+                    "col": "issuer_user_id"
+                },
+                {
+                    "table": "edge_consumed_assertions",
+                    "col": "user_id"
+                },
+                {
+                    "table": "edge_local_user_credentials",
+                    "col": "user_id"
+                },
+                {
                     "table": "finished_good_receipts",
                     "col": "created_by_user_id"
                 },
@@ -39960,6 +40365,10 @@
                 }
             ],
             "inferred_in": [
+                {
+                    "table": "edge_local_meta",
+                    "col": "tenant_id"
+                },
                 {
                     "table": "edge_bootstrap_snapshots",
                     "col": "tenant_id"
