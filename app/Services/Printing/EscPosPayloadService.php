@@ -7,6 +7,7 @@ use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\SalesOrder;
 use App\Support\TenantClock;
 use App\Support\QtyMix;
+use App\Support\SalesBridge;
 use App\Support\ThermalLayout;
 
 class EscPosPayloadService
@@ -493,6 +494,22 @@ class EscPosPayloadService
             . self::BOLD_ON . $three('Qty', $qty($sQ), $qty($rQ), $qty($nQ))
             . $three('Amt', $money($sV), $money($rV), $money($nV)) . self::BOLD_OFF;
 
+        // REPORT-NETWORK-BRIDGE-1: the lines under a section's total that reach NET SALES, as the
+        // browser print has them. Only when the caller sent the bridge figures — without them there
+        // is nothing true to print.
+        $bridgeLines = function (float $lineNet, bool $excludesDeals = false) use ($r, $money, $cols, $big): string {
+            if (! is_array($r['bridge'] ?? null)) {
+                return '';
+            }
+            $out = '';
+            foreach (SalesBridge::lines($r['bridge'], $lineNet, $excludesDeals) as $line) {
+                $text = $this->columns($line['label'], $money($line['amount']), $cols);
+                $out .= ($line['total'] ? $big($text) : $text) . "\n";
+            }
+
+            return $out;
+        };
+
         $out = $this->center(strtoupper((string) ($r['meta']['business_name'] ?? 'SALES REPORT')), $cols) . "\n";
         $out .= $this->center('Sales Report (' . ($r['meta']['label'] ?? 'Standard') . ')', $cols) . "\n";
         $out .= $this->center(($r['meta']['date_from'] ?? '') . ' - ' . ($r['meta']['date_to'] ?? ''), $cols) . "\n";
@@ -585,7 +602,7 @@ class EscPosPayloadService
             $out .= "\n" . $big($this->center('GRAND TOTAL', $cols)) . "\n" . self::BOLD_ON
                 . $figures('', QtyMix::tag($cats->sum('sold_qty'), QtyMix::sum($cats, 'sold_mix', 'sold_qty')), QtyMix::tag($cats->sum('returned_qty'), QtyMix::sum($cats, 'returned_mix', 'returned_qty')), QtyMix::tag($cats->sum('net_qty'), QtyMix::sum($cats, 'net_mix', 'net_qty')),
                     $cats->sum('net'), $cats->sum('returns_amount'), $cats->sum('net_value'))
-                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
+                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n" . $bridgeLines((float) $cats->sum('net_value'));
         }
 
         // ITEMS — THERMAL-ITEM-LAYOUT-1.
@@ -606,7 +623,7 @@ class EscPosPayloadService
             $out .= "\n" . $big('TOTAL') . "\n" . self::BOLD_ON
                 . $figures('', QtyMix::tag($items->sum('sold_qty'), QtyMix::sum($items, 'sold_mix', 'sold_qty')), QtyMix::tag($items->sum('returned_qty'), QtyMix::sum($items, 'returned_mix', 'returned_qty')), QtyMix::tag($items->sum('net_qty'), QtyMix::sum($items, 'net_mix', 'net_qty')),
                     $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value'))
-                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
+                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n" . $bridgeLines((float) $items->sum('net_value'), true);
         }
 
         // ITEMS BY CATEGORY — ITEMS-BY-CATEGORY-1, laid out by THERMAL-ITEM-LAYOUT-1.
@@ -665,7 +682,7 @@ class EscPosPayloadService
             $out .= "\n" . $big($this->center('GRAND TOTAL', $cols)) . "\n" . self::BOLD_ON
                 . $figures('', QtyMix::tag($heads->sum('sold_qty'), QtyMix::sum($heads, 'sold_mix', 'sold_qty')), QtyMix::tag($heads->sum('returned_qty'), QtyMix::sum($heads, 'returned_mix', 'returned_qty')), QtyMix::tag($heads->sum('net_qty'), QtyMix::sum($heads, 'net_mix', 'net_qty')),
                     $heads->sum('net'), $heads->sum('returns_amount'), $heads->sum('net_value'))
-                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
+                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n" . $bridgeLines((float) $heads->sum('net_value'), true);
         }
 
         // DEALS — DEAL-CATEGORY-1.
