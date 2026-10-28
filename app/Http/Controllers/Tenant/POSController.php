@@ -222,6 +222,14 @@ class POSController extends Controller
         // with stock (expired too — the counter says it skips them) and its prescription flag. Off = nothing
         // extra is read and the payload is exactly today's.
         $medicalCounter = \App\Support\CounterPacks::enabled();
+        // UNITS-PACKS F3: the normal counter with "Packs at the normal counter" gets each item's packs only (no
+        // batches, no prescription): a scanned carton sells as 1 Carton. The page itself is unchanged.
+        $counterPacks = ! $medicalCounter && \App\Support\CounterPacks::packsOn();
+        // UNITS-PACKS F2: the weight popup offers g / kg only with the packs switch on; off, it is today's popup.
+        $gramEntry = \App\Support\PackUnits::enabled();
+        if ($counterPacks) {
+            $products->load('packUnits');
+        }
         $batchBalances = collect();
         $medToday = null;
         if ($medicalCounter) {
@@ -249,10 +257,23 @@ class POSController extends Controller
         foreach ($stockRows as $row) {
             $stockLookup[(int) $row->branch_id][(int) $row->product_id][(int) ($row->product_variant_id ?: 0)] = (float) $row->qty;
         }
+        // UB-W2 (22 Oct): no variant and the default variant are one stock — the sale takes from both
+        // (InventoryService::plainVariantIds), so the count of what can be made reads both too.
+        $defaultVariantIds = \App\Models\Tenant\ProductVariant::where('is_default', true)->pluck('id', 'product_id');
+        foreach ($stockLookup as $branchKey => $byProduct) {
+            foreach ($byProduct as $productKey => $byVariant) {
+                $defaultId = (int) ($defaultVariantIds[$productKey] ?? 0);
+                if ($defaultId && isset($byVariant[$defaultId])) {
+                    $plain = ($byVariant[0] ?? 0.0) + $byVariant[$defaultId];
+                    $stockLookup[$branchKey][$productKey][0] = $plain;
+                    $stockLookup[$branchKey][$productKey][$defaultId] = $plain;
+                }
+            }
+        }
 
         $unitConversion = app(UnitConversionService::class);
 
-        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion, $medicalCounter, $batchBalances, $medToday) {
+        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion, $medicalCounter, $counterPacks, $gramEntry, $batchBalances, $medToday) {
             $defaultVariant = $product->defaultVariant ?: $product->variants->first();
 
             $barcodes = $product->barcodes
@@ -350,6 +371,8 @@ class POSController extends Controller
                 'unit_type'         => $product->unit?->unit_type ?? 'quantity',
                 'allow_decimal_qty' => $product->unit && $product->unit->unit_type !== 'quantity',
                 'quantity_step'     => $product->unit && $product->unit->unit_type !== 'quantity' ? 0.001 : 1,
+                // UNITS-PACKS F2: the units the weight popup offers (g / kg for a kg item), each with its size in the stock unit.
+                'entry_units'       => $gramEntry ? \App\Support\StandardUnits::entryUnits($product->unit) : [],
                 'price'             => (float) ($defaultVariant?->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
                 'is_stock_tracked'  => (bool) $product->is_stock_tracked,
                 // Combo-only components ride in the payload for availability but are NOT grid tiles.
@@ -364,7 +387,8 @@ class POSController extends Controller
                 'is_recipe'                     => $recipe['is_recipe'],
                 'makeable_by_branch'            => $recipe['makeable'],
                 'limiting_ingredient_by_branch' => $recipe['limiting'],
-            ] + ($medicalCounter ? ['med' => \App\Support\CounterPacks::payload($product, $batchBalances->get($product->id, collect()), $medToday)] : []);
+            ] + ($medicalCounter ? ['med' => \App\Support\CounterPacks::payload($product, $batchBalances->get($product->id, collect()), $medToday)] : [])
+              + ($counterPacks ? ['packs' => \App\Support\CounterPacks::counterPacks($product)] : []);
         })->values();
 
         $combosPayload = Combo::with(['components.product.unit', 'components.variant'])
@@ -512,6 +536,7 @@ class POSController extends Controller
             'activeMode'       => $requestedMode,
             'kitchenTickets'   => $this->kitchenTicketsOn(),
             'medicalCounter'   => $medicalCounter,
+            'counterPacks'     => $counterPacks,
         ]);
     }
 
@@ -634,7 +659,11 @@ class POSController extends Controller
                     try {
                         $requiredPerBatch = $unitConversion->convert($requiredPerBatch, $ing->unit, $ip->unit);
                     } catch (\Throwable) {
-                        // no conversion path — use as-is
+                        // UB-08 (22 Oct): no conversion path means the sale is refused (RecipeConsumptionService), so
+                        // none can be made. It used to read the figure in the wrong unit (250 g as 250 kg).
+                        $minUnits = 0;
+                        $limitName = $ip->name;
+                        break;
                     }
                 }
 
@@ -838,6 +867,7 @@ class POSController extends Controller
                 $saleLine->unit_code = mb_substr($pack['pack_name'], 0, 20);
                 $saleLine->pack_unit_id = $pack['pack_unit_id'];
                 $saleLine->pack_factor = $pack['pack_factor'];
+                $saleLine->pack_size = $pack['pack_size'];
                 $saleLine->base_quantity = $pack['base_quantity'];
             }
             if (\App\Support\CounterPacks::enabled() && ! empty($line['batch_note'])) {

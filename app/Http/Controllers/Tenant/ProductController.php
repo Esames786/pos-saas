@@ -79,19 +79,84 @@ class ProductController extends Controller
             };
         }
 
-        // PRODUCT-LIST-PLAIN-1: where the new product screen is on, the list speaks the same plain words —
-        // what each item is (the business's own cards) and where it shows. Same filters underneath.
+        // PRODUCT-LIST-PLAIN-1 / W3/W4 S1: where the new product screen is on, the list keeps three things apart —
+        // STRUCTURE (simple, with variants, a deal), ROLE (the recognisable role names) and BEHAVIOUR (bought, sold,
+        // stock counted, on the counter, recipe-based) — and asks each behaviour Any / Yes / No, so two filters can
+        // never contradict. Presentation and filtering only: no role or flag is changed here.
         $plain = $this->usesScreenV2($request);
         $business = $plain ? \App\Support\Business::of() : null;
-        $kindLabels = $plain ? \App\Support\ProductCards::kindWords($business) : Product::KINDS;
+        $kindLabels = $plain ? self::PLAIN_ROLES : Product::KINDS;
+        $structure = null;
+        $chosenRole = null;
+        $chosenBeh = [];
+        $packsOn = false;
+        $combos = null;
+        if ($plain) {
+            $structure = in_array($request->input('structure'), ['simple', 'variants', 'combo'], true) ? (string) $request->input('structure') : null;
+            if ($structure === 'simple') {
+                $query->where(fn ($q) => $q->where('has_variants', false)->orWhereNull('has_variants'));
+            } elseif ($structure === 'variants') {
+                $query->where('has_variants', true);
+            }
+            $chosenRole = array_key_exists((string) $request->input('role'), self::PLAIN_ROLES) ? (string) $request->input('role') : null;
+            if ($chosenRole !== null) {
+                $query->where(function ($q) use ($chosenRole) {
+                    $q->where('product_kind', $chosenRole);
+                    if ($chosenRole === Product::KIND_SALE_ITEM) {
+                        $q->orWhereNull('product_kind');   // an unset role reads as Sale item
+                    }
+                });
+            }
+            foreach ((array) $request->input('beh', []) as $key => $answer) {
+                if (! array_key_exists((string) $key, self::BEHAVIOURS) || ! in_array($answer, ['yes', 'no'], true)) {
+                    continue;
+                }
+                $chosenBeh[$key] = $answer;
+                $yes = $answer === 'yes';
+                match ($key) {
+                    'bought'  => $query->where('is_purchasable', $yes),
+                    'sold'    => $query->where('is_sellable', $yes),
+                    'stock'   => $query->where('is_stock_tracked', $yes),
+                    // The rule the badge reads (Product::isPosVisible): active, sold, and shown on the counter.
+                    'counter' => $yes
+                        ? $query->where('status', 'active')->where('is_sellable', true)->where('is_pos_visible', true)
+                        : $query->where(fn ($q) => $q->where('status', '!=', 'active')->orWhere('is_sellable', false)->orWhere('is_pos_visible', false)),
+                    'recipe'  => $yes
+                        ? $query->where('inventory_consumption_method', 'recipe')
+                        : $query->where(fn ($q) => $q->where('inventory_consumption_method', '!=', 'recipe')->orWhereNull('inventory_consumption_method')),
+                };
+            }
+            $packsOn = \App\Support\PackUnits::enabled();
+            if ($packsOn) {
+                $query->with('packUnits');
+            }
+            // Deals (combos) are their own records: the Combo filter lists them, each opening the existing deal
+            // editor. A deal is never copied into the products table.
+            if ($structure === 'combo') {
+                $combos = \App\Models\Tenant\Combo::with('category')->withCount('components')
+                    ->when($request->filled('search'), fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', '%' . trim((string) $request->search) . '%')
+                        ->orWhere('code', 'like', '%' . trim((string) $request->search) . '%')))
+                    ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->category_id))
+                    ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+                    ->orderBy('name')->paginate(15)->withQueryString();
+            }
+        }
 
         return view('tenant.products.index', [
+            'plainStructure' => $structure,
+            'plainRole'   => $chosenRole,
+            'plainBeh'    => $chosenBeh,
+            'plainBehaviours' => self::BEHAVIOURS,
+            'plainPacksOn' => $packsOn,
+            'plainCombos' => $combos,
+            'plainDealCount' => $plain && $structure !== 'combo' ? \App\Models\Tenant\Combo::count() : 0,
             'products'    => $query->paginate(15)->withQueryString(),
             'categories'  => Category::where('is_active', true)->orderBy('name')->get(),
             'context'     => $context,
             'contextBase' => $this->contextBaseUrl($request, $context),
             'roleOptions' => collect($kindLabels)
-                ->filter(fn ($label, $kind) => in_array($kind, $kindsHere, true) || in_array($kind, $chosenRoles, true))->all(),
+                ->filter(fn ($label, $kind) => in_array($kind, $kindsHere, true) || in_array($kind, $chosenRoles, true) || $kind === $chosenRole)->all(),
+            'plainRoleNames' => self::PLAIN_ROLES,
             'flagOptions' => $plain ? \App\Support\ProductCards::FLAG_WORDS : self::FLAG_FILTERS,
             'chosenRoles' => $chosenRoles,
             'chosenFlags' => $chosenFlags,
@@ -101,6 +166,26 @@ class ProductController extends Controller
             'plainBusiness' => $business,
         ]);
     }
+
+    /** W3/W4 S1: the role names a shop recognises, the same for every business (the plain list). */
+    private const PLAIN_ROLES = [
+        Product::KIND_SALE_ITEM          => 'Sale item',
+        Product::KIND_RAW_MATERIAL       => 'Raw material',
+        Product::KIND_PACKAGING_MATERIAL => 'Packaging',
+        Product::KIND_SEMI_FINISHED      => 'Semi-finished',
+        Product::KIND_FINISHED_GOOD      => 'Finished good',
+        Product::KIND_SERVICE            => 'Service',
+        Product::KIND_COMBO_VIRTUAL      => 'Deal item',
+    ];
+
+    /** W3/W4 S1: what the system does with an item — each asked Any / Yes / No on the plain list. */
+    private const BEHAVIOURS = [
+        'bought'  => 'Bought',
+        'sold'    => 'Sold',
+        'stock'   => 'Stock counted',
+        'counter' => 'On the counter',
+        'recipe'  => 'Recipe-based',
+    ];
 
     /** PRODUCT-ROLE-FILTER-1: the visibility/behaviour filters, named as their badges are. */
     private const FLAG_FILTERS = [
@@ -128,7 +213,7 @@ class ProductController extends Controller
         $context = $this->productContext($request);
         $isCateringMaterials = $this->isCateringMaterials($request);
 
-        if ($this->usesScreenV2($request)) {
+        if ($this->usesFormV2($request)) {
             return view('tenant.products.form-v2', $this->screenV2Data(null, $request));
         }
 
@@ -150,9 +235,12 @@ class ProductController extends Controller
         // ONLINE-ORDERING-1: website hissa pehle validate — POS product adhoora save na ho.
         $website = app(\App\Services\OnlineOrdering\WebsiteFields::class);
         $website->validate($request);
+        // W3/W4 S3c: the Recipe / Bill of materials / Event costing tabs — checked now, written in the transaction below.
+        $workspace = app(\App\Services\Products\ProductWorkspace::class);
+        $touched = $this->usesWorkspace($request) ? $workspace->touched($request, null, $this->areaBusiness($request), $this->areaCards($request, null)) : [];
         $data['image_path'] = $this->handleImageUpload($request);
 
-        $product = DB::transaction(function () use ($data, $request) {
+        $product = DB::transaction(function () use ($data, $request, $workspace, $touched) {
             $product = Product::create($data);
 
             $product->translations()->updateOrCreate(
@@ -193,6 +281,10 @@ class ProductController extends Controller
                 \App\Support\PackUnits::sync($product, $this->packPlan);
             }
 
+            if ($touched) {
+                $workspace->apply($product, $touched, auth('tenant')->id());
+            }
+
             return $product;
         });
 
@@ -216,7 +308,7 @@ class ProductController extends Controller
     {
         $context = $this->productContext($request);
 
-        if ($this->usesScreenV2($request)) {
+        if ($this->usesFormV2($request)) {
             return view('tenant.products.form-v2', $this->screenV2Data($product, $request));
         }
 
@@ -225,7 +317,7 @@ class ProductController extends Controller
             'title'       => $this->isCateringMaterials($request)
                 ? 'Edit Material'
                 : ($context === 'manufacturing' ? 'Edit Manufacturing Product' : 'Edit Product'),
-            'categories'  => Category::where('is_active', true)->orderBy('name')->get(),
+            'categories'  => $this->categoriesFor($product),
             'units'       => $this->unitsFor($product),
             'context'     => $context,
             'contextBase' => $this->contextBaseUrl($request, $context),
@@ -235,11 +327,25 @@ class ProductController extends Controller
     /**
      * UB-10: the units an edit offers — the active ones, and always the item's own. A unit switched off used to be
      * missing, so the select showed "— Piece —" and an unchanged save took the item's unit away.
+     * W3/W4 S2: the same for the unit it is bought in (purchase_unit_id).
      */
     private function unitsFor(?Product $product)
     {
+        $own = array_values(array_filter([$product?->unit_id, $product?->purchase_unit_id]));
+
         return Unit::query()
-            ->where(fn ($q) => $q->where('is_active', true)->when($product?->unit_id, fn ($w, $id) => $w->orWhere('id', $id)))
+            ->where(fn ($q) => $q->where('is_active', true)->when($own, fn ($w) => $w->orWhereIn('id', $own)))
+            ->orderBy('name')->get();
+    }
+
+    /**
+     * W3/W4 S2: the categories an edit offers — the active ones, and always the item's own. A category switched off was
+     * missing, so the select posted "" and an unchanged save took the item out of its category.
+     */
+    private function categoriesFor(?Product $product)
+    {
+        return Category::query()
+            ->where(fn ($q) => $q->where('is_active', true)->when($product?->category_id, fn ($w, $id) => $w->orWhere('id', $id)))
             ->orderBy('name')->get();
     }
 
@@ -249,6 +355,9 @@ class ProductController extends Controller
         // ONLINE-ORDERING-1: website hissa pehle validate — POS product adhoora save na ho.
         $website = app(\App\Services\OnlineOrdering\WebsiteFields::class);
         $website->validate($request);
+        // W3/W4 S3c: the Recipe / Bill of materials / Event costing tabs — checked now, written in the transaction below.
+        $workspace = app(\App\Services\Products\ProductWorkspace::class);
+        $touched = $this->usesWorkspace($request) ? $workspace->touched($request, $product, $this->areaBusiness($request), $this->areaCards($request, $product)) : [];
 
         // POS-UX-1: replace / remove the product image.
         if ($request->boolean('remove_image') && $product->image_path) {
@@ -262,7 +371,7 @@ class ProductController extends Controller
             $data['image_path'] = $newPath;
         }
 
-        DB::transaction(function () use ($product, $data, $request) {
+        DB::transaction(function () use ($product, $data, $request, $workspace, $touched) {
             $product->update($data);
 
             $product->translations()->updateOrCreate(
@@ -285,6 +394,14 @@ class ProductController extends Controller
 
             if ($this->packsPosted) {
                 \App\Support\PackUnits::sync($product, $this->packPlan);
+            }
+
+            if ($touched) {
+                $workspace->apply($product, $touched, auth('tenant')->id());
+            }
+
+            if ($this->priceLocked) {
+                $this->blockPriceAfterSave($product);
             }
         });
 
@@ -337,9 +454,22 @@ class ProductController extends Controller
         // PRODUCT-SCREEN-V2: the new screen posts a card + yes/no answers; the SERVER turns them into the
         // fields below (locks included), and keeps every field the screen does not show at its saved value.
         $isV2 = $request->boolean('_form_v2');
+        $this->priceLocked = false;   // one controller may serve several requests (a queue worker, a test)
         if ($isV2) {
-            $request->merge(\App\Support\ProductCards::resolve(\App\Support\Business::of(), $request->all(), $product));
+            $business = $this->areaBusiness($request);
+            // W3/W4 S3d: Catering Materials adds ingredients and disposables; its form offers only those cards.
+            if (! $product && $this->isCateringMaterials($request) && ! isset($this->areaCards($request, null)[(string) $request->input('_card')])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['_card' => 'Catering Materials adds ingredients and disposables. Add a dish from Products.']);
+            }
+            $request->merge(\App\Support\ProductCards::resolve($business, $request->all(), $product));
             $this->guardScreenV2($request, $product);
+            // CATERING-SIMPLIFY-1: a caterer's cost-block dish shows its block price, locked — whatever is posted, its
+            // counter price becomes the block price (owner, 27 Oct: "copy price"), set again after this save's own
+            // block changes (blockPriceAfterSave). Blocks that give no price yet (0) keep the stored one.
+            if ($product && ($lock = $this->priceLock($request, $product)) && $lock['locked']) {
+                $this->priceLocked = true;
+                $request->merge(['default_selling_price' => $lock['rate'] > 0 ? $lock['rate'] : ($product->default_selling_price ?? 0)]);
+            }
         } elseif ($product && $product->is_stock_tracked && ! $request->boolean('is_stock_tracked')) {
             // KHATRI-STOCK-TO-PNL-1: on the old form, unticking "Track Stock" while stock is on hand would leave
             // that stock and its 1400 value in the books with no way back. The new screen already refuses this.
@@ -537,6 +667,25 @@ class ProductController extends Controller
 
     private bool $packsPosted = false;
 
+    /** CATERING-SIMPLIFY-1 — this save is of a caterer's cost-block dish (set by validated()). */
+    private bool $priceLocked = false;
+
+    /**
+     * CATERING-SIMPLIFY-1 — after the Event costing tab is written, the counter price is the block price as now saved
+     * (a block changed in this same save moves it). Written as a typed price is: the product and its default variant.
+     * Blocks that give no price yet (0) leave it as it is.
+     */
+    private function blockPriceAfterSave(Product $product): void
+    {
+        $rate = app(\App\Services\Catering\CateringCostBlockService::class)->rateFor($product->id);
+        $product->refresh();
+        if ($rate <= 0 || abs($rate - (float) $product->default_selling_price) < 0.005) {
+            return;
+        }
+        $product->update(['default_selling_price' => $rate]);
+        $product->defaultVariant?->update(['selling_price' => $rate]);
+    }
+
     private function productContext(Request $request): string
     {
         $routeName = (string) $request->route()?->getName();
@@ -656,6 +805,60 @@ class ProductController extends Controller
         return $context === 'manufacturing' ? '/manufacturing/products' : '/products';
     }
 
+    /**
+     * CATERING-SIMPLIFY-1 — the dish's block price and whether its Selling price is locked to it
+     * (ProductWorkspace::blockPrice). A posted "Priced by" counts only from a user who may edit the Event costing tab.
+     */
+    private function priceLock(Request $request, Product $product): ?array
+    {
+        $workspace = app(\App\Services\Products\ProductWorkspace::class);
+        $business = $this->areaBusiness($request);
+        $mode = $request->input('catering.costing_mode');
+        $mayPost = is_string($mode) && $this->usesWorkspace($request)
+            && $workspace->access($product, $business, $this->areaCards($request, $product))['catering'];
+
+        return $workspace->blockPrice($product, $business, $mayPost ? $mode : null);
+    }
+
+    /** W3/W4 S3c — the workspace sections ride only on a post from the new screen, where the owner switched it on. */
+    private function usesWorkspace(Request $request): bool
+    {
+        return $request->boolean('_form_v2') && \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRODUCT_SCREEN_V2);
+    }
+
+    /**
+     * W3/W4 S3d — the one product form opens for Add / Edit in the catalog, Manufacturing Products and Catering Materials,
+     * where the owner switched it on. (usesScreenV2() below still decides the catalog's own list.)
+     */
+    private function usesFormV2(Request $request): bool
+    {
+        return \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRODUCT_SCREEN_V2);
+    }
+
+    /** W3/W4 S3d — whose cards the form shows: Catering Materials a caterer's, Manufacturing Products a factory's. */
+    private function areaBusiness(Request $request): ?string
+    {
+        if ($this->isCateringMaterials($request)) {
+            return \App\Support\Business::CATERING;
+        }
+
+        return $this->productContext($request) === 'manufacturing' ? \App\Support\Business::INDUSTRY : \App\Support\Business::of();
+    }
+
+    /**
+     * W3/W4 S3d — the cards offered. Catering Materials offers its material cards for a new item; an item opened there
+     * keeps the full set, so one no material card fits is never re-kinded by the screen.
+     */
+    private function areaCards(Request $request, ?Product $product): array
+    {
+        $cards = \App\Support\ProductCards::forBusiness($this->areaBusiness($request));
+        if (! $product && $this->isCateringMaterials($request)) {
+            $cards = array_filter($cards, fn ($c) => in_array($c['kind'], [Product::KIND_RAW_MATERIAL, Product::KIND_PACKAGING_MATERIAL], true));
+        }
+
+        return $cards;
+    }
+
     /** PRODUCT-SCREEN-V2 — only on the catalog's own Add/Edit, and only where the owner switched it on. */
     private function usesScreenV2(Request $request): bool
     {
@@ -666,23 +869,40 @@ class ProductController extends Controller
 
     private function screenV2Data(?Product $product, Request $request): array
     {
-        $business = \App\Support\Business::of();
-        $cards = \App\Support\ProductCards::forBusiness($business);
+        $business = $this->areaBusiness($request);
+        $cards = $this->areaCards($request, $product);
         $card = $product
             ? \App\Support\ProductCards::detect($business, $product)
             : (isset($cards[(string) $request->query('card')]) ? (string) $request->query('card') : array_key_first($cards));
         $variant = $product?->defaultVariant;
+        $ws = app(\App\Services\Products\ProductWorkspace::class)->screen($product, $business, $cards);
+        $context = $this->productContext($request);
+        $area = $this->isCateringMaterials($request) ? 'material' : ($context === 'manufacturing' ? 'manufacturing product' : 'product');
         $hasStockHistory = $product ? \App\Models\Tenant\StockLedger::where('product_id', $product->id)->exists() : false;
 
         return [
             'product'         => $product,
-            'title'           => $product ? 'Edit product' : 'Add a product',
+            'title'           => $product ? 'Edit ' . $area : 'Add a ' . $area,
+            // W3/W4 S3d: the area's own routes, so its own permissions apply.
+            'formBase'        => $this->contextBaseUrl($request, $context),
             'business'        => $business,
             'businessInfo'    => \App\Support\Business::all()[$business] ?? null,
             'cards'           => $cards,
             'currentCard'     => $card,
-            'categories'      => Category::where('is_active', true)->orderBy('name')->get(),
+            'categories'      => $this->categoriesFor($product),
             'units'           => $this->unitsFor($product),
+            // W3/W4 S2: what this edit does not show and keeps as saved, and an item no card here fits.
+            'keptAsSaved'     => ($product ? \App\Support\ProductCards::keptAsSaved($business, $product, $card) : [])
+                + array_fill_keys($ws['kept'], 'kept as saved — changing it needs its own permission or module'),
+            // W3/W4 S3c: the Recipe / Bill of materials / Event costing tabs this user may use here.
+            'ws'              => $ws,
+            // CATERING-SIMPLIFY-1: a dish's event price from its cost blocks; a caterer's Selling price box is locked to it.
+            // After a refused save the posted "Priced by" decides, as the tab then shows it.
+            'priceLock'       => $product ? app(\App\Services\Products\ProductWorkspace::class)->blockPrice($product, $business,
+                ($ws['access']['catering'] ?? false) && is_string(old('catering.costing_mode')) && ! session('errors')?->has('catering.stale')
+                    ? old('catering.costing_mode') : null) : null,
+            'misfitRole'      => $product && \App\Support\ProductCards::isMisfit($business, $product, $card)
+                ? (self::PLAIN_ROLES[$product->product_kind ?: Product::KIND_SALE_ITEM] ?? (string) $product->product_kind) : null,
             'barcode'         => $variant?->barcode ?? $product?->barcodes()->where('is_primary', true)->value('barcode'),
             'reorderLevel'    => $variant?->reorder_level,
             'reorderQuantity' => $variant?->reorder_quantity,
@@ -721,7 +941,7 @@ class ProductController extends Controller
         $errors = [];
         if ($product && $product->is_stock_tracked && ! $request->boolean('is_stock_tracked')
             && \App\Models\Tenant\StockLedger::where('product_id', $product->id)->exists()) {
-            $errors['_stock'] = 'Stock of this item has already moved, so counting cannot be switched off. (اس چیز کا اسٹاک پہلے سے چل چکا ہے)';
+            $errors['_stock'] = 'Stock of this item has already moved, so counting cannot be switched off.';
         }
         $code = trim((string) $request->input('barcode', ''));
         if ($code !== '' && ProductBarcode::where('barcode', $code)->when($product, fn ($q) => $q->where('product_id', '!=', $product->id))->exists()) {
@@ -770,7 +990,7 @@ class ProductController extends Controller
     private function productRedirectUrl(Request $request, Product $product): string
     {
         if ($request->boolean('_form_v2') && $request->input('_after') === 'new') {
-            return '/products/create?card=' . urlencode((string) $request->input('_card'));
+            return $this->contextBaseUrl($request, $this->productContext($request)) . '/create?card=' . urlencode((string) $request->input('_card'));
         }
 
         // Catering shares the manufacturing context but must land back on its own

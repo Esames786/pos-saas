@@ -2,9 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Public\ContactEnquiryRequest;
 use App\Http\Requests\Public\StartTrialRequest;
 use App\Jobs\Saas\ProvisionTrialWorkspaceJob;
+use App\Mail\ContactEnquiryMail;
+use App\Mail\ContactEnquiryReceivedMail;
 use App\Mail\TrialWorkspacePreparingMail;
+use App\Models\Master\ContactEnquiry;
 use App\Models\Master\Plan;
 use App\Models\Master\Tenant;
 use App\Services\Saas\BillingPeriodResolver;
@@ -17,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Throwable;
 
 class PublicSiteController extends Controller
@@ -266,6 +271,56 @@ class PublicSiteController extends Controller
         return view('public.contact', [
             'customPlans' => $this->customPlans(),
         ]);
+    }
+
+    /**
+     * CONTACT-FORM-1 — a visitor's enquiry: saved first, then sent to sales.
+     *
+     * Tarteeb jaan boojh kar yehi hai. Record PEHLE banta hai, email BAAD me — kyunke email ek
+     * raasta hai, record nahi. Mail server ka ek bura din ek lead ko hamesha ke liye nahi kha
+     * sakta; row bani rahegi aur Master panel me nazar aayegi (`notified_at` khaali, yani "ye
+     * bheji nahi ja saki").
+     *
+     * Teen pardey is se pehle guzar chuke: route ka `throttle` (aik IP se bohat koshishein),
+     * honeypot, aur reCAPTCHA — sab `ContactEnquiryRequest` me.
+     */
+    public function contactStore(ContactEnquiryRequest $request)
+    {
+        if ($this->comingSoonMode()) return $this->comingSoon();
+
+        $enquiry = ContactEnquiry::create([
+            ...$request->enquiryData(),
+            'locale'     => PublicLocale::current(),
+            'ip_address' => $request->ip(),
+            'user_agent' => Str::limit((string) $request->userAgent(), 500, ''),
+            'status'     => ContactEnquiry::STATUS_NEW,
+        ]);
+
+        $salesEmail = (string) config('saas.contact.sales_email', 'sales@bingoopos.com');
+        $brand = (string) config('saas.brand_name', 'Bingoo');
+
+        // Mail qatar par jati hai (database queue + bingoo-queue worker), is liye visitor SMTP ka
+        // intezaar nahi karta. Koi bhi nakaami enquiry ko nahi giraati — wo pehle hi mehfooz hai.
+        try {
+            Mail::to($salesEmail)->queue(new ContactEnquiryMail($enquiry));
+
+            // "Mil gaya" — usi zaban me jis me form bhara gaya.
+            Mail::to($enquiry->email)->locale(PublicLocale::current())->queue(new ContactEnquiryReceivedMail(
+                brand: $brand,
+                name: $enquiry->name,
+                salesEmail: $salesEmail,
+                phone: \App\Support\ContactNumbers::first()['display'] ?? null,
+            ));
+
+            $enquiry->forceFill(['notified_at' => now()])->save();
+        } catch (Throwable $e) {
+            // Visitor ko kaamyabi hi dikhti hai — us ka message waqai mehfooz ho chuka hai. Jo
+            // nakaam hua wo hamari taraf ka kaam hai, aur `notified_at` khaali us ka nishaan hai.
+            report($e);
+        }
+
+        return redirect(PublicLocale::url('/contact') . '#contact-form')
+            ->with('contact_sent', true);
     }
 
     /**

@@ -10,7 +10,10 @@
     $fmt = ($mode === 'thermal')
         ? fn ($v) => number_format((float) $v, 0)
         : fn ($v) => number_format((float) $v, 2);
-    $qty = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.');
+    $num = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.');
+    // UNITS-PACKS F4: a quantity carries its unit where it is kg / L / m ("0.25 kg"), and a total never adds kg and
+    // pieces into one number: A4 prints the parts ("0.25 kg · 24 pcs"), thermal prints "mixed" plus a line of parts.
+    $qty = fn ($v, $mix = null, bool $compact = false) => \App\Support\QtyMix::label((float) $v, $mix, $num, $compact);
     $has = fn (string $s) => in_array($s, $sections, true);
 
     // 72mm fits roughly 42 monospace characters. Seven columns do NOT fit: the name column gets
@@ -62,7 +65,7 @@
     $tPad  = fn (int $n) => str_repeat('&nbsp;', max(0, $n));
     $tFit  = fn (string $name, int $indent) => e(\App\Support\ThermalLayout::fit($name, $tCols - $indent));
 
-    $tEntry = function (string $name, $sQ, $rQ, $nQ, $sV, $rV, $nV, bool $bold = false, int $indent = 0, string $level = '') use ($qty, $fmt, $tPad, $tFit) {
+    $tEntry = function (string $name, $sQ, $rQ, $nQ, $sV, $rV, $nV, bool $bold = false, int $indent = 0, string $level = '', array $mix = []) use ($qty, $num, $fmt, $tPad, $tFit) {
         $lvl = $level !== '' ? ' lvl-' . $level : '';
         $cls = ' class="amt-row' . ($bold ? ' total' : '') . $lvl . '"';
         // The name a reader scans for is always emphasised; a total's name carries both.
@@ -76,7 +79,9 @@
 
         return $nameRow
              . '<tr' . ($lvl !== '' ? ' class="' . ltrim($lvl) . '"' : '') . '><td class="lbl">' . $pad . 'Qty</td>'
-             . '<td class="amt">' . $qty($sQ) . '</td><td class="amt">' . $qty($rQ) . '</td><td class="amt">' . $qty($nQ) . '</td></tr>'
+             . '<td class="amt">' . $qty($sQ, $mix[0] ?? null, true) . '</td><td class="amt">' . $qty($rQ, $mix[1] ?? null, true) . '</td><td class="amt">' . $qty($nQ, $mix[2] ?? null, true) . '</td></tr>'
+             . collect(['Sold' => 0, 'Ret' => 1, 'Net' => 2])->filter(fn ($i) => \App\Support\QtyMix::isMixed($mix[$i] ?? null))
+                 ->map(fn ($i, $w) => '<tr class="mix"><td class="lbl">' . $pad . $w . '</td><td class="amt" colspan="3">' . e(\App\Support\QtyMix::words($mix[$i], $num)) . '</td></tr>')->implode('')
              . '<tr' . $cls . '><td class="lbl">' . $pad . 'Amt</td>'
              . '<td class="amt">' . $fmt($sV) . '</td><td class="amt">' . $fmt($rV) . '</td><td class="amt">' . $fmt($nV) . '</td></tr>';
     };
@@ -298,9 +303,9 @@
 <h2>OVERALL</h2>
 <table>
     <tr><td>Orders</td><td class="amt">{{ $overview['orders'] }}</td></tr>
-    <tr><td>Sold Qty</td><td class="amt">{{ $qty($overview['sold_qty']) }}</td></tr>
-    <tr><td>Returned Qty</td><td class="amt">{{ $qty($overview['returned_qty']) }}</td></tr>
-    <tr class="total"><td>Net Qty</td><td class="amt">{{ $qty($overview['net_qty']) }}</td></tr>
+    <tr><td>Sold Qty</td><td class="amt">{{ $qty($overview['sold_qty'], $overview['sold_mix'] ?? null) }}</td></tr>
+    <tr><td>Returned Qty</td><td class="amt">{{ $qty($overview['returned_qty'], $overview['returned_mix'] ?? null) }}</td></tr>
+    <tr class="total"><td>Net Qty</td><td class="amt">{{ $qty($overview['net_qty'], $overview['net_mix'] ?? null) }}</td></tr>
     <tr><td>Items Sold</td><td class="amt">{{ $fmt($overview['gross_sales']) }}</td></tr>
     <tr><td>Less Discount</td><td class="amt">-{{ $fmt($overview['discount']) }}</td></tr>
     <tr><td>Plus Tax</td><td class="amt">{{ $fmt($overview['tax']) }}</td></tr>
@@ -356,24 +361,24 @@
         <tr class="gap"><td colspan="4"></td></tr>
         {!! $tName(mb_strtoupper($root['name']), 0, $kids->isNotEmpty() ? 'head' : 'plainhead') !!}
         @foreach($kids as $c)
-            {!! $tEntry($c['name'], $c['sold_qty'], $c['returned_qty'], $c['net_qty'], $c['net'], $c['returns_amount'], $c['net_value'], false, 2, 'subtotal') !!}
+            {!! $tEntry($c['name'], $c['sold_qty'], $c['returned_qty'], $c['net_qty'], $c['net'], $c['returns_amount'], $c['net_value'], false, 2, 'subtotal', mix: [$c['sold_mix'] ?? null, $c['returned_mix'] ?? null, $c['net_mix'] ?? null]) !!}
         @endforeach
-        {!! $tEntry($kids->isNotEmpty() ? 'TOTAL' : '', $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['net'], $root['returns_amount'], $root['net_value'], true, 0, 'headtotal') !!}
+        {!! $tEntry($kids->isNotEmpty() ? 'TOTAL' : '', $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['net'], $root['returns_amount'], $root['net_value'], true, 0, 'headtotal', mix: [$root['sold_mix'] ?? null, $root['returned_mix'] ?? null, $root['net_mix'] ?? null]) !!}
     @endforeach
     <tr class="gap"><td colspan="4"></td></tr>
-    {!! $tEntry('GRAND TOTAL', collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty'), collect($categories)->sum('net'), collect($categories)->sum('returns_amount'), collect($categories)->sum('net_value'), true) !!}
+    {!! $tEntry('GRAND TOTAL', collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty'), collect($categories)->sum('net'), collect($categories)->sum('returns_amount'), collect($categories)->sum('net_value'), true, mix: [\App\Support\QtyMix::sum(collect($categories), 'sold_mix', 'sold_qty'), \App\Support\QtyMix::sum(collect($categories), 'returned_mix', 'returned_qty'), \App\Support\QtyMix::sum(collect($categories), 'net_mix', 'net_qty')]) !!}
     {!! $bridgeRows((float) collect($categories)->sum('net_value'), 4) !!}
 </table>
 @else
 <table>
     <tr><th>Category</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
     @foreach($categories as $root)
-        <tr class="total"><td>{{ $root['name'] }}</td><td class="amt">{{ $qty($root['sold_qty']) }}</td><td class="amt">{{ $qty($root['returned_qty']) }}</td><td class="amt">{{ $qty($root['net_qty']) }}</td><td class="amt">{{ $fmt($root['net']) }}</td><td class="amt">{{ $fmt($root['returns_amount']) }}</td><td class="amt">{{ $fmt($root['net_value']) }}</td></tr>
+        <tr class="total"><td>{{ $root['name'] }}</td><td class="amt">{{ $qty($root['sold_qty'], $root['sold_mix'] ?? null) }}</td><td class="amt">{{ $qty($root['returned_qty'], $root['returned_mix'] ?? null) }}</td><td class="amt">{{ $qty($root['net_qty'], $root['net_mix'] ?? null) }}</td><td class="amt">{{ $fmt($root['net']) }}</td><td class="amt">{{ $fmt($root['returns_amount']) }}</td><td class="amt">{{ $fmt($root['net_value']) }}</td></tr>
         @foreach($root['children'] as $c)
-            @if($c['id'] !== $root['id'])<tr><td>&nbsp;&nbsp;{{ $c['name'] }}</td><td class="amt">{{ $qty($c['sold_qty']) }}</td><td class="amt">{{ $qty($c['returned_qty']) }}</td><td class="amt">{{ $qty($c['net_qty']) }}</td><td class="amt">{{ $fmt($c['net']) }}</td><td class="amt">{{ $fmt($c['returns_amount']) }}</td><td class="amt">{{ $fmt($c['net_value']) }}</td></tr>@endif
+            @if($c['id'] !== $root['id'])<tr><td>&nbsp;&nbsp;{{ $c['name'] }}</td><td class="amt">{{ $qty($c['sold_qty'], $c['sold_mix'] ?? null) }}</td><td class="amt">{{ $qty($c['returned_qty'], $c['returned_mix'] ?? null) }}</td><td class="amt">{{ $qty($c['net_qty'], $c['net_mix'] ?? null) }}</td><td class="amt">{{ $fmt($c['net']) }}</td><td class="amt">{{ $fmt($c['returns_amount']) }}</td><td class="amt">{{ $fmt($c['net_value']) }}</td></tr>@endif
         @endforeach
     @endforeach
-    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($categories)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($categories)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($categories)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('net_value')) }}</td></tr>
+    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($categories)->sum('sold_qty'), \App\Support\QtyMix::sum(collect($categories), 'sold_mix', 'sold_qty')) }}</td><td class="amt">{{ $qty(collect($categories)->sum('returned_qty'), \App\Support\QtyMix::sum(collect($categories), 'returned_mix', 'returned_qty')) }}</td><td class="amt">{{ $qty(collect($categories)->sum('net_qty'), \App\Support\QtyMix::sum(collect($categories), 'net_mix', 'net_qty')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('net_value')) }}</td></tr>
     {!! $bridgeRows((float) collect($categories)->sum('net_value'), 7) !!}
 </table>
 @endif
@@ -385,18 +390,18 @@
 <table>
     {!! $tHead() !!}
     @foreach($items as $r)
-        {!! $tEntry($r->item . ($r->variant ? ' (' . $r->variant . ')' : ''), $r->sold_qty, $r->returned_qty, $r->net_qty, $r->net, $r->returns_amount, $r->net_value, false, 2, 'item') !!}
+        {!! $tEntry($r->item . ($r->variant ? ' (' . $r->variant . ')' : ''), $r->sold_qty, $r->returned_qty, $r->net_qty, $r->net, $r->returns_amount, $r->net_value, false, 2, 'item', mix: [$r->sold_mix ?? null, $r->returned_mix ?? null, $r->net_mix ?? null]) !!}
     @endforeach
-    {!! $tEntry('TOTAL', collect($items)->sum('sold_qty'), collect($items)->sum('returned_qty'), collect($items)->sum('net_qty'), collect($items)->sum('net'), collect($items)->sum('returns_amount'), collect($items)->sum('net_value'), true) !!}
+    {!! $tEntry('TOTAL', collect($items)->sum('sold_qty'), collect($items)->sum('returned_qty'), collect($items)->sum('net_qty'), collect($items)->sum('net'), collect($items)->sum('returns_amount'), collect($items)->sum('net_value'), true, mix: [\App\Support\QtyMix::sum(collect($items), 'sold_mix', 'sold_qty'), \App\Support\QtyMix::sum(collect($items), 'returned_mix', 'returned_qty'), \App\Support\QtyMix::sum(collect($items), 'net_mix', 'net_qty')]) !!}
     {!! $bridgeRows((float) collect($items)->sum('net_value'), 4, true) !!}
 </table>
 @else
 <table>
     <tr><th>Item</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
     @foreach($items as $r)
-        <tr><td>{{ $r->item }}{{ $r->variant ? ' (' . $r->variant . ')' : '' }}</td><td class="amt">{{ $qty($r->sold_qty) }}</td><td class="amt">{{ $qty($r->returned_qty) }}</td><td class="amt">{{ $qty($r->net_qty) }}</td><td class="amt">{{ $fmt($r->net) }}</td><td class="amt">{{ $fmt($r->returns_amount) }}</td><td class="amt">{{ $fmt($r->net_value) }}</td></tr>
+        <tr><td>{{ $r->item }}{{ $r->variant ? ' (' . $r->variant . ')' : '' }}</td><td class="amt">{{ $qty($r->sold_qty, $r->sold_mix ?? null) }}</td><td class="amt">{{ $qty($r->returned_qty, $r->returned_mix ?? null) }}</td><td class="amt">{{ $qty($r->net_qty, $r->net_mix ?? null) }}</td><td class="amt">{{ $fmt($r->net) }}</td><td class="amt">{{ $fmt($r->returns_amount) }}</td><td class="amt">{{ $fmt($r->net_value) }}</td></tr>
     @endforeach
-    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($items)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($items)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($items)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('net_value')) }}</td></tr>
+    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($items)->sum('sold_qty'), \App\Support\QtyMix::sum(collect($items), 'sold_mix', 'sold_qty')) }}</td><td class="amt">{{ $qty(collect($items)->sum('returned_qty'), \App\Support\QtyMix::sum(collect($items), 'returned_mix', 'returned_qty')) }}</td><td class="amt">{{ $qty(collect($items)->sum('net_qty'), \App\Support\QtyMix::sum(collect($items), 'net_mix', 'net_qty')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('net_value')) }}</td></tr>
     {!! $bridgeRows((float) collect($items)->sum('net_value'), 7, true) !!}
 </table>
 @endif
@@ -430,16 +435,16 @@
                 {!! $tName($group['name'], 2, 'sub') !!}
             @endif
             @foreach($group['items'] as $item)
-                {!! $tEntry($item['item'] . ($item['variant'] ? ' (' . $item['variant'] . ')' : ''), $item['sold_qty'], $item['returned_qty'], $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value'], false, $head['nested'] ? 6 : 2, 'item') !!}
+                {!! $tEntry($item['item'] . ($item['variant'] ? ' (' . $item['variant'] . ')' : ''), $item['sold_qty'], $item['returned_qty'], $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value'], false, $head['nested'] ? 6 : 2, 'item', mix: [$item['sold_mix'] ?? null, $item['returned_mix'] ?? null, $item['net_mix'] ?? null]) !!}
             @endforeach
             @if($head['nested'])
-                {!! $tEntry('TOTAL', $group['sold_qty'], $group['returned_qty'], $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], true, 2, 'subtotal') !!}
+                {!! $tEntry('TOTAL', $group['sold_qty'], $group['returned_qty'], $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], true, 2, 'subtotal', mix: [$group['sold_mix'] ?? null, $group['returned_mix'] ?? null, $group['net_mix'] ?? null]) !!}
             @endif
         @endforeach
-        {!! $tEntry('TOTAL', $head['sold_qty'], $head['returned_qty'], $head['net_qty'], $head['net'], $head['returns_amount'], $head['net_value'], true, 0, 'headtotal') !!}
+        {!! $tEntry('TOTAL', $head['sold_qty'], $head['returned_qty'], $head['net_qty'], $head['net'], $head['returns_amount'], $head['net_value'], true, 0, 'headtotal', mix: [$head['sold_mix'] ?? null, $head['returned_mix'] ?? null, $head['net_mix'] ?? null]) !!}
     @endforeach
     <tr class="gap"><td colspan="4"></td></tr>
-    {!! $tEntry('GRAND TOTAL', $ciRows->sum('sold_qty'), $ciRows->sum('returned_qty'), $ciRows->sum('net_qty'), $ciRows->sum('net'), $ciRows->sum('returns_amount'), $ciRows->sum('net_value'), true) !!}
+    {!! $tEntry('GRAND TOTAL', $ciRows->sum('sold_qty'), $ciRows->sum('returned_qty'), $ciRows->sum('net_qty'), $ciRows->sum('net'), $ciRows->sum('returns_amount'), $ciRows->sum('net_value'), true, mix: [\App\Support\QtyMix::sum($ciRows, 'sold_mix', 'sold_qty'), \App\Support\QtyMix::sum($ciRows, 'returned_mix', 'returned_qty'), \App\Support\QtyMix::sum($ciRows, 'net_mix', 'net_qty')]) !!}
     {{-- Merchandise only, like every other line-based section: close the gap to NET SALES, or the
          total reads as though it contradicted the day's takings. --}}
     {!! $bridgeRows((float) $ciRows->sum('net_value'), 4, true) !!}
@@ -448,17 +453,17 @@
 <table>
     <tr><th>Category / Item</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
     @foreach($categoryItems as $head)
-        <tr class="total"><td><strong>{{ strtoupper($head['head']) }}</strong></td><td class="amt">{{ $qty($head['sold_qty']) }}</td><td class="amt">{{ $qty($head['returned_qty']) }}</td><td class="amt">{{ $qty($head['net_qty']) }}</td><td class="amt">{{ $fmt($head['net']) }}</td><td class="amt">{{ $fmt($head['returns_amount']) }}</td><td class="amt">{{ $fmt($head['net_value']) }}</td></tr>
+        <tr class="total"><td><strong>{{ strtoupper($head['head']) }}</strong></td><td class="amt">{{ $qty($head['sold_qty'], $head['sold_mix'] ?? null) }}</td><td class="amt">{{ $qty($head['returned_qty'], $head['returned_mix'] ?? null) }}</td><td class="amt">{{ $qty($head['net_qty'], $head['net_mix'] ?? null) }}</td><td class="amt">{{ $fmt($head['net']) }}</td><td class="amt">{{ $fmt($head['returns_amount']) }}</td><td class="amt">{{ $fmt($head['net_value']) }}</td></tr>
         @foreach($head['groups'] as $group)
             @if($head['nested'])
-                <tr><td><strong>&nbsp;&nbsp;{{ $group['name'] }}</strong></td><td class="amt">{{ $qty($group['sold_qty']) }}</td><td class="amt">{{ $qty($group['returned_qty']) }}</td><td class="amt">{{ $qty($group['net_qty']) }}</td><td class="amt">{{ $fmt($group['net']) }}</td><td class="amt">{{ $fmt($group['returns_amount']) }}</td><td class="amt">{{ $fmt($group['net_value']) }}</td></tr>
+                <tr><td><strong>&nbsp;&nbsp;{{ $group['name'] }}</strong></td><td class="amt">{{ $qty($group['sold_qty'], $group['sold_mix'] ?? null) }}</td><td class="amt">{{ $qty($group['returned_qty'], $group['returned_mix'] ?? null) }}</td><td class="amt">{{ $qty($group['net_qty'], $group['net_mix'] ?? null) }}</td><td class="amt">{{ $fmt($group['net']) }}</td><td class="amt">{{ $fmt($group['returns_amount']) }}</td><td class="amt">{{ $fmt($group['net_value']) }}</td></tr>
             @endif
             @foreach($group['items'] as $item)
-                <tr><td>{!! $head['nested'] ? '&nbsp;&nbsp;&nbsp;&nbsp;' : '&nbsp;&nbsp;' !!}{{ $item['item'] }}{{ $item['variant'] ? ' (' . $item['variant'] . ')' : '' }}</td><td class="amt">{{ $qty($item['sold_qty']) }}</td><td class="amt">{{ $qty($item['returned_qty']) }}</td><td class="amt">{{ $qty($item['net_qty']) }}</td><td class="amt">{{ $fmt($item['net']) }}</td><td class="amt">{{ $fmt($item['returns_amount']) }}</td><td class="amt">{{ $fmt($item['net_value']) }}</td></tr>
+                <tr><td>{!! $head['nested'] ? '&nbsp;&nbsp;&nbsp;&nbsp;' : '&nbsp;&nbsp;' !!}{{ $item['item'] }}{{ $item['variant'] ? ' (' . $item['variant'] . ')' : '' }}</td><td class="amt">{{ $qty($item['sold_qty'], $item['sold_mix'] ?? null) }}</td><td class="amt">{{ $qty($item['returned_qty'], $item['returned_mix'] ?? null) }}</td><td class="amt">{{ $qty($item['net_qty'], $item['net_mix'] ?? null) }}</td><td class="amt">{{ $fmt($item['net']) }}</td><td class="amt">{{ $fmt($item['returns_amount']) }}</td><td class="amt">{{ $fmt($item['net_value']) }}</td></tr>
             @endforeach
         @endforeach
     @endforeach
-    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty($ciRows->sum('sold_qty')) }}</td><td class="amt">{{ $qty($ciRows->sum('returned_qty')) }}</td><td class="amt">{{ $qty($ciRows->sum('net_qty')) }}</td><td class="amt">{{ $fmt($ciRows->sum('net')) }}</td><td class="amt">{{ $fmt($ciRows->sum('returns_amount')) }}</td><td class="amt">{{ $fmt($ciRows->sum('net_value')) }}</td></tr>
+    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty($ciRows->sum('sold_qty'), \App\Support\QtyMix::sum($ciRows, 'sold_mix', 'sold_qty')) }}</td><td class="amt">{{ $qty($ciRows->sum('returned_qty'), \App\Support\QtyMix::sum($ciRows, 'returned_mix', 'returned_qty')) }}</td><td class="amt">{{ $qty($ciRows->sum('net_qty'), \App\Support\QtyMix::sum($ciRows, 'net_mix', 'net_qty')) }}</td><td class="amt">{{ $fmt($ciRows->sum('net')) }}</td><td class="amt">{{ $fmt($ciRows->sum('returns_amount')) }}</td><td class="amt">{{ $fmt($ciRows->sum('net_value')) }}</td></tr>
     {!! $bridgeRows((float) $ciRows->sum('net_value'), 7, true) !!}
 </table>
 @endif
@@ -479,12 +484,12 @@
         <tr class="gap"><td colspan="4"></td></tr>
         {!! $tName(mb_strtoupper($dealHead), 0, 'head') !!}
         @foreach($group as $r)
-            {!! $tEntry($r['deal'], $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['net'], $r['returns_amount'], $r['net_value'], false, 2, 'item') !!}
+            {!! $tEntry($r['deal'], $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['net'], $r['returns_amount'], $r['net_value'], false, 2, 'item', mix: [$r['sold_mix'] ?? null, $r['returned_mix'] ?? null, $r['net_mix'] ?? null]) !!}
         @endforeach
-        {!! $tEntry('TOTAL', collect($group)->sum('sold_qty'), collect($group)->sum('returned_qty'), collect($group)->sum('net_qty'), collect($group)->sum('net'), collect($group)->sum('returns_amount'), collect($group)->sum('net_value'), true, 0, 'headtotal') !!}
+        {!! $tEntry('TOTAL', collect($group)->sum('sold_qty'), collect($group)->sum('returned_qty'), collect($group)->sum('net_qty'), collect($group)->sum('net'), collect($group)->sum('returns_amount'), collect($group)->sum('net_value'), true, 0, 'headtotal', mix: [\App\Support\QtyMix::sum(collect($group), 'sold_mix', 'sold_qty'), \App\Support\QtyMix::sum(collect($group), 'returned_mix', 'returned_qty'), \App\Support\QtyMix::sum(collect($group), 'net_mix', 'net_qty')]) !!}
     @endforeach
     <tr class="gap"><td colspan="4"></td></tr>
-    {!! $tEntry('GRAND TOTAL', $dealRows->sum('sold_qty'), $dealRows->sum('returned_qty'), $dealRows->sum('net_qty'), $dealRows->sum('net'), $dealRows->sum('returns_amount'), $dealRows->sum('net_value'), true) !!}
+    {!! $tEntry('GRAND TOTAL', $dealRows->sum('sold_qty'), $dealRows->sum('returned_qty'), $dealRows->sum('net_qty'), $dealRows->sum('net'), $dealRows->sum('returns_amount'), $dealRows->sum('net_value'), true, mix: [\App\Support\QtyMix::sum($dealRows, 'sold_mix', 'sold_qty'), \App\Support\QtyMix::sum($dealRows, 'returned_mix', 'returned_qty'), \App\Support\QtyMix::sum($dealRows, 'net_mix', 'net_qty')]) !!}
 </table>
 @else
 <table>
@@ -494,9 +499,9 @@
             @php $currentHead = $r['head']; @endphp
             <tr><td colspan="7"><strong>{{ $currentHead }}</strong></td></tr>
         @endif
-        <tr><td>{{ $r['deal'] }}</td><td class="amt">{{ $qty($r['sold_qty']) }}</td><td class="amt">{{ $qty($r['returned_qty']) }}</td><td class="amt">{{ $qty($r['net_qty']) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
+        <tr><td>{{ $r['deal'] }}</td><td class="amt">{{ $qty($r['sold_qty'], $r['sold_mix'] ?? null) }}</td><td class="amt">{{ $qty($r['returned_qty'], $r['returned_mix'] ?? null) }}</td><td class="amt">{{ $qty($r['net_qty'], $r['net_mix'] ?? null) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
     @endforeach
-    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty($dealRows->sum('sold_qty')) }}</td><td class="amt">{{ $qty($dealRows->sum('returned_qty')) }}</td><td class="amt">{{ $qty($dealRows->sum('net_qty')) }}</td><td class="amt">{{ $fmt($dealRows->sum('net')) }}</td><td class="amt">{{ $fmt($dealRows->sum('returns_amount')) }}</td><td class="amt">{{ $fmt($dealRows->sum('net_value')) }}</td></tr>
+    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty($dealRows->sum('sold_qty'), \App\Support\QtyMix::sum($dealRows, 'sold_mix', 'sold_qty')) }}</td><td class="amt">{{ $qty($dealRows->sum('returned_qty'), \App\Support\QtyMix::sum($dealRows, 'returned_mix', 'returned_qty')) }}</td><td class="amt">{{ $qty($dealRows->sum('net_qty'), \App\Support\QtyMix::sum($dealRows, 'net_mix', 'net_qty')) }}</td><td class="amt">{{ $fmt($dealRows->sum('net')) }}</td><td class="amt">{{ $fmt($dealRows->sum('returns_amount')) }}</td><td class="amt">{{ $fmt($dealRows->sum('net_value')) }}</td></tr>
 </table>
 @endif
 @endif
@@ -530,19 +535,19 @@
         @if($isThermal)
             {!! $tHead() !!}
             @foreach($rows as $r)
-                {!! $tEntry($r['label'], $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['net'], $r['returns_amount'], $r['net_value']) !!}
+                {!! $tEntry($r['label'], $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['net'], $r['returns_amount'], $r['net_value'], mix: [$r['sold_mix'] ?? null, $r['returned_mix'] ?? null, $r['net_mix'] ?? null]) !!}
             @endforeach
         @else
         <tr><th>Category</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
         @foreach($rows as $r)
-            <tr><td>{{ $r['label'] }}</td><td class="amt">{{ $qty($r['sold_qty']) }}</td><td class="amt">{{ $qty($r['returned_qty']) }}</td><td class="amt">{{ $qty($r['net_qty']) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
+            <tr><td>{{ $r['label'] }}</td><td class="amt">{{ $qty($r['sold_qty'], $r['sold_mix'] ?? null) }}</td><td class="amt">{{ $qty($r['returned_qty'], $r['returned_mix'] ?? null) }}</td><td class="amt">{{ $qty($r['net_qty'], $r['net_mix'] ?? null) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
         @endforeach
         @endif
         @if($isThermal)
-            {!! $tEntry('TOTAL', collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), true) !!}
+            {!! $tEntry('TOTAL', collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), true, mix: [\App\Support\QtyMix::sum(collect($rows), 'sold_mix', 'sold_qty'), \App\Support\QtyMix::sum(collect($rows), 'returned_mix', 'returned_qty'), \App\Support\QtyMix::sum(collect($rows), 'net_mix', 'net_qty')]) !!}
             {!! $otBridge($orderType, 4) !!}
         @else
-            <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
+            <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty'), \App\Support\QtyMix::sum(collect($rows), 'sold_mix', 'sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty'), \App\Support\QtyMix::sum(collect($rows), 'returned_mix', 'returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty'), \App\Support\QtyMix::sum(collect($rows), 'net_mix', 'net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
             {!! $otBridge($orderType, 7) !!}
         @endif
     </table>
@@ -553,19 +558,19 @@
         @if($isThermal)
             {!! $tHead() !!}
             @foreach($rows as $r)
-                {!! $tEntry($r['label'], $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['net'], $r['returns_amount'], $r['net_value']) !!}
+                {!! $tEntry($r['label'], $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['net'], $r['returns_amount'], $r['net_value'], mix: [$r['sold_mix'] ?? null, $r['returned_mix'] ?? null, $r['net_mix'] ?? null]) !!}
             @endforeach
         @else
         <tr><th>Item</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
         @foreach($rows as $r)
-            <tr><td>{{ $r['label'] }}</td><td class="amt">{{ $qty($r['sold_qty']) }}</td><td class="amt">{{ $qty($r['returned_qty']) }}</td><td class="amt">{{ $qty($r['net_qty']) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
+            <tr><td>{{ $r['label'] }}</td><td class="amt">{{ $qty($r['sold_qty'], $r['sold_mix'] ?? null) }}</td><td class="amt">{{ $qty($r['returned_qty'], $r['returned_mix'] ?? null) }}</td><td class="amt">{{ $qty($r['net_qty'], $r['net_mix'] ?? null) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
         @endforeach
         @endif
         @if($isThermal)
-            {!! $tEntry('TOTAL', collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), true) !!}
+            {!! $tEntry('TOTAL', collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), true, mix: [\App\Support\QtyMix::sum(collect($rows), 'sold_mix', 'sold_qty'), \App\Support\QtyMix::sum(collect($rows), 'returned_mix', 'returned_qty'), \App\Support\QtyMix::sum(collect($rows), 'net_mix', 'net_qty')]) !!}
             {!! $otBridge($orderType, 4) !!}
         @else
-            <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
+            <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty'), \App\Support\QtyMix::sum(collect($rows), 'sold_mix', 'sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty'), \App\Support\QtyMix::sum(collect($rows), 'returned_mix', 'returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty'), \App\Support\QtyMix::sum(collect($rows), 'net_mix', 'net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
             {!! $otBridge($orderType, 7) !!}
         @endif
     </table>
@@ -649,7 +654,7 @@
     @foreach(['partner_pays' => $p['partner'] . ' pays us', 'we_pay' => 'We pay ' . $p['partner']] as $side => $label)
         <tr><td colspan="3"><strong>{{ $label }}</strong></td></tr>
         @foreach($p[$side] as $r)
-            <tr><td>{{ $r['item'] }}</td><td class="amt">{{ $qty($r['net_qty']) }} x {{ $fmt($r['rate']) }}</td><td class="amt">{{ $fmt($r['amount']) }}</td></tr>
+            <tr><td>{{ $r['item'] }}</td><td class="amt">{{ $qty($r['net_qty'], $r['net_mix'] ?? null) }} x {{ $fmt($r['rate']) }}</td><td class="amt">{{ $fmt($r['amount']) }}</td></tr>
         @endforeach
         <tr class="total"><td colspan="2">Total</td><td class="amt">{{ $fmt($p[$side . '_total']) }}</td></tr>
     @endforeach

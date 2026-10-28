@@ -2279,6 +2279,11 @@
                     <strong id="qty-modal-product-name"></strong>
                     <div class="text-muted" id="qty-modal-price-hint"></div>
                 </div>
+                {{-- UNITS-PACKS F2: a kg item may be typed in grams (250 g); the line still keeps 0.250 kg. --}}
+                <div class="mb-2" id="qty-modal-units-wrap" hidden>
+                    <div class="small text-muted mb-1">Type it in</div>
+                    <div class="btn-group" role="group" aria-label="Unit" id="qty-modal-units"></div>
+                </div>
                 <div class="mb-3">
                     <label for="qty-modal-input" class="form-label">
                         Quantity <span id="qty-modal-unit" class="text-muted fw-normal"></span>
@@ -2286,6 +2291,7 @@
                     <input type="number" id="qty-modal-input"
                            class="form-control form-control-lg text-end"
                            step="0.001" min="0.001" placeholder="0.000">
+                    <div class="text-danger small mt-1" id="qty-modal-error" role="alert" hidden></div>
                 </div>
                 <div class="mb-0">
                     <label for="qty-modal-amount-input" class="form-label small text-muted">Or enter amount</label>
@@ -2398,6 +2404,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const heldSale   = @json($heldSaleJson);
     // MEDICAL-COUNTER-1: the medical-store counter (Master switch). Off = this page works exactly as before.
     const medicalCounter = @json((bool) ($medicalCounter ?? false));
+    // UNITS-PACKS F3: "Packs at the normal counter" — a scanned carton sells as 1 Carton; the screen is the normal one.
+    const counterPacks = @json((bool) ($counterPacks ?? false));
     // RX-BRANCH-SETTING-1: per branch — does the counter ask for the prescription? (medical counter only)
     const medAskRx = @json(($medicalCounter ?? false) ? $branches->mapWithKeys(fn ($b) => [(string) $b->id => (bool) ($b->ask_prescription ?? true)]) : (object) []);
     const branchCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_cancellation_approval_mode ?? 'manager_required']));
@@ -3209,6 +3217,8 @@ document.addEventListener('DOMContentLoaded', function () {
         qtyInput.min    = product.quantity_step || 0.001;
         qtyInput.value  = '';
         amountInput.value = '';
+        document.getElementById('qty-modal-error').hidden = true;
+        buildQtyModalUnits(product);
 
         if (!_qtyModal) {
             _qtyModal = new bootstrap.Modal(document.getElementById('qtyEntryModal'));
@@ -3222,13 +3232,28 @@ document.addEventListener('DOMContentLoaded', function () {
         var amount = parseFloat(this.value) || 0;
         var price  = productPrice(_qtyModalProduct, _qtyModalVariant);
         if (price > 0 && amount > 0) {
-            document.getElementById('qty-modal-input').value = (amount / price).toFixed(3);
+            var to = _qtyModalUnit ? _qtyModalUnit.to_stock : 1;
+            document.getElementById('qty-modal-input').value = (amount / price / to).toFixed(to < 1 ? Math.max(0, 3 - Math.round(-Math.log10(to))) : 3);
         }
     });
 
     document.getElementById('qty-modal-confirm').addEventListener('click', function () {
         var qty = parseFloat(document.getElementById('qty-modal-input').value) || 0;
         if (qty <= 0) { document.getElementById('qty-modal-input').focus(); return; }
+        var u = _qtyModalUnit;
+        if (u && Math.abs(u.to_stock - 1) > 1e-9) {
+            var raw = qty * u.to_stock, stockQty = Math.round(raw * 1000) / 1000;
+            if (stockQty <= 0 || Math.abs(raw - stockQty) > 1e-7) {
+                var err = document.getElementById('qty-modal-error');
+                err.textContent = 'That is finer than the stock keeps — the smallest step is ' + qtyModalStep(u) + ' ' + u.label + '.';
+                err.hidden = false;
+                document.getElementById('qty-modal-input').focus();
+                return;
+            }
+            if (_qtyModal) _qtyModal.hide();
+            addToCart(_qtyModalProduct, _qtyModalVariant, stockQty, undefined, undefined, { quantity: qty, unit_code: u.code, label: u.label });
+            return;
+        }
         if (_qtyModal) _qtyModal.hide();
         addToCart(_qtyModalProduct, _qtyModalVariant, qty);
     });
@@ -3236,6 +3261,39 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('qty-modal-input').addEventListener('keydown', function (event) {
         if (event.key === 'Enter') { event.preventDefault(); document.getElementById('qty-modal-confirm').click(); }
     });
+
+    // UNITS-PACKS F2: the units the weight popup offers for this item (g / kg), the stock unit picked first.
+    var _qtyModalUnit = null;
+    function qtyModalStep(u) { return Math.round(0.001 / (u ? u.to_stock : 1) * 1000000) / 1000000; }
+    function buildQtyModalUnits(product) {
+        var units = product.entry_units || [], wrap = document.getElementById('qty-modal-units-wrap'), group = document.getElementById('qty-modal-units');
+        group.innerHTML = '';
+        _qtyModalUnit = null;
+        if (units.length < 2) { wrap.hidden = true; return; }
+        units.forEach(function (u) {
+            var b = document.createElement('button');
+            b.type = 'button'; b.className = 'btn btn-outline-primary'; b.textContent = u.label; b.dataset.code = u.code;
+            b.addEventListener('click', function () { pickQtyModalUnit(u); document.getElementById('qty-modal-input').focus(); });
+            group.appendChild(b);
+        });
+        wrap.hidden = false;
+        pickQtyModalUnit(units.find(function (u) { return Math.abs(u.to_stock - 1) < 1e-9; }) || units[units.length - 1]);
+    }
+    function pickQtyModalUnit(u) {
+        _qtyModalUnit = u;
+        document.querySelectorAll('#qty-modal-units button').forEach(function (b) {
+            var on = b.dataset.code === u.code;
+            b.classList.toggle('btn-primary', on); b.classList.toggle('btn-outline-primary', !on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        var input = document.getElementById('qty-modal-input');
+        input.step = qtyModalStep(u); input.min = qtyModalStep(u); input.value = '';
+        document.getElementById('qty-modal-unit').textContent = '(' + u.label + ')';
+        document.getElementById('qty-modal-error').hidden = true;
+    }
+    function enteredLabel(product, code) {
+        var u = ((product && product.entry_units) || []).find(function (x) { return x.code === code; });
+        return u ? u.label : String(code || '').toLowerCase();
+    }
 
     function openModifierModal(product, variant, qty, preselectedIds, editKey) {
         _modifierModalProduct = product;
@@ -3447,7 +3505,7 @@ document.addEventListener('DOMContentLoaded', function () {
         renderCart();
     }
 
-    function addToCart(product, variant, forceQty, selectedModifiers, pack) {
+    function addToCart(product, variant, forceQty, selectedModifiers, pack, entered) {
         // MEDICAL-COUNTER-1: a medicine goes in by its pack (a scanned Box = 1 Box; a click = 1 Strip).
         if (medicalCounter && product && product.med && !hasModifierGroups(product) && !(selectedModifiers && selectedModifiers.length)) {
             medAdd(product, variant, forceQty, pack);
@@ -3491,6 +3549,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 backorderToast(product.name);
             }
             existing.quantity = newQty;
+            existing.entered_quantity = null; existing.entered_unit_code = null; existing.entered_label = null;   // now a sum: said in the stock unit
         } else {
             if (stockQty !== null && addQty > stockQty + 0.0001) {
                 if (!branchAllowsNegative()) {
@@ -3518,6 +3577,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 _dbLineId:          null,
                 kot_sent:           false,
                 kot_sent_quantity:  0,
+                // UNITS-PACKS F2: what the cashier typed ("250 g"); the quantity above is in the stock unit.
+                entered_quantity:   entered ? entered.quantity : null,
+                entered_unit_code:  entered ? entered.unit_code : null,
+                entered_label:      entered ? entered.label : null,
             });
         }
 
@@ -3562,7 +3625,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 cart.splice(index, 1);
             }
         } else {
-            item.quantity = newQuantity;
+            item.quantity = item.pack_unit_id && !medicalCounter ? Math.max(1, Math.round(newQuantity)) : newQuantity;
+            item.entered_quantity = null; item.entered_unit_code = null; item.entered_label = null;
             if (item.line_kind === 'combo_header') updateComboComponents(item.key);
         }
         renderCart();
@@ -3706,6 +3770,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<div class="d-flex justify-content-between gap-2 mb-2">' +
                     '<div>' +
                         '<div class="fw-bold">' + escapeHtml(item.name) + '</div>' +
+                        (item.entered_unit_code ? '<div class="small text-primary" data-entered>' + escapeHtml(String(Number(item.entered_quantity)) + ' ' + (item.entered_label || enteredLabel(item.product, item.entered_unit_code))) + '</div>' : '') +
                         '<div class="small text-muted">' + escapeHtml(item.variant_name || 'Default') + ' &middot; ' + money(item.unit_price) + (lineUnitLabel(item) ? ' / ' + escapeHtml(lineUnitLabel(item)) : '') + '</div>' +
                         modifierHtml +
                         componentHtml +
@@ -3718,8 +3783,8 @@ document.addEventListener('DOMContentLoaded', function () {
                         '<button type="button" class="qty-btn" data-minus="' + index + '">-</button>' +
                         '<input type="number" class="form-control form-control-sm text-end" style="width:80px" ' +
                             'data-qty-input="' + index + '" ' +
-                            'step="' + qtyStep(item.product) + '" ' +
-                            'min="' + qtyStep(item.product) + '" ' +
+                            'step="' + lineStep(item) + '" ' +
+                            'min="' + lineStep(item) + '" ' +
                             'value="' + formatQty(item.quantity, item.product) + '">' +
                         (lineUnitLabel(item) ? '<span class="small text-muted">' + lineUnitLabel(item) + '</span>' : '') +
                         '<button type="button" class="qty-btn" data-plus="' + index + '">+</button>' +
@@ -3747,7 +3812,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 if (newQty <= 0.0001) { requestItemQuantity(i, 0); return; }
                 var stockQty = availableQty(item.product, item.variant);
-                if (stockQty !== null && newQty > stockQty + 0.0001) {
+                // UNITS-PACKS F3: a pack line is counted in its pieces, with the item's other lines beside it.
+                var wanted = item.pack_unit_id && !medicalCounter
+                    ? baseInCart(item.product_id) + (newQty - Number(item.quantity || 0)) * Number(item.pack_factor || 1)
+                    : newQty;
+                if (stockQty !== null && wanted > stockQty + 0.0001) {
                     blockAlert(unavailableMessage(item.product, stockQty));
                     input.value = formatQty(item.quantity, item.product);
                     return;
@@ -3760,10 +3829,11 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.addEventListener('click', function () {
                 var i    = Number(btn.dataset.plus);
                 var item = cart[i];
-                var step = qtyStep(item.product);
+                var step = lineStep(item);
                 item.quantity = isMeasurableProduct(item.product)
                     ? parseFloat((Number(item.quantity || 0) + step).toFixed(3))
                     : Number(item.quantity || 0) + 1;
+                item.entered_quantity = null; item.entered_unit_code = null; item.entered_label = null;
                 if (item.line_kind === 'combo_header') updateComboComponents(item.key);
                 renderCart();
             });
@@ -3772,7 +3842,7 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.addEventListener('click', function () {
                 var i    = Number(btn.dataset.minus);
                 var item = cart[i];
-                var step = qtyStep(item.product);
+                var step = lineStep(item);
                 const newQuantity = isMeasurableProduct(item.product)
                     ? parseFloat((Number(item.quantity || 0) - step).toFixed(3))
                     : Number(item.quantity || 0) - 1;
@@ -4101,7 +4171,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ? medPacks(product, variant).find(function (p) { return Number(p.id) === Number(line.pack_unit_id); })
             : medPacks(product, variant).find(function (p) { return p.id === null; });
         item.pack_unit_id = line.pack_unit_id ? Number(line.pack_unit_id) : null;
-        item.pack_factor = pk ? pk.factor : (Number(line.pack_factor) || 1);
+        item.pack_factor = pk ? pk.factor : (Number(line.pack_size || line.pack_factor) || 1);   // UNITS-PACKS: a 2.5 kg Bag keeps its size
         item.pack_name = pk ? pk.name : (line.unit_code || '');
         item.inventory_batch_id = line.inventory_batch_id ? Number(line.inventory_batch_id) : null;
     }
@@ -5141,6 +5211,8 @@ document.addEventListener('DOMContentLoaded', function () {
             // counter posts exactly what it posted before.
             if (item.pack_unit_id) fields.pack_unit_id = item.pack_unit_id;
             if (item.inventory_batch_id) fields.inventory_batch_id = item.inventory_batch_id;
+            // UNITS-PACKS F2: typed in another unit ("250 g"); the server works the quantity out again from this.
+            if (item.entered_unit_code && item.entered_quantity) { fields.entered_quantity = item.entered_quantity; fields.entered_unit_code = item.entered_unit_code; }
             Object.keys(fields).forEach(function (field) {
                 var inp  = document.createElement('input');
                 inp.type = 'hidden';
@@ -6495,7 +6567,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const lineKind = line.line_kind || 'standard';
             const key = (lineKind === 'combo_header' || lineKind === 'component')
                 ? 'held-line:' + line.id
-                : cartKey(product, variant, modifiers, medicalCounter ? line.pack_unit_id : null);
+                : cartKey(product, variant, modifiers, (medicalCounter || counterPacks) ? line.pack_unit_id : null);
             const parentKey = line.parent_sales_order_line_id ? recalledLineKeys[line.parent_sales_order_line_id] : '';
             // Honour the STORED price exactly — combo components are 0, and a falsy-OR
             // would wrongly re-price them to full catalog price (inflating the total).
@@ -6535,8 +6607,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 _dbLineId:          line.id || null,
                 kot_sent:           !!line.kot_sent,
                 kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
+                // UNITS-PACKS F2: a line typed as "250 g" comes back saying 250 g.
+                entered_quantity:   line.entered_unit_code ? Number(line.entered_quantity) : null,
+                entered_unit_code:  line.entered_unit_code || null,
+                entered_label:      line.entered_unit_code ? enteredLabel(product, line.entered_unit_code) : null,
             });
             if (medicalCounter) medAdoptLine(cart[cart.length - 1], product, variant, line);   // MEDICAL-COUNTER-1
+            else if (counterPacks && line.pack_unit_id) packAdoptLine(cart[cart.length - 1], product, line);   // UNITS-PACKS F3
             recalledLineKeys[line.id] = key;
         });
 
@@ -7235,6 +7312,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     line_kind:       it.line_kind || 'standard',
                     variant_name:    it.variant_name || null,
                     modifiers:       normalizeModifiers(it.modifiers || []),
+                    entered_quantity:  it.entered_unit_code ? it.entered_quantity : null,
+                    entered_unit_code: it.entered_unit_code || null,
                 }, medicalCounter ? medPreviewFields(it) : {});
             }),
         };
@@ -7817,6 +7896,58 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* search / barcode scan */
 
+    // UNITS-PACKS F3 — packs at the normal counter. A pack line is its own cart line (1 Carton, 2 Bag), counted in whole
+    // packs; its price is the pack's own, else its size × the item's price; the server works both out again.
+    function packPrice(product, pack, variant) {
+        return pack.own_price != null ? Number(pack.own_price) : Math.round(Number(pack.factor) * productPrice(product, variant || null) * 100) / 100;
+    }
+    function baseInCart(productId) {
+        return cart.filter(function (i) { return i.product_id === productId; }).reduce(function (t, i) {
+            return t + Number(i.quantity || 0) * (i.pack_unit_id ? Number(i.pack_factor || 1) : 1);
+        }, 0);
+    }
+    function lineStep(item) { return item.pack_unit_id ? 1 : qtyStep(item.product); }
+    function packScanAdd(code) {
+        for (var i = 0; i < products.length; i++) {
+            var pk = (products[i].packs || []).find(function (k) { return k.barcode && String(k.barcode).toLowerCase() === code; });
+            if (pk) { addPackLine(products[i], pk); return true; }
+        }
+        return false;
+    }
+    function addPackLine(product, pack) {
+        ensureSaleUuid();
+        // The item's own variant, as a tapped tile or a scan picks it: the stock is kept on it.
+        var variant = product.variants && product.variants.length ? product.variants[0] : null;
+        var key = cartKey(product, variant, [], pack.id);
+        var existing = cart.find(function (item) { return item.key === key; });
+        var stockQty = availableQty(product, variant);
+        if (stockQty !== null && baseInCart(product.id) + Number(pack.factor) > stockQty + 0.0001) {
+            if (!branchAllowsNegative()) { blockAlert(unavailableMessage(product, stockQty)); return; }
+            backorderToast(product.name);
+        }
+        if (existing) {
+            existing.quantity = Number(existing.quantity || 0) + 1;
+            existing.tax_amount = lineTax(product, existing.quantity, existing.unit_price, existing.discount_amount || 0);
+        } else {
+            var price = packPrice(product, pack, variant);
+            cart.push({
+                key: key, product_id: product.id, product_variant_id: variant ? variant.id : null, name: product.name, variant_name: variant ? variant.name : null,
+                unit_code: pack.name, quantity: 1, unit_price: price, base_unit_price: price, modifiers: [],
+                discount_amount: 0, tax_amount: lineTax(product, 1, price, 0), product: product, variant: variant,
+                _dbLineId: null, kot_sent: false, kot_sent_quantity: 0,
+                pack_unit_id: pack.id, pack_factor: Number(pack.factor), pack_name: pack.name,
+            });
+        }
+        renderCart();
+    }
+    // A recalled pack line keeps its pack (and the size it was held at).
+    function packAdoptLine(item, product, line) {
+        var pk = (product.packs || []).find(function (k) { return k.id === Number(line.pack_unit_id); });
+        item.pack_unit_id = Number(line.pack_unit_id);
+        item.pack_factor = Number(line.pack_size || line.pack_factor || (pk && pk.factor) || 1);
+        item.pack_name = line.unit_code || (pk && pk.name) || 'Pack';
+    }
+
     function handlePosBarcodeScan(rawQuery) {
         var query = (rawQuery || '').trim().toLowerCase();
         if (!query) return false;
@@ -7824,6 +7955,13 @@ document.addEventListener('DOMContentLoaded', function () {
         // MEDICAL-COUNTER-1: a pack's own barcode sells that pack (the Box barcode = 1 Box).
         if (medicalCounter && medScanPack(query)) {
             medLastScan = Date.now();
+            searchEl.value = '';
+            searchEl.focus();
+            renderProducts();
+            return true;
+        }
+        // UNITS-PACKS F3: the same at the normal counter — the Carton barcode = 1 Carton, its pieces leave stock.
+        if (counterPacks && packScanAdd(query)) {
             searchEl.value = '';
             searchEl.focus();
             renderProducts();
@@ -8158,7 +8296,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const lineKind = line.line_kind || 'standard';
             const key = (lineKind === 'combo_header' || lineKind === 'component')
                 ? 'held-line:' + line.id
-                : cartKey(product, variant, modifiers, medicalCounter ? line.pack_unit_id : null);
+                : cartKey(product, variant, modifiers, (medicalCounter || counterPacks) ? line.pack_unit_id : null);
             const parentKey = line.parent_sales_order_line_id ? preloadedLineKeys[line.parent_sales_order_line_id] : '';
             // Honour the STORED price exactly (combo components are 0; a falsy-OR re-prices them).
             const unitPrice = (line.unit_price !== undefined && line.unit_price !== null)
@@ -8199,8 +8337,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 _dbLineId:          line.id || null,
                 kot_sent:           !!line.kot_sent,
                 kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
+                // UNITS-PACKS F2: a line typed as "250 g" comes back saying 250 g.
+                entered_quantity:   line.entered_unit_code ? Number(line.entered_quantity) : null,
+                entered_unit_code:  line.entered_unit_code || null,
+                entered_label:      line.entered_unit_code ? enteredLabel(product, line.entered_unit_code) : null,
             });
             if (medicalCounter) medAdoptLine(cart[cart.length - 1], product, variant, line);   // MEDICAL-COUNTER-1
+            else if (counterPacks && line.pack_unit_id) packAdoptLine(cart[cart.length - 1], product, line);   // UNITS-PACKS F3
             preloadedLineKeys[line.id] = key;
         });
     }

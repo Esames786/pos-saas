@@ -210,6 +210,27 @@ class SalesAnalyticsMySqlTest extends MySqlTenantTestCase
             'sirf do din par sale, baqi 0 par mojood');
     }
 
+    /** The week is the shop's week at ANY hour — pinned at 21:30 UTC, the hour the old fixture failed in. */
+    public function test_the_week_is_the_shops_week_even_when_utc_is_still_on_yesterday(): void
+    {
+        \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-10-20 21:30:00', 'UTC'));
+        try {
+            $shopToday = app(\App\Support\TenantClock::class)->currentBusinessDate();
+            $this->assertNotSame('2026-10-20', $shopToday, 'the case under test: the shop is already on the next day while UTC is not');
+
+            $this->sale(0, 1000);
+            $this->sale(6, 1000);
+            $this->sale(7, 500);   // eight days back: outside the week
+
+            $daily = $this->page('preset=7d')->viewData('daily');
+            $this->assertCount(7, $daily);
+            $this->assertSame($shopToday, array_key_last($daily), 'the week ends on the shop\'s today');
+            $this->assertSame(2, collect($daily)->where('net_sales', '>', 0)->count(), 'today and six days ago — not the eighth day');
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
+    }
+
     /** Ulti tareekhen di jayen to safha khud theek kar le, girna nahi chahiye. */
     public function test_ulti_tareekhen_khud_theek_ho_jati_hain(): void
     {
@@ -348,10 +369,16 @@ class SalesAnalyticsMySqlTest extends MySqlTenantTestCase
             ->get('http://' . $this->host . '/reports/analytics?' . $query);
     }
 
-    /** Ek paid sale, `$daysAgo` din pehle ki business date par. */
+    /**
+     * Ek paid sale, `$daysAgo` din pehle ki business date par.
+     *
+     * The report's "last N days" end on the shop's BUSINESS day (TenantClock), not UTC's. This used `now()` (UTC): from
+     * 19:00 to 24:00 UTC Karachi is already on the next day, so a sale "6 days ago" fell outside the week and the test
+     * failed every evening — the report was right, the fixture was not. Same clock as the report now, at every hour.
+     */
     private function sale(int $daysAgo, float $total, ?int $branchId = null, string $orderType = 'takeaway'): int
     {
-        $date = now()->subDays($daysAgo)->toDateString();
+        $date = \Illuminate\Support\Carbon::parse(app(\App\Support\TenantClock::class)->currentBusinessDate())->subDays($daysAgo)->toDateString();
 
         $id = $this->makeSale($branchId ?? $this->branchId, [
             'status'        => 'paid',

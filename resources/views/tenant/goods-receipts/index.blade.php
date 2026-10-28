@@ -13,7 +13,7 @@
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
         <h1 class="mb-1">Goods Receipts</h1>
-        <p class="fw-medium">Post received goods. GRN updates the inventory stock ledger immediately.</p>
+        <p class="fw-medium">Record goods that arrived. A goods receipt puts them into stock straight away.</p>
     </div>
     @can('tenant.goods-receipts.create')
         <a href="{{ url('/goods-receipts/create') }}" class="btn btn-primary">
@@ -58,12 +58,12 @@
             <caption class="visually-hidden">Goods receipt list</caption>
             <thead>
             <tr>
-                <th scope="col">GRN No</th>
+                <th scope="col">Receipt No</th>
                 <th scope="col">Supplier</th>
                 <th scope="col">Branch</th>
                 <th scope="col">PO</th>
                 <th scope="col">Receipt Date</th>
-                <th scope="col">Bill</th>
+                <th scope="col">Supplier Invoice</th>
                 <th scope="col">Status</th>
                 <th scope="col" class="text-end">Action</th>
             </tr>

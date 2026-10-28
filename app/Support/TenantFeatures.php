@@ -17,8 +17,17 @@ final class TenantFeatures
     public const PURCHASING_V2 = 'purchasing_v2';
     public const MEDICAL_COUNTER = 'medical_counter';
     public const RETURN_NO_BILL = 'return_no_bill';
+    // UNITS-PACKS F3
+    public const COUNTER_PACKS = 'counter_packs';
+    // W2-C
+    public const WHOLE_COUNTED_STOCK = 'whole_counted_stock';
 
     public const REPORT_DELIVERY_V2 = 'report_delivery_v2';
+    // W3/W4 S4
+    public const PURCHASE_WORKSPACE = 'purchase_workspace';
+
+    // VOID-PURGE-1: the Owner may delete, permanently, an entry already voided on its own date. Off everywhere by default.
+    public const VOID_PURGE = 'void_purge';
 
     /**
      * shots (MASTER-NEW-SCREENS-1): pictures of the screens the switch shows, slug => caption
@@ -50,6 +59,13 @@ final class TenantFeatures
                 'where' => 'Purchasing → Purchase Orders, GRN and Returns → New; tabs on every purchasing page; Inventory → Batches',
                 'shots' => ['grn-entry' => 'GRN entry area', 'purchase-return' => 'Purchase return', 'batches' => 'Batches'],
             ],
+            // W3/W4 S4
+            self::PURCHASE_WORKSPACE => [
+                'label' => 'One purchase screen',
+                'says'  => 'Record a purchase in one go: the goods that arrived, the supplier\'s invoice and a payment — or only the parts you have today (receive now, invoice later; or invoice goods already received). One Post saves the chosen parts together, or none of them.',
+                'where' => 'Purchasing → New purchase',
+                'needs' => [self::PURCHASING_V2],
+            ],
             // REPORT-DELIVERY-V2-1
             // MEDICAL-COUNTER-1
             self::MEDICAL_COUNTER => [
@@ -65,6 +81,25 @@ final class TenantFeatures
                 'says'  => 'A customer can bring an item back without the bill: today\'s price at most, back into its batch or thrown away, a reason every time, and the branch\'s manager PIN when it asks for one.',
                 'where' => 'Sales → Sales Returns → New → "Without bill" (also from the POS Return button)',
                 'shots' => ['return-no-bill' => 'Return without a bill'],
+            ],
+            // W2-C
+            self::WHOLE_COUNTED_STOCK => [
+                'label' => 'Whole numbers for counted items in purchasing and stock',
+                'says'  => 'A counted item (piece, bottle, box) is bought, returned, moved and counted in whole numbers only, the same as at the counter. Kg, litre and metre items still take up to 3 decimals. Leave it off while some counted items are still bought in parts.',
+                'where' => 'Purchase orders, GRN, supplier returns, stock adjustments, transfers and counts',
+            ],
+            // UNITS-PACKS F3
+            self::COUNTER_PACKS => [
+                'label' => 'Packs at the normal counter',
+                'says'  => 'Scan a carton or box barcode at the normal counter and it sells as 1 Carton at the carton\'s price; its pieces leave stock. The counter looks exactly the same. An item with an expiry date never sells from an expired batch here (the medical counter\'s rule). No prescription questions.',
+                'where' => 'POS (scan) · Products → packs',
+                'needs' => [self::PACKS],
+            ],
+            // VOID-PURGE-1 (production)
+            self::VOID_PURGE => [
+                'label' => 'Delete voided entries permanently',
+                'says'  => 'A user given the permission can delete a voided entry together with its reversal, so neither shows anywhere. Totals today stay the same. When the void was dated another day, the screen first says which days\' cash closing changes and asks to confirm. A hidden copy is kept in Deleted entries. Risk: a recorded cash movement can disappear from every screen.',
+                'where' => 'Cash Book and the entry\'s own page → "Delete permanently" on a voided row; Finance → Deleted entries',
             ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',

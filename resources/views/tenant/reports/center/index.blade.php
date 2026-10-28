@@ -4,6 +4,9 @@
 
 @php
     $fmt = fn ($v) => number_format((float) $v, 2);
+    // UNITS-PACKS F4: a quantity total never adds kg and pieces into one number — one kind of unit shows as today
+    // (kg / L / m with the unit), two or more as "0.25 kg · 24.00 pcs".
+    $q = fn ($v, $mix = null) => \App\Support\QtyMix::label((float) $v, $mix, $fmt);
     // REPORT-PRINT-SCOPE FIX: keep the branch/terminal filter-presence markers even when blank ("All").
     // The report scope reads their ABSENCE as "first visit → default to my ONE terminal", which
     // silently narrowed every Print / Z / Export / Email to a single terminal (an owner viewing all
@@ -194,7 +197,7 @@
 <div class="row g-2 mb-3">
     @foreach([
         'Orders' => number_format($o['orders']),
-        'Net Qty' => $fmt($o['net_qty']) . ' (sold ' . $fmt($o['sold_qty']) . ' − ret ' . $fmt($o['returned_qty']) . ')',
+        'Net Qty' => $q($o['net_qty'], $o['net_mix'] ?? null) . ' (sold ' . $q($o['sold_qty'], $o['sold_mix'] ?? null) . ' − ret ' . $q($o['returned_qty'], $o['returned_mix'] ?? null) . ')',
         'Gross Sales' => $fmt($o['gross_sales']),
         'Discount' => $fmt($o['discount']),
         'Tax' => $fmt($o['tax']),
@@ -267,10 +270,10 @@
             <thead><tr><th>Category</th><th class="text-end">Orders</th><th class="text-end">Sold Qty</th><th class="text-end">Ret Qty</th><th class="text-end">Net Qty</th><th class="text-end">Sold Value</th><th class="text-end">Returns</th><th class="text-end">Net Value</th></tr></thead>
             <tbody>
             @foreach($data['categories'] as $root)
-                <tr class="table-light fw-semibold"><td>{{ $root['name'] }}</td><td class="text-end">{{ $root['orders'] }}</td><td class="text-end">{{ $fmt($root['sold_qty']) }}</td><td class="text-end">{{ $fmt($root['returned_qty']) }}</td><td class="text-end">{{ $fmt($root['net_qty']) }}</td><td class="text-end">{{ $fmt($root['net']) }}</td><td class="text-end text-danger">{{ $fmt($root['returns_amount']) }}</td><td class="text-end">{{ $fmt($root['net_value']) }}</td></tr>
+                <tr class="table-light fw-semibold"><td>{{ $root['name'] }}</td><td class="text-end">{{ $root['orders'] }}</td><td class="text-end">{{ $q($root['sold_qty'], $root['sold_mix'] ?? null) }}</td><td class="text-end">{{ $q($root['returned_qty'], $root['returned_mix'] ?? null) }}</td><td class="text-end">{{ $q($root['net_qty'], $root['net_mix'] ?? null) }}</td><td class="text-end">{{ $fmt($root['net']) }}</td><td class="text-end text-danger">{{ $fmt($root['returns_amount']) }}</td><td class="text-end">{{ $fmt($root['net_value']) }}</td></tr>
                 @foreach($root['children'] as $c)
                     @if($c['id'] !== $root['id'])
-                        <tr><td class="ps-4">↳ {{ $c['name'] }}</td><td class="text-end">{{ $c['orders'] }}</td><td class="text-end">{{ $fmt($c['sold_qty']) }}</td><td class="text-end">{{ $fmt($c['returned_qty']) }}</td><td class="text-end">{{ $fmt($c['net_qty']) }}</td><td class="text-end">{{ $fmt($c['net']) }}</td><td class="text-end text-danger">{{ $fmt($c['returns_amount']) }}</td><td class="text-end">{{ $fmt($c['net_value']) }}</td></tr>
+                        <tr><td class="ps-4">↳ {{ $c['name'] }}</td><td class="text-end">{{ $c['orders'] }}</td><td class="text-end">{{ $q($c['sold_qty'], $c['sold_mix'] ?? null) }}</td><td class="text-end">{{ $q($c['returned_qty'], $c['returned_mix'] ?? null) }}</td><td class="text-end">{{ $q($c['net_qty'], $c['net_mix'] ?? null) }}</td><td class="text-end">{{ $fmt($c['net']) }}</td><td class="text-end text-danger">{{ $fmt($c['returns_amount']) }}</td><td class="text-end">{{ $fmt($c['net_value']) }}</td></tr>
                     @endif
                 @endforeach
             @endforeach
@@ -288,10 +291,10 @@
             @endforeach
         </div>
         <table class="table table-sm">
-            <thead><tr><th>Item</th><th>Variant</th><th>Category</th><th class="text-end">Sold Qty</th><th class="text-end">Ret Qty</th><th class="text-end">Net Qty</th><th class="text-end">Sold Value</th><th class="text-end">Returns</th><th class="text-end">Net Value</th></tr></thead>
+            <thead><tr><th>Item</th><th>Variant</th><th>Category</th><th>Unit</th><th class="text-end">Sold Qty</th><th class="text-end">Ret Qty</th><th class="text-end">Net Qty</th><th class="text-end">Sold Value</th><th class="text-end">Returns</th><th class="text-end">Net Value</th></tr></thead>
             <tbody>
             @foreach($data['items'] as $r)
-                <tr><td>{{ $r->item }}</td><td>{{ $r->variant }}</td><td>{{ $r->category }}</td><td class="text-end">{{ $fmt($r->sold_qty) }}</td><td class="text-end">{{ $fmt($r->returned_qty) }}</td><td class="text-end">{{ $fmt($r->net_qty) }}</td><td class="text-end">{{ $fmt($r->net) }}</td><td class="text-end text-danger">{{ $fmt($r->returns_amount) }}</td><td class="text-end fw-semibold">{{ $fmt($r->net_value) }}</td></tr>
+                <tr><td>{{ $r->item }}</td><td>{{ $r->variant }}</td><td>{{ $r->category }}</td><td>{{ $r->unit }}</td><td class="text-end">{{ $fmt($r->sold_qty) }}</td><td class="text-end">{{ $fmt($r->returned_qty) }}</td><td class="text-end">{{ $fmt($r->net_qty) }}</td><td class="text-end">{{ $fmt($r->net) }}</td><td class="text-end text-danger">{{ $fmt($r->returns_amount) }}</td><td class="text-end fw-semibold">{{ $fmt($r->net_value) }}</td></tr>
             @endforeach
             </tbody>
         </table>
@@ -312,9 +315,9 @@
             @forelse($ci as $head)
                 <tr class="table-light">
                     <th>{{ $head['head'] }}</th>
-                    <th class="text-end">{{ $fmt($head['sold_qty']) }}</th>
-                    <th class="text-end">{{ $fmt($head['returned_qty']) }}</th>
-                    <th class="text-end">{{ $fmt($head['net_qty']) }}</th>
+                    <th class="text-end">{{ $q($head['sold_qty'], $head['sold_mix'] ?? null) }}</th>
+                    <th class="text-end">{{ $q($head['returned_qty'], $head['returned_mix'] ?? null) }}</th>
+                    <th class="text-end">{{ $q($head['net_qty'], $head['net_mix'] ?? null) }}</th>
                     <th class="text-end">{{ $fmt($head['net']) }}</th>
                     <th class="text-end">{{ $fmt($head['returns_amount']) }}</th>
                     <th class="text-end">{{ $fmt($head['net_value']) }}</th>
@@ -323,9 +326,9 @@
                     @if($head['nested'])
                         <tr>
                             <td class="ps-4 fw-semibold">{{ $group['name'] }}</td>
-                            <td class="text-end">{{ $fmt($group['sold_qty']) }}</td>
-                            <td class="text-end">{{ $fmt($group['returned_qty']) }}</td>
-                            <td class="text-end">{{ $fmt($group['net_qty']) }}</td>
+                            <td class="text-end">{{ $q($group['sold_qty'], $group['sold_mix'] ?? null) }}</td>
+                            <td class="text-end">{{ $q($group['returned_qty'], $group['returned_mix'] ?? null) }}</td>
+                            <td class="text-end">{{ $q($group['net_qty'], $group['net_mix'] ?? null) }}</td>
                             <td class="text-end">{{ $fmt($group['net']) }}</td>
                             <td class="text-end">{{ $fmt($group['returns_amount']) }}</td>
                             <td class="text-end fw-semibold">{{ $fmt($group['net_value']) }}</td>
@@ -334,9 +337,9 @@
                     @foreach($group['items'] as $item)
                         <tr>
                             <td class="{{ $head['nested'] ? 'ps-5' : 'ps-4' }}">{{ $item['item'] }}@if($item['variant']) <span class="text-muted">({{ $item['variant'] }})</span>@endif</td>
-                            <td class="text-end">{{ $fmt($item['sold_qty']) }}</td>
-                            <td class="text-end">{{ $fmt($item['returned_qty']) }}</td>
-                            <td class="text-end">{{ $fmt($item['net_qty']) }}</td>
+                            <td class="text-end">{{ $q($item['sold_qty'], $item['sold_mix'] ?? null) }}</td>
+                            <td class="text-end">{{ $q($item['returned_qty'], $item['returned_mix'] ?? null) }}</td>
+                            <td class="text-end">{{ $q($item['net_qty'], $item['net_mix'] ?? null) }}</td>
                             <td class="text-end">{{ $fmt($item['net']) }}</td>
                             <td class="text-end text-danger">{{ $fmt($item['returns_amount']) }}</td>
                             <td class="text-end">{{ $fmt($item['net_value']) }}</td>
@@ -350,9 +353,9 @@
             @if($ci->isNotEmpty())
                 <tfoot><tr class="fw-semibold">
                     <td>Total</td>
-                    <td class="text-end">{{ $fmt($ci->sum('sold_qty')) }}</td>
-                    <td class="text-end">{{ $fmt($ci->sum('returned_qty')) }}</td>
-                    <td class="text-end">{{ $fmt($ci->sum('net_qty')) }}</td>
+                    <td class="text-end">{{ $q($ci->sum('sold_qty'), \App\Support\QtyMix::sum($ci, 'sold_mix', 'sold_qty')) }}</td>
+                    <td class="text-end">{{ $q($ci->sum('returned_qty'), \App\Support\QtyMix::sum($ci, 'returned_mix', 'returned_qty')) }}</td>
+                    <td class="text-end">{{ $q($ci->sum('net_qty'), \App\Support\QtyMix::sum($ci, 'net_mix', 'net_qty')) }}</td>
                     <td class="text-end">{{ $fmt($ci->sum('net')) }}</td>
                     <td class="text-end">{{ $fmt($ci->sum('returns_amount')) }}</td>
                     <td class="text-end">{{ $fmt($ci->sum('net_value')) }}</td>
@@ -380,9 +383,9 @@
                 <tr>
                     <td class="ps-4">{{ $r['deal'] }}</td>
                     <td class="text-end">{{ $r['orders'] }}</td>
-                    <td class="text-end">{{ $fmt($r['sold_qty']) }}</td>
-                    <td class="text-end">{{ $fmt($r['returned_qty']) }}</td>
-                    <td class="text-end">{{ $fmt($r['net_qty']) }}</td>
+                    <td class="text-end">{{ $q($r['sold_qty'], $r['sold_mix'] ?? null) }}</td>
+                    <td class="text-end">{{ $q($r['returned_qty'], $r['returned_mix'] ?? null) }}</td>
+                    <td class="text-end">{{ $q($r['net_qty'], $r['net_mix'] ?? null) }}</td>
                     <td class="text-end">{{ $fmt($r['net']) }}</td>
                     <td class="text-end text-danger">{{ $fmt($r['returns_amount']) }}</td>
                     <td class="text-end fw-semibold">{{ $fmt($r['net_value']) }}</td>
@@ -415,7 +418,7 @@
                 <tbody>
                 @foreach($data[$dimKey] as $r)
                     <tr @if($r['label'] === 'Unassigned') class="table-warning" @endif>
-                        <td>{{ $r['label'] }}</td><td class="text-end">{{ $r['orders'] }}</td><td class="text-end">{{ $fmt($r['sold_qty']) }}</td><td class="text-end">{{ $fmt($r['returned_qty']) }}</td><td class="text-end">{{ $fmt($r['net_qty']) }}</td><td class="text-end">{{ $fmt($r['gross']) }}</td><td class="text-end">{{ $fmt($r['discount']) }}</td><td class="text-end">{{ $fmt($r['tax']) }}</td><td class="text-end">{{ $fmt($r['service_charge']) }}</td><td class="text-end">{{ $fmt($r['delivery_charge']) }}</td><td class="text-end">{{ $fmt($r['grand_total']) }}</td><td class="text-end">{{ $fmt($r['returns_amount']) }}</td><td class="text-end fw-semibold">{{ $fmt($r['net_sales']) }}</td>
+                        <td>{{ $r['label'] }}</td><td class="text-end">{{ $r['orders'] }}</td><td class="text-end">{{ $q($r['sold_qty'], $r['sold_mix'] ?? null) }}</td><td class="text-end">{{ $q($r['returned_qty'], $r['returned_mix'] ?? null) }}</td><td class="text-end">{{ $q($r['net_qty'], $r['net_mix'] ?? null) }}</td><td class="text-end">{{ $fmt($r['gross']) }}</td><td class="text-end">{{ $fmt($r['discount']) }}</td><td class="text-end">{{ $fmt($r['tax']) }}</td><td class="text-end">{{ $fmt($r['service_charge']) }}</td><td class="text-end">{{ $fmt($r['delivery_charge']) }}</td><td class="text-end">{{ $fmt($r['grand_total']) }}</td><td class="text-end">{{ $fmt($r['returns_amount']) }}</td><td class="text-end fw-semibold">{{ $fmt($r['net_sales']) }}</td>
                     </tr>
                 @endforeach
                 </tbody>
@@ -443,14 +446,14 @@
                             <td>{{ $r['label'] }}</td>
                             @if($withOrders !== null && $withOrders)<td class="text-end">{{ (int) $r['orders'] }}</td>@endif
                             @if($withOrders === null)<td class="text-end">{{ $r['orders'] }}</td><td class="text-end">{{ $fmt($r['grand_total']) }}</td><td class="text-end text-danger">{{ $fmt($r['returns_amount']) }}</td><td class="text-end">{{ $fmt($r['net_sales']) }}</td>
-                            @else<td class="text-end">{{ $fmt($r['sold_qty']) }}</td><td class="text-end text-danger">{{ $fmt($r['returned_qty']) }}</td><td class="text-end">{{ $fmt($r['net_qty']) }}</td><td class="text-end">{{ $fmt($r['net']) }}</td><td class="text-end text-danger">{{ $fmt($r['returns_amount']) }}</td><td class="text-end">{{ $fmt($r['net_value']) }}</td>@endif
+                            @else<td class="text-end">{{ $q($r['sold_qty'], $r['sold_mix'] ?? null) }}</td><td class="text-end text-danger">{{ $q($r['returned_qty'], $r['returned_mix'] ?? null) }}</td><td class="text-end">{{ $q($r['net_qty'], $r['net_mix'] ?? null) }}</td><td class="text-end">{{ $fmt($r['net']) }}</td><td class="text-end text-danger">{{ $fmt($r['returns_amount']) }}</td><td class="text-end">{{ $fmt($r['net_value']) }}</td>@endif
                         </tr>
                     @endforeach
                     <tr class="table-light fw-semibold">
                         <td>Total</td>
                         @if($withOrders !== null && $withOrders)<td class="text-end">{{ collect($rows)->sum('orders') }}</td>@endif
                         @if($withOrders === null)<td class="text-end">{{ collect($rows)->sum('orders') }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('grand_total')) }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('net_sales')) }}</td>
-                        @else<td class="text-end">{{ $fmt(collect($rows)->sum('sold_qty')) }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('returned_qty')) }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('net_qty')) }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('net_value')) }}</td>@endif
+                        @else<td class="text-end">{{ $q(collect($rows)->sum('sold_qty'), \App\Support\QtyMix::sum(collect($rows), 'sold_mix', 'sold_qty')) }}</td><td class="text-end">{{ $q(collect($rows)->sum('returned_qty'), \App\Support\QtyMix::sum(collect($rows), 'returned_mix', 'returned_qty')) }}</td><td class="text-end">{{ $q(collect($rows)->sum('net_qty'), \App\Support\QtyMix::sum(collect($rows), 'net_mix', 'net_qty')) }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('net_value')) }}</td>@endif
                     </tr>
                     </tbody>
                 </table>

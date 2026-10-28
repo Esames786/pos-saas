@@ -232,7 +232,7 @@ class TrialBalancePartyMySqlTest extends MySqlTenantTestCase
         // In hand: −117,600 FAISAL payment − 1,000 manual journal (via its cash transaction).
         $this->assertSame([0.0, 0.0, 0.0, 118600.0, 0.0, 118600.0], $this->six($p['Cash in Hand']));
         $this->assertSame([0.0, 0.0, 5000.0, 0.0, 5000.0, 0.0], $this->six($p['No cash/bank account on the receipt']));
-        $this->assertSame([0.0, 0.0, 0.0, 300.0, 0.0, 300.0], $this->six($p['Unassigned']), 'a manual cash line with no cash account named');
+        $this->assertSame([0.0, 0.0, 0.0, 300.0, 0.0, 300.0], $this->six($p['Not linked to a drawer / bank']), 'a manual cash line with no cash account named (FINANCE-PDF-DOWNLOADS-1: not "Unassigned")');
     }
 
     public function test_expenses_split_by_category(): void
@@ -241,7 +241,7 @@ class TrialBalancePartyMySqlTest extends MySqlTenantTestCase
 
         $this->assertSame(5290.0, round($p['6810-1 · Site / Operating']['period_debit'], 2));
         $this->assertSame(4800.0, round($p['6810-2 · Supervisor Fee']['period_debit'], 2));
-        $this->assertSame(1000.0, round($p['Unassigned']['period_debit'], 2), 'the manual journal on 6810 has no category');
+        $this->assertSame(1000.0, round($p['Other']['period_debit'], 2), 'the manual journal on 6810 has no category: "Other", as on the P&L');
     }
 
     public function test_new_postings_name_their_supplier_without_doubling_the_supplier_ledger(): void
@@ -299,6 +299,83 @@ class TrialBalancePartyMySqlTest extends MySqlTenantTestCase
         $this->assertSame('application/pdf', $pdf->headers->get('Content-Type'));
         $this->assertStringStartsWith('%PDF', $pdf->getContent());
         $this->assertGreaterThan(3000, strlen($pdf->getContent()));
+    }
+
+    // ── FINANCE-PDF-DOWNLOADS-1: the PDF as the hand-made sample ─────────────────────────────────────────────
+
+    private const COLS = ['opening_debit', 'opening_credit', 'period_debit', 'period_credit', 'closing_debit', 'closing_credit'];
+
+    /** The PDF's page, rendered from exactly what the controller hands Dompdf. */
+    private function printHtml(array $params = self::OCT): string
+    {
+        $d = $this->page($params)->getData();
+
+        return view('tenant.finance.trial-balance.print', ['rows' => $d['rows'], 'totals' => $d['totals'], 'difference' => $d['difference'],
+            'parties' => $d['parties'], 'showParties' => true, 'grouped' => $d['grouped'], 'sections' => $d['sections'],
+            'sectionTotals' => TrialBalanceController::sectionTotals($d['sections']), 'from' => $d['from'], 'to' => $d['to'],
+            'branchLabel' => 'All Branches', 'company' => 'Test Kitchen'])->render();
+    }
+
+    public function test_the_pdf_has_the_samples_two_row_heading_and_debit_credit_pairs(): void
+    {
+        $html = $this->printHtml();
+        $this->assertStringContainsString('<th colspan="2">Opening (30 Sep 2026)</th>', $html);
+        $this->assertStringContainsString('<th colspan="2">Transactions 1–6 Oct</th>', $html);
+        $this->assertStringContainsString('<th colspan="2">Closing Balance (6 Oct 2026)</th>', $html);
+        $this->assertSame(3, substr_count($html, '<th style="width:11.3%">Debit</th>'), 'Debit and Credit under each of the three');
+        $this->assertStringNotContainsString('>Type<', $html, 'no Type column');
+        $this->assertStringContainsString('<thead>', $html, 'the heading repeats on every page');
+        $this->assertStringContainsString('Trial Balance — with Party Detail', $html);
+        $this->assertStringContainsString('Not linked to a drawer / bank', $html, 'cash posted without a drawer, said plainly');
+    }
+
+    public function test_each_head_totals_its_accounts_and_the_grand_total_is_the_services_balanced_in_every_pair(): void
+    {
+        $d = $this->page(self::OCT)->getData();
+        $totals = TrialBalanceController::sectionTotals($d['sections']);
+        $html = $this->printHtml();
+        $cell = fn (float $v) => '<td class="r">' . (round($v, 2) != 0.0 ? number_format($v, 2) : '-') . '</td>';
+        $grand = array_fill_keys(self::COLS, 0.0);
+        foreach ($d['sections'] as $s) {
+            $accounts = array_filter($s['lines'], fn ($l) => $l['kind'] !== 'head');
+            foreach (self::COLS as $c) {
+                $this->assertEqualsWithDelta(array_sum(array_column($accounts, $c)), $totals[$s['key']][$c], 0.005, "Total {$s['label']}: {$c} = its accounts");
+                $grand[$c] += $totals[$s['key']][$c];
+            }
+            $cells = implode('', array_map(fn ($c) => $cell($totals[$s['key']][$c]), self::COLS));
+            $this->assertMatchesRegularExpression('#<td>Total ' . preg_quote($s['label'], '#') . '</td>\s*' . preg_quote($cells, '#') . '#', $html, "Total {$s['label']} printed");
+        }
+        foreach (self::COLS as $c) {
+            $this->assertEqualsWithDelta($d['totals'][$c], $grand[$c], 0.01, "the heads add up to the grand total: {$c}");
+        }
+        foreach ([['opening_debit', 'opening_credit'], ['period_debit', 'period_credit'], ['closing_debit', 'closing_credit']] as [$dr, $cr]) {
+            $this->assertEqualsWithDelta($d['totals'][$dr], $d['totals'][$cr], 0.005, "{$dr} = {$cr}");
+        }
+        $grandCells = implode('', array_map(fn ($c) => '<td class="r">' . number_format($d['totals'][$c], 2) . '</td>', self::COLS));
+        $this->assertMatchesRegularExpression('#id="tb-print-grand">\s*<td></td>\s*<td>Grand Total</td>\s*' . preg_quote($grandCells, '#') . '#', $html,
+            'the service\'s totals, rounded once');
+        $this->assertMatchesRegularExpression('#Trial Balance difference:\s*<span class="">0\.00</span>#', $html);
+    }
+
+    public function test_the_pdf_downloads_and_the_branch_filter_carries(): void
+    {
+        $response = $this->page(self::OCT + ['format' => 'pdf']);
+        $this->assertSame('attachment; filename="trial-balance-2026-10-01-to-2026-10-06.pdf"', $response->headers->get('Content-Disposition'),
+            'downloaded, never a blank tab on a phone');
+
+        $before = $this->page(self::OCT)->getData()['totals'];
+        $other = $this->makeBranch(['name' => 'Second']);
+        $entry = DB::table('journal_entries')->insertGetId(['entry_no' => 'JE-' . uniqid(), 'entry_date' => '2026-10-05', 'status' => 'posted',
+            'source_type' => 'manual_journal', 'source_id' => 4242, 'description' => 'second branch', 'created_at' => now(), 'updated_at' => now()]);
+        foreach ([['6800', 777, 0], ['1110', 0, 777]] as [$code, $dr, $cr]) {
+            DB::table('journal_lines')->insert(['journal_entry_id' => $entry, 'account_id' => $this->acc[$code], 'branch_id' => $other,
+                'debit' => $dr, 'credit' => $cr, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $this->assertEqualsWithDelta($before['period_debit'] + 777, $this->page(self::OCT)->getData()['totals']['period_debit'], 0.005);
+        $main = self::OCT + ['branch_ids' => [$this->branchId]];
+        $this->assertEqualsWithDelta($before['period_debit'], $this->page($main)->getData()['totals']['period_debit'], 0.005,
+            'the second branch is not in the Main branch\'s trial balance');
+        $this->assertStringStartsWith('%PDF', $this->page($main + ['format' => 'pdf'])->getContent());
     }
 
     /** Register this test's DB as a tenant so the command can activate it (as the catering command tests do). */

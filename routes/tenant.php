@@ -436,6 +436,11 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel'])
                     ->name('tenant.purchase-orders.cancel');
 
+                // W3/W4 S4 — the purchase workspace (behind the purchase_workspace switch; each step checks its own permission).
+                Route::get('/purchases/new', [\App\Http\Controllers\Tenant\PurchaseWorkspaceController::class, 'create'])->name('tenant.purchases.workspace');
+                Route::post('/purchases', [\App\Http\Controllers\Tenant\PurchaseWorkspaceController::class, 'store'])->name('tenant.purchases.workspace.store');
+                Route::get('/purchases/receipts/{goodsReceipt}', [\App\Http\Controllers\Tenant\PurchaseWorkspaceController::class, 'receipt'])->name('tenant.purchases.workspace.receipt');
+
                 // Goods Receipts
                 Route::get('/goods-receipts', [GoodsReceiptController::class, 'index'])
                     ->name('tenant.goods-receipts.index');
@@ -459,6 +464,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     ->name('tenant.purchase-bills.store');
                 Route::get('/purchase-bills/{purchaseBill}', [PurchaseBillController::class, 'show'])
                     ->name('tenant.purchase-bills.show');
+                // SUPPLIER-CREDIT-CLARITY-1 — move a payment's part on this invoice to another invoice of the supplier.
+                Route::post('/purchase-bills/{purchaseBill}/move-credit', [PurchaseBillController::class, 'moveCredit'])
+                    ->middleware('prevent.duplicate.submit')
+                    ->name('tenant.purchase-bills.move-credit');
 
                 // Supplier Payments
                 Route::get('/supplier-payments', [SupplierPaymentController::class, 'index'])
@@ -904,6 +913,12 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/finance/manual-journals', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'store'])->middleware('prevent.duplicate.submit')->name('tenant.finance.manual-journals.store');
                 Route::get('/finance/manual-journals/{manualJournal}', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'show'])->name('tenant.finance.manual-journals.show');
                 Route::post('/finance/manual-journals/{manualJournal}/reverse', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'reverse'])->middleware('prevent.duplicate.submit')->name('tenant.finance.manual-journals.reverse');
+
+                // VOID-PURGE-1: the Owner deletes, permanently, an entry already voided on its own date (Master switch, off by default).
+                Route::post('/finance/voided-entries/{type}/{id}/purge', [\App\Http\Controllers\Tenant\Finance\VoidPurgeController::class, 'purge'])
+                    ->whereIn('type', ['manual_journal', 'expense', 'supplier_payment', 'catering_receipt'])->whereNumber('id')
+                    ->middleware('prevent.duplicate.submit')->name('tenant.finance.voided-entries.purge');
+                Route::get('/finance/voided-entries', [\App\Http\Controllers\Tenant\Finance\VoidPurgeController::class, 'index'])->name('tenant.finance.voided-entries.index');
 
                 // Finance — Opening Balances / Owner Capital (FIN-13)
                 Route::get('/finance/opening-balances', [OpeningBalanceController::class, 'index'])->name('tenant.finance.opening-balances.index');

@@ -190,7 +190,8 @@
          sab ek saath dekhne ke liye chaurai chahiye. --}}
     <div class="modal-dialog modal-xl">
         <form method="POST" action="{{ url('/catering/commercial-rates') }}" class="modal-content"
-              data-rate-history='@json($historyByMaterial ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)'>
+              data-rate-history='@json($historyByMaterial ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_AMP)'
+              data-unit-defaults='@json((object) ($unitDefaults ?? []))'>
             @csrf
             <div class="modal-header">
                 <h5 class="modal-title">Set a commercial rate</h5>
@@ -204,13 +205,27 @@
                 </div>
                 <div class="row g-3">
                     <div class="col-12">
-                        <label class="form-label">Material <span class="text-danger">*</span></label>
-                        <select name="product_id" class="form-select" required>
+                        <label class="form-label" for="rate-material">Material <span class="text-danger">*</span></label>
+                        {{-- COMMERCIAL-RATE-PICKER-1 (owner, 26 Oct): "sirf wo material dikhao jo kahin use ho rahe hon, aage
+                             bracket me product count, aur search". Each option carries its dish count — the same count
+                             the "kin dishes par lag jaye" box below shows — and data-in-use: used by a dish, or already
+                             given a house rate. The list opens on those; "Show all materials" brings back the rest. --}}
+                        <select name="product_id" id="rate-material" class="form-select" required>
                             <option value="">Choose a material…</option>
                             @foreach($materials as $material)
-                                <option value="{{ $material->id }}">{{ $material->name }} ({{ $material->sku }})</option>
+                                @php
+                                    $counted = ($blockCounts ?? [])[$material->id] ?? [];
+                                    $dishes = (int) (($counted['book'] ?? 0) + ($counted['manual'] ?? 0));
+                                    $inUse = $dishes > 0 || isset(($ratedIds ?? [])[$material->id]);
+                                @endphp
+                                <option value="{{ $material->id }}" data-in-use="{{ $inUse ? '1' : '0' }}" data-dishes="{{ $dishes }}">{{ $material->name }} ({{ $material->sku }}){{ $dishes > 0 ? ' — ' . $dishes . ($dishes === 1 ? ' dish' : ' dishes') : ($inUse ? ' — no dish yet' : '') }}</option>
                             @endforeach
                         </select>
+                        <div class="form-check mt-1">
+                            <input class="form-check-input" type="checkbox" id="rate-show-all">
+                            <label class="form-check-label fs-13" for="rate-show-all">Show all materials (also ones no dish uses yet)</label>
+                        </div>
+                        <div class="form-text">Type to search. The number is how many dishes use the material.</div>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Charged per unit <span class="text-danger">*</span></label>
@@ -437,5 +452,42 @@
         });
     })();
 </script>
+
+{{-- COMMERCIAL-RATE-PICKER-1: search by typing — select2 over the materials already in the box, never a catalogue search
+     (CATERING-RATE-PARITY-1) — opening on the materials in use; "Show all materials" brings back the rest. select2
+     announces a choice through jQuery, which the plain listeners above (the dish counts and their ticks) do not hear,
+     so each choice is passed on to them as a plain change event. --}}
+@push('scripts')
+<script>
+$(function () {
+    var $sel = $('#rate-material'), sel = $sel[0], showAll = document.getElementById('rate-show-all');
+    if (!sel || !showAll || !$.fn.select2) return;   // without select2 the plain list (every material) still works
+    function inUse(el) { return !el || !el.value || el.getAttribute('data-in-use') === '1'; }
+    $sel.select2({
+        width: '100%',
+        dropdownParent: $('#rateModal'),
+        placeholder: 'Type to search a material…',
+        matcher: function (params, data) {
+            if (!showAll.checked && !inUse(data.element)) return null;
+            var term = $.trim(params.term || '');
+            if (term === '') return data;
+            return String(data.text).toUpperCase().indexOf(term.toUpperCase()) > -1 ? data : null;
+        },
+        language: {
+            noResults: function () {
+                return showAll.checked ? 'No material matches.'
+                    : 'No material used in a dish matches. Tick "Show all materials" to search every material.';
+            }
+        }
+    });
+    function passOn() { sel.dispatchEvent(new Event('change')); }
+    $sel.on('select2:select select2:clear', passOn);
+    // Back to "in use only" while an unused material is chosen: the choice is cleared, not left hidden.
+    showAll.addEventListener('change', function () {
+        if (!showAll.checked && !inUse(sel.selectedOptions[0])) { $sel.val('').trigger('change'); passOn(); }
+    });
+});
+</script>
+@endpush
 @endcan
 @endsection

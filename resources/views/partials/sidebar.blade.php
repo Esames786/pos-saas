@@ -32,6 +32,10 @@
 
     // Helper: true if current request matches ANY of the given patterns.
     $isIn = fn (string ...$patterns) => collect($patterns)->contains(fn ($p) => request()->is($p));
+
+    // PRODUCT-NAV-1: with the one product screen on, links that open the very same screen as another link are shown
+    // once (Products is the main entry). Off: today's menu, unchanged. No screen is removed; every URL still works.
+    $productsV2 = app()->bound('tenant') && \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRODUCT_SCREEN_V2);
 @endphp
 
 {{-- ─────────────────────────────────────────────────────────────────────────
@@ -155,6 +159,29 @@
                                     <a href="{{ url('/subscription-requests') }}" class="{{ $a ? 'active' : '' }}">
                                         <i class="ti ti-arrow-up-circle fs-16 me-2"></i>
                                         <span>Upgrade Requests</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            {{-- CONTACT-FORM-1: website enquiries. Unread count is on the link so a
+                                 new lead is visible without opening the page. --}}
+                            @can('central.contact-enquiries.index')
+                                @php
+                                    $a = $isIn('contact-enquiries*');
+                                    // Sidebar har safhe par banta hai — ye ginti har page load par ek
+                                    // query na ban jaye, is liye ek minute ke liye yaad rehti hai.
+                                    $newEnquiries = \Illuminate\Support\Facades\Cache::remember(
+                                        'central.contact-enquiries.new-count',
+                                        60,
+                                        fn () => \App\Models\Master\ContactEnquiry::where('status', \App\Models\Master\ContactEnquiry::STATUS_NEW)->count(),
+                                    );
+                                @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/contact-enquiries') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-mail-forward fs-16 me-2"></i>
+                                        <span>Contact Enquiries</span>
+                                        @if($newEnquiries)
+                                            <span class="badge bg-danger ms-2">{{ $newEnquiries }}</span>
+                                        @endif
                                     </a>
                                 </li>
                             @endcan
@@ -416,7 +443,27 @@
                 @endif
 
                 {{-- ── PURCHASING ──────────────────────────────────────────────── --}}
-                @if($hasModule('purchasing'))
+                @php
+                    // W3/W4 S5: with the purchase workspace on, one "Purchases" item — the tabs row on every purchasing
+                    // page leads to the rest. It opens the first purchasing page this user may open. Off: today's menu.
+                    $purCompact = $hasModule('purchasing') && app()->bound('tenant') && \App\Http\Controllers\Tenant\PurchaseWorkspaceController::on();
+                    $purHome = null;
+                    if ($purCompact && ($purUserS = auth('tenant')->user())) {
+                        foreach (['tenant.purchases.workspace' => '/purchases/new', 'tenant.goods-receipts.index' => '/goods-receipts', 'tenant.purchase-bills.index' => '/purchase-bills',
+                            'tenant.supplier-payments.index' => '/supplier-payments', 'tenant.purchase-orders.index' => '/purchase-orders', 'tenant.purchase-returns.index' => '/purchase-returns',
+                            'tenant.suppliers.index' => '/suppliers'] as $perm => $path) {
+                            if ($purUserS->can($perm)) { $purHome = $path; break; }
+                        }
+                    }
+                @endphp
+                @if($purCompact && $purHome)
+                    @php $a = $isIn('purchases*') || $isIn('suppliers*') || $isIn('purchase-orders*') || $isIn('goods-receipts*') || $isIn('purchase-bills*') || $isIn('supplier-payments*') || $isIn('purchase-returns*'); @endphp
+                    <li class="{{ $a ? 'active' : '' }}">
+                        <a href="{{ url($purHome) }}" class="{{ $a ? 'active' : '' }}" id="sidebar-purchases">
+                            <i class="ti ti-truck-delivery fs-16 me-2"></i><span>Purchases</span>
+                        </a>
+                    </li>
+                @elseif(! $purCompact && $hasModule('purchasing'))
                 @canany(['tenant.suppliers.index','tenant.purchase-orders.index','tenant.goods-receipts.index','tenant.purchase-bills.index','tenant.supplier-payments.index','tenant.purchase-returns.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
@@ -445,7 +492,7 @@
                             @php $a = $isIn('goods-receipts*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/goods-receipts') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-truck-delivery fs-16 me-2"></i><span>GRN</span>
+                                    <i class="ti ti-truck-delivery fs-16 me-2"></i><span>Goods Receipts</span>
                                 </a>
                             </li>
                         @endcan
@@ -453,7 +500,7 @@
                             @php $a = $isIn('purchase-bills*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/purchase-bills') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-file-invoice fs-16 me-2"></i><span>Purchase Bills</span>
+                                    <i class="ti ti-file-invoice fs-16 me-2"></i><span>Supplier Invoices</span>
                                 </a>
                             </li>
                         @endcan
@@ -469,7 +516,7 @@
                             @php $a = $isIn('purchase-returns*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/purchase-returns') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-truck-return fs-16 me-2"></i><span>Purchase Returns</span>
+                                    <i class="ti ti-truck-return fs-16 me-2"></i><span>Supplier Returns</span>
                                 </a>
                             </li>
                         @endcan
@@ -824,6 +871,9 @@
                                 </a>
                             </li>
                         @endcan
+                        {{-- PRODUCT-NAV-1: Store Issue is listed once more above, beside Materials; with the one product
+                             screen on it shows there only. --}}
+                        @unless($productsV2)
                         @can('tenant.catering.store-issues.index')
                             @php $a = $isIn('catering/store-issues*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -832,6 +882,7 @@
                                 </a>
                             </li>
                         @endcan
+                        @endunless
                         @can('tenant.catering.printer-mappings.index')
                             @php $a = $isIn('catering/printer-mappings*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -1106,6 +1157,10 @@
                                     </a>
                                 </li>
                             @endcan
+                            {{-- PRODUCT-NAV-1: the same Categories and Units screens as Catalog's (same permission, which
+                                 shows Catalog too); with the one product screen on they are listed under Catalog only.
+                                 The ?context=manufacturing addresses still open. --}}
+                            @unless($productsV2)
                             @can('tenant.categories.index')
                                 @php $a = request()->is('categories*') && request('context') === 'manufacturing'; @endphp
                                 <li class="{{ $a ? 'active' : '' }}">
@@ -1124,6 +1179,7 @@
                                     </a>
                                 </li>
                             @endcan
+                            @endunless
                             @can('tenant.manufacturing.customers.index')
                                 @php $a = $isIn('manufacturing/customers*'); @endphp
                                 <li class="{{ $a ? 'active' : '' }}">

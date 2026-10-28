@@ -21,7 +21,7 @@ class SalesReturnLine extends Model
         // RETURN-RESTOCK-1: back on the shelf (1) or thrown away (0)
         'restocked',
         // MEDICAL-COUNTER-1: returned in the pack it was sold in (quantity = packs, base_quantity = tablets)
-        'pack_unit_id', 'pack_factor', 'base_quantity',
+        'pack_unit_id', 'pack_factor', 'pack_size', 'base_quantity',
         // RETURN-NO-BILL-1: the cost it went back in at (per pack / unit returned) and the batch it went into.
         // A return with a bill leaves both empty and keeps reading the cost from its sale line.
         'unit_cost', 'inventory_batch_id',

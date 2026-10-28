@@ -1,11 +1,11 @@
 @extends('layouts.app')
 
-@section('title', 'GRN: ' . $goodsReceipt->grn_no)
+@section('title', 'Goods Receipt: ' . $goodsReceipt->grn_no)
 
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">Goods Receipt Note</h1>
+        <h1 class="mb-1">Goods Receipt</h1>
         <p class="fw-medium"><code>{{ $goodsReceipt->grn_no }}</code></p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
@@ -13,7 +13,7 @@
         @if(!$goodsReceipt->bill && $goodsReceipt->status === 'posted')
             @can('tenant.purchase-bills.create')
                 <a href="{{ url('/purchase-bills/create?goods_receipt_id=' . $goodsReceipt->id) }}"
-                   class="btn btn-primary">Create Purchase Bill</a>
+                   class="btn btn-primary">Record Supplier Invoice</a>
             @endcan
             {{-- GRN-VOID-1: only while no bill exists. Once a bill is out, the supplier has been
                  told what they are owed, and the way back is a Purchase Return. --}}
@@ -66,7 +66,7 @@
                 <span class="badge bg-success">{{ ucfirst($goodsReceipt->status) }}</span>
             </dd>
 
-            <dt class="col-sm-3">Purchase Bill</dt>
+            <dt class="col-sm-3">Supplier Invoice</dt>
             <dd class="col-sm-9">
                 @if($goodsReceipt->bill)
                     <a href="{{ url('/purchase-bills/' . $goodsReceipt->bill->id) }}">
@@ -101,7 +101,7 @@
     <div class="card-header"><strong>Received Lines</strong></div>
     <div class="card-body table-responsive p-0">
         <table class="table table-nowrap align-middle mb-0">
-            <caption class="visually-hidden">GRN product lines</caption>
+            <caption class="visually-hidden">Goods receipt product lines</caption>
             <thead>
             <tr>
                 <th scope="col">Product</th>
@@ -167,7 +167,7 @@
     <div class="card-header"><strong>Inventory Ledger Entries</strong></div>
     <div class="card-body table-responsive p-0">
         <table class="table table-nowrap align-middle mb-0">
-            <caption class="visually-hidden">Stock ledger entries from this GRN</caption>
+            <caption class="visually-hidden">Stock ledger entries from this goods receipt</caption>
             <thead>
             <tr>
                 <th scope="col">Product</th>

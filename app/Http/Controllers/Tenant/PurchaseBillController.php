@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\GoodsReceipt;
 use App\Models\Tenant\PurchaseBill;
-use App\Models\Tenant\PurchaseBillLine;
 use App\Models\Tenant\Supplier;
+use App\Services\Purchasing\PurchaseBillService;
 use App\Services\Purchasing\PurchasingService;
+use App\Services\Purchasing\SupplierRunningAccountService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class PurchaseBillController extends Controller
 {
@@ -49,12 +51,22 @@ class PurchaseBillController extends Controller
 
         $goodsReceipt = null;
         if ($request->filled('goods_receipt_id')) {
-            $goodsReceipt = GoodsReceipt::with(['supplier', 'branch', 'lines.product', 'lines.variant'])
+            $goodsReceipt = GoodsReceipt::with(['supplier', 'branch', 'lines.product.unit', 'lines.variant'])
                 ->whereDoesntHave('bill')
                 ->find($request->goods_receipt_id);
         }
 
-        return view('tenant.purchase-bills.create', compact('receipts', 'goodsReceipt'));
+        // SUPPLIER-NET-BILL-1: what the bill will post (summary), the returns it asks about, the bills their credit sits on.
+        $preview = $goodsReceipt ? app(PurchaseBillService::class)->preview($goodsReceipt) : null;
+        $canReallocate = $this->canReallocate($request);
+
+        return view('tenant.purchase-bills.create', compact('receipts', 'goodsReceipt', 'preview', 'canReallocate'));
+    }
+
+    /** Moving a return credit off another bill: the people who may already undo supplier money (owner, 21 Oct). */
+    private function canReallocate(Request $request): bool
+    {
+        return (bool) $request->user('tenant')?->can('tenant.supplier-payments.void');
     }
 
     public function store(Request $request)
@@ -67,88 +79,102 @@ class PurchaseBillController extends Controller
             'discount_amount'     => 'nullable|numeric|min:0',
             'tax_amount'          => 'nullable|numeric|min:0',
             'notes'               => 'nullable|string|max:1000',
+            // SUPPLIER-NET-BILL-1: asked only when goods from the receipt went back before its bill
+            'returns_on_invoice'  => 'nullable|in:' . PurchaseBillService::SEPARATE . ',' . PurchaseBillService::NETTED,
+            // net invoice: what the supplier deducted for each return (partial allowed; empty = the whole return)
+            'netted_amounts'      => 'nullable|array',
+            'netted_amounts.*'    => 'nullable|numeric|min:0',
+            // ticked on review when a return's credit moves off another invoice
+            'confirm_reallocation' => 'nullable|boolean',
+            // SUPPLIER-CREDIT-CLARITY-1: ticked on review when the invoice uses the supplier's advance
+            'confirm_credit'       => 'nullable|boolean',
+        ], [
+            'due_date.after_or_equal' => 'The due date cannot be before the invoice date.',
+            'netted_amounts.*.numeric' => 'The amount deducted must be a number.',
         ]);
 
-        $grn = GoodsReceipt::with(['lines.product', 'supplier', 'branch'])
-            ->findOrFail($data['goods_receipt_id']);
+        $grn = GoodsReceipt::findOrFail($data['goods_receipt_id']);
 
-        if ($grn->bill) {
-            return back()->withErrors(['goods_receipt_id' => 'A bill already exists for this GRN.'])->withInput();
+        try {
+            app(PurchaseBillService::class)->createFromReceipt($grn, $data, auth('tenant')->id(), $this->canReallocate($request), askCredit: true);
+        } catch (\App\Services\Purchasing\CreditNotConfirmedException $e) {
+            // the advance it would use was not ticked on the review: nothing was saved, the review opens again by the tick
+            return back()->withErrors(['confirm_credit' => $e->getMessage()])->withInput();
+        } catch (\RuntimeException $e) {
+            // an invoice already recorded for this receipt, or its accounting entry could not post (nothing was saved)
+            return back()->withErrors(['goods_receipt_id' => $e->getMessage()])->withInput();
         }
 
-        $userId = auth('tenant')->id();
-
-        $purchaseBill = null;
-
-        DB::connection('tenant')->transaction(function () use ($data, $grn, $userId, &$purchaseBill) {
-            $subtotal   = $grn->lines->sum(fn($l) => $l->quantity_received * $l->unit_cost);
-            // GRN-BILL-CHARGES-1: the receipt's cartage/labour is part of what the supplier
-            // charged, so it is part of what we owe them. Leaving it out made the payable short
-            // by exactly the charge. The GL stays balanced on its own because postPurchaseBill()
-            // debits 1400 Inventory and credits 2100 Payable with the SAME grand_total — and
-            // debiting inventory is right, since the GRN already put this charge into stock cost.
-            $charges    = round((float) ($grn->extra_charges ?? 0), 4);
-            $discTotal  = (float) ($data['discount_amount'] ?? 0);
-            $taxTotal   = (float) ($data['tax_amount'] ?? 0);
-            $grandTotal = $subtotal + $charges - $discTotal + $taxTotal;
-
-            $purchaseBill = PurchaseBill::create([
-                'bill_no'             => $this->purchasingService->nextBillNo(),
-                'supplier_invoice_no' => $data['supplier_invoice_no'] ?? null,
-                'supplier_id'         => $grn->supplier_id,
-                'branch_id'           => $grn->branch_id,
-                'purchase_order_id'   => $grn->purchase_order_id,
-                'goods_receipt_id'    => $grn->id,
-                'bill_date'           => $data['bill_date'],
-                'due_date'            => $data['due_date'] ?? null,
-                'status'              => 'posted',
-                'subtotal'            => $subtotal,
-                'extra_charges'       => $charges,
-                'discount_total'      => $discTotal,
-                'tax_total'           => $taxTotal,
-                'grand_total'         => $grandTotal,
-                'amount_paid'         => 0,
-                'balance_due'         => $grandTotal,
-                'notes'               => $data['notes'] ?? null,
-                'posted_by_user_id'   => $userId,
-                'posted_at'           => now(),
-            ]);
-
-            foreach ($grn->lines as $line) {
-                $lineTotal = $line->quantity_received * $line->unit_cost;
-                PurchaseBillLine::create([
-                    'purchase_bill_id'   => $purchaseBill->id,
-                    'product_id'         => $line->product_id,
-                    'product_variant_id' => $line->product_variant_id,
-                    'quantity'           => $line->quantity_received,
-                    'unit_cost'          => $line->unit_cost,
-                    'discount_amount'    => 0,
-                    'tax_amount'         => 0,
-                    'line_total'         => $lineTotal,
-                ]);
-            }
-
-            $purchaseBill->load('supplier');
-            // BUG-044 FIX: postBill() calls supplier ledger (operational) inside tx,
-            // but GL journal posting is intentionally called OUTSIDE (below) so that
-            // a GL failure never rolls back the operational bill creation.
-            $this->purchasingService->postBillOperational($purchaseBill, $userId);
-        });
-
-        // GL journal outside the transaction — idempotent + safe (never throws).
-        if ($purchaseBill) {
-            app(\App\Services\Finance\JournalPostingService::class)->postPurchaseBill($purchaseBill, $userId);
-        }
-
-        return redirect(url('/purchase-bills'))->with('status', 'Purchase bill posted.');
+        return redirect(url('/purchase-bills'))->with('status', 'Supplier invoice recorded.');
     }
 
-    public function show(PurchaseBill $purchaseBill)
+    public function show(PurchaseBill $purchaseBill, ?Request $request = null)
     {
+        $request ??= request();   // the invoice stays the first argument: callers that pass only it keep working
         $purchaseBill->load([
             'supplier', 'branch', 'purchaseOrder', 'goodsReceipt',
             'lines.product', 'lines.variant', 'postedBy', 'payments.postedBy',
+            'nettings.purchaseReturn',
         ]);
-        return view('tenant.purchase-bills.show', compact('purchaseBill'));
+
+        // SUPPLIER-CREDIT-CLARITY-1: on a running account the invoice says which payments and returns paid it, and those
+        // allowed to undo supplier money may move a part of one to another open invoice of the same supplier.
+        $running = app(SupplierRunningAccountService::class);
+        $runningAccount = $running->enabled();
+        $paidBy = $runningAccount ? $running->paidBy($purchaseBill) : [];
+        $moveTo = $runningAccount && $paidBy && $request->user('tenant')?->can('tenant.purchase-bills.move-credit')
+            ? PurchaseBill::where('supplier_id', $purchaseBill->supplier_id)->whereKeyNot($purchaseBill->id)
+                ->whereIn('status', ['posted', 'partial'])->where('balance_due', '>', 0.00005)
+                ->orderBy('bill_date')->orderBy('id')->get(['id', 'bill_no', 'bill_date', 'balance_due'])
+            : collect();
+        $moves = $runningAccount && Schema::connection('tenant')->hasTable('supplier_credit_moves')
+            ? DB::connection('tenant')->table('supplier_credit_moves')
+                ->where(fn ($q) => $q->where('from_purchase_bill_id', $purchaseBill->id)->orWhere('to_purchase_bill_id', $purchaseBill->id))
+                ->orderBy('id')->get()
+            : collect();
+        $billNos = PurchaseBill::whereIn('id', $moves->pluck('from_purchase_bill_id')->merge($moves->pluck('to_purchase_bill_id'))->unique())->pluck('bill_no', 'id');
+        $movers = \App\Models\Tenant\User::whereIn('id', $moves->pluck('moved_by')->filter()->unique())->pluck('name', 'id');
+        $movedFrom = fn (string $type) => $moves->where('source_type', $type)->pluck('source_id')->unique()->all();
+        $sourceNos = [
+            'payment' => \App\Models\Tenant\SupplierPayment::whereIn('id', $movedFrom('payment'))->pluck('payment_no', 'id'),
+            'return'  => \App\Models\Tenant\PurchaseReturn::whereIn('id', $movedFrom('return'))->pluck('return_no', 'id'),
+        ];
+
+        return view('tenant.purchase-bills.show', compact('purchaseBill', 'runningAccount', 'paidBy', 'moveTo', 'moves', 'billNos', 'movers', 'sourceNos'));
+    }
+
+    /**
+     * SUPPLIER-CREDIT-CLARITY-1 (owner, 26 Oct) — move what a payment or return pays on this invoice to another open
+     * invoice of the same supplier. Only which invoice it settles changes: the supplier's balance, its ledger, cash and
+     * the GL stay as they are. The reason and who moved it are kept.
+     */
+    public function moveCredit(Request $request, PurchaseBill $purchaseBill, SupplierRunningAccountService $running)
+    {
+        abort_unless($running->enabled(), 404);
+
+        $data = $request->validate([
+            'source'     => ['required', 'string', 'regex:/^(payment|return):\d+$/'],
+            'to_bill_id' => 'required|integer|exists:tenant.purchase_bills,id',
+            'amount'     => 'required|numeric|min:0.01',
+            'reason'     => 'required|string|min:3|max:255',
+        ], [
+            'source.required'     => 'Choose the payment or return to move.',
+            'to_bill_id.required' => 'Choose the invoice to move it to.',
+            'amount.min'          => 'Enter an amount to move.',
+            'reason.required'     => 'Write why it is being moved.',
+        ]);
+        [$type, $id] = explode(':', $data['source']);
+
+        try {
+            $running->moveAllocation($purchaseBill, $type, (int) $id, PurchaseBill::findOrFail($data['to_bill_id']),
+                (float) $data['amount'], auth('tenant')->id(), $data['reason']);
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['move' => $e->getMessage()])->withInput();
+        }
+
+        $to = PurchaseBill::find($data['to_bill_id']);
+
+        return redirect(url('/purchase-bills/' . $purchaseBill->id))
+            ->with('status', 'Moved ' . number_format((float) $data['amount'], 2) . ' to ' . $to?->bill_no . '. The supplier\'s balance did not change.');
     }
 }

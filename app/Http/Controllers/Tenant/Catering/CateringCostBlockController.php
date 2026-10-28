@@ -3,17 +3,13 @@
 namespace App\Http\Controllers\Tenant\Catering;
 
 use App\Http\Controllers\Controller;
-use App\Models\Tenant\CateringCommercialRateApplication;
 use App\Models\Tenant\CateringMaterialCommercialRate;
-use App\Models\Tenant\CateringProductCostBlock;
 use App\Models\Tenant\CateringProductProfile;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\Unit;
-use App\Services\Catering\CateringCommercialRateBookService;
 use App\Services\Catering\CateringCostBlockService;
+use App\Services\Catering\CateringCostBlockWriter;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 
 /**
  * KASHIF-CATERING-COST-BLOCKS-1 — building a dish price out of named parts.
@@ -47,7 +43,6 @@ class CateringCostBlockController extends Controller
 {
     public function __construct(
         private readonly CateringCostBlockService $blocks,
-        private readonly CateringCommercialRateBookService $book,
     ) {}
 
     public function edit(CateringProductProfile $cateringProductProfile)
@@ -110,236 +105,18 @@ class CateringCostBlockController extends Controller
             ->all();
     }
 
-    public function update(Request $request, CateringProductProfile $cateringProductProfile)
+    public function update(Request $request, CateringProductProfile $cateringProductProfile, CateringCostBlockWriter $writer)
     {
-        $data = $request->validate([
-            'blocks' => ['array'],
-            'blocks.*.id' => ['nullable', 'integer'],
-            'blocks.*.label' => ['required', 'string', 'max:120'],
-            'blocks.*.block_type' => ['required', Rule::in(CateringProductCostBlock::TYPES)],
-            'blocks.*.charge_basis' => ['required', Rule::in(CateringProductCostBlock::BASES)],
-            // What a material's rate is a rate OF. Absent on a charge block,
-            // and absent on an untouched legacy row, which keeps its own.
-            'blocks.*.rate_basis' => ['nullable', Rule::in(CateringProductCostBlock::RATE_BASES)],
-            // Where the rate came from, and therefore whether a house rate change
-            // is ever offered to it.
-            'blocks.*.commercial_rate_source' => ['nullable', Rule::in(CateringProductCostBlock::RATE_SOURCES)],
-            // KASHIF-CATERING-MAKING-1: an explicit role, never inferred from the
-            // label. Charge blocks only; at most one active Making per dish.
-            'blocks.*.charge_role' => ['nullable', Rule::in(CateringProductCostBlock::CHARGE_ROLES)],
-            'blocks.*.rate' => ['required', 'numeric', 'min:0'],
-            // The material select only offers things the store can hand over, but
-            // a select box is a convenience and the request is the contract. A
-            // block pointed at a finished dish would consume a dish from stock
-            // and follow a "material rate" for something that is not a material.
-            'blocks.*.material_product_id' => ['nullable', Rule::exists('products', 'id')->where(
-                fn ($q) => $q->whereIn('product_kind', CateringCommercialRateController::MATERIAL_KINDS)
-            )],
-            'blocks.*.quantity_per_unit' => ['nullable', 'numeric', 'min:0'],
-            // A retired unit cannot be matched against the house rate book, so it
-            // must not become a block's unit in the first place.
-            'blocks.*.unit_id' => ['nullable', Rule::exists('units', 'id')->where('is_active', true)],
-        ]);
-
-        $submitted = collect($data['blocks'] ?? []);
-        $productId = $cateringProductProfile->product_id;
-
-        // A material block without a material is the one combination that would
-        // quietly produce a charge nobody can trace to anything. Refused here
-        // rather than accepted and reported later by readiness.
-        $orphan = $submitted->first(fn ($b) => $b['block_type'] === CateringProductCostBlock::TYPE_MATERIAL
-            && empty($b['material_product_id']));
-        if ($orphan) {
-            return back()->withErrors([
-                'blocks' => "'{$orphan['label']}' is a material block, so it needs a material selected. "
-                    .'Use a charge block for money with nothing behind it, like making or packing.',
-            ])->withInput();
-        }
-
-        // KASHIF-CATERING-MAKING-1: "the Making charge" is singular by meaning.
-        // Two blocks both claiming the role would make a bulk Making adjustment
-        // ambiguous about which money it moves — refused at the door.
-        $makingRows = $submitted->filter(fn ($b) => ($b['block_type'] ?? null) === CateringProductCostBlock::TYPE_CHARGE
-            && ($b['charge_role'] ?? null) === CateringProductCostBlock::ROLE_MAKING);
-        if ($makingRows->count() > 1) {
-            return back()->withErrors([
-                'blocks' => 'Only one charge can be the Making charge for a dish. '
-                    .'Leave the others as General Charge.',
-            ])->withInput();
-        }
-
-        $existingBlocks = CateringProductCostBlock::where('product_id', $productId)
-            ->get()->keyBy('id');
-
-        $resolved = [];
-        $links = [];
-
-        foreach ($submitted->values() as $index => $row) {
-            $existing = ! empty($row['id']) ? $existingBlocks->get((int) $row['id']) : null;
-
-            $isMaterial = $row['block_type'] === CateringProductCostBlock::TYPE_MATERIAL;
-
-            // A legacy row keeps the basis it was authored as unless the form
-            // deliberately says otherwise. Defaulting an ABSENT value to the new
-            // basis would silently reinterpret every untouched per-dish rate the
-            // moment anyone renamed a block — the same stored number meaning a
-            // different price, with nothing on screen to show it happened.
-            $rateBasis = match (true) {
-                ! $isMaterial => CateringProductCostBlock::RATE_PER_DISH_UNIT,
-                ! empty($row['rate_basis']) => $row['rate_basis'],
-                $existing !== null => $existing->rateBasis(),
-                default => CateringProductCostBlock::RATE_PER_MATERIAL_UNIT,
-            };
-
-            $source = $row['commercial_rate_source'] ?? CateringProductCostBlock::SOURCE_MANUAL;
-            $rate = (float) $row['rate'];
-            $unitId = $isMaterial ? ($row['unit_id'] ?? null) : null;
-            $materialId = $isMaterial ? (int) $row['material_product_id'] : null;
-
-            if ($source === CateringProductCostBlock::SOURCE_COMMERCIAL_BOOK) {
-                // Server-side, not merely hidden in the UI: a form can be edited,
-                // and each of these would produce a price that is wrong in a way
-                // that reads as plausible.
-                if (! $isMaterial) {
-                    return $this->refuse($row['label'],
-                        'a charge block is money for work, with no material behind it, so there is no '
-                        .'house material rate for it to follow.');
-                }
-                if ($rateBasis !== CateringProductCostBlock::RATE_PER_MATERIAL_UNIT) {
-                    return $this->refuse($row['label'],
-                        'it is priced per unit of the DISH, and the house rate is per unit of the MATERIAL. '
-                        .'Change "Rate is per" to the material unit first — that changes what the number '
-                        .'means, so check the price afterwards.');
-                }
-
-                $bookRate = $this->book->effectiveRate($materialId);
-                if ($bookRate === null) {
-                    return $this->refuse($row['label'],
-                        'this material has no house rate yet. Record one on the Commercial Material Rates '
-                        .'screen first, then link the block to it.');
-                }
-
-                $bookRate->loadMissing('unit');
-                $probe = new CateringProductCostBlock(['unit_id' => $unitId]);
-                if (! $this->book->blockUnitMatches($bookRate, $probe)) {
-                    // Said in the book service's own words, uncapitalised by
-                    // nothing: "Unit mismatch — cannot apply" is the term this
-                    // condition is named by on every screen, and an operator
-                    // matching what they read here against what they read on the
-                    // impact screen must find the same phrase.
-                    return back()->withErrors([
-                        'blocks' => "'{$row['label']}' — ".$this->book->unitMismatchReason(
-                            $bookRate,
-                            $unitId === null ? null : Unit::whereKey($unitId)->value('code')
-                        ),
-                    ])->withInput();
-                }
-
-                // Linking ADOPTS the current house rate as the applied one. From
-                // then on the two move apart again: a later book change is only
-                // ever offered, never taken.
-                $wasLinked = $existing !== null && $existing->followsCommercialBook();
-                if (! $wasLinked) {
-                    $rate = (float) $bookRate->rate;
-                    $links[$index] = [
-                        'action' => CateringCommercialRateApplication::ACTION_BLOCK_LINKED,
-                        'material_product_id' => $materialId,
-                        'old' => $existing === null ? null : (float) $existing->rate,
-                        'new' => $rate,
-                    ];
-                }
-            } elseif ($existing !== null && $existing->followsCommercialBook()) {
-                // Going back to a hand-set rate is equally deliberate, and keeps
-                // whatever rate the form was showing as the explicit manual one.
-                $links[$index] = [
-                    'action' => CateringCommercialRateApplication::ACTION_BLOCK_UNLINKED,
-                    'material_product_id' => $existing->material_product_id,
-                    'old' => (float) $existing->rate,
-                    'new' => $rate,
-                ];
-            }
-
-            $resolved[$index] = [
-                'attributes' => [
-                    'product_id' => $productId,
-                    'label' => $row['label'],
-                    'block_type' => $row['block_type'],
-                    'charge_basis' => $row['charge_basis'],
-                    'rate' => $rate,
-                    'sort_order' => $index + 1,
-                    'is_active' => true,
-                    // A charge block is money with nothing behind it, so it never
-                    // carries a material or a consumption ratio however the form
-                    // was filled in before the type was changed.
-                    'material_product_id' => $materialId,
-                    'quantity_per_unit' => $isMaterial ? ($row['quantity_per_unit'] ?? null) : null,
-                    'rate_basis' => $rateBasis,
-                    'commercial_rate_source' => $isMaterial
-                        ? $source
-                        : CateringProductCostBlock::SOURCE_MANUAL,
-                    // A role names what a CHARGE is; a material can never carry
-                    // one, however the form was filled before a type change.
-                    'charge_role' => $isMaterial ? null : ($row['charge_role'] ?? null),
-                    'unit_id' => $unitId,
-                ],
-                'existing' => $existing,
-            ];
-        }
-
-        DB::connection('tenant')->transaction(function () use ($resolved, $links, $productId, $request) {
-            $kept = [];
-
-            foreach ($resolved as $index => $plan) {
-                $existing = $plan['existing'];
-
-                if ($existing) {
-                    $existing->update($plan['attributes']);
-                    $kept[] = $existing->id;
-                    $blockId = $existing->id;
-                } else {
-                    $blockId = CateringProductCostBlock::create($plan['attributes'])->id;
-                    $kept[] = $blockId;
-                }
-
-                if (isset($links[$index])) {
-                    $link = $links[$index];
-                    $this->book->record([
-                        'material_product_id' => $link['material_product_id'],
-                        'action' => $link['action'],
-                        'target_type' => CateringCommercialRateApplication::TARGET_PRODUCT_BLOCK,
-                        'target_id' => $blockId,
-                        'target_label' => trim(Product::whereKey($productId)->value('name')
-                            .' · '.$plan['attributes']['label']),
-                        'old_commercial_rate' => $link['old'],
-                        'new_commercial_rate' => $link['new'],
-                        'performed_by_user_id' => $request->user()?->id,
-                        'note' => $link['action'] === CateringCommercialRateApplication::ACTION_BLOCK_LINKED
-                            ? 'Linked to the house rate book'
-                            : 'Returned to a hand-set rate',
-                    ]);
-                }
-            }
-
-            // Removed blocks are DEACTIVATED, not deleted. From Phase B a booking
-            // line records which blocks it was priced from, and a deleted row
-            // would leave those historical lines pointing at nothing.
-            CateringProductCostBlock::where('product_id', $productId)
-                ->whereNotIn('id', $kept ?: [0])
-                ->update(['is_active' => false]);
-        });
+        // W3/W4 S3b: the checks, the house-rate links and the save moved, unchanged in what they save or say, to
+        // App\Services\Catering\CateringCostBlockWriter — shared with the product form. A refusal is thrown there and
+        // comes back here as the same redirect with the same error on "blocks".
+        $data = $writer->validate($request->all());
+        $writer->save($cateringProductProfile->product_id, $data['blocks'] ?? [], $request->user()?->id);
 
         // Tenant routes carry a {subdomain} parameter, so route() would bind the
         // profile to the subdomain and throw. A path avoids that entirely.
         return redirect()->to('/catering/profiles/'.$cateringProductProfile->id.'/blocks')
             ->with('status', 'Cost blocks saved. Rate is now '
                 .number_format($this->blocks->rateFor($cateringProductProfile->product_id), 2).' per unit.');
-    }
-
-    /** One shape for every refusal, so the operator always learns which part failed and why. */
-    private function refuse(string $label, string $because)
-    {
-        return back()->withErrors([
-            'blocks' => "'{$label}' cannot follow the house rate book: {$because}",
-        ])->withInput();
     }
 }

@@ -55,6 +55,8 @@ class StockTransferController extends Controller
             'lines.*.quantity'           => ['nullable', 'numeric', 'min:0.001'],
             'lines.*.unit_cost'          => ['nullable', 'numeric', 'min:0'],
         ]);
+        // W2-C: each quantity exact once (3 decimals; counted items whole where switched on) before stock reads it.
+        $data['lines'] = \App\Support\LineQuantity::prepareStockLines($data['lines'], 'quantity');
 
         $lines = collect($data['lines'])
             ->filter(fn ($line) => !empty($line['product_id']) && !empty($line['quantity']))

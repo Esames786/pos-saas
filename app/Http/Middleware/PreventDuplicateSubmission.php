@@ -64,6 +64,14 @@ class PreventDuplicateSubmission
 
     private function failed($response): bool
     {
+        // VOID-PURGE-3 (24 Oct): a screen that posts in the background gets its refusal as JSON — 422, or 409 "needs a
+        // clear yes" — never a redirect with errors in the session. That was not seen as a failure, so the claim stayed:
+        // the Cash Book's "Yes, delete" (the same form again, the same page token) was turned away and the popup said
+        // "Nothing was deleted". Any 4xx / 5xx answer means nothing was done, so the same form may be sent again.
+        if (method_exists($response, 'getStatusCode') && $response->getStatusCode() >= 400) {
+            return true;
+        }
+
         if (! method_exists($response, 'getSession') || ! $response->getSession()) {
             return false;
         }

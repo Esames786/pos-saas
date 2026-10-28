@@ -19,6 +19,11 @@ use Illuminate\Validation\ValidationException;
  * first row holds the product's own unit). This class turns that into sizes in the product's unit, checks
  * every rule on the SERVER, and saves them. Stock never moves here — it is always counted in the product's
  * own unit; a pack only names a bigger quantity of it.
+ *
+ * UNITS-PACKS batch (23 Oct): a kg, litre or metre item may have packs too. Its first pack holds a part, with up to 3
+ * decimals (Bag = 2.5 kg, Bottle = 1.5 L); a pack above it holds a whole number of the one before (Sack = 10 Bag = 25 kg).
+ * Counted items are unchanged: every pack holds a whole number, at least 2. Sizes are decimals: compare with
+ * ProductPackUnit::same(), never ===.
  */
 final class PackUnits
 {
@@ -67,7 +72,7 @@ final class PackUnits
         return ($unitId ? Unit::whereKey($unitId)->value('name') : null) ?: 'Piece';
     }
 
-    /** Units that hold part quantities (1.250 kg) cannot have packs. */
+    /** Units that hold part quantities (1.250 kg): their first pack may hold a part too (Bag = 2.5 kg). */
     public static function isPartUnit(?int $unitId): bool
     {
         return $unitId !== null && in_array(Unit::whereKey($unitId)->value('unit_type'), ['weight', 'volume', 'length'], true);
@@ -89,7 +94,7 @@ final class PackUnits
         $packs = [];
         foreach ($rows->where('factor', '>', 1)->values() as $p) {
             $packs[] = [
-                'id' => $p->id, 'name' => $p->name, 'contains' => intdiv($p->factor, $prev), 'factor' => $p->factor,
+                'id' => $p->id, 'name' => $p->name, 'contains' => self::trim($p->factor / $prev), 'factor' => $p->factor,
                 'price' => $p->sale_price !== null ? rtrim(rtrim(number_format((float) $p->sale_price, 2, '.', ''), '0'), '.') : '',
                 'barcode' => (string) $p->barcode, 'sell' => $p->can_sell, 'buy' => $p->can_buy,
             ];
@@ -102,7 +107,7 @@ final class PackUnits
     /**
      * What the screen posted, checked. NULL = "it does not come in packs".
      *
-     * @return array{base_name:string, base_sell:bool, packs:list<array{id:?int,name:string,factor:int,sale_price:?string,barcode:?string,can_sell:bool,can_buy:bool}>}|null
+     * @return array{base_name:string, base_sell:bool, packs:list<array{id:?int,name:string,factor:float,sale_price:?string,barcode:?string,can_sell:bool,can_buy:bool}>}|null
      */
     public static function fromRequest(array $in, ?Product $product): ?array
     {
@@ -111,14 +116,12 @@ final class PackUnits
         }
         $unitId = isset($in['unit_id']) && $in['unit_id'] !== '' ? (int) $in['unit_id'] : null;
         $baseName = self::baseName($unitId);
-        if (self::isPartUnit($unitId)) {
-            throw ValidationException::withMessages(['_packs' => 'Packs are for items counted in pieces (tablet, bottle, piece) — not kg, litre or metre. (پیک صرف گنتی والی چیزوں کے لیے)']);
-        }
+        $part = self::isPartUnit($unitId);
 
         $filled = fn ($r) => is_array($r) && collect(['name', 'contains', 'price', 'barcode'])->contains(fn ($k) => trim((string) ($r[$k] ?? '')) !== '');
         $rows = array_values(array_filter((array) ($in['packs'] ?? []), $filled));
         if (! $rows) {
-            throw ValidationException::withMessages(['_packs' => 'Add at least one pack (for example: 1 Strip = 10 ' . $baseName . ') — or answer "No". (کم از کم ایک پیک لکھیں)']);
+            throw ValidationException::withMessages(['_packs' => 'Add at least one pack (for example: 1 Strip = 10 ' . $baseName . ') — or answer "No".']);
         }
         if (count($rows) > self::MAX_PACKS) {
             throw ValidationException::withMessages(['_packs' => 'At most ' . self::MAX_PACKS . ' packs.']);
@@ -148,12 +151,20 @@ final class PackUnits
             $names[] = mb_strtolower($name);
 
             $label = $name !== '' ? $name : 'Pack ' . ($i + 1);
-            if (! preg_match('/^\d+$/', $containsRaw)) {
+            if ($part && $i === 0) {
+                // The first pack of a kg / litre / metre item holds a part: 2.5 kg, 1.5 L. Up to 3 decimals keeps every
+                // number of packs exact in the stock (3 decimals).
+                if (! preg_match('/^\d+(\.\d{1,3})?$/', $containsRaw) || (float) $containsRaw <= 1) {
+                    $errors["packs.{$i}.contains"] = "{$label}: how many {$baseName} are in one? Type a number more than 1, with up to 3 decimals, for example 2.5.";
+                } else {
+                    $factor = round($factor * (float) $containsRaw, 4);
+                }
+            } elseif (! preg_match('/^\d+$/', $containsRaw)) {
                 $errors["packs.{$i}.contains"] = "{$label}: how many {$previous} are in one? Type a whole number, for example 10.";
             } elseif ((int) $containsRaw < 2) {
                 $errors["packs.{$i}.contains"] = "{$label}: a pack holds at least 2 {$previous}.";
             } else {
-                $factor *= (int) $containsRaw;
+                $factor = round($factor * (int) $containsRaw, 4);
                 if ($factor > self::MAX_FACTOR) {
                     $errors["packs.{$i}.contains"] = "{$label} is too big (more than " . number_format(self::MAX_FACTOR) . " {$baseName}).";
                 }
@@ -212,12 +223,12 @@ final class PackUnits
         $touched = $saved->filter(function (ProductPackUnit $p) use ($keep) {
             $match = $keep->first(fn ($k) => $k['id'] === $p->id) ?? $keep->firstWhere('factor', $p->factor);
 
-            return ! $match || $match['factor'] !== $p->factor;
+            return ! $match || ! ProductPackUnit::same((float) $match['factor'], $p->factor);
         });
         $used = self::usedPackIds($touched->pluck('id')->all());
         if ($used) {
             $names = $saved->whereIn('id', $used)->pluck('name')->implode(', ');
-            throw ValidationException::withMessages(['_packs' => "{$names} is already on past bills or receipts, so it cannot be removed or change size. You can still change its price, barcode and name. (پرانے بلوں پر موجود ہے)"]);
+            throw ValidationException::withMessages(['_packs' => "{$names} is already on past bills or receipts, so it cannot be removed or change size. You can still change its price, barcode and name."]);
         }
     }
 
@@ -276,10 +287,10 @@ final class PackUnits
         $left = abs($quantity);
         $parts = [];
         foreach (collect($packs)->where('factor', '>', 1)->sortByDesc('factor') as $p) {
-            $n = (int) floor($left / $p->factor);
+            $n = (int) floor($left / $p->factor + 1e-9);
             if ($n > 0) {
                 $parts[] = $n . ' ' . $p->name;
-                $left -= $n * $p->factor;
+                $left = round($left - $n * $p->factor, 4);
             }
         }
         if ($left > 0.0005 || ! $parts) {
@@ -287,6 +298,20 @@ final class PackUnits
         }
 
         return $sign . implode(' ', $parts);
+    }
+
+    /**
+     * UNITS-PACKS F4: "2 Bag 2.25 Kilogram" for a stock quantity of an item that has packs, or null — with the packs
+     * switch off ($packsOn, worked out once by the caller) or for an item without packs, the number stands alone.
+     */
+    public static function inWords(?Product $product, float $quantity, bool $packsOn): ?string
+    {
+        if (! $product || ! $packsOn) {
+            return null;
+        }
+        $packs = $product->packUnits->where('factor', '>', 1);
+
+        return $packs->isEmpty() ? null : self::describe($packs, $quantity, $product->unit?->name ?: 'Piece');
     }
 
     /** Where a barcode is already used, in words, or null. Packs of $productId itself do not count. */
@@ -333,7 +358,13 @@ final class PackUnits
         return array_values(array_unique($used));
     }
 
-    /** @param array{name:string,factor:int,sale_price:?string,barcode:?string,can_sell:bool,can_buy:bool} $p */
+    /** 2.5 → "2.5", 10.0 → "10". */
+    private static function trim(float $n): string
+    {
+        return rtrim(rtrim(number_format($n, 4, '.', ''), '0'), '.');
+    }
+
+    /** @param array{name:string,factor:float,sale_price:?string,barcode:?string,can_sell:bool,can_buy:bool} $p */
     private static function row(array $p): array
     {
         return ['name' => $p['name'], 'factor' => $p['factor'], 'sale_price' => $p['sale_price'], 'barcode' => $p['barcode'],

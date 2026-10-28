@@ -36,7 +36,10 @@ Pinned by `SupplierReturnMatrixMySqlTest` (running account ON, as on every live 
 | Free (bonus) goods returned | out, once | no money — no credit for goods never paid for | none |
 | Return posted twice at once / same receipt line by two people | — | refused past what the line brought in (`PurchaseReturnPostedOnceMySqlTest`) | — |
 
-**Owner decision before W4 (direct purchase) posts money:** a supplier bill entered NET of a return already made
+**Decided 21 Oct (owner): record the ACTUAL invoice; both cases end at 800 — built as SUPPLIER-NET-BILL-1.** A return
+credit already sitting on another bill is never moved silently: a fully paid bill is never reopened (blocked, with the
+reason); an open one moves only on an authorized tick, audited in `supplier_credit_reallocations`
+(`docs/plans/supplier-net-bill-2026-10-21.md`). Before that: a supplier bill entered NET of a return already made
 credits the supplier twice today (the test pins 600 where 800 is right). Choices: (a) a bill for a receipt with
 returns before it defaults to the receipt minus those returns, and the return then does not credit again; or (b) the
 bill always carries the full receipt and the screen says so. Recommended: (b) — nothing posted changes, and the screen

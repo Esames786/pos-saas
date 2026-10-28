@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * WIPES (truncate, ids restart at 1): sales + payments + returns + KOTs + cancellations,
  * shifts + daily closings, GL journals, cash/bank + customer/supplier ledgers + payments,
- * expenses, opening balances, purchasing (PO/GRN/bills/returns), all stock movement +
+ * expenses, opening balances, purchasing (PO/GRN/bills/returns, invoice nettings, credit moves), all stock movement +
  * balances + counts + transfers + batches, kitchen/manufacturing transactions, department
  * stock/handovers, print jobs, schedule runs. Restaurant tables reset to 'available'.
  *
@@ -29,7 +29,8 @@ use Illuminate\Support\Facades\Schema;
  * incomplete for a catering tenant but unsafe: it truncated the journals and stock
  * ledgers those documents referenced and left the documents behind.
  *
- * Triple-guarded: --yes, --confirm=<tenant_code> must match, refuses on a Branch Server.
+ * Triple-guarded: --yes, --confirm=<tenant_code> must match, refuses on a Branch Server. Refuses, before deleting
+ * anything, when any tenant table is not classified as wipe or keep.
  * ALWAYS take a DB backup before running this on a real tenant.
  */
 class TenantResetTransactionsCommand extends Command
@@ -54,8 +55,17 @@ class TenantResetTransactionsCommand extends Command
         'journal_lines', 'journal_entries', 'cash_bank_account_transactions',
         'customer_ledgers', 'customer_payments', 'supplier_ledgers', 'supplier_payments',
         'expense_voucher_lines', 'expense_vouchers', 'opening_balance_lines', 'opening_balance_batches',
+        // VOID-PURGE-1: numbers held back from deleted entries — numbering restarts with the transactions.
+        'purged_numbers',
         'department_handovers',
         // purchasing (SUPPLIER-RUNNING-ACCOUNT-1: which credit settled which bill — goes with them)
+        // SUPPLIER-NET-BILL-1: a return deducted on an invoice, and a credit moved off another bill to allow it.
+        // Both point at bills and returns wiped below; left behind, a new return reusing an old id would collide
+        // with the netting row's unique key.
+        'supplier_credit_reallocations', 'purchase_bill_return_nettings',
+        // SUPPLIER-CREDIT-CLARITY-1: a payment's part moved from one invoice to another by a person — the record of
+        // those moves points at the payments and bills wiped here; kept, it would be a history of invoices that are gone.
+        'supplier_credit_moves',
         'supplier_credit_allocations',
         'purchase_bill_lines', 'purchase_bills', 'goods_receipt_lines', 'goods_receipts',
         'purchase_return_lines', 'purchase_returns', 'purchase_order_lines', 'purchase_orders',
@@ -152,10 +162,14 @@ class TenantResetTransactionsCommand extends Command
         // COVERAGE AUDIT: every tenant table must be a deliberate decision — wiped, or knowingly
         // kept. A table added later (a new document, a new setting) would otherwise drift out of
         // this command silently and either survive a reset it should not, or be missed here.
+        // FAIL CLOSED (22 Oct): this used to warn and carry on deleting. It now stops before the
+        // first destructive statement, so an unknown table can never be half-reset.
         $unclassified = $this->unclassifiedTables();
         if ($unclassified !== []) {
-            $this->warn('Tables not classified as wipe/keep (verify before trusting this reset): '
-                .implode(', ', $unclassified));
+            $this->error('Reset stopped before anything was deleted. These tables are not classified as wipe or keep: '
+                .implode(', ', $unclassified).'. Nothing was changed; the reset must be updated for them before it can run.');
+
+            return self::FAILURE;
         }
 
         $before = [];
@@ -216,7 +230,7 @@ class TenantResetTransactionsCommand extends Command
     /**
      * Master/config tables that are deliberately KEPT but are not worth asserting a count on
      * (the sentinels above are the ones we prove). Anything outside these three lists is
-     * reported so a newly added table can never silently escape this command's contract.
+     * refused (the reset stops before deleting) so a newly added table can never silently escape this command's contract.
      */
     private const KNOWN_KEPT = [
         'migrations', 'cache', 'cache_locks', 'sessions', 'password_reset_tokens', 'languages',
@@ -244,6 +258,11 @@ class TenantResetTransactionsCommand extends Command
         // decision, which is precisely what this command's contract forbids.
         'customer_translations', 'supplier_translations',
         'edge_local_meta', 'edge_local_user_credentials',
+        // Branch Server local tables (database/migrations/edge). They never exist on a cloud tenant, and this command
+        // refuses to run on a Branch Server, so a reset has no business with them: kept, untouched. Listed so that a
+        // database that once hosted the Edge schema (a test database) is not mistaken for drift by the fail-closed check.
+        'edge_auth_audit', 'edge_consumed_assertions', 'edge_local_print_deliveries', 'edge_local_print_worker_state',
+        'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_operational_stock_movements',
         // Catering CONFIGURATION, kept for the same reason recipes are: it
         // describes how the business quotes and costs, not what it has sold.
         // The Material Rate Book in particular is a caterer's price list — losing
@@ -257,6 +276,8 @@ class TenantResetTransactionsCommand extends Command
         // beside it. Losing it to a transaction reset would be losing master
         // data, and every linked dish would forget what the house rate was.
         'catering_material_commercial_rates',
+        // VOID-PURGE-1: the Owner's record of permanently deleted entries — an audit trail, kept across a reset.
+        'purged_entries',
         // The managed kitchen-instruction vocabulary — how the kitchen is told
         // things, not what was sold. Master data, kept.
         'catering_instructions',
@@ -267,7 +288,7 @@ class TenantResetTransactionsCommand extends Command
         'delivery_zone_places', 'web_branch_settings', 'delivery_fee_bands',
     ];
 
-    /** Tenant tables this command has no opinion about — surfaced as a warning. */
+    /** Tenant tables this command has no opinion about — any one of them stops the reset before it deletes. */
     private function unclassifiedTables(): array
     {
         $all = array_map(

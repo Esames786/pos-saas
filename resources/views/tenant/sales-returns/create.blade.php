@@ -174,7 +174,7 @@
                             ? ($qtyUnit->unit_type !== 'quantity' ? '0.001' : '1')
                             : (fmod((float) $line->quantity, 1.0) === 0.0 ? '1' : '0.001');
                         // MEDICAL-COUNTER-1: a line sold in a pack ("2 Strip") is returned in whole packs.
-                        $inPack = $line->base_quantity !== null && (int) $line->pack_factor > 0;
+                        $inPack = $line->base_quantity !== null && \App\Support\CounterPacks::sizeOf($line) > 0;
                         if ($inPack) {
                             $qtyStep = '1';
                         }
@@ -201,7 +201,7 @@
                         <td class="text-end">{{ $qtyText($line->returned_quantity) }}</td>
                         <td class="text-end">
                             <span class="badge {{ $returnable > 0 ? 'bg-success-subtle text-success-emphasis' : 'bg-secondary-subtle text-secondary-emphasis' }}">{{ $qtyText($returnable) }}</span>
-                            @if($inPack)<small class="d-block text-muted">1 {{ $line->unit_code }} = {{ (int) $line->pack_factor }} {{ $qtyUnit?->name ?? 'units' }}</small>@endif
+                            @if($inPack)<small class="d-block text-muted">1 {{ $line->unit_code }} = {{ rtrim(rtrim(number_format(\App\Support\CounterPacks::sizeOf($line), 4, '.', ''), '0'), '.') }} {{ $qtyUnit?->name ?? 'units' }}</small>@endif
                         </td>
                         <td>
                             {{-- Unit-aware stepper: the −/+ buttons jump by exactly one sold unit (whole = 1,
@@ -212,12 +212,13 @@
                             <div class="input-group return-qty-group" style="width:172px;margin-left:auto">
                                 <button type="button" class="btn btn-outline-secondary return-step" data-dir="-1"
                                         tabindex="-1" aria-label="Decrease return quantity" {{ $canReturn ? '' : 'disabled' }}>&minus;</button>
+                                {{-- W2-B: after a refusal the cashier gets back what they typed, not zeros. --}}
                                 <input type="number" step="{{ $qtyStep }}" min="0" max="{{ $returnable }}"
                                        name="lines[{{ $i }}][quantity]"
                                        class="form-control text-center return-qty"
                                        data-step="{{ $qtyStep }}"
                                        aria-label="Return quantity for {{ $line->product_name }}"
-                                       value="0"
+                                       value="{{ old('lines.' . $i . '.quantity', 0) }}"
                                        {{ $canReturn ? '' : 'readonly' }}>
                                 <button type="button" class="btn btn-outline-secondary return-step" data-dir="1"
                                         tabindex="-1" aria-label="Increase return quantity" {{ $canReturn ? '' : 'disabled' }}>+</button>
@@ -230,8 +231,9 @@
                                      Back on shelf = back in stock (its own batch); thrown away = opened, spoilt. --}}
                                 <select name="lines[{{ $i }}][restock]" class="form-select form-select-sm mt-1" style="width:172px;margin-left:auto"
                                         aria-label="Does {{ $line->product_name }} go back on the shelf?">
-                                    <option value="1" @selected($shelfDefault)>Back on shelf</option>
-                                    <option value="0" @selected(! $shelfDefault)>Thrown away</option>
+                                    @php $shelfPick = (string) old('lines.' . $i . '.restock', $shelfDefault ? '1' : '0'); @endphp
+                                    <option value="1" @selected($shelfPick === '1')>Back on shelf</option>
+                                    <option value="0" @selected($shelfPick === '0')>Thrown away</option>
                                 </select>
                             @endif
                         </td>

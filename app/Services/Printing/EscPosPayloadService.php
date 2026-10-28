@@ -6,6 +6,7 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\SalesOrder;
 use App\Support\TenantClock;
+use App\Support\QtyMix;
 use App\Support\ThermalLayout;
 
 class EscPosPayloadService
@@ -402,7 +403,10 @@ class EscPosPayloadService
         // three characters in every one of the three columns — the very three that had to be found
         // before an item could be indented far enough to look like an item.
         $money  = fn ($v) => number_format((float) $v, 0);
-        $qty    = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.');
+        $num    = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.');
+        // UNITS-PACKS F4: a figure that arrives as QtyMix::tag() carries its unit ("0.25 kg"); a total of kg and pieces
+        // prints "mixed" in its narrow column and its parts on a line of their own beneath (see $figures).
+        $qty    = fn ($v) => is_array($v) ? QtyMix::label($v['qty'], $v['mix'], $num, true) : $num($v);
         $sections = $r['sections'] ?? [];
         $has    = fn (string $s) => in_array($s, $sections, true);
         $rule   = str_repeat('-', $cols);
@@ -412,7 +416,7 @@ class EscPosPayloadService
         $samples = [];
         $collect = function ($d) use (&$samples, $money, $qty) {
             $get = fn ($k) => is_array($d) ? ($d[$k] ?? 0) : ($d->{$k} ?? 0);
-            foreach (['sold_qty', 'returned_qty', 'net_qty'] as $k) { $samples[] = $qty($get($k)); }
+            foreach (['sold', 'returned', 'net'] as $k) { $samples[] = $qty(QtyMix::tag($get($k . '_qty'), $get($k . '_mix') ?: null)); }
             foreach (['net', 'returns_amount', 'net_value', 'gross'] as $k) { $samples[] = $money($get($k)); }
         };
         foreach (($r['categories'] ?? []) as $root) {
@@ -437,7 +441,7 @@ class EscPosPayloadService
             $rows = collect($r[$key] ?? []);
             if ($rows->isEmpty()) { continue; }
             $sum = fn (string $f) => $rows->sum(fn ($x) => (float) (is_array($x) ? ($x[$f] ?? 0) : ($x->{$f} ?? 0)));
-            foreach (['sold_qty', 'returned_qty', 'net_qty'] as $f) { $samples[] = $qty($sum($f)); }
+            foreach (['sold', 'returned', 'net'] as $f) { $samples[] = $qty(QtyMix::tag($sum($f . '_qty'), QtyMix::sum($rows, $f . '_mix', $f . '_qty'))); }
             foreach (['net', 'returns_amount', 'net_value'] as $f) { $samples[] = $money($sum($f)); }
         }
 
@@ -459,6 +463,9 @@ class EscPosPayloadService
         /** The Qty and Amt lines of one entry, at a given indent. */
         $figures = fn (string $ind, $sQ, $rQ, $nQ, $sV, $rV, $nV) =>
             $three($ind . 'Qty', $qty($sQ), $qty($rQ), $qty($nQ))
+            . collect(['Sold' => $sQ, 'Ret' => $rQ, 'Net' => $nQ])
+                ->filter(fn ($v) => is_array($v) && QtyMix::isMixed($v['mix']))
+                ->map(fn ($v, $w) => wordwrap($ind . '  ' . $w . ' ' . QtyMix::words($v['mix'], $num), $cols, "\n" . $ind . '    ', true) . "\n")->implode('')
             . $three($ind . 'Amt', $money($sV), $money($rV), $money($nV));
 
         // A highlighted line: bold AND double-height (2x tall, width left at 1x so the
@@ -496,9 +503,9 @@ class EscPosPayloadService
             $ov = $r['overview'];
             $out .= $header('OVERALL') . $rule . "\n";
             $out .= $this->columns('Orders', (string) ($ov['orders'] ?? 0), $cols) . "\n";
-            $out .= $this->columns('Sold Qty', $qty($ov['sold_qty'] ?? 0), $cols) . "\n";
-            $out .= $this->columns('Returned Qty', $qty($ov['returned_qty'] ?? 0), $cols) . "\n";
-            $out .= $big($this->columns('Net Qty', $qty($ov['net_qty'] ?? 0), $cols)) . "\n";
+            $out .= $this->columns('Sold Qty', QtyMix::label((float) ($ov['sold_qty'] ?? 0), $ov['sold_mix'] ?? null, $num), $cols) . "\n";
+            $out .= $this->columns('Returned Qty', QtyMix::label((float) ($ov['returned_qty'] ?? 0), $ov['returned_mix'] ?? null, $num), $cols) . "\n";
+            $out .= $big($this->columns('Net Qty', QtyMix::label((float) ($ov['net_qty'] ?? 0), $ov['net_mix'] ?? null, $num), $cols)) . "\n";
             $out .= $this->columns('Items Sold', $money($ov['gross_sales'] ?? 0), $cols) . "\n";
             $out .= $this->columns('Less Discount', '-' . $money($ov['discount'] ?? 0), $cols) . "\n";
             $out .= $this->columns('Plus Tax', $money($ov['tax'] ?? 0), $cols) . "\n";
@@ -563,20 +570,20 @@ class EscPosPayloadService
                     $out .= "\n" . $indentC . self::BOLD_ON
                         . ThermalLayout::fit((string) $child['name'], $cols - $indentChild)
                         . self::BOLD_OFF . "\n"
-                        . $figures($indentC, $child['sold_qty'], $child['returned_qty'], $child['net_qty'],
+                        . $figures($indentC, QtyMix::tag($child['sold_qty'], $child['sold_mix'] ?? null), QtyMix::tag($child['returned_qty'], $child['returned_mix'] ?? null), QtyMix::tag($child['net_qty'], $child['net_mix'] ?? null),
                             $child['net'], $child['returns_amount'], $child['net_value'])
                         . ThermalLayout::dotted($cols, $indentChild) . "\n";
                 }
 
                 // A category with children is totalled; one without simply states its own figures.
                 $out .= ($children->isNotEmpty() ? "\n" . $big('TOTAL') . "\n" : '') . self::BOLD_ON
-                    . $figures('', $root['sold_qty'], $root['returned_qty'], $root['net_qty'],
+                    . $figures('', QtyMix::tag($root['sold_qty'], $root['sold_mix'] ?? null), QtyMix::tag($root['returned_qty'], $root['returned_mix'] ?? null), QtyMix::tag($root['net_qty'], $root['net_mix'] ?? null),
                         $root['net'], $root['returns_amount'], $root['net_value'])
                     . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
             }
             $cats = collect($r['categories']);
             $out .= "\n" . $big($this->center('GRAND TOTAL', $cols)) . "\n" . self::BOLD_ON
-                . $figures('', $cats->sum('sold_qty'), $cats->sum('returned_qty'), $cats->sum('net_qty'),
+                . $figures('', QtyMix::tag($cats->sum('sold_qty'), QtyMix::sum($cats, 'sold_mix', 'sold_qty')), QtyMix::tag($cats->sum('returned_qty'), QtyMix::sum($cats, 'returned_mix', 'returned_qty')), QtyMix::tag($cats->sum('net_qty'), QtyMix::sum($cats, 'net_mix', 'net_qty')),
                     $cats->sum('net'), $cats->sum('returns_amount'), $cats->sum('net_value'))
                 . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
         }
@@ -593,11 +600,11 @@ class EscPosPayloadService
             foreach ($items as $row) {
                 $name = $row->item . ($this->meaningfulVariant($row->variant ?? null, $row->item ?? null) ? ' (' . $row->variant . ')' : '');
                 $out .= "\n" . $indent2 . ThermalLayout::fit($name, $cols - $indentChild) . "\n"
-                    . $figures($indent2, $row->sold_qty, $row->returned_qty, $row->net_qty,
+                    . $figures($indent2, QtyMix::tag($row->sold_qty, $row->sold_mix ?? null), QtyMix::tag($row->returned_qty, $row->returned_mix ?? null), QtyMix::tag($row->net_qty, $row->net_mix ?? null),
                         $row->net, $row->returns_amount, $row->net_value);
             }
             $out .= "\n" . $big('TOTAL') . "\n" . self::BOLD_ON
-                . $figures('', $items->sum('sold_qty'), $items->sum('returned_qty'), $items->sum('net_qty'),
+                . $figures('', QtyMix::tag($items->sum('sold_qty'), QtyMix::sum($items, 'sold_mix', 'sold_qty')), QtyMix::tag($items->sum('returned_qty'), QtyMix::sum($items, 'returned_mix', 'returned_qty')), QtyMix::tag($items->sum('net_qty'), QtyMix::sum($items, 'net_mix', 'net_qty')),
                     $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value'))
                 . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
         }
@@ -637,26 +644,26 @@ class EscPosPayloadService
                     foreach ($group['items'] as $item) {
                         $name = $item['item'] . ($this->meaningfulVariant($item['variant'] ?? null, $item['item'] ?? null) ? ' (' . $item['variant'] . ')' : '');
                         $out .= "\n" . $itemPad . ThermalLayout::fit($name, $cols - $itemInd) . "\n"
-                            . $figures($itemPad, $item['sold_qty'], $item['returned_qty'], $item['net_qty'],
+                            . $figures($itemPad, QtyMix::tag($item['sold_qty'], $item['sold_mix'] ?? null), QtyMix::tag($item['returned_qty'], $item['returned_mix'] ?? null), QtyMix::tag($item['net_qty'], $item['net_mix'] ?? null),
                                 $item['net'], $item['returns_amount'], $item['net_value']);
                     }
 
                     if ($headRow['nested']) {
                         $out .= "\n" . $indentC . self::BOLD_ON . 'TOTAL' . self::BOLD_OFF . "\n"
-                            . $figures($indentC, $group['sold_qty'], $group['returned_qty'], $group['net_qty'],
+                            . $figures($indentC, QtyMix::tag($group['sold_qty'], $group['sold_mix'] ?? null), QtyMix::tag($group['returned_qty'], $group['returned_mix'] ?? null), QtyMix::tag($group['net_qty'], $group['net_mix'] ?? null),
                                 $group['net'], $group['returns_amount'], $group['net_value'])
                             . ThermalLayout::dotted($cols, $indentChild) . "\n";
                     }
                 }
 
                 $out .= "\n" . $big('TOTAL') . "\n" . self::BOLD_ON
-                    . $figures('', $headRow['sold_qty'], $headRow['returned_qty'], $headRow['net_qty'],
+                    . $figures('', QtyMix::tag($headRow['sold_qty'], $headRow['sold_mix'] ?? null), QtyMix::tag($headRow['returned_qty'], $headRow['returned_mix'] ?? null), QtyMix::tag($headRow['net_qty'], $headRow['net_mix'] ?? null),
                         $headRow['net'], $headRow['returns_amount'], $headRow['net_value'])
                     . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
             }
 
             $out .= "\n" . $big($this->center('GRAND TOTAL', $cols)) . "\n" . self::BOLD_ON
-                . $figures('', $heads->sum('sold_qty'), $heads->sum('returned_qty'), $heads->sum('net_qty'),
+                . $figures('', QtyMix::tag($heads->sum('sold_qty'), QtyMix::sum($heads, 'sold_mix', 'sold_qty')), QtyMix::tag($heads->sum('returned_qty'), QtyMix::sum($heads, 'returned_mix', 'returned_qty')), QtyMix::tag($heads->sum('net_qty'), QtyMix::sum($heads, 'net_mix', 'net_qty')),
                     $heads->sum('net'), $heads->sum('returns_amount'), $heads->sum('net_value'))
                 . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
         }
@@ -681,19 +688,19 @@ class EscPosPayloadService
                     // A deal name is the longest text on the whole slip — "EXCLUSIVE DEAL 1 - 2
                     // ZINGER + 2 SINGAPOREAN RICE + 4 DRINKS" is 59 characters on 42 of paper.
                     $out .= "\n" . $indentC . ThermalLayout::fit((string) $row['deal'], $cols - $indentChild) . "\n"
-                        . $figures($indentC, $row['sold_qty'], $row['returned_qty'], $row['net_qty'],
+                        . $figures($indentC, QtyMix::tag($row['sold_qty'], $row['sold_mix'] ?? null), QtyMix::tag($row['returned_qty'], $row['returned_mix'] ?? null), QtyMix::tag($row['net_qty'], $row['net_mix'] ?? null),
                             $row['net'], $row['returns_amount'], $row['net_value']);
                 }
 
                 $g = collect($rows);
                 $out .= "\n" . $big('TOTAL') . "\n" . self::BOLD_ON
-                    . $figures('', $g->sum('sold_qty'), $g->sum('returned_qty'), $g->sum('net_qty'),
+                    . $figures('', QtyMix::tag($g->sum('sold_qty'), QtyMix::sum($g, 'sold_mix', 'sold_qty')), QtyMix::tag($g->sum('returned_qty'), QtyMix::sum($g, 'returned_mix', 'returned_qty')), QtyMix::tag($g->sum('net_qty'), QtyMix::sum($g, 'net_mix', 'net_qty')),
                         $g->sum('net'), $g->sum('returns_amount'), $g->sum('net_value'))
                     . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
             }
 
             $out .= "\n" . $big($this->center('GRAND TOTAL', $cols)) . "\n" . self::BOLD_ON
-                . $figures('', $deals->sum('sold_qty'), $deals->sum('returned_qty'), $deals->sum('net_qty'),
+                . $figures('', QtyMix::tag($deals->sum('sold_qty'), QtyMix::sum($deals, 'sold_mix', 'sold_qty')), QtyMix::tag($deals->sum('returned_qty'), QtyMix::sum($deals, 'returned_mix', 'returned_qty')), QtyMix::tag($deals->sum('net_qty'), QtyMix::sum($deals, 'net_mix', 'net_qty')),
                     $deals->sum('net'), $deals->sum('returns_amount'), $deals->sum('net_value'))
                 . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
         }

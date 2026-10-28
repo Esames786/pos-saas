@@ -116,13 +116,21 @@ class PurchaseReturnPostedOnceMySqlTest extends MySqlTenantTestCase
     {
         [, $grnLine] = $this->receiptOf(5);
         $svc = app(PurchaseReturnService::class);
-        $svc->post($this->draft($grnLine, 3), $this->userId);
-        $second = $this->draft($grnLine, 3);
+        $first = $this->draft($grnLine, 3);
+        $second = $this->draft($grnLine, 3);          // both saved while nothing had gone back yet
+        $svc->post($first, $this->userId);
         try {
             $svc->post($second, $this->userId);
             $this->fail('more than the receipt line brought in');
         } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('only 2.000 returnable', $e->getMessage());
+            $this->assertStringContainsString('only 2.000 returnable', $e->getMessage(), 'posting still checks what is left');
+        }
+        // W2-C: a new draft over what is left is refused as soon as it is saved, in the counter's words.
+        try {
+            $this->draft($grnLine, 3);
+            $this->fail('a draft over what is left must be refused when it is saved');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('only 2 Piece can still be returned, not 3.', $e->getMessage());
         }
         $svc->post($this->draft($grnLine, 2), $this->userId);
 

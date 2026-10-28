@@ -31,6 +31,8 @@ use Spatie\Permission\PermissionRegistrar;
  */
 class PurchasingV2MySqlTest extends MySqlTenantTestCase
 {
+    use \Tests\MySql\Support\AssertsPlainEnglish;
+
     private const CODE = 'pv2grn';
 
     private static bool $built = false;
@@ -317,21 +319,41 @@ class PurchasingV2MySqlTest extends MySqlTenantTestCase
     {
         $grn = $this->page('/goods-receipts/create')->assertOk()->getContent();
         $this->assertStringContainsString('class="pur-tabs"', $grn);
-        $this->assertStringContainsString('Receive (GRN)', $grn);
+        $this->assertStringContainsString('Goods Receipts', $grn);
         $this->assertStringContainsString('id="sup-q"', $grn, 'type-to-search supplier box');
         $this->assertStringContainsString('id="sup-new"', $grn, '+ New supplier');
         $this->assertStringContainsString('class="pur-tabs"', $this->page('/purchase-returns')->assertOk()->getContent(), 'every purchasing page');
 
         $clerk = $this->clerk('grnonly3', ['tenant.goods-receipts.create', 'tenant.goods-receipts.index']);
         $mine = $this->callAs($clerk, 'GET', '/goods-receipts/create')->assertOk()->getContent();
-        $this->assertStringContainsString('Receive (GRN)', $mine);
-        $this->assertStringNotContainsString('>Bills <', $mine, 'a role sees only the tabs it can open');
+        $this->assertStringContainsString('Goods Receipts', $mine);
+        $this->assertStringNotContainsString('>Supplier Invoices <', $mine, 'a role sees only the tabs it can open');
 
         $this->setFeatures(['product_screen_v2' => true, 'packs' => true, 'purchasing_v2' => false]);
         $off = $this->page('/goods-receipts/create')->assertOk()->getContent();
         $this->assertStringNotContainsString('pur-tabs', $off);
         $this->assertStringNotContainsString('id="sup-q"', $off);
         $this->assertStringContainsString('class="form-select', $off, 'the old supplier list is back');
+    }
+
+    public function test_every_purchasing_screen_reads_in_plain_english_with_the_same_terms_and_a_guide(): void
+    {
+        // Review, 21 Oct: clear English and one set of terms on every purchasing screen — the new ones and the old ones.
+        $creates = ['/purchase-orders/create', '/goods-receipts/create', '/purchase-bills/create', '/supplier-payments/create', '/purchase-returns/create'];
+        $lists = ['/purchase-orders', '/goods-receipts', '/purchase-bills', '/supplier-payments', '/purchase-returns', '/suppliers', '/suppliers/create'];
+        foreach ([true, false] as $v2) {
+            $this->setFeatures(['product_screen_v2' => true, 'packs' => true, 'purchasing_v2' => $v2]);
+            foreach (array_merge($creates, $lists) as $uri) {
+                $html = $this->page($uri)->assertOk()->getContent();
+                $this->assertNoRomanUrdu($html, $uri . ($v2 ? ' (new purchase screens)' : ' (old screens)'));
+                $this->assertStringNotContainsString('<span>Purchase Bills</span>', $html, $uri . ': the sidebar says Supplier Invoices');
+                $this->assertStringNotContainsString('<span>GRN</span>', $html, $uri . ': the sidebar says Goods Receipts');
+                if (in_array($uri, $creates, true)) {
+                    $this->assertMatchesRegularExpression('/<details class="htu" id="how-to-use">\s*<summary>How to use this screen<\/summary>/', $html, $uri . ': the guide, closed');
+                    $this->assertStringContainsString('<b>Purchase Order</b> (optional)', $html, $uri . ': the steps named the same way');
+                }
+            }
+        }
     }
 
     public function test_a_kitchen_grn_in_kg_sacks_and_items_without_a_batch_posts_like_the_old_screen(): void

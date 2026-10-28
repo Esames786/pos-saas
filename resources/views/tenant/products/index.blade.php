@@ -103,6 +103,10 @@
     <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
 @endif
 
+{{-- W3/W4 S1: with the new product screen on, the list keeps Structure, Role and Behaviour apart. Off: as before. --}}
+@if($plainList ?? false)
+    @include('tenant.products.partials.plain-list')
+@else
 <div class="card mb-3">
     <div class="card-body">
         <form method="GET" action="{{ $indexUrl }}" class="row g-3 align-items-end">
@@ -292,4 +296,5 @@
         <div class="mt-3">{{ $products->links() }}</div>
     </div>
 </div>
+@endif
 @endsection

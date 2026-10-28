@@ -33,6 +33,9 @@
         ])->values()->all();
     $reasonWords = ['expired' => 'Expired', 'damaged' => 'Damaged / broken', 'wrong_item' => 'Wrong item', 'over_supply' => 'Too many sent',
         'quality_issue' => 'Quality problem', 'price_dispute' => 'Price problem', 'other' => 'Other'];
+    // ROLLOUT-1: a counted item takes a part in its own unit while the business has not switched whole numbers on —
+    // the server's rule (LineQuantity::packTakesParts), told to the page.
+    $countedParts = ! \App\Support\LineQuantity::wholeCountedInStock();
 @endphp
 
 @push('styles')
@@ -171,7 +174,7 @@
             @endif
             <tr id="ea-t-rnd-r" hidden><td title="The cost of one unit is kept to 4 decimals; the bill reads quantity × that cost.">Rounding (paisa)</td><td id="ea-t-rnd"></td></tr>
             @if($isGrn)<tr id="ea-t-chg-r" hidden><td>Extra charges (cartage, labour…)</td><td id="ea-t-chg"></td></tr>@endif
-            <tr class="grand"><td>{{ $isRet ? 'Supplier owes you less by' : ($isGrn ? 'Total of this GRN' : 'Order total') }}</td><td id="ea-total">Rs 0</td></tr>
+            <tr class="grand"><td>{{ $isRet ? 'Supplier owes you less by' : ($isGrn ? 'Total of this goods receipt' : 'Order total') }}</td><td id="ea-total">Rs 0</td></tr>
         </table>
     </div>
     <div id="ea-hidden"></div>
@@ -197,7 +200,7 @@
     var IS_GRN = root.dataset.mode === 'grn';
     var LOOKUP = @json(url('/ajax/products'));
     var BATCH_URL = @json(url('/ajax/batches'));
-    var NEW_URL = @json(url($isRet ? '/purchase-returns/create' : ($isGrn ? '/goods-receipts/create' : '/purchase-orders/create')));
+    var NEW_URL = @json(url($newUrl ?? ($isRet ? '/purchase-returns/create' : ($isGrn ? '/goods-receipts/create' : '/purchase-orders/create'))));
     var IS_RET = root.dataset.mode === 'return', BATCHY = IS_GRN || IS_RET;
     var BATCHES_PAGE = @json(url('/inventory/batches'));
     var PRODUCT_EDIT = @json(url('/products/__ID__/edit'));
@@ -205,6 +208,7 @@
     var PO_ID = @json($purchaseOrder?->id);
     var PO_LINES = @json($poLines);
     var OLD = @json($oldLines);
+    var COUNTED_PARTS = @json($countedParts);
     var form = root.closest('form');
     var $ = function (id) { return document.getElementById(id); };
     var search = $('ea-search'), res = $('ea-res'), body = $('ea-body');
@@ -216,11 +220,24 @@
     function money(n) { var r = Math.round(n * 100) / 100; return 'Rs ' + r.toLocaleString('en-PK', { minimumFractionDigits: r % 1 ? 2 : 0, maximumFractionDigits: 2 }); }
     function num(n) { return (Math.round(n * 1000) / 1000).toLocaleString('en-PK', { maximumFractionDigits: 3 }); }
     function words(item, q) {
-        // Whole packs first ("2 Sack", "3 Box 1 Strip"), then what is left in the item's own unit — decimals for kg / litre.
+        // Whole packs first ("2 Sack", "3 Box 1 Strip"), then what is left in the item's own unit, exactly as typed —
+        // 2.5 Piece stays 2.5, never shown as 3 (ROLLOUT-1).
         var left = Math.abs(q), out = [];
         item.packs.forEach(function (p) { if (p.factor <= 1) return; var k = Math.floor(left / p.factor + 1e-9); if (k > 0) { out.push(k + ' ' + p.name); left -= k * p.factor; } });
-        if (left > 0.0005 || !out.length) out.push((item.allow_decimal ? num(left) : Math.round(left)) + ' ' + item.unit_name);
+        if (left > 0.0005 || !out.length) out.push(num(left) + ' ' + item.unit_name);
         return (q < 0 ? '−' : '') + out.join(' ');
+    }
+    // ROLLOUT-1: may this pack take a part? Kg / litre / metre: yes. A counted item: in its own unit (a pack of one)
+    // while the business allows parts; a bigger pack is whole. The server asks the same (LineQuantity::packTakesParts).
+    function takesParts(item, p) { return !!item.allow_decimal || (COUNTED_PARTS && Math.abs((+p.factor || 0) - 1) < 0.0005); }
+    // A quantity in the item's own unit as packs: whole packs first, what is left in the smallest pack when that pack
+    // takes parts — 2.5 due comes in as 2.5, never 2 (ROLLOUT-1).
+    function splitPacks(item, q) {
+        var left = q, qty = {};
+        item.packs.forEach(function (p) { var k = Math.floor(left / p.factor + 1e-9); if (k > 0) { qty[p.key] = String(k); left -= k * p.factor; } });
+        var small = item.packs[item.packs.length - 1];
+        if (left > 0.0005 && small && takesParts(item, small)) qty[small.key] = String(Math.round(((parseFloat(qty[small.key]) || 0) + left / small.factor) * 1000) / 1000);
+        return qty;
     }
     function packOf(item, key) { return item.packs.filter(function (p) { return p.key === String(key); })[0]; }
     function buyPack(item, key) { return packOf(item, key) || item.packs.filter(function (p) { return p.can_buy; })[0] || item.packs[0]; }
@@ -375,7 +392,7 @@
             if (IS_GRN && it.has_expiry) f.push(field('expiry', 'Expiry', S.expiry, 'MM/YY', 'text', 84));
         }
         it.packs.forEach(function (p) {
-            f.push(field('pack:' + p.key, p.name + (it.packs.length > 1 && p.factor > 1 ? ' (' + (p.holds || num(p.factor)) + ')' : ''), S.qty[p.key] || '', '0', it.allow_decimal ? 'decimal' : 'numeric', p.holds ? 125 : 82));
+            f.push(field('pack:' + p.key, p.name + (it.packs.length > 1 && p.factor > 1 ? ' (' + (p.holds || num(p.factor)) + ')' : ''), S.qty[p.key] || '', '0', takesParts(it, p) ? 'decimal' : 'numeric', p.holds ? 125 : 82));
         });
         if (IS_GRN) f.push(field('free', 'Free / scheme', S.free, '0 or 10+1', 'text', 86));
         if (!IS_GRN && !IS_RET) f.push(field('free', 'Scheme', S.free, '10+1', 'text', 76));
@@ -587,10 +604,17 @@
             if (base + others > S.batchStock + 1e-6) { var leftNow = Math.max(0, S.batchStock - others); msg(leftNow > 0 ? 'Batch ' + S.batch + ' has only ' + words(it, leftNow) + ' left.' : 'Nothing more is left in batch ' + S.batch + (others > 0 ? ' — the list already takes all of it.' : '.')); focusField('pack:' + it.packs[0].key); return; }
         }
         if (IS_RET && !S.reason) { msg('Why is it going back? Pick a reason.'); focusField('reason'); return; }
-        if (!it.allow_decimal) {
-            var bad = it.packs.filter(function (p) { var v = S.qty[p.key]; return v && !/^\d+$/.test(String(v).trim()); })[0];
-            if (bad) { msg(bad.name + ': a whole number, please.'); focusField('pack:' + bad.key); return; }
-        }
+        // ROLLOUT-1: each box by its own rule (takesParts) — a pack that is whole says so; one that takes parts takes up
+        // to 3 decimals (W2-C: the server refuses a 4th instead of rounding it).
+        var bad = it.packs.filter(function (p) { var v = S.qty[p.key]; return v && !takesParts(it, p) && !/^\d+$/.test(String(v).trim()); })[0];
+        if (bad) { msg(bad.name + ': a whole number, please.'); focusField('pack:' + bad.key); return; }
+        var long = it.packs.filter(function (p) { var v = S.qty[p.key]; return v && takesParts(it, p) && !/^\d*(\.\d{0,3})?$/.test(String(v).trim()); })[0];
+        if (long) { msg(long.name + ': at most 3 decimal places.'); focusField('pack:' + long.key); return; }
+        // With whole numbers switched on, a counted item's total in its own unit is whole too (a carton of 12.5 is not).
+        if (!it.allow_decimal && !COUNTED_PARTS && Math.abs(base - Math.round(base)) > 0.0005) { msg(it.name + ' is counted in whole numbers (' + it.unit_name + ') — ' + num(base) + ' is not a whole number.'); focusField('pack:' + it.packs[0].key); return; }
+        // A typed free number is in the buying pack: whole unless that pack takes parts (the server's rule).
+        var freeT = String(S.free || '').trim();
+        if (IS_GRN && freeT !== '' && !parseScheme(freeT) && !takesParts(it, bp) && !/^\d+$/.test(freeT)) { msg('Free: a whole number of ' + bp.name + ', please.'); focusField('free'); return; }
         var line = { item: it, qty: Object.assign({}, S.qty), batch: S.batch.trim().toUpperCase(), expiry: normExpiry(S.expiry), free: S.free, price: S.price, buyKey: bp.key, disc: S.disc, poLineId: S.poLineId, variantId: S.variantId,
                      batchId: S.batchId, reason: S.reason, priceFrom: S.priceFrom, note: (S.note || '').trim(), discType: S.discType || 'percent' };
         // The Free box: a scheme travels as the scheme (the server works out the free packs), a number as free packs.
@@ -640,6 +664,9 @@
         $('ea-t-rnd-r').hidden = !(Math.abs(rounding) >= 0.005); $('ea-t-rnd').textContent = (rounding < 0 ? '− ' : '+ ') + money(Math.abs(rounding));
         if ($('ea-t-chg-r')) { $('ea-t-chg-r').hidden = !(charges > 0); $('ea-t-chg').textContent = '+ ' + money(charges); }
         $('ea-total').textContent = money(final + charges);
+        // W3/W4 S4: the total, for a page around the entry area (the purchase workspace).
+        root.dataset.total = String(Math.round((final + charges) * 100) / 100);
+        root.dispatchEvent(new CustomEvent('ea:total', { detail: final + charges }));
         $('ea-count').innerHTML = saved ? '<span class="ea-sign ok">Saved ✓</span>' : (LINES.length + (LINES.length === 1 ? ' line' : ' lines') + (LINES.length ? ' · <span class="ea-sign">Not saved yet</span>' : ''));
         saveDraft();
     }
@@ -701,8 +728,7 @@
             var o = PO_LINES[+b.dataset.po], it = poItems[o.product_id];
             var go = function (item) {
                 var got = LINES.filter(function (l) { return String(l.poLineId) === String(o.po_line_id); }).reduce(function (t, l) { return t + baseOf(l); }, 0);
-                var left = Math.max(0, o.due - got), qty = {};
-                item.packs.forEach(function (p) { var k = Math.floor(left / p.factor + 1e-9); if (k > 0) { qty[p.key] = String(k); left -= k * p.factor; } });
+                var qty = splitPacks(item, Math.max(0, o.due - got));
                 var bp = (o.pack_unit_id && packOf(item, o.pack_unit_id)) || item.packs.filter(function (p) { return p.can_buy; })[0] || item.packs[0];
                 if (IS_RET) {
                     load(item, { qty: qty, price: Math.round(o.unit_cost * bp.factor * 100) / 100, buyKey: bp.key, poLineId: o.po_line_id, variantId: o.variant_id,
@@ -744,8 +770,7 @@
                             return (poItems[b.product_id] ? Promise.resolve(poItems[b.product_id]) : fetchItems({ product_id: b.product_id }).then(function (r) { if (r[0]) poItems[b.product_id] = r[0]; return r[0]; }))
                                 .then(function (item) {
                                     if (!item) return;
-                                    var left = b.stock, qty = {};
-                                    item.packs.forEach(function (p) { var k = Math.floor(left / p.factor + 1e-9); if (k > 0) { qty[p.key] = String(k); left -= k * p.factor; } });
+                                    var qty = splitPacks(item, b.stock);
                                     var bp = item.packs.filter(function (p) { return p.can_buy; })[0] || item.packs[0];
                                     if (LINES.some(function (l) { return String(l.batchId) === String(b.id); })) return;
                                     LINES.push({ item: item, qty: qty, batch: b.batch_no, batchId: b.id, expiry: b.expiry || '', price: String(Math.round(b.unit_cost * bp.factor * 100) / 100), buyKey: bp.key,
@@ -801,9 +826,18 @@
         try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
         if ($('ea-po')) $('ea-po').closest('.card').hidden = true;
         var box = $('ea-done');
+        if (d.documents && d.documents.length > 1) {
+            // W3/W4 S4: one Post, several documents — each named, each with its link.
+            box.innerHTML = '<div class="d-flex flex-wrap align-items-center gap-2"><b style="font-size:1.05rem">✓ ' + (d.already ? 'Already posted — nothing was posted twice:' : 'Posted together:') + '</b>'
+                + d.documents.map(function (x) { return '<a class="btn btn-sm btn-success" href="' + esc(x.url) + '">' + esc(x.kind) + ' ' + esc(x.number) + '</a>'; }).join('')
+                + '<a class="btn btn-sm btn-outline-dark" href="' + esc(NEW_URL) + '">New purchase</a></div>';
+            box.hidden = false; box.focus(); box.scrollIntoView({ block: 'center' });
+            if (window.eaDone) window.eaDone(d);
+            return;
+        }
         box.innerHTML = '<div class="d-flex flex-wrap align-items-center gap-2"><b style="font-size:1.05rem">✓ ' + esc(d.number) + (d.already ? ' was already posted — nothing was posted twice.' : (IS_RET ? (d.posted ? ' posted — stock is out and the supplier owes you less.' : ' saved as a draft — open it to post.') : ' saved.')) + '</b>'
             + '<a class="btn btn-sm btn-success" href="' + esc(d.url) + '">Open it</a>'
-            + '<a class="btn btn-sm btn-outline-dark" href="' + esc(NEW_URL) + '">New ' + (IS_RET ? 'return' : (IS_GRN ? 'GRN' : 'order')) + '</a>'
+            + '<a class="btn btn-sm btn-outline-dark" href="' + esc(NEW_URL) + '">New ' + (IS_RET ? 'return' : (IS_GRN ? 'goods receipt' : 'order')) + '</a>'
             + '<span class="text-muted small">Or add more lines below and Post again for another one.</span></div>';
         box.hidden = false; box.focus(); box.scrollIntoView({ block: 'center' });
     }
@@ -811,6 +845,7 @@
     function failed(x) {
         busy(false);
         if (x.d && x.d.next_key && $('ea-key')) $('ea-key').value = x.d.next_key;   // the same key with other lines: refused, a new one given
+        if (window.eaFailed) window.eaFailed(x);
         if (x.status === 422) {
             var errs = (x.d && x.d.errors) || {}, top = []; rowErr = {};
             Object.keys(errs).forEach(function (k) { var m = LINE_FIELD.exec(k); if (m && LINES[+m[1]]) rowErr[+m[1]] = errs[k][0]; else top.push(errs[k][0]); });
@@ -824,6 +859,8 @@
     }
     if (form) form.addEventListener('submit', function (e) {
         e.preventDefault();
+        // W3/W4 S4: a page around the entry area may post the form its own way (it answers true).
+        if (window.eaOwnSubmit && window.eaOwnSubmit(e)) return;
         saveErr([]);
         if (S) { msg(editAt !== null ? 'Press "Update line" (Ctrl+Enter) first, or Clear.' : 'This item is not in the list yet — press Ctrl+Enter, or Clear.'); focusField(fieldOrder[0]); return; }
         if (!LINES.length) { saveErr(['Nothing in the list yet — add an item first.']); search.focus(); return; }
@@ -868,15 +905,17 @@
         var rnd = IS_RET ? 0 : total - (goods - bill);
         var parts = (bill > 0 ? ' − bill discount ' + money(bill) : '') + (Math.abs(rnd) >= 0.005 ? (rnd < 0 ? ' − ' : ' + ') + 'rounding ' + money(Math.abs(rnd)) : '') + (charges > 0 ? ' + charges ' + money(charges) : '');
         var what = IS_RET ? 'Stock leaves these batches, and this supplier will owe you <b>' + money(total) + '</b> less.'
-            : (IS_GRN ? 'Stock goes up by these quantities. The supplier\'s bill comes from this GRN: <b>' + money(total + charges) + '</b>' + (parts ? ' (goods ' + money(goods) + parts + '; spread over the goods by value)' : '') + '.'
+            : (IS_GRN ? 'Stock goes up by these quantities. The supplier\'s invoice comes from this goods receipt: <b>' + money(total + charges) + '</b>' + (parts ? ' (goods ' + money(goods) + parts + '; spread over the goods by value)' : '') + '.'
                 : 'Nothing moves yet — this is the order to send. Total <b>' + money(total) + '</b>' + (bill > 0 ? ' (goods ' + money(goods) + ' − bill discount ' + money(bill) + ')' : '') + '.');
-        $('ea-pv-title').textContent = IS_RET ? 'Check the return' : (IS_GRN ? 'Check the goods received' : 'Check the order');
+        // W3/W4 S4: a page around the entry area adds what else this Post records (invoice, payment).
+        if (window.eaReviewExtra) what = window.eaReviewExtra(total + charges, what);
+        $('ea-pv-title').textContent = IS_RET ? 'Check the return' : (IS_GRN ? (window.eaReviewTitle || 'Check the goods received') : 'Check the order');
         $('ea-pv-body').innerHTML = '<div class="ea-pv-who"><span>Supplier: <b>' + esc(($('sup-q') || {}).value || selText('supplier_id')) + '</b></span><span>Branch: <b>' + esc(selText('branch_id')) + '</b></span><span>Date: <b>' + esc(date) + '</b></span>'
             + (PO_ID ? '<span>Order: <b>' + esc(@json($purchaseOrder?->po_no)) + '</b></span>' : '') + (IS_RET && @json($goodsReceipt?->grn_no ?? null) ? '<span>Receipt: <b>' + esc(@json($goodsReceipt?->grn_no ?? null)) + '</b></span>' : '') + '</div>'
             + '<div class="table-responsive"><table class="table table-sm align-middle mb-2"><thead class="table-light">' + head + '</thead><tbody>' + rows.join('') + '</tbody></table></div>'
             + (warn.length ? '<div class="ea-warn mb-2" style="background:#FFF4D6;color:#6B5310">' + warn.map(esc).join('<br>') + '</div>' : '')
             + '<div class="d-flex justify-content-between flex-wrap gap-2 align-items-center"><span>' + what + '</span><b style="font-size:1.3rem;color:var(--navy)">' + LINES.length + ' line' + (LINES.length === 1 ? '' : 's') + ' · ' + money(total + charges) + '</b></div>';
-        var main = IS_RET ? 'Post return' : (IS_GRN ? 'Post GRN' : 'Save order');
+        var main = IS_RET ? 'Post return' : (IS_GRN ? (window.eaPostLabel || 'Post goods receipt') : 'Save order');
         $('ea-pv-btns').innerHTML = '<button type="button" class="btn btn-primary" data-pv="main">' + main + ' <span class="ea-kbd ms-1">Enter</span></button>'
             + (IS_RET ? '<button type="button" class="btn btn-outline-dark" data-pv="draft">Save as draft</button>' : '')
             + '<button type="button" class="btn btn-light" data-pv="back">Back to edit <span class="ea-kbd ms-1">Esc</span></button>';
