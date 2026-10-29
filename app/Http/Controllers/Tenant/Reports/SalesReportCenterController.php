@@ -351,9 +351,14 @@ class SalesReportCenterController extends Controller
             'overview' => in_array('overview', $sections, true) ? $summary : null,
             'orderTypes' => $pick('order_types', fn () => $this->engine->byOrderType($filters)),
             'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
-            'items' => $pick('items', fn () => $this->engine->byItem($filters)),
+            // REPORT-NETWORK-GAPS-1: the same rows the browser prints — Items without the deals,
+            // the deals in their own section, and BY ORDER TYPE. This road was never given the
+            // last two, so a ticked Deals or By Order Type printed its heading and nothing more.
+            'items' => $pick('items', fn () => $this->engine->byItem($filters, 'net', true)),
             'categoryItems' => $pick('category_items', fn () => $this->engine->byCategoryItems($filters)),
+            'deals' => $pick('deals', fn () => $this->engine->byDeal($filters)),
             'waiters' => $pick('waiters', fn () => $this->engine->byWaiter($filters)),
+            'combos' => $pick('order_type_combos', fn () => $this->engine->orderTypeCombos($filters)),
             'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
             'cashBank' => $pick('cash_bank', fn () => $this->engine->cashBank($filters)),
             'partnerShare' => $pick('partner_share', fn () => $this->engine->partnerShare($filters)),

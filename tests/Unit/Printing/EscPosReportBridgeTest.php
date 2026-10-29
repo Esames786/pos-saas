@@ -134,4 +134,25 @@ class EscPosReportBridgeTest extends TestCase
         $this->assertMatchesRegularExpression('/= NET SALES +45,160\n/', $body);
         $this->assertLessThan(strpos($body, 'Plus Delivery Charge'), strpos($body, 'Plus Deals'), 'deals first, then charges');
     }
+
+    /**
+     * REPORT-NETWORK-ITEMS-DEALS-1 — the Report Center sends Items WITH the deal lines in them. The
+     * total already holds the deals, so naming them again printed "Plus Deals 119,425" and then
+     * "Plus Other Charges -119,425" to cancel it (a live day, 28 Oct). Items 6,960 (deal 5,000 in
+     * it) + delivery 7,200 − discount 200 = NET SALES 13,960, with no deal or "other" line.
+     */
+    public function test_items_that_already_hold_the_deals_do_not_add_them_again(): void
+    {
+        $r = $this->report(['items'], ['net_sales' => 13960, 'delivery_charge' => 7200, 'discount' => 200, 'deals_net' => 5000]);
+        $r['items'] = [
+            (object) ['item' => 'Biryani Chicken', 'variant' => null, 'combo_id' => null, 'sold_qty' => 4, 'returned_qty' => 0, 'net_qty' => 4, 'net' => 1960, 'returns_amount' => 0, 'net_value' => 1960],
+            (object) ['item' => 'Family Deal', 'variant' => null, 'combo_id' => 7, 'sold_qty' => 2, 'returned_qty' => 0, 'net_qty' => 2, 'net' => 5000, 'returns_amount' => 0, 'net_value' => 5000],
+        ];
+        $body = $this->text(app(EscPosPayloadService::class)->buildReport($r));
+        $tail = substr($body, strrpos($body, 'TOTAL'));
+        preg_match_all('/^((?:Plus|Less) [A-Za-z ]+?|= NET SALES) +(-?[\d,]+)$/m', $tail, $m);
+
+        $this->assertSame(['Plus Delivery Charge', 'Less Discount', '= NET SALES'], $m[1]);
+        $this->assertSame(['7,200', '-200', '13,960'], $m[2]);
+    }
 }

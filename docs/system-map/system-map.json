@@ -1,40 +1,40 @@
 {
-    "built_at": "2026-10-28T08:51:13+00:00",
+    "built_at": "2026-10-28T14:39:07+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
-    "prod_branch_head": "f1a64bb8",
+    "prod_branch_head": "bc9c973c",
     "work": [
         {
-            "path": "D:/laragon2/www/pos-saas-reportbridge",
-            "branch": "fix/report-network-bridge-20261028",
-            "head": "e891c84f",
+            "path": "D:/laragon2/www/pos-saas",
+            "branch": "feat/14d-2-plan-upgrade-requests",
+            "head": "bc9c973c",
             "behind_prod": 0,
-            "ahead_of_prod": 2,
-            "last_commit": "2026-10-28\u00b7REPORT-NETWORK-BRIDGE-1 docs: proof from the prod print jobs, the two print roads, what was left alone; system map rebuilt",
+            "ahead_of_prod": 0,
+            "last_commit": "2026-10-28\u00b7Merge MOVE-TABLE-CART-1 + REPORT-NETWORK-BRIDGE-1: Move Table clears a cart that is not the table's, a held bill never lands on another table; the report sent to a network printer closes on Delivery Charge / NET SALES",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-reportbridge",
+            "branch": "fix/report-network-items-deals-20261028",
+            "head": "568aca5c",
+            "behind_prod": 0,
+            "ahead_of_prod": 1,
+            "last_commit": "2026-10-28\u00b7REPORT-NETWORK-ITEMS-DEALS-1: network Items slip no longer counts the deals twice",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-tablemove",
-            "branch": "fix/move-table-clears-cart-20261022",
-            "head": "2f38cd0a",
+            "branch": "fix/report-network-gaps-20261028",
+            "head": "568aca5c",
             "behind_prod": 0,
-            "ahead_of_prod": 6,
-            "last_commit": "2026-10-28\u00b7Merge REPORT-NETWORK-BRIDGE-1 into MOVE-TABLE-CART-1 for one deploy",
-            "uncommitted_files": 0
-        },
-        {
-            "path": "D:/laragon2/www/pos-saas",
-            "branch": "feat/14d-2-plan-upgrade-requests",
-            "head": "f1a64bb8",
-            "behind_prod": 0,
-            "ahead_of_prod": 0,
-            "last_commit": "2026-10-27\u00b7Deployment record: CATERING-SIMPLIFY-1 live (a06a5b57)",
-            "uncommitted_files": 0
+            "ahead_of_prod": 1,
+            "last_commit": "2026-10-28\u00b7REPORT-NETWORK-ITEMS-DEALS-1: network Items slip no longer counts the deals twice",
+            "uncommitted_files": 5
         },
         {
             "path": "D:/laragon2/www/pos-saas-catedit",
             "branch": "feat/catering-simplify-20261027",
             "head": "09ad9e87",
-            "behind_prod": 2,
+            "behind_prod": 10,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-27\u00b7System map rebuilt (CATERING-SIMPLIFY-1, copy price)",
             "uncommitted_files": 0
@@ -43,7 +43,7 @@
             "path": "D:/laragon2/www/pos-saas-pnl",
             "branch": "feat/pnl-detail-finance-pdfs-20261026",
             "head": "0c97fb10",
-            "behind_prod": 9,
+            "behind_prod": 17,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-27\u00b7PNL-DETAIL-1: a test for the PDF head total under nested heads; results recorded",
             "uncommitted_files": 0
@@ -52,16 +52,16 @@
             "path": "D:/laragon2/www/pos-saas-product-parity",
             "branch": "feat/product-parity-20261028",
             "head": "f1a64bb8",
-            "behind_prod": 0,
+            "behind_prod": 8,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-27\u00b7Deployment record: CATERING-SIMPLIFY-1 live (a06a5b57)",
-            "uncommitted_files": 10
+            "uncommitted_files": 11
         },
         {
             "path": "D:/laragon2/www/pos-saas-verify-upv",
             "branch": "(detached)",
             "head": "05ad890c",
-            "behind_prod": 3,
+            "behind_prod": 11,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-27\u00b7CATERING-SIMPLIFY-1: saving a caterer's cost-block dish makes the block price its counter price",
             "uncommitted_files": 0
@@ -70,7 +70,7 @@
             "path": "D:/laragon2/www/pos-saas-advance",
             "branch": "feat/supplier-credit-clarity-20261026",
             "head": "1b80cfff",
-            "behind_prod": 23,
+            "behind_prod": 31,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-26\u00b7SUPPLIER-CREDIT-CLARITY-1: results of the frozen runs",
             "uncommitted_files": 0
@@ -79,7 +79,7 @@
             "path": "D:/laragon2/www/pos-saas-navrel",
             "branch": "release/product-nav-20261026",
             "head": "fd144412",
-            "behind_prod": 13,
+            "behind_prod": 21,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-26\u00b7Merge COMMERCIAL-RATE-PICKER-1: the material list opens on the materials in use, with their dish count, and searches",
             "uncommitted_files": 0
@@ -88,7 +88,7 @@
             "path": "D:/laragon2/www/pos-saas-prodnav",
             "branch": "feat/product-nav-cleanup-20261026",
             "head": "4a99577c",
-            "behind_prod": 27,
+            "behind_prod": 35,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-26\u00b7PRODUCT-NAV-1: the record \u2014 tests, sabotage, desktop/phone walk, related run and its one pre-existing failure",
             "uncommitted_files": 0
@@ -97,7 +97,7 @@
             "path": "D:/laragon2/www/pos-saas-ratepick",
             "branch": "feat/commercial-rate-picker-20261026",
             "head": "4d972430",
-            "behind_prod": 18,
+            "behind_prod": 26,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-26\u00b7COMMERCIAL-RATE-PICKER-1: the material list opens on the materials in use, with their dish count, and searches",
             "uncommitted_files": 0
@@ -106,7 +106,7 @@
             "path": "D:/laragon2/www/pos-saas-contact",
             "branch": "feat/public-contact-form",
             "head": "d3c99830",
-            "behind_prod": 37,
+            "behind_prod": 45,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-25\u00b7CONTACT-FORM-1: dono WhatsApp number \u2014 ek setting, do shaklein",
             "uncommitted_files": 0
@@ -115,7 +115,7 @@
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
             "head": "e4124a52",
-            "behind_prod": 133,
+            "behind_prod": 141,
             "ahead_of_prod": 203,
             "last_commit": "2026-10-25\u00b7EDGE 0.8.1 PACKAGING-DRYRUN-IMMUTABLE-1: the runtime redirects its own bootstrap caches to <data-root>/logs/runtime-cache/<sha> in bootstrap/app.php (relative path, before the application is created); the installer-side APP_*_CACHE override is reverted",
             "uncommitted_files": 1
@@ -124,7 +124,7 @@
             "path": "D:/laragon2/www/pos-saas-relc",
             "branch": "release/unified-w3w4-20261024",
             "head": "14458b95",
-            "behind_prod": 41,
+            "behind_prod": 49,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-25\u00b7Release record: a backup is not an undo button \u2014 fix forward; any restore needs its own recovery plan",
             "uncommitted_files": 0
@@ -133,7 +133,7 @@
             "path": "D:/laragon2/www/pos-saas-rollout",
             "branch": "feat/rollout-completion-20261025",
             "head": "d822bbef",
-            "behind_prod": 36,
+            "behind_prod": 44,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-25\u00b7ROLLOUT-1: deployment record \u2014 54bb81f9 live, reconciled, khatribiryani purchasing on with whole numbers off",
             "uncommitted_files": 0
@@ -142,7 +142,7 @@
             "path": "D:/laragon2/www/pos-saas-video",
             "branch": "feat/demo-video-pipeline",
             "head": "e0bae109",
-            "behind_prod": 533,
+            "behind_prod": 541,
             "ahead_of_prod": 17,
             "last_commit": "2026-10-25\u00b7RESTAURANT-VIDEO-1: poori working video \u2014 har order asli punch hota hai",
             "uncommitted_files": 0
@@ -151,7 +151,7 @@
             "path": "D:/laragon2/www/pos-saas-vpfix",
             "branch": "fix/void-purge-retry-20261024",
             "head": "79154b90",
-            "behind_prod": 103,
+            "behind_prod": 111,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-24\u00b7VOID-PURGE-3: the record \u2014 cause, fix, tests",
             "uncommitted_files": 0
@@ -160,7 +160,7 @@
             "path": "D:/laragon2/www/pos-saas-w3w4",
             "branch": "feat/unified-w3w4-20261023",
             "head": "0f733e4c",
-            "behind_prod": 52,
+            "behind_prod": 60,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-24\u00b7Release manifest for the candidate (58 commits: unified W2, units & packs, W3/W4); exact runner summaries",
             "uncommitted_files": 0
@@ -169,7 +169,7 @@
             "path": "D:/laragon2/www/pos-saas-integ",
             "branch": "integration/unified-w2-20261022",
             "head": "983668a6",
-            "behind_prod": 86,
+            "behind_prod": 94,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-23\u00b7Release-candidate record: d29487e2 tested frozen, baseline for the three known reds, merge-onto-production check, limits",
             "uncommitted_files": 0
@@ -178,7 +178,7 @@
             "path": "D:/laragon2/www/pos-saas-unitspacks",
             "branch": "feat/units-packs-batch-20261023",
             "head": "23d80320",
-            "behind_prod": 72,
+            "behind_prod": 80,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-23\u00b7Units-packs F4 close-out: a total of kg and pieces is never one number; report prints carry units",
             "uncommitted_files": 0
@@ -187,7 +187,7 @@
             "path": "D:/laragon2/www/pos-saas-verify-3b02",
             "branch": "(detached)",
             "head": "3b029c28",
-            "behind_prod": 84,
+            "behind_prod": 92,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-23\u00b7W2-C: the counter's quantity rules on purchasing and stock",
             "uncommitted_files": 0
@@ -196,7 +196,7 @@
             "path": "D:/laragon2/www/pos-saas-verify-d294",
             "branch": "(detached)",
             "head": "d29487e2",
-            "behind_prod": 86,
+            "behind_prod": 94,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-23\u00b7Pharmacy demo seeder: GRN and bill numbers come from the round and distributor, never a random draw",
             "uncommitted_files": 0
@@ -205,7 +205,7 @@
             "path": "D:/laragon2/www/pos-saas-verify-edf9",
             "branch": "(detached)",
             "head": "edf958d9",
-            "behind_prod": 83,
+            "behind_prod": 91,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-23\u00b7W2-C: the old-screen return test expects the draft-time refusal, and still proves the post-time check",
             "uncommitted_files": 0
@@ -214,7 +214,7 @@
             "path": "D:/laragon2/www/pos-saas-voidpurge",
             "branch": "feat/void-purge-20261022",
             "head": "e0668729",
-            "behind_prod": 108,
+            "behind_prod": 116,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-23\u00b7Void purge plan: the owner's activation decision",
             "uncommitted_files": 0
@@ -223,7 +223,7 @@
             "path": "D:/laragon2/www/pos-saas-vpajax",
             "branch": "fix/void-purge-ajax-20261023",
             "head": "e75b5bfb",
-            "behind_prod": 106,
+            "behind_prod": 114,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-23\u00b7Void purge: the answer comes as a popup, and a void dated another day can go after a clear yes",
             "uncommitted_files": 0
@@ -232,7 +232,7 @@
             "path": "D:/laragon2/www/pos-saas-w2c",
             "branch": "feat/w2c-purchase-stock-qty-20261023",
             "head": "272b1a5a",
-            "behind_prod": 83,
+            "behind_prod": 91,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-23\u00b7W2-C closing record: edf958d9 final, evidence per run, the one error read from the log, why the full suite was not repeated",
             "uncommitted_files": 0
@@ -241,7 +241,7 @@
             "path": "D:/laragon2/www/pos-saas-resetfix",
             "branch": "fix/reset-supplier-bill-tables-20261022",
             "head": "2f001380",
-            "behind_prod": 97,
+            "behind_prod": 105,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-22\u00b7Reset: the Branch Server refusal stays tested; the stored-balance gap recorded as its own defect (RESET-BALANCES-1)",
             "uncommitted_files": 0
@@ -250,7 +250,7 @@
             "path": "D:/laragon2/www/pos-saas-verify-0831",
             "branch": "(detached)",
             "head": "0831cd41",
-            "behind_prod": 99,
+            "behind_prod": 107,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-22\u00b7W2-B: quantity rules on the server \u2014 exact once (3 decimals), counted items whole, returns say what is left",
             "uncommitted_files": 0
@@ -259,7 +259,7 @@
             "path": "D:/laragon2/www/pos-saas-verify-88c9",
             "branch": "(detached)",
             "head": "88c9b9a8",
-            "behind_prod": 87,
+            "behind_prod": 95,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-22\u00b7Integration record: the retained-input fix and what the walkthrough found",
             "uncommitted_files": 0
@@ -268,7 +268,7 @@
             "path": "D:/laragon2/www/pos-saas-verify-c09d",
             "branch": "(detached)",
             "head": "c09d4f8d",
-            "behind_prod": 99,
+            "behind_prod": 107,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-22\u00b7Transaction reset: wipe the supplier-invoice nettings and credit moves; stop before deleting on any unclassified table",
             "uncommitted_files": 0
@@ -277,7 +277,7 @@
             "path": "D:/laragon2/www/pos-saas-verify-cb27",
             "branch": "(detached)",
             "head": "cb27c9e4",
-            "behind_prod": 98,
+            "behind_prod": 106,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-22\u00b7W2 candidate evidence (tests only): plain stock keeps variants, branches, FEFO/expiry, costs, reversals and races right",
             "uncommitted_files": 0
@@ -286,7 +286,7 @@
             "path": "D:/laragon2/www/pos-saas-verify-f90c",
             "branch": "(detached)",
             "head": "f90cdd62",
-            "behind_prod": 98,
+            "behind_prod": 106,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-22\u00b7Transaction reset: classify the Branch Server's own tables as kept; prove it without depending on test order",
             "uncommitted_files": 0
@@ -295,7 +295,7 @@
             "path": "D:/laragon2/www/pos-saas-verify-int",
             "branch": "(detached)",
             "head": "0e25cda8",
-            "behind_prod": 90,
+            "behind_prod": 98,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-22\u00b7Integration candidate: the W2 parts and the reset fix proven together; quantity entry-point map; system map",
             "uncommitted_files": 0
@@ -304,7 +304,7 @@
             "path": "D:/laragon2/www/pos-saas-w2a",
             "branch": "feat/unified-w2-slice-a-20261022",
             "head": "df524466",
-            "behind_prod": 99,
+            "behind_prod": 107,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-22\u00b7W2 slice A (candidate): kg/g by rule, one plain stock for no-variant and default-variant rows, unit journeys proven",
             "uncommitted_files": 0
@@ -313,7 +313,7 @@
             "path": "D:/laragon2/www/pos-saas-w2a-ev",
             "branch": "feat/unified-w2-slice-a-evidence-20261022",
             "head": "cb27c9e4",
-            "behind_prod": 98,
+            "behind_prod": 106,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-22\u00b7W2 candidate evidence (tests only): plain stock keeps variants, branches, FEFO/expiry, costs, reversals and races right",
             "uncommitted_files": 0
@@ -322,7 +322,7 @@
             "path": "D:/laragon2/www/pos-saas-w2b",
             "branch": "feat/w2b-quantity-rules-20261022",
             "head": "f72a38b1",
-            "behind_prod": 98,
+            "behind_prod": 106,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-22\u00b7W2-B: a refused return gives back what the cashier typed (quantity and shelf choice), found by the browser walkthrough",
             "uncommitted_files": 0
@@ -331,7 +331,7 @@
             "path": "D:/laragon2/www/pos-saas-khatrifin",
             "branch": "fix/category-parent-guard-20261021",
             "head": "35bdb5bd",
-            "behind_prod": 112,
+            "behind_prod": 120,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-21\u00b7Categories: a category can never go inside itself or its own sub-category; record who saved it",
             "uncommitted_files": 0
@@ -340,7 +340,7 @@
             "path": "D:/laragon2/www/pos-saas-qrwaiter",
             "branch": "feat/unified-business-20261021",
             "head": "5441ead2",
-            "behind_prod": 100,
+            "behind_prod": 108,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-21\u00b7Merge production (59787ff6: category parent guard) into the unified branch",
             "uncommitted_files": 4
@@ -349,7 +349,7 @@
             "path": "D:/laragon2/www/pos-saas-verify-5441",
             "branch": "(detached)",
             "head": "5441ead2",
-            "behind_prod": 100,
+            "behind_prod": 108,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-21\u00b7Merge production (59787ff6: category parent guard) into the unified branch",
             "uncommitted_files": 0
@@ -358,7 +358,7 @@
             "path": "D:/laragon2/www/pos-saas-packs",
             "branch": "feat/pharmacy-packs-20261019",
             "head": "a0dc6790",
-            "behind_prod": 136,
+            "behind_prod": 144,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-20\u00b7Docs: return without a bill built (plan section 13); system map rebuilt",
             "uncommitted_files": 0
@@ -367,7 +367,7 @@
             "path": "D:/laragon2/www/pos-saas-catering",
             "branch": "feat/catering-stacked-material-row-20260909",
             "head": "39333d6f",
-            "behind_prod": 206,
+            "behind_prod": 214,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7DOC-TOOLBAR-OFF-PAPER-1: screen ke button kaghaz se bahar, har document par",
             "uncommitted_files": 0
@@ -376,7 +376,7 @@
             "path": "D:/laragon2/www/pos-saas-masterui",
             "branch": "fix/usage-snapshot-after-demo-reset-20261019",
             "head": "002ee25e",
-            "behind_prod": 227,
+            "behind_prod": 235,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7MASTER-UNIVERSE-1: daily usage reading moves after the demo reset (09:45 PKT)",
             "uncommitted_files": 0
@@ -385,7 +385,7 @@
             "path": "D:/laragon2/www/pos-saas-pharmademo",
             "branch": "feat/pharmacy-demo-20261018",
             "head": "dc84b937",
-            "behind_prod": 248,
+            "behind_prod": 256,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP-1: bird's-eye system map + standing rule for every session",
             "uncommitted_files": 0
@@ -394,7 +394,7 @@
             "path": "D:/laragon2/www/pos-saas-primary",
             "branch": "feat/primary-business-v2-20261019",
             "head": "e99cd7a2",
-            "behind_prod": 243,
+            "behind_prod": 251,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-19\u00b7SYSTEM-MAP: rebuilt after PRIMARY-BUSINESS-1 + PRODUCT-SCREEN-V2 (tenant_setting_changes, products.generic_name/strength/needs_prescription)",
             "uncommitted_files": 0
@@ -403,7 +403,7 @@
             "path": "D:/laragon2/www/pos-saas-hideamounts",
             "branch": "fix/billing-hide-void-20261017",
             "head": "37515a12",
-            "behind_prod": 263,
+            "behind_prod": 271,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7BILLING-HIDE-VOID-1: void invoice tenant ko nahi dikhti",
             "uncommitted_files": 0
@@ -412,7 +412,7 @@
             "path": "D:/laragon2/www/pos-saas-partnershare",
             "branch": "feat/partner-share-report-20261014",
             "head": "cbe5616b",
-            "behind_prod": 251,
+            "behind_prod": 259,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7PARTNER-SHARE-1: plan doc \u2014 test aur suite ki ginti, purani misaal par label",
             "uncommitted_files": 0
@@ -421,7 +421,7 @@
             "path": "D:/laragon2/www/pos-saas-pharmacy-audit",
             "branch": "(detached)",
             "head": "70c4e434",
-            "behind_prod": 250,
+            "behind_prod": 258,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-17\u00b7Merge PARTNER-SHARE-1: ek dish, do kitchen \u2014 Partner Share rates + Report Center section",
             "uncommitted_files": 0
@@ -430,7 +430,7 @@
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
             "head": "c0741579",
-            "behind_prod": 272,
+            "behind_prod": 280,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-16\u00b7AREA-WINDOW-LAYOUT-1: area list hamesha nazar aaye (kam se kam ~4 rows), qareebi jagahen aik scroll row me",
             "uncommitted_files": 0
@@ -439,7 +439,7 @@
             "path": "D:/laragon2/www/pos-saas-catlist",
             "branch": "feat/kk-purchase-items-import-20261014",
             "head": "7e5d8dea",
-            "behind_prod": 325,
+            "behind_prod": 333,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-14\u00b7PURCHASE-ITEMS-IMPORT-1: purane software ke khareed wale items, mehfooz jhandon ke saath",
             "uncommitted_files": 0
@@ -448,7 +448,7 @@
             "path": "D:/laragon2/www/pos-saas-web-i18n",
             "branch": "feat/recaptcha-trial-20261008",
             "head": "a8191e1d",
-            "behind_prod": 428,
+            "behind_prod": 436,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-08\u00b7RECAPTCHA-TRIAL-1: Start Trial par \"I'm not a robot\" (reCAPTCHA v2), en + ar",
             "uncommitted_files": 0
@@ -457,7 +457,7 @@
             "path": "D:/laragon2/www/pos-saas-voice",
             "branch": "research/voice-ordering-agent",
             "head": "79c76679",
-            "behind_prod": 470,
+            "behind_prod": 478,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-05\u00b7VOICE-ORDER-1: vendor options + bahar wale mashware ki do ghaltiyan darj",
             "uncommitted_files": 0
@@ -466,7 +466,7 @@
             "path": "D:/laragon2/www/pos-saas-tawakal",
             "branch": "feat/tawakal_kashif",
             "head": "b4870c0e",
-            "behind_prod": 734,
+            "behind_prod": 742,
             "ahead_of_prod": 0,
             "last_commit": "2026-09-06\u00b7Merge prod branch into tawakal \u2014 76 commits ka pichla kaam",
             "uncommitted_files": 0
@@ -475,7 +475,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/history-urdu-ux",
             "branch": "fix/catering-history-urdu-ux-20260829",
             "head": "da8e2ed3",
-            "behind_prod": 863,
+            "behind_prod": 871,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7Improve catering operator UX and Urdu print readability",
             "uncommitted_files": 0
@@ -484,7 +484,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/quoted-rate-persistence",
             "branch": "fix/catering-quoted-rate-persistence-20260828",
             "head": "e020c390",
-            "behind_prod": 869,
+            "behind_prod": 877,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7fix(catering): persist punched customer rates",
             "uncommitted_files": 0
@@ -493,7 +493,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/catering-client-feedback",
             "branch": "fix/catering-client-feedback-20260827",
             "head": "893d8e44",
-            "behind_prod": 882,
+            "behind_prod": 890,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-27\u00b7fix(catering): tighten time and item entry UX",
             "uncommitted_files": 0
@@ -502,7 +502,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert-v2",
             "branch": "(detached)",
             "head": "ec09b6a6",
-            "behind_prod": 931,
+            "behind_prod": 939,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-22\u00b7KASHIF-LEGACY-ALIGN-5/6: Complimentary in one click, and a bill you can read",
             "uncommitted_files": 1
@@ -511,7 +511,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-parity",
             "branch": "feat/catering-operator-completion-v1",
             "head": "008ba947",
-            "behind_prod": 951,
+            "behind_prod": 959,
             "ahead_of_prod": 4,
             "last_commit": "2026-08-22\u00b7CATERING: keep event create and edit inside the operator workspace",
             "uncommitted_files": 0
@@ -520,7 +520,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-catalogue",
             "branch": "data/kashif-catalogue-prep-v1",
             "head": "73807eb9",
-            "behind_prod": 954,
+            "behind_prod": 962,
             "ahead_of_prod": 1,
             "last_commit": "2026-08-21\u00b7CATERING: transcribe the Kashif catalogue without inventing prices",
             "uncommitted_files": 0
@@ -529,7 +529,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-product",
             "branch": "audit/catering-product-completeness-v1",
             "head": "ef184b6a",
-            "behind_prod": 1000,
+            "behind_prod": 1008,
             "ahead_of_prod": 18,
             "last_commit": "2026-08-21\u00b7AUDIT: assess Catering product completeness",
             "uncommitted_files": 0
@@ -538,7 +538,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex",
             "branch": "audit/catering-e2e-qa-v1",
             "head": "f8fa2205",
-            "behind_prod": 1000,
+            "behind_prod": 1008,
             "ahead_of_prod": 13,
             "last_commit": "2026-08-20\u00b7DOCS: preserve independent Catering architecture audit",
             "uncommitted_files": 0
@@ -547,7 +547,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert",
             "branch": "audit/catering-rate-impact-cert-v1",
             "head": "55ad8d5e",
-            "behind_prod": 1000,
+            "behind_prod": 1008,
             "ahead_of_prod": 17,
             "last_commit": "2026-08-20\u00b7TEST: expose Catering draft writer send races",
             "uncommitted_files": 0
@@ -556,7 +556,7 @@
             "path": "D:/laragon2/www/pos-saas-cloud",
             "branch": "feat/cloud-billing-onboarding-v1",
             "head": "9c30ea46",
-            "behind_prod": 1066,
+            "behind_prod": 1074,
             "ahead_of_prod": 8,
             "last_commit": "2026-08-15\u00b7CLOUD-BILLING E2E: real monthly + yearly signup lifecycle (throwaway tenants)",
             "uncommitted_files": 0
@@ -586,6 +586,11 @@
         {
             "file": "docs/plans/report-network-bridge-2026-10-28.md",
             "title": "REPORT-NETWORK-BRIDGE-1 \u2014 network par bheji report NET SALES tak nahi pahunchti thi",
+            "modified": "2026-10-28"
+        },
+        {
+            "file": "docs/plans/report-network-gaps-2026-10-28.md",
+            "title": "REPORT-NETWORK-ITEMS-DEALS-1 + REPORT-NETWORK-GAPS-1 \u2014 the network report slip prints what the browser prints",
             "modified": "2026-10-28"
         },
         {
@@ -682,22 +687,17 @@
             "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
             "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
             "modified": "2026-10-22"
-        },
-        {
-            "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
-            "title": "Two order counts on one dashboard \u2014 research",
-            "modified": "2026-10-22"
         }
     ],
-    "git": "2f38cd0a",
+    "git": "568aca5c",
     "source": {
         "tenant_db": "pos_test_tenant_tblfree",
         "master_db": "pos_test_master_tblfree"
     },
     "counts": {
-        "tables": 240,
-        "foreign_keys": 430,
-        "inferred_links": 238,
+        "tables": 231,
+        "foreign_keys": 427,
+        "inferred_links": 223,
         "screens": 739
     },
     "tables": [
@@ -1590,30 +1590,6 @@
                 },
                 {
                     "table": "department_handovers",
-                    "col": "branch_id"
-                },
-                {
-                    "table": "edge_auth_audit",
-                    "col": "branch_id"
-                },
-                {
-                    "table": "edge_consumed_assertions",
-                    "col": "branch_id"
-                },
-                {
-                    "table": "edge_local_meta",
-                    "col": "branch_id"
-                },
-                {
-                    "table": "edge_local_user_credentials",
-                    "col": "branch_id"
-                },
-                {
-                    "table": "edge_operational_stock_balances",
-                    "col": "branch_id"
-                },
-                {
-                    "table": "edge_operational_stock_baselines",
                     "col": "branch_id"
                 },
                 {
@@ -12977,339 +12953,6 @@
             "used_by_count": 48
         },
         {
-            "name": "edge_auth_audit",
-            "side": "tenant",
-            "columns": [
-                "id bigint unsigned",
-                "event varchar(48)",
-                "user_id bigint unsigned",
-                "branch_id bigint unsigned",
-                "activation_epoch bigint unsigned",
-                "issuer_user_id bigint unsigned",
-                "jti varchar(64)",
-                "detail varchar(190)",
-                "ip varchar(45)",
-                "created_at timestamp"
-            ],
-            "fk_out": [],
-            "inferred_out": [
-                {
-                    "col": "user_id",
-                    "table": "users"
-                },
-                {
-                    "col": "branch_id",
-                    "table": "branches"
-                },
-                {
-                    "col": "issuer_user_id",
-                    "table": "users"
-                }
-            ],
-            "domain": "Edge (offline)",
-            "fk_in": [],
-            "inferred_in": [],
-            "models": [],
-            "used_by": [],
-            "used_by_count": 0
-        },
-        {
-            "name": "edge_consumed_assertions",
-            "side": "tenant",
-            "columns": [
-                "id bigint unsigned",
-                "jti varchar(64)",
-                "purpose varchar(64)",
-                "user_id bigint unsigned",
-                "branch_id bigint unsigned",
-                "activation_epoch bigint unsigned",
-                "consumed_at timestamp",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [],
-            "inferred_out": [
-                {
-                    "col": "user_id",
-                    "table": "users"
-                },
-                {
-                    "col": "branch_id",
-                    "table": "branches"
-                }
-            ],
-            "domain": "Edge (offline)",
-            "fk_in": [],
-            "inferred_in": [],
-            "models": [],
-            "used_by": [],
-            "used_by_count": 0
-        },
-        {
-            "name": "edge_local_meta",
-            "side": "tenant",
-            "columns": [
-                "id bigint unsigned",
-                "singleton_guard tinyint unsigned",
-                "tenant_code varchar(190)",
-                "tenant_id bigint unsigned",
-                "branch_id bigint unsigned",
-                "device_uuid varchar(64)",
-                "activation_epoch bigint unsigned",
-                "bootstrap_snapshot_uuid varchar(64)",
-                "bootstrap_schema varchar(64)",
-                "source_revision varchar(128)",
-                "manifest_hash varchar(128)",
-                "imported_at timestamp",
-                "runtime_state varchar(32)",
-                "last_error text",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [],
-            "inferred_out": [
-                {
-                    "col": "tenant_id",
-                    "table": "tenants",
-                    "cross_db": true
-                },
-                {
-                    "col": "branch_id",
-                    "table": "branches"
-                }
-            ],
-            "domain": "Edge (offline)",
-            "fk_in": [],
-            "inferred_in": [],
-            "models": [],
-            "used_by": [],
-            "used_by_count": 0
-        },
-        {
-            "name": "edge_local_print_deliveries",
-            "side": "tenant",
-            "columns": [
-                "id bigint unsigned",
-                "print_job_id bigint unsigned",
-                "delivery_state varchar(20)",
-                "worker_uuid char(36)",
-                "lease_token char(64)",
-                "claimed_at timestamp",
-                "lease_expires_at timestamp",
-                "failure_count smallint unsigned",
-                "next_attempt_at timestamp",
-                "last_attempt_at timestamp",
-                "last_error varchar(500)",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [
-                {
-                    "col": "print_job_id",
-                    "table": "print_jobs",
-                    "on_delete": "RESTRICT"
-                }
-            ],
-            "inferred_out": [],
-            "domain": "Edge (offline)",
-            "fk_in": [],
-            "inferred_in": [],
-            "models": [],
-            "used_by": [],
-            "used_by_count": 0
-        },
-        {
-            "name": "edge_local_print_worker_state",
-            "side": "tenant",
-            "columns": [
-                "id bigint unsigned",
-                "singleton_guard tinyint unsigned",
-                "state varchar(20)",
-                "worker_uuid char(36)",
-                "runtime_version varchar(64)",
-                "started_at timestamp",
-                "heartbeat_at timestamp",
-                "stop_requested_at timestamp",
-                "last_graceful_stop_at timestamp",
-                "last_error varchar(500)",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [],
-            "inferred_out": [],
-            "domain": "Edge (offline)",
-            "fk_in": [],
-            "inferred_in": [],
-            "models": [],
-            "used_by": [],
-            "used_by_count": 0
-        },
-        {
-            "name": "edge_local_user_credentials",
-            "side": "tenant",
-            "columns": [
-                "id bigint unsigned",
-                "user_id bigint unsigned",
-                "branch_id bigint unsigned",
-                "activation_epoch bigint unsigned",
-                "credential_hash varchar(255)",
-                "credential_type varchar(16)",
-                "credential_version int unsigned",
-                "status varchar(16)",
-                "failed_attempts int unsigned",
-                "locked_until timestamp",
-                "enrolled_at timestamp",
-                "last_authenticated_at timestamp",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [],
-            "inferred_out": [
-                {
-                    "col": "user_id",
-                    "table": "users"
-                },
-                {
-                    "col": "branch_id",
-                    "table": "branches"
-                }
-            ],
-            "domain": "Edge (offline)",
-            "fk_in": [],
-            "inferred_in": [],
-            "models": [],
-            "used_by": [],
-            "used_by_count": 0
-        },
-        {
-            "name": "edge_operational_stock_balances",
-            "side": "tenant",
-            "columns": [
-                "id bigint unsigned",
-                "balance_key varchar(64)",
-                "baseline_id bigint unsigned",
-                "branch_id bigint unsigned",
-                "product_id bigint unsigned",
-                "product_variant_id bigint unsigned",
-                "quantity_on_hand decimal(14,3)",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [
-                {
-                    "col": "baseline_id",
-                    "table": "edge_operational_stock_baselines",
-                    "on_delete": "CASCADE"
-                }
-            ],
-            "inferred_out": [
-                {
-                    "col": "branch_id",
-                    "table": "branches"
-                },
-                {
-                    "col": "product_id",
-                    "table": "products"
-                },
-                {
-                    "col": "product_variant_id",
-                    "table": "product_variants"
-                }
-            ],
-            "domain": "Edge (offline)",
-            "fk_in": [],
-            "inferred_in": [],
-            "models": [],
-            "used_by": [],
-            "used_by_count": 0
-        },
-        {
-            "name": "edge_operational_stock_baselines",
-            "side": "tenant",
-            "columns": [
-                "id bigint unsigned",
-                "baseline_uuid char(26)",
-                "branch_id bigint unsigned",
-                "device_uuid varchar(64)",
-                "activation_epoch bigint unsigned",
-                "generation int unsigned",
-                "source_revision varchar(128)",
-                "content_hash varchar(128)",
-                "status varchar(20)",
-                "active_binding_key char(40)",
-                "accepted_at timestamp",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [],
-            "inferred_out": [
-                {
-                    "col": "branch_id",
-                    "table": "branches"
-                }
-            ],
-            "domain": "Edge (offline)",
-            "fk_in": [
-                {
-                    "table": "edge_operational_stock_balances",
-                    "col": "baseline_id",
-                    "on_delete": "CASCADE"
-                },
-                {
-                    "table": "edge_operational_stock_movements",
-                    "col": "baseline_id",
-                    "on_delete": "RESTRICT"
-                }
-            ],
-            "inferred_in": [],
-            "models": [],
-            "used_by": [],
-            "used_by_count": 0
-        },
-        {
-            "name": "edge_operational_stock_movements",
-            "side": "tenant",
-            "columns": [
-                "id bigint unsigned",
-                "movement_uuid char(26)",
-                "baseline_id bigint unsigned",
-                "sale_uuid char(26)",
-                "line_uuid char(26)",
-                "product_id bigint unsigned",
-                "product_variant_id bigint unsigned",
-                "movement_type varchar(40)",
-                "direction varchar(10)",
-                "quantity decimal(14,3)",
-                "balance_after decimal(14,3)",
-                "activation_epoch bigint unsigned",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [
-                {
-                    "col": "baseline_id",
-                    "table": "edge_operational_stock_baselines",
-                    "on_delete": "RESTRICT"
-                }
-            ],
-            "inferred_out": [
-                {
-                    "col": "product_id",
-                    "table": "products"
-                },
-                {
-                    "col": "product_variant_id",
-                    "table": "product_variants"
-                }
-            ],
-            "domain": "Edge (offline)",
-            "fk_in": [],
-            "inferred_in": [],
-            "models": [],
-            "used_by": [],
-            "used_by_count": 0
-        },
-        {
             "name": "expense_categories",
             "side": "tenant",
             "columns": [
@@ -19051,13 +18694,7 @@
                 }
             ],
             "domain": "Printing",
-            "fk_in": [
-                {
-                    "table": "edge_local_print_deliveries",
-                    "col": "print_job_id",
-                    "on_delete": "RESTRICT"
-                }
-            ],
+            "fk_in": [],
             "inferred_in": [],
             "models": [
                 "PrintJob"
@@ -20863,16 +20500,7 @@
                     "on_delete": "SET NULL"
                 }
             ],
-            "inferred_in": [
-                {
-                    "table": "edge_operational_stock_balances",
-                    "col": "product_variant_id"
-                },
-                {
-                    "table": "edge_operational_stock_movements",
-                    "col": "product_variant_id"
-                }
-            ],
+            "inferred_in": [],
             "models": [
                 "ProductVariant"
             ],
@@ -21902,14 +21530,6 @@
                 {
                     "table": "catering_estimate_line_cost_blocks",
                     "col": "material_product_id"
-                },
-                {
-                    "table": "edge_operational_stock_balances",
-                    "col": "product_id"
-                },
-                {
-                    "table": "edge_operational_stock_movements",
-                    "col": "product_id"
                 },
                 {
                     "table": "finished_good_receipt_lines",
@@ -35129,22 +34749,6 @@
                     "col": "created_by_user_id"
                 },
                 {
-                    "table": "edge_auth_audit",
-                    "col": "user_id"
-                },
-                {
-                    "table": "edge_auth_audit",
-                    "col": "issuer_user_id"
-                },
-                {
-                    "table": "edge_consumed_assertions",
-                    "col": "user_id"
-                },
-                {
-                    "table": "edge_local_user_credentials",
-                    "col": "user_id"
-                },
-                {
                     "table": "finished_good_receipts",
                     "col": "created_by_user_id"
                 },
@@ -40365,10 +39969,6 @@
                 }
             ],
             "inferred_in": [
-                {
-                    "table": "edge_local_meta",
-                    "col": "tenant_id"
-                },
                 {
                     "table": "edge_bootstrap_snapshots",
                     "col": "tenant_id"
