@@ -58,6 +58,12 @@ class WebsiteOrderService
         $settings = WebSetting::tenantDefault();
         $pickup = $in['type'] === 'pickup';
 
+        // WEB-PICKUP-SWITCH-1: Pick-Up band ho to seedha saaf jawab (warna "closed" jaisa ghalat paigham).
+        if ($pickup && ! $settings->pickupOn()) {
+            $this->fail('type', 'Pick-up is not available. Please choose Delivery.');
+        }
+        $orPickup = $settings->pickupOn() ? ' or Pick-Up' : '';
+
         $zone = null;
         if ($pickup) {
             $branch = Branch::where('status', 'active')->find((int) ($in['branch'] ?? $settings->default_branch_id));
@@ -65,7 +71,7 @@ class WebsiteOrderService
             $zone = DeliveryZone::where('is_active', true)->find((int) ($in['area'] ?? 0));
             $branch = $zone ? Branch::where('status', 'active')->find($zone->branch_id) : null;
             if (! $zone) {
-                $this->fail('area', 'We do not deliver to this area. Please choose another area or Pick-Up.');
+                $this->fail('area', 'We do not deliver to this area. Please choose another area'.$orPickup.'.');
             }
         }
         if (! $branch) {
@@ -93,7 +99,7 @@ class WebsiteOrderService
                 isset($pin['lat'], $pin['lng']) ? (float) $pin['lat'] : null, isset($pin['lat'], $pin['lng']) ? (float) $pin['lng'] : null);
             if (! $quote['ok']) {
                 $this->fail('distance', 'We deliver up to '.rtrim(rtrim(number_format((float) $quote['max_km'], 1), '0'), '.').' km from our branch — your location is '
-                    .$quote['km'].' km away. Please choose Pick-Up.');
+                    .$quote['km'].' km away.'.($orPickup !== '' ? ' Please choose Pick-Up.' : ''));
             }
             $fee = ($zone->free_delivery_above !== null && $subtotal >= (float) $zone->free_delivery_above) ? 0.0 : $quote['fee'];
         }

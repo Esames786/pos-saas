@@ -286,7 +286,8 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .sheet .hd h2 { margin:0; font-size:17px; font-weight:700; }
 .x { border:0; background:#F2F2F2; border-radius:50%; width:34px; height:34px; display:grid; place-items:center; transition:background .2s; }
 .x:hover { background:#E8E8E8; }
-.sheet .bd { padding:16px 18px; overflow-y:auto; display:grid; gap:14px; align-content:start; }
+/* minmax(0,1fr): a wide child (the "Popular with your order" rail) must scroll inside, not stretch the sheet past a phone screen. */
+.sheet .bd { padding:16px 18px; overflow-y:auto; display:grid; grid-template-columns:minmax(0,1fr); gap:14px; align-content:start; }
 .sheet .ft { padding:12px 18px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); display:grid; gap:8px; }
 .big { width:100%; border:0; border-radius:14px; background:var(--brand); color:#fff; padding:14px; font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 8px 20px rgba(166,13,18,.25); transition:background .2s, transform .15s; }
 .big:hover { background:var(--brand-dark); }
@@ -388,6 +389,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
 .citem .pr span { color:var(--brand); }
 .citem .step { box-shadow:none; border:1px solid #F0C5C7; animation:none; }
 .addmore { border:1.5px dashed #F0A9AC; background:#fff; color:var(--brand); border-radius:14px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; }
+.ups { min-width:0; }
 .ups h4 { margin:4px 0 10px; display:flex; align-items:center; gap:8px; font-size:14px; border-left:3px solid var(--brand); padding-left:8px; }
 .ups h4 .nav { margin-left:auto; display:flex; gap:6px; }
 .ups h4 .nav button { width:30px; height:30px; border-radius:50%; border:0; background:#F2B9BB; color:#fff; display:grid; place-items:center; }
@@ -534,6 +536,9 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* private mode: still works for this visit */ } }
 
   var S = Object.assign({ type: 'delivery', area: null, branch: null, cart: [], customer: {}, pin: null }, load());
+  // WEB-PICKUP-SWITCH-1: the restaurant turned Pick-Up off — no Pick-Up button, no "choose Pick-Up" hints.
+  var PICKUP = !(D.settings && D.settings.pickup === false);
+  if (!PICKUP && S.type === 'pickup') { S.type = 'delivery'; save(); }
   var menu = D.menu, menuBranch = D.menuBranch;
 
   // Motion only when the device allows it; without it everything is simply visible.
@@ -935,7 +940,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
           .sort(function (x, y) { return q ? 0 : nearRank(x.id) - nearRank(y.id); })
           .map(function (a) { return '<button type="button" role="option" data-a="' + a.id + '" class="' + (cur === a.id ? 'on' : '') + '" aria-selected="' + (cur === a.id) + '"><span>' + esc(a.name) + '</span><em>' + (nearby.indexOf(a.id) !== -1 ? '<span class="near">Near you</span> · ' : '') + a.eta + ' min</em></button>'; });
     $('areaList').innerHTML = (pickup && rows.length ? '<p class="ask">Which outlet would you like to pick-up from?</p>' : '') +
-      (rows.length ? rows.join('') : '<p class="empty">' + (pickup ? 'Pick-up is not available.' : 'We do not deliver to this area yet. Try Pick-Up.') + '</p>');
+      (rows.length ? rows.join('') : '<p class="empty">' + (pickup ? 'Pick-up is not available.' : 'We do not deliver to this area yet.' + (PICKUP ? ' Try Pick-Up.' : '')) + '</p>');
     // Pick-up (like the old site): the chosen outlet's address with "Get directions".
     var br = pickup ? D.branches.find(function (b) { return b.id === cur; }) : null;
     $('branchCard').hidden = !br;
@@ -961,6 +966,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     requestAnimationFrame(function () { scrollToChosen(false); });
   }
   $('where').addEventListener('click', openAreas);
+  if (!PICKUP) { $('tPickup').closest('.seg').hidden = true; $('areaTitle').textContent = 'Select your delivery area'; }
   $('tDelivery').addEventListener('click', function () { S.type = 'delivery'; pending = null; renderAreas(); });
   $('tPickup').addEventListener('click', function () { S.type = 'pickup'; pending = null; renderAreas(); });
   $('areaSearch').addEventListener('input', renderAreas);
@@ -1051,8 +1057,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
             save();
             // Owner (16 Oct): no delivery outside the city, nor to an area the restaurant has switched off.
             if (j.outside || j.closed) {
-              gpsMsg(j.closed ? 'Sorry — we don\'t deliver to <b>' + esc(j.closed) + '</b> right now. You can choose <b>Pick-Up</b>.'
-                : 'We deliver only inside ' + esc((D.areas[0] || {}).city || 'our city') + '. Your location shows <b>' + esc(j.outside) + '</b> — you can choose <b>Pick-Up</b>.');
+              gpsMsg(j.closed ? 'Sorry — we don\'t deliver to <b>' + esc(j.closed) + '</b> right now.' + (PICKUP ? ' You can choose <b>Pick-Up</b>.' : '')
+                : 'We deliver only inside ' + esc((D.areas[0] || {}).city || 'our city') + '. Your location shows <b>' + esc(j.outside) + '</b>.' + (PICKUP ? ' You can choose <b>Pick-Up</b>.' : ''));
               renderAreas();
               return;
             }
@@ -1195,7 +1201,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var d = km(br.lat, br.lng, p.lat, p.lng), band = br.bands.find(function (b) { return d <= b[0]; });
     return { ok: !!band, fee: band ? band[1] : 0, km: Math.round(d * 10) / 10, max: br.bands[br.bands.length - 1][0] };
   }
-  function tooFar(q) { return 'We deliver up to ' + q.max + ' km from our branch — your location is ' + q.km + ' km away. Please choose Pick-Up.'; }
+  function tooFar(q) { return 'We deliver up to ' + q.max + ' km from our branch — your location is ' + q.km + ' km away.' + (PICKUP ? ' Please choose Pick-Up.' : ''); }
   function fee() {
     if (S.type === 'pickup') { return 0; }
     var a = area(); if (!a) { return 0; }

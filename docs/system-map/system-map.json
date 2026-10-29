@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-10-29T14:44:24+00:00",
+    "built_at": "2026-10-29T14:42:26+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "46088129",
     "work": [
@@ -46,7 +46,7 @@
             "behind_prod": 0,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-29\u00b7MASTER-HISAB-1: Bingoo's own books in Master \u2014 khate, kharche, 50/50 barabari",
-            "uncommitted_files": 1
+            "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-product-parity",
@@ -60,11 +60,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
-            "head": "5e36d094",
+            "head": "106fe6cb",
             "behind_prod": 0,
-            "ahead_of_prod": 2,
-            "last_commit": "2026-10-29\u00b7WEB-PICKUP-SWITCH-1: website par Pick-Up ka on/off",
-            "uncommitted_files": 0
+            "ahead_of_prod": 1,
+            "last_commit": "2026-10-29\u00b7WEB-CART-PHONE-1: website ka cart phone par poora dikhe",
+            "uncommitted_files": 10
         },
         {
             "path": "D:/laragon2/www/pos-saas-reportbridge",
@@ -591,23 +591,8 @@
     ],
     "plans": [
         {
-            "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
-            "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/cash-book-report-2026-10-10.md",
-            "title": "CASH-BOOK-REPORT-1 \u2014 Cash Book report: kitna aaya, kitna gaya, kis cash/bank me, tareekh-war",
-            "modified": "2026-10-29"
-        },
-        {
             "file": "docs/plans/category-parent-guard-2026-10-21.md",
             "title": "CATEGORY-PARENT-GUARD-1 \u2014 a category can never sit inside its own sub-category (21 Oct 2026)",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
-            "title": "Catering product model \u2014 what is wrong, and the work to fix it",
             "modified": "2026-10-29"
         },
         {
@@ -616,33 +601,8 @@
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
-            "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
-            "modified": "2026-10-29"
-        },
-        {
             "file": "docs/plans/commercial-rate-picker-2026-10-26.md",
             "title": "Commercial rate material picker (COMMERCIAL-RATE-PICKER-1) \u2014 26 Oct 2026",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
-            "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
-            "title": "Two order counts on one dashboard \u2014 research",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/deals-as-their-own-report-heads-2026-09-02.md",
-            "title": "Deals belong under their own heads \u2014 research",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/grn-extra-charges-2026-10-02.md",
-            "title": "GRN-EXTRA-CHARGES-1 \u2014 cartage ko product ki jagah \"Extra Charges\" banana",
             "modified": "2026-10-29"
         },
         {
@@ -651,81 +611,121 @@
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/held-sale-dead-session-2026-09-12.md",
-            "title": "HELD-SALE-DEAD-SESSION-1 \u2014 band table par bill hold ho jata hai, phir kabhi pay nahi hota",
+            "file": "docs/plans/khatri-tb-heads-and-stock-to-pnl-2026-10-21.md",
+            "title": "Khatri: Trial Balance by heads + stuck inventory to the P&L (21 Oct 2026)",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/hide-amounts-from-operators-2026-09-01.md",
-            "title": "Hide the money from the counter \u2014 research before building",
+            "file": "docs/plans/move-table-cart-2026-10-22.md",
+            "title": "MOVE-TABLE-CART-1 \u2014 Move Table ke baad car ka bill table 32 par chala gaya",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/items-by-category-section-2026-09-03.md",
-            "title": "ITEMS-BY-CATEGORY-1 \u2014 Item ka category-wise breakup, apne alag section me",
+            "file": "docs/plans/one-product-screen-master-controls-2026-10-19.md",
+            "title": "Ek Product Screen + Bingoo Master Controls \u2014 Plan (v2)",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/items-in-category-sequence-2026-09-03.md",
-            "title": "ITEM-CATEGORY-SEQUENCE \u2014 Item report category ki tarteeb me, purane software ki tarah",
+            "file": "docs/plans/partner-share-report-2026-10-14.md",
+            "title": "PARTNER-SHARE-1 \u2014 Partner share report (ek dish, do kitchen)",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/kashif-client-feedback-2026-09-15.md",
-            "title": "Client feedback, 15 September \u2014 chaar cheezen",
+            "file": "docs/plans/pharmacy-packs-2026-10-19.md",
+            "title": "Pharmacy packs (box \u00b7 strip \u00b7 tablet) \u2014 step 1 of 4",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/kashif-document-pdf-2026-09-09.md",
-            "title": "Quotation ka PDF \u2014 aur ek hadd jo chhupai nahi gayi",
+            "file": "docs/plans/pnl-detail-and-finance-pdfs-2026-10-26.md",
+            "title": "P&L detail + finance PDFs (PNL-DETAIL-1 + FINANCE-PDF-DOWNLOADS-1) \u2014 26 Oct 2026",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/kashif-event-history-revert-2026-08-23.md",
-            "title": "Event Change History + Revert \u2014 research + implementation plan",
+            "file": "docs/plans/product-nav-cleanup-2026-10-26.md",
+            "title": "Product-setup navigation cleanup (PRODUCT-NAV-1) \u2014 26 Oct 2026",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/kashif-food-first-floor-tables-2026-08-30.md",
-            "title": "Kashif Food \u2014 dine-in floors & tables",
+            "file": "docs/plans/product-screen-tabs-2026-10-19.md",
+            "title": "Product screen in tabs \u2014 one screen, no scrolling",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/kashif-food-operator-permission-hide-2026-08-31.md",
-            "title": "KASHIF-OPERATOR-HIDE \u2014 jo owner ne screenshots par cross kiya",
+            "file": "docs/plans/purchase-and-returns-round2-2026-10-19.md",
+            "title": "Purchase and returns \u2014 round 2 (19 Oct 2026, evening)",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/kashif-foods-pulao-subcategories-2026-09-17.md",
-            "title": "KF-PULAO-SUBCAT-1 \u2014 The Kashif Foods: \"Chicken Pulao\" \u2192 \"Pulao\" + Chicken / Beef",
+            "file": "docs/plans/report-delivery-v2-2026-10-19.md",
+            "title": "REPORT-DELIVERY-V2-1 \u2014 one \"Daily report delivery\" card, sent when the day's last shift closes",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/kashif-hide-amounts-gap-2026-09-04.md",
-            "title": "Kashif Food \u2014 \"*** kyun nahi aa raha\" (research)",
+            "file": "docs/plans/report-network-bridge-2026-10-28.md",
+            "title": "REPORT-NETWORK-BRIDGE-1 \u2014 network par bheji report NET SALES tak nahi pahunchti thi",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/kashif-inline-table-editor-2026-09-09.md",
-            "title": "In-table editor \u2014 pehle FLOW MAP, phir plan",
+            "file": "docs/plans/report-network-gaps-2026-10-28.md",
+            "title": "REPORT-NETWORK-ITEMS-DEALS-1 + REPORT-NETWORK-GAPS-1 \u2014 the network report slip prints what the browser prints",
             "modified": "2026-10-29"
         },
         {
-            "file": "docs/plans/kashif-kitchen-go-live-2026-09-05.md",
-            "title": "Kashif Kitchen go-live \u2014 research + plan",
+            "file": "docs/plans/reset-supplier-bill-tables-2026-10-22.md",
+            "title": "Transaction reset: supplier-invoice tables + fail closed (22 Oct 2026)",
+            "modified": "2026-10-29"
+        },
+        {
+            "file": "docs/plans/rollout-completion-2026-10-25.md",
+            "title": "Rollout completion \u2014 counted items in parts, and one defaults policy (25 Oct 2026)",
+            "modified": "2026-10-29"
+        },
+        {
+            "file": "docs/plans/supplier-credit-clarity-2026-10-26.md",
+            "title": "Supplier credit clarity (SUPPLIER-CREDIT-CLARITY-1) \u2014 26 Oct 2026",
+            "modified": "2026-10-29"
+        },
+        {
+            "file": "docs/plans/supplier-invoice-review-fixes-2026-10-21.md",
+            "title": "Supplier Invoice \u2014 review fixes before release (21 Oct 2026)",
+            "modified": "2026-10-29"
+        },
+        {
+            "file": "docs/plans/supplier-net-bill-2026-10-21.md",
+            "title": "Supplier bill net of an earlier return \u2014 posting matrix (21 Oct 2026)",
+            "modified": "2026-10-29"
+        },
+        {
+            "file": "docs/plans/unified-business-contracts-2026-10-21.md",
+            "title": "Unified business \u2014 contracts (UB-03), 21 Oct 2026",
+            "modified": "2026-10-29"
+        },
+        {
+            "file": "docs/plans/units-and-packs-2026-10-20.md",
+            "title": "Units & packs \u2014 one way for every business (plan, awaiting the owner)",
+            "modified": "2026-10-29"
+        },
+        {
+            "file": "docs/plans/units-packs-batch-2026-10-23.md",
+            "title": "Units & packs batch \u2014 decimal packs, gram entry, packs on the normal POS, reports (plan, 23 Oct 2026)",
+            "modified": "2026-10-29"
+        },
+        {
+            "file": "docs/plans/units-packs-w2-slice-a-2026-10-22.md",
+            "title": "W2 slice A \u2014 one rule for kg/g, L/ml, m/cm + the unit journeys proven end to end (22 Oct 2026)",
             "modified": "2026-10-29"
         }
     ],
-    "git": "60e7510a",
+    "git": "106fe6cb",
     "source": {
-        "tenant_db": "pos_test_tenant_hsb",
-        "master_db": "pos_test_master_hsb"
+        "tenant_db": "pos_test_tenant_wst",
+        "master_db": "pos_test_master_wst"
     },
     "counts": {
-        "tables": 236,
-        "foreign_keys": 438,
+        "tables": 231,
+        "foreign_keys": 427,
         "inferred_links": 223,
-        "screens": 744
+        "screens": 739
     },
     "tables": [
         {
@@ -35835,6 +35835,7 @@
                 "default_branch_id bigint unsigned",
                 "default_eta_minutes smallint unsigned",
                 "pickup_eta_minutes smallint unsigned",
+                "pickup_enabled tinyint(1)",
                 "delivery_fee_mode varchar(10)",
                 "hours json",
                 "closed_message varchar(255)",
@@ -36290,31 +36291,6 @@
             "domain": "Bingoo Master",
             "fk_in": [
                 {
-                    "table": "company_entries",
-                    "col": "created_by",
-                    "on_delete": "SET NULL"
-                },
-                {
-                    "table": "company_entries",
-                    "col": "deleted_by",
-                    "on_delete": "SET NULL"
-                },
-                {
-                    "table": "company_entries",
-                    "col": "updated_by",
-                    "on_delete": "SET NULL"
-                },
-                {
-                    "table": "company_entry_logs",
-                    "col": "central_user_id",
-                    "on_delete": "SET NULL"
-                },
-                {
-                    "table": "company_partners",
-                    "col": "central_user_id",
-                    "on_delete": "SET NULL"
-                },
-                {
                     "table": "platform_settings",
                     "col": "updated_by_user_id",
                     "on_delete": "SET NULL"
@@ -36349,347 +36325,8 @@
             "models": [
                 "CentralUser"
             ],
-            "used_by": [
-                {
-                    "route": "central.hisab.index",
-                    "why": "DB::table"
-                },
-                {
-                    "route": "central.hisab.entries.store",
-                    "why": "DB::table"
-                },
-                {
-                    "route": "central.hisab.entries.update",
-                    "why": "DB::table"
-                },
-                {
-                    "route": "central.hisab.entries.destroy",
-                    "why": "DB::table"
-                },
-                {
-                    "route": "central.hisab.setup.update",
-                    "why": "DB::table"
-                }
-            ],
-            "used_by_count": 5
-        },
-        {
-            "name": "company_accounts",
-            "side": "master",
-            "columns": [
-                "id bigint unsigned",
-                "name varchar(100)",
-                "partner_id bigint unsigned",
-                "is_active tinyint(1)",
-                "sort_order int unsigned",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [
-                {
-                    "col": "partner_id",
-                    "table": "company_partners",
-                    "on_delete": "RESTRICT"
-                }
-            ],
-            "inferred_out": [],
-            "domain": "Bingoo Master",
-            "fk_in": [
-                {
-                    "table": "company_entry_lines",
-                    "col": "account_id",
-                    "on_delete": "RESTRICT"
-                },
-                {
-                    "table": "company_entry_lines",
-                    "col": "to_account_id",
-                    "on_delete": "RESTRICT"
-                }
-            ],
-            "inferred_in": [],
-            "models": [
-                "CompanyAccount"
-            ],
-            "used_by": [
-                {
-                    "route": "central.hisab.index",
-                    "why": "model CompanyAccount"
-                },
-                {
-                    "route": "central.hisab.entries.store",
-                    "why": "model CompanyAccount"
-                },
-                {
-                    "route": "central.hisab.entries.update",
-                    "why": "model CompanyAccount"
-                },
-                {
-                    "route": "central.hisab.entries.destroy",
-                    "why": "model CompanyAccount"
-                },
-                {
-                    "route": "central.hisab.setup.update",
-                    "why": "model CompanyAccount"
-                }
-            ],
-            "used_by_count": 5
-        },
-        {
-            "name": "company_entries",
-            "side": "master",
-            "columns": [
-                "id bigint unsigned",
-                "entry_no varchar(30)",
-                "entry_date date",
-                "type varchar(10)",
-                "tenant_id bigint unsigned",
-                "note text",
-                "usd_amount decimal(12,4)",
-                "bank_fee decimal(15,2)",
-                "message_count int unsigned",
-                "created_by bigint unsigned",
-                "updated_by bigint unsigned",
-                "deleted_at timestamp",
-                "deleted_by bigint unsigned",
-                "delete_reason varchar(255)",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [
-                {
-                    "col": "created_by",
-                    "table": "central_users",
-                    "on_delete": "SET NULL"
-                },
-                {
-                    "col": "deleted_by",
-                    "table": "central_users",
-                    "on_delete": "SET NULL"
-                },
-                {
-                    "col": "tenant_id",
-                    "table": "tenants",
-                    "on_delete": "SET NULL"
-                },
-                {
-                    "col": "updated_by",
-                    "table": "central_users",
-                    "on_delete": "SET NULL"
-                }
-            ],
-            "inferred_out": [],
-            "domain": "Bingoo Master",
-            "fk_in": [
-                {
-                    "table": "company_entry_lines",
-                    "col": "company_entry_id",
-                    "on_delete": "CASCADE"
-                },
-                {
-                    "table": "company_entry_logs",
-                    "col": "company_entry_id",
-                    "on_delete": "CASCADE"
-                }
-            ],
-            "inferred_in": [],
-            "models": [
-                "CompanyEntry"
-            ],
-            "used_by": [
-                {
-                    "route": "central.hisab.index",
-                    "why": "model CompanyEntry"
-                },
-                {
-                    "route": "central.hisab.entries.store",
-                    "why": "model CompanyEntry"
-                },
-                {
-                    "route": "central.hisab.entries.update",
-                    "why": "model CompanyEntry"
-                },
-                {
-                    "route": "central.hisab.entries.destroy",
-                    "why": "model CompanyEntry"
-                },
-                {
-                    "route": "central.hisab.setup.update",
-                    "why": "model CompanyEntry"
-                }
-            ],
-            "used_by_count": 5
-        },
-        {
-            "name": "company_entry_lines",
-            "side": "master",
-            "columns": [
-                "id bigint unsigned",
-                "company_entry_id bigint unsigned",
-                "account_id bigint unsigned",
-                "to_account_id bigint unsigned",
-                "category varchar(40)",
-                "amount decimal(15,2)",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [
-                {
-                    "col": "account_id",
-                    "table": "company_accounts",
-                    "on_delete": "RESTRICT"
-                },
-                {
-                    "col": "company_entry_id",
-                    "table": "company_entries",
-                    "on_delete": "CASCADE"
-                },
-                {
-                    "col": "to_account_id",
-                    "table": "company_accounts",
-                    "on_delete": "RESTRICT"
-                }
-            ],
-            "inferred_out": [],
-            "domain": "Bingoo Master",
-            "fk_in": [],
-            "inferred_in": [],
-            "models": [
-                "CompanyEntryLine"
-            ],
-            "used_by": [
-                {
-                    "route": "central.hisab.index",
-                    "why": "via CompanyHisab"
-                },
-                {
-                    "route": "central.hisab.entries.store",
-                    "why": "via CompanyHisab"
-                },
-                {
-                    "route": "central.hisab.entries.update",
-                    "why": "via CompanyHisab"
-                },
-                {
-                    "route": "central.hisab.entries.destroy",
-                    "why": "via CompanyHisab"
-                },
-                {
-                    "route": "central.hisab.setup.update",
-                    "why": "via CompanyHisab"
-                }
-            ],
-            "used_by_count": 5
-        },
-        {
-            "name": "company_entry_logs",
-            "side": "master",
-            "columns": [
-                "id bigint unsigned",
-                "company_entry_id bigint unsigned",
-                "action varchar(20)",
-                "before json",
-                "after json",
-                "central_user_id bigint unsigned",
-                "created_at timestamp"
-            ],
-            "fk_out": [
-                {
-                    "col": "central_user_id",
-                    "table": "central_users",
-                    "on_delete": "SET NULL"
-                },
-                {
-                    "col": "company_entry_id",
-                    "table": "company_entries",
-                    "on_delete": "CASCADE"
-                }
-            ],
-            "inferred_out": [],
-            "domain": "Bingoo Master",
-            "fk_in": [],
-            "inferred_in": [],
-            "models": [
-                "CompanyEntryLog"
-            ],
-            "used_by": [
-                {
-                    "route": "central.hisab.index",
-                    "why": "via CompanyHisab"
-                },
-                {
-                    "route": "central.hisab.entries.store",
-                    "why": "via CompanyHisab"
-                },
-                {
-                    "route": "central.hisab.entries.update",
-                    "why": "via CompanyHisab"
-                },
-                {
-                    "route": "central.hisab.entries.destroy",
-                    "why": "via CompanyHisab"
-                },
-                {
-                    "route": "central.hisab.setup.update",
-                    "why": "via CompanyHisab"
-                }
-            ],
-            "used_by_count": 5
-        },
-        {
-            "name": "company_partners",
-            "side": "master",
-            "columns": [
-                "id bigint unsigned",
-                "name varchar(100)",
-                "share_percent decimal(5,2)",
-                "central_user_id bigint unsigned",
-                "is_active tinyint(1)",
-                "created_at timestamp",
-                "updated_at timestamp"
-            ],
-            "fk_out": [
-                {
-                    "col": "central_user_id",
-                    "table": "central_users",
-                    "on_delete": "SET NULL"
-                }
-            ],
-            "inferred_out": [],
-            "domain": "Bingoo Master",
-            "fk_in": [
-                {
-                    "table": "company_accounts",
-                    "col": "partner_id",
-                    "on_delete": "RESTRICT"
-                }
-            ],
-            "inferred_in": [],
-            "models": [
-                "CompanyPartner"
-            ],
-            "used_by": [
-                {
-                    "route": "central.hisab.index",
-                    "why": "model CompanyPartner"
-                },
-                {
-                    "route": "central.hisab.entries.store",
-                    "why": "model CompanyPartner"
-                },
-                {
-                    "route": "central.hisab.entries.update",
-                    "why": "model CompanyPartner"
-                },
-                {
-                    "route": "central.hisab.entries.destroy",
-                    "why": "model CompanyPartner"
-                },
-                {
-                    "route": "central.hisab.setup.update",
-                    "why": "model CompanyPartner"
-                }
-            ],
-            "used_by_count": 5
+            "used_by": [],
+            "used_by_count": 0
         },
         {
             "name": "contact_enquiries",
@@ -40304,11 +39941,6 @@
             "domain": "Bingoo Master",
             "fk_in": [
                 {
-                    "table": "company_entries",
-                    "col": "tenant_id",
-                    "on_delete": "SET NULL"
-                },
-                {
                     "table": "report_share_links",
                     "col": "tenant_id",
                     "on_delete": "CASCADE"
@@ -40517,26 +40149,6 @@
                 {
                     "route": "central.whatsapp-usage.index",
                     "why": "model Tenant"
-                },
-                {
-                    "route": "central.hisab.index",
-                    "why": "DB::table"
-                },
-                {
-                    "route": "central.hisab.entries.store",
-                    "why": "DB::table"
-                },
-                {
-                    "route": "central.hisab.entries.update",
-                    "why": "DB::table"
-                },
-                {
-                    "route": "central.hisab.entries.destroy",
-                    "why": "DB::table"
-                },
-                {
-                    "route": "central.hisab.setup.update",
-                    "why": "DB::table"
                 },
                 {
                     "route": "central.invoices.index",
@@ -41091,7 +40703,7 @@
                     "why": "via Business"
                 }
             ],
-            "used_by_count": 172
+            "used_by_count": 167
         },
         {
             "name": "users",
@@ -42493,86 +42105,6 @@
             "group": "central.billing-rates",
             "tables": [
                 "platform_settings"
-            ]
-        },
-        {
-            "route": "central.hisab.index",
-            "uri": "/hisab",
-            "methods": "GET",
-            "controller": "HisabController@index",
-            "group": "central.hisab",
-            "tables": [
-                "company_accounts",
-                "company_entries",
-                "company_partners",
-                "tenants",
-                "central_users",
-                "company_entry_lines",
-                "company_entry_logs"
-            ]
-        },
-        {
-            "route": "central.hisab.entries.store",
-            "uri": "/hisab/entries",
-            "methods": "POST",
-            "controller": "HisabController@storeEntry",
-            "group": "central.hisab",
-            "tables": [
-                "company_accounts",
-                "company_entries",
-                "company_partners",
-                "tenants",
-                "central_users",
-                "company_entry_lines",
-                "company_entry_logs"
-            ]
-        },
-        {
-            "route": "central.hisab.entries.update",
-            "uri": "/hisab/entries/{entry}",
-            "methods": "PUT",
-            "controller": "HisabController@updateEntry",
-            "group": "central.hisab",
-            "tables": [
-                "company_accounts",
-                "company_entries",
-                "company_partners",
-                "tenants",
-                "central_users",
-                "company_entry_lines",
-                "company_entry_logs"
-            ]
-        },
-        {
-            "route": "central.hisab.entries.destroy",
-            "uri": "/hisab/entries/{entry}",
-            "methods": "DELETE",
-            "controller": "HisabController@destroyEntry",
-            "group": "central.hisab",
-            "tables": [
-                "company_accounts",
-                "company_entries",
-                "company_partners",
-                "tenants",
-                "central_users",
-                "company_entry_lines",
-                "company_entry_logs"
-            ]
-        },
-        {
-            "route": "central.hisab.setup.update",
-            "uri": "/hisab/setup",
-            "methods": "PUT",
-            "controller": "HisabController@updateSetup",
-            "group": "central.hisab",
-            "tables": [
-                "company_accounts",
-                "company_entries",
-                "company_partners",
-                "tenants",
-                "central_users",
-                "company_entry_lines",
-                "company_entry_logs"
             ]
         },
         {

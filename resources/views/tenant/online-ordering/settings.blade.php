@@ -129,6 +129,13 @@
         <div class="card-body">
             <h5 class="mb-1">Where website orders arrive</h5>
             <p class="text-muted small mb-3">Tick one or more terminals. A new order rings on every ticked terminal and lands as a Draft on the first one (in this order) whose shift is open. If none of them has an open shift, the website stops taking that order type.</p>
+            {{-- WEB-PICKUP-SWITCH-1 (owner, 29 Oct): a restaurant may take only delivery on its website. --}}
+            <div class="form-check form-switch mb-1">
+                <input type="checkbox" value="1" name="pickup_enabled" id="pickup-enabled" class="form-check-input"
+                       {{ old('pickup_enabled', $settings->pickupOn()) ? 'checked' : '' }}>
+                <label class="form-check-label" for="pickup-enabled">Pick-Up on the website</label>
+            </div>
+            <div class="form-text mb-3">Off = customers can only order Delivery; the Pick-Up button is not shown.</div>
             @forelse($branches as $b)
                 @php $bt = $terminals->get($b->id, collect()); @endphp
                 <div class="table-responsive">

@@ -54,6 +54,7 @@ class WebsiteSettingsController extends Controller
             'default_branch_id' => ['nullable', 'required_if:branch_mode,single', 'integer', 'in:'.implode(',', $branchIds ?: [0])],
             'default_eta_minutes' => ['required', 'integer', 'min:5', 'max:240'],
             'pickup_eta_minutes' => ['required', 'integer', 'min:5', 'max:240'],
+            'pickup_enabled' => ['nullable', 'boolean'],
             'hours' => ['required', 'array'],
             'hours.*.open' => ['nullable', 'date_format:H:i'],
             'hours.*.close' => ['nullable', 'date_format:H:i'],
@@ -102,6 +103,8 @@ class WebsiteSettingsController extends Controller
                 'default_branch_id' => $data['default_branch_id'] ?? null,
                 'default_eta_minutes' => (int) $data['default_eta_minutes'],
                 'pickup_eta_minutes' => (int) $data['pickup_eta_minutes'],
+                // WEB-PICKUP-SWITCH-1: ann-tick = website par Pick-Up band.
+                'pickup_enabled' => $request->boolean('pickup_enabled'),
                 'hours' => $hours,
                 'closed_message' => $data['closed_message'] ?? null,
                 'auto_cancel_minutes' => $request->boolean('auto_cancel_enabled') ? (int) $data['auto_cancel_minutes'] : null,

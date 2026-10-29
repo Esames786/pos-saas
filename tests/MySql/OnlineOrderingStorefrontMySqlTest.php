@@ -172,6 +172,32 @@ class OnlineOrderingStorefrontMySqlTest extends MySqlTenantTestCase
         $this->assertTrue($status['branches'][$this->branchA]['pickup'], 'Pick-Up ka terminal khaali = Delivery wala.');
     }
 
+    public function test_with_pick_up_switched_off_only_delivery_is_offered(): void
+    {
+        // Malik (29 Oct, WEB-PICKUP-SWITCH-1): "pickup band kardo".
+        $this->menuFixture();
+        $s = WebSetting::tenantDefault();
+        $s->update(['is_enabled' => true, 'hours' => array_map(fn () => ['open' => '00:00', 'close' => '23:59', 'closed' => false], WebSetting::DAYS)]);
+        WebOrderRoute::create(['branch_id' => $this->branchA, 'order_type' => 'delivery', 'terminal_id' => $this->t1]);
+        DB::connection('tenant')->table('shifts')->insert([
+            'branch_id' => $this->branchA, 'terminal_id' => $this->t1, 'opened_by_user_id' => $this->userId,
+            'status' => 'open', 'opened_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $at = CarbonImmutable::parse('2026-10-17 13:00', 'Asia/Karachi');
+
+        $this->assertTrue(app(WebsiteAvailability::class)->status($s->fresh(), $at)['branches'][$this->branchA]['pickup'], 'Default: Pick-Up on.');
+        $this->assertTrue($this->payload($this->get('http://'.$this->host.'/order')->assertOk()->getContent())['settings']['pickup']);
+
+        $s->update(['pickup_enabled' => false]);
+        $status = app(WebsiteAvailability::class)->status($s->fresh(), $at);
+        $this->assertTrue($status['open'], 'Website khuli rehti hai — sirf Delivery.');
+        $this->assertSame([true, false], [$status['branches'][$this->branchA]['delivery'], $status['branches'][$this->branchA]['pickup']]);
+
+        $html = $this->get('http://'.$this->host.'/order')->assertOk()->getContent();
+        $this->assertInlineScriptsParse($html, 'order page without pick-up', 'var PICKUP');
+        $this->assertFalse($this->payload($html)['settings']['pickup'], 'Page Pick-Up ka button chhupata hai.');
+    }
+
     // ── helpers ──
 
     private function menuFixture(): void
