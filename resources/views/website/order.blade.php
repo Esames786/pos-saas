@@ -286,7 +286,8 @@ footer .fine button { border:0; background:none; color:var(--brand); text-decora
 .sheet .hd h2 { margin:0; font-size:17px; font-weight:700; }
 .x { border:0; background:#F2F2F2; border-radius:50%; width:34px; height:34px; display:grid; place-items:center; transition:background .2s; }
 .x:hover { background:#E8E8E8; }
-.sheet .bd { padding:16px 18px; overflow-y:auto; display:grid; gap:14px; align-content:start; }
+/* minmax(0,1fr): a wide child (the "Popular with your order" rail) must scroll inside, not stretch the sheet past a phone screen. */
+.sheet .bd { padding:16px 18px; overflow-y:auto; display:grid; grid-template-columns:minmax(0,1fr); gap:14px; align-content:start; }
 .sheet .ft { padding:12px 18px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); display:grid; gap:8px; }
 .big { width:100%; border:0; border-radius:14px; background:var(--brand); color:#fff; padding:14px; font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 8px 20px rgba(166,13,18,.25); transition:background .2s, transform .15s; }
 .big:hover { background:var(--brand-dark); }
@@ -388,6 +389,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
 .citem .pr span { color:var(--brand); }
 .citem .step { box-shadow:none; border:1px solid #F0C5C7; animation:none; }
 .addmore { border:1.5px dashed #F0A9AC; background:#fff; color:var(--brand); border-radius:14px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; }
+.ups { min-width:0; }
 .ups h4 { margin:4px 0 10px; display:flex; align-items:center; gap:8px; font-size:14px; border-left:3px solid var(--brand); padding-left:8px; }
 .ups h4 .nav { margin-left:auto; display:flex; gap:6px; }
 .ups h4 .nav button { width:30px; height:30px; border-radius:50%; border:0; background:#F2B9BB; color:#fff; display:grid; place-items:center; }
