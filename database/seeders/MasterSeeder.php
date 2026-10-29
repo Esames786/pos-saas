@@ -226,6 +226,13 @@ class MasterSeeder extends Seeder
             // CONTACT-FORM-1 — enquiries from the public "Contact Sales" form.
             'central.contact-enquiries.index',
             'central.contact-enquiries.handled',
+
+            // MASTER-HISAB-1 — Bingoo ka apna hisab. Safha dekhne wala us ka har kaam kar sakta hai.
+            'central.hisab.index',
+            'central.hisab.entries.store',
+            'central.hisab.entries.update',
+            'central.hisab.entries.destroy',
+            'central.hisab.setup.update',
         ];
 
         foreach ($permissions as $permission) {

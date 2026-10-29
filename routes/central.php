@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Central\BillingRatesController;
 use App\Http\Controllers\Central\ContactEnquiryController;
 use App\Http\Controllers\Central\DashboardController;
+use App\Http\Controllers\Central\HisabController;
 use App\Http\Controllers\Central\InvoiceController;
 use App\Http\Controllers\Central\WhatsAppUsageController;
 use App\Http\Controllers\Central\ModuleController;
@@ -126,6 +127,14 @@ Route::domain(config('tenancy.central_domain'))
                 // `.env` ke bajaye master me (malik ka faisla).
                 Route::get('/billing-rates', [BillingRatesController::class, 'edit'])->name('central.billing-rates.edit');
                 Route::put('/billing-rates', [BillingRatesController::class, 'update'])->name('central.billing-rates.update');
+
+                // MASTER-HISAB-1 — Bingoo ka apna hisab (owners ke khate, kharche, 50/50 barabari). Har action isi
+                // safhe ka hai; permissions MasterSeeder me (deploy step 3b unhe Super Admin ko deta hai).
+                Route::get('/hisab', [HisabController::class, 'index'])->name('central.hisab.index');
+                Route::post('/hisab/entries', [HisabController::class, 'storeEntry'])->name('central.hisab.entries.store');
+                Route::put('/hisab/entries/{entry}', [HisabController::class, 'updateEntry'])->name('central.hisab.entries.update');
+                Route::delete('/hisab/entries/{entry}', [HisabController::class, 'destroyEntry'])->name('central.hisab.entries.destroy');
+                Route::put('/hisab/setup', [HisabController::class, 'updateSetup'])->name('central.hisab.setup.update');
 
                 Route::get('/invoices', [InvoiceController::class, 'index'])->name('central.invoices.index');
                 Route::get('/tenants/{tenant}/invoices/create', [InvoiceController::class, 'create'])->name('central.tenants.invoices.create');
