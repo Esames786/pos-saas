@@ -21,8 +21,16 @@ use Illuminate\Foundation\Configuration\Middleware;
 // start with "/" or "\" as absolute, which no Windows drive path does, so the scratch directory is expressed relative to the
 // runtime directory (both live on the same drive on every appliance layout: Program Files + ProgramData, or the LAB tree).
 // A Cloud host never sets BINGOO_EDGE_ENV_DIR: nothing changes there. Explicit APP_*_CACHE values always win.
+// The ACTIVE runtime (the version the launcher's `current` pointer names) keeps its caches in its own bootstrap/cache as
+// before: the installed copy is not the signed package directory, and the clean-machine include-probe proves the active
+// runtime executes only files inside itself. Only a NON-active runtime is redirected.
 $edgeEnvDirEarly = getenv('BINGOO_EDGE_ENV_DIR');
-if (is_string($edgeEnvDirEarly) && $edgeEnvDirEarly !== '' && is_dir($edgeEnvDirEarly)) {
+$edgeIsActiveRuntime = false;
+if (is_string($edgeEnvDirEarly) && $edgeEnvDirEarly !== '') {
+    $edgePointer = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'current';   // <runtime-root>/versions/<v>/{this dir} → <runtime-root>/current
+    $edgeIsActiveRuntime = is_file($edgePointer) && trim((string) @file_get_contents($edgePointer)) === basename(dirname(__DIR__));
+}
+if (! $edgeIsActiveRuntime && is_string($edgeEnvDirEarly) && $edgeEnvDirEarly !== '' && is_dir($edgeEnvDirEarly)) {
     $edgeRuntimeDir = str_replace('\\', '/', (string) realpath(dirname(__DIR__)));
     $edgeScratch = str_replace('\\', '/', dirname(rtrim($edgeEnvDirEarly, "/\\"))) . '/logs/runtime-cache/' . substr(sha1(strtolower($edgeRuntimeDir)), 0, 12);
     if (! is_dir($edgeScratch)) {
@@ -49,7 +57,7 @@ if (is_string($edgeEnvDirEarly) && $edgeEnvDirEarly !== '' && is_dir($edgeEnvDir
     }
     unset($edgeRuntimeDir, $edgeScratch, $edgeScratchReal, $edgeSameDrive, $from, $to, $edgeRelative, $edgeKey, $edgeFile, $edgeValue);
 }
-unset($edgeEnvDirEarly);
+unset($edgeEnvDirEarly, $edgeIsActiveRuntime, $edgePointer);
 
 $app = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
