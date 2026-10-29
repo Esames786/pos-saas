@@ -92,3 +92,28 @@ message, profit 350.34.
 - Linking a verified invoice payment to a hisab entry automatically (when monthly invoicing starts).
 - Receipt / screenshot attachments.
 - Opening balances (the hisab starts at zero on 1 Oct 2026).
+
+## Results (29 Oct 2026, local only — nothing deployed)
+
+- **New test** `tests/MySql/MasterHisabMySqlTest.php`: 7 tests / 220 assertions green (DB set `_hsb`). It walks the
+  owner's October through the real routes and reads the rendered page: cards 2,55,886 / 42,535.66 / 2,13,350.34;
+  share 1,06,675.17 each; got 1,13,350.34 vs 1,00,000; one move "→ 6,675.17"; WhatsApp 886 / 535.66 / 350.34,
+  tax 41.46 %, rate 280.49, 5.95 per message; Billing rates cost 5.9518, client rate untouched; statement closing
+  1,13,350.34; transfer settles both to 0; November carries the settlement; edit logged, stale edit refused,
+  delete needs a reason and leaves the totals; plain refusals; 403 without the permission; every route in MasterSeeder.
+- **Sabotage** (detached copy at `60e7510a`, DB set `_hsx`): 9 / 9 deliberate breaks turned the test red (wrong
+  difference sign, transfer not credited, deleted entry still counted, stale edit allowed, card fee ignored, shares not
+  checked, same-khata transfer allowed, Billing rates not following the card, a permission missing from MasterSeeder);
+  control on the clean tree green; tree clean after each.
+- **Related, frozen** (detached copy at `60e7510a`, DB set `_hsr`, HEAD and clean tree proven before and after):
+  30 MySQL test classes that seed Master or render Master pages — 288 tests, 1 failure =
+  `ProductScreenV2MySqlTest::test_each_business_sees_only_its_own_cards`, already red on the production base
+  (open items, 27 Oct). Unit suite 139 tests, 3 failures — compared with the production base below.
+- **Browser walk** (Chrome, local test master DB): 32 / 32 checks — cards, settlement line, three graphs drawn, data
+  table search, money-in popup with two parts and its live sentence, save, delete with a reason, WhatsApp card sums
+  (535.66 · 280.49 · 41.46 % · 5.95), settle button opens a filled transfer, edit shows both parts, owners total 100 %,
+  khata statement, phone width 400 px without sideways scroll, no JavaScript errors.
+- **System map** rebuilt (`a6647274`): 5 new master tables, 5 `central.hisab.*` screens.
+- **Unit suite on the production base `46088129`**: the same 3 failures (`CateringClientFeedbackUiRegressionTest`
+  sidebar-collapsed, `EscPosReportPayloadTest` two-decimal money, `DeliveryRiderReassignmentRegressionTest`) — none
+  from this change.
