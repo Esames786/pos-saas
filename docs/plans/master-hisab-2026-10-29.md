@@ -117,3 +117,24 @@ message, profit 350.34.
 - **Unit suite on the production base `46088129`**: the same 3 failures (`CateringClientFeedbackUiRegressionTest`
   sidebar-collapsed, `EscPosReportPayloadTest` two-decimal money, `DeliveryRiderReassignmentRegressionTest`) — none
   from this change.
+
+## Deployed — 29 Oct 2026 ~19:55 UTC (30 Oct ~00:55 PKT), merge `ca85d2f1`
+
+- Owner's word: "han kardo deploy". Production was `5e36d094` (two website releases after this branch's base); merged
+  into the branch first (`3f00339a`), hisab + the three website test files re-run on the merge: 43 tests green.
+- Master backup `20261029_195128` (596.5 KB, dump complete). Before-snapshots: permissions, reconciliation, smoke.
+- `deploy.sh`: tenants ok=13. After: the 5 tables exist; Super Admin holds the 5 `central.hisab.*` permissions;
+  smoke clean ×13 (tb_diff 0); PERMISSIONS OK (no role lost anything). Reconciliation flagged 2 differences, both
+  kashiffood POS tables — 7 open orders saved in the window (6 paid, 1 held): 21 old lines gone, 21 re-inserted,
+  22 KOT links blanked (live use; `recon_explain.php`). No error in the log since the deploy.
+- Pages rendered on prod as the Super Admin: `/hisab`, `/hisab?month=2026-10`, `/contact-enquiries`,
+  `/whatsapp-usage` all 200, no error.
+- Master has ONE login (`central_users` #1, Super Admin) — only that login sees Hisab.
+- **October entered** through the service (`prod_october.php`, dry run first; dates from the owner: Khatri 25,886 on
+  18 Oct, Kashif Kitchen 1,50,000 on Tuesday 27 Oct): income 2,55,886 · expenses 42,535.66 · profit 2,13,350.34 ·
+  Mohsin share 1,06,675.17 got 1,13,350.34 · Tabish got 1,00,000 · **Mohsin → Tabish 6,675.17**. Billing rates
+  `whatsapp_cost_pkr` 5.95 → 5.9518 (client rate untouched).
+- Same night, owner's word, before the deploy: Master invoices INV-20261020-1103 (kashifkitchen, 25,000, paid
+  29 Oct) and INV-20261010-0337 (tawakalkashif, 20,000, paid 10 Oct) marked paid through `recordPayment`, with each
+  subscription's end date / status / plan put back exactly (`activateSubscriptionFromPaidInvoice` would have set
+  kashifkitchen to 20 Oct — already past — and tawakalkashif to 31 Oct); access gate still "active" for both.
