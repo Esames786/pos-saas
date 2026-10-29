@@ -153,6 +153,28 @@ body.master-ui .table.table-sm > :not(caption) > * > * { padding: .35rem .6rem; 
 body.master-ui .table tbody tr td .fw-semibold,
 body.master-ui .table tbody tr td .fw-bold { color: var(--mu-text); }
 body.master-ui .table-hover > tbody > tr:hover > * { background-color: rgba(77, 159, 255, .06); color: var(--mu-text); }
+/* Bootstrap ki rang-daar rows (table-warning, table-light …) apna halka rang cell ke andar "inset box-shadow" se bharti
+   hain — dark theme mein row safed ho jati thi aur upar ka halka text parha nahi jata tha (Contact Enquiries ki nayi
+   enquiry, WhatsApp Usage ka total). Yahan har rang ka dark theme wala halka sa wash, aur text poora roshan. */
+/* Template ki style.css row (tr) ko khud safed rang deti hai — wo halke cell ke peeche se jhaankta tha. */
+body.master-ui .table tr:is(.table-warning, .table-success, .table-danger, .table-info, .table-light, .table-primary, .table-secondary, .table-active) {
+    background-color: transparent !important;
+}
+body.master-ui .table tr:is(.table-warning, .table-success, .table-danger, .table-info, .table-light, .table-primary, .table-secondary, .table-active) > * {
+    --bs-table-bg-type: transparent; --bs-table-bg-state: transparent; --bs-table-accent-bg: transparent;
+    box-shadow: none !important; color: var(--mu-text) !important; border-bottom-color: var(--mu-border-soft);
+}
+body.master-ui .table tr.table-warning > * { background-color: var(--mu-warn-soft) !important; }
+body.master-ui .table tr.table-success > * { background-color: var(--mu-ok-soft) !important; }
+body.master-ui .table tr.table-danger > * { background-color: var(--mu-danger-soft) !important; }
+body.master-ui .table tr.table-info > * { background-color: var(--mu-info-soft) !important; }
+body.master-ui .table tr:is(.table-primary, .table-active) > * { background-color: var(--mu-accent-soft) !important; }
+body.master-ui .table tr:is(.table-light, .table-secondary) > * { background-color: var(--mu-surface-2) !important; }
+/* Table ke andar saada link (jaise enquiry ka email) template se kaala aata tha — dark par parha nahi jata. */
+body.master-ui .table td a:not(.btn):not(.badge):not(.dropdown-item) { color: var(--mu-accent); }
+body.master-ui .table td a:not(.btn):not(.badge):not(.dropdown-item):hover { color: #8ec2ff; }
+/* Nayi (warning) row ki pehchaan sirf rang par na rahe: baayen taraf peeli patti bhi. */
+body.master-ui .table tr.table-warning > :first-child { box-shadow: inset 3px 0 0 var(--mu-warn) !important; }
 
 body.master-ui .form-label,
 body.master-ui label { color: var(--mu-text-2); font-size: 12.5px; font-weight: 600; }

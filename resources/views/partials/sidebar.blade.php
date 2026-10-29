@@ -144,6 +144,16 @@
                                     </a>
                                 </li>
                             @endcan
+                            {{-- MASTER-HISAB-1: Bingoo ka apna hisab. Link koi query nahi chalata. --}}
+                            @can('central.hisab.index')
+                                @php $a = $isIn('hisab*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/hisab') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-report-money fs-16 me-2"></i>
+                                        <span>Hisab</span>
+                                    </a>
+                                </li>
+                            @endcan
                             @can('central.billing-rates.edit')
                                 @php $a = $isIn('billing-rates*'); @endphp
                                 <li class="{{ $a ? 'active' : '' }}">
