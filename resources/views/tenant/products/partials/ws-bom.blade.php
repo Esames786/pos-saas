@@ -23,9 +23,7 @@
                 @foreach($messages as $m)<div class="text-danger small">{{ $m }}</div>@endforeach
             </div>
         @endif
-        @if($b['bom'] && $b['bom']->status !== 'active')
-            <p class="note mb-2">This bill of materials is <b>{{ $b['bom']->status }}</b> on its own screen. Saving here keeps it {{ $b['bom']->status }}.</p>
-        @endif
+        @include('tenant.products.partials.ws-advanced-header', ['section' => 'bom', 'state' => $b['state']])
         <div class="ws-head">
             <div class="ws-make">
                 <label class="form-label mb-0" for="bom-makes">These materials make</label>
@@ -48,11 +46,11 @@
         <p class="help mb-2" data-ws-empty @if($lines) hidden @endif>No materials yet.</p>
         <div class="d-flex flex-wrap gap-2 align-items-center">
             <button type="button" class="btn btn-outline-primary" data-ws-add>Add a material</button>
-            <span class="help">Saved with the product when you press Save — the same rules as the Bill of materials screen. Its number, version, status and notes stay as they are.</span>
+            <span class="help">Saved with the product. References, status and dates are in Advanced settings.</span>
         </div>
         {{-- PRODUCT-NAV-1: the rest of the BOM, only for a user who may open that screen. --}}
-        @if($b['bom'] && \App\Support\ScreenAccess::allows('tenant.manufacturing.bom.edit'))
-            <p class="help mt-2 mb-0">Number, version, status and notes: <a href="{{ url('/manufacturing/bom/' . $b['bom']->id . '/edit') }}" target="_blank" rel="noopener" data-ws-full="bom-edit">edit them on the Bill of materials screen</a> (a new tab — this page keeps what you typed).</p>
+        @if($b['bom'] && \App\Support\ScreenAccess::allows('tenant.manufacturing.bom.index'))
+            <p class="help mt-2 mb-0">Other versions and archived BOMs remain available in the <a href="{{ url('/manufacturing/bom?product_id=' . $product->id) }}" target="_blank" rel="noopener">BOM list</a>.</p>
         @endif
     </div>
 </fieldset>

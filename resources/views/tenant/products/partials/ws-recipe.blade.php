@@ -26,9 +26,7 @@
                 @foreach($messages as $m)<div class="text-danger small">{{ $m }}</div>@endforeach
             </div>
         @endif
-        @if($r['recipe'] && ! $r['recipe']->is_active)
-            <p class="note mb-2">This recipe is switched off on the Recipes screen. Saving here keeps it switched off.</p>
-        @endif
+        @include('tenant.products.partials.ws-advanced-header', ['section' => 'recipe', 'state' => $r['state']])
         <div class="ws-head">
             <div class="ws-make">
                 <label class="form-label mb-0" for="recipe-yield">This recipe makes</label>
@@ -39,7 +37,7 @@
                     @foreach($ws['units'] as $u)<option value="{{ $u->id }}" @selected((string) $yieldU === (string) $u->id)>{{ $u->code }}</option>@endforeach
                 </select>
             </div>
-            <div class="ws-total">Recipe cost <b data-ws-cost>—</b></div>
+            <div class="ws-total">Cost including overhead <b data-ws-cost>—</b></div>
         </div>
         <div class="table-responsive">
             <table class="table ws-table align-middle mb-2">
@@ -55,16 +53,13 @@
         <p class="help mb-2" data-ws-empty @if($lines) hidden @endif>No ingredients yet.</p>
         <div class="d-flex flex-wrap gap-2 align-items-center">
             <button type="button" class="btn btn-outline-primary" data-ws-add>Add an ingredient</button>
-            <span class="help">Saved with the product when you press Save — the same rules and cost as the Recipes screen. Cost overrides, order types and report numbers set there stay as they are.</span>
+            <span class="help">Save the product to save this recipe. Open an ingredient's settings for its cost override and order types.</span>
         </div>
         {{-- PRODUCT-NAV-1: each link only for a user who may open that screen. --}}
-        @if($r['recipe'] && (\App\Support\ScreenAccess::allows('tenant.recipes.show') || \App\Support\ScreenAccess::allows('tenant.recipes.edit')))
+        @if($r['recipe'] && \App\Support\ScreenAccess::allows('tenant.recipes.show'))
             <p class="help mt-2 mb-0">
                 @if(\App\Support\ScreenAccess::allows('tenant.recipes.show'))
                     <a href="{{ url('/recipes/' . $r['recipe']->id) }}" target="_blank" rel="noopener" data-ws-full="recipe-report">Open the full recipe report</a>.
-                @endif
-                @if(\App\Support\ScreenAccess::allows('tenant.recipes.edit'))
-                    Order types, cost overrides and report numbers: <a href="{{ url('/recipes/' . $r['recipe']->id . '/edit') }}" target="_blank" rel="noopener" data-ws-full="recipe-edit">edit them on the Recipes screen</a>.
                 @endif
                 (A new tab — this page keeps what you typed.)
             </p>
