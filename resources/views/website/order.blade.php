@@ -536,6 +536,9 @@ label.f span.req::after { content:" *"; color:var(--brand); }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* private mode: still works for this visit */ } }
 
   var S = Object.assign({ type: 'delivery', area: null, branch: null, cart: [], customer: {}, pin: null }, load());
+  // WEB-PICKUP-SWITCH-1: the restaurant turned Pick-Up off — no Pick-Up button, no "choose Pick-Up" hints.
+  var PICKUP = !(D.settings && D.settings.pickup === false);
+  if (!PICKUP && S.type === 'pickup') { S.type = 'delivery'; save(); }
   var menu = D.menu, menuBranch = D.menuBranch;
 
   // Motion only when the device allows it; without it everything is simply visible.
@@ -937,7 +940,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
           .sort(function (x, y) { return q ? 0 : nearRank(x.id) - nearRank(y.id); })
           .map(function (a) { return '<button type="button" role="option" data-a="' + a.id + '" class="' + (cur === a.id ? 'on' : '') + '" aria-selected="' + (cur === a.id) + '"><span>' + esc(a.name) + '</span><em>' + (nearby.indexOf(a.id) !== -1 ? '<span class="near">Near you</span> · ' : '') + a.eta + ' min</em></button>'; });
     $('areaList').innerHTML = (pickup && rows.length ? '<p class="ask">Which outlet would you like to pick-up from?</p>' : '') +
-      (rows.length ? rows.join('') : '<p class="empty">' + (pickup ? 'Pick-up is not available.' : 'We do not deliver to this area yet. Try Pick-Up.') + '</p>');
+      (rows.length ? rows.join('') : '<p class="empty">' + (pickup ? 'Pick-up is not available.' : 'We do not deliver to this area yet.' + (PICKUP ? ' Try Pick-Up.' : '')) + '</p>');
     // Pick-up (like the old site): the chosen outlet's address with "Get directions".
     var br = pickup ? D.branches.find(function (b) { return b.id === cur; }) : null;
     $('branchCard').hidden = !br;
@@ -963,6 +966,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     requestAnimationFrame(function () { scrollToChosen(false); });
   }
   $('where').addEventListener('click', openAreas);
+  if (!PICKUP) { $('tPickup').closest('.seg').hidden = true; $('areaTitle').textContent = 'Select your delivery area'; }
   $('tDelivery').addEventListener('click', function () { S.type = 'delivery'; pending = null; renderAreas(); });
   $('tPickup').addEventListener('click', function () { S.type = 'pickup'; pending = null; renderAreas(); });
   $('areaSearch').addEventListener('input', renderAreas);
@@ -1053,8 +1057,8 @@ label.f span.req::after { content:" *"; color:var(--brand); }
             save();
             // Owner (16 Oct): no delivery outside the city, nor to an area the restaurant has switched off.
             if (j.outside || j.closed) {
-              gpsMsg(j.closed ? 'Sorry — we don\'t deliver to <b>' + esc(j.closed) + '</b> right now. You can choose <b>Pick-Up</b>.'
-                : 'We deliver only inside ' + esc((D.areas[0] || {}).city || 'our city') + '. Your location shows <b>' + esc(j.outside) + '</b> — you can choose <b>Pick-Up</b>.');
+              gpsMsg(j.closed ? 'Sorry — we don\'t deliver to <b>' + esc(j.closed) + '</b> right now.' + (PICKUP ? ' You can choose <b>Pick-Up</b>.' : '')
+                : 'We deliver only inside ' + esc((D.areas[0] || {}).city || 'our city') + '. Your location shows <b>' + esc(j.outside) + '</b>.' + (PICKUP ? ' You can choose <b>Pick-Up</b>.' : ''));
               renderAreas();
               return;
             }
@@ -1197,7 +1201,7 @@ label.f span.req::after { content:" *"; color:var(--brand); }
     var d = km(br.lat, br.lng, p.lat, p.lng), band = br.bands.find(function (b) { return d <= b[0]; });
     return { ok: !!band, fee: band ? band[1] : 0, km: Math.round(d * 10) / 10, max: br.bands[br.bands.length - 1][0] };
   }
-  function tooFar(q) { return 'We deliver up to ' + q.max + ' km from our branch — your location is ' + q.km + ' km away. Please choose Pick-Up.'; }
+  function tooFar(q) { return 'We deliver up to ' + q.max + ' km from our branch — your location is ' + q.km + ' km away.' + (PICKUP ? ' Please choose Pick-Up.' : ''); }
   function fee() {
     if (S.type === 'pickup') { return 0; }
     var a = area(); if (!a) { return 0; }
