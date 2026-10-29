@@ -67,8 +67,9 @@ class EdgeLocalHealthCommand extends Command
             // F-FB4-1: a listening port can be a hung backend — show the HTTP liveness and the supervisor's state too
             $sup = $w['supervisor'] ?? null;
             $rows[] = ['Web backend #' . $w['worker'], $w['listen'] . ' · ' . ($w['listening'] ? 'listening' : 'not listening')
-                . ' · ' . (($w['responding'] ?? false) ? 'answering HTTP' : 'NOT answering HTTP')
-                . ($sup ? ' · supervisor ' . ($sup['state'] ?? '?') . ' pid ' . ($sup['pid'] ?? '?') . ' restarts ' . ($sup['restarts'] ?? 0) : '')];
+                . ' · ' . (($w['responding'] ?? false) ? 'answering HTTP' : (($w['availability'] ?? '') === 'busy' ? 'busy/slow (serving, not answering within the probe window)' : 'NOT answering HTTP'))
+                . ($sup ? ' · supervisor ' . ($sup['state'] ?? '?') . ' pid ' . ($sup['pid'] ?? '?') . ' restarts ' . ($sup['restarts'] ?? 0)
+                    . (isset($sup['seconds_since_last_ok']) ? ' · last 200 ' . $sup['seconds_since_last_ok'] . 's ago' : '') : '')];
         }
         $rows[] = ['Gateway', ($r['gateway']['kind'] ?? 'nginx') . ' :' . $r['gateway']['https_port'] . ' · ' . ($r['gateway']['https_listening'] ? 'listening' : 'not listening') . ' · cert ' . ($r['gateway']['certificate_present'] ? ('present' . (isset($r['gateway']['certificate']['days_left']) ? ', ' . $r['gateway']['certificate']['days_left'] . ' days left' : '')) : 'MISSING')];
         $rows[] = ['Backup', ($r['backup']['recovery_key_configured'] ? 'key ok' : 'NO KEY') . ' · last ' . ($r['backup']['last']['created_at'] ?? 'never') . ' · path ' . $r['backup']['path']];

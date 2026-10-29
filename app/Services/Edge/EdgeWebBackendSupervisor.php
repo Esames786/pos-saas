@@ -14,23 +14,29 @@ use RuntimeException;
  * filled after ~37 requests, and the child blocked on its next write — both cashier backends hung while every other worker
  * stayed healthy (LAB appliance, 24 Oct 2026; reproduced with a plain `php -S` under the same loop).
  *
- * Rules (owner §1/§2):
- *   - Windows: the child's stdout and stderr go to two separate, worker-specific, size-capped LOG FILES under the appliance
- *     data root (never under the signed, immutable runtime directory); no non-blocking pipe read ever happens on Windows.
- *   - non-Windows: the pipe relay stays (non-blocking pipes work there) — behaviour unchanged.
- *   - liveness: an HTTP GET of `/edge/local/health` on the backend's OWN loopback port (the gateway is never asked — a gateway
- *     200 must not conceal a dead backend), bounded connect/read timeouts, a startup grace, N consecutive failures = hung →
- *     the child is terminated (process tree on Windows) and restarted with exponential back-off (capped) that resets after a
- *     healthy minute; only THIS backend is touched (one supervisor per backend, as the service plan prescribes).
- *   - duplicates: the OS port is the singleton; when the port already answers the probe at start, this supervisor exits
- *     instead of fighting the running backend.
- *   - record: every start / restart (reason, pid, back-off, outcome) is written to the supervisor's stdout (the task log) and to
- *     `<logs>/web-backend-<N>.status.json`, which `edge:local:health` surfaces; a backend that keeps failing is reported as
- *     'failing' (the cashier service is DEGRADED — authority and sync workers being healthy never makes the web tier healthy).
- *   - stop: the supervisor terminates its child when it exits (shutdown function; SIGTERM/SIGINT where pcntl exists) — no
- *     orphan `php -S` keeps the cashier port.
+ * F-FB5-1 (owner hotfix 0.8.2, 29 Oct 2026) — BUSY-AWARE liveness. The 0.8.1 policy (3 s read, 3 misses) declared a busy
+ * single-threaded `php -S` "hung" while it was rendering legitimate multi-second pages on a saturated host (real LAB, 29 Oct:
+ * 28 false restarts, two gateway 502s; the children were serving the whole time). The supervisor now distinguishes:
  *
- * Nothing here touches the lease, takeover fencing, the outbox, stock authority or AUTO_FAILOVER.
+ *   HEALTHY         the probe answered 200 within the read window
+ *   BUSY_OR_SLOW    the probe did not answer, but the child made PROGRESS since the previous probe (its request log advanced —
+ *                   `php -S` writes "Accepted"/"Closing" lines per connection) AND the last successful answer is at most
+ *                   BUSY_GRACE_SECONDS old. Such a miss is NOT counted towards a restart. Log advancement alone never grants
+ *                   indefinite health: once the last success is older than the grace, every miss counts.
+ *   SUSPECTED_HUNG  a miss without progress (or any miss beyond the busy grace): counted; PROBE_FAILURES_TO_RESTART in a row →
+ *   CONFIRMED_HUNG  the child is terminated (process tree on Windows) and
+ *   RESTARTING      restarted with the exponential, capped back-off (reset after a healthy minute);
+ *   FAILING         ≥ FAILING_RESTARTS restarts within FAILING_WINDOW_SECONDS — surfaced by edge:local:health as a cashier-tier problem.
+ *
+ * Bound (documented, tested): a child that never answers again is confirmed hung and restarted within
+ * HANG_DETECTION_BOUND_SECONDS of its last successful answer — the busy grace plus PROBE_FAILURES_TO_RESTART probe cycles, each
+ * at most connect timeout + read timeout + probe interval. Probes are synchronous: they never overlap, each one is bounded.
+ *
+ * Rules kept from 0.8.1: Windows child output → two size-capped files under the appliance DATA root (never the runtime), no
+ * non-blocking pipe read on Windows; non-Windows pipe relay unchanged; the probe hits the backend's OWN loopback port (a gateway
+ * 200 must never conceal a dead backend); the OS port is the singleton; every transition → task log + status file; stop()
+ * terminates the child (no orphan `php -S`). Nothing here touches the lease, takeover fencing, the outbox, stock authority or
+ * AUTO_FAILOVER.
  */
 class EdgeWebBackendSupervisor
 {
@@ -38,8 +44,9 @@ class EdgeWebBackendSupervisor
     public const STARTUP_GRACE_SECONDS = 15;
     public const PROBE_INTERVAL_SECONDS = 5;
     public const PROBE_CONNECT_TIMEOUT = 2.0;
-    public const PROBE_READ_TIMEOUT = 3;
-    public const PROBE_FAILURES_TO_RESTART = 3;
+    public const PROBE_READ_TIMEOUT = 10;            // F-FB5-1: was 3 — a legitimate page render on a loaded host takes seconds
+    public const PROBE_FAILURES_TO_RESTART = 5;      // F-FB5-1: was 3 — consecutive COUNTED misses (busy misses inside the grace do not count)
+    public const BUSY_GRACE_SECONDS = 120;           // F-FB5-1: a miss WITH child progress (requests still completing) is "busy" only while the last 200 is at most this old; silent misses count at once
     public const BACKOFF_FIRST_SECONDS = 1;
     public const BACKOFF_MAX_SECONDS = 30;
     public const BACKOFF_RESET_AFTER_HEALTHY_SECONDS = 60;
@@ -48,6 +55,18 @@ class EdgeWebBackendSupervisor
     public const LOG_MAX_BYTES = 5 * 1024 * 1024;  // rotate <log>.log → <log>.1.log at (re)start when larger
     public const LOOP_SLEEP_MICROSECONDS = 1000000;
 
+    /** Worst-case seconds from the last successful answer to the termination of a child that never answers again. */
+    public const HANG_DETECTION_BOUND_SECONDS = self::BUSY_GRACE_SECONDS
+        + self::PROBE_FAILURES_TO_RESTART * (self::PROBE_INTERVAL_SECONDS + self::PROBE_READ_TIMEOUT + 2);
+
+    public const CLASS_STARTING = 'starting';
+    public const CLASS_HEALTHY = 'healthy';
+    public const CLASS_BUSY = 'busy_or_slow';
+    public const CLASS_SUSPECTED = 'suspected_hung';
+    public const CLASS_CONFIRMED = 'confirmed_hung';
+    public const CLASS_RESTARTING = 'restarting';
+    public const CLASS_FAILING = 'failing';
+
     /** @var resource|null */
     private $proc = null;
     /** @var array<int, resource> */
@@ -55,8 +74,14 @@ class EdgeWebBackendSupervisor
     private ?int $childPid = null;
     private float $startedAt = 0.0;
     private float $lastProbeAt = 0.0;
+    private float $lastOkAt = 0.0;
     private float $healthySince = 0.0;
     private int $consecutiveProbeFailures = 0;
+    private int $busyTicks = 0;
+    private int $relayedBytes = 0;
+    private ?string $lastProgressMarker = null;
+    private string $lastProbeOutcome = 'none';
+    private int $lastProbeMs = 0;
     private int $backoffSeconds = self::BACKOFF_FIRST_SECONDS;
     private int $restarts = 0;
     /** @var list<float> */
@@ -64,9 +89,8 @@ class EdgeWebBackendSupervisor
     private ?string $lastRestartReason = null;
     private ?string $lastRestartAt = null;
     private ?int $lastExitCode = null;
-    private string $state = 'starting';
+    private string $state = self::CLASS_STARTING;
     private bool $stopRequested = false;
-    private ?string $forcedPhase = null;
 
     /** @var callable(string):void */
     private $log;
@@ -112,6 +136,23 @@ class EdgeWebBackendSupervisor
     public static function statusFileFor(int $worker): string
     {
         return EdgeApplianceLayout::logsDir() . DIRECTORY_SEPARATOR . "web-backend-{$worker}.status.json";
+    }
+
+    /** The policy, for the status file / health report / docs. */
+    public static function policy(): array
+    {
+        return [
+            'probe_path' => self::PROBE_PATH,
+            'startup_grace_seconds' => self::STARTUP_GRACE_SECONDS,
+            'probe_interval_seconds' => self::PROBE_INTERVAL_SECONDS,
+            'probe_connect_timeout_seconds' => self::PROBE_CONNECT_TIMEOUT,
+            'probe_read_timeout_seconds' => self::PROBE_READ_TIMEOUT,
+            'busy_grace_seconds' => self::BUSY_GRACE_SECONDS,
+            'failures_to_restart' => self::PROBE_FAILURES_TO_RESTART,
+            'hang_detection_bound_seconds' => self::HANG_DETECTION_BOUND_SECONDS,
+            'backoff_seconds' => [self::BACKOFF_FIRST_SECONDS, self::BACKOFF_MAX_SECONDS],
+            'failing_restarts_per_window' => [self::FAILING_RESTARTS, self::FAILING_WINDOW_SECONDS],
+        ];
     }
 
     /**
@@ -199,33 +240,53 @@ class EdgeWebBackendSupervisor
             $elapsed = $this->now() - $this->startedAt;
             if ($elapsed >= self::STARTUP_GRACE_SECONDS && ($this->now() - $this->lastProbeAt) >= self::PROBE_INTERVAL_SECONDS) {
                 $this->lastProbeAt = $this->now();
-                if ($this->probe()) {
+                $ok = $this->probe();
+                $progressed = $this->childProgressed();
+                if ($ok) {
                     $this->consecutiveProbeFailures = 0;
+                    $this->busyTicks = 0;
+                    $this->lastOkAt = $this->now();
                     if ($this->healthySince === 0.0) {
                         $this->healthySince = $this->now();
                     }
-                    if ($this->state !== 'healthy') {
-                        $this->state = 'healthy';
-                        $this->writeStatus('healthy');
+                    if ($this->state !== self::CLASS_HEALTHY) {
+                        if (in_array($this->state, [self::CLASS_BUSY, self::CLASS_SUSPECTED], true)) {
+                            $this->write("web backend #{$this->worker} pid {$this->childPid}: answering again ({$this->state} → healthy).");
+                        }
+                        $this->writeStatus(self::CLASS_HEALTHY);
                     } elseif (($this->now() - $this->healthySince) >= self::BACKOFF_RESET_AFTER_HEALTHY_SECONDS && $this->backoffSeconds !== self::BACKOFF_FIRST_SECONDS) {
                         $this->resetBackoff();
-                        $this->writeStatus('healthy');
+                        $this->writeStatus(self::CLASS_HEALTHY);
                     }
                 } else {
-                    $this->consecutiveProbeFailures++;
                     $this->healthySince = 0.0;
-                    $this->writeStatus($this->state === 'healthy' ? 'probe-failing' : $this->state);
-                    if ($this->consecutiveProbeFailures >= self::PROBE_FAILURES_TO_RESTART) {
-                        $this->write("web backend #{$this->worker} pid {$this->childPid}: {$this->consecutiveProbeFailures} liveness probes failed on {$this->host}:{$this->port}{$this->probePath()} — terminating the hung backend.");
-                        $this->terminateChild();
-                        $this->closeChild();
-                        if ($once) {
-                            $this->writeStatus('hung');
-
-                            return 1;
+                    $sinceOk = $this->secondsSinceLastOk();
+                    if ($progressed && $sinceOk <= self::BUSY_GRACE_SECONDS) {
+                        // F-FB5-1: the child is serving (its request log advanced) — a slow page, not a hang. Not counted.
+                        $this->busyTicks++;
+                        if ($this->state !== self::CLASS_BUSY) {
+                            $this->write("web backend #{$this->worker} pid {$this->childPid}: probe {$this->lastProbeOutcome} but the child is making progress (last 200 {$sinceOk}s ago) — busy/slow, not restarting.");
                         }
-                        $this->restart("hung: {$this->consecutiveProbeFailures} liveness probes failed");
-                        continue;
+                        $this->writeStatus(self::CLASS_BUSY);
+                    } else {
+                        $this->consecutiveProbeFailures++;
+                        if ($this->consecutiveProbeFailures >= self::PROBE_FAILURES_TO_RESTART) {
+                            $why = "hung: {$this->consecutiveProbeFailures} liveness probes failed"
+                                . ($progressed ? " (progress continued but no answer for {$sinceOk}s — beyond the {$this->busyGrace()}s busy grace)" : " (no progress, no answer for {$sinceOk}s)");
+                            $this->writeStatus(self::CLASS_CONFIRMED);
+                            $this->write("web backend #{$this->worker} pid {$this->childPid}: {$why} on {$this->host}:{$this->port}{$this->probePath()} — terminating the hung backend.");
+                            $this->terminateChild();
+                            $this->closeChild();
+                            if ($once) {
+                                return 1;
+                            }
+                            $this->restart($why);
+                            continue;
+                        }
+                        if ($this->state !== self::CLASS_SUSPECTED) {
+                            $this->write("web backend #{$this->worker} pid {$this->childPid}: probe {$this->lastProbeOutcome}, " . ($progressed ? "progress but beyond the busy grace" : 'no progress') . " (last 200 {$sinceOk}s ago) — suspected hung ({$this->consecutiveProbeFailures}/" . self::PROBE_FAILURES_TO_RESTART . ').');
+                        }
+                        $this->writeStatus(self::CLASS_SUSPECTED);
                     }
                 }
             }
@@ -256,6 +317,7 @@ class EdgeWebBackendSupervisor
             'pid' => $this->childPid,
             'supervisor_pid' => getmypid(),
             'state' => $this->state,
+            'classification' => strtoupper($this->state),
             'started_at' => $this->startedAt > 0 ? gmdate('c', (int) $this->startedAt) : null,
             'restarts' => $this->restarts,
             'restarts_last_10min' => count(array_filter($this->restartTimes, fn ($t) => $this->now() - $t <= self::FAILING_WINDOW_SECONDS)),
@@ -263,11 +325,61 @@ class EdgeWebBackendSupervisor
             'last_restart_at' => $this->lastRestartAt,
             'last_exit_code' => $this->lastExitCode,
             'consecutive_probe_failures' => $this->consecutiveProbeFailures,
+            'busy_ticks' => $this->busyTicks,
             'last_probe_at' => $this->lastProbeAt > 0 ? gmdate('c', (int) $this->lastProbeAt) : null,
+            'last_probe_outcome' => $this->lastProbeOutcome,
+            'last_probe_ms' => $this->lastProbeMs,
+            'last_ok_at' => $this->lastOkAt > 0 ? gmdate('c', (int) $this->lastOkAt) : null,
+            'seconds_since_last_ok' => $this->startedAt > 0 ? $this->secondsSinceLastOk() : null,
+            'progress_marker' => $this->lastProgressMarker,
             'backoff_seconds' => $this->backoffSeconds,
+            'policy' => self::policy(),
             'logs' => $this->usesFileLogs() ? ['stdout' => $this->stdoutLogPath(), 'stderr' => $this->stderrLogPath()] : 'relayed to the supervisor output',
             'updated_at' => gmdate('c', (int) $this->now()),
         ];
+    }
+
+    // ── classification helpers ──────────────────────────────────────────────────────────────────────────────────────
+
+    /** Seconds since the last successful probe — or since the start when the child never answered yet. */
+    private function secondsSinceLastOk(): int
+    {
+        $ref = $this->lastOkAt > 0 ? $this->lastOkAt : $this->startedAt;
+
+        return (int) max(0, $this->now() - $ref);
+    }
+
+    private function busyGrace(): int
+    {
+        return self::BUSY_GRACE_SECONDS;
+    }
+
+    /**
+     * Did the child make observable progress since the previous probe? Windows: its request log (stderr file) grew; elsewhere:
+     * bytes relayed from its pipes. The first evaluation after a spawn only records the marker (no progress claimed).
+     */
+    private function childProgressed(): bool
+    {
+        $marker = $this->progressMarker();
+        $progressed = $marker !== null && $this->lastProgressMarker !== null && $marker !== $this->lastProgressMarker;
+        $this->lastProgressMarker = $marker;
+
+        return $progressed;
+    }
+
+    /** Opaque progress marker (test seam). null = no signal available (never counts as progress). */
+    protected function progressMarker(): ?string
+    {
+        if ($this->usesFileLogs()) {
+            clearstatcache(true, $this->stderrLogPath());
+            clearstatcache(true, $this->stdoutLogPath());
+            $err = is_file($this->stderrLogPath()) ? (int) @filesize($this->stderrLogPath()) : 0;
+            $out = is_file($this->stdoutLogPath()) ? (int) @filesize($this->stdoutLogPath()) : 0;
+
+            return "err:{$err};out:{$out}";
+        }
+
+        return 'relayed:' . $this->relayedBytes;
     }
 
     // ── process plumbing (protected = test seams) ───────────────────────────────────────────────────────────────────
@@ -297,12 +409,15 @@ class EdgeWebBackendSupervisor
         $this->childPid = (int) ($status['pid'] ?? 0) ?: null;
         $this->startedAt = $this->now();
         $this->lastProbeAt = 0.0;
+        $this->lastOkAt = 0.0;
         $this->healthySince = 0.0;
         $this->consecutiveProbeFailures = 0;
-        $this->state = 'starting';
+        $this->busyTicks = 0;
+        $this->lastProgressMarker = $this->progressMarker();
+        $this->state = self::CLASS_STARTING;
         $this->write("web backend #{$this->worker} → http://{$this->host}:{$this->port} pid {$this->childPid} ({$why})"
             . ($this->usesFileLogs() ? "; child stdout → {$this->stdoutLogPath()}, stderr → {$this->stderrLogPath()}" : ''));
-        $this->writeStatus('starting');
+        $this->writeStatus(self::CLASS_STARTING);
     }
 
     private function restart(string $reason): void
@@ -314,7 +429,7 @@ class EdgeWebBackendSupervisor
         $this->lastRestartAt = gmdate('c', (int) $this->now());
         $wait = $this->nextBackoff();
         $failing = count($this->restartTimes) >= self::FAILING_RESTARTS;
-        $this->state = $failing ? 'failing' : 'restarting';
+        $this->state = $failing ? self::CLASS_FAILING : self::CLASS_RESTARTING;
         $this->write("web backend #{$this->worker}: {$reason}; restart #{$this->restarts} in {$wait}s" . ($failing ? " — FAILING ({$this->restartTimes[0]} … {$this->restartTimes[count($this->restartTimes) - 1]}: " . count($this->restartTimes) . ' restarts in 10 min)' : ''));
         $this->writeStatus($this->state);
         $this->sleep($wait);
@@ -381,18 +496,26 @@ class EdgeWebBackendSupervisor
             if (isset($this->pipes[$i]) && is_resource($this->pipes[$i])) {
                 $chunk = @stream_get_contents($this->pipes[$i]);
                 if ($chunk !== false && $chunk !== '') {
+                    $this->relayedBytes += strlen($chunk);
                     $this->write(rtrim($chunk));
                 }
             }
         }
     }
 
-    /** HTTP liveness: GET the probe path on the backend's own loopback port with bounded timeouts; 200 = alive. */
+    /**
+     * HTTP liveness: GET the probe path on the backend's own loopback port with bounded connect/read timeouts; 200 = alive.
+     * Records the outcome (ok / refused / timeout / bad_status) and the elapsed milliseconds for the status file.
+     */
     protected function probe(): bool
     {
+        $t0 = microtime(true);
         $host = in_array($this->host, ['0.0.0.0', '::'], true) ? '127.0.0.1' : $this->host;
         $fp = @fsockopen($host, $this->port, $errno, $errstr, self::PROBE_CONNECT_TIMEOUT);
         if (! is_resource($fp)) {
+            $this->lastProbeOutcome = 'refused';
+            $this->lastProbeMs = (int) ((microtime(true) - $t0) * 1000);
+
             return false;
         }
         stream_set_timeout($fp, self::PROBE_READ_TIMEOUT);
@@ -400,11 +523,16 @@ class EdgeWebBackendSupervisor
         $line = fgets($fp, 256);
         $meta = stream_get_meta_data($fp);
         fclose($fp);
+        $this->lastProbeMs = (int) ((microtime(true) - $t0) * 1000);
         if ($line === false || ($meta['timed_out'] ?? false)) {
+            $this->lastProbeOutcome = 'timeout';
+
             return false;
         }
+        $ok = (bool) preg_match('#^HTTP/1\.[01] 200\b#', $line);
+        $this->lastProbeOutcome = $ok ? 'ok' : 'bad_status';
 
-        return (bool) preg_match('#^HTTP/1\.[01] 200\b#', $line);
+        return $ok;
     }
 
     protected function probePath(): string

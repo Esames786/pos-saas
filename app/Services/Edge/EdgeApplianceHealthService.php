@@ -506,21 +506,36 @@ class EdgeApplianceHealthService
             $listening = $this->portOpen($bind, $port);
             $responding = $listening && $this->httpAlive($bind, $port);
             $status = $this->supervisorStatus($i);
+            // F-FB5-1 (0.8.2): a backend that does not answer THIS probe is not "hung" when its supervisor — which watches it
+            // continuously — classifies it as busy/slow or still saw a 200 within the busy grace. The supervisor's bounded
+            // detection decides "hung"; the health report mirrors that classification instead of inventing its own.
+            $supState = (string) ($status['state'] ?? '');
+            $recentOk = isset($status['seconds_since_last_ok']) && is_numeric($status['seconds_since_last_ok'])
+                && (int) $status['seconds_since_last_ok'] <= EdgeWebBackendSupervisor::BUSY_GRACE_SECONDS;
+            $availability = match (true) {
+                ! $listening => 'unavailable',
+                $responding => 'responding',
+                in_array($supState, [EdgeWebBackendSupervisor::CLASS_BUSY, EdgeWebBackendSupervisor::CLASS_HEALTHY, EdgeWebBackendSupervisor::CLASS_STARTING], true) || $recentOk => 'busy',
+                default => 'unavailable',
+            };
             $rows[] = [
                 'worker' => $i,
                 'listen' => $bind . ':' . $port,
                 'listening' => $listening,
                 'responding' => $responding,
+                'availability' => $availability,
                 'supervisor' => $status,
             ];
             if ($meta) {
-                if ($listening && ! $responding) {
-                    $problems[] = "Cashier web backend #{$i} is listening on {$bind}:{$port} but not answering HTTP (hung).";
-                } elseif (! $listening) {
+                if (! $listening) {
                     $problems[] = "Cashier web backend #{$i} is not listening on {$bind}:{$port}.";
+                } elseif (! $responding && $availability === 'unavailable') {
+                    $problems[] = "Cashier web backend #{$i} is listening on {$bind}:{$port} but not answering HTTP (supervisor: " . ($supState !== '' ? $supState : 'no status') . ').';
                 }
-                if (in_array((string) ($status['state'] ?? ''), ['failing'], true)) {
+                if ($supState === EdgeWebBackendSupervisor::CLASS_FAILING) {
                     $problems[] = "Cashier web backend #{$i} keeps restarting (" . (int) ($status['restarts_last_10min'] ?? 0) . ' restarts in 10 min; last: ' . (string) ($status['last_restart_reason'] ?? '?') . ').';
+                } elseif (in_array($supState, [EdgeWebBackendSupervisor::CLASS_CONFIRMED, EdgeWebBackendSupervisor::CLASS_RESTARTING], true)) {
+                    $problems[] = "Cashier web backend #{$i} is being restarted by its supervisor (" . (string) ($status['last_restart_reason'] ?? $supState) . ').';
                 }
             }
         }
@@ -553,7 +568,7 @@ class EdgeApplianceHealthService
         }
         $json = json_decode((string) @file_get_contents($file), true);
 
-        return is_array($json) ? array_intersect_key($json, array_flip(['state', 'pid', 'restarts', 'restarts_last_10min', 'last_restart_reason', 'last_restart_at', 'last_probe_at', 'updated_at'])) : null;
+        return is_array($json) ? array_intersect_key($json, array_flip(['state', 'classification', 'pid', 'restarts', 'restarts_last_10min', 'last_restart_reason', 'last_restart_at', 'last_probe_at', 'last_probe_outcome', 'last_ok_at', 'seconds_since_last_ok', 'busy_ticks', 'consecutive_probe_failures', 'updated_at'])) : null;
     }
 
     private function portOpen(string $host, int $port): bool
