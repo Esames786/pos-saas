@@ -177,3 +177,15 @@ Blockers (none of them a merge conflict — the tree merges and lints clean):
 4. Browser programme on the disposable pair only (Online 17/17 + W18, Edge, W15 e2e, D5 pixel recapture, geometry NONE) — per `edge-merged-tree-reconciliation-report.md` §3.
 5. Only then the release path (`edge-next-lab-update-checklist.md`): build, package audit, dry-run plan hash on a copy of the LAB DB, owner approval, LAB install.
 6. Never merge the Edge branch into canonical; never push the rehearsal branch; delete the rehearsal worktree/branch after promotion.
+
+## 7a. SQLite suites on the rehearsal head 8afa8d0e (run by the coordinating session, 30 Oct 09:27–09:40 UTC, one at a time)
+
+| suite | result | classification |
+|---|---|---|
+| tests/Feature/Edge | first pass 204/206 (42,244 assertions): `EdgeBuildInfoTest::test_health_and_ready_endpoints` and `EdgeRuntimeBoundaryTest::test_branch_server_boot_problems_detect_missing_config` reported "EDGE_LOCAL_APP_KEY is not set" — ENVIRONMENTAL: the fresh worktree had no gitignored `.env` (the Edge worktree's `.env` carries that key for the test boot). After copying the Edge worktree's `.env` into the rehearsal worktree: **both PASS** (re-run of the two classes: 65 tests, 163 assertions) → **206/206** | environmental, fixed by the env file |
+| tests/Feature/Pos | **31/31** (490 assertions) | — |
+| tests/Unit | 139 tests (canonical added EscPosReportBridgeTest, EscPosReportGapsTest, StandardUnitsTest, TenantFeatureDefaultsTest): 3 failures = the three known canonical reds (CateringClientFeedbackUiRegressionTest, EscPosReportPayloadTest, DeliveryRiderReassignmentRegressionTest), 1 error `TenantActivationPermissionCacheTest` = `MissingAppKeyException` → ENVIRONMENTAL (same missing `.env`); re-run after the env copy: **PASS** (1 test, 2 assertions) → **136/139** with only the three known reds | environmental + known reds |
+
+No product red was caused by the eight rehearsal chunks on SQLite. Still unrun (deferred by the directive): the full Edge MySQL gate, the canonical merged-area
+MySQL suites, the six new upgrade tests in `EdgeTenantMigrationUpgradeMySqlTest`, and the browser/pixel/geometry gates for the changed shared view.
+INTEGRATION_READINESS stays **NOT_READY** on those plus owner items R-1…R-4.
