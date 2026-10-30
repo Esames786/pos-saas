@@ -10,10 +10,14 @@ use App\Exceptions\ShiftException;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
+use App\Models\Tenant\User;
 use App\Services\Printing\ReminderPauseService;
 use App\Services\Sales\ShiftService;
+use App\Support\TenantFeatures;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 
 class ShiftController extends Controller
 {
@@ -288,6 +292,7 @@ class ShiftController extends Controller
             'shift'         => $shift,
             'currency'      => Currency::where('is_default', true)->with('denominations')->first(),
             'maySeeAmounts' => $maySeeAmounts,
+            'handover'      => $this->handoverInfo($shift, $maySeeAmounts),
         ]);
     }
 
@@ -308,6 +313,11 @@ class ShiftController extends Controller
             'closing_notes'   => ['nullable', 'string'],
             'denominations'   => ['nullable', 'array'],
             'denominations.*' => ['nullable', 'integer', 'min:0'],
+            // SHIFT-HANDOVER-1
+            'handover'              => ['nullable', 'array'],
+            'handover.user_id'      => ['nullable', 'integer'],
+            'handover.password'     => ['nullable', 'string'],
+            'handover.opening_cash' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         // HARDEN-1: the close is atomic. Inside the transaction we row-lock the shift and, still
@@ -332,13 +342,27 @@ class ShiftController extends Controller
             // demanding a count there asks the cashier to certify nothing. That decision is NOT
             // made here: a NULL count is passed down and ShiftService resolves it under the row
             // lock, where expected_cash is the only place it is authoritative.
-            $closed = $shiftService->closeShift($shift, (int) auth('tenant')->id(), $countedCash, $data['closing_notes'] ?? null);
+            // SHIFT-HANDOVER-1: open orders go with the counter to the next cashier, whose shift opens here.
+            $handover = $this->resolveHandover($data['handover'] ?? null);
+            $handedOver = null;
+            if ($handover) {
+                $handedOver = $shiftService->closeAndHandOver(
+                    $shift, (int) auth('tenant')->id(), $countedCash, $data['closing_notes'] ?? null,
+                    $handover['user_id'], $handover['opening_cash']
+                );
+                $closed = $handedOver['closed'];
+            } else {
+                $closed = $shiftService->closeShift($shift, (int) auth('tenant')->id(), $countedCash, $data['closing_notes'] ?? null);
+            }
         } catch (ShiftException $e) {
-            return back()->withErrors(['shift' => $e->getMessage()])->withInput();
+            return back()->withErrors(['shift' => $e->getMessage()])->withInput($request->except('handover.password'));
         }
 
         // CASH-SHORTAGE-1: a short drawer raises a DRAFT expense for finance to settle later.
         $message = 'Shift closed successfully.';
+        if ($handedOver) {
+            $message .= ' ' . $this->handedOverMessage($handedOver);
+        }
         $short = -(float) $closed->cash_variance;
         if ($short > 0.009) {
             $voucher = app(\App\Services\Finance\CashShortageExpenseService::class)->recordShortage(
@@ -436,9 +460,15 @@ class ShiftController extends Controller
             });
         }
 
+        // SHIFT-HANDOVER-1: per terminal that still has open orders, who can take the counter over.
+        $handovers = $openShifts
+            ->mapWithKeys(fn ($shift) => [$shift->id => $this->handoverInfo($shift, $maySeeAmounts)])
+            ->filter()
+            ->all();
+
         return view('tenant.shifts.close-branch', compact(
             'branches', 'selectedBranchId', 'openShifts', 'cancelledOrders', 'voidedLines',
-            'maySeeAmounts'
+            'maySeeAmounts', 'handovers'
         ));
     }
 
@@ -453,6 +483,11 @@ class ShiftController extends Controller
             'counted'             => ['nullable', 'array'],
             'counted.*'           => ['nullable', 'numeric', 'min:0'],
             'closing_notes'       => ['nullable', 'string'],
+            // SHIFT-HANDOVER-1: keyed by the shift id of each terminal handed over.
+            'handover'                => ['nullable', 'array'],
+            'handover.*.user_id'      => ['nullable', 'integer'],
+            'handover.*.password'     => ['nullable', 'string'],
+            'handover.*.opening_cash' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $branch = Branch::findOrFail($data['branch_id']);
@@ -462,7 +497,15 @@ class ShiftController extends Controller
         $operator = auth('tenant')->user();
 
         try {
-            $result = DB::connection('tenant')->transaction(function () use ($branch, $data, $shiftService, $scope, $operator) {
+            // SHIFT-HANDOVER-1: each next cashier's password is checked before anything is locked.
+            $handovers = [];
+            foreach ((array) ($data['handover'] ?? []) as $shiftId => $entry) {
+                if ($resolved = $this->resolveHandover(is_array($entry) ? $entry : null)) {
+                    $handovers[(int) $shiftId] = $resolved;
+                }
+            }
+
+            $result = DB::connection('tenant')->transaction(function () use ($branch, $data, $shiftService, $scope, $operator, $handovers) {
                 // Lock all the branch's open shifts up front (consistent order), then close each via
                 // the canonical guard (still blocks on held sales / open tables per terminal).
                 // A terminal cashier's Close Branch closes only the terminals they may operate, so a
@@ -481,8 +524,35 @@ class ShiftController extends Controller
 
                 $userId = (int) auth('tenant')->id();
                 $closed = [];
+                $handedOver = [];
 
                 foreach ($shifts as $shift) {
+                    // SHIFT-HANDOVER-1: this terminal goes to its next cashier with its open orders. Counted
+                    // exactly like the others: its own entered count, or its expected in branch-total mode.
+                    if (isset($handovers[$shift->id])) {
+                        $entered = $data['counted'][$shift->id] ?? null;
+                        $blank = $entered === null || $entered === '';
+                        if ($data['mode'] === 'per_terminal' && $blank && abs((float) $shift->expected_cash) >= 0.005) {
+                            throw new ShiftException(
+                                'Enter the counted cash for terminal '
+                                . ($shift->terminal?->name ?? ('#' . $shift->terminal_id))
+                                . ' — every open drawer must be counted before the branch can close.'
+                            );
+                        }
+                        $result = $shiftService->closeAndHandOver(
+                            $shift,
+                            $userId,
+                            $data['mode'] === 'per_terminal' ? ($blank ? null : (float) $entered) : (float) $shift->expected_cash,
+                            $data['closing_notes'] ?? null,
+                            $handovers[$shift->id]['user_id'],
+                            $handovers[$shift->id]['opening_cash'],
+                        );
+                        $closed[] = $result['closed'];
+                        $handedOver[] = $result;
+
+                        continue;
+                    }
+
                     $locked = $shiftService->assertClosableUnderLock($shift);
                     $expected = (float) $locked->expected_cash;
 
@@ -556,13 +626,18 @@ class ShiftController extends Controller
                     );
                 }
 
-                return ['closed' => $closed, 'daily' => $daily];
+                return ['closed' => $closed, 'daily' => $daily, 'handed_over' => $handedOver];
             });
         } catch (ShiftException $e) {
-            return back()->withErrors(['branch' => $e->getMessage()])->withInput();
+            return back()->withErrors(['branch' => $e->getMessage()])->withInput($request->except(
+                array_map(fn ($id) => 'handover.' . $id . '.password', array_keys((array) $request->input('handover', [])))
+            ));
         }
 
         $msg = count($result['closed']) . ' shift(s) closed for ' . $branch->name;
+        foreach ($result['handed_over'] as $handedOver) {
+            $msg .= ' — ' . rtrim($this->handedOverMessage($handedOver), '.');
+        }
         if ($result['daily']) {
             $msg .= ' — branch variance ' . number_format((float) $result['daily']->cash_variance, 2)
                 . ' recorded on Daily Closing';
@@ -616,6 +691,94 @@ class ShiftController extends Controller
         app(\App\Services\Reports\ShiftCloseReportTrigger::class)->afterClose($result['closed']);
 
         return redirect('/shifts')->with('status', $msg . '.');
+    }
+
+    /**
+     * SHIFT-HANDOVER-1: what the close screens show for a shift that still has open orders — the orders,
+     * the next cashiers who may take this counter, and for each how many of the orders he would not see
+     * (his order types do not cover them). Null when the switch is off or nothing is open, so the screen
+     * stays exactly as before.
+     */
+    private function handoverInfo(Shift $shift, bool $maySeeAmounts): ?array
+    {
+        if (! TenantFeatures::on(TenantFeatures::SHIFT_HANDOVER)) {
+            return null;
+        }
+
+        $service = app(ShiftService::class);
+        $work = $service->unresolvedWork($shift);
+        if (! $work['held_sales'] && ! $work['open_tables']) {
+            return null;
+        }
+
+        $clock = app(\App\Support\TenantClock::class);
+        $orders = SalesOrder::with('restaurantTable')->whereIn('id', array_keys($work['held_sales']))->orderBy('id')->get();
+        $scope = app(\App\Services\Security\UserDataScope::class);
+
+        return [
+            'orders' => $orders->map(fn (SalesOrder $o) => [
+                'sale_no' => $o->sale_no,
+                'type'    => User::ORDER_TYPES[$o->order_type] ?? ucfirst(str_replace('_', ' ', (string) $o->order_type)),
+                'table'   => $o->restaurantTable?->table_no,
+                'time'    => $clock->format($o->created_at, 'H:i', $shift->timezone_name),
+                'amount'  => $maySeeAmounts ? (float) $o->grand_total : null,
+            ])->all(),
+            'tables'     => array_values($work['open_tables']),
+            'total'      => $maySeeAmounts ? (float) $orders->sum('grand_total') : null,
+            'sameDay'    => $service->handoverSameDay($shift),
+            'candidates' => $service->handoverCandidates($shift, (int) auth('tenant')->id())
+                ->map(fn (User $u) => [
+                    'id'     => (int) $u->id,
+                    'name'   => $u->name,
+                    'hidden' => $orders->filter(fn (SalesOrder $o) => $scope->deniesSale($u, $o))->count(),
+                ])->all(),
+        ];
+    }
+
+    /**
+     * SHIFT-HANDOVER-1: the next cashier must agree — his own password — before a shift opens in his name.
+     * Null when no next cashier was chosen (or the switch is off): the close is then the ordinary one.
+     *
+     * @return array{user_id:int, opening_cash:float}|null
+     */
+    private function resolveHandover(?array $entry): ?array
+    {
+        if (! TenantFeatures::on(TenantFeatures::SHIFT_HANDOVER) || empty($entry['user_id'])) {
+            return null;
+        }
+
+        $next = User::find((int) $entry['user_id']);
+        if (! $next) {
+            throw new ShiftException('Choose the next cashier again.');
+        }
+        if (($entry['opening_cash'] ?? '') === '' || ! is_numeric($entry['opening_cash'])) {
+            throw new ShiftException('Enter ' . $next->name . '\'s opening cash (0 if the drawer starts empty).');
+        }
+        if (($entry['password'] ?? '') === '') {
+            throw new ShiftException('Ask ' . $next->name . ' to type his own password — the new shift opens in his name.');
+        }
+
+        $key = 'shift-handover:' . auth('tenant')->id();
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            throw new ShiftException('Too many wrong passwords. Wait a minute and try again.');
+        }
+        if (! Hash::check((string) $entry['password'], (string) $next->password)) {
+            RateLimiter::hit($key, 60);
+            throw new ShiftException('That is not ' . $next->name . '\'s password.');
+        }
+        RateLimiter::clear($key);
+
+        return ['user_id' => (int) $next->id, 'opening_cash' => (float) $entry['opening_cash']];
+    }
+
+    private function handedOverMessage(array $handedOver): string
+    {
+        $opened = $handedOver['opened'];
+
+        return ($opened->openedBy?->name ?? 'The next cashier') . '\'s shift #' . $opened->id
+            . ' is open on ' . ($opened->terminal?->name ?? ('terminal #' . $opened->terminal_id))
+            . ' with ' . count($handedOver['held']) . ' open order(s)'
+            . ($handedOver['tables'] ? ' and ' . count($handedOver['tables']) . ' table(s)' : '') . '.';
     }
 
     private function calculateCashCount(array $data, string $sourceType, int $sourceId): ?float
