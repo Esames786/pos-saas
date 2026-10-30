@@ -11,7 +11,9 @@
      * correctness never depends on it.
      */
     $isEdit = (bool) $product;
-    $formUrl = $isEdit ? url('/products/' . $product->id) : url('/products');
+    // W3/W4 S3d: Manufacturing Products and Catering Materials post to their own routes.
+    $formBase = $formBase ?? '/products';
+    $formUrl = $isEdit ? url($formBase . '/' . $product->id) : url($formBase);
     $card = old('_card', $currentCard);
     $cardDef = $cards[$card] ?? reset($cards);
     $saved = fn (string $field, $default = null) => old($field, $product?->{$field} ?? $default);
@@ -37,11 +39,11 @@
     $nextCodes = collect($cards)->mapWithKeys(fn ($c) => [$c['key'] => \App\Support\ProductCards::nextSku($c['sku_prefix'])])->all();
     $weightUnitId = $units->first(fn ($u) => in_array($u->unit_type, ['weight', 'volume'], true))?->id;
     $questions = [
-        'sell'   => ['Do you sell it to customers?', 'کیا آپ یہ گاہک کو بیچتے ہیں؟'],
-        'buy'    => ['Do you buy it from a supplier?', 'کیا آپ یہ سپلائر سے خریدتے ہیں؟'],
-        'stock'  => ['Do you want to count its stock?', 'کیا اس کا اسٹاک گننا ہے؟'],
-        'expiry' => ['Does it have a batch and an expiry date?', 'کیا اس کا بیچ اور ایکسپائری ہوتی ہے؟'],
-        'recipe' => ['Is it made from other items (a recipe)?', 'کیا یہ دوسری چیزوں سے بنتا ہے؟'],
+        'sell'   => ['Do you sell it to customers?', ''],
+        'buy'    => ['Do you buy it from a supplier?', ''],
+        'stock'  => ['Do you want to count its stock?', ''],
+        'expiry' => ['Does it have a batch and an expiry date?', ''],
+        'recipe' => ['Is it made from other items (a recipe)?', ''],
     ];
     // Counter button: its own answer, never forced by "sold" (19 Oct).
     $posOn = (bool) (int) old('_pos', $isEdit ? ($product->is_pos_visible ? 1 : 0) : 1);
@@ -68,18 +70,21 @@
     // what this tenant has: Packs only where Master switched them on, Website only with online ordering.
     $websiteOn = \App\Support\OnlineOrdering::enabledForTenant();
     $tabs = array_values(array_filter([
-        ['key' => 'type',    'label' => 'Type',            'ur' => 'قسم',             'icon' => 'ti-category'],
-        ['key' => 'details', 'label' => 'Details',         'ur' => 'تفصیل',           'icon' => 'ti-file-description'],
-        ['key' => 'selling', 'label' => 'Selling & stock', 'ur' => 'بیچنا اور اسٹاک', 'icon' => 'ti-building-store'],
-        $packsOn ? ['key' => 'packs', 'label' => 'Packs', 'ur' => 'پیک', 'icon' => 'ti-packages'] : null,
-        ['key' => 'code',    'label' => 'Code',            'ur' => 'کوڈ',             'icon' => 'ti-barcode'],
-        $websiteOn ? ['key' => 'website', 'label' => 'Website', 'ur' => 'ویب سائٹ', 'icon' => 'ti-world'] : null,
-        ['key' => 'review',  'label' => 'Review',          'ur' => 'جائزہ',           'icon' => 'ti-list-check'],
+        ['key' => 'type',    'label' => 'Type',            'ur' => '',             'icon' => 'ti-category'],
+        ['key' => 'details', 'label' => 'Details',         'ur' => '',           'icon' => 'ti-file-description'],
+        ['key' => 'selling', 'label' => 'Selling & stock', 'ur' => '', 'icon' => 'ti-building-store'],
+        $packsOn ? ['key' => 'packs', 'label' => 'Packs', 'ur' => '', 'icon' => 'ti-packages'] : null,
+        // W3/W4 S3c: the server decides these three (card, plan module, permission) — App\Services\Products\ProductWorkspace.
+        ($ws['access']['recipe'] ?? false) ? ['key' => 'recipe', 'label' => 'Recipe', 'ur' => '', 'icon' => 'ti-tools-kitchen-2'] : null,
+        ($ws['access']['bom'] ?? false) ? ['key' => 'bom', 'label' => 'Bill of materials', 'ur' => '', 'icon' => 'ti-list-tree'] : null,
+        ($ws['access']['catering'] ?? false) ? ['key' => 'catering', 'label' => 'Event costing', 'ur' => '', 'icon' => 'ti-chef-hat'] : null,
+        ['key' => 'code',    'label' => 'Code',            'ur' => '',             'icon' => 'ti-barcode'],
+        $websiteOn ? ['key' => 'website', 'label' => 'Website', 'ur' => '', 'icon' => 'ti-world'] : null,
+        ['key' => 'review',  'label' => 'Review',          'ur' => '',           'icon' => 'ti-list-check'],
     ]));
 @endphp
 
 @push('styles')
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600&display=swap">
 <style>
     .pv2 { --navy:#092C4C; --gold:#B8902E; --goldbg:#FFF8E6; --line:#E3E8EE; --ink2:#4E5B6B; --ok:#1E7A50; --bad:#B42318; max-width:1240px; }
     .pv2 .ur { font-family:"Noto Nastaliq Urdu","Jameel Noori Nastaleeq",serif; direction:rtl; display:block; color:var(--ink2); font-size:.92rem; line-height:2.1; }
@@ -156,6 +161,28 @@
         .pv2 .review { grid-template-columns:1fr auto; }
         .pv2 .review dt { grid-column:1 / -1; border-bottom:0; padding-bottom:0; }
     }
+    /* W3/W4 S3c — the Recipe, Bill of materials and Event costing tabs. On a phone each line becomes a small card. */
+    .pv2 .ws-head { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; }
+    .pv2 .ws-make { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+    .pv2 .ws-make .ws-num { width:110px; }
+    .pv2 .ws-make .ws-unit { width:auto; min-width:120px; }
+    .pv2 .ws-total { color:var(--navy); }
+    .pv2 .ws-errors { margin-bottom:10px; }
+    .pv2 .ws-table th { font-size:.8rem; color:var(--ink2); font-weight:700; white-space:nowrap; }
+    .pv2 .ws-table td.ws-item, .pv2 .ws-table td.ws-mat { min-width:220px; }
+    .pv2 .ws-table td.ws-label, .pv2 .ws-table td.ws-part { min-width:160px; }
+    .pv2 .ws-table td.ws-qty { width:120px; min-width:100px; }
+    .pv2 .ws-table td.ws-unitcell { width:180px; min-width:150px; }
+    .pv2 .ws-table td.ws-cost { white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .pv2 .ws-table td.ws-rm { width:1%; white-space:nowrap; }
+    @media (max-width: 575px) {
+        .pv2 .ws-table thead { display:none; }
+        .pv2 .ws-table tr[data-ws-row] { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); }
+        .pv2 .ws-table tr[data-ws-row] > td { display:block; border:0; padding:0; width:auto; min-width:0; }
+        .pv2 .ws-table td.ws-item, .pv2 .ws-table td.ws-label, .pv2 .ws-table td.ws-mat { grid-column:1 / -1; }
+        .pv2 .ws-table td[data-label]::before { content:attr(data-label); display:block; font-size:.75rem; font-weight:700; color:var(--ink2); margin-bottom:2px; }
+        .pv2 .ws-table td.ws-cost { text-align:left !important; }
+    }
 </style>
 @endpush
 
@@ -164,9 +191,8 @@
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
         <div>
             <h1 class="mb-0">{{ $title }}</h1>
-            <span class="ur">{{ $isEdit ? 'چیز میں تبدیلی' : 'نئی چیز شامل کریں' }}</span>
         </div>
-        <a href="{{ $isEdit ? url('/products/' . $product->id) : url('/products') }}" class="btn btn-light">Back</a>
+        <a href="{{ $formBase !== '/products' ? url($formBase) : ($isEdit ? url('/products/' . $product->id) : url('/products')) }}" class="btn btn-light">Back</a>
     </div>
 
     @if($errors->any())
@@ -178,7 +204,7 @@
 
     @if($isEdit && ($salesCount > 0 || $onHand != 0))
         <div class="note mb-3">This item has <b>{{ number_format($salesCount) }}</b> sale lines and <b>{{ rtrim(rtrim(number_format($onHand, 3), '0'), '.') }}</b> in stock. Saving here never changes past sales or stock.
-            <span class="ur">اس چیز کی پرانی سیل اور اسٹاک ویسے ہی رہیں گے۔</span></div>
+            </div>
     @endif
 
     <form method="POST" action="{{ $formUrl }}" enctype="multipart/form-data" novalidate id="pv2-form">
@@ -192,7 +218,7 @@
                 @foreach($tabs as $n => $t)
                     <button type="button" class="tab" role="tab" id="tab-{{ $t['key'] }}" aria-controls="tp-{{ $t['key'] }}" aria-selected="{{ $n === 0 ? 'true' : 'false' }}" tabindex="{{ $n === 0 ? '0' : '-1' }}" data-tab="{{ $t['key'] }}">
                         <span class="tn" aria-hidden="true"><span>{{ $n + 1 }}</span></span>
-                        <span class="tl">{{ $t['label'] }}<span class="ur-inline">{{ $t['ur'] }}</span></span>
+                        <span class="tl">{{ $t['label'] }}</span>
                         <span class="terr" aria-hidden="true"></span>
                         <span class="visually-hidden" data-tab-sr></span>
                     </button>
@@ -207,7 +233,6 @@
                 <section class="tp" id="tp-type" role="tabpanel" aria-labelledby="tab-type" tabindex="-1">
                 <fieldset class="step">
                     <legend>What are you adding?</legend>
-                    <span class="ur">آپ کیا شامل کر رہے ہیں؟</span>
                     @if($businessInfo)
                         <p class="help mb-0">Showing {{ $businessInfo['label'] }} items only.</p>
                     @endif
@@ -217,7 +242,6 @@
                                 <input type="radio" name="_card" value="{{ $c['key'] }}" @checked($card === $c['key']) aria-describedby="card-{{ $c['key'] }}-says">
                                 <img src="{{ asset($c['image']) }}" alt="" aria-hidden="true">
                                 <b>{{ $c['label'] }}</b>
-                                <span class="ur-inline">{{ $c['label_ur'] }}</span>
                                 <small id="card-{{ $c['key'] }}-says">{{ $c['says'] }}</small>
                                 <span class="eg">e.g. {{ $c['example'] }}</span>
                             </label>
@@ -226,18 +250,23 @@
                     @if($isEdit)
                         <p class="help mt-2 mb-0" id="pv2-card-warn" hidden>You are changing the type of a saved item. Past sales and stock stay as they are.</p>
                     @endif
+                    {{-- W3/W4 S2: an item no card here fits keeps its role and every saved setting; only picking another card changes it. --}}
+                    @if($misfitRole ?? null)
+                        <div class="alert alert-warning mt-2 mb-0 py-2" id="pv2-misfit" role="status">
+                            None of these cards fits this item. Its role (<b>{{ $misfitRole }}</b>) and its saved settings are kept as they are. Pick a card only if you want to change it.
+                        </div>
+                    @endif
                 </fieldset>
                 </section>
 
                 <section class="tp" id="tp-details" role="tabpanel" aria-labelledby="tab-details" tabindex="-1" hidden>
                 <fieldset class="step">
                     <legend>Basic details</legend>
-                    <span class="ur">بنیادی معلومات</span>
                     <div class="row g-3 mt-1">
                         <div class="col-md-7">
                             <label class="form-label" for="name">Name <span class="text-danger" aria-hidden="true">*</span></label>
                             <input id="name" name="name" class="form-control form-control-lg @error('name') is-invalid @enderror" value="{{ $saved('name') }}" required aria-required="true" aria-describedby="name-help" autocomplete="off">
-                            <div id="name-help" class="help">The name your staff and customers know it by. <span class="ur-inline">وہ نام جس سے سب جانتے ہیں</span></div>
+                            <div id="name-help" class="help">The name your staff and customers know it by.</div>
                             @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-5">
@@ -257,7 +286,7 @@
                                     <option value="{{ $u->id }}" @selected((string) $saved('unit_id') === (string) $u->id)>{{ $u->name }}{{ in_array($u->unit_type, ['weight', 'volume', 'length'], true) ? ' — can sell 1.250' : '' }}</option>
                                 @endforeach
                             </select>
-                            <div id="unit-help" class="help">Piece, tablet, bottle — or kg / litre to sell part quantities. <span class="ur-inline">کس حساب سے بکتا ہے</span></div>
+                            <div id="unit-help" class="help">Piece, tablet, bottle — or kg / litre to sell part quantities.</div>
                         </div>
                         <div class="col-md-6">
                             <span class="form-label d-block">Is it in use?</span>
@@ -287,12 +316,11 @@
                 @if($hasMedicineCols)
                 <fieldset class="step" data-only="medicine" @if(! $cardDef['medicine']) hidden @endif>
                     <legend>Medicine details</legend>
-                    <span class="ur">دوائی کی تفصیل</span>
                     <div class="row g-3 mt-1">
                         <div class="col-md-6">
                             <label class="form-label" for="generic_name">Salt / formula</label>
                             <input id="generic_name" name="generic_name" class="form-control form-control-lg" value="{{ $saved('generic_name') }}" aria-describedby="gen-help" autocomplete="off">
-                            <div id="gen-help" class="help">e.g. Paracetamol. The counter finds every brand by its salt. <span class="ur-inline">سالٹ / فارمولا</span></div>
+                            <div id="gen-help" class="help">e.g. Paracetamol. The counter finds every brand by its salt.</div>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label" for="strength">Strength</label>
@@ -304,7 +332,6 @@
                                 <input type="radio" id="rx-n" name="_rx" value="0" @checked(! (bool) (int) old('_rx', $product?->needs_prescription ? 1 : 0))><label for="rx-n">No</label>
                                 <input type="radio" id="rx-y" name="_rx" value="1" @checked((bool) (int) old('_rx', $product?->needs_prescription ? 1 : 0))><label for="rx-y">Yes</label>
                             </div>
-                            <span class="ur-inline">ڈاکٹر کا نسخہ</span>
                         </div>
                     </div>
                 </fieldset>
@@ -314,13 +341,12 @@
                 <section class="tp" id="tp-selling" role="tabpanel" aria-labelledby="tab-selling" tabindex="-1" hidden>
                 <fieldset class="step">
                     <legend>A few questions</legend>
-                    <span class="ur">چند سوال — جواب "ہاں" ہو تو اس کا حصہ کھلتا ہے</span>
 
                     @foreach($questions as $q => [$en, $ur])
                         @php $rule = $cardDef['ask'][$q] ?? null; $locked = $rule !== null && isset($rule['lock']) || ($q === 'stock' && $stockLocked); $on = $q === 'stock' && $stockLocked ? true : $ans[$q]; @endphp
                         <div class="q" data-q="{{ $q }}" @if($rule === null) hidden @endif>
                             <div class="q-head">
-                                <div><span class="q-text" id="q-{{ $q }}-label">{{ $en }}</span><span class="ur">{{ $ur }}</span></div>
+                                <div><span class="q-text" id="q-{{ $q }}-label">{{ $en }}</span></div>
                                 <div class="yn" role="radiogroup" aria-labelledby="q-{{ $q }}-label" data-yn="{{ $q }}" @if($locked) hidden @endif>
                                     <input type="radio" id="q-{{ $q }}-y" name="_{{ $q }}" value="1" @checked($on) @disabled($locked)><label for="q-{{ $q }}-y">Yes</label>
                                     <input type="radio" id="q-{{ $q }}-n" name="_{{ $q }}" value="0" @checked(! $on) @disabled($locked)><label for="q-{{ $q }}-n">No</label>
@@ -337,7 +363,7 @@
                                         <div class="col-md-6">
                                             <label class="form-label" for="default_selling_price">Selling price (Rs) <span class="text-danger" aria-hidden="true">*</span></label>
                                             <input id="default_selling_price" name="default_selling_price" inputmode="decimal" class="form-control form-control-lg @error('default_selling_price') is-invalid @enderror" value="{{ $saved('default_selling_price') }}" aria-describedby="sp-help">
-                                            <div id="sp-help" class="help">The price for one {{ $cardDef['weight'] ? 'kg / litre' : 'piece' }}. <span class="ur-inline">بیچنے کی قیمت</span></div>
+                                            <div id="sp-help" class="help">The price for one {{ $cardDef['weight'] ? 'kg / litre' : 'piece' }}.</div>
                                             @error('default_selling_price')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                         </div>
                                         {{-- Its own answer: "sold" never means "has a button" (19 Oct — items sold inside deals,
@@ -348,7 +374,7 @@
                                                 <input type="radio" id="pos-y" name="_pos" value="1" @checked($posOn)><label for="pos-y">Yes</label>
                                                 <input type="radio" id="pos-n" name="_pos" value="0" @checked(! $posOn)><label for="pos-n">No, hide it</label>
                                             </div>
-                                            <div class="help">"No" = still sold — inside a deal, as an add-on, or on the website — but the counter has no button for it. <span class="ur-inline">بٹن نہیں، پھر بھی بکتا ہے</span></div>
+                                            <div class="help">"No" = still sold — inside a deal, as an add-on, or on the website — but the counter has no button for it.</div>
                                         </div>
                                     </div>
                                 @elseif($q === 'buy')
@@ -356,7 +382,7 @@
                                         <div class="col-md-6">
                                             <label class="form-label" for="default_purchase_price">Buying price (Rs)</label>
                                             <input id="default_purchase_price" name="default_purchase_price" inputmode="decimal" class="form-control form-control-lg" value="{{ $saved('default_purchase_price') }}" aria-describedby="bp-help">
-                                            <div id="bp-help" class="help">What you pay the supplier for one. Goods receipts (GRN) fill this in later. <span class="ur-inline">خرید کی قیمت</span></div>
+                                            <div id="bp-help" class="help">What you pay the supplier for one. Goods receipts (GRN) fill this in later.</div>
                                         </div>
                                         {{-- PURCHASE-DISCOUNTS-1 (owner: "product level discount fixed ya % pehle se"). The new GRN / order
                                              fill these in; the last deal with the supplier comes first, and the line can always change. --}}
@@ -374,14 +400,14 @@
                                                     <option value="amount" @selected($pdType === 'amount')>Rs</option>
                                                 </select>
                                             </div>
-                                            <div id="pd-help" class="help">The GRN fills it in; you can change it on the line. <span class="ur-inline">خرید پر عام رعایت</span></div>
+                                            <div id="pd-help" class="help">The GRN fills it in; you can change it on the line.</div>
                                             @error('purchase_discount_value')<div class="text-danger small">{{ $message }}</div>@enderror
                                         </div>
                                         @if(in_array($business, [\App\Support\Business::PHARMACY, \App\Support\Business::MART], true))
                                             <div class="col-md-6">
                                                 <label class="form-label" for="purchase_scheme">Usual scheme</label>
                                                 <input id="purchase_scheme" name="purchase_scheme" class="form-control form-control-lg @error('purchase_scheme') is-invalid @enderror" value="{{ $pScheme }}" placeholder="10+1" aria-describedby="ps-help" autocomplete="off">
-                                                <div id="ps-help" class="help">Buy 10, get 1 free — the GRN adds the free quantity by itself. <span class="ur-inline">اسکیم</span></div>
+                                                <div id="ps-help" class="help">Buy 10, get 1 free — the GRN adds the free quantity by itself.</div>
                                                 @error('purchase_scheme')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                             </div>
                                         @endif
@@ -391,7 +417,7 @@
                                         <div class="col-md-6">
                                             <label class="form-label" for="reorder_level">Tell me when stock goes below</label>
                                             <input id="reorder_level" name="reorder_level" inputmode="decimal" class="form-control form-control-lg" value="{{ old('reorder_level', $reorderLevel ?? 0) }}" aria-describedby="rl-help">
-                                            <div id="rl-help" class="help">Shown on the low-stock list. <span class="ur-inline">جب اتنا رہ جائے تو بتائیں</span></div>
+                                            <div id="rl-help" class="help">Shown on the low-stock list.</div>
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label" for="reorder_quantity">How much to order then</label>
@@ -400,9 +426,11 @@
                                         <div class="col-12 help">Stock comes in with a goods receipt (GRN) or a stock adjustment, and goes out when it is sold or used.</div>
                                     </div>
                                 @elseif($q === 'expiry')
-                                    <p class="help mb-0">Every goods receipt will ask for the batch number and expiry date, and the counter sells the batch that expires first. <span class="ur-inline">ہر خرید پر بیچ اور ایکسپائری</span></p>
+                                    <p class="help mb-0">Every goods receipt will ask for the batch number and expiry date, and the counter sells the batch that expires first.</p>
+                                @elseif($q === 'recipe' && ($ws['access']['recipe'] ?? false))
+                                    <p class="help mb-0">Add what it is made from on the <b>Recipe</b> tab — it is saved with the item. When it sells, those items are taken out of stock.</p>
                                 @elseif($q === 'recipe')
-                                    <p class="help mb-0">After saving, add what it is made from on the <a href="{{ url('/recipes/create') }}">Recipes</a> screen. When it sells, those items are taken out of stock. <span class="ur-inline">ترکیب بعد میں شامل کریں</span></p>
+                                    <p class="help mb-0">After saving, add what it is made from on the <a href="{{ url('/recipes/create') }}">Recipes</a> screen. When it sells, those items are taken out of stock.</p>
                                 @endif
                             </div>
                             @if($locked)<input type="hidden" name="_{{ $q }}" value="{{ $on ? 1 : 0 }}" data-locked-input="{{ $q }}">@endif
@@ -411,7 +439,7 @@
 
                     <div class="q" data-q="tax">
                         <div class="q-head">
-                            <div><span class="q-text" id="q-tax-label">Is there tax on it?</span><span class="ur">کیا اس پر ٹیکس ہے؟</span></div>
+                            <div><span class="q-text" id="q-tax-label">Is there tax on it?</span></div>
                             <div class="yn" role="radiogroup" aria-labelledby="q-tax-label">
                                 <input type="radio" id="q-tax-y" name="_tax" value="1" @checked($tax)><label for="q-tax-y">Yes</label>
                                 <input type="radio" id="q-tax-n" name="_tax" value="0" @checked(! $tax)><label for="q-tax-n">No</label>
@@ -428,7 +456,7 @@
                      A box not shown keeps its saved value (ProductCards::resolve reads only what is posted). --}}
                 @if($moreFields)
                 <details class="step" id="pv2-more" @if($moreOpen) open @endif>
-                    <summary class="step-title" style="cursor:pointer">More settings <span class="ur-inline">مزید ترتیبات</span>
+                    <summary class="step-title" style="cursor:pointer">More settings
                         <span class="help d-block" style="font-weight:400">Only if you need them — each keeps its saved value until you change it.</span></summary>
                     <input type="hidden" name="_more" value="1">
                     <div class="row g-3 mt-1">
@@ -440,7 +468,7 @@
                                         <option value="{{ $v }}" @selected($moreVals['item_kind'] === $v)>{{ $l }}</option>
                                     @endforeach
                                 </select>
-                                <div class="help">The old screen called this "Item Kind". <span class="ur-inline">کس کام آتا ہے</span></div>
+                                <div class="help">The old screen called this "Item Kind".</div>
                             </div>
                         @endif
                         @if(in_array('perishable', $moreFields, true))
@@ -450,7 +478,7 @@
                                     <input type="radio" id="per-y" name="_perishable" value="1" @checked($moreVals['perishable'])><label for="per-y">Yes</label>
                                     <input type="radio" id="per-n" name="_perishable" value="0" @checked(! $moreVals['perishable'])><label for="per-n">No</label>
                                 </div>
-                                <div class="help">Milk, meat, vegetables. <span class="ur-inline">جلد خراب ہونے والی</span></div>
+                                <div class="help">Milk, meat, vegetables.</div>
                             </div>
                         @endif
                         @if(in_array('storage', $moreFields, true))
@@ -458,7 +486,7 @@
                                 <label class="form-label" for="storage_type">Kept in</label>
                                 <input id="storage_type" name="storage_type" list="pv2-storage" maxlength="50" class="form-control form-control-lg" value="{{ $moreVals['storage'] }}" placeholder="e.g. Fridge">
                                 <datalist id="pv2-storage">@foreach(['Room temperature', 'Dry store', 'Fridge', 'Freezer'] as $o)<option value="{{ $o }}"></option>@endforeach</datalist>
-                                <div class="help">Where it is kept. <span class="ur-inline">کہاں رکھا جاتا ہے</span></div>
+                                <div class="help">Where it is kept.</div>
                             </div>
                         @endif
                         @if(in_array('shelf', $moreFields, true))
@@ -471,7 +499,7 @@
                             <div class="col-md-6">
                                 <label class="form-label" for="default_wastage_percent">Usual waste (%)</label>
                                 <input id="default_wastage_percent" name="default_wastage_percent" inputmode="decimal" class="form-control form-control-lg" value="{{ $moreVals['wastage'] }}" style="max-width:200px">
-                                <div class="help">Used when a recipe is costed — e.g. 10% of onions is peel. <span class="ur-inline">عام ضیاع</span></div>
+                                <div class="help">Used when a recipe is costed — e.g. 10% of onions is peel.</div>
                             </div>
                         @endif
                         @if(in_array('buyunit', $moreFields, true))
@@ -485,7 +513,7 @@
                                     <span>holding</span>
                                     <input id="purchase_pack_size" name="purchase_pack_size" inputmode="decimal" class="form-control form-control-lg" value="{{ $moreVals['buy_size'] }}" style="max-width:120px" aria-label="How many in one">
                                 </div>
-                                <div class="help">e.g. a 50 kg sack. Only recipe costing reads this. <span class="ur-inline">ترکیب کی لاگت کے لیے</span></div>
+                                <div class="help">e.g. a 50 kg sack. Only recipe costing reads this.</div>
                             </div>
                         @endif
                     </div>
@@ -499,10 +527,25 @@
                     </section>
                 @endif
 
+                @if($ws['access']['recipe'] ?? false)
+                    <section class="tp" id="tp-recipe" role="tabpanel" aria-labelledby="tab-recipe" tabindex="-1" hidden>
+                        @include('tenant.products.partials.ws-recipe')
+                    </section>
+                @endif
+                @if($ws['access']['bom'] ?? false)
+                    <section class="tp" id="tp-bom" role="tabpanel" aria-labelledby="tab-bom" tabindex="-1" hidden>
+                        @include('tenant.products.partials.ws-bom')
+                    </section>
+                @endif
+                @if($ws['access']['catering'] ?? false)
+                    <section class="tp" id="tp-catering" role="tabpanel" aria-labelledby="tab-catering" tabindex="-1" hidden>
+                        @include('tenant.products.partials.ws-catering')
+                    </section>
+                @endif
+
                 <section class="tp" id="tp-code" role="tabpanel" aria-labelledby="tab-code" tabindex="-1" hidden>
                 <fieldset class="step">
                     <legend>Code and barcode</legend>
-                    <span class="ur">کوڈ اور بارکوڈ</span>
                     <div class="row g-3 mt-1">
                         <div class="col-md-6">
                             <label class="form-label" for="sku">Item code</label>
@@ -510,7 +553,7 @@
                                 <input id="sku" name="sku" class="form-control @error('sku') is-invalid @enderror" value="{{ $saved('sku') }}" aria-describedby="sku-help" autocomplete="off" style="text-transform:uppercase">
                                 <button type="button" class="btn btn-outline-secondary" id="make-sku">Make code</button>
                             </div>
-                            <div id="sku-help" class="help">Leave it empty and Bingoo makes the next code (e.g. <span id="sku-next">{{ $nextCodes[$card] ?? '' }}</span>). <span class="ur-inline">خالی چھوڑیں تو خود بن جاتا ہے</span></div>
+                            <div id="sku-help" class="help">Leave it empty and Bingoo makes the next code (e.g. <span id="sku-next">{{ $nextCodes[$card] ?? '' }}</span>).</div>
                             @error('sku')<div class="text-danger small">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-6">
@@ -519,7 +562,6 @@
                                 <input type="radio" id="bc-y" name="_barcode" value="1" @checked($hasBarcode)><label for="bc-y">Yes</label>
                                 <input type="radio" id="bc-n" name="_barcode" value="0" @checked(! $hasBarcode)><label for="bc-n">No</label>
                             </div>
-                            <span class="ur">کیا اس پر بارکوڈ ہے؟</span>
                         </div>
                         <div class="col-12" data-body="barcode" @if(! $hasBarcode) hidden @endif>
                             <div class="row g-3 align-items-end">
@@ -556,14 +598,25 @@
                 <section class="tp" id="tp-review" role="tabpanel" aria-labelledby="tab-review" tabindex="-1" hidden>
                     <fieldset class="step">
                         <legend>Check before saving</legend>
-                        <span class="ur">محفوظ کرنے سے پہلے دیکھ لیں</span>
                         <dl class="review" id="pv2-review"></dl>
+                        {{-- W3/W4 S2: the server decides what this save may change; everything else keeps its saved value. --}}
+                        @if(! empty($keptAsSaved))
+                            <div class="mt-3" id="pv2-kept" role="region" aria-labelledby="pv2-kept-title">
+                                <h2 class="h6 mb-1" id="pv2-kept-title">Not shown for this item — kept as saved</h2>
+                                <ul class="mb-1 ps-3 small">
+                                    @foreach($keptAsSaved as $words => $value)
+                                        <li>{{ $words }}: <b>{{ $value }}</b></li>
+                                    @endforeach
+                                </ul>
+                                <p class="help mb-0">The server decides which settings this screen may change, from this item's card and the shop's switches. Every other setting keeps its saved value.</p>
+                            </div>
+                        @endif
                         {{-- "What will happen" lives here now: the owner (19 Oct) found the side box took too much room. --}}
                         <div class="what mt-3" role="region" aria-labelledby="what-title">
-                            <h2 id="what-title">What will happen <span class="ur-inline" style="color:#F2DFA8">کیا ہوگا</span></h2>
+                            <h2 id="what-title">What will happen</h2>
                             <ul id="what-list" class="mb-0 ps-3"></ul>
                         </div>
-                        <p class="help mt-2 mb-0">Nothing is saved until you press Save. <span class="ur-inline">سیو دبانے تک کچھ محفوظ نہیں ہوتا</span></p>
+                        <p class="help mt-2 mb-0">Nothing is saved until you press Save.</p>
                     </fieldset>
                 </section>
 
@@ -572,7 +625,7 @@
                     <button type="button" class="btn btn-outline-primary btn-big" id="pv2-next">Next →</button>
                     <span class="grow"></span>
                     <span class="hint d-none d-xl-inline">Ctrl + Enter saves</span>
-                    <button type="submit" class="btn btn-primary btn-big" id="pv2-save">Save <span class="ur-inline" style="color:#fff">محفوظ کریں</span></button>
+                    <button type="submit" class="btn btn-primary btn-big" id="pv2-save">Save</button>
                     <button type="submit" name="_after" value="new" class="btn btn-outline-primary btn-big d-none d-sm-inline-block">Save and add another</button>
                 </div>
             </div>
@@ -879,6 +932,7 @@
             var sum = (document.getElementById('pack-sum') || {}).textContent || '';
             row('Packs', yes('_packs') ? (/=/.test(sum) ? sum : 'Not finished') : 'No', 'packs', yes('_packs') && !/=/.test(sum));
         }
+        if (window.pv2WsReview) window.pv2WsReview(row);
         var next = (document.getElementById('sku-next') || {}).textContent || '';
         row('Item code', val('#sku') || ('Made by Bingoo' + (next ? ' (' + next + ')' : '')), 'code');
         row('Barcode', yes('_barcode') ? (val('#barcode') || 'Not written yet') : 'No', 'code', yes('_barcode') && !val('#barcode'));
@@ -971,5 +1025,7 @@
     var withError = keys.filter(function (k) { return errorsIn(k) > 0; })[0];
     show(withError || (keys.indexOf(hash) >= 0 ? hash : keys[0]), { scroll: false });
 })();
+
+@include('tenant.products.partials.ws-script')
 </script>
 @endpush

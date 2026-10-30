@@ -222,7 +222,11 @@ class SalesOrderController extends Controller
                     // MEDICAL-COUNTER-1: a line sold in a pack (Box / Strip / Tablet) — quantity in packs, the
                     // price of one pack; its tablets go beside it for stock. Off = null = today's line.
                     $pack = $lineKind === 'standard' ? \App\Support\CounterPacks::resolve($product, (array) $line, $qty) : null;
-                    if ($pack && $submittedPrice === null) {
+                    if ($pack && \App\Support\CounterPacks::serverPricesPacks()) {
+                        // UNITS-PACKS F3: the normal counter's pack price is the server's — its own, else size × the branch price.
+                        $submittedPrice = $pack['pack_own_price'] ? $pack['pack_price']
+                            : round($pack['pack_size'] * $this->resolveSellingPrice($product, $variant, $branch->id, null), 2);
+                    } elseif ($pack && $submittedPrice === null) {
                         $submittedPrice = $pack['pack_price'];
                     }
                     // …and the batch the cashier picked goes first (checked: this product's, this branch's, not expired).
@@ -255,6 +259,7 @@ class SalesOrderController extends Controller
                         'pack_unit_id'    => $pack['pack_unit_id'] ?? null,
                         'pack_name'       => $pack['pack_name'] ?? null,
                         'pack_factor'     => $pack['pack_factor'] ?? null,
+                        'pack_size'       => $pack['pack_size'] ?? null,
                         'base_quantity'   => $pack['base_quantity'] ?? null,
                         'inventory_batch_id' => $preferBatch,
                     ]);
@@ -567,6 +572,7 @@ class SalesOrderController extends Controller
                         'kot_sent_quantity'  => $sentQuantity,
                         'pack_unit_id'       => $line['pack_unit_id'] ?? null,
                         'pack_factor'        => $line['pack_factor'] ?? null,
+                    ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $line['pack_size'] ?? null) + \App\Support\LineQuantity::enteredColumns($line) + [
                         'base_quantity'      => $line['base_quantity'] ?? null,
                         'inventory_batch_id' => $line['inventory_batch_id'] ?? null,
                     ]);
@@ -888,6 +894,8 @@ class SalesOrderController extends Controller
             'lines.*.modifiers'          => ['nullable', 'string'],
             // MEDICAL-COUNTER-1: the pack a line is sold in (checked against the product in CounterPacks).
             'lines.*.pack_unit_id'       => ['nullable', 'integer'],
+            'lines.*.entered_quantity'   => ['nullable', 'numeric', 'min:0'],
+            'lines.*.entered_unit_code'  => ['nullable', 'string', 'max:10'],
             'lines.*.inventory_batch_id' => ['nullable', 'integer'],
 
             'void_items'                            => ['nullable', 'array'],
@@ -908,6 +916,9 @@ class SalesOrderController extends Controller
             'payments.*.cheque_date'           => ['nullable', 'date'],
             'payments.*.notes'                 => ['nullable', 'string'],
         ]);
+
+        // W2-B: every line's quantity made exact (3 decimals) and counted items whole, before price, stock or KOT reads it.
+        $data['lines'] = \App\Support\LineQuantity::prepareSaleLines($data['lines']);
 
         return $this->validateDeliveryAttribution($data);
     }

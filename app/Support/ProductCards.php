@@ -94,6 +94,60 @@ final class ProductCards
         return $out;
     }
 
+    /** W3/W4 S2: the five questions a card may ask, in the screen's words. */
+    public const QUESTION_WORDS = [
+        'sell'   => 'Sold to customers',
+        'buy'    => 'Bought from suppliers',
+        'stock'  => 'Stock counted',
+        'expiry' => 'Batch & expiry',
+        'recipe' => 'Made from a recipe',
+    ];
+
+    /** W3/W4 S2: a saved item's own answer to one of the card questions. */
+    public static function savedAnswer(Product $p, string $q): bool
+    {
+        return match ($q) {
+            'sell'   => (bool) $p->is_sellable,
+            'buy'    => (bool) $p->is_purchasable,
+            'stock'  => (bool) $p->is_stock_tracked,
+            'expiry' => (bool) $p->has_expiry,
+            'recipe' => $p->inventory_consumption_method === 'recipe',
+            default  => false,
+        };
+    }
+
+    /**
+     * W3/W4 S2: the item fits no card of this business — its role is not one the card (the one the server picks for
+     * it) allows. Such an item keeps its role and every saved answer until the user picks another card.
+     */
+    public static function isMisfit(?string $business, Product $p, string $cardKey): bool
+    {
+        $cards = self::forBusiness($business);
+
+        return $cardKey === self::detect($business, $p)
+            && ! in_array($p->product_kind ?: Product::KIND_SALE_ITEM, $cards[$cardKey]['allowed_kinds'] ?? [], true);
+    }
+
+    /**
+     * W3/W4 S2: what the edit screen does not show for this item and keeps as saved — [question words => Yes / No]. A
+     * misfit item keeps every answer.
+     *
+     * @return array<string, string>
+     */
+    public static function keptAsSaved(?string $business, Product $p, string $cardKey): array
+    {
+        $card = self::forBusiness($business)[$cardKey] ?? null;
+        $misfit = self::isMisfit($business, $p, $cardKey);
+        $out = [];
+        foreach (self::QUESTION_WORDS as $q => $words) {
+            if ($misfit || ($card['ask'][$q] ?? null) === null) {
+                $out[$words] = self::savedAnswer($p, $q) ? 'Yes' : 'No';
+            }
+        }
+
+        return $out;
+    }
+
     /** The card an existing product belongs to (its saved kind and flags decide; data is never changed by this). */
     public static function detect(?string $business, Product $p): string
     {
@@ -133,11 +187,22 @@ final class ProductCards
     {
         $cards = self::forBusiness($business);
         $key = (string) ($in['_card'] ?? '');
-        $card = $cards[$key] ?? ($saved ? $cards[self::detect($business, $saved)] : reset($cards));
-        $answer = function (string $q) use ($card, $in): bool {
+        $detected = $saved ? self::detect($business, $saved) : null;
+        $card = $cards[$key] ?? ($saved ? $cards[$detected] : reset($cards));
+        // W3/W4 S2 — the SERVER decides what this save may change; nothing the browser says about which sections it
+        // showed is used. On an edit with the card the server itself picks for the item (the user changed nothing
+        // there), a question that card does not ask keeps its saved answer — it used to be saved as "no", clearing
+        // expiry, batch or recipe. An item that no card of this business fits (a packaging item in a pharmacy) keeps
+        // its role and every saved answer. Choosing ANOTHER card is a real change and works as before.
+        $sameCard = $saved && $card['key'] === $detected;
+        $misfit = $sameCard && self::isMisfit($business, $saved, $card['key']);
+        $answer = function (string $q) use ($card, $in, $saved, $sameCard, $misfit): bool {
+            if ($misfit) {
+                return self::savedAnswer($saved, $q);
+            }
             $rule = $card['ask'][$q] ?? null;
             if ($rule === null) {
-                return false;
+                return $sameCard ? self::savedAnswer($saved, $q) : false;
             }
             if (isset($rule['lock'])) {
                 return (bool) $rule['default'];
@@ -152,9 +217,12 @@ final class ProductCards
         $expiry = $answer('expiry');
         $recipe = $answer('recipe');
 
-        $kind = ($saved && in_array($saved->product_kind, $card['allowed_kinds'], true)) ? $saved->product_kind : $card['kind'];
+        $kind = ($saved && ($misfit || in_array($saved->product_kind, $card['allowed_kinds'], true)))
+            ? ($saved->product_kind ?: Product::KIND_SALE_ITEM) : $card['kind'];
         $isService = $kind === Product::KIND_SERVICE;
-        if ($isService) {
+        // A NEW service is never bought or stocked. A saved one keeps what it has: forcing both off made a service
+        // with stock history impossible to save at all (the stock guard refuses switching counting off).
+        if ($isService && ! $saved) {
             $stock = false;
             $buy = false;
         }
@@ -168,8 +236,9 @@ final class ProductCards
         }
 
         $method = $recipe ? 'recipe' : ($stock ? 'stock_item' : 'none');
-        $isMfgFinished = $card['mfg'] === 'finished';
-        $isSemi = $card['mfg'] === 'semi';
+        // A misfit item keeps its own factory flags too (its default card may be a factory one).
+        $isMfgFinished = ! $misfit && $card['mfg'] === 'finished';
+        $isSemi = ! $misfit && $card['mfg'] === 'semi';
 
         // The counter button is its own answer (19 Oct, owner on a live tenant: an item sold inside deals,
         // as an add-on or online is "Hidden from POS" yet sellable). A save that did not ask keeps it.

@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Purchase Return ' . $return->return_no)
+@section('title', 'Supplier Return ' . $return->return_no)
 
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">

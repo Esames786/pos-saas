@@ -3,6 +3,7 @@
 namespace App\Services\Reports;
 
 use App\Services\Concerns\ResolvesBranchIds;
+use App\Support\QtyMix;
 use App\Support\TenantClock;
 use Illuminate\Support\Facades\DB;
 
@@ -405,6 +406,8 @@ class SalesReportEngine
             'sold_qty' => $soldQty,
             'returned_qty' => $returnedQty,
             'net_qty' => $soldQty - $returnedQty,
+            // UNITS-PACKS F4: the same totals split by kind of unit (kg and pieces are never one number).
+            ...$this->overviewMix($f),
             'gross_sales' => (float) $s->gross_sales,
             'discount' => (float) $s->discount,
             'tax' => (float) $s->tax,
@@ -456,6 +459,8 @@ class SalesReportEngine
             'sold_qty' => $soldQty,
             'returned_qty' => $returnedQty,
             'net_qty' => $soldQty - $returnedQty,
+            // UNITS-PACKS F4: the same totals split by kind of unit (kg and pieces are never one number).
+            ...$this->overviewMix($f),
             'gross_sales' => (float) $m->gross_sales,
             'discount' => (float) $m->discount,
             'tax' => (float) $m->tax,
@@ -540,6 +545,9 @@ class SalesReportEngine
                 ->pluck('orders', 'root_id')->all();
         }
 
+        // UNITS-PACKS F4: the same quantities split by kind of unit, so a head of kg and pieces is never one number.
+        $mixes = $this->qtyMixes($f, $cat);
+
         foreach ($tree as $rootId => &$root) {
             foreach (['orders', 'sold_qty', 'returned_qty', 'gross', 'discount', 'tax', 'net', 'returns_amount'] as $key) {
                 $root[$key] ??= 0;
@@ -550,13 +558,21 @@ class SalesReportEngine
             $root['net_qty'] = $root['sold_qty'] - $root['returned_qty'];
             $root['net_value'] = $root['net'] - $root['returns_amount'];
             $root['children'] = array_values($root['children'] ?? []);
+            $root['sold_mix'] = $root['returned_mix'] = [];
             foreach ($root['children'] as &$c) {
                 foreach (['orders', 'sold_qty', 'returned_qty', 'gross', 'discount', 'tax', 'net', 'returns_amount'] as $key) {
                     $c[$key] ??= 0;
                 }
                 $c['net_qty'] = $c['sold_qty'] - $c['returned_qty'];
                 $c['net_value'] = $c['net'] - $c['returns_amount'];
+                $c['sold_mix'] = $mixes[(int) $c['id']]['sold'] ?? [];
+                $c['returned_mix'] = $mixes[(int) $c['id']]['returned'] ?? [];
+                $c['net_mix'] = QtyMix::merge($c['sold_mix'], $c['returned_mix'], -1.0);
+                $root['sold_mix'] = QtyMix::merge($root['sold_mix'], $c['sold_mix']);
+                $root['returned_mix'] = QtyMix::merge($root['returned_mix'], $c['returned_mix']);
             }
+            unset($c);
+            $root['net_mix'] = QtyMix::merge($root['sold_mix'], $root['returned_mix'], -1.0);
             // REPORT-CATEGORY-ORDER-1: within a head too, so a sub-category lands where the menu
             // puts it rather than where the grouping happened to leave it.
             usort($root['children'], fn ($x, $y) => $this->compareCategoryOrder((int) $x['id'], (int) $y['id']));
@@ -606,13 +622,15 @@ class SalesReportEngine
         $rows = $this->linesBase($f)
             ->when($excludeCombos, fn ($q) => $q->whereNull('l.combo_id'))
             ->leftJoin('product_variants as v', 'v.id', '=', 'l.product_variant_id')
+            // UNITS-PACKS F4: the stock unit the quantities are counted in (base quantity, so a Bag counts its kg).
+            ->leftJoin('units as un', 'un.id', '=', 'p.unit_id')
             // `combos as cb` is joined by linesBase() since DEAL-CATEGORY-1 — joining it again
             // here would be a duplicate alias.
             ->groupBy('l.product_id', 'l.product_variant_id', 'l.combo_id')
             ->selectRaw(
                 'l.product_id, l.product_variant_id, l.combo_id,
                  COALESCE(MAX(cb.name), MAX(l.product_name)) as item,
-                 MAX(v.name) as variant, MAX(c.name) as category,
+                 MAX(v.name) as variant, MAX(c.name) as category, MAX(un.name) as unit, MAX(p.unit_id) as unit_id,
                  -- ITEMS-BY-CATEGORY-1: the id travels with the name, so a row can be filed under
                  -- its ROOT head without a second query guessing the head from a string.
                  MAX(c.id) as category_id,
@@ -624,6 +642,7 @@ class SalesReportEngine
             )->get()->keyBy($key);
         $returnRows = $this->returnLinesBase($f)
             ->leftJoin('product_variants as v', 'v.id', '=', 'rl.product_variant_id')
+            ->leftJoin('units as un', 'un.id', '=', 'p.unit_id')
             // as above — returnLinesBase() already joins `combos as cb` off ol.combo_id.
             // The refund follows the sale: exclude a deal's refund from Items too, or a returned
             // deal would credit a section it was never counted in.
@@ -632,7 +651,7 @@ class SalesReportEngine
             ->selectRaw(
                 'rl.product_id, rl.product_variant_id, ol.combo_id,
                  COALESCE(MAX(cb.name), MAX(ol.product_name), MAX(p.name)) as item,
-                 MAX(v.name) as variant, MAX(c.name) as category,
+                 MAX(v.name) as variant, MAX(c.name) as category, MAX(un.name) as unit, MAX(p.unit_id) as unit_id,
                  MAX(c.id) as category_id,
                  COALESCE(SUM(COALESCE(rl.base_quantity, rl.quantity)),0) as returned_qty,
                  COALESCE(SUM(rl.line_total),0) as returns_amount'
@@ -642,6 +661,8 @@ class SalesReportEngine
             $sold = $rows->get($key);
             $returned = $returnRows->get($key);
             $row = $sold ?: $returned;
+            // A deal is counted in deals, not in any one item's unit.
+            $row->unit = $row->combo_id ? null : ($sold->unit ?? $returned->unit ?? null);
             $row->sold_qty = (float) ($sold->sold_qty ?? 0);
             $row->returned_qty = (float) ($returned->returned_qty ?? 0);
             $row->net_qty = $row->sold_qty - $row->returned_qty;
@@ -651,6 +672,12 @@ class SalesReportEngine
             $row->net = (float) ($sold->net ?? 0);
             $row->returns_amount = (float) ($returned->returns_amount ?? 0);
             $row->net_value = $row->net - $row->returns_amount;
+            // UNITS-PACKS F4: one item is one kind of unit; its mix lets every total above it add kg and pieces apart.
+            $uid = $row->combo_id ? null : ($sold->unit_id ?? $returned->unit_id ?? null);
+            $row->unit_id = $uid !== null ? (int) $uid : null;
+            $row->sold_mix = QtyMix::add([], $row->unit_id, $row->sold_qty);
+            $row->returned_mix = QtyMix::add([], $row->unit_id, $row->returned_qty);
+            $row->net_mix = QtyMix::merge($row->sold_mix, $row->returned_mix, -1.0);
 
             return $row;
         });
@@ -773,6 +800,10 @@ class SalesReportEngine
                 $group[$k]          = ($group[$k] ?? 0) + $v;
                 $heads[$rootId][$k] = ($heads[$rootId][$k] ?? 0) + $v;
             }
+            foreach (['sold_mix', 'returned_mix', 'net_mix'] as $k) {
+                $group[$k] = QtyMix::merge($group[$k] ?? [], $row->{$k} ?? []);
+                $heads[$rootId][$k] = QtyMix::merge($heads[$rootId][$k] ?? [], $row->{$k} ?? []);
+            }
 
             $group['items'][] = [
                 'item'           => (string) $row->item,
@@ -787,6 +818,10 @@ class SalesReportEngine
                 'net'            => (float) $row->net,
                 'returns_amount' => (float) $row->returns_amount,
                 'net_value'      => round((float) $row->net_value, 2),
+                'unit'           => $row->unit ?? null,
+                'sold_mix'       => $row->sold_mix ?? null,
+                'returned_mix'   => $row->returned_mix ?? null,
+                'net_mix'        => $row->net_mix ?? null,
             ];
             unset($group);
         }
@@ -856,7 +891,8 @@ class SalesReportEngine
         $returns = $this->returnLinesBase($f)
             ->whereNotNull('ol.combo_id')
             ->groupBy('ol.combo_id')
-            ->selectRaw('ol.combo_id, COALESCE(SUM(rl.quantity),0) as qty, COALESCE(SUM(rl.line_total),0) as amount')
+            // UNITS-PACKS F4: counted like the sales above (base quantity), so a returned pack takes off what it sold.
+            ->selectRaw('ol.combo_id, COALESCE(SUM(COALESCE(rl.base_quantity, rl.quantity)),0) as qty, COALESCE(SUM(rl.line_total),0) as amount')
             ->get()->keyBy('combo_id');
 
         $out = [];
@@ -1077,8 +1113,10 @@ class SalesReportEngine
             ->get()->keyBy('dim');
 
         $rows = $rows->keyBy('dim');
+        $mixes = $this->qtyMixes($f, $column);   // UNITS-PACKS F4
 
-        return $rows->keys()->merge($returns->keys())->unique()->map(function ($dim) use ($rows, $qty, $label, $returns, $returnQty) {
+        return $rows->keys()->merge($returns->keys())->unique()->map(function ($dim) use ($rows, $qty, $label, $returns, $returnQty, $mixes) {
+            $mx = $mixes[self::mixKey($dim)] ?? [];
             $r = $rows->get($dim);
             $q = $qty->get($dim);
             $ret = (float) ($returns->get($dim)?->amount ?? 0);
@@ -1090,6 +1128,8 @@ class SalesReportEngine
                 'sold_qty' => (float) ($q->sold_qty ?? 0),
                 'returned_qty' => $returnedQty,
                 'net_qty' => (float) ($q->sold_qty ?? 0) - $returnedQty,
+                'sold_mix' => $mx['sold'] ?? [], 'returned_mix' => $mx['returned'] ?? [],
+                'net_mix' => QtyMix::merge($mx['sold'] ?? [], $mx['returned'] ?? [], -1.0),
                 'gross' => (float) ($r->gross ?? 0),
                 'discount' => (float) ($r->discount ?? 0),
                 'tax' => (float) ($r->tax ?? 0),
@@ -1121,7 +1161,10 @@ class SalesReportEngine
             ->selectRaw("$column as dim, COALESCE(SUM(rl.line_total),0) as amount, COALESCE(SUM(COALESCE(rl.base_quantity, rl.quantity)),0) as quantity")
             ->get()->keyBy('dim');
 
-        return $rows->keys()->merge($returns->keys())->unique()->map(function ($dim) use ($rows, $returns, $label) {
+        $mixes = $this->qtyMixes($f, $column);   // UNITS-PACKS F4
+
+        return $rows->keys()->merge($returns->keys())->unique()->map(function ($dim) use ($rows, $returns, $label, $mixes) {
+            $mx = $mixes[self::mixKey($dim)] ?? [];
             $r = $rows->get($dim);
             $ret = $returns->get($dim);
             $net = (float) ($r->net ?? 0);
@@ -1135,6 +1178,8 @@ class SalesReportEngine
                 'sold_qty' => $sold,
                 'returned_qty' => $retQty,
                 'net_qty' => $sold - $retQty,
+                'sold_mix' => $mx['sold'] ?? [], 'returned_mix' => $mx['returned'] ?? [],
+                'net_mix' => QtyMix::merge($mx['sold'] ?? [], $mx['returned'] ?? [], -1.0),
                 'gross' => $net,
                 'discount' => 0.0,
                 'tax' => 0.0,
@@ -1172,6 +1217,7 @@ class SalesReportEngine
                 'net_qty' => $r['net_qty'],
                 'net' => $r['net'],
                 'returns_amount' => $r['returns_amount'],
+                'sold_mix' => $r['sold_mix'] ?? null, 'returned_mix' => $r['returned_mix'] ?? null, 'net_mix' => $r['net_mix'] ?? null,
                 'net_value' => $r['net_value'],
             ])->values()->all();
             $items[$typeLabel] = collect($this->byItem($typed))->map(fn ($r) => [
@@ -1181,6 +1227,7 @@ class SalesReportEngine
                 'net_qty' => $r->net_qty,
                 'net' => $r->net,
                 'returns_amount' => $r->returns_amount,
+                'sold_mix' => $r->sold_mix ?? null, 'returned_mix' => $r->returned_mix ?? null, 'net_mix' => $r->net_mix ?? null,
                 'net_value' => $r->net_value,
             ])->values()->all();
             $waiters[$typeLabel] = $this->byWaiter($typed);
@@ -1239,6 +1286,43 @@ class SalesReportEngine
             'total_events' => array_sum(array_column($rows, 'events')),
             'total_qty' => array_sum(array_column($rows, 'qty')),
         ];
+    }
+
+    /**
+     * UNITS-PACKS F4 (mixed units): sold and returned quantities split by kind of unit (QtyMix), per $group — a SQL
+     * expression both line bases understand (the category one, a waiter or order-type column) — or one total when
+     * $group is null.
+     *
+     * @return array<int|string, array{sold?: array<string, float>, returned?: array<string, float>}>
+     */
+    private function qtyMixes(array $f, ?string $group = null): array
+    {
+        $out = [];
+        foreach ([['sold', $this->linesBase($f), 'l'], ['returned', $this->returnLinesBase($f), 'rl']] as [$side, $q, $a]) {
+            $q = $group === null ? $q->groupBy('p.unit_id') : $q->groupBy(DB::raw($group), 'p.unit_id');
+            $rows = $q->selectRaw(($group ?? '0') . " as dim, p.unit_id as unit_id, COALESCE(SUM(COALESCE($a.base_quantity, $a.quantity)),0) as q")->get();
+            foreach ($rows as $r) {
+                $dim = self::mixKey($r->dim);
+                $out[$dim][$side] = QtyMix::add($out[$dim][$side] ?? [], $r->unit_id !== null ? (int) $r->unit_id : null, (float) $r->q);
+            }
+        }
+
+        return $out;
+    }
+
+    /** The key a dimension value has in qtyMixes(): null and "" are 0, a number is an int, a word (order type) itself. */
+    private static function mixKey(mixed $dim): int|string
+    {
+        return $dim === null || $dim === '' ? 0 : (is_numeric($dim) ? (int) $dim : (string) $dim);
+    }
+
+    /** @return array{sold_mix: array, returned_mix: array, net_mix: array} */
+    private function overviewMix(array $f): array
+    {
+        $m = $this->qtyMixes($f)[0] ?? [];
+
+        return ['sold_mix' => $m['sold'] ?? [], 'returned_mix' => $m['returned'] ?? [],
+            'net_mix' => QtyMix::merge($m['sold'] ?? [], $m['returned'] ?? [], -1.0)];
     }
 
     /** Period return quantity and value grouped by an arbitrary return-line-side column. */

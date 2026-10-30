@@ -28,8 +28,8 @@ use Illuminate\Support\Str;
  *   after the bill, fully paid .... the supplier owes us (credit) — no cash moves until he actually pays it back
  *   BEFORE the bill ............... books ahead of the bill; a later bill for the FULL receipt makes everything agree
  *   free (bonus) goods ............ go back at no money — no credit for goods that were never paid for
- *   OPEN POLICY (owner): a later bill that is already NET of the return credits the supplier twice. Pinned here as
- *   today's behaviour, not as right — the roadmap's "forward posting matrix" decision.
+ *   a bill already NET of the return (owner, 21 Oct: record the actual invoice) → 800 through the bill screen, which
+ *   asks how the invoice treats the return (SUPPLIER-NET-BILL-1, SupplierNetBillMySqlTest has every case)
  */
 class SupplierReturnMatrixMySqlTest extends MySqlTenantTestCase
 {
@@ -108,16 +108,21 @@ class SupplierReturnMatrixMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta(-800, $this->gl('2100'), 0.001);
     }
 
-    public function test_open_policy_a_bill_already_net_of_the_return_credits_the_supplier_twice(): void
+    public function test_a_bill_already_net_of_the_return_is_800_not_600(): void
     {
+        // Until SUPPLIER-NET-BILL-1 this ended at 600 — the return taken off twice. The bill screen now asks.
         [$grn] = $this->receive([[10, 100]]);
         $this->returnOf($grn, 2);
 
-        $this->bill($grn, 800);   // the supplier's bill already leaves out the 2 that went back
+        $bill = app(\App\Services\Purchasing\PurchaseBillService::class)->createFromReceipt($grn, [
+            'bill_date' => now()->toDateString(), 'returns_on_invoice' => 'netted',   // the supplier's bill already leaves out the 2 that went back
+        ]);
 
-        $this->assertEqualsWithDelta(600, $this->supplierOwes(), 0.001,
-            'TODAY: 600 — the return is taken off twice (800 is right). Owner decision before W4 posts real money.');
-        $this->assertEqualsWithDelta(8, $this->stock(), 0.001, 'stock is right either way');
+        $this->assertEqualsWithDelta(800, (float) $bill->grand_total, 0.001, 'the invoice as written');
+        $this->assertEqualsWithDelta(800, $this->supplierOwes(), 0.001, '800, not 600');
+        $this->assertEqualsWithDelta(800, $this->gl('1400'), 0.001);
+        $this->assertEqualsWithDelta(-800, $this->gl('2100'), 0.001);
+        $this->assertEqualsWithDelta(8, $this->stock(), 0.001);
     }
 
     public function test_free_goods_go_back_at_no_money(): void

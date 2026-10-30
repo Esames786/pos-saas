@@ -123,6 +123,10 @@ class HeldSaleController extends Controller
                     // MEDICAL-COUNTER-1: a recalled pack line comes back as the same pack and batch.
                     'pack_unit_id'       => $l->pack_unit_id ? (int) $l->pack_unit_id : null,
                     'pack_factor'        => $l->pack_factor ? (int) $l->pack_factor : null,
+                'pack_size'          => \App\Support\CounterPacks::sizeOf($l) ?: null,
+                // UNITS-PACKS F2: a line typed as "250 g" comes back as 250 g.
+                'entered_quantity'   => $l->entered_quantity !== null ? (float) $l->entered_quantity : null,
+                'entered_unit_code'  => $l->entered_unit_code ?? null,
                     'inventory_batch_id' => $l->inventory_batch_id ? (int) $l->inventory_batch_id : null,
                 ])->values(),
             ]),
@@ -242,6 +246,10 @@ class HeldSaleController extends Controller
                 'kitchen_note'       => $l->kitchen_note,
                 'pack_unit_id'       => $l->pack_unit_id ? (int) $l->pack_unit_id : null,
                 'pack_factor'        => $l->pack_factor ? (int) $l->pack_factor : null,
+                'pack_size'          => \App\Support\CounterPacks::sizeOf($l) ?: null,
+                // UNITS-PACKS F2: a line typed as "250 g" comes back as 250 g.
+                'entered_quantity'   => $l->entered_quantity !== null ? (float) $l->entered_quantity : null,
+                'entered_unit_code'  => $l->entered_unit_code ?? null,
                 'inventory_batch_id' => $l->inventory_batch_id ? (int) $l->inventory_batch_id : null,
             ])->values(),
         ];
@@ -305,6 +313,8 @@ class HeldSaleController extends Controller
             'lines.*.modifiers'           => 'nullable|string',
             // MEDICAL-COUNTER-1: the pack a line is sold in.
             'lines.*.pack_unit_id'        => 'nullable|integer',
+            'lines.*.entered_quantity'    => 'nullable|numeric|min:0',
+            'lines.*.entered_unit_code'   => 'nullable|string|max:10',
             'lines.*.inventory_batch_id'  => 'nullable|integer',
             'void_items'                  => 'nullable|array',
             'void_items.*.old_line_id'    => 'nullable|integer',
@@ -323,6 +333,10 @@ class HeldSaleController extends Controller
         $isDraft = (bool) ($data['save_as_draft'] ?? false);
 
         $data = $this->validateDeliveryAttribution($data);
+        // W2-B: the same quantity rules as a paid sale, so a held line can never hold what the sale would refuse.
+        if (isset($data['lines']) && is_array($data['lines'])) {
+            $data['lines'] = \App\Support\LineQuantity::prepareSaleLines($data['lines']);
+        }
 
         if (($data['discount_type'] ?? 'none') !== 'none' || (float) ($data['discount_value'] ?? 0) > 0) {
             throw ValidationException::withMessages([
@@ -756,7 +770,11 @@ class HeldSaleController extends Controller
             // MEDICAL-COUNTER-1: a line held in a pack keeps it (and its tablets) for the recall and the sale.
             $pack = $product && (($line['line_kind'] ?? 'standard') === 'standard')
                 ? \App\Support\CounterPacks::resolve($product, (array) $line, (float) $line['quantity']) : null;
-            if ($pack && ! isset($line['unit_price'])) {
+            if ($pack && \App\Support\CounterPacks::serverPricesPacks()) {
+                // UNITS-PACKS F3: the normal counter's pack price is the server's — its own, else size × the branch price.
+                $line['unit_price'] = $pack['pack_own_price'] ? $pack['pack_price']
+                    : round($pack['pack_size'] * app(\App\Services\Sales\SalePricingService::class)->resolveSellingPrice($product, $variant, (int) $sale->branch_id, null), 2);
+            } elseif ($pack && ! isset($line['unit_price'])) {
                 $line['unit_price'] = $pack['pack_price'];
             }
             $preferBatch = $product && (($line['line_kind'] ?? 'standard') === 'standard')
@@ -811,6 +829,7 @@ class HeldSaleController extends Controller
                 'kot_sent_quantity'  => $kotSentQty,
                 'pack_unit_id'       => $pack['pack_unit_id'] ?? null,
                 'pack_factor'        => $pack['pack_factor'] ?? null,
+            ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $pack['pack_size'] ?? null) + ($pack ? [] : \App\Support\LineQuantity::enteredColumns($line)) + [
                 'base_quantity'      => $pack['base_quantity'] ?? null,
                 'inventory_batch_id' => $preferBatch,
             ]);

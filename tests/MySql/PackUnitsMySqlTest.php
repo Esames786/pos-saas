@@ -150,7 +150,7 @@ class PackUnitsMySqlTest extends MySqlTenantTestCase
 
         $p = Product::where('name', 'Panacet 500')->firstOrFail();
         $packs = $p->packUnits()->get();
-        $this->assertSame([1, 10, 100], $packs->pluck('factor')->all());
+        $this->assertSame([1.0, 10.0, 100.0], $packs->pluck('factor')->all(), 'sizes are decimals since 23 Oct (Bag = 2.5 kg)');
         $this->assertSame(['Tablet', 'Strip', 'Box'], $packs->pluck('name')->all(), 'the stock unit is named after "Sold and counted in"');
         [$base, $strip, $box] = $packs->all();
         $this->assertTrue($base->can_sell && $base->can_buy);
@@ -182,7 +182,7 @@ class PackUnitsMySqlTest extends MySqlTenantTestCase
         ]))->assertRedirect()->assertSessionHasNoErrors();
 
         $packs = $p->fresh()->packUnits()->get();
-        $this->assertSame([1, 200], $packs->pluck('factor')->all());
+        $this->assertSame([1.0, 200.0], $packs->pluck('factor')->all());
         $this->assertSame($boxId, $packs->last()->id, 'the same pack row, renamed — not a new one');
         $this->assertSame('Dabba', $packs->last()->name);
         $this->assertSame('1050.00', (string) $packs->last()->sale_price);
@@ -224,10 +224,11 @@ class PackUnitsMySqlTest extends MySqlTenantTestCase
         // The box barcode cannot also be the single tablet's barcode on the same screen.
         $this->postAs('/products', $this->medicine('Same Code', [$row(['barcode' => '2009999999994'])]) + ['_barcode' => '1', 'barcode' => '2009999999994'])
             ->assertSessionHasErrors('packs.0.barcode');
-        // No pack rows at all with "Yes", four packs, a kilo item.
+        // No pack rows at all with "Yes", four packs, a kilo pack not more than 1 kilo (UNITS-PACKS, 23 Oct: a kilo item may
+        // have packs, the first one holding a part — Bag = 2.5 kg).
         $this->postAs('/products', $this->medicine('No Rows', []))->assertSessionHasErrors('_packs');
         $this->postAs('/products', $this->medicine('Four', [$row([]), $row(['name' => 'Box']), $row(['name' => 'Carton']), $row(['name' => 'Pallet'])]))->assertSessionHasErrors('_packs');
-        $this->postAs('/products', ['unit_id' => (string) Unit::where('code', 'KGX')->value('id')] + $this->medicine('Kilo Packs', [$row([])]))->assertSessionHasErrors('_packs');
+        $this->postAs('/products', ['unit_id' => (string) Unit::where('code', 'KGX')->value('id')] + $this->medicine('Kilo Packs', [$row(['contains' => '1'])]))->assertSessionHasErrors('packs.0.contains');
     }
 
     public function test_a_pack_already_on_a_bill_is_never_removed_or_resized(): void
@@ -247,7 +248,7 @@ class PackUnitsMySqlTest extends MySqlTenantTestCase
                 ['id' => (string) $strip->id, 'name' => 'Strip', 'contains' => '12', 'price' => '', 'barcode' => '', 'sell' => '1', 'buy' => '1'],
                 ['id' => (string) $box->id, 'name' => 'Box', 'contains' => '10', 'price' => '', 'barcode' => '', 'sell' => '1', 'buy' => '1'],
             ]))->assertSessionHasErrors('_packs');
-            $this->assertSame([1, 10, 100], $p->fresh()->packUnits()->pluck('factor')->all());
+            $this->assertSame([1.0, 10.0, 100.0], $p->fresh()->packUnits()->pluck('factor')->all());
 
             // A new name and price are fine: they do not change what the old line meant.
             $this->putAs('/products/' . $p->id, $this->medicine('On A Bill', [

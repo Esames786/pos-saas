@@ -308,7 +308,8 @@ class CateringMaterialRateBasisMySqlTest extends MySqlTenantTestCase
     /** A material block written today is authored the way the business thinks. */
     public function test_a_new_material_block_defaults_to_the_material_unit_basis(): void
     {
-        $html = file_get_contents(base_path('app/Http/Controllers/Tenant/Catering/CateringCostBlockController.php'));
+        // W3/W4 S3b: the Cost blocks screen saves through CateringCostBlockWriter now (shared with the product form).
+        $html = file_get_contents(base_path('app/Services/Catering/CateringCostBlockWriter.php'));
 
         $this->assertStringContainsString('RATE_PER_MATERIAL_UNIT', $html,
             'the editor must author new material blocks per material unit');

@@ -436,6 +436,11 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel'])
                     ->name('tenant.purchase-orders.cancel');
 
+                // W3/W4 S4 — the purchase workspace (behind the purchase_workspace switch; each step checks its own permission).
+                Route::get('/purchases/new', [\App\Http\Controllers\Tenant\PurchaseWorkspaceController::class, 'create'])->name('tenant.purchases.workspace');
+                Route::post('/purchases', [\App\Http\Controllers\Tenant\PurchaseWorkspaceController::class, 'store'])->name('tenant.purchases.workspace.store');
+                Route::get('/purchases/receipts/{goodsReceipt}', [\App\Http\Controllers\Tenant\PurchaseWorkspaceController::class, 'receipt'])->name('tenant.purchases.workspace.receipt');
+
                 // Goods Receipts
                 Route::get('/goods-receipts', [GoodsReceiptController::class, 'index'])
                     ->name('tenant.goods-receipts.index');

@@ -159,7 +159,9 @@ final class WhatsAppChannel implements ReportChannel
     {
         // Same formatters the PDF uses: money to 2dp with separators, qty with trailing zeros cut.
         $money = fn (string $k) => number_format((float) ($o[$k] ?? 0), 2);
-        $qty = fn (string $k) => rtrim(rtrim(number_format((float) ($o[$k] ?? 0), 3, '.', ''), '0'), '.');
+        // UNITS-PACKS F4: a total of kg and pieces goes as its parts ("0.25 kg · 24 pcs"); one kind of unit as before.
+        $qty = fn (string $k) => \App\Support\QtyMix::label((float) ($o[$k] ?? 0), $o[str_replace('_qty', '_mix', $k)] ?? null,
+            fn ($v) => rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.'));
 
         return match ($template) {
             self::TEMPLATE_SUMMARY => [

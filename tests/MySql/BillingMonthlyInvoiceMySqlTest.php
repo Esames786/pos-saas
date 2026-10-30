@@ -24,7 +24,16 @@ class BillingMonthlyInvoiceMySqlTest extends MySqlTenantTestCase
     {
         parent::setUp();
 
-        $this->tenant = Tenant::first();
+        // COLD-MASTER-FIXTURES-1: its own tenant and plan, never "whichever tenant an earlier test left" — a brand-new
+        // master DB has none, and borrowing one rewrote another test's subscription.
+        $m = DB::connection('master');
+        $m->table('tenants')->updateOrInsert(['tenant_code' => 'billmonthly'], ['business_name' => 'Billing Monthly Test',
+            'owner_name' => 'Owner', 'owner_email' => 'owner@billmonthly.test', 'currency_code' => 'PKR', 'status' => 'active',
+            'is_demo' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $this->tenant = Tenant::where('tenant_code', 'billmonthly')->firstOrFail();
+        $planId = $m->table('plans')->where('code', 'billmonthly-plan')->value('id')
+            ?: $m->table('plans')->insertGetId(['code' => 'billmonthly-plan', 'name' => 'Billing Monthly', 'price' => 25000,
+                'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
         DB::connection('master')->table('subscription_payments')->delete();
         DB::connection('master')->table('subscription_invoices')->where('tenant_id', $this->tenant->id)->delete();
         DB::connection('master')->table('whatsapp_messages')->where('tenant_id', $this->tenant->id)->delete();
@@ -33,7 +42,7 @@ class BillingMonthlyInvoiceMySqlTest extends MySqlTenantTestCase
         if (! $sub) {
             $sub = Subscription::create([
                 'tenant_id' => $this->tenant->id,
-                'plan_id' => DB::connection('master')->table('plans')->value('id'),
+                'plan_id' => $planId,
                 'status' => 'active',
                 'currency_code' => 'PKR',
                 'billing_period' => 'monthly',

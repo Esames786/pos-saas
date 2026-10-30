@@ -416,7 +416,27 @@
                 @endif
 
                 {{-- ── PURCHASING ──────────────────────────────────────────────── --}}
-                @if($hasModule('purchasing'))
+                @php
+                    // W3/W4 S5: with the purchase workspace on, one "Purchases" item — the tabs row on every purchasing
+                    // page leads to the rest. It opens the first purchasing page this user may open. Off: today's menu.
+                    $purCompact = $hasModule('purchasing') && app()->bound('tenant') && \App\Http\Controllers\Tenant\PurchaseWorkspaceController::on();
+                    $purHome = null;
+                    if ($purCompact && ($purUserS = auth('tenant')->user())) {
+                        foreach (['tenant.purchases.workspace' => '/purchases/new', 'tenant.goods-receipts.index' => '/goods-receipts', 'tenant.purchase-bills.index' => '/purchase-bills',
+                            'tenant.supplier-payments.index' => '/supplier-payments', 'tenant.purchase-orders.index' => '/purchase-orders', 'tenant.purchase-returns.index' => '/purchase-returns',
+                            'tenant.suppliers.index' => '/suppliers'] as $perm => $path) {
+                            if ($purUserS->can($perm)) { $purHome = $path; break; }
+                        }
+                    }
+                @endphp
+                @if($purCompact && $purHome)
+                    @php $a = $isIn('purchases*') || $isIn('suppliers*') || $isIn('purchase-orders*') || $isIn('goods-receipts*') || $isIn('purchase-bills*') || $isIn('supplier-payments*') || $isIn('purchase-returns*'); @endphp
+                    <li class="{{ $a ? 'active' : '' }}">
+                        <a href="{{ url($purHome) }}" class="{{ $a ? 'active' : '' }}" id="sidebar-purchases">
+                            <i class="ti ti-truck-delivery fs-16 me-2"></i><span>Purchases</span>
+                        </a>
+                    </li>
+                @elseif(! $purCompact && $hasModule('purchasing'))
                 @canany(['tenant.suppliers.index','tenant.purchase-orders.index','tenant.goods-receipts.index','tenant.purchase-bills.index','tenant.supplier-payments.index','tenant.purchase-returns.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
@@ -445,7 +465,7 @@
                             @php $a = $isIn('goods-receipts*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/goods-receipts') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-truck-delivery fs-16 me-2"></i><span>GRN</span>
+                                    <i class="ti ti-truck-delivery fs-16 me-2"></i><span>Goods Receipts</span>
                                 </a>
                             </li>
                         @endcan
@@ -453,7 +473,7 @@
                             @php $a = $isIn('purchase-bills*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/purchase-bills') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-file-invoice fs-16 me-2"></i><span>Purchase Bills</span>
+                                    <i class="ti ti-file-invoice fs-16 me-2"></i><span>Supplier Invoices</span>
                                 </a>
                             </li>
                         @endcan
@@ -469,7 +489,7 @@
                             @php $a = $isIn('purchase-returns*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/purchase-returns') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-truck-return fs-16 me-2"></i><span>Purchase Returns</span>
+                                    <i class="ti ti-truck-return fs-16 me-2"></i><span>Supplier Returns</span>
                                 </a>
                             </li>
                         @endcan

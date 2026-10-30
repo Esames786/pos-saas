@@ -60,7 +60,12 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
 
     // ── where it appears ─────────────────────────────────────────────────────────────────────────
 
-    public function test_it_appears_only_where_switched_on_and_never_on_catering_or_manufacturing(): void
+    /**
+     * W3/W4 S3d (deliberate update): the manufacturing context used to keep its own form ("tonight"). Decision 7 of the
+     * W3/W4 plan routes Manufacturing Products and Catering Materials into this form too, behind the same switch — off,
+     * every area keeps its old form.
+     */
+    public function test_it_appears_only_where_switched_on_and_the_manufacturing_area_uses_it_too(): void
     {
         $this->setTenant('restaurant', false);
         $old = $this->page('/products/create')->assertOk()->getContent();
@@ -73,7 +78,12 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('name="_form_v2"', $new);
 
         $mfg = $this->page('/products/create?context=manufacturing')->assertOk()->getContent();
-        $this->assertStringNotContainsString('name="_form_v2"', $mfg, 'the manufacturing context keeps its own form tonight');
+        $this->assertStringContainsString('name="_form_v2"', $mfg, 'the manufacturing area opens the one form where it is switched on');
+        $this->assertStringContainsString('<b>Finished product</b>', $mfg, 'with the factory\'s cards');
+
+        $this->setTenant('restaurant', false);
+        $mfgOff = $this->page('/products/create?context=manufacturing')->assertOk()->getContent();
+        $this->assertStringNotContainsString('name="_form_v2"', $mfgOff, 'switched off: the manufacturing area keeps its own form');
     }
 
     public function test_each_business_sees_only_its_own_cards(): void
@@ -269,16 +279,102 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('Role / Visibility', $old);
         $this->assertStringContainsString('Hidden from POS', $old, 'switch off: the list is exactly as before');
 
+        // W3/W4 S1 (deliberate change of the 19 Oct wording): Structure, Role and Behaviour apart, the role names a
+        // shop recognises, behaviour as Any / Yes / No, no "old name" and no "What it is".
         $this->setTenant('restaurant', true);
         $new = $this->page('/products?search=Hidden+Shashlik')->assertOk()->getContent();
-        $this->assertStringContainsString('Where it shows', $new);
-        $this->assertStringContainsString('Sold, no counter button', $new);
-        $this->assertStringContainsString('old name: Service Item', $new);
-        $this->assertStringContainsString('Has a button on the counter', $new, 'the filter ticks are plain words');
-        $this->assertStringContainsString('Service — sold, no stock', $new);
-        $this->assertStringNotContainsString('>POS Visible<', $new);
+        $row = $this->row($new, 'Hidden Shashlik');
+        $this->assertStringContainsString('<td>Simple</td>', $row, 'structure');
+        $this->assertStringContainsString('data-role="service">Service</span>', $row, 'the recognisable role name');
+        $this->assertStringContainsString('>Sold</span>', $row);
+        $this->assertStringNotContainsString('On the counter</span>', $row, 'sold, but no button on the counter');
+        foreach (['old name', 'What it is', 'Where it shows', '>POS Visible<', 'name="product_type"', 'name="flags[]"'] as $gone) {
+            $this->assertStringNotContainsString($gone, $new, "gone from the plain list: {$gone}");
+        }
+        $this->assertStringContainsString('name="beh[counter]"', $new, 'each behaviour is one Any / Yes / No question');
+        $this->assertMatchesRegularExpression('/<option value="service"[^>]*>Service<\/option>/', $new, 'the Role filter offers the same recognisable names');
 
-        $this->assertStringContainsString('Hidden Shashlik', $this->page('/products?flags[]=hidden_from_pos')->getContent(), 'same filter underneath');
+        $this->assertStringContainsString('Hidden Shashlik', $this->page('/products?flags[]=hidden_from_pos')->getContent(), 'an old link still filters');
+    }
+
+    public function test_the_plain_list_asks_each_behaviour_any_yes_or_no_and_two_answers_never_contradict(): void
+    {
+        $this->setTenant('restaurant', true);
+        $make = fn (string $name, array $a) => Product::create($a + ['sku' => 'S1-' . substr(md5($name), 0, 6), 'name' => $name, 'slug' => \Illuminate\Support\Str::slug($name),
+            'product_type' => 'simple', 'product_kind' => 'sale_item', 'inventory_consumption_method' => 'stock_item', 'is_sellable' => true,
+            'is_pos_visible' => true, 'is_purchasable' => false, 'is_stock_tracked' => false, 'has_variants' => false, 'default_selling_price' => 10, 'status' => 'active']);
+        $make('S1Q Cola Counter', ['is_purchasable' => true, 'is_stock_tracked' => true]);
+        $make('S1Q Biryani Recipe', ['is_pos_visible' => false, 'product_type' => 'recipe', 'inventory_consumption_method' => 'recipe']);
+        // Bought, not sold (the catalog lists a not-sold item only when it is flagged for the counter; not sold, so
+        // "On the counter" is still No).
+        $make('S1Q Box Packing', ['product_kind' => 'packaging_material', 'is_sellable' => false, 'is_pos_visible' => true, 'is_purchasable' => true, 'is_stock_tracked' => true]);
+        $make('S1Q Karahi Sizes', ['has_variants' => true]);
+        $names = fn (string $q) => collect(['S1Q Cola Counter', 'S1Q Biryani Recipe', 'S1Q Box Packing', 'S1Q Karahi Sizes'])
+            ->filter(fn ($n) => str_contains($this->page('/products?search=S1Q&' . $q)->getContent(), '<b>' . $n . '</b>'))->values()->all();
+
+        $this->assertSame(['S1Q Cola Counter', 'S1Q Box Packing'], $names('beh[bought]=yes'));
+        $this->assertSame(['S1Q Biryani Recipe', 'S1Q Karahi Sizes'], $names('beh[bought]=no'));
+        $this->assertSame(['S1Q Cola Counter', 'S1Q Karahi Sizes'], $names('beh[counter]=yes'));
+        $this->assertSame(['S1Q Biryani Recipe', 'S1Q Box Packing'], $names('beh[counter]=no'), 'Yes and No split the list in two — nothing is in both');
+        $this->assertSame(['S1Q Biryani Recipe'], $names('beh[recipe]=yes'));
+        $this->assertSame(['S1Q Karahi Sizes'], $names('structure=variants'));
+        $this->assertSame(['S1Q Box Packing'], $names('role=packaging_material'));
+        $this->assertSame(['S1Q Box Packing'], $names('beh[bought]=yes&beh[sold]=no'));
+        $this->assertCount(4, $names('beh[bought]=maybe'), 'an unknown answer is "Any"');
+        // The Role column reads the role, never the shape: a packaging item whose product_type is "simple".
+        $this->assertStringContainsString('data-role="packaging_material">Packaging</span>', $this->row($this->page('/products?search=S1Q+Box')->getContent(), 'S1Q Box Packing'));
+    }
+
+    public function test_deals_are_listed_under_combo_and_open_the_existing_deal_editor(): void
+    {
+        $this->setTenant('restaurant', true);
+        $items = collect(['S1D Rice', 'S1D Drink'])->map(fn ($n) => Product::create(['sku' => 'S1D-' . substr(md5($n), 0, 6), 'name' => $n, 'slug' => \Illuminate\Support\Str::slug($n),
+            'product_type' => 'simple', 'product_kind' => 'sale_item', 'inventory_consumption_method' => 'none', 'is_sellable' => true, 'is_pos_visible' => true,
+            'default_selling_price' => 100, 'status' => 'active']));
+        $combo = DB::connection('tenant')->table('combos')->insertGetId(['name' => 'S1D Family Deal', 'code' => 'S1D-DEAL', 'price' => 2900, 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now()]);
+        foreach ($items as $i) {
+            DB::connection('tenant')->table('combo_components')->insert(['combo_id' => $combo, 'product_id' => $i->id, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $products = Product::count();
+
+        $list = $this->page('/products?search=S1D')->assertOk()->getContent();
+        $this->assertStringContainsString('Deals are listed under Structure "Combo"', $list);
+        $this->assertStringContainsString('?structure=combo', $list);
+
+        $deals = $this->page('/products?structure=combo&search=S1D+Family')->assertOk()->getContent();
+        $row = $this->row($deals, 'S1D Family Deal');
+        $this->assertStringContainsString('a deal · 2 items', $row);
+        $this->assertStringContainsString('/combos/' . $combo . '/edit', $row, 'the existing deal editor');
+        $this->assertStringContainsString('Open deal', $row);
+        $this->assertSame($products, Product::count(), 'a deal is never copied into a product');
+    }
+
+    public function test_the_plain_list_shows_packs_in_words_where_packs_are_on(): void
+    {
+        $kg = \App\Models\Tenant\Unit::updateOrCreate(['code' => 'KG'], ['name' => 'Kilogram', 'unit_type' => 'weight', 'base_factor' => 1, 'is_base' => true, 'is_active' => true]);
+        $rice = Product::create(['sku' => 'S1P-RICE', 'name' => 'S1P Basmati', 'slug' => 's1p-basmati', 'unit_id' => $kg->id, 'product_type' => 'simple',
+            'product_kind' => 'sale_item', 'inventory_consumption_method' => 'stock_item', 'is_sellable' => true, 'is_pos_visible' => true,
+            'is_purchasable' => true, 'is_stock_tracked' => true, 'default_selling_price' => 320, 'status' => 'active']);
+        \App\Models\Tenant\ProductPackUnit::create(['product_id' => $rice->id, 'name' => 'Kilogram', 'factor' => 1, 'can_sell' => true, 'can_buy' => true]);
+        \App\Models\Tenant\ProductPackUnit::create(['product_id' => $rice->id, 'name' => 'Bag', 'factor' => 2.5, 'can_sell' => true, 'can_buy' => true]);
+
+        DB::connection('master')->table('tenants')->where('tenant_code', self::CODE)->update(['primary_business' => 'mart',
+            'features' => json_encode(['product_screen_v2' => true, 'packs' => true])]);
+        $on = $this->page('/products?search=S1P')->assertOk()->getContent();
+        $this->assertStringContainsString('<th scope="col">Packs</th>', $on);
+        $this->assertStringContainsString('Bag = 2.5 Kilogram', $this->row($on, 'S1P Basmati'));
+
+        $this->setTenant('mart', true);   // packs off
+        $this->assertStringNotContainsString('<th scope="col">Packs</th>', $this->page('/products?search=S1P')->getContent());
+    }
+
+    /** The table row of $name on a rendered list. */
+    private function row(string $html, string $name): string
+    {
+        $this->assertSame(1, preg_match('/<tr>\s*<td>(?:<a [^>]*>)?<b>' . preg_quote($name, '/') . '<\/b>.*?<\/tr>/s', $html, $m), "the list shows {$name}");
+
+        return $m[0];
     }
 
     public function test_stock_counting_cannot_be_switched_off_after_stock_moved(): void
@@ -431,6 +527,120 @@ class ProductScreenV2MySqlTest extends MySqlTenantTestCase
         $this->assertSame((string) $box, $form['unit_id'] ?? null, 'the page still shows its own unit');
         $this->call('POST', 'http://' . $this->host . '/products/' . $p->id, $form)->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame($box, (int) $p->fresh()->unit_id);
+    }
+
+    // ── W3/W4 S2: an edit keeps what the screen does not show — the server decides, not the browser ─────────────
+
+    public function test_an_edit_keeps_a_batch_and_expiry_its_card_does_not_ask_about(): void
+    {
+        // A menu item's card never asks about batch and expiry; this one was saved with both (old form, import).
+        $p = $this->savedWith('restaurant', 'menu_item', 'S2 Bottled Lassi', ['has_expiry' => 1, 'requires_batch' => 1]);
+        $page = $this->page('/products/' . $p->id . '/edit')->assertOk()->getContent();
+        $this->assertStringContainsString('Not shown for this item — kept as saved', $page);
+        $this->assertStringContainsString('Batch &amp; expiry: <b>Yes</b>', $page);
+
+        $this->saveUnchanged($p);
+        $this->assertTrue((bool) $p->fresh()->has_expiry, 'it was saved as "no" before');
+        $this->assertTrue((bool) $p->fresh()->requires_batch);
+    }
+
+    public function test_an_edit_keeps_a_kitchen_items_recipe_its_card_does_not_ask_about(): void
+    {
+        // A kitchen intermediate (raw material made from a recipe); the Kitchen item card does not ask "recipe".
+        $p = $this->savedWith('restaurant', 'kitchen', 'S2 Biryani Masala Base', ['inventory_consumption_method' => 'recipe', 'product_type' => 'recipe']);
+
+        $this->saveUnchanged($p);
+        $this->assertSame('recipe', $p->fresh()->inventory_consumption_method, 'it dropped to stock_item / none before');
+        $this->assertSame('recipe', $p->fresh()->product_type);
+        $this->assertSame('raw_material', $p->fresh()->product_kind);
+    }
+
+    public function test_an_item_no_card_fits_keeps_its_role_until_another_card_is_picked(): void
+    {
+        // A packaging item in a pharmacy: no pharmacy card allows packaging, so the screen falls back to Medicine —
+        // whose locks (sold, stock, expiry) used to re-make it a medicine on an unchanged save.
+        $p = $this->savedWith('pharmacy', 'store_item', 'S2 Carry Bags', ['product_kind' => 'packaging_material', 'is_sellable' => 0, 'is_pos_visible' => 0,
+            'has_expiry' => 0, 'requires_batch' => 0]);
+        $page = $this->page('/products/' . $p->id . '/edit')->assertOk()->getContent();
+        $this->assertStringContainsString('id="pv2-misfit"', $page);
+        $this->assertStringContainsString('Its role (<b>Packaging</b>)', $page);
+
+        $form = $this->saveUnchanged($p);
+        $kept = $p->fresh();
+        $this->assertSame('packaging_material', $kept->product_kind, 'the role is kept');
+        $this->assertFalse((bool) $kept->is_sellable);
+        $this->assertFalse((bool) $kept->has_expiry);
+
+        // Picking another card is a real change, and works as before.
+        $this->call('POST', 'http://' . $this->host . '/products/' . $p->id, ['_card' => 'store_item'] + $form)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame('sale_item', $p->fresh()->product_kind);
+        $this->assertTrue((bool) $p->fresh()->is_sellable);
+    }
+
+    public function test_a_misfit_in_a_factory_keeps_its_factory_flags(): void
+    {
+        // A service in an industry shop: no card allows it, so it is a misfit and keeps its role and factory flags.
+        // (The fallback card is the business's first one, "Raw material", which has no factory flags: the guard in
+        // resolve() that keeps a misfit's factory flags is defensive — no business's first card is a factory card today.)
+        $p = $this->savedWith('industry', 'raw', 'S2 Machine Repair', ['product_kind' => 'service', 'is_sellable' => 1, 'is_purchasable' => 0,
+            'is_stock_tracked' => 0, 'inventory_consumption_method' => 'none', 'can_be_bom_output' => 0, 'can_be_bom_component' => 0, 'is_manufactured_finished_good' => 0]);
+
+        $this->saveUnchanged($p);
+        $kept = $p->fresh();
+        $this->assertSame('service', $kept->product_kind);
+        $this->assertFalse((bool) $kept->is_manufactured_finished_good);
+        $this->assertFalse((bool) $kept->can_be_bom_output);
+    }
+
+    public function test_a_saved_service_with_stock_history_can_still_be_saved(): void
+    {
+        $p = $this->savedWith('restaurant', 'menu_item', 'S2 Hookah Service', ['product_kind' => 'service', 'is_stock_tracked' => 1, 'is_purchasable' => 1,
+            'inventory_consumption_method' => 'stock_item']);
+        $this->stockMoved($p);
+
+        $this->saveUnchanged($p);   // it was refused: "Stock of this item has already moved…"
+        $this->assertTrue((bool) $p->fresh()->is_stock_tracked);
+        $this->assertSame('service', $p->fresh()->product_kind);
+    }
+
+    public function test_an_edit_keeps_a_switched_off_category_and_purchase_unit_on_both_screens(): void
+    {
+        $c = DB::connection('tenant');
+        $shelf = $c->table('categories')->insertGetId(['name' => 'S2 Old Shelf', 'slug' => 's2-old-shelf-' . \Illuminate\Support\Str::random(4), 'is_active' => 1,
+            'created_at' => now(), 'updated_at' => now()]);
+        $sack = $this->unit('S2-SACK', 'S2 Sack', 'quantity');
+        $p = $this->savedWith('restaurant', 'kitchen', 'S2 Rice Sack', ['category_id' => $shelf, 'purchase_unit_id' => $sack, 'purchase_pack_size' => 50]);
+        $c->table('categories')->where('id', $shelf)->update(['is_active' => 0]);
+        $c->table('units')->where('id', $sack)->update(['is_active' => 0]);
+
+        $this->saveUnchanged($p);
+        $this->assertSame($shelf, (int) $p->fresh()->category_id, 'new screen: the category is kept (it was emptied)');
+        $this->assertSame($sack, (int) $p->fresh()->purchase_unit_id, 'new screen: the unit it is bought in is kept');
+
+        $this->setTenant('restaurant', false);
+        $this->saveUnchanged($p);
+        $this->assertSame($shelf, (int) $p->fresh()->category_id, 'old screen: the category is kept too');
+    }
+
+    /** An item made on the new screen with $card, then given saved settings directly (as the old form or an import did). */
+    private function savedWith(string $business, string $card, string $name, array $saved): Product
+    {
+        $this->setTenant($business, true);
+        $this->postAs('/products', $this->form(['_card' => $card, 'name' => $name, 'default_selling_price' => '100', 'default_purchase_price' => '60']))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $p = Product::where('name', $name)->firstOrFail();
+        DB::connection('tenant')->table('products')->where('id', $p->id)->update($saved);
+
+        return $p->fresh();
+    }
+
+    /** Open the edit page and save exactly what it shows. @return array the fields it posted */
+    private function saveUnchanged(Product $p): array
+    {
+        $form = $this->formOnPage($this->page('/products/' . $p->id . '/edit')->assertOk()->getContent(), '/products/' . $p->id);
+        $this->call('POST', 'http://' . $this->host . '/products/' . $p->id, $form)->assertRedirect()->assertSessionHasNoErrors();
+
+        return $form;
     }
 
     public function test_the_bulk_import_keeps_the_unit_of_an_item_with_history(): void

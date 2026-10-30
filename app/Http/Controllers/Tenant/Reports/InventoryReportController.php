@@ -129,7 +129,7 @@ class InventoryReportController extends Controller
     {
         return response()->streamDownload(function () use ($rows) {
             $fp = fopen('php://output', 'w');
-            fputcsv($fp, ['Branch', 'Product', 'Variant', 'SKU', 'Category', 'Qty On Hand', 'Avg Cost', 'Total Value']);
+            fputcsv($fp, ['Branch', 'Product', 'Variant', 'SKU', 'Category', 'Qty On Hand', 'Unit', 'In Packs', 'Avg Cost', 'Total Value']);
             foreach ($rows as $row) {
                 fputcsv($fp, [
                     $row['branch'],
@@ -138,6 +138,8 @@ class InventoryReportController extends Controller
                     $row['sku'],
                     $row['category'],
                     number_format($row['qty_on_hand'], 3),
+                    $row['unit'],
+                    $row['packs'] ?? '',
                     number_format($row['average_cost'], 4),
                     number_format($row['total_value'], 2),
                 ]);

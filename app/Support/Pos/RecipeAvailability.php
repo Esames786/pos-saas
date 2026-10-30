@@ -47,6 +47,35 @@ final class RecipeAvailability
     }
 
     /**
+     * UB-W2 (canonical 22 Oct, rehearsal 30 Oct 2026): no variant and the default variant are ONE stock — the sale takes
+     * from both (InventoryService::plainVariantIds), so the count of what can be made reads both too. Shared by the
+     * Online POSController and the Edge twin (same lookup shape, each from its own stock source).
+     *
+     * @param  array<int, array<int, array<int, float>>>  $lookup  [branchId][productId][variantId|0] => qty
+     * @param  iterable<int|string, int|string>  $defaultVariantIds  product_id => default variant id
+     * @return array<int, array<int, array<int, float>>>
+     */
+    public static function mergePlainVariants(array $lookup, iterable $defaultVariantIds): array
+    {
+        $defaults = [];
+        foreach ($defaultVariantIds as $productId => $variantId) {
+            $defaults[(int) $productId] = (int) $variantId;
+        }
+        foreach ($lookup as $branchKey => $byProduct) {
+            foreach ($byProduct as $productKey => $byVariant) {
+                $defaultId = $defaults[(int) $productKey] ?? 0;
+                if ($defaultId && isset($byVariant[$defaultId])) {
+                    $plain = ($byVariant[0] ?? 0.0) + $byVariant[$defaultId];
+                    $lookup[$branchKey][$productKey][0] = $plain;
+                    $lookup[$branchKey][$productKey][$defaultId] = $plain;
+                }
+            }
+        }
+
+        return $lookup;
+    }
+
+    /**
      * Recipe-based availability preview for a service product — proactive makeable-units
      * estimate so the cashier sees "out of stock" BEFORE a sale is refused.
      *
@@ -103,7 +132,12 @@ final class RecipeAvailability
                     try {
                         $requiredPerBatch = $this->unitConversion->convert($requiredPerBatch, $ing->unit, $ip->unit);
                     } catch (\Throwable) {
-                        // no conversion path — use as-is
+                        // UB-08 (canonical 22 Oct, rehearsal 30 Oct 2026): no conversion path means the sale is refused
+                        // (RecipeConsumptionService), so none can be made. It used to read the figure in the wrong unit
+                        // (250 g as 250 kg). One rule for both runtimes.
+                        $minUnits = 0;
+                        $limitName = $ip->name;
+                        break;
                     }
                 }
 

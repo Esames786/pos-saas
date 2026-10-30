@@ -508,6 +508,38 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             });
     }
 
+    /** UNITS-PACKS F1 (canonical 7308db7e): product_pack_units.factor DECIMAL(15,4); pack_size on the eight line tables. Owner review R-1. */
+    public function test_decimal_pack_sizes_upgrade_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_23_000001_decimal_pack_sizes', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn, $schema) {
+                foreach (['sales_order_lines', 'sales_return_lines', 'goods_receipt_lines', 'purchase_order_lines', 'purchase_bill_lines', 'purchase_return_lines', 'stock_adjustment_lines', 'stock_transfer_lines'] as $t) {
+                    if ($schema->hasTable($t)) {
+                        $this->dropColumns($t, ['pack_size']);
+                    }
+                }
+                $conn->statement('ALTER TABLE `product_pack_units` MODIFY `factor` INT UNSIGNED NOT NULL');
+            },
+            function ($conn, $schema) {
+                $this->assertStringStartsWith('decimal', strtolower((string) $conn->selectOne("SELECT COLUMN_TYPE AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'product_pack_units' AND column_name = 'factor'")->t));
+                $this->assertTrue($schema->hasColumn('sales_order_lines', 'pack_size'));
+                $this->assertTrue($schema->hasColumn('sales_return_lines', 'pack_size'));
+                $this->assertSame(1, $conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->whereNull('pack_size')->count(), 'existing lines keep pack_factor, pack_size NULL');
+            });
+    }
+
+    /** UNITS-PACKS F2 (canonical 9ec6b22f): sales_order_lines.entered_quantity / entered_unit_code (what the cashier typed). */
+    public function test_sale_line_entered_unit_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_23_000002_sale_line_entered_unit', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            fn () => $this->dropColumns('sales_order_lines', ['entered_quantity', 'entered_unit_code']),
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('sales_order_lines', 'entered_quantity'));
+                $this->assertTrue($schema->hasColumn('sales_order_lines', 'entered_unit_code'));
+                $this->assertSame(1, $conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->whereNull('entered_unit_code')->count(), 'NULL on every line typed in the stock unit');
+            });
+    }
+
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void
@@ -545,6 +577,8 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             '2026_10_21_000010_add_expensed_to_cost_movement_type',
             // chunk 2
             '2026_10_22_000001_create_purged_entries_tables',
+            // chunk 3
+            '2026_10_23_000001_decimal_pack_sizes', '2026_10_23_000002_sale_line_entered_unit',
         ];
         foreach ($canonicalRun as $name) {
             $this->assertFalse($m->entry($name)['BASELINE'] ?? true, $name);

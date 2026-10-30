@@ -9,6 +9,7 @@ use App\Models\Tenant\ProductVariant;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\StockLedger;
 use App\Services\Edge\BranchOperatingModeService;
+use App\Support\LineQuantity;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -106,15 +107,20 @@ class InventoryService
         ) {
             $clock = app(\App\Support\TenantClock::class);
             $today = $skipExpired ? $clock->now($clock->businessTimezone($branch))->toDateString() : null;
+            // W2-C: exact to the stored 3 decimals once, so no leg is ever written as 0.000 and each leg's cost is
+            // its stored quantity × cost. A derived quantity (a 4-decimal recipe × plates) is rounded, never refused.
+            $quantity = round($quantity, LineQuantity::DECIMALS);
             $remaining = $quantity;
             $ledgers = [];
             $lastConsumedCost = null;
 
+            // UB-W2 (22 Oct): no variant and the default variant are one stock (see plainVariantIds).
+            $variantIds = $this->plainVariantIds($product, $variant);
             $balances = StockBalance::query()
-                ->with('batch')
+                ->with(['batch', 'variant'])
                 ->where('branch_id', $branch->id)
                 ->where('product_id', $product->id)
-                ->where('product_variant_id', $variant?->id)
+                ->where(fn ($q) => $this->whereVariantIn($q, $variantIds))
                 ->where('quantity_on_hand', '>', 0)
                 ->when($onlyBatchId, fn ($q) => $q->where('inventory_batch_id', $onlyBatchId))
                 ->get()
@@ -132,10 +138,11 @@ class InventoryService
 
                 $consumeQty = min((float) $balance->quantity_on_hand, $remaining);
 
+                // The row it read is the row it takes from, and the stock book says which one.
                 $ledgers[] = $this->postMovement(
                     branch: $branch,
                     product: $product,
-                    variant: $variant,
+                    variant: $balance->product_variant_id ? $balance->variant : null,
                     batch: $balance->batch,
                     movementType: $movementType,
                     direction: 'out',
@@ -152,12 +159,12 @@ class InventoryService
                     $lastConsumedCost = (float) $balance->average_cost;
                 }
 
-                $remaining -= $consumeQty;
+                $remaining = round($remaining - $consumeQty, LineQuantity::DECIMALS);
             }
 
             if ($remaining > 0.0001 && $skipExpired) {
                 $expired = (float) StockBalance::query()->where('branch_id', $branch->id)->where('product_id', $product->id)
-                    ->where('product_variant_id', $variant?->id)->where('quantity_on_hand', '>', 0)
+                    ->where(fn ($q) => $this->whereVariantIn($q, $variantIds))->where('quantity_on_hand', '>', 0)
                     ->whereHas('batch', fn ($b) => $b->whereNotNull('expiry_date')->whereDate('expiry_date', '<', $today))->sum('quantity_on_hand');
                 $unit = ' ' . ($product->unit?->name ?: 'units');
                 throw new RuntimeException($product->name . ': only ' . round($quantity - $remaining, 3) . $unit . ' left that is not expired'
@@ -401,6 +408,9 @@ class InventoryService
         ?int $userId,
         bool $allowNegative = false,
     ): StockLedger {
+        // W2-C: the one place every stock movement passes. The quantity is made exact to the stored 3 decimals here,
+        // and its cost and the new average come from that same number (they used to come from the raw one).
+        $quantity = round($quantity, LineQuantity::DECIMALS);
         if ($quantity <= 0) {
             throw new RuntimeException('Quantity must be greater than zero.');
         }
@@ -461,7 +471,7 @@ class InventoryService
                 'direction'            => $direction,
                 'quantity'             => $quantity,
                 'unit_cost'            => $unitCost,
-                'total_cost'           => $quantity * $unitCost,
+                'total_cost'           => round($quantity * $unitCost, 4),
                 'balance_after'        => $newQty,
                 'reference_type'       => $referenceType,
                 'reference_id'         => $referenceId,
@@ -516,6 +526,39 @@ class InventoryService
         }
 
         return 0.0;
+    }
+
+    /**
+     * UB-W2 (22 Oct) — "plain" stock: a line with no variant and a line in the product's default variant mean the same
+     * goods. The new GRN screen and the POS write the default variant; the old GRN screen, opening stock and recipe
+     * lines write none. Matched exactly, a recipe could not find rice bought on the new screen, and a POS sale could not
+     * find stock bought on the old one. Taking from both is the same stock either way; a real second variant (Large /
+     * Small) still takes only its own rows. Nothing already written is changed.
+     *
+     * @return array<int, int|null>
+     */
+    private function plainVariantIds(Product $product, ?ProductVariant $variant): array
+    {
+        $defaultId = $product->defaultVariant()->value('id');
+
+        if ($variant === null || ($defaultId && (int) $variant->id === (int) $defaultId)) {
+            return $defaultId ? [null, (int) $defaultId] : [null];
+        }
+
+        return [(int) $variant->id];
+    }
+
+    private function whereVariantIn($query, array $variantIds)
+    {
+        $named = array_values(array_filter($variantIds, fn ($id) => $id !== null));
+        if ($named) {
+            $query->whereIn('product_variant_id', $named);
+        }
+        if (in_array(null, $variantIds, true)) {
+            $query->orWhereNull('product_variant_id');
+        }
+
+        return $query;
     }
 
     private function ensureStockTracked(Product $product): void

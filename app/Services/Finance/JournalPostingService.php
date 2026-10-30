@@ -808,6 +808,63 @@ class JournalPostingService
     }
 
     /**
+     * SUPPLIER-NET-BILL-1 — GL for a return the supplier's invoice already takes off: the exact mirror of that
+     * return's own entry, so the return is booked once in effect. The return put Dr 2100 / Cr 1400 (its purchase-only
+     * part out of its cost heads); the invoice is net of it, so this puts the same back: Dr 1400 (and the cost heads) /
+     * Cr 2100. With the return and the net invoice: inventory = stock value, payable = the invoice. Dated on the bill's
+     * date. Idempotent per (purchase_bill_netting, id); never throws.
+     */
+    public function postPurchaseBillReturnNetting(\App\Models\Tenant\PurchaseBillReturnNetting $netting, ?int $userId = null): ?JournalEntry
+    {
+        try {
+            $amount = round((float) $netting->amount, 4);
+            $netting->loadMissing('bill', 'purchaseReturn.lines');
+            $return = $netting->purchaseReturn;
+            $bill = $netting->bill;
+            if ($amount <= 0 || ! $return || ! $bill) {
+                return null;
+            }
+
+            $costAccounts = app(NonStockCostAccounts::class);
+            $returnLines = $return->lines->map(fn ($l) => [
+                'value' => (float) $l->quantity * (float) $l->unit_cost,
+                'stock' => $stock = self::returnLineAffectsStock($l),
+                'account' => $stock ? null : $costAccounts->forReturnLine($l),
+            ])->values()->all();
+            $toCost = self::nonStockShare($returnLines, $amount);
+            $toCostByAccount = NonStockCostAccounts::split($returnLines, $toCost);
+            $toStock = round($amount - $toCost, 4);
+
+            $lines = [];
+            if ($toStock > 0) {
+                $lines[] = ['account_code' => '1400', 'branch_id' => $bill->branch_id, 'description' => 'Inventory Asset — return ' . $return->return_no . ' already off invoice ' . $bill->bill_no, 'debit' => $toStock, 'credit' => 0];
+            }
+            foreach ($toCostByAccount as $accountId => $part) {
+                if ($part > 0) {
+                    $lines[] = ($accountId ? ['account_id' => $accountId] : ['account_code' => NonStockCostAccounts::DEFAULT_CODE])
+                        + ['branch_id' => $bill->branch_id, 'description' => 'Return ' . $return->return_no . ' already off invoice ' . $bill->bill_no, 'debit' => $part, 'credit' => 0];
+                }
+            }
+            $lines[] = ['account_code' => '2100', 'branch_id' => $bill->branch_id, 'description' => 'Return ' . $return->return_no . ' already off invoice ' . $bill->bill_no,
+                'debit' => 0, 'credit' => $amount, 'counterparty_type' => 'supplier', 'supplier_id' => $bill->supplier_id];
+
+            return $this->journal->post(
+                'purchase_bill_netting',
+                $netting->id,
+                $bill->bill_no,
+                'Return ' . $return->return_no . ' already taken off invoice ' . $bill->bill_no,
+                $bill->bill_date?->toDateString() ?? now()->toDateString(),
+                $lines,
+                $userId
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    /**
      * GRN-NON-STOCK-1 — how much of $amount belongs to purchase-only lines, by their share of the
      * document's value. With no value to split by, all-or-nothing on whether every line is non-stock.
      *

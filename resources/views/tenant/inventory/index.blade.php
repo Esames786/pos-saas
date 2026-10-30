@@ -62,7 +62,11 @@
                     <td>{{ $balance->variant?->name ?? '—' }}</td>
                     <td>{{ $balance->batch?->batch_no ?? '—' }}</td>
                     <td class="{{ $balance->quantity_on_hand < 0 ? 'text-danger fw-bold' : '' }}">
-                        {{ number_format($balance->quantity_on_hand, 3) }}
+                        {{ number_format($balance->quantity_on_hand, 3) }} {{ $balance->product?->unit?->name }}
+                        @php($stockWords = \App\Support\PackUnits::inWords($balance->product, (float) $balance->quantity_on_hand, $packsOn ?? false))
+                        @if($stockWords)
+                            <small class="d-block text-muted">{{ $stockWords }}</small>
+                        @endif
                     </td>
                     <td>{{ number_format($balance->average_cost, 4) }}</td>
                     <td>{{ number_format($balance->quantity_on_hand * $balance->average_cost, 2) }}</td>

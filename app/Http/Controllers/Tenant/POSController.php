@@ -228,6 +228,14 @@ class POSController extends Controller
         // with stock (expired too — the counter says it skips them) and its prescription flag. Off = nothing
         // extra is read and the payload is exactly today's.
         $medicalCounter = \App\Support\CounterPacks::enabled();
+        // UNITS-PACKS F3: the normal counter with "Packs at the normal counter" gets each item's packs only (no
+        // batches, no prescription): a scanned carton sells as 1 Carton. The page itself is unchanged.
+        $counterPacks = ! $medicalCounter && \App\Support\CounterPacks::packsOn();
+        // UNITS-PACKS F2: the weight popup offers g / kg only with the packs switch on; off, it is today's popup.
+        $gramEntry = \App\Support\PackUnits::enabled();
+        if ($counterPacks) {
+            $products->load('packUnits');
+        }
         $batchBalances = collect();
         $medToday = null;
         if ($medicalCounter) {
@@ -251,12 +259,17 @@ class POSController extends Controller
             ->groupBy(fn ($row) => $row->branch_id . ':' . $row->product_id . ':' . ($row->product_variant_id ?: 0));
 
         // Fast [branchId][productId][variantId] => qty lookup for recipe ingredient stock.
-        $stockLookup = RecipeAvailability::stockLookup($stockRows, 'qty');
+        // UB-W2 (canonical 22 Oct, rehearsal 30 Oct 2026): plain + default-variant stock read as ONE — in the shared helper, so the
+        // Branch Server's recipe preview (EdgeLocalPosController) adds the same way.
+        $stockLookup = RecipeAvailability::mergePlainVariants(
+            RecipeAvailability::stockLookup($stockRows, 'qty'),
+            \App\Models\Tenant\ProductVariant::where('is_default', true)->pluck('id', 'product_id')
+        );
 
         // W-G1: the recipe "makeable" preview is the ONE shared computation (also used by the Branch Server).
         $recipeAvailability = app(RecipeAvailability::class);
 
-        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $recipeAvailability, $posRuntime, $medicalCounter, $batchBalances, $medToday) {
+        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $recipeAvailability, $posRuntime, $medicalCounter, $counterPacks, $gramEntry, $batchBalances, $medToday) {
             $defaultVariant = $product->defaultVariant ?: $product->variants->first();
 
             $barcodes = $product->barcodes
@@ -354,6 +367,8 @@ class POSController extends Controller
                 'unit_type'         => $product->unit?->unit_type ?? 'quantity',
                 'allow_decimal_qty' => $product->unit && $product->unit->unit_type !== 'quantity',
                 'quantity_step'     => $product->unit && $product->unit->unit_type !== 'quantity' ? 0.001 : 1,
+                // UNITS-PACKS F2: the units the weight popup offers (g / kg for a kg item), each with its size in the stock unit.
+                'entry_units'       => $gramEntry ? \App\Support\StandardUnits::entryUnits($product->unit) : [],
                 'price'             => (float) ($defaultVariant?->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
                 'is_stock_tracked'  => (bool) $product->is_stock_tracked,
                 // Combo-only components ride in the payload for availability but are NOT grid tiles.
@@ -368,7 +383,8 @@ class POSController extends Controller
                 'is_recipe'                     => $recipe['is_recipe'],
                 'makeable_by_branch'            => $recipe['makeable'],
                 'limiting_ingredient_by_branch' => $recipe['limiting'],
-            ] + ($medicalCounter ? ['med' => \App\Support\CounterPacks::payload($product, $batchBalances->get($product->id, collect()), $medToday)] : []);
+            ] + ($medicalCounter ? ['med' => \App\Support\CounterPacks::payload($product, $batchBalances->get($product->id, collect()), $medToday)] : [])
+              + ($counterPacks ? ['packs' => \App\Support\CounterPacks::counterPacks($product)] : []);
         })->values();
 
         $combosPayload = Combo::with(['components.product.unit', 'components.variant'])
@@ -517,6 +533,7 @@ class POSController extends Controller
             'activeMode'       => $requestedMode,
             'kitchenTickets'   => $this->kitchenTicketsOn(),
             'medicalCounter'   => $medicalCounter,
+            'counterPacks'     => $counterPacks,
         ])->toViewData($posRuntime));
     }
 
@@ -768,6 +785,7 @@ class POSController extends Controller
                 $saleLine->unit_code = mb_substr($pack['pack_name'], 0, 20);
                 $saleLine->pack_unit_id = $pack['pack_unit_id'];
                 $saleLine->pack_factor = $pack['pack_factor'];
+                $saleLine->pack_size = $pack['pack_size'];
                 $saleLine->base_quantity = $pack['base_quantity'];
             }
             if (\App\Support\CounterPacks::enabled() && ! empty($line['batch_note'])) {

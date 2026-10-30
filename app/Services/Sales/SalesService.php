@@ -83,7 +83,7 @@ class SalesService
                     } elseif ($consumptionMethod === 'stock_item' && $product->is_stock_tracked) {
                         // MEDICAL-COUNTER-1: a line sold in a pack takes its tablets (base_quantity); a medicine
                         // never leaves from an expired batch on the medical-store counter.
-                        $medical = \App\Support\CounterPacks::enabled();
+                        $medical = \App\Support\CounterPacks::refusesExpired();   // UNITS-PACKS F3: either counter that sells packs
                         $ledgers = $this->inventoryService->postOutFefo(
                             branch: $sale->branch,
                             product: $product,

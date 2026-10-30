@@ -378,16 +378,19 @@ class CateringCostingMySqlTest extends MySqlTenantTestCase
 
     public function test_send_is_blocked_by_a_missing_unit_conversion_but_draft_preview_only_warns(): void
     {
+        // Break conversion: chicken quoted in GM in the recipe, its rate per PKT (a packet — no rule links grams to
+        // it). GM → KG is no longer "missing": since UB-08 (22 Oct) every shop's kg/g converts without a row.
+        $pktUnitId = $this->tenant()->table('units')->insertGetId([
+            'code' => 'PKT', 'name' => 'Packet', 'unit_type' => 'quantity', 'created_at' => now(), 'updated_at' => now(),
+        ]);
         CateringMaterialRate::create([
-            'product_id' => $this->chickenId, 'rate' => 720, 'unit_id' => $this->kgUnitId,
+            'product_id' => $this->chickenId, 'rate' => 720, 'unit_id' => $pktUnitId,
             'effective_from' => now()->subDays(10)->toDateString(),
         ]);
         CateringMaterialRate::create([
             'product_id' => $this->riceId, 'rate' => 300, 'unit_id' => $this->kgUnitId,
             'effective_from' => now()->subDays(10)->toDateString(),
         ]);
-
-        // Break conversion: chicken quoted in GM in the recipe, rate is per KG.
         $this->tenant()->table('unit_conversions')->delete();
 
         $estimate = $this->draftEstimateWithBiryani(100);

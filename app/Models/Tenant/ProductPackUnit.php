@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Model;
  * PHARMACY-PACKS-1 — one way a product is packed (Strip = 10 tablets, Box = 100 tablets).
  * `factor` is in the product's own unit; the row with factor 1 is that unit itself.
  * `sale_price` NULL = factor × the product's selling price.
+ * UNITS-PACKS batch (23 Oct): a kg, litre or metre item's pack may hold a part (Bag = 2.5 kg), so `factor` is a
+ * decimal; compare it with self::same(), never with ===.
  */
 class ProductPackUnit extends Model
 {
@@ -15,10 +17,16 @@ class ProductPackUnit extends Model
 
     protected $fillable = ['product_id', 'name', 'factor', 'sale_price', 'barcode', 'can_sell', 'can_buy', 'sort_order'];
 
+    /** Two pack sizes are the same size (a decimal column read back as float). */
+    public static function same(float $a, float $b): bool
+    {
+        return abs($a - $b) < 1e-9;
+    }
+
     protected function casts(): array
     {
         return [
-            'factor'     => 'integer',
+            'factor'     => 'float',
             'sale_price' => 'decimal:2',
             'can_sell'   => 'boolean',
             'can_buy'    => 'boolean',
@@ -33,7 +41,7 @@ class ProductPackUnit extends Model
 
     public function isBase(): bool
     {
-        return $this->factor === 1;
+        return self::same($this->factor, 1.0);
     }
 
     /** The price of one of this pack: its own, else size × the product's price. */

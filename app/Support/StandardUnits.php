@@ -55,6 +55,77 @@ final class StandardUnits
         return self::FAMILIES[$family][self::code($from)] / self::FAMILIES[$family][self::code($to)];
     }
 
+    /** UNITS-PACKS F2: the units a cashier may type a quantity in, per family, smallest first: [code, label]. */
+    private const ENTRY = [
+        'weight' => [['G', 'g'], ['KG', 'kg']],
+        'volume' => [['ML', 'ml'], ['L', 'litre']],
+        'length' => [['CM', 'cm'], ['M', 'm']],
+    ];
+
+    /**
+     * UNITS-PACKS F2 — what the counter may offer for an item kept in $stock: "g" and "kg" for a kg item, each with how
+     * many of the stock unit one of it is (g → 0.001 for kg). Empty when the stock unit is not a standard unit.
+     *
+     * @return list<array{code:string, label:string, to_stock:float}>
+     */
+    public static function entryUnits(?Unit $stock): array
+    {
+        $family = self::family($stock);
+        if ($family === null) {
+            return [];
+        }
+        $out = [];
+        foreach (self::ENTRY[$family] as [$code, $label]) {
+            $out[] = ['code' => $code, 'label' => $label, 'to_stock' => self::FAMILIES[$family][$code] / self::FAMILIES[$family][self::code($stock)]];
+        }
+
+        return $out;
+    }
+
+    /** UNITS-PACKS F4: the word the counter shows for an entry unit ("g" for G), else the code in small letters. */
+    public static function entryLabel(string $code): string
+    {
+        $code = strtoupper(trim($code));
+        foreach (self::ENTRY as $units) {
+            foreach ($units as [$c, $label]) {
+                if ($c === $code) {
+                    return $label;
+                }
+            }
+        }
+
+        return strtolower($code);
+    }
+
+    /** How many of the stock unit one $code is (G for a kg item = 0.001), or null when $code is not in its family. */
+    public static function codeFactor(string $code, ?Unit $stock): ?float
+    {
+        $family = self::family($stock);
+        $code = strtoupper(trim($code));
+        if ($family === null || ! isset(self::FAMILIES[$family][$code])) {
+            return null;
+        }
+
+        return self::FAMILIES[$family][$code] / self::FAMILIES[$family][self::code($stock)];
+    }
+
+    /** Report wording: kg, litre and metre, the size each family's quantities are added up in. */
+    public const REPORT_UNITS = ['weight' => 'kg', 'volume' => 'L', 'length' => 'm'];
+
+    /**
+     * UNITS-PACKS F4 (mixed units): $qty of $unit in its family's report unit — 500 g = 0.5 kg — as [family, qty], or
+     * null for a unit that is not a recognised standard one (pieces, boxes, a tenant's own unit).
+     */
+    public static function inReportUnit(?Unit $unit, float $qty): ?array
+    {
+        $family = self::family($unit);
+        if ($family === null) {
+            return null;
+        }
+
+        return [$family, $qty * self::FAMILIES[$family][self::code($unit)] / 1000];
+    }
+
     /** A unit that holds part quantities (1.250 kg) — the type, as every screen already decides it. */
     public static function allowsParts(?Unit $unit): bool
     {

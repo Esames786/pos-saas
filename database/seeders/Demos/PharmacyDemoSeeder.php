@@ -364,6 +364,10 @@ class PharmacyDemoSeeder
      * Two rounds from the three distributors: the first stocks every shelf 28 days ago, the second
      * restocks the fast movers 8 days ago with a later expiry — so those items carry two batches.
      * Each GRN gets its purchase bill; the bills stay unpaid, so the distributor balances show.
+     *
+     * The six GRNs and bills are made in the same second, so their numbers come from the round and the distributor
+     * (GRN-<date>-S1A …), never from a random draw: "<second>-<3 random digits>" clashed about 1 run in 30.
+     * Purchases are seeded only into an empty GRN table, so a number is never met twice.
      */
     private function seedPurchases(): void
     {
@@ -411,7 +415,8 @@ class PharmacyDemoSeeder
                 if ($lines === []) {
                     continue;
                 }
-                $total += $this->receiveAndBill(Supplier::where('code', 'PH-' . $supplierCode)->first(), $lines, $date);
+                $total += $this->receiveAndBill(Supplier::where('code', 'PH-' . $supplierCode)->first(), $lines, $date,
+                    $date->format('Ymd') . '-' . $supplierCode . $round['suffix']);
                 $grns++;
             }
         }
@@ -419,11 +424,11 @@ class PharmacyDemoSeeder
         $this->counts['purchases'] = "{$grns} GRNs with batch + expiry, {$grns} unpaid bills, Rs " . number_format($total, 2);
     }
 
-    private function receiveAndBill(Supplier $supplier, array $lines, Carbon $date): float
+    private function receiveAndBill(Supplier $supplier, array $lines, Carbon $date, string $docNo): float
     {
-        return DB::connection('tenant')->transaction(function () use ($supplier, $lines, $date) {
+        return DB::connection('tenant')->transaction(function () use ($supplier, $lines, $date, $docNo) {
             $grn = GoodsReceipt::create([
-                'grn_no'            => $this->purchasing->nextGrnNo(),
+                'grn_no'            => 'GRN-' . $docNo,
                 'branch_id'         => $this->branch->id,
                 'supplier_id'       => $supplier->id,
                 'receipt_date'      => $date->toDateString(),
@@ -455,7 +460,7 @@ class PharmacyDemoSeeder
 
             $subtotal = round($grn->lines->sum(fn ($l) => (float) $l->quantity_received * (float) $l->unit_cost), 2);
             $bill = PurchaseBill::create([
-                'bill_no'             => $this->purchasing->nextBillNo(),
+                'bill_no'             => 'BILL-' . $docNo,
                 'supplier_invoice_no' => 'INV-' . $date->format('md') . '-' . substr($supplier->code, -2),
                 'supplier_id'         => $supplier->id,
                 'branch_id'           => $this->branch->id,

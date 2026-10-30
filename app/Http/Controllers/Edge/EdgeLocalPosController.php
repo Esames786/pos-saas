@@ -221,6 +221,10 @@ class EdgeLocalPosController extends Controller
             // the bootstrap sections yet. Non-medical tenants render exactly the same page on both runtimes; a medical tenant's Branch
             // Server is a follow-up owner decision (recorded in docs/status/edge-canonical-merge-report.md).
             'medicalCounter' => false,
+            // UNITS-PACKS F3 twin (canonical rehearsal, 30 Oct 2026): OFF on the Branch Server — counter_packs is a Master switch and the Edge
+            // sale twin prices no pack line (CounterPacks::serverPricesPacks is Cloud code); the page then renders exactly the Online page
+            // with the switch off. A medical/packs Branch Server is the same follow-up owner decision as medicalCounter.
+            'counterPacks' => false,
         ];
     }
 
@@ -441,7 +445,11 @@ class EdgeLocalPosController extends Controller
             ->get(['product_id', 'product_variant_id', 'quantity_on_hand'])
             ->map(fn ($b) => ['branch_id' => $branchId, 'product_id' => $b->product_id, 'product_variant_id' => $b->product_variant_id, 'quantity_on_hand' => $b->quantity_on_hand]);
 
-        return \App\Support\Pos\RecipeAvailability::stockLookup($rows, 'quantity_on_hand');
+        // UB-W2 (canonical, rehearsal 30 Oct 2026): plain + default-variant stock read as one, as Online does (shared helper).
+        return \App\Support\Pos\RecipeAvailability::mergePlainVariants(
+            \App\Support\Pos\RecipeAvailability::stockLookup($rows, 'quantity_on_hand'),
+            \App\Models\Tenant\ProductVariant::on('tenant')->where('is_default', true)->pluck('id', 'product_id')
+        );
     }
 
     /** A read that must never break the page (a table the appliance may not carry yet) → an empty collection. */
