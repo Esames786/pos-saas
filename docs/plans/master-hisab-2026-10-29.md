@@ -155,3 +155,20 @@ message, profit 350.34.
   The figures come from the same `CompanyHisab` service as the screen, so the file and the page always agree.
 - **Impact:** reads the 5 hisab tables + `tenants` + `central_users`; writes nothing. Tests: `MasterHisabMySqlTest` gains
   an export test that opens the file and reads its cells.
+
+## Deployed — 30 Oct 2026 ~11:00 UTC (16:00 PKT), merge `073238de` (MASTER-HISAB-EXCEL-1)
+
+- Owner's word: "kardo deploy". Production was `ca85d2f1`; origin == HEAD == `073238de` checked before `deploy.sh`.
+- Master backup `20261030_081841` (611.1 KB). Before-snapshots (permissions, reconciliation) taken again at 10:57 UTC.
+- `deploy.sh`: tenants ok=11 skipped=2 (retaildemo, inventorydemo — no tenant DB, as before). After: smoke clean
+  (tb_diff 0, neg_on_disallowed 0, department_negative 0); PERMISSIONS OK — the only change is Super Admin +1
+  (`central.hisab.export`), no role lost anything, no user lost a role. Reconciliation: 2 differences flagged, both
+  tawakalkashif POS tables — 1 paid order saved at the counter in the window: 1 old line gone, 1 re-inserted, 1 KOT
+  link blanked (live use; `recon_explain.php`). GL totals unchanged on every tenant. This release has no tenant migration.
+- On prod as the Super Admin, through the HTTP kernel: `/hisab?month=2026-10` 200 with the Excel button
+  (`/hisab/export?month=2026-10`, `/hisab/export?scope=all`); both downloads 200, real xlsx (`bingoo-hisab-2026-10.xlsx`,
+  `bingoo-hisab-shuru-se-2026-10-30.xlsx`), the six sheets present; temp files removed.
+- **Found while checking, not changed:** HSB-0007 (Kashif Kitchen one-time fee, 27 Oct) was edited on the screen on
+  29 Oct 20:19 UTC (PUT from a browser, after the October entry run): its Tabish 75,000 line was removed, so the entry is
+  now 75,000 (Mohsin only). October now reads income 1,80,886 · profit 1,38,350.34 · Mohsin → Tabish 44,175.17
+  (was 2,55,886 · 2,13,350.34 · 6,675.17). The edit log holds the before/after; asked the owner whether it was meant.
