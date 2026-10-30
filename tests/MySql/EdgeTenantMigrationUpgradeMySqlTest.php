@@ -295,9 +295,14 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
                 $schema->dropIfExists('product_pack_units');
                 foreach ($lineTables as $t) {
                     if ($schema->hasTable($t)) {
-                        $this->dropColumns($t, ['pack_unit_id', 'pack_factor', 'base_quantity']);
+                        // Phase E (30 Oct 2026): pack_size belongs to the LATER decimal_pack_sizes migration, which also re-types
+                        // factor; an appliance older than product_pack_units has neither, so both must run forward again —
+                        // otherwise the shared harness DB is left with INT factor and the clean-install comparison fails here
+                        // and in test_decimal_pack_sizes_upgrade_an_older_appliance.
+                        $this->dropColumns($t, ['pack_unit_id', 'pack_factor', 'base_quantity', 'pack_size']);
                     }
                 }
+                $conn->table('migrations')->where('migration', '2026_10_23_000001_decimal_pack_sizes')->delete();
             },
             function ($conn, $schema) use ($lineTables) {
                 $this->assertTrue($schema->hasTable('product_pack_units'));
@@ -479,7 +484,10 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             function ($conn, $schema) {
                 $values = array_values(array_filter($this->enumValues('stock_ledgers', 'movement_type'), fn ($v) => $v !== 'expensed_to_cost'));
                 $list = implode(',', array_map(fn ($v) => "'" . $v . "'", $values));
-                $conn->statement("ALTER TABLE stock_ledgers MODIFY COLUMN movement_type ENUM({$list}) NOT NULL");
+                // Phase E (30 Oct 2026): keep the column's own nullability (the migration preserves it) — forcing NOT NULL here
+                // made the "upgraded = clean install" comparison fail on a column that is nullable on a clean install.
+                $null = (DB::connection('tenant')->selectOne("SHOW COLUMNS FROM stock_ledgers WHERE Field = 'movement_type'")->Null ?? 'NO') === 'YES' ? 'NULL' : 'NOT NULL';
+                $conn->statement("ALTER TABLE stock_ledgers MODIFY COLUMN movement_type ENUM({$list}) {$null}");
             },
             function ($conn, $schema) {
                 $values = $this->enumValues('stock_ledgers', 'movement_type');
@@ -489,23 +497,34 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             });
     }
 
-    /** VOID-PURGE-1 (canonical 9550e045): purged_entries + purged_numbers carried empty; the shipped number generators read 0. */
-    public function test_purged_entries_tables_upgrade_an_older_appliance(): void
+    /**
+     * VOID-PURGE-1 (canonical 9550e045) — Phase E resolution of owner item R-2: purged_entries + purged_numbers are CLOUD_ONLY
+     * (no Edge runtime path reads or writes them; the purge is a Cloud back-office screen). The appliance never gets the file
+     * (artifact EXCLUDE) and would skip it with record if it did; the SHIPPED number generators stay safe without the tables
+     * because PurgedNumbers is table-guarded (ready() → false → null / 0) — the shape the deploy window was designed for.
+     */
+    public function test_purged_entries_tables_are_cloud_only_and_the_generators_stay_safe_without_them(): void
     {
-        $this->proveUpgrade('2026_10_22_000001_create_purged_entries_tables', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
-            function ($conn, $schema) {
-                $schema->dropIfExists('purged_numbers');
-                $schema->dropIfExists('purged_entries');
-                \App\Support\PurgedNumbers::forget();
-            },
-            function ($conn, $schema) {
-                $this->assertTrue($schema->hasTable('purged_entries'));
-                $this->assertTrue($schema->hasTable('purged_numbers'));
-                \App\Support\PurgedNumbers::forget();
-                $this->assertTrue(\App\Support\PurgedNumbers::ready());
-                $this->assertSame(0, \App\Support\PurgedNumbers::highestInt(\App\Support\PurgedNumbers::MANUAL_JOURNAL), 'nothing on the appliance purges');
-                $this->assertSame(0, $conn->table('purged_entries')->count());
-            });
+        $name = '2026_10_22_000001_create_purged_entries_tables';
+        $m = EdgeTenantMigrationManifest::load();
+        $this->assertSame(EdgeTenantMigrationManifest::CLOUD_ONLY, $m->classification($name));
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_SKIP_CLOUD_ONLY, $m->decisionFor($name));
+        $plan = $m->plan(['tenant' => [$name]]);
+        $this->assertSame([$name], $plan['skip'], 'present on an appliance → skipped with record, never executed');
+        $this->assertSame([], $plan['run']);
+        $this->assertSame([], $plan['blockers']);
+
+        $conn = DB::connection('tenant');
+        $schema = $conn->getSchemaBuilder();
+        // The appliance shape: neither table exists (nothing on the appliance ever purges).
+        $schema->dropIfExists('purged_numbers');
+        $schema->dropIfExists('purged_entries');
+        \App\Support\PurgedNumbers::forget();
+        $this->assertFalse(\App\Support\PurgedNumbers::ready());
+        $this->assertNull(\App\Support\PurgedNumbers::highest(\App\Support\PurgedNumbers::JOURNAL_ENTRY, 'JE-'), 'JournalService::nextEntryNo sees "nothing removed"');
+        $this->assertSame(0, \App\Support\PurgedNumbers::highestInt(\App\Support\PurgedNumbers::MANUAL_JOURNAL));
+        $this->assertNull(\App\Support\PurgedNumbers::highest(\App\Support\PurgedNumbers::EXPENSE_VOUCHER, 'EXP-'));
+        \App\Support\PurgedNumbers::forget();
     }
 
     /** UNITS-PACKS F1 (canonical 7308db7e): product_pack_units.factor DECIMAL(15,4); pack_size on the eight line tables. Owner review R-1. */
@@ -575,11 +594,11 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             // CANONICAL REHEARSAL (Agent B, 30 Oct 2026) chunk 1
             '2026_10_21_000001_add_submission_key_to_sales_returns', '2026_10_21_000002_add_submission_key_to_purchase_returns',
             '2026_10_21_000010_add_expensed_to_cost_movement_type',
-            // chunk 2
-            '2026_10_22_000001_create_purged_entries_tables',
+            // chunk 2: purged_entries tables — Phase E R-2 → CLOUD_ONLY (asserted below as SKIP, not RUN)
             // chunk 3
             '2026_10_23_000001_decimal_pack_sizes', '2026_10_23_000002_sale_line_entered_unit',
         ];
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_SKIP_CLOUD_ONLY, $m->decisionFor('2026_10_22_000001_create_purged_entries_tables'), 'Phase E R-2');
         foreach ($canonicalRun as $name) {
             $this->assertFalse($m->entry($name)['BASELINE'] ?? true, $name);
             $this->assertSame(EdgeTenantMigrationManifest::DECISION_RUN, $m->decisionFor($name), $name);

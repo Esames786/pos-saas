@@ -45,7 +45,7 @@
 */
 
 return [
-    'manifest_version' => 'edge-tenant-migration-manifest@2026-10-22.1',
+    'manifest_version' => 'edge-tenant-migration-manifest@2026-10-30.1', // Phase E (Agent E, 30 Oct 2026): R-2 purged tables -> CLOUD_ONLY
     'meta' => [
         'baseline_release' => '0.7.0-edge',
         'baseline_commit' => '7b8f886',
@@ -3398,18 +3398,18 @@ return [
         // ── CANONICAL REHEARSAL chunk 2 (canonical ed9a8431 range: VOID-PURGE-1/2/3) ──
         '2026_10_22_000001_create_purged_entries_tables' => [
             'MIGRATION' => '2026_10_22_000001_create_purged_entries_tables',
-            'CLASSIFICATION' => 'EDGE_SCHEMA_SAFE',
+            'CLASSIFICATION' => 'CLOUD_ONLY',
             'TABLES_CHANGED' => ['purged_entries', 'purged_numbers'],
-            'EDGE_CODE_REFERENCES' => ['none that writes — JournalService::nextEntryNo / ManualJournalService / ExpenseVoucherController read PurgedNumbers::highest(), which returns null/0 while the table is absent (PurgedNumbers::ready) and 0 rows once it exists; VoidPurgeService is a Cloud finance screen'],
+            'EDGE_CODE_REFERENCES' => ['none — Phase E (Agent E, 30 Oct 2026) evidence: grep of app/Services/Edge, app/Http/Controllers/Edge, app/Support/Edge, app/Support/Pos, routes/edge_runtime.php, config/edge.php, the bootstrap/config-refresh sections and the sale/return/supplier-finance/purchase-return envelopes = 0 references to purged_entries / purged_numbers / PurgedNumbers / PurgedEntry. The only readers are JournalService::nextEntryNo (no Edge runtime path calls JournalService; the appliance posts no GL — the Cloud ingestions use JournalPostingService), ExpenseVoucherController (Cloud route group only) and ManualJournalService (artifact-excluded); the only writers are VoidPurgeService / VoidPurgeController (Cloud finance, artifact-excluded). Every reader is table-guarded by PurgedNumbers::ready() (hasTable -> null/0), which was designed for the table being absent.'],
             'ADDITIVE_ONLY' => true,
             'DATA_REWRITE' => false,
             'LOCK_RISK' => 'none',
             'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
-            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
-            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_purged_entries_tables_upgrade_an_older_appliance',
+            'PACKAGE_DECISION' => 'EXCLUDE',
+            'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
             'OWNER_REVIEW_REQUIRED' => false,
             'BASELINE' => false,
-            'NOTE' => 'CANONICAL 9550e045 VOID-PURGE-1: two NEW additive tables (the Owner\'s record of permanently deleted voided entries + the numbers held back). The purge is a Cloud screen behind the Master switch void_purge (no Edge route, no twin). Carried so the SHIPPED number generators (JournalService, the shared PurgedNumbers helper) see the Cloud shape rather than a hasTable divergence; nothing on the appliance ever writes either table. OWNER MAY FLIP to CLOUD_ONLY (then PurgedNumbers::ready() keeps the generators safe on the appliance) — recorded in the rehearsal report.',
+            'NOTE' => 'CANONICAL 9550e045 VOID-PURGE-1: two NEW tables (the Owner\'s record of permanently deleted voided entries + the numbers held back). The purge is a Cloud back-office screen behind the Master switch void_purge (no Edge route, no twin, no bootstrap section, no envelope field). Agent B carried it EDGE_SCHEMA_SAFE pending owner item R-2; Phase E resolved R-2 to CLOUD_ONLY on actual Edge-code evidence (EDGE_CODE_REFERENCES): nothing on the appliance reads or writes either table and the shipped generators are table-guarded, so the D7 definition (a Cloud/back-office feature not part of the Branch Server) applies. Excluded from the package; skipped-with-record by the upgrader if ever present. Appliance-side proof: TestsMySqldgeTenantMigrationUpgradeMySqlTest::test_purged_entries_tables_are_cloud_only_and_the_generators_stay_safe_without_them.',
         ],
         // ── CANONICAL REHEARSAL chunk 3 (canonical 4b745532 UNIFIED-W3W4: W2 slices, units & packs F1–F4, W3/W4 workspaces) ──
         '2026_10_23_000001_decimal_pack_sizes' => [

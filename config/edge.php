@@ -494,6 +494,14 @@ return [
             'app/Models/Master/EdgeBackupRecoveryAudit.php',
             'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
             'resources/views/tenant/finance/manual-journals',
+            // CANONICAL REHEARSAL Phase E (30 Oct 2026, C-7): VOID-PURGE-1/2/3 - the Owner's permanent deletion of a voided
+            // finance entry is a Cloud back-office feature (Master switch void_purge; routes only in the Cloud tenant group;
+            // VoidPurgeService imports the EXCLUDED CateringAdvance / CateringEvent / SupplierPayment models). No Edge runtime
+            // path references any of the four; the shared PurgedNumbers helper and the PurgedEntry model stay (lazy, table-guarded).
+            'app/Services/Finance/VoidPurgeService.php',
+            'app/Services/Finance/VoidPurgeNeedsConfirmation.php',
+            'app/Http/Controllers/Tenant/Finance/VoidPurgeController.php',
+            'resources/views/tenant/finance/voided-entries',
 
             // POST-RECONCILIATION — the canonical merge brought the full Cloud business domains into the dev
             // branch. The Branch Server never executes Catering / manufacturing / purchasing-AP / SaaS billing,

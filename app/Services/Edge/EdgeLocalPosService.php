@@ -1056,10 +1056,26 @@ class EdgeLocalPosService
                 'delivery_address' => $delivery['address'],
                 'delivery_charge_amount' => $delivery['charge'],
             ];
+        } elseif ($session && (int) $sale->restaurant_table_session_id !== (int) $session->id) {
+            // MOVE-TABLE-CART-1 twin (canonical a4eec6f8 HeldSaleController::store; Phase E item R-4, 30 Oct 2026): a held bill
+            // stays where it was made. The shared cashier view locks the order type and table once a bill is held, so a save
+            // that names ANOTHER open table session can only be a stale cart (22 Oct, Kashif Food: after Move Table the cart
+            // still held a car's quick sale and the next Hold re-homed it onto table 32 beside that table's own bill). Same
+            // key, same words as Online so the page shows the cashier the identical message; nothing is saved. Moving or
+            // merging tables rewrites the bill's own session (EdgeLocalTableOperationsService), so those never trip this, and
+            // the explicit R21 `change_order_details` revision above is the only sanctioned way to re-home a check.
+            $here = 'Table ' . ($session->table?->table_no ?? $session->restaurant_table_id);
+            $there = $sale->restaurant_table_session_id
+                ? 'belongs to Table ' . (RestaurantTable::on('tenant')->find($sale->restaurant_table_id)?->table_no ?? $sale->restaurant_table_id)
+                : 'is a ' . (['quick_sale' => 'Quick Sale', 'takeaway' => 'Takeaway', 'delivery' => 'Delivery'][$sale->order_type] ?? 'separate') . ' bill';
+            throw ValidationException::withMessages([
+                'held_sale_id' => "Bill {$sale->sale_no} {$there}, not {$here}. Nothing was saved. "
+                    . "Press Add Round, then add the items for {$here} again.",
+            ]);
         } elseif ((int) $sale->restaurant_table_session_id !== (int) ($session?->id ?? 0)) {
-            // LOCK-ORDER GUARD: a dine-in check may only be revised with its session supplied (and therefore
-            // LOCKED, shift → session → sale) — otherwise a revision could run unserialized against a
-            // concurrent session close. A mismatched or omitted session is refused, never inferred.
+            // LOCK-ORDER GUARD (Edge safety check, kept): a dine-in check may only be revised with its session supplied (and
+            // therefore LOCKED, shift → session → sale) — otherwise a revision could run unserialized against a concurrent
+            // session close. An omitted session is refused, never inferred (Online keeps the bill's own session instead).
             throw ValidationException::withMessages(['restaurant_table_session_id' => 'This held sale belongs to a different table session — submit its own session.']);
         }
 
