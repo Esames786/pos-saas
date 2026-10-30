@@ -20,6 +20,13 @@
                 <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
             @endif
 
+            {{-- CATEGORY-PARENT-GUARD-1: who saved it last (blank for saves before 21 Oct 2026). --}}
+            @if($category?->updatedBy)
+                <p class="text-muted small mb-3" id="category-last-changed">
+                    Last changed by {{ $category->updatedBy->name }}, {{ app(\App\Support\TenantClock::class)->format($category->updated_at, 'd M Y, h:i A') }}
+                </p>
+            @endif
+
             <div class="row g-3">
                 <div class="col-md-3">
                     <label for="code" class="form-label required">Code</label>
@@ -48,11 +55,13 @@
                         @foreach($parents as $parent)
                             <option value="{{ $parent->id }}"
                                     @selected(old('parent_id', $category?->parent_id) == $parent->id)>
-                                {{ $parent->name }}
+                                {{ $parent->path_label ?? $parent->name }}
                             </option>
                         @endforeach
                     </select>
                     @error('parent_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    {{-- CATEGORY-PARENT-GUARD-1: this category and the ones inside it are not in the list (21 Oct, Khatri). --}}
+                    <div class="form-text">Keep “None (Top Level)” for a main tab on the POS. Pick a parent only to put this category inside it.</div>
                 </div>
 
                 {{-- CATEGORY-BRANCH-SCOPE-1: blank = every branch, which is what every category

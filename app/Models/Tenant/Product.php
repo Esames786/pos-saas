@@ -8,6 +8,24 @@ class Product extends Model
 {
     protected $connection = 'tenant';
 
+    /**
+     * UB-10: an item's unit is fixed once its stock or purchases ran in it — on EVERY write path (product screens, the
+     * bulk import, scripts, any API), since old purchase lines and stock movements read the product's unit and would
+     * change meaning. The screens and the import check first and say so; this is the backstop.
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (Product $product) {
+            if ($product->isDirty('unit_id')) {
+                \App\Support\StockUnitGuard::refuse(
+                    (int) $product->id,
+                    \App\Support\StockUnitGuard::normalise($product->getOriginal('unit_id')),
+                    \App\Support\StockUnitGuard::normalise($product->unit_id),
+                );
+            }
+        });
+    }
+
     // PRODUCT-BOUNDARY-2: logical product roles. products.id stays the single inventory
     // identity; "saleable"/"purchasable" reuse the existing is_sellable / is_purchasable.
     public const KIND_SALE_ITEM = 'sale_item';

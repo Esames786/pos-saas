@@ -1037,6 +1037,10 @@ class SupplierFinanceDirectMySqlTest extends MySqlTenantTestCase
             'purchase_return_lines', 'purchase_returns', 'purchase_bill_lines', 'purchase_bills',
             'cash_bank_account_transactions', 'cash_bank_accounts', 'stock_ledgers', 'stock_balances',
             'model_has_roles', 'users', 'suppliers', 'accounts', 'branches',
+            // The "no advance" cases below assume the running account is OFF (no row = OFF). A suite that ran
+            // SupplierRunningAccountMySqlTest first left it ON in this shared database: overpayment was then legal and
+            // these two failed only in a combined run, never alone.
+            'supplier_credit_allocations', 'purchasing_settings',
         ]);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();

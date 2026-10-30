@@ -192,8 +192,10 @@ class EdgeTenantMigrationManifestTest extends TestCase
         // CANONICAL_RELEASE_FREEZE 025728d8 (22 Oct 2026): + restocked, ask_prescription, return_without_bill_schema (EDGE_REQUIRED ×3).
         // POST_FREEZE_EXCEPTION 59787ff6 (22 Oct 2026): + add_updated_by_to_categories (EDGE_REQUIRED).
         // REFUND-SHIFT-H1 (owner decision H1, 22 Oct 2026): + add_processing_shift_uuid_to_sales_returns (EDGE_REQUIRED).
-        $this->assertSame(217, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6) + 025728d8 (3) + 59787ff6 exception (1) + H1 (1)');
-        $this->assertSame(24, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
+        // CANONICAL REHEARSAL (Agent B, 30 Oct 2026) chunk 1 (canonical 59787ff6 range): + submission_key sales_returns (EDGE_REQUIRED),
+        // submission_key purchase_returns (EDGE_SCHEMA_SAFE), purchase_bill_return_nettings (CLOUD_ONLY), expensed_to_cost ENUM (EDGE_REQUIRED).
+        $this->assertSame(221, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6) + 025728d8 (3) + 59787ff6 exception (1) + H1 (1) + rehearsal chunk 1 (4)');
+        $this->assertSame(25, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
         $baselineCloudOnly = array_filter($m->entries(), fn ($e) => ($e['BASELINE'] ?? false) && $e['CLASSIFICATION'] === EdgeTenantMigrationManifest::CLOUD_ONLY);
         $this->assertSame([], array_keys($baselineCloudOnly), 'baseline rule: no 0.7.0 migration is CLOUD_ONLY in this manifest version');
     }

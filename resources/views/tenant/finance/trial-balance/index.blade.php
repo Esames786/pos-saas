@@ -26,10 +26,11 @@
                     <input type="hidden" name="date_from" value="{{ $from }}">
                     <input type="hidden" name="date_to" value="{{ $to }}">
                     <input type="hidden" name="parties" value="{{ $showParties ? 1 : 0 }}">
+                    <input type="hidden" name="group" value="{{ $grouped ? 1 : 0 }}">
                     <button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>CSV</button>
                 </form>
                 {{-- Part 2: Print — the same figures as a paged A4 PDF. --}}
-                <a href="{{ url('/finance/trial-balance') . '?' . http_build_query(['date_from' => $from, 'date_to' => $to, 'branch_ids' => $selectedBranchIds, 'parties' => $showParties ? 1 : 0, 'format' => 'pdf']) }}"
+                <a href="{{ url('/finance/trial-balance') . '?' . http_build_query(['date_from' => $from, 'date_to' => $to, 'branch_ids' => $selectedBranchIds, 'parties' => $showParties ? 1 : 0, 'group' => $grouped ? 1 : 0, 'format' => 'pdf']) }}"
                    target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm ms-1" id="tb-print"><i class="ti ti-printer me-1"></i>Print</a>
             </div>
         </div>
@@ -50,9 +51,15 @@
                     <div class="col-sm-2">
                         {{-- Unticked sends the hidden 0; ticked, the later 1 wins. Default on. --}}
                         <input type="hidden" name="parties" value="0">
-                        <div class="form-check mb-2">
+                        <div class="form-check mb-1">
                             <input class="form-check-input" type="checkbox" name="parties" value="1" id="tb-parties" @checked($showParties)>
                             <label class="form-check-label" for="tb-parties">Show party detail</label>
+                        </div>
+                        {{-- TB-SECTION-HEADS-1: heads of the books (Assets … Cost of Sales …); untick for the flat list. --}}
+                        <input type="hidden" name="group" value="0">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="group" value="1" id="tb-group" @checked($grouped)>
+                            <label class="form-check-label" for="tb-group">Group by heads</label>
                         </div>
                     </div>
                     <div class="col-sm-2">
@@ -78,7 +85,9 @@
                             <tr>
                                 <th scope="col">Code</th>
                                 <th scope="col">Account</th>
+                                @unless($grouped)
                                 <th scope="col">Type</th>
+                                @endunless
                                 <th scope="col" class="text-end">Opening</th>
                                 <th scope="col" class="text-end">Debit</th>
                                 <th scope="col" class="text-end">Credit</th>
@@ -86,6 +95,53 @@
                             </tr>
                         </thead>
                         <tbody>
+                            @if($grouped)
+                            {{-- TB-SECTION-HEADS-1: each head of the books, parents in bold over their children, a subtotal per head. --}}
+                            @forelse($sections as $s)
+                            <tr class="tb-section">
+                                <th colspan="6" scope="colgroup" class="text-uppercase small fw-bold pt-3" style="color:#092C4C;letter-spacing:.04em">{{ $s['label'] }}</th>
+                            </tr>
+                            @foreach($s['lines'] as $l)
+                            @php $pad = 0.5 + $l['depth'] * 1.25; @endphp
+                            <tr class="tb-{{ $l['kind'] }}">
+                                <td class="{{ $l['kind'] === 'head' ? 'fw-bold' : 'fw-semibold' }}">{{ $l['code'] }}</td>
+                                <td style="padding-left: {{ $pad }}rem">
+                                    @if($l['kind'] === 'head')
+                                    <span class="fw-bold">{{ $l['name'] }}</span>
+                                    @else
+                                    <a href="{{ url('/finance/general-ledger') . '?' . http_build_query(['account_id' => $l['account_id'], 'date_from' => $from, 'date_to' => $to, 'branch_ids' => $selectedBranchIds]) }}">{{ $l['name'] }}</a>
+                                    @endif
+                                </td>
+                                <td class="text-end text-muted {{ $l['kind'] === 'head' ? 'fw-bold' : '' }}">{{ $sided($l['opening_debit'], $l['opening_credit']) }}</td>
+                                <td class="text-end {{ $l['kind'] === 'head' ? 'fw-bold' : '' }}">{{ $l['period_debit'] > 0 ? number_format($l['period_debit'], 2) : '' }}</td>
+                                <td class="text-end {{ $l['kind'] === 'head' ? 'fw-bold' : '' }}">{{ $l['period_credit'] > 0 ? number_format($l['period_credit'], 2) : '' }}</td>
+                                <td class="text-end fw-semibold {{ $l['kind'] === 'head' ? 'fw-bold' : '' }}">{{ $sided($l['closing_debit'], $l['closing_credit']) }}</td>
+                            </tr>
+                            @if($l['kind'] !== 'head')
+                            @foreach($parties[$l['account_id']] ?? [] as $p)
+                            <tr class="tb-party small">
+                                <td></td>
+                                <td class="text-muted" style="padding-left: {{ $pad + 1.25 }}rem">{{ $p['label'] }}</td>
+                                <td class="text-end text-muted">{{ $sided($p['opening_debit'], $p['opening_credit']) }}</td>
+                                <td class="text-end text-muted">{{ $p['period_debit'] > 0 ? number_format($p['period_debit'], 2) : '' }}</td>
+                                <td class="text-end text-muted">{{ $p['period_credit'] > 0 ? number_format($p['period_credit'], 2) : '' }}</td>
+                                <td class="text-end text-muted">{{ $sided($p['closing_debit'], $p['closing_credit']) }}</td>
+                            </tr>
+                            @endforeach
+                            @endif
+                            @endforeach
+                            <tr class="tb-subtotal fw-bold" style="border-top:2px solid #092C4C">
+                                <td></td>
+                                <td>Total {{ $s['label'] }}</td>
+                                <td class="text-end">{{ $sided($s['subtotal']['opening_debit'], $s['subtotal']['opening_credit']) }}</td>
+                                <td class="text-end">{{ number_format($s['subtotal']['period_debit'], 2) }}</td>
+                                <td class="text-end">{{ number_format($s['subtotal']['period_credit'], 2) }}</td>
+                                <td class="text-end">{{ $sided($s['subtotal']['closing_debit'], $s['subtotal']['closing_credit']) }}</td>
+                            </tr>
+                            @empty
+                            <tr><td colspan="6" class="text-center text-muted py-4">No posted journal activity up to {{ $to }}.</td></tr>
+                            @endforelse
+                            @else
                             @forelse($rows as $r)
                             <tr>
                                 <td class="fw-semibold">{{ $r['code'] }}</td>
@@ -112,11 +168,12 @@
                             @empty
                             <tr><td colspan="7" class="text-center text-muted py-4">No posted journal activity up to {{ $to }}.</td></tr>
                             @endforelse
+                            @endif
                         </tbody>
                         @if(count($rows))
                         <tfoot class="table-light">
                             <tr>
-                                <th colspan="3" class="text-end">Totals</th>
+                                <th colspan="{{ $grouped ? 2 : 3 }}" class="text-end">Totals</th>
                                 <th class="text-end small">{{ number_format($totals['opening_debit'], 2) }} Dr / {{ number_format($totals['opening_credit'], 2) }} Cr</th>
                                 <th class="text-end" id="tb-period-debit">{{ number_format($totals['period_debit'], 2) }}</th>
                                 <th class="text-end" id="tb-period-credit">{{ number_format($totals['period_credit'], 2) }}</th>

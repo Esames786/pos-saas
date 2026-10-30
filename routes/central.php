@@ -76,6 +76,9 @@ Route::domain(config('tenancy.central_domain'))
                     ->name('central.tenants.business.update');
                 Route::put('/tenants/{tenant}/features', [\App\Http\Controllers\Central\TenantBusinessController::class, 'updateFeatures'])
                     ->name('central.tenants.features.update');
+                // UB-10 — read-only: which items the new screens take as they are (permission in MasterSeeder).
+                Route::get('/tenants/{tenant}/readiness', [\App\Http\Controllers\Central\TenantBusinessController::class, 'readiness'])
+                    ->name('central.tenants.readiness');
 
                 // MASTER-UNIVERSE-1 — add a branch from the tenant hub (the same insert as the tenant's
                 // own Branches screen, plan limit included). Permission name listed in MasterSeeder.

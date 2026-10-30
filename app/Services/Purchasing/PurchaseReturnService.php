@@ -44,18 +44,19 @@ class PurchaseReturnService
     public function createDraft(array $header, array $lines, ?int $userId = null): PurchaseReturn
     {
         return DB::connection('tenant')->transaction(function () use ($header, $lines, $userId) {
-            $return = PurchaseReturn::create([
+            $return = $this->createNumbered([
                 'branch_id'         => (int) $header['branch_id'],
                 'supplier_id'       => (int) $header['supplier_id'],
                 'purchase_order_id' => $header['purchase_order_id'] ?? null,
                 'goods_receipt_id'  => $header['goods_receipt_id'] ?? null,
-                'return_no'         => $this->nextReturnNo(),
                 'return_date'       => $header['return_date'],
                 'status'            => 'draft',
                 'reason_code'       => $header['reason_code'] ?? null,
                 'notes'             => $header['notes'] ?? null,
                 'created_by'        => $userId,
-            ]);
+            ] + (! empty($header['submission_key'])   // UB-06: set only by the caller that checked the column exists
+                ? ['submission_key' => $header['submission_key'], 'submission_hash' => $header['submission_hash'] ?? null]
+                : []));
 
             $this->syncLines($return, $lines);
             $this->calculateTotals($return);
@@ -203,6 +204,18 @@ class PurchaseReturnService
             /** @var PurchaseReturn $doc */
             $doc = PurchaseReturn::query()->whereKey($return->id)->lockForUpdate()->firstOrFail();
 
+            // UB-06: two returns against the same receipt line, posted at the same moment by two people, each saw
+            // the other as not yet posted and together sent back more than was received (and credited the supplier
+            // twice). Lock the receipt lines this return draws on FIRST — before any plain read, which would fix the
+            // transaction's snapshot ahead of the other return's commit — so the second waits and then counts the
+            // first. Ordered by id, so two returns on overlapping lines never deadlock.
+            $sourceIds = PurchaseReturnLine::query()->where('purchase_return_id', $doc->id)
+                ->where('source_line_type', 'goods_receipt_line')->whereNotNull('source_line_id')
+                ->lockForUpdate()->pluck('source_line_id')->unique()->sort()->values();
+            if ($sourceIds->isNotEmpty()) {
+                GoodsReceiptLine::query()->whereIn('id', $sourceIds)->orderBy('id')->lockForUpdate()->get(['id']);
+            }
+
             if ($doc->isPosted()) {
                 throw new RuntimeException("Return {$doc->return_no} is already posted.");
             }
@@ -302,6 +315,21 @@ class PurchaseReturnService
     }
 
     // ── Internals ────────────────────────────────────────────────────────────
+
+    /** The return row, numbered; a "PRET-<second>-<3 digits>" already taken draws another (it clashed ~1 in 900). */
+    private function createNumbered(array $attributes): PurchaseReturn
+    {
+        for ($try = 1; ; $try++) {
+            $no = $this->nextReturnNo();
+            try {
+                return PurchaseReturn::create(['return_no' => $no] + $attributes);
+            } catch (\Illuminate\Database\QueryException $e) {
+                if ($try >= 5 || ! \App\Support\SubmissionKey::duplicateValue($e, $no)) {
+                    throw $e;
+                }
+            }
+        }
+    }
 
     private function syncLines(PurchaseReturn $return, array $lines): void
     {

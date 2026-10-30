@@ -42,6 +42,9 @@ class PurchaseReturn extends Model
         'cancelled_by',
         'cancelled_at',
         'created_by',
+        // UB-06: the new screen's form this return was posted from (posted once)
+        'submission_key',
+        'submission_hash',
     ];
 
     protected function casts(): array

@@ -7,6 +7,7 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
 use App\Services\Finance\NonStockCostAccounts;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -35,7 +36,7 @@ class CategoryController extends Controller
         return view('tenant.categories.form', [
             'category' => null,
             'title'    => 'Create Category',
-            'parents'  => Category::where('is_active', true)->orderBy('name')->get(),
+            'parents'  => $this->parentChoices(null),
             'branches' => Branch::orderBy('name')->get(['id', 'name']),
             'costAccounts' => NonStockCostAccounts::choices(),
         ]);
@@ -44,7 +45,7 @@ class CategoryController extends Controller
     public function store(Request $request)
     {
         $data = $this->validated($request);
-        $category = Category::create($data);
+        $category = Category::create($this->withUpdatedBy($data));
 
         $category->translations()->updateOrCreate(
             ['language_code' => 'en'],
@@ -59,7 +60,7 @@ class CategoryController extends Controller
         return view('tenant.categories.form', [
             'category' => $category,
             'title'    => 'Edit Category',
-            'parents'  => Category::where('id', '!=', $category->id)->where('is_active', true)->orderBy('name')->get(),
+            'parents'  => $this->parentChoices($category),
             'branches' => Branch::orderBy('name')->get(['id', 'name']),
             'costAccounts' => NonStockCostAccounts::choices(),
         ]);
@@ -68,7 +69,7 @@ class CategoryController extends Controller
     public function update(Request $request, Category $category)
     {
         $data = $this->validated($request, $category);
-        $category->update($data);
+        $category->update($this->withUpdatedBy($data));
 
         $category->translations()->updateOrCreate(
             ['language_code' => 'en'],
@@ -89,6 +90,32 @@ class CategoryController extends Controller
         return back()->with('status', 'Category deleted successfully.');
     }
 
+    /**
+     * CATEGORY-PARENT-GUARD-1: the parents a category may be put under — active ones, minus itself and everything below
+     * it — each labelled with its full path ("Chicken Biryani › Biryani Saadi").
+     */
+    private function parentChoices(?Category $category)
+    {
+        $excluded = $category ? $category->descendantIds() + [(int) $category->id => true] : [];
+        $labels = Category::pathLabels();
+
+        return Category::where('is_active', true)->get(['id', 'parent_id', 'name'])
+            ->reject(fn (Category $parent) => isset($excluded[(int) $parent->id]))
+            ->each(fn (Category $parent) => $parent->setAttribute('path_label', $labels[(int) $parent->id] ?? $parent->name))
+            ->sortBy('path_label', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
+    }
+
+    /** CATEGORY-PARENT-GUARD-1: written only once the column exists, so a save between `git pull` and `migrate` never fails. */
+    private function withUpdatedBy(array $fields): array
+    {
+        if (Schema::connection('tenant')->hasColumn('categories', 'updated_by')) {
+            $fields['updated_by'] = auth('tenant')->id();
+        }
+
+        return $fields;
+    }
+
     private function validated(Request $request, ?Category $category = null): array
     {
         $data = $request->validate([
@@ -107,6 +134,25 @@ class CategoryController extends Controller
         ]);
 
         $data['branch_id'] = $data['branch_id'] ?? null;
+
+        // CATEGORY-PARENT-GUARD-1: never under itself or under anything below it. That makes a loop, and a category in
+        // a loop always has a parent, so the POS (which shows only top-level tabs) shows it nowhere — 21 Oct, Khatri.
+        // The parent list already leaves these out; this catches an old open tab or a hand-made request.
+        if ($category && ! empty($data['parent_id'])) {
+            $parentId = (int) $data['parent_id'];
+            if ($parentId === (int) $category->id) {
+                throw ValidationException::withMessages([
+                    'parent_id' => 'A category cannot be its own parent. Choose another parent, or “None (Top Level)”.',
+                ]);
+            }
+            if (isset($category->descendantIds()[$parentId])) {
+                $parentName = Category::whereKey($parentId)->value('name');
+                throw ValidationException::withMessages([
+                    'parent_id' => "“{$category->name}” cannot go inside “{$parentName}”, because “{$parentName}” is already inside “{$category->name}”. "
+                        . 'Choose another parent, or “None (Top Level)”.',
+                ]);
+            }
+        }
 
         // A child may sit under a shared parent, or under a parent of its own branch — never under
         // a parent belonging to a DIFFERENT branch. Otherwise the POS would show a child whose tab

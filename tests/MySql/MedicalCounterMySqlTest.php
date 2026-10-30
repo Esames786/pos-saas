@@ -273,6 +273,20 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta($before + 10, $this->batchQty($batch), 0.001, 'its 10 tablets went back into the same batch');
         $cost = (float) DB::connection('tenant')->table('stock_ledgers')->where('reference_type', 'sales_return')->where('product_id', $p->id)->orderByDesc('id')->value('unit_cost');
         $this->assertEqualsWithDelta((float) $line->fresh()->unit_cost / 10, $cost, 0.0001, 'at the cost of one tablet');
+
+        // UB-06 old-document readers: that post carried no form key — exactly a return made before 21 Oct (or from a tab
+        // opened before the release). It reads everywhere, and the sale can still be returned with today's form.
+        $old = \App\Models\Tenant\SalesReturn::latest('id')->firstOrFail();
+        $this->assertNull($old->submission_key, 'posted as before: no key');
+        $this->assertStringContainsString($old->return_no, $this->owner()->get($this->url('/sales-returns'))->assertOk()->getContent());
+        $this->assertStringContainsString($old->return_no, $this->owner()->get($this->url('/sales-returns/' . $old->id))->assertOk()->getContent());
+        $form = $this->owner()->get($this->url('/sales-returns/create?sales_order_id=' . $order->id))->assertOk()->getContent();
+        $this->assertStringContainsString('name="submission_key"', $form, 'today\'s form for the same sale');
+        $this->owner()->post($this->url('/sales-returns'), [
+            'sales_order_id' => $order->id, 'reason' => 'second strip', 'refund_method' => 'cash', 'refund_amount' => 52.5,
+            'submission_key' => \App\Support\SubmissionKey::fresh(), 'lines' => [['sales_order_line_id' => $line->id, 'quantity' => 1]],
+        ])->assertSessionHasNoErrors();
+        $this->assertEquals(2, (float) $line->fresh()->returned_quantity, 'the old return still counts: 1 + 1 of 2');
     }
 
     public function test_the_bill_preview_prints_the_pack_and_the_batch(): void
@@ -440,22 +454,31 @@ class MedicalCounterMySqlTest extends MySqlTenantTestCase
         $line = ['product_id' => $p->id, 'pack_unit_id' => $strip->id, 'quantity' => 1, 'restock' => 1];
         $count = \App\Models\Tenant\SalesReturn::count();
 
-        $this->owner()->post($this->url('/sales-returns'), $base + ['lines' => [$line + ['unit_price' => 60, 'inventory_batch_id' => $this->liveBatches($p)->first()->id]]])
+        $this->owner()->post($this->url('/sales-returns'), $base + ['refund_amount' => 60, 'lines' => [$line + ['unit_price' => 60, 'inventory_batch_id' => $this->liveBatches($p)->first()->id]]])
             ->assertSessionHasErrors('return');
         $this->assertStringContainsString('52.50 today', (string) session('errors')->first('return'), 'more than today\'s price is refused');
 
-        $this->owner()->post($this->url('/sales-returns'), $base + ['lines' => [$line + ['unit_price' => 52.5]]])->assertSessionHasErrors('return');
+        $this->owner()->post($this->url('/sales-returns'), $base + ['refund_amount' => 52.5, 'lines' => [$line + ['unit_price' => 52.5]]])->assertSessionHasErrors('return');
         $this->assertStringContainsString('pick its batch', (string) session('errors')->first('return'), 'a medicine with an expiry needs its batch');
 
-        $this->owner()->post($this->url('/sales-returns'), ['reason' => ''] + $base + ['lines' => [$line + ['unit_price' => 52.5]]])->assertSessionHasErrors('reason');
+        $this->owner()->post($this->url('/sales-returns'), ['reason' => ''] + $base + ['refund_amount' => 52.5, 'lines' => [$line + ['unit_price' => 52.5]]])->assertSessionHasErrors('reason');
+        // UB-04 (owner, 21 Oct): the refund is stated — today's price is only its ceiling.
+        $this->owner()->post($this->url('/sales-returns'), $base + ['lines' => [['restock' => 0] + $line + ['unit_price' => 52.5]]])->assertSessionHasErrors('refund_amount');
         $this->assertSame($count, \App\Models\Tenant\SalesReturn::count(), 'nothing was posted');
 
-        // Thrown away: no tablets back, no cost reversal — and a typed batch from the strip works too.
+        // Thrown away: no tablets back, no cost reversal.
         $stockBefore = $this->stock($p);
         $this->owner()->post($this->url('/sales-returns'), $base + ['refund_amount' => 52.5, 'lines' => [['restock' => 0] + $line + ['unit_price' => 52.5]]])->assertSessionHasNoErrors();
         $this->assertEqualsWithDelta($stockBefore, $this->stock($p), 0.001, 'thrown away: nothing back in stock');
-        $this->owner()->post($this->url('/sales-returns'), $base + ['refund_amount' => 50, 'lines' => [$line + ['unit_price' => 50, 'batch_no' => 'PNLNEW1', 'expiry' => '09/28']]])->assertSessionHasNoErrors();
-        $this->assertSame('2028-09-30', InventoryBatch::where('batch_no', 'PNLNEW1')->firstOrFail()->expiry_date->toDateString(), 'typed from the strip: MM/YY = month end');
+        // UB-04: a batch typed off the strip that is not in stock here has no known cost — never guessed onto the shelf.
+        $this->owner()->post($this->url('/sales-returns'), $base + ['refund_amount' => 50, 'lines' => [$line + ['unit_price' => 50, 'batch_no' => 'PNLNEW1', 'expiry' => '09/28']]])
+            ->assertSessionHasErrors('return');
+        $this->assertStringContainsString('not known', (string) session('errors')->first('return'));
+        $this->assertNull(InventoryBatch::where('batch_no', 'PNLNEW1')->first(), 'no batch made up');
+        // A batch typed off the strip that IS here goes back into it, at its own cost.
+        $here = $this->liveBatches($p)->first();
+        $this->owner()->post($this->url('/sales-returns'), $base + ['refund_amount' => 50, 'lines' => [$line + ['unit_price' => 50, 'batch_no' => $here->batch_no, 'expiry' => $here->expiry_date->format('m/y')]]])
+            ->assertSessionHasNoErrors();
         $this->assertEqualsWithDelta($stockBefore + 10, $this->stock($p), 0.001);
     }
 

@@ -436,6 +436,59 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             });
     }
 
+    // ── CANONICAL REHEARSAL (Agent B, 30 Oct 2026) — chunk 1 (canonical 59787ff6 range); MySQL proof PENDING (not run in the rehearsal) ──
+
+    /** UB-06 (canonical 5c49790c): sales_returns.submission_key / submission_hash + unique index — posted once. */
+    public function test_submission_key_on_sales_returns_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_21_000001_add_submission_key_to_sales_returns', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn, $schema) {
+                if ($schema->hasColumn('sales_returns', 'submission_key')) {
+                    $schema->table('sales_returns', fn (Blueprint $t) => $t->dropUnique('sales_returns_submission_key_unique'));
+                }
+                $this->dropColumns('sales_returns', ['submission_key', 'submission_hash']);
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('sales_returns', 'submission_key'));
+                $this->assertTrue($schema->hasColumn('sales_returns', 'submission_hash'));
+                $this->assertSame('YES', $conn->selectOne("SELECT IS_NULLABLE AS n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sales_returns' AND column_name = 'submission_key'")->n, 'NULL on every row the till writes (it sends no key)');
+                $this->assertSame(1, (int) $conn->selectOne("SELECT COUNT(DISTINCT index_name) AS c FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'sales_returns' AND index_name = 'sales_returns_submission_key_unique' AND non_unique = 0")->c);
+            });
+    }
+
+    /** UB-06 (canonical 5c49790c): the same on purchase_returns — carried on the appliance, never written there. */
+    public function test_submission_key_on_purchase_returns_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_21_000002_add_submission_key_to_purchase_returns', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function ($conn, $schema) {
+                if ($schema->hasColumn('purchase_returns', 'submission_key')) {
+                    $schema->table('purchase_returns', fn (Blueprint $t) => $t->dropUnique('purchase_returns_submission_key_unique'));
+                }
+                $this->dropColumns('purchase_returns', ['submission_key', 'submission_hash']);
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('purchase_returns', 'submission_key'));
+                $this->assertTrue($schema->hasColumn('purchase_returns', 'submission_hash'));
+            });
+    }
+
+    /** KHATRI-STOCK-TO-PNL-1 (canonical 18d552a0): stock_ledgers.movement_type gains 'expensed_to_cost' at the end of the ENUM. */
+    public function test_expensed_to_cost_movement_type_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_21_000010_add_expensed_to_cost_movement_type', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn, $schema) {
+                $values = array_values(array_filter($this->enumValues('stock_ledgers', 'movement_type'), fn ($v) => $v !== 'expensed_to_cost'));
+                $list = implode(',', array_map(fn ($v) => "'" . $v . "'", $values));
+                $conn->statement("ALTER TABLE stock_ledgers MODIFY COLUMN movement_type ENUM({$list}) NOT NULL");
+            },
+            function ($conn, $schema) {
+                $values = $this->enumValues('stock_ledgers', 'movement_type');
+                $this->assertContains('expensed_to_cost', $values);
+                $this->assertSame('expensed_to_cost', end($values), 'appended at the end — existing rows keep their ordinal');
+                $this->assertSame(0, $conn->table('stock_ledgers')->where('movement_type', 'expensed_to_cost')->count(), 'nothing on the appliance writes it');
+            });
+    }
+
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void
@@ -468,6 +521,9 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             '2026_10_21_000020_add_updated_by_to_categories',
             // REFUND-SHIFT-H1 (owner decision H1, 22 Oct 2026)
             '2026_10_22_000001_add_processing_shift_uuid_to_sales_returns',
+            // CANONICAL REHEARSAL (Agent B, 30 Oct 2026) chunk 1
+            '2026_10_21_000001_add_submission_key_to_sales_returns', '2026_10_21_000002_add_submission_key_to_purchase_returns',
+            '2026_10_21_000010_add_expensed_to_cost_movement_type',
         ];
         foreach ($canonicalRun as $name) {
             $this->assertFalse($m->entry($name)['BASELINE'] ?? true, $name);

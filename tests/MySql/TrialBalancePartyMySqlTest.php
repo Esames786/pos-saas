@@ -284,11 +284,16 @@ class TrialBalancePartyMySqlTest extends MySqlTenantTestCase
 
         $this->assertStringNotContainsString('AB CHICKEN NEW', $this->page(self::OCT + ['parties' => '0'])->render(), 'the toggle hides them');
 
-        $csvResponse = $this->page(self::OCT + ['export_csv' => 1]);
-        ob_start();
-        $csvResponse->sendContent();
-        $csv = (string) ob_get_clean();
-        $this->assertStringContainsString('"    AB CHICKEN NEW",Party,0.00,19650.00,42150.00,"22500.00 Cr"', $csv);
+        $csvOf = function (array $params): string {
+            $response = $this->page(self::OCT + $params + ['export_csv' => 1]);
+            ob_start();
+            $response->sendContent();
+
+            return (string) ob_get_clean();
+        };
+        // the flat list (group=0) as before; grouped (the default, TB-SECTION-HEADS-1) keeps the same party under its account
+        $this->assertStringContainsString('"    AB CHICKEN NEW",Party,0.00,19650.00,42150.00,"22500.00 Cr"', $csvOf(['group' => '0']));
+        $this->assertStringContainsString('Liabilities,Party,1,,"AB CHICKEN NEW",0.00,19650.00,42150.00,"22500.00 Cr"', $csvOf([]));
 
         $pdf = $this->page(self::OCT + ['format' => 'pdf']);
         $this->assertSame('application/pdf', $pdf->headers->get('Content-Type'));

@@ -9,7 +9,7 @@ class Category extends Model
     protected $connection = 'tenant';
 
     protected $fillable = [
-        'parent_id', 'branch_id', 'code', 'name', 'slug', 'sort_order', 'is_active', 'cogs_account_id',
+        'parent_id', 'branch_id', 'code', 'name', 'slug', 'sort_order', 'is_active', 'cogs_account_id', 'updated_by',
         // ONLINE-ORDERING-1: website par dikhe ya nahi, kis naam/tarteeb/waqt me (POS par asar nahi).
         'show_on_website', 'website_name', 'website_sort_order', 'website_visible_from', 'website_visible_to',
     ];
@@ -74,6 +74,64 @@ class Category extends Model
     public function children()
     {
         return $this->hasMany(Category::class, 'parent_id')->orderBy('sort_order')->orderBy('name');
+    }
+
+    /** CATEGORY-PARENT-GUARD-1: who last saved this category on the screen (NULL = before 21 Oct 2026, or a command). */
+    public function updatedBy()
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    /**
+     * CATEGORY-PARENT-GUARD-1: every category under this one — children, grandchildren, and so on. A category may never be
+     * moved under one of these: that is a loop, and a category in a loop has a parent, so the POS shows it nowhere.
+     * The seen-set keeps a loop already in the data from spinning forever.
+     *
+     * @return array<int, true>
+     */
+    public function descendantIds(): array
+    {
+        $childrenOf = [];
+        foreach (static::query()->whereNotNull('parent_id')->get(['id', 'parent_id']) as $row) {
+            $childrenOf[(int) $row->parent_id][] = (int) $row->id;
+        }
+
+        $found = [];
+        $queue = $childrenOf[(int) $this->id] ?? [];
+        while ($queue !== []) {
+            $id = array_pop($queue);
+            if (isset($found[$id]) || $id === (int) $this->id) {
+                continue;
+            }
+            $found[$id] = true;
+            array_push($queue, ...($childrenOf[$id] ?? []));
+        }
+
+        return $found;
+    }
+
+    /**
+     * CATEGORY-PARENT-GUARD-1: "Main › Sub" for every category, so a main category and a sub-category with a similar name
+     * cannot be mistaken for each other in a parent list.
+     *
+     * @return array<int, string>
+     */
+    public static function pathLabels(): array
+    {
+        $rows = static::query()->get(['id', 'parent_id', 'name'])->keyBy('id');
+
+        $labels = [];
+        foreach ($rows as $id => $row) {
+            $names = [];
+            $seen = [];
+            for ($at = $row; $at && ! isset($seen[$at->id]); $at = $at->parent_id ? $rows->get($at->parent_id) : null) {
+                $seen[$at->id] = true;
+                array_unshift($names, $at->name);
+            }
+            $labels[(int) $id] = implode(' › ', $names);
+        }
+
+        return $labels;
     }
 
     public function translations()

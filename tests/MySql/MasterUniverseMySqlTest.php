@@ -180,7 +180,7 @@ class MasterUniverseMySqlTest extends MySqlTenantTestCase
             'central.tenants.backup', 'central.tenants.backups', 'central.tenants.backup-settings.save', 'central.tenants.sync',
             'central.tenants.reset', 'central.tenants.provision', 'central.tenants.activate', 'central.tenants.suspend', 'central.tenants.cancel',
             'central.tenants.subscription.update', 'central.tenants.business.impact', 'central.tenants.business.update',
-            'central.tenants.features.update', 'central.tenants.branches.store',
+            'central.tenants.features.update', 'central.tenants.branches.store', 'central.tenants.readiness',
             'central.tenant-domains.store', 'central.tenant-domains.primary', 'central.tenant-domains.activate',
             'central.tenant-domains.deactivate', 'central.tenant-domains.destroy', 'central.tenant-backups.download',
             'central.invoices.index', 'central.tenants.invoices.create',
@@ -392,6 +392,77 @@ class MasterUniverseMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1, $json['products']['Ingredients / raw material']);
         $this->assertSame('restaurant', $json['current']);
         $this->assertContains('pos', $json['plan_modules']);
+    }
+
+    public function test_readiness_names_what_the_new_screens_cannot_take_and_changes_nothing(): void
+    {
+        // UB-10: read-only. Items like the live ones: a count unit bought in part quantities, an item with no unit, a
+        // carton as the stock unit, a recipe line with no conversion — and items that are fine.
+        $t = DB::connection('tenant');
+        $wipe = function () use ($t) {
+            $t->statement('SET FOREIGN_KEY_CHECKS=0');
+            foreach (['recipe_ingredients', 'recipes', 'goods_receipt_lines', 'goods_receipts', 'suppliers', 'units'] as $table) {
+                $t->table($table)->delete();
+            }
+            $t->table('products')->where('sku', 'like', 'RD-%')->delete();
+            $t->statement('SET FOREIGN_KEY_CHECKS=1');
+        };
+        $wipe();
+        try {
+            $unit = fn (string $code, string $type) => $t->table('units')->insertGetId(['code' => $code, 'name' => $code, 'unit_type' => $type, 'base_factor' => 1, 'is_base' => 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            [$ea, $kg, $ctn, $g, $cup] = [$unit('EA', 'quantity'), $unit('KG', 'weight'), $unit('CTN', 'quantity'), $unit('G', 'weight'), $unit('CUP', 'quantity')];
+            $item = fn (string $name, ?int $unitId) => $t->table('products')->insertGetId(['sku' => 'RD-' . $name, 'name' => $name, 'slug' => 'rd-' . strtolower($name),
+                'unit_id' => $unitId, 'is_purchasable' => 1, 'is_stock_tracked' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            $beef = $item('Beef', $ea);
+            $item('Mystery', null);
+            $item('Biscuit', $ctn);
+            $rice = $item('Rice', $kg);
+            $cola = $item('Cola', $ea);
+            $flour = $item('Flour', $kg);
+            $supplier = $t->table('suppliers')->insertGetId(['code' => 'RD-S', 'name' => 'Supplier', 'created_at' => now(), 'updated_at' => now()]);
+            $grn = $t->table('goods_receipts')->insertGetId(['grn_no' => 'RD-GRN', 'branch_id' => $t->table('branches')->value('id'), 'supplier_id' => $supplier,
+                'receipt_date' => now()->toDateString(), 'status' => 'posted', 'created_at' => now(), 'updated_at' => now()]);
+            foreach ([[$beef, 50.5], [$rice, 12.5], [$cola, 24]] as [$p, $q]) {
+                $t->table('goods_receipt_lines')->insert(['goods_receipt_id' => $grn, 'product_id' => $p, 'quantity_received' => $q, 'unit_cost' => 10, 'created_at' => now(), 'updated_at' => now()]);
+            }
+            $recipe = $t->table('recipes')->insertGetId(['product_id' => $cola, 'name' => 'Bread', 'created_at' => now(), 'updated_at' => now()]);
+            foreach ([[$g, 250], [$cup, 2]] as [$u, $q]) {
+                $t->table('recipe_ingredients')->insert(['recipe_id' => $recipe, 'product_id' => $flour, 'unit_id' => $u, 'quantity' => $q, 'created_at' => now(), 'updated_at' => now()]);
+            }
+            $sum = fn () => collect(['units', 'products', 'goods_receipt_lines', 'recipe_ingredients', 'stock_balances'])
+                ->mapWithKeys(fn ($table) => [$table => DB::connection('tenant')->selectOne("CHECKSUM TABLE `{$table}`")->Checksum])->all();
+            $before = $sum();
+
+            $json = $this->actingAs($this->admin(), 'central')->getJson($this->host . '/tenants/' . $this->live->id . '/readiness')->assertOk()->json();
+
+            $this->assertTrue($json['ok'], json_encode($json));
+            $by = collect($json['items'])->keyBy('name');
+            $this->assertSame('limited', $by['Beef']['status'], 'a count unit bought as 50.5');
+            $this->assertStringContainsString('like 50.5', $by['Beef']['reasons'][0]);
+            $this->assertSame('blocked', $by['Mystery']['status'], 'no unit');
+            $this->assertSame('limited', $by['Biscuit']['status'], 'a carton as the stock unit');
+            $this->assertSame('limited', $by['Flour']['status'], 'a recipe line in CUP with no conversion');
+            $this->assertStringContainsString('CUP → KG', implode(' ', $by['Flour']['reasons']));
+            $this->assertStringNotContainsString('G → KG', implode(' ', $by['Flour']['reasons']), 'grams to kilograms is a standard pair');
+            $this->assertArrayNotHasKey('Rice', $by->all(), 'kg bought as 12.5 is fine');
+            $this->assertArrayNotHasKey('Cola', $by->all());
+            $this->assertSame('Mystery', $json['items'][0]['name'], 'blocked first');
+            // + the hub's own Tea, Samosa, Sugar: bought and kept in stock (the defaults) with no unit = blocked
+            $this->assertSame(['ready' => 2, 'limited' => 3, 'blocked' => 4], $json['summary']);
+
+            config(['database.connections.tenant.database' => $this->tenantDb]);
+            DB::purge('tenant');
+            $this->assertSame($before, $sum(), 'reading only — not one row changed');
+
+            // Without the permission there is no box and no answer.
+            $plain = $this->admin(['central.dashboard', 'central.tenants.index', 'central.tenants.show']);
+            $this->assertStringNotContainsString('id="readiness"', $this->actingAs($plain, 'central')->get($this->host . '/tenants/' . $this->live->id)->getContent());
+            $this->actingAs($plain, 'central')->getJson($this->host . '/tenants/' . $this->live->id . '/readiness')->assertForbidden();
+        } finally {
+            config(['database.connections.tenant.database' => $this->tenantDb]);
+            DB::purge('tenant');
+            $wipe();
+        }
     }
 
     public function test_a_business_the_plan_cannot_carry_is_refused(): void

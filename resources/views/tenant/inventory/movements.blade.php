@@ -41,6 +41,7 @@
                         'sale_return'       => 'Sale Return',
                         'recipe_consumption'=> 'Recipe Consumption',
                         'production_in'     => 'Production In',
+                        'expensed_to_cost'  => 'Expensed to cost',
                     ] as $val => $label)
                         <option value="{{ $val }}" @selected(request('movement_type') === $val)>{{ $label }}</option>
                     @endforeach

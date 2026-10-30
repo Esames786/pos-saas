@@ -59,6 +59,29 @@ class TenantBusinessService
         return $out;
     }
 
+    /**
+     * UB-10 — which of the tenant's items the new screens (purchase in packs, the pack counter) take as they are,
+     * shown in Master before a switch is turned on. Read-only: it changes and fixes nothing; an item that is not
+     * ready keeps its old screens. At most 200 items are listed (blocked first); the counts cover every item.
+     *
+     * @return array{ok:bool, checked?:int, summary?:array<string,int>, items?:list<array<string,mixed>>, more?:int, error?:string}
+     */
+    public function readiness(Tenant $tenant): array
+    {
+        try {
+            $this->tenancy->activate($tenant);
+            $r = app(\App\Services\Catalog\ProductReadiness::class)->forTenant();
+
+            return ['ok' => true, 'checked' => $r['checked'], 'summary' => $r['summary'],
+                'items' => array_slice($r['items'], 0, 200), 'more' => max(count($r['items']) - 200, 0)];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'error' => 'Could not read this tenant right now: ' . mb_substr($e->getMessage(), 0, 120)];
+        } finally {
+            $this->tenancy->deactivate();
+            DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
+        }
+    }
+
     /** Modules the tenant's plan includes (what it bought). */
     public function planModules(Tenant $tenant): array
     {
