@@ -215,6 +215,14 @@ class VoidPurgeService
             $c->table('supplier_ledgers')->where('entry_type', 'payment_void')->where('reference_type', SupplierPayment::class)
                 ->where('reference_id', $id)->orderBy('id')->lockForUpdate()->get());
 
+        // SUPPLIER-CREDIT-CLARITY-1: the record of this payment's moves between invoices goes with it (kept in the hidden
+        // copy). Its void already took it off every invoice, so no invoice changes.
+        if ($c->getSchemaBuilder()->hasTable('supplier_credit_moves')) {
+            $moves = $c->table('supplier_credit_moves')->where('source_type', 'payment')->where('source_id', $id)->lockForUpdate()->get();
+            if ($moves->isNotEmpty()) {
+                $plan['tables']['supplier_credit_moves'] = $this->rows($moves);
+            }
+        }
         $plan['tables']['supplier_payments'] = $this->rows(collect([$c->table('supplier_payments')->where('id', $id)->first()]));
         $plan['self_refs'][] = ['supplier_payments', 'void_journal_entry_id', $id];
         $plan['bill_ids'] = array_values(array_filter([(int) $payment->purchase_bill_id]));
@@ -447,7 +455,7 @@ class VoidPurgeService
         $c = DB::connection('tenant');
         $ids = fn (string $table) => array_map(fn ($row) => $row['id'], $plan['tables'][$table] ?? []);
 
-        foreach (['catering_email_logs', 'cash_bank_account_transactions', 'supplier_ledgers', 'expense_voucher_lines', 'journal_lines'] as $table) {
+        foreach (['catering_email_logs', 'supplier_credit_moves', 'cash_bank_account_transactions', 'supplier_ledgers', 'expense_voucher_lines', 'journal_lines'] as $table) {
             if ($ids($table)) {
                 $c->table($table)->whereIn('id', $ids($table))->delete();
             }

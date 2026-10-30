@@ -196,8 +196,9 @@ class EdgeTenantMigrationManifestTest extends TestCase
         // submission_key purchase_returns (EDGE_SCHEMA_SAFE), purchase_bill_return_nettings (CLOUD_ONLY), expensed_to_cost ENUM (EDGE_REQUIRED).
         // chunk 2 (ed9a8431 VOID-PURGE): + purged_entries tables (EDGE_SCHEMA_SAFE).
         // chunk 3 (4b745532 UNIFIED-W3W4): + decimal_pack_sizes (EDGE_REQUIRED, owner review), sale_line_entered_unit (EDGE_REQUIRED), goods_receipts submission_key (CLOUD_ONLY).
-        $this->assertSame(225, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6) + 025728d8 (3) + 59787ff6 exception (1) + H1 (1) + rehearsal chunks 1–3 (8)');
-        $this->assertSame(26, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
+        // chunk 5 (567a7752 SUPPLIER-CREDIT-CLARITY-1): + supplier_credit_moves (CLOUD_ONLY).
+        $this->assertSame(226, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6) + 025728d8 (3) + 59787ff6 exception (1) + H1 (1) + rehearsal chunks 1–5 (9)');
+        $this->assertSame(27, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
         $baselineCloudOnly = array_filter($m->entries(), fn ($e) => ($e['BASELINE'] ?? false) && $e['CLASSIFICATION'] === EdgeTenantMigrationManifest::CLOUD_ONLY);
         $this->assertSame([], array_keys($baselineCloudOnly), 'baseline rule: no 0.7.0 migration is CLOUD_ONLY in this manifest version');
     }

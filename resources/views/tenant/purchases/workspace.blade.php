@@ -176,6 +176,13 @@
                     </div>
                     <div class="pw-help mt-1" id="pw-ret-list"></div>
                 </div>
+                {{-- SUPPLIER-CREDIT-CLARITY-1 (owner, 26 Oct): the advance this invoice uses, payment by payment, ticked before Post. --}}
+                <div class="col-12" id="pw-credit" hidden>
+                    <span class="fw-bold d-block">This invoice uses the supplier's advance: <span id="pw-credit-total"></span></span>
+                    <ul class="mb-1 ps-3 pw-help" id="pw-credit-list"></ul>
+                    <label for="pw-credit-ok"><input type="checkbox" class="form-check-input" name="invoice[confirm_credit]" id="pw-credit-ok" value="1">
+                        Use this advance on this invoice.</label>
+                </div>
                 <div class="col-12 pw-help">The invoice total comes from the goods received (and their extra charges). If the supplier's paper differs, correct a line's price before you Post. A difference found after the goods were posted is settled with a Supplier Return or an authorized adjustment — a posted goods receipt is never edited.</div>
             </div>
         @else

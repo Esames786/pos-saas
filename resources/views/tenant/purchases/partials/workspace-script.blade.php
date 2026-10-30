@@ -6,6 +6,7 @@
     if (!form) return;
     var $ = function (id) { return document.getElementById(id); };
     var BOX = @json($supplierBox);
+    var ADV = @json((object) ($advances ?? []));   // SUPPLIER-CREDIT-CLARITY-1: supplier id → the advance a new invoice would use
     var RECEIPT_URL = @json(url('/purchases/receipts/__ID__'));
     var preview = null;   // the picked receipt's invoice, as the server works it out
 
@@ -46,12 +47,39 @@
             var c = supplierCredit();
             $('pw-pay-says').textContent = 'Invoice about ' + money(invoiceTotal()) + (c > 0 ? ' − Supplier Credit ' + money(c) : '') + ' = up to ' + money(suggested()) + '. The server checks it again when you Post.';
         }
+        drawCredit(inv);
         $('grn-post-btn').textContent = 'Post';
+    }
+
+    // SUPPLIER-CREDIT-CLARITY-1: the advance this invoice uses — which payments and returns, oldest first — and its tick.
+    var creditAsked = false;   // the server asked for the tick: show it even if this screen worked out no advance
+    function drawCredit(inv) {
+        var box = $('pw-credit');
+        if (!box) return;
+        // A net invoice (goods already received) takes its whole returns off: they are spent on it, not advance.
+        var net = start() === 'received' && val('invoice[returns_on_invoice]') === @json(\App\Services\Purchasing\PurchaseBillService::NETTED);
+        var deducted = {}, less = 0;
+        if (net && preview) (preview.returns || []).forEach(function (r) { deducted[r.id] = true; less += r.amount; });
+        var credit = net ? ((preview && preview.credit && preview.credit.netted) || 0) : supplierCredit();
+        var used = Math.round(Math.max(0, Math.min(credit, invoiceTotal() - less)) * 100) / 100;
+        box.hidden = !(inv && (used > 0.005 || creditAsked));
+        if (box.hidden) { $('pw-credit-ok').checked = false; return; }
+        var id = parseInt(($('supplier_id') || {}).value || '0', 10);
+        var sources = start() === 'received' ? ((preview && preview.credit && preview.credit.sources) || []) : (ADV[id] || []);
+        $('pw-credit-total').textContent = money(used);
+        var left = used, items = [];
+        sources.forEach(function (s) {
+            if (left <= 0.005 || (s.type === 'return' && deducted[s.id])) return;
+            var take = Math.min(left, s.remaining);
+            items.push('<li>' + esc(s.label) + ' (' + esc(s.date) + '): ' + money(take) + '</li>');
+            left = Math.round((left - take) * 100) / 100;
+        });
+        $('pw-credit-list').innerHTML = items.join('');
     }
 
     function loadReceipt() {
         var id = ($('pw-grn') || {}).value, box = $('pw-grn-info');
-        preview = null;
+        preview = null; creditAsked = false;
         if ($('pw-returns')) $('pw-returns').hidden = true;
         if (!id) { box.innerHTML = ''; refresh(); return; }
         box.textContent = 'Reading the goods receipt…';
@@ -89,6 +117,7 @@
         var box = $('pw-errors');
         if (x.status === 422 && x.d && x.d.step) {
             var errs = x.d.errors || {}, list = [];
+            if (errs['invoice.confirm_credit']) { creditAsked = true; refresh(); }
             Object.keys(errs).forEach(function (k) { list.push(errs[k][0]); });
             box.innerHTML = '<b>' + esc(STEP[x.d.step] || 'This purchase') + ' — nothing was saved.</b><br>' + list.map(esc).join('<br>');
             box.hidden = false;
@@ -141,6 +170,7 @@
         if (e.target.id === 'pw-grn') { loadReceipt(); return; }
         if (e.target.id === 'pw-pay-amt') amountTouched = true;
         if (e.target.name === 'start') { $('pw-done').hidden = true; $('pw-errors').hidden = true; }
+        if (e.target.name === 'start' || e.target.id === 'supplier_id') creditAsked = false;
         refresh();
     });
     form.addEventListener('input', function (e) { if (e.target.id === 'pw-pay-amt') amountTouched = true; if (e.target.id === 'pw-inv-tax' || e.target.id === 'extra_charges') refresh(); });

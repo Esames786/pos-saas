@@ -325,6 +325,18 @@
                     @error('confirm_reallocation') <div class="pb-err">{{ $message }}</div> @enderror
                 </div>
                 @endif
+                {{-- SUPPLIER-CREDIT-CLARITY-1 (owner, 26 Oct): the advance this invoice uses — which payments and returns, how much
+                     from each — said here, and ticked before Post. --}}
+                @if(! empty($pv['credit']['sources']))
+                <div class="pb-move" id="pb-rv-credit" hidden>
+                    <div><b>This invoice uses the supplier's advance: <span id="pb-rv-credit-total"></span></b></div>
+                    <ul class="mb-1 ps-3" id="pb-rv-credit-list"></ul>
+                    <div class="pb-sub">It is money you already paid this supplier (or goods you sent back) that no invoice used yet.</div>
+                    <label for="confirm_credit"><input type="checkbox" class="form-check-input mt-1" name="confirm_credit" id="confirm_credit" value="1">
+                        Use this advance on this invoice.</label>
+                    @error('confirm_credit') <div class="pb-err">{{ $message }}</div> @enderror
+                </div>
+                @endif
                 <div class="pb-rv-actions">
                     <button type="submit" class="pb-btn" id="pb-post">Post invoice</button>
                     <button type="button" class="pb-btn2" id="pb-back">Back to edit</button>
@@ -347,6 +359,7 @@
     var plan = JSON.parse(document.getElementById('pb-plan').textContent || '{}');
     var hasReturns = sum.dataset.hasReturns === '1';
     var CAN_MOVE = @json((bool) ($canReallocate ?? false));
+    var CREDIT_ASKED = @json($errors->has('confirm_credit'));   // SUPPLIER-CREDIT-CLARITY-1: the server asked for the advance tick
     function num(id) { var el = document.getElementById(id); var n = parseFloat(String(el && el.value || '0').replace(/,/g, '')); return isFinite(n) ? n : 0; }
     function money(v) { return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     function r2(v) { return Math.round(v * 100) / 100; }
@@ -421,7 +434,7 @@
         var invoice = r2(received - disc + tax - less);
         var paid = r2(Math.max(0, Math.min(credit, invoice)));
         out.textContent = money(invoice); set('paid', paid > 0 ? '− ' + money(paid) : '0.00'); set('rem', money(invoice - paid));
-        return { c: c, invoice: invoice, paid: paid, less: less, moves: moves };
+        return { c: c, invoice: invoice, paid: paid, less: less, moves: moves, deducted: c === 'netted' ? d.byId : {} };
     }
 
     // Numbers: the whole value is selected on focus, so typing replaces it (no backspacing).
@@ -470,16 +483,47 @@
             });
         }
         if (ok && !moving) ok.checked = false;
-        post.disabled = moving && (!CAN_MOVE || !(ok && ok.checked));
+        // SUPPLIER-CREDIT-CLARITY-1: the advance it uses, payment by payment (oldest first, as the server takes it).
+        var creditBox = document.getElementById('pb-rv-credit'), creditOk = document.getElementById('confirm_credit');
+        // The server asked for the tick (CREDIT_ASKED) even if this screen worked out no advance: always show it then.
+        usingCredit = !!creditBox && (r.paid > 0.005 || CREDIT_ASKED);
+        if (creditBox) {
+            creditBox.hidden = !usingCredit;
+            var list = document.getElementById('pb-rv-credit-list'); list.innerHTML = '';
+            document.getElementById('pb-rv-credit-total').textContent = 'Rs ' + money(r.paid);
+            var left = r.paid, unused = {};
+            (plan.returns || []).forEach(function (x) { unused[x.id] = x.unused; });
+            ((plan.credit || {}).sources || []).forEach(function (s) {
+                // a return this net invoice deducts is spent on it, not advance
+                var rest = s.type === 'return' && r.deducted[s.id] ? r2(s.remaining - Math.min(r.deducted[s.id], unused[s.id] || 0)) : s.remaining;
+                if (left <= 0.005 || rest <= 0.005) return;
+                var take = Math.min(left, rest), li = document.createElement('li');
+                li.textContent = s.label + ' (' + s.date + '): Rs ' + money(take);
+                list.appendChild(li);
+                left = Math.round((left - take) * 100) / 100;
+            });
+            if (!usingCredit && creditOk) creditOk.checked = false;
+        }
+        movingNow = moving;
+        updatePost();
         rv.hidden = false;
-        (moving && ok ? ok : post).focus();
+        (moving && ok ? ok : (usingCredit && creditOk ? creditOk : post)).focus();
+    }
+    // Post waits for every tick the review asks for: a credit moving off another invoice, and the advance this one uses.
+    var movingNow = false, usingCredit = false;
+    function updatePost() {
+        var ok = document.getElementById('confirm_reallocation'), creditOk = document.getElementById('confirm_credit');
+        document.getElementById('pb-post').disabled = (movingNow && (!CAN_MOVE || !(ok && ok.checked)))
+            || (usingCredit && !(creditOk && creditOk.checked));
     }
     function closeReview() { rv.hidden = true; (lastOpener && lastOpener.offsetParent !== null ? lastOpener : reviewBtn).focus(); }
     reviewBtn.addEventListener('click', openReview);
     document.getElementById('pb-review-bar').addEventListener('click', openReview);
     document.getElementById('pb-back').addEventListener('click', closeReview);
     var ok = document.getElementById('confirm_reallocation');
-    if (ok) ok.addEventListener('change', function () { document.getElementById('pb-post').disabled = !ok.checked; });
+    if (ok) ok.addEventListener('change', updatePost);
+    var creditTick = document.getElementById('confirm_credit');
+    if (creditTick) creditTick.addEventListener('change', updatePost);
     rv.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') { e.preventDefault(); closeReview(); return; }
         if (e.key === 'Tab') {   // stay inside the review
@@ -501,7 +545,7 @@
         setTimeout(function () { post.disabled = true; post.textContent = 'Posting…'; }, 0);
     });
     calc();
-    @if($errors->has('confirm_reallocation'))
+    @if($errors->has('confirm_reallocation') || $errors->has('confirm_credit'))
     openReview();
     @endif
 })();

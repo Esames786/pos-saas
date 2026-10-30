@@ -16,9 +16,12 @@
             <span class="fs-12">· {{ $profile->product->sku }}</span>
         </div>
     </div>
-    <a href="{{ url('/catering/profiles') }}" class="btn btn-light">
-        <i class="ti ti-arrow-left me-1"></i>Back to Catering Products
-    </a>
+    <div class="d-flex gap-2 flex-wrap">
+        @include('partials.edit-in-product', ['productId' => $profile->product_id, 'tab' => 'catering', 'class' => 'btn btn-outline-primary'])
+        <a href="{{ url('/catering/profiles') }}" class="btn btn-light">
+            <i class="ti ti-arrow-left me-1"></i>Back to Catering Products
+        </a>
+    </div>
 </div>
 
 @include('tenant.catering.partials.tooltips')

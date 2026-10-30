@@ -104,6 +104,7 @@
                                 </td>
                                 <td>{{ $bom->effective_from?->format('d M Y') ?? '—' }}</td>
                                 <td class="text-end">
+                                    @include('partials.edit-in-product', ['productId' => $bom->finished_product_id, 'tab' => 'bom', 'class' => 'btn btn-sm btn-outline-primary me-1'])
                                     @can('tenant.manufacturing.bom.show')
                                         <a href="{{ url('/manufacturing/bom/' . $bom->id) }}" class="btn btn-sm btn-outline-secondary me-1" title="View"><i class="ti ti-eye"></i></a>
                                     @endcan

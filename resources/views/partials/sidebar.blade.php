@@ -32,6 +32,10 @@
 
     // Helper: true if current request matches ANY of the given patterns.
     $isIn = fn (string ...$patterns) => collect($patterns)->contains(fn ($p) => request()->is($p));
+
+    // PRODUCT-NAV-1: with the one product screen on, links that open the very same screen as another link are shown
+    // once (Products is the main entry). Off: today's menu, unchanged. No screen is removed; every URL still works.
+    $productsV2 = app()->bound('tenant') && \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRODUCT_SCREEN_V2);
 @endphp
 
 {{-- ─────────────────────────────────────────────────────────────────────────
@@ -867,6 +871,9 @@
                                 </a>
                             </li>
                         @endcan
+                        {{-- PRODUCT-NAV-1: Store Issue is listed once more above, beside Materials; with the one product
+                             screen on it shows there only. --}}
+                        @unless($productsV2)
                         @can('tenant.catering.store-issues.index')
                             @php $a = $isIn('catering/store-issues*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -875,6 +882,7 @@
                                 </a>
                             </li>
                         @endcan
+                        @endunless
                         @can('tenant.catering.printer-mappings.index')
                             @php $a = $isIn('catering/printer-mappings*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -1149,6 +1157,10 @@
                                     </a>
                                 </li>
                             @endcan
+                            {{-- PRODUCT-NAV-1: the same Categories and Units screens as Catalog's (same permission, which
+                                 shows Catalog too); with the one product screen on they are listed under Catalog only.
+                                 The ?context=manufacturing addresses still open. --}}
+                            @unless($productsV2)
                             @can('tenant.categories.index')
                                 @php $a = request()->is('categories*') && request('context') === 'manufacturing'; @endphp
                                 <li class="{{ $a ? 'active' : '' }}">
@@ -1167,6 +1179,7 @@
                                     </a>
                                 </li>
                             @endcan
+                            @endunless
                             @can('tenant.manufacturing.customers.index')
                                 @php $a = $isIn('manufacturing/customers*'); @endphp
                                 <li class="{{ $a ? 'active' : '' }}">

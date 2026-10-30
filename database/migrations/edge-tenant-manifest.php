@@ -3457,5 +3457,21 @@ return [
             'BASELINE' => false,
             'NOTE' => 'CANONICAL 6e6ea024 W3/W4 S0: submission_key / submission_hash + unique index on goods_receipts (a receipt posted once). Purchasing/AP (GoodsReceipt* excluded from the artifact; goods_receipts already on the dependency-watch list as a diverged Cloud table) — same class as 2026_10_03_000002_add_voided_to_goods_receipts.',
         ],
+        // ── CANONICAL REHEARSAL chunk 5 (canonical 567a7752: SUPPLIER-CREDIT-CLARITY-1, PRODUCT-NAV-1, COMMERCIAL-RATE-PICKER-1) ──
+        '2026_10_26_000001_create_supplier_credit_moves' => [
+            'MIGRATION' => '2026_10_26_000001_create_supplier_credit_moves',
+            'CLASSIFICATION' => 'CLOUD_ONLY',
+            'TABLES_CHANGED' => ['supplier_credit_moves'],
+            'EDGE_CODE_REFERENCES' => ['none'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'none',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'EXCLUDE',
+            'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'CANONICAL 3a3f2596 SUPPLIER-CREDIT-CLARITY-1: one NEW Cloud AP table (a payment\'s or return\'s part moved from one supplier invoice to another by a person — the record of who moved it). Purchasing/AP is excluded from the artifact (Purchase*/Supplier* globs); the F2 Edge supplier-finance twin never reads it. Skipped with record on the appliance; joins supplier_credit_allocations on the "absent on the appliance" dependency-watch list.',
+        ],
     ],
 ];

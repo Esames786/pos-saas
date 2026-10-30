@@ -32,7 +32,7 @@
             <div class="text-muted mt-1">Flow: Purchase Order (optional) → Goods Receipt → Supplier Invoice → <strong>Payment</strong>.</div>
             <div class="text-muted">A supplier invoice is <strong>not</strong> required — a supplier can be paid straight against their outstanding balance.</div>
             @if($runningAccount)
-                <div class="text-muted" id="running-account-note">Paid <strong>on account</strong>: a payment settles the supplier's oldest open bills first, and you may pay more than is owed — the extra is kept as an <strong>advance</strong> and used on the next bills.</div>
+                <div class="text-muted" id="running-account-note">Paid <strong>on account</strong>: choose one invoice, or the oldest open invoices first — before you Post, the screen lists exactly which invoices this payment pays. More than is owed is kept as an <strong>advance</strong> and used on the supplier's next invoice.</div>
             @endif
         </div>
     </div>
@@ -49,11 +49,19 @@
             <div class="col-6 col-md-3"><div class="text-muted">Supplier Balance</div><div class="fw-bold fs-6" id="sum-supplier">—</div></div>
             <div class="col-6 col-md-3"><div class="text-muted">Selected Bill Outstanding</div><div class="fw-bold fs-6" id="sum-bill">—</div></div>
             <div class="col-6 col-md-3"><div class="text-muted">This Payment</div><div class="fw-bold fs-6 text-primary" id="sum-amount">0.00</div></div>
-            <div class="col-6 col-md-3"><div class="text-muted">Remaining After</div><div class="fw-bold fs-6" id="sum-remaining">—</div></div>
+            {{-- SUPPLIER-CREDIT-CLARITY-1: on account a payment can go past the chosen invoice, so what is left is the supplier's. --}}
+            <div class="col-6 col-md-3"><div class="text-muted">{{ $runningAccount ? 'Supplier Balance After' : 'Remaining After' }}</div><div class="fw-bold fs-6" id="sum-remaining">—</div></div>
         </div>
         <div class="alert alert-warning py-2 px-3 mt-2 mb-0 small d-none" id="advance-warn" data-running-account="{{ $runningAccount ? '1' : '0' }}">
             <i class="ti ti-alert-triangle me-1"></i><span id="advance-warn-text"></span>
         </div>
+        @if($runningAccount)
+            {{-- SUPPLIER-CREDIT-CLARITY-1: the invoices this payment pays, in the order the server pays them, before Save. --}}
+            <div class="border rounded px-3 py-2 mt-2 small text-start" id="pay-plan" aria-live="polite">
+                <div class="fw-semibold">This payment will pay:</div>
+                <ul class="mb-0 ps-3" id="pay-plan-lines"><li class="text-muted">Choose the supplier, where the payment goes and the amount.</li></ul>
+            </div>
+        @endif
         <div class="alert alert-warning py-2 px-3 mt-2 mb-0 small d-none" id="cashbank-warn">
             <i class="ti ti-alert-triangle me-1"></i>No Cash/Bank account selected for a <span id="cashbank-method"></span> payment — this will record the supplier ledger only, with <strong>no cash/bank movement</strong>. Select an account above if money actually left one.
         </div>
@@ -63,6 +71,8 @@
 <form method="POST" action="{{ url('/supplier-payments') }}" novalidate>
     {{-- Supplier Ledger ke Record Payment se aaye to wahin lauto. Ye khaana payment ka hissa nahi — controller isay validate ke BAAD alag padhta hai. --}}
     <input type="hidden" name="return_to" value="{{ $returnTo ?? '' }}">
+    {{-- SUPPLIER-CREDIT-CLARITY-1: the list the page showed; the server posts only if it is still the same. --}}
+    <input type="hidden" name="plan" id="pay-plan-value" value="">
     @csrf
 
     <div class="card">
@@ -84,6 +94,38 @@
                 @error('supplier_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
 
+            @if($runningAccount)
+            {{-- SUPPLIER-CREDIT-CLARITY-1 (owner, 26 Oct): where the money goes is the person's choice — nothing is chosen for
+                 them, except an invoice whose own Pay button opened this page. The invoices it pays are listed before Save. --}}
+            @php
+                $payTo = old('pay_to', $bill ? 'bill' : null);
+            @endphp
+            <div class="col-md-4" id="pay-to-box">
+                <span class="form-label required d-block">Where should this payment go?</span>
+                <div class="form-check">
+                    <input class="form-check-input @error('pay_to') is-invalid @enderror" type="radio" name="pay_to" id="pay_to_bill" value="bill" @checked($payTo === 'bill')>
+                    <label class="form-check-label" for="pay_to_bill">One invoice</label>
+                </div>
+                <select id="purchase_bill_id" name="purchase_bill_id" aria-label="The invoice this payment is for"
+                        class="form-select form-select-sm my-1 @error('purchase_bill_id') is-invalid @enderror">
+                    <option value="">— choose the invoice —</option>
+                    @foreach($openBills as $payableBill)
+                        <option value="{{ $payableBill->id }}"
+                                data-balance="{{ (float) $payableBill->balance_due }}" data-supplier="{{ $payableBill->supplier_id }}"
+                                data-date="{{ $payableBill->bill_date?->toDateString() }}" data-no="{{ $payableBill->bill_no }}"
+                                @selected(old('purchase_bill_id', $bill?->id) == $payableBill->id)>
+                            {{ $payableBill->bill_no }} — {{ $payableBill->bill_date?->format('d M Y') }} — owes {{ number_format($payableBill->balance_due, 2) }}
+                        </option>
+                    @endforeach
+                </select>
+                <div class="form-check">
+                    <input class="form-check-input @error('pay_to') is-invalid @enderror" type="radio" name="pay_to" id="pay_to_oldest" value="oldest" @checked($payTo === 'oldest')>
+                    <label class="form-check-label" for="pay_to_oldest">The oldest open invoices first</label>
+                </div>
+                @error('pay_to') <div class="text-danger small">{{ $message }}</div> @enderror
+                @error('purchase_bill_id') <div class="text-danger small">{{ $message }}</div> @enderror
+            </div>
+            @else
             <div class="col-md-4">
                 <label for="purchase_bill_id" class="form-label">Against Bill <span class="text-muted fw-normal">(optional)</span></label>
                 <select id="purchase_bill_id" name="purchase_bill_id"
@@ -100,6 +142,7 @@
                 </select>
                 @error('purchase_bill_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
+            @endif
 
             <div class="col-md-4">
                 <label for="branch_id" class="form-label required">Branch</label>
@@ -210,8 +253,13 @@
             </div>
 
             <div class="col-12">
-                <button class="btn btn-primary" type="submit"
-                        onclick="return confirm('Post this supplier payment?')">Post Payment</button>
+                @if($runningAccount)
+                    {{-- SUPPLIER-CREDIT-CLARITY-1: the confirmation repeats the invoices this payment pays (script below). --}}
+                    <button class="btn btn-primary" type="submit" id="post-payment">Post Payment</button>
+                @else
+                    <button class="btn btn-primary" type="submit"
+                            onclick="return confirm('Post this supplier payment?')">Post Payment</button>
+                @endif
                 <a href="{{ url('/supplier-payments') }}" class="btn btn-light ms-2">Cancel</a>
             </div>
         </div>
@@ -234,16 +282,19 @@
         var supBal = optNum(supplier);
         var billBal = optNum(billSel);
         var amt = Number(amount && amount.value || 0);
+        var advWarn = document.getElementById('advance-warn');
+        var running = advWarn && advWarn.getAttribute('data-running-account') === '1';
+        var oldestPick = document.getElementById('pay_to_oldest');
+        if (oldestPick && oldestPick.checked) billBal = null;   // oldest first: no one invoice is chosen
         // SUPPLIER-RUNNING-ACCOUNT-1: below zero the supplier holds our money — say "Advance", never a bare minus.
         function money(n){ return n < -0.005 ? 'Advance ' + fmt(-n) : fmt(n); }
         document.getElementById('sum-supplier').textContent = supBal==null ? '—' : money(supBal);
         document.getElementById('sum-bill').textContent = billBal==null ? '—' : fmt(billBal);
         document.getElementById('sum-amount').textContent = fmt(amt);
-        // Remaining = bill outstanding if a bill selected, else supplier balance, minus amount.
-        var base = billBal!=null ? billBal : supBal;
+        // Remaining = bill outstanding if a bill selected, else supplier balance, minus amount. On account the payment goes
+        // on to the next invoices (SUPPLIER-CREDIT-CLARITY-1), so what is left is always the supplier's balance.
+        var base = billBal!=null && !running ? billBal : supBal;
         var remEl = document.getElementById('sum-remaining');
-        var advWarn = document.getElementById('advance-warn');
-        var running = advWarn && advWarn.getAttribute('data-running-account') === '1';
         if (base==null){ remEl.textContent='—'; remEl.className='fw-bold fs-6'; }
         else {
             var rem = base - amt;
@@ -277,8 +328,74 @@
             var m = document.getElementById('cashbank-method'); if (m && method) m.textContent = method.options[method.selectedIndex].text;
         }
     }
-    [supplier, billSel, amount, method, cashBank].forEach(function(el){ if(el){ el.addEventListener('change', refresh); el.addEventListener('input', refresh); } });
+    [supplier, billSel, amount, method, cashBank, document.getElementById('pay_to_bill'), document.getElementById('pay_to_oldest')].forEach(function(el){ if(el){ el.addEventListener('change', refresh); el.addEventListener('input', refresh); } });
     refresh();
+
+    // ── SUPPLIER-CREDIT-CLARITY-1: where the payment goes, listed before Save, in the order the server pays ─────────
+    var planBox = document.getElementById('pay-plan-lines'), planVal = document.getElementById('pay-plan-value');
+    var toBill = document.getElementById('pay_to_bill'), toOldest = document.getElementById('pay_to_oldest');
+    if (planBox && planVal && billSel) {
+        var esc = function (t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+        var place = function () { return toBill && toBill.checked ? 'bill' : (toOldest && toOldest.checked ? 'oldest' : ''); };
+        // Only the chosen supplier's invoices can be picked.
+        var filterBills = function () {
+            var sid = supplier ? supplier.value : '';
+            Array.prototype.forEach.call(billSel.options, function (o) {
+                if (!o.value) return;
+                var mine = o.getAttribute('data-supplier') === sid;
+                o.hidden = !mine; o.disabled = !mine;
+            });
+            var cur = billSel.options[billSel.selectedIndex];
+            if (cur && cur.value && cur.disabled) billSel.value = '';
+        };
+        // The server's order (SupplierRunningAccountService::planSettle): the chosen invoice first, then by date, then by number.
+        var plan = function () {
+            var sid = supplier ? supplier.value : '', amt = Math.round(Number(amount && amount.value || 0) * 100) / 100, p = place();
+            if (!sid || !(amt > 0) || !p || (p === 'bill' && !billSel.value)) return null;
+            var pref = p === 'bill' ? Number(billSel.value) : 0;
+            var bills = Array.prototype.filter.call(billSel.options, function (o) { return o.value && o.getAttribute('data-supplier') === sid; })
+                .map(function (o) { return { id: Number(o.value), no: o.getAttribute('data-no'), date: o.getAttribute('data-date') || '', due: Number(o.getAttribute('data-balance')) }; });
+            bills.sort(function (a, b) { return ((b.id === pref) - (a.id === pref)) || (a.date < b.date ? -1 : (a.date > b.date ? 1 : 0)) || (a.id - b.id); });
+            var left = amt, lines = [];
+            bills.forEach(function (b) {
+                if (left <= 0.004) return;
+                var take = Math.round(Math.min(left, b.due) * 100) / 100;
+                if (take > 0) { lines.push({ id: b.id, no: b.no, amount: take }); left = Math.round((left - take) * 100) / 100; }
+            });
+            return { lines: lines, advance: Math.max(0, left) };
+        };
+        var drawPlan = function () {
+            filterBills();
+            billSel.disabled = place() === 'oldest';
+            var p = plan();
+            if (!p) {
+                planBox.innerHTML = '<li class="text-muted">Choose the supplier, where the payment goes and the amount.</li>';
+                planVal.value = '';
+                return;
+            }
+            var items = p.lines.map(function (l) { return '<li><b>' + esc(l.no) + '</b>: ' + fmt(l.amount) + '</li>'; });
+            if (!p.lines.length) items.push('<li>No open invoice for this supplier.</li>');
+            // Not "advance": an opening balance or a journal can still be owed outside invoices (the warning above says
+            // when the supplier ends up paid ahead).
+            if (p.advance > 0.004) items.push('<li>Not on any invoice: ' + fmt(p.advance) + ' — it lowers the supplier\'s balance.</li>');
+            planBox.innerHTML = items.join('');
+            planVal.value = p.lines.map(function (l) { return l.id + ':' + l.amount.toFixed(2); }).join(';') + '|' + p.advance.toFixed(2);
+        };
+        // Picking an invoice in the list is choosing "One invoice".
+        billSel.addEventListener('change', function () { if (billSel.value && toBill) toBill.checked = true; drawPlan(); });
+        [supplier, amount, toBill, toOldest].forEach(function (el) { if (el) { el.addEventListener('change', drawPlan); el.addEventListener('input', drawPlan); } });
+        drawPlan();
+
+        var post = document.getElementById('post-payment');
+        if (post) post.addEventListener('click', function (e) {
+            var p = plan(), text = 'Post this supplier payment?';
+            if (p) {
+                text += '\n\nIt pays:\n' + (p.lines.length ? p.lines.map(function (l) { return '• ' + l.no + ': ' + fmt(l.amount); }).join('\n') : '• No open invoice')
+                    + (p.advance > 0.004 ? '\n• Not on any invoice: ' + fmt(p.advance) : '');
+            }
+            if (!confirm(text)) e.preventDefault();
+        });
+    }
 })();
 </script>
 @endpush

@@ -115,8 +115,9 @@ class PurchaseWorkspaceMySqlTest extends MySqlTenantTestCase
         $oil = $this->product('PW Oil Credit', $this->litre()->id, ['default_selling_price' => 600]);
         [$grns, $bills, $pays] = $this->counts();
 
-        // Invoice 5 L × 500 = 2,500; Supplier Credit pays 1,000 of it; 2,500 is more than the 1,500 left.
-        $res = $this->workspace($this->arriving($oil, '5', '500', $supplier), ['record_invoice' => '1', 'invoice' => ['bill_date' => now()->toDateString()], 'pay' => '1',
+        // Invoice 5 L × 500 = 2,500; Supplier Credit pays 1,000 of it (ticked — SUPPLIER-CREDIT-CLARITY-1); 2,500 is more than the 1,500 left.
+        $invoice = ['bill_date' => now()->toDateString(), 'confirm_credit' => '1'];
+        $res = $this->workspace($this->arriving($oil, '5', '500', $supplier), ['record_invoice' => '1', 'invoice' => $invoice, 'pay' => '1',
             'payment' => $this->paying(2500)])->assertStatus(422)->json();
         $this->assertSame('payment', $res['step']);
         $this->assertStringContainsString('Rs 1,500.00 after Supplier Credit', $res['message']);
@@ -124,11 +125,41 @@ class PurchaseWorkspaceMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta(0, $this->stock($oil), 0.001, 'and no stock came in');
 
         // Up to what is left is fine.
-        $this->workspace($this->arriving($oil, '5', '500', $supplier), ['record_invoice' => '1', 'invoice' => ['bill_date' => now()->toDateString()], 'pay' => '1',
+        $this->workspace($this->arriving($oil, '5', '500', $supplier), ['record_invoice' => '1', 'invoice' => $invoice, 'pay' => '1',
             'payment' => $this->paying(1500)])->assertOk();
         $bill = PurchaseBill::where('supplier_id', $supplier->id)->latest('id')->firstOrFail();
         $this->assertEqualsWithDelta(0, (float) $bill->balance_due, 0.01);
         $this->assertEqualsWithDelta(0, (float) $supplier->fresh()->current_balance, 0.01);
+    }
+
+    /** SUPPLIER-CREDIT-CLARITY-1 (owner, 26 Oct): an invoice that uses the supplier's advance names it and waits for a tick. */
+    public function test_an_invoice_that_uses_the_advance_is_named_on_the_page_and_posts_only_with_the_tick(): void
+    {
+        PurchasingSetting::tenantDefault()->update(['supplier_running_account' => true]);
+        $supplier = $this->newSupplier('PW Supplier Ahead');
+        $paid = app(SupplierPayableService::class)->recordPayment(['supplier_id' => $supplier->id, 'branch_id' => $this->branchId(), 'payment_date' => now()->toDateString(),
+            'amount' => 400, 'payment_method' => 'cash', 'cash_bank_account_id' => $this->cashAccount()], null);
+        $sugar = $this->product('PW Sugar Ahead', $this->kg()->id, ['default_selling_price' => 150]);
+
+        $page = $this->page()->assertOk()->getContent();
+        $this->assertStringContainsString('id="pw-credit" hidden', $page, 'the box, shown when this supplier is picked');
+        $this->assertStringContainsString('name="invoice[confirm_credit]" id="pw-credit-ok"', $page);
+        $this->assertStringContainsString('"' . $supplier->id . '":[{"type":"payment","id":' . $paid->id . ',"label":"Payment ' . $paid->payment_no . '"', $page, 'named by payment number');
+        [$grns, $bills, $pays] = $this->counts();
+
+        $res = $this->workspace($this->arriving($sugar, '10', '100', $supplier), ['record_invoice' => '1', 'invoice' => ['bill_date' => now()->toDateString()]])
+            ->assertStatus(422)->json();
+        $this->assertSame('invoice', $res['step']);
+        $this->assertArrayHasKey('invoice.confirm_credit', $res['errors'], 'named by its tick, so the page shows the box');
+        $this->assertStringContainsString('uses Rs 400.00 of the supplier\'s advance', $res['message']);
+        $this->assertSame([$grns, $bills, $pays], $this->counts(), 'nothing of the Post is kept');
+        $this->assertEqualsWithDelta(0, $this->stock($sugar), 0.001);
+
+        $this->workspace($this->arriving($sugar, '10', '100', $supplier), ['record_invoice' => '1', 'invoice' => ['bill_date' => now()->toDateString(), 'confirm_credit' => '1']])
+            ->assertOk();
+        $bill = PurchaseBill::where('supplier_id', $supplier->id)->latest('id')->firstOrFail();
+        $this->assertEqualsWithDelta(400, (float) $bill->amount_paid, 0.01);
+        $this->assertEqualsWithDelta(600, (float) $supplier->fresh()->current_balance, 0.01);
     }
 
     public function test_the_same_post_twice_is_one_purchase_and_the_same_key_with_other_lines_is_refused(): void

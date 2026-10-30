@@ -110,7 +110,7 @@ final class PurchaseWorkspaceService
                     $docs[] = ['kind' => 'Goods Receipt', 'number' => $grn->grn_no, 'url' => url('/goods-receipts/' . $grn->id)];
                 }
                 if ($steps['invoice']) {
-                    $bill = $this->step('invoice', fn () => $this->bills->createFromReceipt($grn, $invoice, $userId, $mayReallocate));
+                    $bill = $this->step('invoice', fn () => $this->bills->createFromReceipt($grn, $invoice, $userId, $mayReallocate, askCredit: true));
                     $docs[] = ['kind' => 'Supplier Invoice', 'number' => $bill->bill_no, 'url' => url('/purchase-bills/' . $bill->id)];
                 }
                 if ($steps['payment']) {
@@ -191,6 +191,8 @@ final class PurchaseWorkspaceService
                 'netted_amounts'       => 'nullable|array',
                 'netted_amounts.*'     => 'nullable|numeric|min:0',
                 'confirm_reallocation' => 'nullable|boolean',
+                // SUPPLIER-CREDIT-CLARITY-1: ticked when the invoice uses the supplier's advance
+                'confirm_credit'       => 'nullable|boolean',
             ], [
                 'due_date.after_or_equal' => 'The due date cannot be before the invoice date.',
                 'netted_amounts.*.numeric' => 'The amount deducted must be a number.',
@@ -227,6 +229,9 @@ final class PurchaseWorkspaceService
             return $run();
         } catch (ValidationException $e) {
             throw $this->under($step, $e);
+        } catch (CreditNotConfirmedException $e) {
+            // SUPPLIER-CREDIT-CLARITY-1: named by its tick, so the screen shows the advance box even if it worked out none
+            $this->refuse($step, $step . '.confirm_credit', $e->getMessage());
         } catch (RuntimeException $e) {
             $this->refuse($step, $step, $e->getMessage());
         }
