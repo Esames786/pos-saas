@@ -142,6 +142,19 @@
                                         {{-- CASH-SHORTAGE-1: live difference so the cashier sees the shortage before closing --}}
                                         <td class="text-end col-counted cash-diff small text-muted">—</td>
                                     </tr>
+                                    @if(isset($handovers[$shift->id]))
+                                        {{-- SHIFT-HANDOVER-1: this terminal still has open orders. --}}
+                                        <tr class="handover-row">
+                                            <td colspan="6">
+                                                @include('tenant.shifts.partials.handover', [
+                                                    'h' => $handovers[$shift->id],
+                                                    'prefix' => 'handover[' . $shift->id . ']',
+                                                    'idp' => 'handover-' . $shift->id,
+                                                    'terminalName' => $shift->terminal?->name ?? ('terminal #' . $shift->terminal_id),
+                                                ])
+                                            </td>
+                                        </tr>
+                                    @endif
                                 @endforeach
                             </tbody>
                             <tfoot>
