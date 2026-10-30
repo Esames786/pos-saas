@@ -52,6 +52,21 @@ final class LineQuantity
     }
 
     /**
+     * ROLLOUT-1 (25 Oct) — may a purchase or stock quantity typed in this pack be a part? Kg, litre and metre: always.
+     * A counted item: in its own unit (a pack of one) only while the business has not switched "whole numbers for
+     * counted items" on — the switch forStock() follows, and the entry area is told the same, so page and server answer
+     * alike. A bigger pack (a Box of 10) is always typed whole.
+     */
+    public static function packTakesParts(?Unit $unit, float $factor): bool
+    {
+        if (self::partsAllowed($unit)) {
+            return true;
+        }
+
+        return ! self::wholeCountedInStock() && abs($factor - 1.0) < self::WHOLE;
+    }
+
+    /**
      * Every sale or held line, made exact and checked, before anything reads it. Combo components and modifiers are
      * derived from their parent and are not checked here; a line in a pack is checked by CounterPacks (whole packs).
      */

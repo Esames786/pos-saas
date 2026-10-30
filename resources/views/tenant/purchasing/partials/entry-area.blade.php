@@ -33,6 +33,9 @@
         ])->values()->all();
     $reasonWords = ['expired' => 'Expired', 'damaged' => 'Damaged / broken', 'wrong_item' => 'Wrong item', 'over_supply' => 'Too many sent',
         'quality_issue' => 'Quality problem', 'price_dispute' => 'Price problem', 'other' => 'Other'];
+    // ROLLOUT-1: a counted item takes a part in its own unit while the business has not switched whole numbers on —
+    // the server's rule (LineQuantity::packTakesParts), told to the page.
+    $countedParts = ! \App\Support\LineQuantity::wholeCountedInStock();
 @endphp
 
 @push('styles')
@@ -205,6 +208,7 @@
     var PO_ID = @json($purchaseOrder?->id);
     var PO_LINES = @json($poLines);
     var OLD = @json($oldLines);
+    var COUNTED_PARTS = @json($countedParts);
     var form = root.closest('form');
     var $ = function (id) { return document.getElementById(id); };
     var search = $('ea-search'), res = $('ea-res'), body = $('ea-body');
@@ -216,11 +220,24 @@
     function money(n) { var r = Math.round(n * 100) / 100; return 'Rs ' + r.toLocaleString('en-PK', { minimumFractionDigits: r % 1 ? 2 : 0, maximumFractionDigits: 2 }); }
     function num(n) { return (Math.round(n * 1000) / 1000).toLocaleString('en-PK', { maximumFractionDigits: 3 }); }
     function words(item, q) {
-        // Whole packs first ("2 Sack", "3 Box 1 Strip"), then what is left in the item's own unit — decimals for kg / litre.
+        // Whole packs first ("2 Sack", "3 Box 1 Strip"), then what is left in the item's own unit, exactly as typed —
+        // 2.5 Piece stays 2.5, never shown as 3 (ROLLOUT-1).
         var left = Math.abs(q), out = [];
         item.packs.forEach(function (p) { if (p.factor <= 1) return; var k = Math.floor(left / p.factor + 1e-9); if (k > 0) { out.push(k + ' ' + p.name); left -= k * p.factor; } });
-        if (left > 0.0005 || !out.length) out.push((item.allow_decimal ? num(left) : Math.round(left)) + ' ' + item.unit_name);
+        if (left > 0.0005 || !out.length) out.push(num(left) + ' ' + item.unit_name);
         return (q < 0 ? '−' : '') + out.join(' ');
+    }
+    // ROLLOUT-1: may this pack take a part? Kg / litre / metre: yes. A counted item: in its own unit (a pack of one)
+    // while the business allows parts; a bigger pack is whole. The server asks the same (LineQuantity::packTakesParts).
+    function takesParts(item, p) { return !!item.allow_decimal || (COUNTED_PARTS && Math.abs((+p.factor || 0) - 1) < 0.0005); }
+    // A quantity in the item's own unit as packs: whole packs first, what is left in the smallest pack when that pack
+    // takes parts — 2.5 due comes in as 2.5, never 2 (ROLLOUT-1).
+    function splitPacks(item, q) {
+        var left = q, qty = {};
+        item.packs.forEach(function (p) { var k = Math.floor(left / p.factor + 1e-9); if (k > 0) { qty[p.key] = String(k); left -= k * p.factor; } });
+        var small = item.packs[item.packs.length - 1];
+        if (left > 0.0005 && small && takesParts(item, small)) qty[small.key] = String(Math.round(((parseFloat(qty[small.key]) || 0) + left / small.factor) * 1000) / 1000);
+        return qty;
     }
     function packOf(item, key) { return item.packs.filter(function (p) { return p.key === String(key); })[0]; }
     function buyPack(item, key) { return packOf(item, key) || item.packs.filter(function (p) { return p.can_buy; })[0] || item.packs[0]; }
@@ -375,7 +392,7 @@
             if (IS_GRN && it.has_expiry) f.push(field('expiry', 'Expiry', S.expiry, 'MM/YY', 'text', 84));
         }
         it.packs.forEach(function (p) {
-            f.push(field('pack:' + p.key, p.name + (it.packs.length > 1 && p.factor > 1 ? ' (' + (p.holds || num(p.factor)) + ')' : ''), S.qty[p.key] || '', '0', it.allow_decimal ? 'decimal' : 'numeric', p.holds ? 125 : 82));
+            f.push(field('pack:' + p.key, p.name + (it.packs.length > 1 && p.factor > 1 ? ' (' + (p.holds || num(p.factor)) + ')' : ''), S.qty[p.key] || '', '0', takesParts(it, p) ? 'decimal' : 'numeric', p.holds ? 125 : 82));
         });
         if (IS_GRN) f.push(field('free', 'Free / scheme', S.free, '0 or 10+1', 'text', 86));
         if (!IS_GRN && !IS_RET) f.push(field('free', 'Scheme', S.free, '10+1', 'text', 76));
@@ -587,14 +604,17 @@
             if (base + others > S.batchStock + 1e-6) { var leftNow = Math.max(0, S.batchStock - others); msg(leftNow > 0 ? 'Batch ' + S.batch + ' has only ' + words(it, leftNow) + ' left.' : 'Nothing more is left in batch ' + S.batch + (others > 0 ? ' — the list already takes all of it.' : '.')); focusField('pack:' + it.packs[0].key); return; }
         }
         if (IS_RET && !S.reason) { msg('Why is it going back? Pick a reason.'); focusField('reason'); return; }
-        if (!it.allow_decimal) {
-            var bad = it.packs.filter(function (p) { var v = S.qty[p.key]; return v && !/^\d+$/.test(String(v).trim()); })[0];
-            if (bad) { msg(bad.name + ': a whole number, please.'); focusField('pack:' + bad.key); return; }
-        } else {
-            // W2-C: kg, litre and metre take up to 3 decimals — the server refuses a 4th instead of rounding it.
-            var long = it.packs.filter(function (p) { var v = S.qty[p.key]; return v && !/^\d*(\.\d{0,3})?$/.test(String(v).trim()); })[0];
-            if (long) { msg(long.name + ': at most 3 decimal places.'); focusField('pack:' + long.key); return; }
-        }
+        // ROLLOUT-1: each box by its own rule (takesParts) — a pack that is whole says so; one that takes parts takes up
+        // to 3 decimals (W2-C: the server refuses a 4th instead of rounding it).
+        var bad = it.packs.filter(function (p) { var v = S.qty[p.key]; return v && !takesParts(it, p) && !/^\d+$/.test(String(v).trim()); })[0];
+        if (bad) { msg(bad.name + ': a whole number, please.'); focusField('pack:' + bad.key); return; }
+        var long = it.packs.filter(function (p) { var v = S.qty[p.key]; return v && takesParts(it, p) && !/^\d*(\.\d{0,3})?$/.test(String(v).trim()); })[0];
+        if (long) { msg(long.name + ': at most 3 decimal places.'); focusField('pack:' + long.key); return; }
+        // With whole numbers switched on, a counted item's total in its own unit is whole too (a carton of 12.5 is not).
+        if (!it.allow_decimal && !COUNTED_PARTS && Math.abs(base - Math.round(base)) > 0.0005) { msg(it.name + ' is counted in whole numbers (' + it.unit_name + ') — ' + num(base) + ' is not a whole number.'); focusField('pack:' + it.packs[0].key); return; }
+        // A typed free number is in the buying pack: whole unless that pack takes parts (the server's rule).
+        var freeT = String(S.free || '').trim();
+        if (IS_GRN && freeT !== '' && !parseScheme(freeT) && !takesParts(it, bp) && !/^\d+$/.test(freeT)) { msg('Free: a whole number of ' + bp.name + ', please.'); focusField('free'); return; }
         var line = { item: it, qty: Object.assign({}, S.qty), batch: S.batch.trim().toUpperCase(), expiry: normExpiry(S.expiry), free: S.free, price: S.price, buyKey: bp.key, disc: S.disc, poLineId: S.poLineId, variantId: S.variantId,
                      batchId: S.batchId, reason: S.reason, priceFrom: S.priceFrom, note: (S.note || '').trim(), discType: S.discType || 'percent' };
         // The Free box: a scheme travels as the scheme (the server works out the free packs), a number as free packs.
@@ -708,8 +728,7 @@
             var o = PO_LINES[+b.dataset.po], it = poItems[o.product_id];
             var go = function (item) {
                 var got = LINES.filter(function (l) { return String(l.poLineId) === String(o.po_line_id); }).reduce(function (t, l) { return t + baseOf(l); }, 0);
-                var left = Math.max(0, o.due - got), qty = {};
-                item.packs.forEach(function (p) { var k = Math.floor(left / p.factor + 1e-9); if (k > 0) { qty[p.key] = String(k); left -= k * p.factor; } });
+                var qty = splitPacks(item, Math.max(0, o.due - got));
                 var bp = (o.pack_unit_id && packOf(item, o.pack_unit_id)) || item.packs.filter(function (p) { return p.can_buy; })[0] || item.packs[0];
                 if (IS_RET) {
                     load(item, { qty: qty, price: Math.round(o.unit_cost * bp.factor * 100) / 100, buyKey: bp.key, poLineId: o.po_line_id, variantId: o.variant_id,
@@ -751,8 +770,7 @@
                             return (poItems[b.product_id] ? Promise.resolve(poItems[b.product_id]) : fetchItems({ product_id: b.product_id }).then(function (r) { if (r[0]) poItems[b.product_id] = r[0]; return r[0]; }))
                                 .then(function (item) {
                                     if (!item) return;
-                                    var left = b.stock, qty = {};
-                                    item.packs.forEach(function (p) { var k = Math.floor(left / p.factor + 1e-9); if (k > 0) { qty[p.key] = String(k); left -= k * p.factor; } });
+                                    var qty = splitPacks(item, b.stock);
                                     var bp = item.packs.filter(function (p) { return p.can_buy; })[0] || item.packs[0];
                                     if (LINES.some(function (l) { return String(l.batchId) === String(b.id); })) return;
                                     LINES.push({ item: item, qty: qty, batch: b.batch_no, batchId: b.id, expiry: b.expiry || '', price: String(Math.round(b.unit_cost * bp.factor * 100) / 100), buyKey: bp.key,

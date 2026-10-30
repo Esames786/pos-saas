@@ -136,6 +136,55 @@ class PurchaseStockQuantityMySqlTest extends MySqlTenantTestCase
         $this->adjust($this->kgItem('W2C Flour'), '0.75')->assertSessionHasNoErrors();
     }
 
+    /* ── ROLLOUT-1: the new entry area follows the same switch ───────────── */
+
+    public function test_the_new_screens_take_a_part_of_a_counted_item_only_while_the_switch_is_off(): void
+    {
+        $bun = $this->countedItem('R1 Bun', 12.0);   // bought by the Carton of 12, kept by the Piece
+        $c = DB::connection('tenant');
+        $lastLine = fn (string $table, string $col) => (string) $c->table($table)->where('product_id', $bun->id)->orderByDesc('id')->value($col);
+
+        // Switch off: a part of a piece is taken on the new receipt, order and return screens, exact to 3 decimals.
+        $this->grnV2($bun, ['base' => '2.5'])->assertSessionHasNoErrors();
+        $this->assertSame('2.500', (string) $this->lastGrnLine($bun)->quantity_received);
+        $this->poV2($bun, ['base' => '1.5'])->assertSessionHasNoErrors();
+        $this->assertSame('1.500', $lastLine('purchase_order_lines', 'quantity_ordered'));
+        $this->returnV2($bun, ['base' => '0.5'])->assertSessionHasNoErrors();
+        $this->assertSame('0.500', $lastLine('purchase_return_lines', 'quantity'));
+        // Free goods typed in pieces take a part too; in cartons they stay whole. A carton itself is always whole.
+        $this->grnV2($bun, ['base' => '2'], '0.5')->assertSessionHasNoErrors();
+        $this->assertEqualsWithDelta(5.0, $this->stock($bun), 0.0001, '2.5 + 2 bought + 0.5 free');
+        $this->grnV2($bun, ['buy' => '1'], '0.5')->assertSessionHasErrors(['lines.0.free' => 'R1 Bun: the free quantity must be a whole number of Carton.']);
+        $this->grnV2($bun, ['buy' => '1.5'])->assertSessionHasErrors(['lines.0.packs' => 'R1 Bun: Carton must be a whole number.']);
+
+        // Switch on: the same parts are refused on every new screen and nothing is written; whole numbers go through.
+        $this->setFeatures(self::BASE + ['whole_counted_stock' => true]);
+        $before = $this->counts();
+        $this->grnV2($bun, ['base' => '2.5'])->assertSessionHasErrors(['lines.0.packs' => 'R1 Bun: Piece must be a whole number.']);
+        $this->poV2($bun, ['base' => '1.5'])->assertSessionHasErrors(['lines.0.packs' => 'R1 Bun: Piece must be a whole number.']);
+        $this->returnV2($bun, ['base' => '0.5'])->assertSessionHasErrors(['lines.0.packs' => 'R1 Bun: Piece must be a whole number.']);
+        $this->grnV2($bun, ['base' => '2'], '0.5')->assertSessionHasErrors(['lines.0.free' => 'R1 Bun: the free quantity must be a whole number of Piece.']);
+        $this->assertSame($before, $this->counts(), 'a refused part writes nothing');
+        $this->assertEqualsWithDelta(5.0, $this->stock($bun), 0.0001);
+        $this->grnV2($bun, ['base' => '3'])->assertSessionHasNoErrors();
+        $this->grnV2($bun, ['buy' => '1'])->assertSessionHasNoErrors();
+        $this->assertEqualsWithDelta(20.0, $this->stock($bun), 0.0001, '5 + 3 + a carton of 12');
+
+        // Kg keeps its decimals with the switch on, on the new screen too.
+        $rice = $this->kgItem('R1 Rice');
+        $this->grnV2($rice, ['base' => '2.25'])->assertSessionHasNoErrors();
+        $this->assertSame('2.250', (string) $this->lastGrnLine($rice)->quantity_received);
+    }
+
+    public function test_the_entry_area_is_told_the_switch(): void
+    {
+        // The page carries the server's answer, so its boxes, checks and words follow the same rule.
+        $this->owner()->get($this->url('/goods-receipts/create'))->assertOk()->assertSee('var COUNTED_PARTS = true;', false);
+        $this->setFeatures(self::BASE + ['whole_counted_stock' => true]);
+        $this->owner()->get($this->url('/goods-receipts/create'))->assertOk()->assertSee('var COUNTED_PARTS = false;', false);
+        $this->owner()->get($this->url('/purchase-orders/create'))->assertOk()->assertSee('var COUNTED_PARTS = false;', false);
+    }
+
     /* ── supplier returns ────────────────────────────────────────────────── */
 
     public function test_a_supplier_return_says_what_is_left_when_the_draft_is_saved(): void
@@ -211,10 +260,23 @@ class PurchaseStockQuantityMySqlTest extends MySqlTenantTestCase
             'receipt_date' => now()->toDateString(), 'lines' => [['product_id' => $p->id, 'product_variant_id' => $this->variantOf($p), 'quantity_received' => $qty, 'unit_cost' => $cost]]]);
     }
 
-    private function grnV2(Product $p, array $packs)
+    private function grnV2(Product $p, array $packs, string $free = '')
     {
         return $this->owner()->post($this->url('/goods-receipts'), ['_entry_v2' => '1', 'branch_id' => $this->branchId(), 'supplier_id' => $this->supplier()->id,
-            'receipt_date' => now()->toDateString(), 'lines' => [['product_id' => $p->id, 'buy_pack' => array_key_first($packs), 'price' => '50', 'packs' => $packs]]]);
+            'receipt_date' => now()->toDateString(), 'lines' => [['product_id' => $p->id, 'buy_pack' => array_key_first($packs), 'price' => '50', 'packs' => $packs, 'free' => $free]]]);
+    }
+
+    private function poV2(Product $p, array $packs)
+    {
+        return $this->owner()->post($this->url('/purchase-orders'), ['_entry_v2' => '1', 'branch_id' => $this->branchId(), 'supplier_id' => $this->supplier()->id,
+            'order_date' => now()->toDateString(), 'lines' => [['product_id' => $p->id, 'buy_pack' => array_key_first($packs), 'price' => '50', 'packs' => $packs]]]);
+    }
+
+    private function returnV2(Product $p, array $packs)
+    {
+        return $this->owner()->post($this->url('/purchase-returns'), ['_entry_v2' => '1', 'branch_id' => $this->branchId(), 'supplier_id' => $this->supplier()->id,
+            'return_date' => now()->toDateString(), 'reason_code' => 'damaged',
+            'lines' => [['product_id' => $p->id, 'buy_pack' => array_key_first($packs), 'price' => '50', 'packs' => $packs]]]);
     }
 
     private function poOld(Product $p, string $qty, string $cost = '50')
