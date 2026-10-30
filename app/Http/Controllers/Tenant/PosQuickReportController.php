@@ -214,6 +214,10 @@ class PosQuickReportController extends Controller
             'orderTypes'    => $data['orderTypes'],
             'categories'    => $data['categories'],
             'items'         => $data['items'],
+            // REPORT-NETWORK-GAPS-1: the browser print already had these three; the slip did not.
+            'categoryItems' => $data['categoryItems'],
+            'deals'         => $data['deals'],
+            'combos'        => $data['combos'],
             'waiters'       => $data['waiters'],
             'cancellations' => $data['cancellations'],
             'cashBank'      => $data['cashBank'],

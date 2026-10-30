@@ -301,6 +301,31 @@ class OnlineOrderingCheckoutMySqlTest extends MySqlTenantTestCase
         $this->assertSame(0, SalesOrder::count());
     }
 
+    public function test_with_pick_up_switched_off_only_delivery_is_taken(): void
+    {
+        // Malik (29 Oct, WEB-PICKUP-SWITCH-1): "pickup band kardo" — website par sirf Delivery.
+        $this->openShift();
+        $zone = DeliveryZone::create(['geo_area_id' => 990003, 'area_name' => 'Gulshan Block 13', 'city' => 'Karachi',
+            'branch_id' => $this->branchId, 'fee' => 150, 'is_active' => true]);
+        $pickup = fn () => $this->checkout(['type' => 'pickup', 'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => 1]]]);
+        $unknownArea = fn () => $this->checkout(['type' => 'delivery', 'area' => 999999, 'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => 2]]]);
+
+        // Default ON (deploy kuch nahi badalta): pick-up chalta hai, aur ghalat area par Pick-Up ka mashwara.
+        $pickup()->assertCreated();
+        $this->assertStringContainsString('or Pick-Up', $unknownArea()->assertStatus(422)->json('errors.area.0'));
+
+        WebSetting::tenantDefault()->update(['pickup_enabled' => false]);
+        $before = SalesOrder::count();
+        $res = $pickup()->assertStatus(422)->assertJsonValidationErrors('type');
+        $this->assertStringContainsString('Please choose Delivery', $res->json('errors.type.0'));
+        $this->assertSame($before, SalesOrder::count(), 'Band Pick-Up par order bana hi nahi.');
+        $this->assertStringNotContainsString('Pick-Up', $unknownArea()->assertStatus(422)->json('errors.area.0'), 'Band ho to Pick-Up ka mashwara nahi.');
+
+        // Delivery waisi hi chalti hai.
+        $this->checkout(['type' => 'delivery', 'area' => $zone->id, 'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => 2]]])->assertCreated();
+        $this->assertSame($before + 1, SalesOrder::count());
+    }
+
     public function test_a_closed_website_or_an_empty_counter_refuses_and_a_double_tap_is_one_order(): void
     {
         // Koi shift nahi: order aaye aur kahin ghanti na baje — website mana kare.
