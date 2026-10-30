@@ -3473,5 +3473,21 @@ return [
             'BASELINE' => false,
             'NOTE' => 'CANONICAL 3a3f2596 SUPPLIER-CREDIT-CLARITY-1: one NEW Cloud AP table (a payment\'s or return\'s part moved from one supplier invoice to another by a person — the record of who moved it). Purchasing/AP is excluded from the artifact (Purchase*/Supplier* globs); the F2 Edge supplier-finance twin never reads it. Skipped with record on the appliance; joins supplier_credit_allocations on the "absent on the appliance" dependency-watch list.',
         ],
+        // ── CANONICAL REHEARSAL chunk 8 (canonical 073238de: WEB-CART-PHONE-1, WEB-PICKUP-SWITCH-1, MASTER-HISAB-1/-EXCEL-1, MASTER-TABLE-COLOURS-1) ──
+        '2026_10_29_000001_add_pickup_enabled_to_web_settings' => [
+            'MIGRATION' => '2026_10_29_000001_add_pickup_enabled_to_web_settings',
+            'CLASSIFICATION' => 'CLOUD_ONLY',
+            'TABLES_CHANGED' => ['web_settings'],
+            'EDGE_CODE_REFERENCES' => ['none'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'low',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'EXCLUDE',
+            'UPGRADE_TEST' => 'n/a: CLOUD_ONLY',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'CANONICAL 5e36d094 WEB-PICKUP-SWITCH-1: web_settings.pickup_enabled BOOLEAN DEFAULT 1 AFTER pickup_eta_minutes (Blueprint, not INSTANT — tiny table). Online ordering is a Cloud-only domain (owner D4; app/Services/OnlineOrdering + Website controllers excluded; web_settings exists empty on the appliance from the mixed create migration and is never read there) — same class as 2026_10_16_000001_add_branding_to_web_settings. MASTER-HISAB-1 (2026_10_29_000001_create_company_hisab_tables) is a MASTER migration: outside this manifest, never run on an appliance.',
+        ],
     ],
 ];

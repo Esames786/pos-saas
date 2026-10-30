@@ -169,6 +169,7 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
         $this->assertFalse($s->wa_notify_confirmed, 'Ann-tick checkbox = band.');
         $this->assertFalse($s->wa_notify_cancelled);
         $this->assertNull($s->auto_cancel_minutes, 'Auto-cancel off = kabhi khud cancel nahi.');
+        $this->assertFalse($s->pickup_enabled, 'WEB-PICKUP-SWITCH-1: Pick-Up ann-tick = website par band.');
         $this->assertSame(['open' => '12:00', 'close' => '04:00', 'closed' => false], $s->hours['fri']);
 
         $delivery = WebOrderRoute::where('branch_id', $this->branchA)->where('order_type', 'delivery')->sole();
@@ -179,9 +180,12 @@ class OnlineOrderingSetupMySqlTest extends MySqlTenantTestCase
 
         // Auto-cancel on: minute ke saath.
         $this->owner()->put($this->url('/online-ordering/settings'), $this->settingsInput([
-            'auto_cancel_enabled' => '1', 'auto_cancel_minutes' => '20',
+            'auto_cancel_enabled' => '1', 'auto_cancel_minutes' => '20', 'pickup_enabled' => '1',
         ]))->assertSessionHasNoErrors();
         $this->assertSame(20, WebSetting::tenantDefault()->fresh()->auto_cancel_minutes);
+        $this->assertTrue(WebSetting::tenantDefault()->fresh()->pickup_enabled);
+        $page = $this->owner()->get($this->url('/online-ordering/settings'))->assertOk()->assertSee('Pick-Up on the website')->getContent();
+        $this->assertMatchesRegularExpression('/name="pickup_enabled"[^>]*\schecked>/', $page, 'Switch on dikhe.');
     }
 
     public function test_the_website_cannot_be_switched_on_without_a_delivery_terminal(): void
