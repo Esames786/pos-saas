@@ -138,3 +138,20 @@ message, profit 350.34.
   29 Oct) and INV-20261010-0337 (tawakalkashif, 20,000, paid 10 Oct) marked paid through `recordPayment`, with each
   subscription's end date / status / plan put back exactly (`activateSubscriptionFromPaidInvoice` would have set
   kashifkitchen to 20 Oct — already past — and tawakalkashif to 31 Oct); access gate still "active" for both.
+
+## MASTER-HISAB-EXCEL-1 — Excel download (owner, 30 Oct: "excel b add karo proper hisab mai excel download ka option")
+
+- **Where:** the same Hisab screen — an "Excel" button next to the month (this month, or from the start until today).
+  No new screen; one new route `central.hisab.export` (GET `/hisab/export`), permission added to `MasterSeeder`.
+- **What the file holds** (real `.xlsx`, several sheets, numbers as numbers, dates as dates):
+  1. **Khulasa** — income, expenses, profit; all money the company has; owners: share %, should have, got, difference;
+     who sends whom; every khata's balance; WhatsApp billed / card / profit.
+  2. **Entries** — one row per part (a split shows both parts), date, number, kind, what for, client, khata, in, out,
+     note, entered by; totals.
+  3. **One sheet per khata** — opening balance, every entry with in / out / running balance, closing balance.
+  4. **Mahine-war** — income, expenses, profit per month.
+  5. **WhatsApp** — each card bill: Meta $, bank, tax / fee, tax %, dollar rate, messages, per message, total.
+- **How:** no new package — a small writer `App\Support\SimpleXlsx` on PHP's `ZipArchive` (ext-zip is on prod CLI + FPM).
+  The figures come from the same `CompanyHisab` service as the screen, so the file and the page always agree.
+- **Impact:** reads the 5 hisab tables + `tenants` + `central_users`; writes nothing. Tests: `MasterHisabMySqlTest` gains
+  an export test that opens the file and reads its cells.

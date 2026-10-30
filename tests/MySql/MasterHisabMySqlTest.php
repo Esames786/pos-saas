@@ -28,7 +28,7 @@ use Spatie\Permission\PermissionRegistrar;
 class MasterHisabMySqlTest extends MySqlTenantTestCase
 {
     private const PERMS = [
-        'central.hisab.index', 'central.hisab.entries.store', 'central.hisab.entries.update',
+        'central.hisab.index', 'central.hisab.export', 'central.hisab.entries.store', 'central.hisab.entries.update',
         'central.hisab.entries.destroy', 'central.hisab.setup.update',
     ];
 
@@ -230,6 +230,96 @@ class MasterHisabMySqlTest extends MySqlTenantTestCase
         // Shuru ka balance + 7 entries (Client Grill ke 25,886 aik line, chahe andar mahana + WhatsApp ho).
         $this->assertSame(8, $s->query('//table[@data-hs-statement]/tbody/tr')->length);
         $this->assertSame(1, $s->query('//table[@data-hs-statement]/tbody/tr[td[contains(., "Rs 25,886")]]')->length);
+    }
+
+    public function test_the_excel_file_holds_the_same_hisab_as_the_page(): void
+    {
+        $u = $this->admin();
+        [$one, $two] = $this->setupOwners($u);
+        $this->october($u, $one, $two);
+
+        $res = $this->actingAs($u, 'central')->get($this->host.'/hisab/export?month=2026-10')->assertOk();
+        $this->assertStringContainsString('spreadsheetml.sheet', (string) $res->headers->get('Content-Type'));
+        $this->assertStringContainsString('bingoo-hisab-2026-10.xlsx', (string) $res->headers->get('Content-Disposition'));
+        $book = $this->readXlsx($res->baseResponse->getFile()->getPathname());
+
+        $this->assertSame(['Khulasa', 'Entries', 'Khata - Owner One ka account', 'Khata - Owner Two ka account', 'Mahine-war', 'WhatsApp'], array_keys($book));
+        $sum = $this->byLabel($book['Khulasa']);
+        $this->assertSame(255886.0, (float) $sum['Aamdani'][1]);
+        $this->assertSame(42535.66, (float) $sum['Kharcha'][1]);
+        $this->assertSame(213350.34, (float) $sum['Nafa'][1]);
+        $this->assertSame(106675.17, (float) $sum['Owner One'][2]);
+        $this->assertSame(113350.34, (float) $sum['Owner One'][3]);
+        $this->assertSame(6675.17, (float) $sum['Owner One'][4]);
+        $this->assertSame(-6675.17, (float) $sum['Owner Two'][4]);
+        $this->assertSame(0.5, (float) $sum['Owner One'][1], 'share as a real percent cell');
+        $this->assertSame(6675.17, (float) $sum['Owner One → Owner Two'][2]);
+        $this->assertSame(350.34, (float) $sum['WhatsApp ka nafa'][1]);
+
+        // Har hissa aik row: 8 entries, do ke do hisse = 10 rows, upar header aur neeche total.
+        $entries = $book['Entries'];
+        $this->assertCount(12, $entries);
+        $this->assertSame(['Total', 255886.0, 42535.66], [end($entries)[0], (float) end($entries)[7], (float) end($entries)[8]]);
+        $this->assertSame(2, count(array_filter($entries, fn ($r) => ($r[3] ?? '') === '🧩 One-time fee')), 'the 1,50,000 split shows as two rows');
+        $this->assertSame(46298.0, (float) $entries[1][0], 'dates are real Excel dates (3 Oct 2026 = day 46298)');
+
+        $mohsin = $book['Khata - Owner One ka account'];
+        $this->assertSame('Akhir ka balance', end($mohsin)[2]);
+        $this->assertSame(113350.34, (float) end($mohsin)[6]);
+        $wa = $book['WhatsApp'][1];
+        $this->assertSame([1.35, 378.66, 157.0, 0.4146, 280.49, 90.0, 5.95, 535.66],
+            [(float) $wa[2], (float) $wa[3], (float) $wa[4], round((float) $wa[5], 4), (float) $wa[6], (float) $wa[7], (float) $wa[8], (float) $wa[9]]);
+
+        // "Shuru se ab tak" — aur Excel bhi permission ke baghair nahi milta.
+        $all = $this->actingAs($u, 'central')->get($this->host.'/hisab/export?scope=all')->assertOk();
+        $this->assertStringContainsString('bingoo-hisab-shuru-se-', (string) $all->headers->get('Content-Disposition'));
+        $page = $this->actingAs($u, 'central')->get($this->host.'/hisab?month=2026-10')->getContent();
+        $this->assertStringContainsString('/hisab/export?month=2026-10', $page);
+        $other = $this->admin(['central.hisab.index']);
+        $this->actingAs($other, 'central')->get($this->host.'/hisab/export?month=2026-10')->assertForbidden();
+        $this->assertStringNotContainsString('/hisab/export', $this->actingAs($other, 'central')->get($this->host.'/hisab')->getContent());
+    }
+
+    /** @return array<string, list<list<mixed>>> sheet naam => rows (string ya number) */
+    private function readXlsx(string $path): array
+    {
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($path) === true, 'a real zip (.xlsx)');
+        $wb = simplexml_load_string($zip->getFromName('xl/workbook.xml'));
+        $out = [];
+        $i = 1;
+        foreach ($wb->sheets->sheet as $sheet) {
+            $xml = simplexml_load_string($zip->getFromName('xl/worksheets/sheet'.$i++.'.xml'));
+            $rows = [];
+            foreach ($xml->sheetData->row as $row) {
+                $cells = [];
+                foreach ($row->c as $c) {
+                    preg_match('/^([A-Z]+)/', (string) $c['r'], $m);
+                    $col = 0;
+                    foreach (str_split($m[1]) as $ch) {
+                        $col = $col * 26 + ord($ch) - 64;
+                    }
+                    $cells[$col - 1] = (string) $c['t'] === 'inlineStr' ? (string) $c->is->t : (isset($c->v) ? (string) $c->v : '');
+                }
+                $rows[] = $cells === [] ? [] : array_replace(array_fill(0, max(array_keys($cells)) + 1, ''), $cells);
+            }
+            $out[(string) $sheet['name']] = $rows;
+        }
+
+        return $out;
+    }
+
+    /** Pehle khaane ke label se row dhoondo. */
+    private function byLabel(array $rows): array
+    {
+        $map = [];
+        foreach ($rows as $r) {
+            if (isset($r[0]) && $r[0] !== '' && ! isset($map[$r[0]])) {
+                $map[$r[0]] = $r;
+            }
+        }
+
+        return $map;
     }
 
     public function test_sending_the_difference_settles_both_owners(): void

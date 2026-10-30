@@ -229,6 +229,7 @@ class MasterSeeder extends Seeder
 
             // MASTER-HISAB-1 — Bingoo ka apna hisab. Safha dekhne wala us ka har kaam kar sakta hai.
             'central.hisab.index',
+            'central.hisab.export',   // MASTER-HISAB-EXCEL-1 — Excel download
             'central.hisab.entries.store',
             'central.hisab.entries.update',
             'central.hisab.entries.destroy',

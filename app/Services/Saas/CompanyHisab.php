@@ -351,7 +351,7 @@ class CompanyHisab
         $cards = CompanyEntry::query()->live()->with('lines')
             ->where('type', CompanyEntry::OUT)->whereNotNull('usd_amount')
             ->whereBetween('entry_date', [$from, $to])->orderBy('entry_date')->orderBy('id')->get()
-            ->map(fn ($e) => ['entry_no' => $e->entry_no, 'date' => $e->entry_date->format('d M Y')] + $e->cardFigures())
+            ->map(fn ($e) => ['entry_no' => $e->entry_no, 'date' => $e->entry_date->format('d M Y'), 'day' => $e->entry_date->toDateString()] + $e->cardFigures())
             ->all();
 
         return ['billed' => $billed, 'cost' => $cost, 'profit' => round($billed - $cost, 2), 'cards' => $cards];

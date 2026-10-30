@@ -131,6 +131,7 @@ Route::domain(config('tenancy.central_domain'))
                 // MASTER-HISAB-1 — Bingoo ka apna hisab (owners ke khate, kharche, 50/50 barabari). Har action isi
                 // safhe ka hai; permissions MasterSeeder me (deploy step 3b unhe Super Admin ko deta hai).
                 Route::get('/hisab', [HisabController::class, 'index'])->name('central.hisab.index');
+                Route::get('/hisab/export', [HisabController::class, 'export'])->name('central.hisab.export');
                 Route::post('/hisab/entries', [HisabController::class, 'storeEntry'])->name('central.hisab.entries.store');
                 Route::put('/hisab/entries/{entry}', [HisabController::class, 'updateEntry'])->name('central.hisab.entries.update');
                 Route::delete('/hisab/entries/{entry}', [HisabController::class, 'destroyEntry'])->name('central.hisab.entries.destroy');
