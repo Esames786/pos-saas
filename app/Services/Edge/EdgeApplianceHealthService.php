@@ -327,10 +327,15 @@ class EdgeApplianceHealthService
             $authority = ['installed' => null, 'running' => false, 'error' => get_class($e)];
         }
         if ($meta && ($print['state'] ?? '') !== 'running') {
-            $problems[] = 'Local print worker is ' . (string) ($print['state'] ?? 'unknown') . '.';
+            // 0.8.3: a STALE worker is told apart by its recorded process — wedged (alive, not beating) vs gone (crashed).
+            $verdict = $print['process']['verdict'] ?? null;
+            $problems[] = 'Local print worker is ' . (string) ($print['state'] ?? 'unknown')
+                . ($verdict === 'stale_process_alive' ? ' (process alive but not heartbeating - wedged; a supervised restart takes the slot over)' : ($verdict === 'stale_process_gone' ? ' (process gone - crashed or not restarted after boot)' : '')) . '.';
         }
         if ($meta && ! ($authority['running'] ?? false)) {
-            $problems[] = 'Authority/heartbeat worker is not running.';
+            $verdict = $authority['process']['verdict'] ?? null;
+            $problems[] = 'Authority/heartbeat worker is not running'
+                . ($verdict === 'stale_process_alive' ? ' (process alive but not heartbeating - wedged)' : ($verdict === 'stale_process_gone' ? ' (process gone - crashed or not restarted after boot)' : '')) . '.';
         }
         $plan = [];
         try {
@@ -371,7 +376,42 @@ class EdgeApplianceHealthService
                 $problems[] = count($usb) . ' USB printer(s) configured — USB printing is Online-only until the dual-mode agent exists.';
             }
 
-            return ['printers' => $printers, 'jobs_by_status' => $jobs, 'network_printers_edge_direct' => count(array_filter($printers, fn ($p) => $p['edge_capable']))];
+            // 0.8.3 (G1): FAILED print jobs are a cashier-visible defect, not a count. Per printer, so the line names what to fix.
+            $failed = [];
+            if (Schema::connection('tenant')->hasTable('print_jobs')) {
+                $failed = DB::connection('tenant')->table('print_jobs')->where('branch_id', $branchId)->where('print_status', 'failed')
+                    ->selectRaw('printer_id, count(*) as n, max(failed_at) as last_failed_at, max(error_message) as sample_error')
+                    ->groupBy('printer_id')->get()->map(fn ($r) => ['printer_id' => $r->printer_id !== null ? (int) $r->printer_id : null, 'count' => (int) $r->n, 'last_failed_at' => $r->last_failed_at, 'sample_error' => $r->sample_error !== null ? mb_substr((string) $r->sample_error, 0, 160) : null])->all();
+            }
+            $names = array_column($printers, 'name', 'id');
+            foreach ($failed as $f) {
+                $label = $f['printer_id'] !== null ? ($names[$f['printer_id']] ?? ('printer #' . $f['printer_id'])) : 'no printer';
+                $problems[] = $f['count'] . ' print job(s) FAILED on ' . $label . ' — retry or dismiss from Recent Prints' . ($f['sample_error'] ? ' (last error: ' . $f['sample_error'] . ')' : '') . '.';
+            }
+            $terminalDeliveries = Schema::connection('tenant')->hasTable('edge_local_print_deliveries')
+                ? (int) DB::connection('tenant')->table('edge_local_print_deliveries')->where('delivery_state', 'terminal_failed')->count() : 0;
+
+            // 0.8.3 (G2): reachability — one bounded TCP connect per Edge-capable printer (never a byte written).
+            $probeOn = (bool) config('edge.print.reachability_probe', true);
+            $timeout = (float) config('edge.print.reachability_timeout_seconds', EdgePrinterReachabilityProbe::DEFAULT_TIMEOUT_SECONDS);
+            $probed = 0;
+            foreach ($printers as &$p) {
+                $p['reachability'] = null;
+                if (! $probeOn || ! $p['edge_capable'] || $probed >= EdgePrinterReachabilityProbe::MAX_PRINTERS_PER_REPORT) {
+                    continue;
+                }
+                $probed++;
+                $r = app(EdgePrinterReachabilityProbe::class)->probe((string) $p['ip'], (int) ($p['port'] ?: 9100), $timeout);
+                $p['reachability'] = $r;
+                if ($r['status'] !== EdgePrinterReachabilityProbe::REACHABLE) {
+                    $problems[] = 'Printer ' . $p['name'] . ' (' . $p['ip'] . ':' . (int) ($p['port'] ?: 9100) . ') is not reachable: ' . $r['status'] . ' — ' . $r['detail'] . '.';
+                }
+            }
+            unset($p);
+
+            return ['printers' => $printers, 'jobs_by_status' => $jobs, 'failed_jobs_by_printer' => $failed, 'terminal_failed_deliveries' => $terminalDeliveries,
+                'reachability_probe' => ['enabled' => $probeOn, 'timeout_seconds' => $timeout, 'probed' => $probed],
+                'network_printers_edge_direct' => count(array_filter($printers, fn ($p) => $p['edge_capable']))];
         } catch (Throwable $e) {
             return ['error' => get_class($e)];
         }

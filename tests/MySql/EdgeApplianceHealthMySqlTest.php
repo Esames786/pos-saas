@@ -126,6 +126,53 @@ class EdgeApplianceHealthMySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString('never acknowledged', $joined);
     }
 
+    /** 0.8.3 (G1/G2): FAILED print jobs and an unreachable printer are named problems (DEGRADED), with the probe classified. */
+    public function test_failed_print_jobs_and_printer_reachability_surface_as_problems(): void
+    {
+        $now = now();
+        // the LAN printer row points at a host that answers nothing; re-point it at loopback:9 (refused) for a deterministic verdict.
+        DB::connection('tenant')->table('printers')->where('name', 'Kitchen LAN')->update(['ip_address' => '127.0.0.1', 'port' => 9]);
+        $printerId = (int) DB::connection('tenant')->table('printers')->where('name', 'Kitchen LAN')->value('id');
+        $this->makePrintJob($printerId, ['print_status' => 'failed', 'printed_at' => null, 'attempts' => 1, 'failed_at' => $now, 'error_message' => '[refused] printer connect failed [127.0.0.1:9] after 2 ms', 'branch_id' => $this->branchId, 'raw_payload' => 'X']);
+        $this->makePrintJob($printerId, ['print_status' => 'failed', 'printed_at' => null, 'attempts' => 1, 'failed_at' => $now, 'error_message' => '[refused] printer connect failed [127.0.0.1:9] after 1 ms', 'branch_id' => $this->branchId, 'raw_payload' => 'Y']);
+        $this->makePrintJob($printerId, ['print_status' => 'printed', 'printed_at' => $now, 'branch_id' => $this->branchId, 'raw_payload' => 'Z']);
+
+        $r = $this->report();
+        $this->assertSame(EdgeApplianceHealthService::STATUS_DEGRADED, $r['status']);
+        $joined = implode(' | ', $r['problems']);
+        $this->assertStringContainsString('2 print job(s) FAILED on Kitchen LAN', $joined, $joined);
+        $this->assertStringContainsString('Recent Prints', $joined);
+        $this->assertStringContainsString('[refused]', $joined, 'the sample error carries the transport classification');
+        $this->assertStringContainsString('Printer Kitchen LAN (127.0.0.1:9) is not reachable: refused', $joined, $joined);
+        $this->assertSame(2, $r['print']['failed_jobs_by_printer'][0]['count']);
+        $this->assertSame($printerId, $r['print']['failed_jobs_by_printer'][0]['printer_id']);
+        $lan = collect($r['print']['printers'])->firstWhere('name', 'Kitchen LAN');
+        $this->assertSame('refused', $lan['reachability']['status']);
+        $this->assertNull(collect($r['print']['printers'])->firstWhere('name', 'Counter USB')['reachability'], 'USB printers are never probed');
+        $this->assertSame(1, $r['print']['reachability_probe']['probed']);
+
+        // the probe can be switched off for diagnostics; failed jobs still surface.
+        config(['edge.print.reachability_probe' => false]);
+        $r2 = $this->report();
+        $joined2 = implode(' | ', $r2['problems']);
+        $this->assertStringNotContainsString('not reachable', $joined2);
+        $this->assertStringContainsString('2 print job(s) FAILED', $joined2);
+        $this->assertSame(0, $r2['print']['reachability_probe']['probed']);
+
+        // the printer comes back (a loopback listener) → the reachability problem disappears while the failed jobs stay.
+        config(['edge.print.reachability_probe' => true]);
+        $server = stream_socket_server('tcp://127.0.0.1:0');
+        $port = (int) substr(stream_socket_get_name($server, false), strrpos(stream_socket_get_name($server, false), ':') + 1);
+        DB::connection('tenant')->table('printers')->where('id', $printerId)->update(['port' => $port]);
+        try {
+            $r3 = $this->report();
+            $this->assertSame('reachable', collect($r3['print']['printers'])->firstWhere('name', 'Kitchen LAN')['reachability']['status']);
+            $this->assertStringNotContainsString('not reachable', implode(' | ', $r3['problems']));
+        } finally {
+            fclose($server);
+        }
+    }
+
     public function test_the_report_the_command_and_the_page_never_carry_a_secret(): void
     {
         $json = json_encode($this->report());

@@ -2,6 +2,7 @@
 
 namespace App\Services\Edge;
 
+use App\Support\EdgeProcessLiveness;
 use App\Support\EdgeRuntime;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -13,32 +14,42 @@ use RuntimeException;
  * ownership decided under the row lock, a fresh heartbeat = live, a stale one = the process is gone and a supervised
  * restart may take the slot; a cooperative stop flag checked between ticks; a hard kill recovers by staleness. This
  * row is never an authority — the P lease is.
+ *
+ * 0.8.3 (F-G10): the worker's process identity (pid, start time, host) is recorded next to the heartbeat and the OS
+ * is asked whether that process still exists before a fresh heartbeat is trusted (EdgeWorkerSlotPolicy): a process that
+ * is gone after a crash or a fast reboot is taken over at once. NOTHING here touches the lease/takeover/handback
+ * semantics — only who runs the ticking loop.
  */
 class EdgeLocalAuthorityWorkerSupervisor
 {
     public const TABLE = 'edge_local_authority_worker_state';
     public const HEARTBEAT_STALE_SECONDS = 90;
 
+    private ?array $lastDecision = null;
+
     public function __construct(private readonly EdgeBranchContext $context)
     {
     }
 
-    public function acquire(string $workerUuid, ?string $runtimeVersion = null): bool
+    /** @param array{pid?:int,token?:?string,host?:string}|null $identity this process (default: EdgeProcessLiveness::self()) */
+    public function acquire(string $workerUuid, ?string $runtimeVersion = null, ?array $identity = null): bool
     {
         $this->requireBranchServer();
-        $attempt = function () use ($workerUuid, $runtimeVersion): bool {
-            return DB::connection('tenant')->transaction(function () use ($workerUuid, $runtimeVersion) {
+        $identity ??= EdgeProcessLiveness::self();
+        $attempt = function () use ($workerUuid, $runtimeVersion, $identity): bool {
+            return DB::connection('tenant')->transaction(function () use ($workerUuid, $runtimeVersion, $identity) {
                 DB::connection('tenant')->table(self::TABLE)->insertOrIgnore(['singleton_guard' => 1, 'state' => 'stopped', 'created_at' => now(), 'updated_at' => now()]);
                 $row = DB::connection('tenant')->table(self::TABLE)->where('singleton_guard', 1)->lockForUpdate()->first();
-                $liveOther = $row->state === 'running' && $row->worker_uuid !== null && $row->worker_uuid !== $workerUuid
-                    && $row->heartbeat_at !== null && \Illuminate\Support\Carbon::parse($row->heartbeat_at)->gt(now()->subSeconds(self::HEARTBEAT_STALE_SECONDS));
-                if ($liveOther) {
+                $decision = EdgeWorkerSlotPolicy::decide($row, $workerUuid, self::HEARTBEAT_STALE_SECONDS);
+                $decision['previous_worker_uuid'] = $row->worker_uuid;
+                $this->lastDecision = $decision;
+                if (! $decision['takeover']) {
                     return false;
                 }
                 DB::connection('tenant')->table(self::TABLE)->where('singleton_guard', 1)->update([
                     'state' => 'running', 'worker_uuid' => $workerUuid, 'runtime_version' => $runtimeVersion,
                     'started_at' => now(), 'heartbeat_at' => now(), 'stop_requested_at' => null, 'stopped_at' => null, 'last_error' => null, 'updated_at' => now(),
-                ]);
+                ] + EdgeWorkerSlotPolicy::identityColumns($identity));
 
                 return true;
             });
@@ -52,6 +63,12 @@ class EdgeLocalAuthorityWorkerSupervisor
 
             return $attempt();
         }
+    }
+
+    /** The decision acquire() last made (reason, heartbeat age, OS liveness verdict) — for operator output. */
+    public function lastDecision(): ?array
+    {
+        return $this->lastDecision;
     }
 
     /** FALSE = this worker no longer owns the slot → exit. */
@@ -99,7 +116,8 @@ class EdgeLocalAuthorityWorkerSupervisor
         return true;
     }
 
-    public function health(): array
+    /** @param bool $probeProcess ask the OS about a STALE worker's process (wedged vs gone); false keeps the report cheap */
+    public function health(bool $probeProcess = true): array
     {
         try {
             $row = DB::connection('tenant')->table(self::TABLE)->where('singleton_guard', 1)->first();
@@ -110,10 +128,13 @@ class EdgeLocalAuthorityWorkerSupervisor
             return ['installed' => false, 'running' => false];
         }
         $live = $row->state === 'running' && $row->heartbeat_at !== null && \Illuminate\Support\Carbon::parse($row->heartbeat_at)->gt(now()->subSeconds(self::HEARTBEAT_STALE_SECONDS));
+        $state = $row->state !== 'running' ? 'stopped' : ($live ? 'running' : 'stale');
 
         return [
-            'installed' => true, 'running' => $live, 'state' => $row->state, 'heartbeat_at' => $row->heartbeat_at,
+            'installed' => true, 'running' => $live, 'state' => $row->state, 'liveness_state' => $state, 'heartbeat_at' => $row->heartbeat_at,
+            'heartbeat_age_seconds' => $row->heartbeat_at !== null ? (int) abs(now()->diffInSeconds(\Illuminate\Support\Carbon::parse($row->heartbeat_at))) : null,
             'last_tick_at' => $row->last_tick_at, 'last_tick_outcome' => $row->last_tick_outcome, 'stop_requested' => $row->stop_requested_at !== null,
+            'process' => EdgeLocalPrintWorkerSupervisor::processReport($row->worker_pid ?? null, $row->worker_process_token ?? null, $row->worker_host ?? null, $state, $probeProcess),
         ];
     }
 

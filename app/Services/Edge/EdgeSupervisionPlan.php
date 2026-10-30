@@ -227,6 +227,10 @@ NGINX;
             'singleton' => $policy['singleton'],
             'listen' => $policy['listen'] ?? null,
             'startup_db_retry' => true,     // bounded wait for MariaDB before giving up (task restarts)
+            // 0.8.3 (F-1): the bounded, CLASSIFIED wait the worker performs itself (EdgeLocalDbReadiness); an installer that
+            // wants an explicit pre-step can run `edge:local:wait-db --timeout=<this>` with the same budget.
+            'startup_db_wait_seconds' => (int) config('edge.workers.db_startup_wait_seconds', 180),
+            'startup_db_wait_command' => 'edge:local:wait-db',
             'stop' => 'cooperative',        // graceful stop first, never a hard kill that orphans a lease
         ];
     }
