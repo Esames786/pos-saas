@@ -124,8 +124,10 @@ class ProductNavCleanupMySqlTest extends MySqlTenantTestCase
         $this->owner()->get($this->url('/products/' . $i['chair'] . '/edit'))->assertOk()
             ->assertSee('/manufacturing/bom/' . $i['bom'] . '/edit', false);
         $this->business('catering');
+        // CATERING-SIMPLIFY-1: the Catering Products fields are on the tab now, so only the Cost blocks link stays.
         $this->owner()->get($this->url('/products/' . $i['biryani'] . '/edit'))->assertOk()
-            ->assertSee('data-ws-full="catering-profile"', false)->assertSee('/catering/profiles/' . $i['profile'] . '/blocks', false);
+            ->assertSee('data-ws-full="cost-blocks"', false)->assertSee('/catering/profiles/' . $i['profile'] . '/blocks', false)
+            ->assertDontSee('data-ws-full="catering-profile"', false);
 
         // A product clerk who may not open those screens sees the tabs without links to them.
         $clerk = $this->productClerk();

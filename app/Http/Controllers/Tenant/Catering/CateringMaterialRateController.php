@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\CateringMaterialRate;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\Unit;
+use App\Services\Catering\MaterialRateHints;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -92,6 +93,13 @@ class CateringMaterialRateController extends Controller
                 ->get();
         }
 
+        $historyByMaterial = $this->recentHistory();
+        $materials = Product::query()
+            ->whereIn('product_kind', self::MATERIAL_KINDS)
+            ->orderBy('name')
+            ->get(['id', 'name', 'sku', 'unit_id']);
+        $hints = app(MaterialRateHints::class);
+
         return view('tenant.catering.material-rates.index', [
             'latestRates' => $current,
             'scheduled' => $scheduled,
@@ -101,13 +109,14 @@ class CateringMaterialRateController extends Controller
             // A plain list, not a catalogue search: there are only ever a handful
             // of materials, and offering the whole catalogue is what put a rate
             // on a dish.
-            'materials' => Product::query()
-                ->whereIn('product_kind', self::MATERIAL_KINDS)
-                ->orderBy('name')
-                ->get(['id', 'name', 'sku', 'unit_id']),
+            'materials' => $materials,
             // CATERING-RATE-HISTORY-1: what each material has cost before, so the
             // operator can put yesterday's rate back without leaving the modal.
-            'historyByMaterial' => $this->recentHistory(),
+            'historyByMaterial' => $historyByMaterial,
+            // CATERING-SIMPLIFY-1: the unit a chosen material fills in, and what it was last bought at (a guide only —
+            // a purchase never writes a cost rate).
+            'unitDefaults' => $hints->unitDefaults($materials, $historyByMaterial),
+            'lastPurchases' => $hints->lastPurchases(),
         ]);
     }
 

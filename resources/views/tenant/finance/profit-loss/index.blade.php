@@ -20,6 +20,8 @@
                         @endif
                     @endforeach
                     <button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>CSV</button>
+                    {{-- FINANCE-PDF-DOWNLOADS-1: the same statement, heads and detail as this screen, as an A4 PDF. --}}
+                    <button type="submit" name="format" value="pdf" id="pl-pdf" class="btn btn-outline-danger btn-sm"><i class="ti ti-file-type-pdf me-1"></i>PDF</button>
                 </form>
             </div>
         </div>
@@ -36,6 +38,14 @@
                         <input type="date" name="date_to" class="form-control" value="{{ $filters['date_to'] }}">
                     </div>
                     @include('tenant.finance.partials.branch-multiselect', ['branches' => $branches, 'selectedBranchIds' => $selectedBranchIds])
+                    {{-- PNL-DETAIL-1: what each expense is made of (categories, suppliers). On by default; unticked sends 0. --}}
+                    <div class="col-sm-2">
+                        <input type="hidden" name="detail" value="0">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="detail" value="1" id="pl-detail" @checked($report['detail'])>
+                            <label class="form-check-label" for="pl-detail">Show detail</label>
+                        </div>
+                    </div>
                     <div class="col-sm-2">
                         <button type="submit" class="btn btn-primary w-100">Apply</button>
                     </div>
@@ -53,29 +63,19 @@
                             <caption class="visually-hidden">Profit and loss statement</caption>
                             <tbody>
                                 {{-- Revenue --}}
+                                {{-- PNL-DETAIL-1: each part as ProfitLossReport laid it out — parents over children, detail
+                                     under each cost / expense account. The totals below are statement()'s, unchanged. --}}
                                 <tr class="table-light"><th colspan="2">Revenue</th></tr>
-                                @forelse($pl['revenue_rows'] as $r)
-                                    <tr><td class="ps-4">{{ $r['code'] }} — {{ $r['name'] }}</td><td class="text-end">{{ number_format($r['amount'], 2) }}</td></tr>
-                                @empty
-                                    <tr><td class="ps-4 text-muted">No revenue in period</td><td class="text-end">0.00</td></tr>
-                                @endforelse
+                                @include('tenant.finance.profit-loss.partials.lines', ['lines' => $report['parts']['revenue'], 'empty' => 'No revenue in period'])
                                 <tr class="fw-semibold"><td class="ps-4">Gross Revenue</td><td class="text-end">{{ number_format($pl['gross_revenue'], 2) }}</td></tr>
 
-                                @if(count($pl['discount_rows']))
-                                    @foreach($pl['discount_rows'] as $r)
-                                        <tr><td class="ps-4 text-muted">Less: {{ $r['code'] }} — {{ $r['name'] }}</td><td class="text-end text-muted">({{ number_format($r['amount'], 2) }})</td></tr>
-                                    @endforeach
-                                @endif
+                                @include('tenant.finance.profit-loss.partials.lines', ['lines' => $report['parts']['discounts'], 'less' => true])
                                 <tr class="fw-semibold border-top"><td class="ps-4">Net Revenue</td><td class="text-end">{{ number_format($pl['net_revenue'], 2) }}</td></tr>
 
                                 {{-- COGS --}}
-                                <tr class="table-light"><th colspan="2">Cost of Goods Sold</th></tr>
-                                @forelse($pl['cogs_rows'] as $r)
-                                    <tr><td class="ps-4">{{ $r['code'] }} — {{ $r['name'] }}</td><td class="text-end">{{ number_format($r['amount'], 2) }}</td></tr>
-                                @empty
-                                    <tr><td class="ps-4 text-muted">No COGS in period</td><td class="text-end">0.00</td></tr>
-                                @endforelse
-                                <tr class="fw-semibold"><td class="ps-4">Total COGS</td><td class="text-end">{{ number_format($pl['total_cogs'], 2) }}</td></tr>
+                                <tr class="table-light"><th colspan="2">Cost of Sales</th></tr>
+                                @include('tenant.finance.profit-loss.partials.lines', ['lines' => $report['parts']['cost_of_sales'], 'empty' => 'No cost of sales in period'])
+                                <tr class="fw-semibold"><td class="ps-4">Total Cost of Sales</td><td class="text-end">{{ number_format($pl['total_cogs'], 2) }}</td></tr>
 
                                 {{-- Gross Profit --}}
                                 <tr class="fw-bold border-top">
@@ -85,11 +85,7 @@
 
                                 {{-- Operating Expenses --}}
                                 <tr class="table-light"><th colspan="2">Operating Expenses</th></tr>
-                                @forelse($pl['expense_rows'] as $r)
-                                    <tr><td class="ps-4">{{ $r['code'] }} — {{ $r['name'] }}</td><td class="text-end">{{ number_format($r['amount'], 2) }}</td></tr>
-                                @empty
-                                    <tr><td class="ps-4 text-muted">No operating expenses in period</td><td class="text-end">0.00</td></tr>
-                                @endforelse
+                                @include('tenant.finance.profit-loss.partials.lines', ['lines' => $report['parts']['expenses'], 'empty' => 'No operating expenses in period'])
                                 <tr class="fw-semibold"><td class="ps-4">Total Operating Expenses</td><td class="text-end">{{ number_format($pl['total_expenses'], 2) }}</td></tr>
 
                                 {{-- Net Profit --}}

@@ -131,6 +131,14 @@ class TrialBalanceSectionHeadsMySqlTest extends MySqlTenantTestCase
         $this->assertMatchesRegularExpression('/class="tb-head".*?5000.*?Cost of Goods Sold.*?4,200\.00 Dr/s', $html);
     }
 
+    /** FINANCE-PDF-DOWNLOADS-1: the PDF's head total adds its ACCOUNT rows — 5000 and 5100 are summaries, not counted again. */
+    public function test_the_pdf_head_totals_count_each_account_once_under_nested_heads(): void
+    {
+        $totals = TrialBalanceController::sectionTotals($this->page()->getData()['sections']);
+        $this->assertSame(4500.0, $totals['cost_of_sales']['period_debit'], '3,000 + 1,200 + 300 — not 4,200 more for 5000 and 5100');
+        $this->assertSame(4500.0, $totals['cost_of_sales']['closing_debit']);
+    }
+
     public function test_an_operating_expense_is_not_cost_of_sales_and_the_pnl_agrees(): void
     {
         $s = $this->sections();
@@ -196,7 +204,7 @@ class TrialBalanceSectionHeadsMySqlTest extends MySqlTenantTestCase
             'grouped' => true, 'sections' => $data['sections'], 'from' => '2026-10-01', 'to' => '2026-10-31', 'branchLabel' => 'All', 'company' => 'Test',
         ])->render();
         foreach (['Assets', 'Liabilities', 'Equity', 'Revenue', 'Cost of Sales', 'Operating Expenses'] as $label) {
-            $this->assertStringContainsString('<tr class="sect"><th colspan="6">' . $label . '</th></tr>', $print);
+            $this->assertStringContainsString('<tr class="sect"><th colspan="8">' . $label . '</th></tr>', $print);
         }
         $this->assertStringContainsString('Total Cost of Sales', $print);
         $pdf = $this->page(['format' => 'pdf']);

@@ -28,7 +28,7 @@
 </div>
 
 @include('tenant.catering.partials.tooltips')
-@include('tenant.catering.partials.screen-impact', ['manages' => 'The rates you COST a material at when quoting — not what you paid for it, and not a POS price.', 'managesUr' => 'تخمینے میں مال کی لاگت کا ریٹ — خریداری کی قیمت نہیں۔', 'reversible' => 'safe', 'note' => 'Changing a rate never edits a quotation that has already been sent. Use Rate Impact to see which open drafts it would affect.', 'noteUr' => 'ریٹ بدلنے سے بھیجا ہوا تخمینہ تبدیل نہیں ہوتا۔'])
+@include('tenant.catering.partials.screen-impact', ['manages' => 'The rates you COST a material at when quoting — your own entry, not a POS price. The last purchase price is shown beside it as a guide; a purchase never changes a rate by itself.', 'managesUr' => 'تخمینے میں مال کی لاگت کا ریٹ — آخری خریداری کی قیمت ساتھ دکھائی جاتی ہے، خود سے نہیں بدلتی۔', 'reversible' => 'safe', 'note' => 'Changing a rate never edits a quotation that has already been sent. Use Rate Impact to see which open drafts it would affect.', 'noteUr' => 'ریٹ بدلنے سے بھیجا ہوا تخمینہ تبدیل نہیں ہوتا۔'])
 @if(session('status'))
     <div class="alert alert-success">{{ session('status') }}</div>
 @endif
@@ -59,11 +59,14 @@
                         <th>Per Unit</th>
                         <th>Effective From</th>
                         <th>Note</th>
+                        {{-- CATERING-SIMPLIFY-1: what it was last bought at, beside what it is costed at. --}}
+                        <th class="text-end">Last purchase</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($latestRates as $row)
+                    @php $bought = ($lastPurchases ?? [])[$row->product_id] ?? null; @endphp
                     <tr>
                         <td>{{ $row->product->name }}<div class="text-muted fs-12">{{ $row->product->sku }}</div></td>
                         <td dir="rtl" lang="ur">{{ optional($row->product->translations->firstWhere('language_code', 'ur'))->name }}</td>
@@ -71,6 +74,14 @@
                         <td>{{ $row->unit?->code ?? $row->product->unit?->code ?? '—' }}</td>
                         <td>{{ $row->effective_from->format('d M Y') }}</td>
                         <td>{{ $row->note }}</td>
+                        <td class="text-end" data-last-purchase="{{ $row->product_id }}">
+                            @if($bought)
+                                {{ number_format($bought['unit_cost'], 2) }}@if($bought['unit']) <span class="text-muted">/ {{ $bought['unit'] }}</span>@endif
+                                <div class="text-muted fs-12">{{ \Illuminate\Support\Carbon::parse($bought['date'])->format('d M Y') }}@if($bought['supplier']) · {{ $bought['supplier'] }}@endif</div>
+                            @else
+                                <span class="text-muted">—</span>
+                            @endif
+                        </td>
                         <td class="text-end">
                             <a class="btn btn-sm btn-light" href="{{ url('/catering/material-rates?product_id=' . $row->product_id) }}">History</a>
                             @can('tenant.catering.rate-impact.index')
@@ -79,7 +90,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="7" class="text-center text-muted py-4">No catering material rates yet — quotes fall back to product purchase prices.</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted py-4">No catering material rates yet — quotes fall back to product purchase prices.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -158,7 +169,9 @@
              is present when the page is rendered through the controller — so a
              controller that stopped passing it would still be caught. --}}
         <form method="POST" action="{{ url('/catering/material-rates') }}" class="modal-content"
-              data-rate-history='@json($historyByMaterial ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)'>
+              data-rate-history='@json($historyByMaterial ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_AMP)'
+              data-unit-defaults='@json((object) ($unitDefaults ?? []))'
+              data-last-purchases='@json((object) ($lastPurchases ?? []), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_AMP)'>
             @csrf
             <div class="modal-header">
                 <h5 class="modal-title">New Material Rate</h5>
@@ -189,6 +202,12 @@
                     <div class="col-6">
                         <label class="form-label">Rate <span class="text-danger">*</span></label>
                         <input type="number" step="0.01" min="0" name="rate" class="form-control" required>
+                        {{-- CATERING-SIMPLIFY-1: what the chosen material was last bought at (any supplier) — a guide; "Use this
+                             price" fills Rate and Unit only, nothing is saved until Save Rate. --}}
+                        <div class="form-text d-none" id="rate-last-purchase">
+                            <span id="rate-last-purchase-text"></span>
+                            <button type="button" class="btn btn-sm btn-link p-0 align-baseline" id="rate-last-purchase-use">Use this price</button>
+                        </div>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Per Unit <span class="text-danger">*</span></label>
@@ -241,6 +260,29 @@ $(function () {
         dropdownParent: $('#rateModal'),
         placeholder: 'Choose a material…',
     });
+
+    // CATERING-SIMPLIFY-1: the chosen material's last purchase price, under Rate.
+    var form = document.querySelector('#rateModal form'), bought = {};
+    try { bought = JSON.parse(form.dataset.lastPurchases || '{}'); } catch (e) { bought = {}; }
+    var box = document.getElementById('rate-last-purchase'), text = document.getElementById('rate-last-purchase-text');
+    var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function day(d) { var p = String(d || '').split('-'); return p.length === 3 ? (+p[2]) + ' ' + MONTHS[+p[1] - 1] + ' ' + p[0] : d; }
+    function showBought() {
+        var b = bought[form.querySelector('[name=product_id]').value];
+        box.classList.toggle('d-none', !b);
+        if (!b) return;
+        text.textContent = 'Last bought at Rs ' + Number(b.unit_cost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            + (b.unit ? ' per ' + b.unit : '') + ' on ' + day(b.date) + (b.supplier ? ' (' + b.supplier + ')' : '') + '.';
+    }
+    document.getElementById('rate-last-purchase-use').addEventListener('click', function () {
+        var b = bought[form.querySelector('[name=product_id]').value], rate = form.querySelector('[name=rate]'), unit = form.querySelector('[name=unit_id]');
+        if (!b) return;
+        rate.value = Number(b.unit_cost).toFixed(2);
+        if (b.unit_id && unit.querySelector('option[value="' + b.unit_id + '"]')) unit.value = String(b.unit_id);
+        rate.focus(); rate.select();
+    });
+    $('#rate-product').on('change select2:select', showBought);
+    showBought();
 });
 </script>
 @endpush
