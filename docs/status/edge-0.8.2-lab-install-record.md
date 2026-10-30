@@ -135,6 +135,26 @@ Gate not met: the owner's instruction "The owner must provide credentials privat
 TEMP_ADMIN_CREATED=NO (waiting for secrets\admin.pass)   APPROVER_PIN_READY=NO   TEMP_ADMIN_DISABLED=n/a   ADMIN_SESSIONS_REVOKED=n/a
 ```
 
-## Phase D — standby acceptance
+## Phase D — standby acceptance (first pass 30 Oct 20:13–20:51 UTC; `phase-d\`)
 
-PHASE_D_PLACEHOLDER
+Run with the harness unchanged, secrets via env from the files. **Concurrency disclosure:** during this pass the two preparation agents were running their heavy gates
+(full MySQL suites + Playwright pairs) on the same laptop — 64 test/browser processes, CPU 97–100 % — which violates the directive's "no competing heavy suites during
+acceptance"; the standby-safe checks below are valid where they passed, and the web-tier observations are interpreted against that load. A quiet re-run of D2 follows once
+the agents finish (§D.3).
+
+| check | result |
+|---|---|
+| D1 Online POS on the LAB host (browsable Cloud, `http://edgehomelab.localhost:9701`, cashier) | **W01 PASS** — login, terminal selection, shared POS layout rendered; the only http error is the known `/dashboard` 403 (the LAB cashier has no `tenant.dashboard`) |
+| D2 Edge POS through the LAB gateway (`https://127.0.0.1:8443`, LAB2C5D) | **W01 PASS** (slot `STANDBY · CLOUD AUTHORITY`, terminal, capabilities rendered); **W18 EXPECTED-DIFFERENCE** (reminder-pause → 422 STANDBY "Local Mode is not active — the Cloud POS is the active writer…"); **W15 inconclusive** — the quick-add panel did not appear within the harness timeout while the backend was saturated (capability `customerCreate true` was rendered); on 0.8.1 the same check gave the expected 422 STANDBY; re-run in §D.3 |
+| D3/D4 pixels, Online (LAB Cloud) vs Edge (LAB gateway) — SAME dataset for the first time | 1366: 9/12 states **0.000 %** identical, 08-quick-report 0.279 % / 11-review-pay 0.084 % STATE (capability-driven controls), **06-recent-orders 15.99 % DATA** (the appliance's recent list = its 6 local sales incl. the cancelled one vs the Cloud's 5); 1024: 8/12 identical, 08 0.374 % / 11 0.112 % / 13 0.164 % STATE, 06 16.30 % DATA — no UNINTENTIONAL drift |
+| D5 geometry | **EDGE_VS_ONLINE_GEOMETRY=NONE** — 998 boxes, max deviation 0 px, geometry 0, presence 0, data 5 (recent-orders list height at 1366; customer-modal content/body height at 1024 — content-driven buckets), skipped 2 (07 both) |
+| W07/W08 approval UI | NOT exercised: needs an open shift and the approver PIN (Phase C) — no dummy transactions were created to mark it green |
+| web tier during the pass | backend #1 restarted once at 20:47:21 ("progress continued but no answer for 166s — beyond the 120s busy grace") while the geometry capture drove it continuously; **gateway 0 × 502** in D1–D5 (nginx failed over to backend 2); health STANDBY_READY throughout |
+| W15 re-run at 21:00 (host at 100 % CPU, 64 agent processes) | W01 FAIL (page.goto 90 s timeout), W15 FAIL, one 502: both backends were recycled within 20 s of each other at 20:57 (165 s / 167 s without a probe answer) → inconclusive under that load; counts afterwards: backend #1 restarts 2, #2 restarts 1, both HEALTHY, STANDBY_READY |
+
+Interpretation of the three restarts: all three carry the bounded reason "progress continued but no answer for 165–167 s" — the 0.8.2 policy working as designed (a backend that
+cannot answer its own health probe within 10 s for more than 2 minutes is recycled; the children were serving the whole time; 0.8.1 would have restarted them every
+15 s). They happened only while a Playwright session hammered a single-threaded backend on a laptop saturated by two concurrent test programmes. They are reported, not
+hidden: FALSE_RESTARTS for the Phase A acceptance window was 0 (12:09–13:06 UTC, 57 min, host 85–97 %).
+
+PHASE_D3_PLACEHOLDER
