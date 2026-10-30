@@ -341,10 +341,14 @@ class ManualJournalService
      */
     private function nextManualJournalId(): int
     {
-        return (int) DB::connection('tenant')
+        $highest = (int) DB::connection('tenant')
             ->table('journal_entries')
             ->where('source_type', self::SOURCE_TYPE)
             ->lockForUpdate()
-            ->max('source_id') + 1;
+            ->max('source_id');
+
+        // VOID-PURGE-1 (canonical 9550e045, rehearsal 30 Oct 2026): a deleted manual journal's number is never reused.
+        // D1 keeps this in the ONE service (the Online controller is a thin caller); the purge itself is Cloud-only.
+        return max($highest, \App\Support\PurgedNumbers::highestInt(\App\Support\PurgedNumbers::MANUAL_JOURNAL)) + 1;
     }
 }

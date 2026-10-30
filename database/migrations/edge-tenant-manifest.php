@@ -3395,5 +3395,21 @@ return [
             'BASELINE' => false,
             'NOTE' => 'CANONICAL 18d552a0 KHATRI-STOCK-TO-PNL-1: appends expensed_to_cost to the stock_ledgers.movement_type ENUM (end of list; MySQL 8 metadata-only change, nullability preserved, idempotent; no row touched) — the same shape as the baseline MFG-FIN-E / MODIFIER-INVENTORY-1 enum appends, classified the same way (ADDITIVE_ONLY, LOCK_RISK medium). Only the Cloud command inventory:expense-purchase-stock writes the value; the appliance never does. stock_ledgers is an operational table the shared InventoryService writes, so the appliance carries the Cloud shape.',
         ],
+        // ── CANONICAL REHEARSAL chunk 2 (canonical ed9a8431 range: VOID-PURGE-1/2/3) ──
+        '2026_10_22_000001_create_purged_entries_tables' => [
+            'MIGRATION' => '2026_10_22_000001_create_purged_entries_tables',
+            'CLASSIFICATION' => 'EDGE_SCHEMA_SAFE',
+            'TABLES_CHANGED' => ['purged_entries', 'purged_numbers'],
+            'EDGE_CODE_REFERENCES' => ['none that writes — JournalService::nextEntryNo / ManualJournalService / ExpenseVoucherController read PurgedNumbers::highest(), which returns null/0 while the table is absent (PurgedNumbers::ready) and 0 rows once it exists; VoidPurgeService is a Cloud finance screen'],
+            'ADDITIVE_ONLY' => true,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'none',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => 'SHIP_AND_RUN',
+            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_purged_entries_tables_upgrade_an_older_appliance',
+            'OWNER_REVIEW_REQUIRED' => false,
+            'BASELINE' => false,
+            'NOTE' => 'CANONICAL 9550e045 VOID-PURGE-1: two NEW additive tables (the Owner\'s record of permanently deleted voided entries + the numbers held back). The purge is a Cloud screen behind the Master switch void_purge (no Edge route, no twin). Carried so the SHIPPED number generators (JournalService, the shared PurgedNumbers helper) see the Cloud shape rather than a hasTable divergence; nothing on the appliance ever writes either table. OWNER MAY FLIP to CLOUD_ONLY (then PurgedNumbers::ready() keeps the generators safe on the appliance) — recorded in the rehearsal report.',
+        ],
     ],
 ];

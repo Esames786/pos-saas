@@ -20,6 +20,9 @@ final class TenantFeatures
 
     public const REPORT_DELIVERY_V2 = 'report_delivery_v2';
 
+    // VOID-PURGE-1: the Owner may delete, permanently, an entry already voided on its own date. Off everywhere by default.
+    public const VOID_PURGE = 'void_purge';
+
     /**
      * shots (MASTER-NEW-SCREENS-1): pictures of the screens the switch shows, slug => caption
      * (public/assets/img/screens/<slug>.jpg), drawn beside the switch in Master.
@@ -65,6 +68,11 @@ final class TenantFeatures
                 'says'  => 'A customer can bring an item back without the bill: today\'s price at most, back into its batch or thrown away, a reason every time, and the branch\'s manager PIN when it asks for one.',
                 'where' => 'Sales → Sales Returns → New → "Without bill" (also from the POS Return button)',
                 'shots' => ['return-no-bill' => 'Return without a bill'],
+            ],
+            self::VOID_PURGE => [
+                'label' => 'Delete voided entries permanently',
+                'says'  => 'A user given the permission can delete a voided entry together with its reversal, so neither shows anywhere. Totals today stay the same. When the void was dated another day, the screen first says which days\' cash closing changes and asks to confirm. A hidden copy is kept in Deleted entries. Risk: a recorded cash movement can disappear from every screen.',
+                'where' => 'Cash Book and the entry\'s own page → "Delete permanently" on a voided row; Finance → Deleted entries',
             ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',

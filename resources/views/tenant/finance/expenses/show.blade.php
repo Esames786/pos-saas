@@ -138,6 +138,11 @@
                                 @if($expenseVoucher->voided_at) on {{ optional($expenseVoucher->voided_at)->format('Y-m-d H:i') }}@endif
                             </div>
                             @if($expenseVoucher->void_reason)<div class="small text-muted mt-1">{{ $expenseVoucher->void_reason }}</div>@endif
+                            <div class="mt-2">
+                                @include('tenant.finance.voided-entries.partials.purge-button', ['purgeType' => 'expense', 'purgeId' => $expenseVoucher->id,
+                                    'purgeLabel' => 'Expense ' . $expenseVoucher->voucher_no, 'purgeDate' => optional($expenseVoucher->expense_date)->format('d M Y'),
+                                    'purgeAmount' => number_format((float) $expenseVoucher->total_amount, 2)])
+                            </div>
                         @endif
                     </div>
                 </div>
@@ -172,4 +177,5 @@
                 @endcan
             </div>
         </div>
+@include('tenant.finance.voided-entries.partials.purge-modal')
 @endsection

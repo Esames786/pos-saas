@@ -489,6 +489,25 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             });
     }
 
+    /** VOID-PURGE-1 (canonical 9550e045): purged_entries + purged_numbers carried empty; the shipped number generators read 0. */
+    public function test_purged_entries_tables_upgrade_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_22_000001_create_purged_entries_tables', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function ($conn, $schema) {
+                $schema->dropIfExists('purged_numbers');
+                $schema->dropIfExists('purged_entries');
+                \App\Support\PurgedNumbers::forget();
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasTable('purged_entries'));
+                $this->assertTrue($schema->hasTable('purged_numbers'));
+                \App\Support\PurgedNumbers::forget();
+                $this->assertTrue(\App\Support\PurgedNumbers::ready());
+                $this->assertSame(0, \App\Support\PurgedNumbers::highestInt(\App\Support\PurgedNumbers::MANUAL_JOURNAL), 'nothing on the appliance purges');
+                $this->assertSame(0, $conn->table('purged_entries')->count());
+            });
+    }
+
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void
@@ -524,6 +543,8 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             // CANONICAL REHEARSAL (Agent B, 30 Oct 2026) chunk 1
             '2026_10_21_000001_add_submission_key_to_sales_returns', '2026_10_21_000002_add_submission_key_to_purchase_returns',
             '2026_10_21_000010_add_expensed_to_cost_movement_type',
+            // chunk 2
+            '2026_10_22_000001_create_purged_entries_tables',
         ];
         foreach ($canonicalRun as $name) {
             $this->assertFalse($m->entry($name)['BASELINE'] ?? true, $name);

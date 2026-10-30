@@ -31,6 +31,9 @@
         Voided on {{ $supplierPayment->voided_at->format('Y-m-d H:i') }}
         by {{ $supplierPayment->voidedBy?->name ?? '—' }} — {{ $supplierPayment->void_reason }}.
         {{ number_format((float) $supplierPayment->amount, 2) }} went back into the cash/bank account and onto the supplier's balance.
+        @include('tenant.finance.voided-entries.partials.purge-button', ['purgeType' => 'supplier_payment', 'purgeId' => $supplierPayment->id,
+            'purgeLabel' => 'Supplier payment ' . $supplierPayment->payment_no, 'purgeDate' => \Illuminate\Support\Carbon::parse($supplierPayment->payment_date)->format('d M Y'),
+            'purgeAmount' => number_format((float) $supplierPayment->amount, 2)])
     </div>
 @endif
 
@@ -139,4 +142,5 @@
         @include('tenant.catering.partials.submit-guard')
     @endcan
 @endif
+@include('tenant.finance.voided-entries.partials.purge-modal')
 @endsection
