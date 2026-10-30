@@ -7,6 +7,7 @@ use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\SalesOrder;
 use App\Support\TenantClock;
 use App\Support\QtyMix;
+use App\Support\SalesBridge;
 use App\Support\ThermalLayout;
 
 class EscPosPayloadService
@@ -393,7 +394,8 @@ class EscPosPayloadService
      * NAME line then aligned Sold / Ret / Net rows, the only layout that fits ~42 columns.
      *
      * @param array{meta: array, sections: array<int,string>, overview?: array, orderTypes?: array,
-     *   categories?: array, items?: iterable, waiters?: array, cancellations?: array, cashBank?: array} $r
+     *   categories?: array, items?: iterable, categoryItems?: array, deals?: array, combos?: array,
+     *   waiters?: array, cancellations?: array, cashBank?: array, bridge?: array} $r
      */
     public function buildReport(array $r): string
     {
@@ -437,13 +439,36 @@ class EscPosPayloadService
         // sized to the widest ITEM is too narrow for the sum of them: the first draft printed
         // "0" and "14,460" with no gap between them, because 14,460 was longer than any single row
         // it was the total of.
-        foreach (['items', 'categoryItems', 'deals'] as $key) {
-            $rows = collect($r[$key] ?? []);
-            if ($rows->isEmpty()) { continue; }
+        $sampleTotal = function ($rows) use (&$samples, $money, $qty) {
+            $rows = collect($rows ?? []);
+            if ($rows->isEmpty()) { return; }
             $sum = fn (string $f) => $rows->sum(fn ($x) => (float) (is_array($x) ? ($x[$f] ?? 0) : ($x->{$f} ?? 0)));
             foreach (['sold', 'returned', 'net'] as $f) { $samples[] = $qty(QtyMix::tag($sum($f . '_qty'), QtyMix::sum($rows, $f . '_mix', $f . '_qty'))); }
             foreach (['net', 'returns_amount', 'net_value'] as $f) { $samples[] = $money($sum($f)); }
+        };
+        // REPORT-NETWORK-GAPS-1: CATEGORIES' GRAND TOTAL was the one total left out, and on a busy
+        // day it is wider than any single category — Ret 0 and Net 133,480 printed as "0133,480".
+        foreach (['categories', 'items', 'categoryItems', 'deals'] as $key) { $sampleTotal($r[$key] ?? null); }
+
+        // The money-only sections (ORDER TYPES, WAITERS) print in the same three columns.
+        $sampleOrders = function ($rows) use (&$samples, $money) {
+            $rows = collect($rows ?? []);
+            foreach (['grand_total', 'returns_amount', 'net_sales'] as $f) {
+                foreach ($rows as $row) { $samples[] = $money($row[$f] ?? 0); }
+                $samples[] = $money($rows->sum($f));
+            }
+        };
+        $sampleOrders($r['orderTypes'] ?? null);
+        $sampleOrders($r['waiters'] ?? null);
+
+        // BY ORDER TYPE: each type's categories and items, their totals, and its waiters.
+        foreach (['categories', 'items'] as $key) {
+            foreach (($r['combos'][$key] ?? []) as $rows) {
+                foreach ($rows as $row) { $collect($row); }
+                $sampleTotal($rows);
+            }
         }
+        foreach (($r['combos']['waiters'] ?? []) as $rows) { $sampleOrders($rows); }
 
         $c  = min(ThermalLayout::figureWidth($samples), (int) floor(($cols - 4) / 3));
         $lw = $cols - 3 * $c;
@@ -492,6 +517,22 @@ class EscPosPayloadService
         $bigTotal = fn ($sQ, $rQ, $nQ, $sV, $rV, $nV) => $big('TOTAL') . "\n"
             . self::BOLD_ON . $three('Qty', $qty($sQ), $qty($rQ), $qty($nQ))
             . $three('Amt', $money($sV), $money($rV), $money($nV)) . self::BOLD_OFF;
+
+        // REPORT-NETWORK-BRIDGE-1: the lines under a section's total that reach NET SALES, as the
+        // browser print has them. Only when the caller sent the bridge figures — without them there
+        // is nothing true to print.
+        $bridgeLines = function (float $lineNet, bool $excludesDeals = false) use ($r, $money, $cols, $big): string {
+            if (! is_array($r['bridge'] ?? null)) {
+                return '';
+            }
+            $out = '';
+            foreach (SalesBridge::lines($r['bridge'], $lineNet, $excludesDeals) as $line) {
+                $text = $this->columns($line['label'], $money($line['amount']), $cols);
+                $out .= ($line['total'] ? $big($text) : $text) . "\n";
+            }
+
+            return $out;
+        };
 
         $out = $this->center(strtoupper((string) ($r['meta']['business_name'] ?? 'SALES REPORT')), $cols) . "\n";
         $out .= $this->center('Sales Report (' . ($r['meta']['label'] ?? 'Standard') . ')', $cols) . "\n";
@@ -585,7 +626,7 @@ class EscPosPayloadService
             $out .= "\n" . $big($this->center('GRAND TOTAL', $cols)) . "\n" . self::BOLD_ON
                 . $figures('', QtyMix::tag($cats->sum('sold_qty'), QtyMix::sum($cats, 'sold_mix', 'sold_qty')), QtyMix::tag($cats->sum('returned_qty'), QtyMix::sum($cats, 'returned_mix', 'returned_qty')), QtyMix::tag($cats->sum('net_qty'), QtyMix::sum($cats, 'net_mix', 'net_qty')),
                     $cats->sum('net'), $cats->sum('returns_amount'), $cats->sum('net_value'))
-                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
+                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n" . $bridgeLines((float) $cats->sum('net_value'));
         }
 
         // ITEMS — THERMAL-ITEM-LAYOUT-1.
@@ -603,10 +644,15 @@ class EscPosPayloadService
                     . $figures($indent2, QtyMix::tag($row->sold_qty, $row->sold_mix ?? null), QtyMix::tag($row->returned_qty, $row->returned_mix ?? null), QtyMix::tag($row->net_qty, $row->net_mix ?? null),
                         $row->net, $row->returns_amount, $row->net_value);
             }
+            // REPORT-NETWORK-ITEMS-DEALS-1: the Report Center sends ITEMS with the deal lines still in
+            // them (the POS Quick Report leaves them out). A total that already holds the deals must
+            // not be handed "Plus Deals" again — that printed Plus Deals 119,425 and then Plus Other
+            // Charges -119,425 to cancel it.
+            $itemsHoldDeals = $items->contains(fn ($row) => ! empty($row->combo_id));
             $out .= "\n" . $big('TOTAL') . "\n" . self::BOLD_ON
                 . $figures('', QtyMix::tag($items->sum('sold_qty'), QtyMix::sum($items, 'sold_mix', 'sold_qty')), QtyMix::tag($items->sum('returned_qty'), QtyMix::sum($items, 'returned_mix', 'returned_qty')), QtyMix::tag($items->sum('net_qty'), QtyMix::sum($items, 'net_mix', 'net_qty')),
                     $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value'))
-                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
+                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n" . $bridgeLines((float) $items->sum('net_value'), ! $itemsHoldDeals);
         }
 
         // ITEMS BY CATEGORY — ITEMS-BY-CATEGORY-1, laid out by THERMAL-ITEM-LAYOUT-1.
@@ -665,7 +711,7 @@ class EscPosPayloadService
             $out .= "\n" . $big($this->center('GRAND TOTAL', $cols)) . "\n" . self::BOLD_ON
                 . $figures('', QtyMix::tag($heads->sum('sold_qty'), QtyMix::sum($heads, 'sold_mix', 'sold_qty')), QtyMix::tag($heads->sum('returned_qty'), QtyMix::sum($heads, 'returned_mix', 'returned_qty')), QtyMix::tag($heads->sum('net_qty'), QtyMix::sum($heads, 'net_mix', 'net_qty')),
                     $heads->sum('net'), $heads->sum('returns_amount'), $heads->sum('net_value'))
-                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
+                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n" . $bridgeLines((float) $heads->sum('net_value'), true);
         }
 
         // DEALS — DEAL-CATEGORY-1.
@@ -703,6 +749,51 @@ class EscPosPayloadService
                 . $figures('', QtyMix::tag($deals->sum('sold_qty'), QtyMix::sum($deals, 'sold_mix', 'sold_qty')), QtyMix::tag($deals->sum('returned_qty'), QtyMix::sum($deals, 'returned_mix', 'returned_qty')), QtyMix::tag($deals->sum('net_qty'), QtyMix::sum($deals, 'net_mix', 'net_qty')),
                     $deals->sum('net'), $deals->sum('returns_amount'), $deals->sum('net_value'))
                 . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
+        }
+
+        // BY ORDER TYPE — REPORT-NETWORK-GAPS-1. The browser print has carried this section since
+        // ORDER-TYPE-COMBOS; the slip never had it, so ticking it printed the heading and nothing.
+        // Same order as the browser: every type's categories, then every type's items, then every
+        // type's waiters. Under a categories or items TOTAL the type's own charges close it on its
+        // NET SALES, as the browser's $otBridge does, and only when there is a charge to explain.
+        if ($has('order_type_combos') && ($r['combos'] ?? null) !== null) {
+            $combos = $r['combos'];
+            $out .= $header('BY ORDER TYPE');
+            $typeBridge = function (string $type) use ($combos, $money, $cols, $big): string {
+                $t = $combos['totals'][$type] ?? null;
+                if (! $t || abs((float) $t['net_charges']) <= 0.01) {
+                    return '';
+                }
+
+                return $this->columns('Plus Delivery & Other Charges', $money($t['net_charges']), $cols) . "\n"
+                    . $big($this->columns('= NET SALES', $money($t['net_sales']), $cols)) . "\n";
+            };
+
+            foreach (['categories' => 'CATEGORIES', 'items' => 'ITEMS'] as $key => $word) {
+                foreach (($combos[$key] ?? []) as $type => $rows) {
+                    $g = collect($rows);
+                    $out .= "\n" . $big(ThermalLayout::fit(mb_strtoupper((string) $type) . ' - ' . $word, $cols)) . "\n" . $head3();
+                    foreach ($g as $row) {
+                        $out .= "\n" . $indent2 . ThermalLayout::fit((string) $row['label'], $cols - $indentChild) . "\n"
+                            . $figures($indent2, QtyMix::tag($row['sold_qty'], $row['sold_mix'] ?? null), QtyMix::tag($row['returned_qty'], $row['returned_mix'] ?? null), QtyMix::tag($row['net_qty'], $row['net_mix'] ?? null),
+                                $row['net'], $row['returns_amount'], $row['net_value']);
+                    }
+                    $out .= "\n" . $big('TOTAL') . "\n" . self::BOLD_ON
+                        . $figures('', QtyMix::tag($g->sum('sold_qty'), QtyMix::sum($g, 'sold_mix', 'sold_qty')), QtyMix::tag($g->sum('returned_qty'), QtyMix::sum($g, 'returned_mix', 'returned_qty')), QtyMix::tag($g->sum('net_qty'), QtyMix::sum($g, 'net_mix', 'net_qty')),
+                            $g->sum('net'), $g->sum('returns_amount'), $g->sum('net_value'))
+                        . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n" . $typeBridge((string) $type);
+                }
+            }
+
+            foreach (($combos['waiters'] ?? []) as $type => $rows) {
+                $g = collect($rows);
+                $out .= "\n" . $big(ThermalLayout::fit(mb_strtoupper((string) $type) . ' - WAITERS', $cols)) . "\n" . $head3();
+                foreach ($g as $row) {
+                    $out .= $orderRow($row['label'], $row['orders'], $row['grand_total'], $row['returns_amount'], $row['net_sales'], true);
+                }
+                $out .= $big('TOTAL') . "\n" . self::BOLD_ON
+                    . $three((int) $g->sum('orders') . ' ord', $money($g->sum('grand_total')), $money($g->sum('returns_amount')), $money($g->sum('net_sales'))) . self::BOLD_OFF;
+            }
         }
 
         // CANCELLATIONS.
