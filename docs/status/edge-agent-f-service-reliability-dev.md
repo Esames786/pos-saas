@@ -7,7 +7,8 @@ supervisor/service recovery diagnostics. Authority fencing (lease / takeover / h
 
 Code: NEW worktree `D:\laragon2\www\pos-saas-rel-083`, branch **`rel/0.8.3-service-reliability`** from `a6113772` (the signed 0.8.2 commit;
 the release worktree `pos-saas-edge` stays frozen). Vendor robocopied from the Edge worktree (composer.lock byte-identical; no composer
-install). Commit: `COMMIT_SHA_TBD`. Nothing pushed; production checkout untouched.
+install). Commits: `a161bc1c` (code + tests + system map + this record with placeholders) and the follow-up docs commit that filled the
+gate results below. Nothing pushed; production checkout untouched.
 
 The real LAB (install root `C:\Users\Dell\BingooEdgeLab\install`, data root `…\data`, ports 8081/8090/8091/8443/9701/9100, DBs `pos_lab_*` /
 `bingoo_edge_lab_*`) was never read, started, stopped or written. Every run below happened on the disposable copy **labcopy-c**
@@ -110,7 +111,7 @@ a running row with heartbeat 5 s old and the pid of an exited process → the in
 prints the queued job, records ITS pid/token/host; a REAL spawned idle worker holding the slot → a second start prints `already RUNNING …
 live_worker_holds_slot`, claims nothing; `edge:local:worker-status --probe` says `running / alive / HELD by a live process`; cooperative
 `--stop` ends the real worker. Authority: same two cases, `authority_state` stays `standby`, the refused duplicate never ticks.
-Result: print lifecycle 11/11 (runs 2+3, see §7); authority `MYSQL_AUTH_TBD`.
+Result: print lifecycle 11/11 (runs 2+3, see §7); authority lifecycle **4/4 green, 38 assertions**.
 
 **Proof — disposable appliance (labcopy-c on the staged 0.8.3-dev runtime, `06`–`07g`):**
 
@@ -172,7 +173,7 @@ G4 needle guard; TEST-NET-1 192.0.2.1 → `timeout`/`unreachable`, never `refuse
 + one printed on "Kitchen LAN" re-pointed at 127.0.0.1:9 → DEGRADED, `2 print job(s) FAILED on Kitchen LAN … Recent Prints … [refused]`,
 `Printer Kitchen LAN (127.0.0.1:9) is not reachable: refused`, `failed_jobs_by_printer[0] {count 2, printer_id}`, USB printer never
 probed, `probed 1`; probe off → no reachability line, failed line stays; printer back (loopback listener) → `reachable`, line gone.
-Result: `MYSQL_HEALTH_TBD`.
+Result: **5/5 green, 83 assertions** (the three pre-existing health tests still pass with the new problem lines present).
 
 **Proof — disposable appliance (labcopy-c, dead printer 127.0.0.1:9, nothing on 9100; `03`, `08a`, `09a`–`09f`):**
 
@@ -277,9 +278,10 @@ shell for observation, the keep-awake guard running, no other agent session load
 | `php -l` every changed/new PHP file; PS 5.1 parser on the new script (0 errors, pure ASCII) | green |
 | `vendor/bin/phpunit tests/Unit/Edge tests/Feature/Edge/EdgeLocalRuntimeBoundaryTest.php` (SQLite / no DB; 4 new classes = 22 tests + the CLI census/allowlist test) | **OK 34 tests, 158 assertions** (36 s). Two earlier reds were test-side and are recorded as findings: the 1 s probe bound (Windows refused = 2 s) and a DB-name/user substring collision in an assertion |
 | MySQL, relf set, ONE class at a time: `EdgeLocalPrintWorkerLifecycleMySqlTest` (11 tests incl. 2 new) | run 1: 10 reds = the `unsafe_target` draft gate (§1 finding) + the racer linger (§2 lesson) → fixed; run 2: **10/11 green, 126 assertions**, the one error was the new test's own cleanup (`DELETE print_jobs` blocked by the deliveries FK after the live worker claimed the extra job) → the extra job removed; run 3 (that test alone): **OK 1 test, 21 assertions** → 11/11 across runs 2+3 (`10-…run2.log`, `10-…run3-g10-test.log`) |
-| `EdgeAuthorityWorkerLifecycleMySqlTest` (4 incl. 1 new) | `MYSQL_AUTH_TBD` |
-| `EdgeApplianceHealthMySqlTest` (5 incl. 1 new) | `MYSQL_HEALTH_TBD` |
-| `EdgeSupervisionMySqlTest`, `EdgeLocalRuntimeBoundaryTest` (allowlist / plan shape) | `MYSQL_SUPERVISION_TBD` |
+| `EdgeAuthorityWorkerLifecycleMySqlTest` (4 incl. 1 new; real processes) | **OK 4 tests, 38 assertions** (`11-mysql-EdgeAuthorityWorkerLifecycleMySqlTest.log`) |
+| `EdgeApplianceHealthMySqlTest` (5 incl. 1 new) | **OK 5 tests, 83 assertions** |
+| `EdgeSupervisionMySqlTest` (plan shape, allowlist, no secret on a command line, bounded DB wait, generated installers) | **OK 10 tests, 162 assertions** (the new plan fields and the two new allowlisted commands break no invariant) |
+| system map (`php tools/system-map/build.php --tenant-db=pos_test_tenant_relf --master-db=pos_test_master_relf`, read-only, run after the last MySQL class) | rebuilt and committed with this work: 234 tables / 425 FKs / 238 inferred links / 730 screens from the relf TEST DBs (the LAB-shaped test DB of the 0.8.1 record had 265 tables — the relf tenant DB only carries what these test classes migrated; rebuild from a full test run before release). Artifact link not republished from this session |
 
 **Remaining heavy runs (after GO, on the rel-083 worktree with the relf DB set):** the full Edge MySQL suite (`./test-mysql.sh` equivalent
 with the relf names; the 0.8.2 baseline was 726/726), `tests/Feature,Unit` SQLite suite, `EdgeTenantMigrationUpgradeMySqlTest` /
@@ -294,7 +296,14 @@ problem lines), and a saturated-host repeat of the labcopy-c drills (the OS prob
   `runtime\versions\0.8.3-dev`, manifest `edge_app_version 0.8.3-dev`, `vendor_source dev_tree_copy_agent_f`; NOT a signed package —
   health reports `packaged_artifact false`); left on 0.8.3-dev for the next agent; `00-pointer-before.txt` records the old value.
   Copy DB `bingoo_edge_agentc_local`: schema-upgraded (+1 edge migration), worker row + jobs #35 added; the LAB DB untouched.
-- `PIDS_TBD`
+- Processes this agent started on the host, all recorded in `evidence\agent-f\pids.json` or transient children of its own commands:
+  **369696** (labcopy-c print worker, 11:34:07 → 11:42:52 UTC, cooperative stop, exited by itself — the only long-lived process);
+  transient `--once` runs through the copy launcher (print worker 430680 duplicate-refused; authority worker 429544 one tick), two
+  `php -r "echo getmypid();"` children used as dead pids (410168, 157728), the PowerShell liveness probes, the phpunit runs on the relf DBs
+  and their real-process workers (all exited by themselves). Nothing was killed; `taskkill` was never issued. No process of any other
+  environment was touched. Ports used: none listened on by this agent except the unit test's ephemeral loopback listener (port 0).
+- Databases created: `pos_test_master_relf`, `pos_test_tenant_relf`, `pos_test_edge_local_relf` (test harness); modified: `bingoo_edge_agentc_local`
+  (the copy). Not touched: `pos_lab_*`, `bingoo_edge_lab_*`, production.
 
 ```
 AGENT_F_SCOPE=development on rel/0.8.3-service-reliability + disposable validation (labcopy-c, relf test DBs)
