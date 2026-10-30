@@ -7,11 +7,13 @@ use App\Models\Master\CompanyAccount;
 use App\Models\Master\CompanyEntry;
 use App\Models\Master\CompanyPartner;
 use App\Services\Saas\CompanyHisab;
+use App\Services\Saas\CompanyHisabExport;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * MASTER-HISAB-1 — Master → Hisab: Bingoo ka apna paisa, aik safhe par. Plan: docs/plans/master-hisab-2026-10-29.md.
@@ -71,6 +73,31 @@ class HisabController extends Controller
             'userNames'      => DB::connection('master')->table('central_users')->pluck('name', 'id'),
             'categories'     => CompanyEntry::CATEGORIES,
         ]);
+    }
+
+    /**
+     * MASTER-HISAB-EXCEL-1 — Excel: `scope=month` (default, chuna hua mahina) ya `scope=all` (pehli entry se aaj tak).
+     */
+    public function export(Request $request, CompanyHisabExport $export): BinaryFileResponse
+    {
+        $month = $request->filled('month') && preg_match('/^\d{4}-\d{2}$/', (string) $request->input('month'))
+            ? CarbonImmutable::parse($request->input('month').'-01')
+            : CarbonImmutable::now()->startOfMonth();
+
+        if ($request->input('scope') === 'all') {
+            $first = CompanyEntry::query()->live()->min('entry_date');
+            $from = $first ? CarbonImmutable::parse($first)->toDateString() : now()->toDateString();
+            $to = now()->toDateString();
+            $label = 'Shuru se ab tak';
+            $file = 'bingoo-hisab-shuru-se-'.$to.'.xlsx';
+        } else {
+            $from = $month->toDateString();
+            $to = $month->endOfMonth()->toDateString();
+            $label = $month->format('F Y');
+            $file = 'bingoo-hisab-'.$month->format('Y-m').'.xlsx';
+        }
+
+        return $export->build($from, $to, $label)->download($file);
     }
 
     public function storeEntry(Request $request): JsonResponse|RedirectResponse

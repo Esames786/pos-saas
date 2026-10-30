@@ -125,6 +125,20 @@
             <button type="button" class="btn btn-light btn-sm" data-hs-new="out"><span aria-hidden="true">🧾</span> Kharcha</button>
             <button type="button" class="btn btn-light btn-sm" data-hs-new="transfer"><span aria-hidden="true">🔁</span> Khate se khate</button>
         @endif
+        {{-- MASTER-HISAB-EXCEL-1: poora hisab Excel mein — is mahine ka, ya shuru se ab tak. --}}
+        @can('central.hisab.export')
+            <div class="dropdown">
+                <button type="button" class="btn btn-outline-success btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" data-hs-excel>
+                    <i class="ti ti-file-spreadsheet"></i> Excel
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" data-hs-excel-month href="{{ route('central.hisab.export', ['month' => $month->format('Y-m')]) }}">
+                        <i class="ti ti-calendar-month me-1"></i> {{ $monthLabel }} ka hisab</a></li>
+                    <li><a class="dropdown-item" data-hs-excel-all href="{{ route('central.hisab.export', ['scope' => 'all']) }}">
+                        <i class="ti ti-calendar-stats me-1"></i> Shuru se ab tak</a></li>
+                </ul>
+            </div>
+        @endcan
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#hsSetupModal">
             <i class="ti ti-settings"></i> Owners aur khate
         </button>
