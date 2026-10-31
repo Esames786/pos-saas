@@ -258,3 +258,31 @@ before the crash (full Edge MySQL suite 730 passed / 1 skipped / 0 failed); Agen
 ```
 HOST_BLOCKER=C: FULL + vendor-service handle/commit leak -> three mysqld deaths in 26 h; every further gate, the Phase C work, the second-laptop walk and the Local Mode exercise wait for the owner's host cleanup
 ```
+
+## Incident B.8 — the third death explained, and a FOURTH death during an outside restart (31 Oct 15:35 and 17:54 UTC): commit exhaustion, not disk
+
+Read at 17:55 UTC after the owner freed space (C: **7.4 GB** free, up from 0.04 GB). The error log and the Windows System log complete the picture of B.7 and add a fourth death:
+
+| time (UTC) | event | source |
+|---|---|---|
+| 15:34:21 | Windows `Resource-Exhaustion-Detector` 2004 "low virtual memory": `Dell.TechHub.Instrumentation.SubAgent` 5.31 GB, `WavesSysSvc64` 3.78 GB, `RtkAudUService64` 1.76 GB | System log |
+| 15:35:15 | mysqld `exception 0xc0000005` inside `jemalloc.dll!je_malloc_usable_size` (crash #3; B.7 read it as "unlogged" because the log had no timestamped line) | `DESKTOP-0024EPM.err` |
+| 17:27:06 | second exhaustion event (same three programs) | System log |
+| 17:40:14 | mysqld started as process 482640 **by someone outside this session** (Laragon GUI pid 8116 or the owner; no restart was issued here); InnoDB initialization 17:40:14–17:43:35 | error log |
+| 17:54:01 | third exhaustion event **in the same second** mysqld died: `exception 0x80000003` after an uncaught C++ exception (`_CxxThrowException` → `__CxxFrameHandler4` → RaiseException) while still in XA/redo recovery — it never reached "ready for connections" (crash #4); WER APPCRASH 1001 at 17:54:20 | System + Application logs, error log |
+
+Same-day exhaustion events also exist at 08:20:27 (→ crash #2 at 08:22) and 09:51:28. **Every mysqld death today sits within 60 s of a Windows low-virtual-memory event.** The disk was a symptom (page file could not grow); the cause is commit charge.
+
+Host at 17:55–18:00 UTC (read-only): commit **57.8 / 62.9 GB**, RAM free 5.6 GB, page file C: 32,000 MB allocated / 6.3 GB in use, total handles **10.9 million** (`Dell.TechHub.Instrumentation.SubAgent` pid 8744 **10,253,549 handles**, commit 5.1 GB; `WavesSysSvc64` 3.6 GB; `RtkAudUService64` ×3 1.7 + 1.2 + 0.8 GB). The next largest holders are another project's Vite dev servers (`propertyos-d2`, three node processes ≈ 3.7 GB commit, started 15:33 UTC) and browser/IDE processes — none of them this session's, none touched.
+
+LAB state: gateway (432188 + worker 343204 on :8443), web backends 432812 / 432372, sync-sender 411352, backup 432908, FakePrinter 471212 (:9100), browsable LAB Cloud 386856 (:9701) and Agent E's Cloud clone 504524 alive; print worker 476152 and authority worker 473880 **dead** (they exit without the database — restarting them before MySQL is back is pointless). Appliance in standby by construction (no database → no writer), Cloud is the writer, no sale affected.
+
+**Decision: mysqld stays down.** Starting it a fifth time under 5 GB of commit headroom with the leak still growing would reproduce 17:54 — and each crash during recovery is a new chance to damage the redo log. Nothing this session may stop would relieve the pressure (the holders are elevated vendor services and other people's projects).
+
+Owner actions (elevated, outside my authority), in order: (1) stop or restart the `Dell TechHub Instrumentation` service tree and `Waves Audio` service, and the Realtek audio service (`services.msc`, or `Restart-Service` from an elevated shell) — this alone returns ≈ 12 GB of commit; a reboot does the same (ask-before rule: say so, I stop nothing — the LAB workers are relaunched from the plan definition afterwards); (2) keep ≥ 10 GB free on C: so the page file can grow; (3) optionally disable TechHub Instrumentation's autostart until Dell fixes the leak. Then say "restart MySQL": I start mysqld with the Laragon `my.ini`, wait for "ready for connections", restart the two dead LAB workers by plan definition, verify `STANDBY_READY` + rowset MD5s against `T0`, and resume Agents E/F (one MySQL run at a time).
+
+```
+HOST_BLOCKER=COMMIT EXHAUSTION (vendor-service leak: TechHub 10.25 M handles / 5.1 GB, Waves 3.6 GB, Realtek 3.7 GB) -> four mysqld deaths in 34 h, each within 60 s of a Windows low-virtual-memory event; C: now 7.4 GB free (owner freed it) but commit 57.8/62.9 GB; mysqld NOT restarted by the session
+MYSQLD=DOWN since 17:54:01Z (crash #4 during recovery, started 17:40 by someone outside this session)
+LAB=STANDBY by construction, Cloud writer, print+authority workers dead (expected), gateway/web/sync/backup/FakePrinter/LAB Cloud alive
+```
