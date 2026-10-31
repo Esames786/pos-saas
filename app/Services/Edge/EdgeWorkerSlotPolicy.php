@@ -19,6 +19,11 @@ use Illuminate\Support\Carbon;
  *   other uuid, liveness UNKNOWN, heartbeat fresh ................ REFUSE     (pre-0.8.3 rule, unchanged)
  *   other uuid, liveness UNKNOWN, heartbeat stale ................ TAKE OVER  (pre-0.8.3 rule, unchanged)
  *
+ * IDENTITY BINDING (F-2b, found in the 0.8.1 ↔ 0.8.3 pointer rehearsal): a pre-0.8.3 runtime that takes the slot rewrites
+ * worker_uuid/started_at/heartbeat_at but leaves the identity columns untouched, so a stale pid could be probed against a
+ * LIVE older worker. The process token is therefore bound to the worker uuid that wrote it ("unix:<s>@<worker_uuid>"); an
+ * identity whose token is not bound to the row's CURRENT uuid is UNKNOWN and the heartbeat rule applies.
+ *
  * This row is never a lease or an authority: taking the slot over never rewrites job leases and never changes the
  * branch authority state — those keep their own expiry/handback contracts.
  */
@@ -51,7 +56,7 @@ final class EdgeWorkerSlotPolicy
 
         $fresh = $hbAt->gt(now()->subSeconds($staleSeconds));
         $pid = $get('worker_pid');
-        $check = ($liveness ?? [EdgeProcessLiveness::class, 'check'])($pid !== null ? (int) $pid : null, $get('worker_process_token'), $get('worker_host'));
+        $check = self::livenessFor($pid !== null ? (int) $pid : null, $get('worker_process_token'), $get('worker_host'), (string) $otherUuid, $liveness);
         $status = (string) ($check['status'] ?? EdgeProcessLiveness::UNKNOWN);
 
         if ($status === EdgeProcessLiveness::DEAD) {
@@ -68,6 +73,27 @@ final class EdgeWorkerSlotPolicy
             : ['takeover' => true, 'reason' => self::TAKEOVER_STALE_HEARTBEAT, 'heartbeat_age_seconds' => $age, 'liveness' => $check];
     }
 
+    /**
+     * The OS liveness of a recorded identity, AFTER the binding check: an identity whose token is not bound to the row's
+     * current worker uuid (written by an older runtime, or never written) is UNKNOWN without touching the OS.
+     *
+     * @param  null|callable(?int,?string,?string): array  $liveness  test seam
+     */
+    public static function livenessFor(?int $pid, ?string $token, ?string $host, ?string $rowWorkerUuid, ?callable $liveness = null): array
+    {
+        if ($pid !== null && ! self::identityBoundTo($token, $rowWorkerUuid)) {
+            return ['status' => EdgeProcessLiveness::UNKNOWN, 'reason' => 'recorded process identity is not bound to the current worker uuid (written by an older runtime or missing) - heartbeat rule applies', 'observed_token' => null, 'method' => null];
+        }
+
+        return ($liveness ?? [EdgeProcessLiveness::class, 'check'])($pid, $token, $host);
+    }
+
+    /** TRUE when the token carries the "@<worker_uuid>" binding of the row's current worker. */
+    public static function identityBoundTo(?string $token, ?string $workerUuid): bool
+    {
+        return is_string($token) && $workerUuid !== null && $workerUuid !== '' && str_ends_with($token, '@' . $workerUuid);
+    }
+
     /** One operator-readable line for logs/stdout (non-secret: uuids, pids, ages). */
     public static function describe(array $decision, ?string $otherUuid = null): string
     {
@@ -81,12 +107,12 @@ final class EdgeWorkerSlotPolicy
             . '; ' . $live;
     }
 
-    /** The columns a worker records next to its heartbeat so a later start can verify the process. */
-    public static function identityColumns(array $identity): array
+    /** The columns a worker records next to its heartbeat so a later start can verify the process (token bound to the uuid). */
+    public static function identityColumns(array $identity, string $workerUuid): array
     {
         return [
             'worker_pid' => isset($identity['pid']) ? (int) $identity['pid'] : null,
-            'worker_process_token' => $identity['token'] ?? null,
+            'worker_process_token' => mb_substr((string) ($identity['token'] ?? ''), 0, 24) . '@' . $workerUuid,
             'worker_host' => isset($identity['host']) ? mb_substr((string) $identity['host'], 0, 64) : null,
         ];
     }

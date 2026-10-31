@@ -17,8 +17,27 @@ class EdgeWorkerSlotPolicyTest extends TestCase
     {
         return array_merge([
             'state' => 'running', 'worker_uuid' => 'previous-worker', 'heartbeat_at' => now()->subSeconds(10)->toDateTimeString(),
-            'worker_pid' => 4242, 'worker_process_token' => 'unix:1700000000', 'worker_host' => EdgeProcessLiveness::host(),
+            'worker_pid' => 4242, 'worker_process_token' => 'unix:1700000000@previous-worker', 'worker_host' => EdgeProcessLiveness::host(),
         ], $over);
+    }
+
+    public function test_an_identity_not_bound_to_the_rows_current_uuid_is_unknown_without_an_os_probe_f2b(): void
+    {
+        // a pre-0.8.3 runtime rewrote worker_uuid but left the 0.8.3 identity columns: the token is bound to the OLD uuid
+        $called = false;
+        $spy = function () use (&$called) { $called = true; return ['status' => EdgeProcessLiveness::DEAD, 'reason' => 'would wrongly take over']; };
+        $d = EdgeWorkerSlotPolicy::decide($this->row(['worker_uuid' => 'older-runtime-worker']), 'me', self::STALE, $spy);
+        $this->assertFalse($called, 'an unbound identity never reaches the OS probe');
+        $this->assertFalse($d['takeover'], 'fresh heartbeat + unbound identity = the pre-0.8.3 refuse');
+        $this->assertSame(EdgeWorkerSlotPolicy::REFUSE_FRESH_HEARTBEAT_UNVERIFIED, $d['reason']);
+        $this->assertStringContainsString('not bound', $d['liveness']['reason']);
+        $this->assertTrue(EdgeWorkerSlotPolicy::identityBoundTo('unix:1@abc', 'abc'));
+        $this->assertFalse(EdgeWorkerSlotPolicy::identityBoundTo('unix:1@abc', 'abcd'));
+        $this->assertFalse(EdgeWorkerSlotPolicy::identityBoundTo('unix:1', 'abc'));
+        $this->assertFalse(EdgeWorkerSlotPolicy::identityBoundTo(null, 'abc'));
+        $cols = EdgeWorkerSlotPolicy::identityColumns(['pid' => 1, 'token' => 'unix:1700000000', 'host' => 'h'], 'w-1');
+        $this->assertSame('unix:1700000000@w-1', $cols['worker_process_token']);
+        $this->assertSame('@w-1', EdgeWorkerSlotPolicy::identityColumns(['pid' => 1, 'token' => null, 'host' => 'h'], 'w-1')['worker_process_token'], 'a failed self-probe still binds');
     }
 
     private function liveness(string $status): callable
@@ -91,7 +110,7 @@ class EdgeWorkerSlotPolicyTest extends TestCase
         $line = EdgeWorkerSlotPolicy::describe($d, 'previous-worker');
         $this->assertStringContainsString('taking over the worker slot [previous_process_gone]', $line);
         $this->assertStringContainsString('previous worker previous-worker', $line);
-        $cols = EdgeWorkerSlotPolicy::identityColumns(['pid' => 77, 'token' => 'unix:1', 'host' => str_repeat('h', 100)]);
+        $cols = EdgeWorkerSlotPolicy::identityColumns(['pid' => 77, 'token' => 'unix:1', 'host' => str_repeat('h', 100)], 'me');
         $this->assertSame(77, $cols['worker_pid']);
         $this->assertSame(64, mb_strlen($cols['worker_host']));
     }

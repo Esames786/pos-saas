@@ -49,7 +49,7 @@ class EdgeLocalAuthorityWorkerSupervisor
                 DB::connection('tenant')->table(self::TABLE)->where('singleton_guard', 1)->update([
                     'state' => 'running', 'worker_uuid' => $workerUuid, 'runtime_version' => $runtimeVersion,
                     'started_at' => now(), 'heartbeat_at' => now(), 'stop_requested_at' => null, 'stopped_at' => null, 'last_error' => null, 'updated_at' => now(),
-                ] + EdgeWorkerSlotPolicy::identityColumns($identity));
+                ] + EdgeWorkerSlotPolicy::identityColumns($identity, $workerUuid));
 
                 return true;
             });
@@ -134,7 +134,7 @@ class EdgeLocalAuthorityWorkerSupervisor
             'installed' => true, 'running' => $live, 'state' => $row->state, 'liveness_state' => $state, 'heartbeat_at' => $row->heartbeat_at,
             'heartbeat_age_seconds' => $row->heartbeat_at !== null ? (int) abs(now()->diffInSeconds(\Illuminate\Support\Carbon::parse($row->heartbeat_at))) : null,
             'last_tick_at' => $row->last_tick_at, 'last_tick_outcome' => $row->last_tick_outcome, 'stop_requested' => $row->stop_requested_at !== null,
-            'process' => EdgeLocalPrintWorkerSupervisor::processReport($row->worker_pid ?? null, $row->worker_process_token ?? null, $row->worker_host ?? null, $state, $probeProcess),
+            'process' => EdgeLocalPrintWorkerSupervisor::processReport($row->worker_pid ?? null, $row->worker_process_token ?? null, $row->worker_host ?? null, $state, $probeProcess, $row->worker_uuid),
         ];
     }
 

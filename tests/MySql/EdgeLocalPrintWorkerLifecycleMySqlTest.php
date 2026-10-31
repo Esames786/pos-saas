@@ -403,7 +403,7 @@ class EdgeLocalPrintWorkerLifecycleMySqlTest extends MySqlTenantTestCase
         proc_close($gone);
         EdgeLocalPrintWorkerState::create([
             'state' => EdgeLocalPrintWorkerState::STATE_RUNNING, 'worker_uuid' => 'rebooted-worker', 'started_at' => now()->subMinutes(5), 'heartbeat_at' => now()->subSeconds(5),
-            'worker_pid' => $deadPid, 'worker_process_token' => 'unix:' . (time() - 300), 'worker_host' => \App\Support\EdgeProcessLiveness::host(),
+            'worker_pid' => $deadPid, 'worker_process_token' => 'unix:' . (time() - 300) . '@rebooted-worker', 'worker_host' => \App\Support\EdgeProcessLiveness::host(),
         ]);
         $fp = $this->startFakePrinter();
         $this->assertSame(0, Artisan::call('edge:local:print-worker', ['--once' => true]));
@@ -476,6 +476,53 @@ class EdgeLocalPrintWorkerLifecycleMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1, $res['code'], $res['out']);
         $this->assertStringContainsString('refused', $res['out'], $res['out']);
         $this->assertStringContainsString('supervisor will restart', $res['out'], $res['out']);
+    }
+
+    // ── 0.8.3 F-1b: a database that DISAPPEARS mid-run is waited for; the worker keeps its uuid and continues ──
+    public function test_a_real_worker_survives_a_killed_database_connection_and_keeps_its_slot(): void
+    {
+        $h = $this->spawnRealWorker(['--idle-sleep=1']);
+        $deadline = microtime(true) + 25;
+        while (microtime(true) < $deadline && (EdgeLocalPrintWorkerState::current()?->state ?? '') !== EdgeLocalPrintWorkerState::STATE_RUNNING) {
+            usleep(200_000);
+        }
+        $row = EdgeLocalPrintWorkerState::current();
+        $this->assertSame(EdgeLocalPrintWorkerState::STATE_RUNNING, $row->state);
+        $uuid = $row->worker_uuid;
+        $workerPid = (int) $row->worker_pid;
+
+        // the worker's server-side connection(s): every session on this DB that is not ours → KILL = "the server went away" for the worker.
+        $mine = (int) DB::connection('tenant')->selectOne('select connection_id() as id')->id;
+        $sessions = DB::connection('tenant')->select('select id from information_schema.processlist where db = ? and id <> ?', [$this->tenantDb, $mine]);
+        $this->assertNotEmpty($sessions, 'the real worker must hold a connection to the tenant DB');
+        foreach ($sessions as $s) {
+            DB::connection('tenant')->statement('KILL ' . (int) $s->id);
+        }
+        $killedAt = now();
+
+        // the worker notices on its next beat/claim, waits for the DB (which is up), reconnects and keeps heartbeating under the SAME uuid.
+        $deadline = microtime(true) + 30;
+        $resumed = false;
+        while (microtime(true) < $deadline) {
+            $r = EdgeLocalPrintWorkerState::current();
+            if ($r && $r->worker_uuid === $uuid && $r->state === EdgeLocalPrintWorkerState::STATE_RUNNING && $r->heartbeat_at !== null && $r->heartbeat_at->gt($killedAt->copy()->addSeconds(2))) {
+                $resumed = true;
+                break;
+            }
+            usleep(300_000);
+        }
+        $this->assertTrue($resumed, 'the worker must keep its slot and heartbeat after the connection loss: ' . json_encode(EdgeLocalPrintWorkerState::current()?->toArray()));
+        $this->assertSame($workerPid, (int) EdgeLocalPrintWorkerState::current()->worker_pid, 'same process, no restart');
+
+        $this->assertSame(0, Artisan::call('edge:local:print-worker', ['--stop' => true, '--stop-wait' => 20]));
+        $res = $this->finishProc($h);
+        $this->assertSame(0, $res['code'], $res['out']);
+        $this->assertStringContainsString('cooperative stop requested', $res['out'], $res['out']);
+        $this->assertStringNotContainsString('crashed', $res['out']);
+        // A killed session is absorbed either by the framework's one-shot reconnect (silent) or by the F-1b wait
+        // ("database connection lost … database back after …") — both keep the worker alive; a server that stays down
+        // exercises the bounded wait, covered by EdgeWorkerDatabaseLossTest with the readiness seam.
+        $this->assertStringNotContainsString('did not come back', $res['out'], $res['out']);
     }
 
     private function spawnProcess(array $cmd, array $envOverrides): array

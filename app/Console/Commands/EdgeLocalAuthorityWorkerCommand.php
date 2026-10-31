@@ -6,6 +6,7 @@ use App\Services\Edge\EdgeAuthorityTick;
 use App\Services\Edge\EdgeBranchContext;
 use App\Services\Edge\EdgeLocalAuthorityWorkerSupervisor;
 use App\Services\Edge\EdgeLocalDbReadiness;
+use App\Services\Edge\EdgeWorkerDatabaseLoss;
 use App\Services\Edge\EdgeWorkerSlotPolicy;
 use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeProcessLiveness;
@@ -24,9 +25,10 @@ use Throwable;
  * secrets on the command line (device credentials come from config), safe restart (every fact is persisted; the
  * state machine re-derives), failures recorded. It NEVER changes authority: takeover/handback are supervised commands.
  *
- * 0.8.3 SERVICE RELIABILITY: classified bounded DB wait (F-1) and process-identity-aware slot acquisition (F-G10) —
- * a fresh heartbeat left by a dead process is taken over instead of exiting as a duplicate. Authority semantics are
- * untouched: this only decides which PROCESS runs the ticking loop.
+ * 0.8.3 SERVICE RELIABILITY: classified bounded DB wait at start (F-1) AND after a database that disappears mid-run
+ * (F-1b: the 30 Oct LAB outage left this worker down for hours — now it waits with the same budget and continues),
+ * process-identity-aware slot acquisition (F-G10). Authority semantics are untouched: this only decides which PROCESS
+ * runs the ticking loop and whether it survives a DB blip.
  */
 class EdgeLocalAuthorityWorkerCommand extends Command
 {
@@ -73,16 +75,30 @@ class EdgeLocalAuthorityWorkerCommand extends Command
         $ticks = 0;
         $graceful = true;
         $lastError = null;
+        $dbLost = false;
+        $say = fn (string $line) => $this->warn($line);
         try {
             do {
-                if (! $supervisor->beat($workerUuid)) {
-                    $this->warn('worker slot was taken over (stale heartbeat assumed) — exiting.');
-                    Log::warning('edge authority-worker superseded — exiting', ['worker' => $workerUuid, 'pid' => $identity['pid']]);
-                    break;
-                }
-                if ($supervisor->shouldStop($workerUuid)) {
-                    $this->info('cooperative stop requested — exiting.');
-                    break;
+                try {
+                    if (! $supervisor->beat($workerUuid)) {
+                        $this->warn('worker slot was taken over (stale heartbeat assumed) — exiting.');
+                        Log::warning('edge authority-worker superseded — exiting', ['worker' => $workerUuid, 'pid' => $identity['pid']]);
+                        break;
+                    }
+                    if ($supervisor->shouldStop($workerUuid)) {
+                        $this->info('cooperative stop requested — exiting.');
+                        break;
+                    }
+                } catch (Throwable $e) {
+                    if (! EdgeWorkerDatabaseLoss::isLoss($e)) {
+                        throw $e;
+                    }
+                    if (! EdgeWorkerDatabaseLoss::recover($readiness, 'authority-worker', $e, $say)) {
+                        $lastError = 'database lost: ' . $e->getMessage();
+                        $dbLost = true;
+                        break;
+                    }
+                    continue;
                 }
                 $ticks++;
                 try {
@@ -91,8 +107,20 @@ class EdgeLocalAuthorityWorkerCommand extends Command
                     $supervisor->recordTick($workerUuid, $outcome);
                     $this->line("tick {$ticks}: {$outcome}");
                 } catch (Throwable $e) {
+                    if (EdgeWorkerDatabaseLoss::isLoss($e)) {
+                        // the tick's own DB writes failed because the server is gone — wait for it, never crash out
+                        if (! EdgeWorkerDatabaseLoss::recover($readiness, 'authority-worker', $e, $say)) {
+                            $lastError = 'database lost: ' . $e->getMessage();
+                            $dbLost = true;
+                            break;
+                        }
+                        continue;
+                    }
                     $lastError = $e->getMessage();
-                    $supervisor->recordTick($workerUuid, 'error', $e->getMessage());
+                    try {
+                        $supervisor->recordTick($workerUuid, 'error', $e->getMessage());
+                    } catch (Throwable) {
+                    }
                     $this->error("tick {$ticks}: " . $e->getMessage());
                 }
                 if ($this->option('once') || ($maxTicks !== null && $ticks >= $maxTicks)) {
@@ -106,7 +134,16 @@ class EdgeLocalAuthorityWorkerCommand extends Command
             Log::error('edge authority-worker crashed', ['worker' => $workerUuid, 'error' => class_basename($e) . ': ' . $e->getMessage()]);
             throw $e;
         } finally {
-            $supervisor->markStopped($workerUuid, $graceful, $lastError);
+            try {
+                $supervisor->markStopped($workerUuid, $graceful && ! $dbLost, $lastError);
+            } catch (Throwable $e) {
+                Log::error('edge authority-worker could not record its stop (database unavailable); the slot row keeps this pid for the OS check', ['worker' => $workerUuid, 'pid' => $identity['pid']]);
+            }
+        }
+        if ($dbLost) {
+            $this->error('authority-worker ' . $workerUuid . ' exiting: the Edge-local database did not come back; the supervisor will restart this worker.');
+
+            return self::FAILURE;
         }
         $this->info("authority-worker {$workerUuid} stopped after {$ticks} tick(s).");
 

@@ -305,6 +305,144 @@ problem lines), and a saturated-host repeat of the labcopy-c drills (the OS prob
 - Databases created: `pos_test_master_relf`, `pos_test_tenant_relf`, `pos_test_edge_local_relf` (test harness); modified: `bingoo_edge_agentc_local`
   (the copy). Not touched: `pos_lab_*`, `bingoo_edge_lab_*`, production.
 
+## 9. GO phase (coordinator GO received after the real LAB update was accepted) — heavy runs, one suite at a time
+
+Rules kept: relf DB set only; ports 8390/8391/8743/8381 + 9810–9819 only (the clean-machine test's four port ranges were made
+env-overridable — `EDGE_TEST_{CLOUD,WEB,HTTPS,HTTP}_PORT_BASE/_SPAN`, defaults = the historical ranges — and pinned to cloud 9815–9819,
+web 9810–9813(+1), https 8743, http 8381 for this run, clear of Agent E's 9801–9809 / 8491–8499 and of the LAB's 9701); keep-awake guard
+(`keepawake-agentf.ps1`, flag file `evidence\agent-f\keepawake.flag`, pid in `pids-aux.txt`); no artifact republish.
+
+### 9.1 Saturated-host repeat of the labcopy-c drills (`30a`–`30d`; host at 57–94 % CPU: the full Edge MySQL suite + Agent E's gates)
+
+| UTC | step | measured |
+|---|---|---|
+| 13:09:45 | row rewritten to the G10 shape (fresh heartbeat, dead pid 435748); first `worker-status --probe` → `pid 435748 dead -> free (… a start takes over)` | **36.3 s wall** for the whole command — a cold PowerShell/.NET + CIM start while the suite was bootstrapping (57 % CPU); the verdict was still `dead`, not `unknown` (the 15 s probe bound was not hit — the bulk was process start-up of the probe + PHP under load) |
+| 13:10:52 | attribution: `worker-status` without probe 1.28 s; raw PowerShell probe of the dead pid 0.77 s; `worker-status --probe` (2nd) **3.16 s** | the 36 s was a one-off cold start; steady state 3 s |
+| 13:11:33 | scoped Start → pid **365388** recorded; worker stdout `taking over the worker slot [previous_process_gone] previous worker sat-drill-rebooted heartbeat 108s old; pid 435748 is not running` | Start script wall 9.1 s. (By then the heartbeat had aged past 90 s — the DEAD verdict wins before the age is considered, so the reason is still `previous_process_gone`; the strictly-fresh case is the 11:34 quiet run.) |
+| 13:11:48 | direct duplicate `--once` through the launcher at **94 % CPU** → `refusing to start [live_worker_holds_slot] … pid 365388 is running with the recorded start time`, exit 0 | **2.8 s wall** |
+| 13:12:28 | scoped Stop → cooperative `--stop` → `stopped gracefully` → `pid 365388 exited by itself` → record updated; tree afterwards 0 processes, record 2 entries / 0 alive / 2 missing (both the stopped ones) | 15.6 s wall (cooperative wait under load) |
+
+Verdict for the reboot drill expectation: the OS probe stays well inside its 15 s bound in steady state (≈ 1 s raw, ≈ 3 s per command)
+and the decision was never `unknown`; a cold start on a saturated host can cost tens of seconds once — the worker's 180 s DB budget and
+the task restart policy absorb it. `pids.json`: 369696 and 365388, both stopped cooperatively, nothing killed.
+
+### 9.2 Pointer rehearsal on labcopy-c (`40-rehearsal-083dev-081-083dev-081.txt`) — 0.8.2 is NOT staged in labcopy-c (the copy carries
+0.6.0/0.7.0/0.8.0/0.8.1 + my 0.8.3-dev staging), so the rehearsal ran 0.8.3-dev → **0.8.1-edge** → 0.8.3-dev → 0.8.1-edge, no worker running:
+
+| step | pointer | observed |
+|---|---|---|
+| A | 0.8.3-dev | rowset: print_jobs 35, deliveries 35, migrations 219, meta 1; CHECKSUM print_jobs 4018818690 / deliveries 3995194591 / meta 2464159377 / printers 2271863478 / sales_orders 839775129 |
+| 1 | → 0.8.1-edge | health through the 0.8.1 runtime: DEGRADED, DB reachable, 5 problems (the 0.8.1 set); 0.8.1 `print-worker --once` runs against the upgraded DB (3 extra nullable columns ignored) → `started … stopped after 0 job(s)`; `edge:local:worker-status` "not defined" on 0.8.1 (expected) |
+| B | 0.8.1-edge | **all five checksums identical to A**; worker row now uuid 63306d22…, `runtime_version 0.8.1-edge`, `worker_pid` still **365388** (0.8.1 does not write identity — see finding F-2b) |
+| 2 | → 0.8.3-dev | `schema-upgrade --dry-run`: run 0 / skip 24 / blockers 0 / OK (nothing pending — the migration row survived the downgrade); health DEGRADED 7 problems (the 0.8.3 set: + failed jobs + reachability); `worker-status --probe` both slots `free (stopped)`; 0.8.3 `print-worker --once` → started pid 433396, stopped |
+| C | 0.8.3-dev | all five checksums identical to A |
+| 3 / D | → **0.8.1-edge (final)** | health DEGRADED 5 problems; checksums identical to A; the copy is left on `0.8.1-edge` as recorded in `00-pointer-before.txt` (the 0.8.3-dev directory stays under `runtime\versions` for the next agent) |
+
+**Finding F-2b (from step B, fixed in this branch):** a pre-0.8.3 runtime that takes the slot rewrites `worker_uuid` / `started_at` /
+`heartbeat_at` but leaves the 0.8.3 identity columns untouched, so a 0.8.3 worker started WHILE a 0.8.1 worker is live would probe the
+stale pid (dead) and take over a live worker. Only possible with two runtimes running at once (the updater stops the workers first), but
+the rule is now closed: the process token is bound to the worker uuid (`unix:<s>@<worker_uuid>`); an identity whose token is not bound
+to the row's CURRENT uuid counts as `unknown` → the pre-0.8.3 heartbeat rule applies (§9.4; unit + authority MySQL proof in §9.5).
+
+### 9.2b The requested 0.8.2 → 0.8.3-dev → 0.8.2 rehearsal (31 Oct, `70`–`72`) — 0.8.2 staged by the REAL updater from the signed package
+
+| step | what | observed |
+|---|---|---|
+| dry-run | copy launcher (0.8.1 runtime): `edge:local:update <custody>\releases\BingooEdge-0.8.2-edge\update\edge-update-0.8.2-edge.json <…>\app --dry-run --json` | signature/verification OK, `from 0.8.1-edge → to 0.8.2-edge`, plan `entries [] run [] skip [] blockers []`, **plan_hash sha256:20a8aad4…** (= the 0.8.2 release record), verdict OK — on a DB that already carries the 0.8.3 migration row (an extra applied row the package does not know is tolerated) |
+| apply | same command with `--expected-plan-hash=sha256:20a8aad4…` | `applied`, 948 s, pre-update backup `labcopy-c\data\BingooEdge\backups\edge-backup-20261031_071941-t2sjyv.enc`, ran 0 / skipped 0, pointer **0.8.2-edge**, versions dir now 0.6.0/0.7.0/0.8.0/0.8.1/0.8.2/0.8.3-dev; checksums print_jobs/deliveries/printers/sales_orders unchanged, `edge_local_meta` changed (the updater records the active version — expected) |
+| A | 0.8.2-edge | health through the packaged 0.8.2: DEGRADED (4 problems: the 0.8.2 set), `edge_app_version 0.8.2-edge`, `packaged_artifact true` |
+| 1 | → 0.8.3-dev | `schema-upgrade --dry-run` run 0 / skip 24 / OK (nothing pending); health DEGRADED 6 problems (+ failed jobs + reachability); `worker-status --probe` both slots free (stopped); 0.8.3 `print-worker --once` pid 334212 started/stopped |
+| B | 0.8.3-dev | all five checksums identical to A (meta included) |
+| 2 | → 0.8.2-edge | health through 0.8.2: DEGRADED 4 problems; 0.8.2 `print-worker --once` runs against the 0.8.3-upgraded DB (three extra nullable columns ignored; its row keeps the 0.8.3 worker's pid 334212 — the F-2b case, now neutralised by the uuid binding); 0.8.2 updater dry-run again on this DB: `dry_run`, verdict OK, plan_hash sha256:20a8aad4…, from 0.8.2-edge |
+| C | 0.8.2-edge | all five checksums identical to A; **final pointer 0.8.2-edge** (= the real LAB's current version; the 0.8.3-dev directory stays staged for the next agent) |
+
+Rollback facts for the 0.8.3 release: forward = 1 EDGE_OWNED migration (additive, nullable); backward (pointer to 0.8.2) needs no data
+change — 0.8.2 code ignores the three columns and its updater/plan still verifies OK against the upgraded DB.
+
+### 9.3 The shared-MySQL outage (30 Oct 13:50–16:23 UTC) and what it proved
+
+The first full-suite run (`20-mysql-edge-full.log`, START 13:09:15Z) ran into the unlogged death of the shared Laragon MySQL server:
+337 passed, then 390 errored + 2 failed (`EdgeLocalDbInitMySqlTest`, `EdgeSupervisionMySqlTest::test_bounded_db_startup_wait…` —
+both DB-connection dependent) until the server was back at 16:22:55Z → **ENVIRONMENTAL**, re-run below. The labcopy-c drills (§9.1,
+§9.2: 13:09–13:14) completed before the outage and stand.
+
+The coordinator's observation is the F-1 scenario in production shape: **the real LAB's 0.8.1 print and authority workers crashed when
+the database vanished and stayed down until a manual restart at 20:12 UTC; the 0.8.2 web backends (whose supervisor does not touch
+the DB) survived.** Two causes, both now addressed:
+
+1. **No restart policy on the LAB** (P5C hidden processes) — the Scheduled-Task design (Agent C §1, restart-on-failure 999 × 1 min)
+   is the first half; owner-only.
+2. **Workers crashed out on a lost connection** — new `app/Services/Edge/EdgeWorkerDatabaseLoss.php` (**F-1b**): both workers now
+   treat a CONNECTION-level failure in their loop (codes 2002/2003/2006/2013/1040/1053/1927/10054/10061 or the "gone away / lost
+   connection / refused / server shutdown / too many connections" wordings — never a SQL error) as the boot race: `DB::purge`, then the
+   same classified bounded wait (`EDGE_WORKER_DB_STARTUP_WAIT`, 180 s), then CONTINUE with the SAME worker uuid (ownership is
+   re-verified by the next `beat()`); only a spent budget ends the process with exit 1 for the task restart. The authority worker's
+   tick and `recordTick` are wrapped the same way; a `markStopped` that itself fails (DB still gone) is logged, the row keeps
+   `running` + this pid, and the next start resolves it through the OS check (F-G10) — the two fixes compose. Stdout + application
+   log carry `database connection lost (…) — waiting up to 180s` / `database back after Ns`.
+
+**Proof:** new real-process MySQL test `EdgeLocalPrintWorkerLifecycleMySqlTest::test_a_real_worker_survives_a_killed_database_connection_and_keeps_its_slot`
+(the worker's server-side session is `KILL`ed → the worker reports the loss, waits, reconnects, keeps its uuid/pid and heartbeats
+on; cooperative stop still works) — result in §9.5; unit `EdgeWorkerDatabaseLossTest` (loss matrix incl. the Laravel-wrapped
+QueryException; SQL errors are not losses; recover() continues when the DB answers again, gives up after the budget, never waits
+on a configuration defect) **OK 2 tests, 22 assertions**.
+
+labcopy-c drill (`60`–`62`, 0.8.3-dev runtime, 20:24 UTC): scoped Start → pid 442324; its ONE MySQL session (id 647 on the copy DB)
+`KILL`ed at 20:24:40Z → 6 s later the row is still `running`, same uuid e7dfc4a2…, same pid, heartbeat 20:24:45 (age 1 s); 12 s later
+heartbeat 20:24:52 — the worker survived with NO visible recovery line: a single killed session is absorbed by the framework's own
+one-shot reconnect (`DetectsLostConnections`) before the F-1b path is reached. The F-1b path is the fallback for a server that stays
+down (what happened on the LAB), proven with the readiness seam in the unit test; it cannot be exercised on this host without stopping
+the shared MySQL that other agents use. Scoped Stop 20:26:48Z → exited by itself; tree 0 processes; pointer restored to **0.8.1-edge**.
+Worth noting for the 0.8.1 crash: the framework reconnect helps only when the server answers again within the retried statement —
+a server that is down for minutes throws through, which is exactly where the 0.8.1 workers died and where F-1b now waits.
+
+### 9.4 Finding F-2b closed — identity bound to the worker uuid
+
+`worker_process_token` is now `unix:<start seconds>@<worker_uuid>`; `EdgeWorkerSlotPolicy::livenessFor()` returns `unknown` (→ the
+pre-0.8.3 heartbeat rule) whenever the token is not bound to the row's CURRENT uuid, without touching the OS. New unit test
+(unbound identity never reaches the probe; a fresh unbound row is refused), the authority MySQL test gained the three-way case
+(bound live twin → `live_worker_holds_slot`; same pid rebound to an "older-runtime" uuid + fresh → `fresh_heartbeat_liveness_unknown`,
+no takeover; stale → `stale_heartbeat` takeover). `health`/`worker-status` report `identity_bound`.
+
+### 9.5a First re-run (chain 1, 30 Oct 20:23–22:35 UTC, `50`–`54`) — informative, superseded by §9.5
+
+Ran unattended after the outage while the 5-hour API limit had stopped this agent (22:26 UTC): print lifecycle 11/12 (the one red = the
+KILL test's original assertion that the F-1b lines must appear — a single killed session is absorbed by the framework reconnect, see
+§9.3; assertion corrected), authority 4/4 (44 assertions), **full Edge suite 731 tests: 696 passed / 7 failed / 27 errored**, SQLite
+Feature+Unit 396 tests: 3 failed, system map 265 tables / 429 FKs / 302 links / 730 screens. Classification of the reds:
+
+- **HARNESS (DB NAME), 30 of 34 MySQL reds:** `EdgeTenantMigrationUpgradeMySqlTest` ×22, `EdgeTenantMigrationGateMySqlTest` ×4,
+  `EdgeLocalSchemaUpgradeMySqlTest` ×4 (one a tearDown cascade), `EdgeCustomerIdentityMigrationMySqlTest` ×1 — every one is
+  `Refusing Edge-local database operation: database [pos_test_tenant_relf] is not a dedicated Edge-local database name`:
+  `EdgeLocalDatabase::isEdgeDatabaseName()` accepts `bingoo_edge_*`, `edge_local_*`, or a name containing BOTH "edge" and "test"; the
+  isolated set I was given (`pos_test_*_relf`) contains "test" but not "edge", so every schema-work command under test fails closed —
+  exactly the product's safety rule doing its job against a mis-named target (the 0.8.2 baseline set `pos_test_*_edgewt` passes it).
+  Resolution: the gate re-run (§9.5) uses `pos_test_master_edge_relf` / `pos_test_tenant_edge_relf` / `pos_test_edge_local_edge_relf`.
+  Recorded for the toolchain notes: an Edge test DB set MUST contain "edge" in every name.
+- **PACING under saturation (Agent E's full gate + my suite on one laptop), 4 reds:** `EdgeAuthorityPartitionTest` (18.04 s > 15 s
+  budget), `EdgeConnectionPartitionTest` (tick 2 state), `EdgeSyncRaceMySqlTest` ×2 (in-flight pause not reached) — the known
+  wall-clock-paced classes (toolchain notes: re-run alone before calling them red); and `EdgeLocalPrintWorkerLifecycleMySqlTest::
+  test_real_supervised_start_delivers_with_master_dead` (payload string mismatch once; green in every single-class run) → re-run.
+- **SQLite 3 reds = pre-existing debt, not this branch:** `CateringClientFeedbackUiRegressionTest`, `EscPosReportPayloadTest`,
+  `DeliveryRiderReassignmentRegressionTest` fail identically on the frozen release worktree `pos-saas-edge` (HEAD 5e8a6324, same test
+  files, none touched here: 3/3 red there too). The 5 Edge unit classes and the whole Feature suite are green.
+
+### 9.5 Suites (re-run after the outage, one at a time, edge_relf DB set, Agent F ports; SQLite first per the coordinator's ordering)
+
+| suite | result |
+|---|---|
+| `EdgeLocalPrintWorkerLifecycleMySqlTest` (12 incl. the F-1b KILL test) / `EdgeAuthorityWorkerLifecycleMySqlTest` (4) — run first on the final code, edge_relf set, 31 Oct (`91-*.log`) | **OK 12 tests, 136 assertions** (end 07:38:48Z) / **OK 4 tests, 44 assertions** (end 07:44:01Z) |
+| full Edge MySQL suite (`--filter Edge --debug`, 731 tests = 0.8.2's 726 + 5 new) | **NOT RUN CLEAN — PAUSED.** Started 07:44:01Z (`92-mysql-edge-full.log`); the shared mysqld crashed at 08:22:16Z (InnoDB redo write failure under host handle exhaustion — owner-level; second real sample for F-1/F-1b: the LAB's print + authority workers exited again). The run is INVALID (254 passed / 3 failed / 455 errored against a dead server, not product reds); I stopped my own chain bash 497744 and phpunit 384244 by pid at 09:36–09:38Z (`pids-aux.txt`) so nothing relaunches during the pause. Must be re-run on the edge_relf set when the coordinator clears MySQL. Last clean full-suite data point for this branch: chain 1 (§9.5a) 696/731 with every red classified (30 harness-name, 4 pacing, 1 to re-run) |
+| SQLite `tests/Feature` + `tests/Unit` (incl. the 5 Edge unit classes: 23 tests + `EdgeWorkerDatabaseLossTest` 2) — run FIRST, alone, 31 Oct 07:10:48–07:30:35Z (`80-sqlite-feature-unit.log`) | **396 tests, 43,160 assertions, 4 skipped, 3 failures = the pre-existing canonical debt of §9.5a (identical reds on the frozen worktree 5e8a6324; no file of theirs touched here)** → 393/393 of everything else green, incl. every Edge Feature/Unit test |
+| migration/update/clean-machine classes (`EdgeTenantMigrationUpgradeMySqlTest`, `EdgeTenantMigrationGateMySqlTest`, `EdgeUpdatePlanHashMySqlTest`, `EdgeUpdaterMySqlTest`, `EdgeLocalSchemaUpgradeMySqlTest`, `EdgeCleanMachineInstallMySqlTest`) | **NOT RUN — PAUSED** (queued behind the full suite in the stopped chain). Their chain-1 reds were all the `pos_test_tenant_relf` name refusal (§9.5a), fixed by the edge_relf names; the 0.8.3 edge migration itself is proven by `schema-upgrade` on labcopy-c (run 1 / skip 24 / OK, §9.2) and tolerated by the 0.8.2 updater (§9.2b) |
+| full-run system map rebuild | **NOT RE-RUN — PAUSED** (needs the full-suite-migrated edge_relf DBs). Committed map = chain 1's full-run build from the relf DBs (30 Oct 22:34Z): 265 tables / 429 FKs / 302 inferred links / 730 screens (`54-system-map-build.log`) |
+
+**Handover state at the pause (31 Oct 09:38 UTC):** code and tests final on `rel/0.8.3-service-reliability` (commits below); remaining
+gates = full Edge MySQL suite → the six migration/update/clean-machine classes → system map, all on `pos_test_*_edge_relf`, one at a time,
+only after the coordinator's "MySQL back". labcopy-c: pointer **0.8.2-edge**, no worker running, lease released; keep-awake guard pid
+349192 (flag file `evidence\agent-f\keepawake.flag` — delete it to stop); a Bash-tool waiter loop polling for `CHAIN2_END` is the only
+other live process of this agent.
+
 ```
 AGENT_F_SCOPE=development on rel/0.8.3-service-reliability + disposable validation (labcopy-c, relf test DBs)
 MYSQL_STARTUP_PLAN=classified bounded wait (EdgeLocalDbReadiness) in both workers + edge:local:wait-db (0/1/2) + plan fields; MySQL-as-service = owner (elevated)

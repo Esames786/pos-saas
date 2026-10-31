@@ -90,10 +90,12 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $this->dataRoot = $this->scratch . '\\ProgramData\\BingooEdge';
         $this->pkgA = $this->scratch . '\\pkg-0.1.0';
         $this->pkgB = $this->scratch . '\\pkg-0.2.0';
-        $this->cloudPort = 9700 + random_int(0, 99);
-        $this->webPort = 9800 + random_int(0, 99);
-        $this->httpsPort = 9900 + random_int(0, 49);
-        $this->httpPort = 9950 + random_int(0, 49);
+        // 0.8.3: port ranges are env-overridable so concurrent agent sessions on one host can keep to their assigned ports
+        // (EDGE_TEST_<X>_PORT_BASE + random 0..EDGE_TEST_<X>_PORT_SPAN); the defaults are the historical ranges.
+        $this->cloudPort = $this->testPort('CLOUD', 9700, 99);
+        $this->webPort = $this->testPort('WEB', 9800, 99);
+        $this->httpsPort = $this->testPort('HTTPS', 9900, 49);
+        $this->httpPort = $this->testPort('HTTP', 9950, 49);
         $this->installDb = EdgeTestDatabases::local('install');
         $this->installDb2 = EdgeTestDatabases::local('install2');
         $this->tenantCode = 'edgeinst' . Str::lower(Str::random(4));
@@ -154,6 +156,15 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
     private function removeProofMigration(): void
     {
         @unlink(base_path('database/migrations/edge/' . self::PROOF_MIGRATION));
+    }
+
+    /** A loopback test port: env EDGE_TEST_<X>_PORT_BASE (+ random 0..EDGE_TEST_<X>_PORT_SPAN) or the historical default range. */
+    private function testPort(string $name, int $defaultBase, int $defaultSpan): int
+    {
+        $base = (int) (getenv("EDGE_TEST_{$name}_PORT_BASE") ?: $defaultBase);
+        $span = getenv("EDGE_TEST_{$name}_PORT_SPAN") !== false ? max(0, (int) getenv("EDGE_TEST_{$name}_PORT_SPAN")) : $defaultSpan;
+
+        return $base + random_int(0, $span);
     }
 
     protected function tearDown(): void

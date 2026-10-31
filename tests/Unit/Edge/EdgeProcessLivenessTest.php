@@ -82,6 +82,9 @@ class EdgeProcessLivenessTest extends TestCase
     public function test_tokens_match_within_the_rounding_tolerance_only(): void
     {
         $this->assertTrue(EdgeProcessLiveness::tokensMatch('unix:1000', 'unix:1002'));
+        $this->assertTrue(EdgeProcessLiveness::tokensMatch('unix:1000@some-worker-uuid', 'unix:1001'), 'the uuid binding suffix is ignored when comparing start times');
+        $this->assertSame(1000, EdgeProcessLiveness::tokenSeconds('unix:1000@some-worker-uuid'));
+        $this->assertSame('', EdgeProcessLiveness::bareToken('@some-worker-uuid'));
         $this->assertFalse(EdgeProcessLiveness::tokensMatch('unix:1000', 'unix:1003'));
         $this->assertTrue(EdgeProcessLiveness::tokensMatch('opaque-a', 'opaque-a'));
         $this->assertFalse(EdgeProcessLiveness::tokensMatch('opaque-a', 'opaque-b'));

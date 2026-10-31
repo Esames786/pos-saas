@@ -9,6 +9,7 @@ use App\Services\Edge\EdgeLocalPrintDeliveryService;
 use App\Services\Edge\EdgeLocalPrintWorkerSupervisor;
 use App\Services\Edge\EdgeNetworkPrinterTransport;
 use App\Services\Edge\EdgePrinterTransportException;
+use App\Services\Edge\EdgeWorkerDatabaseLoss;
 use App\Services\Edge\EdgeWorkerSlotPolicy;
 use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeProcessLiveness;
@@ -33,11 +34,12 @@ use Throwable;
  * ever required. Fail-closed off branch_server; printer destinations only from bootstrapped config.
  *
  * 0.8.3 SERVICE RELIABILITY: (F-1) the DB wait is the classified EdgeLocalDbReadiness (configurable budget,
- * non-retryable classes end it early with a named cause); (F-G10) the worker records its pid + process start time
- * next to the heartbeat and the slot decision asks the OS whether the previous worker still exists — a fresh
- * heartbeat left by a dead process (crash, fast reboot) is taken over instead of exiting as a "duplicate";
- * (F-3/G3) every delivery failure and every terminal failure is also written to the application log with its
- * transport classification, so a Scheduled-Task worker without stdout redirection still leaves evidence.
+ * non-retryable classes end it early with a named cause); (F-1b) a database that DISAPPEARS mid-run (the 30 Oct LAB
+ * outage) is waited for with the same budget and the loop continues with the same worker uuid instead of crashing
+ * out; (F-G10) the worker records its pid + process start time next to the heartbeat and the slot decision asks the
+ * OS whether the previous worker still exists — a fresh heartbeat left by a dead process (crash, fast reboot) is
+ * taken over instead of exiting as a "duplicate"; (F-3/G3) every delivery failure and every terminal failure is also
+ * written to the application log with its transport classification.
  */
 class EdgeLocalPrintWorkerCommand extends Command
 {
@@ -97,23 +99,47 @@ class EdgeLocalPrintWorkerCommand extends Command
         $idleSleep = max(1, (int) $this->option('idle-sleep'));
         $graceful = true;
         $lastError = null;
+        $dbLost = false;
+        $say = fn (string $line) => $this->warn($line);
 
         try {
             do {
-                if (! $supervisor->beat($workerUuid)) {
-                    $this->warn('worker slot was taken over (stale heartbeat assumed) — exiting.');
-                    Log::warning('edge print-worker superseded — exiting', ['worker' => $workerUuid, 'pid' => $identity['pid']]);
-                    break;
-                }
-                if ($supervisor->shouldStop($workerUuid)) {
-                    $this->info('cooperative stop requested — exiting after the current cycle.');
-                    break;
+                // (F-1b) heartbeat + stop flag: a LOST database is waited for (bounded) and the loop continues; a superseded
+                // slot or a stop request ends the loop as before.
+                try {
+                    if (! $supervisor->beat($workerUuid)) {
+                        $this->warn('worker slot was taken over (stale heartbeat assumed) — exiting.');
+                        Log::warning('edge print-worker superseded — exiting', ['worker' => $workerUuid, 'pid' => $identity['pid']]);
+                        break;
+                    }
+                    if ($supervisor->shouldStop($workerUuid)) {
+                        $this->info('cooperative stop requested — exiting after the current cycle.');
+                        break;
+                    }
+                } catch (Throwable $e) {
+                    if (! EdgeWorkerDatabaseLoss::isLoss($e)) {
+                        throw $e;
+                    }
+                    if (! EdgeWorkerDatabaseLoss::recover($readiness, 'print-worker', $e, $say)) {
+                        $lastError = 'database lost: ' . $e->getMessage();
+                        $dbLost = true;
+                        break;
+                    }
+                    continue; // re-verify ownership on the fresh connection before claiming anything
                 }
 
                 $claim = null;
                 try {
                     $claim = $deliveries->claimNext($workerUuid);
                 } catch (Throwable $e) {
+                    if (EdgeWorkerDatabaseLoss::isLoss($e)) {
+                        if (! EdgeWorkerDatabaseLoss::recover($readiness, 'print-worker', $e, $say)) {
+                            $lastError = 'database lost: ' . $e->getMessage();
+                            $dbLost = true;
+                            break;
+                        }
+                        continue;
+                    }
                     $lastError = $e->getMessage();
                     $this->error('claim error: ' . $e->getMessage());
                     Log::error('edge print-worker claim error', ['error' => class_basename($e) . ': ' . $e->getMessage()]);
@@ -137,7 +163,11 @@ class EdgeLocalPrintWorkerCommand extends Command
                         }
                         $this->warn("job {$claim['job_id']}: delivery failed [{$category}] — " . $e->getMessage() . ($recorded ? '' : ' (stale lease — ignored)'));
                         // G3: the Scheduled-Task worker may have no stdout; the application log carries every failure.
-                        $terminal = $recorded && $deliveries->isTerminalFailed($claim['job_id']);
+                        $terminal = false;
+                        try {
+                            $terminal = $recorded && $deliveries->isTerminalFailed($claim['job_id']);
+                        } catch (Throwable) {
+                        }
                         Log::log($terminal ? 'error' : 'warning', $terminal ? 'edge print job TERMINAL failure — operator retry/dismiss required' : 'edge print job delivery failed (will retry)', [
                             'job_id' => $claim['job_id'], 'printer_id' => $claim['printer_id'] ?? null, 'printer' => $claim['ip'] . ':' . $claim['port'],
                             'category' => $category, 'error' => $e->getMessage(), 'recorded' => $recorded,
@@ -157,9 +187,20 @@ class EdgeLocalPrintWorkerCommand extends Command
             Log::error('edge print-worker crashed', ['worker' => $workerUuid, 'error' => class_basename($e) . ': ' . $e->getMessage()]);
             throw $e;
         } finally {
-            $supervisor->markStopped($workerUuid, $graceful, $lastError);
+            try {
+                $supervisor->markStopped($workerUuid, $graceful && ! $dbLost, $lastError);
+            } catch (Throwable $e) {
+                // the database is still gone: the row keeps state=running with THIS pid — the next start verifies the pid
+                // through the OS (F-G10) and takes the slot over; nothing else needs to be written.
+                Log::error('edge print-worker could not record its stop (database unavailable); the slot row keeps this pid for the OS check', ['worker' => $workerUuid, 'pid' => $identity['pid']]);
+            }
         }
 
+        if ($dbLost) {
+            $this->error('print-worker ' . $workerUuid . ' exiting: the Edge-local database did not come back; the supervisor will restart this worker.');
+
+            return self::FAILURE;
+        }
         $this->info("print-worker {$workerUuid} stopped after {$processed} job(s).");
 
         return self::SUCCESS;

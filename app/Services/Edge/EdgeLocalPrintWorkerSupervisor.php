@@ -109,7 +109,7 @@ class EdgeLocalPrintWorkerSupervisor
             'heartbeat_at' => now(),
             'stop_requested_at' => null, // a fresh supervised start clears any stale stop request
             'last_error' => null,
-        ] + EdgeWorkerSlotPolicy::identityColumns($identity));
+        ] + EdgeWorkerSlotPolicy::identityColumns($identity, $workerUuid));
 
         return true;
     }
@@ -207,7 +207,7 @@ class EdgeLocalPrintWorkerSupervisor
                 'heartbeat_age_seconds' => $row->heartbeat_at !== null ? (int) abs(now()->diffInSeconds($row->heartbeat_at)) : null,
                 'last_graceful_stop_at' => $row->last_graceful_stop_at?->toIso8601String(),
                 'last_error' => $row->last_error,
-                'process' => self::processReport($row->worker_pid, $row->worker_process_token, $row->worker_host, $state, $probeProcess),
+                'process' => self::processReport($row->worker_pid, $row->worker_process_token, $row->worker_host, $state, $probeProcess, $row->worker_uuid),
             ];
         } catch (Throwable $e) {
             // DB unreachable/corrupt ≠ not installed — report honestly, sanitized (class only, no DSN).
@@ -221,17 +221,18 @@ class EdgeLocalPrintWorkerSupervisor
      * Shared by both singleton workers: the recorded identity plus — only for a STALE heartbeat, only when asked —
      * the OS liveness verdict (stale_process_alive | stale_process_gone | stale_process_unknown).
      */
-    public static function processReport(mixed $pid, ?string $token, ?string $host, string $state, bool $probe): array
+    public static function processReport(mixed $pid, ?string $token, ?string $host, string $state, bool $probe, ?string $rowWorkerUuid = null): array
     {
         $report = [
             'pid' => $pid !== null ? (int) $pid : null,
             'host' => $host,
             'identity_recorded' => $pid !== null,
+            'identity_bound' => $pid !== null ? EdgeWorkerSlotPolicy::identityBoundTo($token, $rowWorkerUuid) : null,
             'liveness' => null,
             'verdict' => null,
         ];
         if ($state === 'stale' && $probe && $pid !== null) {
-            $check = EdgeProcessLiveness::check((int) $pid, $token, $host);
+            $check = EdgeWorkerSlotPolicy::livenessFor((int) $pid, $token, $host, $rowWorkerUuid);
             $report['liveness'] = $check['status'];
             $report['liveness_reason'] = $check['reason'];
             $report['verdict'] = match ($check['status']) {

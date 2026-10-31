@@ -79,7 +79,7 @@ class EdgeLocalWorkerStatusCommand extends Command
         $liveness = null;
         $reason = null;
         if ($probe && $pid !== null && $row->state === 'running') {
-            $c = EdgeProcessLiveness::check((int) $pid, $row->worker_process_token ?? null, $row->worker_host ?? null);
+            $c = \App\Services\Edge\EdgeWorkerSlotPolicy::livenessFor((int) $pid, $row->worker_process_token ?? null, $row->worker_host ?? null, $row->worker_uuid);
             $liveness = $c['status'];
             $reason = $c['reason'];
         }
@@ -96,6 +96,7 @@ class EdgeLocalWorkerStatusCommand extends Command
             'state' => $state, 'row_state' => $row->state, 'worker_uuid' => $row->worker_uuid, 'runtime_version' => $row->runtime_version ?? null,
             'heartbeat_at' => $row->heartbeat_at, 'heartbeat_age_seconds' => $age, 'stale_after_seconds' => $staleSeconds,
             'pid' => $pid !== null ? (int) $pid : null, 'host' => $row->worker_host ?? null, 'identity_recorded' => $pid !== null,
+            'identity_bound' => $pid !== null ? \App\Services\Edge\EdgeWorkerSlotPolicy::identityBoundTo($row->worker_process_token ?? null, $row->worker_uuid) : null,
             'liveness' => $liveness, 'liveness_reason' => $reason, 'stop_requested' => ($row->stop_requested_at ?? null) !== null, 'slot_verdict' => $verdict,
         ];
     }

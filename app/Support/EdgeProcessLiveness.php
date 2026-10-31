@@ -78,7 +78,7 @@ final class EdgeProcessLiveness
         if ($probe['exists'] === false) {
             return ['status' => self::DEAD, 'reason' => "pid {$pid} is not running", 'observed_token' => null, 'method' => $probe['method']];
         }
-        if ($token === null || $token === '' || $probe['token'] === null) {
+        if (self::bareToken($token) === '' || $probe['token'] === null) {
             return ['status' => self::ALIVE, 'reason' => "pid {$pid} is running (start time not comparable)", 'observed_token' => $probe['token'], 'method' => $probe['method']];
         }
         if (self::tokensMatch($token, $probe['token'])) {
@@ -93,18 +93,30 @@ final class EdgeProcessLiveness
         $a = self::tokenSeconds($recorded);
         $b = self::tokenSeconds($observed);
         if ($a === null || $b === null) {
-            return $recorded === $observed;
+            return self::bareToken($recorded) === self::bareToken($observed);
         }
 
         return abs($a - $b) <= self::TOKEN_TOLERANCE_SECONDS;
     }
 
+    /** The token without its "@<worker_uuid>" binding suffix (EdgeWorkerSlotPolicy binds the token to the row's uuid). */
+    public static function bareToken(?string $token): string
+    {
+        if ($token === null) {
+            return '';
+        }
+        $at = strpos($token, '@');
+
+        return $at === false ? $token : substr($token, 0, $at);
+    }
+
     public static function tokenSeconds(?string $token): ?int
     {
-        if ($token === null || ! str_starts_with($token, self::TOKEN_PREFIX)) {
+        $bare = self::bareToken($token);
+        if (! str_starts_with($bare, self::TOKEN_PREFIX)) {
             return null;
         }
-        $v = substr($token, strlen(self::TOKEN_PREFIX));
+        $v = substr($bare, strlen(self::TOKEN_PREFIX));
 
         return ctype_digit($v) ? (int) $v : null;
     }
