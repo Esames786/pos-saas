@@ -1,0 +1,138 @@
+[
+  {
+    "name": "Owner login succeeds",
+    "pass": true
+  },
+  {
+    "name": "recipe fixture exists",
+    "pass": true
+  },
+  {
+    "name": "recipe tab visible",
+    "pass": true
+  },
+  {
+    "name": "recipe advanced collapsed initially",
+    "pass": true
+  },
+  {
+    "name": "recipe advanced expands",
+    "pass": true
+  },
+  {
+    "name": "Zero override and overhead update the recipe preview",
+    "pass": true
+  },
+  {
+    "name": "recipe browser Save persisted",
+    "pass": true
+  },
+  {
+    "name": "recipe reload retains value",
+    "pass": true
+  },
+  {
+    "name": "recipe desktop has no page overflow",
+    "pass": true
+  },
+  {
+    "name": "recipe mobile has no page overflow",
+    "pass": true
+  },
+  {
+    "name": "recipe expanded guidance wraps inside its row",
+    "pass": true
+  },
+  {
+    "name": "recipe Save remains reachable",
+    "pass": true
+  },
+  {
+    "name": "bom fixture exists",
+    "pass": true
+  },
+  {
+    "name": "bom tab visible",
+    "pass": true
+  },
+  {
+    "name": "bom advanced collapsed initially",
+    "pass": true
+  },
+  {
+    "name": "bom advanced expands",
+    "pass": true
+  },
+  {
+    "name": "bom browser Save persisted",
+    "pass": true
+  },
+  {
+    "name": "bom reload retains value",
+    "pass": true
+  },
+  {
+    "name": "bom desktop has no page overflow",
+    "pass": true
+  },
+  {
+    "name": "bom mobile has no page overflow",
+    "pass": true
+  },
+  {
+    "name": "bom expanded guidance wraps inside its row",
+    "pass": true
+  },
+  {
+    "name": "bom Save remains reachable",
+    "pass": true
+  },
+  {
+    "name": "catering fixture exists",
+    "pass": true
+  },
+  {
+    "name": "catering tab visible",
+    "pass": true
+  },
+  {
+    "name": "catering advanced collapsed initially",
+    "pass": true
+  },
+  {
+    "name": "catering advanced expands",
+    "pass": true
+  },
+  {
+    "name": "House-book rate is readonly",
+    "pass": true
+  },
+  {
+    "name": "Manual rate becomes editable",
+    "pass": true
+  },
+  {
+    "name": "Relink restores readonly",
+    "pass": true
+  },
+  {
+    "name": "catering desktop has no page overflow",
+    "pass": true
+  },
+  {
+    "name": "catering mobile has no page overflow",
+    "pass": true
+  },
+  {
+    "name": "catering expanded guidance wraps inside its row",
+    "pass": true
+  },
+  {
+    "name": "catering Save remains reachable",
+    "pass": true
+  },
+  {
+    "name": "No JavaScript page errors",
+    "pass": true
+  }
+]
