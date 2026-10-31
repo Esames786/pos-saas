@@ -404,7 +404,9 @@ class CateringEventController extends Controller
             // version, for the History panel.
             'revisions' => $revisions,
             'versions' => $cateringEvent->estimates()->orderByDesc('version_no')
-                ->get(['id', 'version_no', 'status', 'grand_total', 'updated_at', 'sent_at']),
+                // superseded_at: Finalize's money dialog names the version that
+                // stepped aside last (CATERING-RESTORE-IN-PLACE-1).
+                ->get(['id', 'version_no', 'status', 'grand_total', 'updated_at', 'sent_at', 'superseded_at']),
         ]);
     }
 

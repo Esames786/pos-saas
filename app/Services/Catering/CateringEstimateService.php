@@ -443,10 +443,15 @@ class CateringEstimateService
     /**
      * Create revision v(N+1) from an immutable estimate, cloning its lines as a
      * new DRAFT. The source version is marked superseded — never rewritten.
+     *
+     * `$lineMap` (optional) receives source line_uuid → copy line_uuid, for a
+     * caller that has a form posted against the SOURCE lines and must land it
+     * on the copy (CATERING-RESTORE-IN-PLACE-1). line_uuid is unique across the
+     * table, so the copy cannot simply keep the source's.
      */
-    public function revise(CateringEstimate $estimate, ?int $userId = null): CateringEstimate
+    public function revise(CateringEstimate $estimate, ?int $userId = null, ?array &$lineMap = null): CateringEstimate
     {
-        return DB::connection('tenant')->transaction(function () use ($estimate, $userId) {
+        return DB::connection('tenant')->transaction(function () use ($estimate, $userId, &$lineMap) {
             // Under the lock before the status is judged: two concurrent revisions
             // of the same version would otherwise both pass this check and both
             // supersede it, leaving two "current" quotations for one booking.
@@ -481,7 +486,7 @@ class CateringEstimateService
                 ->lockForUpdate()
                 ->max('version_no') + 1;
 
-            $revision = $this->cloneAsNewDraft($estimate, $nextVersion, $userId);
+            $revision = $this->cloneAsNewDraft($estimate, $nextVersion, $userId, $lineMap);
 
             $estimate->forceFill([
                 'status' => CateringEstimate::STATUS_SUPERSEDED,
@@ -525,16 +530,31 @@ class CateringEstimateService
     }
 
     /**
-     * KASHIF-EVENT-HISTORY-2 — restore a superseded quotation version.
+     * KASHIF-EVENT-HISTORY-2 → CATERING-RESTORE-IN-PLACE-1 (31 Oct) — bring a
+     * superseded quotation version back AS ITSELF.
      *
-     * Never a rewrite: the restored version stays exactly as it was; the
-     * CURRENT version is superseded and a NEW draft equal to the old one
-     * becomes current. The paper trail only ever moves forward — an operator
-     * sees "the event went back", an auditor sees every step it took.
+     * Malik: "restore karoon to asal me wohi purani wapas aaye, nayi revision
+     * na bane." Until 31 Oct this made a NEW draft copy (Q1 → Q3) every time,
+     * and the copy had to be finalised again. Now Q1 itself becomes current
+     * again and the version that was current steps aside as superseded. No
+     * row is created, and Q1's numbers, lines and cost blocks are not touched
+     * — only its status goes back to what it was before it was superseded.
+     *
+     * Nothing is lost by this: the version that stepped aside keeps its own
+     * Restore button, and History records the step.
+     *
+     * Changing the restored version is a separate act: its first changed Save
+     * makes the next revision (CateringEstimateController::update). The copy
+     * the customer holds is never edited.
+     *
+     * Money is not touched — advances, refunds and journal entries hang off
+     * the BOOKING, not a version. What the customer owes is read from whichever
+     * version is current, so the balance follows the restored one, exactly as
+     * it did with the old copy.
      */
     public function restoreVersion(CateringEstimate $old, ?int $userId = null): CateringEstimate
     {
-        return DB::connection('tenant')->transaction(function () use ($old, $userId) {
+        return DB::connection('tenant')->transaction(function () use ($old) {
             $this->locks->refreshEstimate($old);
 
             if ($old->status !== CateringEstimate::STATUS_SUPERSEDED) {
@@ -543,38 +563,174 @@ class CateringEstimateService
                 );
             }
 
+            // The same wall as revise(). Until 31 Oct restore checked only on
+            // the SCREEN (the button hid itself on an invoiced booking) and not
+            // at all for release — CATERING-EDIT-AFTER-RELEASE-1 lists
+            // restore-version among the paths that must pass through here.
+            $this->locks->assertRevisable($old);
+
+            // "Current" is the live relation's own definition — the highest
+            // version that is NOT superseded/cancelled. Never max(version_no):
+            // after a restore the highest version is the one that stepped aside.
             $current = CateringEstimate::query()
                 ->where('catering_event_id', $old->catering_event_id)
+                ->whereNotIn('status', [CateringEstimate::STATUS_SUPERSEDED, CateringEstimate::STATUS_CANCELLED])
                 ->orderByDesc('version_no')
                 ->lockForUpdate()
                 ->first();
 
-            $revision = $this->cloneAsNewDraft($old, ((int) $current->version_no) + 1, $userId);
-            $revision->forceFill([
-                'notes' => trim(
-                    ($old->notes !== null && trim((string) $old->notes) !== '' ? $old->notes."\n" : '')
-                    ."Restored from Q{$old->version_no}."
-                ),
-            ])->save();
-
-            if ($current->status !== CateringEstimate::STATUS_SUPERSEDED) {
+            if ($current !== null) {
                 $current->forceFill([
                     'status' => CateringEstimate::STATUS_SUPERSEDED,
                     'superseded_at' => now(),
                 ])->save();
             }
 
-            return $revision->refresh();
+            $old->forceFill([
+                'status' => $this->statusBeforeSuperseded($old),
+                'superseded_at' => null,
+            ])->save();
+
+            $this->bookingFollowsTheRestoredPaper($old);
+
+            return $old->refresh();
         });
     }
 
     /**
-     * The ONE clone: a source version copied — totals, lines, block snapshots,
-     * kitchen instructions — as draft v{next}. revise() and restoreVersion()
-     * both come here, so a quotation can never be copied two different ways.
+     * What a superseded version was before it stepped aside, read from the
+     * moments it recorded: markAccepted() writes accepted_at, markSent()
+     * writes sent_at, and reopening a sent quotation to draft clears sent_at
+     * (CateringEventStatusService::reopenCurrentQuotation). No extra column.
      */
-    private function cloneAsNewDraft(CateringEstimate $source, int $nextVersion, ?int $userId): CateringEstimate
+    private function statusBeforeSuperseded(CateringEstimate $estimate): string
     {
+        if ($estimate->accepted_at !== null) {
+            return CateringEstimate::STATUS_ACCEPTED;
+        }
+
+        return $estimate->sent_at !== null
+            ? CateringEstimate::STATUS_SENT
+            : CateringEstimate::STATUS_DRAFT;
+    }
+
+    /**
+     * The booking follows the paper — the SAME two rules the forward road
+     * already applies, nothing new:
+     *
+     *  - a finalised version back on a booking still at inquiry/draft makes it
+     *    `quoted`, as markSent() does;
+     *  - a DRAFT back on a quoted/confirmed booking takes it to `draft`, as
+     *    revise() does (CATERING-REVISION-MONEY-1): a confirmation is agreement
+     *    to numbers the customer has seen, and a draft's can still move.
+     *
+     * Anything else stays where it is. A confirmed booking getting back a
+     * version the customer already received stays confirmed — nobody re-accepts
+     * paper they already hold — and `released` is never rewritten.
+     */
+    private function bookingFollowsTheRestoredPaper(CateringEstimate $restored): void
+    {
+        $event = $restored->event()->first();
+        if ($event === null) {
+            return;
+        }
+
+        if ($restored->isDraft()) {
+            if (in_array($event->status, [CateringEvent::STATUS_QUOTED, CateringEvent::STATUS_CONFIRMED], true)) {
+                $event->forceFill(['status' => CateringEvent::STATUS_DRAFT, 'confirmed_at' => null])->save();
+            }
+
+            return;
+        }
+
+        if (in_array($event->status, [CateringEvent::STATUS_INQUIRY, CateringEvent::STATUS_DRAFT], true)) {
+            $event->update(['status' => CateringEvent::STATUS_QUOTED]);
+        }
+    }
+
+    /**
+     * CATERING-RESTORE-IN-PLACE-1 — is this the version a Restore brought
+     * back, still exactly as the customer received it?
+     *
+     * No column says so, and none is needed: revise() always numbers the new
+     * version max+1, so the current version is the highest one UNLESS a
+     * restore put an older one back. A restored DRAFT is edited in place like
+     * any draft, so only a finalised one counts.
+     */
+    public function isRestoredVersion(CateringEstimate $estimate): bool
+    {
+        if ($estimate->isDraft() || in_array($estimate->status, [
+            CateringEstimate::STATUS_SUPERSEDED,
+            CateringEstimate::STATUS_CANCELLED,
+        ], true)) {
+            return false;
+        }
+
+        return CateringEstimate::query()
+            ->where('catering_event_id', $estimate->catering_event_id)
+            ->where('version_no', '>', $estimate->version_no)
+            ->exists();
+    }
+
+    /**
+     * Do two versions say the same thing? Everything the operator can change
+     * from the booking screen — the document's charges, every line, every
+     * cost-block decision, the kitchen instructions — and nothing that is only
+     * an identity, a timestamp or the version's own number.
+     *
+     * Used to make "Save without changing anything" on a restored version
+     * create nothing.
+     */
+    public function sameContent(CateringEstimate $a, CateringEstimate $b): bool
+    {
+        return $this->contentOf($a) === $this->contentOf($b);
+    }
+
+    private function contentOf(CateringEstimate $estimate): array
+    {
+        $document = collect(CateringEstimate::COMMERCIAL_COLUMNS)
+            ->reject(fn ($column) => in_array($column, ['catering_event_id', 'version_no'], true))
+            ->mapWithKeys(fn ($column) => [$column => (string) $estimate->getRawOriginal($column)])
+            ->all();
+
+        $lines = $estimate->lines()->with(['costBlocks', 'managedInstructions'])->get()
+            ->map(function (CateringEstimateLine $line) {
+                // sort_order out, ORDER in: a save renumbers lines 0..n-1, so an
+                // older version numbered differently would look "changed" while
+                // its dishes sit in exactly the same order.
+                $row = collect($line->getRawOriginal())
+                    ->except(['id', 'line_uuid', 'catering_estimate_id', 'sort_order', 'created_at', 'updated_at'])
+                    ->map(fn ($value) => (string) $value)
+                    ->all();
+
+                $row['blocks'] = $line->costBlocks->sortBy([['sort_order', 'asc'], ['id', 'asc']])
+                    ->map(fn ($block) => collect($block->getRawOriginal())
+                        ->except(['id', 'catering_estimate_line_id', 'created_at', 'updated_at'])
+                        ->map(fn ($value) => (string) $value)
+                        ->all())
+                    ->values()->all();
+
+                $row['instructions_picked'] = $line->managedInstructions
+                    ->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+
+                return $row;
+            })
+            ->values()->all();
+
+        return ['document' => $document, 'lines' => $lines];
+    }
+
+    /**
+     * The ONE clone: a source version copied — totals, lines, block snapshots,
+     * kitchen instructions — as draft v{next}. Every copy comes here (revise(),
+     * and through it History's revert and a restored version's changed Save),
+     * so a quotation can never be copied two different ways. restoreVersion()
+     * no longer copies at all (CATERING-RESTORE-IN-PLACE-1).
+     */
+    private function cloneAsNewDraft(CateringEstimate $source, int $nextVersion, ?int $userId, ?array &$lineMap = null): CateringEstimate
+    {
+        $lineMap = [];
+
         $revision = CateringEstimate::create([
             'catering_event_id' => $source->catering_event_id,
             'version_no' => $nextVersion,
@@ -617,6 +773,10 @@ class CateringEstimateService
                 'estimated_cost_total' => $line->estimated_cost_total,
                 'sort_order' => $line->sort_order,
             ]);
+
+            if ($line->line_uuid !== null) {
+                $lineMap[$line->line_uuid] = $copy->line_uuid;
+            }
 
             // And the breakdown itself, block by block — including the
             // quantity this event settled on and who was bringing it.
