@@ -181,3 +181,63 @@ W07/W08 approval UI and the physical second-laptop check remain NOT exercised (P
 STANDBY_BROWSER_ACCEPTANCE=PASS (W01 Online + Edge, W18/W15 = 422 STANDBY, 0 x 502, 0 new restarts, rowsets identical)   FALSE_RESTARTS_QUIET_RERUN=0   GATEWAY_502_QUIET_RERUN=0
 EDGE_ONLINE_GEOMETRY=NONE (D5, 998 boxes)   REAL_SECOND_LAPTOP_CHECK=NOT_RUN (owner hardware)   W07_W08_APPROVAL_UI=NOT_EXERCISED (Phase C)
 ```
+
+## Incident B.6 — shared Laragon mysqld CRASHED 31 Oct 08:22:16 UTC (second outage in two days; host resource exhaustion)
+
+| fact | evidence |
+|---|---|
+| crash | `D:\laragon2\data\mysql-8\DESKTOP-0024EPM.err`: 08:22:16 `[InnoDB] Resource not available to create threads for parallel scan` → `[FATAL] Error 100 encountered when writing to the redo log file .\#innodb_redo\#ib_redo346678` → `Assertion failure: log0write.cc:2117` → `mysqld got exception 0x16` (full stack in the log). Yesterday's death (13:50 UTC) left no trace; this one did |
+| host state at 09:30 UTC (read-only census) | commit **58.9 of 62.9 GB**, RAM free 4.9 of 31.7 GB, **C: 1.7 GB free** (the page file cannot grow), total handles **10.8 million**: `Dell.TechHub.Instrumentation.SubAgent` pid 8744 **10,174,487 handles / 5,062 MB**, `RtkAudUService64` ×3 (202k / 101k / 99k handles, 2,273 / 1,491 / 796 MB), `WavesSysSvc64` 3,599 MB. These are elevated vendor services: not ours to stop (owner rule: no elevation) |
+| effect on the LAB | print worker (pid 310936) and authority worker (pid 421644) exited again, exactly as on 30 Oct; gateway, both web backends, sync-sender and backup task alive; the appliance's `edge:local:health` reported the local database unreachable; no data change possible (no writer) |
+| effect on the agents | Agent E's gate 2 (27 canonical classes) and Agent F's full Edge MySQL suite were in flight → declared INVALID (not red); both agents paused by message at 09:33 UTC and replied with the list of runs that had already ended with clean END lines (nothing green is re-run) |
+| recovery | mysqld restarted 09:35:16 UTC with the Laragon `my.ini` (process 503036); InnoDB initialization 09:35:19–09:42:50 (7.5 min); XA/redo recovery until **10:14:03 UTC** (`ready for connections`; 39 min in total); dead LAB workers restarted from the plan definition by `restart-dead-workers.ps1` at **13:54:10 UTC** (the coordinating session itself was down 10:00–13:53 UTC, which is why the workers stayed down that long; evidence `10b-restart-dead-workers-b6.txt`) (only the two dead entries; everything alive untouched; pid record rewritten); afterwards health 13:55 UTC: `STANDBY_READY`, 0.8.2-edge, authority standby/online, print worker running (heartbeat 3 s), authority worker running, lease holder cloud seq 51535, all seven rowset MD5s identical to the baseline (`10c-health-after-b6.json`, `10d-snapshot-after-b6.txt`); the FakePrinter listener (pid 22824) had also vanished in the crash window → restarted by `Start-FakePrinter.ps1` as pid 471212. **Web tier during the outage:** both backends were recycled once at 08:33:40 / 08:33:44 UTC ("progress continued but no answer for 121 s / 132 s — beyond the 120 s busy grace": a backend whose database is gone cannot answer its own health probe; the bounded policy recycled it, nginx kept answering) → counters now 3 / 2; no restarts since |
+| owner actions (elevated, outside my authority) | (1) free ≥ 10 GB on C: or move the page file to D:; (2) restart or disable the leaking `Dell TechHub Instrumentation` service and the Realtek audio service (or reboot the host — ask-before rule); (3) give the LAB MySQL its own Windows service with automatic restart (Agent F's MYSQL_STARTUP_PLAN, record §1). Until (1)–(2) are done every long test run on this laptop risks killing MySQL again |
+
+## Fast track (owner priority 31 Oct) — second laptop, FakePrinter scope, supervised Local Mode procedure
+
+### F.1 Second Windows cashier laptop — exact URL and minimal setup (standby-only testing approved)
+
+| item | value |
+|---|---|
+| URL on the cashier laptop | **`https://DESKTOP-0024EPM.local:8443/edge/local/login`** (same as the 0.7.0 walk; the LAB CA `lab-ca.crt` was trusted on that laptop in P5C — if the padlock is red, import `C:\Users\Dell\BingooEdgeLab\secrets\lab-ca.crt` into *Trusted Root Certification Authorities* of the current user, no admin needed) |
+| Edge laptop LAN address now | **192.168.1.9** on `Wi-Fi 2` (network "SMS5G 3", profile Public). The server certificate's SANs are `DESKTOP-0024EPM.local`, `bingoo-edge.local`, `192.168.1.6`, `192.168.2.15`, `127.0.0.1` — the IP changed since the certificate was issued, so by-IP access shows a name warning; use the name. If `.local` does not resolve on the laptop (mDNS off), add one hosts line `192.168.1.9  DESKTOP-0024EPM.local` |
+| gateway listening on the LAN | verified from the Edge laptop itself: `https://192.168.1.9:8443/edge/local/health → 200` (nginx `listen 8443 ssl http2`, all interfaces); Windows Firewall has inbound-allow rules for `C:\users\dell\bingooedgelab\install\bingooedge\gateway\nginx.exe` on the **Public** profile, which is the profile of the current Wi-Fi |
+| real risk to check first | the Wi-Fi "SMS5G 3" looks like a hotspot-type network; if the access point isolates clients, laptop→laptop traffic is blocked and nothing above helps. Test from the cashier laptop: `ping 192.168.1.9`, then the URL. If it fails, put both laptops on the same router LAN (or hotspot with client isolation off) |
+| credentials | cashier `LAB2C5D` (password from `secrets\cashier.pass`, typed by the owner — never in chat); approver `LABMF2DE` (`secrets\approver.pass`) |
+| what to walk in standby (0.7.0 checklist rows that need no Local Mode) | 01 padlock + login page · 02 login → POS (not status page), `STANDBY · CLOUD AUTHORITY` slot · 03 categories/search/tiles · 06 cart editing · 07/08/16/18 dialogs open · 17 shift open/close pages · 19 approver `LABMF2DE` → 403 on `/pos`, status page shown · 20 responsive 1366×768 + native. Mutations (hold, bill, KOT, pay, void, return, quick-add) answer the 422 STANDBY toast — expected, screenshot one |
+| evidence | screenshots `NN-<step>.png` into `C:\Users\Dell\BingooEdgeLab\evidence\release-0.8.2-edge\laptop\` |
+
+### F.2 LAB FakePrinter / test-printer testing (approved) — what is possible in which state
+
+The LAB FakePrinter is `tests/MySql/Support/fake_printer.php` on TCP 9100 (recorded pid 22824; printer record `LAB-FAKE-9100`, 127.0.0.1:9100). Edge printing paths and their fence on 0.8.2:
+
+| path | standby | Local Mode |
+|---|---|---|
+| receipt print / **reprint** of an existing paid appliance sale (`POST /edge/local/sales/{sale}/receipt`, `reprint=1`) — not behind the writer fence; 6 paid sales exist locally | **yes** | yes |
+| Recent Prints panel, print-jobs list, document view, **retry** / **dismiss** of a failed job, print-status, health DEGRADED line | **yes** | yes |
+| failed-job ladder (5/15/30/60/120 s, 6th terminal) — by stopping the FakePrinter pid 22824 and restarting it from the plan | **yes** (with the reprint above as the job source) | yes |
+| **KOT** (normal / addition / cancellation), **reminder**, reminder reprint, new receipts from new sales | no — `EdgeLocalPrintKotService`: "a standby appliance never creates kitchen events" | **yes** — part of the supervised exercise (F.3 step 4) |
+
+Plan: receipts / reprints / retries / failed jobs / dismiss run as a scripted standby pass on the real LAB (harness W10 + W11 through the gateway + a FakePrinter stop/start by recorded pid) once MySQL is stable; KOT + reminders are taken during F.3. Outbox and Cloud rowsets are snapshotted before/after (print jobs are appliance-local; nothing may reach the outbox). Agent F's 0.8.3 health/reachability additions are NOT on the LAB (0.8.2) — the LAB pass certifies 0.8.2's behaviour.
+
+### F.3 Supervised Local Mode exercise on the real LAB — exact procedure (NOT executed; each marked step needs the owner's explicit go at that moment)
+
+Pre-conditions (all checked read-only right before): `STANDBY_READY`; outbox 0 pending / 0 failed; freshness config + stock ok; LAB Cloud browsable and healthy; mysqld up for ≥ 30 min with no new error-log lines; owner present at both laptops; snapshot `lab-snapshot.sql` → `T0`. Approver eligibility: `LABMF2DE` must carry `may_approve_pos` in the applied Edge config — that flag follows an **active Cloud manager PIN** (`EdgeLocalAuthService::verifyManager` step 3; `manager_pins` on the LAB is empty) → **Phase C is a hard prerequisite for W07/W08 in this exercise**, not only for the Online side.
+
+| # | step | command / action (Edge laptop unless said) | proof captured | owner go? |
+|---|---|---|---|---|
+| 1 | WAN-loss simulation (no cable, no router change) | `powershell -File C:\Users\Dell\BingooEdgeLab\scripts\Start-LabCloud.ps1 -Stop` → lease lapses naturally: `online → unstable → lost → preparing_local` (watch `edge:local:authority-status --json` every 30 s; ~3 min on 26 Sep) | `T1-status-*.json`, Cloud stop output | **YES** |
+| 2 | Takeover | `install\BingooEdge\php\php.exe install\BingooEdge\artisan edge:local:authority-takeover --confirm --by="<owner name>"` — fails closed on any of the 9 gates; freshness override only with an audited `--reason` | `T2-takeover.txt`, health `LOCAL_ACTIVE`, lease row `holder=edge` | **YES** |
+| 3 | Offline shift | cashier laptop: open shift (denominations) as `LAB2C5D` | screenshots `L03-*` | no |
+| 4 | Offline sales + printing | cash sale → receipt on the FakePrinter; dine-in table → KOT → addition → reminder → sent-line void with approval `LABMF2DE` (**W07**) → manual discount with approval (**W08**) → Review & Pay; one return; one held order recalled; Recent Prints reprint | `L04-*`, FakePrinter spool files, `edge:local:print-status --json`, `edge:local:sync-status --queue=20` showing envelopes **pending** (no Cloud) | no |
+| 5 | Close shift | blind count → close | `L05-*` | no |
+| 6 | Reconnect | `Start-LabCloud.ps1 -Browsable -Worktree C:\Users\Dell\BingooEdgeLab\cloud\src-ac5b168d` → `connection_restored`; the sync-sender drains the outbox; exactly-once = Cloud `sale_ingestions` distinct `sale_uuid` count == appliance new sales, each applied once, no duplicate on a forced re-send (`edge:local:sync-send --max=50` twice) | `T6-sync-status.json`, `T6-snapshot.txt` (lab-snapshot.sql), Cloud ingestions query | no (restarting our own Cloud process) |
+| 7 | Reconciliation | appliance sales/lines/returns vs Cloud ingestions and totals (same query set as T0); shift totals vs Cloud shift; `reconciling` state visible | `T7-reconcile.txt` | no |
+| 8 | Handback | `… artisan edge:local:authority-handback --by="<owner name>"` — assesses first; `HANDBACK_BLOCKED` lists blockers and discards nothing | `T8-handback.txt`; after: `STANDBY_READY`, authority standby/online, lease holder **cloud**, `AUTO_FAILOVER_ENABLED=false`, outbox 0 pending | **YES** |
+| 9 | Post | 70-request bounded gateway check, supervisor counters, final snapshot `T9`, record + commit | `T9-*` | no |
+
+Rollback inside the exercise: if step 2 refuses → stay standby, restart the Cloud (step 6) — nothing changed. If sync in step 6 leaves envelopes failed → handback stays BLOCKED by design; resolve on the appliance (retry / inspect) before any handback; never discard.
+
+```
+LOCAL_MODE_TEST_READY=YES on the appliance side (all four commands exist on 0.8.2 and ran end-to-end on 26 Sep on 0.7.0; 0.8.2 gates green) — pending Phase C (approver flag) and a stable host (B.6)
+```
