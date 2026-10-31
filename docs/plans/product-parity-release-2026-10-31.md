@@ -28,4 +28,18 @@ After deployment: repeat smoke, permissions/configuration comparisons, table rec
 
 ## Deployment result
 
-Pending. This record is prepared before push/deploy; a separate record commit will add the actual deployed revision and after-check results.
+**Deployed: `b78d8dba`**, 31 October 2026, **07:25:29 UTC / 12:25:29 Pakistan time**. Local production HEAD and origin matched before deploy; server started at `5bdaac80` and finished at the reviewed merged release. Application files match final browser revision `50b8526a`; `b479b4c9` adds documentation/map/evidence only.
+
+- Existing deploy.sh completed. Master had nothing to migrate; **11 configured tenants OK, 2 skipped**, precisely the existing missing `inventorydemo` / `retaildemo` configurations. No provisioning/reset was performed.
+- Every artisan call ran as www-data, including Composer's post-autoload hook. Composer emitted a nonfatal Git ownership/version-detection warning under www-data, then its hook and the deployment completed successfully. No global Git trust/ownership workaround was added. Only the normal deploy script's cache/ownership/FPM actions ran.
+- **27/27 Product GETs returned 200 after deployment**, the same pages as before. Newly rendered controls appeared in all eligible sections: Recipe 11 rendered sections, BOM 2, Catering 2. Existing module/role restrictions still determine visibility. No live Product form was submitted.
+- **Permissions identical:** master and all 11 available tenants retained the same role grants and user-role mappings; none added or removed. **Tenant settings/switches/database mappings byte-identical** for all 13 registered tenants.
+- **Books/stock:** all 11 available tenants retain `tb_diff=0.00`, zero disallowed negative stock and zero negative department stock. Historical journal totals up to the before-snapshot cutoff, stock quantities and supplier balances match the before-snapshot on all 11.
+- Product, recipe, BOM, catering profile, cost block and other historical document fingerprints matched. The changed operational tables were printer/agent rows updated during the window, plus Khatri's cash account and open shift. Khatri's change was traced to **paid order 28522**, cash payment **1000**, journal **29369**, cash transaction **29068**, shift **278**, recorded **07:24:02–03 UTC**, BEFORE deployment started at 07:25:08. It is normal cashier activity, not a release data update.
+- The unmodified reconciliation helper prints **2 unexplained differences** because it counts the two missing tenant configurations as errors. Both are proven present before deploy and unchanged afterward; no configured tenant had an unexplained historical-data difference. The raw output is retained rather than relabeled as an all-13-tenant pass.
+- Nginx, PHP-FPM, MySQL and queue services active; Khatri and Kashif Kitchen public login endpoints return 200. No new Laravel error header was found from deployment start through verification.
+- Historical backup verified as described above; **no fresh backup was created**. No restore, backfill, rate application or test transaction was performed.
+
+Raw before/after snapshots, deployment log and scoped read-only helpers are archived outside the public webroot at **`storage/app/private/release-evidence/product-parity-20261031/`** (25 files), so evidence does not depend solely on /tmp surviving. Local verification servers and this task's temporary keep-awake helper are stopped.
+
+Existing issue outside this release: inventorydemo and retaildemo have no database configurations/schemas. Do not claim those demos are functional or repair/reset them without a separate task.

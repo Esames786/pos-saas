@@ -1,10 +1,10 @@
 # Unified product advanced settings — 28 October 2026
 
-Status: implementation and focused verification complete on 29 October. Local branch only; not pushed, merged into production or deployed.
+Status: deployed on 31 October as `b78d8dba`. See [release and production verification](product-parity-release-2026-10-31.md). The original 29 October implementation evidence below is retained.
 
 Base: `f1a64bb8`. Isolated worktree: `pos-saas-product-parity`, branch `feat/product-parity-20261028`.
 
-Implementation commit: `64a50d77`. Evidence/documentation is recorded separately. No push or application release was performed.
+Implementation commit: `64a50d77`. At the original 29 October checkpoint this was local-only; the later production release is recorded in the linked release document.
 
 ## Scope
 
