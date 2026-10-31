@@ -42,6 +42,20 @@
         </div>
     </div>
 
+    @if($handover)
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Open orders — hand the counter over</h5></div>
+            <div class="card-body">
+                @include('tenant.shifts.partials.handover', [
+                    'h' => $handover,
+                    'prefix' => 'handover',
+                    'idp' => 'handover',
+                    'terminalName' => $shift->terminal?->name ?? ('terminal #' . $shift->terminal_id),
+                ])
+            </div>
+        </div>
+    @endif
+
     <div class="card mb-4">
         <div class="card-header"><h5 class="mb-0">Cash Count</h5></div>
         <div class="card-body">

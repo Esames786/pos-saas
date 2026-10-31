@@ -4,10 +4,14 @@ namespace App\Services\Sales;
 
 use App\Exceptions\ShiftException;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
+use App\Models\Tenant\User;
+use App\Services\Security\UserDataScope;
 use App\Support\TenantClock;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -252,6 +256,134 @@ class ShiftService
 
             return $locked->fresh();
         });
+    }
+
+    /**
+     * SHIFT-HANDOVER-1 — the counter changes hands while orders are still open.
+     *
+     * A live restaurant's Delivery counter changes cashier every evening, and the outgoing cashier had to
+     * wait for every order still out with a rider and every seated table: a shift that owns open work
+     * cannot close, and the next cashier cannot open the same counter until it does.
+     *
+     * In ONE transaction the outgoing shift closes on its own count (only the money it took — an open
+     * order has none yet), the next user's shift opens on the SAME counter, and the open orders and
+     * tables move into it. "Every open order belongs to an open shift" — the rule Split, Add Round,
+     * Move, KOT and cancel lean on — holds before and after. Nothing else on the order moves: its
+     * counter, business date and amounts stay; the money lands in whichever drawer takes it, as for any
+     * recalled order (POS-SHIFT-ATTRIBUTION-1).
+     *
+     * Same business day only. A shift opened after midnight belongs to the next day; yesterday's
+     * orders inside it would put one day's sales and another day's drawer together. Then the open
+     * orders are settled first, exactly as before.
+     *
+     * Who may take over (and that he agreed — his password) is the controller's question; this
+     * re-checks the counter rule under the lock so a hand-made request cannot widen it.
+     *
+     * @return array{closed: Shift, opened: Shift, held: array<int,string>, tables: array<int,string>}
+     */
+    public function closeAndHandOver(Shift $shift, int $closerId, ?float $countedCash, ?string $closingNotes, int $toUserId, float $openingCash): array
+    {
+        return DB::connection('tenant')->transaction(function () use ($shift, $closerId, $countedCash, $closingNotes, $toUserId, $openingCash) {
+            $locked = Shift::where('id', $shift->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status !== 'open') {
+                throw new ShiftException('This shift is already closed.');
+            }
+
+            $to = $this->handoverCandidates($locked, $closerId)->firstWhere('id', $toUserId);
+            if (! $to) {
+                throw new ShiftException('Choose a cashier who works on this counter — the next shift opens here.');
+            }
+            if (! $this->handoverSameDay($locked)) {
+                throw new ShiftException(
+                    'A shift opened now belongs to the next day. Settle the open orders first, then close this shift.'
+                );
+            }
+
+            // Locking reads, as in assertClosableUnderLock: a hold committed while we waited is seen and moves too.
+            $work = $this->unresolvedWork($locked, true);
+
+            $expectedCash = (float) $locked->expected_cash;
+            if ($countedCash === null) {
+                if (abs($expectedCash) >= 0.005) {
+                    throw new ShiftException(
+                        'Count the drawer first — enter the counted cash (0 must be typed deliberately).'
+                    );
+                }
+                $countedCash = 0.0;
+            }
+
+            $handedOver = 'Handed over to ' . $to->name . ' with ' . count($work['held_sales']) . ' open order(s)'
+                . ($work['open_tables'] ? ' and ' . count($work['open_tables']) . ' open table(s)' : '') . '.';
+
+            $locked->update([
+                'closed_by_user_id' => $closerId,
+                'counted_cash'      => $countedCash,
+                'cash_variance'     => $countedCash - $expectedCash,
+                'status'            => 'closed',
+                'closed_at'         => now(),
+                'closing_notes'     => trim(($closingNotes ? $closingNotes . ' — ' : '') . $handedOver),
+            ]);
+
+            $opened = $this->open(
+                Branch::findOrFail($locked->branch_id),
+                Terminal::findOrFail($locked->terminal_id),
+                (int) $to->id,
+                $openingCash,
+                'Taken over from shift #' . $locked->id . ' with ' . count($work['held_sales']) . ' open order(s).'
+            );
+
+            // The day was checked above, but the clock may cross midnight before open() stamps it.
+            if ($opened->business_date?->toDateString() !== $locked->business_date?->toDateString()) {
+                throw new ShiftException(
+                    'A shift opened now belongs to the next day. Settle the open orders first, then close this shift.'
+                );
+            }
+
+            if ($work['held_sales']) {
+                SalesOrder::whereIn('id', array_keys($work['held_sales']))
+                    ->where('status', 'held')
+                    ->update(['shift_id' => $opened->id]);
+            }
+            if ($work['open_tables']) {
+                RestaurantTableSession::whereIn('id', array_keys($work['open_tables']))
+                    ->update(['opened_shift_id' => $opened->id]);
+            }
+
+            return [
+                'closed' => $locked->fresh(),
+                'opened' => $opened,
+                'held'   => $work['held_sales'],
+                'tables' => $work['open_tables'],
+            ];
+        });
+    }
+
+    /**
+     * SHIFT-HANDOVER-1: who may take this counter over — an active user who may work this counter
+     * (and this branch), other than the one closing and the one whose shift it was.
+     *
+     * @return Collection<int, User>
+     */
+    public function handoverCandidates(Shift $shift, int $closerId): Collection
+    {
+        $scope = app(UserDataScope::class);
+
+        return User::active()
+            ->whereNotIn('id', array_filter([$closerId, (int) $shift->opened_by_user_id]))
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (User $u) => $scope->canOperateTerminal($u, (int) $shift->terminal_id)
+                && (! $scope->hasBranchAssignments($u) || in_array((int) $shift->branch_id, $scope->branchIds($u), true)))
+            ->values();
+    }
+
+    /** SHIFT-HANDOVER-1: a shift opened on this counter right now would carry this shift's business day. */
+    public function handoverSameDay(Shift $shift): bool
+    {
+        $today = $this->clock->businessDateForOpening($this->clock->businessTimezone(Branch::find($shift->branch_id)));
+
+        return $shift->business_date?->toDateString() === $today;
     }
 
     /** Human-readable summary of what is blocking a shift close. */

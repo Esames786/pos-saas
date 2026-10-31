@@ -29,6 +29,9 @@ final class TenantFeatures
     // VOID-PURGE-1: the Owner may delete, permanently, an entry already voided on its own date. Off everywhere by default.
     public const VOID_PURGE = 'void_purge';
 
+    // SHIFT-HANDOVER-1: a cashier with open orders hands in his own cash and opens the next cashier's shift on the same counter.
+    public const SHIFT_HANDOVER = 'shift_handover';
+
     /**
      * shots (MASTER-NEW-SCREENS-1): pictures of the screens the switch shows, slug => caption
      * (public/assets/img/screens/<slug>.jpg), drawn beside the switch in Master.
@@ -100,6 +103,12 @@ final class TenantFeatures
                 'label' => 'Delete voided entries permanently',
                 'says'  => 'A user given the permission can delete a voided entry together with its reversal, so neither shows anywhere. Totals today stay the same. When the void was dated another day, the screen first says which days\' cash closing changes and asks to confirm. A hidden copy is kept in Deleted entries. Risk: a recorded cash movement can disappear from every screen.',
                 'where' => 'Cash Book and the entry\'s own page → "Delete permanently" on a voided row; Finance → Deleted entries',
+            ],
+            // SHIFT-HANDOVER-1
+            self::SHIFT_HANDOVER => [
+                'label' => 'Hand the counter to the next cashier',
+                'says'  => 'A cashier whose shift still has open orders or tables counts and hands in his own cash, then opens the next cashier\'s shift on the same counter in one step — the next cashier types his own password. The open orders and tables move into the new shift; their counter, date and amounts stay as they are. Same day only: after midnight the open orders are settled first, as today.',
+                'where' => 'Shifts → Close Shift (only when the shift has open orders or tables)',
             ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',
