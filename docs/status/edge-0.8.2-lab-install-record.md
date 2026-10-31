@@ -286,3 +286,24 @@ HOST_BLOCKER=COMMIT EXHAUSTION (vendor-service leak: TechHub 10.25 M handles / 5
 MYSQLD=DOWN since 17:54:01Z (crash #4 during recovery, started 17:40 by someone outside this session)
 LAB=STANDBY by construction, Cloud writer, print+authority workers dead (expected), gateway/web/sync/backup/FakePrinter/LAB Cloud alive
 ```
+
+### B.8 recovery — MySQL back (started 21:28 UTC outside this session), LAB verified read-only, dead workers restarted; agents stay paused (owner decision "HOST RECOVERY FIRST", 31 Oct evening)
+
+Owner order: no blind restarts, no force-recovery, no redo-log deletion, keep Agents E/F and every DB-dependent test paused, recheck the host, verify integrity and rowsets once MySQL is ready, restart only dead workers by their recorded plan identity, confirm Cloud authority and `STANDBY_READY` before any resume.
+
+| step | result (UTC) | evidence |
+|---|---|---|
+| host recheck 21:29 | C: 6.1 GB free; commit 54.6/62.9 (headroom 8.3, Waves restarted by the owner → new pid 391832, 124 MB); TechHub pid 8744 **still 10.56 M handles / 5.2 GB**; Realtek ×3 3.7 GB; exhaustion events continued at 21:20:16 and 21:42:41 | System log |
+| mysqld | started **21:28:28 by someone outside this session** (monitor 243252 + server 375108, Laragon `my.ini`) — not issued, not stopped here; InnoDB init 21:28:29–21:34:53; XA crash recovery 21:52:24 (finished in 8 ms); **ready for connections 21:52:26**; the 21:42 exhaustion event fell inside recovery and was survived | error log, watcher |
+| integrity | 0 ERROR/corruption lines in the recovery segment; `CHECK TABLE … QUICK` on all **445** base tables of `pos_lab_master_edge`, `pos_lab_tenant_edge`, `bingoo_edge_lab_local` → 445 OK, 0 non-OK | `11a-check-tables-after-b8.txt` |
+| rowsets | all seven MD5s identical to T0 (`9bbd2ad2… cc04a3e4… c9c08b1d… e42077b9… 0dac7dbb… 49bb4ea1… e39a8d18…`); appliance 6 sales / 25 lines, Cloud 5 sales / 5 ingestions; outbox 5 acked, **0 pending, 0 failed** | `11b-snapshot-after-b8.txt`, `11f-snapshot-after-workers.txt` |
+| dead workers | `restart-dead-workers-b8.ps1` (the b6 copy with the `$e`/`$E` shadow fixed): print worker 476152 → **501708**, authority worker 473880 → **368740**, five alive entries untouched, pid record rewritten (7 entries) | `11d-restart-dead-workers-b8.txt` |
+| authority | lease holder **cloud**, edge_state standby, heartbeat advancing again (seq 51814 @ 15:35 → 51825 @ 22:02:19), fenced_at null, acks 11 / failures 0, `AUTO_FAILOVER_ENABLED=false`; web backends healthy (restart counters unchanged 3/2) | `11e-health-after-b8.json` |
+| health | `DEGRADED` with a single problem: "Last backup is older than 2 hours" — the hourly backup loop (pid 432908, alive) deferred at 19:20, 20:25 and 21:30 UTC with "local database not ready"; it clears itself at its next tick (~22:35 UTC); no action | `worker-logs\BingooEdgeBackup.out.log` |
+
+```
+MYSQL=READY 21:52:26Z (not started by the session); INTEGRITY=445/445 OK, 0 recovery errors; ROWSETS=IDENTICAL_TO_T0; OUTBOX=0 pending / 0 failed
+LAB=STANDBY, lease cloud, heartbeat advancing, print+authority workers restarted by plan identity; health DEGRADED only until the next hourly backup
+HOST=NOT STABLE: TechHub 10.56 M handles / 5.2 GB and Realtek 3.7 GB untouched, exhaustion events still logged (21:20, 21:42); Waves fixed; commit 50.4/61.6
+AGENTS=E/F remain PAUSED (owner item 1) until the owner confirms the TechHub/Realtek fix
+```
