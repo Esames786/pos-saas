@@ -192,3 +192,37 @@ zaroorat nahi.
 
 **Gate:** paise ki hisaab-kitaab wali screen hai → poora catering MySQL suite, phir system map rebuild, phir
 malik ki "deploy" par deploy (smoke `tb_diff=0`).
+
+## Deployed — 31 Oct 2026 ~23:57 UTC (1 Nov 04:57 PKT), merge `e2c54e18`
+
+- **Before the deploy:**
+  - Owner's word: "teekh hai testting start karo" … "phr deploy kardena".
+  - Production had not moved since this branch's base (`1ca68d1b`), so the merge is exactly this release's 10 files.
+  - Full MySQL suite on `89a35053`: 2583 tests, 6 red.
+    - 1 was this release's own Finalize check. Restore and Save ran in the same second in the test, so two versions
+      had the same `superseded_at`. The test now moves the clock a minute between them (`1613b510`). Re-run: all 18
+      restore + history tests green.
+    - 5 were the online-ordering website-domain tests. They fail only because this worktree's `.env` has
+      `TENANT_BASE_DOMAIN=test`, so `oosite-foods.test` looks like a Bingoo subdomain. With
+      `TENANT_BASE_DOMAIN=mywebsite.test` the same 11 tests are green. This release touches no website file.
+  - System map rebuilt (`4acf5c5f`): 236 tables, 745 screens, the same as before. No schema or route change.
+  - origin == HEAD == `e2c54e18` was checked before `deploy.sh`.
+  - Production read-only checks before: smoke clean, and Kashif Kitchen had 482 bookings with quotes, exactly one live
+    version each (live total 81,584,590.53). No booking already looked "restored", so no editor opens by itself after
+    the deploy.
+- **`deploy.sh`:** exit 0, tenants ok=11 skipped=2 (the two demos with no tenant DB, as before). Nothing to migrate.
+- **After the deploy:**
+  - Smoke clean: tb_diff 0, neg_on_disallowed 0, department_negative 0, every tenant.
+  - Kashif Kitchen: the same 482 bookings, one live version each, the same live total, "restored" 0.
+  - **Permissions:** every tenant's role, grant and user counts are identical before and after (master 70→70,
+    kashifkitchen 2009→2009, khatribiryani 1875→1875, …; 703 permissions both sides). The role-by-role diff did NOT run.
+    `sudo` dropped `PERM_SNAP=after`, so the "after" run wrote over `/tmp/perm_before.json`. This release adds no
+    permission, so equal counts are strong evidence, but not the usual diff. Next time put the variable after `env`
+    (`sudo -u www-data env PERM_SNAP=after …`).
+  - Booking 470 (the client's example) renders through the real controller as the owner: Q2 sent is current, Q1
+    superseded, and the Restore button carries the new wording ("koi nayi Q nahi banegi"). Restore was NOT pressed on
+    prod; that booking belongs to the client.
+  - No new error in the app log after the deploy. The only errors are the known `printing:autoclose-stuck` and the
+    check script's own tinker folder attempts.
+- **Note for prod scripts:** tinker as `www-data` cannot write `/var/www/.config/psysh`. Run it with
+  `env XDG_CONFIG_HOME=/tmp/psysh_wd HOME=/tmp/psysh_wd`.
