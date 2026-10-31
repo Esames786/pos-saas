@@ -30,11 +30,10 @@ use Illuminate\Validation\ValidationException;
  * and both are checked again on save. A section is written only when the product, as saved, needs it AND the user
  * changed it: each section posts a fingerprint of what it showed (`_was`), so an untouched section writes nothing (its
  * lines keep their ids), and a section changed on its own screen after this page opened is refused, never overwritten.
- * What a section does not show keeps its saved value: the recipe's name, numbers, notes and overhead, each line's cost
- * override and order types; the BOM's number, name, version, status, date and notes; the profile's pricing mode (fixed,
- * read by nothing — CAT-PRICE-001); each block's rate basis, rate source and role. (CATERING-SIMPLIFY-1: the profile's
- * switches, labels, instructions and the Urdu name are shown on the tab now, so the Catering Products pop-up is not
- * needed to edit them.) A block that follows the house rate book keeps its rate.
+ * Advanced recipe/BOM metadata, ingredient settings and block rate source/basis/role are editable in collapsed
+ * sections. They participate in stale-edit detection just like the visible lines. The profile's dormant pricing mode
+ * and saved ingredient variant stay preserved. A block already following the house rate book keeps its applied rate;
+ * linking and unlinking use the existing writer and audit.
  */
 final class ProductWorkspace
 {
@@ -147,9 +146,6 @@ final class ProductWorkspace
                 'state' => $state, 'was' => self::fingerprint($state), 'recipe' => $recipe,
                 'options' => $this->itemOptions($product, collect($state['lines'])->pluck('product_id')->all(), null),
                 'sections' => RecipeIngredient::SECTIONS,
-                // The Recipes screen's own cost figure (RecipeCostService::breakdown): purchase price ÷ pack size, × quantity.
-                'overrides' => $recipe ? $recipe->ingredients()->with('product:id,purchase_pack_size')->whereNotNull('cost_override')->get()
-                    ->mapWithKeys(fn ($l) => [$l->id => round((float) $l->cost_override / ((float) ($l->product?->purchase_pack_size ?: 0) ?: 1.0), 4)])->all() : [],
             ];
         } elseif ($product && $this->currentRecipe($product)) {
             $out['kept'][] = 'Recipe';
@@ -214,20 +210,31 @@ final class ProductWorkspace
     private function recipeSaved(?Recipe $recipe): array
     {
         return $this->recipeState(
-            $recipe ? ['yield_quantity' => $recipe->yield_quantity, 'yield_unit_id' => $recipe->yield_unit_id] : [],
-            $recipe ? $recipe->ingredients()->orderBy('sort_order')->orderBy('id')->get()->map(fn ($l) => $l->only(['id', 'product_id', 'quantity', 'unit_id', 'line_section']))->all() : []
+            $recipe ? $recipe->only(['name', 'is_active', 'notes', 'doc_no', 'recipe_no', 'revision_no', 'overhead_percent', 'yield_quantity', 'yield_unit_id'])
+                + ['review_date' => $recipe->review_date?->format('Y-m-d')] : [],
+            $recipe ? $recipe->ingredients()->orderBy('sort_order')->orderBy('id')->get()->map(fn ($l) => $l->only(['id', 'product_id', 'quantity', 'unit_id', 'line_section', 'cost_override', 'applicable_order_types']))->all() : []
         );
     }
 
     private function recipeState(array $header, array $lines): array
     {
         return [
+            'name' => self::text($header['name'] ?? null),
+            'is_active' => self::flag($header['is_active'] ?? null, true),
+            'notes' => self::text($header['notes'] ?? null),
+            'doc_no' => self::text($header['doc_no'] ?? null),
+            'recipe_no' => self::text($header['recipe_no'] ?? null),
+            'revision_no' => self::num($header['revision_no'] ?? null) ?? '1',
+            'review_date' => self::text($header['review_date'] ?? null),
+            'overhead_percent' => self::num($header['overhead_percent'] ?? null) ?? '0',
             'yield_quantity' => self::num($header['yield_quantity'] ?? null) ?? '1',
             'yield_unit_id'  => self::id($header['yield_unit_id'] ?? null),
             'lines' => self::rows($lines, ['product_id', 'quantity'], fn ($l) => [
                 'id' => self::id($l['id'] ?? null), 'product_id' => self::id($l['product_id'] ?? null),
                 'quantity' => self::num($l['quantity'] ?? null), 'unit_id' => self::id($l['unit_id'] ?? null),
                 'line_section' => (string) (($l['line_section'] ?? null) ?: 'food_cost'),
+                'cost_override' => self::num($l['cost_override'] ?? null),
+                'applicable_order_types' => self::orderTypes($l['applicable_order_types'] ?? null),
             ]),
         ];
     }
@@ -235,19 +242,27 @@ final class ProductWorkspace
     private function bomSaved(?ManufacturingBom $bom): array
     {
         return $this->bomState(
-            $bom ? ['output_quantity' => $bom->output_quantity] : [],
-            $bom ? $bom->lines()->orderBy('sort_order')->orderBy('id')->get()->map(fn ($l) => $l->only(['id', 'component_product_id', 'quantity', 'unit_id', 'wastage_percent']))->all() : []
+            $bom ? $bom->only(['bom_no', 'name', 'version', 'status', 'notes', 'output_quantity'])
+                + ['effective_from' => $bom->effective_from?->format('Y-m-d')] : [],
+            $bom ? $bom->lines()->orderBy('sort_order')->orderBy('id')->get()->map(fn ($l) => $l->only(['id', 'component_product_id', 'quantity', 'unit_id', 'wastage_percent', 'notes']))->all() : []
         );
     }
 
     private function bomState(array $header, array $lines): array
     {
         return [
+            'bom_no' => self::text($header['bom_no'] ?? null),
+            'name' => self::text($header['name'] ?? null),
+            'version' => self::text($header['version'] ?? null) ?? '1',
+            'status' => self::text($header['status'] ?? null) ?? 'active',
+            'effective_from' => self::text($header['effective_from'] ?? null),
+            'notes' => self::text($header['notes'] ?? null),
             'output_quantity' => self::num($header['output_quantity'] ?? null) ?? '1',
             'lines' => self::rows($lines, ['component_product_id', 'quantity'], fn ($l) => [
                 'id' => self::id($l['id'] ?? null), 'component_product_id' => self::id($l['component_product_id'] ?? null),
                 'quantity' => self::num($l['quantity'] ?? null), 'unit_id' => self::id($l['unit_id'] ?? null),
                 'wastage_percent' => self::num($l['wastage_percent'] ?? null) ?? '0',
+                'notes' => self::text($l['notes'] ?? null),
             ]),
         ];
     }
@@ -298,7 +313,7 @@ final class ProductWorkspace
 
     private function blocksSaved(Collection $blocks): array
     {
-        return $this->blocksState($blocks->map(fn ($b) => $b->only(['id', 'label', 'block_type', 'charge_basis', 'rate', 'material_product_id', 'quantity_per_unit', 'unit_id']))->all());
+        return $this->blocksState($blocks->map(fn ($b) => $b->only(['id', 'label', 'block_type', 'charge_basis', 'rate', 'material_product_id', 'quantity_per_unit', 'unit_id', 'rate_basis', 'commercial_rate_source', 'charge_role']))->all());
     }
 
     private function blocksState(array $lines): array
@@ -311,7 +326,25 @@ final class ProductWorkspace
             'material_product_id' => self::id($b['material_product_id'] ?? null),
             'quantity_per_unit' => self::num($b['quantity_per_unit'] ?? null),
             'unit_id' => self::id($b['unit_id'] ?? null),
+            'rate_basis' => self::text($b['rate_basis'] ?? null),
+            'commercial_rate_source' => self::text($b['commercial_rate_source'] ?? null),
+            'charge_role' => self::text($b['charge_role'] ?? null),
         ])];
+    }
+
+    /** Selection order is immaterial. Retain invalid values for the writer to reject. */
+    private static function orderTypes($types): mixed
+    {
+        if (! is_array($types)) {
+            return $types === '' ? null : $types;
+        }
+        if (collect($types)->contains(fn ($type) => ! is_string($type))) {
+            return $types; // Leave malformed values to the writer's validation.
+        }
+        $types = array_values(array_unique($types));
+        sort($types);
+
+        return $types === [] || $types === ['all'] ? null : $types;
     }
 
     /** The posted rows that say something (an empty added row is not a line), each in the section's shape. Keys stay. */
@@ -452,26 +485,26 @@ final class ProductWorkspace
                 'product_id' => $l['product_id'], 'quantity' => $l['quantity'], 'unit_id' => $l['unit_id'], 'line_section' => $l['line_section'],
                 // Not shown here — kept from the saved line (a variant only while the line keeps its item).
                 'product_variant_id' => $old && (int) $old->product_id === $l['product_id'] ? $old->product_variant_id : null,
-                'cost_override' => $old?->cost_override,
-                'applicable_order_types' => $old?->applicable_order_types,
+                'cost_override' => $l['cost_override'],
+                'applicable_order_types' => $l['applicable_order_types'],
                 'sort_order' => $pos++,
             ];
         }
         if ($lines === []) {
             throw ValidationException::withMessages(['ingredients' => 'Keep at least one ingredient. If it is no longer made from a recipe, answer No to "Is it made from other items?" on Selling & stock.']);
         }
+        $header = array_intersect_key($in, array_flip(['name', 'is_active', 'notes', 'doc_no', 'recipe_no', 'revision_no', 'review_date', 'overhead_percent']))
+            + $this->recipeSaved($recipe);
+        if (! $recipe && empty($header['name'])) {
+            $header['name'] = mb_substr($product->name, 0, 190);
+        }
         $data = $this->recipes->validate([
             'product_id' => $product->id,
-            'name' => $recipe?->name ?? mb_substr($product->name, 0, 190),
             'yield_quantity' => $in['yield_quantity'] ?? null,
             'yield_unit_id' => $in['yield_unit_id'] ?? null,
-            // Not shown here — kept from the saved recipe.
-            'notes' => $recipe?->notes, 'doc_no' => $recipe?->doc_no, 'recipe_no' => $recipe?->recipe_no,
-            'revision_no' => $recipe?->revision_no, 'review_date' => $recipe?->review_date?->format('Y-m-d'),
-            'overhead_percent' => $recipe?->overhead_percent,
             'ingredients' => $lines,
-        ], ['ingredients.*.product_id' => 'ingredient', 'ingredients.*.quantity' => 'quantity', 'ingredients.*.unit_id' => 'unit', 'yield_quantity' => '"makes"']);
-        $active = $recipe ? (bool) $recipe->is_active : true;
+        ] + $header, ['ingredients.*.product_id' => 'ingredient', 'ingredients.*.quantity' => 'quantity', 'ingredients.*.unit_id' => 'unit', 'yield_quantity' => '"makes"']);
+        $active = (bool) $data['is_active'];
         if ($recipe && $this->recipes->unchanged($recipe, $data, $active)) {
             return;
         }
@@ -481,34 +514,29 @@ final class ProductWorkspace
     private function saveBom(Product $product, array $in, ?int $userId): void
     {
         $bom = $this->currentBom($product);
-        $saved = $bom ? $bom->lines()->get()->keyBy('id') : collect();
         $lines = [];
         $pos = 0;
         foreach ($this->bomState($in, (array) ($in['lines'] ?? []))['lines'] as $k => $l) {
-            $old = $l['id'] ? $saved->get($l['id']) : null;
             $lines[$k] = [
                 'component_product_id' => $l['component_product_id'], 'quantity' => $l['quantity'], 'unit_id' => $l['unit_id'],
                 'wastage_percent' => $l['wastage_percent'],
-                // Not shown here — kept from the saved line.
-                'notes' => $old?->notes,
+                'notes' => $l['notes'],
                 'sort_order' => $pos++,
             ];
         }
         if ($lines === []) {
             throw ValidationException::withMessages(['lines' => 'Keep at least one material. To stop using this bill of materials, archive it on the Bill of materials screen.']);
         }
+        $details = array_intersect_key($in, array_flip(['bom_no', 'name', 'version', 'status', 'effective_from', 'notes']))
+            + $this->bomSaved($bom);
+        if (! $bom && empty($details['name'])) {
+            $details['name'] = mb_substr($product->name, 0, 255);
+        }
         [$header, $valid] = $this->boms->validate([
-            'bom_no' => $bom?->bom_no ?? '',
             'finished_product_id' => $product->id,
             'output_quantity' => $in['output_quantity'] ?? null,
-            // Not shown here — kept from the saved BOM; a new one starts active, version 1, named after the product.
-            'name' => $bom ? $bom->name : mb_substr($product->name, 0, 255),
-            'version' => $bom?->version ?? '1',
-            'status' => $bom?->status ?? 'active',
-            'effective_from' => $bom?->effective_from?->format('Y-m-d'),
-            'notes' => $bom?->notes,
             'lines' => $lines,
-        ], $bom, ['lines.*.component_product_id' => 'material', 'lines.*.quantity' => 'quantity', 'lines.*.wastage_percent' => 'waste %', 'output_quantity' => '"makes"']);
+        ] + $details, $bom, ['lines.*.component_product_id' => 'material', 'lines.*.quantity' => 'quantity', 'lines.*.wastage_percent' => 'waste %', 'output_quantity' => '"makes"']);
         if ($bom && $this->boms->unchanged($bom, $header, $valid)) {
             return;
         }
@@ -522,15 +550,21 @@ final class ProductWorkspace
         foreach ($this->blocksState((array) ($in['lines'] ?? []))['lines'] as $k => $b) {
             $old = $b['id'] ? $existing->get($b['id']) : null;
             $material = $b['block_type'] === CateringProductCostBlock::TYPE_MATERIAL;
+            $source = $b['commercial_rate_source'] ?? $old?->commercial_rate_source;
+            $staysLinked = $old && $old->followsCommercialBook() && $source === CateringProductCostBlock::SOURCE_COMMERCIAL_BOOK;
+            if ($staysLinked && ((int) $old->material_product_id !== $b['material_product_id'] || (int) $old->unit_id !== (int) $b['unit_id'])) {
+                throw ValidationException::withMessages(['blocks' => 'To change a linked material or its unit, choose Manual rate first, save, then link the new material to the house rate book.']);
+            }
             $rows[$k] = [
                 'id' => $old?->id, 'label' => $b['label'], 'block_type' => $b['block_type'], 'charge_basis' => $b['charge_basis'],
                 // A block that follows the house rate book keeps its rate: only the book (or the Cost blocks screen) moves it.
-                'rate' => $old && $old->followsCommercialBook() ? $old->rate : $b['rate'],
+                'rate' => $staysLinked ? $old->rate : $b['rate'],
                 'material_product_id' => $material ? $b['material_product_id'] : null,
                 'quantity_per_unit' => $material ? $b['quantity_per_unit'] : null,
                 'unit_id' => $material ? $b['unit_id'] : null,
-                // Not shown here — kept from the saved block.
-                'rate_basis' => $old?->rate_basis, 'commercial_rate_source' => $old?->commercial_rate_source, 'charge_role' => $old?->charge_role,
+                'rate_basis' => $b['rate_basis'] ?? $old?->rate_basis,
+                'commercial_rate_source' => $source,
+                'charge_role' => $b['charge_role'],
             ];
         }
         $data = $this->blocks->validate(['blocks' => $rows], ['blocks.*.label' => 'name', 'blocks.*.rate' => 'rate', 'blocks.*.material_product_id' => 'material', 'blocks.*.unit_id' => 'unit']);
