@@ -70,6 +70,7 @@ try {
             // stated, as the screen does (UB-04)
             refundAmount: round(array_sum(array_map(fn ($l) => (float) $l['quantity'] * (float) $l['unit_price'], $job['lines'])), 2),
             userId: (int) $job['user_id'],
+            refundShiftId: isset($job['refund_shift_id']) ? (int) $job['refund_shift_id'] : null,   // REFUND-SHIFT-H1: the paying shift
             submissionKey: $job['key'] ?? null,
             submissionHash: $job['hash'] ?? null,
         )
@@ -80,6 +81,7 @@ try {
             refundMethod: 'cash',
             refundAmount: null,
             userId: (int) $job['user_id'],
+            refundShiftId: isset($job['refund_shift_id']) ? (int) $job['refund_shift_id'] : null,   // REFUND-SHIFT-H1: the paying shift
             submissionKey: $job['key'] ?? null,
             submissionHash: $job['hash'] ?? null,
         );

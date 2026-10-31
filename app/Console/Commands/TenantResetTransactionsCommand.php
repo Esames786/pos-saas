@@ -277,6 +277,20 @@ class TenantResetTransactionsCommand extends Command
         // database that once hosted the Edge schema (a test database) is not mistaken for drift by the fail-closed check.
         'edge_auth_audit', 'edge_consumed_assertions', 'edge_local_print_deliveries', 'edge_local_print_worker_state',
         'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_operational_stock_movements',
+        // CANONICAL REHEARSAL Phase E (30 Oct 2026): the Branch Server tables the Edge branch added after canonical's list —
+        // sync outbox, lease worker / connection state, baseline cutovers, local backups + update records, table reservations,
+        // the F2/F3 supplier-finance and purchase-return projections + their local events — same class, same reason: appliance
+        // state that never exists on a cloud tenant; this command refuses to run on a Branch Server.
+        'edge_sync_outbox', 'edge_local_authority_worker_state', 'edge_local_connection_transitions', 'edge_baseline_cutovers',
+        'edge_local_backups', 'edge_local_updates', 'edge_local_table_reservations',
+        'edge_local_supplier_finance_events', 'edge_local_supplier_finance_effects', 'edge_supplier_finance_applied_events',
+        'edge_supplier_finance_suppliers', 'edge_supplier_finance_bills', 'edge_supplier_finance_accounts',
+        'edge_supplier_finance_cash_bank_accounts', 'edge_supplier_finance_ledger_entries',
+        'edge_local_purchase_return_events', 'edge_local_purchase_return_lines', 'edge_purchase_return_applied_events',
+        'edge_purchase_return_grns', 'edge_purchase_return_grn_lines',
+        // EDGE PHASE 4 (offline add-customer): the appliance's customer_uuid → Cloud customer map is customer IDENTITY, kept
+        // with the customers it names (a reset wipes transactions, never who the customers are).
+        'customer_uuid_aliases',
         // Catering CONFIGURATION, kept for the same reason recipes are: it
         // describes how the business quotes and costs, not what it has sold.
         // The Material Rate Book in particular is a caterer's price list — losing

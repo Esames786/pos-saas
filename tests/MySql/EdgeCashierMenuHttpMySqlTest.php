@@ -391,13 +391,15 @@ class EdgeCashierMenuHttpMySqlTest extends MySqlTenantTestCase
 
         $held = $this->postJson('/edge/local/pos/held-sales', ['order_type' => 'takeaway', 'lines' => [['product_id' => $this->drink, 'quantity' => 2]]])->assertStatus(201)->json();
         $line = DB::connection('tenant')->table('sales_order_lines')->where('sales_order_id', $held['sale_id'])->first();
-        // without the flag a different session is still refused (lock-order guard unchanged)
+        // without the flag a different session is still refused — since Phase E (R-4, MOVE-TABLE-CART-1 twin) with Online's own
+        // key and words (a stale cart: "Bill … is a Takeaway bill, not Table G1 …"); the lock-order guard still covers an OMITTED session
         try {
             $pos->holdOrReviseSale(['held_sale_id' => $held['sale_id'], 'order_type' => 'dine_in', 'restaurant_table_session_id' => $session->id,
                 'lines' => [['sales_order_line_id' => $line->id, 'product_id' => $this->drink, 'quantity' => 2]]], $user, $this->terminalId);
             $this->fail('a session change without change_order_details must be refused');
         } catch (\Illuminate\Validation\ValidationException $e) {
-            $this->assertArrayHasKey('restaurant_table_session_id', $e->errors());
+            $this->assertArrayHasKey('held_sale_id', $e->errors());
+            $this->assertStringContainsString('is a Takeaway bill, not Table G1. Nothing was saved.', $e->errors()['held_sale_id'][0]);
         }
         // R21 Change Order Details: the takeaway check moves onto the table as dine-in (Online revision semantics)
         $moved = $pos->holdOrReviseSale(['held_sale_id' => $held['sale_id'], 'change_order_details' => true, 'order_type' => 'dine_in', 'restaurant_table_session_id' => $session->id,

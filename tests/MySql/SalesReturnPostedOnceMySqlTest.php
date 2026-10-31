@@ -36,6 +36,10 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
 
     private int $userId;
 
+    private int $terminalId;
+
+    private int $shiftId;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -44,11 +48,15 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
             'cash_bank_account_transactions', 'journal_lines', 'journal_entries', 'sales_ledgers',
             'sales_return_lines', 'sales_returns', 'sale_payments', 'sales_order_lines',
             'sales_orders', 'stock_ledgers', 'stock_balances', 'inventory_batches',
-            'products', 'categories', 'accounts', 'branches', 'users',
+            'products', 'categories', 'accounts', 'shifts', 'terminals', 'branches', 'users',
         ]);
         (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
         $this->branchId = $this->makeBranch();
         $this->userId = $this->makeUser();
+        // REFUND-SHIFT-H1 (Edge branch owner rule, 22 Oct 2026; kept in the canonical rehearsal): a CASH refund leaves a drawer, so
+        // SalesReturnService refuses it without a PAYING shift. These posts name the counter's open shift, as the Online form does.
+        $this->terminalId = $this->makeTerminal($this->branchId);
+        $this->shiftId = (int) app(\App\Services\Sales\ShiftService::class)->open(Branch::findOrFail($this->branchId), \App\Models\Tenant\Terminal::findOrFail($this->terminalId), $this->userId, 0.0)->id;
         $this->resetKeyCache();
     }
 
@@ -168,7 +176,7 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
     {
         [$p, $sale, $line] = $this->soldThree();
         $before = $this->stock($p);
-        $job = ['mode' => 'bill', 'sale_id' => $sale, 'branch_id' => $this->branchId, 'user_id' => $this->userId,
+        $job = ['mode' => 'bill', 'sale_id' => $sale, 'branch_id' => $this->branchId, 'user_id' => $this->userId, 'refund_shift_id' => $this->shiftId,
             'lines' => [['sales_order_line_id' => $line, 'quantity' => 1]], 'key' => SubmissionKey::fresh(), 'hash' => SubmissionKey::hash(['qty' => 1])];
 
         [$out, $queued] = $this->race('SELECT id FROM sales_orders WHERE id = ? FOR UPDATE', [$sale], [$job, $job]);
@@ -186,7 +194,7 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
         $p = $this->stocked('Loose Soap');
         $before = $this->stock($p);
         $balanceKey = (string) DB::table('stock_balances')->where('product_id', $p)->value('balance_key');
-        $job = ['mode' => 'no_bill', 'branch_id' => $this->branchId, 'user_id' => $this->userId,
+        $job = ['mode' => 'no_bill', 'branch_id' => $this->branchId, 'user_id' => $this->userId, 'refund_shift_id' => $this->shiftId,
             'lines' => [['product_id' => $p, 'quantity' => 2, 'unit_price' => 100, 'restock' => 1]],
             'key' => SubmissionKey::fresh(), 'hash' => SubmissionKey::hash(['qty' => 2])];
 
@@ -205,7 +213,7 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
     {
         [$p, $sale, $line] = $this->soldThree();
         $before = $this->stock($p);
-        $job = fn () => ['mode' => 'bill', 'sale_id' => $sale, 'branch_id' => $this->branchId, 'user_id' => $this->userId,
+        $job = fn () => ['mode' => 'bill', 'sale_id' => $sale, 'branch_id' => $this->branchId, 'user_id' => $this->userId, 'refund_shift_id' => $this->shiftId,
             'lines' => [['sales_order_line_id' => $line, 'quantity' => 2]], 'key' => SubmissionKey::fresh(), 'hash' => SubmissionKey::hash(['qty' => 2])];
 
         [$out, $queued] = $this->race('SELECT id FROM sales_orders WHERE id = ? FOR UPDATE', [$sale], [$job(), $job()]);
@@ -373,7 +381,7 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
     {
         return app(SalesReturnService::class)->processReturn(
             SalesOrder::findOrFail($sale), $lines, 'test', 'cash', null, $this->userId,
-            submissionKey: $key, submissionHash: $hash,
+            refundShiftId: $this->shiftId, submissionKey: $key, submissionHash: $hash,
         );
     }
 
@@ -384,7 +392,7 @@ class SalesReturnPostedOnceMySqlTest extends MySqlTenantTestCase
 
         return app(SalesReturnService::class)->processNoBillReturn(
             Branch::findOrFail($this->branchId), $lines, 'test', 'cash', $refund, $this->userId,
-            submissionKey: $key, submissionHash: $hash,
+            refundShiftId: $this->shiftId, submissionKey: $key, submissionHash: $hash,
         );
     }
 
