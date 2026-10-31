@@ -157,4 +157,27 @@ cannot answer its own health probe within 10 s for more than 2 minutes is recycl
 15 s). They happened only while a Playwright session hammered a single-threaded backend on a laptop saturated by two concurrent test programmes. They are reported, not
 hidden: FALSE_RESTARTS for the Phase A acceptance window was 0 (12:09–13:06 UTC, 57 min, host 85–97 %).
 
-PHASE_D3_PLACEHOLDER
+### D.3 Quiet re-run of D2 (31 Oct 07:01–07:04 UTC; `phase-d\edge-gateway-quiet-rerun\`, summary `phase-d\quiet-rerun-summary.txt`)
+
+Run after both preparation agents had stopped (no phpunit / Playwright of theirs alive; CPU 72 % at the start from the owner's browsers and a different
+project's test run on this host, 30 % at the end). Same harness, same arguments (`--only W01,W18,W15`), secrets read from `secrets\cashier.pass` /
+`secrets\approver.pass` into the environment only.
+
+| check | result |
+|---|---|
+| gateway `GET /edge/local/health` × 20 before / × 20 after | **40 × 200**, slowest 1.29 s / 1.10 s, **0 × 502** |
+| W01 login + POS renders (gateway, LAB2C5D) | **PASS** — POST 302 → `/edge/local/pos` in 4.9 s, `POS_RUNTIME` mode edge, 15 tiles, slot `STANDBY · CLOUD AUTHORITY`, `0 pending sync`, terminal `Lab Counter 1 — Home Lab Branch` |
+| W18 reminder-pause | **EXPECTED-DIFFERENCE** — shift-status carries the reminder block, capability `reminderPause` ON + route, control rendered ENABLED by the server, pause answers **422 `STANDBY`** "Local Mode is not active — the Cloud POS is the active writer for this branch (standby)." — no write |
+| W15 customer quick-add | **EXPECTED-DIFFERENCE** — quick-add panel appears for an unmatched name (save enabled, capability `customerCreate` true), quick-store answers **422 `STANDBY`** (same message) — no customer created. This is the check that was inconclusive under the agents' load; on a quiet host it behaves exactly as on 0.8.1 |
+| supervisor counters before → after | backend #1 restarts **2 → 2**, backend #2 **1 → 1** (the three bounded restarts of the saturated pass remain the only ones since the install); both HEALTHY, probe ok 3.6 s / 4.6 s, `busy_ticks` 0 |
+| health | `STANDBY_READY`, 0.8.2-edge, authority standby/online, acks 204 → 211, failures 0, `auto_failover_enabled` false, problems `[]` |
+| lease | holder **cloud**, state standby, seq 51327 → 51332, `fenced_at` null |
+| rowsets | appliance 6 sales / 25 lines / outbox 5 acked / 2 customers / 17 movements / 0 open shifts; Cloud 5 sales / 20 lines / 5 ingestions / 2 customers / 0 open shifts; all seven MD5s identical to the pre-install baseline (`9bbd2ad2…`, `cc04a3e4…`, `c9c08b1d…`, `e42077b9…`, `0dac7dbb…`, `49bb4ea1…`, `e39a8d18…`); the only table whose CHECKSUM changed between before and after is `edge_local_meta` (heartbeat metadata) |
+| harness output | 0 lines matching 50x / timeout; exit 0 |
+
+Phase D verdict: **STANDBY_BROWSER_ACCEPTANCE = PASS for the standby-safe checks** (W01 both runtimes, W18 + W15 standby refusals, pixels, geometry);
+W07/W08 approval UI and the physical second-laptop check remain NOT exercised (Phase C credentials, no dummy transactions, owner's hardware).
+```
+STANDBY_BROWSER_ACCEPTANCE=PASS (W01 Online + Edge, W18/W15 = 422 STANDBY, 0 x 502, 0 new restarts, rowsets identical)   FALSE_RESTARTS_QUIET_RERUN=0   GATEWAY_502_QUIET_RERUN=0
+EDGE_ONLINE_GEOMETRY=NONE (D5, 998 boxes)   REAL_SECOND_LAPTOP_CHECK=NOT_RUN (owner hardware)   W07_W08_APPROVAL_UI=NOT_EXERCISED (Phase C)
+```
