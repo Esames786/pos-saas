@@ -241,3 +241,20 @@ Rollback inside the exercise: if step 2 refuses → stay standby, restart the Cl
 ```
 LOCAL_MODE_TEST_READY=YES on the appliance side (all four commands exist on 0.8.2 and ran end-to-end on 26 Sep on 0.7.0; 0.8.2 gates green) — pending Phase C (approver flag) and a stable host (B.6)
 ```
+
+## Incident B.7 — mysqld down a THIRD time, 31 Oct ~15:34 UTC: the C: drive is full (0.04 GB free of 238 GB)
+
+No mysqld process, no 3306 listener, nothing written to the error log this time (abrupt death). Cause as read from the host: **C: 0.04 GB free**,
+page file on C: (allocated 32,000 MB, cannot grow), commit 56.7 of 62.9 GB; the vendor-service leak of B.6 is unchanged. The LAB print and
+authority workers (pids 476152 / 473880) exited with the database again; gateway, web backends, sync-sender and backup task alive; the appliance
+stays in standby, the Cloud is the writer, no sale is affected. **Decision: mysqld is NOT restarted by me this time** — with no free space on
+the system drive a restart would most likely die again and a third crash while InnoDB is recovering risks the redo log itself. Owner actions
+first: free C: (the largest removable items I can see from this account: `%TEMP%\claude` 1.4 GB — other sessions' tool stores, mine is 21 MB — plus
+`vscode-stable-user-x64` 240 MB, `seera-zatca-lock-test-*` 217 MB, `Diagnostics` 100 MB; a real fix needs ≥ 10 GB), then restart or disable the
+leaking `Dell TechHub Instrumentation` / Realtek audio services (or reboot — ask-before rule), then `mysqld --defaults-file=D:\laragon2\bin\mysql\mysql-8.0.30-winx64\my.ini`,
+then `restart-dead-workers-b6.ps1` for the two dead LAB workers (the FakePrinter pid 471212 should be checked too). Agent F's final gates finished
+before the crash (full Edge MySQL suite 730 passed / 1 skipped / 0 failed); Agent E's browser programme was paused; both agents told not to launch.
+
+```
+HOST_BLOCKER=C: FULL + vendor-service handle/commit leak -> three mysqld deaths in 26 h; every further gate, the Phase C work, the second-laptop walk and the Local Mode exercise wait for the owner's host cleanup
+```
