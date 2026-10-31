@@ -159,7 +159,14 @@ class CateringEventHistoryMySqlTest extends MySqlTenantTestCase
     // Restoring a quotation version (Phase B)
     // ─────────────────────────────────────────────────────────────────────────
 
-    public function test_restoring_a_superseded_version_copies_it_forward_and_touches_nothing_behind(): void
+    /**
+     * CATERING-RESTORE-IN-PLACE-1 (31 Oct) — the owner changed this rule.
+     * Restore used to copy Q1 forward as a new draft Q3; the client complained
+     * that every restore made a new revision. Now Q1 itself comes back and no
+     * version is made. The full guard set (money, kitchen sheet, invoice, the
+     * Save that makes the next revision) is CateringRestoreInPlaceMySqlTest.
+     */
+    public function test_restoring_a_superseded_version_brings_it_back_and_touches_nothing_behind(): void
     {
         $before = $this->ledgers();
 
@@ -174,33 +181,26 @@ class CateringEventHistoryMySqlTest extends MySqlTenantTestCase
         ]]);
         $this->estimates->markSent($q2->refresh());
 
-        $q3 = $this->estimates->restoreVersion($q1->refresh());
+        $restored = $this->estimates->restoreVersion($q1->refresh());
 
-        $this->assertSame(3, (int) $q3->version_no);
-        $this->assertTrue($q3->isDraft());
-        $this->assertStringContainsString('Restored from Q1', (string) $q3->notes);
+        // Q1 itself, not a copy — back to what it was, with its own lines.
+        $this->assertSame($q1->id, $restored->id);
+        $this->assertSame(CateringEstimate::STATUS_SENT, $restored->status);
+        $this->assertSame(2, CateringEstimate::where('catering_event_id', $event->id)->count());
+        $this->assertSame($q1->id, $event->refresh()->currentEstimate->id);
+        $this->assertSame(10.0, (float) $restored->lines()->first()->quantity);
 
-        // The restored draft IS Q1's content: same line, same quantity, same
-        // block snapshots, same money.
-        $q1->refresh();
-        $line3 = $q3->lines()->first();
-        $line1 = $q1->lines()->first();
-        $this->assertSame((float) $line1->quantity, (float) $line3->quantity);
-        $this->assertSame((float) $line1->rate, (float) $line3->rate);
-        $this->assertSame(
-            $line1->costBlocks()->count(),
-            $line3->costBlocks()->count(),
-        );
-        $this->assertSame((float) $q1->grand_total, (float) $q3->grand_total);
-
-        // Q2 stepped aside; Q1 is untouched history.
+        // Q2 stepped aside with its own story intact.
         $this->assertSame(CateringEstimate::STATUS_SUPERSEDED, $q2->refresh()->status);
-        $this->assertSame(CateringEstimate::STATUS_SUPERSEDED, $q1->status);
         $this->assertSame(25.0, (float) $q2->lines()->first()->quantity, 'the superseded version keeps its own story');
 
         // A current (non-superseded) version refuses to be "restored".
-        $this->expectException(\RuntimeException::class);
-        $this->estimates->restoreVersion($q3->refresh());
+        try {
+            $this->estimates->restoreVersion($restored->refresh());
+            $this->fail('the current version cannot be restored');
+        } catch (\RuntimeException) {
+            // expected
+        }
 
         $this->assertSame($before, $this->ledgers());
     }
