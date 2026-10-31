@@ -657,7 +657,9 @@ class MasterUniverseMySqlTest extends MySqlTenantTestCase
             if ($prelude === '' || str_starts_with($prelude, '@')) {
                 continue; // @media / @supports wrappers
             }
-            foreach (explode(',', $prelude) as $sel) {
+            // Split only at top-level commas: `body.master-ui .table tr:is(.table-warning, .table-success)` is ONE
+            // scoped selector — the commas inside :is( … ) are not new selectors.
+            foreach (preg_split('/,(?![^()]*\))/', $prelude) as $sel) {
                 $selectors++;
                 $this->assertStringStartsWith('body.master-ui', trim($sel), 'unscoped selector: ' . trim($sel));
             }
