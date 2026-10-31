@@ -63,3 +63,31 @@ subscription (`extendsSubscriptionPeriod()`, unchanged).
     `.loose`, `.x:is(.a, .b)` and `…:is(.a, .b), .c`.
   - The MASTER-HISAB-1 record said the CSS edit during that run "is not executed by tests". That was wrong: this test
     reads the file.
+
+## Deployed — 31 Oct 2026 ~08:30 UTC (13:30 PKT), merge `f8af185a`
+
+- **Before the deploy:**
+  - Owner's word: "kardo deploy".
+  - Production had moved on twice since this branch's base: SHIFT-HANDOVER-1 `5bdaac80`, then product advanced
+    settings `b78d8dba` (record `51046d03`). Production was merged into the branch (`77d87bcf`); only the system map
+    conflicted. Against production the merge differs by this release's 4 files only, and none of the other release's 28
+    files touch billing.
+  - The merged tree was NOT re-run. Local MySQL was down at the time and another session's tests were using it, so it was
+    not started from here. The tested code is byte-identical on top.
+  - origin == HEAD == `f8af185a` was checked before `deploy.sh`.
+  - Master backup `20261031_082935`. RECON=before was taken at 08:29.
+  - PERM_SNAP=before did NOT run: `/tmp/perm_snapshot.php` had vanished from prod. The after-compare therefore used the
+    30 Oct 21:34 snapshot, and the script was put back from a local copy.
+- **`deploy.sh`:** tenants ok=11 skipped=2 (the two demos with no tenant DB, as before). No migration in this release.
+- **After the deploy:**
+  - Smoke clean: tb_diff 0, neg_on_disallowed 0, department_negative 0.
+  - **PERMISSIONS OK:** every role's grants identical (master 70→70), no user changed.
+  - Reconciliation: GL totals unchanged everywhere. The 6 "unexplained" are kashiffood and khatribiryani POS tables: one
+    held order each was saved at the counter in the window (2 old lines gone, 3 re-inserted, 2 KOT links blanked each;
+    `recon_explain.php`). That is live use.
+  - The deployed file holds the fix (line 151).
+  - The access gate is OK for the live tenants. The one tenant reopened by hand this morning keeps `2027-10-31 23:59:59`.
+  - The only new log error is `printing:autoclose-stuck`, which has failed every 15 min since 21 Oct (demos with no DB;
+    already in open items).
+- **Still to do:** rebuild the system map once local MySQL is back. The branch's map is production's (`b78d8dba`) and does
+  not have this release.
