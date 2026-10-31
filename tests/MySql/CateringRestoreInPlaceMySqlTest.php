@@ -522,6 +522,11 @@ class CateringRestoreInPlaceMySqlTest extends MySqlTenantTestCase
         $q1Before = $this->storedRowsOf($q1->refresh());
         $this->actAsOperator();
 
+        // On the screen the page reloads and the person edits before Save. Without
+        // this, restore and Save land in the same second and the Finalize check
+        // below cannot tell which version was superseded last.
+        $this->travel(1)->minutes();
+
         $this->saveThroughTheScreen($q1->refresh(), $this->linesPayload($q1, ['Raita' => 6]));
 
         $this->assertNull($this->flash('errors'), 'Save mana nahi hona chahiye tha');
