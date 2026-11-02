@@ -1,8 +1,17 @@
 {
-    "built_at": "2026-11-02T08:46:14+00:00",
+    "built_at": "2026-11-02T09:30:51+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "75d7e97d",
     "work": [
+        {
+            "path": "D:/laragon2/www/pos-saas-webstore",
+            "branch": "feat/online-ordering-20261014",
+            "head": "114413b9",
+            "behind_prod": 0,
+            "ahead_of_prod": 1,
+            "last_commit": "2026-11-02\u00b7KOT-ORDER-NOTE-1 + WEB-ORDERS-ALERT-1: kitchen gets only its part of a website note; Order Note switch; the new-order alert rings until opened",
+            "uncommitted_files": 4
+        },
         {
             "path": "D:/laragon2/www/pos-saas",
             "branch": "feat/14d-2-plan-upgrade-requests",
@@ -29,15 +38,6 @@
             "ahead_of_prod": 216,
             "last_commit": "2026-11-01\u00b7docs: 0.8.2 LAB record - B.8 recovery: MySQL started 21:28 UTC outside the session, ready 21:52:26; read-only verification (0 recovery errors, CHECK TABLE 445/445 OK, all rowset MD5s identical to T0, outbox 0/0); print + authority workers restarted by plan identity (501708 / 368740); lease cloud, heartbeat advancing, STANDBY; health DEGRADED only for the stale hourly backup; host still unstable (TechHub leak), agents stay paused per owner order",
             "uncommitted_files": 1
-        },
-        {
-            "path": "D:/laragon2/www/pos-saas-webstore",
-            "branch": "feat/online-ordering-20261014",
-            "head": "75d7e97d",
-            "behind_prod": 0,
-            "ahead_of_prod": 0,
-            "last_commit": "2026-11-01\u00b7Deployment record: CATERING-RESTORE-IN-PLACE-1 live (e2c54e18)",
-            "uncommitted_files": 9
         },
         {
             "path": "D:/laragon2/www/pos-saas-billdate",
@@ -725,7 +725,7 @@
             "modified": "2026-10-29"
         }
     ],
-    "git": "75d7e97d",
+    "git": "114413b9",
     "source": {
         "tenant_db": "pos_test_tenant_wst",
         "master_db": "pos_test_master_wst"
@@ -24575,7 +24575,6 @@
                 "time_font_size tinyint unsigned",
                 "show_column_dividers tinyint(1)",
                 "show_category_header tinyint(1)",
-                "show_heading_stars tinyint(1)",
                 "show_bill_barcode tinyint(1)",
                 "show_order_note tinyint(1)",
                 "is_active tinyint(1)",
@@ -24583,7 +24582,8 @@
                 "updated_at timestamp",
                 "show_delivery_details tinyint(1)",
                 "show_vehicle_number tinyint(1)",
-                "show_order_type tinyint(1)"
+                "show_order_type tinyint(1)",
+                "show_heading_stars tinyint(1)"
             ],
             "fk_out": [],
             "inferred_out": [

@@ -239,7 +239,7 @@
 @php
     $kitchenNote = method_exists($salesOrder, 'kitchenNote') ? $salesOrder->kitchenNote() : (trim((string) ($salesOrder->notes ?? '')) ?: null);
 @endphp
-@if($kitchenNote !== null && ($layout?->show_order_note ?? true) !== false)
+@if($kitchenNote !== null && ($layout?->show_order_note ?? false) === true)
 <div><strong>ORDER NOTE:</strong> {{ $kitchenNote }}</div>
 <hr>
 @endif

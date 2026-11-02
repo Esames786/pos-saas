@@ -1284,9 +1284,9 @@ class EscPosPayloadService
         }
 
         // KOT-ORDER-NOTE-1: the kitchen's part of the note only (a website order's payment / address / map
-        // stay off the KOT), behind the layout's own switch. A layout from before the column = ON.
+        // stay off the KOT), and only when the layout's own switch is ON (owner: default OFF).
         $kitchenNote = $sale->kitchenNote();
-        if ($kitchenNote !== null && ($layout === null || $layout->show_order_note !== false)) {
+        if ($kitchenNote !== null && $layout !== null && $layout->show_order_note === true) {
             $out .= $this->scaled('ORDER NOTE: ' . $kitchenNote, ['w' => 1, 'h' => $big['h']], true);
             $out .= $rule . "\n";
         }

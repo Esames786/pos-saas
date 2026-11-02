@@ -15,8 +15,9 @@ use Tests\MySql\Support\TenantFixtures;
  *
  * Owner, 2 Nov: a website order's KOT printed the whole website note (payment, location, distance, map link)
  * and Edit Layout had no switch for it. Now the kitchen gets only its part of a website note, and the KOT
- * layout has an "Order Note" switch — ON by default, so no tenant's paper changes on deploy. The paper KOT
- * (network printer) and the browser KOT (agent / Live Preview) print the same note behind the same switch.
+ * layout has an "Order Note" switch — OFF by default (owner: "Default OFF kardo"), so a KOT prints an order note
+ * only where a branch turns it on. The paper KOT (network printer) and the browser KOT (agent / Live Preview)
+ * print the same note behind the same switch.
  */
 class KotOrderNoteMySqlTest extends MySqlTenantTestCase
 {
@@ -50,6 +51,7 @@ class KotOrderNoteMySqlTest extends MySqlTenantTestCase
 
     public function test_a_website_kot_prints_only_the_kitchen_part_and_a_counter_note_prints_as_typed(): void
     {
+        $this->setLayout(['show_order_note' => 1]);
         $web = $this->kotPayload($this->sale(['order_source' => 'website', 'order_type' => 'delivery', 'notes' => self::WEBSITE_NOTE]));
         $this->assertStringContainsString('ORDER NOTE:', $web);
         $this->assertStringContainsString('NoMayo', $web, 'the customer\'s item note reaches the kitchen');
@@ -68,23 +70,26 @@ class KotOrderNoteMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('ExtraRaita PackSeparately', $pos);
     }
 
-    public function test_the_switch_turns_the_order_note_off_and_a_layout_from_before_still_prints_it(): void
+    public function test_the_switch_is_off_by_default_and_prints_the_note_only_when_turned_on(): void
     {
         $sale = fn () => $this->sale(['order_type' => 'takeaway', 'notes' => 'Extra raita']);
 
-        $this->assertStringContainsString('ORDER NOTE: Extra raita', $this->kotPayload($sale()), 'no layout row: printed, as today');
+        $this->assertStringNotContainsString('ORDER NOTE', $this->kotPayload($sale()), 'no layout row: no order note');
 
-        $this->setLayout(['show_column_dividers' => 0]);   // a row saved without touching the new switch = column default
-        $this->assertStringContainsString('ORDER NOTE: Extra raita', $this->kotPayload($sale()), 'deploy changes no paper: default ON');
+        $this->setLayout(['show_column_dividers' => 0]);   // a row saved without touching the switch = column default
+        $this->assertStringNotContainsString('ORDER NOTE', $this->kotPayload($sale()), 'default OFF');
+
+        $this->setLayout(['show_order_note' => 1]);
+        $this->assertStringContainsString('ORDER NOTE: Extra raita', $this->kotPayload($sale()), 'switched on in Edit Layout: printed');
 
         $this->setLayout(['show_order_note' => 0]);
-        $this->assertStringNotContainsString('ORDER NOTE', $this->kotPayload($sale()), 'switched off in Edit Layout: gone from the KOT');
+        $this->assertStringNotContainsString('ORDER NOTE', $this->kotPayload($sale()), 'switched off again: gone');
     }
 
     public function test_the_browser_kot_and_live_preview_show_the_same_note_behind_the_same_switch(): void
     {
         $this->sale(['order_source' => 'website', 'order_type' => 'delivery', 'status' => 'paid', 'notes' => self::WEBSITE_NOTE]);
-        $this->setLayout([]);
+        $this->setLayout(['show_order_note' => 1]);
         $row = ReceiptLayoutSetting::where('branch_id', $this->branchId)->where('document_type', 'kot')->sole();
 
         $html = $this->preview($row, []);
