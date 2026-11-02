@@ -1,16 +1,16 @@
 {
-    "built_at": "2026-11-02T09:30:51+00:00",
+    "built_at": "2026-11-02T11:22:20+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "75d7e97d",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
-            "head": "114413b9",
+            "head": "c51b2fe7",
             "behind_prod": 0,
-            "ahead_of_prod": 1,
-            "last_commit": "2026-11-02\u00b7KOT-ORDER-NOTE-1 + WEB-ORDERS-ALERT-1: kitchen gets only its part of a website note; Order Note switch; the new-order alert rings until opened",
-            "uncommitted_files": 4
+            "ahead_of_prod": 2,
+            "last_commit": "2026-11-02\u00b7KOT-ORDER-NOTE-1 (2): the KOT's Order Note switch is OFF by default",
+            "uncommitted_files": 5
         },
         {
             "path": "D:/laragon2/www/pos-saas",
@@ -610,8 +610,18 @@
             "modified": "2026-11-02"
         },
         {
+            "file": "docs/plans/dashboard-cards-when-used-2026-11-02.md",
+            "title": "DASHBOARD-CARDS-WHEN-USED-1 \u2014 Tax and Expiry cards only where they mean something; how the 1% bills (2 Nov 2026)",
+            "modified": "2026-11-02"
+        },
+        {
             "file": "docs/plans/master-hisab-2026-10-29.md",
             "title": "MASTER-HISAB-1 \u2014 Bingoo ka apna hisab, Bingoo Master me (29 Oct 2026)",
+            "modified": "2026-11-02"
+        },
+        {
+            "file": "docs/plans/place-learning-2026-11-02.md",
+            "title": "PLACE-LEARNING-1 \u2014 delivery areas get more accurate with every delivered order (2 Nov 2026)",
             "modified": "2026-11-02"
         },
         {
@@ -713,27 +723,17 @@
             "file": "docs/plans/reset-supplier-bill-tables-2026-10-22.md",
             "title": "Transaction reset: supplier-invoice tables + fail closed (22 Oct 2026)",
             "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/rollout-completion-2026-10-25.md",
-            "title": "Rollout completion \u2014 counted items in parts, and one defaults policy (25 Oct 2026)",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/supplier-credit-clarity-2026-10-26.md",
-            "title": "Supplier credit clarity (SUPPLIER-CREDIT-CLARITY-1) \u2014 26 Oct 2026",
-            "modified": "2026-10-29"
         }
     ],
-    "git": "114413b9",
+    "git": "c51b2fe7",
     "source": {
         "tenant_db": "pos_test_tenant_wst",
         "master_db": "pos_test_master_wst"
     },
     "counts": {
-        "tables": 236,
-        "foreign_keys": 438,
-        "inferred_links": 223,
+        "tables": 246,
+        "foreign_keys": 443,
+        "inferred_links": 238,
         "screens": 745
     },
     "tables": [
@@ -1626,6 +1626,30 @@
                 },
                 {
                     "table": "department_handovers",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_auth_audit",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_consumed_assertions",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_local_meta",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_local_user_credentials",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_operational_stock_balances",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_operational_stock_baselines",
                     "col": "branch_id"
                 },
                 {
@@ -10961,6 +10985,44 @@
             "used_by_count": 2
         },
         {
+            "name": "delivery_place_sightings",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "sales_order_id bigint unsigned",
+                "delivery_zone_id bigint unsigned",
+                "name varchar(190)",
+                "name_key varchar(190)",
+                "lat decimal(10,7)",
+                "lng decimal(10,7)",
+                "accuracy_m int unsigned",
+                "skipped varchar(20)",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [
+                {
+                    "col": "delivery_zone_id",
+                    "table": "delivery_zones",
+                    "on_delete": "SET NULL"
+                },
+                {
+                    "col": "sales_order_id",
+                    "table": "sales_orders",
+                    "on_delete": "CASCADE"
+                }
+            ],
+            "inferred_out": [],
+            "domain": "Sales & POS",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "DeliveryPlaceSighting"
+            ],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
             "name": "delivery_riders",
             "side": "tenant",
             "columns": [
@@ -11244,6 +11306,11 @@
             ],
             "domain": "Sales & POS",
             "fk_in": [
+                {
+                    "table": "delivery_place_sightings",
+                    "col": "delivery_zone_id",
+                    "on_delete": "SET NULL"
+                },
                 {
                     "table": "delivery_zone_places",
                     "col": "delivery_zone_id",
@@ -12987,6 +13054,339 @@
                 }
             ],
             "used_by_count": 48
+        },
+        {
+            "name": "edge_auth_audit",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "event varchar(48)",
+                "user_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "activation_epoch bigint unsigned",
+                "issuer_user_id bigint unsigned",
+                "jti varchar(64)",
+                "detail varchar(190)",
+                "ip varchar(45)",
+                "created_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "user_id",
+                    "table": "users"
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                },
+                {
+                    "col": "issuer_user_id",
+                    "table": "users"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_consumed_assertions",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "jti varchar(64)",
+                "purpose varchar(64)",
+                "user_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "activation_epoch bigint unsigned",
+                "consumed_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "user_id",
+                    "table": "users"
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_local_meta",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "singleton_guard tinyint unsigned",
+                "tenant_code varchar(190)",
+                "tenant_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "device_uuid varchar(64)",
+                "activation_epoch bigint unsigned",
+                "bootstrap_snapshot_uuid varchar(64)",
+                "bootstrap_schema varchar(64)",
+                "source_revision varchar(128)",
+                "manifest_hash varchar(128)",
+                "imported_at timestamp",
+                "runtime_state varchar(32)",
+                "last_error text",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "tenant_id",
+                    "table": "tenants",
+                    "cross_db": true
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_local_print_deliveries",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "print_job_id bigint unsigned",
+                "delivery_state varchar(20)",
+                "worker_uuid char(36)",
+                "lease_token char(64)",
+                "claimed_at timestamp",
+                "lease_expires_at timestamp",
+                "failure_count smallint unsigned",
+                "next_attempt_at timestamp",
+                "last_attempt_at timestamp",
+                "last_error varchar(500)",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [
+                {
+                    "col": "print_job_id",
+                    "table": "print_jobs",
+                    "on_delete": "RESTRICT"
+                }
+            ],
+            "inferred_out": [],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_local_print_worker_state",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "singleton_guard tinyint unsigned",
+                "state varchar(20)",
+                "worker_uuid char(36)",
+                "runtime_version varchar(64)",
+                "started_at timestamp",
+                "heartbeat_at timestamp",
+                "stop_requested_at timestamp",
+                "last_graceful_stop_at timestamp",
+                "last_error varchar(500)",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_local_user_credentials",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "user_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "activation_epoch bigint unsigned",
+                "credential_hash varchar(255)",
+                "credential_type varchar(16)",
+                "credential_version int unsigned",
+                "status varchar(16)",
+                "failed_attempts int unsigned",
+                "locked_until timestamp",
+                "enrolled_at timestamp",
+                "last_authenticated_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "user_id",
+                    "table": "users"
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_operational_stock_balances",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "balance_key varchar(64)",
+                "baseline_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "product_id bigint unsigned",
+                "product_variant_id bigint unsigned",
+                "quantity_on_hand decimal(14,3)",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [
+                {
+                    "col": "baseline_id",
+                    "table": "edge_operational_stock_baselines",
+                    "on_delete": "CASCADE"
+                }
+            ],
+            "inferred_out": [
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                },
+                {
+                    "col": "product_id",
+                    "table": "products"
+                },
+                {
+                    "col": "product_variant_id",
+                    "table": "product_variants"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_operational_stock_baselines",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "baseline_uuid char(26)",
+                "branch_id bigint unsigned",
+                "device_uuid varchar(64)",
+                "activation_epoch bigint unsigned",
+                "generation int unsigned",
+                "source_revision varchar(128)",
+                "content_hash varchar(128)",
+                "status varchar(20)",
+                "active_binding_key char(40)",
+                "accepted_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [
+                {
+                    "table": "edge_operational_stock_balances",
+                    "col": "baseline_id",
+                    "on_delete": "CASCADE"
+                },
+                {
+                    "table": "edge_operational_stock_movements",
+                    "col": "baseline_id",
+                    "on_delete": "RESTRICT"
+                }
+            ],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_operational_stock_movements",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "movement_uuid char(26)",
+                "baseline_id bigint unsigned",
+                "sale_uuid char(26)",
+                "line_uuid char(26)",
+                "product_id bigint unsigned",
+                "product_variant_id bigint unsigned",
+                "movement_type varchar(40)",
+                "direction varchar(10)",
+                "quantity decimal(14,3)",
+                "balance_after decimal(14,3)",
+                "activation_epoch bigint unsigned",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [
+                {
+                    "col": "baseline_id",
+                    "table": "edge_operational_stock_baselines",
+                    "on_delete": "RESTRICT"
+                }
+            ],
+            "inferred_out": [
+                {
+                    "col": "product_id",
+                    "table": "products"
+                },
+                {
+                    "col": "product_variant_id",
+                    "table": "product_variants"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [],
+            "used_by": [],
+            "used_by_count": 0
         },
         {
             "name": "expense_categories",
@@ -18730,7 +19130,13 @@
                 }
             ],
             "domain": "Printing",
-            "fk_in": [],
+            "fk_in": [
+                {
+                    "table": "edge_local_print_deliveries",
+                    "col": "print_job_id",
+                    "on_delete": "RESTRICT"
+                }
+            ],
             "inferred_in": [],
             "models": [
                 "PrintJob"
@@ -20536,7 +20942,16 @@
                     "on_delete": "SET NULL"
                 }
             ],
-            "inferred_in": [],
+            "inferred_in": [
+                {
+                    "table": "edge_operational_stock_balances",
+                    "col": "product_variant_id"
+                },
+                {
+                    "table": "edge_operational_stock_movements",
+                    "col": "product_variant_id"
+                }
+            ],
             "models": [
                 "ProductVariant"
             ],
@@ -21568,6 +21983,14 @@
                     "col": "material_product_id"
                 },
                 {
+                    "table": "edge_operational_stock_balances",
+                    "col": "product_id"
+                },
+                {
+                    "table": "edge_operational_stock_movements",
+                    "col": "product_id"
+                },
+                {
                     "table": "finished_good_receipt_lines",
                     "col": "finished_product_id"
                 },
@@ -21730,7 +22153,7 @@
                 },
                 {
                     "route": "tenant.dashboard.catering-calendar",
-                    "why": "via InventoryReportService"
+                    "why": "model Product"
                 },
                 {
                     "route": "tenant.branches.index",
@@ -24575,6 +24998,7 @@
                 "time_font_size tinyint unsigned",
                 "show_column_dividers tinyint(1)",
                 "show_category_header tinyint(1)",
+                "show_heading_stars tinyint(1)",
                 "show_bill_barcode tinyint(1)",
                 "show_order_note tinyint(1)",
                 "is_active tinyint(1)",
@@ -24582,8 +25006,7 @@
                 "updated_at timestamp",
                 "show_delivery_details tinyint(1)",
                 "show_vehicle_number tinyint(1)",
-                "show_order_type tinyint(1)",
-                "show_heading_stars tinyint(1)"
+                "show_order_type tinyint(1)"
             ],
             "fk_out": [],
             "inferred_out": [
@@ -27841,6 +28264,11 @@
                     "table": "customer_payments",
                     "col": "sales_order_id",
                     "on_delete": "SET NULL"
+                },
+                {
+                    "table": "delivery_place_sightings",
+                    "col": "sales_order_id",
+                    "on_delete": "CASCADE"
                 },
                 {
                     "table": "kot_batches",
@@ -34786,6 +35214,22 @@
                     "col": "created_by_user_id"
                 },
                 {
+                    "table": "edge_auth_audit",
+                    "col": "user_id"
+                },
+                {
+                    "table": "edge_auth_audit",
+                    "col": "issuer_user_id"
+                },
+                {
+                    "table": "edge_consumed_assertions",
+                    "col": "user_id"
+                },
+                {
+                    "table": "edge_local_user_credentials",
+                    "col": "user_id"
+                },
+                {
                     "table": "finished_good_receipts",
                     "col": "created_by_user_id"
                 },
@@ -40401,6 +40845,10 @@
             ],
             "inferred_in": [
                 {
+                    "table": "edge_local_meta",
+                    "col": "tenant_id"
+                },
+                {
                     "table": "edge_bootstrap_snapshots",
                     "col": "tenant_id"
                 },
@@ -43125,6 +43573,7 @@
                 "branches",
                 "inventory_batches",
                 "print_jobs",
+                "products",
                 "sale_payments",
                 "sales_orders",
                 "sales_order_lines",
@@ -43133,7 +43582,6 @@
                 "subscription_invoices",
                 "website_order_charges",
                 "whatsapp_messages",
-                "products",
                 "stock_balances",
                 "stock_ledgers",
                 "sales_returns",

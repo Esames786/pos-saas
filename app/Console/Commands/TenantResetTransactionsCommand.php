@@ -43,7 +43,9 @@ class TenantResetTransactionsCommand extends Command
     private const WIPE_TABLES = [
         // sales + printing
         'sale_payments', 'sales_order_line_cancellations', 'kot_batch_lines', 'kot_batches',
-        'sales_return_lines', 'sales_returns', 'sales_order_rider_assignments', 'sales_order_lines', 'sales_orders',
+        'sales_return_lines', 'sales_returns', 'sales_order_rider_assignments', 'sales_order_lines',
+        // PLACE-LEARNING-1: the evidence goes with its orders; the learned places stay (like every delivery place).
+        'delivery_place_sightings', 'sales_orders',
         'sales_ledgers', 'manager_approvals', 'print_jobs', 'restaurant_table_sessions',
         // Ping/reboot work items handed to a print agent — transient, exactly like
         // the print jobs beside them. The paired AGENTS and printers are master
