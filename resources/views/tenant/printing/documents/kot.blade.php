@@ -235,6 +235,15 @@
 
 <hr>
 
+{{-- KOT-ORDER-NOTE-1: the same order note (and switch) the paper KOT prints. --}}
+@php
+    $kitchenNote = method_exists($salesOrder, 'kitchenNote') ? $salesOrder->kitchenNote() : (trim((string) ($salesOrder->notes ?? '')) ?: null);
+@endphp
+@if($kitchenNote !== null && ($layout?->show_order_note ?? true) !== false)
+<div><strong>ORDER NOTE:</strong> {{ $kitchenNote }}</div>
+<hr>
+@endif
+
 @if($layout?->show_bingoo_branding ?? false)
 <div class="center">BingooPos</div>
 <div class="center">Bingoopos.com</div>

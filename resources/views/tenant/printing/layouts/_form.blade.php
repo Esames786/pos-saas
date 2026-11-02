@@ -80,6 +80,7 @@
             'show_category_header'   => 'KOT Category Header',
             'show_heading_stars'     => 'Stars around KOT heading (*** KOT #1 ***)',
             'show_bill_barcode'      => 'Bill number as a big barcode (scan it at the billing counter)',
+            'show_order_note'        => 'Order Note',
         ] as $field => $label)
         @php
             // Most toggles default ON for a brand-new layout; dividers are the exception (today's

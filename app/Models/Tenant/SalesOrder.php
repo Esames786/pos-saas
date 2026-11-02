@@ -215,4 +215,19 @@ class SalesOrder extends Model
     {
         return $this->hasMany(SalesOrderRiderAssignment::class)->orderByDesc('created_at')->orderByDesc('id');
     }
+
+    /**
+     * KOT-ORDER-NOTE-1 — the order note as the kitchen reads it. A website order's note also carries what the
+     * counter and the rider need (payment, landmark, location, distance, phone, map link); the KOT keeps only
+     * the customer's own instructions. Any other order: its note as typed.
+     */
+    public function kitchenNote(): ?string
+    {
+        $notes = trim((string) $this->notes);
+        if ($notes === '') {
+            return null;
+        }
+
+        return $this->order_source === 'website' ? \App\Services\OnlineOrdering\WebsiteOrderService::kitchenPart($notes) : $notes;
+    }
 }

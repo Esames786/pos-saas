@@ -16,9 +16,21 @@
     #webOrdersModal .wo-num { font-variant-numeric: tabular-nums; }
     #webOrdersModal .wo-row > td { padding-top: .7rem; padding-bottom: .7rem; }
     @media (prefers-reduced-motion: reduce) { #webOrdersModal .wo-chev { transition: none; } }
+    /* Owner, 2 Nov: a bigger window — the address and notes wrap instead of running off the edge. */
+    @media (min-width: 992px) { #webOrdersModal .modal-dialog { max-width: min(1500px, 96vw); } }
+    #webOrdersModal .wo-detail > td { white-space: normal; overflow-wrap: anywhere; }
+    /* Owner, 2 Nov: the new-order alert stays (and rings) until someone opens the list. */
+    #web-orders-alert { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1095; display: flex; align-items: center; gap: .75rem;
+        padding: .7rem 1rem; border-radius: .75rem; background: #b42318; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.25); font-weight: 600; max-width: 94vw; }
+    #web-orders-alert[hidden] { display: none; }
+    #web-orders-alert .btn { white-space: nowrap; }
+    @media (prefers-reduced-motion: no-preference) { #web-orders-alert { animation: wo-pulse 1.2s ease-in-out infinite; } }
+    @keyframes wo-pulse { 50% { box-shadow: 0 10px 30px rgba(180,35,24,.6); } }
 </style>
+<div id="web-orders-alert" role="alert" aria-live="assertive" hidden><i class="ti ti-bell-ringing"></i><span id="web-orders-alert-text">New website order</span>
+    <button type="button" class="btn btn-sm btn-light" id="web-orders-alert-open">Open orders</button></div>
 <div class="modal fade" id="webOrdersModal" tabindex="-1" aria-labelledby="webOrdersModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-lg-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title h5 mb-0" id="webOrdersModalLabel"><i class="ti ti-world-www me-2"></i>Website orders</h2>
@@ -30,7 +42,7 @@
                 <button type="button" class="btn btn-sm btn-outline-dark" data-wo-tab="paid">Paid today <span class="badge bg-secondary ms-1" data-wo-count="paid">0</span></button>
                 <button type="button" class="btn btn-sm btn-outline-dark" data-wo-tab="cancelled">Cancelled today <span class="badge bg-secondary ms-1" data-wo-count="cancelled">0</span></button>
             </div>
-            <div class="modal-body p-0" id="web-orders-body" style="min-height:55vh"><p class="text-muted p-3 mb-0">Loading…</p></div>
+            <div class="modal-body p-0" id="web-orders-body" style="min-height:65vh"><p class="text-muted p-3 mb-0">Loading…</p></div>
         </div>
     </div>
 </div>
@@ -61,7 +73,10 @@ document.addEventListener('DOMContentLoaded', function () {
     var ago = function (m) { return m < 60 ? m + ' min' : Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; };
 
     var open = [], closed = { paid: null, cancelled: null }, counts = {}, routed = false, waReceived = false;
-    var tab = null, expanded = {}, pickedRider = {}, seen = {}, primed = false, lastRing = 0;
+    var tab = null, expanded = {}, pickedRider = {}, seen = {}, lastRing = 0;
+    // Owner, 2 Nov: new orders nobody has opened the list for yet — the bell rings every few seconds until someone does.
+    var waiting = {}, ringTimer = null;
+    var alertEl = document.getElementById('web-orders-alert'), alertText = document.getElementById('web-orders-alert-text');
 
     // ── bell (no sound file: two short tones). The cashier has clicked the POS by now, so audio may play.
     var ctx = null;
@@ -85,6 +100,24 @@ document.addEventListener('DOMContentLoaded', function () {
         } catch (e) { /* no audio: the badge and toast still show */ }
     }
     document.addEventListener('pointerdown', function () { if (ctx && ctx.state === 'suspended') { ctx.resume(); } }, { passive: true });
+
+    function stopRinging() {
+        if (ringTimer) { clearInterval(ringTimer); ringTimer = null; }
+        if (alertEl) { alertEl.hidden = true; }
+    }
+    function startRinging(o) {
+        if (alertEl) {
+            var n = Object.keys(waiting).length;
+            alertText.textContent = n > 1 ? n + ' new website orders' : 'New website order ' + o.sale_no + ' · ' + money(o.total);
+            alertEl.hidden = false;
+        }
+        if (ringTimer) { return; }
+        ring();
+        ringTimer = setInterval(function () {
+            if (modalEl.classList.contains('show') || !Object.keys(waiting).length) { stopRinging(); return; }
+            ring();
+        }, 5000);
+    }
 
     function query(extra) {
         return LIST + '?branch_id=' + encodeURIComponent(val('branch_id')) + '&terminal_id=' + encodeURIComponent(val('terminal_id')) + (extra || '');
@@ -121,14 +154,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 var drafts = open.filter(function (o) { return o.status === 'new' && !o.verified; });
                 var fresh = drafts.filter(function (o) { return !seen[o.id]; });
                 open.forEach(function (o) { seen[o.id] = true; });
-                if (routed && primed && fresh.length) {
-                    ring();
-                    var o = fresh[fresh.length - 1];
-                    if (bridge().toast) { bridge().toast('info', 'New website order ' + esc(o.sale_no) + ' · ' + money(o.total)); }
-                } else if (routed && drafts.length && !modalEl.classList.contains('show') && Date.now() - lastRing > 60000) {
-                    ring();   // still waiting: remind every minute until someone opens it
+                // Handled elsewhere (customer tapped Confirm, another counter, cancelled): no longer waiting.
+                Object.keys(waiting).forEach(function (id) { if (!drafts.some(function (o) { return String(o.id) === id; })) { delete waiting[id]; } });
+                if (routed && fresh.length && !modalEl.classList.contains('show')) {
+                    fresh.forEach(function (o) { waiting[o.id] = true; });
+                    startRinging(fresh[fresh.length - 1]);
+                } else if (!Object.keys(waiting).length) {
+                    stopRinging();
+                    if (routed && drafts.length && !modalEl.classList.contains('show') && Date.now() - lastRing > 60000) {
+                        ring();   // seen but still not confirmed: remind every minute
+                    }
                 }
-                primed = true;
                 if (modalEl.classList.contains('show') && (tab === 'new' || tab === 'confirmed')) { render(); }
             }).catch(function () { /* offline: try again next tick */ });
     }
@@ -353,6 +389,10 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    // Opening the list is the acknowledgement: the bell and the alert stop.
+    modalEl.addEventListener('shown.bs.modal', function () { waiting = {}; stopRinging(); });
+    if (alertEl) { document.getElementById('web-orders-alert-open').addEventListener('click', function () { btn.click(); }); }
+
     btn.addEventListener('click', function () {
         // Open on New when something is waiting, otherwise where the cashier last was.
         var start = (counts.new || 0) > 0 ? 'new' : (tab || ((counts.confirmed || 0) > 0 ? 'confirmed' : 'new'));
@@ -361,7 +401,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     ['branch_id', 'terminal_id'].forEach(function (id) {
         var el = document.getElementById(id);
-        if (el) { el.addEventListener('change', function () { primed = false; seen = {}; poll(); }); }
+        if (el) { el.addEventListener('change', function () { seen = {}; poll(); }); }
     });
 
     poll();

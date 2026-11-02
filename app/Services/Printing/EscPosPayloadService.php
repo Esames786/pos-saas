@@ -1283,8 +1283,11 @@ class EscPosPayloadService
             $out .= $rule . "\n";   // separator after each KOT item, so rows read as boxes
         }
 
-        if ($sale->notes) {
-            $out .= $this->scaled('ORDER NOTE: ' . $sale->notes, ['w' => 1, 'h' => $big['h']], true);
+        // KOT-ORDER-NOTE-1: the kitchen's part of the note only (a website order's payment / address / map
+        // stay off the KOT), behind the layout's own switch. A layout from before the column = ON.
+        $kitchenNote = $sale->kitchenNote();
+        if ($kitchenNote !== null && ($layout === null || $layout->show_order_note !== false)) {
+            $out .= $this->scaled('ORDER NOTE: ' . $kitchenNote, ['w' => 1, 'h' => $big['h']], true);
             $out .= $rule . "\n";
         }
 
