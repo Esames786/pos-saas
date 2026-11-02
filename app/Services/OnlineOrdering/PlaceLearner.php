@@ -34,6 +34,9 @@ class PlaceLearner
     /** From this many agreeing orders a learned place is trusted by its name. */
     public const SURE_AFTER = 2;
 
+    /** Words OpenStreetMap mappers use to DESCRIBE a patch of land, not to name it (prod, 2 Nov: "illegal encroachment"). */
+    private const NOT_A_NAME = ['illegal', 'encroachment', 'encroachments', 'unnamed', 'untitled', 'construction', 'vacant'];
+
     public function __construct(private readonly OpenStreetMap $osm) {}
 
     /** Paid website delivery orders not looked at yet, oldest first. */
@@ -95,9 +98,13 @@ class PlaceLearner
      */
     public static function nameFor(array $a): ?string
     {
+        $described = fn (string $n) => array_intersect(explode(' ', AreaLocator::norm($n)), self::NOT_A_NAME) !== [];
         $local = trim((string) ($a['neighbourhood'] ?? $a['residential'] ?? $a['quarter'] ?? ''));
         $broad = trim((string) ($a['suburb'] ?? $a['hamlet'] ?? ''));
-        $distinct = fn (string $n) => $n !== '' && OnlineOrderingMapPlacesCommand::distinctive($n);
+        if ($described($local)) {
+            $local = '';   // a description, not a name: the society alone
+        }
+        $distinct = fn (string $n) => $n !== '' && ! $described($n) && OnlineOrderingMapPlacesCommand::distinctive($n);
 
         if ($distinct($local)) {
             return $local;

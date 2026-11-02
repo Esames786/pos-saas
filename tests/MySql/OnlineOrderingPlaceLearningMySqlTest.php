@@ -197,6 +197,16 @@ class OnlineOrderingPlaceLearningMySqlTest extends MySqlTenantTestCase
         $this->assertContains('PECHS Block 6', array_column($after['near_places'], 'name'), 'and it is recommended near the pin');
     }
 
+    public function test_a_description_on_the_map_is_not_a_place_name(): void
+    {
+        // Prod, 2 Nov: OpenStreetMap named a patch near Kiran Hospital Road "illegal encroachment".
+        $this->assertSame('Gulzar e Hijri', \App\Services\OnlineOrdering\PlaceLearner::nameFor(['residential' => 'illegal encroachment', 'suburb' => 'Gulzar e Hijri']),
+            'the society instead');
+        $this->assertNull(\App\Services\OnlineOrdering\PlaceLearner::nameFor(['residential' => 'Illegal Encroachment']), 'or nothing');
+        $this->assertSame('PECHS Block 6', \App\Services\OnlineOrdering\PlaceLearner::nameFor(['neighbourhood' => 'Block 6', 'suburb' => 'PECHS']));
+        $this->assertSame('Sui Gas Company Karachi Society', \App\Services\OnlineOrdering\PlaceLearner::nameFor(['residential' => 'Sui Gas Company Karachi Society', 'suburb' => 'Gulshan']));
+    }
+
     public function test_a_dry_run_writes_nothing(): void
     {
         $this->order('Main Shahrah e Faisal', 24.86380, 67.07340, 14);
