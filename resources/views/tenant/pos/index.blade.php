@@ -5527,6 +5527,14 @@ document.addEventListener('DOMContentLoaded', function () {
             confirmButtonText: 'Verify',
             cancelButtonText: 'Cancel',
             showCancelButton: true,
+            // MANAGER-PIN-ENTER-1 (owner, 2 Nov): the cursor waits in the code box and Enter verifies — no click on Verify.
+            focusConfirm: false,
+            didOpen: function (popup) {
+                const box = popup.querySelector('#swal-manager-pin');
+                if (!box) { return; }
+                box.focus();
+                box.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); Swal.clickConfirm(); } });
+            },
             preConfirm: function () {
                 const pin = document.getElementById('swal-manager-pin').value;
                 if (!pin) { Swal.showValidationMessage('Enter PIN'); return false; }
@@ -5545,7 +5553,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (!data.ok) { Swal.showValidationMessage(data.message || 'Invalid PIN'); return false; }
                     return data;
                 })
-                .catch(function () { Swal.showValidationMessage('Verification failed'); return false; });
+                // The server's own words (Invalid manager PIN / not authorized for the order branch), not a blanket line.
+                .catch(function (e) { Swal.showValidationMessage((e && e.message) || 'Verification failed'); return false; });
             },
         }).then(function (result) {
             if (result.isConfirmed && result.value) {

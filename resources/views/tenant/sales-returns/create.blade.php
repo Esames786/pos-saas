@@ -453,7 +453,12 @@
             showCancelButton: true,
             confirmButtonText: 'Approve & post',
             focusConfirm: false,
-            didOpen: function () { document.getElementById('return-manager-pin').focus(); },
+            // MANAGER-PIN-ENTER-1: Enter approves, like every manager code box.
+            didOpen: function () {
+                var box = document.getElementById('return-manager-pin');
+                box.focus();
+                box.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); Swal.clickConfirm(); } });
+            },
             preConfirm: function () {
                 var pin = document.getElementById('return-manager-pin').value;
                 if (! pin) { Swal.showValidationMessage('Enter the manager PIN'); return false; }

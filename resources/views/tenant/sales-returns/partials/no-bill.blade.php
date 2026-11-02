@@ -344,7 +344,12 @@
                 html: 'This branch needs a manager to approve a return.<br>Refund: <strong>' + money(t) + '</strong>'
                     + '<input id="nb-pin" type="password" inputmode="numeric" autocomplete="off" class="swal2-input" placeholder="Manager PIN">',
                 icon: 'warning', showCancelButton: true, confirmButtonText: 'Approve & post', focusConfirm: false,
-                didOpen: function () { document.getElementById('nb-pin').focus(); },
+                // MANAGER-PIN-ENTER-1: Enter approves, like every manager code box.
+                didOpen: function () {
+                    var box = document.getElementById('nb-pin');
+                    box.focus();
+                    box.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); Swal.clickConfirm(); } });
+                },
                 preConfirm: function () {
                     var pin = document.getElementById('nb-pin').value;
                     if (!pin) { Swal.showValidationMessage('Enter the manager PIN'); return false; }
