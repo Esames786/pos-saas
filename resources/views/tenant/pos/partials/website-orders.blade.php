@@ -397,7 +397,10 @@ document.addEventListener('DOMContentLoaded', function () {
         // Open on New when something is waiting, otherwise where the cashier last was.
         var start = (counts.new || 0) > 0 ? 'new' : (tab || ((counts.confirmed || 0) > 0 ? 'confirmed' : 'new'));
         setTab(start);
-        new bootstrap.Modal(modalEl).show();
+        // focus: false — Bootstrap's focus trap pulled focus back into this window whenever the cashier clicked a
+        // SweetAlert box opened from it (Cancel → Manager Approval code), so nothing could be typed (2 Nov, live).
+        // One instance, reused, instead of a new one per click.
+        bootstrap.Modal.getOrCreateInstance(modalEl, { focus: false }).show();
     });
     ['branch_id', 'terminal_id'].forEach(function (id) {
         var el = document.getElementById(id);
