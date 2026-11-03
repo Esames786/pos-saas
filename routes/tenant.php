@@ -458,6 +458,11 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // can be followed by a crawler or a refresh.
                 Route::post('/goods-receipts/{goodsReceipt}/void', [GoodsReceiptController::class, 'void'])
                     ->name('tenant.goods-receipts.void');
+                // PURCHASE-EDIT-1: correct a posted receipt (and its invoice) in place — switch-gated in the controller.
+                // "revise", not "edit"/"update": those fall into the Permission Center's generic Edit box.
+                Route::post('/goods-receipts/{goodsReceipt}/revise', [GoodsReceiptController::class, 'revise'])
+                    ->middleware('prevent.duplicate.submit')
+                    ->name('tenant.goods-receipts.revise');
 
                 // Purchase Bills
                 Route::get('/purchase-bills', [PurchaseBillController::class, 'index'])

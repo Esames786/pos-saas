@@ -16,8 +16,30 @@
                    class="btn btn-primary">Pay Supplier</a>
             @endcan
         @endif
+        {{-- PURCHASE-EDIT-1: an invoice is corrected through its receipt — the same page, in edit mode. --}}
+        @if(\App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PURCHASE_EDIT) && $purchaseBill->goodsReceipt
+            && $purchaseBill->status !== 'voided')
+            @can('tenant.goods-receipts.revise')
+                <a href="{{ url('/goods-receipts/' . $purchaseBill->goodsReceipt->id) }}?edit=1" class="btn btn-outline-primary" data-bill-edit>&#9998; Edit</a>
+            @endcan
+        @endif
     </div>
 </div>
+
+@if($purchaseBill->status === 'voided')
+    <div class="alert alert-warning" data-bill-voided>
+        <strong>This invoice is voided</strong>
+        @if($purchaseBill->voided_at) on {{ app(\App\Support\TenantClock::class)->format($purchaseBill->voided_at, 'd M Y h:i A') }}@endif.
+        @if($purchaseBill->void_reason) &mdash; {{ $purchaseBill->void_reason }}@endif
+        Its amounts are 0 now; what it was is listed on its goods receipt.
+    </div>
+@elseif(\App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PURCHASE_EDIT) && $purchaseBill->goodsReceipt
+    && (int) $purchaseBill->goodsReceipt->revision_no > 0)
+    <div class="alert alert-light border small" data-bill-edited>
+        This invoice was edited ({{ (int) $purchaseBill->goodsReceipt->revision_no }} time(s)) — the changes are listed on
+        <a href="{{ url('/goods-receipts/' . $purchaseBill->goodsReceipt->id) }}">{{ $purchaseBill->goodsReceipt->grn_no }}</a>.
+    </div>
+@endif
 
 <div class="card mb-3">
     <div class="card-header"><strong>Invoice Details</strong></div>

@@ -131,9 +131,11 @@ class PurchasingService
      * unit_cost inside InventoryService, which every stock path in the system depends on — not
      * worth it for half a paisa. The guard asserts this bound rather than pretending to exactness.
      *
+     * Public for PURCHASE-EDIT-1: a corrected receipt's stock goes back in at the cost this works out, exactly as at entry.
+     *
      * @return array<int, float> line id => landed unit cost
      */
-    private function landedUnitCosts(GoodsReceipt $grn): array
+    public function landedUnitCosts(GoodsReceipt $grn): array
     {
         $charges = round((float) ($grn->extra_charges ?? 0), 4);
         $costs = [];
