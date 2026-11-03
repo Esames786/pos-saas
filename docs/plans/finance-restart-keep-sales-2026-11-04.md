@@ -52,3 +52,18 @@ opening / purged tables listed in the command (deleted). Sales tables: read only
 
 One code deploy (no migration). Then: `finance:export-tenant` → manual tenant backup → dry run (read it) →
 `--yes` → smoke (tb 0, sites 200) → hand the Excel to the owner.
+
+## Done on the first tenant (3 Nov 2026 ~20:07 UTC = 4 Nov 01:07 PKT, owner's word, no shift open)
+
+- Deployed `80b87afa` (two commands; no schema / route / screen change): tb_diff 0, sites 200.
+- `finance:export-tenant` → `storage/app/private/exports/khatribiryani-finance-20261103_200642.xlsx` (15 tabs, 268 KB;
+  copy handed to the owner).
+- Manual tenant backup #694 (271 MB, `backups/tenants/khatribiryani/20261103_200648_khatribiryani.sql`), plus the platform
+  backup 20261103_183454.
+- Dry run read with the owner, then `--yes`: 530 non-sale journals (1,888 lines), 227 non-sale cash movements, 78 GRN,
+  74 invoices, 107 payments, supplier ledger + allocations, stock, opening balances, 10 other expenses, 30 own heads,
+  41 own categories removed; **194 closing short-cash vouchers back to draft (12,644,399.50)** — 101 of them had been
+  re-split into expenses and posted. Sales identical (30,101 orders, 30,716,064.50; 30,445 sale journals); Main Cash
+  Drawer 30,270,393.50, Main Bank 120,068.00 from the sales. TB balanced; a second dry run removes nothing.
+- Left as found (pre-existing in sales): Cash Book vs GL 7,350 on the drawer (4 old returns: refund row, no journal),
+  130 on Undeposited Funds.
