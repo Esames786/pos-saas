@@ -407,6 +407,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/department-counts/{session}/cancel', [DepartmentCountController::class, 'cancel'])->name('tenant.department-counts.cancel');
 
                 // Suppliers
+                // SUPPLIER-LEDGER-DAILY-1: all suppliers' ledger, day by day (switch-gated in the controller). Before the
+                // resource, so "ledger" is never read as a supplier id by /suppliers/{supplier}.
+                Route::get('/suppliers/ledger', [SupplierController::class, 'ledgerAll'])
+                    ->name('tenant.suppliers.ledger-all');
                 Route::resource('suppliers', SupplierController::class)->names([
                     'index' => 'tenant.suppliers.index',
                     'create' => 'tenant.suppliers.create',
