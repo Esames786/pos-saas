@@ -68,6 +68,8 @@ class TenantResetTransactionsCommand extends Command
         // SUPPLIER-CREDIT-CLARITY-1: a payment's part moved from one invoice to another by a person — the record of
         // those moves points at the payments and bills wiped here; kept, it would be a history of invoices that are gone.
         'supplier_credit_moves',
+        // PURCHASE-EDIT-1: the edit / void history of receipts and invoices wiped below — goes with them.
+        'goods_receipt_revisions',
         'supplier_credit_allocations',
         'purchase_bill_lines', 'purchase_bills', 'goods_receipt_lines', 'goods_receipts',
         'purchase_return_lines', 'purchase_returns', 'purchase_order_lines', 'purchase_orders',
