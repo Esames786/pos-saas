@@ -233,3 +233,19 @@ in that fixture) but passes inside the full suite — order-dependent, pre-exist
    `tenant.suppliers.ledger-all` to the roles holding `tenant.suppliers.ledger` (additively), `system:clear-tenant-permission-cache`;
    switches `purchase_edit` + `supplier_ledger_daily` ON in Master.
 6. Proof on the live tenant, read-only: the GRN page shows Edit / Void (or the reason); the ledger's day view for this month.
+
+## 10. Deployed (3 Nov 2026, owner: "Deploy + Khatri ON")
+
+- Backup `storage/app/private/backups/20261103_183454` (master + every tenant, retaildemo has no DB) · role snapshot.
+- **Deploy 1 `88a61f09`** (schema only) ~18:36 UTC: the three migrations on all 12 tenants (checked per tenant); tb_diff 0.
+- **Deploy 2 `3b978b30`** (code) ~18:40 UTC: routes 824; tb_diff 0 ×12, neg_on_disallowed 0, department_negative 0;
+  "PERMISSIONS OK: no role lost anything" (each Owner +2: revise, ledger-all); only error since = the known
+  printing:autoclose-stuck one; five sites 200.
+- Backfill `finance:supplier-ledger-dates`: dry run on all 12, then `--yes` where rows existed — khatribiryani 189,
+  kashifkitchen 343, pharmacydemo 5; 0 left undated; amounts / balances / row count unchanged.
+- First tenant (khatribiryani): Manager + Accounts given `tenant.goods-receipts.revise` and `tenant.suppliers.ledger-all`
+  (Owner had them); switches `purchase_edit` + `supplier_ledger_daily` ON via TenantBusinessService (audited), the
+  other five switches unchanged; tenant permission caches cleared.
+- Proof, read-only, as its Owner through the controllers: GRN-…636 shows Edit + Void, edit mode has its 14 lines as
+  boxes; 30 receipts editable, 44 refused with their reason (39 earlier stock correction, 5 earlier cost correction);
+  a supplier's day view closes at exactly its balance today.
