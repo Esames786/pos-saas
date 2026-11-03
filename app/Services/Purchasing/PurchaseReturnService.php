@@ -300,7 +300,8 @@ class PurchaseReturnService
                 $doc->id,
                 $doc->return_no,
                 $doc->notes,
-                $userId
+                $userId,
+                PurchasingService::ledgerDay($doc->return_date),
             );
 
             // SUPPLIER-RUNNING-ACCOUNT-1: a return is credit too — it settles its own bill (through its

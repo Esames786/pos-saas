@@ -189,3 +189,47 @@ Screens changed: goods-receipts show, purchase-bills show, suppliers ledger (+ a
   receipts, adding lines or changing the product/supplier — v2 if asked.
 - "Close the month" lock — offered, not asked.
 - GRN-VOID-1 still leaves the average cost as it was (its own known drift); not changed here.
+
+## 8. Built and proven (3 Nov)
+
+Commits on `feat/purchase-edit-20261103`: `0a7a2bc2` plan · `f0019787` **1/3 SCHEMA ONLY** · `0d07db90` 2/3 supplier ledger
+by date · `27db1bc5` 3/3 edit / void · `30abc05a` system map.
+
+What differs from §4, decided while building:
+- The edit boxes are the GRN page's own Qty and Unit Cost columns (per base unit). A changed line's "last deal" becomes
+  that unit price; `PackLines` is not re-run, so a line's old discount / scheme is not re-applied over a typed net cost.
+- The stock reversal for an edit restores the weighted average (`reverseReceiptEntry(restoreAverage: true)`) and is
+  refused when that would leave a negative value (the goods were sold). GRN-VOID-1's own void is unchanged.
+- The corrected invoice journal keeps each purchase-only line on the head it was first booked to (`cost_account_id`).
+
+Tests (MySQL, through the real routes as the store's owner):
+- `SupplierLedgerDailyMySqlTest` 4/4 — every writer dates its row; the backfill (dry run, then --yes, idempotent,
+  amounts / balances / updated_at untouched); a late-typed invoice on its own day with the balance carried; all
+  suppliers; permission; switch off = old page.
+- `PurchaseRevisionMySqlTest` 9/9 (150 assertions) — rate change; invoice date moved; stock line out / in with the
+  average restored; receipt without an invoice; line to 0 and a second edit; paid invoice cut below its payments;
+  guards; void (both date modes); the pages. After each: TB balances, AP in the GL = supplier ledger = supplier balance,
+  stock quantity and value = stock ledger.
+
+Sabotage (`scratchpad/pedit/sabotage.php`, detached worktree at `27db1bc5`): all **11 RED**, each on its intended
+assertion — GL not reversed · average not restored · paid guard dropped · excess kept on the invoice · ledger date not
+written · switch not checked · ledger difference flipped · sold goods not refused · old entry wiped today instead of on
+its date · day view in typing order · stale form not refused.
+
+Full suite, FROZEN detached worktree at `30abc05a` (HEAD and a clean tree checked before and after, DB set `_pfull`):
+**MySQL 2,610 tests / 17,426 assertions, 0 failures** (4 h 10 min — run beside the sabotage runs). Unit 139: 3 failures
+— CateringClientFeedbackUi sidebar, EscPosReportPayload, DeliveryRiderReassignment — the same 3 fail on prod `830f04ec`
+(re-run there, 3 Nov). Note: `GrnVoidMySqlTest` fails 2 when run ALONE on prod code too (its bill store silently fails
+in that fixture) but passes inside the full suite — order-dependent, pre-existing, not touched here.
+
+## 9. Deploy (on the owner's word only)
+
+1. Backup (`TenantBackupService` for each tenant / deploy.sh's own) · permission snapshot of every role.
+2. **Deploy 1 = `f0019787` only** (schema: three additive migrations, nothing writes them). Smoke.
+3. **Deploy 2 = the rest** (code). Smoke: `tb_diff=0` ×13, `neg_on_disallowed=0`, `department_negative=0`, no ERROR, sites 200;
+   permission diff "no role lost anything".
+4. `finance:supplier-ledger-dates <tenant>` dry run, read, then `--yes` — every tenant (rows only gain a date).
+5. First tenant only, owner's word: grant `tenant.goods-receipts.revise` to the roles holding `tenant.goods-receipts.void`,
+   `tenant.suppliers.ledger-all` to the roles holding `tenant.suppliers.ledger` (additively), `system:clear-tenant-permission-cache`;
+   switches `purchase_edit` + `supplier_ledger_daily` ON in Master.
+6. Proof on the live tenant, read-only: the GRN page shows Edit / Void (or the reason); the ledger's day view for this month.

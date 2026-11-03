@@ -227,11 +227,13 @@ class InventoryService
         ?string $notes = null,
         ?int $userId = null,
         string $movementType = 'adjustment_out',
+        bool $restoreAverage = false,
+        string $doing = 'voided',
     ): ?StockLedger {
         $branch = Branch::findOrFail($in->branch_id);
         $this->operatingMode->assertOfficialStockMutationAllowed($branch);
 
-        return DB::connection('tenant')->transaction(function () use ($in, $referenceNo, $notes, $userId, $movementType) {
+        return DB::connection('tenant')->transaction(function () use ($in, $referenceNo, $notes, $userId, $movementType, $restoreAverage, $doing) {
             if (StockLedger::where('reversal_of_id', $in->id)->lockForUpdate()->exists()) {
                 return null;
             }
@@ -247,12 +249,26 @@ class InventoryService
                 throw new RuntimeException(
                     (Product::whereKey($in->product_id)->value('name') ?? 'This item') . ' no longer has the quantity this receipt brought in '
                     . '(' . $fmt($qty) . ' needed, ' . $fmt($onHand) . ' on hand' . ($batchNo ? ' in batch ' . $batchNo : '') . '), '
-                    . 'so the receipt cannot be voided. Use a Purchase Return or a Stock Adjustment.'
+                    . 'so the receipt cannot be ' . $doing . '. Use a Purchase Return or a Stock Adjustment.'
                 );
             }
 
             $newQty = $onHand - $qty;
-            $balance->update(['quantity_on_hand' => $newQty]);
+            $update = ['quantity_on_hand' => $newQty];
+            // PURCHASE-EDIT-1: the exact inverse of postIn's averaging — what is left is valued as if this entry had
+            // never come in. Below zero the entry's goods were already sold at the old average: refused, not guessed.
+            // GRN-VOID-1 does not ask for it and keeps its behaviour.
+            if ($restoreAverage && $newQty > 0.0005) {
+                $left = round((float) $balance->average_cost * $onHand - (float) $in->total_cost, 4);
+                if ($left < -0.01) {
+                    throw new RuntimeException(
+                        (Product::whereKey($in->product_id)->value('name') ?? 'This item') . ' has already been sold or used from this receipt, '
+                        . 'so the receipt cannot be ' . $doing . '. Use a Purchase Return or a Stock Adjustment.'
+                    );
+                }
+                $update['average_cost'] = round(max(0.0, $left) / $newQty, 4);
+            }
+            $balance->update($update);
 
             return StockLedger::create([
                 'branch_id'          => $in->branch_id,

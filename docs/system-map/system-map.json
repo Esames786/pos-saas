@@ -1,16 +1,34 @@
 {
-    "built_at": "2026-11-02T11:30:36+00:00",
+    "built_at": "2026-11-03T12:42:59+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "75d7e97d",
     "work": [
         {
+            "path": "D:/laragon2/www/pos-saas-pedit-sab",
+            "branch": "(detached)",
+            "head": "27db1bc5",
+            "behind_prod": 0,
+            "ahead_of_prod": 10,
+            "last_commit": "2026-11-03\u00b7PURCHASE-EDIT-1 (3/3): edit a posted receipt and its invoice in place, and void them together",
+            "uncommitted_files": 1
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-purchase-edit",
+            "branch": "feat/purchase-edit-20261103",
+            "head": "27db1bc5",
+            "behind_prod": 0,
+            "ahead_of_prod": 10,
+            "last_commit": "2026-11-03\u00b7PURCHASE-EDIT-1 (3/3): edit a posted receipt and its invoice in place, and void them together",
+            "uncommitted_files": 0
+        },
+        {
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
-            "head": "e8f40726",
+            "head": "830f04ec",
             "behind_prod": 0,
-            "ahead_of_prod": 3,
-            "last_commit": "2026-11-02\u00b7PLACE-LEARNING-1 + DASHBOARD-CARDS-WHEN-USED-1: delivered orders mature the delivery areas; Tax / Expiry cards only where used",
-            "uncommitted_files": 2
+            "ahead_of_prod": 6,
+            "last_commit": "2026-11-02\u00b7MANAGER-PIN-ENTER-1: every manager code box takes Enter; the cursor waits in it; the real error shows",
+            "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas",
@@ -600,141 +618,141 @@
     ],
     "plans": [
         {
+            "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
+            "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
+            "modified": "2026-11-03"
+        },
+        {
             "file": "docs/plans/billing-date-keep-2026-10-31.md",
             "title": "BILLING-DATE-KEEP-1 \u2014 paying an invoice never pulls the subscription end date back (31 Oct 2026)",
-            "modified": "2026-11-02"
+            "modified": "2026-11-03"
         },
         {
-            "file": "docs/plans/catering-restore-in-place-2026-10-31.md",
-            "title": "CATERING-RESTORE-IN-PLACE-1 \u2014 Restore dabane par wohi purani quotation wapas aaye (31 Oct 2026)",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/dashboard-cards-when-used-2026-11-02.md",
-            "title": "DASHBOARD-CARDS-WHEN-USED-1 \u2014 Tax and Expiry cards only where they mean something; how the 1% bills (2 Nov 2026)",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/master-hisab-2026-10-29.md",
-            "title": "MASTER-HISAB-1 \u2014 Bingoo ka apna hisab, Bingoo Master me (29 Oct 2026)",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/place-learning-2026-11-02.md",
-            "title": "PLACE-LEARNING-1 \u2014 delivery areas get more accurate with every delivered order (2 Nov 2026)",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/product-parity-2026-10-28.md",
-            "title": "Unified product advanced settings \u2014 28 October 2026",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/product-parity-release-2026-10-31.md",
-            "title": "Product advanced settings release \u2014 31 October 2026",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/shift-handover-2026-10-31.md",
-            "title": "SHIFT-HANDOVER-1 \u2014 hand the counter, with its open orders, to the next cashier (31 Oct 2026)",
-            "modified": "2026-11-02"
+            "file": "docs/plans/cash-book-report-2026-10-10.md",
+            "title": "CASH-BOOK-REPORT-1 \u2014 Cash Book report: kitna aaya, kitna gaya, kis cash/bank me, tareekh-war",
+            "modified": "2026-11-03"
         },
         {
             "file": "docs/plans/category-parent-guard-2026-10-21.md",
             "title": "CATEGORY-PARENT-GUARD-1 \u2014 a category can never sit inside its own sub-category (21 Oct 2026)",
-            "modified": "2026-10-29"
+            "modified": "2026-11-03"
+        },
+        {
+            "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
+            "title": "Catering product model \u2014 what is wrong, and the work to fix it",
+            "modified": "2026-11-03"
+        },
+        {
+            "file": "docs/plans/catering-restore-in-place-2026-10-31.md",
+            "title": "CATERING-RESTORE-IN-PLACE-1 \u2014 Restore dabane par wohi purani quotation wapas aaye (31 Oct 2026)",
+            "modified": "2026-11-03"
         },
         {
             "file": "docs/plans/catering-simplify-2026-10-27.md",
             "title": "CATERING-SIMPLIFY-1 \u2014 one place to price and edit a catering dish (27 Oct 2026)",
-            "modified": "2026-10-29"
+            "modified": "2026-11-03"
+        },
+        {
+            "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
+            "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
+            "modified": "2026-11-03"
         },
         {
             "file": "docs/plans/commercial-rate-picker-2026-10-26.md",
             "title": "Commercial rate material picker (COMMERCIAL-RATE-PICKER-1) \u2014 26 Oct 2026",
-            "modified": "2026-10-29"
+            "modified": "2026-11-03"
+        },
+        {
+            "file": "docs/plans/dashboard-cards-when-used-2026-11-02.md",
+            "title": "DASHBOARD-CARDS-WHEN-USED-1 \u2014 Tax and Expiry cards only where they mean something; how the 1% bills (2 Nov 2026)",
+            "modified": "2026-11-03"
+        },
+        {
+            "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
+            "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
+            "modified": "2026-11-03"
+        },
+        {
+            "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
+            "title": "Two order counts on one dashboard \u2014 research",
+            "modified": "2026-11-03"
+        },
+        {
+            "file": "docs/plans/deals-as-their-own-report-heads-2026-09-02.md",
+            "title": "Deals belong under their own heads \u2014 research",
+            "modified": "2026-11-03"
+        },
+        {
+            "file": "docs/plans/grn-extra-charges-2026-10-02.md",
+            "title": "GRN-EXTRA-CHARGES-1 \u2014 cartage ko product ki jagah \"Extra Charges\" banana",
+            "modified": "2026-11-03"
         },
         {
             "file": "docs/plans/grn-void-and-starter-shifts-2026-10-20.md",
             "title": "GRN void + starter plans' counter (20 Oct 2026)",
-            "modified": "2026-10-29"
+            "modified": "2026-11-03"
         },
         {
-            "file": "docs/plans/khatri-tb-heads-and-stock-to-pnl-2026-10-21.md",
-            "title": "Khatri: Trial Balance by heads + stuck inventory to the P&L (21 Oct 2026)",
-            "modified": "2026-10-29"
+            "file": "docs/plans/held-sale-dead-session-2026-09-12.md",
+            "title": "HELD-SALE-DEAD-SESSION-1 \u2014 band table par bill hold ho jata hai, phir kabhi pay nahi hota",
+            "modified": "2026-11-03"
         },
         {
-            "file": "docs/plans/move-table-cart-2026-10-22.md",
-            "title": "MOVE-TABLE-CART-1 \u2014 Move Table ke baad car ka bill table 32 par chala gaya",
-            "modified": "2026-10-29"
+            "file": "docs/plans/hide-amounts-from-operators-2026-09-01.md",
+            "title": "Hide the money from the counter \u2014 research before building",
+            "modified": "2026-11-03"
         },
         {
-            "file": "docs/plans/one-product-screen-master-controls-2026-10-19.md",
-            "title": "Ek Product Screen + Bingoo Master Controls \u2014 Plan (v2)",
-            "modified": "2026-10-29"
+            "file": "docs/plans/items-by-category-section-2026-09-03.md",
+            "title": "ITEMS-BY-CATEGORY-1 \u2014 Item ka category-wise breakup, apne alag section me",
+            "modified": "2026-11-03"
         },
         {
-            "file": "docs/plans/partner-share-report-2026-10-14.md",
-            "title": "PARTNER-SHARE-1 \u2014 Partner share report (ek dish, do kitchen)",
-            "modified": "2026-10-29"
+            "file": "docs/plans/items-in-category-sequence-2026-09-03.md",
+            "title": "ITEM-CATEGORY-SEQUENCE \u2014 Item report category ki tarteeb me, purane software ki tarah",
+            "modified": "2026-11-03"
         },
         {
-            "file": "docs/plans/pharmacy-packs-2026-10-19.md",
-            "title": "Pharmacy packs (box \u00b7 strip \u00b7 tablet) \u2014 step 1 of 4",
-            "modified": "2026-10-29"
+            "file": "docs/plans/kashif-client-feedback-2026-09-15.md",
+            "title": "Client feedback, 15 September \u2014 chaar cheezen",
+            "modified": "2026-11-03"
         },
         {
-            "file": "docs/plans/pnl-detail-and-finance-pdfs-2026-10-26.md",
-            "title": "P&L detail + finance PDFs (PNL-DETAIL-1 + FINANCE-PDF-DOWNLOADS-1) \u2014 26 Oct 2026",
-            "modified": "2026-10-29"
+            "file": "docs/plans/kashif-document-pdf-2026-09-09.md",
+            "title": "Quotation ka PDF \u2014 aur ek hadd jo chhupai nahi gayi",
+            "modified": "2026-11-03"
         },
         {
-            "file": "docs/plans/product-nav-cleanup-2026-10-26.md",
-            "title": "Product-setup navigation cleanup (PRODUCT-NAV-1) \u2014 26 Oct 2026",
-            "modified": "2026-10-29"
+            "file": "docs/plans/kashif-event-history-revert-2026-08-23.md",
+            "title": "Event Change History + Revert \u2014 research + implementation plan",
+            "modified": "2026-11-03"
         },
         {
-            "file": "docs/plans/product-screen-tabs-2026-10-19.md",
-            "title": "Product screen in tabs \u2014 one screen, no scrolling",
-            "modified": "2026-10-29"
+            "file": "docs/plans/kashif-food-first-floor-tables-2026-08-30.md",
+            "title": "Kashif Food \u2014 dine-in floors & tables",
+            "modified": "2026-11-03"
         },
         {
-            "file": "docs/plans/purchase-and-returns-round2-2026-10-19.md",
-            "title": "Purchase and returns \u2014 round 2 (19 Oct 2026, evening)",
-            "modified": "2026-10-29"
+            "file": "docs/plans/kashif-food-operator-permission-hide-2026-08-31.md",
+            "title": "KASHIF-OPERATOR-HIDE \u2014 jo owner ne screenshots par cross kiya",
+            "modified": "2026-11-03"
         },
         {
-            "file": "docs/plans/report-delivery-v2-2026-10-19.md",
-            "title": "REPORT-DELIVERY-V2-1 \u2014 one \"Daily report delivery\" card, sent when the day's last shift closes",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/report-network-bridge-2026-10-28.md",
-            "title": "REPORT-NETWORK-BRIDGE-1 \u2014 network par bheji report NET SALES tak nahi pahunchti thi",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/report-network-gaps-2026-10-28.md",
-            "title": "REPORT-NETWORK-ITEMS-DEALS-1 + REPORT-NETWORK-GAPS-1 \u2014 the network report slip prints what the browser prints",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/reset-supplier-bill-tables-2026-10-22.md",
-            "title": "Transaction reset: supplier-invoice tables + fail closed (22 Oct 2026)",
-            "modified": "2026-10-29"
+            "file": "docs/plans/kashif-foods-pulao-subcategories-2026-09-17.md",
+            "title": "KF-PULAO-SUBCAT-1 \u2014 The Kashif Foods: \"Chicken Pulao\" \u2192 \"Pulao\" + Chicken / Beef",
+            "modified": "2026-11-03"
         }
     ],
-    "git": "e8f40726",
+    "git": "27db1bc5",
     "source": {
-        "tenant_db": "pos_test_tenant_wst",
-        "master_db": "pos_test_master_wst"
+        "tenant_db": "pos_test_tenant_pedit",
+        "master_db": "pos_test_master_pedit"
     },
     "counts": {
-        "tables": 237,
+        "tables": 238,
         "foreign_keys": 440,
-        "inferred_links": 223,
-        "screens": 745
+        "inferred_links": 228,
+        "screens": 747
     },
     "tables": [
         {
@@ -2238,6 +2256,46 @@
                     "why": "model Branch"
                 },
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.index",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.create",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.store",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.show",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.edit",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.update",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.destroy",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.ledger",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.quick-store",
+                    "why": "via TenantClock"
+                },
+                {
                     "route": "tenant.purchase-orders.index",
                     "why": "model Branch"
                 },
@@ -2291,6 +2349,10 @@
                 },
                 {
                     "route": "tenant.goods-receipts.void",
+                    "why": "model Branch"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
                     "why": "model Branch"
                 },
                 {
@@ -3574,7 +3636,7 @@
                     "why": "model Branch"
                 }
             ],
-            "used_by_count": 467
+            "used_by_count": 478
         },
         {
             "name": "cache",
@@ -3668,6 +3730,10 @@
                 {
                     "route": "tenant.departments.handovers.reverse",
                     "why": "via DepartmentHandoverService"
+                },
+                {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
                 },
                 {
                     "route": "tenant.suppliers.index",
@@ -3926,7 +3992,7 @@
                     "why": "via CateringRefundService"
                 }
             ],
-            "used_by_count": 68
+            "used_by_count": 69
         },
         {
             "name": "cash_bank_accounts",
@@ -4069,6 +4135,10 @@
                 {
                     "route": "tenant.departments.handovers.reverse",
                     "why": "model CashBankAccount"
+                },
+                {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
                 },
                 {
                     "route": "tenant.suppliers.index",
@@ -4359,7 +4429,7 @@
                     "why": "via CateringRefundService"
                 }
             ],
-            "used_by_count": 84
+            "used_by_count": 85
         },
         {
             "name": "cash_count_lines",
@@ -5142,6 +5212,10 @@
             ],
             "used_by": [
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
                 },
@@ -5302,7 +5376,7 @@
                     "why": "via CateringFinancialPositionService"
                 }
             ],
-            "used_by_count": 40
+            "used_by_count": 41
         },
         {
             "name": "catering_commercial_rate_applications",
@@ -7139,6 +7213,10 @@
             ],
             "used_by": [
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
                 },
@@ -7287,7 +7365,7 @@
                     "why": "model CateringFinalInvoice"
                 }
             ],
-            "used_by_count": 37
+            "used_by_count": 38
         },
         {
             "name": "catering_instructions",
@@ -7640,6 +7718,10 @@
             ],
             "used_by": [
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
                 },
@@ -7712,7 +7794,7 @@
                     "why": "model CateringMaterialIssue"
                 }
             ],
-            "used_by_count": 18
+            "used_by_count": 19
         },
         {
             "name": "catering_material_rates",
@@ -8861,6 +8943,10 @@
             ],
             "used_by": [
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
                 },
@@ -8913,7 +8999,7 @@
                     "why": "via CateringRefundService"
                 }
             ],
-            "used_by_count": 13
+            "used_by_count": 14
         },
         {
             "name": "catering_service_time_presets",
@@ -10010,6 +10096,10 @@
             ],
             "used_by": [
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
                 },
@@ -10086,7 +10176,7 @@
                     "why": "model CustomerPayment"
                 }
             ],
-            "used_by_count": 19
+            "used_by_count": 20
         },
         {
             "name": "customer_translations",
@@ -10342,6 +10432,10 @@
                 {
                     "route": "central.tenant-backups.delete",
                     "why": "via TenantProvisioner"
+                },
+                {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
                 },
                 {
                     "route": "tenant.suppliers.index",
@@ -10644,7 +10738,7 @@
                     "why": "model Customer"
                 }
             ],
-            "used_by_count": 98
+            "used_by_count": 99
         },
         {
             "name": "daily_closings",
@@ -13362,6 +13456,10 @@
                     "why": "via CashShortageExpenseService"
                 },
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
                 },
@@ -13450,7 +13548,7 @@
                     "why": "via VoidPurgeService"
                 }
             ],
-            "used_by_count": 30
+            "used_by_count": 31
         },
         {
             "name": "finished_good_receipt_lines",
@@ -13818,6 +13916,10 @@
                     "why": "via NonStockCostAccounts"
                 },
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
                 },
@@ -13886,6 +13988,10 @@
                     "why": "model GoodsReceiptLine"
                 },
                 {
+                    "route": "tenant.goods-receipts.revise",
+                    "why": "model GoodsReceiptLine"
+                },
+                {
                     "route": "tenant.purchase-returns.index",
                     "why": "via PurchaseReturnService"
                 },
@@ -13918,7 +14024,80 @@
                     "why": "via PurchaseReturnService"
                 }
             ],
-            "used_by_count": 31
+            "used_by_count": 33
+        },
+        {
+            "name": "goods_receipt_revisions",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "goods_receipt_id bigint unsigned",
+                "purchase_bill_id bigint unsigned",
+                "revision_no int unsigned",
+                "action varchar(10)",
+                "before json",
+                "after json",
+                "changes json",
+                "reason varchar(255)",
+                "date_mode varchar(10)",
+                "reversed_journal_ids json",
+                "journal_entry_id bigint unsigned",
+                "created_by_user_id bigint unsigned",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "goods_receipt_id",
+                    "table": "goods_receipts"
+                },
+                {
+                    "col": "purchase_bill_id",
+                    "table": "purchase_bills"
+                },
+                {
+                    "col": "journal_entry_id",
+                    "table": "journal_entries"
+                },
+                {
+                    "col": "created_by_user_id",
+                    "table": "users"
+                }
+            ],
+            "domain": "Purchasing",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "GoodsReceiptRevision"
+            ],
+            "used_by": [
+                {
+                    "route": "tenant.goods-receipts.index",
+                    "why": "model GoodsReceiptRevision"
+                },
+                {
+                    "route": "tenant.goods-receipts.create",
+                    "why": "model GoodsReceiptRevision"
+                },
+                {
+                    "route": "tenant.goods-receipts.store",
+                    "why": "model GoodsReceiptRevision"
+                },
+                {
+                    "route": "tenant.goods-receipts.show",
+                    "why": "model GoodsReceiptRevision"
+                },
+                {
+                    "route": "tenant.goods-receipts.void",
+                    "why": "model GoodsReceiptRevision"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
+                    "why": "model GoodsReceiptRevision"
+                }
+            ],
+            "used_by_count": 6
         },
         {
             "name": "goods_receipts",
@@ -13931,6 +14110,7 @@
                 "supplier_id bigint unsigned",
                 "receipt_date date",
                 "status enum('posted','voided')",
+                "revision_no int unsigned",
                 "notes text",
                 "extra_charges decimal(14,4)",
                 "extra_charges_note varchar(255)",
@@ -13990,11 +14170,20 @@
                     "on_delete": "SET NULL"
                 }
             ],
-            "inferred_in": [],
+            "inferred_in": [
+                {
+                    "table": "goods_receipt_revisions",
+                    "col": "goods_receipt_id"
+                }
+            ],
             "models": [
                 "GoodsReceipt"
             ],
             "used_by": [
+                {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
                 {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
@@ -14088,6 +14277,10 @@
                     "why": "model GoodsReceipt"
                 },
                 {
+                    "route": "tenant.goods-receipts.revise",
+                    "why": "model GoodsReceipt"
+                },
+                {
                     "route": "tenant.purchase-bills.index",
                     "why": "model GoodsReceipt"
                 },
@@ -14160,7 +14353,7 @@
                     "why": "model GoodsReceipt"
                 }
             ],
-            "used_by_count": 41
+            "used_by_count": 43
         },
         {
             "name": "inventory_batches",
@@ -14597,6 +14790,10 @@
                     "col": "journal_entry_id"
                 },
                 {
+                    "table": "goods_receipt_revisions",
+                    "col": "journal_entry_id"
+                },
+                {
                     "table": "manufacturing_consumption_records",
                     "col": "journal_entry_id"
                 },
@@ -14650,40 +14847,68 @@
                     "why": "via NonStockCostAccounts"
                 },
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via SupplierLedgerDays"
+                },
+                {
                     "route": "tenant.suppliers.index",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.create",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.store",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.show",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.edit",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.update",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.destroy",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.ledger",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.quick-store",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
+                },
+                {
+                    "route": "tenant.goods-receipts.index",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.create",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.store",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.show",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.void",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.supplier-payments.index",
@@ -14882,7 +15107,7 @@
                     "why": "via FinishedGoodPostingService"
                 }
             ],
-            "used_by_count": 64
+            "used_by_count": 71
         },
         {
             "name": "journal_lines",
@@ -22128,6 +22353,10 @@
                     "why": "via DepartmentCountService"
                 },
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
                 },
@@ -22205,6 +22434,10 @@
                 },
                 {
                     "route": "tenant.goods-receipts.void",
+                    "why": "model Product"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
                     "why": "model Product"
                 },
                 {
@@ -23036,7 +23269,7 @@
                     "why": "model Product"
                 }
             ],
-            "used_by_count": 344
+            "used_by_count": 346
         },
         {
             "name": "promotion_targets",
@@ -23249,6 +23482,30 @@
                     "why": "via PurchaseBillService"
                 },
                 {
+                    "route": "tenant.goods-receipts.index",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.create",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.store",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.show",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.void",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
                     "route": "tenant.purchase-bills.index",
                     "why": "via PurchaseBillService"
                 },
@@ -23269,7 +23526,7 @@
                     "why": "via PurchaseBillService"
                 }
             ],
-            "used_by_count": 8
+            "used_by_count": 14
         },
         {
             "name": "purchase_bill_return_nettings",
@@ -23314,6 +23571,10 @@
                 "PurchaseBillReturnNetting"
             ],
             "used_by": [
+                {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
                 {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
@@ -23363,6 +23624,30 @@
                     "why": "via PurchaseBillService"
                 },
                 {
+                    "route": "tenant.goods-receipts.index",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.create",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.store",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.show",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.void",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
                     "route": "tenant.purchase-bills.index",
                     "why": "via PurchaseBillService"
                 },
@@ -23403,7 +23688,7 @@
                     "why": "via SupplierRunningAccountService"
                 }
             ],
-            "used_by_count": 22
+            "used_by_count": 29
         },
         {
             "name": "purchase_bills",
@@ -23418,7 +23703,7 @@
                 "goods_receipt_id bigint unsigned",
                 "bill_date date",
                 "due_date date",
-                "status enum('draft','posted','paid','partial')",
+                "status enum('draft','posted','paid','partial','voided')",
                 "subtotal decimal(15,4)",
                 "extra_charges decimal(14,4)",
                 "discount_total decimal(15,4)",
@@ -23430,7 +23715,10 @@
                 "posted_by_user_id bigint unsigned",
                 "posted_at timestamp",
                 "created_at timestamp",
-                "updated_at timestamp"
+                "updated_at timestamp",
+                "voided_at timestamp",
+                "voided_by_user_id bigint unsigned",
+                "void_reason varchar(255)"
             ],
             "fk_out": [
                 {
@@ -23459,7 +23747,12 @@
                     "on_delete": "CASCADE"
                 }
             ],
-            "inferred_out": [],
+            "inferred_out": [
+                {
+                    "col": "voided_by_user_id",
+                    "table": "users"
+                }
+            ],
             "domain": "Purchasing",
             "fk_in": [
                 {
@@ -23479,6 +23772,10 @@
                 }
             ],
             "inferred_in": [
+                {
+                    "table": "goods_receipt_revisions",
+                    "col": "purchase_bill_id"
+                },
                 {
                     "table": "supplier_credit_allocations",
                     "col": "purchase_bill_id"
@@ -23529,40 +23826,44 @@
                     "why": "via NonStockCostAccounts"
                 },
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via SupplierLedgerDays"
+                },
+                {
                     "route": "tenant.suppliers.index",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.create",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.store",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.show",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.edit",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.update",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.destroy",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.ledger",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.quick-store",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.purchase-orders.index",
@@ -23602,23 +23903,27 @@
                 },
                 {
                     "route": "tenant.goods-receipts.index",
-                    "why": "via PurchasingService"
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.goods-receipts.create",
-                    "why": "via PurchasingService"
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.goods-receipts.store",
-                    "why": "via PurchasingService"
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.goods-receipts.show",
-                    "why": "via PurchasingService"
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.goods-receipts.void",
-                    "why": "via PurchasingService"
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.purchase-bills.index",
@@ -23705,7 +24010,7 @@
                     "why": "via VoidPurgeService"
                 }
             ],
-            "used_by_count": 50
+            "used_by_count": 52
         },
         {
             "name": "purchase_order_lines",
@@ -23918,6 +24223,10 @@
                     "why": "model PurchaseOrder"
                 },
                 {
+                    "route": "tenant.goods-receipts.revise",
+                    "why": "model PurchaseOrder"
+                },
+                {
                     "route": "tenant.purchase-bills.index",
                     "why": "via PurchasingService"
                 },
@@ -23990,7 +24299,7 @@
                     "why": "via SupplierBox"
                 }
             ],
-            "used_by_count": 32
+            "used_by_count": 33
         },
         {
             "name": "purchase_return_lines",
@@ -24203,40 +24512,44 @@
             ],
             "used_by": [
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via SupplierLedgerDays"
+                },
+                {
                     "route": "tenant.suppliers.index",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.create",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.store",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.show",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.edit",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.update",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.destroy",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.ledger",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.quick-store",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.purchases.workspace",
@@ -24249,6 +24562,30 @@
                 {
                     "route": "tenant.purchases.workspace.receipt",
                     "why": "via PurchaseBillService"
+                },
+                {
+                    "route": "tenant.goods-receipts.index",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.create",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.store",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.show",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.void",
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.purchase-bills.index",
@@ -24339,7 +24676,7 @@
                     "why": "model PurchaseReturn"
                 }
             ],
-            "used_by_count": 34
+            "used_by_count": 41
         },
         {
             "name": "purchasing_settings",
@@ -28113,6 +28450,10 @@
                     "why": "model SalesOrder"
                 },
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
                 },
@@ -28585,7 +28926,7 @@
                     "why": "via PrintJobService"
                 }
             ],
-            "used_by_count": 162
+            "used_by_count": 163
         },
         {
             "name": "sales_return_lines",
@@ -28741,6 +29082,10 @@
                     "why": "via SalesReportService"
                 },
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via JournalPostingService"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "via JournalPostingService"
                 },
@@ -28837,7 +29182,7 @@
                     "why": "via RestaurantReportService"
                 }
             ],
-            "used_by_count": 25
+            "used_by_count": 26
         },
         {
             "name": "service_charge_settings",
@@ -29294,6 +29639,46 @@
                     "why": "model Shift"
                 },
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.index",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.create",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.store",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.show",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.edit",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.update",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.destroy",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.ledger",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.quick-store",
+                    "why": "via TenantClock"
+                },
+                {
                     "route": "tenant.daily-closings.index",
                     "why": "model Shift"
                 },
@@ -29586,7 +29971,7 @@
                     "why": "via TenantClock"
                 }
             ],
-            "used_by_count": 82
+            "used_by_count": 92
         },
         {
             "name": "stock_adjustment_lines",
@@ -30805,6 +31190,10 @@
                     "why": "model StockLedger"
                 },
                 {
+                    "route": "tenant.goods-receipts.revise",
+                    "why": "model StockLedger"
+                },
+                {
                     "route": "tenant.purchase-bills.index",
                     "why": "via PurchasingService"
                 },
@@ -31117,7 +31506,7 @@
                     "why": "via FinishedGoodPostingService"
                 }
             ],
-            "used_by_count": 128
+            "used_by_count": 129
         },
         {
             "name": "stock_transfer_lines",
@@ -31307,23 +31696,27 @@
                 },
                 {
                     "route": "tenant.goods-receipts.index",
-                    "why": "via PurchasingService"
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.goods-receipts.create",
-                    "why": "via PurchasingService"
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.goods-receipts.store",
-                    "why": "via PurchasingService"
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.goods-receipts.show",
-                    "why": "via PurchasingService"
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.goods-receipts.void",
-                    "why": "via PurchasingService"
+                    "why": "via PurchaseRevisionService"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
+                    "why": "via PurchaseRevisionService"
                 },
                 {
                     "route": "tenant.purchase-bills.index",
@@ -31442,7 +31835,7 @@
                     "why": "via VoidPurgeService"
                 }
             ],
-            "used_by_count": 43
+            "used_by_count": 44
         },
         {
             "name": "supplier_credit_moves",
@@ -31629,6 +32022,7 @@
                 "entry_type varchar(50)",
                 "direction enum('debit','credit')",
                 "amount decimal(15,4)",
+                "entry_date date",
                 "balance_after decimal(15,4)",
                 "reference_type varchar(100)",
                 "reference_id bigint unsigned",
@@ -31663,6 +32057,10 @@
                 "SupplierLedger"
             ],
             "used_by": [
+                {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "model SupplierLedger"
+                },
                 {
                     "route": "tenant.suppliers.index",
                     "why": "model SupplierLedger"
@@ -31741,6 +32139,10 @@
                 },
                 {
                     "route": "tenant.goods-receipts.void",
+                    "why": "via PurchasingService"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
                     "why": "via PurchasingService"
                 },
                 {
@@ -31828,7 +32230,7 @@
                     "why": "via VoidPurgeService"
                 }
             ],
-            "used_by_count": 41
+            "used_by_count": 43
         },
         {
             "name": "supplier_payments",
@@ -31904,40 +32306,44 @@
             ],
             "used_by": [
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via SupplierLedgerDays"
+                },
+                {
                     "route": "tenant.suppliers.index",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.create",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.store",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.show",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.edit",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.update",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.destroy",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.ledger",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.suppliers.quick-store",
-                    "why": "via JournalPostingService"
+                    "why": "via SupplierLedgerDays"
                 },
                 {
                     "route": "tenant.purchase-orders.index",
@@ -31993,6 +32399,10 @@
                 },
                 {
                     "route": "tenant.goods-receipts.void",
+                    "why": "via PurchasingService"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
                     "why": "via PurchasingService"
                 },
                 {
@@ -32080,7 +32490,7 @@
                     "why": "via VoidPurgeService"
                 }
             ],
-            "used_by_count": 44
+            "used_by_count": 46
         },
         {
             "name": "supplier_translations",
@@ -32287,6 +32697,10 @@
                     "why": "via TenantProvisioner"
                 },
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "model Supplier"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "model Supplier"
                 },
@@ -32376,6 +32790,10 @@
                 },
                 {
                     "route": "tenant.goods-receipts.void",
+                    "why": "model Supplier"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
                     "why": "model Supplier"
                 },
                 {
@@ -32499,7 +32917,7 @@
                     "why": "via TrialBalancePartyService"
                 }
             ],
-            "used_by_count": 76
+            "used_by_count": 78
         },
         {
             "name": "terminal_printer_settings",
@@ -34842,6 +35260,10 @@
                     "col": "posted_by_user_id"
                 },
                 {
+                    "table": "goods_receipt_revisions",
+                    "col": "created_by_user_id"
+                },
+                {
                     "table": "goods_receipts",
                     "col": "voided_by_user_id"
                 },
@@ -34908,6 +35330,10 @@
                 {
                     "table": "production_orders",
                     "col": "posted_by_user_id"
+                },
+                {
+                    "table": "purchase_bills",
+                    "col": "voided_by_user_id"
                 },
                 {
                     "table": "purged_entries",
@@ -35197,6 +35623,46 @@
                 {
                     "route": "tenant.departments.destroy",
                     "why": "model User"
+                },
+                {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.index",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.create",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.store",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.show",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.edit",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.update",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.destroy",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.ledger",
+                    "why": "via TenantClock"
+                },
+                {
+                    "route": "tenant.suppliers.quick-store",
+                    "why": "via TenantClock"
                 },
                 {
                     "route": "tenant.purchase-bills.index",
@@ -35567,7 +36033,7 @@
                     "why": "via TenantClock"
                 }
             ],
-            "used_by_count": 158
+            "used_by_count": 168
         },
         {
             "name": "void_reasons",
@@ -40922,6 +41388,10 @@
                     "why": "via PackUnits"
                 },
                 {
+                    "route": "tenant.suppliers.ledger-all",
+                    "why": "via ScreenAccess"
+                },
+                {
                     "route": "tenant.suppliers.index",
                     "why": "via ScreenAccess"
                 },
@@ -41011,6 +41481,10 @@
                 },
                 {
                     "route": "tenant.goods-receipts.void",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.goods-receipts.revise",
                     "why": "via TenantFeatures"
                 },
                 {
@@ -41218,7 +41692,7 @@
                     "why": "via Business"
                 }
             ],
-            "used_by_count": 183
+            "used_by_count": 185
         },
         {
             "name": "users",
@@ -45596,15 +46070,22 @@
             ]
         },
         {
-            "route": "tenant.suppliers.index",
-            "uri": "/suppliers",
+            "route": "tenant.suppliers.ledger-all",
+            "uri": "/suppliers/ledger",
             "methods": "GET",
-            "controller": "SupplierController@index",
+            "controller": "SupplierController@ledgerAll",
             "group": "tenant.suppliers",
             "tables": [
                 "suppliers",
                 "supplier_ledgers",
+                "journal_entries",
+                "purchase_bills",
+                "purchase_returns",
+                "supplier_payments",
                 "tenants",
+                "branches",
+                "shifts",
+                "users",
                 "cash_bank_accounts",
                 "cash_bank_account_transactions",
                 "catering_advances",
@@ -45616,14 +46097,44 @@
                 "expense_vouchers",
                 "goods_receipts",
                 "goods_receipt_lines",
-                "journal_entries",
                 "products",
-                "purchase_bills",
                 "purchase_bill_return_nettings",
-                "purchase_returns",
                 "sales_orders",
-                "sales_returns",
-                "supplier_payments"
+                "sales_returns"
+            ]
+        },
+        {
+            "route": "tenant.suppliers.index",
+            "uri": "/suppliers",
+            "methods": "GET",
+            "controller": "SupplierController@index",
+            "group": "tenant.suppliers",
+            "tables": [
+                "suppliers",
+                "supplier_ledgers",
+                "journal_entries",
+                "purchase_bills",
+                "purchase_returns",
+                "supplier_payments",
+                "tenants",
+                "branches",
+                "shifts",
+                "users",
+                "cash_bank_accounts",
+                "cash_bank_account_transactions",
+                "catering_advances",
+                "catering_final_invoices",
+                "catering_material_issues",
+                "catering_refunds",
+                "customers",
+                "customer_payments",
+                "expense_vouchers",
+                "goods_receipts",
+                "goods_receipt_lines",
+                "products",
+                "purchase_bill_return_nettings",
+                "sales_orders",
+                "sales_returns"
             ]
         },
         {
@@ -45635,7 +46146,14 @@
             "tables": [
                 "suppliers",
                 "supplier_ledgers",
+                "journal_entries",
+                "purchase_bills",
+                "purchase_returns",
+                "supplier_payments",
                 "tenants",
+                "branches",
+                "shifts",
+                "users",
                 "cash_bank_accounts",
                 "cash_bank_account_transactions",
                 "catering_advances",
@@ -45647,14 +46165,10 @@
                 "expense_vouchers",
                 "goods_receipts",
                 "goods_receipt_lines",
-                "journal_entries",
                 "products",
-                "purchase_bills",
                 "purchase_bill_return_nettings",
-                "purchase_returns",
                 "sales_orders",
-                "sales_returns",
-                "supplier_payments"
+                "sales_returns"
             ]
         },
         {
@@ -45666,7 +46180,14 @@
             "tables": [
                 "suppliers",
                 "supplier_ledgers",
+                "journal_entries",
+                "purchase_bills",
+                "purchase_returns",
+                "supplier_payments",
                 "tenants",
+                "branches",
+                "shifts",
+                "users",
                 "cash_bank_accounts",
                 "cash_bank_account_transactions",
                 "catering_advances",
@@ -45678,14 +46199,10 @@
                 "expense_vouchers",
                 "goods_receipts",
                 "goods_receipt_lines",
-                "journal_entries",
                 "products",
-                "purchase_bills",
                 "purchase_bill_return_nettings",
-                "purchase_returns",
                 "sales_orders",
-                "sales_returns",
-                "supplier_payments"
+                "sales_returns"
             ]
         },
         {
@@ -45697,7 +46214,14 @@
             "tables": [
                 "suppliers",
                 "supplier_ledgers",
+                "journal_entries",
+                "purchase_bills",
+                "purchase_returns",
+                "supplier_payments",
                 "tenants",
+                "branches",
+                "shifts",
+                "users",
                 "cash_bank_accounts",
                 "cash_bank_account_transactions",
                 "catering_advances",
@@ -45709,14 +46233,10 @@
                 "expense_vouchers",
                 "goods_receipts",
                 "goods_receipt_lines",
-                "journal_entries",
                 "products",
-                "purchase_bills",
                 "purchase_bill_return_nettings",
-                "purchase_returns",
                 "sales_orders",
-                "sales_returns",
-                "supplier_payments"
+                "sales_returns"
             ]
         },
         {
@@ -45728,7 +46248,14 @@
             "tables": [
                 "suppliers",
                 "supplier_ledgers",
+                "journal_entries",
+                "purchase_bills",
+                "purchase_returns",
+                "supplier_payments",
                 "tenants",
+                "branches",
+                "shifts",
+                "users",
                 "cash_bank_accounts",
                 "cash_bank_account_transactions",
                 "catering_advances",
@@ -45740,14 +46267,10 @@
                 "expense_vouchers",
                 "goods_receipts",
                 "goods_receipt_lines",
-                "journal_entries",
                 "products",
-                "purchase_bills",
                 "purchase_bill_return_nettings",
-                "purchase_returns",
                 "sales_orders",
-                "sales_returns",
-                "supplier_payments"
+                "sales_returns"
             ]
         },
         {
@@ -45759,7 +46282,14 @@
             "tables": [
                 "suppliers",
                 "supplier_ledgers",
+                "journal_entries",
+                "purchase_bills",
+                "purchase_returns",
+                "supplier_payments",
                 "tenants",
+                "branches",
+                "shifts",
+                "users",
                 "cash_bank_accounts",
                 "cash_bank_account_transactions",
                 "catering_advances",
@@ -45771,14 +46301,10 @@
                 "expense_vouchers",
                 "goods_receipts",
                 "goods_receipt_lines",
-                "journal_entries",
                 "products",
-                "purchase_bills",
                 "purchase_bill_return_nettings",
-                "purchase_returns",
                 "sales_orders",
-                "sales_returns",
-                "supplier_payments"
+                "sales_returns"
             ]
         },
         {
@@ -45790,7 +46316,14 @@
             "tables": [
                 "suppliers",
                 "supplier_ledgers",
+                "journal_entries",
+                "purchase_bills",
+                "purchase_returns",
+                "supplier_payments",
                 "tenants",
+                "branches",
+                "shifts",
+                "users",
                 "cash_bank_accounts",
                 "cash_bank_account_transactions",
                 "catering_advances",
@@ -45802,14 +46335,10 @@
                 "expense_vouchers",
                 "goods_receipts",
                 "goods_receipt_lines",
-                "journal_entries",
                 "products",
-                "purchase_bills",
                 "purchase_bill_return_nettings",
-                "purchase_returns",
                 "sales_orders",
-                "sales_returns",
-                "supplier_payments"
+                "sales_returns"
             ]
         },
         {
@@ -45821,7 +46350,14 @@
             "tables": [
                 "suppliers",
                 "supplier_ledgers",
+                "journal_entries",
+                "purchase_bills",
+                "purchase_returns",
+                "supplier_payments",
                 "tenants",
+                "branches",
+                "shifts",
+                "users",
                 "cash_bank_accounts",
                 "cash_bank_account_transactions",
                 "catering_advances",
@@ -45833,14 +46369,10 @@
                 "expense_vouchers",
                 "goods_receipts",
                 "goods_receipt_lines",
-                "journal_entries",
                 "products",
-                "purchase_bills",
                 "purchase_bill_return_nettings",
-                "purchase_returns",
                 "sales_orders",
-                "sales_returns",
-                "supplier_payments"
+                "sales_returns"
             ]
         },
         {
@@ -45852,7 +46384,14 @@
             "tables": [
                 "suppliers",
                 "supplier_ledgers",
+                "journal_entries",
+                "purchase_bills",
+                "purchase_returns",
+                "supplier_payments",
                 "tenants",
+                "branches",
+                "shifts",
+                "users",
                 "cash_bank_accounts",
                 "cash_bank_account_transactions",
                 "catering_advances",
@@ -45864,14 +46403,10 @@
                 "expense_vouchers",
                 "goods_receipts",
                 "goods_receipt_lines",
-                "journal_entries",
                 "products",
-                "purchase_bills",
                 "purchase_bill_return_nettings",
-                "purchase_returns",
                 "sales_orders",
-                "sales_returns",
-                "supplier_payments"
+                "sales_returns"
             ]
         },
         {
@@ -46109,12 +46644,17 @@
                 "branches",
                 "goods_receipts",
                 "goods_receipt_lines",
+                "goods_receipt_revisions",
                 "products",
                 "purchase_orders",
                 "stock_ledgers",
                 "suppliers",
+                "journal_entries",
                 "purchase_bills",
+                "purchase_bill_lines",
                 "supplier_credit_allocations",
+                "purchase_returns",
+                "purchase_bill_return_nettings",
                 "supplier_ledgers",
                 "supplier_payments",
                 "tenants"
@@ -46130,12 +46670,17 @@
                 "branches",
                 "goods_receipts",
                 "goods_receipt_lines",
+                "goods_receipt_revisions",
                 "products",
                 "purchase_orders",
                 "stock_ledgers",
                 "suppliers",
+                "journal_entries",
                 "purchase_bills",
+                "purchase_bill_lines",
                 "supplier_credit_allocations",
+                "purchase_returns",
+                "purchase_bill_return_nettings",
                 "supplier_ledgers",
                 "supplier_payments",
                 "tenants"
@@ -46151,12 +46696,17 @@
                 "branches",
                 "goods_receipts",
                 "goods_receipt_lines",
+                "goods_receipt_revisions",
                 "products",
                 "purchase_orders",
                 "stock_ledgers",
                 "suppliers",
+                "journal_entries",
                 "purchase_bills",
+                "purchase_bill_lines",
                 "supplier_credit_allocations",
+                "purchase_returns",
+                "purchase_bill_return_nettings",
                 "supplier_ledgers",
                 "supplier_payments",
                 "tenants"
@@ -46172,12 +46722,17 @@
                 "branches",
                 "goods_receipts",
                 "goods_receipt_lines",
+                "goods_receipt_revisions",
                 "products",
                 "purchase_orders",
                 "stock_ledgers",
                 "suppliers",
+                "journal_entries",
                 "purchase_bills",
+                "purchase_bill_lines",
                 "supplier_credit_allocations",
+                "purchase_returns",
+                "purchase_bill_return_nettings",
                 "supplier_ledgers",
                 "supplier_payments",
                 "tenants"
@@ -46193,12 +46748,43 @@
                 "branches",
                 "goods_receipts",
                 "goods_receipt_lines",
+                "goods_receipt_revisions",
                 "products",
                 "purchase_orders",
                 "stock_ledgers",
                 "suppliers",
+                "journal_entries",
                 "purchase_bills",
+                "purchase_bill_lines",
                 "supplier_credit_allocations",
+                "purchase_returns",
+                "purchase_bill_return_nettings",
+                "supplier_ledgers",
+                "supplier_payments",
+                "tenants"
+            ]
+        },
+        {
+            "route": "tenant.goods-receipts.revise",
+            "uri": "/goods-receipts/{goodsReceipt}/revise",
+            "methods": "POST",
+            "controller": "GoodsReceiptController@revise",
+            "group": "tenant.goods-receipts",
+            "tables": [
+                "branches",
+                "goods_receipts",
+                "goods_receipt_lines",
+                "goods_receipt_revisions",
+                "products",
+                "purchase_orders",
+                "stock_ledgers",
+                "suppliers",
+                "journal_entries",
+                "purchase_bills",
+                "purchase_bill_lines",
+                "supplier_credit_allocations",
+                "purchase_returns",
+                "purchase_bill_return_nettings",
                 "supplier_ledgers",
                 "supplier_payments",
                 "tenants"

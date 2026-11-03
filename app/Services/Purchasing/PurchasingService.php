@@ -29,13 +29,16 @@ class PurchasingService
         int $referenceId,
         string $referenceNo,
         ?string $notes = null,
-        ?int $userId = null
+        ?int $userId = null,
+        ?string $entryDate = null
     ): SupplierLedger {
         // BUG-042 FIX: lock the supplier row before read-modify-write so concurrent
         // GRN postings and payments cannot corrupt the running balance.
+        // SUPPLIER-LEDGER-DAILY-1: $entryDate is the business date of the document behind the row (invoice / payment /
+        // return / journal date) — the day the ledger shows it on. Every caller passes it; null only from old callers.
         return DB::connection('tenant')->transaction(function () use (
             $supplier, $entryType, $direction, $amount,
-            $referenceType, $referenceId, $referenceNo, $notes, $userId
+            $referenceType, $referenceId, $referenceNo, $notes, $userId, $entryDate
         ) {
             $supplier = Supplier::whereKey($supplier->id)->lockForUpdate()->firstOrFail();
 
@@ -48,6 +51,7 @@ class PurchasingService
                 'entry_type'         => $entryType,
                 'direction'          => $direction,
                 'amount'             => $amount,
+                'entry_date'         => $entryDate,
                 'balance_after'      => $balance,
                 'reference_type'     => $referenceType,
                 'reference_id'       => $referenceId,
@@ -60,6 +64,16 @@ class PurchasingService
 
             return $ledger;
         });
+    }
+
+    /** SUPPLIER-LEDGER-DAILY-1: a document date (Carbon, string or null) as the Y-m-d a ledger row is shown on. */
+    public static function ledgerDay(mixed $date): ?string
+    {
+        if ($date === null || $date === '') {
+            return null;
+        }
+
+        return \Illuminate\Support\Carbon::parse($date)->toDateString();
     }
 
     public function postGrn(GoodsReceipt $grn, ?int $userId = null): void
@@ -117,9 +131,11 @@ class PurchasingService
      * unit_cost inside InventoryService, which every stock path in the system depends on — not
      * worth it for half a paisa. The guard asserts this bound rather than pretending to exactness.
      *
+     * Public for PURCHASE-EDIT-1: a corrected receipt's stock goes back in at the cost this works out, exactly as at entry.
+     *
      * @return array<int, float> line id => landed unit cost
      */
-    private function landedUnitCosts(GoodsReceipt $grn): array
+    public function landedUnitCosts(GoodsReceipt $grn): array
     {
         $charges = round((float) ($grn->extra_charges ?? 0), 4);
         $costs = [];
@@ -276,7 +292,8 @@ class PurchasingService
             $bill->id,
             $bill->bill_no,
             $bill->notes,
-            $userId
+            $userId,
+            self::ledgerDay($bill->bill_date),
         );
 
         // SUPPLIER-RUNNING-ACCOUNT-1: a supplier paid ahead — the new bill takes that credit first.
@@ -299,7 +316,8 @@ class PurchasingService
             $payment->id,
             $payment->payment_no,
             $payment->notes,
-            $userId
+            $userId,
+            self::ledgerDay($payment->payment_date),
         );
 
         // SUPPLIER-RUNNING-ACCOUNT-1: on account, the payment settles its bill (only up to what that

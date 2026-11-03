@@ -407,6 +407,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/department-counts/{session}/cancel', [DepartmentCountController::class, 'cancel'])->name('tenant.department-counts.cancel');
 
                 // Suppliers
+                // SUPPLIER-LEDGER-DAILY-1: all suppliers' ledger, day by day (switch-gated in the controller). Before the
+                // resource, so "ledger" is never read as a supplier id by /suppliers/{supplier}.
+                Route::get('/suppliers/ledger', [SupplierController::class, 'ledgerAll'])
+                    ->name('tenant.suppliers.ledger-all');
                 Route::resource('suppliers', SupplierController::class)->names([
                     'index' => 'tenant.suppliers.index',
                     'create' => 'tenant.suppliers.create',
@@ -454,6 +458,11 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // can be followed by a crawler or a refresh.
                 Route::post('/goods-receipts/{goodsReceipt}/void', [GoodsReceiptController::class, 'void'])
                     ->name('tenant.goods-receipts.void');
+                // PURCHASE-EDIT-1: correct a posted receipt (and its invoice) in place — switch-gated in the controller.
+                // "revise", not "edit"/"update": those fall into the Permission Center's generic Edit box.
+                Route::post('/goods-receipts/{goodsReceipt}/revise', [GoodsReceiptController::class, 'revise'])
+                    ->middleware('prevent.duplicate.submit')
+                    ->name('tenant.goods-receipts.revise');
 
                 // Purchase Bills
                 Route::get('/purchase-bills', [PurchaseBillController::class, 'index'])
