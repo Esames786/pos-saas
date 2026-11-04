@@ -38,6 +38,8 @@ class AppServiceProvider extends ServiceProvider
         // English, /ar/pricing in Arabic. $lurl('/pricing') in any public view.
         \Illuminate\Support\Facades\View::composer(['layouts.public', 'public.*'], function ($view) {
             $view->with('lurl', fn (string $path = '/') => \App\Support\PublicLocale::url($path));
+            // WEBSITE-HIDE-PRICES-1: every price on the public site reads "Price on request".
+            $view->with('pricesHidden', \App\Support\PublicPrices::hidden());
         });
 
         // EDGE-RUNTIME-BOUNDARY-1: fail closed on a misconfigured Branch Server. A branch appliance
