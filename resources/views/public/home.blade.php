@@ -499,7 +499,11 @@
                         <p class="text-muted small flex-grow-1">{{ __((string) $plan->public_description) }}</p>
                         {{-- WEBSITE-I18N-GEO-1 P2: the visitor's market — PKR bundle, or one branch's price. --}}
                         @php $q = $previewPrices[$plan->code] ?? null; @endphp
-                        @if($q && $q['pricing'] === 'per_branch')
+                        @if($pricesHidden)
+                            {{-- WEBSITE-HIDE-PRICES-1 --}}
+                            <div class="fw-semibold fs-5 mb-1">{{ __('Price on request') }}</div>
+                            <div class="text-muted small mb-2">{{ __('Contact us for a quote') }}</div>
+                        @elseif($q && $q['pricing'] === 'per_branch')
                             <div class="plan-price">{{ \App\Support\PublicMoney::format($q['monthly_total'], $q['currency']) }}</div>
                             <div class="text-muted small mb-1">{{ __('per branch / month') }}</div>
                             <div class="text-muted small mb-2">{{ __('or :amount / year', ['amount' => \App\Support\PublicMoney::format($q['yearly_total'], $q['currency'])]) }}</div>

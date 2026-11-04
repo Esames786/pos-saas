@@ -47,7 +47,7 @@
     <div class="container" style="position:relative;z-index:2;">
         <div class="row align-items-center gy-4">
             <div class="col-lg-7">
-                <span class="hero-badge mb-3"><i class="ti ti-tag"></i> {{ __('Simple, transparent pricing') }}</span>
+                <span class="hero-badge mb-3"><i class="ti ti-tag"></i> {{ $pricesHidden ? __('Plans for every business') : __('Simple, transparent pricing') }}</span>
                 <h1 class="fw-bold mb-3" style="font-size:2.4rem;">{{ __('Choose the POS plan that fits your business.') }}</h1>
                 <p class="lead mb-4" style="color:#cbd5e1;">
                     {{ __('Start with a 30-day free trial. Upgrade as your team, branches, terminals, and workflows grow.') }}
@@ -72,7 +72,11 @@
                         @foreach($selfServicePlans->take(2) as $p)
                             <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid rgba(255,255,255,.12);">
                                 <span class="text-white fw-semibold">{{ __($p->name) }}</span>
-                                <span style="color:#e9c869;font-weight:700;"><bdi>{{ $p->currency_code }} {{ number_format((float)($p->monthly_price ?? $p->price),0) }}</bdi><small class="text-white-50">/{{ __('mo') }}</small></span>
+                                @if($pricesHidden)
+                                    <span style="color:#e9c869;font-weight:700;">{{ __('On request') }}</span>
+                                @else
+                                    <span style="color:#e9c869;font-weight:700;"><bdi>{{ $p->currency_code }} {{ number_format((float)($p->monthly_price ?? $p->price),0) }}</bdi><small class="text-white-50">/{{ __('mo') }}</small></span>
+                                @endif
                             </div>
                         @endforeach
                     @endif
@@ -88,7 +92,8 @@
     </div>
 </section>
 
-{{-- TOGGLE + MARKET (WEBSITE-I18N-GEO-1 P2) --}}
+{{-- TOGGLE + MARKET (WEBSITE-I18N-GEO-1 P2) — nothing to switch while prices are hidden (WEBSITE-HIDE-PRICES-1). --}}
+@unless($pricesHidden)
 <section class="section-pad pb-0">
     <div class="container d-flex flex-wrap justify-content-center align-items-center gap-3">
         <div class="bill-toggle reveal">
@@ -107,6 +112,7 @@
         </form>
     </div>
 </section>
+@endunless
 
 @if($perBranch)
     @include('public.partials.pricing-per-branch')
@@ -125,6 +131,11 @@
                         <h4 class="fw-bold mb-1">{{ __($plan->name) }}</h4>
                         <p class="text-muted small flex-grow-1">{{ __((string) $plan->public_description) }}</p>
 
+                        @if($pricesHidden)
+                            {{-- WEBSITE-HIDE-PRICES-1 --}}
+                            <div class="fw-semibold fs-5 mb-1">{{ __('Price on request') }}</div>
+                            <div class="text-muted mb-2">{{ __('Contact us for a quote') }}</div>
+                        @else
                         <div class="price-monthly">
                             <div class="plan-price"><bdi>{{ $plan->currency_code }} {{ number_format((float)($plan->monthly_price ?? $plan->price),0) }}</bdi></div>
                             <div class="text-muted mb-2">{{ __('per month') }}</div>
@@ -133,6 +144,7 @@
                             <div class="plan-price"><bdi>{{ $plan->currency_code }} {{ number_format((float)($plan->yearly_price ?? ($plan->monthly_price ?? $plan->price) * 10),0) }}</bdi></div>
                             <div class="text-muted mb-2">{{ __('per year') }}</div>
                         </div>
+                        @endif
 
                         @if($plan->trial_days)
                             <span class="badge bg-success-subtle text-success align-self-start mb-3">{{ __(':days-day free trial', ['days' => $plan->trial_days]) }}</span>
@@ -409,7 +421,7 @@
 
 @endsection
 
-@if(! $perBranch)
+@if(! $perBranch && ! $pricesHidden)
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {

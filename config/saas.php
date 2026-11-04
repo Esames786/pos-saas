@@ -100,6 +100,10 @@ return [
         'secret_key' => env('SAAS_RECAPTCHA_SECRET_KEY'),
         'verify_url' => 'https://www.google.com/recaptcha/api/siteverify',
     ],
+    // WEBSITE-HIDE-PRICES-1 — hide every subscription price on the public website (a client demo, a price
+    // change). Plans, features, demos and the free trial stay; each price reads "Price on request", and no
+    // figure is sent to the browser. Signups still price and record the plan on the server as always.
+    'hide_public_prices' => (bool) env('SAAS_HIDE_PUBLIC_PRICES', false),
     // Per-branch markets: from N branches, P% off the whole plan. 11+ is Enterprise (Contact Sales).
     'branch_discounts' => [3 => 10, 6 => 15],
     'max_self_service_branches' => 10,
