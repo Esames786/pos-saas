@@ -307,3 +307,28 @@ LAB=STANDBY, lease cloud, heartbeat advancing, print+authority workers restarted
 HOST=NOT STABLE: TechHub 10.56 M handles / 5.2 GB and Realtek 3.7 GB untouched, exhaustion events still logged (21:20, 21:42); Waves fixed; commit 50.4/61.6
 AGENTS=E/F remain PAUSED (owner item 1) until the owner confirms the TechHub/Realtek fix
 ```
+
+## B.9 — host REBOOTED by the owner (4 Nov 09:42 UTC): leak gone, host stable; LAB relaunched by plan identity on 5 Nov 08:55 UTC; one MySQL finding for the owner
+
+Owner decision 31 Oct late ("MYSQL RECOVERY ACCEPTED"): agents paused until Windows memory is stable; owner handles the vendor services; after the intervention verify eight points and report only `HOST_STABLE` and blockers.
+
+| check | result | evidence |
+|---|---|---|
+| 1 TechHub leak | gone: `Dell.TechHub.Instrumentation.SubAgent` (new pid 6308) **2,374 handles / 155 MB** (was 10.57 M / 5.3 GB); Realtek ×3 ≈ 5 MB each; Waves 76 MB; total handles 175 K (was 11.2 M). Intervention = **reboot** at 2026-11-04T09:42:55Z | process census 5 Nov 08:46 UTC |
+| 2 commit headroom | **29.0 / 55.1 GB, headroom 26.1 GB** (was 5.1–8.3) | same |
+| 3 C: free | **56.8 GB** | same |
+| 4 stability | host up 23 h since the reboot before these checks, 0 low-memory events | System log |
+| 5 low-memory events | **0** since 31 Oct 22:00 UTC | Resource-Exhaustion-Detector query |
+| 6 MySQL | Laragon autostarted mysqld at 09:46:10 (pids 12840 → 12796, `--log-error=D:\laragon2\data\mysql-8\mysqld.log`, same basedir `my.ini`); ready 09:48:45; **finding below** | `mysqld.log` 146348–146369 |
+| 7 hourly backup | 545 × exit=0 up to the reboot (last 4 Nov ≈09:19 UTC); loop dead after the reboot; relaunched 08:55 UTC — first run: ` checksum 8fa5e0da5a104c2d… size 359079 bytes [2026-11-04T13:42:44] exit=0 Backup written: C:\Users\Dell\BingooEdgeLab\data\BingooEdge\backups\edge-backup-20261104_084244-lcjufy.enc checksum 45728da7f5e2aed0… size` (newest file `edge-backup-20261105_085556-6fkyw2.enc`) | `worker-logs\BingooEdgeBackup.out.log` |
+| 8 Edge | all ten LAB pids were dead after the reboot (gateway, two supervisors, print, sync, authority, backup, FakePrinter, LAB Cloud, Agent E's Cloud clone); data untouched: rowset MD5s identical to T0 (12d, 13d), outbox 0/0, lease holder cloud. Relaunch 5 Nov: LAB Cloud (`Start-LabCloud.ps1 -Browsable -Worktree …\src-ac5b168d` → pid 21180, first request 23 s cold, then 200), FakePrinter (pid 31968, :9100), then the seven plan entries by recorded identity (`restart-workers-after-reboot.ps1`, the b8 script with a new evidence name): gateway 31556, web1 28292, web2 10400, print 11784, sync 21072, authority 21028, backup 11880. **STANDBY_READY 27 s later**, acks 409 / failures 0, heartbeat seq 60633, gateway 10/10 × 200, supervisor counters 0/0 | `13b-restart-workers-after-reboot.txt`, `13c-health-after-reboot.json`, `13d-snapshot-after-reboot.txt` |
+
+**MySQL finding (owner decision needed, nothing done):** the reboot killed the 31 Oct mysqld instance without a clean shutdown (the old error log ends at 21:52 31 Oct). At the 4 Nov start InnoDB logged five `[ERROR] MY-011971` "log sequence number is in the future" pages — `innodb_system` page 5 and `innodb_undo_001` pages 123/124/281/319 (page LSN ≈ 1,165,745,928,486 vs redo end 1,165,745,927,534, ≈ 950 bytes of redo tail lost) — each followed by `MY-011972` "your database may be corrupt or you may have copied the InnoDB tablespace but not the redo log files". Recovery then completed (XA recovery clean, ready for connections). No LAB tablespace is named; `CHECK TABLE … QUICK` on all 445 LAB tables = OK twice (31 Oct and after the reboot) and every rowset MD5 equals T0. Risk: the transaction-system / undo metadata is ahead of the redo log; InnoDB's own advice for this message is a logical dump and reload. Options for the owner: (a) accept and watch (LAB only; hourly encrypted restore-verified backups continue); (b) rebuild the shared Laragon instance from logical dumps — affects every project on this laptop; (c) give the LAB MySQL its own service and datadir (Agent F's MYSQL_STARTUP_PLAN) and load the LAB DBs there from a dump. Per the owner's rules I used no force-recovery and touched no redo/undo files.
+
+**Supervisor finding (for Agent F, 0.8.3):** after a 9-hour Modern Standby (22:04 3 Nov → 07:01 4 Nov) both supervisors computed "no answer for 30,217 s", declared the backends hung and restarted them (restart #4 each, 07:02:27 UTC) — the hang clock is wall-clock `microtime()`, so sleep time counts as silence. Bounded, data-safe, but a false restart. A monotonic clock plus a resume-gap reset belongs in 0.8.3. (The 3 Nov "frozen status file" scare was a misread: the status file is rewritten only on state transitions; the supervisors were alive and probing every 5 s.)
+
+```
+HOST_STABLE=YES (reboot 4 Nov 09:42 UTC; TechHub 2,374 handles; commit 29.0/55.1 GB; C: 56.8 GB; 0 low-memory events since 31 Oct 22:00)
+LAB=STANDBY_READY again at 2026-11-05T08:56:12Z after a full relaunch by plan identity; rowsets identical to T0; outbox 0/0; lease cloud
+REMAINING_BLOCKERS=(1) owner decision on the InnoDB "LSN in the future" finding (LAB tables verify clean); (2) secrets\admin.pass for Phase C; (3) owner's explicit "resume agents"
+```
