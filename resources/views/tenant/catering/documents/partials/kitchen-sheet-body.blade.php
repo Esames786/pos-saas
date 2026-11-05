@@ -340,8 +340,43 @@
             <span class="ft"><span class="ftl">SERVE</span><span class="ftv" dir="ltr">{{ \Carbon\Carbon::parse($snapshot['service_time'])->format('g:i A') }}</span></span>
         @endif
     </div>
+    {{-- KITCHEN-SHEET-VENUE-ONCE-1 (5 Nov) — client: "2 dafa address aata hai
+         kitchen paper mei".
+
+         Paer par venue AUR booking ka pata dono chhapte the, aur operator aksar
+         dono khanon me ek hi jagah likhta tha ("johar" / "johar") — prod par 20
+         Oct se 31 bookings me dono bhare the, 19 me bilkul ek hi text.
+
+         Owner ka faisla (VENUE-NAME-ONLY-1): venue = hall ka NAAM, poora pata
+         Address me — aur parche par DONO, naam phir pata. Pehle socha tha "sirf
+         venue"; owner ne naam + pata chuna, kyunke purani bookings ke lambe venue
+         asal me pate hain aur nayi bookings me venue chhota naam hoga.
+
+         Is liye qaida "dono, magar koi baat do baar nahi": jo ek doosre me pehle
+         se shamil ho (bari/chhoti likhai aur spaces ko chhor kar) — barabar, ya
+         ek ka text doosre ke andar — to sirf LAMBA wala chhapta hai. "Universal
+         Banquet" + "Universal Banquet (Zaver), 4K chorangi…" → sirf pata;
+         "maskan" + "gulshan" → dono. Sirf spaces wala khana khali gina jata hai. --}}
+    @php
+        $footVenue = trim((string) ($snapshot['venue'] ?? ''));
+        $footAddress = trim((string) ($snapshot['customer_address'] ?? ''));
+        $footKey = fn (string $s) => mb_strtolower(preg_replace('/\s+/u', ' ', $s) ?? $s);
+        if ($footVenue !== '' && $footAddress !== '') {
+            $kv = $footKey($footVenue);
+            $ka = $footKey($footAddress);
+            if (str_contains($ka, $kv)) {
+                $footVenue = '';
+            } elseif (str_contains($kv, $ka)) {
+                $footAddress = '';
+            }
+        }
+    @endphp
     <div class="foot-r">
-        @if(!empty($snapshot['venue']))<div class="venue">{{ $snapshot['venue'] }}</div>@endif
-        @if(!empty($snapshot['customer_address']))<div class="addr">{{ $snapshot['customer_address'] }}</div>@endif
+        @if($footVenue !== '')
+            <div class="venue">{{ $footVenue }}</div>
+        @endif
+        @if($footAddress !== '')
+            <div class="addr">{{ $footAddress }}</div>
+        @endif
     </div>
 </div>
