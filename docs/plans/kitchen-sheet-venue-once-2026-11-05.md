@@ -54,3 +54,17 @@ Worktree `pos-saas-kkvenue`, branch `fix/kitchen-sheet-venue-once-20261105` (pro
   hataya → 1 laal · D kitchen sheet prod wali → 5 laal · E kitchen sheet pehli "sirf venue" wali → 2 laal.
 - Pehla commit `ff2d97ef` ("sirf venue") owner ke doosre faisle se badla — history me rakha hai.
 - Deploy: abhi nahi — push aur deploy owner ke alag lafz par.
+
+## Deploy (5 Nov 2026, ~14:08 UTC) — LIVE `8ea7270c`
+- Owner: "push karo and deploy karo". Before: canonical = origin = prod = `91dcd4f9` (kisi aur ka kaam saath nahi gaya).
+- Merge `8ea7270c` → push → `origin == HEAD` alag qadam me sabit → `bash deploy.sh` (9/9, tenants ok=12, `retaildemo`
+  skip = purana "Tenant database configuration missing"). "Nothing to migrate". Backup nahi liya: koi migration / data
+  change nahi; wapsi = `git revert` + deploy.
+- **Permissions:** har tenant ke har role ki copy pehle aur baad — `PERMISSIONS OK: no role lost anything, no user lost
+  a role` (grants har jagah barabar, gained: -).
+- **Smoke** (pehle = baad, 12 tenants): `tb_diff=0.00`, `neg_on_disallowed=0`, `neg_on_allowed=0`, `department_negative=0`.
+  Log: 14:07 ke baad 0 ERROR.
+- **Live (kashifkitchen, read-only):** booking form venue input `maxlength="30"` + hint; kitchen sheet preview:
+  EV-20261025-0405 / EV-20261014-0284 (venue = pata) → ek baar; EV-20261005-0174 → "maskan | gulshan";
+  EV-20261014-0281 (pata venue ke andar) → sirf venue; EV-20261102-0497 → "self". Releases 19→19, bookings unchanged.
+  `kashifkitchen.bingoopos.com/login` 200, `bingoopos.com` 200.
