@@ -451,6 +451,99 @@ notes: run the clean-machine proof with `TMP`/`TEMP` on D: on this host, and tre
 pointer **0.8.2-edge**, no worker running, lease released, 0.8.3-dev staging removed (see above). Keep-awake guard pid 349192 ended by
 deleting `evidence\agent-f\keepawake.flag` at hand-back; no other process of this agent left running.
 
+## 10. Resume after the owner's host reboot (4 Nov 09:42 UTC; agents resumed 5 Nov, Agent F light work 6 Nov)
+
+### 10.1 PRODUCTION-READINESS ITEM PR-1 — 0.8.2 EdgeWebBackendSupervisor false restart after Modern Standby (owner's words: a readiness item, NOT 0.8.3 development; no product code written)
+
+**Facts (real LAB, 0.8.2-edge, both web backends):** host in Modern Standby 2026-11-03T22:04:52Z → 2026-11-04T07:01:24Z (8 h 56 m). At
+07:01:32Z both supervisors logged `probe timeout, progress but beyond the busy grace (last 200 30172s ago) — suspected hung (1/5)`;
+at 07:02:17Z `hung: 5 liveness probes failed (no progress, no answer for 30217s) … terminating the hung backend`; restart #4 on each at
+07:02:27Z; both backends healthy again within 10 s.
+
+**Cause (code, `app/Services/Edge/EdgeWebBackendSupervisor.php`, unchanged in 0.8.3):** every clock in the supervisor is wall-clock —
+`now()` returns `microtime(true)`; `lastOkAt`, `lastProbeAt`, `startedAt`, `healthySince` and `secondsSinceLastOk()` (= `now() − lastOkAt`)
+are all wall-clock differences. Across a sleep the wall clock jumps by the sleep length while NO probe could have run, so on resume the
+first probe sees "last 200 30,172 s ago": it is already beyond the 120 s `BUSY_GRACE_SECONDS`, the busy classification is unavailable
+(`$progressed && $sinceOk <= grace` is false), the first miss is COUNTED, and — because the child itself needs a few seconds to answer
+after resume (its own sockets/timers are waking) — the next four probes (5 s apart, 10 s read timeout) miss too → 5/5 at ~45 s →
+`taskkill /PID … /T /F` of a backend that was never hung. The 0.8.2 hotfix made this bounded (5 counted misses, not 3) but the clock
+jump defeats the busy grace entirely.
+
+**Impact:** a bounded false restart of BOTH backends after every laptop sleep/resume (and after any wall-clock jump forward: NTP step,
+hibernate): a brief 502 window at the gateway (both children killed within the same ~10 s, back within ~10 s), one `restarts` increment
+per backend, `last_restart_reason "hung: 5 liveness probes failed …"` in the status files. Data-safe: the backends are stateless
+`php -S` request servers; no sale, lease, outbox row or print job is touched; the print/authority workers are not supervised this way.
+A pilot Branch Server is not supposed to sleep (desktop power plan, no lid) — but a laptop-class box or a mis-set power plan will show
+this as "the POS was unreachable for ~20 s after we woke the machine". Severity: low (bounded, self-healing), visible in evidence as
+false restarts that an operator would wrongly read as instability.
+
+**Detection (today, no code):** `web-backend-N.status.json` restart counter advancing with `last_restart_reason` naming a
+`no answer for <tens of thousands>s` while the host's event log shows a sleep/resume (Kernel-Power 42/107) in the same minute;
+`Get-CimInstance Win32_OperatingSystem LastBootUpTime` unchanged (not a reboot); `seconds_since_last_ok` in the status file far larger
+than `hang_detection_bound_seconds` (205 s) immediately after resume. Agent C's `Collect-EdgeDiagnostics.ps1` bundle already carries
+both status files; add the Kernel-Power events to its host section when this item is worked.
+
+**Proposed fix (for the next release that touches the supervisor; design only here):**
+1. **Monotonic clock for every liveness interval:** `now()` → `hrtime(true) / 1e9` (PHP ≥ 7.3; unaffected by sleep? — NOTE: on
+   Windows `hrtime` is `QueryPerformanceCounter`, which does NOT advance during Modern Standby/S3, so intervals measured with it
+   exclude the sleep automatically; wall-clock `microtime` stays only for the human-readable `last_ok_at`/`started_at` fields in
+   the status file).
+2. **Resume-gap detection as a belt and braces (covers NTP steps and any clock that DOES advance):** remember the loop's own last tick
+   (`lastTickAt`, wall-clock); when a tick finds `now − lastTickAt > N × PROBE_INTERVAL_SECONDS` (N = 6 → 30 s; the loop never sleeps
+   longer than a probe interval), log `clock gap of Xs detected (sleep/resume or clock step) — re-baselining liveness`, then reset
+   `lastOkAt = now`, `lastProbeAt = now`, `consecutiveProbeFailures = 0`, `busyTicks = 0`, and treat the first probe after the gap as
+   a fresh baseline: a miss there is classified `STARTING`-like (not counted) once, exactly as the 15 s `STARTUP_GRACE_SECONDS` treats
+   a freshly spawned child — i.e. the backend gets the full `BUSY_GRACE_SECONDS + PROBE_FAILURES_TO_RESTART` cycles budget after a
+   resume, the same `HANG_DETECTION_BOUND_SECONDS` (205 s) bound as for a genuine hang that begins after resume.
+3. **Status/health:** add `clock_gaps` (count + last gap seconds + when) to the status file and to `edge:local:health`
+   `workers.web_backends[].supervisor` so a resume is distinguishable from a restart in evidence.
+4. Nothing else moves: back-off, FAILING escalation, process isolation, the busy classification and the bound stay exactly as the 0.8.2
+   record states.
+
+**Test to add (`tests/Feature/Edge/EdgeWebBackendSupervisorBusyAwareTest.php` scripted-seam style, as the 14 F-FB5-1 cases):**
+`test_a_clock_jump_across_a_sleep_is_a_resume_not_a_hang` — drive the supervisor with the fake clock: healthy probes, then advance the
+fake clock by 30,000 s in ONE tick with the child "answering again after 3 ticks" (first two probes miss, third answers) → assert NO
+restart, classification goes `HEALTHY → (gap logged, re-baselined) → STARTING/HEALTHY`, `restarts` unchanged, status carries
+`clock_gaps 1 / last_gap_seconds 30000`; and the control case `test_a_genuine_hang_after_resume_is_still_detected_within_the_bound`
+— same 30,000 s jump, the child never answers → restart exactly after `HANG_DETECTION_BOUND_SECONDS` counted from the re-baseline
+(not immediately). Plus one Windows-native disposable proof on labcopy-c: run two supervised backends, put the laptop to sleep for ≥ 5 min
+by hand (owner at the keyboard), resume, and read both status files: 0 restarts, 1 clock gap each.
+
+### 10.2 Prepared (NOT run) — the owed `EdgeCleanMachineInstallMySqlTest` re-run, after "F: go heavy"
+
+Preconditions re-checked 6 Nov: C: 55.3 GB free (was 0.15 GB), my D: scratch dir absent (recreated by the command), no process of
+mine alive (every pre-reboot pid is dead by the reboot), labcopy-c untouched by the test (it builds its own scratch install), Edge
+test DB names contain "edge". Exactly one phpunit on the host (coordinator-serialised). Expected duration: 3–7 min idle (the 0.8.1
+record: ~3–7 min idle, up to 1 h 20 under load); the result lands in `evidence\agent-f\99b-mysql-EdgeCleanMachineInstallMySqlTest-after-reboot.log`.
+
+```
+cd /d/laragon2/www/pos-saas-rel-083 && export PATH="/d/laragon2/bin/php/php-8.3.16-Win32-vs16-x64:$PATH" \
+ && mkdir -p /d/laragon2/tmp/agentf-clean \
+ && TMP='D:\laragon2\tmp\agentf-clean' TEMP='D:\laragon2\tmp\agentf-clean' \
+    DB_DATABASE=pos_test_master_edge_relf EDGE_TEST_TENANT_DB=pos_test_tenant_edge_relf EDGE_TEST_LOCAL_DB=pos_test_edge_local_edge_relf \
+    EDGE_TEST_CLOUD_PORT_BASE=9815 EDGE_TEST_CLOUD_PORT_SPAN=4 EDGE_TEST_WEB_PORT_BASE=9810 EDGE_TEST_WEB_PORT_SPAN=3 \
+    EDGE_TEST_HTTPS_PORT_BASE=8743 EDGE_TEST_HTTPS_PORT_SPAN=0 EDGE_TEST_HTTP_PORT_BASE=8381 EDGE_TEST_HTTP_PORT_SPAN=0 \
+    vendor/bin/phpunit -c phpunit.mysql.xml --filter EdgeCleanMachineInstallMySqlTest \
+    > /c/Users/Dell/BingooEdgeLab/evidence/agent-f/99b-mysql-EdgeCleanMachineInstallMySqlTest-after-reboot.log 2>&1; echo EXIT=$?
+```
+Pass = `OK (1 test, 160 assertions)` (the 0.8.1-record count; 0.8.3 adds none). If MySQL refuses: stop, report, never restart mysqld.
+Afterwards: `rm -rf /d/laragon2/tmp/agentf-clean`, fill the §9.5 cell, commit (no push), copy the record.
+
+### 10.3 What the reboot invalidated in this record (re-read 6 Nov)
+
+- Every pid in `pids.json` / `pids-aux.txt` is dead by the reboot (they were all already stopped by me); the keep-awake guard is gone
+  (flag absent); the "no process of mine left" statement holds trivially now.
+- labcopy-c: pointer still **0.8.2-edge**, versions 0.6.0/0.7.0/0.8.0/0.8.1/0.8.2 (my 0.8.3-dev staging had been removed to free C:);
+  its DB `bingoo_edge_agentc_local` lives on the shared :3306 server that logged InnoDB "LSN in the future" at its unclean restart —
+  the copy's rows were last checksummed at 07:46Z on 31 Oct (§9.2b); treat the copy as "verify checksums before the next use", not as
+  known-good. The owner's isolated instance :3316 is NOT for agent use.
+- `pos_test_*_edge_relf` DBs: same caveat; the test harness drops/recreates what it needs, so the owed clean-machine run is unaffected
+  (it creates its own `…_install`/`…_install2` local DBs).
+- All gate results in §9.5 remain valid as recorded (they completed before the crash that preceded the reboot); nothing green is
+  re-run. The only owed item stays the clean-machine class (§10.2).
+- The two mysqld outages of 30/31 Oct are now joined by the 4 Nov unclean kill/reboot as the third real sample for F-1/F-1b: a
+  0.8.3 worker would have waited its 180 s budget per cycle and exited 1 for the task restart instead of staying down.
+
 ```
 AGENT_F_SCOPE=development on rel/0.8.3-service-reliability + disposable validation (labcopy-c, relf test DBs)
 MYSQL_STARTUP_PLAN=classified bounded wait (EdgeLocalDbReadiness) in both workers + edge:local:wait-db (0/1/2) + plan fields; MySQL-as-service = owner (elevated)
