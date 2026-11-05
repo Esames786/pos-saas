@@ -445,7 +445,7 @@ class CateringEventController extends Controller
 
     public function update(Request $request, CateringEvent $cateringEvent)
     {
-        $data = $this->validated($request);
+        $data = $this->validated($request, $cateringEvent);
 
         try {
             $this->estimates->updateEvent($cateringEvent, $data);
@@ -616,7 +616,31 @@ class CateringEventController extends Controller
         };
     }
 
-    private function validated(Request $request): array
+    /**
+     * VENUE-NAME-ONLY-1 (5 Nov) — venue me sirf hall ya jagah ka naam.
+     *
+     * Form ka `maxlength` typing ko pehle hi rok deta hai; ye us ka server wala
+     * pehra hai. Sirf NAYE ya BADLE hue venue ko parakhta hai: purani booking ka
+     * lamba venue (rule se pehle likha gaya) waise hi wapas aaye to booking ki
+     * baqi editing nahi rukni chahiye.
+     */
+    private function venueIsAName(?CateringEvent $current): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($current) {
+            $venue = trim((string) $value);
+            if (mb_strlen($venue) <= CateringEvent::VENUE_MAX_LENGTH) {
+                return;
+            }
+            if ($current !== null && $venue === trim((string) $current->venue)) {
+                return;
+            }
+
+            $fail('Venue me sirf hall ya jagah ka naam likhein ('.CateringEvent::VENUE_MAX_LENGTH
+                .' huroof tak). Poora pata Address me likhein.');
+        };
+    }
+
+    private function validated(Request $request, ?CateringEvent $current = null): array
     {
         // KASHIF-EVENT-FORM-3 — a TYPED name is not a customer id.
         //
@@ -657,7 +681,7 @@ class CateringEventController extends Controller
             'event_date' => ['required', 'date'],
             'service_time' => ['nullable', 'date_format:H:i'],
             'dispatch_time' => ['nullable', 'date_format:H:i'],
-            'venue' => ['nullable', 'string', 'max:255'],
+            'venue' => ['nullable', 'string', 'max:255', $this->venueIsAName($current)],
             // CATERING-PAX-OPTIONAL-1: an inquiry often arrives before the guest
             // count does — "shaadi hai, rate bata dein" — and the booking was
             // refused with "Please fill out this field" until a number was

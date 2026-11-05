@@ -255,10 +255,11 @@ class CateringKitchenSheetPreviewMySqlTest extends MySqlTenantTestCase
      * aata hai kitchen paper mei (venue wala aaye)". Prod par 20 Oct se 31
      * bookings me dono khane bhare the, 19 me bilkul ek hi text.
      *
-     * Purani daleel ka jawab yahin likha hai taake koi ise "bug" samajh kar
-     * palat na de: venue hi wo jagah hai jahan khana jata hai, aur graahak ka
-     * ghar ka pata driver ki Address Sheet par alag se chhapta hai. Pata ab
-     * sirf tab chhapta hai jab venue khali ho — aur tab zaroor chhapta hai.
+     * Owner ka faisla (VENUE-NAME-ONLY-1): venue = hall ka NAAM, poora pata
+     * Address me, aur parche par DONO — magar koi baat do baar nahi. Jo ek
+     * doosre me pehle se shamil ho (barabar, ya ek ka text doosre ke andar),
+     * us me se sirf LAMBA chhapta hai. Purani daleel ("driver ko pata chahiye")
+     * qayam hai: pata tab bhi chhapta hai jab venue ho, bas dohraya nahi jata.
      */
     public function test_the_address_prints_when_there_is_no_venue(): void
     {
@@ -278,19 +279,51 @@ class CateringKitchenSheetPreviewMySqlTest extends MySqlTenantTestCase
         $html = $this->previewThroughTheController();
 
         $this->assertSame(1, substr_count($html, 'Garden Hall'), 'ek hi jagah parche par do baar chhap rahi hai');
-        $this->assertStringContainsString('<div class="venue">Garden Hall</div>', $html);
-        $this->assertStringNotContainsString('<div class="addr">', $html);
+        $this->assertSame(1, substr_count($html, '<div class="venue">') + substr_count($html, '<div class="addr">'),
+            'barabar text par paer me sirf EK satar');
     }
 
-    /** Venue bhara ho to wohi — graahak ka ghar ka pata kitchen parche par nahi aata. */
-    public function test_a_filled_venue_keeps_the_home_address_off_the_sheet(): void
+    /** Naam aur alag pata — dono chhapte hain: pehle naam, phir pata. */
+    public function test_a_venue_name_and_a_different_address_both_print(): void
     {
         $this->event->forceFill(['venue' => 'Sakhi Hasan Lawn', 'customer_address' => 'House 12, North Nazimabad'])->save();
 
         $html = $this->previewThroughTheController();
 
-        $this->assertStringContainsString('<div class="venue">Sakhi Hasan Lawn</div>', $html);
-        $this->assertStringNotContainsString('North Nazimabad', $html);
+        $venueAt = strpos($html, '<div class="venue">Sakhi Hasan Lawn</div>');
+        $addrAt = strpos($html, '<div class="addr">House 12, North Nazimabad</div>');
+        $this->assertNotFalse($venueAt, 'venue ka naam paer par nahi');
+        $this->assertNotFalse($addrAt, 'pata paer par nahi — driver ko chahiye');
+        $this->assertLessThan($addrAt, $venueAt, 'pehle naam, phir pata');
+    }
+
+    /** Naya tareeqa: chhota naam jo pate ke andar bhi likha hai — sirf pata (naam usi me hai). */
+    public function test_a_venue_name_inside_the_address_prints_only_the_address(): void
+    {
+        $this->event->forceFill([
+            'venue' => 'Universal Banquet',
+            'customer_address' => 'Universal Banquet (Zaver), 4K Chorangi k baad',
+        ])->save();
+
+        $html = $this->previewThroughTheController();
+
+        $this->assertSame(1, substr_count($html, 'Universal Banquet'), 'naam do baar chhap raha hai');
+        $this->assertStringContainsString('<div class="addr">Universal Banquet (Zaver), 4K Chorangi k baad</div>', $html);
+        $this->assertStringNotContainsString('<div class="venue">', $html);
+    }
+
+    /** Purani booking: venue me poora pata, Address me us ka hissa (bari/chhoti likhai alag) — sirf venue. */
+    public function test_an_address_inside_a_long_old_venue_prints_only_the_venue(): void
+    {
+        $this->event->forceFill([
+            'venue' => 'EXCELLENCY BANQUET BL 15 GULISTAN E JOHAR',
+            'customer_address' => 'gulistan  e johar',
+        ])->save();
+
+        $html = $this->previewThroughTheController();
+
+        $this->assertStringContainsString('<div class="venue">EXCELLENCY BANQUET BL 15 GULISTAN E JOHAR</div>', $html);
+        $this->assertStringNotContainsString('<div class="addr">', $html);
     }
 
     /**
