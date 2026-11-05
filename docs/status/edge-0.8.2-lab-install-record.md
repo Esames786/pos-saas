@@ -332,3 +332,39 @@ HOST_STABLE=YES (reboot 4 Nov 09:42 UTC; TechHub 2,374 handles; commit 29.0/55.1
 LAB=STANDBY_READY again at 2026-11-05T08:56:12Z after a full relaunch by plan identity; rowsets identical to T0; outbox 0/0; lease cloud
 REMAINING_BLOCKERS=(1) owner decision on the InnoDB "LSN in the future" finding (LAB tables verify clean); (2) secrets\admin.pass for Phase C; (3) owner's explicit "resume agents"
 ```
+
+## B.10 — isolated MySQL restore PROOF for the three LAB databases (owner decision 5 Nov, items 2–4) + LAB-only isolation/switchover PLAN (item 10, not executed)
+
+**Disposable instance** (never the shared Laragon one): `C:\Users\Dell\BingooEdgeLab\mysql-isolated\` — `conf\my-isolated.ini` (same 8.0.30 binaries, **port 3316, bind 127.0.0.1, mysqlx off**, own datadir/log/pid, `innodb_flush_log_at_trx_commit=1`, doublewrite on, buffer pool 256 MB), initialised with `--initialize-insecure` (loopback-only root, empty password — disposable), started hidden with `--defaults-file`; **server pid 15316** (recorded in `log\isolated.pid`); stop with `mysqladmin -uroot -h127.0.0.1 -P3316 shutdown`. One restart happened during setup (my own `skip-name-resolve` line blocked root@localhost over 127.0.0.1; the empty instance was stopped by its recorded pid, the line removed, restarted).
+
+**Verified logical backups**: the LAB's hourly `.enc` backups cover only the appliance DB and `edge:local:restore` targets the appliance's configured connection, so the three schemas were dumped from the shared instance (read-only, `mysqldump --single-transaction --routines --triggers --events --hex-blob`) at 2026-11-05 19:5x UTC into `mysql-isolated\dumps\` with `SHA256SUMS` and an exact per-table row-count manifest (`source-rowcounts.txt`, 445 tables, 1,971 rows): `pos_lab_master_edge.sql` 133,036 B (66030ca4…), `pos_lab_tenant_edge.sql` 431,339 B (21c31cd3…), `bingoo_edge_lab_local.sql` 622,928 B (71353c96…). Plaintext copies of LAB data inside the owner's profile, like the datadir itself — delete `dumps\` and `mysql-isolated\` when the owner no longer needs the proof.
+
+| item 3 check | result (identical on 3306 and 3316 unless stated) | evidence (`mysql-isolated\verify\`) |
+|---|---|---|
+| starts without InnoDB warnings | isolated error log: **0 `[ERROR]`, 0 `MY-01197x`** at initialise, start, restart and after loading all three dumps (only the usual deprecation/ICU/self-signed warnings) | `log\mysqld-isolated.err` |
+| full-table readability | `CHECK TABLE` (full, not QUICK) on all **445** base tables → 445 OK, 0 non-OK; every table read by `SELECT COUNT(*)` | `check-tables-3316.txt` |
+| row counts | **445/445 tables identical, 1,971 rows, 0 diff lines** vs the source manifest | `rowcounts-3316.txt` |
+| migrations | appliance 218, tenant 217, master 49 | `snapshot-3316.txt` |
+| sales / outbox / customers | the baseline script (`lab-snapshot.sql`) run on both ports in the same minute: **identical except the heartbeat row of `edge_local_meta`**; all seven T0 MD5s present on 3316 (`9bbd2ad2… cc04a3e4… c9c08b1d… e42077b9… 0dac7dbb… 49bb4ea1… e39a8d18…`); appliance 6 sales / 25 lines / outbox 5 acked, 0 pending, 0 failed / 2 customers; Cloud 5 sales / 5 ingestions / 2 customers | `snapshot-3306.txt`, `snapshot-3316.txt` |
+| financial invariants | I1 sale arithmetic (subtotal − discount + tax + service + delivery + tip = grand_total) 0 violations both sides; I2 Σ non-void line_total = subtotal 0/0; I3 paid sales paid_amount ≥ grand_total 0/0; **I11 Σ sale_payments.amount = paid_amount 0/0**; I7 appliance vs Cloud grand_total per synced sale 0 | `invariants-3306.txt`, `invariants-3316.txt`, `invariants-extra-*.txt` |
+| sync / identity invariants | I4 acked envelopes whose sale is missing on the Cloud 0 (of 5); I5 duplicate `sale_uuid` among Cloud ingestions 0 (5 distinct) — exactly-once holds; I6 edge-origin Cloud sales without an ingestion 0; I8 appliance customers missing on the Cloud 0 (of 2); I9 open shifts 0; I10 appliance sales without an envelope **1 = sale 4 `SO-1-1-01M3FEF9…`, status `cancelled`, 26 Sep 2026** — cancelled sales never enter the outbox (by design), the known 6-vs-5 baseline | same |
+| item 4 (differences) | **none** — no object differs between the shared instance and the isolated restore | — |
+
+```
+ISOLATED_MYSQL_RESTORE=PASS (3 schemas, 445 tables, 1,971 rows, 0 load errors, pid 15316 on 127.0.0.1:3316)
+INNODB_INTEGRITY=CLEAN on the isolated instance (0 errors, 0 LSN-in-the-future); the SHARED instance still carries the 4 Nov MY-011971/MY-011972 start-up errors (system page 5 + undo_001 pages 123/124/281/319) — unchanged, untouched
+LAB_DATA_MATCH=IDENTICAL (row counts, T0 MD5s, 13 invariants, 0 differing objects)
+```
+
+### LAB-only MySQL isolation / switchover plan (concise; every step below needs the owner's separate approval; nothing executed)
+
+Goal: move the real LAB (appliance DB + LAB Cloud master/tenant DBs) off the shared Laragon instance onto a LAB-owned instance, without a Windows service and without touching the shared instance.
+
+1. **Freeze** — LAB in `STANDBY_READY`, outbox 0 pending / 0 failed; stop the LAB Cloud (`Start-LabCloud.ps1 -Stop`) and the seven plan workers by recorded pid (`Start-EdgeLabWorkers.ps1 -Action Stop`); FakePrinter may stay. Snapshot `T_sw0` (lab-snapshot.sql on 3306).
+2. **Final dump** — the same mysqldump trio as above from 3306 (quiesced, so no heartbeat drift) + SHA256 + row-count manifest.
+3. **Target instance** — reuse the proven layout (`mysql-isolated\`) under a LAB name, e.g. `mysql-lab\` on **port 3316**, `--initialize` with a real root password written only to `secrets\mysql-lab-root.pass`; create the appliance user from `appliance.env` (`EDGE_DB_USERNAME`/`EDGE_DB_PASSWORD`, read from the file, never echoed) with grants on `bingoo_edge_lab_local` only, and the LAB Cloud user likewise; load the dumps; run the full verification table above (expect identical).
+4. **Repoint (two files, both backed up first)** — `data\BingooEdge\config\appliance.env`: `EDGE_DB_PORT=3316`; the LAB Cloud env used by `Start-LabCloud.ps1` (`lab.env` / `.env.lab`): `DB_PORT=3316` for master + tenant. No code change, no new connection names.
+5. **Relaunch** — LAB Cloud, then the seven plan entries (`Start-EdgeLabWorkers.ps1 -Action Start` or the dead-entry script); expect `STANDBY_READY`, lease holder cloud, heartbeat advancing, gateway 200, snapshot on 3316 == `T_sw0`; hourly backup exit=0 on the new port.
+6. **Rollback** — stop workers + Cloud, restore the two env files from their backups, relaunch: the shared instance's copies are untouched by steps 1–5. The 3306 copies become stale the moment the LAB writes on 3316; drop them only on a later owner decision.
+7. **Later, elevated, separate approval** — a Windows service (Agent F's MYSQL_STARTUP_PLAN) with automatic restart and a recovery action, so the LAB survives a host reboot without a session relaunch.
+Risk notes: port 3316 must stay loopback-only; the appliance's `EDGE_DB_HOST=127.0.0.1` rule (`EdgeLocalDatabase`) is satisfied; two mysqld processes on one laptop cost ≈ 300 MB more commit (fine after the reboot).
