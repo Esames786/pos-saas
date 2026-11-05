@@ -340,8 +340,28 @@
             <span class="ft"><span class="ftl">SERVE</span><span class="ftv" dir="ltr">{{ \Carbon\Carbon::parse($snapshot['service_time'])->format('g:i A') }}</span></span>
         @endif
     </div>
+    {{-- KITCHEN-SHEET-VENUE-ONCE-1 (5 Nov) — client: "2 dafa address aata hai
+         kitchen paper mei (venue wala aaye)".
+
+         Paer par venue AUR graahak ka pata dono chhapte the. Operator aksar
+         dono khanon me ek hi jagah likhta hai ("johar" / "johar") — prod par
+         20 Oct se 31 bookings me dono bhare the, 19 me bilkul ek hi text. Ab
+         sirf EK jagah: venue ho to venue (khana wahin jata hai), khali ho to
+         graahak ka pata — taake ghar se uthane / ghar par dene wale order par
+         bhi parche par jagah rahe.
+
+         Graahak ka ghar ka pata is se gum nahi hota: driver ki Address Sheet
+         use alag se chhapti hai. Khali-jagah wala venue (sirf spaces) khali
+         gina jata hai, warna paer par kuch na aata. --}}
+    @php
+        $footVenue = trim((string) ($snapshot['venue'] ?? ''));
+        $footAddress = trim((string) ($snapshot['customer_address'] ?? ''));
+    @endphp
     <div class="foot-r">
-        @if(!empty($snapshot['venue']))<div class="venue">{{ $snapshot['venue'] }}</div>@endif
-        @if(!empty($snapshot['customer_address']))<div class="addr">{{ $snapshot['customer_address'] }}</div>@endif
+        @if($footVenue !== '')
+            <div class="venue">{{ $footVenue }}</div>
+        @elseif($footAddress !== '')
+            <div class="addr">{{ $footAddress }}</div>
+        @endif
     </div>
 </div>

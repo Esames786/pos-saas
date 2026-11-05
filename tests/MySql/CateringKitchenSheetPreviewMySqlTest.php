@@ -246,12 +246,89 @@ class CateringKitchenSheetPreviewMySqlTest extends MySqlTenantTestCase
             'A4 wali purani setting reh gayi to printer do me se kis par chale?');
     }
 
-    /** Driver isi parche se chalta hai — pata us par hona chahiye. */
-    public function test_the_sheet_carries_the_customer_address(): void
+    /**
+     * KITCHEN-SHEET-VENUE-ONCE-1 (5 Nov) — paer par jagah sirf EK baar.
+     *
+     * Pehle yahan "driver isi parche se chalta hai — pata us par hona chahiye"
+     * likha tha, aur test pata chhapne par zor deta tha chahe venue bhi bhara
+     * ho. Client ne asli parche dekh kar is ke khilaf kaha: "2 dafa address
+     * aata hai kitchen paper mei (venue wala aaye)". Prod par 20 Oct se 31
+     * bookings me dono khane bhare the, 19 me bilkul ek hi text.
+     *
+     * Purani daleel ka jawab yahin likha hai taake koi ise "bug" samajh kar
+     * palat na de: venue hi wo jagah hai jahan khana jata hai, aur graahak ka
+     * ghar ka pata driver ki Address Sheet par alag se chhapta hai. Pata ab
+     * sirf tab chhapta hai jab venue khali ho — aur tab zaroor chhapta hai.
+     */
+    public function test_the_address_prints_when_there_is_no_venue(): void
     {
-        $this->event->forceFill(['customer_address' => 'Candle Banquet, Johar'])->save();
+        $this->event->forceFill(['venue' => null, 'customer_address' => 'Candle Banquet, Johar'])->save();
 
-        $this->assertStringContainsString('Candle Banquet, Johar', $this->render(true));
+        $html = $this->previewThroughTheController();
+
+        $this->assertStringContainsString('<div class="addr">Candle Banquet, Johar</div>', $html);
+        $this->assertStringNotContainsString('<div class="venue">', $html);
+    }
+
+    /** Asal shikayat: dono khanon me ek hi jagah likhi ho to parche par wo do baar aati thi. */
+    public function test_the_same_place_typed_in_both_boxes_prints_once(): void
+    {
+        $this->event->forceFill(['venue' => 'Garden Hall', 'customer_address' => 'Garden Hall'])->save();
+
+        $html = $this->previewThroughTheController();
+
+        $this->assertSame(1, substr_count($html, 'Garden Hall'), 'ek hi jagah parche par do baar chhap rahi hai');
+        $this->assertStringContainsString('<div class="venue">Garden Hall</div>', $html);
+        $this->assertStringNotContainsString('<div class="addr">', $html);
+    }
+
+    /** Venue bhara ho to wohi — graahak ka ghar ka pata kitchen parche par nahi aata. */
+    public function test_a_filled_venue_keeps_the_home_address_off_the_sheet(): void
+    {
+        $this->event->forceFill(['venue' => 'Sakhi Hasan Lawn', 'customer_address' => 'House 12, North Nazimabad'])->save();
+
+        $html = $this->previewThroughTheController();
+
+        $this->assertStringContainsString('<div class="venue">Sakhi Hasan Lawn</div>', $html);
+        $this->assertStringNotContainsString('North Nazimabad', $html);
+    }
+
+    /**
+     * Sirf spaces wala venue KHALI hai. Warna paer par ek khali venue chhapta
+     * aur pata chhup jata — parche par jagah hi na bachti.
+     */
+    public function test_a_venue_of_only_spaces_counts_as_empty(): void
+    {
+        $this->event->forceFill(['venue' => '   ', 'customer_address' => 'Candle Banquet, Johar'])->save();
+
+        $html = $this->previewThroughTheController();
+
+        $this->assertStringContainsString('<div class="addr">Candle Banquet, Johar</div>', $html);
+        $this->assertStringNotContainsString('<div class="venue">', $html);
+    }
+
+    /**
+     * Asli release ka parcha aur bulk print bhi wohi qaida maante hain. Teeno
+     * EK partial se bante hain; ye test us baat ka pehra hai ke kal koi ek
+     * raasta alag na kar de.
+     */
+    public function test_the_released_sheet_and_the_bulk_run_follow_the_same_rule(): void
+    {
+        $this->event->forceFill(['venue' => 'Garden Hall', 'customer_address' => 'Garden Hall'])->save();
+
+        $estimates = app(CateringEstimateService::class);
+        $estimates->markSent($this->event->currentEstimate);
+        $estimates->markAccepted($this->event->currentEstimate->refresh());
+        $estimates->confirmEvent($this->event->refresh());
+        $release = $this->service()->release($this->event->refresh());
+
+        $released = app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class)
+            ->kitchenSheet(\Illuminate\Http\Request::create('/catering/documents/kitchen-sheet/'.$release->id, 'GET', ['lang' => 'en']), $release)
+            ->render();
+        $this->assertSame(1, substr_count($released, 'Garden Hall'), 'release ka parcha');
+
+        $bulk = $this->bulkHtml([$this->event->id]);
+        $this->assertSame(1, substr_count($bulk, 'Garden Hall'), 'bulk print');
     }
 
     /**
@@ -557,6 +634,16 @@ class CateringKitchenSheetPreviewMySqlTest extends MySqlTenantTestCase
 
         return app(\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class)
             ->kitchenSheets($request)->render();
+    }
+
+    /** Wohi raasta jo "Kitchen Sheet" button kholta hai — controller se, view seedha nahi. */
+    private function previewThroughTheController(): string
+    {
+        return app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class)
+            ->kitchenSheetPreview(
+                \Illuminate\Http\Request::create('/catering/documents/kitchen-sheet-preview/'.$this->event->id, 'GET', ['lang' => 'en']),
+                $this->event,
+            )->render();
     }
 
     private function render(bool $preview): string
