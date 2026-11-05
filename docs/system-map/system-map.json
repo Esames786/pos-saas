@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-11-05T13:08:33+00:00",
+    "built_at": "2026-11-05T13:52:48+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "91dcd4f9",
     "work": [
@@ -15,10 +15,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-kkvenue",
             "branch": "fix/kitchen-sheet-venue-once-20261105",
-            "head": "ff2d97ef",
+            "head": "0ff858cf",
             "behind_prod": 0,
-            "ahead_of_prod": 1,
-            "last_commit": "2026-11-05\u00b7KITCHEN-SHEET-VENUE-ONCE-1: kitchen sheet par jagah sirf ek baar \u2014 venue ho to venue, warna pata",
+            "ahead_of_prod": 3,
+            "last_commit": "2026-11-05\u00b7VENUE-NAME-ONLY-1: venue me sirf hall ka naam; kitchen sheet par naam + pata, koi baat do baar nahi",
             "uncommitted_files": 0
         },
         {
@@ -374,7 +374,7 @@
             "modified": "2026-11-05"
         }
     ],
-    "git": "ff2d97ef",
+    "git": "0ff858cf",
     "source": {
         "tenant_db": "pos_test_tenant_kkv",
         "master_db": "pos_test_master_kkv"
