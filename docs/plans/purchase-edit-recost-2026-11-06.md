@@ -77,6 +77,26 @@ itself is covered by ProfitLossDetailMySqlTest.
 Acceptance after deploy, khatribiryani 1–6 Nov "Show detail": 5001 → one line, Kashif kitchen 3,71,680; 5100-3 → one line,
 5100-7 · MAYONAISE & SAUCES 11,780; no Kashif kitchen / "Other" pair anywhere; Cost of Sales and Gross Profit as before; tb 0.
 
+## Proof before deploy
+- Full MySQL suite, frozen worktree at `692e2445` (DB set `_pv1`, 11:21–12:41 UTC): 2,630 tests, **0 failures**; 29 errors,
+  all the Edge-local harness refusing the DB name `pos_test_local_pv1` (must contain "edge") — those three classes re-run with
+  `pos_test_edge_local_pe2` at `7bed8a07`: EdgeLocalAuth 19, EdgeLocalDbInit 2, EdgeLocalImport 8, all green.
+- Default suite at `692e2445`: 247 tests, 3 failures = the 3 known on prod (CateringClientFeedbackUi, EscPosReportPayload,
+  DeliveryRiderReassignment).
+- The report fix (after `692e2445`): PurchaseRevision 12/12 (206) + the six P&L / TB / recost files (66) at `9b55ce7c`–`7bed8a07`;
+  four sabotages RED. Merged code = `7bed8a07`'s (diff of app/tests empty).
+
+## Deploy — 6 Nov 2026, 12:53 UTC (owner: "teekh hai deploy kardo")
+Merge `c94a2c79`, pushed, origin == HEAD; `deploy.sh` 12:53:00–12:53:19, exit 0, no migration. Code only, so no backup
+(going back = deploying `74af51e0`'s code again).
+- Permissions: 14 of 14 unchanged ("no role lost anything, no user lost a role"; nothing gained either — no new route).
+- Smoke before and after: all 13 active tenants tb_diff 0.00, no negative stock. Laravel log after 12:53: 0 errors.
+- khatribiryani: GRN #90 edit/void "An earlier cost correction…" → ALLOWED; its page (rendered through the controller as the
+  owner) shows Edit and Void, no blocked note; `?edit=1` opens the form with the 11 rate boxes; nothing saved (revisions 0).
+- khatribiryani P&L 1–6 Nov, Show detail — before: 5001 no detail; 5100-3 "Kashif kitchen 1,59,600 · MAYONAISE & SAUCES
+  11,780 · Other −1,59,600". After: 5001 · Kashif kitchen 3,71,680; 5100-3 · 5100-7 MAYONAISE & SAUCES 11,780. Cost of Sales
+  4,00,790, Gross Profit 18,94,665, Net Profit 12,11,300 — identical before and after; tb 0.
+
 ## Not in this work
 - Receipts with the 22 Oct stock correction (none exist with edit ON).
 - A bill edited AFTER posting is skipped by `finance:recost-nonstock-bills` (its `purchase_bill` journal is reversed) —
