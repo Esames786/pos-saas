@@ -370,20 +370,31 @@ class PurchaseRevisionMySqlTest extends MySqlTenantTestCase
      */
     public function test_the_pl_detail_keeps_the_supplier_on_the_head_a_recost_or_an_edit_moved_its_cost_to(): void
     {
-        $supplier = $this->newSupplier('PED Detail Supplier');
-        $rice = $this->kitchenItem('PED Detail Rice');
-        $drink = $this->item('PED Detail Drink', false);                    // no category: stays on 5100
-        [$grn] = $this->purchase($supplier, [[$rice, 10, 100], [$drink, 5, 40]], '2025-10-20', '2025-10-20');   // 1,000 + 200
-        $this->recost($rice, '2025-10-20', '2025-10-20');
+        // Khatri's shape: one supplier's bill split over two old heads (5100, and 5170 like 5100-3), another supplier's
+        // money staying on 5170 (like Mayonaise & Sauces), and an item that is not moved (stays on 5100).
+        $kitchen = $this->newSupplier('PED Detail Kitchen');
+        $sauces = $this->newSupplier('PED Detail Sauces');
+        $raw = $this->costHead('5170', 'PED Raw Material');
+        $rice = $this->kitchenItem('PED Detail Rice');                      // → 5100: its category has no head yet
+        $beef = $this->kitchenItem('PED Detail Beef', $raw);                // → 5170
+        $mayo = $this->kitchenItem('PED Detail Mayo', $raw);                // → 5170, never moved
+        $drink = $this->item('PED Detail Drink', false);                    // no category → 5100, never moved
+        [$grn] = $this->purchase($kitchen, [[$rice, 10, 100], [$beef, 5, 100], [$drink, 5, 40]], '2025-10-20', '2025-10-20');   // 1,000 + 500 + 200
+        $this->purchase($sauces, [[$mayo, 3, 50]], '2025-10-20', '2025-10-20');                                               //   150
+        $totals = $this->plTotals('2025-10-20');
+        $this->recost([$rice, $beef], '2025-10-20', '2025-10-20');
 
-        $this->assertSame(['PED Detail Supplier' => 1000.0], $this->plDetail('2025-10-20', '5160'), 'the recost\'s head names the supplier');
-        $this->assertSame(['PED Detail Supplier' => 200.0], $this->plDetail('2025-10-20', '5100'),
-            'the old head keeps only what stayed there — no supplier at 1,200 with an "Other" of −1,000');
+        $this->assertSame(['PED Detail Kitchen' => 1500.0], $this->plDetail('2025-10-20', '5160'), 'the new head names the supplier once, for both old heads');
+        $this->assertSame(['PED Detail Kitchen' => 200.0], $this->plDetail('2025-10-20', '5100'),
+            'an old head keeps only what stayed there — not the supplier at 1,200 with an "Other" of −1,000');
+        $this->assertSame(['PED Detail Sauces' => 150.0], $this->plDetail('2025-10-20', '5170'), 'the other old head: only the other supplier, no "Other"');
+        $this->assertSame($totals, $this->plTotals('2025-10-20'), 'cost of sales and gross profit unchanged');
 
         $this->revise($grn, [$this->lineOf($grn, $rice)->id => [10, 90]])->assertRedirect();
 
-        $this->assertSame(['PED Detail Supplier' => 900.0], $this->plDetail('2025-10-20', '5160'), 'an edit\'s corrected journal names it too');
-        $this->assertSame(['PED Detail Supplier' => 200.0], $this->plDetail('2025-10-20', '5100'));
+        $this->assertSame(['PED Detail Kitchen' => 1400.0], $this->plDetail('2025-10-20', '5160'), 'an edit\'s corrected journal names it too');
+        $this->assertSame(['PED Detail Kitchen' => 200.0], $this->plDetail('2025-10-20', '5100'));
+        $this->assertSame(['PED Detail Sauces' => 150.0], $this->plDetail('2025-10-20', '5170'));
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -410,27 +421,49 @@ class PurchaseRevisionMySqlTest extends MySqlTenantTestCase
         return $out;
     }
 
+    /** The day's Cost of Sales and Gross Profit, from the same statement the screen shows. */
+    private function plTotals(string $date): array
+    {
+        $pl = app(\App\Services\Finance\ProfitLossService::class)->statement(['date_from' => $date, 'date_to' => $date]);
+
+        return [round((float) $pl['total_cogs'], 2), round((float) $pl['gross_profit'], 2)];
+    }
+
     private const RECOST_UNDONE = 'The earlier cost correction on this invoice was undone with it, so its cost is counted once.';
 
-    /** A purchase-only item in a category of its own with no cost head yet, so its first bill books 5100. */
-    private function kitchenItem(string $name): Product
+    /** A purchase-only item in a category of its own — with no cost head (its first bill books 5100), or with $head. */
+    private function kitchenItem(string $name, ?int $head = null): Product
     {
         $p = $this->item($name, false);
         $category = DB::connection('tenant')->table('categories')->insertGetId(['name' => $name . ' group', 'slug' => Str::slug($name . ' group'),
-            'code' => 'PEDC' . strtoupper(substr(md5($name), 0, 4)), 'sort_order' => 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            'code' => 'PEDC' . strtoupper(substr(md5($name), 0, 4)), 'sort_order' => 0, 'is_active' => 1, 'cogs_account_id' => $head,
+            'created_at' => now(), 'updated_at' => now()]);
         $p->update(['category_id' => $category]);
 
         return $p->fresh();
     }
 
-    /** Point the item's category at a cost head (as Catalog → Categories does) and recost those days' bills, as on prod. */
-    private function recost(Product $p, string $from, string $to): void
+    /** An expense head under 5000 that a category may point at (NonStockCostAccounts::choices()). */
+    private function costHead(string $code, string $name): int
     {
         $db = DB::connection('tenant');
-        $head = $db->table('accounts')->where('code', '5160')->value('id') ?: $db->table('accounts')->insertGetId(['code' => '5160',
-            'name' => 'PED Kitchen Cost', 'type' => 'expense', 'normal_balance' => 'debit', 'parent_id' => $db->table('accounts')->where('code', '5000')->value('id'),
-            'is_active' => 1, 'is_system' => 0, 'created_at' => now(), 'updated_at' => now()]);
-        $db->table('categories')->where('id', $p->category_id)->update(['cogs_account_id' => $head]);
+
+        return (int) ($db->table('accounts')->where('code', $code)->value('id') ?: $db->table('accounts')->insertGetId(['code' => $code,
+            'name' => $name, 'type' => 'expense', 'normal_balance' => 'debit', 'parent_id' => $db->table('accounts')->where('code', '5000')->value('id'),
+            'is_active' => 1, 'is_system' => 0, 'created_at' => now(), 'updated_at' => now()]));
+    }
+
+    /**
+     * Point the items' categories at 5160 (as Catalog → Categories does) and recost those days' bills, as on prod.
+     *
+     * @param  Product|list<Product>  $items
+     */
+    private function recost(Product|array $items, string $from, string $to): void
+    {
+        $head = $this->costHead('5160', 'PED Kitchen Cost');
+        foreach (is_array($items) ? $items : [$items] as $p) {
+            DB::connection('tenant')->table('categories')->where('id', $p->category_id)->update(['cogs_account_id' => $head]);
+        }
         $this->assertSame(0, Artisan::call('finance:recost-nonstock-bills', ['tenant_code' => self::STORE_CODE, '--from' => $from, '--to' => $to, '--yes' => true]));
         $this->assertStringContainsString('Dr 5160', Artisan::output());
     }
