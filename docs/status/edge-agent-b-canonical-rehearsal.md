@@ -189,3 +189,207 @@ Blockers (none of them a merge conflict — the tree merges and lints clean):
 No product red was caused by the eight rehearsal chunks on SQLite. Still unrun (deferred by the directive): the full Edge MySQL gate, the canonical merged-area
 MySQL suites, the six new upgrade tests in `EdgeTenantMigrationUpgradeMySqlTest`, and the browser/pixel/geometry gates for the changed shared view.
 INTEGRATION_READINESS stays **NOT_READY** on those plus owner items R-1…R-4.
+
+---
+
+# Phase E — Agent E (owner authorization 30 Oct 2026): R-1…R-4, finance-class exclusions, gates
+
+Scope and safety: continued ONLY in the rehearsal worktree `D:/laragon2/www/pos-saas-integ-082` (branch `integ/canonical-rehearsal-082`, BASE_HEAD cc9653d2,
+CANONICAL_FREEZE=073238de — no later canonical movement chased). Production (`D:/laragon2/www/pos-saas`) and the release worktree (`D:/laragon2/www/pos-saas-edge`) were
+not modified (only this report is copied to the latter). Databases used: `bingoo_edge_integ_r1` (mysqldump of the READ-ONLY appliance copy `bingoo_edge_dryrun_lab_081`),
+`bingoo_edge_integ_fresh` (clean install), `pos_test_master_integ`, `pos_test_tenant_integ_edge` (the harness needs an *edge*+*test* name for the Edge-local guard),
+`pos_test_edge_local_integ*`. No process was left running (`C:\Users\Dell\BingooEdgeLab\evidence\agent-e\pids.json`); no port used before GO. The real LAB, the LAB
+DBs, pos_devonline_*, production tenants: untouched. Heavy gates (MySQL suite, full Edge gate, browser, stress) NOT run — pending the coordinator's GO (§9).
+
+## §8 Resolutions
+
+### §8.1 R-1 — `2026_10_23_000001_decimal_pack_sizes` (non-additive): ANALYSED + PROVEN on a disposable copy — NOT approved for the real LAB / production here
+
+**Exact DDL (MySQL branch of the migration)** — `SET SESSION lock_wait_timeout = 10`; if `product_pack_units.factor` is still an integer type:
+`ALTER TABLE product_pack_units MODIFY factor DECIMAL(15,4) NOT NULL`; then for each of the 8 line tables (`sales_order_lines`, `sales_return_lines`, `goods_receipt_lines`,
+`purchase_order_lines`, `purchase_bill_lines`, `purchase_return_lines`, `stock_adjustment_lines`, `stock_transfer_lines`) that has `pack_factor` and no `pack_size`:
+`ALTER TABLE <t> ADD COLUMN pack_size DECIMAL(15,4) NULL, ALGORITHM=INSTANT`; `SET SESSION lock_wait_timeout = DEFAULT`. No UPDATE statement — no row is rewritten.
+`down()` drops `pack_size` and re-types `factor` only when every factor is whole (not an appliance path: the upgrader is forward-only; appliance rollback = the recorded
+backup restore).
+
+**Installed 0.8.2 schema (appliance copy, 218 migrations, 209 tables):** `product_pack_units.factor int unsigned NOT NULL`, UNIQUE `(product_id, factor)`, 0 rows;
+`pack_factor int unsigned NULL` present on all 8 line tables, `pack_size` on none; `sales_order_lines` 25 rows (qty 33.000, total 4410.00, 0 with a pack); every other
+line table 0 rows. The LAB's local DB (`bingoo_edge_lab_local`) lives on this same MySQL 8.0.30 server → the copy is engine-identical.
+
+**Algorithm / locking (proven on a scratch copy of the table, same engine):** `MODIFY … ALGORITHM=INSTANT` → ERROR 1846 "Need to rebuild the table to change column type";
+`ALGORITHM=INPLACE` → ERROR 1846 "Cannot change column type INPLACE. Try ALGORITHM=COPY" ⇒ the type change is a **COPY (table rebuild, exclusive lock for its duration)**.
+On the appliance the table has 0 rows (78 on one Cloud demo tenant per the canonical census) → milliseconds; `lock_wait_timeout = 10` means the migration FAILS (and the
+upgrader records `last_error`, nothing half-applied — one statement) rather than queueing behind a long transaction. The 8 `ADD COLUMN … ALGORITHM=INSTANT` are
+metadata-only (no copy of `sales_order_lines`). Downtime: the upgrade runs with the workers stopped (LAB procedure), so none beyond the upgrade window itself.
+
+**Data conversion / precision:** INT UNSIGNED (max 4,294,967,295, 10 digits) → DECIMAL(15,4) (11 integer digits, 4 fractional) is lossless. Proven: 4 whole factors seeded
+before the upgrade (1, 10, 240, 4294967295) read back EXACTLY as 1.0000, 10.0000, 240.0000, 4294967295.0000. The UNIQUE `(product_id, factor)` survives and still works
+on decimals (2.5 inserted; 2.5000 refused with ERROR 1062 — the same value). Risk of data loss: **none** (no rewrite; widening type; empty on the appliance).
+
+**Upgrade behaviour (REAL appliance path, `edge:local:schema-upgrade` on `bingoo_edge_integ_r1`):** dry-run with Agent B's manifest = run 6 / skip 28 / blockers 0
+(hash `sha256:2a66c9ae…`); after R-2 (§8.2) = **run 5 / skip 29 / blockers 0, verdict OK, plan_hash `sha256:a38897cf1294b84218b5cebb78297fb5b027fc96b9790d64496c405c4e9f3ced`**
+(the 29 skips are the CLOUD_ONLY files present only because this is a source tree — a packaged artifact excludes them). Apply: **exit 0, 16 s for the whole command
+(framework boot + 5 migrations), applied exactly the planned 5** (`add_submission_key_to_sales_returns`, `add_submission_key_to_purchase_returns`,
+`add_expensed_to_cost_movement_type`, `decimal_pack_sizes`, `sale_line_entered_unit`), same plan hash as the dry-run. After: migrations 218 → **223**;
+`factor decimal(15,4) NOT NULL`, unique key intact; `pack_size decimal(15,4) NULL DEFAULT NULL` on all 8 line tables; `sales_order_lines` row-identical
+(25 rows, qty 33.000, total 4410.00, 0 pack_factor; `pack_size` NULL on all 25, `entered_quantity` NULL on all 25); `edge_local_meta.last_error NULL`,
+`runtime_state bootstrapped`; `edge_local_updates` has the plan record.
+
+**Clean-install behaviour (REAL `edge:local:db-init` on a fresh `bingoo_edge_integ_fresh`):** plan run 198 / skip 29 (hash `sha256:be4f3f75…`), exit 0 in 167 s →
+223 migrations, 209 tables, `factor decimal(15,4)`, `pack_size` on 8 tables, **no purged_* tables** (R-2). Clean install and upgrade end with the same shape.
+
+**Verdict:** no destructive conversion, no data loss possible; the non-additive step is a lossless widening of an empty (on every appliance) 0-row table under a bounded
+lock wait. Recommendation stands: EDGE_REQUIRED · SHIP_AND_RUN · OWNER_REVIEW_REQUIRED=true (the owner signs the non-additive exception; this report is the evidence).
+Not approved here for the real LAB or production — that is the owner's separate decision.
+
+### §8.2 R-2 — `2026_10_22_000001_create_purged_entries_tables` (`purged_entries`, `purged_numbers`): **CLOUD_ONLY** (was EDGE_SCHEMA_SAFE)
+
+Evidence from the actual Edge code (grep over `app/Services/Edge`, `app/Http/Controllers/Edge`, `app/Support/Edge`, `app/Support/Pos`, `routes/edge_runtime.php`,
+`config/edge.php`, the bootstrap/config-refresh sections, the sale/return/supplier-finance/purchase-return envelopes): **0 references** to `purged_entries`,
+`purged_numbers`, `PurgedNumbers`, `PurgedEntry`. The whole-app reference set is: `app/Support/PurgedNumbers.php` (table-guarded helper), `app/Models/Tenant/PurgedEntry.php`,
+`JournalService::nextEntryNo` (NO Edge runtime path calls `JournalService` — the appliance posts no GL; the Cloud ingestions use `JournalPostingService`),
+`ManualJournalService` (artifact-excluded), `ExpenseVoucherController` (Cloud route group only), `VoidPurgeService` / `VoidPurgeController` (Cloud finance, the only
+writers — now artifact-excluded, §8.5), `TenantResetTransactionsCommand` (Cloud CLI; not in the appliance `cli_allowlist`), `routes/tenant.php`. Every reader goes through
+`PurgedNumbers::ready()` (`hasTable` → `null`/`0` when absent) — the shape the deploy window was designed for. The D7 definition therefore applies ("Cloud/back-office
+feature not part of the Branch Server"): nothing on the appliance reads or writes either table.
+
+Changes: manifest entry → `CLASSIFICATION CLOUD_ONLY`, `PACKAGE_DECISION EXCLUDE`, `UPGRADE_TEST n/a: CLOUD_ONLY`, `EDGE_CODE_REFERENCES` = the evidence above;
+`manifest_version` → `edge-tenant-migration-manifest@2026-10-30.1`; counts 227 = EDGE_REQUIRED 129 / EDGE_SCHEMA_SAFE 69 / **CLOUD_ONLY 29**.
+Tests: `EdgeTenantMigrationManifestTest` (counts 29 + the classification asserted) **13/13 green on SQLite**; `EdgeTenantMigrationUpgradeMySqlTest::
+test_purged_entries_tables_are_cloud_only_and_the_generators_stay_safe_without_them` replaces the EDGE_SCHEMA_SAFE proof (plan → SKIP_CLOUD_ONLY; with both tables
+absent `PurgedNumbers::ready()` false, `highest()` null, `highestInt()` 0 — the shipped generators are safe); the canonical RUN list drops the file and asserts the skip.
+Observed on the appliance paths: the upgrader skipped it with record (run 5 / skip 29) and the clean install created **no** purged_* table.
+
+### §8.5 Finance classes (C-7) — the four VOID-PURGE paths are **Cloud-only → artifact-excluded**
+
+| Path | Imports / dependencies | Edge runtime references |
+|---|---|---|
+| `app/Services/Finance/VoidPurgeService.php` | `CateringAdvance`, `CateringEvent`, `SupplierPayment` (ALL excluded basenames), `ExpenseVoucher`, `JournalEntry`, `PurgedEntry`, `PurgedNumbers` | none |
+| `app/Services/Finance/VoidPurgeNeedsConfirmation.php` | `RuntimeException` only (thrown by the service, caught by the controller) | none |
+| `app/Http/Controllers/Tenant/Finance/VoidPurgeController.php` | `VoidPurgeService`, `VoidPurgeNeedsConfirmation`, `PurgedEntry`, `TenantFeatures` | none — routed only in `routes/tenant.php` (Cloud tenant group; a branch_server loads only `routes/edge_runtime.php`) |
+| `resources/views/tenant/finance/voided-entries/*` (index + partials purge-button / purge-modal) | included from `catering/events/show`, `finance/expenses/show`, `finance/manual-journals/show`, `reports/cash-book/index`, `supplier-payments/show` — all Cloud screens (3 of 5 already excluded) | none (not referenced by `resources/views/tenant/pos/**`, `layouts/pos`, or any Edge view) |
+
+Reference census (`grep VoidPurge|voided-entries` over app/, routes/, resources/views/, config/, tests/): only the three classes themselves, the five Cloud views above,
+`routes/tenant.php`, `tests/MySql/VoidPurgeMySqlTest.php` + `SupplierCreditClarityMySqlTest.php`. Added to `config/edge.php` `artifact.exclude` (exact paths, beside the
+`ManualJournalController` precedent) and to `EdgeArtifactTest::test_built_artifact_physically_excludes_cloud_modules_and_keeps_edge_runtime`'s expected-absent list.
+Kept on purpose: `App\Support\PurgedNumbers` (shared, table-guarded) and the `PurgedEntry` model (lazy; schema-coherence precedent of the Web* models).
+Gates on SQLite after the change: `EdgeArtifactTest` **13/13** (34,020 assertions — the real app tree built with the production exclude list),
+`EdgeApplianceArtifactBoundaryTest` **6/6**, `EdgeApplianceDependencyClosureTest` **2/2**.
+
+### §8.3 R-3 — return-quantity refusals (W2-B rules in `SalesReturnService::computeReturn`): BACKEND-enforced on both runtimes, tested
+
+Where the rule lives: `computeReturn()` (THE arithmetic, no side effects) normalises the typed quantity (`LineQuantity::normalize`), refuses `qty > returnable`
+("<item>: only N <unit> can still be returned, not Q."), refuses a part of a counted line ("… comes back in whole numbers — Q is not a whole number (or return all N still
+left).") and a closed line ("nothing is left to return — all N already came back."). Callers: Online `SalesReturnController` → `processReturn()` (which locks the sale and
+calls `computeReturn` INSIDE the UB-06 `postedOnce` / `refuseIfPosted` transaction), the Edge till `EdgeLocalReturnService::processReturn` (catches the RuntimeException →
+`ValidationException['lines']` → 422 `{message, errors.lines}` from `EdgeLocalReturnController`), and the Cloud ingestion `EdgeInboundReturnIngestionService` (→
+`IngestionRefusal('RETURN_REFUSED')`, a TERMINAL verdict in `EdgeIngestionVerdicts` → `refused` 422 → the appliance parks the outbox row `failed_permanent`). No frontend-only
+path exists: the shared return screen's JS only shapes the POST.
+
+New tests (MySQL, isolated set) — `tests/MySql/EdgeReturnQuantityRefusalMySqlTest.php` (the till over the real branch_server routes): valid quantity posts once (till
+−100, operational stock +1, ONE outbox event, returnable shrinks); excessive quantity → 422 "Zinger: only 3 can still be returned, not 5." and NOTHING moves (no
+sales_returns row / return line / outbox event; expected_cash, total_cash_refunds, operational stock, returned_quantity, sale status all identical — the 0.8.2 silent cap is
+gone); partially returned line measured against what is LEFT ("only 2 … not 3"); repeated return of a closed line refused; the same return posted twice (with an
+Online-style `submission_key`, which the till ignores) posts ONCE (money/stock/event once); counted item whole vs weighed item in parts ("Zinger comes back in whole
+numbers — 0.5 …", "Mutton: only 2 Kilogram can still be returned, not 2.5.", 0.5 kg accepted); the service itself refuses without HTTP (direct
+`EdgeLocalReturnService::processReturn` → `ValidationException`).
+`tests/MySql/EdgeReturnIngestionRefusalReplayMySqlTest.php` (the Cloud receiving `edge-return-envelope-v2`): an over-quantity event → 422 `refused` /
+`RETURN_REFUSED` with the arithmetic's words, registry row `refused`, the books (sales_returns, return lines, stock_ledgers sale_return in, journal_entries,
+cash_bank transactions, sales_ledgers, on-hand, returned_quantity, order status, till balance) unchanged; the REPLAY of the same immutable event is the identical refusal
+(still one registry row, books unchanged); the same uuid with other content → 409 `ENVELOPE_CONFLICT` (first truth authoritative even when refused); a new identity with
+the corrected quantity applies once; an event valid when queued but overtaken by an Online return → refused, nothing posts twice; a valid event applies exactly once and
+replays `already_applied`. Canonical Cloud-form twins to run after GO: `QuantityRulesMySqlTest`, `SalesReturnPostedOnceMySqlTest`.
+Accepted behaviour change (C-2) for the owner's record: the Edge till now REFUSES an over-return / fractional counted return where 0.8.2 capped silently — one arithmetic
+on both runtimes (parity register).
+
+### §8.4 R-4 — MOVE-TABLE-CART-1 guard in the Edge hold twin: IMPLEMENTED (`EdgeLocalPosService::reviseHeldSale`) without removing any Edge safety check
+
+Before Phase E the Edge revision path already refused a session mismatch, but with a different key and words (`restaurant_table_session_id` → "This held sale belongs to a
+different table session — submit its own session.") and only as a lock-order guard. Now, when a revision names an OPEN session that is not the bill's own (and the explicit
+R21 `change_order_details` flag is absent), the twin throws the Cloud's exact message under the Cloud's key:
+`held_sale_id` → "Bill <sale_no> is a Quick Sale bill | belongs to Table <no>, not Table <no>. Nothing was saved. Press Add Round, then add the items for Table <no> again."
+(a `ValidationException`, rendered 422 `{message, errors.held_sale_id}` exactly as Online; the shared view toasts `data.message`). Kept: the lock-order guard for an OMITTED
+session (never inferred), "No open table session found." for a closed/stale session, the 409 `TABLE_HAS_OPEN_ORDERS` answer for a second new check on an occupied table
+(+ the row-locked service refusal), and R21 `change_order_details` as the only sanctioned re-home (and it still refuses a target table with its own open check). Moving /
+merging tables (`EdgeLocalTableOperationsService`) rewrites the bill's own session, so they never trip the guard. Authority / replay: a refusal throws inside the
+transaction before any write — nothing saved, no outbox row.
+New test `tests/MySql/EdgeMoveTableHoldGuardMySqlTest.php` (real routes): the 22 Oct case (held quick sale onto the moved table → refused, snapshot identical, outbox
+unchanged, table keeps only its own bill); another table's bill onto this table ("belongs to Table 30, not Table 32"); an already-moved bill saved back onto its old table
+(new session) → "belongs to Table 32, not Table 30"; controls — own bill saves before and after a move (Add Round), a held quick sale saves on its own; duplicate hold
+attempt → 409 TABLE_HAS_OPEN_ORDERS; closed session → "No open table session found."; omitted session → the lock-order message; `change_order_details` re-home works and is
+blocked onto an occupied table. Canonical Cloud twin to run after GO: `MoveTableCartMySqlTest`.
+
+## §9 Gates (Phase E)
+
+### §9.2 Heavy commands STILL REQUIRED after GO (not run — the real LAB was being updated on this host; owner rule)
+
+All in `D:/laragon2/www/pos-saas-integ-082`, PHP 8.3.16 on PATH, one at a time, isolated names only
+(`DB_DATABASE=pos_test_master_integ EDGE_TEST_TENANT_DB=pos_test_tenant_integ_edge EDGE_TEST_LOCAL_DB=pos_test_edge_local_integ`; `test-mysql.sh` exists only in the
+Edge worktree and hard-wires its own `_tNN` names, so the env-var form below is the one to use here):
+1. Full Edge MySQL gate: `vendor/bin/phpunit -c phpunit.mysql.xml --filter Edge` (expected baseline on a6113772: 725–726 incl. the pacing test; + the 3 new classes).
+2. Canonical merged-area MySQL classes, each alone: `QuantityRulesMySqlTest`, `SalesReturnPostedOnceMySqlTest`, `PurchaseReturnPostedOnceMySqlTest`, `CounterPacksMySqlTest`,
+   `DecimalPacksMySqlTest`, `GramEntryMySqlTest`, `UnitsAndPacksJourneyMySqlTest`, `UnitsPacksPrintsReportsMySqlTest`, `W2CombinedMySqlTest`, `PlainStockVariantsMySqlTest`,
+   `MoveTableCartMySqlTest`, `ReportNetworkBridgeMySqlTest`, `VoidPurgeMySqlTest`, `SupplierNetBillMySqlTest`, `SupplierCreditClarityMySqlTest`,
+   `TenantResetFailClosedMySqlTest`, `CategoryParentGuardMySqlTest`, `RefundShift*`, `SalesReturn*`, `PosQuickReport*`, `MedicalCounter*`, `PackUnits*`
+   (manual journal = `ManualJournal*`; void purge = `VoidPurgeMySqlTest`).
+3. SQLite suites on the Phase E head: `vendor/bin/phpunit tests/Feature/Edge` (expected 206 + the counts above), `vendor/bin/phpunit tests/Feature/Pos` (31),
+   `vendor/bin/phpunit tests/Unit` (136/139 — the three known canonical reds).
+4. Authority + return regressions: `EdgeReturnSyncHttpMySqlTest`, `EdgeCashierReturn*`, `EdgeAuthority*`, `EdgeLease*`, `EdgeHandback*` (inside gate 1; listed for the record).
+5. Browser programme on a DISPOSABLE pair on ports 9801–9809 / 8491–8499 (Cloud 9801 from a READ-ONLY mysqldump of `pos_devonline_*` into `pos_test_master_integ` /
+   `pos_test_tenant_integ_edge`, Edge on 8491–8499 against `bingoo_edge_integ_*`; pattern `tools/edge-dev-instance/Start-DevCloud.ps1`): `EDGE_NODE_BIN` = node 20.20.1;
+   `tools/edge-browser-proof/pos-reference-shots.mjs --mode cloud` (NEW intentional Online reference — the shared view changed, C-1), then Edge shots,
+   `geometry-compare.mjs` (expect NONE), `shared-pos-workflows.mjs` W01/W06/W09/W14 (+ the W15 pair e2e, W18) on both runtimes.
+6. System map rebuild from the freshly migrated isolated test DBs: `php tools/system-map/build.php --tenant-db=pos_test_tenant_integ_edge --master-db=pos_test_master_integ`
+   (only when no MySQL run is using them), commit.
+Every pid started for item 5 goes into `C:\Users\Dell\BingooEdgeLab\evidence\agent-e\pids.json` and is stopped by pid afterwards.
+
+### §9.1 Gates RUN in Phase E (isolated resources, one class at a time; nothing heavy)
+
+| Gate | Result |
+|---|---|
+| SQLite `EdgeTenantMigrationManifestTest` (R-2 counts 129/69/29, classification) | **13/13** (3,835 assertions) |
+| SQLite `EdgeApplianceArtifactBoundaryTest` / `EdgeApplianceDependencyClosureTest` (finance exclusions) | **6/6** / **2/2** |
+| SQLite `EdgeArtifactTest` (real app tree built with the production exclude list; the four VoidPurge paths asserted absent) | **13/13** (34,020 assertions) |
+| MySQL `EdgeTenantMigrationUpgradeMySqlTest` (26 upgrade proofs incl. decimal_pack_sizes, sale_line_entered_unit, submission keys, expensed_to_cost + the CLOUD_ONLY purged proof; two Agent-B fixture bugs fixed: the product_pack_units restore now also drops `pack_size` and un-records `decimal_pack_sizes` so both re-run, and the expensed_to_cost restore keeps the column's nullability — both had made the "upgraded = clean install" comparison fail on the shared harness DB; no product change) | **27/27** (503 assertions) |
+| MySQL `EdgeMoveTableHoldGuardMySqlTest` (R-4, real branch_server routes) | **8/8** (85 assertions) |
+| MySQL `EdgeReturnQuantityRefusalMySqlTest` (R-3 till) | **7/7** (77 assertions) |
+| MySQL `EdgeReturnIngestionRefusalReplayMySqlTest` (R-3 Cloud ingestion replay) | **3/3** (44 assertions) |
+| REAL `edge:local:schema-upgrade` on the disposable appliance copy (218 → 223) and REAL `edge:local:db-init` clean install | both exit 0, same end shape (§8.1) |
+| `php -l` on every touched file | clean |
+
+Not run (owner rule, pending GO): everything in §9.2 — the full Edge MySQL gate, the canonical merged-area classes, Feature/Edge + Feature/Pos + Unit on this head, the
+browser / pixel / geometry programme on a disposable pair, the system-map rebuild.
+
+### §9.3 Readiness after Phase E
+
+`INTEGRATION_READINESS = NOT_READY` still — but the owner items are now resolved with evidence: **R-1 analysed and proven lossless (owner signs the non-additive
+exception)**, **R-2 → CLOUD_ONLY**, **R-3 backend-enforced on both runtimes and tested**, **R-4 implemented with Online's message shape and tested**, **C-7 finance
+classes excluded**. Remaining blockers: §9.2 heavy gates (1–6) and the canonical re-scan `073238de..<head>` before promotion. PRODUCTION_BRANCH_MUTATED=NO;
+EDGE_BRANCH_MUTATED=NO (this report copied only).
+
+### §9.4 Gates after GO — real numbers (31 Oct – 6 Nov 2026; isolated set pos_test_master_integ / pos_test_tenant_integ_edge / pos_test_edge_local_integ)
+
+| Gate | Result |
+|---|---|
+| Full Edge MySQL gate (`--filter Edge`, one process, 31 Oct 01:13–03:14 local, clean END) | **750 tests / 10,035 assertions**; 7 reds, each classified and re-run ALONE green: EdgeCashierMenuHttpMySqlTest 8/8 (Team 3 expectation → Online's `held_sale_id` shape, R-4); EdgeReturnAuthorityMySqlTest 4/4 + EdgeReturnRaceTest 1/1 (old silent-cap expectations → refuse-not-cap, R-3/C-2); EdgeCleanMachineInstallMySqlTest 1/1 (160 assertions); EdgeAuthorityPartitionTest 1/1 (51) and EdgeConnectionPartitionTest 1/1 (104) on a quiet host (their time budgets fail under a concurrent suite — documented load sensitivity) |
+| Canonical merged-area gate (27 classes, one process, 31 Oct 19:03–19:26 local) | **214 tests / 2,242 assertions**; 17 reds = three root causes, all resolved, the five classes re-run ALONE green: SalesReturnPostedOnceMySqlTest 12/12 (13 reds = the Edge branch's REFUND-SHIFT-H1 owner rule refusing a cash refund with no paying shift; canonical's fixture never opened a shift — fixture + sales_return_worker now name the counter's open shift); PlainStockVariantsMySqlTest 6/6 (31st-of-month flake: `now()->subMonth()->endOfMonth()` overflows to today → `subMonthNoOverflow()`); TenantResetFailClosedMySqlTest 3/3 + SupplierCreditClarityMySqlTest 16/16 + SupplierNetBillMySqlTest 22/22 (fail-closed reset: 21 unclassified tables); MoveTableCartMySqlTest static regex → accepts the shared view's `POS.route('tableMove')` form. The other 22 classes green inside the gate |
+| SQLite on the head | Feature/Edge **206/206** (42,233) · Feature/Pos **31/31** (490) · Unit **136/139** (the three known canonical reds) |
+| Browser — ONLINE workflows, disposable Cloud clone :9801 (31 Oct, `--slow 2`) | W01 PASS, W02 PASS, W06 PASS, W14 PASS; W09 SKIP (the harness skips it without W03 in `--only`); 116 HTTP exchanges, max 13.7 s under a concurrent suite; 0 authority 409s |
+| Browser — EDGE workflows, clone appliance :8491 as the LOCAL WRITER after a real WAN-loss takeover (6 Nov, `--slow 2`) | W01 PASS, W02 PASS, W06 PASS, W14 PASS; W09 SKIP (same reason); W16 shift close + W17 logout PASS (two close runs); 100 HTTP exchanges, max 13.8 s |
+| NEW intentional Online reference (D5) | 24 shots (12 states × 1366/1024); 07-recent-prints skipped at both viewports (8 s modal wait) — the identical skip on Edge |
+| EDGE_VS_ONLINE_GEOMETRY (same dataset, same code, shift open on both) | **NONE — 998 boxes, max deviation 0 px, geometry 0, data 10, presence 0, skipped 2.** A first Edge pass with NO shift open read DIFF(36): all 36 were one state difference — the order-controls row wraps at 1366 when it carries "No Open Shift · POS operations are blocked on this terminal · Open shift" (+28 px, shifting the search box and the category strip) — not a layout defect |
+| ONLINE_PIXEL_REGRESSION (Edge shots with the shift open vs the Online reference; status slot masked; 0.5 % / tolerance 24) | 1366: 9/12 states ≤ 0.29 % OK · 1024: 9/12 ≤ 0.39 % OK. The 3 FAIL states at both viewports are DATA, not drawing: 06-recent-orders (53.6 % / 50.4 %) and 09-table-workspace (24.7 % / 8.0 %) show the P1 sales / held checks the Online reference carries from the pre-rebuild clone; 05-held-orders (1.9 % / 1.7 %) the held list contents |
+| P4 / P6 on the disposable pair only | WAN loss (my Cloud pid stopped) → connection_unstable → connection_lost → preparing_local → supervised takeover "LOCAL MODE ACTIVATED" (31 Oct 15:00:02Z and again 6 Nov); after the Edge workflows: worker → reconcile clean (pending 0) → `authority-handback --assess` first BLOCKED by the run's own open work (1 table, 2 held checks, 1 shift — settled through the UI with `--clear-all-open-work`), then **"Authority handed back to the Cloud — the appliance is a warm standby again"**, freshness refreshed (returnable 89 sales), lease released on the clone (holder cloud, edge_state standby, reason recorded) |
+| System map | rebuilt from pos_test_tenant_integ_edge + pos_test_master_integ_cloud: 276 tables, 442 FKs, 314 inferred links, 745 screens |
+
+**Environment findings for the owner (none is a product red):**
+- mysqld died three times on the shared host (30 Oct 13:50–16:23 UTC; 31 Oct 08:22 UTC redo-write failure under a vendor-service handle leak with C: full; 31 Oct ~15:34 UTC) — every run in flight was classified ENVIRONMENTAL and re-run after the owner's recovery (host reboot 4 Nov 09:42 UTC).
+- Three of Agent E's databases vanished in that window: `pos_test_master_integ`, `pos_test_master_integ_cloud`, `pos_test_tenant_integ_cloud` — dropped by a bulk `pos_test_%` cleanup on 4 Nov 01:44 local (binlog thread 31111), outside both the coordinator and this agent. Not worked around in place: the Cloud clone was rebuilt from fresh READ-ONLY dumps of `pos_devonline_*`, migrated to the head (51 / 227), and the appliance re-paired as device 7c2f8d18 (epoch 3). No InnoDB oddity was seen on the surviving `bingoo_edge_integ_*` / `*_integ_edge*` databases.
+- The Edge cashier login on the clone was refused (`edge_auth_audit`: `bad_credential` ×4 → `lockout`): the secret files `devclone-cashier.pass` / `devclone-approver.pass` are CRLF-terminated (22 bytes, 20 significant) and `edge:local:enroll --credential-file` strips only `"\n"` — `app/Console/Commands/EdgeLocalEnrollCommand.php:60` (`rtrim(file_get_contents($credentialFile), "\n")`), so the enrolled credential kept a trailing `\r`. Fixed as clone setup (re-enrolled from CR-free copies; curl login → 302 /edge/local/pos, audit `login_success`). **Owner decision: product hardening (strip `"\r\n"`) — deliberately not changed here.**
+- The first browser programme hung in P6 because `Start-DevCloud.ps1` was piped into `tee` (its `php -S` child inherits stdout); the re-run never pipes it.
+
+**The ONLY product-code change made by the gates — for the owner:** `app/Console/Commands/TenantResetTransactionsCommand.php` — `KNOWN_KEPT` gains the 20 Branch-Server appliance tables the Edge branch added after canonical's list (`edge_sync_outbox`, `edge_local_authority_worker_state`, `edge_local_connection_transitions`, `edge_baseline_cutovers`, `edge_local_backups`, `edge_local_updates`, `edge_local_table_reservations`, the F2/F3 supplier-finance + purchase-return projections, their local events and applied-event lists) plus `customer_uuid_aliases` (Phase 4 customer identity, kept with the customers it names) — the same class and reason as canonical's own "Branch Server local tables … kept, untouched" precedent; the command refuses to run on a Branch Server and on a cloud tenant these tables never exist. Every other gate-driven edit is test-side (fixtures / expectations; commit d61c43b8).
+
+### §9.5 Readiness after the gates
+
+`INTEGRATION_READINESS = READY_FOR_OWNER_DECISION` on this rehearsal head: MySQL gates green on the isolated set after classification and single-class re-runs; SQLite green (three known canonical reds); browser W01/W02/W06/W14 (+W16/W17) PASS on both runtimes; geometry NONE (998 boxes); pixels data-only differences; takeover + controlled handback proven on the disposable pair; map rebuilt. Promotion still needs the owner's sign-off of: R-1 (non-additive exception), the C-2 refuse-not-cap behaviour, the H1 effect on the Online form (a cash refund needs a paying shift — canonical production allows it today), the `TenantResetTransactionsCommand` KNOWN_KEPT additions, the CRLF enrol hardening, and the canonical re-scan `073238de..<head>`. PRODUCTION_BRANCH_MUTATED=NO; EDGE_BRANCH_MUTATED=NO (this report copied only).
