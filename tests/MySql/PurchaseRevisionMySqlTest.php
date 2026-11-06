@@ -364,7 +364,51 @@ class PurchaseRevisionMySqlTest extends MySqlTenantTestCase
         $this->assertBooksAgree($supplier);
     }
 
+    /**
+     * PNL-DETAIL-RECOST-1 (6 Nov, found on Khatri's P&L: 5100-3 showed "Kashif kitchen 1,59,600 · Other −1,59,600" and
+     * 5001 no detail) — the P&L detail names the bill's supplier for its recost and for an edit's corrected journal too.
+     */
+    public function test_the_pl_detail_keeps_the_supplier_on_the_head_a_recost_or_an_edit_moved_its_cost_to(): void
+    {
+        $supplier = $this->newSupplier('PED Detail Supplier');
+        $rice = $this->kitchenItem('PED Detail Rice');
+        $drink = $this->item('PED Detail Drink', false);                    // no category: stays on 5100
+        [$grn] = $this->purchase($supplier, [[$rice, 10, 100], [$drink, 5, 40]], '2025-10-20', '2025-10-20');   // 1,000 + 200
+        $this->recost($rice, '2025-10-20', '2025-10-20');
+
+        $this->assertSame(['PED Detail Supplier' => 1000.0], $this->plDetail('2025-10-20', '5160'), 'the recost\'s head names the supplier');
+        $this->assertSame(['PED Detail Supplier' => 200.0], $this->plDetail('2025-10-20', '5100'),
+            'the old head keeps only what stayed there — no supplier at 1,200 with an "Other" of −1,000');
+
+        $this->revise($grn, [$this->lineOf($grn, $rice)->id => [10, 90]])->assertRedirect();
+
+        $this->assertSame(['PED Detail Supplier' => 900.0], $this->plDetail('2025-10-20', '5160'), 'an edit\'s corrected journal names it too');
+        $this->assertSame(['PED Detail Supplier' => 200.0], $this->plDetail('2025-10-20', '5100'));
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * The P&L's detail lines under one account for one day: label => amount. The one build the screen, its CSV and its PDF
+     * all take (ProfitLossController → statement() → ProfitLossReport::build); this store's plan has no finance screen, and
+     * the screen itself is covered by ProfitLossDetailMySqlTest.
+     */
+    private function plDetail(string $date, string $code): array
+    {
+        $pl = app(\App\Services\Finance\ProfitLossService::class)->statement(['date_from' => $date, 'date_to' => $date]);
+        $out = [];
+        foreach (app(\App\Services\Finance\ProfitLossReport::class)->build($pl, null, true)['parts'] as $lines) {
+            foreach ($lines as $l) {
+                if ($l['code'] === $code) {
+                    foreach ($l['detail'] as $d) {
+                        $out[$d['label']] = round((float) $d['amount'], 2);
+                    }
+                }
+            }
+        }
+
+        return $out;
+    }
 
     private const RECOST_UNDONE = 'The earlier cost correction on this invoice was undone with it, so its cost is counted once.';
 
