@@ -64,3 +64,18 @@ migration, permission, module or switch. Saved prices do not move.
 
 Presentation only, so no Master switch: every catering dish form shows it on deploy (today that is Kashif Kitchen).
 Deploy = the usual `deploy.sh`; nothing to run afterwards.
+
+## Deploy (6 Nov 2026, 07:34 UTC) — LIVE `47785afa`
+- Owner: "teekh hai hogae to kardena deploy". Before: canonical = origin = `199ea23c`, prod = `8ea7270c` (199ea23c = docs
+  only); no one else's work rode along.
+- Merge `47785afa` (tree = the tested branch) → push → `origin == HEAD` proven in a separate step → `bash deploy.sh` (9/9,
+  tenants ok=13 skipped=0, "Nothing to migrate"). No backup: no migration, no data change; undo = `git revert` + deploy.
+- **Permissions:** every tenant's every role before and after — `PERMISSIONS OK: no role lost anything, no user lost a
+  role` (grants equal everywhere, gained: -).
+- **Smoke** (before = after, 13 tenants): `tb_diff=0.00`, `neg_on_disallowed=0`, `neg_on_allowed=0`, `department_negative=0`.
+  Log: 0 ERROR after 07:34. `kashifkitchen.bingoopos.com/login` 200, `bingoopos.com` 200.
+- **Live (kashifkitchen, read-only render through `ProductController::edit`):** the 8 dishes with the newest cost blocks
+  (Biryani Masala Beef / Beef Aaloo / Chicken / Chicken Aaloo, Paratha Rawa Meda + Live, Packing Material Boxes, Royal
+  Salad Mix) show the new area with the sample, and every saved block shows exactly its saved kind, basis, rate source,
+  Making role, charged and rate (differences = 0) — so Save without a change writes nothing. Cost blocks 1136 → 1136,
+  newest change time unchanged.
