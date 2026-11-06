@@ -16,8 +16,10 @@ use App\Models\Tenant\User;
 use App\Services\Finance\SupplierPayableService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Purchasing\SupplierRunningAccountService;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\MySql\Support\IsolatedPharmacyStore;
@@ -288,7 +290,208 @@ class PurchaseRevisionMySqlTest extends MySqlTenantTestCase
         $this->owner()->get($this->url('/purchase-bills/' . $bill->id))->assertOk()->assertSee('data-bill-edit', false);
     }
 
+    /**
+     * PURCHASE-EDIT-RECOST-1 (6 Nov) — an invoice whose cost a recost moved to its category's new head (the 4 Nov client
+     * case: Kashif Kitchen's bill → 5001) is edited like any other, also moved back to an earlier day, and its cost is
+     * counted once, on the new head.
+     */
+    public function test_a_recosted_invoice_is_edited_and_moved_back_with_its_cost_counted_once_on_the_new_head(): void
+    {
+        $supplier = $this->newSupplier('PED Recost Supplier');
+        $rice = $this->kitchenItem('PED Recost Rice');
+        [$grn, $bill] = $this->purchase($supplier, [[$rice, 10, 100]], '2025-10-06', '2025-10-06');
+        $this->assertEqualsWithDelta([0, 1000], [$this->onDay('5160', '2025-10-06'), $this->onDay('5100', '2025-10-06')], 0.001,
+            'first booked to 5100 — its category had no cost head yet');
+        $this->recost($rice, '2025-10-06', '2025-10-06');
+        $recost = JournalEntry::where('source_type', 'purchase_bill_recost')->where('source_id', $bill->id)->sole();
+        $this->assertEqualsWithDelta([1000, 0], [$this->onDay('5160', '2025-10-06'), $this->onDay('5100', '2025-10-06')], 0.001, 'the recost moved it');
+
+        $this->owner()->get($this->url('/goods-receipts/' . $grn->id))->assertOk()
+            ->assertSee('data-grn-edit', false)->assertDontSee('data-grn-blocked', false);
+
+        $this->revise($grn, [$this->lineOf($grn, $rice)->id => [10, 90]])->assertRedirect($this->url('/goods-receipts/' . $grn->id));
+
+        $this->assertEqualsWithDelta([900, 0], [$this->onDay('5160', '2025-10-06'), $this->onDay('5100', '2025-10-06')], 0.001,
+            'the corrected invoice lands once, on the head the recost chose; nothing left on 5100');
+        $this->assertSame('2025-10-06', JournalEntry::where('reversed_entry_id', $recost->id)->sole()->entry_date->toDateString(),
+            'the recost is undone on its own date, with the invoice');
+        $this->assertContains(self::RECOST_UNDONE, GoodsReceiptRevision::where('goods_receipt_id', $grn->id)->sole()->changes);
+        $this->assertEqualsWithDelta(900, (float) $supplier->fresh()->current_balance, 0.001);
+        $this->assertBooksAgree($supplier);
+
+        // Again: the invoice moved back three days and the rate cut once more — nothing of it stays on the old day.
+        $this->revise($grn->fresh(), [$this->lineOf($grn, $rice)->id => [10, 80]], ['bill_date' => '2025-10-03', 'receipt_date' => '2025-10-03'], 1)
+            ->assertRedirect();
+        $this->assertEqualsWithDelta([0, 0], [$this->onDay('5160', '2025-10-06'), $this->onDay('5100', '2025-10-06')], 0.001, 'the old day is empty');
+        $this->assertEqualsWithDelta([800, 0], [$this->onDay('5160', '2025-10-03'), $this->onDay('5100', '2025-10-03')], 0.001,
+            'the new day holds it, on the new head');
+        $this->assertSame(1, JournalEntry::where('reversed_entry_id', $recost->id)->count(), 'the recost was undone once');
+        $this->assertNotContains(self::RECOST_UNDONE, GoodsReceiptRevision::where('goods_receipt_id', $grn->id)->where('revision_no', 2)->sole()->changes,
+            'only the change that undid it says so');
+        $this->assertEqualsWithDelta(800, (float) $supplier->fresh()->current_balance, 0.001);
+        $this->assertBooksAgree($supplier);
+    }
+
+    /** PURCHASE-EDIT-RECOST-1 — voided "on its own date" or "today", a recosted invoice takes its cost correction off with it, that same day. */
+    public function test_recosted_invoices_void_on_their_own_date_or_today_and_take_the_correction_off_too(): void
+    {
+        $supplier = $this->newSupplier('PED Recost Void Supplier');
+        $meat = $this->kitchenItem('PED Recost Meat');
+        [$wrong, $wrongBill] = $this->purchase($supplier, [[$meat, 4, 250]], '2025-10-13', '2025-10-13');   // 1,000
+        [$back, $backBill] = $this->purchase($supplier, [[$meat, 2, 250]], '2025-10-14', '2025-10-14');     //   500
+        $this->recost($meat, '2025-10-13', '2025-10-14');
+        $recostOf = fn (PurchaseBill $b) => JournalEntry::where('source_type', 'purchase_bill_recost')->where('source_id', $b->id)->sole();
+        $this->assertEqualsWithDelta([1000, 500], [$this->billNet('5160', $wrongBill), $this->billNet('5160', $backBill)], 0.001);
+
+        $this->owner()->post($this->url('/goods-receipts/' . $wrong->id . '/void'), ['revision_no' => 0, 'void_reason' => 'wrong supplier',
+            'void_date_mode' => 'original'])->assertRedirect();
+        $this->assertEqualsWithDelta([0, 0], [$this->onDay('5160', '2025-10-13'), $this->onDay('5100', '2025-10-13')], 0.001, 'nothing left on that day');
+        $this->assertSame('2025-10-13', JournalEntry::where('reversed_entry_id', $recostOf($wrongBill)->id)->sole()->entry_date->toDateString(),
+            'a wrong entry: its correction is wiped on its own date too');
+
+        $this->owner()->post($this->url('/goods-receipts/' . $back->id . '/void'), ['revision_no' => 0, 'void_reason' => 'sent it all back',
+            'void_date_mode' => 'today'])->assertRedirect();
+        $this->assertSame(now()->toDateString(), JournalEntry::where('reversed_entry_id', $recostOf($backBill)->id)->sole()->entry_date->toDateString(),
+            'right then, undone now: today, with the invoice');
+        $this->assertEqualsWithDelta([500, 0], [$this->onDay('5160', '2025-10-14'), $this->onDay('5100', '2025-10-14')], 0.001,
+            'its own day keeps what was right then');
+        $this->assertEqualsWithDelta([0, 0], [$this->billNet('5160', $backBill), $this->billNet('5100', $backBill)], 0.001,
+            'over all days it comes to nothing');
+
+        $this->assertSame(['voided', 'voided'], [$wrongBill->fresh()->status, $backBill->fresh()->status]);
+        $this->assertContains(self::RECOST_UNDONE, GoodsReceiptRevision::where('goods_receipt_id', $back->id)->sole()->changes);
+        $this->assertEqualsWithDelta(0, (float) $supplier->fresh()->current_balance, 0.001);
+        $this->assertBooksAgree($supplier);
+    }
+
+    /**
+     * PNL-DETAIL-RECOST-1 (6 Nov, found on Khatri's P&L: 5100-3 showed "Kashif kitchen 1,59,600 · Other −1,59,600" and
+     * 5001 no detail) — the P&L detail names the bill's supplier for its recost and for an edit's corrected journal too.
+     */
+    public function test_the_pl_detail_keeps_the_supplier_on_the_head_a_recost_or_an_edit_moved_its_cost_to(): void
+    {
+        // Khatri's shape: one supplier's bill split over two old heads (5100, and 5170 like 5100-3), another supplier's
+        // money staying on 5170 (like Mayonaise & Sauces), and an item that is not moved (stays on 5100).
+        $kitchen = $this->newSupplier('PED Detail Kitchen');
+        $sauces = $this->newSupplier('PED Detail Sauces');
+        $raw = $this->costHead('5170', 'PED Raw Material');
+        $rice = $this->kitchenItem('PED Detail Rice');                      // → 5100: its category has no head yet
+        $beef = $this->kitchenItem('PED Detail Beef', $raw);                // → 5170
+        $mayo = $this->kitchenItem('PED Detail Mayo', $raw);                // → 5170, never moved
+        $drink = $this->item('PED Detail Drink', false);                    // no category → 5100, never moved
+        [$grn] = $this->purchase($kitchen, [[$rice, 10, 100], [$beef, 5, 100], [$drink, 5, 40]], '2025-10-20', '2025-10-20');   // 1,000 + 500 + 200
+        $this->purchase($sauces, [[$mayo, 3, 50]], '2025-10-20', '2025-10-20');                                               //   150
+        $totals = $this->plTotals('2025-10-20');
+        $this->recost([$rice, $beef], '2025-10-20', '2025-10-20');
+
+        $this->assertSame(['PED Detail Kitchen' => 1500.0], $this->plDetail('2025-10-20', '5160'), 'the new head names the supplier once, for both old heads');
+        $this->assertSame(['PED Detail Kitchen' => 200.0], $this->plDetail('2025-10-20', '5100'),
+            'an old head keeps only what stayed there — not the supplier at 1,200 with an "Other" of −1,000');
+        $this->assertSame(['PED Detail Sauces' => 150.0], $this->plDetail('2025-10-20', '5170'), 'the other old head: only the other supplier, no "Other"');
+        $this->assertSame($totals, $this->plTotals('2025-10-20'), 'cost of sales and gross profit unchanged');
+
+        $this->revise($grn, [$this->lineOf($grn, $rice)->id => [10, 90]])->assertRedirect();
+
+        $this->assertSame(['PED Detail Kitchen' => 1400.0], $this->plDetail('2025-10-20', '5160'), 'an edit\'s corrected journal names it too');
+        $this->assertSame(['PED Detail Kitchen' => 200.0], $this->plDetail('2025-10-20', '5100'));
+        $this->assertSame(['PED Detail Sauces' => 150.0], $this->plDetail('2025-10-20', '5170'));
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * The P&L's detail lines under one account for one day: label => amount. The one build the screen, its CSV and its PDF
+     * all take (ProfitLossController → statement() → ProfitLossReport::build); this store's plan has no finance screen, and
+     * the screen itself is covered by ProfitLossDetailMySqlTest.
+     */
+    private function plDetail(string $date, string $code): array
+    {
+        $pl = app(\App\Services\Finance\ProfitLossService::class)->statement(['date_from' => $date, 'date_to' => $date]);
+        $out = [];
+        foreach (app(\App\Services\Finance\ProfitLossReport::class)->build($pl, null, true)['parts'] as $lines) {
+            foreach ($lines as $l) {
+                if ($l['code'] === $code) {
+                    foreach ($l['detail'] as $d) {
+                        $out[$d['label']] = round((float) $d['amount'], 2);
+                    }
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /** The day's Cost of Sales and Gross Profit, from the same statement the screen shows. */
+    private function plTotals(string $date): array
+    {
+        $pl = app(\App\Services\Finance\ProfitLossService::class)->statement(['date_from' => $date, 'date_to' => $date]);
+
+        return [round((float) $pl['total_cogs'], 2), round((float) $pl['gross_profit'], 2)];
+    }
+
+    private const RECOST_UNDONE = 'The earlier cost correction on this invoice was undone with it, so its cost is counted once.';
+
+    /** A purchase-only item in a category of its own — with no cost head (its first bill books 5100), or with $head. */
+    private function kitchenItem(string $name, ?int $head = null): Product
+    {
+        $p = $this->item($name, false);
+        $category = DB::connection('tenant')->table('categories')->insertGetId(['name' => $name . ' group', 'slug' => Str::slug($name . ' group'),
+            'code' => 'PEDC' . strtoupper(substr(md5($name), 0, 4)), 'sort_order' => 0, 'is_active' => 1, 'cogs_account_id' => $head,
+            'created_at' => now(), 'updated_at' => now()]);
+        $p->update(['category_id' => $category]);
+
+        return $p->fresh();
+    }
+
+    /** An expense head under 5000 that a category may point at (NonStockCostAccounts::choices()). */
+    private function costHead(string $code, string $name): int
+    {
+        $db = DB::connection('tenant');
+
+        return (int) ($db->table('accounts')->where('code', $code)->value('id') ?: $db->table('accounts')->insertGetId(['code' => $code,
+            'name' => $name, 'type' => 'expense', 'normal_balance' => 'debit', 'parent_id' => $db->table('accounts')->where('code', '5000')->value('id'),
+            'is_active' => 1, 'is_system' => 0, 'created_at' => now(), 'updated_at' => now()]));
+    }
+
+    /**
+     * Point the items' categories at 5160 (as Catalog → Categories does) and recost those days' bills, as on prod.
+     *
+     * @param  Product|list<Product>  $items
+     */
+    private function recost(Product|array $items, string $from, string $to): void
+    {
+        $head = $this->costHead('5160', 'PED Kitchen Cost');
+        foreach (is_array($items) ? $items : [$items] as $p) {
+            DB::connection('tenant')->table('categories')->where('id', $p->category_id)->update(['cogs_account_id' => $head]);
+        }
+        $this->assertSame(0, Artisan::call('finance:recost-nonstock-bills', ['tenant_code' => self::STORE_CODE, '--from' => $from, '--to' => $to, '--yes' => true]));
+        $this->assertStringContainsString('Dr 5160', Artisan::output());
+    }
+
+    /** The GL on an account for entries dated $date (each test has its own dates). */
+    private function onDay(string $code, string $date): float
+    {
+        $db = DB::connection('tenant');
+
+        return round((float) $db->table('journal_lines as l')->join('journal_entries as e', 'e.id', '=', 'l.journal_entry_id')
+            ->where('e.status', 'posted')->whereDate('e.entry_date', $date)
+            ->where('l.account_id', $db->table('accounts')->where('code', $code)->value('id'))
+            ->sum(DB::raw('l.debit - l.credit')), 4);
+    }
+
+    /** The GL on an account from everything this invoice ever posted: itself, its recost, its corrections, their reversals. */
+    private function billNet(string $code, PurchaseBill $bill): float
+    {
+        $db = DB::connection('tenant');
+        $revisions = GoodsReceiptRevision::where('purchase_bill_id', $bill->id)->pluck('id')->all() ?: [0];
+
+        return round((float) $db->table('journal_lines as l')->join('journal_entries as e', 'e.id', '=', 'l.journal_entry_id')
+            ->where('e.status', 'posted')->where('l.account_id', $db->table('accounts')->where('code', $code)->value('id'))
+            ->where(fn ($q) => $q->where(fn ($q) => $q->whereIn('e.source_type', ['purchase_bill', 'purchase_bill_reversal', 'purchase_bill_recost',
+                'purchase_bill_recost_reversal'])->where('e.source_id', $bill->id))
+                ->orWhere(fn ($q) => $q->whereIn('e.source_type', ['purchase_bill_revision', 'purchase_bill_revision_reversal'])->whereIn('e.source_id', $revisions)))
+            ->sum(DB::raw('l.debit - l.credit')), 4);
+    }
 
     /**
      * A purchase through the workspace: receipt (+ invoice when $billDate), typed today, dated as given.

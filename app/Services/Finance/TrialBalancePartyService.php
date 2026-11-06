@@ -39,8 +39,14 @@ class TrialBalancePartyService
         'expense' => 'Other',
     ];
 
-    /** A bill or a return (or its reversal) — the documents that name a supplier on an expense line. */
-    private const BILL_SOURCES = ['purchase_bill', 'purchase_bill_reversal', 'purchase_return', 'purchase_return_reversal'];
+    /**
+     * A bill or a return (or its reversal) — the documents that name a supplier on an expense line. PNL-DETAIL-RECOST-1:
+     * also a bill's recost (finance:recost-nonstock-bills, source = the bill) and a bill's corrected journal after a GRN
+     * edit (PURCHASE-EDIT-1, source = goods_receipt_revisions.id). Without them the supplier kept the cost the recost or
+     * the edit took away, and an equal minus showed as "Other" (Khatri 5100-3, 6 Nov).
+     */
+    private const BILL_SOURCES = ['purchase_bill', 'purchase_bill_reversal', 'purchase_return', 'purchase_return_reversal',
+        'purchase_bill_recost', 'purchase_bill_recost_reversal', 'purchase_bill_revision', 'purchase_bill_revision_reversal'];
 
     private const CASH_SOURCES = [
         'catering_advance'       => 'catering_advances',
@@ -53,9 +59,10 @@ class TrialBalancePartyService
     ];
 
     private const SUPPLIER_SOURCES = [
-        'purchase_bill'    => 'purchase_bills',
-        'supplier_payment' => 'supplier_payments',
-        'purchase_return'  => 'purchase_returns',
+        'purchase_bill'        => 'purchase_bills',
+        'purchase_bill_recost' => 'purchase_bills',
+        'supplier_payment'     => 'supplier_payments',
+        'purchase_return'      => 'purchase_returns',
     ];
 
     public function __construct(
@@ -123,6 +130,10 @@ class TrialBalancePartyService
             $ids = $sourceIds([$type]);
             $supplierOf[$type] = $ids ? $conn->table($table)->whereIn('id', $ids)->pluck('supplier_id', 'id')->all() : [];
         }
+        // A GRN edit's corrected journal names its bill's supplier through the revision.
+        $ids = $sourceIds(['purchase_bill_revision']);
+        $supplierOf['purchase_bill_revision'] = $ids ? $conn->table('goods_receipt_revisions as r')->join('purchase_bills as b', 'b.id', '=', 'r.purchase_bill_id')
+            ->whereIn('r.id', $ids)->pluck('b.supplier_id', 'r.id')->all() : [];
         $cashOf = [];
         foreach (array_unique(self::CASH_SOURCES) as $table) {
             $types = array_keys(array_filter(self::CASH_SOURCES, fn ($t) => $t === $table));
@@ -173,7 +184,7 @@ class TrialBalancePartyService
                 case 'ap':
                     $sid = $g->supplier_id
                         ?: ($g->base === 'supplier_opening_balance' ? $g->source_id
-                            : (isset(self::SUPPLIER_SOURCES[$g->base]) ? ($supplierOf[$g->base][$g->source_id] ?? null) : null));
+                            : ($supplierOf[$g->base][$g->source_id] ?? null));
                     if ($sid && isset($supplierNames[$sid])) {
                         $add($account, 'supplier:' . $sid, $supplierNames[$sid], $opening, $debit, $credit);
                     } else {
@@ -228,7 +239,7 @@ class TrialBalancePartyService
                 case 'expense':
                     // PNL-DETAIL-1: a bill or a return on an expense account names its supplier.
                     if ($g->base !== 'expense_voucher') {
-                        $sid = $g->supplier_id ?: (isset(self::SUPPLIER_SOURCES[$g->base]) ? ($supplierOf[$g->base][$g->source_id] ?? null) : null);
+                        $sid = $g->supplier_id ?: ($supplierOf[$g->base][$g->source_id] ?? null);
                         if ($sid && isset($supplierNames[$sid])) {
                             $add($account, 'supplier:' . $sid, $supplierNames[$sid], $opening, $debit, $credit);
                         } else {
