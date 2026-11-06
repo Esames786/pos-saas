@@ -10,6 +10,7 @@ use App\Models\Tenant\ManufacturingBom;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\Recipe;
 use App\Models\Tenant\User;
+use App\Services\Catering\CateringCostBlockService;
 use App\Services\Catering\CateringCostBlockWriter;
 use App\Services\Catering\CateringLocalizationService;
 use App\Services\Catering\CateringProfileWriter;
@@ -498,6 +499,70 @@ class ProductWorkspaceMySqlTest extends MySqlTenantTestCase
         $before = $this->blockRows($dish);
         $this->putForm($dish, $form)->assertSessionHasErrors('cost_blocks.lines');
         $this->assertSame($before, $this->blockRows($dish));
+    }
+
+    // ── COST-BLOCK-CLARITY-1 (5 Nov): what it is first, a "?" on every box, one setting line, the booking sample ─────
+
+    public function test_cost_blocks_ask_what_it_is_first_with_a_help_on_every_box_one_setting_line_and_a_sample(): void
+    {
+        $this->business('catering');
+        [$dish] = $this->dishWithBlocks('Clarity Blocks');
+        $before = $this->blockRows($dish);
+        $html = $this->page('/products/' . $dish->id . '/edit')->assertOk()->getContent();
+
+        $dom = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $dom->loadHTML('<?xml encoding="utf-8"?>' . $html);
+        libxml_clear_errors();
+        $x = new \DOMXPath($dom);
+        $ed = $x->query('//*[@data-ws-editor="cost_blocks"]')->item(0);
+        $this->assertNotNull($ed, 'the cost-block editor is on the tab');
+        $helps = [];
+        foreach ($x->query('.//*[@data-cb-helps]/p[@data-key]', $ed) as $p) {
+            $helps[$p->getAttribute('data-key')] = trim($p->textContent);
+        }
+        $blocks = $x->query('.//tbody[@data-ws-row][not(ancestor::template)]', $ed);
+        $this->assertSame(2, $blocks->length, 'each saved block is one group: its row and its setting line');
+
+        foreach ($blocks as $b) {
+            $named = [];
+            foreach ($x->query('.//input[@name]|.//select[@name]', $b) as $el) {
+                if ($el->getAttribute('type') !== 'hidden') {
+                    $named[] = $el;
+                }
+            }
+            $this->assertStringEndsWith('[block_type]', $named[0]->getAttribute('name'), 'what the block is comes first');
+            $this->assertSame('radio', $named[0]->getAttribute('type'), 'as picture buttons, not a list');
+            foreach ($named as $el) {
+                $box = $x->query("ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' cb-field ') or contains(concat(' ', normalize-space(@class), ' '), ' cb-more-in ')][1]", $el)->item(0);
+                $this->assertNotNull($box, $el->getAttribute('name') . ' sits in a box with its "?"');
+                $q = $x->query(".//button[contains(concat(' ', @class, ' '), ' cb-q ')][@data-cb-help]", $box)->item(0);
+                $this->assertNotNull($q, $el->getAttribute('name') . ' has a "?"');
+                $this->assertNotEmpty($helps[$q->getAttribute('data-cb-help')] ?? '', $el->getAttribute('name') . "'s \"?\" says what it means");
+            }
+            $this->assertSame(0, $x->query('.//details', $b)->length, 'nothing hidden behind "Pricing settings"');
+        }
+        $this->assertSame(1, $x->query('.//input[@type="radio"][@value="making"][@checked]', $ed)->length, 'the Making charge is a plain Yes');
+        foreach ($x->query('.//button[@data-cb-help]', $ed) as $q) {
+            $this->assertNotEmpty($helps[$q->getAttribute('data-cb-help')] ?? '', 'every "?" has words: ' . $q->getAttribute('data-cb-help'));
+        }
+        $qty = $x->query('.//*[@data-cb-sample]//input[@data-cb-sample-qty]', $ed)->item(0);
+        $this->assertNotNull($qty, 'the booking sample is under the blocks');
+        $this->assertFalse($qty->hasAttribute('name'), 'its quantity is never posted with the dish');
+        $this->assertDoesNotMatchRegularExpression('/class="ur(-inline)?"/', $dom->saveHTML($ed), 'English-only, as the whole form');
+
+        // Shown and saved without a change: the same blocks, ids and times — the new boxes post exactly what was saved.
+        $form = $this->formOnPage($html, '/products/' . $dish->id);
+        $this->assertEqualsCanonicalizing(['id', 'block_type', 'label', 'material_product_id', 'quantity_per_unit', 'unit_id', 'rate', 'rate_basis', 'charge_basis', 'commercial_rate_source', 'charge_role'],
+            array_keys($form['cost_blocks']['lines'][$this->blockKey($form, 'Chicken')]), 'the same fields as before, nothing more');
+        $this->assertArrayNotHasKey('__K__', $form['cost_blocks']['lines'], 'the new-block template is not posted');
+        $this->save($dish, $form);
+        $this->assertSame($before, $this->blockRows($dish));
+
+        // The numbers the browser check expects from the sample at 10: the event screen's own price for this dish.
+        $line = app(CateringCostBlockService::class)->priceLine($dish->id, 10);
+        $this->assertEqualsWithDelta(600, $line['rate'], 0.001, 'Making 500 + chicken 0.5 × the book rate 200');
+        $this->assertEqualsWithDelta(6000, $line['total'], 0.001);
     }
 
     /** @return array{0: Product, 1: Product, 2: Product, 3: Product} the dish, rice, oil and salt */
