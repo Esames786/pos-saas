@@ -311,10 +311,10 @@ class PurchaseRevisionMySqlTest extends MySqlTenantTestCase
 
         $this->revise($grn, [$this->lineOf($grn, $rice)->id => [10, 90]])->assertRedirect($this->url('/goods-receipts/' . $grn->id));
 
-        $this->assertSame('2025-10-06', JournalEntry::where('reversed_entry_id', $recost->id)->sole()->entry_date->toDateString(),
-            'the recost is undone on its own date, with the invoice');
         $this->assertEqualsWithDelta([900, 0], [$this->onDay('5160', '2025-10-06'), $this->onDay('5100', '2025-10-06')], 0.001,
             'the corrected invoice lands once, on the head the recost chose; nothing left on 5100');
+        $this->assertSame('2025-10-06', JournalEntry::where('reversed_entry_id', $recost->id)->sole()->entry_date->toDateString(),
+            'the recost is undone on its own date, with the invoice');
         $this->assertContains(self::RECOST_UNDONE, GoodsReceiptRevision::where('goods_receipt_id', $grn->id)->sole()->changes);
         $this->assertEqualsWithDelta(900, (float) $supplier->fresh()->current_balance, 0.001);
         $this->assertBooksAgree($supplier);
@@ -345,9 +345,9 @@ class PurchaseRevisionMySqlTest extends MySqlTenantTestCase
 
         $this->owner()->post($this->url('/goods-receipts/' . $wrong->id . '/void'), ['revision_no' => 0, 'void_reason' => 'wrong supplier',
             'void_date_mode' => 'original'])->assertRedirect();
+        $this->assertEqualsWithDelta([0, 0], [$this->onDay('5160', '2025-10-13'), $this->onDay('5100', '2025-10-13')], 0.001, 'nothing left on that day');
         $this->assertSame('2025-10-13', JournalEntry::where('reversed_entry_id', $recostOf($wrongBill)->id)->sole()->entry_date->toDateString(),
             'a wrong entry: its correction is wiped on its own date too');
-        $this->assertEqualsWithDelta([0, 0], [$this->onDay('5160', '2025-10-13'), $this->onDay('5100', '2025-10-13')], 0.001, 'nothing left on that day');
 
         $this->owner()->post($this->url('/goods-receipts/' . $back->id . '/void'), ['revision_no' => 0, 'void_reason' => 'sent it all back',
             'void_date_mode' => 'today'])->assertRedirect();
