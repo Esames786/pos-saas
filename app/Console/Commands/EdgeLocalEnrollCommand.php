@@ -57,8 +57,7 @@ class EdgeLocalEnrollCommand extends Command
         $credential = (string) ($this->option('credential') ?? '');
         $credentialFile = (string) ($this->option('credential-file') ?? '');
         if ($credential === '' && $credentialFile !== '' && is_file($credentialFile)) {
-            $credential = rtrim((string) file_get_contents($credentialFile), "
-");
+            $credential = self::credentialFromFileContents((string) file_get_contents($credentialFile));
             @unlink($credentialFile); // one-time: the installer's temp file never lingers
         }
         if ($credential === '') {
@@ -76,5 +75,16 @@ class EdgeLocalEnrollCommand extends Command
         $this->info('Edge credential set. User #' . $cred->user_id . ' may now log in locally (version ' . $cred->credential_version . ').');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The credential as written in an installer credential file: only the trailing line terminator is removed
+     * (LF or CRLF — a file written on Windows carries "\r\n"; 0.8.2 trimmed "\n" only, so the stored credential
+     * ended in "\r" and could never be typed). Every other character — leading/trailing spaces, tabs, inner
+     * newlines — is part of the credential exactly as chosen. Never logged, never echoed.
+     */
+    public static function credentialFromFileContents(string $contents): string
+    {
+        return rtrim($contents, "\r\n");
     }
 }
