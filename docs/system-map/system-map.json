@@ -1,22 +1,22 @@
 {
-    "built_at": "2026-11-06T11:20:59+00:00",
+    "built_at": "2026-11-06T12:36:10+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
-    "prod_branch_head": "c3b62da8",
+    "prod_branch_head": "e95b8af1",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas",
             "branch": "feat/14d-2-plan-upgrade-requests",
-            "head": "c3b62da8",
+            "head": "e95b8af1",
             "behind_prod": 0,
             "ahead_of_prod": 0,
-            "last_commit": "2026-11-06\u00b7SUPPLIER-COST-5001-1: record \u2014 4 Nov bill recosted to 5001 (entry #31942), 2100-5 off; P&L cost line moved, total and tb unchanged",
+            "last_commit": "2026-11-06\u00b7SUPPLIER-COST-5001-1: record \u2014 2100-1/2/3 closed (0 lines) so the manual journal can post to 2100",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-costblock",
             "branch": "feat/cost-block-clarity-20261105",
             "head": "ea87e95f",
-            "behind_prod": 4,
+            "behind_prod": 5,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-06\u00b7System map rebuilt (COST-BLOCK-CLARITY-1)",
             "uncommitted_files": 0
@@ -25,7 +25,7 @@
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
             "head": "b4192fc5",
-            "behind_prod": 210,
+            "behind_prod": 211,
             "ahead_of_prod": 221,
             "last_commit": "2026-11-06\u00b7docs: Agent E final report copy (Phase E canonical rehearsal head bfc52574, not pushed: R-1 decimal pack sizes proven lossless (owner exception needed), R-2 purged entries CLOUD_ONLY, R-3 return quantity backend-enforced on both runtimes, R-4 moved-table hold; 227 migrations classified; full Edge MySQL gate 750 green, canonical merged-area gate green after fixture fixes; browser gate PASS on the disposable pair incl. WAN-loss takeover + controlled handback; EDGE_ONLINE_GEOMETRY=NONE with a shift open; env findings: dropped integ DBs by a bulk cleanup, CRLF enrol hardening)",
             "uncommitted_files": 0
@@ -34,7 +34,7 @@
             "path": "D:/laragon2/www/pos-saas-integ-082",
             "branch": "integ/canonical-rehearsal-082",
             "head": "bfc52574",
-            "behind_prod": 53,
+            "behind_prod": 54,
             "ahead_of_prod": 221,
             "last_commit": "2026-11-06\u00b7REHEARSAL Phase E final (Agent E, 6 Nov): gates after GO with real numbers - full Edge MySQL gate 750/10,035 (7 reds classified, re-run alone green), canonical merged-area gate 214/2,242 (17 reds = H1 paying-shift fixture, 31st-of-month flake, reset classification, shared-view regex; five classes re-run alone green), SQLite 206/31/136-of-139; browser on the disposable 9801/8491 pair: Online W01/W02/W06/W14 PASS, Edge (local writer after a real WAN-loss takeover) W01/W02/W06/W14 + W16/W17 PASS, new Online reference 24 shots, EDGE_VS_ONLINE_GEOMETRY=NONE (998 boxes, 0 px; the DIFF(36) of the no-shift pass was the order-controls row wrapping), pixels data-only differences, controlled handback + lease release on the clone; system map rebuilt from the integ test DBs (276 tables, 442 FKs, 745 screens); environment findings (3 mysqld outages, three pos_test_%-cleanup-dropped DBs rebuilt from read-only dumps, CRLF credential file vs EdgeLocalEnrollCommand.php:60 rtrim \"\\n\" - owner hardening decision), explicit owner note on the only product change (TenantResetTransactionsCommand KNOWN_KEPT). READY_FOR_OWNER_DECISION; no promotion, no push.",
             "uncommitted_files": 0
@@ -42,17 +42,26 @@
         {
             "path": "D:/laragon2/www/pos-saas-pedit2",
             "branch": "feat/purchase-edit-recost-20261106",
-            "head": "26ca99f6",
-            "behind_prod": 0,
-            "ahead_of_prod": 2,
-            "last_commit": "2026-11-06\u00b7PURCHASE-EDIT-RECOST-1: tests check the money before the reversal row, so a missed recost fails on the double count",
+            "head": "55b9d65e",
+            "behind_prod": 1,
+            "ahead_of_prod": 5,
+            "last_commit": "2026-11-06\u00b7PNL-DETAIL-RECOST-1: test the developer note's shape \u2014 bill over two old heads, another supplier staying, totals unchanged",
+            "uncommitted_files": 1
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-pedit2-verify",
+            "branch": "(detached)",
+            "head": "692e2445",
+            "behind_prod": 1,
+            "ahead_of_prod": 3,
+            "last_commit": "2026-11-06\u00b7System map rebuilt (PURCHASE-EDIT-RECOST-1)",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-rel-083",
             "branch": "rel/0.8.3-service-reliability",
             "head": "0b73606f",
-            "behind_prod": 210,
+            "behind_prod": 211,
             "ahead_of_prod": 213,
             "last_commit": "2026-11-06\u00b7docs: Agent F - clean-machine install class green after the host reboot (OK 1 test / 160 assertions, scratch on D:, edge_relf set); all 0.8.3 gates complete",
             "uncommitted_files": 0
@@ -61,7 +70,7 @@
             "path": "D:/laragon2/www/pos-saas-kkvenue",
             "branch": "fix/kitchen-sheet-venue-once-20261105",
             "head": "c75d4126",
-            "behind_prod": 8,
+            "behind_prod": 9,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-05\u00b7System map rebuilt (VENUE-NAME-ONLY-1)",
             "uncommitted_files": 0
@@ -70,7 +79,7 @@
             "path": "D:/laragon2/www/pos-saas-web-i18n",
             "branch": "feat/hide-public-prices-20261104",
             "head": "9000dd7c",
-            "behind_prod": 13,
+            "behind_prod": 14,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-04\u00b7WEBSITE-HIDE-PRICES-1: SAAS_HIDE_PUBLIC_PRICES \u2014 website par koi qeemat nahi (\"Price on request\"), client demo ke liye",
             "uncommitted_files": 0
@@ -79,7 +88,7 @@
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
             "head": "830f04ec",
-            "behind_prod": 26,
+            "behind_prod": 27,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-02\u00b7MANAGER-PIN-ENTER-1: every manager code box takes Enter; the cursor waits in it; the real error shows",
             "uncommitted_files": 0
@@ -88,7 +97,7 @@
             "path": "D:/laragon2/www/pos-saas-catering",
             "branch": "feat/catering-restore-in-place-20261031",
             "head": "75d7e97d",
-            "behind_prod": 32,
+            "behind_prod": 33,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-01\u00b7Deployment record: CATERING-RESTORE-IN-PLACE-1 live (e2c54e18)",
             "uncommitted_files": 0
@@ -97,7 +106,7 @@
             "path": "D:/laragon2/www/pos-saas-catedit",
             "branch": "feat/catering-simplify-20261027",
             "head": "09ad9e87",
-            "behind_prod": 79,
+            "behind_prod": 80,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-27\u00b7System map rebuilt (CATERING-SIMPLIFY-1, copy price)",
             "uncommitted_files": 0
@@ -106,7 +115,7 @@
             "path": "D:/laragon2/www/pos-saas-relc",
             "branch": "release/unified-w3w4-20261024",
             "head": "14458b95",
-            "behind_prod": 118,
+            "behind_prod": 119,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-25\u00b7Release record: a backup is not an undo button \u2014 fix forward; any restore needs its own recovery plan",
             "uncommitted_files": 0
@@ -115,7 +124,7 @@
             "path": "D:/laragon2/www/pos-saas-rollout",
             "branch": "feat/rollout-completion-20261025",
             "head": "d822bbef",
-            "behind_prod": 113,
+            "behind_prod": 114,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-25\u00b7ROLLOUT-1: deployment record \u2014 54bb81f9 live, reconciled, khatribiryani purchasing on with whole numbers off",
             "uncommitted_files": 0
@@ -124,7 +133,7 @@
             "path": "D:/laragon2/www/pos-saas-video",
             "branch": "feat/demo-video-pipeline",
             "head": "e0bae109",
-            "behind_prod": 610,
+            "behind_prod": 611,
             "ahead_of_prod": 17,
             "last_commit": "2026-10-25\u00b7RESTAURANT-VIDEO-1: poori working video \u2014 har order asli punch hota hai",
             "uncommitted_files": 0
@@ -133,7 +142,7 @@
             "path": "D:/laragon2/www/pos-saas-integ",
             "branch": "integration/unified-w2-20261022",
             "head": "983668a6",
-            "behind_prod": 163,
+            "behind_prod": 164,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-23\u00b7Release-candidate record: d29487e2 tested frozen, baseline for the three known reds, merge-onto-production check, limits",
             "uncommitted_files": 0
@@ -142,7 +151,7 @@
             "path": "D:/laragon2/www/pos-saas-w2c",
             "branch": "feat/w2c-purchase-stock-qty-20261023",
             "head": "272b1a5a",
-            "behind_prod": 160,
+            "behind_prod": 161,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-23\u00b7W2-C closing record: edf958d9 final, evidence per run, the one error read from the log, why the full suite was not repeated",
             "uncommitted_files": 0
@@ -151,7 +160,7 @@
             "path": "D:/laragon2/www/pos-saas-qrwaiter",
             "branch": "feat/unified-business-20261021",
             "head": "5441ead2",
-            "behind_prod": 177,
+            "behind_prod": 178,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-21\u00b7Merge production (59787ff6: category parent guard) into the unified branch",
             "uncommitted_files": 4
@@ -160,7 +169,7 @@
             "path": "D:/laragon2/www/pos-saas-packs",
             "branch": "feat/pharmacy-packs-20261019",
             "head": "a0dc6790",
-            "behind_prod": 213,
+            "behind_prod": 214,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-20\u00b7Docs: return without a bill built (plan section 13); system map rebuilt",
             "uncommitted_files": 0
@@ -169,7 +178,7 @@
             "path": "D:/laragon2/www/pos-saas-voice",
             "branch": "research/voice-ordering-agent",
             "head": "79c76679",
-            "behind_prod": 547,
+            "behind_prod": 548,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-05\u00b7VOICE-ORDER-1: vendor options + bahar wale mashware ki do ghaltiyan darj",
             "uncommitted_files": 0
@@ -178,7 +187,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/history-urdu-ux",
             "branch": "fix/catering-history-urdu-ux-20260829",
             "head": "da8e2ed3",
-            "behind_prod": 940,
+            "behind_prod": 941,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7Improve catering operator UX and Urdu print readability",
             "uncommitted_files": 0
@@ -187,7 +196,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/quoted-rate-persistence",
             "branch": "fix/catering-quoted-rate-persistence-20260828",
             "head": "e020c390",
-            "behind_prod": 946,
+            "behind_prod": 947,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7fix(catering): persist punched customer rates",
             "uncommitted_files": 0
@@ -196,7 +205,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/catering-client-feedback",
             "branch": "fix/catering-client-feedback-20260827",
             "head": "893d8e44",
-            "behind_prod": 959,
+            "behind_prod": 960,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-27\u00b7fix(catering): tighten time and item entry UX",
             "uncommitted_files": 0
@@ -205,7 +214,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert-v2",
             "branch": "(detached)",
             "head": "ec09b6a6",
-            "behind_prod": 1008,
+            "behind_prod": 1009,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-22\u00b7KASHIF-LEGACY-ALIGN-5/6: Complimentary in one click, and a bill you can read",
             "uncommitted_files": 1
@@ -214,7 +223,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-parity",
             "branch": "feat/catering-operator-completion-v1",
             "head": "008ba947",
-            "behind_prod": 1028,
+            "behind_prod": 1029,
             "ahead_of_prod": 4,
             "last_commit": "2026-08-22\u00b7CATERING: keep event create and edit inside the operator workspace",
             "uncommitted_files": 0
@@ -223,7 +232,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-catalogue",
             "branch": "data/kashif-catalogue-prep-v1",
             "head": "73807eb9",
-            "behind_prod": 1031,
+            "behind_prod": 1032,
             "ahead_of_prod": 1,
             "last_commit": "2026-08-21\u00b7CATERING: transcribe the Kashif catalogue without inventing prices",
             "uncommitted_files": 0
@@ -232,7 +241,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-product",
             "branch": "audit/catering-product-completeness-v1",
             "head": "ef184b6a",
-            "behind_prod": 1077,
+            "behind_prod": 1078,
             "ahead_of_prod": 18,
             "last_commit": "2026-08-21\u00b7AUDIT: assess Catering product completeness",
             "uncommitted_files": 0
@@ -241,7 +250,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex",
             "branch": "audit/catering-e2e-qa-v1",
             "head": "f8fa2205",
-            "behind_prod": 1077,
+            "behind_prod": 1078,
             "ahead_of_prod": 13,
             "last_commit": "2026-08-20\u00b7DOCS: preserve independent Catering architecture audit",
             "uncommitted_files": 0
@@ -250,7 +259,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert",
             "branch": "audit/catering-rate-impact-cert-v1",
             "head": "55ad8d5e",
-            "behind_prod": 1077,
+            "behind_prod": 1078,
             "ahead_of_prod": 17,
             "last_commit": "2026-08-20\u00b7TEST: expose Catering draft writer send races",
             "uncommitted_files": 0
@@ -259,7 +268,7 @@
             "path": "D:/laragon2/www/pos-saas-cloud",
             "branch": "feat/cloud-billing-onboarding-v1",
             "head": "9c30ea46",
-            "behind_prod": 1143,
+            "behind_prod": 1144,
             "ahead_of_prod": 8,
             "last_commit": "2026-08-15\u00b7CLOUD-BILLING E2E: real monthly + yearly signup lifecycle (throwaway tenants)",
             "uncommitted_files": 0
@@ -392,7 +401,7 @@
             "modified": "2026-11-06"
         }
     ],
-    "git": "26ca99f6",
+    "git": "55b9d65e",
     "source": {
         "tenant_db": "pos_test_tenant_per1",
         "master_db": "pos_test_master_per1"

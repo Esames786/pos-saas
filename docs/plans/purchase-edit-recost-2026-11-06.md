@@ -51,6 +51,32 @@ touches them).
    supplier back to 0; books agree.
 Sabotage: leave the recost out of what is reversed → test 1 red (new head double); put the refusal back → both red.
 
+## Also in this branch: PNL-DETAIL-RECOST-1 (developer note from the business-side session, 6 Nov)
+Found on khatribiryani's P&L, 1–6 Nov, "Show detail" (read on prod through `ProfitLossReport::build`, the screen's build):
+5001 3,71,680 with no detail; 5100-3 11,780 shown as "Kashif kitchen 1,59,600 · 5100-7 MAYONAISE & SAUCES 11,780 · Other
+−1,59,600". Totals right, detail wrong.
+
+Cause: `TrialBalancePartyService` (the P&L detail, the TB party detail and both PDFs) knew only `purchase_bill` /
+`purchase_return` (+ reversals) as bills. A recost (`purchase_bill_recost`, source = the bill) and an edit's corrected
+journal (`purchase_bill_revision`, source = `goods_receipt_revisions.id`) were neither: an account fed only by them (5001)
+was not split at all, and on the old heads their minus fell to "Other" while the bill kept its supplier.
+
+Fix (one file, display only, no entry changes): both types and their `_reversal`s are bill sources; a recost resolves to
+`purchase_bills.supplier_id`, a revision through `goods_receipt_revisions.purchase_bill_id` → the bill's supplier. The AP,
+cash and expense-voucher branches and the catch-all labels are unchanged.
+
+Test (`PurchaseRevisionMySqlTest`, the note's shape): one supplier's bill over two old heads (5100 and 5170) plus an item that
+stays on 5100, another supplier staying on 5170; recost both moved items to 5160 → 5160 = the supplier once (1,500), 5100 =
+the supplier for what stayed (200), 5170 = the other supplier only (150), no "Other"; Cost of Sales and Gross Profit
+unchanged; after a GRN edit 5160 = 1,400 under the supplier. Sabotage: recost taken off the list → 5160 detail empty
+(the live 5001 symptom) RED; revision lookup off → after the edit 5160 detail empty RED. P&L / TB files green on the fix:
+ProfitLossDetail 9, TrialBalanceParty 12, TrialBalancePeriod 13, TrialBalanceSectionHeads 9, GrnNonStock 17,
+PayablesFinanceGate 6. The test store's plan has no finance screen (403), so the test reads the screen's build; the screen
+itself is covered by ProfitLossDetailMySqlTest.
+
+Acceptance after deploy, khatribiryani 1–6 Nov "Show detail": 5001 → one line, Kashif kitchen 3,71,680; 5100-3 → one line,
+5100-7 · MAYONAISE & SAUCES 11,780; no Kashif kitchen / "Other" pair anywhere; Cost of Sales and Gross Profit as before; tb 0.
+
 ## Not in this work
 - Receipts with the 22 Oct stock correction (none exist with edit ON).
 - A bill edited AFTER posting is skipped by `finance:recost-nonstock-bills` (its `purchase_bill` journal is reversed) —
