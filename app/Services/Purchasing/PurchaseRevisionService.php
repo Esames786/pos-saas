@@ -90,9 +90,8 @@ final class PurchaseRevisionService
             if ($db->table('purchase_bill_return_nettings')->where('purchase_bill_id', $bill->id)->exists()) {
                 return 'A return was deducted on its supplier invoice, so it can no longer be edited.';
             }
-            if ($db->table('journal_entries')->where('source_type', 'purchase_bill_recost')->where('source_id', $bill->id)->exists()) {
-                return 'An earlier cost correction is on its supplier invoice, so it cannot be edited here.';
-            }
+            // PURCHASE-EDIT-RECOST-1: a recost on the invoice (purchase_bill_recost) no longer refuses — reinvoice() undoes
+            // it with the invoice's own journal, so the cost is counted once.
             if (! $this->running->enabled() && (float) $bill->amount_paid > self::CENT) {
                 return 'A payment is on its supplier invoice. Void that payment first, then edit.';
             }
@@ -238,11 +237,15 @@ final class PurchaseRevisionService
             $reversed = [];
             $posted = null;
             $released = 0.0;
+            $recostUndone = false;
             if ($bill) {
-                [$reversed, $posted, $released] = $this->reinvoice($grn->fresh('lines'), $bill, $before, $new, $revision, $isVoid, $label, $dateMode, $userId);
+                [$reversed, $posted, $released, $recostUndone] = $this->reinvoice($grn->fresh('lines'), $bill, $before, $new, $revision, $isVoid, $label, $dateMode, $userId);
             }
             if ($released > self::CENT) {
                 $changes[] = 'Rs ' . number_format($released, 2) . ' already paid came off this invoice and is now "Not on any invoice" for this supplier.';
+            }
+            if ($recostUndone) {
+                $changes[] = 'The earlier cost correction on this invoice was undone with it, so its cost is counted once.';
             }
 
             $revision->update([
@@ -328,7 +331,7 @@ final class PurchaseRevisionService
     /**
      * The invoice follows the receipt: lines, totals, what is paid on it, the supplier ledger and the GL.
      *
-     * @return array{0: list<int>, 1: ?JournalEntry, 2: float} reversed journal ids, the journal posted, credit released
+     * @return array{0: list<int>, 1: ?JournalEntry, 2: float, 3: bool} reversed journal ids, the journal posted, credit released, a recost undone
      */
     private function reinvoice(GoodsReceipt $grn, PurchaseBill $bill, array $before, array $new, GoodsReceiptRevision $revision,
         bool $isVoid, string $label, ?string $dateMode, ?int $userId): array
@@ -426,10 +429,15 @@ final class PurchaseRevisionService
 
         // GL: what is in force for the invoice is reversed on its own date (a void may choose today); the corrected
         // invoice is posted on its date under this revision.
+        // PURCHASE-EDIT-RECOST-1: a recost of the invoice (finance:recost-nonstock-bills — Dr the category's head / Cr the
+        // head first booked) is in force for it too. The corrected invoice posts on its lines' cost_account_id, which
+        // that recost already pointed at the new head; left standing, the recost would count the cost twice there and
+        // push the old head below zero. So it is reversed with the rest, on the same day.
         $revisionIds = GoodsReceiptRevision::query()->where('goods_receipt_id', $grn->id)->pluck('id');
         $inForce = JournalEntry::query()->where('is_reversal', false)->where('status', 'posted')
             ->where(fn ($q) => $q->where(fn ($q) => $q->where('source_type', 'purchase_bill')->where('source_id', $bill->id))
-                ->orWhere(fn ($q) => $q->where('source_type', 'purchase_bill_revision')->whereIn('source_id', $revisionIds)))
+                ->orWhere(fn ($q) => $q->where('source_type', 'purchase_bill_revision')->whereIn('source_id', $revisionIds))
+                ->orWhere(fn ($q) => $q->where('source_type', 'purchase_bill_recost')->where('source_id', $bill->id)))
             ->whereNotExists(fn ($q) => $q->from('journal_entries as r')->whereColumn('r.reversed_entry_id', 'journal_entries.id'))
             ->orderBy('id')->get();
         $reversed = [];
@@ -447,7 +455,7 @@ final class PurchaseRevisionService
             }
         }
 
-        return [$reversed, $posted, $released];
+        return [$reversed, $posted, $released, $inForce->contains('source_type', 'purchase_bill_recost')];
     }
 
     /** The receipt (and invoice) as numbers — the revision's before / after. */
