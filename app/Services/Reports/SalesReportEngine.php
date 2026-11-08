@@ -350,7 +350,7 @@ class SalesReportEngine
     // The owner gives a deal a part per item (a platter of 900 = rice 400 + BBQ 500); the sale copies
     // those parts onto its lines (`sales_order_lines.deal_share`, see App\Support\DealSplit). The methods
     // below are the WHOLE rule as the reports read it, and nothing else in this class knows it:
-    //   dealSplitParts()       — which lines are a split deal's parts;
+    //   dealSplitPartOn()      — which lines are a split deal's parts;
     //   dealPartAmount()       — how a header's money is shared between them (exact to the paisa);
     //   dealSplitLines()       — the period's sale lines with each split deal replaced by its parts;
     //   dealSplitReturnLines() — the period's return lines, the same way;
@@ -359,22 +359,29 @@ class SalesReportEngine
     // query is the one this class ran before.
 
     /**
-     * The one definition of a SPLIT deal's part: a `component` line with a part above 0 whose parent is
-     * a `combo_header` on the SAME bill. Its header is then a split deal, reported through its parts.
+     * The one definition of a SPLIT deal's part, as a join condition: `$part` is a `component` line with a
+     * part above 0 whose parent `$head` is a `combo_header` on the SAME bill. Its header is then a split
+     * deal, reported through its parts.
      *
      * A component that has lost its parent (Split Bill copies lines without the link) is not a part, so
      * its header keeps the whole money exactly as before; a part of 0 (the free paratha) is never shown.
      */
-    private function dealSplitParts(string $part = 'dsp', string $head = 'dsh')
+    private function dealSplitPartOn(string $part, string $head): string
     {
-        return DB::connection('tenant')->table("sales_order_lines as {$part}")
-            ->join("sales_order_lines as {$head}", function ($j) use ($part, $head) {
-                $j->on("{$head}.id", '=', "{$part}.parent_sales_order_line_id")
-                    ->on("{$head}.sales_order_id", '=', "{$part}.sales_order_id");
-            })
-            ->where("{$head}.line_kind", 'combo_header')
-            ->where("{$part}.line_kind", 'component')
-            ->where("{$part}.deal_share", '>', 0);
+        return "{$head}.id = {$part}.parent_sales_order_line_id AND {$head}.sales_order_id = {$part}.sales_order_id"
+            . " AND {$head}.line_kind = 'combo_header' AND {$part}.line_kind = 'component' AND {$part}.deal_share > 0";
+    }
+
+    /**
+     * FROM ($rows) AS $alias STRAIGHT_JOIN … — the period's own bills (or returns) are read first and their
+     * lines found by index. Left to choose, MySQL scanned the WHOLE sales_order_lines table for the parts
+     * (their filter looks selective), a cost that grows with every month of history; a one-day report must
+     * cost one day.
+     */
+    private function periodDriven($rows, string $alias, string $joins)
+    {
+        return DB::connection('tenant')->query()
+            ->fromRaw('(' . $rows->toSql() . ') as ' . $alias . ' ' . $joins, $rows->getBindings());
     }
 
     /** Each part's share, the sum of its deal's shares and its rank (biggest first, lowest id on a tie). */
@@ -409,9 +416,11 @@ class SalesReportEngine
     private function dealSplitLines(array $f)
     {
         $conn = DB::connection('tenant');
+        $orders = $this->salesBase($f)->select('o.id');
 
-        $ranked = $this->dealSplitParts()
-            ->whereIn('dsp.sales_order_id', $this->salesBase($f)->select('o.id'))
+        $ranked = $this->periodDriven($orders, 'po',
+            'STRAIGHT_JOIN sales_order_lines as dsp ON dsp.sales_order_id = po.id'
+            . ' STRAIGHT_JOIN sales_order_lines as dsh ON ' . $this->dealSplitPartOn('dsp', 'dsh'))
             ->selectRaw('dsh.id as header_id, dsp.id as part_id, dsp.product_id, dsp.product_variant_id,
                 dsp.product_name, dsp.quantity, dsp.base_quantity,
                 dsh.quantity * dsh.unit_price as head_gross, dsh.discount_amount as head_discount,
@@ -427,9 +436,8 @@ class SalesReportEngine
 
         $line = fn (string $col) => "CASE WHEN sp.part_id IS NULL THEN x.{$col} ELSE sp.{$col} END as {$col}";
 
-        return $conn->table('sales_order_lines as x')
+        return $this->periodDriven($orders, 'po', 'STRAIGHT_JOIN sales_order_lines as x ON x.sales_order_id = po.id')
             ->leftJoinSub($parts, 'sp', 'sp.header_id', '=', 'x.id')
-            ->whereIn('x.sales_order_id', $this->salesBase($f)->select('o.id'))
             ->selectRaw(implode(', ', [
                 'COALESCE(sp.part_id, x.id) as id',
                 'x.sales_order_id',
@@ -454,10 +462,12 @@ class SalesReportEngine
     private function dealSplitReturnLines(array $f)
     {
         $conn = DB::connection('tenant');
+        $returns = $this->returnsBase($f)->select('r.id');
 
-        $ranked = $this->dealSplitParts()
-            ->join('sales_return_lines as drl', 'drl.sales_order_line_id', '=', 'dsh.id')
-            ->whereIn('drl.sales_return_id', $this->returnsBase($f)->select('r.id'))
+        $ranked = $this->periodDriven($returns, 'pr',
+            'STRAIGHT_JOIN sales_return_lines as drl ON drl.sales_return_id = pr.id'
+            . ' STRAIGHT_JOIN sales_order_lines as dsh ON dsh.id = drl.sales_order_line_id'
+            . ' STRAIGHT_JOIN sales_order_lines as dsp ON ' . $this->dealSplitPartOn('dsp', 'dsh'))
             ->selectRaw('drl.id as return_line_id, dsp.product_id, dsp.product_variant_id,
                 drl.quantity * dsp.quantity / NULLIF(dsh.quantity, 0) as quantity,
                 CASE WHEN dsp.base_quantity IS NULL THEN NULL
@@ -471,9 +481,8 @@ class SalesReportEngine
 
         $line = fn (string $col) => "CASE WHEN rp.return_line_id IS NULL THEN y.{$col} ELSE rp.{$col} END as {$col}";
 
-        return $conn->table('sales_return_lines as y')
+        return $this->periodDriven($returns, 'pr', 'STRAIGHT_JOIN sales_return_lines as y ON y.sales_return_id = pr.id')
             ->leftJoinSub($parts, 'rp', 'rp.return_line_id', '=', 'y.id')
-            ->whereIn('y.sales_return_id', $this->returnsBase($f)->select('r.id'))
             ->selectRaw(implode(', ', [
                 'y.id', 'y.sales_return_id',
                 'CASE WHEN rp.return_line_id IS NULL THEN y.sales_order_line_id END as sales_order_line_id',
@@ -500,7 +509,8 @@ class SalesReportEngine
             ->whereIn(DB::raw('COALESCE(fcb.category_id, fp.category_id)'), $categoryIds)
             ->orWhere(fn ($part) => $part
                 ->whereIn('fp.category_id', $categoryIds)
-                ->whereExists($this->dealSplitParts('fsp', 'fsh')->selectRaw('1')->whereColumn('fsp.id', 'fl.id'))));
+                ->whereRaw('EXISTS (SELECT 1 FROM sales_order_lines as fsp JOIN sales_order_lines as fsh ON '
+                    . $this->dealSplitPartOn('fsp', 'fsh') . ' WHERE fsp.id = fl.id)')));
     }
 
     /**
