@@ -38,6 +38,9 @@ final class TenantFeatures
     // SUPPLIER-LEDGER-DAILY-1: the supplier ledger by the document's own date, day by day, and for all suppliers.
     public const SUPPLIER_LEDGER_DAILY = 'supplier_ledger_daily';
 
+    // DEAL-SPLIT-REPORT-1: a deal's money shown in the reports under the items inside it (report-only).
+    public const DEAL_SPLIT = 'deal_split';
+
     /**
      * shots (MASTER-NEW-SCREENS-1): pictures of the screens the switch shows, slug => caption
      * (public/assets/img/screens/<slug>.jpg), drawn beside the switch in Master.
@@ -127,6 +130,12 @@ final class TenantFeatures
                 'label' => 'Supplier ledger day by day',
                 'says'  => 'Each entry in a supplier\'s ledger shows on its own date (the invoice, payment or return date — not the day it was typed), with From / To dates, a "day by day" view (opening, bills, payments, closing for each day) and "All suppliers".',
                 'where' => 'Purchasing → Suppliers → Ledger',
+            ],
+            // DEAL-SPLIT-REPORT-1
+            self::DEAL_SPLIT => [
+                'label' => 'Deal money by item in reports',
+                'says'  => 'On a deal\'s form the owner can choose "Each item\'s rate" and type each item\'s part (a platter of 900 = biryani 400 + BBQ 500, adding up to the deal\'s price). Deals sold after that show in Categories, Items and the daily report under those items instead of as one line; the Deals list still shows the deal. The bill, the customer\'s price, payments and the accounts do not change. Deals left on "One rate" and everything sold before stay as they were.',
+                'where' => 'Products → Deals → Add / Edit; Reports → Sales Report Center, POS Quick Report, dashboard, daily report',
             ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',
