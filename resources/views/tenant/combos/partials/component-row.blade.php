@@ -22,6 +22,13 @@
     <td>
         <input type="number" step="0.001" min="0.001" name="components[{{ $index }}][quantity]" class="form-control" value="{{ $row['quantity'] ?? 1 }}" required>
     </td>
+    @if($dealSplit ?? false)
+        {{-- DEAL-SPLIT-REPORT-1: this item's part of ONE deal (report only); off for "One rate", so it is not sent. --}}
+        <td data-report-col @class(['d-none' => ! ($reportByItems ?? false)])>
+            <input type="number" step="0.01" min="0" name="components[{{ $index }}][report_amount]" class="form-control"
+                   value="{{ $row['report_amount'] ?? '' }}" placeholder="Rs" aria-label="Report rate (Rs) for 1 deal" data-report-amount @disabled(! ($reportByItems ?? false))>
+        </td>
+    @endif
     <td>
         <input type="number" min="0" name="components[{{ $index }}][sort_order]" class="form-control" value="{{ $row['sort_order'] ?? '' }}">
     </td>
