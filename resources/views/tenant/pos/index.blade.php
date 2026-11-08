@@ -3476,6 +3476,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function addToCart(product, variant, forceQty, selectedModifiers, pack) {
+        // F-1 (8 Nov 2026): a runtime that cannot write (Edge STANDBY / handback) refuses to grow the cart and says why —
+        // the server would refuse the quote anyway (422) and the cashier must not build a bill nobody can take. Online:
+        // POS.canMutate() is always true. An existing cart is left as it is.
+        if (window.POS && typeof POS.canMutate === 'function' && !POS.canMutate()) { POS.notifyNoMutate(); return; }
         // MEDICAL-COUNTER-1: a medicine goes in by its pack (a scanned Box = 1 Box; a click = 1 Strip).
         if (medicalCounter && product && product.med && !hasModifierGroups(product) && !(selectedModifiers && selectedModifiers.length)) {
             medAdd(product, variant, forceQty, pack);
@@ -5074,9 +5078,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 lines:          collectQuoteLines(),
             }),
         })
-        .then(function (res) { return res.json(); })
+        .then(function (res) { return res.json().then(function (d) { d.__status = res.status; return d; }); })
         .then(function (data) {
-            if (!data.ok) return;
+            if (!data.ok) {
+                // F-1: a Branch Server that is not the active writer answers 422 — tell the cashier instead of pricing silently.
+                if (data.__status === 422 && window.POS && POS.isAuthorityRefusal && POS.isAuthorityRefusal(data)) { POS.notifyNoMutate(data.message); }
+                return;
+            }
 
             _serviceChargeAmount = Number(data.service_charge_amount || 0);
 
@@ -7783,6 +7791,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var reviewPayBtn   = document.getElementById('review-pay-btn');
     if (reviewPayBtn && paymentModalEl && window.bootstrap) {
         reviewPayBtn.addEventListener('click', function () {
+            // F-1: the button is disabled by the write gate while the runtime cannot write; this guards keyboard shortcuts too.
+            if (window.POS && typeof POS.canMutate === 'function' && !POS.canMutate()) { POS.notifyNoMutate(); return; }
             if (!cart.length) {
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({ icon: 'info', title: 'Cart is empty', text: 'Add items before taking payment.', timer: 1600, showConfirmButton: false });

@@ -969,6 +969,13 @@ class EdgeLocalPosController extends Controller
         $authority = app(\App\Services\Edge\EdgeAuthorityService::class)->cashierState();
 
         return response()->json([
+            // F-1 (owner, 8 Nov 2026): the SAME authority block the page was rendered with (`POS_RUNTIME.authority`), so the
+            // shared cashier view can follow standby ↔ Local Mode ↔ handback transitions after it has loaded
+            // (POS.setAuthority → write gate). Cashier-facing labels + can_mutate only — no lease/epoch internals.
+            'authority' => array_intersect_key(
+                app(\App\Services\Edge\EdgePosRuntimeFactory::class)->authorityBlock(),
+                array_flip(['state', 'label', 'sub_label', 'can_mutate', 'tone', 'pending_sync', 'needs_attention'])
+            ),
             'pending_sales' => $pending,
             'needs_attention' => $attention,
             'last_synced_at' => $snap['last_ack_at'] ?? null,

@@ -19,7 +19,7 @@ use Tests\TestCase;
  */
 class EdgeChromePartialTest extends TestCase
 {
-    private function edgeRuntime(): PosRuntime
+    private function edgeRuntime(?array $authority = null): PosRuntime
     {
         $c = app(CloudPosRuntimeFactory::class)->make(1, 'Main');
 
@@ -28,7 +28,7 @@ class EdgeChromePartialTest extends TestCase
             routes: array_merge($c->routes, ['syncSummary' => '/edge/local/pos/sync/summary', 'status' => '/edge/local/health', 'logout' => '/edge/local/logout', 'terminals' => '/edge/local/pos/terminals', 'terminalSelect' => '/edge/local/pos/terminal/select']),
             capabilities: $c->capabilities,
             identity: $c->identity,
-            authority: ['state' => 'local_active', 'label' => 'LOCAL MODE', 'sub_label' => 'MANUAL SWITCH', 'can_mutate' => true, 'pending_sync' => 0, 'tone' => 'ok', 'connection_label' => 'ONLINE'],
+            authority: $authority ?? ['state' => 'local_active', 'label' => 'LOCAL MODE', 'sub_label' => 'MANUAL SWITCH', 'can_mutate' => true, 'pending_sync' => 0, 'tone' => 'ok', 'connection_label' => 'ONLINE'],
             assets: $c->assets,
             transport: ['csrf_header' => 'X-CSRF-TOKEN', 'body' => 'multipart', 'unauthenticated_redirect' => '/edge/local/login'],
             managerCredential: PosRuntime::CREDENTIAL_EMPLOYEE,
@@ -98,6 +98,43 @@ class EdgeChromePartialTest extends TestCase
         $island = json_decode($m[1], true);
         $this->assertSame('/edge/local/pos/suppliers', $island['routes']['supplierFinancePage']);
         $this->assertSame(['pos-edge-menu-status', 'pos-edge-menu-supplier-finance', 'pos-edge-menu-finance-journal', 'pos-edge-menu-purchase-returns'], array_column($island['menu'], 'id'));
+    }
+
+    /**
+     * F-1 (owner, 8 Nov 2026 — second-laptop walk finding): in STANDBY the shared cashier view must not look sellable.
+     * The chrome carries can_mutate=0, polls the Edge sync summary for authority transitions after load, and the shared
+     * transport exposes the write gate (POS.canMutate / notifyNoMutate / isAuthorityRefusal) that disables Review & Pay,
+     * Complete Sale and Open shift and surfaces the server's 422 authority refusals. Cloud: no can_mutate → gate always open.
+     */
+    public function test_the_edge_chrome_and_the_shared_transport_carry_the_standby_write_gate(): void
+    {
+        $standby = $this->edgeRuntime(['state' => 'standby', 'label' => 'STANDBY', 'sub_label' => 'CLOUD AUTHORITY', 'can_mutate' => false, 'pending_sync' => 0, 'tone' => 'warn', 'connection_label' => 'ONLINE']);
+        $html = view('tenant.pos.partials.pos-chrome-edge', ['posRuntime' => $standby])->render();
+        $this->assertStringContainsString('data-authority-state="standby"', $html);
+        $this->assertStringContainsString('data-can-mutate="0"', $html);
+        $this->assertStringContainsString('data-sync-url="/edge/local/pos/sync/summary"', $html);
+        // the live authority poll (Edge only) repaints through the SHARED POS.setAuthority
+        $this->assertStringContainsString("chrome.getAttribute('data-sync-url')", $html);
+        $this->assertStringContainsString('if (d && d.authority && window.POS && POS.setAuthority) { POS.setAuthority(d.authority); }', $html);
+        $this->assertStringContainsString('setInterval(tick, 20000);', $html);
+
+        $local = $this->edgeRuntime();
+        $this->assertStringContainsString('data-can-mutate="1"', view('tenant.pos.partials.pos-chrome-edge', ['posRuntime' => $local])->render());
+
+        $transport = view('tenant.pos.js.pos-runtime')->render();
+        $this->assertStringContainsString("if (!a || typeof a !== 'object' || !Object.prototype.hasOwnProperty.call(a, 'can_mutate')) return true;", $transport, 'Cloud (no can_mutate) keeps the gate open');
+        $this->assertStringContainsString("var GATED = ['review-pay-btn', 'complete-sale-btn', 'pos-shift-open-link'];", $transport);
+        $this->assertStringContainsString('applyMutationGate();', $transport, 'setAuthority applies the gate');
+        $this->assertStringContainsString("document.addEventListener('DOMContentLoaded', applyMutationGate);", $transport);
+        $this->assertStringContainsString('if (res.status === 422 && isAuthorityRefusal(data)) {', $transport, 'server authority refusals are surfaced');
+        $this->assertStringContainsString('/Local Mode is not active|active writer for this branch/i', $transport);
+        $this->assertStringContainsString('This Branch Server is in STANDBY', $transport);
+        foreach (['canMutate: canMutate', 'applyMutationGate: applyMutationGate', 'isAuthorityRefusal: isAuthorityRefusal', 'notifyNoMutate: notifyNoMutate'] as $export) {
+            $this->assertStringContainsString($export, $transport);
+        }
+        // the gate never empties the cart: no cart mutation inside the transport
+        $this->assertStringNotContainsString('cart.length = 0', $transport);
+        $this->assertStringNotContainsString('cart = []', $transport);
     }
 
     public function test_the_split_bill_script_guards_the_tendered_field_it_does_not_render(): void

@@ -105,6 +105,11 @@
                     var msg403 = (data && data.message) || 'You do not have permission for this action.';
                     toast('error', msg403 + (data && data.permission ? ' (' + data.permission + ')' : ''));
                 }
+                if (res.status === 422 && isAuthorityRefusal(data)) {
+                    // F-1: the Branch Server refused a write because it is not the active writer — say so (the page's own
+                    // catch may show err.message too; the toast guarantees the cashier sees it even where it does not).
+                    notifyNoMutate(data.message);
+                }
                 if (!res.ok) {
                     var err = new Error((data && (data.message
                         || (data.errors && Object.values(data.errors).flat().join(' ')))) || ('Request failed (' + res.status + ').'));
@@ -156,6 +161,66 @@
     }
 
     var TONES = { ok: 'bg-success', warn: 'bg-warning text-dark', danger: 'bg-danger' };
+
+    /* F-1 (owner, 8 Nov 2026) — the WRITE GATE of the shared cashier view. The Cloud runtime carries no `can_mutate`
+       (→ always true, Online untouched); the Edge runtime sets authority.can_mutate (STANDBY / handback = false, Local
+       Mode = true). The gate is a UI courtesy only: the Branch Server still refuses every mutation server-side (422
+       "Local Mode is not active…"), which api() now surfaces as a toast instead of a silent failure. The in-page cart is
+       never discarded by a gate change — it is only prevented from growing / being paid while the appliance cannot write. */
+    function canMutate() {
+        var a = RT.authority;
+        if (!a || typeof a !== 'object' || !Object.prototype.hasOwnProperty.call(a, 'can_mutate')) return true;
+        return a.can_mutate !== false;
+    }
+    function noMutateText() {
+        var a = RT.authority || {};
+        if (a.state === 'handing_back') {
+            return 'This Branch Server is returning authority to the Online POS. Nothing can be rung here until the handback completes; continue on the Online POS.';
+        }
+        return 'This Branch Server is in STANDBY — the Online (Cloud) POS is the active writer for this branch. Items, payments and shifts can only be rung here once Local Mode is active.';
+    }
+    var GATED = ['review-pay-btn', 'complete-sale-btn', 'pos-shift-open-link'];
+    var gateOverlayShown = false;
+    function applyMutationGate() {
+        var ok = canMutate();
+        GATED.forEach(function (id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            if (!ok) {
+                if (el.getAttribute('data-pos-gate') !== '1') {
+                    el.setAttribute('data-pos-gate', '1');
+                    el.setAttribute('data-pos-gate-title', el.getAttribute('title') || '');
+                    if (el.tagName === 'BUTTON') { el.disabled = true; } else { el.setAttribute('aria-disabled', 'true'); el.style.pointerEvents = 'none'; el.style.opacity = '0.5'; }
+                    el.setAttribute('title', noMutateText());
+                }
+            } else if (el.getAttribute('data-pos-gate') === '1') {
+                el.removeAttribute('data-pos-gate');
+                if (el.tagName === 'BUTTON') { el.disabled = false; } else { el.removeAttribute('aria-disabled'); el.style.pointerEvents = ''; el.style.opacity = ''; }
+                var t = el.getAttribute('data-pos-gate-title'); el.removeAttribute('data-pos-gate-title');
+                if (t) { el.setAttribute('title', t); } else { el.removeAttribute('title'); }
+            }
+        });
+        document.body.classList.toggle('pos-no-mutate', !ok);
+        if (!ok) {
+            overlay.show({ title: (RT.authority && RT.authority.label) || 'STANDBY', text: noMutateText(), tone: RT.authority && RT.authority.tone === 'danger' ? 'danger' : 'warn' });
+            gateOverlayShown = true;
+        } else if (gateOverlayShown) {
+            overlay.hide();
+            gateOverlayShown = false;
+            toast('success', 'Local Mode is active — this Branch Server can ring sales now.');
+        }
+    }
+    /** A server-side authority refusal (EdgeAuthorityService, 422) — recognised by its message, never by status alone. */
+    function isAuthorityRefusal(data) {
+        var m = data && typeof data === 'object' ? String(data.message || '') : String(data || '');
+        return /Local Mode is not active|active writer for this branch/i.test(m);
+    }
+    /** Tell the cashier why a write was refused (gate or server), without touching the cart. */
+    function notifyNoMutate(message) {
+        toast('error', message || noMutateText());
+        if (!canMutate()) { applyMutationGate(); }
+    }
+
     function setAuthority(a) {
         a = a || {};
         RT.authority = Object.assign({}, RT.authority || {}, a);
@@ -172,7 +237,9 @@
             pend.textContent = n + ' pending sync';
             pend.classList.toggle('d-none', n <= 0);
         }
+        applyMutationGate();
     }
+    document.addEventListener('DOMContentLoaded', applyMutationGate);
 
     var overlay = {
         show: function (o) {
@@ -217,6 +284,11 @@
         managerCredentialFocus: managerCredentialFocus,
         setAuthority: setAuthority,
         overlay: overlay,
+        /* F-1 write gate (see above). Online: canMutate() is always true and the other three are harmless no-ops. */
+        canMutate: canMutate,
+        applyMutationGate: applyMutationGate,
+        isAuthorityRefusal: isAuthorityRefusal,
+        notifyNoMutate: notifyNoMutate,
     };
 })();
 </script>

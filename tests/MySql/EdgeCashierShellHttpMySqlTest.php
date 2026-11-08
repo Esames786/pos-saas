@@ -108,7 +108,7 @@ class EdgeCashierShellHttpMySqlTest extends MySqlTenantTestCase
             'pos-edge-chrome', 'pos-edge-chrome-data', 'pos-edge-logout-form', 'main-content'] as $id) {
             $this->assertStringContainsString('id="' . $id . '"', $html, "control #{$id}");
         }
-        $this->assertStringContainsString('<h1 class="h3 mb-0">Restaurant POS</h1>', $html, 'the Online title');
+        $this->assertMatchesRegularExpression('#<h1 class="h3 mb-0">(Restaurant )?POS</h1>#', $html, 'the Online title (PHARMACY-DEMO-1: "POS" when the counter feeds no kitchen)');
         $this->assertStringContainsString('window.POS_RUNTIME = {"mode":"edge"', $html, 'the runtime island precedes every page script');
         $this->assertStringContainsString('"identity":{"branch_id":' . $this->branchId . ',"branch_name":"Shell Branch","branch_selectable":false', $html);
 

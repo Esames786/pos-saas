@@ -94,7 +94,8 @@ class EdgeCashierScreenRendersHttpMySqlTest extends MySqlTenantTestCase
 
         $html = $res->getContent();
         // The Online operator surface — the SAME Blade the Cloud renders, not an "offline lite" screen.
-        $this->assertStringContainsString('<h1 class="h3 mb-0">Restaurant POS</h1>', $html);
+        // PHARMACY-DEMO-1 (canonical merge D8, 19 Oct 2026): the title reads "Restaurant POS" when the counter feeds a kitchen, "POS" otherwise — same Blade, same rule as Online.
+        $this->assertMatchesRegularExpression('#<h1 class="h3 mb-0">(Restaurant )?POS</h1>#', $html);
         $this->assertStringContainsString('View Tables', $html);
         $this->assertStringContainsString('Review &amp; Pay', $html);
         $this->assertStringContainsString('Preview Bill', $html);

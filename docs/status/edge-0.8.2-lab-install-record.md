@@ -434,3 +434,35 @@ Laptop "nb laptop" (192.168.1.24, Wi-Fi, same /24), driven by the owner + the la
 ## B.15 — F-2 LAB gateway redirect fix (owner-approved narrow config change, 8 Nov 2026 12:51 UTC): DONE
 
 `nginx.conf` line 23 `return 301 https://$host$request_uri;` → `return 301 https://$host:8443$request_uri;` (the only changed line; backup `gateway\nginx.conf.pre-f2-20261108T125124Z`, sha256 b9be5fd4…). Procedure as approved: backup → pre-health 200 (verified TLS via `scripts\labhttp.php`, PHP/OpenSSL with `CAINFO=share\lab-ca.crt`; Windows curl.exe cannot verify against a CA file) → one-line edit → `nginx -t` OK → cashier login before the reload → **scoped reload** (`nginx -s reload -p … -c …`, signals only the LAB gateway master named in its own `logs\gateway.pid`; master pid 31556 before and after) → post: health 200, `http://DESKTOP-0024EPM.local:8081/edge/local/login` → `301 https://desktop-0024epm.local:8443/edge/local/login`, the pre-reload session still authenticated (`GET /edge/local/pos` 200), logout 302, 7/7 workers untouched. Evidence `evidence\release-0.8.2-edge\gateway-f2\`. No other LAB service touched; LAB stayed STANDBY_READY. Rule adopted from the owner: acceptance HTTP checks use verified TLS (`labhttp.php`), never `-k`.
+
+## B.16 — F-1 standby write gate developed on disposable resources (8 Nov 2026 13:10 UTC); F-5 assessed; offline checklist prepared
+
+**F-1 (owner-approved disposable development; NOT installed on the LAB — no release built for it):** the shared cashier runtime
+(`tenant/pos/js/pos-runtime.blade.php`) gained a write gate: `POS.canMutate()` is true on the Cloud (no `can_mutate` in the runtime
+block → Online untouched) and follows `authority.can_mutate` on Edge; `POS.setAuthority()` now applies the gate — Review & Pay,
+Complete Sale and the "Open shift" link are disabled with the reason as tooltip, `body.pos-no-mutate` is set (class only, zero
+geometry), and the shared fixed overlay explains STANDBY / handback; when authority returns (`can_mutate=true`) everything is
+re-enabled and a toast says Local Mode is active. The in-page cart is never emptied by a gate change. `POS.api()` recognises the
+server's authority refusal (422 "Local Mode is not active… active writer for this branch") and toasts it; `index.blade.php` refuses
+to grow the cart or open Review & Pay while gated (toast with the reason) and surfaces the 422 of the totals quote instead of pricing
+silently. Transitions after load: the Edge chrome (Edge only) polls `GET /edge/local/pos/sync/summary` every 20 s (and on tab focus)
+and repaints through `POS.setAuthority`; the summary now carries `authority` — cashier-facing keys only (state, label, sub_label,
+can_mutate, tone, pending_sync, needs_attention; the "no internals" contract test extended). Backend authority enforcement unchanged.
+Tests (disposable `_t5` DB set, SQLite Feature): `EdgeChromePartialTest` (+1 F-1 test) 4/4, `SharedPosViewRenderTest` +
+`SharedSecondaryScreensTest` (incl. "every inline script parses as JavaScript") 17/17; MySQL `EdgeCashierConnectionStateHttp`,
+`EdgeCashierShellHttp`, `EdgeCashierScreenRendersHttp`, `EdgeSharedPosRegressionGate` 22/22 green after two pre-existing h1
+assertions were corrected (`Restaurant POS` vs `POS` — PHARMACY-DEMO-1 page data `kitchenTickets`, canonical merge 19 Oct, same rule as
+Online). Not yet proven in a browser: a Playwright/browser pass of the standby page is the next disposable check before this ships in a
+packaged release. System map rebuilt (controller changed).
+
+**F-5 (investigated, no change):** `pos_sale_uuid` (SALE-IDEMPOTENCY-1 / HARDEN-1, per tab, keyed origin:branch:terminal) rotates only
+after a successful or replayed post or an explicit clear — not on logout. If cashier A's sale was posted but the response lost,
+cashier B's first Complete Sale in the same tab would be answered as a replay of A's sale (by design, identical to Online). Proposal for
+the next release: clear the key when the logout form submits, with a regression test.
+
+**F-3/F-4:** recorded for regular packaging (asset manifest: `assets/img/theme/*.svg`, FontAwesome woff2, favicon; page `<title>`;
+cold-load timing to observe on the next walk).
+
+**Final real offline exercise:** one-page executable checklist `docs/plans/lab-offline-acceptance-checklist-2026-11-08.md` (baseline →
+authority checks → GO takeover → laptop shift → cash sale → FakePrinter → outbox → GO reconnect → exactly-once → reconcile → GO
+handback → STANDBY_READY), each GO = the owner's word at that moment; nothing run.

@@ -84,6 +84,24 @@
 </div>
 <script>
 (function () {
+    // F-1 (owner, 8 Nov 2026) — authority transitions AFTER the page has loaded (standby ↔ Local Mode ↔ handback): poll the
+    // cashier sync summary (Edge only; the Cloud runtime has no syncSummary route) and repaint through the shared
+    // POS.setAuthority, which also applies the write gate. Plain fetch on purpose: a 401/419 here must not redirect the page.
+    var chrome = document.getElementById('pos-edge-chrome');
+    var syncUrl = chrome ? chrome.getAttribute('data-sync-url') : '';
+    if (syncUrl) {
+        var tick = function () {
+            fetch(syncUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (d) { if (d && d.authority && window.POS && POS.setAuthority) { POS.setAuthority(d.authority); } })
+                .catch(function () { /* informational — the next tick retries */ });
+        };
+        document.addEventListener('DOMContentLoaded', function () {
+            setTimeout(tick, 5000);
+            setInterval(tick, 20000);
+            document.addEventListener('visibilitychange', function () { if (!document.hidden) { tick(); } });
+        });
+    }
     document.addEventListener('DOMContentLoaded', function () {
         var toggle = document.getElementById('pos-sidebar-toggle');
         var menu = document.getElementById('pos-edge-menu');
