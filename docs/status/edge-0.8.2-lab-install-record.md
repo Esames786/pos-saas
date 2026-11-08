@@ -407,3 +407,26 @@ Unsaved-order note (information, not a defect): the shared POS runtime (`pos-run
 **Second laptop (pre-check from this host through the LAN, `evidence\release-0.8.2-edge\second-laptop\lan-precheck-20261106T222552Z.txt`):** `https://192.168.1.9:8443` and `https://DESKTOP-0024EPM.local:8443` both answer (health 200, login page 200); the certificate chain verifies against `share\lab-ca.crt` for the **hostname** (OpenSSL verify 0), but **the bare IP fails verification (code 64, IP address mismatch)** — the gateway certificate's SANs are `DESKTOP-0024EPM.local`, `bingoo-edge.local`, IP 192.168.1.6, 192.168.2.15, 127.0.0.1 (the addresses at issue time, 19 Sep), not 192.168.1.9. Through the hostname URL: cashier login 302 → POS page 200 (530 KB) with `authority.state="standby"`, terminal select, shift status, `data-runtime-mode="edge"`, logout 302. For the real walk the laptop must trust `share\lab-ca.crt` and open **`https://DESKTOP-0024EPM.local:8443`** (hosts-file name contract, `EDGE_LAN_NAME_MECHANISM=hosts_file`), or the owner approves a certificate reissue adding IP 192.168.1.9 (LAB CA, gateway restart — a LAB change).
 
 Phase C: `secrets\admin.pass` not present at 22:50 UTC — still pending. LAB: 0.8.2 STANDBY_READY throughout; FakePrinter pid 45676; no takeover, no Local Mode.
+
+## B.14 — REAL second-laptop STANDBY walk (owner present, 8 Nov 2026 11:47–12:04 UTC): PASS with findings
+
+Laptop "nb laptop" (192.168.1.24, Wi-Fi, same /24), driven by the owner + the laptop's own Claude session from the brief `share\SECOND-LAPTOP-WALK-BRIEF.md`; appliance side unchanged (0.8.2 STANDBY_READY). Laptop evidence `C:\Users\nb laptop\BingooEdgeLab-walk\20261108-1647\` (W01–W08 PNG, W01-cert.txt, served-leaf.cer, walk.txt); appliance-side confirmation = gateway access log lines from 192.168.1.24.
+
+| check | result |
+|---|---|
+| name contract | hosts entry `192.168.1.9 DESKTOP-0024EPM.local` (EDGE_LAN_NAME_MECHANISM=hosts_file); ICMP blocked (expected); `curl …/edge/local/health` 200, `edge_app_version 0.8.2-edge` |
+| TLS | LAB CA installed in the laptop's Root store; `ssl_verify=0`, TLS 1.3, issuer "Bingoo Edge HOME LAB CA"; **no browser warning** (Windows curl needs `--ssl-no-revoke`: the LAB CA publishes no CRL) |
+| login | first attempt refused (typed value ≠ LAB credential, `failed_attempts` 1, no lockout); second attempt **302 → /edge/local/pos** 11:54:40 UTC (gateway: 16:53:42 and 16:54:41 +0500) |
+| POS screen | badge **"STANDBY · CLOUD AUTHORITY"** (`authority_state=standby`, `can_mutate=false`), terminal selector (Lab Counter 1), shared Online layout by structure |
+| shift display | "No Open Shift — POS operations are blocked on this terminal." + "Open shift" link (not clicked) |
+| standby behaviour | **UI let "Lab Burger" into the cart (Total 100.00) with Review & Pay enabled and no message; the server refused** `POST /edge/local/pos/totals/quote` → **422 "Local Mode is not active — the Cloud POS is the active writer for this branch (standby)"** (gateway 17:00:42 +0500) — authority enforcement held, nothing was written |
+| Local Mode control | none in the UI or page code — nothing clicked |
+| logout | 302 → login, 12:04:13 UTC; no 401/419, no mixed content |
+
+**Findings for the owner (none blocks the demo; none changed today):**
+- F-1 (UX, next packaged release): in standby the shared cashier view should gate the cart/Review & Pay on `can_mutate=false` and surface the 422 text as a toast — today the refusal is silent to the cashier. Same for the "Open shift" link.
+- F-2 (LAB gateway config): the 8081 → HTTPS redirect is `return 301 https://$host$request_uri` and drops `:8443` (nginx.conf line 23); fix = `https://$host:8443$request_uri` — a gateway reload, owner approval needed.
+- F-3 (packaging): 404s for `assets/img/theme/*.svg` (×3) and fontawesome `fa-solid-900/fa-brands-400.woff2` + favicon — cosmetic, add to the artifact manifest in the next release; page title still "Laravel - Restaurant POS".
+- F-4 (performance): first POS load 4.4 s TTFB / 9.2 s total on a cold laptop — observe on the next walk before acting.
+- F-5 (info): `sessionStorage.pos_sale_uuid` survives logout until the tab closes (HARDEN-1 per-tab uuid; harmless, Online behaviour).
+- Certificate SAN lacks 192.168.1.9 — fine via the hostname URL (owner: no reissue).
