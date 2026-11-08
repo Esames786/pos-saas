@@ -3,6 +3,7 @@
 namespace App\Services\Reports;
 
 use App\Services\Concerns\ResolvesBranchIds;
+use App\Support\DealSplit;
 use App\Support\QtyMix;
 use App\Support\TenantClock;
 use Illuminate\Support\Facades\DB;
@@ -193,17 +194,15 @@ class SalesReportEngine
                 $s->selectRaw('1')->from('sales_order_lines as fl')
                     ->leftJoin('products as fp', 'fp.id', '=', 'fl.product_id')
                     ->leftJoin('combos as fcb', 'fcb.id', '=', 'fl.combo_id')
-                    ->whereColumn('fl.sales_order_id', 'o.id')
-                    ->whereIn(DB::raw('COALESCE(fcb.category_id, fp.category_id)'),
-                        $this->categoryWithDescendants((int) $f['category_id']));
+                    ->whereColumn('fl.sales_order_id', 'o.id');
+                $this->whereFilterLineInCategories($s, $this->categoryWithDescendants((int) $f['category_id']));
             }))
             ->when($f['category_ids'], fn ($q) => $q->whereExists(function ($s) use ($f) {
                 $s->selectRaw('1')->from('sales_order_lines as fl')
                     ->leftJoin('products as fp', 'fp.id', '=', 'fl.product_id')
                     ->leftJoin('combos as fcb', 'fcb.id', '=', 'fl.combo_id')
-                    ->whereColumn('fl.sales_order_id', 'o.id')
-                    ->whereIn(DB::raw('COALESCE(fcb.category_id, fp.category_id)'),
-                        $this->categoriesWithDescendants($f['category_ids']));
+                    ->whereColumn('fl.sales_order_id', 'o.id');
+                $this->whereFilterLineInCategories($s, $this->categoriesWithDescendants($f['category_ids']));
             }))
             ->when($f['product_id'], fn ($q) => $q->whereExists(function ($s) use ($f) {
                 $s->selectRaw('1')->from('sales_order_lines as fl')
@@ -234,12 +233,23 @@ class SalesReportEngine
      *
      * The DETAILED section passes $includeComponents = true: it is the line-by-line record, and a
      * deal's parts belong in it.
+     *
+     * DEAL-SPLIT-REPORT-1: when the tenant reports deals by item (`DealSplit::active()`), `l` is the
+     * period's lines with every SPLIT deal replaced by its parts (`dealSplitLines()`), so Categories,
+     * Items, Items by Category, the dashboard card and every narrowed section file that money under
+     * the items without knowing the rule. `$asSold` = the lines exactly as rung up (Deals, Partner
+     * Share, and the un-narrowed overview / waiter / order-type quantities, which stay as before).
+     * Switch off: the raw table, exactly as before.
      */
-    private function linesBase(array $f, bool $includeComponents = false)
+    private function linesBase(array $f, bool $includeComponents = false, bool $asSold = false)
     {
         $cat = $this->lineCategoryExpr();
+        $conn = DB::connection('tenant');
+        $lines = ! $includeComponents && ! $asSold && DealSplit::active()
+            ? $conn->query()->fromSub($this->dealSplitLines($f), 'l')
+            : $conn->table('sales_order_lines as l');
 
-        return DB::connection('tenant')->table('sales_order_lines as l')
+        return $lines
             ->joinSub($this->salesBase($f)->select('o.*'), 'o', 'o.id', '=', 'l.sales_order_id')
             ->unless($includeComponents, fn ($q) => $q->where(
                 fn ($w) => $w->where('l.line_kind', '!=', 'component')->orWhereNull('l.line_kind')
@@ -303,13 +313,25 @@ class SalesReportEngine
             ->when($f['shift_id'], fn ($q) => $q->whereRaw('COALESCE(r.shift_id, o.shift_id) = ?', [$f['shift_id']]));
     }
 
-    /** Period return lines with the same sale-side filters as returnsBase(). */
-    private function returnLinesBase(array $f)
+    /**
+     * Period return lines with the same sale-side filters as returnsBase().
+     *
+     * DEAL-SPLIT-REPORT-1: a return writes ONE line for a deal — on its header. When the tenant reports
+     * deals by item, `rl` is the period's return lines with such a line on a SPLIT deal replaced by its
+     * parts (`dealSplitReturnLines()`), so the refund comes off the same items the sale went to.
+     * `$asSold` = the return lines exactly as written (Deals, Partner Share, un-narrowed quantities).
+     */
+    private function returnLinesBase(array $f, bool $asSold = false)
     {
         $cat = $this->lineCategoryExpr();
+        $base = $this->returnsBase($f);
+        if (! $asSold && DealSplit::active()) {
+            $base->joinSub($this->dealSplitReturnLines($f), 'rl', 'rl.sales_return_id', '=', 'r.id');
+        } else {
+            $base->join('sales_return_lines as rl', 'rl.sales_return_id', '=', 'r.id');
+        }
 
-        return $this->returnsBase($f)
-            ->join('sales_return_lines as rl', 'rl.sales_return_id', '=', 'r.id')
+        return $base
             // RETURN-NO-BILL-1: LEFT — a line returned without a bill has no sale line (no deal, its own name).
             ->leftJoin('sales_order_lines as ol', 'ol.id', '=', 'rl.sales_order_line_id')
             ->leftJoin('products as p', 'p.id', '=', 'rl.product_id')
@@ -321,6 +343,174 @@ class SalesReportEngine
             ->when($f['category_ids'], fn ($q) => $q->whereIn(DB::raw($cat), $this->categoriesWithDescendants($f['category_ids'])))
             ->when($f['product_id'], fn ($q) => $q->where('rl.product_id', $f['product_id']))
             ->when($f['product_ids'], fn ($q) => $q->whereIn('rl.product_id', $f['product_ids']));
+    }
+
+    // ── DEAL-SPLIT-REPORT-1: a deal's money under the items inside it ───────────────────────────
+    //
+    // The owner gives a deal a part per item (a platter of 900 = rice 400 + BBQ 500); the sale copies
+    // those parts onto its lines (`sales_order_lines.deal_share`, see App\Support\DealSplit). The methods
+    // below are the WHOLE rule as the reports read it, and nothing else in this class knows it:
+    //   dealSplitParts()       — which lines are a split deal's parts;
+    //   dealPartAmount()       — how a header's money is shared between them (exact to the paisa);
+    //   dealSplitLines()       — the period's sale lines with each split deal replaced by its parts;
+    //   dealSplitReturnLines() — the period's return lines, the same way;
+    //   whereFilterLineInCategories() / lineGrossExpr() — the category filter and the gross that go with them.
+    // linesBase() / returnLinesBase() read them only when DealSplit::active(); with the switch off every
+    // query is the one this class ran before.
+
+    /**
+     * The one definition of a SPLIT deal's part: a `component` line with a part above 0 whose parent is
+     * a `combo_header` on the SAME bill. Its header is then a split deal, reported through its parts.
+     *
+     * A component that has lost its parent (Split Bill copies lines without the link) is not a part, so
+     * its header keeps the whole money exactly as before; a part of 0 (the free paratha) is never shown.
+     */
+    private function dealSplitParts(string $part = 'dsp', string $head = 'dsh')
+    {
+        return DB::connection('tenant')->table("sales_order_lines as {$part}")
+            ->join("sales_order_lines as {$head}", function ($j) use ($part, $head) {
+                $j->on("{$head}.id", '=', "{$part}.parent_sales_order_line_id")
+                    ->on("{$head}.sales_order_id", '=', "{$part}.sales_order_id");
+            })
+            ->where("{$head}.line_kind", 'combo_header')
+            ->where("{$part}.line_kind", 'component')
+            ->where("{$part}.deal_share", '>', 0);
+    }
+
+    /** Each part's share, the sum of its deal's shares and its rank (biggest first, lowest id on a tie). */
+    private function dealShareWindow(string $deal): string
+    {
+        return "dsp.deal_share as share,
+                SUM(dsp.deal_share) OVER (PARTITION BY {$deal}) as share_sum,
+                ROW_NUMBER() OVER (PARTITION BY {$deal} ORDER BY dsp.deal_share DESC, dsp.id) as share_rank";
+    }
+
+    /**
+     * A part's slice of $amount = ROUND($amount × share / Σ shares, 2); what the rounding leaves goes to
+     * the biggest part, so the parts add up to $amount EXACTLY (900 − 100 discount = 355.56 + 444.44).
+     * Reads dealShareWindow()'s columns from `dp`; $deal partitions one deal (one header / one return line).
+     */
+    private function dealPartAmount(string $amount, string $deal): string
+    {
+        $slice = "ROUND({$amount} * dp.share / dp.share_sum, 2)";
+
+        return "({$slice} + CASE WHEN dp.share_rank = 1 THEN {$amount} - SUM({$slice}) OVER (PARTITION BY {$deal}) ELSE 0 END)";
+    }
+
+    /**
+     * The period's sale lines as the item sections read them: every line of the period's bills as it
+     * is, except a split deal's header, which becomes one row per part — standard, no combo, the part's
+     * product / variant / quantity, and its slice of the header's gross, discount, tax and line total.
+     *
+     * The parts' own component rows stay `component` and drop out as every component always has, so a
+     * part is counted once. Columns are the ones the sections read, plus `gross` (see lineGrossExpr()):
+     * a part's gross is a slice, not quantity × price. Restricted to the period's bills, never the table.
+     */
+    private function dealSplitLines(array $f)
+    {
+        $conn = DB::connection('tenant');
+
+        $ranked = $this->dealSplitParts()
+            ->whereIn('dsp.sales_order_id', $this->salesBase($f)->select('o.id'))
+            ->selectRaw('dsh.id as header_id, dsp.id as part_id, dsp.product_id, dsp.product_variant_id,
+                dsp.product_name, dsp.quantity, dsp.base_quantity,
+                dsh.quantity * dsh.unit_price as head_gross, dsh.discount_amount as head_discount,
+                dsh.tax_amount as head_tax, dsh.line_total as head_total, ' . $this->dealShareWindow('dsh.id'));
+
+        $parts = $conn->query()->fromSub($ranked, 'dp')->selectRaw(
+            'dp.header_id, dp.part_id, dp.product_id, dp.product_variant_id, dp.product_name, dp.quantity, dp.base_quantity, '
+            . $this->dealPartAmount('dp.head_gross', 'dp.header_id') . ' as gross, '
+            . $this->dealPartAmount('dp.head_discount', 'dp.header_id') . ' as discount_amount, '
+            . $this->dealPartAmount('dp.head_tax', 'dp.header_id') . ' as tax_amount, '
+            . $this->dealPartAmount('dp.head_total', 'dp.header_id') . ' as line_total'
+        );
+
+        $line = fn (string $col) => "CASE WHEN sp.part_id IS NULL THEN x.{$col} ELSE sp.{$col} END as {$col}";
+
+        return $conn->table('sales_order_lines as x')
+            ->leftJoinSub($parts, 'sp', 'sp.header_id', '=', 'x.id')
+            ->whereIn('x.sales_order_id', $this->salesBase($f)->select('o.id'))
+            ->selectRaw(implode(', ', [
+                'COALESCE(sp.part_id, x.id) as id',
+                'x.sales_order_id',
+                "CASE WHEN sp.part_id IS NULL THEN x.line_kind ELSE 'standard' END as line_kind",
+                'CASE WHEN sp.part_id IS NULL THEN x.combo_id END as combo_id',
+                $line('product_id'), $line('product_variant_id'), $line('product_name'),
+                $line('quantity'), $line('base_quantity'),
+                'CASE WHEN sp.part_id IS NULL THEN x.quantity * x.unit_price ELSE sp.gross END as gross',
+                $line('discount_amount'), $line('tax_amount'), $line('line_total'),
+            ]));
+    }
+
+    /**
+     * The period's return lines as the item sections read them. A return writes one line for a deal, on
+     * its header; on a split deal that line becomes one row per part: the part's product / variant, the
+     * same fraction of the part's quantity as of the deal's (1 of 2 platters → half of each part), and
+     * its slice of the refunded line total.
+     *
+     * Such a row carries no sale line (`sales_order_line_id` NULL), like a return without a bill: it is
+     * filed by its own product and is not a deal any more — exactly how its sale is reported.
+     */
+    private function dealSplitReturnLines(array $f)
+    {
+        $conn = DB::connection('tenant');
+
+        $ranked = $this->dealSplitParts()
+            ->join('sales_return_lines as drl', 'drl.sales_order_line_id', '=', 'dsh.id')
+            ->whereIn('drl.sales_return_id', $this->returnsBase($f)->select('r.id'))
+            ->selectRaw('drl.id as return_line_id, dsp.product_id, dsp.product_variant_id,
+                drl.quantity * dsp.quantity / NULLIF(dsh.quantity, 0) as quantity,
+                CASE WHEN dsp.base_quantity IS NULL THEN NULL
+                     ELSE drl.quantity * dsp.base_quantity / NULLIF(dsh.quantity, 0) END as base_quantity,
+                drl.line_total as head_total, ' . $this->dealShareWindow('drl.id'));
+
+        $parts = $conn->query()->fromSub($ranked, 'dp')->selectRaw(
+            'dp.return_line_id, dp.product_id, dp.product_variant_id, dp.quantity, dp.base_quantity, '
+            . $this->dealPartAmount('dp.head_total', 'dp.return_line_id') . ' as line_total'
+        );
+
+        $line = fn (string $col) => "CASE WHEN rp.return_line_id IS NULL THEN y.{$col} ELSE rp.{$col} END as {$col}";
+
+        return $conn->table('sales_return_lines as y')
+            ->leftJoinSub($parts, 'rp', 'rp.return_line_id', '=', 'y.id')
+            ->whereIn('y.sales_return_id', $this->returnsBase($f)->select('r.id'))
+            ->selectRaw(implode(', ', [
+                'y.id', 'y.sales_return_id',
+                'CASE WHEN rp.return_line_id IS NULL THEN y.sales_order_line_id END as sales_order_line_id',
+                $line('product_id'), $line('product_variant_id'),
+                $line('quantity'), $line('base_quantity'), $line('line_total'),
+            ]));
+    }
+
+    /**
+     * The order-level category FILTER (salesBase): a bill is in a category when one of its lines is. With
+     * deals reported by item, a split deal's part also puts its bill in its own product's category (a BBQ
+     * filter finds the platter's BBQ); the deal's own head still finds it too, for the Deals section.
+     * Switch off: the old condition, unchanged.
+     */
+    private function whereFilterLineInCategories($s, array $categoryIds): void
+    {
+        if (! DealSplit::active()) {
+            $s->whereIn(DB::raw('COALESCE(fcb.category_id, fp.category_id)'), $categoryIds);
+
+            return;
+        }
+
+        $s->where(fn ($w) => $w
+            ->whereIn(DB::raw('COALESCE(fcb.category_id, fp.category_id)'), $categoryIds)
+            ->orWhere(fn ($part) => $part
+                ->whereIn('fp.category_id', $categoryIds)
+                ->whereExists($this->dealSplitParts('fsp', 'fsh')->selectRaw('1')->whereColumn('fsp.id', 'fl.id'))));
+    }
+
+    /**
+     * A report line's gross. Quantity × price, as always — except that with deals reported by item a
+     * split deal's part carries its own `gross` (a slice of the deal's), which no price could give back.
+     * Only for builders on linesBase() WITHOUT $asSold; the Deals section keeps quantity × price.
+     */
+    private function lineGrossExpr(): string
+    {
+        return DealSplit::active() ? 'l.gross' : 'l.quantity * l.unit_price';
     }
 
     /** category id + all descendants (MySQL 8 recursive CTE — adjacency list authority). */
@@ -389,8 +579,9 @@ class SalesReportEngine
         )->first();
         // PACK-QTY-REPORTS-1: quantities in the item's own unit. A line sold in a pack ("2 Strip") keeps its tablets in
         // base_quantity; every other line has it NULL and counts `quantity` exactly as before. Same rule below.
-        $soldQty = (float) $this->linesBase($f)->sum(DB::raw('COALESCE(l.base_quantity, l.quantity)'));
-        $returnedQty = (float) $this->returnLinesBase($f)->sum(DB::raw('COALESCE(rl.base_quantity, rl.quantity)'));
+        // DEAL-SPLIT-REPORT-1: the whole-report overview counts a deal as the one deal it was sold as ($asSold).
+        $soldQty = (float) $this->linesBase($f, asSold: true)->sum(DB::raw('COALESCE(l.base_quantity, l.quantity)'));
+        $returnedQty = (float) $this->returnLinesBase($f, asSold: true)->sum(DB::raw('COALESCE(rl.base_quantity, rl.quantity)'));
         $returns = (float) $this->returnsBase($f)->sum('r.grand_total');
         $refundsRecorded = (float) $this->returnsBase($f)->sum('r.refund_amount');
         $cashRefunds = (float) $this->returnsBase($f)->where('r.refund_method', 'cash')->sum('r.refund_amount');
@@ -407,7 +598,7 @@ class SalesReportEngine
             'returned_qty' => $returnedQty,
             'net_qty' => $soldQty - $returnedQty,
             // UNITS-PACKS F4: the same totals split by kind of unit (kg and pieces are never one number).
-            ...$this->overviewMix($f),
+            ...$this->overviewMix($f, asSold: true),
             'gross_sales' => (float) $s->gross_sales,
             'discount' => (float) $s->discount,
             'tax' => (float) $s->tax,
@@ -443,7 +634,7 @@ class SalesReportEngine
     {
         $m = $this->linesBase($f)->selectRaw(
             'COUNT(DISTINCT o.id) as orders,
-             COALESCE(SUM(l.quantity * l.unit_price),0) as gross_sales,
+             COALESCE(SUM(' . $this->lineGrossExpr() . '),0) as gross_sales,
              COALESCE(SUM(l.discount_amount),0) as discount,
              COALESCE(SUM(l.tax_amount),0) as tax,
              COALESCE(SUM(l.line_total),0) as net'
@@ -492,7 +683,7 @@ class SalesReportEngine
                  MAX(c.name) as category_name, MAX(c.parent_id) as parent_id,
                  COUNT(DISTINCT o.id) as orders,
                  COALESCE(SUM(COALESCE(l.base_quantity, l.quantity)),0) as sold_qty,
-                 COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
+                 COALESCE(SUM(' . $this->lineGrossExpr() . '),0) as gross,
                  COALESCE(SUM(l.discount_amount),0) as discount,
                  COALESCE(SUM(l.tax_amount),0) as tax,
                  COALESCE(SUM(l.line_total),0) as net'
@@ -635,7 +826,7 @@ class SalesReportEngine
                  -- its ROOT head without a second query guessing the head from a string.
                  MAX(c.id) as category_id,
                  COALESCE(SUM(COALESCE(l.base_quantity, l.quantity)),0) as sold_qty,
-                 COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
+                 COALESCE(SUM(' . $this->lineGrossExpr() . '),0) as gross,
                  COALESCE(SUM(l.discount_amount),0) as discount,
                  COALESCE(SUM(l.tax_amount),0) as tax,
                  COALESCE(SUM(l.line_total),0) as net'
@@ -738,6 +929,11 @@ class SalesReportEngine
      *
      * Deliberately a small aggregate of its own rather than a byDeal() call: the bridge needs one
      * number and byDeal builds a whole grouped report to get it.
+     *
+     * DEAL-SPLIT-REPORT-1: on the item-section lines (linesBase / returnLinesBase without $asSold), so
+     * with deals reported by item a SPLIT deal is not a deal here — its money is already inside Items,
+     * under its parts — and "Plus Deals" carries only the deals still sold as one rate. Items + Plus
+     * Deals + charges = NET SALES either way.
      */
     public function dealsNet(array $f): float
     {
@@ -873,7 +1069,8 @@ class SalesReportEngine
      */
     public function byDeal(array $f): array
     {
-        $rows = $this->linesBase($f)
+        // DEAL-SPLIT-REPORT-1: the deals as sold ($asSold) — a deal reported by item is still a deal here.
+        $rows = $this->linesBase($f, asSold: true)
             ->whereNotNull('l.combo_id')
             ->groupBy('l.combo_id')
             ->selectRaw(
@@ -888,7 +1085,7 @@ class SalesReportEngine
             )->get()->keyBy('combo_id');
 
         // A refunded deal credits the same row it sold on — the combo comes off the ORIGINAL line.
-        $returns = $this->returnLinesBase($f)
+        $returns = $this->returnLinesBase($f, asSold: true)
             ->whereNotNull('ol.combo_id')
             ->groupBy('ol.combo_id')
             // UNITS-PACKS F4: counted like the sales above (base quantity), so a returned pack takes off what it sold.
@@ -976,13 +1173,14 @@ class SalesReportEngine
         $keyExpr = fn (string $line) => "CASE WHEN $line.combo_id IS NOT NULL THEN CONCAT('c:', $line.combo_id) ELSE CONCAT('p:', $line.product_id) END";
         $day = $this->businessDayExpr('o.');
 
-        $sold = $this->linesBase($f)
+        // DEAL-SPLIT-REPORT-1: rated as sold ($asSold) — a deal reported by item is still rated as the deal.
+        $sold = $this->linesBase($f, asSold: true)
             ->tap(fn ($q) => $rated($q, 'l'))
             ->selectRaw($keyExpr('l') . " as item_key, $day as day, (l.line_total > 0) as paid_line, COALESCE(SUM(l.quantity),0) as qty")
             ->groupByRaw($keyExpr('l') . ", $day, (l.line_total > 0)")
             ->get();
 
-        $returned = $this->returnLinesBase($f)
+        $returned = $this->returnLinesBase($f, asSold: true)
             ->where(fn ($w) => $w->where('ol.line_kind', '!=', 'component')->orWhereNull('ol.line_kind'))
             ->tap(fn ($q) => $rated($q, 'ol'))
             ->selectRaw($keyExpr('ol') . " as item_key, $day as day, (ol.line_total > 0) as paid_line, COALESCE(SUM(rl.quantity),0) as qty")
@@ -1102,18 +1300,19 @@ class SalesReportEngine
                  COALESCE(SUM(o.delivery_charge_amount),0) as delivery_charge,
                  COALESCE(SUM(o.grand_total),0) as grand_total"
             )->get();
-        $qty = $this->linesBase($f)->groupBy(DB::raw($column))
+        // DEAL-SPLIT-REPORT-1: a whole-bill dimension counts a deal as the one deal it was sold as ($asSold).
+        $qty = $this->linesBase($f, asSold: true)->groupBy(DB::raw($column))
             ->selectRaw("$column as dim, COALESCE(SUM(COALESCE(l.base_quantity, l.quantity)),0) as sold_qty")
             ->get()->keyBy('dim');
         $returns = $this->returnsBase($f)->groupBy(DB::raw($column))
             ->selectRaw("$column as dim, COALESCE(SUM(r.grand_total),0) as amount")
             ->get()->keyBy('dim');
-        $returnQty = $this->returnLinesBase($f)->groupBy(DB::raw($column))
+        $returnQty = $this->returnLinesBase($f, asSold: true)->groupBy(DB::raw($column))
             ->selectRaw("$column as dim, COALESCE(SUM(COALESCE(rl.base_quantity, rl.quantity)),0) as quantity")
             ->get()->keyBy('dim');
 
         $rows = $rows->keyBy('dim');
-        $mixes = $this->qtyMixes($f, $column);   // UNITS-PACKS F4
+        $mixes = $this->qtyMixes($f, $column, asSold: true);   // UNITS-PACKS F4
 
         return $rows->keys()->merge($returns->keys())->unique()->map(function ($dim) use ($rows, $qty, $label, $returns, $returnQty, $mixes) {
             $mx = $mixes[self::mixKey($dim)] ?? [];
@@ -1295,10 +1494,10 @@ class SalesReportEngine
      *
      * @return array<int|string, array{sold?: array<string, float>, returned?: array<string, float>}>
      */
-    private function qtyMixes(array $f, ?string $group = null): array
+    private function qtyMixes(array $f, ?string $group = null, bool $asSold = false): array
     {
         $out = [];
-        foreach ([['sold', $this->linesBase($f), 'l'], ['returned', $this->returnLinesBase($f), 'rl']] as [$side, $q, $a]) {
+        foreach ([['sold', $this->linesBase($f, asSold: $asSold), 'l'], ['returned', $this->returnLinesBase($f, $asSold), 'rl']] as [$side, $q, $a]) {
             $q = $group === null ? $q->groupBy('p.unit_id') : $q->groupBy(DB::raw($group), 'p.unit_id');
             $rows = $q->selectRaw(($group ?? '0') . " as dim, p.unit_id as unit_id, COALESCE(SUM(COALESCE($a.base_quantity, $a.quantity)),0) as q")->get();
             foreach ($rows as $r) {
@@ -1317,9 +1516,9 @@ class SalesReportEngine
     }
 
     /** @return array{sold_mix: array, returned_mix: array, net_mix: array} */
-    private function overviewMix(array $f): array
+    private function overviewMix(array $f, bool $asSold = false): array
     {
-        $m = $this->qtyMixes($f)[0] ?? [];
+        $m = $this->qtyMixes($f, asSold: $asSold)[0] ?? [];
 
         return ['sold_mix' => $m['sold'] ?? [], 'returned_mix' => $m['returned'] ?? [],
             'net_mix' => QtyMix::merge($m['sold'] ?? [], $m['returned'] ?? [], -1.0)];
