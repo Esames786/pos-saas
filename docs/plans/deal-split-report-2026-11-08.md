@@ -106,3 +106,21 @@ Rice Large; each BBQ item 1; grilled vegetables + chutney on the slip as Rs 0 it
   sections, Nalli under Extras, Pakola 500 / Big Apple under Beverages, new prices.
 - Steps: deploy → laptop backup of the tenant → menu script dry run → apply → switch `deal_split` ON (khatribiryani only) →
   render checks → owner prints a test slip on the BBQ printer.
+
+## Deploy — 9 Nov 2026, 06:21 UTC (11:21 PKT, before Khatri opens at 12) — owner: "karne k bad live karna", "jaldi kardo"
+Merge `841e0114` (app code = the tested `723fe348`; later commits are a test, docs and the map), pushed, origin == HEAD;
+`deploy.sh` 06:21:45–06:22:19, exit 0; the migration ran on all 13 active tenants (three columns checked on each).
+- Proof at deploy time: golden "nothing else moved" PASS on every DB; default suite 247 / 3 failures = the 3 known on prod;
+  deal / report / split-bill / KOT / website MySQL files green (form 86, engine 140, split bill 8); full MySQL suite was at 78%
+  with 0 failures when the owner asked to go live before opening — it kept running on the frozen worktree (result below).
+- Permissions: "no role lost anything, no user lost a role" (14 DBs, nothing gained either — no new route). Smoke before and
+  after: 13 tenants tb_diff 0.00, no negative stock. Laravel log after 06:21: 0 errors.
+- Khatri: backup #761 (300 MB) → laptop `C:\Users\Dell\bingoo-backups\khatribiryani\20261109_062258_khatribiryani.sql.gz`
+  (34 MB, sha256 of the unzipped copy = prod's `4dbe5a63…5e9e`), prod copy deleted. Menu script dry run = the rehearsal, then
+  APPLIED: prices 4, categories 31–34 (BBQ, Rolls, Paratha / Chapati, Signature Platters), 49 products, deals #8–#14 (parts add
+  up to each price), printer #8 "BBQ KOT" 192.168.100.218:9100 + 12 mappings; sales / journals untouched (32,117 / 32,510).
+  Switch `deal_split` ON for khatribiryani only (no other tenant has it). Verified through the services the screens use:
+  DealSplit active, website 12 sections (BBQ 19 cards, Rolls 6, Paratha / Chapati 2, Signature Platters 7; Nalli under Extras,
+  Pakola 500 / Big Apple under Beverages), deal form shows the report question with the rate boxes, tb_diff 0.00.
+- For the owner: refresh the POS on every counter (new items load with the page); print one BBQ / Rolls / Paratha slip to see
+  the new printer answer; the first platter sold shows in Categories under biryani and BBQ.
