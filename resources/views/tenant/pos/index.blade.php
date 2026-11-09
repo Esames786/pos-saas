@@ -5519,6 +5519,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* ── Manager PIN Modal ──────────────────────────────────────────── */
 
+    // POS-PIN-FOCUS-1 (10 Nov): a SweetAlert box opened from inside a Bootstrap window (the pay window's discount →
+    // Manager Approval) could not be clicked or typed in. Bootstrap's focus trap pulls the cursor back into its own
+    // window the moment it lands anywhere else, so the code went into Tendered Amount instead. The box sits on top
+    // and is the one being answered: a focus that lands inside it stays there. Every other focus is left to Bootstrap.
+    window.addEventListener('focusin', function (e) {
+        if (e.target && e.target.closest && e.target.closest('.swal2-container')) { e.stopPropagation(); }
+    }, true);
+
     function showManagerPinModal(actionType, payload, onSuccess, onCancel) {
         Swal.fire({
             title: 'Manager Approval',

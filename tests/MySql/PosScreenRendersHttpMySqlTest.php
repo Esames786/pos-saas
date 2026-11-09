@@ -97,6 +97,11 @@ class PosScreenRendersHttpMySqlTest extends MySqlTenantTestCase
         $html = $res->getContent();
         $this->assertStringContainsString('id="pos-reminder-toggle"', $html);
         $this->assertStringContainsString('/api/pos/reminder-pause', $html);
+
+        // POS-PIN-FOCUS-1: the manager code box opened from the pay window takes the cursor (Bootstrap's focus trap
+        // used to pull it back into Tendered Amount). Proven in Chrome with the real libraries; here: the guard ships.
+        $this->assertStringContainsString("e.target.closest('.swal2-container')) { e.stopPropagation(); }", $html);
+        $this->assertStringContainsString('id="swal-manager-pin"', $html);
     }
 
     /**
