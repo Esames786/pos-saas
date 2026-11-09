@@ -129,3 +129,12 @@ Merge `841e0114` (app code = the tested `723fe348`; later commits are a test, do
   (#9–#11), #40 Changezi Platters (#12–#14); dry run, then applied. Reports unaffected (split deals report under their items).
 - Full MySQL suite on the frozen merge (`723fe348`, DB set `_dsv`, finished after the deploy): **2,654 tests, 0 failures,
   0 errors** (1 skipped, 1 PHPUnit deprecation notice) — 1 h 13 min.
+
+## 9 Nov, after opening — owner: switch OFF; client: platters get their own rice items
+- ~12:30 PKT the owner did not want the split report ("Kashif Food wali reporting teekh hai … client say confirm karon ga"): `deal_split`
+  removed from khatribiryani (its other switches as before 9 Nov); no tenant has it, so every report runs the old path. The code stays
+  dormant; the switch can be taken out of Bingoo Master on the owner's word.
+- ~13:00 PKT, client via owner: the platters must not use the counter biryani / pulao items. Two hidden items (not on the POS grid or
+  the website, price 0, sold only inside deals): #204 Khatri Rice (Beef Khatri) and #205 Changezi Pulao Rice (Beef Changezi). Khatri /
+  Changezi Khas 1, Classic 01 2, Classic 02 4 (1 = one person's ½ kg); Singaporean Khas keeps Singaporean Rice (Large). Their kitchen
+  slips go where Beef Khatri / Beef Changezi already go. Dry run, then applied.
