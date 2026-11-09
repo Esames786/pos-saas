@@ -46,11 +46,21 @@
                         </thead>
                         <tbody>
                         @foreach($salesOrder->lines as $index => $line)
+                            {{-- DEAL-WHOLE-SPLIT-1: a deal's items are not split on their own — they go with their deal. --}}
+                            @if(($line->line_kind ?? 'standard') === 'component' && $line->parent_sales_order_line_id && $salesOrder->lines->contains('id', $line->parent_sales_order_line_id))
+                                @continue
+                            @endif
                             <tr>
                                 <td>
                                     {{ $line->product_name }}
                                     @if($line->variant_name)
                                         <small class="d-block text-muted">{{ $line->variant_name }}</small>
+                                    @endif
+                                    @if(($line->line_kind ?? 'standard') === 'combo_header')
+                                        @foreach($salesOrder->lines->where('parent_sales_order_line_id', $line->id) as $dealItem)
+                                            <small class="d-block text-muted">- {{ rtrim(rtrim(number_format((float) $dealItem->quantity, 3, '.', ''), '0'), '.') }} x {{ $dealItem->product_name }}</small>
+                                        @endforeach
+                                        <small class="d-block text-info">Deal — its items go with it.</small>
                                     @endif
                                     <input type="hidden" name="lines[{{ $index }}][sales_order_line_id]" value="{{ $line->id }}">
                                 </td>
@@ -61,8 +71,8 @@
                                     <input
                                         id="split_qty_{{ $index }}"
                                         type="number"
-                                        step="{{ $__measurable ? '0.001' : '1' }}"
-                                        inputmode="{{ $__measurable ? 'decimal' : 'numeric' }}"
+                                        step="{{ $__measurable && ($line->line_kind ?? 'standard') !== 'combo_header' ? '0.001' : '1' }}"
+                                        inputmode="{{ $__measurable && ($line->line_kind ?? 'standard') !== 'combo_header' ? 'decimal' : 'numeric' }}"
                                         min="0"
                                         max="{{ $line->quantity }}"
                                         name="lines[{{ $index }}][quantity]"

@@ -49,6 +49,26 @@ final class DealSplit
         self::$columns = [];
     }
 
+    private static int $copying = 0;
+
+    /**
+     * Lines MOVED from one bill to another (Split Bill) keep exactly the parts they were sold with — or none —
+     * instead of reading the deal's parts again: run the move inside this.
+     *
+     * @template T
+     * @param  callable(): T  $move
+     * @return T
+     */
+    public static function copying(callable $move): mixed
+    {
+        self::$copying++;
+        try {
+            return $move();
+        } finally {
+            self::$copying--;
+        }
+    }
+
     /**
      * Called when a sale line is created (SalesOrderLine::creating) — every write path (counter, held bill,
      * table, split bill, website) creates its lines through the model, so this is the one place.
@@ -59,7 +79,7 @@ final class DealSplit
     public static function stamp(SalesOrderLine $line): void
     {
         $kind = $line->line_kind ?? 'standard';
-        if (! in_array($kind, ['combo_header', 'component'], true) || ! $line->combo_id || $line->deal_share !== null) {
+        if (self::$copying > 0 || ! in_array($kind, ['combo_header', 'component'], true) || ! $line->combo_id || $line->deal_share !== null) {
             return;
         }
         if (! self::active()) {
