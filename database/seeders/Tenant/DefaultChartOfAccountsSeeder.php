@@ -6,7 +6,8 @@ use App\Models\Tenant\Account;
 
 /**
  * Seeds a default Chart of Accounts into the CURRENTLY ACTIVATED tenant DB.
- * Idempotent: keyed on account `code`, so re-running updates in place.
+ * Idempotent: keyed on account `code`. A missing code is created with its defaults; an existing one keeps the
+ * tenant's name, parent and sort order (CHART-SEEDER-KEEP-NAMES-1, see run()).
  * Must be called after TenancyManager::activate($tenant) (FIN-2).
  *
  * No journals/postings are created here — this is the account skeleton only.
@@ -107,18 +108,34 @@ class DefaultChartOfAccountsSeeder
         $count = 0;
 
         foreach ($this->definitions() as [$code, $name, $type, $parentCode, $normalBalance, $sortOrder]) {
-            $account = Account::updateOrCreate(
-                ['code' => $code],
-                [
+            // CHART-SEEDER-KEEP-NAMES-1 (9 Nov): deploy.sh runs this on every tenant on every deploy. It used to write the
+            // default name, parent and sort order back over whatever the tenant had set (a client renamed a built-in head
+            // and saw the old name come back after each deploy). Now:
+            //  - a code that is MISSING is created with every default, exactly as before (new tenants, new built-in codes);
+            //  - a code that EXISTS keeps the tenant's name, parent and sort order. Only what postings depend on is held:
+            //    type, normal balance, is_system and is_active (JournalService refuses an inactive account, so a built-in
+            //    head switched off by mistake must not stop sales or closings; hiding one is `is_hidden`, not this).
+            // Renaming a built-in head for every tenant is therefore a deliberate migration or command, never this seeder.
+            $held = [
+                'type' => $type,
+                'normal_balance' => $normalBalance ?: Account::normalBalanceForType($type),
+                'is_system' => true,
+                'is_active' => true,
+            ];
+            $account = Account::where('code', $code)->first();
+            if (! $account) {
+                $account = Account::create([
+                    'code' => $code,
                     'name' => $name,
-                    'type' => $type,
-                    'normal_balance' => $normalBalance ?: Account::normalBalanceForType($type),
                     'parent_id' => $parentCode ? ($idByCode[$parentCode] ?? null) : null,
-                    'is_system' => true,
-                    'is_active' => true,
                     'sort_order' => $sortOrder,
-                ]
-            );
+                ] + $held);
+            } else {
+                $account->fill($held);
+                if ($account->isDirty()) {
+                    $account->save();
+                }
+            }
 
             $idByCode[$code] = $account->id;
             $count++;
