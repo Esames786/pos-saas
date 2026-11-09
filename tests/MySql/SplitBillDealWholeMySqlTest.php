@@ -149,6 +149,20 @@ class SplitBillDealWholeMySqlTest extends MySqlTenantTestCase
         $this->assertSame(['900.00', '400.00', '500.00'], $this->parts($order->fresh()), 'stayed: unchanged');
     }
 
+    public function test_a_deal_held_before_it_was_split_stays_as_it_was_sold_when_moved(): void
+    {
+        $this->switch(true);
+        [$deal] = $this->menu('Before', [400, 500]);
+        $this->switch(false);
+        $order = $this->held($this->dealLines($deal, 'd1', 2));
+        $this->assertSame([null, null, null], $this->parts($order), 'held while the switch was off: no parts');
+
+        $this->switch(true);
+        $this->split($order, [[$this->line($order, 'combo_header')->id, 1]])->assertOk();
+
+        $this->assertSame([null, null, null], $this->parts($this->newest($order)), 'moved: still no parts — the move does not read the deal again');
+    }
+
     public function test_switch_off_the_split_never_names_a_new_column(): void
     {
         [$deal, , , $drink] = $this->menu('Off');
