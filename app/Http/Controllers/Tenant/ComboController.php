@@ -7,9 +7,11 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\Combo;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductVariant;
+use App\Support\DealSplit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ComboController extends Controller
 {
@@ -83,7 +85,7 @@ class ComboController extends Controller
 
     private function validateCombo(Request $request, ?Combo $combo = null): array
     {
-        return $request->validate([
+        $rules = [
             'branch_id' => ['nullable', 'exists:branches,id'],
             // POS-COMBO-CATEGORY-1: optional POS grouping (Al-Faham / Midnight / …); null = "Deals" tab.
             'category_id' => ['nullable', 'exists:categories,id'],
@@ -101,7 +103,79 @@ class ComboController extends Controller
             'components.*.product_variant_id' => ['nullable', 'exists:product_variants,id'],
             'components.*.quantity' => ['required', 'numeric', 'min:0.001'],
             'components.*.sort_order' => ['nullable', 'integer', 'min:0'],
-        ]);
+        ];
+
+        // DEAL-SPLIT-REPORT-1: "How should this deal show in reports?" — only while the Master switch is on AND the
+        // columns exist. Off, the two fields are not even validated, so they never reach the saved data: a tenant with
+        // the switch off (or code deployed a second before the migration) never names report_by_items / report_amount,
+        // even when a crafted POST sends them.
+        $split = DealSplit::active();
+        if ($split) {
+            $rules['report_by_items'] = ['nullable', 'boolean'];
+            $rules['components.*.report_amount'] = ['nullable', 'numeric', 'min:0'];
+        }
+
+        $data = $request->validate($rules);
+
+        if (! $split) {
+            unset($data['report_by_items']);
+            foreach (array_keys($data['components'] ?? []) as $i) {
+                unset($data['components'][$i]['report_amount']);
+            }
+
+            return $data;
+        }
+
+        // On: the choice is always saved. "One rate" keeps no parts (the boxes are switched off on the form).
+        $byItems = (bool) ($data['report_by_items'] ?? false);
+        $data['report_by_items'] = $byItems;
+        foreach ($data['components'] as $i => $component) {
+            $amount = $component['report_amount'] ?? null;
+            $data['components'][$i]['report_amount'] = $byItems && $amount !== null && $amount !== ''
+                ? round((float) $amount, 2)
+                : null;
+        }
+
+        if ($byItems) {
+            $this->assertPartsAddUp($data['components'], (float) $data['price']);
+        }
+
+        return $data;
+    }
+
+    /**
+     * DEAL-SPLIT-REPORT-1: "Each item's rate" — every item has a part, at least one part is above 0, and the parts of
+     * ONE deal add up to the deal's price (to the paisa). Refused before anything is saved, with the gap in plain words.
+     */
+    private function assertPartsAddUp(array $components, float $price): void
+    {
+        $amounts = array_map(fn ($c) => $c['report_amount'], $components);
+
+        if (in_array(null, $amounts, true)) {
+            throw ValidationException::withMessages(['report_by_items' =>
+                'Each item\'s rate: type a report rate for every item (type 0 for an item that should not show in reports).']);
+        }
+
+        if (max($amounts) <= 0) {
+            throw ValidationException::withMessages(['report_by_items' =>
+                'Each item\'s rate: at least one item needs a report rate above 0.']);
+        }
+
+        $parts = (int) round(array_sum($amounts) * 100);
+        $deal = (int) round($price * 100);
+        if (abs($parts - $deal) > 1) {
+            $gap = abs($parts - $deal) / 100;
+            throw ValidationException::withMessages(['report_by_items' => sprintf(
+                'Parts add up to %s but the deal price is %s — %s %s. Make them equal, or choose "One rate".',
+                self::rs($parts / 100), self::rs($deal / 100), self::rs($gap), $parts < $deal ? 'short' : 'too much'
+            )]);
+        }
+    }
+
+    /** 900 → "900", 1850.5 → "1,850.5" — the same way the form's live line writes it. */
+    private static function rs(float $amount): string
+    {
+        return rtrim(rtrim(number_format($amount, 2), '0'), '.');
     }
 
     private function syncComponents(Combo $combo, array $components): void
@@ -113,12 +187,19 @@ class ComboController extends Controller
                 continue;
             }
 
-            $combo->components()->create([
+            $row = [
                 'product_id' => $component['product_id'],
                 'product_variant_id' => $component['product_variant_id'] ?? null,
                 'quantity' => $component['quantity'] ?? 1,
                 'sort_order' => $component['sort_order'] ?? (($index + 1) * 10),
-            ]);
+            ];
+            // DEAL-SPLIT-REPORT-1: present only when the switch is on (validateCombo decides) — rows are recreated, so
+            // the part is carried onto the new row here.
+            if (array_key_exists('report_amount', $component)) {
+                $row['report_amount'] = $component['report_amount'];
+            }
+
+            $combo->components()->create($row);
         }
     }
 
@@ -129,6 +210,8 @@ class ComboController extends Controller
             'categories' => \App\Models\Tenant\Category::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'products' => Product::where('status', 'active')->orderBy('name')->get(['id', 'name', 'sku']),
             'variants' => ProductVariant::where('is_active', true)->orderBy('name')->get(['id', 'product_id', 'name', 'sku']),
+            // DEAL-SPLIT-REPORT-1: the "How should this deal show in reports?" section and the Report rate boxes.
+            'dealSplit' => DealSplit::active(),
         ];
     }
 }

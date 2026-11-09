@@ -130,6 +130,13 @@ class SplitBillController extends Controller
                         ->where('sales_order_id', $salesOrder->id)
                         ->findOrFail($lineInput['sales_order_line_id']);
 
+                    // DEAL-WHOLE-SPLIT-1: a deal moves WHOLE. Its items are not rows of their own on this page — they
+                    // follow their deal below. Moving one alone left the deal's price on one bill and its food on the
+                    // other (and, with DEAL-SPLIT-REPORT-1, the report could no longer split it).
+                    if (($heldLine->line_kind ?? 'standard') === 'component' && $heldLine->parent_sales_order_line_id) {
+                        throw new RuntimeException($heldLine->product_name . ' is part of a deal — split the deal itself; its items go with it.');
+                    }
+
                     $splitQty     = \App\Support\LineQuantity::normalize($lineInput['quantity'], (string) $heldLine->product_name);
                     $availableQty = (float) $heldLine->quantity;
 
@@ -145,72 +152,40 @@ class SplitBillController extends Controller
                             \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? (string) ($heldLine->unit_code ?: '') : \App\Support\LineQuantity::unitName($heldLine->product?->unit), $splitQty));
                     }
 
+                    $isDeal = ($heldLine->line_kind ?? 'standard') === 'combo_header';
+                    if ($isDeal && ! \App\Support\LineQuantity::isWhole($splitQty) && abs($splitQty - $availableQty) > 0.0005) {
+                        throw new RuntimeException($heldLine->product_name . ' is a deal — it splits in whole deals, not ' . \App\Support\LineQuantity::show($splitQty) . '.');
+                    }
+
                     if ($splitQty > $availableQty + 0.0001) {
                         throw new RuntimeException('Split quantity exceeds available quantity for ' . $heldLine->product_name . '.');
                     }
 
                     $ratio = $availableQty > 0 ? $splitQty / $availableQty : 0;
 
-                    $splitDiscount  = round((float) $heldLine->discount_amount * $ratio, 2);
-                    $splitTax       = round((float) $heldLine->tax_amount * $ratio, 2);
-                    $splitSubtotal  = round($splitQty * (float) $heldLine->unit_price, 2);
-                    $splitLineTotal = max($splitSubtotal - $splitDiscount + $splitTax, 0);
+                    // The deal's items, read before the deal line moves (a fully moved deal line is deleted).
+                    $items = $isDeal
+                        ? SalesOrderLine::where('sales_order_id', $salesOrder->id)->where('parent_sales_order_line_id', $heldLine->id)->orderBy('id')->get()
+                        : collect();
 
-                    $newSale->lines()->create([
-                        'product_id'         => $heldLine->product_id,
-                        'product_variant_id' => $heldLine->product_variant_id,
-                        'product_name'       => $heldLine->product_name,
-                        'variant_name'       => $heldLine->variant_name,
-                        'quantity'           => $splitQty,
-                        'unit_price'         => $heldLine->unit_price,
-                        'unit_cost'          => 0,
-                        'cost_total'         => 0,
-                        'discount_amount'    => $splitDiscount,
-                        'tax_amount'         => $splitTax,
-                        'line_total'         => $splitLineTotal,
-                        // BUG-047 FIX: copy modifiers so modifier stock is consumed on finalize.
-                        'modifiers'          => $heldLine->modifiers ?? [],
-                        'unit_code'          => $heldLine->unit_code,
-                        'line_kind'          => $heldLine->line_kind ?? 'standard',
-                        'combo_id'           => $heldLine->combo_id,
-                        'kitchen_note'       => $heldLine->kitchen_note,
-                        // The split portion was already sent to the kitchen as part of the
-                        // original order, so mark it sent — paying it later must not re-KOT it
-                        // or trip the "cancellation required" guard.
-                        'kot_sent'           => (float) $heldLine->kot_sent_quantity > 0,
-                        'kot_sent_quantity'  => min((float) $heldLine->kot_sent_quantity, $splitQty),
-                        // MEDICAL-COUNTER-1: a pack line splits in its own packs; its tablets follow.
-                        'pack_unit_id'       => $heldLine->pack_unit_id,
-                        'pack_factor'        => $heldLine->pack_factor,
-                    ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $heldLine->pack_size ?? null) + [
-                        'base_quantity'      => \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? round($splitQty * \App\Support\CounterPacks::sizeOf($heldLine), 3) : null,
-                        'inventory_batch_id' => $heldLine->inventory_batch_id,
-                    ]);
-
-                    $subtotal      += $splitSubtotal;
-                    $discountTotal += $splitDiscount;
-                    $taxTotal      += $splitTax;
-                    $grandTotal    += $splitLineTotal;
-
-                    $remainingQty = $availableQty - $splitQty;
-
-                    if ($remainingQty <= 0.0001) {
-                        $heldLine->delete();
-                    } else {
-                        $remainingRatio = $remainingQty / $availableQty;
-                        $heldLine->update([
-                            'quantity'        => $remainingQty,
-                            'discount_amount' => round((float) $heldLine->discount_amount * $remainingRatio, 2),
-                            'tax_amount'      => round((float) $heldLine->tax_amount * $remainingRatio, 2),
-                            'line_total'      => round((float) $heldLine->line_total * $remainingRatio, 2),
-                            // BUGFIX: the split portion is billed on the new paid sale, so the
-                            // remainder's kitchen-sent quantity must not exceed what's left.
-                            // Without this, kot_sent_quantity > quantity and paying the remainder
-                            // is blocked by a spurious "cancellation required" guard.
-                            'kot_sent_quantity' => min((float) $heldLine->kot_sent_quantity, $remainingQty),
-                            'base_quantity'     => \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? round($remainingQty * \App\Support\CounterPacks::sizeOf($heldLine), 3) : $heldLine->base_quantity,
-                        ]);
+                    // DEAL-SPLIT-REPORT-1: moved lines keep the parts they were sold with (or none).
+                    [$moved, $newDealLine] = \App\Support\DealSplit::copying(fn () => $this->moveLine($newSale, $heldLine, $splitQty, $ratio, null));
+                    foreach ($items as $item) {
+                        $itemQty = round((float) $item->quantity * $ratio, 3);
+                        if ($itemQty <= 0) {
+                            continue;
+                        }
+                        $itemRatio = min($itemQty / max((float) $item->quantity, 0.000001), 1);
+                        [$itemMoved] = \App\Support\DealSplit::copying(fn () => $this->moveLine($newSale, $item, $itemQty, $itemRatio, $newDealLine->id));
+                        foreach ($itemMoved as $k => $v) {
+                            $moved[$k] += $v;
+                        }
                     }
+
+                    $subtotal      += $moved['subtotal'];
+                    $discountTotal += $moved['discount'];
+                    $taxTotal      += $moved['tax'];
+                    $grandTotal    += $moved['total'];
                 }
 
                 if ($newSale->lines()->count() === 0) {
@@ -270,6 +245,80 @@ class SplitBillController extends Controller
             '<!doctype html><meta charset="utf-8"><script>window.top.location.href=' . $encodedTarget . ';</script>'
             . 'Split complete — returning to the POS…'
         );
+    }
+
+    /**
+     * Move $splitQty of a held line to the new bill (same price, its share of discount / tax / kitchen-sent),
+     * and shrink — or remove — what stays. DEAL-WHOLE-SPLIT-1: a deal's item passes its new deal line as $parentId,
+     * so it stays linked to its deal on the new bill.
+     *
+     * @return array{0: array{subtotal: float, discount: float, tax: float, total: float}, 1: SalesOrderLine}
+     */
+    private function moveLine(SalesOrder $newSale, SalesOrderLine $heldLine, float $splitQty, float $ratio, ?int $parentId): array
+    {
+        $availableQty   = (float) $heldLine->quantity;
+        $splitDiscount  = round((float) $heldLine->discount_amount * $ratio, 2);
+        $splitTax       = round((float) $heldLine->tax_amount * $ratio, 2);
+        $splitSubtotal  = round($splitQty * (float) $heldLine->unit_price, 2);
+        $splitLineTotal = max($splitSubtotal - $splitDiscount + $splitTax, 0);
+
+        $newLine = $newSale->lines()->make([
+            'product_id'         => $heldLine->product_id,
+            'product_variant_id' => $heldLine->product_variant_id,
+            'product_name'       => $heldLine->product_name,
+            'variant_name'       => $heldLine->variant_name,
+            'quantity'           => $splitQty,
+            'unit_price'         => $heldLine->unit_price,
+            'unit_cost'          => 0,
+            'cost_total'         => 0,
+            'discount_amount'    => $splitDiscount,
+            'tax_amount'         => $splitTax,
+            'line_total'         => $splitLineTotal,
+            // BUG-047 FIX: copy modifiers so modifier stock is consumed on finalize.
+            'modifiers'          => $heldLine->modifiers ?? [],
+            'unit_code'          => $heldLine->unit_code,
+            'line_kind'          => $heldLine->line_kind ?? 'standard',
+            'combo_id'           => $heldLine->combo_id,
+            'kitchen_note'       => $heldLine->kitchen_note,
+            // The split portion was already sent to the kitchen as part of the
+            // original order, so mark it sent — paying it later must not re-KOT it
+            // or trip the "cancellation required" guard.
+            'kot_sent'           => (float) $heldLine->kot_sent_quantity > 0,
+            'kot_sent_quantity'  => min((float) $heldLine->kot_sent_quantity, $splitQty),
+            // MEDICAL-COUNTER-1: a pack line splits in its own packs; its tablets follow.
+            'pack_unit_id'       => $heldLine->pack_unit_id,
+            'pack_factor'        => $heldLine->pack_factor,
+        ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $heldLine->pack_size ?? null) + [
+            'base_quantity'      => \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? round($splitQty * \App\Support\CounterPacks::sizeOf($heldLine), 3) : null,
+            'inventory_batch_id' => $heldLine->inventory_batch_id,
+        ] + ($parentId ? ['parent_sales_order_line_id' => $parentId] : []));
+        // DEAL-SPLIT-REPORT-1: named only when it has a value (a switch-off tenant never names the column).
+        if ($heldLine->deal_share !== null) {
+            $newLine->forceFill(['deal_share' => $heldLine->deal_share]);
+        }
+        $newLine->save();
+
+        $remainingQty = round($availableQty - $splitQty, 6);
+
+        if ($remainingQty <= 0.0001) {
+            $heldLine->delete();
+        } else {
+            $remainingRatio = $remainingQty / $availableQty;
+            $heldLine->update([
+                'quantity'        => $remainingQty,
+                'discount_amount' => round((float) $heldLine->discount_amount * $remainingRatio, 2),
+                'tax_amount'      => round((float) $heldLine->tax_amount * $remainingRatio, 2),
+                'line_total'      => round((float) $heldLine->line_total * $remainingRatio, 2),
+                // BUGFIX: the split portion is billed on the new paid sale, so the
+                // remainder's kitchen-sent quantity must not exceed what's left.
+                // Without this, kot_sent_quantity > quantity and paying the remainder
+                // is blocked by a spurious "cancellation required" guard.
+                'kot_sent_quantity' => min((float) $heldLine->kot_sent_quantity, $remainingQty),
+                'base_quantity'     => \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? round($remainingQty * \App\Support\CounterPacks::sizeOf($heldLine), 3) : $heldLine->base_quantity,
+            ]);
+        }
+
+        return [['subtotal' => $splitSubtotal, 'discount' => $splitDiscount, 'tax' => $splitTax, 'total' => $splitLineTotal], $newLine];
     }
 
     private function recalculateHeldSale(SalesOrder $salesOrder): void
