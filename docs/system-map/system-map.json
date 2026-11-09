@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-11-09T16:30:49+00:00",
+    "built_at": "2026-11-09T20:15:38+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "99dd34ea",
     "work": [
@@ -13,13 +13,22 @@
             "uncommitted_files": 0
         },
         {
+            "path": "D:/laragon2/www/pos-saas-pinfocus",
+            "branch": "fix/pos-pin-focus-20261110",
+            "head": "5ab6c967",
+            "behind_prod": 0,
+            "ahead_of_prod": 2,
+            "last_commit": "2026-11-09\u00b7Merge PLACE-NAME-NEAR-1: a society's name picks the website area only within 1 km of the customer's pin",
+            "uncommitted_files": 2
+        },
+        {
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
-            "head": "99dd34ea",
+            "head": "5ab6c967",
             "behind_prod": 0,
-            "ahead_of_prod": 0,
-            "last_commit": "2026-11-09\u00b7Deployment record: CHART-SEEDER-KEEP-NAMES-1 live (bf719f66) \u2014 every tenant's chart identical before and after the deploy",
-            "uncommitted_files": 2
+            "ahead_of_prod": 2,
+            "last_commit": "2026-11-09\u00b7Merge PLACE-NAME-NEAR-1: a society's name picks the website area only within 1 km of the customer's pin",
+            "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-edge",
@@ -267,8 +276,53 @@
     ],
     "plans": [
         {
+            "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
+            "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/billing-date-keep-2026-10-31.md",
+            "title": "BILLING-DATE-KEEP-1 \u2014 paying an invoice never pulls the subscription end date back (31 Oct 2026)",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/cash-book-report-2026-10-10.md",
+            "title": "CASH-BOOK-REPORT-1 \u2014 Cash Book report: kitna aaya, kitna gaya, kis cash/bank me, tareekh-war",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/category-parent-guard-2026-10-21.md",
+            "title": "CATEGORY-PARENT-GUARD-1 \u2014 a category can never sit inside its own sub-category (21 Oct 2026)",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
+            "title": "Catering product model \u2014 what is wrong, and the work to fix it",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/catering-restore-in-place-2026-10-31.md",
+            "title": "CATERING-RESTORE-IN-PLACE-1 \u2014 Restore dabane par wohi purani quotation wapas aaye (31 Oct 2026)",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/catering-simplify-2026-10-27.md",
+            "title": "CATERING-SIMPLIFY-1 \u2014 one place to price and edit a catering dish (27 Oct 2026)",
+            "modified": "2026-11-09"
+        },
+        {
             "file": "docs/plans/chart-seeder-keep-names-2026-11-09.md",
             "title": "CHART-SEEDER-KEEP-NAMES-1 \u2014 a deploy no longer renames a tenant's built-in accounts (9 Nov 2026)",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
+            "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/commercial-rate-picker-2026-10-26.md",
+            "title": "Commercial rate material picker (COMMERCIAL-RATE-PICKER-1) \u2014 26 Oct 2026",
             "modified": "2026-11-09"
         },
         {
@@ -277,8 +331,28 @@
             "modified": "2026-11-09"
         },
         {
+            "file": "docs/plans/dashboard-cards-when-used-2026-11-02.md",
+            "title": "DASHBOARD-CARDS-WHEN-USED-1 \u2014 Tax and Expiry cards only where they mean something; how the 1% bills (2 Nov 2026)",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
+            "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
+            "title": "Two order counts on one dashboard \u2014 research",
+            "modified": "2026-11-09"
+        },
+        {
             "file": "docs/plans/deal-split-report-2026-11-08.md",
             "title": "DEAL-SPLIT-REPORT-1 \u2014 a deal's money shown under the items inside it (8 Nov 2026)",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/deals-as-their-own-report-heads-2026-09-02.md",
+            "title": "Deals belong under their own heads \u2014 research",
             "modified": "2026-11-09"
         },
         {
@@ -287,115 +361,50 @@
             "modified": "2026-11-09"
         },
         {
-            "file": "docs/plans/kitchen-sheet-venue-once-2026-11-05.md",
-            "title": "KITCHEN-SHEET-VENUE-ONCE-1 + VENUE-NAME-ONLY-1 \u2014 venue = naam, parche par koi jagah do baar nahi (5 Nov 2026)",
+            "file": "docs/plans/grn-extra-charges-2026-10-02.md",
+            "title": "GRN-EXTRA-CHARGES-1 \u2014 cartage ko product ki jagah \"Extra Charges\" banana",
             "modified": "2026-11-09"
-        },
-        {
-            "file": "docs/plans/place-name-distance-guard-2026-11-09.md",
-            "title": "PLACE-NAME-NEAR-1: a place name picks the area only near the pin (9 Nov 2026)",
-            "modified": "2026-11-09"
-        },
-        {
-            "file": "docs/plans/purchase-edit-2026-11-03.md",
-            "title": "PURCHASE-EDIT-1 + SUPPLIER-LEDGER-DAILY-1 \u2014 plan (3 Nov 2026)",
-            "modified": "2026-11-09"
-        },
-        {
-            "file": "docs/plans/purchase-edit-recost-2026-11-06.md",
-            "title": "PURCHASE-EDIT-RECOST-1 \u2014 edit / void a purchase whose cost was moved by a recost (6 Nov 2026)",
-            "modified": "2026-11-09"
-        },
-        {
-            "file": "docs/plans/supplier-cost-5001-2026-11-06.md",
-            "title": "SUPPLIER-COST-5001-1 \u2014 one supplier's purchases to 5001 (khatribiryani, 6 Nov 2026)",
-            "modified": "2026-11-09"
-        },
-        {
-            "file": "docs/plans/billing-date-keep-2026-10-31.md",
-            "title": "BILLING-DATE-KEEP-1 \u2014 paying an invoice never pulls the subscription end date back (31 Oct 2026)",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/catering-restore-in-place-2026-10-31.md",
-            "title": "CATERING-RESTORE-IN-PLACE-1 \u2014 Restore dabane par wohi purani quotation wapas aaye (31 Oct 2026)",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/dashboard-cards-when-used-2026-11-02.md",
-            "title": "DASHBOARD-CARDS-WHEN-USED-1 \u2014 Tax and Expiry cards only where they mean something; how the 1% bills (2 Nov 2026)",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/master-hisab-2026-10-29.md",
-            "title": "MASTER-HISAB-1 \u2014 Bingoo ka apna hisab, Bingoo Master me (29 Oct 2026)",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/place-learning-2026-11-02.md",
-            "title": "PLACE-LEARNING-1 \u2014 delivery areas get more accurate with every delivered order (2 Nov 2026)",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/product-parity-2026-10-28.md",
-            "title": "Unified product advanced settings \u2014 28 October 2026",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/product-parity-release-2026-10-31.md",
-            "title": "Product advanced settings release \u2014 31 October 2026",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/shift-handover-2026-10-31.md",
-            "title": "SHIFT-HANDOVER-1 \u2014 hand the counter, with its open orders, to the next cashier (31 Oct 2026)",
-            "modified": "2026-11-02"
-        },
-        {
-            "file": "docs/plans/category-parent-guard-2026-10-21.md",
-            "title": "CATEGORY-PARENT-GUARD-1 \u2014 a category can never sit inside its own sub-category (21 Oct 2026)",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/catering-simplify-2026-10-27.md",
-            "title": "CATERING-SIMPLIFY-1 \u2014 one place to price and edit a catering dish (27 Oct 2026)",
-            "modified": "2026-10-29"
-        },
-        {
-            "file": "docs/plans/commercial-rate-picker-2026-10-26.md",
-            "title": "Commercial rate material picker (COMMERCIAL-RATE-PICKER-1) \u2014 26 Oct 2026",
-            "modified": "2026-10-29"
         },
         {
             "file": "docs/plans/grn-void-and-starter-shifts-2026-10-20.md",
             "title": "GRN void + starter plans' counter (20 Oct 2026)",
-            "modified": "2026-10-29"
+            "modified": "2026-11-09"
         },
         {
-            "file": "docs/plans/khatri-tb-heads-and-stock-to-pnl-2026-10-21.md",
-            "title": "Khatri: Trial Balance by heads + stuck inventory to the P&L (21 Oct 2026)",
-            "modified": "2026-10-29"
+            "file": "docs/plans/held-sale-dead-session-2026-09-12.md",
+            "title": "HELD-SALE-DEAD-SESSION-1 \u2014 band table par bill hold ho jata hai, phir kabhi pay nahi hota",
+            "modified": "2026-11-09"
         },
         {
-            "file": "docs/plans/move-table-cart-2026-10-22.md",
-            "title": "MOVE-TABLE-CART-1 \u2014 Move Table ke baad car ka bill table 32 par chala gaya",
-            "modified": "2026-10-29"
+            "file": "docs/plans/hide-amounts-from-operators-2026-09-01.md",
+            "title": "Hide the money from the counter \u2014 research before building",
+            "modified": "2026-11-09"
         },
         {
-            "file": "docs/plans/one-product-screen-master-controls-2026-10-19.md",
-            "title": "Ek Product Screen + Bingoo Master Controls \u2014 Plan (v2)",
-            "modified": "2026-10-29"
+            "file": "docs/plans/items-by-category-section-2026-09-03.md",
+            "title": "ITEMS-BY-CATEGORY-1 \u2014 Item ka category-wise breakup, apne alag section me",
+            "modified": "2026-11-09"
         },
         {
-            "file": "docs/plans/partner-share-report-2026-10-14.md",
-            "title": "PARTNER-SHARE-1 \u2014 Partner share report (ek dish, do kitchen)",
-            "modified": "2026-10-29"
+            "file": "docs/plans/items-in-category-sequence-2026-09-03.md",
+            "title": "ITEM-CATEGORY-SEQUENCE \u2014 Item report category ki tarteeb me, purane software ki tarah",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/kashif-client-feedback-2026-09-15.md",
+            "title": "Client feedback, 15 September \u2014 chaar cheezen",
+            "modified": "2026-11-09"
+        },
+        {
+            "file": "docs/plans/kashif-document-pdf-2026-09-09.md",
+            "title": "Quotation ka PDF \u2014 aur ek hadd jo chhupai nahi gayi",
+            "modified": "2026-11-09"
         }
     ],
-    "git": "99dd34ea",
+    "git": "5ab6c967",
     "source": {
-        "tenant_db": "pos_test_tenant_wst",
-        "master_db": "pos_test_master_wst"
+        "tenant_db": "pos_test_tenant_pinf",
+        "master_db": "pos_test_master_pinf"
     },
     "counts": {
         "tables": 238,
