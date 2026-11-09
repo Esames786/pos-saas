@@ -124,3 +124,8 @@ Merge `841e0114` (app code = the tested `723fe348`; later commits are a test, do
   Pakola 500 / Big Apple under Beverages), deal form shows the report question with the rate boxes, tb_diff 0.00.
 - For the owner: refresh the POS on every counter (new items load with the page); print one BBQ / Rolls / Paratha slip to see
   the new printer answer; the first platter sold shows in Categories under biryani and BBQ.
+- 06:3x UTC, owner: "jese kashif food pe … deals ka category, us mai singaporean or baqi alag alag" — #34 Signature Platters
+  renamed **Deals**, three heads under it like Kashif Food's: #38 Singaporean Platter (Singaporean Khas), #39 Khatri Platters
+  (#9–#11), #40 Changezi Platters (#12–#14); dry run, then applied. Reports unaffected (split deals report under their items).
+- Full MySQL suite on the frozen merge (`723fe348`, DB set `_dsv`, finished after the deploy): **2,654 tests, 0 failures,
+  0 errors** (1 skipped, 1 PHPUnit deprecation notice) — 1 h 13 min.
