@@ -37,3 +37,10 @@ on the frozen commit.
 ## Acceptance after deploy
 Khatri 6500 / 6900 / 6910 keep "Printing & Stationery Expense" / "1% Expense" / "Owner Drawing" (parent and order as the client
 set them); every tenant's account count unchanged; tb_diff 0 everywhere; no role lost a permission.
+
+## Deploy — 9 Nov 2026, 11:22 UTC (owner: "teekh hai kardo, apply fix")
+Merge `bf719f66` (code = the tested `c2e73c0c`), pushed, origin == HEAD; `deploy.sh` 11:22:26–11:22:45, exit 0, 13/13 tenants OK.
+- Proof before: full MySQL suite on the frozen `c2e73c0c` — 2,658 tests, 0 failures, 0 errors (1 skipped, 1 deprecation notice).
+- Every account of all 13 tenants (code → name, parent, sort, active, type) read before and after the deploy: **identical**. Khatri
+  6500 "Printing & Stationery Expense", 6900 "1% Expense", 6910 "Owner Drawing" kept (the deploy before this one had reset them).
+- Permissions: no role lost anything, no user lost a role. Smoke 13/13 tb_diff 0, no negative stock. Log after 11:22: 0 errors.
