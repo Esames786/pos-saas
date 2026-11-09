@@ -5,6 +5,7 @@ namespace Tests\MySql;
 use App\Models\Tenant\DeliveryZone;
 use App\Models\Tenant\DeliveryZonePlace;
 use App\Models\Tenant\WebSetting;
+use App\Services\OnlineOrdering\AreaLocator;
 use App\Services\Permissions\PermissionSyncService;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\DB;
@@ -185,6 +186,32 @@ class OnlineOrderingLocationMySqlTest extends MySqlTenantTestCase
         // 3. Without the societies it was the bug: the Johar block wins.
         DB::connection('master')->table('geo_area_places')->where('city', self::CITY)->delete();
         $this->assertSame($this->zone['Gulistan e Johar - Block 7'], $this->locate(24.9540, 67.1140)->json('area'));
+    }
+
+    public function test_a_far_away_society_does_not_pick_the_area_by_its_name(): void
+    {
+        // PLACE-NAME-NEAR-1 (prod, 8 Nov): OSM puts a big suburb's name on streets far from it — a Sui Gas Society
+        // pin read "Gulshan-e-Kaneez Fatima Society", whose point (Scheme 33) is ~2 km away; the customer was in Johar.
+        $this->platformPlace('Scheme 33', 'Gulshan-e-Kaneez Fatima Society', 24.952712, 67.113592);
+        $this->osm(['road' => 'Allama Shabbir Ahmed Usmani Road', 'neighbourhood' => 'Sui Gas Company Karachi Society',
+            'suburb' => 'Gulshan-e-Kaneez Fatima Society', 'town' => 'Gulshan-e-Iqbal Town', 'state' => 'Sindh'],
+            'Allama Shabbir Ahmed Usmani Road, Sui Gas Company Karachi Society, Gulshan-e-Kaneez Fatima Society, Karachi');
+
+        // ~1.8 km from the society's point: its name does not decide — the nearest area does.
+        $far = $this->locate(24.9400, 67.1250)->assertOk()->json();
+        $this->assertSame([$this->zone['Gulistan e Johar - Block 7'], 'nearest'], [$far['area'], $far['by']], 'Door ki society ka naam area nahi chunta.');
+        $this->assertGreaterThan(AreaLocator::NAME_NEAR_KM, AreaLocator::km(24.9400, 67.1250, 24.952712, 67.113592));
+
+        // ~0.3 km from it: the name still finds its area.
+        $near = $this->locate(24.9500, 67.1150)->assertOk()->json();
+        $this->assertSame([$this->zone['Scheme 33'], 'name'], [$near['area'], $near['by']], 'Paas ki society: naam se pehle jaise.');
+
+        // Same rule for a switched-off area: a far name does not say "we don't deliver to Scheme 33".
+        DeliveryZone::whereKey($this->zone['Scheme 33'])->update(['is_active' => false]);
+        $far = $this->locate(24.9401, 67.1251)->assertOk()->json();
+        $this->assertSame([$this->zone['Gulistan e Johar - Block 7'], null], [$far['area'], $far['closed']]);
+        $near = $this->locate(24.9501, 67.1151)->assertOk()->json();
+        $this->assertSame([null, 'Scheme 33'], [$near['area'], $near['closed']], 'Paas ki society ka band area: band hi.');
     }
 
     public function test_places_the_restaurant_writes_find_their_area_by_name_and_by_point(): void

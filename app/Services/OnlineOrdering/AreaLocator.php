@@ -29,6 +29,14 @@ class AreaLocator
 
     public const NEAR_PLACES_MAX = 6;
 
+    /**
+     * PLACE-NAME-NEAR-1 (malik, 9 Nov: "1 km wala teekh kardo"): jagah (society) apne naam se area tabhi chunti hai jab
+     * us ka nuqta pin se itne km ke andar ho. OSM bari suburb ka naam door tak lagata hai — prod: Sui Gas Society ka pata
+     * "Gulshan-e-Kaneez Fatima Society" (Scheme 33, 2 km door) aur Aga Khan Hospital for Women ka "Gulshan-e-Shamim".
+     * Area ka apna naam aur bina nuqte wali jagah pehle jaise. Plan: docs/plans/place-name-distance-guard-2026-11-09.md.
+     */
+    public const NAME_NEAR_KM = 1.0;
+
     /** OSM pate ke sarkari/bare hisse — naam milane me nahi ginte (town = "Liaquatabad Town" jaise poore zile). */
     private const ADMIN_PARTS = ['town', 'city_district', 'district', 'county', 'state_district', 'state', 'region',
         'city', 'municipality', 'postcode', 'country', 'country_code'];
@@ -65,11 +73,11 @@ class AreaLocator
             return array_replace($this->none($address), ['outside' => $state]);
         }
         // Naam se kisi BAND kiye area ka nikla = wahan delivery nahi (pados ka area khud nahi chunte).
-        $closed = $this->byName($allZones, $allPlaces, $address, (string) ($osm['name'] ?? ''));
+        $closed = $this->byName($allZones, $allPlaces, $address, (string) ($osm['name'] ?? ''), $lat, $lng);
         if ($closed !== null && ! $allZones->firstWhere('id', $closed)?->is_active) {
             return array_replace($this->none($address), ['closed' => $allZones->firstWhere('id', $closed)->area_name]);
         }
-        $byName = $this->byName($zones, $places, $address, (string) ($osm['name'] ?? ''));
+        $byName = $this->byName($zones, $places, $address, (string) ($osm['name'] ?? ''), $lat, $lng);
 
         $nearestId = $distances->keys()->first();
         $nearest = $nearestId !== null && $distances[$nearestId] <= self::MAX_KM ? $nearestId : null;
@@ -125,8 +133,11 @@ class AreaLocator
         return $out;
     }
 
-    /** Naam se: area ke (ya us ki kisi society ke) naam ke saare lafz OSM ke pate me hon. */
-    private function byName(Collection $zones, Collection $places, array $address, string $placeName): ?int
+    /**
+     * Naam se: area ke (ya us ki kisi society ke) naam ke saare lafz OSM ke pate me hon. Society ka nuqta ho to wo pin
+     * se NAME_NEAR_KM ke andar ho — door ki society ka naam area nahi chunta (phir agla naam, warna qareebi area).
+     */
+    private function byName(Collection $zones, Collection $places, array $address, string $placeName, float $lat, float $lng): ?int
     {
         // Sirf jagah ke apne naam (gali, mohalla, society, imarat). Bare sarkari hisse nahi: Nazimabad ka pata
         // "Liaquatabad Town" me aata hai, Clifton ka "Saddar Town" me — un se "Liaquatabad"/"Saddar" area PAKKA
@@ -139,7 +150,10 @@ class AreaLocator
         $bestLen = 0;
         foreach ($zones as $z) {
             // "nearby" wali jagahen (pados ki gawahi) naam se pakka nahi karti — wo sirf qareebi area me ginti hain.
-            $names = array_merge([(string) $z->area_name], $places->get($z->id, collect())->where('kind', 'sure')->pluck('name')->all());
+            $near = $places->get($z->id, collect())->where('kind', 'sure')
+                ->filter(fn ($p) => $p['lat'] === null || $p['lng'] === null
+                    || self::km($lat, $lng, (float) $p['lat'], (float) $p['lng']) <= self::NAME_NEAR_KM);
+            $names = array_merge([(string) $z->area_name], $near->pluck('name')->all());
             foreach ($names as $name) {
                 $tokens = array_values(array_filter(explode(' ', self::norm($name))));
                 if ($tokens === []) {
