@@ -53,3 +53,13 @@ POS view's real "Manager PIN Modal" section cut from the blade:
 | Bootstrap still pulls a stray focus back into the pay window | yes | yes |
 | SweetAlert select over a window | answered | answered, and focusable |
 | box with no window open (cart path) | works | works |
+
+## Deploy (10 Nov 2026, 01:18 PKT)
+
+- Fix `f1b98728`, merge **`18f0df24`**. The merged tree is identical to the tested commit. Pushed; origin == HEAD.
+- The same deploy also carried **PLACE-NAME-NEAR-1** (`5ab6c967`, merged by another session, tested there). The owner
+  was told before he said "deploy karo".
+- `bash deploy.sh` 20:18:32–20:18:51 UTC, exit 0, tenants ok=13 skipped=0.
+- After: PERMISSIONS OK (no role lost anything, no user lost a role). ACCOUNTS OK (every tenant's chart exactly as
+  before). Smoke 13/13 clean (tb_diff 0, neg_on_disallowed 0, department_negative 0). 0 new log errors. The compiled POS
+  view carries the guard. bingoopos.com and two tenant logins return 200.
