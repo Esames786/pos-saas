@@ -70,3 +70,22 @@ head with only the move. October has the move next to another supplier's non-sto
   `TrialBalanceParty/Period/SectionHeadsMySqlTest`, `GrnNonStockMySqlTest`, `PayablesFinanceGateMySqlTest`.
 - After the run, a bill on the 26 products cannot be edited or voided in place. Kashif Kitchen has `purchase_edit` off, so a
   billed receipt could not be edited or voided there before either.
+
+## Done on prod (10 Nov 2026)
+
+| step | when (UTC) | result |
+|---|---|---|
+| Backup 1 → laptop | 12:22 | `bingoo-backups/kashifkitchen/20261110_122250_kashifkitchen.sql.gz`, sha256 equal, prod copy (#779) deleted |
+| Voucher lines moved | ~12:30 | 8 lines: 6810 −23,200 → 5200; 6000 −4,842 → 5000-24; 6000 −400 → 5000-80. Cash balances unchanged, tb_diff 0 |
+| Never-bought stock off | ~12:31 | 1,842 products → `is_stock_tracked = 0`, `stock_item → none`; tracked 1,907 → 65. Id list `bingoo-backups/kashifkitchen/20261110_nostock_neverbought_1842_ids.json` |
+| Part C deploy | 12:35:42–12:36:03 | merge **`cfaa5103`** (tree = tested `7179656a`), exit 0. PERMISSIONS OK, ACCOUNTS OK, smoke 13/13 clean, 0 new log errors. Khatri 1–9 Nov: 5100-1 = Shahbaz cold drink 81,810 (was "Other 15,150"); 5100-4 = Waqar packing 13,440 + 830 (was "Other 13,440"); cost of sales unchanged |
+| Backup 2 → laptop | 12:36 | `20261110_123638_kashifkitchen.sql.gz`, sha256 equal, prod copy (#780) deleted |
+| Stock to cost | 12:37:14–12:37:16 | `--all-purchased --yes`; output identical to the dry run. 280 `grn_line_stock_expense` entries, 92,96,679.13; 1400 10,242,624.13 → **945,945.00**; tb_diff 0 |
+
+After the run: 5000-1 Beef Oct 51,80,825 / Nov 13,85,150.06. P&L 1 Oct–10 Nov cost of sales 1,03,08,830.13. The detail
+names the suppliers (FAISAL BEEF COUNTER (KHATRI) 56,36,550 · FAISAL BEEF (11) 3 9,29,425.06; DAJI TRADERS 8,81,000; RAFIQ
+CHICKEN 10,14,084.07 …), no "Other". The 26 products count no stock: on hand 0, each with an `expensed_to_cost`
+movement. 39 products still count stock (the skipped ones). Smoke 13/13 clean, 0 log errors.
+
+Still open, the client's: LPG / staff tea / petrol voucher lines; Vegetable Mix; 33 categories with no cost head; 4 unbilled
+Haji Mehfooz GRNs; 5 return products. Then a second run.
