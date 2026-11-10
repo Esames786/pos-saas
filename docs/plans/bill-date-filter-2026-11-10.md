@@ -28,3 +28,9 @@ No switch: a list filter changes nothing until it is used, and the owner asked f
 
 The other purchase tabs (Goods Receipts, Payments, Supplier Returns, Purchase Orders) have no date filter either. The
 same few lines would add one to each.
+
+## Deploy (10 Nov 2026, 13:22:42–13:23:03 UTC)
+
+Merge **`8d02852f`** (tree = tested `f8dc13e5`), pushed with the KK record `81fcca18`; origin == HEAD; `deploy.sh` exit 0.
+PERMISSIONS OK, ACCOUNTS OK, smoke 13/13 clean, 0 new log errors. Live render of kashifkitchen's list as the owner: no
+filter 246 invoices; Today 1 (10 Nov); Yesterday 2 (9 Nov); the From / To boxes and both buttons are on the page.
