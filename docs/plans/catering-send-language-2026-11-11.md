@@ -40,3 +40,15 @@ Worktree `pos-saas-kkvenue`, branch `fix/catering-send-language-20261111` (origi
 - **Sabotage** (har ek ke baad file wapas, `cmp`): A form se `lang` hataya → "'ur' me khula safha 'ur' nahi bhejta" ·
   B controller `lang` nazarandaz → "'en' chuna magar printer par 'both' gaya" · C service purani default → wohi. Teeno laal.
 - Deploy: abhi nahi — push aur deploy owner ke lafz par.
+
+## Deploy (11 Nov 2026, ~11:37 UTC) — LIVE `2d5c7c9e`
+- Owner: "kardo deploy". Before: canonical = origin = `89f823f3`; prod `6f92144b` — the only extra commit riding along was
+  `89f823f3` (KOT-DEAL-HEADING-1 deploy record: docs + system map, no code).
+- Merge `2d5c7c9e` → push → `origin == HEAD` alag qadam me → `bash deploy.sh` (9/9, tenants ok=13 skipped=0 — retaildemo
+  ab theek). "Nothing to migrate". Prod `/tmp` saaf ho chuka tha: `perm_snapshot.php` + `kkv_smoke.php` dobara upload kiye.
+- **Permissions:** `PERMISSIONS OK: no role lost anything, no user lost a role` (14 sets, grants barabar, gained: -).
+- **Smoke** (pehle = baad, 13 tenants): `tb_diff=0.00`, `neg_on_disallowed=0`, `neg_on_allowed=0`, `department_negative=0`.
+  Log: 11:36 ke baad 0 ERROR.
+- **Live (kashifkitchen, EV-20261111-0595, printer #4, settings default "both"):** preview `ur` → form `lang=ur`, `en` →
+  `lang=en`. `printToNetwork` ek tenant transaction ke andar, phir **rollBack**: kitchen sheet ur→ur, en→en; quotation en→en,
+  ur→ur; proforma ur→ur. `print_jobs` 69 → 69 — koi kaghaz nahi chhapa. Login 200.
