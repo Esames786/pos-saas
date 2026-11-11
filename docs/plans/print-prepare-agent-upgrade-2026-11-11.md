@@ -91,7 +91,7 @@ zubaan badli to us zubaan ki nayi tayyari; ghalat zubaan ki PDF kabhi nahi chhap
 ### 3.3 Safai (owner ki shart)
 
 - Chhapte hi PDF delete.
-- 15 minute me istemal na ho → delete. Sweep: agent start par + har 5 minute.
+- 10 minute me istemal na ho → delete (owner: "30 min bohot"). Sweep: agent start par + har 5 minute.
 - Had: 50 files (purani pehle). Ek PDF ~100–300 KB.
 - `%TEMP%` me bachi `bingoo-*` files (bijli jane wali) bhi 1 din baad saaf.
 - Files ka hisaab: graahak ka naam/phone hota hai — sirf usi PC par, kuch minute.
@@ -101,7 +101,7 @@ zubaan badli to us zubaan ki nayi tayyari; ghalat zubaan ki PDF kabhi nahi chhap
 - **Master switch**, sirf Kashif Kitchen ON (owner rule: live tenants OFF).
 - Tayyari ki job sirf us agent ko jo `caps` me `prepare` kahe — purana agent kabhi nahi dekhta, waisa hi chalta hai.
 - Thermal (KOT/receipt) ka raasta **chhua nahi jata**.
-- Chhota farq (owner ki haan chahiye): parche par "chhapne ka waqt" tayyari ka hoga (zyada se zyada 15 min purana).
+- Chhota farq: parche par "chhapne ka waqt" tayyari ka hoga (zyada se zyada 10 min purana).
 
 ### 3.5 Kitna farq (andaza, naapa nahi)
 
@@ -168,10 +168,14 @@ hash milaye, silent per-user install chalaye, khud restart. Sirf B2 par mumkin (
 3. PRINT-PREPARE-1 server + agent — Master switch, KK ON.
 4. (Baad me) server se `update` command.
 
-## 8. Owner se sawaal
+## 8. Owner se sawaal — aur jawab (11 Nov)
 
-1. B1 (har install par ek dafa admin) ya **B2** (admin kabhi nahi, ek dafa migration)?
-2. Pichli dafa thermal me **bilkul kya** kharab hua tha — kaun sa tenant/PC, kya nazar aaya (agent band? window? boot ke
-   baad nahi chala?) — taake test usi ka bane.
-3. Parche par chhapne ka waqt tayyari ka (≤ 15 min purana) — theek?
-4. Pehle sirf Kashif Kitchen, phir baqi — theek?
+1. B1 (har install par ek dafa admin) ya **B2** (admin kabhi nahi, ek dafa migration)? → **Abhi khula.** Owner ne aasaan
+   alfaaz me samajh maangi; mashwara B2.
+2. Pichli dafa thermal me kya kharab hua? → **Owner:** "thermal install ke baad tum script se haath se agent on karwa rahe
+   the, phir agent exe ka poora setup theek kiya" — yani install ke baad agent **khud chalu nahi hota tha** (2.6.6 me theek).
+   → Lazmi test: install / upgrade ke baad **bina kisi script** agent khud chale; restart + logoff/logon ke baad bhi;
+   2.6.6 aur us se purane version ke upar upgrade; installer khud "agent chal raha hai" bataye ya wajah likhe.
+3. Tayyar PDF kitni der? → **Owner: 30 min bohot** (proposal 15 tha). Naya proposal **10 min** (chhapte hi foran delete;
+   10 min me istemal na ho to delete; 10 min ke baad Send purane raaste se). Owner chahe to 5.
+4. Pehle sirf Kashif Kitchen, phir baqi? → **Owner: haan.**
