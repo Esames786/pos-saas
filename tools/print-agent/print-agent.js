@@ -1664,7 +1664,6 @@ function run(config) {
     log(`Server:  ${CONFIG.baseUrl}`);
     log(`Agent:   ${CONFIG.agentCode}`);
     log(`Config:  ${CONFIG.source || 'file'}`);
-    log(`Polling: every ${CONFIG.pollMs}ms`);
 
     // Shuru me hi keh do. 9 Oct ko Kashif Kitchen par A4/A5 document is liye
     // nahi chhap rahe thay ke agent ADMINISTRATOR par chal raha tha — Chromium

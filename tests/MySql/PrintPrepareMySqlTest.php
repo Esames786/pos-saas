@@ -295,6 +295,21 @@ class PrintPrepareMySqlTest extends MySqlTenantTestCase
         $this->assertSame($res['items'][0]['fingerprint'], $job->payload['fingerprint'], 'invoice: tayyari aur Send ek parcha');
     }
 
+    /** Print Agents safha: har PC ka version, aur purana khatarnak mashwara ("install-service.ps1") kahin nahi. */
+    public function test_the_print_agents_page_shows_each_pc_version_and_never_suggests_the_elevated_install(): void
+    {
+        [$agent] = $this->agent('Kitchen PC');
+        $agent->forceFill(['agent_version' => '2.7.0'])->save();
+        $this->agent('Old Counter PC');
+
+        $html = app(\App\Http\Controllers\Tenant\PrintAgentController::class)->index()->render();
+
+        $this->assertStringContainsString('Agent 2.7.0', $html, 'naye agent ka version');
+        $this->assertStringContainsString('Agent older than 2.7.0', $html, 'purana agent version nahi batata — ye bhi saaf');
+        $this->assertStringNotContainsString('install-service.ps1', $html,
+            'SYSTEM + Highest wala task A4/A5 documents maar deta hai (9 Oct) — screen kabhi ye mashwara na de');
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────
 
     private function switchTo(bool $on): void
