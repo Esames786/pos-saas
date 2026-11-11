@@ -256,3 +256,48 @@ hash milaye, silent per-user install chalaye, khud restart. Sirf B2 par mumkin (
 3. Tayyar PDF kitni der? → **Owner: 30 min bohot** (proposal 15 tha). Naya proposal **10 min** (chhapte hi foran delete;
    10 min me istemal na ho to delete; 10 min ke baad Send purane raaste se). Owner chahe to 5.
 4. Pehle sirf Kashif Kitchen, phir baqi? → **Owner: haan.**
+
+## 9. Banane ka naksha — technical (11 Nov, build shuru)
+
+Branch `feat/print-prepare-agent-20261111` (worktree `pos-saas-kkvenue`). Design me teen behtariyan research ke baad:
+
+1. **Alag table `print_prepares`** (tenant), `print_jobs` me nahi: purana agent sirf `print_status='queued'` leta hai to
+   kabhi dekh hi nahi sakta; Print Jobs screen/reports saaf rehte hain; rows roz saaf. Columns: `printer_id` (agent tak
+   raasta, preselected document printer), `doc_key` (kind:ref:lang), `fingerprint` (unique), `paper`, `html` (longtext),
+   `status` queued|claimed|ready|failed, `claimed_by_agent_id`, `claimed_at`, `ready_at`, `error`, timestamps.
+2. **Order badla → pata khula preview khud lagata hai:** har ~15 s "status" poochhta hai; server wohi document ABHI
+   render kar ke fingerprint milata hai — badla to nayi tayyari + screen ko "Order badal gaya". Har save raaste par
+   observer lagane se behtar: koi raasta chhoot nahi sakta (asli HTML milaya jata hai). Send par fingerprint pehle se.
+3. **Naye route nahi (naye permission nahi):** wohi `bulk-print` aur `final-invoice-print` POST, `mode=prepare|status`.
+   Jis ke paas Send ki ijazat, usi ke paas tayyari.
+
+Server:
+- `CateringDocumentQueueService`: render ek jagah (`documentFor(kind, model, lang)` → html, paper, refs) — Send aur
+  tayyari dono isi se; fingerprint = sha256(html — `<!--printed-at-->…<!--/printed-at-->` hata kar — + paper).
+- Agent API: `pending` jawab me `prepares` (sirf `caps` me `prepare` ho, aur sirf jab is poll me koi asli job na mili);
+  naya `POST /api/print-agent/prepares/{id}/ready|failed` (agent token, user permission nahi). Heartbeat:
+  `agent_version` save + jawab me `poll_ms` (server tay kare: switch ON = 1000, warna 3000) — PC chhue baghair badle.
+- `print_agents.agent_version` (migration). **Schema pehle deploy, phir code** (20 Oct ka sabaq).
+- Master switch `TenantFeatures::PRINT_PREPARE` (default OFF; KK ON).
+- Safai: `print_prepares` 1 din se purani rows roz delete (scheduler).
+- Print Agents screen: har agent ka version; code wale panel par "Download (code bhara hua)" — file ka naam
+  `BingooPrintAgent-Setup-<ver>~<host>~<code>.exe` (code 15 min, ek dafa; URL me sirf usi waqt).
+
+Agent 2.7.0 (`tools/print-agent`):
+- Config: pehle `%LOCALAPPDATA%\BingooPrintAgent\config.json` (B2), phir purana `ProgramData`; purani pairing pehli
+  dafa LOCALAPPDATA me copy. Heartbeat me `agent_version`; `poll_ms` server se.
+- Do agent kabhi nahi: start par koi aur `BingooPrintAgent.exe` (doosre raaste se) chal raha ho to wajah likh kar band.
+- Tayyari: `ready\<docKey>__<fingerprint>.pdf`; nayi bani to usi docKey ki purani delete; Send job ke `payload.fingerprint`
+  ki ≤ 10 min purani PDF mile to Chrome chhor kar seedha SumatraPDF. Asli job hamesha pehle.
+- Safai: start par + roz: `ready\` me 30 din se purani, had 500 MB; `%TEMP%\bingoo-*` 1 din se purani.
+- `run-hidden.vbs` → chowkidar: agent crash ho to 5 s baad dobara; "doosra agent chal raha hai" (exit 3) par nahi.
+
+Installer 2.7.0 (B2): `PrivilegesRequired=lowest`, `{localappdata}\Programs\BingooPrintAgent`, naya AppId; auto-start
+HKCU `Run` (admin nahi); pairing page sirf jab config na ho; file ke naam / `/SERVER= /CODE=` se pehle se bhara; purana
+machine-wide mila → us ki pairing utha kar, ek UAC se purana silent uninstall; inkar → install ruk jaye (do agent nahi);
+install ke baad agent chala kar tasdeeq; uninstall: process band, Run value, files, LOCALAPPDATA saaf;
+`remove-everything.cmd`. Shelf par 2.7.0, magar default download 2.6.6 jab tak KK par sabit na ho.
+
+Tests: MySQL (prepare idempotent, fingerprint, mode=status order badla, switch OFF = kuch nahi, purane agent ko kabhi
+nahi, asli job pehle, rows ki safai, heartbeat version/poll_ms) + agent JS (config migration, single-instance, ready
+cache hit/miss/stale, cleanup, autostart B2) + installer ka asli Windows PC par chalana.
