@@ -123,6 +123,25 @@ zubaan badli to us zubaan ki nayi tayyari; ghalat zubaan ki PDF kabhi nahi chhap
   "Order badal gaya — dobara tayyar ho raha hai…" aur safha naya ho jata hai, taake jo screen par hai wohi kaghaz par.
 - Test: save ke har raaste ke baad nayi tayyari bane; purani PDF se kabhi na chhape.
 
+### 3.7 Screen par kya dikhega — aur user ko rukna nahi (owner, 11 Nov)
+
+Owner: "print screen me chhota sa refresh button do taake print time ka masla theek ho … user ko wait karwaoge? kitna
+time agar bara order ho? sirf file transfer tak ya PDF banne tak? phir user send to network dabayega?"
+
+```
+[Send to network] [HP P2055dn ▾] [A5]  ⏳ Print tayyar ho raha hai…      [Print]
+[Send to network] [HP P2055dn ▾] [A5]  ✓ Tayyar · 5:01 PM  ↻             [Print]
+```
+
+- **Koi zabardasti intezar nahi.** Send hamesha chalu. Status chip sirf batata hai.
+- "✓ Tayyar" **PDF ban jane** par (sirf HTML pahunchne par nahi — asal waqt PDF me lagta hai).
+- Send jab PDF ban rahi ho: agent dobara shuru nahi karta — wohi PDF poori hote hi chhapta hai (aaj se kabhi dheema nahi).
+- Agent offline (heartbeat > 30 s purani): "⚠ Agent offline" — Send phir bhi aaj ki tarah job bana deta hai.
+- **Waqt:** safha khula rahe to har ~9 min chupke se nayi PDF (kaghaz ka waqt kabhi 10 min se purana nahi). **↻** = foran
+  nayi PDF + naya waqt (owner ki farmaish). Order kahin aur badla → "Order badal gaya — dobara tayyar ho raha hai…".
+- Andaze (KK PC par naapne hain): 1 page 2–4 s · 3–4 page 4–8 s · bulk 10 bookings ~20–40 s, ek ek kar ke (jo tayyar wo
+  foran chhap sakta hai). Aaj ka claim→printed 3–7 s isi ka saboot hai.
+
 ### 3.5 Kitna farq (andaza, naapa nahi)
 
 Agent wala 9 s → ~2–3 s. Printer jaaga ho to bhi page nikalne me apne kuch second. Total andaza **22 s → ~8–12 s**.
