@@ -28,6 +28,14 @@
             $iCols   = max((int) floor(42 / $iScaleW), 8);
             $itemFont = 'calc(' . $width . ' / ' . ($iCols * 0.6) . ')';
             $dividers = (bool) ($layout?->show_column_dividers ?? false);
+
+            // KOT-DEAL-HEADING-1 — mirrors EscPosPayloadService::kot(): the deal name one step TALLER
+            // than an item row (never wider), its items one step SHORTER at normal width.
+            $dealHeading = (bool) ($layout?->show_deal_as_heading ?? false);
+            $dScaleW = $iScaleW;
+            $dScaleH = min($iScaleH + 1, 8);
+            $cScaleH = max($iScaleH - 1, 1);
+            $normalFont = 'calc(' . $width . ' / ' . (42 * 0.6) . ')';
         @endphp
         /* Without an @page rule the browser used its own page size and ~10mm margins, which on a
            continuous roll prints a blank band above the ticket and wastes paper below it. */
@@ -54,6 +62,14 @@
         @if($iScaleH > $iScaleW)
         .ibig    { display: block; transform: scaleY({{ $iScaleH }}); transform-origin: left top; margin-bottom: {{ ($iScaleH - 1) * 1.2 }}em; }
         @endif
+        @if($dealHeading)
+        /* KOT-DEAL-HEADING-1: the deal name a step taller than an item row; its items a step smaller. */
+        .dbig    { font-size: {{ $itemFont }}; font-weight: bold; line-height: 1.15; overflow-wrap: break-word; display: block; transform: scaleY({{ round($dScaleH / $dScaleW, 3) }}); transform-origin: left top; margin-bottom: {{ round(($dScaleH / $dScaleW - 1) * 1.2, 3) }}em; }
+        .cbig    { font-size: {{ $normalFont }}; font-weight: bold; line-height: 1.15; overflow-wrap: break-word; display: block; padding-left: 4ch; }
+        @if($cScaleH > 1)
+        .cbig    { transform: scaleY({{ $cScaleH }}); transform-origin: left top; margin-bottom: {{ ($cScaleH - 1) * 1.2 }}em; }
+        @endif
+        @endif
         hr       { border: none; border-top: 1px dashed #000; margin: 4px 0; }
         table    { width: 100%; border-collapse: collapse; }
         td       { vertical-align: top; padding: 2px 0; }
@@ -64,6 +80,9 @@
         table.col-div td:first-child { border-left: none; }
         /* Dashed rule under each KOT item, so rows read as boxes (matches the thermal ticket). */
         tbody td { border-bottom: 1px dashed #000; padding: 3px 0; }
+        /* KOT-DEAL-HEADING-1: no rule inside a deal — one rule after its last item. */
+        tbody tr.deal-head td, tbody tr.deal-item td { border-bottom: none; padding: 1px 0; }
+        tbody tr.deal-item.deal-last td { border-bottom: 1px dashed #000; padding-bottom: 3px; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 24px; cursor: pointer; font-size: 14px; }
         @media print {
             .print-btn, .no-print { display: none !important; }
@@ -179,57 +198,61 @@
         </tr>
     </thead>
     <tbody>
-        @foreach($kotLines as $line)
-        @if(($line->line_kind ?? 'standard') === 'combo_header') @continue @endif
         @php
-            $totalQty = (float) $line->quantity;
+            // The quantity this slip prints for a line — the same rule the item row uses.
+            $kotIsReprint = (bool) ($isReprint ?? false);
+            $kotLineQty = $lineQuantities ?? collect();
+            $kotQtyOf = function ($l) use ($kotIsReprint, $kotLineQty) {
+                if ($kotIsReprint) {
+                    return (float) $l->quantity;
+                }
+                if ($kotLineQty->has((string) ($l->line_id ?? $l->id ?? ''))) {
+                    return (float) $kotLineQty->get((string) ($l->line_id ?? $l->id));
+                }
 
-            if ($isReprint) {
-                $displayQty = $totalQty;
-                $isAddition = false;
-            } elseif (isset($lineQuantities) && $lineQuantities->has((string) ($line->line_id ?? $line->id ?? ''))) {
-                // Use exact quantity stored in payload at job creation time.
-                $displayQty = (float) $lineQuantities->get((string) ($line->line_id ?? $line->id));
-                $isAddition = $totalQty > $displayQty;  // more was ordered than this delta
-            } else {
-                // Fallback for old jobs without line_quantities in payload.
-                $sentQty    = (float) ($line->kot_sent_quantity ?? 0);
-                $displayQty = max($totalQty - $sentQty, 0);
-                $isAddition = $sentQty > 0;
-            }
+                return max((float) $l->quantity - (float) ($l->kot_sent_quantity ?? 0), 0);
+            };
+            $kotFmtQty = fn ($q) => rtrim(rtrim(number_format((float) $q, 3, '.', ''), '0'), '.');
+            // Same rule as EscPosPayloadService::unitSuffix(): a piece count prints bare, a real measure keeps its unit.
+            $kotUnit = fn ($code) => ($code && ! in_array(strtoupper(trim((string) $code)), ['EA','EACH','PC','PCS','PIECE','PIECES','NOS','NO','UNIT','UNITS','QTY'], true)) ? ' ' . $code : '';
         @endphp
-        <tr>
-            <td class="item-qty ibig">
-                @if($isAddition)
-                    <span style="font-size:{{ $fontSize - 1 }}px">ADD</span><br>
+        @if($dealHeading)
+            {{-- KOT-DEAL-HEADING-1: the deal name ONCE, its items for this station under it. --}}
+            @foreach(\App\Support\KotDealGroups::build($kotLines, $salesOrder->lines ?? collect(), $comboNames ?? [], $kotQtyOf) as $entry)
+                @if($entry['kind'] === 'item')
+                    @include('tenant.printing.documents._kot_item_row', ['line' => $entry['line']])
+                @else
+                    <tr class="deal-head">
+                        <td class="item-qty dbig">{{ $entry['qty'] !== null ? $kotFmtQty($entry['qty']) : '' }}</td>
+                        <td class="item-name"><span class="dbig">{{ ($eventType ?? null) === 'addition' ? '(R) ' : '' }}{{ strtoupper($entry['name']) }}</span></td>
+                    </tr>
+                    @foreach($entry['lines'] as $dealLine)
+                        <tr class="deal-item{{ $loop->last ? ' deal-last' : '' }}">
+                            <td class="item-qty"></td>
+                            <td class="item-name">
+                                <span class="cbig">{{ $kotFmtQty($kotQtyOf($dealLine)) }}{{ $kotUnit($dealLine->unit_code) }}&nbsp;{{ strtoupper($dealLine->product_name) }}</span>
+                                @if($dealLine->variant_name && strcasecmp(trim($dealLine->variant_name), trim((string) $dealLine->product_name)) !== 0)
+                                    <small style="padding-left:8ch">{{ $dealLine->variant_name }}</small>
+                                @endif
+                                @foreach(($dealLine->modifiers ?? []) as $modifier)
+                                    @if(!empty($modifier['name']))
+                                        <br><small style="padding-left:8ch">+ {{ $modifier['name'] }}</small>
+                                    @endif
+                                @endforeach
+                                @if($dealLine->kitchen_note)
+                                    <br><small style="padding-left:8ch">⚑ {{ $dealLine->kitchen_note }}</small>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
                 @endif
-                {{ rtrim(rtrim(number_format($displayQty, 3, '.', ''), '0'), '.') }}
-                @if($isAddition)
-                    <br><small style="font-weight:normal">(T:{{ rtrim(rtrim(number_format($totalQty, 3, '.', ''), '0'), '.') }})</small>
-                @endif
-            </td>
-            <td class="item-name">
-                <span class="ibig">{{ ($eventType ?? null) === 'addition' ? '(R) ' : '' }}{{ strtoupper($line->product_name) }}</span>
-                {{-- COMBO-KOT-DEAL-NAME-1: a KOT is split by category and drops the combo header, so
-                     the station would otherwise see loose items with no idea they are one platter.
-                     Same sub-line the ESC/POS ticket prints, so paper and preview stay identical. --}}
-                @if(!empty($comboNames[(int) ($line->combo_id ?? 0)] ?? null))
-                    <br><small style="font-size:{{ max($fontSize - 3, 9) }}px; font-weight:normal">({{ $comboNames[(int) $line->combo_id] }})</small>
-                @endif
-                @if($line->variant_name && strcasecmp(trim($line->variant_name), trim((string) $line->product_name)) !== 0)
-                    <br><small>{{ $line->variant_name }}</small>
-                @endif
-                @foreach(($line->modifiers ?? []) as $modifier)
-                    @if(!empty($modifier['name']))
-                        <br><small>+ {{ $modifier['name'] }}</small>
-                    @endif
-                @endforeach
-                @if($line->kitchen_note)
-                    <br><small>⚑ {{ $line->kitchen_note }}</small>
-                @endif
-            </td>
-        </tr>
-        @endforeach
+            @endforeach
+        @else
+            @foreach($kotLines as $line)
+            @if(($line->line_kind ?? 'standard') === 'combo_header') @continue @endif
+            @include('tenant.printing.documents._kot_item_row')
+            @endforeach
+        @endif
     </tbody>
 </table>
 

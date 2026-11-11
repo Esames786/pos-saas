@@ -29,6 +29,8 @@ class ReceiptLayoutSetting extends Model
         'show_bill_barcode',
         // KOT-ORDER-NOTE-1: the order note on the KOT (default ON)
         'show_order_note',
+        // KOT-DEAL-HEADING-1: a deal prints its name once, its items under it (default OFF)
+        'show_deal_as_heading',
     ];
 
     public const SUPPORTED_DOCUMENT_TYPES = ['receipt', 'kot', 'reminder'];
@@ -44,7 +46,7 @@ class ReceiptLayoutSetting extends Model
         'show_item_codes', 'show_payment_breakdown', 'show_bingoo_branding',
         'show_delivery_details', 'show_vehicle_number', 'show_order_type',
         'show_column_dividers', 'show_category_header', 'show_heading_stars',
-        'show_bill_barcode', 'show_order_note',
+        'show_bill_barcode', 'show_order_note', 'show_deal_as_heading',
         'header_text', 'footer_text', 'font_size', 'kot_font_size',
         'item_font_size', 'time_font_size', 'is_active',
     ];
@@ -75,6 +77,7 @@ class ReceiptLayoutSetting extends Model
             'show_heading_stars'      => 'boolean',
             'show_bill_barcode'       => 'boolean',
             'show_order_note'         => 'boolean',
+            'show_deal_as_heading'    => 'boolean',
             'is_active'               => 'boolean',
             'font_size'               => 'integer',
             'kot_font_size'           => 'integer',

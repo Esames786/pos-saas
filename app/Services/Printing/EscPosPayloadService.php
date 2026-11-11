@@ -973,7 +973,12 @@ class EscPosPayloadService
                 $nameW, $qtyW, $rateW, $amountW, $dividers
             ), $rowTall);
 
-            if ($this->meaningfulVariant($line->variant_name, $line->product_name)) {
+            // DEAL-BILL-NO-VARIANT-1: a deal's line names the deal and nothing else. The POS hands the
+            // deal line its FIRST item's product (the rice), and the server stores that product's
+            // default variant on it — so the bill printed "(Changezi Pulao Rice)" under every
+            // Changezi platter as if it were the only thing inside. Never a variant under a deal.
+            if (($line->line_kind ?? 'standard') !== 'combo_header'
+                && $this->meaningfulVariant($line->variant_name, $line->product_name)) {
                 $out .= $this->sized('  (' . $line->variant_name . ')' . "\n", $rowTall);
             }
             // MEDICAL-COUNTER-1: "2 Strip = 20 Tablet · B:PN2410-07 EXP:09/28" under a medicine sold in a pack.
@@ -1239,48 +1244,58 @@ class EscPosPayloadService
         // only to group the plate. Never double width, so a long deal name cannot wrap to a stub.
         $dealScale = ['w' => 1, 'h' => 1];
 
-        foreach ($lines as $line) {
-            if (($line->line_kind ?? 'standard') === 'combo_header') {
-                continue;
-            }
-
-            // Use stored quantity from payload when available; fall back to model quantity.
+        // Use stored quantity from payload when available; fall back to model quantity.
+        $qtyOf = function ($line) use ($lineQuantities): float {
             $lineId = $line->line_id ?? $line->id ?? null;
-            $qtyToPrint = $lineId && $lineQuantities->has((string) $lineId)
+
+            return $lineId && $lineQuantities->has((string) $lineId)
                 ? (float) $lineQuantities->get((string) $lineId)
                 : (float) $line->quantity;
+        };
 
-            if ($qtyToPrint <= 0) {
-                continue;
-            }
+        // KOT-DEAL-HEADING-1: with the KOT layout switch ON, a deal prints its name ONCE — one step
+        // taller than an item row, never wider — and its items for THIS station sit under it, one step
+        // smaller and indented, with no rule between them and one rule after the deal. Plain items
+        // print exactly as below. The switch reads OFF unless the KOT layout saved it ON (a missing
+        // column reads OFF too), so every other ticket stays byte-for-byte what it was.
+        if ($layout !== null && (bool) ($layout->show_deal_as_heading ?? false)) {
+            $headScale = ['w' => $rowBig['w'], 'h' => min($rowBig['h'] + 1, 8)];
+            $itemScale = ['w' => 1, 'h' => max($rowBig['h'] - 1, 1)];
+            $indent = '    ';
+            foreach (\App\Support\KotDealGroups::build($lines, $sale->lines, $comboNames, $qtyOf) as $entry) {
+                if ($entry['kind'] === 'item') {
+                    $out .= $this->kotItemRow($entry['line'], $qtyOf($entry['line']), $eventType, $rowBig, $dividers, $rule, $comboNames, $dealScale);
 
-            $runningPrefix = $eventType === 'addition' ? '(R) ' : '';
-            $kotQty = $this->quantity($qtyToPrint) . $this->unitSuffix($line->unit_code);
-            $name = $runningPrefix . strtoupper($line->product_name ?? '');
+                    continue;
+                }
 
-            // COLUMN approach — Qty | Item — with the name wrapping under its column. No price:
-            // a kitchen ticket carries none. Rows use the item scale + optional divider line.
-            $out .= $this->sized($this->qtyItemColumns($kotQty, $name, $this->scaledWidth($rowBig), $dividers), $rowBig, true);
+                $head = ($eventType === 'addition' ? '(R) ' : '') . strtoupper($entry['name']);
+                $headQty = $entry['qty'] !== null ? $this->quantity($entry['qty']) : '';
+                $out .= $this->sized($this->qtyItemColumns($headQty, $head, $this->scaledWidth($headScale), $dividers), $headScale, true);
 
-            // The deal this item belongs to, directly under its name — the column layout above is
-            // untouched, this is one more sub-row of the kind variants and modifiers already use.
-            if ($dealName = $comboNames[(int) ($line->combo_id ?? 0)] ?? null) {
-                $out .= $this->subRow('  (' . $dealName . ')', $dealScale);
+                foreach ($entry['lines'] as $line) {
+                    $qty = $this->quantity($qtyOf($line)) . $this->unitSuffix($line->unit_code);
+                    $rows = $this->qtyItemColumns($qty, strtoupper($line->product_name ?? ''), self::COLS_80MM - strlen($indent), $dividers);
+                    $out .= $this->sized(preg_replace('/^/m', $indent, rtrim($rows, "\n")) . "\n", $itemScale, true);
+                    if ($this->meaningfulVariant($line->variant_name, $line->product_name)) {
+                        $out .= $this->subRow($indent . '    ' . $line->variant_name, $itemScale);
+                    }
+                    foreach ($this->lineModifiers($line) as $modifier) {
+                        $out .= $this->subRow($indent . '    + ' . $modifier['name'], $itemScale);
+                    }
+                    if ($line->kitchen_note) {
+                        $out .= $this->subRow($indent . '    NOTE: ' . $line->kitchen_note, $itemScale, true);
+                    }
+                }
+                $out .= $rule . "\n";   // one rule after the whole deal, none between its items
             }
-
-            // Variant, modifiers and the cook's note stay one step below the item: always taller
-            // than normal so they are readable, never double width, so they never wrap.
-            $sub = ['w' => 1, 'h' => $rowBig['h']];
-            if ($this->meaningfulVariant($line->variant_name, $line->product_name)) {
-                $out .= $this->subRow('  ' . $line->variant_name, $sub);
+        } else {
+            foreach ($lines as $line) {
+                if (($line->line_kind ?? 'standard') === 'combo_header') {
+                    continue;
+                }
+                $out .= $this->kotItemRow($line, $qtyOf($line), $eventType, $rowBig, $dividers, $rule, $comboNames, $dealScale);
             }
-            foreach ($this->lineModifiers($line) as $modifier) {
-                $out .= $this->subRow('  + ' . $modifier['name'], $sub);
-            }
-            if ($line->kitchen_note) {
-                $out .= $this->subRow('  NOTE: ' . $line->kitchen_note, $sub, true);
-            }
-            $out .= $rule . "\n";   // separator after each KOT item, so rows read as boxes
         }
 
         // KOT-ORDER-NOTE-1: the kitchen's part of the note only (a website order's payment / address / map
@@ -1305,6 +1320,47 @@ class EscPosPayloadService
         $out .= str_repeat('-', 42) . "\n";
 
         return $out . self::CUT;
+    }
+
+    /**
+     * One KOT item row exactly as the ticket has always printed it: QTY | ITEM at the row scale, the
+     * deal name under a deal's item (COMBO-KOT-DEAL-NAME-1), then variant, modifiers, the cook's note
+     * and a rule. Nothing printed for a quantity of zero.
+     */
+    private function kotItemRow($line, float $qtyToPrint, string $eventType, array $rowBig, bool $dividers, string $rule, $comboNames, array $dealScale): string
+    {
+        if ($qtyToPrint <= 0) {
+            return '';
+        }
+
+        $runningPrefix = $eventType === 'addition' ? '(R) ' : '';
+        $kotQty = $this->quantity($qtyToPrint) . $this->unitSuffix($line->unit_code);
+        $name = $runningPrefix . strtoupper($line->product_name ?? '');
+
+        // COLUMN approach — Qty | Item — with the name wrapping under its column. No price:
+        // a kitchen ticket carries none. Rows use the item scale + optional divider line.
+        $out = $this->sized($this->qtyItemColumns($kotQty, $name, $this->scaledWidth($rowBig), $dividers), $rowBig, true);
+
+        // The deal this item belongs to, directly under its name — the column layout above is
+        // untouched, this is one more sub-row of the kind variants and modifiers already use.
+        if ($dealName = $comboNames[(int) ($line->combo_id ?? 0)] ?? null) {
+            $out .= $this->subRow('  (' . $dealName . ')', $dealScale);
+        }
+
+        // Variant, modifiers and the cook's note stay one step below the item: always taller
+        // than normal so they are readable, never double width, so they never wrap.
+        $sub = ['w' => 1, 'h' => $rowBig['h']];
+        if ($this->meaningfulVariant($line->variant_name, $line->product_name)) {
+            $out .= $this->subRow('  ' . $line->variant_name, $sub);
+        }
+        foreach ($this->lineModifiers($line) as $modifier) {
+            $out .= $this->subRow('  + ' . $modifier['name'], $sub);
+        }
+        if ($line->kitchen_note) {
+            $out .= $this->subRow('  NOTE: ' . $line->kitchen_note, $sub, true);
+        }
+
+        return $out . $rule . "\n";   // separator after each KOT item, so rows read as boxes
     }
 
     private function center(string $text, int $width = 42): string

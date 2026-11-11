@@ -81,11 +81,12 @@
             'show_heading_stars'     => 'Stars around KOT heading (*** KOT #1 ***)',
             'show_bill_barcode'      => 'Bill number as a big barcode (scan it at the billing counter)',
             'show_order_note'        => 'Order Note',
+            'show_deal_as_heading'   => 'Deal name on top, its items under it',
         ] as $field => $label)
         @php
             // Most toggles default ON for a brand-new layout; dividers are the exception (today's
             // tickets have none), so they default OFF until an operator turns them on.
-            $switchDefault = in_array($field, ['show_column_dividers', 'show_bill_barcode', 'show_order_note'], true) ? false : true;
+            $switchDefault = in_array($field, ['show_column_dividers', 'show_bill_barcode', 'show_order_note', 'show_deal_as_heading'], true) ? false : true;
         @endphp
         <div class="col-md-4 layout-option" data-layout-field="{{ $field }}">
             <div class="form-check form-switch">

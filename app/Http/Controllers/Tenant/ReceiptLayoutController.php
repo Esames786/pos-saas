@@ -57,6 +57,7 @@ class ReceiptLayoutController extends Controller
             'show_heading_stars'     => ['nullable', 'boolean'],
             'show_bill_barcode'      => ['nullable', 'boolean'],
             'show_order_note'        => ['nullable', 'boolean'],
+            'show_deal_as_heading'   => ['nullable', 'boolean'],
             'header_text'            => ['nullable', 'string', 'max:500'],
             'footer_text'            => ['nullable', 'string', 'max:500'],
             'font_size'              => ['required', 'integer', 'min:8', 'max:24'],
@@ -130,6 +131,23 @@ class ReceiptLayoutController extends Controller
             ->latest('sale_date')
             ->first() ?? $this->fakeSalesOrder($base->branch);
 
+        // KOT-DEAL-HEADING-1: the deal switch needs a sale that HAS a deal, or switching it on shows
+        // nothing and the switch looks dead — borrow the latest paid sale with one, exactly as the
+        // Delivery Details toggle borrows a delivery below. No deal sold yet = the latest sale stays.
+        if ($base->document_type === 'kot' && ($layout->show_deal_as_heading ?? false)
+            && ! collect($salesOrder->lines ?? [])->contains(fn ($l) => ($l->line_kind ?? 'standard') === 'combo_header')) {
+            $salesOrder = SalesOrder::with([
+                    'lines', 'branch', 'payments.method',
+                    'restaurantTable.floor', 'restaurantWaiter', 'createdBy',
+                    'deliveryChannel', 'deliveryRider',
+                ])
+                ->where('branch_id', $base->branch_id)
+                ->where('status', 'paid')
+                ->whereHas('lines', fn ($q) => $q->where('line_kind', 'combo_header'))
+                ->latest('sale_date')
+                ->first() ?? $salesOrder;
+        }
+
         // The Delivery Details toggle needs a sale that HAS delivery data, or switching it on
         // shows nothing and the switch looks dead. When the latest sale is not a delivery,
         // borrow the most recent one that is; the sample values are a last resort (in-memory
@@ -178,6 +196,11 @@ class ReceiptLayoutController extends Controller
             'kotLines'       => $salesOrder->lines ?? collect(),
             'lineQuantities' => collect(),
             'isReprint'      => true,
+            // COMBO-KOT-DEAL-NAME-1 / KOT-DEAL-HEADING-1: the deal names, so the preview shows a deal
+            // the way the paper does — before, the preview never named a deal at all.
+            'comboNames'     => ($ids = collect($salesOrder->lines ?? [])->pluck('combo_id')->filter()->unique()->values())->isEmpty()
+                ? collect()
+                : \Illuminate\Support\Facades\DB::connection('tenant')->table('combos')->whereIn('id', $ids->all())->pluck('name', 'id'),
         ]);
     }
 
