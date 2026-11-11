@@ -1,31 +1,31 @@
 {
-    "built_at": "2026-11-11T11:14:13+00:00",
+    "built_at": "2026-11-11T14:00:56+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
-    "prod_branch_head": "89f823f3",
+    "prod_branch_head": "5e236c57",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas",
             "branch": "feat/14d-2-plan-upgrade-requests",
-            "head": "89f823f3",
+            "head": "5e236c57",
             "behind_prod": 0,
             "ahead_of_prod": 0,
-            "last_commit": "2026-11-11\u00b7Deployment record: KOT-DEAL-HEADING-1 live (6f92144b) \u2014 switch ON for Khatri only; system map rebuilt",
+            "last_commit": "2026-11-11\u00b7Deployment record: CATERING-SEND-LANGUAGE-1 live (2d5c7c9e)",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-kkvenue",
-            "branch": "fix/catering-send-language-20261111",
-            "head": "ddd56f36",
+            "branch": "feat/print-prepare-agent-20261111",
+            "head": "df216b5c",
             "behind_prod": 0,
-            "ahead_of_prod": 1,
-            "last_commit": "2026-11-11\u00b7CATERING-SEND-LANGUAGE-1: \"Send to network\" ab safhe par chuni hui zubaan me chhapta hai",
+            "ahead_of_prod": 11,
+            "last_commit": "2026-11-11\u00b7PRINT-PREPARE-1 + AGENT-UPGRADE-1: nateeje (191 tests, sabotage, laptop par asli upgrade) aur deploy ka tareeqa",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
             "head": "5ab6c967",
-            "behind_prod": 12,
+            "behind_prod": 16,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-09\u00b7Merge PLACE-NAME-NEAR-1: a society's name picks the website area only within 1 km of the customer's pin",
             "uncommitted_files": 0
@@ -34,7 +34,7 @@
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
             "head": "db102243",
-            "behind_prod": 251,
+            "behind_prod": 255,
             "ahead_of_prod": 227,
             "last_commit": "2026-11-08\u00b7pos(shared): F-1 standby write gate (owner-approved disposable dev, 8 Nov): POS.canMutate/applyMutationGate in the shared transport (Cloud always open; Edge follows authority.can_mutate) disables Review & Pay / Complete Sale / Open shift with the reason, overlay + toasts, 422 authority refusals surfaced (api + totals quote), addToCart/Review & Pay refuse while gated, cart never discarded; Edge chrome polls sync/summary (now carries cashier-facing authority block) for transitions after load; tests: +1 chrome-partial F-1 test, contract test extended, two pre-existing h1 assertions accept POS/Restaurant POS; docs: B.16 record, offline acceptance checklist; system map rebuilt",
             "uncommitted_files": 1
@@ -43,7 +43,7 @@
             "path": "D:/laragon2/www/pos-saas-costblock",
             "branch": "feat/cost-block-clarity-20261105",
             "head": "ea87e95f",
-            "behind_prod": 45,
+            "behind_prod": 49,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-06\u00b7System map rebuilt (COST-BLOCK-CLARITY-1)",
             "uncommitted_files": 0
@@ -52,7 +52,7 @@
             "path": "D:/laragon2/www/pos-saas-dealsplit-golden",
             "branch": "(detached)",
             "head": "19813266",
-            "behind_prod": 32,
+            "behind_prod": 36,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-06\u00b7Deployment record: PURCHASE-EDIT-RECOST-1 + PNL-DETAIL-RECOST-1 live (c94a2c79) \u2014 GRN #90 editable, P&L detail fixed, totals unchanged",
             "uncommitted_files": 0
@@ -61,7 +61,7 @@
             "path": "D:/laragon2/www/pos-saas-integ-082",
             "branch": "integ/canonical-rehearsal-082",
             "head": "bfc52574",
-            "behind_prod": 94,
+            "behind_prod": 98,
             "ahead_of_prod": 221,
             "last_commit": "2026-11-06\u00b7REHEARSAL Phase E final (Agent E, 6 Nov): gates after GO with real numbers - full Edge MySQL gate 750/10,035 (7 reds classified, re-run alone green), canonical merged-area gate 214/2,242 (17 reds = H1 paying-shift fixture, 31st-of-month flake, reset classification, shared-view regex; five classes re-run alone green), SQLite 206/31/136-of-139; browser on the disposable 9801/8491 pair: Online W01/W02/W06/W14 PASS, Edge (local writer after a real WAN-loss takeover) W01/W02/W06/W14 + W16/W17 PASS, new Online reference 24 shots, EDGE_VS_ONLINE_GEOMETRY=NONE (998 boxes, 0 px; the DIFF(36) of the no-shift pass was the order-controls row wrapping), pixels data-only differences, controlled handback + lease release on the clone; system map rebuilt from the integ test DBs (276 tables, 442 FKs, 745 screens); environment findings (3 mysqld outages, three pos_test_%-cleanup-dropped DBs rebuilt from read-only dumps, CRLF credential file vs EdgeLocalEnrollCommand.php:60 rtrim \"\\n\" - owner hardening decision), explicit owner note on the only product change (TenantResetTransactionsCommand KNOWN_KEPT). READY_FOR_OWNER_DECISION; no promotion, no push.",
             "uncommitted_files": 0
@@ -70,7 +70,7 @@
             "path": "D:/laragon2/www/pos-saas-rel-083",
             "branch": "rel/0.8.3-service-reliability",
             "head": "0b73606f",
-            "behind_prod": 251,
+            "behind_prod": 255,
             "ahead_of_prod": 213,
             "last_commit": "2026-11-06\u00b7docs: Agent F - clean-machine install class green after the host reboot (OK 1 test / 160 assertions, scratch on D:, edge_relf set); all 0.8.3 gates complete",
             "uncommitted_files": 0
@@ -79,7 +79,7 @@
             "path": "D:/laragon2/www/pos-saas-web-i18n",
             "branch": "feat/hide-public-prices-20261104",
             "head": "9000dd7c",
-            "behind_prod": 54,
+            "behind_prod": 58,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-04\u00b7WEBSITE-HIDE-PRICES-1: SAAS_HIDE_PUBLIC_PRICES \u2014 website par koi qeemat nahi (\"Price on request\"), client demo ke liye",
             "uncommitted_files": 0
@@ -88,7 +88,7 @@
             "path": "D:/laragon2/www/pos-saas-catering",
             "branch": "feat/catering-restore-in-place-20261031",
             "head": "75d7e97d",
-            "behind_prod": 73,
+            "behind_prod": 77,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-01\u00b7Deployment record: CATERING-RESTORE-IN-PLACE-1 live (e2c54e18)",
             "uncommitted_files": 0
@@ -97,7 +97,7 @@
             "path": "D:/laragon2/www/pos-saas-catedit",
             "branch": "feat/catering-simplify-20261027",
             "head": "09ad9e87",
-            "behind_prod": 120,
+            "behind_prod": 124,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-27\u00b7System map rebuilt (CATERING-SIMPLIFY-1, copy price)",
             "uncommitted_files": 0
@@ -106,7 +106,7 @@
             "path": "D:/laragon2/www/pos-saas-relc",
             "branch": "release/unified-w3w4-20261024",
             "head": "14458b95",
-            "behind_prod": 159,
+            "behind_prod": 163,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-25\u00b7Release record: a backup is not an undo button \u2014 fix forward; any restore needs its own recovery plan",
             "uncommitted_files": 0
@@ -115,7 +115,7 @@
             "path": "D:/laragon2/www/pos-saas-rollout",
             "branch": "feat/rollout-completion-20261025",
             "head": "d822bbef",
-            "behind_prod": 154,
+            "behind_prod": 158,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-25\u00b7ROLLOUT-1: deployment record \u2014 54bb81f9 live, reconciled, khatribiryani purchasing on with whole numbers off",
             "uncommitted_files": 0
@@ -124,7 +124,7 @@
             "path": "D:/laragon2/www/pos-saas-video",
             "branch": "feat/demo-video-pipeline",
             "head": "e0bae109",
-            "behind_prod": 651,
+            "behind_prod": 655,
             "ahead_of_prod": 17,
             "last_commit": "2026-10-25\u00b7RESTAURANT-VIDEO-1: poori working video \u2014 har order asli punch hota hai",
             "uncommitted_files": 0
@@ -133,7 +133,7 @@
             "path": "D:/laragon2/www/pos-saas-integ",
             "branch": "integration/unified-w2-20261022",
             "head": "983668a6",
-            "behind_prod": 204,
+            "behind_prod": 208,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-23\u00b7Release-candidate record: d29487e2 tested frozen, baseline for the three known reds, merge-onto-production check, limits",
             "uncommitted_files": 0
@@ -142,7 +142,7 @@
             "path": "D:/laragon2/www/pos-saas-w2c",
             "branch": "feat/w2c-purchase-stock-qty-20261023",
             "head": "272b1a5a",
-            "behind_prod": 201,
+            "behind_prod": 205,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-23\u00b7W2-C closing record: edf958d9 final, evidence per run, the one error read from the log, why the full suite was not repeated",
             "uncommitted_files": 0
@@ -151,7 +151,7 @@
             "path": "D:/laragon2/www/pos-saas-qrwaiter",
             "branch": "feat/unified-business-20261021",
             "head": "5441ead2",
-            "behind_prod": 218,
+            "behind_prod": 222,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-21\u00b7Merge production (59787ff6: category parent guard) into the unified branch",
             "uncommitted_files": 4
@@ -160,7 +160,7 @@
             "path": "D:/laragon2/www/pos-saas-packs",
             "branch": "feat/pharmacy-packs-20261019",
             "head": "a0dc6790",
-            "behind_prod": 254,
+            "behind_prod": 258,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-20\u00b7Docs: return without a bill built (plan section 13); system map rebuilt",
             "uncommitted_files": 0
@@ -169,7 +169,7 @@
             "path": "D:/laragon2/www/pos-saas-voice",
             "branch": "research/voice-ordering-agent",
             "head": "79c76679",
-            "behind_prod": 588,
+            "behind_prod": 592,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-05\u00b7VOICE-ORDER-1: vendor options + bahar wale mashware ki do ghaltiyan darj",
             "uncommitted_files": 0
@@ -178,7 +178,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/history-urdu-ux",
             "branch": "fix/catering-history-urdu-ux-20260829",
             "head": "da8e2ed3",
-            "behind_prod": 981,
+            "behind_prod": 985,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7Improve catering operator UX and Urdu print readability",
             "uncommitted_files": 0
@@ -187,7 +187,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/quoted-rate-persistence",
             "branch": "fix/catering-quoted-rate-persistence-20260828",
             "head": "e020c390",
-            "behind_prod": 987,
+            "behind_prod": 991,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7fix(catering): persist punched customer rates",
             "uncommitted_files": 0
@@ -196,7 +196,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/catering-client-feedback",
             "branch": "fix/catering-client-feedback-20260827",
             "head": "893d8e44",
-            "behind_prod": 1000,
+            "behind_prod": 1004,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-27\u00b7fix(catering): tighten time and item entry UX",
             "uncommitted_files": 0
@@ -205,7 +205,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert-v2",
             "branch": "(detached)",
             "head": "ec09b6a6",
-            "behind_prod": 1049,
+            "behind_prod": 1053,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-22\u00b7KASHIF-LEGACY-ALIGN-5/6: Complimentary in one click, and a bill you can read",
             "uncommitted_files": 1
@@ -214,7 +214,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-parity",
             "branch": "feat/catering-operator-completion-v1",
             "head": "008ba947",
-            "behind_prod": 1069,
+            "behind_prod": 1073,
             "ahead_of_prod": 4,
             "last_commit": "2026-08-22\u00b7CATERING: keep event create and edit inside the operator workspace",
             "uncommitted_files": 0
@@ -223,7 +223,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-catalogue",
             "branch": "data/kashif-catalogue-prep-v1",
             "head": "73807eb9",
-            "behind_prod": 1072,
+            "behind_prod": 1076,
             "ahead_of_prod": 1,
             "last_commit": "2026-08-21\u00b7CATERING: transcribe the Kashif catalogue without inventing prices",
             "uncommitted_files": 0
@@ -232,7 +232,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-product",
             "branch": "audit/catering-product-completeness-v1",
             "head": "ef184b6a",
-            "behind_prod": 1118,
+            "behind_prod": 1122,
             "ahead_of_prod": 18,
             "last_commit": "2026-08-21\u00b7AUDIT: assess Catering product completeness",
             "uncommitted_files": 0
@@ -241,7 +241,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex",
             "branch": "audit/catering-e2e-qa-v1",
             "head": "f8fa2205",
-            "behind_prod": 1118,
+            "behind_prod": 1122,
             "ahead_of_prod": 13,
             "last_commit": "2026-08-20\u00b7DOCS: preserve independent Catering architecture audit",
             "uncommitted_files": 0
@@ -250,7 +250,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert",
             "branch": "audit/catering-rate-impact-cert-v1",
             "head": "55ad8d5e",
-            "behind_prod": 1118,
+            "behind_prod": 1122,
             "ahead_of_prod": 17,
             "last_commit": "2026-08-20\u00b7TEST: expose Catering draft writer send races",
             "uncommitted_files": 0
@@ -259,7 +259,7 @@
             "path": "D:/laragon2/www/pos-saas-cloud",
             "branch": "feat/cloud-billing-onboarding-v1",
             "head": "9c30ea46",
-            "behind_prod": 1184,
+            "behind_prod": 1188,
             "ahead_of_prod": 8,
             "last_commit": "2026-08-15\u00b7CLOUD-BILLING E2E: real monthly + yearly signup lifecycle (throwaway tenants)",
             "uncommitted_files": 0
@@ -314,6 +314,11 @@
         {
             "file": "docs/plans/pos-pin-focus-2026-11-10.md",
             "title": "POS-PIN-FOCUS-1 \u2014 the manager code box in the pay window takes the cursor (10 Nov 2026)",
+            "modified": "2026-11-11"
+        },
+        {
+            "file": "docs/plans/print-prepare-agent-upgrade-2026-11-11.md",
+            "title": "PRINT-PREPARE-1 + AGENT-UPGRADE-1 \u2014 research + plan (11 Nov 2026)",
             "modified": "2026-11-11"
         },
         {
@@ -385,23 +390,18 @@
             "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
             "title": "Two order counts on one dashboard \u2014 research",
             "modified": "2026-11-05"
-        },
-        {
-            "file": "docs/plans/deals-as-their-own-report-heads-2026-09-02.md",
-            "title": "Deals belong under their own heads \u2014 research",
-            "modified": "2026-11-05"
         }
     ],
-    "git": "ddd56f36",
+    "git": "df216b5c",
     "source": {
         "tenant_db": "pos_test_tenant_kkv",
         "master_db": "pos_test_master_kkv"
     },
     "counts": {
-        "tables": 238,
-        "foreign_keys": 440,
-        "inferred_links": 228,
-        "screens": 747
+        "tables": 239,
+        "foreign_keys": 441,
+        "inferred_links": 230,
+        "screens": 749
     },
     "tables": [
         {
@@ -1329,6 +1329,10 @@
                 },
                 {
                     "table": "print_jobs",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "print_prepares",
                     "col": "branch_id"
                 },
                 {
@@ -8857,9 +8861,49 @@
                 {
                     "route": "tenant.catering.settings.service-times",
                     "why": "model CateringSetting"
+                },
+                {
+                    "route": "tenant.api.print-agent.pair",
+                    "why": "model CateringSetting"
+                },
+                {
+                    "route": "tenant.api.print-agent.heartbeat",
+                    "why": "model CateringSetting"
+                },
+                {
+                    "route": "tenant.api.print-agent.pending",
+                    "why": "model CateringSetting"
+                },
+                {
+                    "route": "tenant.api.print-agent.jobs.printed",
+                    "why": "model CateringSetting"
+                },
+                {
+                    "route": "tenant.api.print-agent.jobs.failed",
+                    "why": "model CateringSetting"
+                },
+                {
+                    "route": "tenant.api.print-agent.jobs.defer",
+                    "why": "model CateringSetting"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "model CateringSetting"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "model CateringSetting"
+                },
+                {
+                    "route": "tenant.api.print-agent.commands",
+                    "why": "model CateringSetting"
+                },
+                {
+                    "route": "tenant.api.print-agent.commands.result",
+                    "why": "model CateringSetting"
                 }
             ],
-            "used_by_count": 35
+            "used_by_count": 45
         },
         {
             "name": "combo_components",
@@ -15360,6 +15404,14 @@
                     "why": "via PrintJobService"
                 },
                 {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "via PrintJobService"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "via PrintJobService"
+                },
+                {
                     "route": "tenant.api.print-agent.commands",
                     "why": "via PrintJobService"
                 },
@@ -15368,7 +15420,7 @@
                     "why": "via PrintJobService"
                 }
             ],
-            "used_by_count": 33
+            "used_by_count": 35
         },
         {
             "name": "languages",
@@ -18479,6 +18531,14 @@
                     "why": "model PrintAgentCommand"
                 },
                 {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "model PrintAgentCommand"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "model PrintAgentCommand"
+                },
+                {
                     "route": "tenant.api.print-agent.commands",
                     "why": "model PrintAgentCommand"
                 },
@@ -18487,7 +18547,7 @@
                     "why": "model PrintAgentCommand"
                 }
             ],
-            "used_by_count": 25
+            "used_by_count": 27
         },
         {
             "name": "print_agents",
@@ -18513,7 +18573,8 @@
                 "paired_at timestamp",
                 "paired_device_name varchar(255)",
                 "paired_device_platform varchar(255)",
-                "paired_device_ip varchar(64)"
+                "paired_device_ip varchar(64)",
+                "agent_version varchar(50)"
             ],
             "fk_out": [],
             "inferred_out": [
@@ -18535,6 +18596,10 @@
                 },
                 {
                     "table": "print_jobs",
+                    "col": "claimed_by_agent_id"
+                },
+                {
+                    "table": "print_prepares",
                     "col": "claimed_by_agent_id"
                 }
             ],
@@ -18611,6 +18676,50 @@
                     "why": "model PrintAgent"
                 },
                 {
+                    "route": "tenant.catering.documents.estimate",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.kitchen-sheet",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.kitchen-sheet-preview",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.proforma-invoice",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.final-invoice",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-quotations",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-kitchen-sheets",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-address-sheet",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.estimate-print",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.final-invoice-print",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-print",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
                     "route": "tenant.api.print-agent.pair",
                     "why": "model PrintAgent"
                 },
@@ -18635,6 +18744,14 @@
                     "why": "model PrintAgent"
                 },
                 {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "model PrintAgent"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "model PrintAgent"
+                },
+                {
                     "route": "tenant.api.print-agent.commands",
                     "why": "model PrintAgent"
                 },
@@ -18643,7 +18760,7 @@
                     "why": "model PrintAgent"
                 }
             ],
-            "used_by_count": 25
+            "used_by_count": 38
         },
         {
             "name": "print_jobs",
@@ -19005,6 +19122,14 @@
                     "why": "model PrintJob"
                 },
                 {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "model PrintJob"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "model PrintJob"
+                },
+                {
                     "route": "tenant.api.print-agent.commands",
                     "why": "model PrintJob"
                 },
@@ -19013,7 +19138,137 @@
                     "why": "model PrintJob"
                 }
             ],
-            "used_by_count": 76
+            "used_by_count": 78
+        },
+        {
+            "name": "print_prepares",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "printer_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "doc_key varchar(120)",
+                "fingerprint char(64)",
+                "paper varchar(40)",
+                "html longtext",
+                "status varchar(20)",
+                "claimed_by_agent_id bigint unsigned",
+                "claimed_at timestamp",
+                "ready_at timestamp",
+                "error varchar(500)",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [
+                {
+                    "col": "printer_id",
+                    "table": "printers",
+                    "on_delete": "CASCADE"
+                }
+            ],
+            "inferred_out": [
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                },
+                {
+                    "col": "claimed_by_agent_id",
+                    "table": "print_agents"
+                }
+            ],
+            "domain": "Printing",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "PrintPrepare"
+            ],
+            "used_by": [
+                {
+                    "route": "tenant.catering.documents.estimate",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.kitchen-sheet",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.kitchen-sheet-preview",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.proforma-invoice",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.final-invoice",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-quotations",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-kitchen-sheets",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-address-sheet",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.estimate-print",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.final-invoice-print",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-print",
+                    "why": "via CateringDocumentQueueService"
+                },
+                {
+                    "route": "tenant.api.print-agent.pair",
+                    "why": "model PrintPrepare"
+                },
+                {
+                    "route": "tenant.api.print-agent.heartbeat",
+                    "why": "model PrintPrepare"
+                },
+                {
+                    "route": "tenant.api.print-agent.pending",
+                    "why": "model PrintPrepare"
+                },
+                {
+                    "route": "tenant.api.print-agent.jobs.printed",
+                    "why": "model PrintPrepare"
+                },
+                {
+                    "route": "tenant.api.print-agent.jobs.failed",
+                    "why": "model PrintPrepare"
+                },
+                {
+                    "route": "tenant.api.print-agent.jobs.defer",
+                    "why": "model PrintPrepare"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "model PrintPrepare"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "model PrintPrepare"
+                },
+                {
+                    "route": "tenant.api.print-agent.commands",
+                    "why": "model PrintPrepare"
+                },
+                {
+                    "route": "tenant.api.print-agent.commands.result",
+                    "why": "model PrintPrepare"
+                }
+            ],
+            "used_by_count": 21
         },
         {
             "name": "printers",
@@ -19059,6 +19314,11 @@
                 },
                 {
                     "table": "print_agent_commands",
+                    "col": "printer_id",
+                    "on_delete": "CASCADE"
+                },
+                {
+                    "table": "print_prepares",
                     "col": "printer_id",
                     "on_delete": "CASCADE"
                 }
@@ -19426,6 +19686,14 @@
                     "why": "model Printer"
                 },
                 {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "model Printer"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "model Printer"
+                },
+                {
                     "route": "tenant.api.print-agent.commands",
                     "why": "model Printer"
                 },
@@ -19434,7 +19702,7 @@
                     "why": "model Printer"
                 }
             ],
-            "used_by_count": 85
+            "used_by_count": 87
         },
         {
             "name": "product_barcodes",
@@ -24969,6 +25237,14 @@
                     "why": "via PrintJobService"
                 },
                 {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "via PrintJobService"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "via PrintJobService"
+                },
+                {
                     "route": "tenant.api.print-agent.commands",
                     "why": "via PrintJobService"
                 },
@@ -24977,7 +25253,7 @@
                     "why": "via PrintJobService"
                 }
             ],
-            "used_by_count": 73
+            "used_by_count": 75
         },
         {
             "name": "recipe_consumptions",
@@ -27300,6 +27576,14 @@
                     "why": "via PrintJobService"
                 },
                 {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "via PrintJobService"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "via PrintJobService"
+                },
+                {
                     "route": "tenant.api.print-agent.commands",
                     "why": "via PrintJobService"
                 },
@@ -27308,7 +27592,7 @@
                     "why": "via PrintJobService"
                 }
             ],
-            "used_by_count": 33
+            "used_by_count": 35
         },
         {
             "name": "sales_order_lines",
@@ -27748,6 +28032,14 @@
                     "why": "via PrintJobService"
                 },
                 {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "via PrintJobService"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "via PrintJobService"
+                },
+                {
                     "route": "tenant.api.print-agent.commands",
                     "why": "via PrintJobService"
                 },
@@ -27756,7 +28048,7 @@
                     "why": "via PrintJobService"
                 }
             ],
-            "used_by_count": 80
+            "used_by_count": 82
         },
         {
             "name": "sales_order_rider_assignments",
@@ -28672,6 +28964,14 @@
                     "why": "via PrintJobService"
                 },
                 {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "via PrintJobService"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "via PrintJobService"
+                },
+                {
                     "route": "tenant.api.print-agent.commands",
                     "why": "via PrintJobService"
                 },
@@ -28680,7 +28980,7 @@
                     "why": "via PrintJobService"
                 }
             ],
-            "used_by_count": 169
+            "used_by_count": 171
         },
         {
             "name": "sales_return_lines",
@@ -41446,6 +41746,50 @@
                     "why": "via Business"
                 },
                 {
+                    "route": "tenant.catering.documents.estimate",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.catering.documents.kitchen-sheet",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.catering.documents.kitchen-sheet-preview",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.catering.documents.proforma-invoice",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.catering.documents.final-invoice",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-quotations",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-kitchen-sheets",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-address-sheet",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.catering.documents.estimate-print",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.catering.documents.final-invoice-print",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.catering.documents.bulk-print",
+                    "why": "via TenantFeatures"
+                },
+                {
                     "route": "tenant.manufacturing.products.index",
                     "why": "via Business"
                 },
@@ -41464,9 +41808,49 @@
                 {
                     "route": "tenant.manufacturing.products.update",
                     "why": "via Business"
+                },
+                {
+                    "route": "tenant.api.print-agent.pair",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.api.print-agent.heartbeat",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.api.print-agent.pending",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.api.print-agent.jobs.printed",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.api.print-agent.jobs.failed",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.api.print-agent.jobs.defer",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.ready",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.api.print-agent.prepares.failed",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.api.print-agent.commands",
+                    "why": "via TenantFeatures"
+                },
+                {
+                    "route": "tenant.api.print-agent.commands.result",
+                    "why": "via TenantFeatures"
                 }
             ],
-            "used_by_count": 185
+            "used_by_count": 206
         },
         {
             "name": "users",
@@ -53370,9 +53754,12 @@
                 "catering_settings",
                 "printers",
                 "print_jobs",
+                "print_agents",
+                "print_prepares",
                 "catering_advances",
                 "catering_production_release_lines",
-                "product_translations"
+                "product_translations",
+                "tenants"
             ]
         },
         {
@@ -53389,9 +53776,12 @@
                 "catering_settings",
                 "printers",
                 "print_jobs",
+                "print_agents",
+                "print_prepares",
                 "catering_advances",
                 "catering_production_release_lines",
-                "product_translations"
+                "product_translations",
+                "tenants"
             ]
         },
         {
@@ -53408,9 +53798,12 @@
                 "catering_settings",
                 "printers",
                 "print_jobs",
+                "print_agents",
+                "print_prepares",
                 "catering_advances",
                 "catering_production_release_lines",
-                "product_translations"
+                "product_translations",
+                "tenants"
             ]
         },
         {
@@ -53427,9 +53820,12 @@
                 "catering_settings",
                 "printers",
                 "print_jobs",
+                "print_agents",
+                "print_prepares",
                 "catering_advances",
                 "catering_production_release_lines",
-                "product_translations"
+                "product_translations",
+                "tenants"
             ]
         },
         {
@@ -53446,9 +53842,12 @@
                 "catering_settings",
                 "printers",
                 "print_jobs",
+                "print_agents",
+                "print_prepares",
                 "catering_advances",
                 "catering_production_release_lines",
-                "product_translations"
+                "product_translations",
+                "tenants"
             ]
         },
         {
@@ -53467,7 +53866,10 @@
                 "catering_production_releases",
                 "catering_production_release_lines",
                 "product_translations",
-                "print_jobs"
+                "print_agents",
+                "print_jobs",
+                "print_prepares",
+                "tenants"
             ]
         },
         {
@@ -53486,7 +53888,10 @@
                 "catering_production_releases",
                 "catering_production_release_lines",
                 "product_translations",
-                "print_jobs"
+                "print_agents",
+                "print_jobs",
+                "print_prepares",
+                "tenants"
             ]
         },
         {
@@ -53505,7 +53910,10 @@
                 "catering_production_releases",
                 "catering_production_release_lines",
                 "product_translations",
-                "print_jobs"
+                "print_agents",
+                "print_jobs",
+                "print_prepares",
+                "tenants"
             ]
         },
         {
@@ -53522,9 +53930,12 @@
                 "catering_settings",
                 "printers",
                 "print_jobs",
+                "print_agents",
+                "print_prepares",
                 "catering_advances",
                 "catering_production_release_lines",
-                "product_translations"
+                "product_translations",
+                "tenants"
             ]
         },
         {
@@ -53541,9 +53952,12 @@
                 "catering_settings",
                 "printers",
                 "print_jobs",
+                "print_agents",
+                "print_prepares",
                 "catering_advances",
                 "catering_production_release_lines",
-                "product_translations"
+                "product_translations",
+                "tenants"
             ]
         },
         {
@@ -53562,7 +53976,10 @@
                 "catering_production_releases",
                 "catering_production_release_lines",
                 "product_translations",
-                "print_jobs"
+                "print_agents",
+                "print_jobs",
+                "print_prepares",
+                "tenants"
             ]
         },
         {
@@ -55142,15 +55559,18 @@
             "controller": "PrintAgentApiController@pair",
             "group": "tenant.api",
             "tables": [
+                "catering_settings",
                 "print_agents",
                 "print_agent_commands",
                 "print_jobs",
+                "print_prepares",
                 "printers",
                 "kot_batches",
                 "receipt_layout_settings",
                 "sales_orders",
                 "sales_order_lines",
-                "sales_order_line_cancellations"
+                "sales_order_line_cancellations",
+                "tenants"
             ]
         },
         {
@@ -55160,15 +55580,18 @@
             "controller": "PrintAgentApiController@heartbeat",
             "group": "tenant.api",
             "tables": [
+                "catering_settings",
                 "print_agents",
                 "print_agent_commands",
                 "print_jobs",
+                "print_prepares",
                 "printers",
                 "kot_batches",
                 "receipt_layout_settings",
                 "sales_orders",
                 "sales_order_lines",
-                "sales_order_line_cancellations"
+                "sales_order_line_cancellations",
+                "tenants"
             ]
         },
         {
@@ -55178,15 +55601,18 @@
             "controller": "PrintAgentApiController@pending",
             "group": "tenant.api",
             "tables": [
+                "catering_settings",
                 "print_agents",
                 "print_agent_commands",
                 "print_jobs",
+                "print_prepares",
                 "printers",
                 "kot_batches",
                 "receipt_layout_settings",
                 "sales_orders",
                 "sales_order_lines",
-                "sales_order_line_cancellations"
+                "sales_order_line_cancellations",
+                "tenants"
             ]
         },
         {
@@ -55196,15 +55622,18 @@
             "controller": "PrintAgentApiController@printed",
             "group": "tenant.api",
             "tables": [
+                "catering_settings",
                 "print_agents",
                 "print_agent_commands",
                 "print_jobs",
+                "print_prepares",
                 "printers",
                 "kot_batches",
                 "receipt_layout_settings",
                 "sales_orders",
                 "sales_order_lines",
-                "sales_order_line_cancellations"
+                "sales_order_line_cancellations",
+                "tenants"
             ]
         },
         {
@@ -55214,15 +55643,18 @@
             "controller": "PrintAgentApiController@failed",
             "group": "tenant.api",
             "tables": [
+                "catering_settings",
                 "print_agents",
                 "print_agent_commands",
                 "print_jobs",
+                "print_prepares",
                 "printers",
                 "kot_batches",
                 "receipt_layout_settings",
                 "sales_orders",
                 "sales_order_lines",
-                "sales_order_line_cancellations"
+                "sales_order_line_cancellations",
+                "tenants"
             ]
         },
         {
@@ -55232,15 +55664,60 @@
             "controller": "PrintAgentApiController@defer",
             "group": "tenant.api",
             "tables": [
+                "catering_settings",
                 "print_agents",
                 "print_agent_commands",
                 "print_jobs",
+                "print_prepares",
                 "printers",
                 "kot_batches",
                 "receipt_layout_settings",
                 "sales_orders",
                 "sales_order_lines",
-                "sales_order_line_cancellations"
+                "sales_order_line_cancellations",
+                "tenants"
+            ]
+        },
+        {
+            "route": "tenant.api.print-agent.prepares.ready",
+            "uri": "/api/print-agent/prepares/{printPrepare}/ready",
+            "methods": "POST",
+            "controller": "PrintAgentApiController@prepareReady",
+            "group": "tenant.api",
+            "tables": [
+                "catering_settings",
+                "print_agents",
+                "print_agent_commands",
+                "print_jobs",
+                "print_prepares",
+                "printers",
+                "kot_batches",
+                "receipt_layout_settings",
+                "sales_orders",
+                "sales_order_lines",
+                "sales_order_line_cancellations",
+                "tenants"
+            ]
+        },
+        {
+            "route": "tenant.api.print-agent.prepares.failed",
+            "uri": "/api/print-agent/prepares/{printPrepare}/failed",
+            "methods": "POST",
+            "controller": "PrintAgentApiController@prepareFailed",
+            "group": "tenant.api",
+            "tables": [
+                "catering_settings",
+                "print_agents",
+                "print_agent_commands",
+                "print_jobs",
+                "print_prepares",
+                "printers",
+                "kot_batches",
+                "receipt_layout_settings",
+                "sales_orders",
+                "sales_order_lines",
+                "sales_order_line_cancellations",
+                "tenants"
             ]
         },
         {
@@ -55250,15 +55727,18 @@
             "controller": "PrintAgentApiController@commands",
             "group": "tenant.api",
             "tables": [
+                "catering_settings",
                 "print_agents",
                 "print_agent_commands",
                 "print_jobs",
+                "print_prepares",
                 "printers",
                 "kot_batches",
                 "receipt_layout_settings",
                 "sales_orders",
                 "sales_order_lines",
-                "sales_order_line_cancellations"
+                "sales_order_line_cancellations",
+                "tenants"
             ]
         },
         {
@@ -55268,15 +55748,18 @@
             "controller": "PrintAgentApiController@commandResult",
             "group": "tenant.api",
             "tables": [
+                "catering_settings",
                 "print_agents",
                 "print_agent_commands",
                 "print_jobs",
+                "print_prepares",
                 "printers",
                 "kot_batches",
                 "receipt_layout_settings",
                 "sales_orders",
                 "sales_order_lines",
-                "sales_order_line_cancellations"
+                "sales_order_line_cancellations",
+                "tenants"
             ]
         }
     ]

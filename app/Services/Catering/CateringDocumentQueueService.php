@@ -8,6 +8,7 @@ use App\Models\Tenant\CateringProductionRelease;
 use App\Models\Tenant\CateringSetting;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\PrintJob;
+use App\Models\Tenant\PrintPrepare;
 use App\Services\Catering\CateringProductionReleaseService;
 use App\Services\Printing\PrintJobFactory;
 use Illuminate\Database\QueryException;
@@ -156,6 +157,12 @@ class CateringDocumentQueueService
         bool $isReprint = false,
         ?string $lang = null,
     ): PrintJob {
+        return $this->queueRendered($this->document(self::KIND_KITCHEN_SHEET, $event, $lang), $printer, $userId, $isReprint);
+    }
+
+    /** @return array{kind:string, html:string, paper:string, lang:?string, reference_type:string, reference_id:int, reference_no:?string, branch_id:?int} */
+    private function kitchenSheetDocument(CateringEvent $event, ?string $lang): array
+    {
         $event->loadMissing(['productionReleases.lines', 'productionReleases.event']);
 
         // CATERING-SHEET-ALWAYS-CURRENT-1 — parcha hamesha aaj ki quotation se.
@@ -168,22 +175,22 @@ class CateringDocumentQueueService
             $release->setRelation('event', $event);
         }
 
-        return $this->queue(
-            kind: self::KIND_KITCHEN_SHEET,
-            printer: $printer,
-            html: view('tenant.catering.documents.kitchen-sheet', [
+        $lang = $this->language($lang);
+
+        return [
+            'kind' => self::KIND_KITCHEN_SHEET,
+            'html' => view('tenant.catering.documents.kitchen-sheet', [
                 'release' => $release,
-                'lang' => $this->language($lang),
+                'lang' => $lang,
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: self::paperFor(self::KIND_KITCHEN_SHEET),
-            referenceType: 'catering_event',
-            referenceId: (int) $event->id,
-            referenceNo: $event->event_no,
-            branchId: $event->branch_id,
-            userId: $userId,
-            isReprint: $isReprint,
-        );
+            'paper' => self::paperFor(self::KIND_KITCHEN_SHEET),
+            'lang' => $lang,
+            'reference_type' => 'catering_event',
+            'reference_id' => (int) $event->id,
+            'reference_no' => $event->event_no,
+            'branch_id' => $event->branch_id,
+        ];
     }
 
     /** Quotation — kagaz `quotation_paper` se (aam tor par A4). */
@@ -194,6 +201,11 @@ class CateringDocumentQueueService
         bool $isReprint = false,
         ?string $lang = null,
     ): PrintJob {
+        return $this->queueRendered($this->document(self::KIND_QUOTATION, $estimate, $lang), $printer, $userId, $isReprint);
+    }
+
+    private function quotationDocument(CateringEstimate $estimate, ?string $lang): array
+    {
         $estimate->loadMissing(['event.customer', 'lines']);
 
         // CAT-DOC-001 ka wohi qaida: "graahak par kitna baqi hai" ka ek hi
@@ -202,26 +214,25 @@ class CateringDocumentQueueService
         // ho chuka hota us ka parcha zyada baqi dikhata — aur saath khari
         // screen us se ikhtilaf karti.
         $position = app(CateringFinancialPositionService::class)->position($estimate->event);
+        $lang = $this->language($lang);
 
-        return $this->queue(
-            kind: self::KIND_QUOTATION,
-            printer: $printer,
-            html: view('tenant.catering.documents.estimate', [
+        return [
+            'kind' => self::KIND_QUOTATION,
+            'html' => view('tenant.catering.documents.estimate', [
                 'estimate' => $estimate,
                 'event' => $estimate->event,
-                'lang' => $this->language($lang),
+                'lang' => $lang,
                 'position' => $position,
                 'advanceTotal' => $position['net_received'],
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: self::paperFor(self::KIND_QUOTATION),
-            referenceType: 'catering_estimate',
-            referenceId: (int) $estimate->id,
-            referenceNo: $estimate->event?->event_no.' / Q'.$estimate->version_no,
-            branchId: $estimate->event?->branch_id,
-            userId: $userId,
-            isReprint: $isReprint,
-        );
+            'paper' => self::paperFor(self::KIND_QUOTATION),
+            'lang' => $lang,
+            'reference_type' => 'catering_estimate',
+            'reference_id' => (int) $estimate->id,
+            'reference_no' => $estimate->event?->event_no.' / Q'.$estimate->version_no,
+            'branch_id' => $estimate->event?->branch_id,
+        ];
     }
 
     /**
@@ -251,24 +262,27 @@ class CateringDocumentQueueService
         ?int $userId = null,
         bool $isReprint = false,
     ): PrintJob {
+        return $this->queueRendered($this->document(self::KIND_FINAL_INVOICE, $invoice, $lang), $printer, $userId, $isReprint);
+    }
+
+    private function finalInvoiceDocument(\App\Models\Tenant\CateringFinalInvoice $invoice, string $lang): array
+    {
         $invoice->loadMissing(['event']);
 
-        return $this->queue(
-            kind: self::KIND_FINAL_INVOICE,
-            printer: $printer,
-            html: view('tenant.catering.documents.final-invoice', [
+        return [
+            'kind' => self::KIND_FINAL_INVOICE,
+            'html' => view('tenant.catering.documents.final-invoice', [
                 'invoice' => $invoice,
                 'lang' => $lang,
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: self::paperFor(self::KIND_FINAL_INVOICE),
-            referenceType: 'catering_final_invoice',
-            referenceId: (int) $invoice->id,
-            referenceNo: $invoice->invoice_no,
-            branchId: $invoice->event?->branch_id,
-            userId: $userId,
-            isReprint: $isReprint,
-        );
+            'paper' => self::paperFor(self::KIND_FINAL_INVOICE),
+            'lang' => $lang,
+            'reference_type' => 'catering_final_invoice',
+            'reference_id' => (int) $invoice->id,
+            'reference_no' => $invoice->invoice_no,
+            'branch_id' => $invoice->event?->branch_id,
+        ];
     }
 
     /**
@@ -292,24 +306,27 @@ class CateringDocumentQueueService
         ?int $userId = null,
         bool $isReprint = false,
     ): PrintJob {
+        return $this->queueRendered($this->document(self::KIND_PROFORMA, $event, $lang), $printer, $userId, $isReprint);
+    }
+
+    private function proformaDocument(CateringEvent $event, string $lang): array
+    {
         $proforma = app(CateringFinalInvoiceService::class)->proforma($event);
 
-        return $this->queue(
-            kind: self::KIND_PROFORMA,
-            printer: $printer,
-            html: view('tenant.catering.documents.final-invoice', [
+        return [
+            'kind' => self::KIND_PROFORMA,
+            'html' => view('tenant.catering.documents.final-invoice', [
                 'invoice' => $proforma,
                 'lang' => $lang,
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: self::paperFor(self::KIND_PROFORMA),
-            referenceType: 'catering_event',
-            referenceId: (int) $event->id,
-            referenceNo: 'PROFORMA-'.$event->event_no,
-            branchId: $event->branch_id,
-            userId: $userId,
-            isReprint: $isReprint,
-        );
+            'paper' => self::paperFor(self::KIND_PROFORMA),
+            'lang' => $lang,
+            'reference_type' => 'catering_event',
+            'reference_id' => (int) $event->id,
+            'reference_no' => 'PROFORMA-'.$event->event_no,
+            'branch_id' => $event->branch_id,
+        ];
     }
 
     /**
@@ -323,21 +340,172 @@ class CateringDocumentQueueService
         ?int $userId = null,
         bool $isReprint = false,
     ): PrintJob {
-        return $this->queue(
-            kind: self::KIND_ADDRESS_SHEET,
-            printer: $printer,
-            html: view('tenant.catering.documents.address-sheet', [
+        return $this->queueRendered($this->document(self::KIND_ADDRESS_SHEET, $event, null), $printer, $userId, $isReprint);
+    }
+
+    private function addressSheetDocument(CateringEvent $event): array
+    {
+        return [
+            'kind' => self::KIND_ADDRESS_SHEET,
+            'html' => view('tenant.catering.documents.address-sheet', [
                 'events' => collect([$event]),
                 'businessName' => $this->businessName(),
             ])->render(),
-            paper: self::paperFor(self::KIND_ADDRESS_SHEET),
-            referenceType: 'catering_event',
-            referenceId: (int) $event->id,
-            referenceNo: $event->event_no,
-            branchId: $event->branch_id,
+            'paper' => self::paperFor(self::KIND_ADDRESS_SHEET),
+            'lang' => null,
+            'reference_type' => 'catering_event',
+            'reference_id' => (int) $event->id,
+            'reference_no' => $event->event_no,
+            'branch_id' => $event->branch_id,
+        ];
+    }
+
+    // ── PRINT-PREPARE-1 — ek jagah render, Send aur tayyari dono ke liye ────────
+
+    /**
+     * Har document EK hi raaste se banta hai — Send (`queue…`) bhi, screen khulte hi tayyari (`prepare`) bhi.
+     * Do raaste hote to ek din dono ka HTML alag ho jata, fingerprint kabhi na milta, aur tayyari chup-chaap bekaar
+     * ho jati (kaghaz phir bhi sahi nikalta, magar dheema). Ek raasta = ek HTML.
+     *
+     * @param  CateringEvent|CateringEstimate|\App\Models\Tenant\CateringFinalInvoice  $subject
+     */
+    public function document(string $kind, $subject, ?string $lang = null): array
+    {
+        return match ($kind) {
+            self::KIND_KITCHEN_SHEET => $this->kitchenSheetDocument($subject, $lang),
+            self::KIND_QUOTATION => $this->quotationDocument($subject, $lang),
+            // Invoice/proforma: zubaan na di gayi ho to pehle jaisa English (CATERING-SEND-LANGUAGE-1).
+            self::KIND_FINAL_INVOICE => $this->finalInvoiceDocument($subject, $lang ?? 'en'),
+            self::KIND_PROFORMA => $this->proformaDocument($subject, $lang ?? 'en'),
+            self::KIND_ADDRESS_SHEET => $this->addressSheetDocument($subject),
+            default => throw new RuntimeException("Unknown document kind [{$kind}]."),
+        };
+    }
+
+    /**
+     * Parche ki pehchan — kaghaz ka matn, "chhapne ka waqt" HATA KAR, aur kaghaz ka naap.
+     *
+     * Waqt is liye nikala jata hai ke wohi parcha do minute baad bhi wohi rahe; warna har minute naya fingerprint
+     * banta aur tayyar PDF kabhi kaam na aati. Waqt `partials/printed-at` ke `<!--printed-at-->` nishanon ke beech hai.
+     * Baqi ek huroof bhi badla (rate, item, zubaan, naam) to fingerprint badal jata hai — purani PDF kabhi nahi chhapti.
+     */
+    public static function fingerprint(string $html, string $paper): string
+    {
+        $stable = preg_replace('/<!--printed-at-->.*?<!--\/printed-at-->/s', '', $html) ?? $html;
+
+        return hash('sha256', $paper."\n".$stable);
+    }
+
+    private function queueRendered(array $doc, Printer $printer, ?int $userId, bool $isReprint): PrintJob
+    {
+        return $this->queue(
+            kind: $doc['kind'],
+            printer: $printer,
+            html: $doc['html'],
+            paper: $doc['paper'],
+            referenceType: $doc['reference_type'],
+            referenceId: $doc['reference_id'],
+            referenceNo: $doc['reference_no'],
+            branchId: $doc['branch_id'],
             userId: $userId,
             isReprint: $isReprint,
         );
+    }
+
+    /**
+     * Screen khulte hi: agent ke liye "PDF bana kar rakho, chhapo mat".
+     *
+     * Wohi parcha (wohi fingerprint) dobara khula to nayi row nahi — wohi lauti. Nayi tayyari sirf tab:
+     *  - pehli dafa;
+     *  - pichli tayyar PDF `FRESH_MINUTES` se purani ho (kaghaz par waqt purana na aaye);
+     *  - nakaam hui thi;
+     *  - user ne ↻ dabaya (`$force`).
+     * Order badla to HTML badla → fingerprint naya → nayi row; agent usi document (`doc_key`) ki purani PDF mitata hai.
+     */
+    public function prepare(string $kind, $subject, Printer $printer, ?string $lang = null, bool $force = false): PrintPrepare
+    {
+        $this->assertCanPrintDocuments($printer);
+
+        $doc = $this->document($kind, $subject, $lang);
+        $fingerprint = self::fingerprint($doc['html'], $doc['paper']);
+
+        $row = PrintPrepare::where('fingerprint', $fingerprint)->first();
+        if ($row && ! $force) {
+            $inFlight = $row->status === PrintPrepare::STATUS_QUEUED;
+            if ($row->isFreshReady() || $inFlight) {
+                return $row;
+            }
+        }
+
+        $attributes = [
+            'printer_id' => $printer->id,
+            'branch_id' => $doc['branch_id'],
+            'doc_key' => self::docKey($doc),
+            'paper' => $doc['paper'],
+            'html' => $doc['html'],
+            'status' => PrintPrepare::STATUS_QUEUED,
+            'claimed_by_agent_id' => null,
+            'claimed_at' => null,
+            'ready_at' => null,
+            'error' => null,
+        ];
+
+        if ($row) {
+            $row->update($attributes);
+
+            return $row->refresh();
+        }
+
+        try {
+            return PrintPrepare::create($attributes + ['fingerprint' => $fingerprint]);
+        } catch (QueryException $e) {
+            // Do tab ek saath khule: doosri ne isi lamhe wohi fingerprint likh diya.
+            return PrintPrepare::where('fingerprint', $fingerprint)->firstOrFail();
+        }
+    }
+
+    /**
+     * Khula safha har kuch second poochhta hai: "mera parcha tayyar hai? aur kya order ab bhi wohi hai?"
+     *
+     * Document ABHI dobara render hota hai aur fingerprint milaya jata hai — is liye order kisi bhi raaste se badla
+     * ho (punch, edit, revision, restore…), pakda jata hai; har save par alag pehra lagane ki zaroorat nahi.
+     * `$known` = jo fingerprint safhe ne pehle suna tha. Badla to `changed = true` aur nayi tayyari khud lag jati hai.
+     *
+     * @return array{state:string, fingerprint:string, changed:bool, ready_at:?string, agent_online:bool}
+     */
+    public function prepareStatus(string $kind, $subject, Printer $printer, ?string $lang = null, ?string $known = null): array
+    {
+        $doc = $this->document($kind, $subject, $lang);
+        $fingerprint = self::fingerprint($doc['html'], $doc['paper']);
+        $changed = $known !== null && $known !== '' && ! hash_equals($known, $fingerprint);
+
+        $row = PrintPrepare::where('fingerprint', $fingerprint)->first();
+        if ($changed || ! $row || (! $row->isFreshReady() && $row->status !== PrintPrepare::STATUS_QUEUED)) {
+            $row = $this->prepare($kind, $subject, $printer, $lang);
+        }
+
+        return [
+            'state' => $row->isFreshReady() ? 'ready' : ($row->status === PrintPrepare::STATUS_FAILED ? 'failed' : 'preparing'),
+            'fingerprint' => $fingerprint,
+            'changed' => $changed,
+            'ready_at' => $row->ready_at?->toIso8601String(),
+            'agent_online' => $this->agentOnlineFor($printer, $doc['branch_id']),
+        ];
+    }
+
+    private static function docKey(array $doc): string
+    {
+        return $doc['kind'].':'.$doc['reference_id'].':'.($doc['lang'] ?? '-');
+    }
+
+    /** Is printer ka parcha uthane wala koi agent pichle 30 second me bola ho. */
+    public function agentOnlineFor(Printer $printer, ?int $branchId): bool
+    {
+        return \App\Models\Tenant\PrintAgent::query()
+            ->where('is_active', true)
+            ->where('last_seen_at', '>=', now()->subSeconds(30))
+            ->when($branchId, fn ($q) => $q->where(fn ($w) => $w->whereNull('branch_id')->orWhere('branch_id', $branchId)))
+            ->exists();
     }
 
     /**
@@ -408,6 +576,9 @@ class CateringDocumentQueueService
                 'paper_css' => CateringSetting::cssPageSize($paper, 'A4 portrait'),
                 'windows_printer_name' => $printer->windows_printer_name,
                 'document_no' => $referenceNo,
+                // PRINT-PREPARE-1 — agent ke paas isi fingerprint ki taaza PDF pehle se bani ho to wohi chhapta hai
+                // (Chrome ka kaam bach jata hai). Na ho to HTML se banata hai — purana agent ise dekhta hi nahi.
+                'fingerprint' => self::fingerprint($html, $paper),
             ],
             // Poora HTML, abhi ke abhi jama. Agent ise Chrome se PDF banata hai.
             'raw_payload' => $html,

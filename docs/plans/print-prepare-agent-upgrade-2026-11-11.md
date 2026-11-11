@@ -301,3 +301,39 @@ install ke baad agent chala kar tasdeeq; uninstall: process band, Run value, fil
 Tests: MySQL (prepare idempotent, fingerprint, mode=status order badla, switch OFF = kuch nahi, purane agent ko kabhi
 nahi, asli job pehle, rows ki safai, heartbeat version/poll_ms) + agent JS (config migration, single-instance, ready
 cache hit/miss/stale, cleanup, autostart B2) + installer ka asli Windows PC par chalana.
+
+## 10. Nateeje (11 Nov, build)
+
+Commits (branch `feat/print-prepare-agent-20261111`, local): `2b054814` dhaancha · `0e0465bf` server · `c29634b8` agent 2.7.0 +
+installer · `299eb781` Print Agents mashwara + log.
+
+- **PHP:** `PrintPrepareMySqlTest` 12 (tayyari = Send ka fingerprint har document × har zubaan · waqt fingerprint nahi
+  badalta, order badalta hai · ek safha = ek tayyari · order badla pakda · 9 min purani dobara · purane agent ko kabhi nahi,
+  asli parcha pehle · sirf claim karne wala ready likhe · heartbeat version + poll_ms · rows ki safai · invoice · Print
+  Agents safha). Saath print / catering documents / KOT / agent ke **191** tests hare.
+- **Sabotage (har ek ke baad file wapas, `cmp`):** waqt fingerprint me → laal · purane agent ko tayyari → laal · asli parche
+  ke saath tayyari → laal · switch band par tayyari → laal · order badla pakda nahi → laal · Print Agents par
+  install-service.ps1 → laal. (Pehli koshish me do sabotage `sed`/regex ki ghalti se lage hi nahi — dobara seedhe string
+  replace se chalaye; dono laal.)
+- **Agent JS:** sab hare — prepare-test (asli Chrome, ~0.85 s/PDF laptop par), autostart-guard (B2, 23), version-match,
+  elevation, document, isolation, lane-lock, health; **exe e2e:** thermal ("ESC/POS ticket pahuncha — restaurant ka kaam
+  waisa hi"), document (na-mojood printer par "chhap gaya" nahi).
+- **Asli Windows (owner ka laptop, owner ki ijazat se):** 2.0.1 machine-wide (Program Files, session 0, demo tenant) →
+  2.7.0: ek UAC (owner ne Yes dabaya), purana poora gaya (registry, folder, process), naya chal raha (ek hi agent + ek
+  chowkidar), pairing wohi `AG-DEMO-LOCAL`, HKCU Run darj; doosri copy khud band ("pehle se chal raha hai"); agent maara
+  → chowkidar ne 8 s me dobara; setup dobara (update) → koi popup nahi, pairing wohi, ek hi agent. **Logon (12 Nov):** naye
+  session (2) me HKCU Run ne 7:06:10 PM par chowkidar, 7:06:11 par agent khud chalaya — koi script nahi (Windows ka boot
+  waqt wohi raha: sign-out/in tha, asli restart nahi; restart bhi isi logon raaste se chalata hai). Raat internet ke
+  baghair agent "server nahi mila" likhta raha, band nahi hua, internet aate hi khud kaam par.
+- Seekh: PowerShell 5.1 `Start-Process -Wait` setup ke chalaye agent ka bhi intezar karta hai — script me `cmd /c` /
+  seedha exe chalayein.
+
+## 11. Deploy ka tareeqa (owner ke "push / deploy" par)
+
+1. **Deploy 1 — sirf dhaancha** (`2b054814` tak): migration `print_prepares` + `print_agents.agent_version`. Kuch nahi
+   badalta. Smoke + permissions.
+2. **Deploy 2 — code** (switch sab jagah OFF): Send / safhe pehle jaise; heartbeat version likhna shuru. Shelf par 2.7.0
+   **nahi** (shelf ka sab se naya build = har dukan ka default download).
+3. **Kashif Kitchen PC (AnyDesk):** bana hua 2.7.0 setup chalana — purana 2.6.x mila to ek UAC; pairing wohi. Phir
+   Master se `print_prepare` ON (sirf KK) → poll 1 s + tayyari. Naap: Send se kaghaz tak.
+4. KK par theek → 2.7.0 shelf par (sab ka default) → baqi dukanein apne waqt par.

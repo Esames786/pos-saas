@@ -28,4 +28,7 @@
     $paLabel = (isset($t) && is_callable($t)) ? $t('Printed', 'چھپا') : 'Printed';
     $paWhen = app(\App\Support\TenantClock::class)->now()->format('d M Y g:i A');
 @endphp
-<span dir="ltr">{{ $paPrefix ?? '' }}{{ $paLabel }} {{ $paWhen }}</span>
+{{-- PRINT-PREPARE-1 — `printed-at` nishan sirf "Printed + waqt" ke gird. Parche ki pehchan (fingerprint) inhe chhor
+     kar banti hai, taake wohi parcha do minute baad bhi wohi rahe. Release number (`paPrefix`) nishanon se BAHAR hai:
+     wo badle to pehchan bhi badle. --}}
+<span dir="ltr">{{ $paPrefix ?? '' }}<!--printed-at-->{{ $paLabel }} {{ $paWhen }}<!--/printed-at--></span>

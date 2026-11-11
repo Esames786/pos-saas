@@ -108,10 +108,17 @@ class PrintAgentController extends Controller
         return 'unknown';
     }
     /** Serve one agent build, version-stamped in the filename and never cacheable. */
-    private function serveAgentExe(string $path, string $version)
+    private function serveAgentExe(string $path, string $version, ?string $pairCode = null)
     {
+        // AGENT-UPGRADE-1 — "ek click": 2.7.0+ ka installer apne file ke NAAM se server aur pairing code parh leta hai,
+        // user kuch type nahi karta. `~` Windows ke naam me jaiz hai; browser " (1)" jore to bhi installer samajhta hai.
+        // Code 15 min ka, ek dafa ka — naam me sirf usi waqt aata hai jab safhe par dikh raha ho.
+        $name = 'BingooPrintAgent-Setup-' . $version
+            . ($pairCode !== null ? '~' . request()->getHost() . '~' . $pairCode : '')
+            . '.exe';
+
         // download() returns a Symfony BinaryFileResponse (no withHeaders) — set on the header bag.
-        $response = response()->download($path, 'BingooPrintAgent-Setup-' . $version . '.exe');
+        $response = response()->download($path, $name);
         $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         $response->headers->set('Pragma', 'no-cache');
         $response->headers->set('X-Agent-Version', $version);
@@ -299,7 +306,11 @@ class PrintAgentController extends Controller
         if ($requested !== '' && preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $requested)) {
             $shelf = $base . '/dist/releases/BingooPrintAgent-Setup-' . $requested . '.exe';
             if (is_file($shelf)) {
-                return $this->serveAgentExe($shelf, $requested);
+                // AGENT-UPGRADE-1 — sirf 2.7.0+ naam se code parhta hai; purane ko code dena bekaar (aur URL me code).
+                $pair = preg_replace('/\D+/', '', (string) $request->query('pair', ''));
+                $pair = (strlen($pair) === 6 && version_compare($requested, self::PREFILL_MIN_VERSION, '>=')) ? $pair : null;
+
+                return $this->serveAgentExe($shelf, $requested, $pair);
             }
         }
 
@@ -363,8 +374,15 @@ class PrintAgentController extends Controller
         return response()->download($zipPath, 'BingooPrintAgent-windows.zip')->deleteFileAfterSend(true);
     }
 
+    /** AGENT-UPGRADE-1 — is version se installer file ke naam se server + code parhta hai (ek click). */
+    public const PREFILL_MIN_VERSION = '2.7.0';
+
     private function pairingPayload(PrintAgent $agent, string $code): array
     {
+        // Shelf par sab se naya build jo naam se code parh sake — na ho to button hi nahi (purana tareeqa).
+        $prefill = collect($this->availableAgentBuilds())
+            ->first(fn ($b) => version_compare($b['version'], self::PREFILL_MIN_VERSION, '>='));
+
         return [
             'agent_id'   => $agent->id,
             'agent_name' => $agent->name,
@@ -372,6 +390,10 @@ class PrintAgentController extends Controller
             'code'       => substr($code, 0, 3) . '-' . substr($code, 3),
             'expires_at' => now()->addMinutes(PrintAgentPairingService::CODE_TTL_MINUTES)->toIso8601String(),
             'server_url' => request()->getSchemeAndHttpHost(),
+            'prefill_version' => $prefill['version'] ?? null,
+            'prefill_url' => $prefill
+                ? url('/print/agents/download/windows') . '?version=' . $prefill['version'] . '&pair=' . $code . '&v=' . $prefill['version']
+                : null,
         ];
     }
 }
