@@ -321,8 +321,10 @@ installer · `299eb781` Print Agents mashwara + log.
 - **Asli Windows (owner ka laptop, owner ki ijazat se):** 2.0.1 machine-wide (Program Files, session 0, demo tenant) →
   2.7.0: ek UAC (owner ne Yes dabaya), purana poora gaya (registry, folder, process), naya chal raha (ek hi agent + ek
   chowkidar), pairing wohi `AG-DEMO-LOCAL`, HKCU Run darj; doosri copy khud band ("pehle se chal raha hai"); agent maara
-  → chowkidar ne 8 s me dobara; setup dobara (update) → koi popup nahi, pairing wohi, ek hi agent. **Baqi:** laptop
-  restart / logon ke baad khud chalna (owner karega).
+  → chowkidar ne 8 s me dobara; setup dobara (update) → koi popup nahi, pairing wohi, ek hi agent. **Logon (12 Nov):** naye
+  session (2) me HKCU Run ne 7:06:10 PM par chowkidar, 7:06:11 par agent khud chalaya — koi script nahi (Windows ka boot
+  waqt wohi raha: sign-out/in tha, asli restart nahi; restart bhi isi logon raaste se chalata hai). Raat internet ke
+  baghair agent "server nahi mila" likhta raha, band nahi hua, internet aate hi khud kaam par.
 - Seekh: PowerShell 5.1 `Start-Process -Wait` setup ke chalaye agent ka bhi intezar karta hai — script me `cmd /c` /
   seedha exe chalayein.
 
