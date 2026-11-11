@@ -13,9 +13,10 @@
  * Config resolution order:
  *   1. Env vars (developer/manual mode — unchanged from v1):
  *      POS_BASE_URL, POS_PRINT_AGENT_CODE, POS_PRINT_AGENT_TOKEN
- *   2. %ProgramData%\BingooPrintAgent\config.json   (Windows install)
- *   3. ~/.bingoo-print-agent/config.json            (macOS/Linux)
- *   4. ./.agent-config.json                          (local dev fallback)
+ *   2. %LOCALAPPDATA%\BingooPrintAgent\config.json  (Windows, 2.7.0+ per-user install — no admin)
+ *   3. %ProgramData%\BingooPrintAgent\config.json   (Windows, 2.6.x machine-wide install — copied to 2 once)
+ *   4. ~/.bingoo-print-agent/config.json            (macOS/Linux)
+ *   5. ./.agent-config.json                          (local dev fallback)
  *
  * Requires Node.js 18+
  */
@@ -29,7 +30,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.6.6';
+const AGENT_VERSION = '2.7.0';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -97,8 +98,13 @@ function exeDir() {
 
 function configCandidates() {
     const candidates = [];
+    // AGENT-UPGRADE-1 (2.7.0, B2): per-user install — config usi user ke folder me, admin ki zaroorat nahi.
+    if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
+        candidates.push(path.join(process.env.LOCALAPPDATA, 'BingooPrintAgent', 'config.json'));
+    }
+    // 2.6.x ka machine-wide config — sirf PARHNE ke liye; pehli dafa upar wali jagah copy ho jata hai (pairing bachi).
     if (process.platform === 'win32' && process.env.ProgramData) {
-        candidates.push(path.join(process.env.ProgramData, 'BingooPrintAgent', 'config.json'));
+        candidates.push(legacyConfigPath());
     }
     candidates.push(path.join(os.homedir(), '.bingoo-print-agent', 'config.json'));
     candidates.push(path.join(exeDir(), '.agent-config.json'));
@@ -107,6 +113,11 @@ function configCandidates() {
 
 function preferredConfigPath() {
     return configCandidates()[0];
+}
+
+/** 2.6.x (machine-wide, admin se install) ka config — purani pairing yahin hai. */
+function legacyConfigPath() {
+    return path.join(process.env.ProgramData || 'C:\\ProgramData', 'BingooPrintAgent', 'config.json');
 }
 
 function lockPath() {
@@ -147,14 +158,44 @@ function processLooksLikeAgent(pid) {
 }
 
 function anotherAgentIsRunning() {
-    let raw;
-    try { raw = fs.readFileSync(lockPath(), 'utf8'); } catch { return null; }
+    // AGENT-UPGRADE-1 — apna lock AUR 2.6.x ka (`ProgramData`) lock dono. Purana agent naye ka lock nahi dekhta, is
+    // liye naya hi rukta hai: do agent ek saath = ek parchi do dafa.
+    for (const file of [lockPath(), path.join(path.dirname(legacyConfigPath()), 'agent.lock')]) {
+        let raw;
+        try { raw = fs.readFileSync(file, 'utf8'); } catch { continue; }
 
-    let pid = 0;
-    try { pid = Number(JSON.parse(raw).pid) || 0; } catch { return null; }
-    if (!pid || pid === process.pid) { return null; }
+        let pid = 0;
+        try { pid = Number(JSON.parse(raw).pid) || 0; } catch { continue; }
+        if (!pid || pid === process.pid) { continue; }
 
-    return processLooksLikeAgent(pid) ? pid : null;
+        if (processLooksLikeAgent(pid)) { return pid; }
+    }
+
+    return otherAgentProcess();
+}
+
+/**
+ * Packaged exe ho to `BingooPrintAgent.exe` ka koi AUR process (2.6.5 aur pehle wale lock likhte hi nahi the).
+ * Dev me (`node print-agent.js`) ye jaanch nahi — wahan har node process agent nahi.
+ */
+function otherAgentProcess() {
+    if (process.platform !== 'win32' || !process.pkg) { return null; }
+    // SIRF exe tests ke liye: developer ke PC par aksar ek asli agent pehle se chal raha hota hai (11 Nov: is laptop
+    // par demo tenant ka service agent). Installer / chowkidar ye kabhi set nahi karte — client PC par pehra poora.
+    if (process.env.BINGOO_AGENT_ALLOW_OTHER === '1') { return null; }
+    try {
+        const out = require('child_process').execFileSync(
+            'tasklist', ['/FI', 'IMAGENAME eq BingooPrintAgent.exe', '/FO', 'CSV', '/NH'],
+            { encoding: 'utf8', timeout: 10000, windowsHide: true },
+        );
+        for (const line of out.split(/\r?\n/)) {
+            const cols = line.split('","').map((c) => c.replace(/"/g, ''));
+            const pid = Number(cols[1]);
+            if (pid && pid !== process.pid && /bingooprintagent/i.test(cols[0] || '')) { return pid; }
+        }
+    } catch { /* tasklist na mile to lock wali jaanch kaafi */ }
+
+    return null;
 }
 
 function claimSingleInstanceLock() {
@@ -194,6 +235,7 @@ function loadConfig() {
             if (fs.existsSync(file)) {
                 const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
                 if (raw.baseUrl && raw.agentCode && raw.token) {
+                    adoptLegacyConfig(file, raw);
                     return { source: file, pollMs: 3000, ...raw };
                 }
             }
@@ -201,6 +243,23 @@ function loadConfig() {
     }
 
     return null;
+}
+
+/**
+ * AGENT-UPGRADE-1 — purani pairing naye ghar me. 2.6.x ka config `ProgramData` me tha (admin se likha hua); 2.7.0
+ * per-user hai. Pehli dafa wohi token / agent code `LOCALAPPDATA` me copy ho jata hai — na naya pairing code, na naya
+ * agent record (Kashif Food ka "401 wala doosra agent" isi nayi pairing ka natija tha). Copy na ho sake to bhi purana
+ * file parh kar agent chalta rehta hai.
+ */
+function adoptLegacyConfig(foundAt, raw) {
+    const preferred = preferredConfigPath();
+    if (path.resolve(foundAt) === path.resolve(preferred) || fs.existsSync(preferred)) {
+        return;
+    }
+    try {
+        fs.mkdirSync(path.dirname(preferred), { recursive: true });
+        fs.writeFileSync(preferred, JSON.stringify({ ...raw, migratedFrom: foundAt, migratedAt: new Date().toISOString() }, null, 2), { mode: 0o600 });
+    } catch (_) { /* purana file kaafi hai */ }
 }
 
 function saveConfig(config) {
@@ -323,7 +382,8 @@ function headers() {
         // na kahe us ka purana kaam bilkul waisa hi chalta rehta hai. Isi liye
         // restaurant ke chalte hue agents (v2.5.0) mehfooz hain — unhe kuch
         // install kiye baghair ye job pahunchti hi nahi.
-        'X-Print-Agent-Caps':  'document',
+        // PRINT-PREPARE-1: `prepare` = screen khulte hi PDF tayyar rakh sakta hai (2.7.0+). Server sirf isi par tayyari deta hai.
+        'X-Print-Agent-Caps':  'document,prepare',
         'Accept':              'application/json',
         'Content-Type':        'application/json',
     };
@@ -336,6 +396,8 @@ async function heartbeat() {
             device_name: os.hostname(),
             device_os:   `${os.platform()} ${os.release()}`,
             local_ip:    localIp(),
+            // AGENT-UPGRADE-1 — Print Agents screen par har PC ka version (pehle sirf pairing par jata tha).
+            agent_version: AGENT_VERSION,
             // Live printer health from the keep-awake pokes, so the Printers screen can show each
             // printer Online/Offline + latency. Only printers we have an id for.
             printers_status: [...lastPokeStatus.values()]
@@ -356,6 +418,11 @@ async function heartbeat() {
     // for the rest of the day with no error anywhere.
     if (res.json && Array.isArray(res.json.printers)) {
         syncKnownPrinters(res.json.printers);
+    }
+
+    // AGENT-UPGRADE-1 — server ka poll waqt (purana server ye key nahi bhejta → jo chal raha hai wohi).
+    if (res.json && res.json.poll_ms) {
+        schedulePoll(res.json.poll_ms);
     }
 }
 
@@ -750,13 +817,38 @@ async function printDocumentOnWindows(job) {
 
     const tool = findPdfPrinter();
 
+    // PRINT-PREPARE-1 — screen khulte hi bani hui PDF mojood hai (wohi fingerprint, 10 min se kam purani)? To Chrome
+    // ka kaam ho chuka: seedha printer. Wohi PDF abhi ban rahi ho to us ka intezar — dobara Chrome nahi.
+    const readyPdf = await readyPdfFor((job.payload || {}).fingerprint);
+    if (readyPdf) {
+        log(`[READY] ${job.job_no || job.id} — tayyar PDF se, Chrome nahi chala`);
+        await sendPdfToPrinter(tool, readyPdf, targetName, job);
+        return;
+    }
+
     const stamp    = `${job.job_no || job.id}-${Date.now()}`.replace(/[^A-Za-z0-9._-]/g, '-');
-    const htmlPath = path.join(os.tmpdir(), `bingoo-${stamp}.html`);
     const pdfPath  = path.join(os.tmpdir(), `bingoo-${stamp}.pdf`);
+
+    try {
+        await renderPdf(browsers, job.raw_payload || '', pdfPath, stamp);
+        await sendPdfToPrinter(tool, pdfPath, targetName, job);
+    } finally {
+        // Send wali PDF har soorat me jati hai — kamyabi par bhi, nakami par bhi.
+        try { if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath); } catch { /* chhor do */ }
+    }
+}
+
+/**
+ * HTML → PDF, Chrome/Edge se (har browser, har headless soorat — neeche dekho). Send aur tayyari (PRINT-PREPARE-1)
+ * dono yehi chalate hain, is liye kaghaz bilkul ek jaisa banta hai. PDF `pdfPath` par; HTML aur Chrome profile yahin
+ * mitte hain, PDF ka faisla bulane wala karta hai.
+ */
+async function renderPdf(browsers, html, pdfPath, stamp) {
+    const htmlPath = path.join(os.tmpdir(), `bingoo-${stamp}.html`);
     const profileDir = path.join(os.tmpdir(), `bingoo-chrome-${stamp}`);
 
     try {
-        fs.writeFileSync(htmlPath, job.raw_payload || '', 'utf8');
+        fs.writeFileSync(htmlPath, html, 'utf8');
 
         // Kagaz ka size HTML ke apne `@page` me pehle se hai aur Chrome usi ko
         // maanta hai. Yahan dobara likhna do jagah do jawab bana deta.
@@ -843,31 +935,194 @@ async function printDocumentOnWindows(job) {
                 + 'Koshishein: ' + tried.join(' | ')
             );
         }
-        if (tool) {
-            // Kagaz ka naap printer tak pahunchana — warna wo apni default
-            // (aam tor par A4) uthata hai aur A5 ka parcha A4 par nikalta hai.
-            await runExe(tool.exe, tool.args(pdfPath, targetName, printSettingsFor(job)), 120000);
-        } else {
-            // Koi maaruf utility nahi mili — Windows ka apna "PrintTo" aazmao.
-            //
-            // Ye is liye hai ke malik ko us PC par kuch install na karna pare.
-            // Jahan koi bhi PDF handler `printto` darj karta ho (Acrobat, aur
-            // aksar Edge), wahan ye bina kisi nayi cheez ke chal jata hai.
-            //
-            // Bharosa iss par poora NAHI kiya ja sakta: har Windows par wo verb
-            // darj nahi hota. Is liye ye aakhri koshish hai, pehli nahi — aur
-            // nakami par neeche saaf likha hai ke karna kya hai.
-            await printViaWindowsVerb(pdfPath, targetName);
-        }
     } finally {
-        // Asthai files har soorat me jati hain — kamyabi par bhi, nakami par bhi.
-        for (const f of [htmlPath, pdfPath]) {
-            try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* chhor do */ }
-        }
+        // Asthai HTML har soorat me jati hai — kamyabi par bhi, nakami par bhi.
+        try { if (fs.existsSync(htmlPath)) fs.unlinkSync(htmlPath); } catch { /* chhor do */ }
         // Aur wo asthai Chrome profile bhi. Ye chhorte jana ek khamosh kharabi
         // hoti: har parche par kuch MB `temp` me jama hote rehte aur mahinon
         // baad disk bhar jati, bina kisi ko wajah bataye.
         try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch { /* chhor do */ }
+    }
+}
+
+/** Bani hui PDF ko Windows printer tak — SumatraPDF (kaghaz ke naap ke saath), warna Windows ka "PrintTo". */
+async function sendPdfToPrinter(tool, pdfPath, targetName, job) {
+    if (tool) {
+        // Kagaz ka naap printer tak pahunchana — warna wo apni default
+        // (aam tor par A4) uthata hai aur A5 ka parcha A4 par nikalta hai.
+        await runExe(tool.exe, tool.args(pdfPath, targetName, printSettingsFor(job)), 120000);
+    } else {
+        // Koi maaruf utility nahi mili — Windows ka apna "PrintTo" aazmao.
+        //
+        // Ye is liye hai ke malik ko us PC par kuch install na karna pare.
+        // Jahan koi bhi PDF handler `printto` darj karta ho (Acrobat, aur
+        // aksar Edge), wahan ye bina kisi nayi cheez ke chal jata hai.
+        //
+        // Bharosa iss par poora NAHI kiya ja sakta: har Windows par wo verb
+        // darj nahi hota. Is liye ye aakhri koshish hai, pehli nahi — aur
+        // nakami par neeche saaf likha hai ke karna kya hai.
+        await printViaWindowsVerb(pdfPath, targetName);
+    }
+}
+
+/* ── PRINT-PREPARE-1 — screen khulte hi PDF tayyar ─────────────────────────
+ *
+ * Owner: "user sirf screen khole … agent saara kaam kar le, PDF bana kar rakh le … send to network dabaye to foran
+ * print". Server (`pending` ki `prepares`) sirf tab deta hai jab koi asli parcha na ho, aur sirf `prepare` kehne wale
+ * agent ko. PDF `ready\<docKey>__<fingerprint>.pdf` me — Send ka parcha isi fingerprint se milta hai, is liye badla
+ * hua order kabhi purani PDF se nahi chhapta. Kaghaz par "chhapne ka waqt" PDF ke ANDAR hai, is liye Send sirf
+ * 10 min se taaza PDF leta hai (server 9 min par khud nayi banwata hai).
+ *
+ * Owner ki shart "data PC pe jama na ho": ek document ki nayi PDF bante hi us ki purani mitti hai; `cleanupFiles()`
+ * 30 din se purani aur 500 MB se upar wali mitata hai, aur `%TEMP%` ki bachi hui `bingoo-*` cheezen bhi.
+ */
+const READY_FRESH_MS   = 10 * 60 * 1000;
+const READY_KEEP_MS    = 30 * 24 * 60 * 60 * 1000;
+const READY_MAX_BYTES  = 500 * 1024 * 1024;
+const TEMP_KEEP_MS     = 24 * 60 * 60 * 1000;
+const CLEANUP_EVERY_MS = 6 * 60 * 60 * 1000;
+
+const inFlightPrepares = new Map();   // fingerprint -> Promise (kabhi reject nahi)
+let prepareChain = Promise.resolve(); // ek waqt me ek tayyari — Chrome ek ek kar ke
+
+function readyDir() {
+    return path.join(path.dirname(preferredConfigPath()), 'ready');
+}
+
+function isFingerprint(fp) {
+    return typeof fp === 'string' && /^[a-f0-9]{64}$/.test(fp);
+}
+
+function safeDocKey(docKey) {
+    return String(docKey || 'doc').replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80);
+}
+
+function readyFileFor(fingerprint) {
+    try {
+        const name = fs.readdirSync(readyDir()).find((n) => n.endsWith(`__${fingerprint}.pdf`));
+        return name ? path.join(readyDir(), name) : null;
+    } catch {
+        return null;
+    }
+}
+
+/** Send ke liye tayyar PDF — sirf wohi fingerprint, aur 10 min se taaza (kaghaz ka waqt). Ban rahi ho to intezar. */
+async function readyPdfFor(fingerprint) {
+    if (!isFingerprint(fingerprint)) { return null; }
+
+    const inFlight = inFlightPrepares.get(fingerprint);
+    if (inFlight) { await inFlight; }
+
+    const file = readyFileFor(fingerprint);
+    if (!file) { return null; }
+    try {
+        const st = fs.statSync(file);
+        if (st.size > 0 && Date.now() - st.mtimeMs <= READY_FRESH_MS) { return file; }
+    } catch { /* gayab ho gayi — Chrome se bana lo */ }
+
+    return null;
+}
+
+function enqueuePrepares(list) {
+    for (const p of list) {
+        if (!p || !isFingerprint(p.fingerprint) || inFlightPrepares.has(p.fingerprint)) { continue; }
+        const settled = prepareChain.then(() => preparePdf(p)).catch(() => {});
+        inFlightPrepares.set(p.fingerprint, settled);
+        prepareChain = settled.then(() => { inFlightPrepares.delete(p.fingerprint); });
+    }
+}
+
+async function preparePdf(p) {
+    const started = Date.now();
+    const key = safeDocKey(p.doc_key);
+    const dir = readyDir();
+    const finalPath = path.join(dir, `${key}__${p.fingerprint}.pdf`);
+    const stamp = `prep-${p.id}-${Date.now()}`;
+    const tmpPath = path.join(dir, `.${stamp}.pdf`);
+
+    try {
+        const browsers = findBrowsers();
+        if (browsers.length === 0) {
+            throw new Error('Chrome ya Edge is PC par nahi mila — document ka PDF usi se banta hai.');
+        }
+        fs.mkdirSync(dir, { recursive: true });
+        await renderPdf(browsers, p.html || '', tmpPath, stamp);
+
+        // Isi document (zubaan samet) ki purani PDF — order badla ya waqt purana hua — ab bekaar.
+        for (const n of fs.readdirSync(dir)) {
+            if (n.startsWith(`${key}__`) && n !== path.basename(finalPath)) {
+                try { fs.unlinkSync(path.join(dir, n)); } catch { /* chhor do */ }
+            }
+        }
+        fs.renameSync(tmpPath, finalPath);
+
+        await postPrepareResult(p.id, true);
+        log(`[PREP]  ${p.doc_key} tayyar (${Date.now() - started} ms)`);
+    } catch (err) {
+        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch { /* chhor do */ }
+        log(`[PREP]  ${p.doc_key} nahi bani: ${err.message}`);
+        try { await postPrepareResult(p.id, false, err.message); } catch { /* server ko na bata sake — Send phir bhi chalega */ }
+    }
+}
+
+async function postPrepareResult(id, ok, message) {
+    const res = await httpJson('POST', `${CONFIG.baseUrl}/api/print-agent/prepares/${id}/${ok ? 'ready' : 'failed'}`, {
+        headers: headers(),
+        body:    ok ? {} : { error_message: String(message || 'failed').slice(0, 1900) },
+    });
+    if (!res.ok) {
+        throw new Error(`prepare ${ok ? 'ready' : 'failed'}: HTTP ${res.status}`);
+    }
+}
+
+/** PC par kuch jama na ho: `ready\` 30 din / 500 MB, `.tmp` aur `%TEMP%\bingoo-*` 1 din. */
+function cleanupFiles() {
+    try {
+        const dir = readyDir();
+        if (fs.existsSync(dir)) {
+            const now = Date.now();
+            const files = fs.readdirSync(dir).map((n) => {
+                const f = path.join(dir, n);
+                try {
+                    const st = fs.statSync(f);
+                    return st.isFile() ? { f, n, mtime: st.mtimeMs, size: st.size } : null;
+                } catch { return null; }
+            }).filter(Boolean);
+
+            let removed = 0;
+            const left = [];
+            for (const x of files) {
+                const keep = x.n.startsWith('.') ? TEMP_KEEP_MS : READY_KEEP_MS;
+                if (now - x.mtime > keep) {
+                    try { fs.unlinkSync(x.f); removed++; } catch { left.push(x); }
+                } else {
+                    left.push(x);
+                }
+            }
+            left.sort((a, b) => a.mtime - b.mtime);
+            let total = left.reduce((s, x) => s + x.size, 0);
+            while (total > READY_MAX_BYTES && left.length > 0) {
+                const x = left.shift();
+                try { fs.unlinkSync(x.f); total -= x.size; removed++; } catch { /* chhor do */ }
+            }
+            if (removed > 0) { log(`[CLEAN] ready: ${removed} purani file(s) hata di`); }
+        }
+
+        let temp = 0;
+        const tmp = os.tmpdir();
+        for (const n of fs.readdirSync(tmp)) {
+            if (!n.startsWith('bingoo-')) { continue; }
+            const f = path.join(tmp, n);
+            try {
+                if (Date.now() - fs.statSync(f).mtimeMs > TEMP_KEEP_MS) {
+                    fs.rmSync(f, { recursive: true, force: true });
+                    temp++;
+                }
+            } catch { /* chhor do */ }
+        }
+        if (temp > 0) { log(`[CLEAN] temp: ${temp} purani cheez(en) hata di`); }
+    } catch (err) {
+        log(`[CLEAN] ${err.message}`);
     }
 }
 
@@ -1205,6 +1460,8 @@ let idleCounter = 0;
 // not open, hit the timeout, and the ticket was abandoned. This is the collision the counter saw
 // as "sometimes it prints, sometimes it doesn't".
 let ticking = false;
+const HEARTBEAT_EVERY_MS = 3000;
+let lastHeartbeatAt = 0;
 
 async function tick() {
     if (ticking || keepAwakeRunning) {
@@ -1212,10 +1469,21 @@ async function tick() {
     }
     ticking = true;
     try {
-        await heartbeat();
+        // AGENT-UPGRADE-1 — poll 1 s ho sakta hai, magar heartbeat (printers ki sehat, version, poll waqt) pehle jaisa
+        // ~3 s par: server par har second do guna bojh bekaar. `pending` khud bhi "last seen" likhta hai.
+        if (Date.now() - lastHeartbeatAt >= HEARTBEAT_EVERY_MS) {
+            lastHeartbeatAt = Date.now();
+            await heartbeat();
+        }
 
         const data = await getPendingJobs();
         const jobs = data.jobs || [];
+
+        // PRINT-PREPARE-1 — server tayyari sirf tab deta hai jab asli parcha na ho. Ye kaam ALAG chalta hai (tick ko
+        // nahi rokta), taake tayyari ke beech aaya asli parcha intezar na kare.
+        if (jobs.length === 0 && Array.isArray(data.prepares) && data.prepares.length > 0) {
+            enqueuePrepares(data.prepares);
+        }
 
         if (jobs.length > 0) {
             idleCounter = 0;
@@ -1412,12 +1680,33 @@ function run(config) {
         log('         Scheduled task ko RunLevel Limited par daalein (Highest par nahi).');
     }
 
-    setInterval(tick, CONFIG.pollMs);
+    schedulePoll(CONFIG.pollMs);
     // Hold the printers awake so a kitchen ticket is never the thing that wakes one.
     setInterval(() => { keepPrintersAwake().catch(() => {}); }, KEEP_AWAKE_MS);
-    // Poll for Test/Reboot commands from the Printers screen (own cadence — never blocks a ticket).
-    setInterval(() => { commandTick().catch(() => {}); }, CONFIG.pollMs);
+    // Poll for Test/Reboot commands from the Printers screen (own cadence — never blocks a ticket). 3 s rehta hai:
+    // tickets ka poll tez hone se is ka tez hona zaroori nahi (server par do guna bojh hota).
+    setInterval(() => { commandTick().catch(() => {}); }, Math.max(CONFIG.pollMs, 3000));
+    // PRINT-PREPARE-1 — PC par purani PDF / temp files jama na hon (owner: "data kisi PC pe jama na ho").
+    cleanupFiles();
+    setInterval(cleanupFiles, CLEANUP_EVERY_MS);
     tick();
+}
+
+/* ── AGENT-UPGRADE-1 — poll ka waqt server tay kare ──────────────────────
+ *
+ * Pehle `pollMs` pairing ke waqt config me jam jata tha (3 s) aur badalne ke liye PC par jana parta tha. Ab heartbeat
+ * ka jawab `poll_ms` deta hai; Master switch ON = 1 s. Had 500 ms – 10 s, taake ghalat qeemat server ko na dubo de.
+ */
+let pollTimer = null;
+let currentPollMs = 0;
+
+function schedulePoll(ms) {
+    const next = Math.min(10000, Math.max(500, Number(ms) || 3000));
+    if (next === currentPollMs && pollTimer) { return; }
+    if (pollTimer) { clearInterval(pollTimer); }
+    currentPollMs = next;
+    pollTimer = setInterval(tick, next);
+    if (CONFIG) { log(`Polling: every ${next}ms`); }
 }
 
 async function status(config) {
@@ -1458,7 +1747,13 @@ if (require.main === module) {
         status(loadConfig());
     } else {
         const config = loadConfig();
-        if (!config) {
+        if (!config && command === 'run') {
+            // AGENT-UPGRADE-1 — chupe hue (auto-start / chowkidar) chalne par koi sawaal nahi pooch sakta: pehle ye
+            // chhupi window me hamesha intezar karta rehta aur installer use "chal raha hai" samajh leta. Saaf band
+            // ho, wajah log me, aur exit 4 — chowkidar (run-hidden.vbs) 4 par dobara nahi uthata.
+            log('Ye PC abhi pair nahi hua — Bingoo › Printing › Print Agents se pairing code le kar setup chalayein.');
+            process.exit(4);
+        } else if (!config) {
             console.log('No configuration found — starting first-time setup.\n');
             setup();
         } else {
@@ -1498,4 +1793,21 @@ module.exports = {
     processLooksLikeAgent,
     CB_FAILURE_THRESHOLD,
     CB_COOLDOWN_MS,
+    // AGENT-UPGRADE-1 + PRINT-PREPARE-1 — test se chalaye ja saken.
+    configCandidates,
+    preferredConfigPath,
+    legacyConfigPath,
+    loadConfig,
+    schedulePoll,
+    _currentPollMs: () => currentPollMs,
+    _stopPoll: () => { if (pollTimer) { clearInterval(pollTimer); } pollTimer = null; currentPollMs = 0; },
+    readyDir,
+    readyPdfFor,
+    enqueuePrepares,
+    preparePdf,
+    cleanupFiles,
+    _inFlightPrepares: inFlightPrepares,
+    _waitPrepares: () => prepareChain,
+    READY_FRESH_MS,
+    READY_KEEP_MS,
 };
