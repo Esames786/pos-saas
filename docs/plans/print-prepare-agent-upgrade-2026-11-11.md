@@ -1,6 +1,19 @@
-# PRINT-PREPARE-1 + AGENT-UPGRADE-1 — research (11 Nov 2026)
+# PRINT-PREPARE-1 + AGENT-UPGRADE-1 — research + plan (11 Nov 2026)
 
-> Status: **research / plan only.** Koi code nahi likha gaya. Har faisla neeche "Owner se sawaal" me hai.
+> Status: **owner ne manzoor kiya ("theek hai") — build ke liye tayyar.** Abhi koi code nahi likha gaya.
+
+## 0. Faisle ek nazar me
+
+| # | Faisla | Kahan |
+|---|---|---|
+| 1 | Printer ki neend (Sleep Delay 60–120 min) **kaam shuru karne se PEHLE**, owner khud; saath "pehle" ka naap | §7 marhala 0 |
+| 2 | Agent ka naya version, **B2 per-user** — admin kabhi nahi; naya PC / purana hata kar naya / hatana — har ek **ek click** | §4.2, §4.4 |
+| 3 | Install / upgrade / restart / logon ke baad agent **khud chale** — koi script nahi (pichli dafa ki shikayat) | §5, §8.2 |
+| 4 | Screen khulte hi PDF tayyar — kitchen sheet, quotation, proforma, invoice; single + bulk; en / ur / both | §3 |
+| 5 | **Koi zabardasti intezar nahi**; chip ⏳ → ✓ Tayyar · waqt **↻**; Send hamesha chalu | §3.7 |
+| 6 | Send par sirf ≤ 10 min purani PDF (kaghaz ka waqt); PC par koi file ≤ 30 din, 500 MB had | §3.3 |
+| 7 | Order badla → nayi PDF, purani delete; ghalat parcha kabhi nahi (fingerprint) | §3.6 |
+| 8 | Pehle sirf Kashif Kitchen, phir baqi | §5 |
 
 ## 1. Maqsad — owner ke alfaaz
 
@@ -216,10 +229,18 @@ hash milaye, silent per-user install chalaye, khud restart. Sirf B2 par mumkin (
 
 ## 7. Marhale
 
-1. Owner: printer ki neend (Sleep Delay 60–120 min) + stopwatch test — **bina code**.
-2. AGENT-UPGRADE-1 (B1 ya B2) + heartbeat version — KK PC par 2.7.0 + poll 1 s.
-3. PRINT-PREPARE-1 server + agent — Master switch, KK ON.
-4. (Baad me) server se `update` command.
+0. **Owner, kaam shuru karne se PEHLE (owner ne poochha "pehle ya baad me" → pehle):**
+   - P2055dn (192.168.100.126) aur M127fn ke network page par **Sleep Delay 60–120 min** (ya Disabled); M127fn par
+     Shut Down = Never.
+   - **Naap** (stopwatch, Send dabane se kaghaz bahar aane tak), setting se pehle aur baad — har dafa 3 parche:
+     (a) printer 20 min khaali rehne ke baad pehla parcha, (b) foran doosra. Server ka hissa (created → claimed →
+     printed) main `print_jobs` se nikal dunga; dono mila kar pata chalega printer ne kitna bachaya.
+   - Pehle kyun: muft, foran farq (sab se bara hissa ~13 s), aur saaf naap — agent baad me badle to har tabdeeli ka
+     apna farq alag nazar aaye.
+1. AGENT-UPGRADE-1 (**B2**) + heartbeat me version + poll 1 s — asli Windows PC par §5 ke saare test; KK PC par install.
+   Phir wohi naap.
+2. PRINT-PREPARE-1 server + agent (Master switch, KK ON) — §3 poora. Phir wohi naap.
+3. (Baad me) server se `update` command — phir kabhi PC par jana na pare.
 
 ## 8. Owner se sawaal — aur jawab (11 Nov)
 
