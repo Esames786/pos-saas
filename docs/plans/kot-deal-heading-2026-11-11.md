@@ -85,3 +85,27 @@ The page was shared with the owner.
   acceptable and would show a visible error, not lose data.
 - After the deploy, turn ON for khatribiryani only: its KOT layout row (branch 1, `document_type = 'kot'`)
   `show_deal_as_heading = 1`.
+
+## Done on prod — 11 Nov 2026
+
+- **Deployed** `6f92144b` (merge of `7230a7b3`) at about 09:06 UTC on the owner's "deploy kardo". `git diff 7230a7b3 HEAD` was
+  empty, and origin matched HEAD before `deploy.sh`.
+- Before and after checks:
+  - Permissions: no role lost anything.
+  - Chart of accounts: identical.
+  - Smoke: 13/13 tenants with `tb_diff=0`, `neg_on_disallowed=0`, `department_negative=0`.
+  - Column `show_deal_as_heading` exists on all 13 tenants, and was ON nowhere before the switch below.
+  - 0 `production.ERROR` after 09:00 UTC. The 6 earlier ones are from 00:00 UTC: kashifkitchen's missing `jobs` table, an
+    old issue.
+- **Switch ON for khatribiryani only** (owner: "khatri pe ye switch on kardena"): KOT layout row #1 (branch 1),
+  `show_deal_as_heading = 1`. Every other tenant stays OFF.
+- Proof, re-rendered through the live code (nothing printed):
+  - BBQ slip of HS-20261109152203-285: `1 CHANGEZI CLASSIC 01` with its 5 items under it and one rule after them.
+  - Its bill shows no `(Changezi Pulao Rice)`.
+  - The Edit Layout preview shows 1 deal heading and 6 items.
+- Tests:
+  - `KotDealHeadingMySqlTest` 9/9.
+  - 19 related MySQL files green.
+  - Unit/Printing: 1 failure, `EscPosReportPayloadTest` (Sales Report money format). It fails the same way on production
+    code `beff20a9`, so it was already broken; it is not this change.
+- Sabotage: removing the bill guard, or removing the recipe fallback, turns its test red.
