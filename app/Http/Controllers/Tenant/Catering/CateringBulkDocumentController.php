@@ -69,7 +69,12 @@ class CateringBulkDocumentController extends Controller
             'ids' => ['required', 'array', 'min:1', 'max:'.self::MAX_SELECTION],
             'ids.*' => ['integer'],
             'reprint' => ['nullable', 'boolean'],
+            // CATERING-SEND-LANGUAGE-1 — safhe par jo zubaan chuni thi (en / ur /
+            // both). Pehle ye aati hi nahi thi: kitchen sheet aur quotation
+            // hamesha settings ki default, proforma hamesha English.
+            'lang' => ['nullable', 'string', \Illuminate\Validation\Rule::in(CateringSetting::PRINT_PROFILES)],
         ]);
+        $lang = $data['lang'] ?? null;
 
         $printer = \App\Models\Tenant\Printer::where('is_active', true)->find($data['printer_id']);
         $queue = app(\App\Services\Catering\CateringDocumentQueueService::class);
@@ -95,15 +100,16 @@ class CateringBulkDocumentController extends Controller
             try {
                 $job = match ($data['kind']) {
                     'quotation' => $queue->queueQuotation(
-                        $event->currentEstimate()->firstOrFail(), $printer, $userId, $reprint
+                        $event->currentEstimate()->firstOrFail(), $printer, $userId, $reprint, $lang
                     ),
-                    'kitchen_sheet' => $queue->queueKitchenSheetForEvent($event, $printer, $userId, $reprint),
+                    'kitchen_sheet' => $queue->queueKitchenSheetForEvent($event, $printer, $userId, $reprint, $lang),
                     'address_sheet' => $queue->queueAddressSheet($event, $printer, $userId, $reprint),
                     // Proforma bhi yahin se: wo kahin mehfooz nahi hoti, is liye
                     // us ka apna route/permission banane ki zaroorat nahi thi —
                     // bulk ka `ids[]` hamesha EVENT ki id hoti hai, aur proforma
                     // bhi event se hi banti hai.
-                    'proforma' => $queue->queueProformaInvoice($event, $printer, 'en', $userId, $reprint),
+                    // Zubaan na aaye (purana khula safha) to pehle jaisa English.
+                    'proforma' => $queue->queueProformaInvoice($event, $printer, $lang ?? 'en', $userId, $reprint),
                 };
 
                 // NAYA AUR PURANA ALAG GINO — aur ye farq operator ko DIKHE.

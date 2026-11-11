@@ -114,6 +114,7 @@ class CateringDocumentQueueService
         Printer $printer,
         ?int $userId = null,
         bool $isReprint = false,
+        ?string $lang = null,
     ): PrintJob {
         $release->loadMissing(['lines', 'event']);
 
@@ -122,7 +123,7 @@ class CateringDocumentQueueService
             printer: $printer,
             html: view('tenant.catering.documents.kitchen-sheet', [
                 'release' => $release,
-                'lang' => $this->language(),
+                'lang' => $this->language($lang),
                 'businessName' => $this->businessName(),
             ])->render(),
             paper: self::paperFor(self::KIND_KITCHEN_SHEET),
@@ -153,6 +154,7 @@ class CateringDocumentQueueService
         Printer $printer,
         ?int $userId = null,
         bool $isReprint = false,
+        ?string $lang = null,
     ): PrintJob {
         $event->loadMissing(['productionReleases.lines', 'productionReleases.event']);
 
@@ -171,7 +173,7 @@ class CateringDocumentQueueService
             printer: $printer,
             html: view('tenant.catering.documents.kitchen-sheet', [
                 'release' => $release,
-                'lang' => $this->language(),
+                'lang' => $this->language($lang),
                 'businessName' => $this->businessName(),
             ])->render(),
             paper: self::paperFor(self::KIND_KITCHEN_SHEET),
@@ -190,6 +192,7 @@ class CateringDocumentQueueService
         Printer $printer,
         ?int $userId = null,
         bool $isReprint = false,
+        ?string $lang = null,
     ): PrintJob {
         $estimate->loadMissing(['event.customer', 'lines']);
 
@@ -206,7 +209,7 @@ class CateringDocumentQueueService
             html: view('tenant.catering.documents.estimate', [
                 'estimate' => $estimate,
                 'event' => $estimate->event,
-                'lang' => $this->language(),
+                'lang' => $this->language($lang),
                 'position' => $position,
                 'advanceTotal' => $position['net_received'],
                 'businessName' => $this->businessName(),
@@ -434,8 +437,25 @@ class CateringDocumentQueueService
             ->max('copy_no') + 1;
     }
 
-    private function language(): string
+    /**
+     * CATERING-SEND-LANGUAGE-1 (11 Nov) — jo zubaan SAFHE par chuni gayi, wohi printer par.
+     *
+     * Client: "kitchen sheet Urdu ya sirf English select karo, send to network
+     * hamesha English + Urdu bhejta hai." Wajah: "Send to network" ka form zubaan
+     * bhejta hi nahi tha, aur yahan har baar Catering Settings ki default
+     * (`print_language_profile`, Kashif Kitchen par "both") parhi jati thi. Screen
+     * par Urdu, kaghaz par dono — preview aur printer do alag sach.
+     *
+     * Ab caller ki di hui zubaan pehle; sirf tab default jab koi zubaan aaye hi
+     * nahi (booking screen ka chhota Print button, jahan zubaan chunne ka khaana
+     * hai hi nahi — wo pehle jaisa rehta hai). Ghalat/anjaan qeemat bhi default par.
+     */
+    private function language(?string $chosen = null): string
     {
+        if (in_array($chosen, CateringSetting::PRINT_PROFILES, true)) {
+            return $chosen;
+        }
+
         return CateringSetting::tenantDefault()->print_language_profile ?? 'en';
     }
 

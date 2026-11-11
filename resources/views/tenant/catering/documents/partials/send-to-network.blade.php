@@ -102,6 +102,18 @@
                 @foreach($stnIds as $id)
                     <input type="hidden" name="ids[]" value="{{ $id }}">
                 @endforeach
+                {{-- CATERING-SEND-LANGUAGE-1 (11 Nov) — JO ZUBAAN SCREEN PAR, WOHI KAGHAZ PAR.
+
+                     Client: "Urdu ya sirf English select karo, send to network hamesha
+                     English + Urdu bhejta hai." Form zubaan bhejta hi nahi tha, aur
+                     server har baar settings ki default chhapta tha. Ye safha jis zubaan
+                     me khula hai (`$lang`, controller se) wohi ab saath jata hai.
+                     Invoice wala raasta upar hai — us ke `sendExtra` me `lang` pehle se
+                     tha, isi liye sirf invoice theek chhapti thi. Address sheet ki koi
+                     zubaan nahi, is liye `isset`. --}}
+                @if(isset($lang))
+                    <input type="hidden" name="lang" value="{{ $lang }}">
+                @endif
             @endif
 
             {{-- KAGHAZ KA SIZE YAHAN LIKHA HAI, aur ye jaan bujh kar hai.
