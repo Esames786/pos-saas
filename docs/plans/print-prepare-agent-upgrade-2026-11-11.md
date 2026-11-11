@@ -88,13 +88,21 @@ zubaan badli to us zubaan ki nayi tayyari; ghalat zubaan ki PDF kabhi nahi chhap
 5. Send: server parcha dobara banata hai, fingerprint job me jata hai. Agent ko `ready\` me wohi PDF mile → Chrome chhor
    kar seedha SumatraPDF. Na mile → purana raasta. Booking beech me badli → fingerprint alag → **purani PDF kabhi nahi**.
 
-### 3.3 Safai (owner ki shart)
+### 3.3 Safai aur kitni der (owner: "1 month kardo — har month old PDF / temp remove ho")
 
-- Chhapte hi PDF delete.
-- 10 minute me istemal na ho → delete (owner: "30 min bohot"). Sweep: agent start par + har 5 minute.
-- Had: 50 files (purani pehle). Ek PDF ~100–300 KB.
-- `%TEMP%` me bachi `bingoo-*` files (bijli jane wali) bhi 1 din baad saaf.
-- Files ka hisaab: graahak ka naam/phone hota hai — sirf usi PC par, kuch minute.
+**Parche par waqt PDF ke ANDAR hai** (`partials/printed-at`: "Printed / چھپا 11 Nov 2026 5:01 PM", TenantClock). Is liye
+"kitni der rakhein" aur "kab tak istemal karein" do alag sawaal hain:
+
+- **Istemal (Send par):** tayyar PDF sirf tab jab wo **10 minute ke andar** bani ho aur fingerprint mile. Warna — ek
+  mahine purani PDF chhap kar — kaghaz par mahine purana waqt aata. 10 min se purani mili to screen khulte hi chupke se
+  nayi ban jati hai.
+- **PC par rakhna (owner ki shart):** zyada se zyada **1 mahina**. Agent har din ek dafa (aur har start par) `ready\` aur
+  `%TEMP%\bingoo-*` me se 30 din se purani har file mitata hai. Is ke ilawa: order badle to us document ki purani PDF
+  foran delete (3.6); had 500 MB (purani pehle). Andaza: ~300 bookings/mahina × 2 parche × 1–2 zubaan × ~0.2 MB ≈ 120–250 MB.
+- Files me graahak ka naam/phone hota hai — sirf usi kitchen PC par.
+- **Mutabadil (agar owner mahine bhar ki PDF dobara istemal bhi chahe):** agent chhapte waqt naya waqt PDF par khud
+  likhe (pdf-lib; "چھپا" ek chhoti tasveer, waqt digits me) — zyada kaam aur parche ke sar ki jagah pakki karni hogi.
+  Faida kam: ek hi parcha aam taur par minuton me dobara chhapta hai (#81–83 ek booking, 6 min me teen dafa).
 
 ### 3.4 Hifazat
 
@@ -102,6 +110,18 @@ zubaan badli to us zubaan ki nayi tayyari; ghalat zubaan ki PDF kabhi nahi chhap
 - Tayyari ki job sirf us agent ko jo `caps` me `prepare` kahe — purana agent kabhi nahi dekhta, waisa hi chalta hai.
 - Thermal (KOT/receipt) ka raasta **chhua nahi jata**.
 - Chhota farq: parche par "chhapne ka waqt" tayyari ka hoga (zyada se zyada 10 min purana).
+
+### 3.6 Order badla → agent nayi file banaye (owner ki shart)
+
+- **Ghalat parcha kabhi nahi:** Send hamesha AAJ ka HTML banata hai; fingerprint na mile to tayyar PDF istemal hi nahi
+  hoti. Ye pehle se design me hai.
+- **Nayi file khud tayyar:** booking / quotation / lines save hote hi (Eloquent `saved` on `CateringEvent`,
+  `CateringEstimate`, `CateringEstimateLine` — aur jo raaste raw `DB::table()->update` se likhte hain un ki fehrist bana
+  kar un par bhi), agar us document ki PDF pichle 10 minute me tayyar hui thi to server **nayi tayyari** bhejta hai; agent
+  nayi PDF banata aur **purani mita** deta hai.
+- Khula preview khud bhi har ~15 s poochhta hai "kya ye abhi bhi taaza hai?" — order kahin aur badla ho to screen par
+  "Order badal gaya — dobara tayyar ho raha hai…" aur safha naya ho jata hai, taake jo screen par hai wohi kaghaz par.
+- Test: save ke har raaste ke baad nayi tayyari bane; purani PDF se kabhi na chhape.
 
 ### 3.5 Kitna farq (andaza, naapa nahi)
 
@@ -134,6 +154,20 @@ Saath poll 3 s → 1 s.
 | Kami | admin password chahiye | sirf usi Windows user ke liye; purana machine-wide install ek dafa admin se hatana hoga |
 
 Mashwara: **B2**, ek dafa ki migration ke saath (purana hatane ki script — wohi ek dafa admin).
+**Owner (11 Nov): B2 — "bas ek click pe sab ho jayega; make sure zero se setup karna ho ya old agent remove kar ke new
+dalna ho to wo bhi easy ho".**
+
+### 4.4 Teen soortein — har ek ek click (B2)
+
+| Soorat | User kya kare | Setup kya kare |
+|---|---|---|
+| **Naya PC (zero se)** | Bingoo › Print Agents › Create Agent › **Download** → file par double-click → Install | Download ki file ke naam/saath me server URL + pairing code **pehle se bhara** (user kuch type na kare; code expire ho gaya ho to wohi page naya de). Per-user install, koi admin nahi. Pair → auto-start task → agent chalu → "Agent chal raha hai ✓". |
+| **Purana (2.6.x, Program Files) hata kar naya** | Wohi ek file double-click | Purana mila → **sirf ek dafa** Windows ka admin popup "purana version hatayein" → purana task + Program Files saaf → **purani pairing (`ProgramData\…\config.json`) utha kar** naye me → koi naya code nahi, koi naya agent record nahi → chalu + tasdeeq. Admin na mile to setup saaf kehta hai "admin chahiye sirf purana hatane ke liye" aur **naya agent tab tak shuru hi nahi hota** — do agent kabhi ek saath nahi (warna parche do dafa). |
+| **Agent hatana** | Windows › Apps › Bingoo Print Agent › Uninstall (admin nahi) | Task, files, `ready\` folder sab saaf. Saath ek `remove-everything.cmd` (server se download) jo har version — purana bhi — hata de. |
+
+- Har soorat ke baad setup khud dekhta hai ke agent **chal raha hai** (owner ki shart 2: koi script ya haath ka kaam nahi).
+- AnyDesk ke liye: wohi file `/VERYSILENT` ke saath — ek line, koi sawaal nahi.
+- Do agent kabhi ek saath nahi: naya agent purane ka process / task dekhe to shuru hone se inkar kare aur wajah likhe.
 
 ### 4.3 Baad ka qadam (Phase 2): server se update
 
@@ -170,8 +204,11 @@ hash milaye, silent per-user install chalaye, khud restart. Sirf B2 par mumkin (
 
 ## 8. Owner se sawaal — aur jawab (11 Nov)
 
-1. B1 (har install par ek dafa admin) ya **B2** (admin kabhi nahi, ek dafa migration)? → **Abhi khula.** Owner ne aasaan
-   alfaaz me samajh maangi; mashwara B2.
+1. B1 (har install par ek dafa admin) ya **B2** (admin kabhi nahi, ek dafa migration)? → **Owner: B2**, shart: zero se
+   install aur purana hata kar naya — dono ek click (4.4).
+5. Tayyar PDF kitni der? → **Owner: "1 month kardo, har month old PDF temp remove ho"** + "order update ho to agent
+   updated file load kare" → 3.3 (PC par ≤ 30 din, Send par sirf ≤ 10 min wali — waqt ki wajah se) + 3.6. Khula sawaal:
+   kya mahine bhar purani PDF dobara chhapni bhi hai (to agent waqt khud likhe — mutabadil 3.3)?
 2. Pichli dafa thermal me kya kharab hua? → **Owner:** "thermal install ke baad tum script se haath se agent on karwa rahe
    the, phir agent exe ka poora setup theek kiya" — yani install ke baad agent **khud chalu nahi hota tha** (2.6.6 me theek).
    → Lazmi test: install / upgrade ke baad **bina kisi script** agent khud chale; restart + logoff/logon ke baad bhi;
