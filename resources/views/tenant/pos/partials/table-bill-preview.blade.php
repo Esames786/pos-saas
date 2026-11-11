@@ -64,7 +64,8 @@
             @foreach($sale->lines as $line)
                 @if(($line->line_kind ?? 'standard') === 'component') @continue @endif
                 <tr>
-                    <td>{{ $line->product_name }}@if($line->variant_name) ({{ $line->variant_name }})@endif</td>
+                    {{-- DEAL-BILL-NO-VARIANT-1: never a variant under a deal line. --}}
+                    <td>{{ $line->product_name }}@if($line->variant_name && ($line->line_kind ?? 'standard') !== 'combo_header') ({{ $line->variant_name }})@endif</td>
                     <td class="r">{{ $fmtQty($line->quantity) }}</td>
                     <td class="r">{{ $fmtMoney($line->line_total) }}</td>
                 </tr>

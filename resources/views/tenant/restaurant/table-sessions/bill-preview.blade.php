@@ -146,7 +146,8 @@
                                         <tr>
                                             <td>
                                                 {{ $line->product_name }}
-                                                @if($line->variant_name)
+                                                {{-- DEAL-BILL-NO-VARIANT-1: never a variant under a deal line. --}}
+                                                @if($line->variant_name && ($line->line_kind ?? 'standard') !== 'combo_header')
                                                     <div class="small text-muted">{{ $line->variant_name }}</div>
                                                 @endif
                                                 @foreach(($line->modifiers ?? []) as $modifier)
