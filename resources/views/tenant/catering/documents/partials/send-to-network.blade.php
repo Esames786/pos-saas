@@ -56,7 +56,17 @@
     }
     .doc-flash-ok  { color: #065f46; background: #d1fae5; border: 1px solid #6ee7b7; }
     .doc-flash-bad { color: #991b1b; background: #fee2e2; border: 1px solid #fca5a5; }
-    @media print { .doc-toolbar-row, .doc-flash, .doc-note { display: none !important; } }
+    /* PRINT-PREPARE-1 — "⏳ tayyar ho raha hai / ✓ Tayyar · waqt ↻". Sirf khabar: Send kabhi is par nahi rukta. */
+    .doc-prep {
+        display: inline-flex; align-items: center; gap: 6px; font-family: Arial, Helvetica, sans-serif;
+        font-size: 12px; padding: 0 10px; border-radius: 5px; border: 1px solid #d1d5db; color: #374151; background: #f9fafb;
+    }
+    .doc-prep[data-state="ready"] { color: #065f46; background: #ecfdf5; border-color: #6ee7b7; }
+    .doc-prep[data-state="offline"], .doc-prep[data-state="failed"] { color: #92400e; background: #fffbeb; border-color: #fcd34d; }
+    .doc-prep-refresh { border: 0; background: transparent; cursor: pointer; font-size: 14px; padding: 0 2px; color: inherit; }
+    /* `hidden` ko class ka `display` na hara de. */
+    .doc-prep[hidden], .doc-prep-refresh[hidden] { display: none; }
+    @media print { .doc-toolbar-row, .doc-flash, .doc-note, .doc-prep { display: none !important; } }
 </style>
 
 {{-- IDS NA HON TO YAHAN SE AAGE KUCH NAHI.
@@ -87,11 +97,13 @@
     $stnAction = $sendAction ?? url('/catering/documents/bulk/print');
     $stnExtra = $sendExtra ?? [];
     $stnPermission = $sendPermission ?? 'tenant.catering.documents.bulk-print';
+    // PRINT-PREPARE-1 — Master switch band ho to chip / script bilkul nahi; safha bilkul pehle jaisa.
+    $stnPrepare = \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRINT_PREPARE);
 @endphp
 
 @can($stnPermission)
     @if($stnPrinters->isNotEmpty() && (isset($sendAction) || $stnIds->isNotEmpty()))
-        <form method="POST" action="{{ $stnAction }}" class="doc-toolbar-row">
+        <form method="POST" action="{{ $stnAction }}" class="doc-toolbar-row" @if($stnPrepare) data-stn-prepare @endif>
             @csrf
             @if(isset($sendAction))
                 @foreach($stnExtra as $k => $v)
@@ -181,7 +193,90 @@
                  ye maloom hai aur yehi un ki farmaish thi. --}}
             <input type="hidden" name="reprint" value="1">
             <button type="submit" class="doc-btn doc-btn-primary">Send to network</button>
+            @if($stnPrepare)
+                {{-- PRINT-PREPARE-1 — sirf khabar. Send ka button upar hai aur hamesha chalta hai, tayyar ho ya na ho. --}}
+                <span class="doc-prep" data-prep data-state="preparing" hidden>
+                    <span data-prep-text>⏳ Print tayyar ho raha hai…</span>
+                    <button type="button" class="doc-prep-refresh" data-prep-refresh hidden
+                            title="Dobara tayyar karo — naya waqt, aaj ka order">↻</button>
+                </span>
+            @endif
         </form>
+        @if($stnPrepare)
+            {{-- PRINT-PREPARE-1 — safha khulte hi agent ko "PDF bana kar rakho"; phir "tayyar hai? order wohi hai?".
+
+                 Wohi form, wohi raasta, wohi ijazat — bas `mode`. Kuch bhi ghalat ho (network, server, switch band) to
+                 chip chup-chaap chhup jati hai: ye sirf raftar ka intezam hai, Send kabhi is par munhasir nahi.
+                 Server ko har poll par document dobara banana parta hai (order badla ya nahi), is liye poll dheema:
+                 tayyari ke pehle minute 2 s, phir 10 s; tayyar ho to 15 s; tab chhupi ho to ruk jata hai.
+                 ↻ = nayi tayyari (naya waqt) + safha naya. Order badla = safha khud naya (jo screen par, wohi kaghaz par). --}}
+            <script>
+            (function () {
+                var form = document.querySelector('form[data-stn-prepare]');
+                if (!form || !window.fetch || !window.FormData) { return; }
+                var chip = form.querySelector('[data-prep]');
+                var text = form.querySelector('[data-prep-text]');
+                var refresh = form.querySelector('[data-prep-refresh]');
+                var known = {};
+                var timer = null;
+                var opened = Date.now();
+
+                function show(state, label) {
+                    chip.hidden = false;
+                    chip.setAttribute('data-state', state);
+                    text.textContent = label;
+                    refresh.hidden = (state === 'preparing');
+                }
+                function clock(iso) {
+                    try { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; }
+                }
+                function call(mode, extra) {
+                    var body = new FormData(form);
+                    body.set('mode', mode);
+                    Object.keys(known).forEach(function (id) { body.set('known[' + id + ']', known[id]); });
+                    Object.keys(extra || {}).forEach(function (k) { body.set(k, extra[k]); });
+                    return fetch(form.action, {
+                        method: 'POST', body: body, credentials: 'same-origin',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    }).then(function (r) { if (!r.ok) { throw new Error('http ' + r.status); } return r.json(); });
+                }
+                function render(res) {
+                    if (!res || res.state === 'off') { chip.hidden = true; return null; }
+                    (res.items || []).forEach(function (i) { if (i.fingerprint) { known[i.id] = i.fingerprint; } });
+                    if (res.changed) {
+                        show('preparing', 'Order badal gaya — dobara tayyar ho raha hai…');
+                        setTimeout(function () { location.reload(); }, 1500);
+                        return 'changed';
+                    }
+                    if (!res.agent_online) { show('offline', '⚠ Agent offline — Send phir bhi kaam karega'); return 'offline'; }
+                    if (res.state === 'ready') {
+                        var at = (res.total === 1 && res.items[0] && res.items[0].ready_at) ? clock(res.items[0].ready_at) : '';
+                        show('ready', '✓ Tayyar' + (res.total > 1 ? ' (' + res.total + ')' : '') + (at ? ' · ' + at : ''));
+                        return 'ready';
+                    }
+                    if (res.state === 'failed') { show('failed', 'Tayyari nahi hui — Send phir bhi kaam karega'); return 'failed'; }
+                    show('preparing', '⏳ Print tayyar ho raha hai…' + (res.total > 1 ? ' (' + res.ready + ' / ' + res.total + ')' : ''));
+                    return 'preparing';
+                }
+                function next(state) {
+                    clearTimeout(timer);
+                    if (state === null || state === 'changed') { return; }
+                    var wait = state === 'preparing' ? (Date.now() - opened < 60000 ? 2000 : 10000) : 15000;
+                    timer = setTimeout(poll, wait);
+                }
+                function poll() {
+                    if (document.hidden) { timer = setTimeout(poll, 5000); return; }
+                    call('status').then(function (res) { next(render(res)); })
+                        .catch(function () { chip.hidden = true; timer = setTimeout(poll, 30000); });
+                }
+                refresh.addEventListener('click', function () {
+                    show('preparing', '⏳ Print tayyar ho raha hai…');
+                    call('prepare', { force: '1' }).then(function () { location.reload(); }, function () { location.reload(); });
+                });
+                call('prepare').then(function (res) { next(render(res)); }, function () { chip.hidden = true; });
+            })();
+            </script>
+        @endif
     @elseif($stnPrinters->isEmpty())
         <span class="doc-note">
             No A4/A5 printer yet — add one under Printing › Printers (Type = Windows).

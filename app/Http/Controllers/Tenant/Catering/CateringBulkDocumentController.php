@@ -73,11 +73,21 @@ class CateringBulkDocumentController extends Controller
             // both). Pehle ye aati hi nahi thi: kitchen sheet aur quotation
             // hamesha settings ki default, proforma hamesha English.
             'lang' => ['nullable', 'string', \Illuminate\Validation\Rule::in(CateringSetting::PRINT_PROFILES)],
+            // PRINT-PREPARE-1 — wohi form, wohi ijazat: `send` (purana kaam), `prepare` (screen khulte hi PDF tayyar),
+            // `status` (tayyar hai? order wohi hai?). Naya route nahi, is liye naya permission bhi nahi.
+            'mode' => ['nullable', 'string', 'in:send,prepare,status'],
+            'force' => ['nullable', 'boolean'],
+            'known' => ['nullable', 'array'],
+            'known.*' => ['nullable', 'string', 'max:64'],
         ]);
         $lang = $data['lang'] ?? null;
 
         $printer = \App\Models\Tenant\Printer::where('is_active', true)->find($data['printer_id']);
         $queue = app(\App\Services\Catering\CateringDocumentQueueService::class);
+
+        if (in_array($data['mode'] ?? 'send', ['prepare', 'status'], true)) {
+            return $this->prepareResponse($request, $data, $printer, $queue);
+        }
 
         try {
             // Shart pehle, ek hi baar: ye printer document chhap bhi sakta hai
@@ -270,6 +280,73 @@ class CateringBulkDocumentController extends Controller
             'printers' => $this->documentPrinters(),
             'ids' => $events->pluck('id')->all(),
             'businessName' => $this->businessName(),
+        ]);
+    }
+
+    /**
+     * PRINT-PREPARE-1 — `mode=prepare|status` ka jawab, JSON me (safha khud fetch karta hai, reload nahi).
+     *
+     * Switch band ho to `state=off` — safha kuch nahi dikhata aur Send pehle jaisa. Har booking ka apna haal; bulk
+     * safha "3 / 10 tayyar" dikhata hai. Kuch bhi ghalat ho to tayyari chup-chaap chhor di jati hai: ye sirf raftar
+     * ka intezam hai, Send kabhi is par munhasir nahi.
+     */
+    private function prepareResponse(Request $request, array $data, ?\App\Models\Tenant\Printer $printer, \App\Services\Catering\CateringDocumentQueueService $queue): \Illuminate\Http\JsonResponse
+    {
+        if (! \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRINT_PREPARE)) {
+            return response()->json(['ok' => true, 'state' => 'off']);
+        }
+        if ($printer === null) {
+            return response()->json(['ok' => false, 'state' => 'off', 'message' => 'That printer is not active.']);
+        }
+        try {
+            $queue->assertCanPrintDocuments($printer);
+        } catch (RuntimeException $e) {
+            return response()->json(['ok' => false, 'state' => 'off', 'message' => $e->getMessage()]);
+        }
+
+        $lang = $data['lang'] ?? null;
+        $known = (array) ($data['known'] ?? []);
+        $items = [];
+        $events = $this->selectedEvents($request, ['currentEstimate.lines']);
+
+        foreach ($events as $event) {
+            try {
+                $subject = $data['kind'] === 'quotation' ? $event->currentEstimate()->first() : $event;
+                if ($subject === null) {
+                    continue;
+                }
+                // Proforma: zubaan na aaye to English — bilkul wohi jo Send karta hai (warna fingerprint kabhi na mile).
+                $docLang = $data['kind'] === 'proforma' ? ($lang ?? 'en') : $lang;
+
+                if ($data['mode'] === 'prepare') {
+                    $row = $queue->prepare($data['kind'], $subject, $printer, $docLang, (bool) ($data['force'] ?? false));
+                    $items[] = [
+                        'id' => $event->id,
+                        'state' => $row->isFreshReady() ? 'ready' : 'preparing',
+                        'fingerprint' => $row->fingerprint,
+                        'changed' => false,
+                        'ready_at' => $row->ready_at?->toIso8601String(),
+                    ];
+                } else {
+                    $items[] = ['id' => $event->id]
+                        + $queue->prepareStatus($data['kind'], $subject, $printer, $docLang, $known[$event->id] ?? null);
+                }
+            } catch (\Throwable $e) {
+                report($e);
+                $items[] = ['id' => $event->id, 'state' => 'failed', 'fingerprint' => null, 'changed' => false, 'ready_at' => null];
+            }
+        }
+
+        $ready = count(array_filter($items, fn ($i) => ($i['state'] ?? null) === 'ready'));
+
+        return response()->json([
+            'ok' => true,
+            'state' => $items === [] ? 'off' : ($ready === count($items) ? 'ready' : 'preparing'),
+            'ready' => $ready,
+            'total' => count($items),
+            'changed' => (bool) array_filter($items, fn ($i) => ! empty($i['changed'])),
+            'agent_online' => $queue->agentOnlineFor($printer, $events->first()?->branch_id),
+            'items' => $items,
         ]);
     }
 

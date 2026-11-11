@@ -81,6 +81,16 @@
             <h2 class="h5 mb-1">Pairing code for <strong>{{ $pairing['agent_name'] }}</strong> ({{ $pairing['agent_code'] }})</h2>
             <p class="text-muted mb-3">Enter this code in the agent app on the shop PC. It expires in 15 minutes and works only once.</p>
             <div class="display-4 fw-bold font-monospace mb-2" id="pairing-code-value">{{ $pairing['code'] }}</div>
+            {{-- AGENT-UPGRADE-1 — "ek click": isi PC par khola ho to yahan se download karo; server aur code installer
+                 me pehle se bhare hote hain (file ke naam me). Purani file se pairing waise hi hoti hai jaise pehle. --}}
+            @if(! empty($pairing['prefill_url']))
+                <div class="mb-3">
+                    <a class="btn btn-success" href="{{ $pairing['prefill_url'] }}">
+                        <i class="ti ti-download me-1"></i>Download agent {{ $pairing['prefill_version'] }} — code already filled in
+                    </a>
+                    <div class="small text-muted mt-1">Run it on the shop PC within 15 minutes: no admin password, nothing to type.</div>
+                </div>
+            @endif
             <div class="mb-3">
                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('{{ str_replace('-', '', $pairing['code']) }}'); this.textContent='Copied!';">Copy code</button>
                 <span class="text-muted small ms-2">Server URL: <code>{{ $pairing['server_url'] }}</code></span>
@@ -170,6 +180,8 @@
                         @if($agent->paired_device_platform || $agent->device_os || $agent->local_ip)
                             <small class="d-block text-muted">{{ $agent->paired_device_platform ?: $agent->device_os }} {{ $agent->local_ip }}</small>
                         @endif
+                        {{-- AGENT-UPGRADE-1 — 2.7.0 se agent har heartbeat par apna version batata hai. Pehle wale nahi batate. --}}
+                        <small class="d-block text-muted">Agent {{ $agent->agent_version ?? 'older than 2.7.0' }}</small>
                     </td>
                     <td>{{ $agent->last_seen_at?->diffForHumans() ?? 'Never' }}</td>
                     <td>
