@@ -337,3 +337,16 @@ installer · `299eb781` Print Agents mashwara + log.
 3. **Kashif Kitchen PC (AnyDesk):** bana hua 2.7.0 setup chalana — purana 2.6.x mila to ek UAC; pairing wohi. Phir
    Master se `print_prepare` ON (sirf KK) → poll 1 s + tayyari. Naap: Send se kaghaz tak.
 4. KK par theek → 2.7.0 shelf par (sab ka default) → baqi dukanein apne waqt par.
+
+## 12. Deploy (12 Nov 2026 PKT / 11 Nov ~19:43–19:46 UTC)
+
+Owner: "okay deploy push kardo". Pehle: canonical = origin = `5e236c57`, prod `2d5c7c9e`, koi aur session nahi.
+- **Deploy 1 — dhaancha** `42b69bee`: 9/9, tenants 13/13; har tenant par `print_prepares` + `print_agents.agent_version`
+  (13/13 "Y"). PERMISSIONS OK; smoke saaf; 0 errors.
+- **Deploy 2 — code** `9c1d2cd1`: 9/9, 13/13, "Nothing to migrate". PERMISSIONS OK — har tenant ka Owner **+2** (agent API ke
+  2 naye route, token wale; koi role kuch nahi khoya). Smoke 13/13 saaf (`tb_diff=0`, manfi stock 0). 19:44 ke baad 0 errors.
+- **Live (read-only):** `print_prepare` 13/13 tenants **off**. Laptop ka 2.7.0 (demo `AG-DEMO-LOCAL`) heartbeat → prod par
+  `agent_version = "2.7.0"`. Kashif Food ka 2.6.x agent deploy ke baad bhi har second (purane agent theek). KK kitchen sheet:
+  Send + `lang` form, chip nahi (switch band). Print Agents: version dikhta, `install-service.ps1` nahi. KK login 200.
+- **Shelf par 2.7.0 NAHI** (default download sab ke liye 2.6.6). Agla: KK PC par 2.7.0 (AnyDesk) → phir KK ka switch ON
+  (pehle nahi: purana agent tayyari nahi karta, chip "tayyar ho raha hai" par atki rehti).
