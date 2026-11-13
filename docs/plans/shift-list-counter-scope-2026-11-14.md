@@ -84,3 +84,21 @@ Results, 14 Nov:
   is a precondition of the test, not this change. After `MasterSeeder` and `system:routes-sync` on that test master DB it
   passed: 3 tests, 50 assertions. The new test and `HideAmountsFromOperators` were re-run on the seeded master: 24 tests,
   124 assertions.
+
+## Done on prod (14 Nov 2026, ~21:30 UTC)
+
+- **Code:** prod `db1b52c5`, a merge of the tested `4769655e` (`git diff 4769655e db1b52c5` is empty). Pushed; origin
+  matched HEAD before `deploy.sh`. All 13 tenants OK.
+- **Checks:**
+  - Permissions: PERMISSIONS OK. No role lost anything, no user lost a role, and grants are unchanged on all 14
+    databases.
+  - Accounts: ACCOUNTS OK, every chart is unchanged.
+  - Smoke: 13 tenants, `tb_diff=0`, `neg_on_disallowed=0`, `department_negative=0`.
+  - Errors: 23 in today's log before the deploy and 23 after.
+- **Live proof** (read-only: the deployed controller called in memory as the real users):
+  - Takeaway Counter: the list shows only 1-Takeaway (83 shifts). The Quick Sale shift page returns 403 "This shift
+    belongs to another counter."
+  - Quick Sale Counter: the list shows only 2-Quick Sale (52 shifts). The Takeaway shift page returns 403.
+  - Owner: all four counters (319 shifts), and both pages open.
+  - No shift was open at the time, so the close screen was proved by the test only.
+- **Order types are unchanged.** The owner confirmed that both counter users keep both takeaway and quick sale.
