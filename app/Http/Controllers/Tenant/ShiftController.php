@@ -37,6 +37,16 @@ class ShiftController extends Controller
             $query->where('branch_id', $request->branch_id);
         }
 
+        // SHIFT-LIST-COUNTER-1 (owner, 14 Nov): a client's Takeaway and Quick Sale counters could read
+        // each other's shifts here, cash included. A cashier tied to certain counters now sees only
+        // those counters' shifts — the same terminal binding that already limits his dashboard,
+        // reports, print jobs and the shift he may close. Owner/manager (unbound, or bound to every
+        // counter) see every shift exactly as before.
+        $counterIds = app(\App\Services\Security\UserDataScope::class)->terminalIds(auth('tenant')->user());
+        if ($counterIds) {
+            $query->whereIn('terminal_id', $counterIds);
+        }
+
         // SHIFT-DATE-FILTER-1: din wohi jo baaqi system ka hai — shift ka FROZEN business_date,
         // jo khulte waqt tay hota hai. Jin purani rows par wo hai hi nahi (business_date se pehle
         // khuli thin) unke liye opened_at ki tareekh — warna wo rows kisi bhi din ke filter se
@@ -62,6 +72,7 @@ class ShiftController extends Controller
         // is accurate even when a branch's shifts span pages.
         $openCounts = Shift::where('status', 'open')
             ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->branch_id))
+            ->when($counterIds, fn ($q) => $q->whereIn('terminal_id', $counterIds))
             ->selectRaw('branch_id, COUNT(*) as c')
             ->groupBy('branch_id')
             ->pluck('c', 'branch_id');
@@ -256,6 +267,8 @@ class ShiftController extends Controller
 
     public function show(Shift $shift)
     {
+        $this->denyOtherCountersShift($shift);
+
         $shift->load(['branch', 'terminal', 'openedBy', 'closedBy', 'cashCountLines.denomination']);
 
         // HIDE-AMOUNTS-2: ye screen wohi saat figures dikhati hai jo Close Shift par masked hain —
@@ -271,6 +284,7 @@ class ShiftController extends Controller
     public function closeForm(Shift $shift)
     {
         abort_if($shift->status !== 'open', 404);
+        $this->denyOtherCountersShift($shift);
 
         $shift->load(['branch', 'terminal']);
 
@@ -691,6 +705,21 @@ class ShiftController extends Controller
         app(\App\Services\Reports\ShiftCloseReportTrigger::class)->afterClose($result['closed']);
 
         return redirect('/shifts')->with('status', $msg . '.');
+    }
+
+    /**
+     * SHIFT-LIST-COUNTER-1: a cashier tied to certain counters may not open another counter's shift —
+     * its page or its close screen — by id, the way the list no longer offers it. Same rule as closing it
+     * (`canOperateTerminal`); owner/manager reach every counter.
+     */
+    private function denyOtherCountersShift(Shift $shift): void
+    {
+        abort_unless(
+            app(\App\Services\Security\UserDataScope::class)
+                ->canOperateTerminal(auth('tenant')->user(), (int) $shift->terminal_id),
+            403,
+            'This shift belongs to another counter.'
+        );
     }
 
     /**
