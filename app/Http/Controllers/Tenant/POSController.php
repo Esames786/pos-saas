@@ -167,20 +167,22 @@ class POSController extends Controller
             ->unique()
             ->values();
 
-        $products = Product::with([
-                'category',
-                'unit',
-                'defaultVariant',
-                'variants.barcodes',
-                'barcodes',
-                'branchPrices',
-                'modifierGroups.modifiers',
-                'modifierGroups.branch',
-                // Recipe data drives proactive "makeable" availability for service products.
-                'activeRecipe.ingredients.product.unit',
-                'activeRecipe.ingredients.unit',
-                'activeRecipe.ingredients.variant',
-            ])
+        $posProductRelations = [
+            'category',
+            'unit',
+            'defaultVariant',
+            'variants.barcodes',
+            'barcodes',
+            'branchPrices',
+            'modifierGroups.modifiers',
+            'modifierGroups.branch',
+            // Recipe data drives proactive "makeable" availability for service products.
+            'activeRecipe.ingredients.product.unit',
+            'activeRecipe.ingredients.unit',
+            'activeRecipe.ingredients.variant',
+        ];
+
+        $products = Product::with($posProductRelations)
             ->where('status', 'active')
             ->where('is_sellable', true)
             // PRODUCT-BOUNDARY-2: hide manufacturing/internal items from the grid — but keep any
@@ -218,6 +220,20 @@ class POSController extends Controller
             ->orderBy('name')
             ->get();
 
+        // RECALL-HIDDEN-ITEM-1 (14 Nov): a website order lands AFTER this page has loaded, so the open-bill
+        // escape hatch above never saw it. When such an order carried an item hidden from the POS, recall
+        // could not find the item and left it out of the cart without a word: the bill showed 1,600, not
+        // 4,500. So every active, sellable item hidden from the POS rides in a list of its OWN, which only
+        // the recall of a saved bill reads. The grid, search, barcode scan, report pickers and combos keep
+        // reading `products` exactly as before, so nothing hidden can be sold from the counter.
+        $recallOnlyProducts = Product::with($posProductRelations)
+            ->where('status', 'active')
+            ->where('is_sellable', true)
+            ->where('is_pos_visible', false)
+            ->whereNotIn('id', $products->modelKeys())
+            ->orderBy('id')
+            ->get();
+
         // MEDICAL-COUNTER-1: the medical-store counter (Master switch) also gets each item's packs, batches
         // with stock (expired too — the counter says it skips them) and its prescription flag. Off = nothing
         // extra is read and the payload is exactly today's.
@@ -229,14 +245,16 @@ class POSController extends Controller
         $gramEntry = \App\Support\PackUnits::enabled();
         if ($counterPacks) {
             $products->load('packUnits');
+            $recallOnlyProducts->load('packUnits');
         }
         $batchBalances = collect();
         $medToday = null;
         if ($medicalCounter) {
             $products->load('packUnits');
+            $recallOnlyProducts->load('packUnits');
             $batchBalances = StockBalance::query()
                 ->with('batch')
-                ->whereIn('product_id', $products->pluck('id'))
+                ->whereIn('product_id', $products->pluck('id')->merge($recallOnlyProducts->pluck('id')))
                 ->whereNotNull('inventory_batch_id')
                 ->where('quantity_on_hand', '>', 0)
                 ->get()
@@ -273,7 +291,8 @@ class POSController extends Controller
 
         $unitConversion = app(UnitConversionService::class);
 
-        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion, $medicalCounter, $counterPacks, $gramEntry, $batchBalances, $medToday) {
+        // One builder for both lists, so a recalled hidden item carries exactly what a grid item carries.
+        $productPayload = function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion, $medicalCounter, $counterPacks, $gramEntry, $batchBalances, $medToday) {
             $defaultVariant = $product->defaultVariant ?: $product->variants->first();
 
             $barcodes = $product->barcodes
@@ -389,7 +408,11 @@ class POSController extends Controller
                 'limiting_ingredient_by_branch' => $recipe['limiting'],
             ] + ($medicalCounter ? ['med' => \App\Support\CounterPacks::payload($product, $batchBalances->get($product->id, collect()), $medToday)] : [])
               + ($counterPacks ? ['packs' => \App\Support\CounterPacks::counterPacks($product)] : []);
-        })->values();
+        };
+
+        $productsPayload = $products->map($productPayload)->values();
+        // RECALL-HIDDEN-ITEM-1: read only by recall (see recallProducts in tenant/pos/index.blade.php).
+        $recallProductsPayload = $recallOnlyProducts->map($productPayload)->values();
 
         $combosPayload = Combo::with(['components.product.unit', 'components.variant'])
             ->where('status', 'active')
@@ -488,6 +511,7 @@ class POSController extends Controller
             // Platters children), that real category tree replaces it and this pill hides.
             'hasUncategorizedCombos' => collect($combosPayload)->contains(fn ($c) => empty($c['category_id'])),
             'productsPayload'  => $productsPayload,
+            'recallProductsPayload' => $recallProductsPayload,
             'combosPayload'    => $combosPayload,
             'paymentMethods'   => PaymentMethod::where('is_active', true)
                 ->orderByRaw("CASE WHEN method_type = 'cash' THEN 0 ELSE 1 END")
