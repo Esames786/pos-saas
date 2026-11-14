@@ -93,3 +93,32 @@ Every run used the `_rcs` database set (`pos_test_master_rcs` / `pos_test_tenant
 
 The system map was rebuilt from the `_rcs` databases: 239 tables, 441 foreign keys, 230 inferred links,
 749 screens; `customer_font_size` is present.
+
+## Done on prod (14 Nov 2026, ~12:50 UTC; owner: "jub test pas hogae to deploy kardena for khatri")
+
+**Code**
+- Merged as `055a4ccb` (merge of `3022d795`). `git diff` between the tested commit and the merge is empty.
+- Pushed, and origin equals HEAD.
+- `bash deploy.sh`: DEPLOY_EXIT=0, all 13 tenants ok, prod `2db86a82` → `055a4ccb`.
+
+**Checks before vs after the deploy**
+- **Permissions:** OK. No role lost anything and no user lost a role (all 14 connections unchanged).
+- **Accounts:** OK. Every tenant's chart of accounts is exactly as before.
+- **Smoke:** all 13 tenants show tb_diff=0.00, neg_on_disallowed=0, department_negative=0, before and after.
+- **Log errors today:** 21 before and 21 after. The 21 were already there before the deploy: KK's catering
+  reminder `SendCateringCustomerMailJob` dispatches into a tenant `jobs` table that does not exist.
+  - This is unrelated to this change.
+  - It has been in the log every day since at least 10 Nov.
+  - It is recorded in the open items.
+- **New column:** `customer_font_size` exists on all 13 tenants. It was NULL everywhere before the one write below.
+
+**The one data change**
+- Khatri receipt layout #2 (branch 1): `customer_font_size` NULL → 17. This is the only row set.
+
+**Live proof** (bill built IN MEMORY from an unsaved PrintJob; nothing was queued: 0 queued, last job id 131856)
+- Khatri's latest paid delivery sale with phone and address:
+  - on paper, Customer, Phone and Deliver to all print at `GS ! 0x01` (tall); the address takes 2 lines, the
+    widest 42 characters;
+  - on screen, all three lines carry `font-size: 1.45em`.
+- Control, another tenant with the box left NULL: on paper, no size bytes on all three lines (exactly as before);
+  on screen, no style attribute.
