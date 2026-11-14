@@ -145,3 +145,70 @@ There is no schema change.
 - **Khatri:** the page renders, 108 items, `recallProducts` = 0 (its hidden items are all combo parts), and the guard is
   on the page.
 - **A real cashier's POS** loaded after the deploy: nginx shows 1 × `GET /pos` 200.
+
+---
+
+# RECALL-HIDDEN-ITEM-2 — the recalled website bill can also be PAID (15 Nov 2026)
+
+## What happened
+
+After the recall fix, the 4,500 bill came back whole. But Complete Sale refused it with "Singaporean Rice (Khass) is
+not available for POS sale". `SalesOrderController@store` (PRODUCT-BOUNDARY-2) refuses any standard line whose
+product is not POS-visible. The bill could never be paid at the counter; F5 would have hit the same wall.
+
+**Unblocked at once (owner: "Bhai is ko jaldi say fix karo"):**
+- prod Kashif Food product #161 `is_pos_visible` 0 → 1 at 20:22 UTC;
+- the before-row was printed first (0, updated 2026-10-15 13:08:16).
+
+## The change
+
+The Pay check lets a hidden item through only when that exact line is already saved on the bill being paid: the
+posted `sales_order_line_id` belongs to `held_sale_id` and carries the same product. It still refuses:
+
+- ringing up a hidden item by hand;
+- borrowing another line's id;
+- an item that is switched off (inactive) or not for sale.
+
+**Edge:** `EdgeLocalPosService` has the same rule. It is left unchanged, because Edge is disabled in production and
+website orders never reach it.
+
+## Impact
+
+- **Route:** `tenant.pos.store` (`SalesOrderController@store`).
+- **Data reads:** `sales_order_lines`; no writes beyond what Pay already does.
+- **No** migration, route, permission or switch.
+
+## Results (code commit `216c7d28`)
+
+- **`OnlineOrderingCheckoutMySqlTest`** (real website checkout, then the real `SalesOrderController::store`): 11/11.
+  The new tests:
+  - a website order with a hidden item is paid;
+  - a hidden item cannot be rung up by hand, through a borrowed line id, or when it is switched off.
+- **Sabotages** (each restored with `git checkout --`):
+
+  | # | Sabotage | Result |
+  |---|----------|--------|
+  | A | No exemption at all (yesterday's rule) | RED: the website-order Pay test ("Zinger Burger is not available for POS sale") |
+  | B | Exemption trusts any line id of the bill | RED: the by-hand test (a borrowed line id was paid, 200) |
+  | C | Exemption also forgives a switched-off item | RED: the by-hand test (an inactive item was paid, 200) |
+
+- **Every MySQL test that pays at the counter**, plus the recall tests: 19 files, 114 tests.
+  - The 7 failures were all in `RecallHiddenItemMySqlTest`'s setUp. In this run the route catalog was synced, so
+    `tenant.api.pos.held-sales` maps to `tenant.api`, and the setUp wrongly demanded a module for it.
+  - `tenant.api` is always allowed by `TenantSubscriptionAccessService`, so the setUp was too strict, not the code.
+  - The setUp was fixed and re-run with the catalog synced: RecallHiddenItem + OnlineOrderingCheckout +
+    RecallHiddenItem = 25/25.
+  - The other 107 tests passed in the first run.
+
+## Found while answering the owner (15 Nov): the website shows two hidden PRODUCTS where the counter sells DEALS
+
+The 15 Oct menu import matched old-website cards to POS items BY NAME. Two cards landed on old hidden products
+instead of the deals the counter sells:
+
+| Website card | Linked to (hidden product) | Counter sells (deal) | Deal sold at the counter, 60 days |
+|---|---|---|---|
+| Singaporean Rice Khass (2,900) | #161 Singaporean Rice (Khass) | #6 Singaporean Rice Khass (2-3 Persons) | 436 |
+| BBQ Shashlik with Garlic Fried Rice (1,650) | #68 Garlic Rice With Shashlik Bar-B-Que | #75, same name | 18 |
+
+- Only one website order ever carried #161 (the 14 Nov 4,500 bill). None carried #68.
+- The fix is DATA: point each card at its deal, and take the product off the website. It waits for the owner.

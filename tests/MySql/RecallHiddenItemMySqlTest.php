@@ -338,11 +338,16 @@ JS;
             ]);
         $m->table('plan_modules')->where('plan_id', $planId)->delete();
 
-        foreach (['tenant.pos.index', 'tenant.api.pos.held-sales'] as $route) {
+        // The POS screen's module MUST be enabled, or the page 403s and these tests prove nothing. The held-sales
+        // API maps to `tenant.api` once the route catalog is synced (another test in the run may sync it) — that key
+        // is always allowed by TenantSubscriptionAccessService and no module claims it, so it needs nothing here.
+        foreach (['tenant.pos.index' => true, 'tenant.api.pos.held-sales' => false] as $route => $mustHaveModule) {
             $key = $m->table('route_catalogs')->where('route_name', $route)->value('module_key');
             $module = $key ? Module::forRouteModuleKey($key)->first() : null;
-            if ($key) {
+            if ($key && $mustHaveModule) {
                 $this->assertNotNull($module, "route [{$route}] maps to [{$key}] but no module claims it");
+            }
+            if ($module) {
                 $m->table('plan_modules')->updateOrInsert(['plan_id' => $planId, 'module_id' => $module->id], ['is_enabled' => 1]);
             }
         }
