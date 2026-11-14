@@ -65,3 +65,26 @@ Sabotage proofs: each change was undone, and the new test failed on its own asse
 
 1. Filtering on UTC days instead of the shop's days: the Today test fails, because the 02:00 entry falls on the wrong day.
 2. Removing the filter, and showing the raw UTC time again: the Today test fails.
+
+## Done on prod (14 Nov 2026)
+
+Deployed with `deploy.sh`. Prod head went from `db1b52c5` to `2db86a82` (merge of `1b7b8379`, pushed first, origin = HEAD). All
+13 tenants OK.
+
+Checks after the deploy:
+
+- **Permissions OK.** No role lost anything, and no user lost a role. Every grant count is unchanged.
+- **Accounts OK.** Every tenant's chart of accounts is exactly as it was before the deploy.
+- **Smoke 13 / 13 at 0:** `tb_diff`, `neg_on_disallowed` and `department_negative`.
+- **Errors in today's log:** 20 before, 20 after.
+
+Live proof on the catering tenant, rendered in memory as its Owner with the day-by-day switch off. Nothing was saved.
+
+- **A-ONE TANDOOR (#167):**
+  - **No dates:** both entries, the journal (29 Oct 16:33) and the payment (13 Oct 14:13). The payment was
+    09:13 in UTC; the column now shows Karachi time.
+  - **13 Oct:** the payment only.
+  - **1 to 29 Oct, typed backwards:** both entries.
+  - **Today:** none, with "No ledger entries between these dates."
+- **Busiest supplier yesterday (13 Nov):** Yesterday shows 1 entry, the same as a direct count of that day.
+- No supplier entries had been typed yet today, so Today with rows is proven by the test only.
