@@ -907,14 +907,24 @@ class EscPosPayloadService
         // rider and the counter both need the number; typed walk-in details count too.
         // BOLD: everything the delivery rider reads off the bill at the door — who, which number,
         // which address. The cashier's and system's own reference lines stay normal weight.
+        //
+        // RECEIPT-CUSTOMER-SIZE-1 — and those three lines can be BIGGER. The client asked for the
+        // phone and address to be larger on the delivery bill; they were fixed at normal size while
+        // only the items and totals followed the layout. `customer_font_size` uses the same bands as
+        // every other size box (15–17 tall, 18–20 tall + wide, wrapped to 21). NULL keeps the exact
+        // bytes this bill printed before, so no tenant's paper changes until someone sets it.
+        $customerSize = $layout?->customer_font_size ?? null;
+        $customerLine = fn (string $text): string => $customerSize === null
+            ? self::BOLD_ON . $text . self::BOLD_OFF . "\n"
+            : $this->scaled($text, $this->scaleFor((int) $customerSize), true);
         if ($show('show_customer_name')) {
             $customerName = $sale->customer_name ?: $sale->customer?->name;
             $customerPhone = $sale->customer_phone ?: $sale->customer?->phone;
             if ($customerName) {
-                $out .= self::BOLD_ON . 'Customer: ' . $customerName . self::BOLD_OFF . "\n";
+                $out .= $customerLine('Customer: ' . $customerName);
             }
             if ($customerPhone) {
-                $out .= self::BOLD_ON . 'Phone: ' . $customerPhone . self::BOLD_OFF . "\n";
+                $out .= $customerLine('Phone: ' . $customerPhone);
             }
         }
 
@@ -934,7 +944,7 @@ class EscPosPayloadService
                 $out .= self::BOLD_ON . 'Rider: ' . $sale->deliveryRider->name . self::BOLD_OFF . "\n";
             }
             if ($sale->delivery_address) {
-                $out .= self::BOLD_ON . 'Deliver to: ' . $sale->delivery_address . self::BOLD_OFF . "\n";
+                $out .= $customerLine('Deliver to: ' . $sale->delivery_address);
             }
         }
         if ($show('show_vehicle_number') && $sale->vehicle_number) {
