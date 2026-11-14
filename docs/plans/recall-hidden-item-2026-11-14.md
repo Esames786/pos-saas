@@ -212,3 +212,23 @@ instead of the deals the counter sells:
 
 - Only one website order ever carried #161 (the 14 Nov 4,500 bill). None carried #68.
 - The fix is DATA: point each card at its deal, and take the product off the website. It waits for the owner.
+
+## RECALL-HIDDEN-ITEM-2 done on prod (14 Nov 2026, ~20:45 UTC = 15 Nov 01:45 PKT; owner: "fix apply kar lo … deploy kar do")
+
+**Code**
+- Merged as `fbb811a5` (merge of `f06a9ecd`). `git diff` between the tested commit and the merge is empty.
+- Pushed, and origin equals HEAD.
+- `bash deploy.sh`: DEPLOY_EXIT=0, all 13 tenants ok, nothing to migrate, prod `7a987c2d` → `fbb811a5`.
+
+**Checks before vs after the deploy**
+- **Permissions:** OK.
+- **Accounts:** OK.
+- **Smoke:** clean on all 13 tenants, before and after.
+- **Log errors today:** 27 before and 27 after.
+- The new check is present in the live `SalesOrderController`.
+
+**The stuck bill:** HS-20261114170043-892 was **paid, 4,500, at 20:29:45 UTC**. That was after #161 was set POS-visible
+(20:22), so before this code went live.
+
+**Data left as it is (the owner decides):** Kashif Food #161 `is_pos_visible` is still 1, so a counter button for
+"Singaporean Rice (Khass)" now shows on the POS next to deal #6. See "Found while answering the owner" above.
