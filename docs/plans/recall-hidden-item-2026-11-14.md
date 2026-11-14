@@ -77,6 +77,52 @@ No Master switch, no migration, no new route or permission.
   - new `tests/MySql/RecallHiddenItemMySqlTest.php`;
   - re-run every MySQL test that loads the POS screen (list in Results).
 
-## Results
+## Results (code commit `69536d3a`)
 
-(filled in below after the runs)
+Every run used the `_rhi` database set (`pos_test_master_rhi` / `pos_test_tenant_rhi` / `pos_test_edge_local_rhi`).
+
+- **New test:** `RecallHiddenItemMySqlTest` passed 7 tests with 75 assertions. The recall tests:
+  - render `/pos` over HTTP first;
+  - save the website order AFTER the page loads;
+  - read it back through `/api/pos/held-sales`;
+  - run the page's own `recallHeldSale()` in node, using the page's own two lists.
+- **Related MySQL tests:** 19 files, 129 tests, 1,672 assertions, exit 0. These are every MySQL test that loads the
+  POS screen:
+  - RecallHiddenItem
+  - BillPreviewPrintTarget
+  - CategoryBranchScope
+  - CategoryParentGuard
+  - CounterPacks
+  - DealSplitReport
+  - GramEntry
+  - MedicalCounter
+  - MoveTableCart
+  - OnlineOrderingCheckout
+  - OnlineOrderingInbox
+  - OnlineOrderingWebsiteDomain
+  - PackUnits
+  - PharmacyDemo
+  - PosScreenRendersHttp
+  - QuantityRules
+  - UnitsAndPacksJourney
+  - W2Combined
+  - PosPayloadResilience
+- **Blade:** `view:cache` compiled every view, and `php -l` on the compiled POS view was clean. The inline scripts
+  of the rendered POS were parse-checked with `node --check` inside the new test.
+
+### Sabotage proofs (each one red, then restored with `git checkout --`)
+
+| # | Sabotage | Result |
+|---|----------|--------|
+| 1 | Recall looks only in `products` (the hidden-items lookup is removed) | RED: the website-order test (the guard fired, because the rice was not found) |
+| 2 | Guard removed (recall builds what it can, as before) | RED: the switched-off test (the cart was replaced by the pasta alone) |
+| 3 | Server sends an empty hidden-items list | RED: the list test and the website-order test |
+| 4 | Page-load recall keeps its old `products.find` lookup | RED: the address-recall test |
+
+The system map was rebuilt from the `_rhi` databases: 239 tables, 441 foreign keys, 230 inferred links, 749 screens.
+There is no schema change.
+
+## Not done yet
+
+- **Not deployed.** Deploy only on the owner's word.
+- **Before deploy:** render the POS once on prod, as the Kashif Food delivery user, with the website order open.
