@@ -232,3 +232,33 @@ instead of the deals the counter sells:
 
 **Data left as it is (the owner decides):** Kashif Food #161 `is_pos_visible` is still 1, so a counter button for
 "Singaporean Rice (Khass)" now shows on the POS next to deal #6. See "Found while answering the owner" above.
+
+## Menu-link data fix on prod (14 Nov 2026 ~21:10 UTC = 15 Nov 02:10 PKT; owner: "Han kardo fix")
+
+**Audit (read-only) of every Kashif Food website card**
+- Only two cards sat on a product the counter does not sell while the counter sells a deal of that name: #161 and #68.
+- Every other "product ↔ deal" name match was a product with its own Midnight deal. Those products sell at the counter
+  in their own right (e.g. Zinger 361, Chow Mein 405 in 60 days), so those links are right.
+
+**Applied in one transaction** (it aborts if any row differs from the audit; before-state is in
+`kf_menu_link_audit.out` on the laptop)
+
+| Card | Moved from | Moved to |
+|---|---|---|
+| Singaporean Rice Khass | product #161 | deal #6 |
+| BBQ Shashlik with Garlic Fried Rice | product #68 | deal #75 |
+
+- **What each deal took over:** the card's website fields, unchanged:
+  - name;
+  - place (website category 25 / 10, i.e. the product's own category);
+  - photo, description and sort.
+- **Add-ons:** the website "Add Ons" group went with each card: group 5 (Extra Sauce +100) → deal 6, and group 11
+  (Sizzling +200) → deal 75.
+- **Products:** #161 and #68 got `show_on_website` = 0 (their website fields are kept, so it can be undone with one
+  tick). #161 also got `is_pos_visible` back to 0, its state before 14 Nov.
+
+**Verified**
+- `WebMenuService::menu(1)` shows the two cards on the deals at Rs 2,900 / 1,650, with photo and 1 add-on group each.
+  Neither product is on the website.
+- The live `https://kashiffood.com/` page data: "Singaporean Rice Khass" → `combo:6` (+ Extra Sauce 100);
+  "BBQ Shashlik with Garlic Fried Rice" → `combo:75` (+ Sizzling 200).
