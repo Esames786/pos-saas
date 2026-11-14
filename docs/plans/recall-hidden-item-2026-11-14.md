@@ -122,7 +122,26 @@ Every run used the `_rhi` database set (`pos_test_master_rhi` / `pos_test_tenant
 The system map was rebuilt from the `_rhi` databases: 239 tables, 441 foreign keys, 230 inferred links, 749 screens.
 There is no schema change.
 
-## Not done yet
+## Done on prod (14 Nov 2026, ~19:40 UTC = 15 Nov 00:40 PKT; owner: "Teekh hai deploy kardo")
 
-- **Not deployed.** Deploy only on the owner's word.
-- **Before deploy:** render the POS once on prod, as the Kashif Food delivery user, with the website order open.
+**Code**
+- Merged as `7a987c2d` (merge of `dc51990f`). `git diff` between the tested commit and the merge is empty.
+- Pushed, and origin equals HEAD.
+- `bash deploy.sh`: DEPLOY_EXIT=0, all 13 tenants ok, nothing to migrate, prod `055a4ccb` → `7a987c2d`.
+
+**Checks before vs after the deploy**
+- **Permissions:** OK. No role lost anything and no user lost a role (all 14 connections unchanged).
+- **Accounts:** OK. Every tenant's chart of accounts is exactly as before.
+- **Smoke:** all 13 tenants show tb_diff=0.00, neg_on_disallowed=0, department_negative=0, before and after.
+- **Log errors today:** 27 before and 27 after, with none after 19:30 UTC.
+
+**Live render proof** (the real `POSController@index` plus the view, built in tinker, read-only)
+- **Kashif Food, as the Delivery Desk user (#2):**
+  - the page renders, 209 items in `products`;
+  - `recallProducts` = 3: Garlic Rice With Shashlik Bar-B-Que, French Fries (Steak Side), Vegetable Rice (Steak Side);
+  - the guard is on the page.
+  - Singaporean Rice (Khass) #161 is in `products` right now, because one website bill that carries it is still open
+    (the open-bill escape hatch). So it is not listed twice. Once that bill closes it moves to `recallProducts`.
+- **Khatri:** the page renders, 108 items, `recallProducts` = 0 (its hidden items are all combo parts), and the guard is
+  on the page.
+- **A real cashier's POS** loaded after the deploy: nginx shows 1 × `GET /pos` 200.
