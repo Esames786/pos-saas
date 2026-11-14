@@ -33,6 +33,13 @@
     <input id="time_font_size" type="number" name="time_font_size" value="{{ old('time_font_size', $l?->time_font_size) }}" class="form-control" min="8" max="24" placeholder="Same as KOT font">
     <div class="form-text">KOT / Reminder TIME line only. Leave blank to match the KOT font. {!! $scaleHelp !!}</div>
 </div>
+{{-- RECEIPT-CUSTOMER-SIZE-1: the bill's Customer / Phone / Deliver to lines (Receipt only). --}}
+<div class="col-md-6" data-layout-doc="receipt">
+    <label class="form-label" for="customer_font_size">Customer &amp; Delivery Font (px)</label>
+    <input id="customer_font_size" type="number" name="customer_font_size" value="{{ old('customer_font_size', $l?->customer_font_size) }}" class="form-control" min="8" max="24" placeholder="Same as now">
+    <div class="form-text">Customer, Phone and Deliver to lines on the bill. Leave blank to keep them as they print today. {!! $scaleHelp !!}</div>
+    <div class="form-text">Bill par Customer, Phone aur Deliver to ki lines. Khali chhorein to abhi jaisa. 17 = lamba, 19 = lamba + chaura.</div>
+</div>
 <div class="col-12">
     <div class="alert alert-info py-2 mb-0 small">
         Bigger text means fewer characters per line — the printer does not wrap for you, so we wrap

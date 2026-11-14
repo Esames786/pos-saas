@@ -48,7 +48,7 @@ class ReceiptLayoutSetting extends Model
         'show_column_dividers', 'show_category_header', 'show_heading_stars',
         'show_bill_barcode', 'show_order_note', 'show_deal_as_heading',
         'header_text', 'footer_text', 'font_size', 'kot_font_size',
-        'item_font_size', 'time_font_size', 'is_active',
+        'item_font_size', 'time_font_size', 'customer_font_size', 'is_active',
     ];
 
     protected function casts(): array
@@ -83,6 +83,8 @@ class ReceiptLayoutSetting extends Model
             'kot_font_size'           => 'integer',
             'item_font_size'          => 'integer',
             'time_font_size'          => 'integer',
+            // RECEIPT-CUSTOMER-SIZE-1: the bill's Customer / Phone / Deliver to lines. NULL = normal, as before.
+            'customer_font_size'      => 'integer',
         ];
     }
 

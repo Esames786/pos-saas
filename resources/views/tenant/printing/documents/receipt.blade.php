@@ -26,6 +26,12 @@
             // touching the totals block — mirrors EscPosPayloadService's $rowTall. Null = document font.
             $itemFont = $layout?->item_font_size ?? $fontSize;
             $itemBand = match (true) { $itemFont <= 14 => 1.0, $itemFont <= 20 => 1.45, default => 1.9 };
+            // RECEIPT-CUSTOMER-SIZE-1: Customer / Phone / Deliver to carry their own size, same bands as
+            // the paper. NULL = no style attribute at all, so the preview stays byte-for-byte as before.
+            $customerFont = $layout?->customer_font_size ?? null;
+            $customerBand = $customerFont === null ? 1.0
+                : match (true) { $customerFont <= 14 => 1.0, $customerFont <= 20 => 1.45, default => 1.9 };
+            $customerStyle = $customerBand != 1.0 ? ' style="font-size: ' . $customerBand . 'em"' : '';
             // SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: print in the ORIGINAL operational timezone —
             // frozen shift tz first, then branch, then default — so changing the branch timezone
             // later never shifts a historical receipt/reprint's time.
@@ -180,8 +186,8 @@
         $billCustomerName = $salesOrder->customer_name ?: $salesOrder->customer?->name;
         $billCustomerPhone = $salesOrder->customer_phone ?: $salesOrder->customer?->phone;
     @endphp
-    @if($billCustomerName)<div class="bold">Customer: {{ $billCustomerName }}</div>@endif
-    @if($billCustomerPhone)<div class="bold">Phone: {{ $billCustomerPhone }}</div>@endif
+    @if($billCustomerName)<div class="bold"{!! $customerStyle !!}>Customer: {{ $billCustomerName }}</div>@endif
+    @if($billCustomerPhone)<div class="bold"{!! $customerStyle !!}>Phone: {{ $billCustomerPhone }}</div>@endif
 @endif
 
 @if($show('show_table_info') && $salesOrder->restaurantTable)
@@ -194,7 +200,7 @@
 @if($show('show_delivery_details'))
     @if($salesOrder->deliveryChannel)<div>Channel: {{ $salesOrder->deliveryChannel->name }}</div>@endif
     @if($salesOrder->deliveryRider)<div class="bold">Rider: {{ $salesOrder->deliveryRider->name }}{{ $salesOrder->deliveryRider->phone ? ' - ' . $salesOrder->deliveryRider->phone : '' }}</div>@endif
-    @if($salesOrder->delivery_address)<div class="bold">Deliver to: {{ $salesOrder->delivery_address }}</div>@endif
+    @if($salesOrder->delivery_address)<div class="bold"{!! $customerStyle !!}>Deliver to: {{ $salesOrder->delivery_address }}</div>@endif
 @endif
 @if($show('show_vehicle_number') && $salesOrder->vehicle_number)
 <div class="bold">Vehicle: {{ $salesOrder->vehicle_number }}</div>
