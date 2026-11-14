@@ -377,7 +377,81 @@ class OnlineOrderingCheckoutMySqlTest extends MySqlTenantTestCase
         $this->assertSame('Near', substr((string) ($sale->web_meta['landmark'] ?? 'Near'), 0, 4), 'web_meta POS ne nahi mitaya.');
     }
 
+    /**
+     * RECALL-HIDDEN-ITEM-2 (15 Nov) — website par bika "counter par chhupa" item counter par PAY bhi ho.
+     *
+     * Kashif Food: website order me Singaporean Rice (Khass) — POS par us ka button nahi. Recall ho gaya,
+     * magar Complete Sale par: "Singaporean Rice (Khass) is not available for POS sale." 4,500 ka bill band
+     * hi nahi hota tha.
+     */
+    public function test_a_website_order_with_an_item_hidden_from_the_counter_can_be_paid(): void
+    {
+        $this->openShift();
+        $this->zinger->update(['is_pos_visible' => false]);   // counter par button nahi; website par bikta hai
+        $res = $this->checkout(['type' => 'pickup', 'lines' => [['option' => 'product:'.$this->zinger->id, 'qty' => 1, 'addons' => [$this->pepsi]]]])->assertCreated();
+        $sale = SalesOrder::where('sale_no', $res->json('order'))->sole();
+        $line = $sale->lines->first();
+
+        $resp = $this->payAtCounter($sale->id, [['sales_order_line_id' => $line->id, 'product_id' => $line->product_id, 'quantity' => 1,
+            'unit_price' => (float) $line->unit_price, 'modifiers' => json_encode($line->modifiers)]], (float) $sale->grand_total);
+
+        $this->assertContains($resp->getStatusCode(), [200, 201], 'bill par pehle se para chhupa item pay hona chahiye: '.$resp->getContent());
+        $sale->refresh();
+        $this->assertSame('paid', $sale->status);
+        $this->assertSame(1, $sale->lines()->count());
+        $this->assertSame((int) $this->zinger->id, (int) $sale->lines()->value('product_id'), 'item bill par wohi raha');
+    }
+
+    /** Chhupa item HAATH se daalna ab bhi mana — naye bill par bhi, aur kisi aur line ki id ki aar me bhi. */
+    public function test_a_hidden_item_still_cannot_be_rung_up_by_hand(): void
+    {
+        $this->openShift();
+        $this->zinger->update(['is_pos_visible' => false]);
+        $pm = $this->makePaymentMethod();
+
+        // 1) Naya counter bill, chhupa item haath se.
+        $resp = $this->payAtCounter(null, [['product_id' => $this->zinger->id, 'quantity' => 1, 'unit_price' => 600]], 600, $pm);
+        $this->assertSame(422, $resp->getStatusCode(), $resp->getContent());
+        $this->assertStringContainsString('is not available for POS sale', $resp->getContent());
+
+        // 2) Website order par aik DOOSRA (dikhne wala) item; us ki line id ki aar me chhupa item.
+        $res = $this->checkout(['type' => 'pickup', 'lines' => [['option' => 'combo:'.$this->deal->id, 'qty' => 1]]])->assertCreated();
+        $sale = SalesOrder::where('sale_no', $res->json('order'))->sole();
+        $foreign = $sale->lines->first();
+        $resp = $this->payAtCounter($sale->id, [['sales_order_line_id' => $foreign->id, 'product_id' => $this->zinger->id, 'quantity' => 1,
+            'unit_price' => 600]], 600, $pm);
+        $this->assertSame(422, $resp->getStatusCode(), 'line id kisi aur item ki hai — chhoot nahi milni chahiye: '.$resp->getContent());
+        $this->assertStringContainsString('is not available for POS sale', $resp->getContent());
+        $this->assertNotSame('paid', $sale->refresh()->status, 'bill pay nahi hua');
+
+        // 3) Band (inactive) item bill par para ho tab bhi pay nahi — chhoot sirf "button nahi" ki hai.
+        $res = $this->checkout(['type' => 'pickup', 'lines' => [['option' => 'product:'.$this->zinger->id, 'qty' => 1, 'addons' => [$this->pepsi]]]])->assertCreated();
+        $hidden = SalesOrder::where('sale_no', $res->json('order'))->sole();
+        $this->zinger->update(['status' => 'inactive']);
+        $line = $hidden->lines->first();
+        $resp = $this->payAtCounter($hidden->id, [['sales_order_line_id' => $line->id, 'product_id' => $line->product_id, 'quantity' => 1,
+            'unit_price' => (float) $line->unit_price, 'modifiers' => json_encode($line->modifiers)]], (float) $hidden->grand_total, $pm);
+        $this->assertSame(422, $resp->getStatusCode(), 'band item kabhi pay nahi: '.$resp->getContent());
+        $this->assertNotSame('paid', $hidden->refresh()->status);
+    }
+
     // ── helpers ──
+
+    /** Counter par Pay — wohi SalesOrderController::store jo POS ka "Complete Sale" chalata hai. */
+    private function payAtCounter(?int $heldSaleId, array $lines, float $amount, ?int $paymentMethodId = null)
+    {
+        $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
+        Auth::shouldUse('tenant');
+        $req = Request::create('/pos', 'POST', array_filter([
+            'held_sale_id' => $heldSaleId, 'branch_id' => $this->branchId, 'terminal_id' => $this->terminalId,
+            'order_type' => 'takeaway', 'order_source' => 'pos', 'discount_type' => 'none', 'client_uuid' => (string) Str::uuid(),
+            'lines' => $lines,
+            'payments' => [['payment_method_id' => $paymentMethodId ?? $this->makePaymentMethod(), 'amount' => $amount]],
+        ], fn ($v) => $v !== null));
+        $req->headers->set('Accept', 'application/json');
+
+        return app()->call([app(SalesOrderController::class), 'store'], ['request' => $req]);
+    }
 
     private function checkout(array $over): \Illuminate\Testing\TestResponse
     {
