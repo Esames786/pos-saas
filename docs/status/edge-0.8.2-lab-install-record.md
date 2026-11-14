@@ -466,3 +466,75 @@ cold-load timing to observe on the next walk).
 **Final real offline exercise:** one-page executable checklist `docs/plans/lab-offline-acceptance-checklist-2026-11-08.md` (baseline →
 authority checks → GO takeover → laptop shift → cash sale → FakePrinter → outbox → GO reconnect → exactly-once → reconcile → GO
 handback → STANDBY_READY), each GO = the owner's word at that moment; nothing run.
+
+## B.17 — owner decisions of 8 Nov (B.15 ACCEPTED): 3317 checkpoint, F-1 browser regression, host reboot recovery (8–15 Nov 2026)
+
+**Owner decisions (B.15 ACCEPTED, 8 Nov):** F-1 accepted pending disposable browser regression, no release solely for it; F-2 CLOSED;
+**MySQL 3317 selected** for the real offline demonstration (no demo transactions on the shared 3306 with its unresolved InnoDB
+errors), prepare the final checkpoint, freeze nothing until the owner opens the attended window; Phase C when `secrets\admin.pass`
+exists; second laptop not repeated; 11-step demo procedure with the three GOs; canonical / reboot reliability / printer
+certification stay independent tracks.
+
+### B.17.1 — 3317 switchover checkpoint (8 Nov 17:11–17:20 UTC, read-only): PREPARED
+`docs/plans/lab-mysql-switchover-checkpoint-2026-11-08.md` — baseline table (health 200, authority standby with the heartbeat
+advancing, outbox acknowledged 5 / pending 0, open shifts 0, sales 6 local / 5 tenant, hourly backup 16:22 UTC, 3317 up with the
+three schemas 51/185/209 tables and 0 `[ERROR]`), the 3306 InnoDB evidence quoted (30 Oct redo-log FATAL, 4 Nov "LSN in the
+future … may be corrupt" ×7), window shape (≈30 min, 6 owner gos), pre-flight commands, the exact Step-1 FREEZE sequence with its
+STOP/report point, unfreeze and rollback. **OBS-2:** both LAB web-backend php -S children were recycled once at 14:16 UTC by their
+supervisors (`hung: 5 liveness probes failed … 144/145 s`) while the host sat at 100 % CPU from other sessions (Playwright headless
+Chrome ×4, two MySQL suites migrating `pos_test_tenant_dsf/dsm`, a golden-restore INSERT on 3306); health via the gateway took
+6.7–7.3 s at that time, 0.58 s once the host was quiet. Appliance logic unaffected; the pre-flight now requires host CPU < 50 % and
+no foreign active statements on 3306. The offline checklist's prerequisites were rewritten for the 3317 decision (demo only after
+the switchover; F-1 on the LAB not required — the cashier reloads after each GO until a release carries it).
+
+### B.17.2 — Host reboot 11 Nov 07:46 (+0500): the whole LAB was down for four days (reboot-reliability track, expected)
+Found on resuming 15 Nov 03:42 (+0500): `LastBootUpTime 2026-11-11 07:46:11`; all seven LAB workers, the LAB Cloud, the FakePrinter,
+the dedicated 3317 instance and the devclone were dead (no services by design — the Windows-service step still needs the owner's
+separate elevated approval); only the Laragon 3306 was up (autostart). `D:\laragon2\data\mysql-8\mysqld.log` shows 3306 restarted
+by others on 11, 12 and 14 Nov and one failed start on 13 Nov 22:30 UTC (`ibdata1 must be writable` = a second instance on the same
+datadir — not this work). **LAB data intact on 3306** (read-only check): `edge_local_meta` standby, acks 243, last ack 11 Nov 02:40 UTC
+(6 min before the reboot), outbox acknowledged 5 / pending 0, open shifts 0, sales 6 / 5, 445 tables. Relaunched in the recorded
+order, nothing else changed: 3317 (`mysqld --defaults-file=…\my-lab.ini`, hidden; InnoDB + XA recovery clean, `ready for
+connections` 22:44:51 UTC, 0 `[ERROR]`, schemas 51/185/209) → LAB Cloud (`Start-LabCloud.ps1 -Browsable -Worktree
+…\cloud\src-ac5b168d`, pid 28696, `/up` 200 in 2 s) → FakePrinter (pid 31184, :9100) → `Start-EdgeLabWorkers.ps1 -Action Start`
+(gateway 25048, Web1 12780, Web2 5496, print 27700, sync 26284, authority 3916, backup 12280 — recorded in `data\lab-workers.json`).
+Verified: 7/7 alive, `:8443`/`:8081`/`:8090`/`:8091` listening, health 200 over verified TLS in 577 ms, authority `standby` with the
+heartbeat advancing again (acks 258 → 259, last ack 22:53:20 UTC). No Local Mode, no authority change, no 3306 change. Harness
+lesson kept: `Start-FakePrinter.ps1` / `Start-EdgeLabWorkers.ps1 -Action Start` children inherit the caller's pipe — call them from a
+wrapper whose output goes to a file and stop only the wrapper afterwards (done; the children survived).
+
+### B.17.3 — F-1 browser regression on the disposable devclone (15 Nov 2026 03:47–03:55 +0500): PASS after two follow-up fixes
+Method: headless Microsoft Edge 157 driven over the DevTools protocol by `scripts\f1-browser-pass.ps1` (PowerShell 5.1
+`ClientWebSocket`; credential read from `secrets\devclone-cashier.pass` into the browser only, never printed), devclone
+`http://127.0.0.1:8096` (worktree code, DB `bingoo_edge_devclone_local`, authority flipped by SQL on that disposable DB only).
+Evidence: `C:\Users\Dell\BingooEdgeLab\evidence\f1-browser-20261115\` (4 screenshots, log, results JSON, the harness; run-6 before-fix
+screenshot). Harness defects fixed on the way (not app defects): empty target list at start, PS 5.1 JSON-array unrolling, an
+unbounded "drain until quiet" loop (the page's steady event trickle never goes quiet — runs 4/5 hung for hours and were stopped by
+their own recorded pids), one outstanding `ReceiveAsync` at a time, `$snap`/`$SNAP` case-insensitive collision.
+
+Run 6 (code of db102243) — the gate at load was right (Review & Pay / Complete Sale disabled, Open shift aria-disabled, STANDBY
+overlay, badge), Review & Pay click inert, **but a deal tile ("Lab Family Deal") still entered the cart** (the server then refused the
+quote with 422 and the toast showed the server text — surfacing worked) and **Complete Sale was re-enabled** by the page's own
+`updateCartActionStates()` after the cart changed. Two real F-1 gaps → fixed in the shared view, Online untouched
+(`POS.canMutate()` is always true there):
+1. `addComboToCart()` now carries the same refusal as `addToCart()` (combos/deals bypassed the gate);
+2. `updateCartActionStates()` keeps a `data-pos-gate` button disabled whatever the cart does;
+3. defence in depth: `submitPaidSale()` refuses while gated (keyboard Enter / F10 call it without the button);
+4. `hold-sale-btn` added to `GATED` (Hold is a server write; it would have 422'd).
+
+Run 7 (with the fixes), every check from the real browser, no page JS exceptions:
+| step | result |
+|---|---|
+| STANDBY at load | `can_mutate=false`, body gated, Review & Pay + Complete Sale + Hold Sale disabled with the reason as title, Open shift `aria-disabled`, overlay "STANDBY — This Branch Server is in STANDBY — the Online (Cloud) POS is the active writer…", badge STANDBY |
+| deal tile click in STANDBY | cart stays empty ("No items yet"), toast with the standby text (screenshot 02) |
+| Review & Pay click in STANDBY | inert, no modal |
+| authority → `local_active` by SQL, no reload | released in ≤ 8 s by the Edge chrome poll (1 `sync/summary` request seen): gate removed, overlay hidden, success toast "Local Mode is active — this Branch Server can ring sales now." (screenshot 03) |
+| deal tile click in Local Mode | enters the cart (1 999.00), Review & Pay enabled |
+| authority → `standby` by SQL, no reload | re-gated in ≤ 20 s: Review & Pay / Hold Sale disabled, overlay back, **cart kept with its line** (screenshot 04) |
+| harness note | the direct quote POST in step 4 used an empty payload, so the 422 it got was validation ("order type field is required"), not the authority refusal — the authority 422 surfacing is proven by run 6's deal path and by B.14's gateway log; not re-tested with a full payload |
+
+Tests after the fixes: `EdgeChromePartialTest` 4/4 (54 assertions); MySQL cashier HTTP classes on `_t5`: see the gate line below.
+No schema/route/controller change (Blade + JS only) → system map unchanged. F-1 remains **on the disposable only**; no release
+built; the LAB runs 0.8.2-edge (a6113772) as before.
+
+MySQL gate after the fixes (15 Nov 23:00 UTC, `_t5` set): `EdgeCashierConnectionStateHttpMySqlTest` + `EdgeCashierScreenRendersHttpMySqlTest` + `EdgeCashierShellHttpMySqlTest` = **15 tests, 303 assertions OK** (1 pre-existing PHPUnit deprecation notice). Devclone php -S stopped afterwards by its recorded pid.

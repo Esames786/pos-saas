@@ -26,7 +26,15 @@ cashier LAB2C5D (owner types the credential), approver LABMF2DE (Phase C PIN, wh
 Abort/rollback at any step: stop, do not improvise; record the state; the owner decides (handback is itself the rollback for
 steps 2–9 once the Cloud is reachable; nothing is deleted on either side).
 
-Prerequisites still open before step 0 can be scheduled: Phase C (temporary admin → approver PIN for W07/W08, needs
-`secrets\admin.pass`); the owner's decision on running the exercise on 3306 (as today) or after the 3317 switchover
-(`docs/plans/lab-mysql-switchover-2026-11-07.md`); F-1 UX gate deployed to the LAB only if a packaged release is made
-before the demo (owner: not solely for F-1 — the exercise works without it; the 422 refusals are then only in the log).
+Prerequisites still open before step 0 can be scheduled (owner decision B.15, 8 Nov 2026):
+
+1. **MySQL 3317 — decided.** The demo runs only after the LAB has been switched to the dedicated 3317 instance
+   ([checkpoint](lab-mysql-switchover-checkpoint-2026-11-08.md), attended window opened by the owner). Step 0 therefore also
+   asserts `appliance.env EDGE_DB_PORT=3317` and `edge:local:health` on 3317; no demo transaction is rung against 3306.
+2. **Phase C** (temporary admin → approver PIN for W07/W08) — needs `secrets\admin.pass`; without the PIN the
+   approver-gated paths stay out of scope and steps 2/10 use the documented appliance commands only.
+3. **F-1 gate on the LAB — not required.** F-1 is accepted on the disposable pending the browser regression; no release is
+   built for it. The exercise works without it: the Branch Server refuses writes server-side (422) and the laptop shows the
+   STANDBY badge; the "repaints within 20 s" expectations in steps 2 and 10 apply only once a release carrying F-1 is on
+   the LAB — until then the cashier reloads the page after each GO.
+4. **Separate authorization** for the exercise itself (takeover / Local Mode / handback), given with the owner present.

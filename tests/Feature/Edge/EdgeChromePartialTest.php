@@ -123,7 +123,7 @@ class EdgeChromePartialTest extends TestCase
 
         $transport = view('tenant.pos.js.pos-runtime')->render();
         $this->assertStringContainsString("if (!a || typeof a !== 'object' || !Object.prototype.hasOwnProperty.call(a, 'can_mutate')) return true;", $transport, 'Cloud (no can_mutate) keeps the gate open');
-        $this->assertStringContainsString("var GATED = ['review-pay-btn', 'complete-sale-btn', 'pos-shift-open-link'];", $transport);
+        $this->assertStringContainsString("var GATED = ['review-pay-btn', 'complete-sale-btn', 'hold-sale-btn', 'pos-shift-open-link'];", $transport);
         $this->assertStringContainsString('applyMutationGate();', $transport, 'setAuthority applies the gate');
         $this->assertStringContainsString("document.addEventListener('DOMContentLoaded', applyMutationGate);", $transport);
         $this->assertStringContainsString('if (res.status === 422 && isAuthorityRefusal(data)) {', $transport, 'server authority refusals are surfaced');

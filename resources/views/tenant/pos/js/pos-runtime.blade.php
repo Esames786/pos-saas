@@ -179,7 +179,7 @@
         }
         return 'This Branch Server is in STANDBY — the Online (Cloud) POS is the active writer for this branch. Items, payments and shifts can only be rung here once Local Mode is active.';
     }
-    var GATED = ['review-pay-btn', 'complete-sale-btn', 'pos-shift-open-link'];
+    var GATED = ['review-pay-btn', 'complete-sale-btn', 'hold-sale-btn', 'pos-shift-open-link'];
     var gateOverlayShown = false;
     function applyMutationGate() {
         var ok = canMutate();

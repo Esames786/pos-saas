@@ -3379,6 +3379,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function addComboToCart(combo) {
+        // F-1 (15 Nov 2026, browser regression run 6): deals/combos bypassed the standby gate — same refusal as addToCart.
+        if (window.POS && typeof POS.canMutate === 'function' && !POS.canMutate()) { POS.notifyNoMutate(); return; }
         var avail = comboAvailability(combo);
         if (avail.makeable !== null && avail.makeable <= 0) {
             if (!branchAllowsNegative()) {
@@ -3563,7 +3565,8 @@ document.addEventListener('DOMContentLoaded', function () {
         ['complete-sale-btn', 'hold-sale-btn', 'bill-preview-btn'].forEach(function (id) {
             var b = document.getElementById(id);
             if (b) {
-                b.disabled = empty || buttonIsBusy(b);
+                // F-1: a gated button (data-pos-gate, STANDBY / handback) stays disabled whatever the cart does.
+                b.disabled = empty || buttonIsBusy(b) || b.getAttribute('data-pos-gate') === '1';
                 b.classList.toggle('opacity-50', empty);
             }
         });
@@ -6051,6 +6054,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function submitPaidSale(continuingFlow) {
         const submitBtn = document.getElementById('complete-sale-btn');
+        // F-1: defence in depth behind the disabled button (keyboard Enter / F10 paths call this directly).
+        if (window.POS && typeof POS.canMutate === 'function' && !POS.canMutate()) { POS.notifyNoMutate(); return; }
         if (!continuingFlow && (_completeSaleFlowActive || buttonIsBusy(submitBtn))) return;
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
         if (!requireDeliveryCustomer()) return;
