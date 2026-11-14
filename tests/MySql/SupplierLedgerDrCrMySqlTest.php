@@ -136,13 +136,83 @@ class SupplierLedgerDrCrMySqlTest extends MySqlTenantTestCase
     }
 
     // ══════════════════════════════════════════════════════════════════════════════
+    // SUPPLIER-LEDGER-RANGE-1 (14 Nov) — From / To + Today / Yesterday on this ledger
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * The dates are the Date column's: the day the entry was typed, in the shop's time (Asia/Karachi). An entry typed at
+     * 02:00 on the 14th is stored as the 13th in UTC; it must sit under Today, and its Date must say the 14th.
+     */
+    public function test_today_and_yesterday_show_only_that_days_entries_in_the_shops_time(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-14 10:00:00', 'UTC'));   // 15:00 in Karachi
+        $this->ledgerRow('R-OLD', '2026-11-12 10:00:00');          // 12 Nov 15:00 PKT
+        $this->ledgerRow('R-YDAY', '2026-11-13 18:30:00');         // 13 Nov 23:30 PKT
+        $this->ledgerRow('R-TODAY-EARLY', '2026-11-13 21:00:00');  // 14 Nov 02:00 PKT
+        $this->ledgerRow('R-TODAY', '2026-11-14 09:00:00');        // 14 Nov 14:00 PKT
+
+        $today = $this->ledgerPage(['range' => 'today']);
+        $this->assertSame(['R-TODAY', 'R-TODAY-EARLY'], $this->refs($today), 'Today = only the 14th, the 02:00 entry included');
+        $this->assertSame('2026-11-14 02:00', $this->cells($today, 'R-TODAY-EARLY')['date'], 'the Date column is in the shop\'s time');
+        $this->assertStringContainsString('name="date_from" value="2026-11-14"', $today, 'the From box shows the day chosen');
+        $this->assertStringContainsString('name="date_to" value="2026-11-14"', $today);
+
+        $this->assertSame(['R-YDAY'], $this->refs($this->ledgerPage(['range' => 'yesterday'])), 'Yesterday = only the 13th');
+        $this->assertSame(['R-YDAY', 'R-OLD'], $this->refs($this->ledgerPage(['date_from' => '2026-11-12', 'date_to' => '2026-11-13'])),
+            'From / To covers both whole days');
+        $this->assertSame(['R-YDAY', 'R-OLD'], $this->refs($this->ledgerPage(['date_from' => '2026-11-13', 'date_to' => '2026-11-12'])),
+            'From after To is read the right way round');
+        $this->assertSame(['R-TODAY', 'R-TODAY-EARLY', 'R-YDAY'], $this->refs($this->ledgerPage(['date_from' => '2026-11-13'])),
+            'From alone = from that day on');
+
+        $none = $this->ledgerPage(['date_from' => '2026-11-01', 'date_to' => '2026-11-02']);
+        $this->assertSame([], $this->refs($none));
+        $this->assertStringContainsString('No ledger entries between these dates.', $none);
+    }
+
+    public function test_no_dates_still_shows_every_entry_and_a_bad_date_is_ignored(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-14 10:00:00', 'UTC'));
+        $this->ledgerRow('R-OLD', '2026-10-01 10:00:00');
+        $this->ledgerRow('R-TODAY', '2026-11-14 09:00:00');
+
+        $all = $this->ledgerPage();
+        $this->assertSame(['R-TODAY', 'R-OLD'], $this->refs($all), 'opened from the supplier, the ledger is the same as before: every entry');
+        $this->assertStringContainsString('name="range" value="today"', $all, 'the Today button is on the screen');
+        $this->assertStringContainsString('name="range" value="yesterday"', $all, 'the Yesterday button is on the screen');
+
+        $this->assertSame(['R-TODAY', 'R-OLD'], $this->refs($this->ledgerPage(['date_from' => '2026-02-31', 'date_to' => 'tomorrow'])),
+            'a date that does not exist is ignored, not an error');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
     // helpers
     // ══════════════════════════════════════════════════════════════════════════════
 
-    private function ledgerPage(): string
+    private function ledgerPage(array $query = []): string
     {
-        return $this->actingAsOwner()->get('http://' . $this->host . '/suppliers/' . $this->supplierId . '/ledger')
+        return $this->actingAsOwner()->get('http://' . $this->host . '/suppliers/' . $this->supplierId . '/ledger'
+            . ($query ? '?' . http_build_query($query) : ''))
             ->assertOk()->getContent();
+    }
+
+    /** A ledger row typed at the given UTC time (how the app stores it). */
+    private function ledgerRow(string $reference, string $createdAtUtc): void
+    {
+        DB::connection('tenant')->table('supplier_ledgers')->insert([
+            'supplier_id' => $this->supplierId, 'entry_type' => 'journal_adjustment', 'direction' => 'debit', 'amount' => 100,
+            'entry_date' => substr($createdAtUtc, 0, 10), 'balance_after' => 100, 'reference_no' => $reference,
+            'created_by_user_id' => $this->ownerId, 'created_at' => $createdAtUtc, 'updated_at' => $createdAtUtc,
+        ]);
+    }
+
+    /** References in the ledger table, top to bottom. */
+    private function refs(string $html): array
+    {
+        $body = substr($html, (int) strpos($html, '<tbody>'), (int) strpos($html, '</tbody>') - (int) strpos($html, '<tbody>'));
+        preg_match_all('#<td>(R-[A-Z-]+)</td>#', $body, $m);
+
+        return $m[1];
     }
 
     /** Ledger ki us satar ke khaane jis me ye reference hai — header ke kram se. */
