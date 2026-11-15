@@ -559,6 +559,130 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             });
     }
 
+    // ── CANONICAL REHEARSAL chunks 9-11 (15 Nov 2026) — canonical 073238de..5c74107f ─────────────────────────────────────
+
+    /** KOT-ORDER-NOTE-1 (canonical 114413b9 + c51b2fe7): the toggle lands with its default flipped by the second migration. */
+    public function test_order_note_toggle_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_02_000001_add_order_note_toggle', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn) {
+                $this->dropColumns('receipt_layout_settings', ['show_order_note']);
+                // the default-off migration depends on the column: an appliance older than the toggle runs both forward again
+                $conn->table('migrations')->where('migration', '2026_11_02_000002_order_note_toggle_default_off')->delete();
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('receipt_layout_settings', 'show_order_note'));
+                $this->assertTrue($conn->table('migrations')->where('migration', '2026_11_02_000002_order_note_toggle_default_off')->exists(), 'the default-off step ran with it');
+                $this->assertSame('0', (string) $conn->selectOne("SELECT column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'receipt_layout_settings' AND column_name = 'show_order_note'")->d, 'OFF by default (canonical c51b2fe7)');
+            });
+    }
+
+    /** KOT-ORDER-NOTE-1 (2) (canonical c51b2fe7): the default flips to OFF and every existing layout row is set OFF — owner-review item (data rewrite). */
+    public function test_order_note_toggle_default_off_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_02_000002_order_note_toggle_default_off', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn) {
+                $conn->statement('ALTER TABLE receipt_layout_settings MODIFY show_order_note TINYINT(1) NOT NULL DEFAULT 1');
+                $branchId = (int) $conn->table('branches')->orderBy('id')->value('id');
+                $conn->table('receipt_layout_settings')->where('document_type', 'kot-upgrade-probe')->delete();
+                $conn->table('receipt_layout_settings')->insert(['branch_id' => $branchId, 'document_type' => 'kot-upgrade-probe', 'show_order_note' => 1, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            },
+            function ($conn) {
+                $this->assertSame('0', (string) $conn->selectOne("SELECT column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'receipt_layout_settings' AND column_name = 'show_order_note'")->d);
+                $this->assertSame(0, (int) $conn->table('receipt_layout_settings')->where('document_type', 'kot-upgrade-probe')->value('show_order_note'), 'an existing layout row is switched OFF, as on the Cloud');
+                $conn->table('receipt_layout_settings')->where('document_type', 'kot-upgrade-probe')->delete();
+            });
+    }
+
+    /** KOT-DEAL-HEADING-1 (canonical 7230a7b3). */
+    public function test_deal_heading_toggle_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_11_000001_add_deal_heading_toggle', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            fn () => $this->dropColumns('receipt_layout_settings', ['show_deal_as_heading']),
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('receipt_layout_settings', 'show_deal_as_heading'));
+                $this->assertSame('0', (string) $conn->selectOne("SELECT column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'receipt_layout_settings' AND column_name = 'show_deal_as_heading'")->d, 'OFF unless the owner switches it on per tenant');
+            });
+    }
+
+    /** RECEIPT-CUSTOMER-SIZE-1 (canonical c8e333d9). */
+    public function test_customer_font_size_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_14_000001_add_customer_font_size_to_receipt_layouts', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            fn () => $this->dropColumns('receipt_layout_settings', ['customer_font_size']),
+            fn ($conn, $schema) => $this->assertTrue($schema->hasColumn('receipt_layout_settings', 'customer_font_size')));
+    }
+
+    /** PURCHASE-EDIT-1 (1/3) + SUPPLIER-LEDGER-DAILY-1 (canonical f0019787 / 0d07db90): entry_date + its index, carried. */
+    public function test_supplier_ledger_entry_date_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_03_000001_add_entry_date_to_supplier_ledgers', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function ($conn, $schema) {
+                if ($schema->hasColumn('supplier_ledgers', 'entry_date')) {
+                    $schema->table('supplier_ledgers', fn (Blueprint $t) => $t->dropIndex('supplier_ledgers_supplier_entry_date_index'));
+                }
+                $this->dropColumns('supplier_ledgers', ['entry_date']);
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('supplier_ledgers', 'entry_date'));
+                $this->assertSame(1, (int) $conn->selectOne("SELECT COUNT(DISTINCT index_name) AS c FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'supplier_ledgers' AND index_name = 'supplier_ledgers_supplier_entry_date_index'")->c);
+            });
+    }
+
+    /** PURCHASE-EDIT-1 (1/3) (canonical f0019787): the revision record table + goods_receipts.revision_no, carried empty. */
+    public function test_goods_receipt_revisions_upgrade_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_03_000002_create_goods_receipt_revisions', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function ($conn, $schema) {
+                $schema->dropIfExists('goods_receipt_revisions');
+                $this->dropColumns('goods_receipts', ['revision_no']);
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasTable('goods_receipt_revisions'));
+                $this->assertTrue($schema->hasColumn('goods_receipts', 'revision_no'));
+                $this->assertSame(0, (int) $conn->table('goods_receipt_revisions')->count(), 'empty on the appliance — goods receipts are Cloud screens');
+            });
+    }
+
+    /** PURCHASE-EDIT-1 (1/3) (canonical f0019787): the ENUM gains voided (owner-review item: a column MODIFY) + the void columns. */
+    public function test_purchase_bill_voidable_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_03_000003_let_a_purchase_bill_be_voided', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function ($conn) {
+                $this->dropColumns('purchase_bills', ['voided_at', 'voided_by_user_id', 'void_reason']);
+                $values = array_values(array_diff($this->enumValues('purchase_bills', 'status'), ['voided']));
+                $this->assertNotEmpty($values);
+                $col = $conn->selectOne("SHOW COLUMNS FROM purchase_bills WHERE Field = 'status'");
+                $null = ($col->Null ?? '') === 'YES' ? 'NULL' : 'NOT NULL';
+                $default = $col->Default !== null ? " DEFAULT '" . $col->Default . "'" : '';
+                $conn->statement("ALTER TABLE purchase_bills MODIFY COLUMN status ENUM('" . implode("','", $values) . "') {$null}{$default}");
+                $this->assertNotContains('voided', $this->enumValues('purchase_bills', 'status'), 'older appliance: no voided status');
+            },
+            function ($conn, $schema) {
+                $this->assertContains('voided', $this->enumValues('purchase_bills', 'status'));
+                foreach (['voided_at', 'voided_by_user_id', 'void_reason'] as $c) {
+                    $this->assertTrue($schema->hasColumn('purchase_bills', $c), $c);
+                }
+            });
+    }
+
+    /** DEAL-SPLIT-REPORT-1 (canonical 7762ab39): the three report-only columns, carried; never written by the till. */
+    public function test_deal_split_report_columns_upgrade_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_08_000001_add_deal_split_report_columns', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function () {
+                $this->dropColumns('sales_order_lines', ['deal_share']);
+                $this->dropColumns('combo_components', ['report_amount']);
+                $this->dropColumns('combos', ['report_by_items']);
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('sales_order_lines', 'deal_share'));
+                $this->assertTrue($schema->hasColumn('combo_components', 'report_amount'));
+                $this->assertTrue($schema->hasColumn('combos', 'report_by_items'));
+                $this->assertSame('YES', $conn->selectOne("SELECT IS_NULLABLE AS n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sales_order_lines' AND column_name = 'deal_share'")->n, 'NULL on every line the till writes');
+            });
+    }
+
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void

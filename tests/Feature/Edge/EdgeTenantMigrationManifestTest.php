@@ -198,8 +198,14 @@ class EdgeTenantMigrationManifestTest extends TestCase
         // chunk 3 (4b745532 UNIFIED-W3W4): + decimal_pack_sizes (EDGE_REQUIRED, owner review), sale_line_entered_unit (EDGE_REQUIRED), goods_receipts submission_key (CLOUD_ONLY).
         // chunk 5 (567a7752 SUPPLIER-CREDIT-CLARITY-1): + supplier_credit_moves (CLOUD_ONLY).
         // chunk 8 (073238de WEB-PICKUP-SWITCH-1): + web_settings.pickup_enabled (CLOUD_ONLY).
-        $this->assertSame(227, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6) + 025728d8 (3) + 59787ff6 exception (1) + H1 (1) + rehearsal chunks 1–8 (10)');
-        $this->assertSame(29, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
+        // chunks 9-11 (15 Nov 2026, canonical 073238de..5c74107f): + order_note toggle + default_off, deal_heading toggle, customer_font_size (EDGE_REQUIRED ×4);
+        // supplier_ledgers.entry_date, goods_receipt_revisions, purchase_bill voidable (ENUM, owner review), deal_split columns (EDGE_SCHEMA_SAFE ×4);
+        // delivery_place_sightings, print_prepares (CLOUD_ONLY ×2).
+        $this->assertSame(237, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6) + 025728d8 (3) + 59787ff6 exception (1) + H1 (1) + rehearsal chunks 1–8 (10) + chunks 9–11 (10)');
+        $this->assertSame(31, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
+        $this->assertSame(4, count(array_filter(['2026_11_02_000001_add_order_note_toggle', '2026_11_02_000002_order_note_toggle_default_off', '2026_11_11_000001_add_deal_heading_toggle', '2026_11_14_000001_add_customer_font_size_to_receipt_layouts'], fn ($n) => $m->classification($n) === EdgeTenantMigrationManifest::EDGE_REQUIRED)), 'the replicated receipt layout columns are EDGE_REQUIRED');
+        $this->assertTrue($m->entry('2026_11_03_000003_let_a_purchase_bill_be_voided')['OWNER_REVIEW_REQUIRED'], 'ENUM MODIFY keeps owner review (owner, 15 Nov 2026)');
+        $this->assertTrue($m->entry('2026_11_02_000002_order_note_toggle_default_off')['OWNER_REVIEW_REQUIRED'], 'a data rewrite keeps owner review (owner, 15 Nov 2026)');
         $this->assertSame(EdgeTenantMigrationManifest::CLOUD_ONLY, $m->classification('2026_10_22_000001_create_purged_entries_tables'), 'Phase E R-2: the purge tables are a Cloud back-office feature');
         $baselineCloudOnly = array_filter($m->entries(), fn ($e) => ($e['BASELINE'] ?? false) && $e['CLASSIFICATION'] === EdgeTenantMigrationManifest::CLOUD_ONLY);
         $this->assertSame([], array_keys($baselineCloudOnly), 'baseline rule: no 0.7.0 migration is CLOUD_ONLY in this manifest version');
