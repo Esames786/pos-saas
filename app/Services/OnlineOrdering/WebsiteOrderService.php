@@ -411,6 +411,24 @@ class WebsiteOrderService
         return Str::limit(implode(' | ', $parts), 2000, '');
     }
 
+    /**
+     * KOT-ORDER-NOTE-1 — from readableNote()'s text, only what the kitchen cooks by: item notes, the customer's
+     * "Note:" and anything a cashier added. Payment, landmark, location, distance, phone and map stay on the POS
+     * and the bill. A note rewritten at the counter (no longer ours) prints as typed.
+     */
+    public static function kitchenPart(string $notes): ?string
+    {
+        $notes = trim($notes);
+        if (! str_starts_with($notes, 'WEBSITE ORDER')) {
+            return $notes !== '' ? $notes : null;
+        }
+        $keep = array_filter(array_map('trim', explode(' | ', $notes)), fn ($p) => $p !== ''
+            && ! in_array($p, ['WEBSITE ORDER', 'CASH ON DELIVERY', 'CASH ON PICK-UP'], true)
+            && ! Str::startsWith($p, ['Landmark: ', 'Location: ', 'Distance: ', 'Alt phone: ', 'Map: ']));
+
+        return $keep ? implode(' | ', $keep) : null;
+    }
+
     /** Pakistan mobile ko POS ki shakl me: +92 300… / 92300… → 0300… */
     public function localPhone(string $phone): string
     {

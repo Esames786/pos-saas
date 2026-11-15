@@ -217,6 +217,15 @@
 @php
     $current = $event->currentEstimate;
     $isDraft = $current && $current->isDraft();
+    // CATERING-RESTORE-IN-PLACE-1 — a version Restore brought back, still
+    // exactly as the customer received it. Shown in the editor; its first
+    // CHANGED Save becomes the next revision (CateringEstimateController::update).
+    $restoredEditable = $current && ! $isDraft && $event->isCommerciallyOpen()
+        && (auth()->user()?->can('tenant.catering.estimates.update') ?? false)
+        && app(\App\Services\Catering\CateringEstimateService::class)->isRestoredVersion($current);
+    // The number the next revision will get — max+1, NOT current+1: a restored
+    // Q1 sits below Q2, so its change becomes Q3.
+    $nextVersionNo = (int) ($event->estimates->max('version_no') ?? 0) + 1;
     // Render callers that predate the instruction vocabulary may not pass it.
     $activeInstructions = $activeInstructions ?? collect();
     $statusBadge = match($event->status) {
@@ -576,7 +585,10 @@
                     </form>
                 @endcan
             @endunless
-            @if(! $isDraft && $event->isCommerciallyOpen())
+            {{-- Not on a restored version: there the editor is open and its
+                 changed Save IS the revision, so a second button would only
+                 make an unchanged copy — the very thing Restore stopped doing. --}}
+            @if(! $isDraft && ! $restoredEditable && $event->isCommerciallyOpen())
                 @can('tenant.catering.estimates.revise')
                     {{-- CATERING-REVISION-MONEY-1 — a revision is a FINANCIAL act
                          once money has been received, because what the customer
@@ -596,12 +608,22 @@
         </div>
     </div>
 
-    @if($isDraft && $event->isCommerciallyOpen())
+    @if(($isDraft || $restoredEditable) && $event->isCommerciallyOpen())
     {{-- ── Draft estimate builder ─────────────────────────────────────── --}}
     @can('tenant.catering.estimates.update')
     <form method="POST" action="{{ url('/catering/estimates/' . $current->id) }}" id="estimate-form">
         @csrf @method('PUT')
         <div class="card-body p-0">
+            @if($restoredEditable)
+            <div class="alert alert-warning rounded-0 border-0 border-bottom mb-0 py-2 fs-13" id="restored-version-note">
+                <i class="ti ti-history me-1"></i>
+                <strong>Ye wapas laayi gayi Q{{ $current->version_no }} hai</strong> — wohi jo graahak ko bheji gayi thi.
+                Kuch badal kar <strong>Save</strong> karenge to <strong>Q{{ $nextVersionNo }}</strong>
+                nayi revision banegi aur wohi main hogi; Q{{ $current->version_no }} waisi hi mehfooz rahegi.
+                Bina badle Save se kuch nahi banta.
+                <div class="fs-12 text-muted mt-1">Kisi dish ka rate ya material badalna ho to us row ki pencil se badlein — wahin wale chhote buttons pehle Save ke baad khulenge.</div>
+            </div>
+            @endif
             {{-- KASHIF-ORDER-PUNCH §B2 — the guided punch (approved mockup, on
                  the live pipeline): item → Qty → OWN/PARTY → linked materials
                  auto-fill EK-EK karke (rate/KG editable, گاہک share on the same
@@ -781,16 +803,23 @@
                                          data-act-calc="{{ url('/catering/estimate-lines/' . $line->id . '/use-calculated-rate') }}"
                                          data-calc="{{ (float) $line->calculated_rate }}"
                                          data-overridden="{{ $line->hasQuotedRateOverride() ? 1 : 0 }}">
+                                        {{-- CATERING-RESTORE-IN-PLACE-1: on a restored version
+                                             Apply would write straight onto the customer's paper,
+                                             so the box is read-only there; the row's pencil
+                                             carries a new rate with Save, which makes the revision. --}}
                                         <input type="number" step="0.01" min="0" data-field="quoted_rate"
                                                value="{{ number_format($line->rate, 2, '.', '') }}"
+                                               @unless($isDraft) readonly title="Rate badalne ke liye row ki pencil use karein" @endunless
                                                class="form-control form-control-sm text-end live-rate" style="width:110px;margin-left:auto">
                                         @if($line->hasQuotedRateOverride())
                                             <div class="fs-12 text-warning-emphasis" title="{{ $line->rate_override_reason }}">agreed rate</div>
                                         @endif
+                                        @if($isDraft)
                                         <input type="text" data-field="reason" maxlength="255"
                                                value="{{ $line->rate_override_reason }}"
                                                placeholder="why this rate?" class="form-control form-control-sm mt-1 live-reason d-none">
                                         <button type="button" class="btn btn-sm btn-outline-primary mt-1 live-apply d-none">Apply rate</button>
+                                        @endif
 
                                         {{-- KASHIF-ORDER-PUNCH §A: Complimentary is an ITEM flag
                                              (Catering Products screen) — a flagged item lands at
@@ -798,11 +827,13 @@
                                              the way back; the per-row trigger link is gone. --}}
                                         @if($line->hasQuotedRateOverride() && (float) $line->rate === 0.0)
                                             <span class="badge bg-success-subtle text-success-emphasis fs-12 mt-1 d-inline-block">Complimentary · اعزازی</span>
+                                            @if($isDraft)
                                             <div class="mt-1"
                                                  data-act="{{ url('/catering/estimate-lines/' . $line->id . '/use-calculated-rate') }}"
                                                  data-act-method="POST">
                                                 <button type="button" class="btn btn-link btn-sm p-0 fs-12 js-act">Charge it instead</button>
                                             </div>
+                                            @endif
                                         @endif
                                     </div>
                                     <input type="hidden" name="lines[{{ $i }}][rate]" value="{{ $line->rate }}">
@@ -1752,22 +1783,28 @@
                 @foreach($event->estimates as $version)
                 <tr class="{{ $version->id === $current?->id ? 'table-active' : '' }}">
                     <td>Q{{ $version->version_no }}</td>
-                    <td><span class="badge bg-{{ $version->status === 'accepted' ? 'success' : ($version->status === 'draft' ? 'secondary' : 'info') }}">{{ ucfirst($version->status) }}</span></td>
+                    <td><span class="badge bg-{{ $version->status === 'accepted' ? 'success' : ($version->status === 'draft' ? 'secondary' : 'info') }}">{{ ucfirst($version->status) }}</span>
+                        @if($restoredEditable && $version->id === $current?->id)
+                            <span class="badge bg-warning-subtle text-warning-emphasis" title="Restore se wapas aayi — abhi yehi main quotation hai">Restored</span>
+                        @endif
+                    </td>
                     <td class="text-end">{{ number_format($version->grand_total, 2) }}</td>
                     <td>{{ $version->sent_at ? $clock->format($version->sent_at, 'd M Y g:i A') : '—' }}</td>
                     <td>{{ $version->superseded_at ? $clock->format($version->superseded_at, 'd M Y g:i A') : '—' }}</td>
                     <td class="text-end">
                         <a href="{{ url('/catering/documents/estimate/' . $version->id) }}" target="_blank"
                            class="btn btn-link btn-sm p-0 fs-12 me-2">View</a>
-                        {{-- KASHIF-EVENT-HISTORY-2: bring this version back as
-                             the new current draft. Never a rewrite — the trail
-                             only moves forward. --}}
+                        {{-- KASHIF-EVENT-HISTORY-2 → CATERING-RESTORE-IN-PLACE-1:
+                             this version comes back AS ITSELF; the current one
+                             steps aside. No new version is made. The confirm
+                             names the money move: no receipt changes, but what
+                             the customer owes follows the restored total. --}}
                         @if($version->status === \App\Models\Tenant\CateringEstimate::STATUS_SUPERSEDED && $event->isCommerciallyOpen())
                             @can('tenant.catering.estimates.restore-version')
                             <span data-act="{{ url('/catering/estimates/' . $version->id . '/restore-version') }}"
                                   data-act-method="POST">
                                 <button type="button" class="btn btn-outline-secondary btn-sm js-act"
-                                        data-confirm="Q{{ $version->version_no }} wapas le aayen? Current version supersede ho kar nayi draft Q banegi — paisa aur nikla saman nahi badlega.">
+                                        data-confirm="Q{{ $version->version_no }} wapas main quotation ban jayegi — koi nayi Q nahi banegi.{{ $current ? ' Abhi wali Q'.$current->version_no.' ek taraf rakh di jayegi (zaroorat ho to wapas la sakte hain).' : '' }} Koi receipt ya refund nahi hilta, magar graahak ka total {{ $current ? number_format($current->grand_total, 2).' se ' : '' }}{{ number_format($version->grand_total, 2) }} ho jayega. Kitchen sheet aur proforma bhi Q{{ $version->version_no }} dikhayenge.">
                                     Restore
                                 </button>
                             </span>
@@ -2352,10 +2389,17 @@ $(document).on('click', '.js-rate-toggle', function () {
     if (finalizeForm) {
         // The version this one replaced, so the move can be shown rather than
         // described. Null on a first quotation — nothing has been replaced.
+        //
+        // CATERING-RESTORE-IN-PLACE-1: "replaced" = the version that stepped
+        // aside MOST RECENTLY, not the next number down. They were the same
+        // while versions only ever moved forward; a Q3 made from a restored Q1
+        // replaced Q1, and "Q2" would show the customer a move from figures
+        // they were no longer being billed.
         @php
             $previous = collect($versions ?? [])
-                ->where('version_no', '<', $current->version_no)
-                ->sortByDesc('version_no')
+                ->where('id', '!=', $current->id)
+                ->where('status', \App\Models\Tenant\CateringEstimate::STATUS_SUPERSEDED)
+                ->sortByDesc(fn ($v) => [optional($v->superseded_at)->getTimestamp() ?? 0, $v->version_no])
                 ->first();
         @endphp
         const previousTotal = {{ $previous ? (float) $previous->grand_total : 'null' }};
@@ -2439,7 +2483,8 @@ document.addEventListener('keydown', function (e) {
     }
 });
 </script>
-@if($current && $isDraft && $event->isCommerciallyOpen())
+{{-- The editor's script follows the editor: a restored version shows it too. --}}
+@if($current && ($isDraft || $restoredEditable) && $event->isCommerciallyOpen())
 @php
     // Build the JS payloads in PHP, NOT inline inside @json(...). Blade matches a directive
     // argument with a RECURSIVE paren regex; on a long multi-line payload that

@@ -32,6 +32,12 @@ final class TenantFeatures
     // SHIFT-HANDOVER-1: a cashier with open orders hands in his own cash and opens the next cashier's shift on the same counter.
     public const SHIFT_HANDOVER = 'shift_handover';
 
+    // PURCHASE-EDIT-1: correct a posted receipt + its invoice in place (same numbers), and void one that has an invoice.
+    public const PURCHASE_EDIT = 'purchase_edit';
+
+    // SUPPLIER-LEDGER-DAILY-1: the supplier ledger by the document's own date, day by day, and for all suppliers.
+    public const SUPPLIER_LEDGER_DAILY = 'supplier_ledger_daily';
+
     /**
      * shots (MASTER-NEW-SCREENS-1): pictures of the screens the switch shows, slug => caption
      * (public/assets/img/screens/<slug>.jpg), drawn beside the switch in Master.
@@ -109,6 +115,18 @@ final class TenantFeatures
                 'label' => 'Hand the counter to the next cashier',
                 'says'  => 'A cashier whose shift still has open orders or tables counts and hands in his own cash, then opens the next cashier\'s shift on the same counter in one step — the next cashier types his own password. The open orders and tables move into the new shift; their counter, date and amounts stay as they are. Same day only: after midnight the open orders are settled first, as today.',
                 'where' => 'Shifts → Close Shift (only when the shift has open orders or tables)',
+            ],
+            // PURCHASE-EDIT-1
+            self::PURCHASE_EDIT => [
+                'label' => 'Edit or void a purchase after its invoice',
+                'says'  => 'Open a GRN, press Edit, change a quantity, a rate or a date, and Save: the GRN and invoice keep their numbers, and the supplier\'s account and the accounts are corrected on the invoice\'s own date (stock today). Every change is listed on the GRN. Void works even after the invoice. Old receipts with an earlier correction, returns or purchase orders still cannot be edited.',
+                'where' => 'Purchasing → Goods Receipts → open a GRN → Edit / Void (also from the Supplier Invoice page)',
+            ],
+            // SUPPLIER-LEDGER-DAILY-1
+            self::SUPPLIER_LEDGER_DAILY => [
+                'label' => 'Supplier ledger day by day',
+                'says'  => 'Each entry in a supplier\'s ledger shows on its own date (the invoice, payment or return date — not the day it was typed), with From / To dates, a "day by day" view (opening, bills, payments, closing for each day) and "All suppliers".',
+                'where' => 'Purchasing → Suppliers → Ledger',
             ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',

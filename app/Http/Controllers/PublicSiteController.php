@@ -16,6 +16,7 @@ use App\Services\Saas\PlanPricingService;
 use App\Services\Saas\SelfSignupService;
 use App\Support\PublicLocale;
 use App\Support\PublicMoney;
+use App\Support\PublicPrices;
 use App\Services\Saas\TrialHttpsProbe;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -49,7 +50,8 @@ class PublicSiteController extends Controller
             'plans'            => $this->publicPlans(),
             'selfServicePlans' => $selfService,
             'customPlans'      => $this->customPlans(),
-            'previewPrices'    => $selfService->mapWithKeys(fn ($plan) => [$plan->code => $pricing->quote($plan, $market)])->filter()->all(),
+            // WEBSITE-HIDE-PRICES-1: hidden prices are not worked out at all, so none reaches the page.
+            'previewPrices'    => PublicPrices::hidden() ? [] : $selfService->mapWithKeys(fn ($plan) => [$plan->code => $pricing->quote($plan, $market)])->filter()->all(),
         ]);
     }
 
@@ -69,7 +71,8 @@ class PublicSiteController extends Controller
             'customPlans'      => $this->customPlans(),
             'market'           => $market,
             'markets'          => $pricing->markets(),
-            'perBranch'        => ($pricing->market($market)['pricing'] ?? 'bundle') === 'per_branch'
+            // WEBSITE-HIDE-PRICES-1: no per-branch figures (cards, builder) when prices are hidden.
+            'perBranch'        => ! PublicPrices::hidden() && ($pricing->market($market)['pricing'] ?? 'bundle') === 'per_branch'
                 ? $this->perBranchPricing($selfService, $market, $pricing)
                 : null,
         ]);
@@ -244,7 +247,9 @@ class PublicSiteController extends Controller
         // again from the plan when the form is posted — the URL only chooses, it never sets an amount.
         $pricing = app(PlanPricingService::class);
         $market = $this->rememberMarket($request, $pricing);
-        $perBranch = ($pricing->market($market)['pricing'] ?? 'bundle') === 'per_branch'
+        // WEBSITE-HIDE-PRICES-1: with prices hidden the form shows no quote; the posted market is still
+        // priced and recorded on the server at signup, exactly as before.
+        $perBranch = ! PublicPrices::hidden() && ($pricing->market($market)['pricing'] ?? 'bundle') === 'per_branch'
             ? $this->perBranchPricing($plans->load('prices'), $market, $pricing)
             : null;
         $checkout = null;

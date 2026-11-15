@@ -190,6 +190,72 @@
         .pv2 .ws-table td[data-label]::before { content:attr(data-label); display:block; font-size:.75rem; font-weight:700; color:var(--ink2); margin-bottom:2px; }
         .pv2 .ws-table td.ws-cost { text-align:left !important; }
     }
+    /* COST-BLOCK-CLARITY-1 — cost blocks: what it is first, a "?" on every box, one setting line per block, the sample. */
+    .pv2 .cb-editor { position:relative; container:cbed / inline-size; }
+    .pv2 .cb-field { display:flex; align-items:center; gap:6px; min-width:0; }
+    .pv2 .cb-field > .form-control, .pv2 .cb-field > .form-select { flex:1 1 auto; min-width:0; }
+    .pv2 .cb-field > .cb-num { flex:0 1 100px; }
+    .pv2 .cb-field > .cb-unit { flex:0 1 96px; }
+    .pv2 .cb-q { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; padding:0; border-radius:50%; border:1px solid #CBD3DE; background:#fff; color:var(--navy); font-size:.75rem; font-weight:800; line-height:1; cursor:pointer; vertical-align:middle; }
+    .pv2 .cb-q:hover, .pv2 .cb-q[aria-expanded="true"] { background:var(--navy); border-color:var(--navy); color:#fff; }
+    .pv2 .cb-q:focus-visible { outline:3px solid var(--gold); outline-offset:1px; }
+    .pv2 .cb-q-static, .pv2 .cb-q-static:hover { cursor:default; background:#fff; color:var(--navy); border-color:#CBD3DE; }
+    .pv2 .cb-kinds { display:inline-flex; flex:0 0 auto; border:1px solid #CBD3DE; border-radius:10px; overflow:hidden; }
+    .pv2 .cb-kinds input { position:absolute; opacity:0; width:1px; height:1px; }
+    .pv2 .cb-kinds label { margin:0; padding:6px 10px; min-width:76px; display:flex; flex-direction:column; align-items:center; gap:2px; font-size:.8rem; font-weight:700; text-align:center; background:#fff; cursor:pointer; }
+    .pv2 .cb-kinds label + input + label { border-left:1px solid #CBD3DE; }
+    .pv2 .cb-kinds .cb-pic { font-size:1.3rem; line-height:1; }
+    .pv2 .cb-kinds input:checked + label { background:var(--goldbg); color:var(--navy); box-shadow:inset 0 -3px 0 var(--gold); }
+    .pv2 .cb-kinds input:focus-visible + label { outline:3px solid var(--navy); outline-offset:-3px; }
+    .pv2 .ws-blocks td { position:relative; }
+    .pv2 .ws-blocks .cb-main > td { vertical-align:top; border-bottom:0; padding-bottom:4px; }
+    .pv2 .ws-blocks .cb-more > td { padding-top:0; padding-bottom:14px; }
+    /* Six columns that fit a 1366 laptop (the editor is ~1020px there); narrower than 1000px each block becomes a card. */
+    .pv2 .ws-blocks > thead > tr > th, .pv2 .ws-blocks > tbody > tr > td { padding-left:6px; padding-right:6px; }
+    .pv2 .ws-blocks td.cb-kind { width:200px; min-width:196px; }
+    .pv2 .ws-blocks td.cb-mat { min-width:220px; }
+    .pv2 .ws-blocks td.cb-rate { min-width:205px; }
+    .pv2 .ws-blocks td.cb-charged { min-width:170px; }
+    .pv2 .ws-blocks td.cb-charged .form-select { min-width:136px; }
+    .pv2 .ws-blocks td.cb-adds { white-space:nowrap; font-weight:700; color:var(--navy); font-variant-numeric:tabular-nums; padding-top:14px; }
+    .pv2 .ws-blocks td.ws-rm { width:1%; padding-top:10px; }
+    .pv2 .ws-blocks .cb-rm { padding:4px 8px; line-height:1; font-size:1rem; }
+    .pv2 .cb-words { overflow-wrap:anywhere; }
+    .pv2 .cb-sub { margin-top:2px; }
+    .pv2 .cb-more-in { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:6px 10px; background:#F7F9FC; border:1px dashed var(--line); border-radius:8px; }
+    .pv2 .cb-more-l { font-size:.85rem; font-weight:700; color:var(--navy); margin:0; }
+    .pv2 .yn.yn-sm label { padding:4px 12px; min-width:54px; font-size:.85rem; }
+    .pv2 .cb-pop { position:absolute; z-index:30; background:#fff; color:#1B2533; border:1px solid var(--navy); border-radius:10px; box-shadow:0 10px 28px rgba(9,44,76,.18); padding:10px 34px 10px 12px; font-size:.875rem; line-height:1.5; }
+    .pv2 .cb-pop-x { position:absolute; top:4px; right:6px; padding:2px 6px; border:0; background:none; color:var(--ink2); font-size:1.2rem; line-height:1; cursor:pointer; }
+    .pv2 .cb-sample { margin-top:14px; padding:12px 14px; border:1px solid var(--gold); border-radius:12px; background:var(--goldbg); }
+    .pv2 .cb-sample-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
+    .pv2 .cb-sample-title { margin:0; font-size:.95rem; font-weight:800; color:var(--navy); }
+    .pv2 .cb-sample-head .cb-num { flex:0 0 90px; width:90px; }
+    .pv2 .cb-sample-lines { width:100%; font-size:.875rem; font-variant-numeric:tabular-nums; }
+    .pv2 .cb-sample-lines td { padding:3px 10px 3px 0; vertical-align:top; overflow-wrap:anywhere; }
+    .pv2 .cb-sample-lines td:first-child { width:26%; font-weight:700; color:var(--navy); }
+    .pv2 .cb-sample-lines td.cb-amt { width:1%; text-align:right; white-space:nowrap; padding-right:0; }
+    .pv2 .cb-sample-total { display:flex; flex-wrap:wrap; gap:4px 20px; margin-top:6px; padding-top:8px; border-top:1px solid rgba(184,144,46,.5); font-variant-numeric:tabular-nums; }
+    .pv2 .cb-sample-total strong { color:var(--navy); }
+    .pv2 .cb-warn { list-style:none; margin:8px 0 0; padding:0; }
+    .pv2 .cb-warn:empty { display:none; }
+    .pv2 .cb-warn li { color:var(--bad); font-size:.85rem; font-weight:600; }
+    .pv2 .cb-warn li::before { content:"⚠ "; }
+    @container cbed (max-width: 999px) {
+        .pv2 .ws-blocks, .pv2 .ws-blocks tbody { display:block; width:100%; }
+        .pv2 .ws-blocks thead { display:none; }
+        .pv2 .ws-blocks tbody.cb-block { padding:12px 0; border-bottom:1px solid var(--line); }
+        .pv2 .ws-blocks tr { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px 16px; }
+        .pv2 .ws-blocks tr > td { display:block; width:auto; min-width:0 !important; padding:0 !important; border:0; }
+        .pv2 .ws-blocks td[data-label]::before { content:attr(data-label); display:block; font-size:.75rem; font-weight:700; color:var(--ink2); margin-bottom:4px; }
+        .pv2 .ws-blocks td.ws-rm { width:auto; justify-self:end; align-self:end; }
+        .pv2 .ws-blocks .cb-more { margin-top:10px; }
+        .pv2 .ws-blocks .cb-more > td { grid-column:1 / -1; }
+    }
+    @container cbed (max-width: 540px) {
+        .pv2 .ws-blocks td.cb-kind, .pv2 .ws-blocks td.cb-mat, .pv2 .ws-blocks td.cb-rate, .pv2 .ws-blocks td.ws-rm { grid-column:1 / -1; }
+        .pv2 .cb-sample-lines td:first-child { width:auto; }
+    }
 </style>
 @endpush
 

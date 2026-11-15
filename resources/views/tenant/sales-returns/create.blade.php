@@ -466,7 +466,12 @@
             showCancelButton: true,
             confirmButtonText: 'Approve & post',
             focusConfirm: false,
-            didOpen: function () { POS.managerCredentialFocus(RETURN_PIN_FIELD); },
+            // MANAGER-PIN-ENTER-1: Enter approves, like every manager code box — on the SHARED prompt (Edge: employee code +
+            // credential; Online: PIN), so the first field is chosen by POS.managerCredentialFocus and Enter works from either.
+            didOpen: function (popup) {
+                POS.managerCredentialFocus(RETURN_PIN_FIELD);
+                popup.querySelectorAll('input.swal2-input').forEach(function (box) { box.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); Swal.clickConfirm(); } }); });
+            },
             preConfirm: function () {
                 var credential = POS.managerCredentialFromPrompt(RETURN_PIN_FIELD);   // {pin} | {manager_employee_code, manager_credential}
                 if (! credential) { Swal.showValidationMessage('Enter the manager PIN'); return false; }

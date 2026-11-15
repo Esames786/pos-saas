@@ -67,20 +67,70 @@ class CateringEstimateController extends Controller
             return $line;
         })->all();
 
+        // CATERING-RESTORE-IN-PLACE-1 (31 Oct) — a RESTORED version is shown
+        // editable, but it is the paper the customer already holds, so it is
+        // never written to. Its first Save that actually changes something
+        // becomes the next revision (Q3); a Save that changes nothing makes
+        // nothing. Only through this one door — the inline per-line controls
+        // stay closed on it (they would each need their own copy-first step).
+        $target = $cateringEstimate;
+        $fromRestored = $this->estimates->isRestoredVersion($cateringEstimate);
+
+        // Thrown to undo the whole attempt when the Save changed nothing; the
+        // transaction rethrows this exact object, so it is told apart by
+        // identity from every real refusal.
+        $unchanged = new RuntimeException('unchanged');
+
         try {
-            \Illuminate\Support\Facades\DB::connection('tenant')->transaction(function () use ($cateringEstimate, $lines, $data) {
-                $this->estimates->saveDraftLines($cateringEstimate, $lines, $data);
-                $this->applyPunchedMaterials($cateringEstimate->refresh(), $lines);
-                $this->applyPunchedQuotedRates($cateringEstimate->refresh(), $lines);
+            \Illuminate\Support\Facades\DB::connection('tenant')->transaction(function () use ($cateringEstimate, &$target, &$lines, $data, $fromRestored, $unchanged, $request) {
+                if ($fromRestored) {
+                    // revise() re-checks everything under its lock — superseded
+                    // meanwhile (a second tab), invoiced, released without the
+                    // permission — and moves the booking exactly as Create
+                    // Revision always has.
+                    $lineMap = [];
+                    $target = $this->estimates->revise($cateringEstimate, $request->user()?->id, $lineMap);
+
+                    // The form was drawn from the restored version's lines;
+                    // point each at its copy, so every decision on it (supply
+                    // split, agreed rate, instructions) is kept, not re-made.
+                    $lines = array_map(function (array $line) use ($lineMap) {
+                        $uuid = $line['line_uuid'] ?? null;
+                        if ($uuid !== null && isset($lineMap[$uuid])) {
+                            $line['line_uuid'] = $lineMap[$uuid];
+                        }
+
+                        return $line;
+                    }, $lines);
+                }
+
+                $this->estimates->saveDraftLines($target, $lines, $data);
+                $this->applyPunchedMaterials($target->refresh(), $lines);
+                $this->applyPunchedQuotedRates($target->refresh(), $lines);
+
+                if ($fromRestored && $this->estimates->sameContent($cateringEstimate->refresh(), $target->refresh())) {
+                    throw $unchanged;
+                }
             });
         } catch (RuntimeException $e) {
+            if ($e === $unchanged) {
+                return back()->with('status',
+                    "Kuch nahi badla — Q{$cateringEstimate->version_no} hi main quotation hai, koi nayi revision nahi bani.");
+            }
+
             return back()->withErrors(['estimate' => $e->getMessage()])->withInput();
         }
 
         // KASHIF-EVENT-HISTORY-1: every meaningful save becomes a checkpoint
         // the operator can come back to.
         app(\App\Services\Catering\CateringEventHistoryService::class)
-            ->record($cateringEstimate->refresh()->event, 'lines_saved', $request->user()?->id);
+            ->record($target->refresh()->event, $fromRestored ? 'restored_revised' : 'lines_saved', $request->user()?->id);
+
+        if ($fromRestored) {
+            return back()->with('status',
+                "Aap ne wapas laayi gayi Q{$cateringEstimate->version_no} badli — ab Q{$target->version_no} nayi revision main hai. "
+                ."Q{$cateringEstimate->version_no} waisi hi mehfooz hai.");
+        }
 
         return back()->with('status', 'Estimate saved.');
     }
@@ -158,22 +208,26 @@ class CateringEstimateController extends Controller
     }
 
     /**
-     * KASHIF-EVENT-HISTORY-2 — bring a superseded quotation version back as
-     * the new current draft. History is never rewritten: the old version stays,
-     * the current one is superseded, the copy moves forward.
+     * KASHIF-EVENT-HISTORY-2 → CATERING-RESTORE-IN-PLACE-1 — a superseded
+     * version comes back as ITSELF; the current one steps aside. No new
+     * version is made (see CateringEstimateService::restoreVersion).
      */
     public function restoreVersion(Request $request, CateringEstimate $cateringEstimate)
     {
         try {
-            $revision = $this->estimates->restoreVersion($cateringEstimate, $request->user()?->id);
+            $restored = $this->estimates->restoreVersion($cateringEstimate, $request->user()?->id);
         } catch (RuntimeException $e) {
             return back()->withErrors(['estimate' => $e->getMessage()]);
         }
 
         app(\App\Services\Catering\CateringEventHistoryService::class)
-            ->record($revision->event, 'version_restored', $request->user()?->id);
+            ->record($restored->event, 'version_restored', $request->user()?->id);
 
-        return back()->with('status', "Q{$cateringEstimate->version_no} restored as new draft Q{$revision->version_no}.");
+        return back()->with('status',
+            "Q{$restored->version_no} wapas main quotation hai — koi nayi revision nahi bani. "
+            .($restored->isDraft()
+                ? 'Ye draft hai, seedha edit ho sakti hai.'
+                : 'Badal kar Save karenge tab nayi revision banegi.'));
     }
 
     /** Recompute the draft's material costing from the current rate book (CATERING-SLICE-2). */

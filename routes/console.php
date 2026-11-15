@@ -52,6 +52,10 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // Setting OFF (default) ho to kuch nahi karta. Held order kabhi nahi chhuta.
     Schedule::command('online-ordering:auto-cancel')->everyMinute()->withoutOverlapping();
 
+    // PLACE-LEARNING-1: deliver hue website orders se delivery areas ki jagahen pakki hoti jati hain (malik, 2 Nov).
+    // Sirf paid orders parhti hai, POS ko nahi chhuti; OpenStreetMap ke qaide ke liye har sawal ke beech ~1 s.
+    Schedule::command('online-ordering:learn-places --yes')->hourlyAt(25)->withoutOverlapping();
+
     // BILLING-TENANT-CYCLE-1 — WhatsApp ki ALAG invoice ab nahi banti.
     //
     // Pehle yahan roz `billing:whatsapp-invoice` chalti thi aur calendar mahine ki apni `addon`

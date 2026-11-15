@@ -173,10 +173,11 @@ class SupplierPayableService
             }
             $reversal = app(JournalService::class)->reverse($entry, $note, $userId, VoidDate::resolve($dateMode, $entry->entry_date));
 
-            // 2. Supplier subledger — payable wapas barha.
+            // 2. Supplier subledger — payable wapas barha. SUPPLIER-LEDGER-DAILY-1: usi din jis din GL reversal hua.
             $this->purchasing->postSupplierLedger(
                 $supplier, 'payment_void', 'debit', $amount,
-                SupplierPayment::class, (int) $locked->id, (string) $locked->payment_no, $note, $userId
+                SupplierPayment::class, (int) $locked->id, (string) $locked->payment_no, $note, $userId,
+                PurchasingService::ledgerDay($reversal->entry_date),
             );
 
             // 3. Bills
@@ -407,7 +408,8 @@ class SupplierPayableService
                 (int) $entry->id,
                 (string) $entry->entry_no,
                 $line->description ?: $entry->description,
-                $userId
+                $userId,
+                PurchasingService::ledgerDay($entry->entry_date),
             );
 
             // Journal adjustment bhi advance nahi bana sakta — wohi usool jo payment par hai.

@@ -38,6 +38,9 @@ class CateringEventHistoryService
         'lines_saved' => 'Items / rates saved',
         'finalized' => 'Quotation finalized',
         'version_restored' => 'Old quotation version restored',
+        // CATERING-RESTORE-IN-PLACE-1 — the restored version was changed and
+        // saved, so the change became the next revision.
+        'restored_revised' => 'Restored quotation changed — new revision made',
         // CATERING-STATUS-ROLLBACK-1 — a booking walked backwards. Worth its
         // own line on the timeline: it is the one action that makes a document
         // the customer already has editable again.
@@ -475,10 +478,26 @@ class CateringEventHistoryService
         });
     }
 
+    /**
+     * CATERING-RESTORE-IN-PLACE-1 — the CURRENT version, by the same rule as
+     * CateringEvent::currentEstimate(): the highest one not superseded or
+     * cancelled. This used to be plain max(version_no), which was the same
+     * thing only while a restore always made a new highest copy. Now a restore
+     * puts an older version back, and max(version_no) would be the one that
+     * stepped aside — History would remember the wrong quotation and a revert
+     * would refuse with "the current version is superseded".
+     *
+     * The max-version fallback keeps the old answer for a booking that somehow
+     * has no live version at all, so revertTo() still says why it stops.
+     */
     private function currentEstimate(CateringEvent $event): ?CateringEstimate
     {
         return CateringEstimate::where('catering_event_id', $event->id)
+            ->whereNotIn('status', [CateringEstimate::STATUS_SUPERSEDED, CateringEstimate::STATUS_CANCELLED])
             ->orderByDesc('version_no')
-            ->first();
+            ->first()
+            ?? CateringEstimate::where('catering_event_id', $event->id)
+                ->orderByDesc('version_no')
+                ->first();
     }
 }

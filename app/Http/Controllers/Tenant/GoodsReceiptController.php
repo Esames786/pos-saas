@@ -6,12 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\GoodsReceipt;
 use App\Models\Tenant\GoodsReceiptLine;
+use App\Models\Tenant\GoodsReceiptRevision;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\PurchaseOrder;
 use App\Models\Tenant\Supplier;
 use App\Services\Purchasing\GoodsReceiptService;
+use App\Services\Purchasing\PurchaseRevisionService;
 use App\Services\Purchasing\PurchasingService;
 use App\Support\SubmissionKey;
+use App\Support\TenantFeatures;
+use App\Support\VoidDate;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -182,6 +186,25 @@ class GoodsReceiptController extends Controller
     {
         $goodsReceipt->load('lines.product', 'bill');
 
+        // PURCHASE-EDIT-1: switched on, a receipt that has an invoice is voided together with it — the money on the day
+        // the person chose, the stock today. Without an invoice the void below is unchanged (GRN-VOID-1).
+        if ($goodsReceipt->bill && TenantFeatures::on(TenantFeatures::PURCHASE_EDIT)) {
+            $request->validate([
+                'void_reason'    => 'required|string|min:3|max:255',
+                'void_date_mode' => ['required', 'in:' . implode(',', VoidDate::MODES)],
+                'revision_no'    => 'required|integer|min:0',
+            ], ['void_date_mode.required' => 'Choose whether to wipe it on its own date or reverse it today.']);
+            try {
+                app(PurchaseRevisionService::class)->void($goodsReceipt, (int) $request->input('revision_no'),
+                    (string) $request->input('void_reason'), (string) $request->input('void_date_mode'), auth('tenant')->id());
+            } catch (\RuntimeException $e) {
+                return back()->withErrors(['void' => $e->getMessage()]);
+            }
+
+            return redirect(url('/goods-receipts/' . $goodsReceipt->id))
+                ->with('success', 'Goods receipt ' . $goodsReceipt->grn_no . ' and its invoice voided.');
+        }
+
         try {
             $this->purchasingService->voidGrn(
                 $goodsReceipt,
@@ -196,11 +219,11 @@ class GoodsReceiptController extends Controller
 
         return redirect(url('/goods-receipts'))->with('success', 'Goods receipt ' . $goodsReceipt->grn_no . ' voided.');
     }
-    public function show(GoodsReceipt $goodsReceipt)
+    public function show(GoodsReceipt $goodsReceipt, ?Request $request = null)
     {
         $goodsReceipt->load([
             'branch', 'supplier', 'purchaseOrder', 'postedBy',
-            'lines.product', 'lines.variant',
+            'lines.product.unit', 'lines.variant', 'bill',
         ]);
 
         $ledgers = \App\Models\Tenant\StockLedger::where('reference_type', GoodsReceipt::class)
@@ -208,6 +231,32 @@ class GoodsReceiptController extends Controller
             ->with(['branch', 'product'])
             ->get();
 
-        return view('tenant.goods-receipts.show', compact('goodsReceipt', 'ledgers'));
+        // PURCHASE-EDIT-1: Edit / Void on this page, the reason when they are not possible, and the change history.
+        $editOn = TenantFeatures::on(TenantFeatures::PURCHASE_EDIT);
+        $blocked = $editOn ? app(PurchaseRevisionService::class)->blockedReason($goodsReceipt) : null;
+        $editing = $editOn && $blocked === null && ($request ?? request())->boolean('edit');
+        $revisions = $editOn ? GoodsReceiptRevision::where('goods_receipt_id', $goodsReceipt->id)->with('createdBy')
+            ->orderByDesc('revision_no')->get() : collect();
+
+        return view('tenant.goods-receipts.show', compact('goodsReceipt', 'ledgers', 'editOn', 'blocked', 'editing', 'revisions'));
+    }
+
+    /**
+     * PURCHASE-EDIT-1 — save a corrected receipt (and its invoice) in place: same numbers, everything that hangs off
+     * them corrected by its own entries, the change listed on the receipt. Refusals come back in words.
+     */
+    public function revise(Request $request, GoodsReceipt $goodsReceipt, PurchaseRevisionService $revisions)
+    {
+        abort_unless(TenantFeatures::on(TenantFeatures::PURCHASE_EDIT), 404);
+
+        try {
+            $revision = $revisions->edit($goodsReceipt, $request->only(['revision_no', 'receipt_date', 'bill_date', 'supplier_invoice_no',
+                'notes', 'extra_charges', 'extra_charges_note', 'lines']), auth('tenant')->id());
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['revise' => $e->getMessage()])->withInput();
+        }
+
+        return redirect(url('/goods-receipts/' . $goodsReceipt->id))
+            ->with('success', 'Saved. ' . count($revision->changes) . ' change(s) — listed under "Change history" below.');
     }
 }

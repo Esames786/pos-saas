@@ -227,7 +227,8 @@ class PurchaseBillService
                 ]);
                 $this->purchasing->postSupplierLedger($grn->supplier, 'return_netted', 'debit', $amount,
                     PurchaseBill::class, (int) $bill->id, (string) $bill->bill_no,
-                    'Return ' . $return->return_no . ' deducted on this invoice (' . number_format($amount, 2) . ')', $userId);
+                    'Return ' . $return->return_no . ' deducted on this invoice (' . number_format($amount, 2) . ')', $userId,
+                    PurchasingService::ledgerDay($bill->bill_date));
             }
 
             $bill->load('supplier');

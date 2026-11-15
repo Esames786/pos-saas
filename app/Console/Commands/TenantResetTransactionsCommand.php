@@ -43,7 +43,9 @@ class TenantResetTransactionsCommand extends Command
     private const WIPE_TABLES = [
         // sales + printing
         'sale_payments', 'sales_order_line_cancellations', 'kot_batch_lines', 'kot_batches',
-        'sales_return_lines', 'sales_returns', 'sales_order_rider_assignments', 'sales_order_lines', 'sales_orders',
+        'sales_return_lines', 'sales_returns', 'sales_order_rider_assignments', 'sales_order_lines',
+        // PLACE-LEARNING-1: the evidence goes with its orders; the learned places stay (like every delivery place).
+        'delivery_place_sightings', 'sales_orders',
         'sales_ledgers', 'manager_approvals', 'print_jobs', 'restaurant_table_sessions',
         // OFFLINE EDGE (Cloud side): the exactly-once registry of Branch-Server sales applied into the
         // sales tables above. It belongs WITH those sales — kept alone it would make a replayed Edge
@@ -76,6 +78,8 @@ class TenantResetTransactionsCommand extends Command
         // SUPPLIER-CREDIT-CLARITY-1: a payment's part moved from one invoice to another by a person — the record of
         // those moves points at the payments and bills wiped here; kept, it would be a history of invoices that are gone.
         'supplier_credit_moves',
+        // PURCHASE-EDIT-1: the edit / void history of receipts and invoices wiped below — goes with them.
+        'goods_receipt_revisions',
         'supplier_credit_allocations',
         'purchase_bill_lines', 'purchase_bills', 'goods_receipt_lines', 'goods_receipts',
         'purchase_return_lines', 'purchase_returns', 'purchase_order_lines', 'purchase_orders',

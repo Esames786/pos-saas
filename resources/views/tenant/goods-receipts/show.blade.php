@@ -26,12 +26,64 @@
                 </form>
             @endcan
         @endif
+        {{-- PURCHASE-EDIT-1: correct the receipt (and its invoice) here, or void them together. Greyed with the reason when
+             this receipt is one the edit does not correct by itself. --}}
+        @if(($editOn ?? false) && $goodsReceipt->status === 'posted' && ! ($editing ?? false))
+            @can('tenant.goods-receipts.revise')
+                @if($blocked ?? null)
+                    <span class="btn btn-outline-secondary disabled" aria-disabled="true" title="{{ $blocked }}" data-grn-edit-blocked>&#9998; Edit</span>
+                @else
+                    <a href="{{ url('/goods-receipts/' . $goodsReceipt->id) }}?edit=1" class="btn btn-primary" data-grn-edit>&#9998; Edit</a>
+                @endif
+            @endcan
+            @if($goodsReceipt->bill && ! ($blocked ?? null))
+                @can('tenant.goods-receipts.void')
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#grn-void-panel"
+                            aria-controls="grn-void-panel" data-grn-void>Void</button>
+                @endcan
+            @endif
+        @endif
     </div>
 </div>
 
 @if($errors->any())
     <div class="alert alert-danger">{{ $errors->first() }}</div>
 @endif
+@if(session('success'))
+    <div class="alert alert-success">{{ session('success') }}</div>
+@endif
+
+@if(($editOn ?? false) && $goodsReceipt->status === 'posted' && ($blocked ?? null))
+    <div class="alert alert-light border small" data-grn-blocked>
+        <strong>Edit / Void:</strong> {{ $blocked }}
+    </div>
+@endif
+
+@if(($editOn ?? false) && $goodsReceipt->bill && $goodsReceipt->status === 'posted' && ! ($blocked ?? null))
+    @can('tenant.goods-receipts.void')
+        <div class="collapse mb-3 {{ $errors->has('void') || $errors->has('void_reason') || $errors->has('void_date_mode') ? 'show' : '' }}" id="grn-void-panel">
+            <form method="POST" action="{{ url('/goods-receipts/' . $goodsReceipt->id . '/void') }}" class="card card-body border-danger" data-grn-void-form>
+                @csrf
+                <input type="hidden" name="revision_no" value="{{ (int) $goodsReceipt->revision_no }}">
+                <h5 class="mb-1">Void {{ $goodsReceipt->grn_no }} and its invoice {{ $goodsReceipt->bill->bill_no }}</h5>
+                <p class="small text-muted mb-3">
+                    The goods it brought in come back out of stock today. The invoice
+                    ({{ number_format((float) $goodsReceipt->bill->grand_total, 2) }}) comes off the supplier's account.
+                    Anything already paid on it stays with the supplier as "Not on any invoice". Both stay on record as voided.
+                </p>
+                <label class="form-label" for="grn-void-reason">Why is it being voided? <span class="text-danger">*</span></label>
+                <input type="text" name="void_reason" id="grn-void-reason" class="form-control mb-3" required minlength="3" maxlength="255"
+                       value="{{ old('void_reason') }}">
+                @include('partials.void-date-choice', ['originalDate' => $goodsReceipt->bill->bill_date, 'idPrefix' => 'grn'])
+                <div><button type="submit" class="btn btn-danger">Void receipt and invoice</button></div>
+            </form>
+        </div>
+    @endcan
+@endif
+
+@if($editing ?? false)
+    @include('tenant.goods-receipts.partials.edit-form')
+@else
 
 @if($goodsReceipt->status === 'voided')
     <div class="alert alert-warning">
@@ -163,6 +215,8 @@
     </div>
 </div>
 
+@endif
+
 <div class="card">
     <div class="card-header"><strong>Inventory Ledger Entries</strong></div>
     <div class="card-body table-responsive p-0">
@@ -201,4 +255,30 @@
         </table>
     </div>
 </div>
+
+{{-- PURCHASE-EDIT-1: every edit and void of this receipt, newest first, in the words it was saved with. --}}
+@if(($editOn ?? false) && ($revisions ?? collect())->isNotEmpty())
+    <div class="card mt-3" data-grn-history>
+        <div class="card-header"><strong>Change history</strong> <span class="text-muted small">(badlav ki history)</span></div>
+        <div class="card-body">
+            @foreach($revisions as $rev)
+                <div class="mb-3">
+                    <div class="fw-semibold">
+                        {{ $rev->action === 'void' ? 'Voided' : 'Change ' . $rev->revision_no }}
+                        &mdash; {{ app(\App\Support\TenantClock::class)->format($rev->created_at, 'd M Y h:i A') }}
+                        @if($rev->createdBy) &mdash; {{ $rev->createdBy->name }} @endif
+                    </div>
+                    @if($rev->action === 'void' && $rev->reason)
+                        <div class="small text-muted">Why: {{ $rev->reason }}</div>
+                    @endif
+                    <ul class="mb-0 small">
+                        @foreach((array) $rev->changes as $line)
+                            <li>{{ $line }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endforeach
+        </div>
+    </div>
+@endif
 @endsection

@@ -289,7 +289,7 @@ function syncLayoutOptions(form, docType) {
                   'show_order_type', 'show_column_dividers', 'show_bill_barcode'],
         kot:      ['show_branch_name', 'show_cashier_name', 'show_table_info', 'show_order_no',
                   'show_bingoo_branding', 'show_vehicle_number', 'show_column_dividers',
-                  'show_category_header', 'show_bill_barcode'],
+                  'show_category_header', 'show_bill_barcode', 'show_order_note'],
         reminder: ['show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no',
                   'show_order_time', 'show_updated_time', 'show_print_time', 'show_bingoo_branding',
                   'show_column_dividers'],
