@@ -160,7 +160,7 @@ class EdgeLocalPosController extends Controller
             ->when($assignedTerminalIds !== [], fn ($list) => $list->whereIn('id', $assignedTerminalIds)->values())
             ->when(! $canChangeTerminal && $defaultTerminalId, fn ($list) => $list->where('id', $defaultTerminalId)->values());
 
-        [$productsPayload, $combosPayload, $categories, $pillCategoryIds, $contentCategoryIds] = $this->sharedMenu($branch, $runtime);
+        [$productsPayload, $combosPayload, $categories, $pillCategoryIds, $contentCategoryIds, $recallProductsPayload] = $this->sharedMenu($branch, $runtime);
 
         // Payment methods: EVERY active method, cash first (the Online select); non-cash rides flagged display-only —
         // the page renders them disabled with the capability hint (nonCashTender=false); the server refuses them anyway.
@@ -183,6 +183,8 @@ class EdgeLocalPosController extends Controller
             'contentCategoryIds' => $contentCategoryIds,
             'hasUncategorizedCombos' => collect($combosPayload)->contains(fn ($c) => empty($c['category_id'])),
             'productsPayload' => $productsPayload,
+            // RECALL-HIDDEN-ITEM-1 twin (canonical 69536d3a, rehearsal chunk 11): POS-hidden sellable items, read only by recall.
+            'recallProductsPayload' => $recallProductsPayload,
             'combosPayload' => $combosPayload,
             'paymentMethods' => $paymentMethods,
             'floors' => $this->boardFloors($branchId),
@@ -280,7 +282,19 @@ class EdgeLocalPosController extends Controller
             })
             ->orderBy('sort_order')->orderBy('name')
             ->get();
-        $menu = $this->menuPayload($products, $branch);
+        // RECALL-HIDDEN-ITEM-1 twin (canonical 69536d3a): every active, sellable item hidden from the POS that the list above does
+        // not already carry (an open-bill or deal-component escape row stays where it is) rides in a list of its OWN, read only by
+        // the recall of a saved bill — the Online rule, from the synced menu. The grid / search / scan never see it.
+        $recallOnly = Product::on('tenant')
+            ->with([
+                'category:id,name,branch_id', 'unit:id,code,name,unit_type', 'variants', 'barcodes',
+                'activeRecipe.ingredients.product.unit', 'activeRecipe.ingredients.unit', 'activeRecipe.ingredients.variant',
+            ])
+            ->where('status', 'active')->where('is_sellable', true)->where('is_pos_visible', false)
+            ->whereNotIn('id', $products->modelKeys() ?: [0])
+            ->orderBy('id')
+            ->get();
+        $menu = $this->menuPayload($products->concat($recallOnly), $branch);
 
         // W-G1: the recipe "makeable" preview from the ACCEPTED operational baseline — the very balances
         // EdgeOperationalStockService::consumeRecipe decrements / refuses on — through the ONE shared computation Online uses.
@@ -288,7 +302,8 @@ class EdgeLocalPosController extends Controller
         $recipeAvailability = app(\App\Support\Pos\RecipeAvailability::class);
         $recipeStock = $this->recipeStockLookup($branchId);
 
-        $productsPayload = $products->map(function (Product $p) use ($menu, $branchId, $runtime, $branch, $recipeAvailability, $recipeStock) {
+        // One builder for both lists (Online: POSController $productPayload), so a recalled hidden item carries exactly what a tile carries.
+        $productPayload = function (Product $p) use ($menu, $branchId, $runtime, $branch, $recipeAvailability, $recipeStock) {
             $m = $menu[(int) $p->id] ?? [];
             $tracked = ($m['stock_kind'] ?? null) === 'tracked';
             $visible = $p->status === 'active' && $p->is_sellable && $p->is_pos_visible
@@ -333,7 +348,9 @@ class EdgeLocalPosController extends Controller
                 'makeable_by_branch' => $recipe['makeable'],
                 'limiting_ingredient_by_branch' => $recipe['limiting'],
             ];
-        })->values();
+        };
+        $productsPayload = $products->map($productPayload)->values();
+        $recallProductsPayload = $recallOnly->map($productPayload)->values();
 
         $productIndex = $products->keyBy('id');
         $combosPayload = Combo::on('tenant')->with(['components'])
@@ -388,7 +405,7 @@ class EdgeLocalPosController extends Controller
             ->map(fn ($id) => (int) $id)->intersect($contentCategoryIds)->isNotEmpty())
             ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
 
-        return [$productsPayload, $combosPayload, $categories, $pillCategoryIds, $contentCategoryIds->all()];
+        return [$productsPayload, $combosPayload, $categories, $pillCategoryIds, $contentCategoryIds->all(), $recallProductsPayload];
     }
 
     /**

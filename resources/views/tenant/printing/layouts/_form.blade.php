@@ -33,6 +33,13 @@
     <input id="time_font_size" type="number" name="time_font_size" value="{{ old('time_font_size', $l?->time_font_size) }}" class="form-control" min="8" max="24" placeholder="Same as KOT font">
     <div class="form-text">KOT / Reminder TIME line only. Leave blank to match the KOT font. {!! $scaleHelp !!}</div>
 </div>
+{{-- RECEIPT-CUSTOMER-SIZE-1: the bill's Customer / Phone / Deliver to lines (Receipt only). --}}
+<div class="col-md-6" data-layout-doc="receipt">
+    <label class="form-label" for="customer_font_size">Customer &amp; Delivery Font (px)</label>
+    <input id="customer_font_size" type="number" name="customer_font_size" value="{{ old('customer_font_size', $l?->customer_font_size) }}" class="form-control" min="8" max="24" placeholder="Same as now">
+    <div class="form-text">Customer, Phone and Deliver to lines on the bill. Leave blank to keep them as they print today. {!! $scaleHelp !!}</div>
+    <div class="form-text">Bill par Customer, Phone aur Deliver to ki lines. Khali chhorein to abhi jaisa. 17 = lamba, 19 = lamba + chaura.</div>
+</div>
 <div class="col-12">
     <div class="alert alert-info py-2 mb-0 small">
         Bigger text means fewer characters per line — the printer does not wrap for you, so we wrap
@@ -81,11 +88,12 @@
             'show_heading_stars'     => 'Stars around KOT heading (*** KOT #1 ***)',
             'show_bill_barcode'      => 'Bill number as a big barcode (scan it at the billing counter)',
             'show_order_note'        => 'Order Note',
+            'show_deal_as_heading'   => 'Deal name on top, its items under it',
         ] as $field => $label)
         @php
             // Most toggles default ON for a brand-new layout; dividers are the exception (today's
             // tickets have none), so they default OFF until an operator turns them on.
-            $switchDefault = in_array($field, ['show_column_dividers', 'show_bill_barcode', 'show_order_note'], true) ? false : true;
+            $switchDefault = in_array($field, ['show_column_dividers', 'show_bill_barcode', 'show_order_note', 'show_deal_as_heading'], true) ? false : true;
         @endphp
         <div class="col-md-4 layout-option" data-layout-field="{{ $field }}">
             <div class="form-check form-switch">

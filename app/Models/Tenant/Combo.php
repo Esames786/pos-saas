@@ -22,6 +22,8 @@ class Combo extends Model
         // ONLINE-ORDERING-1: website par jagah, tasveer aur tafseel (POS par asar nahi).
         'show_on_website', 'website_card_name', 'website_size_label', 'website_category_id',
         'website_tag', 'website_popular', 'website_sort_order', 'website_image_path', 'website_description',
+        // DEAL-SPLIT-REPORT-1: false = the deal reports as one line (as before); true = under the items inside it.
+        'report_by_items',
     ];
 
     protected function casts(): array
@@ -33,6 +35,7 @@ class Combo extends Model
             'show_on_website' => 'boolean',
             'website_popular' => 'boolean',
             'website_sort_order' => 'integer',
+            'report_by_items' => 'boolean',
         ];
     }
 

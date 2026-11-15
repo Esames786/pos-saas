@@ -210,6 +210,7 @@ foreach ($layouts as $l) {
         'kot_font_size' => $l->kot_font_size,
         'item_font_size' => $l->item_font_size,
         'time_font_size' => $l->time_font_size,
+        'customer_font_size' => $l->customer_font_size,
         'header_text'   => $l->header_text,
         'footer_text'   => $l->footer_text,
         'is_active'     => (bool) $l->is_active,
@@ -247,6 +248,7 @@ function openEditLayout(layoutId, branchName, docType) {
     setFormValue(form, 'kot_font_size', data.kot_font_size);
     setFormValue(form, 'item_font_size', data.item_font_size ?? '');
     setFormValue(form, 'time_font_size', data.time_font_size ?? '');
+    setFormValue(form, 'customer_font_size', data.customer_font_size ?? '');
     setFormValue(form, 'header_text',  data.header_text || '');
     setFormValue(form, 'footer_text',  data.footer_text || '');
 
@@ -289,7 +291,7 @@ function syncLayoutOptions(form, docType) {
                   'show_order_type', 'show_column_dividers', 'show_bill_barcode'],
         kot:      ['show_branch_name', 'show_cashier_name', 'show_table_info', 'show_order_no',
                   'show_bingoo_branding', 'show_vehicle_number', 'show_column_dividers',
-                  'show_category_header', 'show_bill_barcode', 'show_order_note'],
+                  'show_category_header', 'show_bill_barcode', 'show_order_note', 'show_deal_as_heading'],
         reminder: ['show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no',
                   'show_order_time', 'show_updated_time', 'show_print_time', 'show_bingoo_branding',
                   'show_column_dividers'],
@@ -297,6 +299,10 @@ function syncLayoutOptions(form, docType) {
     const fields = supported[docType] || supported.receipt;
     form.querySelectorAll('[data-layout-field]').forEach(function (wrapper) {
         wrapper.hidden = !fields.includes(wrapper.dataset.layoutField);
+    });
+    // Size boxes that belong to one document only (RECEIPT-CUSTOMER-SIZE-1: Customer & Delivery = bill).
+    form.querySelectorAll('[data-layout-doc]').forEach(function (wrapper) {
+        wrapper.hidden = wrapper.dataset.layoutDoc !== (docType || 'receipt');
     });
 }
 
@@ -316,6 +322,8 @@ function buildPreviewUrl() {
     var timeFs = form.querySelector('[name="time_font_size"]')?.value;
     if (itemFs) params.set('item_font_size', itemFs);
     if (timeFs) params.set('time_font_size', timeFs);
+    // Always sent, blank included: clearing the box must preview today's bill, not the saved size.
+    params.set('customer_font_size', form.querySelector('[name="customer_font_size"]')?.value || '');
     params.set('header_text',  form.querySelector('[name="header_text"]')?.value  || '');
     params.set('footer_text',  form.querySelector('[name="footer_text"]')?.value  || '');
 

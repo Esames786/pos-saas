@@ -152,6 +152,8 @@ function printToVerbRegistered() {
             POS_PRINT_AGENT_CODE: 'AG-E2E',
             POS_PRINT_AGENT_TOKEN: 'tok-e2e',
             POS_PRINT_POLL_MS: '400',
+            // AGENT-UPGRADE-1: developer ke PC par asli agent pehle se chal raha ho to bhi test chale (client PC par kabhi set nahi).
+            BINGOO_AGENT_ALLOW_OTHER: '1',
         },
         windowsHide: true,
         stdio: 'ignore',

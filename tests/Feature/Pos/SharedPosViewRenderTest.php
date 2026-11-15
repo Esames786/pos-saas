@@ -83,6 +83,7 @@ class SharedPosViewRenderTest extends TestCase
             'kitchenTickets' => true, // PHARMACY-DEMO-1 (canonical merge D8)
             'medicalCounter' => false, // MEDICAL-COUNTER-1 (canonical merge D8)
             'counterPacks' => false, // UNITS-PACKS F3 (canonical rehearsal, 30 Oct 2026)
+            'recallProductsPayload' => [], // RECALL-HIDDEN-ITEM-1 (canonical rehearsal chunk 11, 15 Nov 2026)
         ]);
     }
 

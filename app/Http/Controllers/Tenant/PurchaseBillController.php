@@ -33,12 +33,35 @@ class PurchaseBillController extends Controller
         if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->branch_id);
         }
+        // BILL-DATE-FILTER-1: From / To on the invoice date, with Today / Yesterday (the branch's own calendar day),
+        // the same as Sales Returns. Either end may be left empty.
+        [$dateFrom, $dateTo] = $this->dateRange($request);
+        if ($dateFrom) {
+            $query->whereDate('bill_date', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $query->whereDate('bill_date', '<=', $dateTo);
+        }
 
         $bills     = $query->paginate(20)->withQueryString();
         $branches  = Branch::orderBy('name')->get();
         $suppliers = Supplier::where('status', 'active')->orderBy('name')->get();
 
-        return view('tenant.purchase-bills.index', compact('bills', 'branches', 'suppliers'));
+        return view('tenant.purchase-bills.index', compact('bills', 'branches', 'suppliers', 'dateFrom', 'dateTo'));
+    }
+
+    /** From / To for the list: the Today / Yesterday buttons send `range`; otherwise the typed dates (Y-m-d only). */
+    private function dateRange(Request $request): array
+    {
+        $clock = app(\App\Support\TenantClock::class);
+        $today = $clock->now($clock->displayTimezone(auth('tenant')->user(), null))->toDateString();
+        $day = fn ($v) => is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) ? $v : null;
+
+        return match ($request->input('range')) {
+            'today'     => [$today, $today],
+            'yesterday' => [($y = \Illuminate\Support\Carbon::parse($today)->subDay()->toDateString()), $y],
+            default     => [$day($request->input('date_from')), $day($request->input('date_to'))],
+        };
     }
 
     public function create(Request $request)

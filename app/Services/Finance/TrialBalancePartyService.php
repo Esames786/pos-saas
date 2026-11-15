@@ -44,9 +44,12 @@ class TrialBalancePartyService
      * also a bill's recost (finance:recost-nonstock-bills, source = the bill) and a bill's corrected journal after a GRN
      * edit (PURCHASE-EDIT-1, source = goods_receipt_revisions.id). Without them the supplier kept the cost the recost or
      * the edit took away, and an equal minus showed as "Other" (Khatri 5100-3, 6 Nov).
+     * PNL-DETAIL-STOCK-EXPENSE-1: also the stock-to-cost move of inventory:expense-purchase-stock (source = the GRN line).
+     * Without it that money showed as "Other" on a head with bills, and a head with only these moves had no detail at all.
      */
     private const BILL_SOURCES = ['purchase_bill', 'purchase_bill_reversal', 'purchase_return', 'purchase_return_reversal',
-        'purchase_bill_recost', 'purchase_bill_recost_reversal', 'purchase_bill_revision', 'purchase_bill_revision_reversal'];
+        'purchase_bill_recost', 'purchase_bill_recost_reversal', 'purchase_bill_revision', 'purchase_bill_revision_reversal',
+        'grn_line_stock_expense', 'grn_line_stock_expense_reversal'];
 
     private const CASH_SOURCES = [
         'catering_advance'       => 'catering_advances',
@@ -134,6 +137,10 @@ class TrialBalancePartyService
         $ids = $sourceIds(['purchase_bill_revision']);
         $supplierOf['purchase_bill_revision'] = $ids ? $conn->table('goods_receipt_revisions as r')->join('purchase_bills as b', 'b.id', '=', 'r.purchase_bill_id')
             ->whereIn('r.id', $ids)->pluck('b.supplier_id', 'r.id')->all() : [];
+        // A stock-to-cost move names the supplier of the receipt its GRN line came on.
+        $ids = $sourceIds(['grn_line_stock_expense']);
+        $supplierOf['grn_line_stock_expense'] = $ids ? $conn->table('goods_receipt_lines as gl')->join('goods_receipts as g', 'g.id', '=', 'gl.goods_receipt_id')
+            ->whereIn('gl.id', $ids)->pluck('g.supplier_id', 'gl.id')->all() : [];
         $cashOf = [];
         foreach (array_unique(self::CASH_SOURCES) as $table) {
             $types = array_keys(array_filter(self::CASH_SOURCES, fn ($t) => $t === $table));

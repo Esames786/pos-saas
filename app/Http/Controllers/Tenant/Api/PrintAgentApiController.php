@@ -70,6 +70,7 @@ class PrintAgentApiController extends Controller
             'device_name' => ['nullable', 'string', 'max:190'],
             'device_os'   => ['nullable', 'string', 'max:190'],
             'local_ip'    => ['nullable', 'string', 'max:100'],
+            'agent_version' => ['nullable', 'string', 'max:50'],
         ]);
 
         $agent->update([
@@ -79,6 +80,16 @@ class PrintAgentApiController extends Controller
             'last_seen_at' => now(),
             'last_error'   => null,
         ]);
+
+        // AGENT-UPGRADE-1 — kis PC par kaun sa agent. ALAG likha jata hai aur ghalti nigal li jati hai: kisi tenant
+        // par column na pahuncha ho (us ka migration ruka ho) to bhi heartbeat — yani thermal parchi — kabhi na ruke.
+        if (! empty($data['agent_version']) && $data['agent_version'] !== $agent->agent_version) {
+            try {
+                $agent->forceFill(['agent_version' => $data['agent_version']])->save();
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         // v2.5.0 LIVE STATUS: the agent folds its keep-awake poke results onto each printer it reached,
         // so the Printers screen shows Online/Offline + latency without anyone touching a PC. Scoped to
@@ -121,6 +132,9 @@ class PrintAgentApiController extends Controller
                     'ip'   => $p->ip_address,
                     'port' => (int) ($p->port ?: 9100),
                 ])->values(),
+            // AGENT-UPGRADE-1 — poll ka waqt SERVER tay karta hai (agent 2.7.0+ maanta hai; purana nazarandaz karta hai).
+            // PC chhue baghair badla ja sakta hai: switch ON = har second, warna pehle jaisa 3 second.
+            'poll_ms'     => \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRINT_PREPARE) ? 1000 : 3000,
         ]);
     }
 
@@ -149,9 +163,84 @@ class PrintAgentApiController extends Controller
      */
     private function agentHandlesDocuments(Request $request): bool
     {
-        $caps = array_map('trim', explode(',', (string) $request->header('X-Print-Agent-Caps', '')));
+        return in_array('document', $this->agentCaps($request), true);
+    }
 
-        return in_array('document', $caps, true);
+    /** PRINT-PREPARE-1 — wohi header; `prepare` sirf agent 2.7.0+ bhejta hai. Purana agent tayyari ka kaam kabhi nahi dekhta. */
+    private function agentCaps(Request $request): array
+    {
+        return array_map('trim', explode(',', (string) $request->header('X-Print-Agent-Caps', '')));
+    }
+
+    /** Ek poll me zyada se zyada itni tayyariyan — asli parcha kabhi in ke peeche na ruke. */
+    private const PREPARES_PER_POLL = 2;
+
+    /**
+     * PRINT-PREPARE-1 — tayyari ka kaam, SIRF jab is poll me koi asli parcha na mila ho.
+     *
+     * Sirf us agent ko jo `prepare` kahe, aur sirf usi branch ke A4/A5 printer ki. Claim lease ke saath, taake beech me
+     * band hua agent row ko hamesha ke liye na rok le.
+     */
+    private function claimPrepares(PrintAgent $agent): \Illuminate\Support\Collection
+    {
+        if (! \Illuminate\Support\Facades\Schema::connection('tenant')->hasTable('print_prepares')) {
+            return collect();
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($agent) {
+            $rows = \App\Models\Tenant\PrintPrepare::query()
+                ->with('printer')
+                ->where('status', \App\Models\Tenant\PrintPrepare::STATUS_QUEUED)
+                ->whereHas('printer', fn ($q) => $q->where('is_active', true)
+                    ->where('printer_type', Printer::TYPE_WINDOWS)
+                    ->whereNotNull('windows_printer_name'))
+                ->when($agent->branch_id, fn ($q) => $q->where(fn ($w) => $w
+                    ->whereNull('branch_id')->orWhere('branch_id', $agent->branch_id)))
+                ->where(fn ($q) => $q->whereNull('claimed_at')
+                    ->orWhere('claimed_at', '<', now()->subSeconds(\App\Models\Tenant\PrintPrepare::CLAIM_LEASE_SECONDS)))
+                ->orderBy('updated_at')
+                ->limit(self::PREPARES_PER_POLL)
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($rows as $row) {
+                $row->update(['claimed_by_agent_id' => $agent->id, 'claimed_at' => now()]);
+            }
+
+            return $rows;
+        });
+    }
+
+    /** Agent: PDF ban gayi (chhapi NAHI) — `ready\` folder me rakhi hai. */
+    public function prepareReady(Request $request, \App\Models\Tenant\PrintPrepare $printPrepare): JsonResponse
+    {
+        $agent = $this->authenticate($request);
+
+        if ($printPrepare->claimed_by_agent_id && (int) $printPrepare->claimed_by_agent_id !== (int) $agent->id) {
+            abort(403, 'Prepare claimed by another agent.');
+        }
+
+        $printPrepare->update(['status' => \App\Models\Tenant\PrintPrepare::STATUS_READY, 'ready_at' => now(), 'error' => null]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Agent: PDF nahi bani. Send phir bhi chalega — purane raaste se. */
+    public function prepareFailed(Request $request, \App\Models\Tenant\PrintPrepare $printPrepare): JsonResponse
+    {
+        $agent = $this->authenticate($request);
+
+        if ($printPrepare->claimed_by_agent_id && (int) $printPrepare->claimed_by_agent_id !== (int) $agent->id) {
+            abort(403, 'Prepare claimed by another agent.');
+        }
+
+        $data = $request->validate(['error_message' => ['nullable', 'string', 'max:2000']]);
+        $printPrepare->update([
+            'status' => \App\Models\Tenant\PrintPrepare::STATUS_FAILED,
+            'error' => mb_substr((string) ($data['error_message'] ?? 'failed'), 0, 500),
+        ]);
+
+        return response()->json(['ok' => true]);
     }
 
     public function pending(Request $request): JsonResponse
@@ -246,8 +335,23 @@ class PrintAgentApiController extends Controller
             return $claimed;
         });
 
+        // PRINT-PREPARE-1 — asli parcha HAMESHA pehle: tayyari sirf us poll me jab koi asli job na mili ho, aur sirf
+        // `prepare` kehne wale agent ko. Purana agent ki `prepares` key bhi nahi aati.
+        $prepares = ($jobs->isEmpty() && $handlesDocuments && in_array('prepare', $this->agentCaps($request), true))
+            ? $this->claimPrepares($agent)
+            : collect();
+
         return response()->json([
             'ok'   => true,
+            'prepares' => $prepares->map(fn (\App\Models\Tenant\PrintPrepare $p) => [
+                'id'          => $p->id,
+                'doc_key'     => $p->doc_key,
+                'fingerprint' => $p->fingerprint,
+                'paper'       => $p->paper,
+                'paper_css'   => \App\Models\Tenant\CateringSetting::cssPageSize($p->paper, 'A4 portrait'),
+                'windows_printer_name' => $p->printer?->windows_printer_name,
+                'html'        => $p->html,
+            ])->values(),
             'jobs' => $jobs->map(fn (PrintJob $job) => [
                 'id'            => $job->id,
                 'job_no'        => $job->job_no,

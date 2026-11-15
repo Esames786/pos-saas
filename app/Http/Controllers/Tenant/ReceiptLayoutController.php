@@ -57,12 +57,14 @@ class ReceiptLayoutController extends Controller
             'show_heading_stars'     => ['nullable', 'boolean'],
             'show_bill_barcode'      => ['nullable', 'boolean'],
             'show_order_note'        => ['nullable', 'boolean'],
+            'show_deal_as_heading'   => ['nullable', 'boolean'],
             'header_text'            => ['nullable', 'string', 'max:500'],
             'footer_text'            => ['nullable', 'string', 'max:500'],
             'font_size'              => ['required', 'integer', 'min:8', 'max:24'],
             'kot_font_size'          => ['required', 'integer', 'min:8', 'max:24'],
             'item_font_size'         => ['nullable', 'integer', 'min:8', 'max:24'],
             'time_font_size'         => ['nullable', 'integer', 'min:8', 'max:24'],
+            'customer_font_size'     => ['nullable', 'integer', 'min:8', 'max:24'],
             'is_active'              => ['nullable', 'boolean'],
         ]);
 
@@ -80,6 +82,20 @@ class ReceiptLayoutController extends Controller
         $updateData = collect($data)->except(['logo'])->toArray();
         if ($logoPath) {
             $updateData['logo_path'] = $logoPath;
+        }
+
+        // RECEIPT-CUSTOMER-SIZE-1 — a blank Customer & Delivery size is written only when it clears a
+        // saved one. Every KOT / Reminder save posts the box blank, so without this each of them would
+        // name the new column — and a save in the deploy's pull → migrate second would fail outright.
+        // (Blank arrives as null through the web middleware, as '' when the controller is called directly.)
+        if (array_key_exists('customer_font_size', $updateData) && in_array($updateData['customer_font_size'], [null, ''], true)) {
+            $saved = ReceiptLayoutSetting::where('branch_id', $data['branch_id'])
+                ->where('document_type', $data['document_type'])->first();
+            if ($saved?->customer_font_size === null) {
+                unset($updateData['customer_font_size']);
+            } else {
+                $updateData['customer_font_size'] = null;
+            }
         }
 
         ReceiptLayoutSetting::updateOrCreate(
@@ -107,6 +123,11 @@ class ReceiptLayoutController extends Controller
             'kot_font_size'           => (int) $request->input('kot_font_size', $base->kot_font_size ?? 14),
             'item_font_size'          => $request->filled('item_font_size') ? (int) $request->input('item_font_size') : $base->item_font_size,
             'time_font_size'          => $request->filled('time_font_size') ? (int) $request->input('time_font_size') : $base->time_font_size,
+            // RECEIPT-CUSTOMER-SIZE-1: the screen always sends this box, blank included — so clearing it
+            // previews today's bill instead of falling back to the saved size.
+            'customer_font_size'      => $request->has('customer_font_size')
+                ? ($request->filled('customer_font_size') ? (int) $request->input('customer_font_size') : null)
+                : $base->customer_font_size,
             'logo_path'               => $base->logo_path,
             'header_text'             => $request->input('header_text',  $base->header_text),
             'footer_text'             => $request->input('footer_text',  $base->footer_text),
@@ -129,6 +150,23 @@ class ReceiptLayoutController extends Controller
             ->where('status', 'paid')
             ->latest('sale_date')
             ->first() ?? $this->fakeSalesOrder($base->branch);
+
+        // KOT-DEAL-HEADING-1: the deal switch needs a sale that HAS a deal, or switching it on shows
+        // nothing and the switch looks dead — borrow the latest paid sale with one, exactly as the
+        // Delivery Details toggle borrows a delivery below. No deal sold yet = the latest sale stays.
+        if ($base->document_type === 'kot' && ($layout->show_deal_as_heading ?? false)
+            && ! collect($salesOrder->lines ?? [])->contains(fn ($l) => ($l->line_kind ?? 'standard') === 'combo_header')) {
+            $salesOrder = SalesOrder::with([
+                    'lines', 'branch', 'payments.method',
+                    'restaurantTable.floor', 'restaurantWaiter', 'createdBy',
+                    'deliveryChannel', 'deliveryRider',
+                ])
+                ->where('branch_id', $base->branch_id)
+                ->where('status', 'paid')
+                ->whereHas('lines', fn ($q) => $q->where('line_kind', 'combo_header'))
+                ->latest('sale_date')
+                ->first() ?? $salesOrder;
+        }
 
         // The Delivery Details toggle needs a sale that HAS delivery data, or switching it on
         // shows nothing and the switch looks dead. When the latest sale is not a delivery,
@@ -178,6 +216,11 @@ class ReceiptLayoutController extends Controller
             'kotLines'       => $salesOrder->lines ?? collect(),
             'lineQuantities' => collect(),
             'isReprint'      => true,
+            // COMBO-KOT-DEAL-NAME-1 / KOT-DEAL-HEADING-1: the deal names, so the preview shows a deal
+            // the way the paper does — before, the preview never named a deal at all.
+            'comboNames'     => ($ids = collect($salesOrder->lines ?? [])->pluck('combo_id')->filter()->unique()->values())->isEmpty()
+                ? collect()
+                : \Illuminate\Support\Facades\DB::connection('tenant')->table('combos')->whereIn('id', $ids->all())->pluck('name', 'id'),
         ]);
     }
 

@@ -206,6 +206,50 @@ class InventoryExpensePurchaseStockMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta($octBefore - 600, $pnl->statement($oct)['net_profit'], 0.0001);
     }
 
+    /**
+     * PNL-DETAIL-STOCK-EXPENSE-1: the P&L detail (and the Trial Balance party detail, the same service) names the supplier
+     * for the money the command moved. September: the head carries ONLY the move (it had no detail at all). October: the
+     * move sits next to another supplier's non-stock bill on the same head (the move was "Other").
+     */
+    public function test_the_pnl_detail_names_the_supplier_of_the_moved_cost(): void
+    {
+        $other = DB::table('suppliers')->insertGetId(['code' => 'SUP-K2', 'name' => 'Kitchen Two', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $sauce = $this->makeProduct($this->cooked, ['name' => 'Sauce', 'is_purchasable' => 1, 'is_stock_tracked' => 0]);
+        app(GoodsReceiptController::class)->store(Request::create('/goods-receipts', 'POST', [
+            'supplier_id' => $other, 'branch_id' => $this->branchId, 'receipt_date' => '2026-10-06',
+            'lines' => [['product_id' => $sauce, 'quantity_received' => 3, 'unit_cost' => 100]],
+        ]));
+        $this->bill(GoodsReceipt::on('tenant')->latest('id')->firstOrFail(), '2026-10-06');
+        $sep = $this->plDetail('2026-09-01', '2026-09-30', '5100-3');
+        $oct = $this->plDetail('2026-10-01', '2026-10-31', '5100-3');
+
+        $this->cmd(['--products' => (string) $this->beef, '--yes' => true]);
+
+        // September: a head with only the move is split by supplier. October: next to a bill the move names its supplier, no "Other".
+        $this->assertSame(['sep' => ['Kitchen' => 1000.0], 'oct' => ['Kitchen' => 600.0, 'Kitchen Two' => 300.0]], [
+            'sep' => $this->plDetail('2026-09-01', '2026-09-30', '5100-3'), 'oct' => $this->plDetail('2026-10-01', '2026-10-31', '5100-3')]);
+        $this->assertSame([[], ['Kitchen Two' => 300.0]], [$sep, $oct], 'before the move: nothing on 5100-3 but the non-stock bill');
+    }
+
+    /** The P&L's detail lines under one account: label => amount — the one build the screen, its CSV and its PDF all take. */
+    private function plDetail(string $from, string $to, string $code): array
+    {
+        $pl = app(ProfitLossService::class)->statement(['date_from' => $from, 'date_to' => $to]);
+        $out = [];
+        foreach (app(\App\Services\Finance\ProfitLossReport::class)->build($pl, null, true)['parts'] as $lines) {
+            foreach ($lines as $l) {
+                if ((string) $l['code'] === $code) {
+                    foreach ($l['detail'] as $d) {
+                        $out[$d['label']] = round((float) $d['amount'], 2);
+                    }
+                }
+            }
+        }
+        ksort($out);
+
+        return $out;
+    }
+
     public function test_the_old_product_form_refuses_switching_stock_off_with_stock_on_hand(): void
     {
         $p = Product::findOrFail($this->beef);

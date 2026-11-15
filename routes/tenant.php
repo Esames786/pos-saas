@@ -1291,6 +1291,9 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
             Route::post('/jobs/{printJob}/failed', [PrintAgentApiController::class, 'failed'])->name('tenant.api.print-agent.jobs.failed');
             // PRINTER-HEALTH-1: park a ticket whose printer is cooling — re-queued, never lost.
             Route::post('/jobs/{printJob}/defer', [PrintAgentApiController::class, 'defer'])->name('tenant.api.print-agent.jobs.defer');
+            // PRINT-PREPARE-1: agent ne PDF bana kar rakh li (chhapi NAHI) / nahi bana saka.
+            Route::post('/prepares/{printPrepare}/ready', [PrintAgentApiController::class, 'prepareReady'])->name('tenant.api.print-agent.prepares.ready');
+            Route::post('/prepares/{printPrepare}/failed', [PrintAgentApiController::class, 'prepareFailed'])->name('tenant.api.print-agent.prepares.failed');
             // v2.5.0 remote Test/Reboot commands.
             Route::get('/commands', [PrintAgentApiController::class, 'commands'])->name('tenant.api.print-agent.commands');
             Route::post('/commands/{printAgentCommand}/result', [PrintAgentApiController::class, 'commandResult'])->name('tenant.api.print-agent.commands.result');

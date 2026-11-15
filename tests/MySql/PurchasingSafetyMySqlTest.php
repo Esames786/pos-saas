@@ -160,6 +160,39 @@ class PurchasingSafetyMySqlTest extends MySqlTenantTestCase
         $this->assertEqualsWithDelta(0.0, (float) $bill->fresh()->amount_paid, 0.001, 'the other supplier\'s invoice stays unpaid');
     }
 
+    /**
+     * BILL-DATE-FILTER-1 (owner, 10 Nov): the Supplier Invoices list filters by invoice date — From / To, and Today /
+     * Yesterday on the branch's own day — together with the supplier filter. Rendered through the real route.
+     */
+    public function test_the_invoice_list_filters_by_invoice_date_with_today_and_yesterday(): void
+    {
+        $this->owner();
+        $today = app(\App\Support\TenantClock::class)->now()->toDateString();
+        $yesterday = \Illuminate\Support\Carbon::parse($today)->subDay()->toDateString();
+        $older = \Illuminate\Support\Carbon::parse($today)->subDays(5)->toDateString();
+        $other = Supplier::firstOrCreate(['code' => 'S0TEST-S3'], ['name' => 'Third Supplier', 'status' => 'active', 'opening_balance' => 0, 'current_balance' => 0]);
+        $bills = [];
+        foreach (['today' => [$today, null], 'yesterday' => [$yesterday, null], 'older' => [$older, null], 'other' => [$today, $other->id]] as $k => [$date, $sup]) {
+            $item = $this->product('S0 Dated ' . $k, $this->piece()->id, ['default_selling_price' => 50]);
+            $grnId = (int) $this->grn($item, '1', SubmissionKey::fresh(), [], ['receipt_date' => $date] + ($sup ? ['supplier_id' => $sup] : []))->assertOk()->json('id');
+            $this->owner()->post($this->url('/purchase-bills'), ['goods_receipt_id' => $grnId, 'bill_date' => $date])->assertSessionHasNoErrors();
+            $bills[$k] = (string) PurchaseBill::where('goods_receipt_id', $grnId)->value('bill_no');
+        }
+        $html = fn (array $q) => $this->owner()->get($this->url('/purchase-bills?' . http_build_query($q)))->assertOk()->getContent();
+        $shown = fn (array $q) => array_keys(array_filter($bills, fn ($no) => str_contains($html($q), $no)));
+
+        $this->assertSame(['today', 'yesterday', 'older', 'other'], $shown([]), 'no dates: every invoice, as before');
+        $this->assertSame(['today', 'other'], $shown(['range' => 'today']));
+        $this->assertSame(['yesterday'], $shown(['range' => 'yesterday']));
+        $this->assertSame(['yesterday', 'older'], $shown(['date_from' => $older, 'date_to' => $yesterday]));
+        $this->assertSame(['today', 'yesterday', 'other'], $shown(['date_from' => $yesterday]), 'only a From');
+        $this->assertSame(['today'], $shown(['range' => 'today', 'supplier_id' => $this->supplier()->id]), 'Today keeps the supplier chosen');
+        $this->assertSame(['today', 'yesterday', 'older', 'other'], $shown(['date_from' => 'abc']), 'a broken date is ignored, not an error');
+        $page = $html(['range' => 'yesterday']);
+        $this->assertStringContainsString('name="date_from" value="' . $yesterday . '"', $page, 'the boxes show the day the button chose');
+        $this->assertStringContainsString('name="range" value="today"', $page);
+    }
+
     /** A goods receipt on the new screen, posted as the screen posts it (JSON). */
     private function grn($product, string $count, ?string $key, array $lineExtra = [], array $extra = [])
     {

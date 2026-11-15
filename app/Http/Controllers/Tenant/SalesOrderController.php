@@ -201,8 +201,13 @@ class SalesOrderController extends Controller
                 $businessDate = app(TenantClock::class)->businessDateForSale($shift, $branch);
                 $orderType = $data['order_type'];
 
+                // RECALL-HIDDEN-ITEM-2: the lines already saved on the bill being paid (line id => product id).
+                $savedLineProducts = ! empty($data['held_sale_id'])
+                    ? \App\Models\Tenant\SalesOrderLine::where('sales_order_id', (int) $data['held_sale_id'])->pluck('product_id', 'id')
+                    : collect();
+
                 // Resolve line prices first so SalesTotalsService gets accurate per-line data
-                $resolvedLines = $lines->map(function ($line) use ($branch, $inventoryService) {
+                $resolvedLines = $lines->map(function ($line) use ($branch, $inventoryService, $savedLineProducts) {
                     $product = Product::with('unit')->findOrFail($line['product_id']);
                     $variant = $inventoryService->resolveVariant($product, $line['product_variant_id'] ?? null);
                     $qty     = (float) $line['quantity'];
@@ -211,9 +216,18 @@ class SalesOrderController extends Controller
                     // PRODUCT-BOUNDARY-2: a normal POS line must be a saleable, POS-visible,
                     // active product. Combo header/component lines are managed by the combo
                     // system and are exempt (components are intentionally not POS-visible).
+                    //
+                    // RECALL-HIDDEN-ITEM-2 (15 Nov): "hidden" means the counter has no BUTTON for the item;
+                    // the item is still sold (the product form says so: in a deal, as an add-on, or on the
+                    // website). A website order carrying one could be recalled but never paid: "Singaporean
+                    // Rice (Khass) is not available for POS sale" on a 4,500 bill. So an item that is ALREADY
+                    // on the bill being paid — the same saved line, the same product — may be hidden. Ringing
+                    // one up by hand is still refused, and so is a switched-off or not-for-sale item.
+                    $alreadyOnBill = ! empty($line['sales_order_line_id'])
+                        && (int) ($savedLineProducts[(int) $line['sales_order_line_id']] ?? 0) === (int) $product->id;
                     if (
                         $lineKind === 'standard'
-                        && (! $product->is_sellable || ! $product->is_pos_visible || $product->status !== 'active')
+                        && (! $product->is_sellable || $product->status !== 'active' || (! $product->is_pos_visible && ! $alreadyOnBill))
                     ) {
                         throw new RuntimeException($product->name . ' is not available for POS sale.');
                     }

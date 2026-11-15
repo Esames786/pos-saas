@@ -2423,6 +2423,9 @@ function setButtonBusy(button, busy, label) {
 
 document.addEventListener('DOMContentLoaded', function () {
     const products   = @json($productsPayload);
+    // RECALL-HIDDEN-ITEM-1: items hidden from the POS. ONLY the recall of a saved bill reads this list (a
+    // website order can carry one), so the grid, search and barcode scan never offer them.
+    const recallProducts = @json($recallProductsPayload ?? []);
     const combos     = @json($combosPayload);
     const categories = @json($categories);
     const heldSale   = @json($heldSaleJson);
@@ -5565,6 +5568,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* ── Manager PIN Modal ──────────────────────────────────────────── */
 
+    // POS-PIN-FOCUS-1 (10 Nov): a SweetAlert box opened from inside a Bootstrap window (the pay window's discount →
+    // Manager Approval) could not be clicked or typed in. Bootstrap's focus trap pulls the cursor back into its own
+    // window the moment it lands anywhere else, so the code went into Tendered Amount instead. The box sits on top
+    // and is the one being answered: a focus that lands inside it stays there. Every other focus is left to Bootstrap.
+    window.addEventListener('focusin', function (e) {
+        if (e.target && e.target.closest && e.target.closest('.swal2-container')) { e.stopPropagation(); }
+    }, true);
+
     function showManagerPinModal(actionType, payload, onSuccess, onCancel) {
         Swal.fire({
             title: 'Manager Approval',
@@ -6608,15 +6619,60 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // RECALL-HIDDEN-ITEM-1 — a saved bill's item: the POS list first, then the hidden-items list.
+    function productForHeldLine(line) {
+        var id = Number(line && line.product_id);
+        if (!id) return null;
+        return products.find(function (p) { return Number(p.id) === id; })
+            || recallProducts.find(function (p) { return Number(p.id) === id; })
+            || null;
+    }
+
+    // The bill's items the POS cannot load at all (switched off, no longer for sale, or removed). Before this,
+    // recall left them out of the cart without a word. A line that never had a product keeps today's behaviour.
+    function heldBillMissingItems(lines) {
+        var names = [];
+        (lines || []).forEach(function (line) {
+            if (!line || !line.product_id || productForHeldLine(line)) return;
+            var name = line.product_name || ('Item #' + line.product_id);
+            if (names.indexOf(name) === -1) names.push(name);
+        });
+        return names;
+    }
+
+    // Never open half a bill: without these items the total would be wrong on screen, on the printed bill and
+    // at Pay. The bill stays saved exactly as it is.
+    function showHeldBillNotOpened(saleNo, names, after) {
+        var list = names.map(function (n) { return '<b>' + escapeHtml(n) + '</b>'; }).join('<br>');
+        Swal.fire({
+            icon: 'error',
+            titleText: 'Bill ' + (saleNo || '') + ' was not opened',
+            html: 'These items on the bill are switched off in Products, so the POS cannot load them:<br>' + list
+                + '<br><br>Without them the total would be wrong, so the bill was not opened. The bill is still saved and nothing was changed.'
+                + ' Ask the manager to switch the item on in Products, then press Recall again.'
+                + '<hr class="my-2"><div class="small">Is bill ke yeh items Products mein band hain, is liye POS inhein nahi khol sakta.'
+                + ' Inke baghair total ghalat banta, is liye bill nahi khola. Bill mehfooz hai. Manager item ko Active kare, phir dobara Recall karein.</div>',
+            confirmButtonText: 'OK',
+            allowOutsideClick: false,
+        }).then(function () { if (after) after(); });
+    }
+
     function recallHeldSale(sale) {
         var _hsModal = bootstrap.Modal.getInstance(heldSalesModalEl);
         if (_hsModal) _hsModal.hide();
+
+        // RECALL-HIDDEN-ITEM-1: every item or nothing — the cart is left exactly as it was.
+        var missingItems = heldBillMissingItems(sale.lines);
+        if (missingItems.length) {
+            showHeldBillNotOpened(sale.sale_no, missingItems);
+            return;
+        }
 
         // Rebuild cart from recalled sale
         cart = [];
         var recalledLineKeys = {};
         sale.lines.forEach(function (line) {
-            const product = products.find(function (p) { return Number(p.id) === Number(line.product_id); });
+            const product = productForHeldLine(line);
             if (!product) return;
             const variant = (product.variants || []).find(function (v) {
                 return Number(v.id) === Number(line.product_variant_id);
@@ -8345,14 +8401,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* preload held sale (page-load recall via ?held_sale_id=) */
 
-    if (heldSale && heldSale.lines) {
+    // RECALL-HIDDEN-ITEM-1: the same rule when a bill is opened by its address (?held_sale_id=, e.g. the
+    // website window's fallback). The page would otherwise keep this bill's number with half its items, so
+    // after the message the cashier lands on a fresh POS.
+    var _preloadMissing = (heldSale && heldSale.lines) ? heldBillMissingItems(heldSale.lines) : [];
+    if (_preloadMissing.length) {
+        { const el = document.querySelector('input[name="held_sale_id"]'); if (el) el.value = ''; }
+        // REHEARSAL chunk 11: the runtime's own address (POS.route), never an app-URL literal in the shared view.
+        showHeldBillNotOpened(heldSale.sale_no, _preloadMissing, function () { window.location.href = POS.route('posIndex'); });
+    } else if (heldSale && heldSale.lines) {
         _currentHeldSaleId = heldSale.id;
         _currentHeldSaleNo = heldSale.sale_no || '';
         _currentHeldSaleIsDraft = !!heldSale.is_draft;   // POS-DRAFT-1
         var preloadedLineKeys = {};
 
         heldSale.lines.forEach(function (line) {
-            const product = products.find(function (p) { return Number(p.id) === Number(line.product_id); });
+            const product = productForHeldLine(line);
             if (!product) return;
 
             const variant = (product.variants || []).find(function (v) { return Number(v.id) === Number(line.product_variant_id); });

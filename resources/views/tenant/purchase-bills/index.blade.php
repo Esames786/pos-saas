@@ -26,7 +26,7 @@
 <div class="card mb-3">
     <div class="card-body">
         <form method="GET" action="{{ url('/purchase-bills') }}" class="row g-3 align-items-end">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label for="bill-supplier" class="form-label">Supplier</label>
                 <select id="bill-supplier" name="supplier_id" class="form-select">
                     <option value="">All Suppliers</option>
@@ -37,7 +37,7 @@
                     @endforeach
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="bill-status" class="form-label">Status</label>
                 <select id="bill-status" name="status" class="form-select">
                     <option value="">All</option>
@@ -46,8 +46,19 @@
                     @endforeach
                 </select>
             </div>
-            <div class="col-md-3">
+            {{-- BILL-DATE-FILTER-1: invoice date From / To; Today / Yesterday keep the supplier and status chosen above. --}}
+            <div class="col-6 col-md-2">
+                <label for="bill-date-from" class="form-label">From</label>
+                <input type="date" id="bill-date-from" name="date_from" value="{{ $dateFrom ?? '' }}" class="form-control">
+            </div>
+            <div class="col-6 col-md-2">
+                <label for="bill-date-to" class="form-label">To</label>
+                <input type="date" id="bill-date-to" name="date_to" value="{{ $dateTo ?? '' }}" class="form-control">
+            </div>
+            <div class="col-md-3 d-flex flex-wrap gap-2">
                 <button class="btn btn-dark" type="submit">Filter</button>
+                <button class="btn btn-outline-secondary" type="submit" name="range" value="today">Today</button>
+                <button class="btn btn-outline-secondary" type="submit" name="range" value="yesterday">Yesterday</button>
                 <a href="{{ url('/purchase-bills') }}" class="btn btn-light">Reset</a>
             </div>
         </form>
