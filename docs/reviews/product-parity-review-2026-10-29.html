@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unified product form — review, 29 October 2026</title>
+<style>
+body{margin:0;background:#f4f6fa;color:#17324b;font:16px/1.6 system-ui,sans-serif}main{max-width:1150px;margin:auto;padding:32px 20px}h1{font-size:30px;line-height:1.2}h2{font-size:23px}p{max-width:85ch}.status{padding:14px 18px;background:#fff5d9;border-left:4px solid #c99d31;border-radius:6px}.proof{background:#e8f4ed;padding:14px 18px;border-radius:6px}table{width:100%;border-collapse:collapse;background:white}th,td{text-align:left;padding:14px;border:1px solid #d9e1ea;vertical-align:top}th{background:#17324b;color:white}.shots{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:18px;align-items:start}.shots img{width:100%;height:auto;border:1px solid #d9e1ea;border-radius:8px}section{margin:32px 0}a{color:#0964a1}summary{cursor:pointer;font-weight:600}small{color:#50677a}@media(max-width:700px){.shots{grid-template-columns:1fr}.shots .phone{max-width:350px}table{font-size:14px}th,td{padding:8px}}
+</style><main>
+<h1>One product form: advanced settings</h1>
+<p class="status"><strong>Local implementation, not deployed.</strong> These are real browser screenshots from an isolated test store. Existing tenants, permissions and product records were not modified by this work.</p>
+<table><thead><tr><th>Area</th><th>Before</th><th>Now in the product form</th></tr></thead><tbody>
+<tr><td>Recipe</td><td>Advanced references, overrides and order-type rules needed the separate editor.</td><td>Collapsed Advanced settings plus per-ingredient settings, with live cost including overhead.</td></tr>
+<tr><td>Bill of materials</td><td>Number, version, status, date and notes needed the separate editor.</td><td>Header settings and component notes can be edited here. Other versions and archived BOMs remain in the BOM list.</td></tr>
+<tr><td>Event costing</td><td>Rate basis/source and Making classification needed the Cost Blocks editor.</td><td>Each block has Pricing settings. Existing house-book validation and audit are reused.</td></tr>
+</tbody></table>
+<p class="proof"><strong>Evidence:</strong> 28 related MySQL tests passed (610 assertions); final browser walk 34/34. Unchanged saves, stale edits, permissions, rollback and old URLs are covered by the related run. No full application-suite claim.</p>
+<p>Advanced settings start collapsed. The screenshots deliberately open them for review. Urdu product names remain supported; guidance is in English. Old routes stay available for specialized users, reports and version management.</p>
+<section><h2>Recipe</h2><div class="shots"><a href="product-parity-2026-10-29/recipe-desktop.png"><img src="product-parity-2026-10-29/recipe-desktop.png" alt="Recipe advanced settings on desktop"></a><a class="phone" href="product-parity-2026-10-29/recipe-phone.png"><img src="product-parity-2026-10-29/recipe-phone.png" alt="Recipe advanced settings on phone"></a></div></section>
+<section><h2>Bill of materials</h2><div class="shots"><a href="product-parity-2026-10-29/bom-desktop.png"><img loading="lazy" src="product-parity-2026-10-29/bom-desktop.png" alt="BOM advanced settings on desktop"></a><a class="phone" href="product-parity-2026-10-29/bom-phone.png"><img loading="lazy" src="product-parity-2026-10-29/bom-phone.png" alt="BOM advanced settings on phone"></a></div></section>
+<section><h2>Event costing</h2><div class="shots"><a href="product-parity-2026-10-29/catering-desktop.png"><img loading="lazy" src="product-parity-2026-10-29/catering-desktop.png" alt="Cost block pricing settings on desktop"></a><a class="phone" href="product-parity-2026-10-29/catering-phone.png"><img loading="lazy" src="product-parity-2026-10-29/catering-phone.png" alt="Cost block pricing settings on phone"></a></div></section>
+<p><a href="../plans/product-parity-2026-10-28.md">Implementation, test history, usage guide and release boundary</a></p>
+<small>Branch: feat/product-parity-20261028. No migrations, role grants, tenant activation or historical-data backfill.</small>
+</main></html>

@@ -13,6 +13,11 @@
                 <option value="{{ $o->id }}" data-unit="{{ $o->unit?->code }}" @selected((string) ($l['component_product_id'] ?? '') === (string) $o->id)>{{ $o->name }}</option>
             @endforeach
         </select>
+        <details class="ws-advanced mt-2">
+            <summary>Material note</summary>
+            <label class="visually-hidden" for="bl-{{ $k }}-notes">Material note</label>
+            <textarea id="bl-{{ $k }}-notes" class="form-control mt-2" rows="2" maxlength="500" name="{{ $n }}[notes]">{{ $l['notes'] ?? '' }}</textarea>
+        </details>
     </td>
     <td class="ws-qty" data-label="Quantity">
         <label class="visually-hidden" for="bl-{{ $k }}-qty">Quantity</label>

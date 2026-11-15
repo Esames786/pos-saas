@@ -168,6 +168,13 @@
     .pv2 .ws-make .ws-unit { width:auto; min-width:120px; }
     .pv2 .ws-total { color:var(--navy); }
     .pv2 .ws-errors { margin-bottom:10px; }
+    .pv2 .ws-advanced { border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:var(--paper, #fff); }
+    .pv2 .ws-advanced summary { cursor:pointer; font-size:.85rem; font-weight:600; color:var(--ink); }
+    .pv2 .ws-advanced .form-label { font-size:.8rem; }
+    .pv2 .ws-advanced input, .pv2 .ws-advanced textarea, .pv2 .ws-advanced select { max-width:100%; }
+    /* Keep absolute accessibility labels inside the scroll container, and let row guidance wrap. */
+    .pv2 .table-responsive { position:relative; }
+    .pv2 .ws-table td { white-space:normal; }
     .pv2 .ws-table th { font-size:.8rem; color:var(--ink2); font-weight:700; white-space:nowrap; }
     .pv2 .ws-table td.ws-item, .pv2 .ws-table td.ws-mat { min-width:220px; }
     .pv2 .ws-table td.ws-label, .pv2 .ws-table td.ws-part { min-width:160px; }

@@ -1,7 +1,7 @@
 {{-- W3/W4 S3c — a dish's event costing (its catering profile and cost blocks), edited inside the product form and saved
      with it (ProductWorkspace). Two parts, each with its own "_was": catering[…] for the profile, cost_blocks[lines][…]
-     for the blocks. What is not shown here (the pricing mode; each block's rate basis, rate source and role) keeps its
-     saved value. CATERING-SIMPLIFY-1 (27 Oct): the Catering Products pop-up's fields (on / off, party supply, free item,
+     for the blocks. The dormant pricing mode keeps its saved value; each block's basis, source and role is in Pricing
+     settings. CATERING-SIMPLIFY-1 (27 Oct): the Catering Products pop-up's fields (on / off, party supply, free item,
      Urdu name, kitchen labels, instructions) are here too, so one Edit edits the whole dish. --}}
 @php
     $c = $ws['catering'];
@@ -68,8 +68,8 @@
             $yes = fn (string $f) => filter_var($cv($f), FILTER_VALIDATE_BOOLEAN);
             $switches = [
                 'catering_enabled'   => ['Use it at events?', 'No = a new quotation does not fill in its price and cost blocks.', ''],
-                'allow_party_supply' => ['Customer may bring own meat?', 'Yes = a quotation line can mark the meat as given by the customer.', 'گاہک کا سامان'],
-                'is_complimentary'   => ['Free item?', 'Yes = a new quotation line for it starts at Rs 0.', 'اعزازی'],
+                'allow_party_supply' => ['Customer may bring own meat?', 'Yes = a quotation line can mark the meat as given by the customer.', ''],
+                'is_complimentary'   => ['Free item?', 'Yes = a new quotation line for it starts at Rs 0.', ''],
             ];
         @endphp
         <div class="row g-3 mb-2" data-ws-profile>
@@ -120,7 +120,7 @@
                 <p class="help mb-2" data-ws-empty @if($blines) hidden @endif>No cost blocks yet.</p>
                 <div class="d-flex flex-wrap gap-2 align-items-center">
                     <button type="button" class="btn btn-outline-primary" data-ws-add>Add a cost block</button>
-                    <span class="help">Saved with the dish — the same rules as the Cost blocks screen. A block that follows the house rate book keeps that rate; link or unlink it on the Cost blocks screen.</span>
+                    <span class="help">Saved with the dish. Open a block's Pricing settings to choose its rate source, basis or Making role.</span>
                 </div>
             </div>
         @else
@@ -140,7 +140,7 @@
         @endphp
         @if($cBlocksOk)
             <p class="help mt-2 mb-0">
-                Each block's role and rate source: <a href="{{ url('/catering/profiles/' . $cProfile->id . '/blocks') }}" target="_blank" rel="noopener" data-ws-full="cost-blocks">Cost blocks</a>.
+                <a href="{{ url('/catering/profiles/' . $cProfile->id . '/blocks') }}" target="_blank" rel="noopener" data-ws-full="cost-blocks">Open the standalone cost-block view</a>.
                 (A new tab — this page keeps what you typed.)
             </p>
         @endif

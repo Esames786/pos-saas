@@ -119,10 +119,11 @@ class ProductNavCleanupMySqlTest extends MySqlTenantTestCase
         $i = self::$ids;
         $this->business('restaurant');
         $this->owner()->get($this->url('/products/' . $i['dish'] . '/edit'))->assertOk()
-            ->assertSee('data-ws-full="recipe-report"', false)->assertSee('/recipes/' . $i['recipe'] . '/edit', false);
+            ->assertSee('data-ws-full="recipe-report"', false)->assertSee('name="recipe[overhead_percent]"', false)
+            ->assertDontSee('/recipes/' . $i['recipe'] . '/edit', false);
         $this->business('industry');
         $this->owner()->get($this->url('/products/' . $i['chair'] . '/edit'))->assertOk()
-            ->assertSee('/manufacturing/bom/' . $i['bom'] . '/edit', false);
+            ->assertSee('/manufacturing/bom?product_id=' . $i['chair'], false)->assertSee('name="bom[version]"', false);
         $this->business('catering');
         // CATERING-SIMPLIFY-1: the Catering Products fields are on the tab now, so only the Cost blocks link stays.
         $this->owner()->get($this->url('/products/' . $i['biryani'] . '/edit'))->assertOk()

@@ -42,6 +42,11 @@
                 var mat = type.value === 'material';
                 row.querySelectorAll('[data-only-material]').forEach(function (el) { el.hidden = !mat; });
                 row.querySelectorAll('[data-only-charge]').forEach(function (el) { el.hidden = mat; });
+                var source = row.querySelector('[data-f="rate-source"]'), rate = row.querySelector('[data-f="rate"]');
+                var followsBook = mat && source && source.value === 'commercial_book';
+                if (rate) rate.readOnly = !!followsBook;
+                var note = row.querySelector('[data-book-note]');
+                if (note) note.hidden = !followsBook;
             }
         });
         // The recipe's cost, worked out as the Recipes screen does: purchase price ÷ pack size, × quantity.
@@ -52,12 +57,14 @@
                 var item = row.querySelector('[data-f="item"]'), qty = parseFloat(row.querySelector('[data-f="qty"]').value);
                 var cell = row.querySelector('[data-f="cost"]'), o = item.options[item.selectedIndex];
                 if (!o || !o.value || isNaN(qty)) { cell.textContent = '—'; return; }
-                var price = row.dataset.override !== undefined && row.dataset.overrideItem === o.value ? parseFloat(row.dataset.override) : parseFloat(o.dataset.price || '0');
+                var override = row.querySelector('[data-f="override"]');
+                var price = override && override.value !== '' ? parseFloat(override.value) / (parseFloat(o.dataset.pack) || 1) : parseFloat(o.dataset.price || '0');
                 var amount = qty * price;
                 cell.textContent = money(amount);
                 sum += amount; any = true;
             });
-            total.textContent = any ? money(sum) : '—';
+            var overhead = parseFloat(ed.querySelector('[name="recipe[overhead_percent]"]').value) || 0;
+            total.textContent = any ? money(sum * (1 + overhead / 100)) : '—';
         }
     }
 
@@ -80,11 +87,26 @@
             add.focus();
         });
         ed.addEventListener('input', function () { sync(ed); });
-        ed.addEventListener('change', function () { sync(ed); });
+        ed.addEventListener('change', function (e) {
+            // An explicit kind change clears only the settings that no longer apply, not hidden saved settings on load.
+            if (e.target.matches('[data-f="type"]')) {
+                var row = e.target.closest('[data-ws-row]');
+                if (e.target.value === 'charge') {
+                    row.querySelector('[data-f="rate-source"]').value = 'manual';
+                    row.querySelector('[data-f="rate-basis"]').value = 'per_dish_unit';
+                } else {
+                    row.querySelector('select[name$="[charge_role]"]').value = '';
+                }
+            }
+            sync(ed);
+        });
         sync(ed);
     });
 
     form.addEventListener('change', showSections);
+    form.addEventListener('focusin', function (e) {
+        if (e.target.matches('[data-ws] input[type="number"]') && !e.target.readOnly) e.target.select();
+    });
     showSections();
 
     // The Review tab names each section in a line.

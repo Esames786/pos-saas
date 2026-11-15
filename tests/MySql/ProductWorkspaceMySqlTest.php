@@ -376,7 +376,131 @@ class ProductWorkspaceMySqlTest extends MySqlTenantTestCase
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /** @return array{0: Product, 1: Product, 2: Product, 3: Product}  the dish, rice, oil and salt */
+    public function test_advanced_recipe_settings_save_and_clear_through_the_real_form(): void
+    {
+        [$dish] = $this->dishWithRecipe('Parity Recipe');
+        $recipe = Recipe::where('product_id', $dish->id)->firstOrFail();
+        $form = $this->formOnPage($this->page('/products/' . $dish->id . '/edit')->getContent(), '/products/' . $dish->id);
+        $this->assertSame('D-7', $form['recipe']['doc_no']);
+        $this->assertSame(['dine_in'], $form['recipe']['lines'][0]['applicable_order_types']);
+        $form['recipe'] = array_replace($form['recipe'], ['name' => 'New recipe name', 'doc_no' => 'D-9', 'recipe_no' => 'R-20',
+            'revision_no' => '3', 'review_date' => '2026-10-28', 'overhead_percent' => '7.5', 'notes' => 'New instructions', 'is_active' => '0']);
+        $form['recipe']['lines'][0]['cost_override'] = '0';
+        $form['recipe']['lines'][0]['applicable_order_types'] = ['delivery', 'takeaway'];
+        $this->save($dish, $form);
+        $recipe->refresh();
+        $this->assertSame(['New recipe name', 'D-9', 'R-20', 3, false, 'New instructions'],
+            [$recipe->name, $recipe->doc_no, $recipe->recipe_no, (int) $recipe->revision_no, (bool) $recipe->is_active, $recipe->notes]);
+        $this->assertSame('2026-10-28', $recipe->review_date->format('Y-m-d'));
+        $this->assertEquals(7.5, $recipe->overhead_percent);
+        $line = $recipe->ingredients()->orderBy('sort_order')->first();
+        $this->assertEquals(0, $line->cost_override);
+        $this->assertSame(['delivery', 'takeaway'], $line->applicable_order_types);
+        $fresh = $this->formOnPage($this->page('/products/' . $dish->id . '/edit')->getContent(), '/products/' . $dish->id);
+        $before = $this->recipeRows($recipe);
+        $this->save($dish, $fresh);
+        $this->assertSame($before, $this->recipeRows($recipe));
+        $fresh['recipe']['lines'][0]['cost_override'] = '';
+        $fresh['recipe']['lines'][0]['applicable_order_types'] = '';
+        $fresh['recipe']['notes'] = '';
+        $this->save($dish, $fresh);
+        $this->assertNull($recipe->fresh()->notes);
+        $line = $recipe->ingredients()->orderBy('sort_order')->first();
+        $this->assertNull($line->cost_override);
+        $this->assertNull($line->applicable_order_types);
+    }
+
+    public function test_a_changed_advanced_recipe_field_rejects_stale_and_invalid_edits_atomically(): void
+    {
+        [$dish] = $this->dishWithRecipe('Parity Stale');
+        $recipe = Recipe::where('product_id', $dish->id)->firstOrFail();
+        $form = $this->formOnPage($this->page('/products/' . $dish->id . '/edit')->getContent(), '/products/' . $dish->id);
+        $recipe->update(['overhead_percent' => 12]);
+        $form['recipe']['notes'] = 'overwrite';
+        $form['name'] = 'should roll back';
+        $this->putForm($dish, $form)->assertSessionHasErrors('recipe.stale');
+        $this->assertSame('Parity Stale', $dish->fresh()->name);
+        $this->assertEquals(12, $recipe->fresh()->overhead_percent);
+        $form = $this->formOnPage($this->page('/products/' . $dish->id . '/edit')->getContent(), '/products/' . $dish->id);
+        $form['recipe']['lines'][0]['applicable_order_types'] = ['invalid'];
+        $form['name'] = 'still must roll back';
+        $this->putForm($dish, $form)->assertSessionHasErrors('recipe.lines.0.applicable_order_types.0');
+        $this->assertSame('Parity Stale', $dish->fresh()->name);
+    }
+
+    public function test_advanced_bom_header_and_line_note_save_and_reject_stale_edits(): void
+    {
+        $this->business('industry');
+        $item = $this->product('Parity Chair', $this->piece()->id, ['product_kind' => 'finished_good', 'can_be_bom_output' => true]);
+        $part = $this->material('Parity Steel', $this->piece()->id);
+        $bom = app(BomWriter::class)->save(null, ['bom_no' => 'PARITY-1', 'finished_product_id' => $item->id, 'name' => 'Old',
+            'version' => '1', 'output_quantity' => 1, 'status' => 'active'], [['component_product_id' => $part->id, 'quantity' => 2]]);
+        $form = $this->formOnPage($this->page('/products/' . $item->id . '/edit')->getContent(), '/products/' . $item->id);
+        $form['bom'] = array_replace($form['bom'], ['bom_no' => 'PARITY-2', 'name' => 'New label', 'version' => '2.1',
+            'status' => 'inactive', 'effective_from' => '2026-11-01', 'notes' => 'New BOM notes']);
+        $form['bom']['lines'][0]['notes'] = 'Cut to 25 cm';
+        $this->save($item, $form);
+        $bom->refresh();
+        $this->assertSame(['PARITY-2', 'New label', '2.1', 'inactive', 'New BOM notes'], [$bom->bom_no, $bom->name, $bom->version, $bom->status, $bom->notes]);
+        $this->assertSame('2026-11-01', $bom->effective_from->format('Y-m-d'));
+        $this->assertSame('Cut to 25 cm', $bom->lines()->first()->notes);
+        $before = $this->bomRows($bom);
+        $fresh = $this->formOnPage($this->page('/products/' . $item->id . '/edit')->getContent(), '/products/' . $item->id);
+        $this->save($item, $fresh);
+        $this->assertSame($before, $this->bomRows($bom));
+        $bom->update(['version' => '3']);
+        $fresh['bom']['notes'] = 'stale';
+        $this->putForm($item, $fresh)->assertSessionHasErrors('bom.stale');
+        $this->assertSame('3', $bom->fresh()->version);
+    }
+
+    public function test_cost_block_unlink_relink_and_role_changes_use_the_existing_book_audit(): void
+    {
+        $this->business('catering');
+        [$dish] = $this->dishWithBlocks('Parity Blocks');
+        $form = $this->formOnPage($this->page('/products/' . $dish->id . '/edit')->getContent(), '/products/' . $dish->id);
+        $key = $this->blockKey($form, 'Chicken');
+        $id = (int) $form['cost_blocks']['lines'][$key]['id'];
+        $form['cost_blocks']['lines'][$key]['commercial_rate_source'] = 'manual';
+        $form['cost_blocks']['lines'][$key]['rate'] = '275';
+        $form['cost_blocks']['lines'][$key]['rate_basis'] = 'per_dish_unit';
+        $form['cost_blocks']['lines'][$this->blockKey($form, 'Making')]['charge_role'] = '';
+        $this->save($dish, $form);
+        $block = CateringProductCostBlock::findOrFail($id);
+        $this->assertSame('manual', $block->commercial_rate_source);
+        $this->assertSame('per_dish_unit', $block->rate_basis);
+        $this->assertEquals(275, $block->rate);
+        $this->assertNull(CateringProductCostBlock::where('product_id', $dish->id)->where('label', 'Making')->value('charge_role'));
+        $this->assertDatabaseHas('catering_commercial_rate_applications', ['target_id' => $id, 'action' => 'block_unlinked'], 'tenant');
+        $form = $this->formOnPage($this->page('/products/' . $dish->id . '/edit')->getContent(), '/products/' . $dish->id);
+        $key = $this->blockKey($form, 'Chicken');
+        $form['cost_blocks']['lines'][$key]['commercial_rate_source'] = 'commercial_book';
+        $form['cost_blocks']['lines'][$key]['rate_basis'] = 'per_material_unit';
+        $form['cost_blocks']['lines'][$key]['rate'] = '999';
+        $this->save($dish, $form);
+        $this->assertEquals(200, $block->fresh()->rate, 'linking adopts the book, not a crafted rate');
+        $this->assertDatabaseHas('catering_commercial_rate_applications', ['target_id' => $id, 'action' => 'block_linked'], 'tenant');
+    }
+
+    public function test_cost_block_advanced_stale_change_and_duplicate_making_are_refused(): void
+    {
+        $this->business('catering');
+        [$dish] = $this->dishWithBlocks('Parity Block Guard');
+        $form = $this->formOnPage($this->page('/products/' . $dish->id . '/edit')->getContent(), '/products/' . $dish->id);
+        $id = (int) $form['cost_blocks']['lines'][$this->blockKey($form, 'Making')]['id'];
+        CateringProductCostBlock::whereKey($id)->update(['charge_role' => null]);
+        $form['cost_blocks']['lines'][$this->blockKey($form, 'Making')]['rate'] = '550';
+        $this->putForm($dish, $form)->assertSessionHasErrors('cost_blocks.stale');
+        $form = $this->formOnPage($this->page('/products/' . $dish->id . '/edit')->getContent(), '/products/' . $dish->id);
+        $key = $this->blockKey($form, 'Making');
+        $form['cost_blocks']['lines'][$key]['charge_role'] = 'making';
+        $form['cost_blocks']['lines']['n1'] = ['label' => 'Other making', 'block_type' => 'charge', 'charge_basis' => 'per_unit', 'rate' => 10, 'charge_role' => 'making'];
+        $before = $this->blockRows($dish);
+        $this->putForm($dish, $form)->assertSessionHasErrors('cost_blocks.lines');
+        $this->assertSame($before, $this->blockRows($dish));
+    }
+
+    /** @return array{0: Product, 1: Product, 2: Product, 3: Product} the dish, rice, oil and salt */
     private function dishWithRecipe(string $name): array
     {
         $this->business('restaurant');
