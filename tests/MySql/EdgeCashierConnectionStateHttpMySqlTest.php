@@ -112,7 +112,12 @@ class EdgeCashierConnectionStateHttpMySqlTest extends MySqlTenantTestCase
 
         // The summary carries no internals — only business words and counts.
         $json = $this->getJson('/edge/local/pos/sync/summary')->assertOk()->json();
-        $this->assertSame(['pending_sales', 'needs_attention', 'last_synced_at', 'connection', 'state', 'message'], array_keys($json));
+        // F-1 (8 Nov 2026): `authority` is the cashier-facing authority block the page was rendered with (state, label,
+        // sub_label, can_mutate, tone, counts) so the shared view can follow standby ↔ Local Mode after load — still no internals.
+        $this->assertSame(['authority', 'pending_sales', 'needs_attention', 'last_synced_at', 'connection', 'state', 'message'], array_keys($json));
+        $this->assertSame(['state', 'label', 'sub_label', 'can_mutate', 'tone', 'pending_sync', 'needs_attention'], array_keys($json['authority']));
+        $this->assertSame('standby', $json['authority']['state']);
+        $this->assertFalse($json['authority']['can_mutate']);
         $flat = json_encode($json);
         foreach (['uuid', 'epoch', 'hash', 'baseline', 'lease', 'watermark', 'revision'] as $forbidden) {
             $this->assertStringNotContainsStringIgnoringCase($forbidden, $flat, "the till must never see '{$forbidden}'");
