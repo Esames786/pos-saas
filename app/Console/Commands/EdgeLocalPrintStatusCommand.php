@@ -46,11 +46,27 @@ class EdgeLocalPrintStatusCommand extends Command
             ->count();
         $oldestWaiting = $conn->table('print_jobs')->where('print_status', 'queued')->whereNotNull('printer_id')->min('created_at');
 
+        // 0.8.3 (G2): the same bounded reachability probe the health report uses (never a byte written; never a job).
+        $probe = app(\App\Services\Edge\EdgePrinterReachabilityProbe::class);
+        $probeOn = (bool) config('edge.print.reachability_probe', true);
+        $probed = 0;
+        $printers = $printers->map(function ($p) use ($probe, $probeOn, &$probed) {
+            $p->reachability = null;
+            if ($probeOn && $probed < \App\Services\Edge\EdgePrinterReachabilityProbe::MAX_PRINTERS_PER_REPORT) {
+                $probed++;
+                $p->reachability = $probe->probe((string) $p->ip_address, (int) ($p->port ?: 9100), (float) config('edge.print.reachability_timeout_seconds', \App\Services\Edge\EdgePrinterReachabilityProbe::DEFAULT_TIMEOUT_SECONDS));
+            }
+
+            return $p;
+        });
+        $failedJobs = $branchId === null ? 0 : (int) $conn->table('print_jobs')->where('branch_id', $branchId)->where('print_status', 'failed')->count();
+
         $status = [
             'runtime_mode' => EdgeRuntime::mode(),
             'bound_branch_id' => $branchId,
             'worker' => $supervisor->health(),
             'printers' => $printers->values()->all(),
+            'failed_jobs' => $failedJobs,
             'queue' => [
                 'queued_printer_jobs' => $queuedTotal,
                 'waiting_never_attempted' => $queuedWaiting,
@@ -73,8 +89,10 @@ class EdgeLocalPrintStatusCommand extends Command
         $w = $status['worker'];
         $this->line('worker: ' . $w['state'] . ($w['heartbeat_age_seconds'] !== null ? " (heartbeat {$w['heartbeat_age_seconds']}s ago)" : '') . ($w['last_error'] ? " last_error={$w['last_error']}" : ''));
         foreach ($status['printers'] as $p) {
-            $this->line("printer #{$p->id} {$p->name} {$p->ip_address}:{$p->port} role={$p->print_role}" . ($p->is_default ? ' [default]' : ''));
+            $this->line("printer #{$p->id} {$p->name} {$p->ip_address}:{$p->port} role={$p->print_role}" . ($p->is_default ? ' [default]' : '')
+                . ($p->reachability ? ' reachability=' . $p->reachability['status'] . ' (' . $p->reachability['latency_ms'] . ' ms)' : ''));
         }
+        $this->line('failed_jobs: ' . $status['failed_jobs']);
         foreach ($status['queue'] as $k => $v) {
             $this->line("queue.{$k}: " . (is_scalar($v) ? (string) $v : json_encode($v)));
         }

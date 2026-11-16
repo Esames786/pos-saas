@@ -130,6 +130,13 @@ try {
         // closure §2: the zero-row first-ever-start race on a fresh appliance).
         $won = app(\App\Services\Edge\EdgeLocalPrintWorkerSupervisor::class)->acquire((string) $argv[2]);
         echo $won ? "OK:worker_acquire:won\n" : "OK:worker_acquire:refused\n";
+        // 0.8.3 (F-G10): the slot decision now asks the OS whether the recorded winner process still exists. A real
+        // winner keeps running; this synthetic racer must therefore LINGER so the loser sees a live process (an exited
+        // winner would — correctly — be taken over as "previous_process_gone").
+        if ($won) {
+            fflush(STDOUT);
+            sleep(6);
+        }
         exit(0);
     }
 

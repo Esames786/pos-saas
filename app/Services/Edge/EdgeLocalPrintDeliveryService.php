@@ -138,6 +138,7 @@ class EdgeLocalPrintDeliveryService
                 'raw_payload' => (string) $job->raw_payload, // EXACT stored bytes — never rebuilt (§2)
                 'ip' => (string) $job->printer->ip_address,
                 'port' => (int) ($job->printer->port ?: 9100),
+                'printer_id' => (int) $job->printer_id, // 0.8.3: for failure logging only (never a routing input)
             ];
         }, 3); // MySQL 1213 deadlock between two workers claiming at once → retry, never a raw leak (proven under full-suite load)
     }
@@ -194,8 +195,10 @@ class EdgeLocalPrintDeliveryService
             $error = mb_substr($error, 0, 500);
 
             if ($failures >= self::MAX_FAILURES) {
-                // terminal: the shared markFailed runs ONCE, while the token is still the current one.
-                $this->printJobs->markFailed($job, $error);
+                // terminal: the shared failure transition runs ONCE, while the token is still the current one.
+                // 0.8.3 (G4): the TERMINAL variant — the Edge ladder already retried; the Cloud agent's auto-requeue
+                // must never put a terminal_failed delivery's job back to `queued` (unclaimable + un-retryable).
+                $this->printJobs->markFailedTerminal($job, $error);
                 $delivery->update([
                     'delivery_state' => EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED,
                     'failure_count' => $failures,
@@ -232,6 +235,12 @@ class EdgeLocalPrintDeliveryService
      * is not an Edge terminal_failed delivery — the Edge path can never retry a random queued/printed
      * or Cloud-owned job.
      */
+    /** 0.8.3 (G3): read-only — did the delivery intent of this job reach the terminal state? (for failure logging) */
+    public function isTerminalFailed(int $printJobId): bool
+    {
+        return EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->value('delivery_state') === EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED;
+    }
+
     public function retryTerminalFailed(int $printJobId): void
     {
         DB::connection('tenant')->transaction(function () use ($printJobId) {

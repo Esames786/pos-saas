@@ -144,6 +144,51 @@ class EdgeAuthorityWorkerLifecycleMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1, (int) EdgeLocalMeta::on('tenant')->value('heartbeat_consecutive_failures'));
     }
 
+    /** 0.8.3 F-G10: a FRESH heartbeat left by a DEAD process (fast reboot / crash restart) is taken over at once; authority untouched. */
+    public function test_fresh_heartbeat_with_a_dead_pid_is_taken_over_and_a_live_process_is_a_duplicate(): void
+    {
+        $gone = proc_open([PHP_BINARY, '-r', 'echo getmypid();'], [1 => ['pipe', 'w']], $pipes);
+        $deadPid = (int) stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        proc_close($gone);
+        DB::connection('tenant')->table(EdgeLocalAuthorityWorkerSupervisor::TABLE)->insert([
+            'singleton_guard' => 1, 'state' => 'running', 'worker_uuid' => 'rebooted-worker', 'started_at' => now()->subMinutes(3), 'heartbeat_at' => now()->subSeconds(5),
+            'worker_pid' => $deadPid, 'worker_process_token' => 'unix:' . (time() - 200) . '@rebooted-worker', 'worker_host' => \App\Support\EdgeProcessLiveness::host(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->assertSame(0, Artisan::call('edge:local:authority-worker', ['--once' => true]));
+        $out = Artisan::output();
+        $this->assertStringContainsString('previous_process_gone', $out, $out);
+        $this->assertStringNotContainsString('already RUNNING', $out);
+        $row = $this->workerRow();
+        $this->assertNotSame('rebooted-worker', $row->worker_uuid, 'the dead process lost the slot despite its fresh heartbeat');
+        $this->assertSame((int) getmypid(), (int) $row->worker_pid);
+        $this->assertNotNull($row->last_tick_at, 'the new worker ticked');
+        $this->assertSame('standby', (string) EdgeLocalMeta::on('tenant')->value('authority_state'), 'slot takeover never changes authority');
+
+        // a row whose pid is THIS live process with a fresh heartbeat = a genuine duplicate → refused, no tick.
+        // (F-2b) the identity must be BOUND to the row's uuid: re-bind the token to 'live-twin' first …
+        $bare = \App\Support\EdgeProcessLiveness::bareToken($row->worker_process_token);
+        DB::connection('tenant')->table(EdgeLocalAuthorityWorkerSupervisor::TABLE)->update(['state' => 'running', 'worker_uuid' => 'live-twin', 'worker_process_token' => $bare . '@live-twin', 'heartbeat_at' => now(), 'last_tick_at' => null]);
+        $this->assertSame(0, Artisan::call('edge:local:authority-worker', ['--once' => true]));
+        $out = Artisan::output();
+        $this->assertStringContainsString('already RUNNING', $out, $out);
+        $this->assertStringContainsString('live_worker_holds_slot', $out, $out);
+        $this->assertSame('live-twin', $this->workerRow()->worker_uuid);
+        $this->assertNull($this->workerRow()->last_tick_at, 'the refused duplicate did not tick');
+
+        // … whereas the SAME live pid with a token bound to another uuid (an older runtime rewrote the row) is UNKNOWN:
+        // fresh heartbeat → the pre-0.8.3 refuse (never a false takeover of a live older worker), stale → takeover.
+        DB::connection('tenant')->table(EdgeLocalAuthorityWorkerSupervisor::TABLE)->update(['worker_uuid' => 'older-runtime-worker', 'heartbeat_at' => now()]);
+        $this->assertSame(0, Artisan::call('edge:local:authority-worker', ['--once' => true]));
+        $out = Artisan::output();
+        $this->assertStringContainsString('fresh_heartbeat_liveness_unknown', $out, $out);
+        $this->assertSame('older-runtime-worker', $this->workerRow()->worker_uuid, 'an unbound identity never grants a takeover of a fresh slot');
+        DB::connection('tenant')->table(EdgeLocalAuthorityWorkerSupervisor::TABLE)->update(['heartbeat_at' => now()->subSeconds(EdgeLocalAuthorityWorkerSupervisor::HEARTBEAT_STALE_SECONDS + 5)]);
+        $this->assertSame(0, Artisan::call('edge:local:authority-worker', ['--once' => true]));
+        $this->assertStringContainsString('stale_heartbeat', Artisan::output());
+        $this->assertNotSame('older-runtime-worker', $this->workerRow()->worker_uuid);
+    }
+
     public function test_cooperative_stop_ends_a_running_worker(): void
     {
         $h = $this->spawn(['--interval=5', '--max-ticks=20']);

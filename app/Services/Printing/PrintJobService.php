@@ -691,6 +691,27 @@ class PrintJobService
         ]);
     }
 
+    /**
+     * EDGE 0.8.3 (Agent C gap G4): the Branch Server's TERMINAL failure. The Edge print worker has ALREADY run its own
+     * bounded retry ladder (EdgeLocalPrintDeliveryService: 6 attempts over ~4 min) before it calls this, so the Cloud
+     * agent's auto-requeue branch must NOT fire here — a requeue would leave print_status=queued next to a
+     * terminal_failed delivery that the Edge claim query skips and the operator retry refuses (a stuck job). Same
+     * printed-guard and attempts semantic as markFailed; never a requeue.
+     */
+    public function markFailedTerminal(PrintJob $job, string $message): void
+    {
+        $job->refresh();
+        if ($job->print_status === 'printed') {
+            return;
+        }
+        $job->update([
+            'print_status'  => 'failed',
+            'failed_at'     => now(),
+            'attempts'      => (int) $job->attempts + 1,
+            'error_message' => $message,
+        ]);
+    }
+
     /** Only connect-phase failures are re-sent; anything else could mean the ticket already printed. */
     private function isTransient(string $message): bool
     {

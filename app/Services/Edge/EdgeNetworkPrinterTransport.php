@@ -2,8 +2,6 @@
 
 namespace App\Services\Edge;
 
-use RuntimeException;
-
 /**
  * EDGE-LOCAL-PRINT-1 (§12) — the minimal Branch Server TCP transport to a LAN thermal printer.
  *
@@ -14,6 +12,11 @@ use RuntimeException;
  *
  * A completed socket write is transport success only — NOT proof paper physically emerged. Physical
  * printing is AT-LEAST-ONCE by design.
+ *
+ * 0.8.3 (F-3): every failure is an EdgePrinterTransportException whose category is the SAME classification the
+ * health/print-status reachability probe uses (refused | timeout | unreachable | unresolved | error) for the connect
+ * phase, or write_timeout | write_failed once the connection was accepted. The caller's bounded retry ladder is
+ * unchanged; the category tells the operator what to fix and lands verbatim in the delivery row's last_error.
  */
 class EdgeNetworkPrinterTransport
 {
@@ -23,11 +26,12 @@ class EdgeNetworkPrinterTransport
     /** The exact bytes the Cloud agent appends after raw_payload — keep in lockstep with print-agent.js. */
     public const TRAILING_FEED = "\n\n\n";
 
-    /** @throws RuntimeException on any connect/write failure (caller applies the bounded retry policy) */
+    /** @throws EdgePrinterTransportException on any connect/write failure (caller applies the bounded retry policy) */
     public function send(string $ip, int $port, string $rawPayload): void
     {
         $errno = 0;
         $errstr = '';
+        $t0 = microtime(true);
         $socket = @stream_socket_client(
             'tcp://' . $ip . ':' . $port,
             $errno,
@@ -35,7 +39,9 @@ class EdgeNetworkPrinterTransport
             self::CONNECT_TIMEOUT_SECONDS
         );
         if ($socket === false) {
-            throw new RuntimeException("printer connect failed [{$ip}:{$port}]: {$errstr} ({$errno})");
+            $ms = (int) round((microtime(true) - $t0) * 1000);
+            $category = EdgePrinterReachabilityProbe::classify((int) $errno, (string) $errstr, $ms, (float) self::CONNECT_TIMEOUT_SECONDS);
+            throw new EdgePrinterTransportException($category, "printer connect failed [{$ip}:{$port}] after {$ms} ms: " . trim((string) $errstr) . " ({$errno})", (int) $errno ?: null);
         }
 
         try {
@@ -46,8 +52,11 @@ class EdgeNetworkPrinterTransport
             while ($written < $total) {
                 $n = @fwrite($socket, substr($data, $written));
                 $meta = stream_get_meta_data($socket);
-                if ($n === false || $n === 0 || ! empty($meta['timed_out'])) {
-                    throw new RuntimeException("printer write failed [{$ip}:{$port}] after {$written}/{$total} bytes");
+                if (! empty($meta['timed_out'])) {
+                    throw new EdgePrinterTransportException(EdgePrinterTransportException::WRITE_TIMEOUT, "printer write timed out [{$ip}:{$port}] after {$written}/{$total} bytes (" . self::WRITE_TIMEOUT_SECONDS . 's)');
+                }
+                if ($n === false || $n === 0) {
+                    throw new EdgePrinterTransportException(EdgePrinterTransportException::WRITE_FAILED, "printer write failed [{$ip}:{$port}] after {$written}/{$total} bytes");
                 }
                 $written += $n;
             }

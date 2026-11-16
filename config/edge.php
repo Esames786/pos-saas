@@ -380,6 +380,9 @@ return [
         'edge:local:bootstrap-pull', // first-boot: pull + verify + import the Cloud bootstrap snapshot, then acknowledge
         'edge:local:gateway-cert',   // import the LAN TLS certificate (PFX → PEM files under the data root) for the gateway
         'edge:local:uninstall-data', // EXPLICIT data removal at uninstall (typed confirmation; refuses while events are unsynced)
+        // 0.8.3 SERVICE RELIABILITY (read-only / wait-only operator commands).
+        'edge:local:wait-db',        // bounded, classified wait for the Edge-local database (task command lines, updater, reboot drill)
+        'edge:local:worker-status',  // singleton worker slots + recorded process identity (+ OS liveness with --probe)
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',
@@ -619,6 +622,24 @@ return [
         'kind'       => 'nginx',
         'https_port' => (int) env('EDGE_GATEWAY_HTTPS_PORT', 443),
         'http_port'  => (int) env('EDGE_GATEWAY_HTTP_PORT', 80), // redirect-only listener
+    ],
+    /*
+    | 0.8.3 SERVICE RELIABILITY — supervised worker start-up. After a Windows boot the AtStartup tasks run in
+    | parallel with MySQL's own start; every worker waits (bounded, classified: EdgeLocalDbReadiness) for the Edge-local
+    | database before touching its singleton slot, then exits 1 so the task's restart-on-failure re-runs it. A
+    | NON-retryable class (wrong credentials, unknown database, schema not initialised) ends the wait at once.
+    */
+    'workers' => [
+        'db_startup_wait_seconds' => max(0, (int) env('EDGE_WORKER_DB_STARTUP_WAIT', 180)),
+        'db_startup_interval_seconds' => max(1, (int) env('EDGE_WORKER_DB_STARTUP_INTERVAL', 3)),
+    ],
+    /*
+    | 0.8.3 — printer reachability in health/print-status: a bounded TCP connect per Edge-capable network printer
+    | (never a byte written). Disable only for diagnostics; failed print jobs surface as problems regardless.
+    */
+    'print' => [
+        'reachability_probe' => filter_var(env('EDGE_PRINT_REACHABILITY_PROBE', true), FILTER_VALIDATE_BOOL),
+        'reachability_timeout_seconds' => max(2.5, (float) env('EDGE_PRINT_REACHABILITY_TIMEOUT', 3.0)), // >= 2.5 s: Windows reports REFUSED only after its SYN retransmit (measured 2.0 s)
     ],
     /*
     | Where the appliance keeps its state OUTSIDE the versioned runtime (survives updates; excluded from uninstall
