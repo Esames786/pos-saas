@@ -393,3 +393,60 @@ EDGE_BRANCH_MUTATED=NO (this report copied only).
 ### §9.5 Readiness after the gates
 
 `INTEGRATION_READINESS = READY_FOR_OWNER_DECISION` on this rehearsal head: MySQL gates green on the isolated set after classification and single-class re-runs; SQLite green (three known canonical reds); browser W01/W02/W06/W14 (+W16/W17) PASS on both runtimes; geometry NONE (998 boxes); pixels data-only differences; takeover + controlled handback proven on the disposable pair; map rebuilt. Promotion still needs the owner's sign-off of: R-1 (non-additive exception), the C-2 refuse-not-cap behaviour, the H1 effect on the Online form (a cash refund needs a paying shift — canonical production allows it today), the `TenantResetTransactionsCommand` KNOWN_KEPT additions, the CRLF enrol hardening, and the canonical re-scan `073238de..<head>`. PRODUCTION_BRANCH_MUTATED=NO; EDGE_BRANCH_MUTATED=NO (this report copied only).
+
+# Phase F — Online/Offline catch-up (owner decision 15 Nov 2026, Priority 2): canonical 073238de..5c74107f + the five chunks
+
+Owner sign-offs applied: C-2 REFUSE_NOT_CAP APPROVED; H1 ACCEPTED for the LAB; `TenantResetTransactionsCommand` KNOWN_KEPT (no
+destructive execution); R-1 decimal_pack_sizes disposable testing ONLY (real migration approval withheld). Scope: this worktree
+only — no merge into canonical, no LAB install, no release; the real LAB stays 0.8.2-edge STANDBY_READY.
+
+## §10 What landed (ancestry merges, each commit records its conflicts)
+
+| commit | content | conflicts and resolutions |
+|---|---|---|
+| e2b91a70 | Edge branch ffed2ef3 merged in (F-1 standby write gate + the 15 Nov follow-ups, CRLF enrol hardening, LAB records) | `tenant/pos/index.blade.php`: `addToCart` keeps the rehearsal's gram-entry signature `(…, pack, entered)` AND the F-1 `POS.canMutate()` refusal — Online cashier behaviour, Edge standby blocking, Local Mode and cart preservation all kept (SQLite Feature/Edge 207/207 right after the merge) |
+| dd2e7311 | chunk 9: canonical 073238de..1ca68d1b (product advanced settings, SHIFT-HANDOVER-1, BILLING-DATE-KEEP-1) | `ShiftController`: REFUND-SHIFT-H1 CashCountService docblock + SHIFT-HANDOVER-1 handover methods both kept |
+| 7efcd21c | chunk 10: ..19813266 (KOT-ORDER-NOTE-1, WEB-ORDERS-ALERT/FOCUS-1, MANAGER-PIN-ENTER-1, PLACE-LEARNING-1, PURCHASE-EDIT-1, SUPPLIER-LEDGER-DAILY-1, FINANCE-RESTART-1, WEBSITE-HIDE-PRICES-1, catering, COST-BLOCK-CLARITY-1, recost + P&L detail) | `sales-returns/create.blade.php`: MANAGER-PIN-ENTER-1's Enter-to-approve applied on the rehearsal's SHARED credential prompt (`POS.managerCredentialFocus` picks the first field — employee code on Edge, PIN on the Cloud; Enter confirms from either input); the same adaptation on the POS page's `showManagerPinModal` (auto-merged to `#swal-manager-pin` only, the SECOND field on Edge) |
+| aa4ddc5e | chunk 11: ..5c74107f = the pinned canonical head of 15 Nov (DEAL-SPLIT-REPORT-1, DEAL-WHOLE-SPLIT-1, CHART-SEEDER-KEEP-NAMES-1, POS-PIN-FOCUS-1, KOT-DEAL-HEADING-1, PRINT-PREPARE-1 + agent 2.7.0, SHIFT-LIST-COUNTER-1, SUPPLIER-LEDGER-RANGE-1, RECEIPT-CUSTOMER-SIZE-1, RECALL-HIDDEN-ITEM-1/-2 …) | `POSController`: canonical's shared tile closure keeps the rehearsal's RecipeAvailability + runtime captures; `PosScreenRendersHttpMySqlTest`: runtime-contract assertions kept, POS-PIN-FOCUS-1 guard asserted through the shared prompt helper; shared-view rule: RECALL-HIDDEN-ITEM-1's `url('/pos')` literal → `POS.route('posIndex')`; closed page-data contract: `recallProductsPayload` added to `PosPageData::KEYS` on both runtimes, the Edge twin builds the recall-only list from the synced menu through the same tile builder |
+
+`git cherry`: none of the 103 non-merge canonical commits was in Edge by patch-id; canonical touched 0 files under the Edge code trees.
+
+## §11 The five chunks (owner numbering)
+
+| # | chunk | code | proof |
+|---|---|---|---|
+| 1 | Manager PIN focus + hidden-item recall | PIN focus / Enter are shared Blade+JS (chunks 10–11); recall-only list twin `EdgeLocalPosController::sharedMenu` (aa4ddc5e) | `EdgeCashierScreenRendersHttpMySqlTest::test_pos_hidden_sellable_items_ride_only_in_the_recall_list` (hidden sellable item in the recall list only; switched-off / not-for-sale in neither); SQLite SharedPosViewRender 9/9, PosRuntime, static gate |
+| 2 | Counter-wise shift isolation + handover rendering | `EdgeLocalShiftController`: `counterIds()` / `denyOtherCountersShift()` on the shared list / detail / close pages AND the Edge-styled history / detail screens (Online's words, 403); `closePage` passes `handover => null` (the switch is never carried by a Branch Server) | new `EdgeShiftCounterScopeMySqlTest` 4/4 (two counters, two bound cashiers, an unbound manager; the close page renders without the handover block) |
+| 3 | KOT/receipt parity + bootstrap column contracts | `EdgeBootstrapService` receipt_layout_settings column list + `show_order_note`, `show_deal_as_heading`, `customer_font_size` | `EdgeCanonicalAlignmentMySqlTest` export test extended (the three switches replicate) 8/8 |
+| 4 | Whole-deal split, deal-share ingestion, return refusals | `EdgeLocalPosService::splitHeldSale` → `moveSplitLine` (canonical `moveLine`): a deal moves whole with its items linked to the NEW deal line, an item of a deal alone is refused, a deal splits in whole deals, W2-B whole-quantity rule for counted / pack lines (C-2), moved lines keep `deal_share`; `EdgeInboundSaleIngestionService`: a component is linked to the most recent header of its deal in envelope order (the Cloud report pairs parts by `parent_sales_order_line_id` — without the link an Edge-sold deal could never be split in reports), `deal_share` stamped by `SalesOrderLine::creating` from the CLOUD parts when the switch is on — no envelope change | `EdgeCashierDealsDiscountsHttpMySqlTest::test_split_bill_moves_a_deal_whole…` (both bills' shapes, 490 = 220 + 270), `EdgeInboundSaleIngestionMySqlTest::test_an_edge_sold_deal_is_stamped…` (switch ON: 900/400/500 + links, stock once; OFF: nothing stamped); return refusals unchanged after the merge: EdgeReturnQuantityRefusal 7/7, EdgeReturnIngestionRefusalReplay 3/3, EdgeMoveTableHoldGuard 8/8 |
+| 5 | Migration manifest + Cloud-only exclusions (4355f32d) | manifest@2026-11-15.1: 10 entries (EDGE_REQUIRED ×4, EDGE_SCHEMA_SAFE ×4, CLOUD_ONLY ×2), OWNER_REVIEW_REQUIRED kept on the purchase_bills ENUM MODIFY and the order-note default-off rewrite; counts 237/31; watch lists extended | 8 upgrade proofs in `EdgeTenantMigrationUpgradeMySqlTest` (clean-install shape = upgraded shape); SQLite manifest + artifact 26/26 |
+
+Focused MySQL run on the isolated set (`pos_test_master_integ` / `pos_test_tenant_integ_edge` / `pos_test_edge_local_integ`, 12 classes,
+111 tests): 109 green on the first run; two test-side defects fixed and re-run green (the JSON answer escapes the em-dash — compare
+the decoded message; the composite `(supplier_id, entry_date)` index serves the supplier FK on a fresh DB — the probe gives the FK a
+plain index first; a half deal on a counted header product is refused by the whole-number rule first, as Online). SQLite Feature/Edge +
+Feature/Pos 238/238 with all chunks applied.
+
+## §12 Full gates after the chunks (16 Nov 2026, head 8c3aaddc → fixes 25fbb425)
+
+Isolated set only (`pos_test_master_integ` / `pos_test_tenant_integ_edge` / `pos_test_edge_local_integ` on 3306), one process at a time; LAB and production untouched.
+
+| Gate | Scope | On 8c3aaddc | After 25fbb425 |
+|---|---|---|---|
+| 1 | full Edge MySQL gate (`--filter Edge`, 07:49–08:27 UTC) | 771 tests: 770 passed, 1 skipped, 0 failed | no Edge class touched by the fixes (the shared view is re-proven by gate 4) |
+| 2 | canonical merged-area + new canonical classes (330 tests, 08:27–08:52 UTC) | 326 passed, 4 failed — one cause | the 3 red classes re-run: 41 tests, 318 assertions, green |
+| 3 | SQLite `tests/Unit` (142 tests) | 9 failed, 4 skipped | 7 failed, 4 skipped — all 7 canonical's own (below) |
+| 4 | SQLite `tests/Feature/Edge` + `tests/Feature/Pos` after the view fix | — | 238 tests, 42 979 assertions, green |
+
+**Gate 2 cause.** Canonical 2b054814 (PRINT-PREPARE-1) created `print_prepares` without classifying it in `TenantResetTransactionsCommand`, so the fail-closed guard stops the reset ("not classified as wipe or keep: print_prepares"). It is red on canonical 5c74107f itself (command and migration identical). Fix 25fbb425: WIPE — an agent-side PDF preparation cache with a cascade FK to printers, cleaned daily, the same nature as `print_jobs`. Owner note: on canonical the transaction reset refuses to run until the same one-line classification lands there (the safe direction — nothing is deleted).
+
+**Gate 3 reds**, classified by file identity against 5c74107f (`git diff 5c74107f HEAD -- <file>` empty ⇒ canonical's own):
+
+- Fixed here (2). `PosFrontendRegressionTest` double-submit literal: Edge F-1 (ffed2ef3) had rewritten `b.disabled = empty || buttonIsBusy(b);` — restored, with the gate as its own statement (`if (data-pos-gate === '1') b.disabled = true`); the same change is committed on the Edge branch (Feature/Edge+Pos 238 green on both). `PosScriptScopeRegressionTest`: `\b` split `$id(` and reported `id` (the customer block declares `const $id` at its top); the scan now uses a lookbehind.
+- Canonical's own, left alone per Priority 3 (7). `CateringClientFeedbackUiRegressionTest` sidebar (view identical); `ClosureCapturesItsVariablesTest` SupplierController:200 (false positive — `$m` is preg_match's output argument, no bug); `EscPosReportPayloadTest` two-decimal money (service and test identical); `DeliveryRiderReassignmentRegressionTest` (`'rider'` absent in canonical's POSController too); `AgentDownloadIsVersionedRegressionTest` ×3 (controller, view and print-agent.js identical to canonical; one of the three also depends on the untracked dist installer, an older 2.6.6 build here). None is a security, data-corruption or compatibility blocker.
+
+Edge-branch baseline for the same nine on ffed2ef3: 4 red (catering, double-submit literal, EscPos, rider); the double-submit one is now fixed there too.
+
+System map rebuilt from the integ DBs after the chunks and the fixes: 279 tables, 445 FKs, 321 inferred links, 749 screens.
+
+**Promotion status.** Five chunks + full gates done on the rehearsal branch. NOT merged into canonical, NOT installed on LAB, branch NOT pushed. Promotion needs the owner's separate approval (§10 procedure).
