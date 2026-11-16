@@ -131,17 +131,18 @@ class EdgeLocalSchemaUpgrader
             $pending = $this->pendingByGroup($migrator, $extraPaths);
             $plan = $this->manifest()->plan($pending);
 
-            // D7 — RELEASE BLOCKER: an unclassified tenant migration aborts BEFORE anything touches the database
-            // (no counts, no bookkeeping row, no migration). The operator sees the names; the release is not installable.
+            // D7 — RELEASE BLOCKER: an unclassified tenant migration, or (owner decision 16 Nov 2026, item 5) a reviewed one the
+            // owner has not approved, aborts BEFORE anything touches the database (no counts, no bookkeeping row, no migration).
+            // The operator sees the names and the cause; the release is not installable.
             if ($plan['blockers'] !== []) {
-                $msg = 'SCHEMA_UPGRADE_UNCLASSIFIED_MIGRATION: RELEASE BLOCKER — tenant migration(s) without a manifest classification: '
-                    . implode(', ', $plan['blockers']) . ' (classify them in ' . EdgeTenantMigrationManifest::FILE . '; nothing was applied).';
-                Log::error('[edge-schema-upgrade] refused', ['blockers' => $plan['blockers'], 'plan_hash' => $plan['plan_hash']]);
+                $msg = EdgeTenantMigrationManifest::blockerMessage('SCHEMA_UPGRADE', $plan) . '; nothing was applied.';
+                Log::error('[edge-schema-upgrade] refused', ['blockers' => $plan['blockers'], 'reasons' => $plan['blocker_reasons'], 'plan_hash' => $plan['plan_hash']]);
                 throw new RuntimeException($msg);
             }
 
             $before = $this->protectedCounts();
             $applied = [];
+            $substituted = [];
             $skipped = $plan['skip'];
             if ($skipped !== []) {
                 // Defensive: a CLOUD_ONLY file should never reach an appliance (the artifact excludes it). Record, never run.
@@ -162,14 +163,21 @@ class EdgeLocalSchemaUpgrader
                     if ($pending[$group] === []) {
                         continue;
                     }
-                    // The tenant group runs ONLY the manifest-approved files (RUN decisions); the other groups are
-                    // Edge-owned. One migration per batch (step) so a later rollback/inspection has granularity.
-                    $target = $group === 'tenant' ? $this->approvedFiles($migrator, $paths, $plan['run']) : $paths;
-                    if ($target === []) {
+                    if ($group !== 'tenant') {
+                        // Edge-owned groups run as they are. One migration per batch (step) so a later rollback/inspection has granularity.
+                        foreach ($migrator->run($paths, ['step' => true]) as $file) {
+                            $applied[] = $migrator->getMigrationName($file);
+                        }
                         continue;
                     }
-                    foreach ($migrator->run($target, ['step' => true]) as $file) {
-                        $applied[] = $migrator->getMigrationName($file);
+                    // The tenant group runs ONLY the manifest-approved files (RUN decisions), in name order, one batch each; a
+                    // RUN_EDGE_SUBSTITUTE migration runs its Edge substitute body at its place in that order and is recorded under
+                    // the canonical name (owner decision 16 Nov 2026, item 3).
+                    foreach ($this->runTenantPlan($migrator, $paths, $plan, $output) as $name => $how) {
+                        $applied[] = $name;
+                        if ($how !== 'run') {
+                            $substituted[$name] = $how;
+                        }
                     }
                 }
             } catch (Throwable $e) {
@@ -195,10 +203,58 @@ class EdgeLocalSchemaUpgrader
                 'updated_at' => now(),
             ]);
 
-            Log::info('[edge-schema-upgrade] applied', ['applied' => $applied, 'skipped' => $skipped, 'plan_hash' => $plan['plan_hash'], 'version' => $version]);
+            Log::info('[edge-schema-upgrade] applied', ['applied' => $applied, 'substituted' => $substituted, 'skipped' => $skipped, 'plan_hash' => $plan['plan_hash'], 'version' => $version]);
 
-            return ['pending' => $pending, 'applied' => $applied, 'skipped' => $skipped, 'plan_hash' => $plan['plan_hash'], 'version' => $version];
+            return ['pending' => $pending, 'applied' => $applied, 'substituted' => $substituted, 'skipped' => $skipped, 'plan_hash' => $plan['plan_hash'], 'version' => $version];
         });
+    }
+
+    /**
+     * Execute the TENANT part of a plan in migration-name order: RUN files through the migrator, RUN_EDGE_SUBSTITUTE
+     * names through their manifest substitute (the canonical body never loads), each recorded under the canonical name.
+     * Shared by the upgrader and edge:local:db-init. Caller holds the migrator on the tenant connection.
+     *
+     * @param  array<int,string>  $paths  tenant migration directories
+     * @param  bool  $step  one batch per migration (upgrade) or one batch for the run (db-init)
+     * @return array<string,string> applied name => 'run' | substitute class
+     */
+    public function runTenantPlan($migrator, array $paths, array $plan, ?OutputInterface $output = null, bool $step = true): array
+    {
+        $files = $migrator->getMigrationFiles($paths);   // name => path, sorted by name
+        $run = array_flip((array) ($plan['run'] ?? []));
+        $substitute = array_flip((array) ($plan['substitute'] ?? []));
+        $manifest = $this->manifest();
+        $applied = [];
+        $buffer = [];
+        $flush = function () use (&$buffer, &$applied, $migrator, $step) {
+            if ($buffer === []) {
+                return;
+            }
+            foreach ($migrator->run($buffer, ['step' => $step]) as $file) {
+                $applied[$migrator->getMigrationName($file)] = 'run';
+            }
+            $buffer = [];
+        };
+        foreach ($files as $name => $path) {
+            if (isset($run[$name])) {
+                $buffer[] = $path;
+            } elseif (isset($substitute[$name])) {
+                $flush(); // everything before it in name order has run
+                $class = $manifest->substituteFor($name);
+                if ($class === null) {
+                    throw new RuntimeException("SCHEMA_UPGRADE_SUBSTITUTE_MISSING: {$name} is planned as RUN_EDGE_SUBSTITUTE but the manifest names no substitute.");
+                }
+                $output?->writeln("  <comment>RUN_EDGE_SUBSTITUTE</comment> {$name} via {$class} — " . $class::why());
+                (new $class())->up();
+                $repository = $migrator->getRepository();
+                $repository->log($name, $repository->getNextBatchNumber());
+                Log::info('[edge-schema-upgrade] RUN_EDGE_SUBSTITUTE', ['migration' => $name, 'substitute' => $class, 'why' => $class::why()]);
+                $applied[$name] = $class;
+            }
+        }
+        $flush();
+
+        return $applied;
     }
 
     // ── guards ───────────────────────────────────────────────────────────────
@@ -244,19 +300,6 @@ class EdgeLocalSchemaUpgrader
         return $out;
     }
 
-    /** The tenant files the manifest approved (RUN), as individual file paths in name order. */
-    private function approvedFiles($migrator, array $paths, array $run): array
-    {
-        $files = $migrator->getMigrationFiles($paths);   // name => path, sorted by name
-        $out = [];
-        foreach ($files as $name => $path) {
-            if (in_array($name, $run, true)) {
-                $out[] = $path;
-            }
-        }
-
-        return $out;
-    }
 
     /** @return array<string, array<int,string>> */
     private function pathGroups(array $extraPaths): array

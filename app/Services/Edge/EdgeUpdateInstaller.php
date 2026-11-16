@@ -146,7 +146,7 @@ class EdgeUpdateInstaller
         $planHash = (string) ($plan['plan_hash'] ?? '');
         if (($plan['verdict'] ?? null) !== EdgeTenantMigrationManifest::VERDICT_OK) {
             $this->record($audit, 'failed', 'UPDATE_MIGRATION_PLAN_BLOCKED', 'none', $currentSchema, $plan, $expectedPlanHash);
-            throw new RuntimeException('UPDATE_MIGRATION_PLAN_BLOCKED: RELEASE BLOCKER — unclassified tenant migration(s) in the new runtime: ' . implode(', ', (array) ($plan['blockers'] ?? [])));
+            throw new RuntimeException('UPDATE_MIGRATION_PLAN_BLOCKED: RELEASE BLOCKER in the new runtime — ' . EdgeTenantMigrationManifest::blockerMessage('UPDATE', $plan));
         }
         if ($expectedPlanHash === null && ($plan['entries'] ?? []) !== []) {
             $this->record($audit, 'failed', 'UPDATE_MIGRATION_PLAN_UNCONFIRMED', 'none', $currentSchema, $plan, null);
@@ -467,7 +467,8 @@ class EdgeUpdateInstaller
             $row['migration_plan'] = json_encode([
                 'format' => $plan['format'] ?? null, 'manifest_version' => $plan['manifest_version'] ?? null,
                 'verdict' => $plan['verdict'] ?? null, 'entries' => $plan['entries'] ?? [],
-                'run' => $plan['run'] ?? [], 'skip' => $plan['skip'] ?? [], 'blockers' => $plan['blockers'] ?? [],
+                'run' => $plan['run'] ?? [], 'substitute' => $plan['substitute'] ?? [], 'skip' => $plan['skip'] ?? [],
+                'blockers' => $plan['blockers'] ?? [], 'blocker_reasons' => $plan['blocker_reasons'] ?? [],
             ], JSON_UNESCAPED_SLASHES);
         }
         DB::connection(self::CONN)->table('edge_local_updates')->insert($row);

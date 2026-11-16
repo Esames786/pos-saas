@@ -5,6 +5,7 @@ namespace Tests\MySql;
 use App\Models\Edge\EdgeLocalMeta;
 use App\Services\Edge\EdgeLocalSchemaUpgrader;
 use App\Services\Edge\EdgeTenantMigrationManifest;
+use App\Services\Edge\MigrationSubstitutes\OrderNoteToggleDefaultOnly;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -62,7 +63,8 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
     {
         $manifest = EdgeTenantMigrationManifest::load();
         $this->assertSame($expectedClass, $manifest->classification($migration), "manifest classification of {$migration}");
-        $this->assertSame(EdgeTenantMigrationManifest::DECISION_RUN, $manifest->decisionFor($migration));
+        // RUN, or RUN_EDGE_SUBSTITUTE for a migration the manifest executes through an Edge substitute (owner decision 16 Nov 2026, item 3)
+        $this->assertContains($manifest->decisionFor($migration), [EdgeTenantMigrationManifest::DECISION_RUN, EdgeTenantMigrationManifest::DECISION_RUN_EDGE_SUBSTITUTE]);
         if (! is_file(database_path("migrations/tenant/{$migration}.php"))) {
             $this->markTestSkipped("{$migration} is pending merge from canonical " . $manifest->pendingMergeFrom($migration) . ' — this upgrade test activates when the file lands.');
         }
@@ -76,7 +78,7 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
 
         $upgrader = app(EdgeLocalSchemaUpgrader::class);
         $plan = $upgrader->plan();
-        $this->assertContains($migration, $plan['run'], 'the plan lists the migration as RUN');
+        $this->assertContains($migration, array_merge($plan['run'], $plan['substitute']), 'the plan lists the migration as RUN or RUN_EDGE_SUBSTITUTE');
         $this->assertSame(EdgeTenantMigrationManifest::VERDICT_OK, $plan['verdict']);
         $result = $upgrader->upgrade();
         $this->assertContains($migration, $result['applied']);
@@ -577,9 +579,14 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             });
     }
 
-    /** KOT-ORDER-NOTE-1 (2) (canonical c51b2fe7): the default flips to OFF and every existing layout row is set OFF — owner-review item (data rewrite). */
-    public function test_order_note_toggle_default_off_upgrades_an_older_appliance(): void
+    /**
+     * KOT-ORDER-NOTE-1 (2) (canonical c51b2fe7) on an APPLIANCE — owner decision 16 Nov 2026 (item 3): the existing-row rewrite is NOT
+     * approved; the manifest executes the migration through the Edge substitute OrderNoteToggleDefaultOnly (default OFF for new
+     * layouts, no row touched) and records the canonical name. The upgraded appliance still ends with the clean-install column shape.
+     */
+    public function test_order_note_toggle_default_off_upgrades_an_older_appliance_through_the_edge_substitute_keeping_an_operator_on_choice(): void
     {
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_RUN_EDGE_SUBSTITUTE, EdgeTenantMigrationManifest::load()->decisionFor('2026_11_02_000002_order_note_toggle_default_off'));
         $this->proveUpgrade('2026_11_02_000002_order_note_toggle_default_off', EdgeTenantMigrationManifest::EDGE_REQUIRED,
             function ($conn) {
                 $conn->statement('ALTER TABLE receipt_layout_settings MODIFY show_order_note TINYINT(1) NOT NULL DEFAULT 1');
@@ -588,8 +595,8 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
                 $conn->table('receipt_layout_settings')->insert(['branch_id' => $branchId, 'document_type' => 'kot-upgrade-probe', 'show_order_note' => 1, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
             },
             function ($conn) {
-                $this->assertSame('0', (string) $conn->selectOne("SELECT column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'receipt_layout_settings' AND column_name = 'show_order_note'")->d);
-                $this->assertSame(0, (int) $conn->table('receipt_layout_settings')->where('document_type', 'kot-upgrade-probe')->value('show_order_note'), 'an existing layout row is switched OFF, as on the Cloud');
+                $this->assertSame('0', (string) $conn->selectOne("SELECT column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'receipt_layout_settings' AND column_name = 'show_order_note'")->d, 'new layouts default OFF');
+                $this->assertSame(1, (int) $conn->table('receipt_layout_settings')->where('document_type', 'kot-upgrade-probe')->value('show_order_note'), "an operator's explicit ON survives the Edge execution (owner decision 16 Nov 2026)");
                 $conn->table('receipt_layout_settings')->where('document_type', 'kot-upgrade-probe')->delete();
             });
     }
@@ -800,32 +807,49 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
     }
 
     /** order_note default-off: an operator's ON choice is rewritten to OFF (the owner-review risk); down() restores the default only. */
-    public function test_order_note_default_off_populated_rows_are_rewritten_and_rollback_restores_only_the_default(): void
+    /**
+     * Owner decision 16 Nov 2026 (item 3), populated layouts with ON and OFF values: the Edge execution (substitute) keeps every
+     * stored value — ON stays ON, OFF stays OFF, a row created under the old default keeps its stored 1 — and only a layout created
+     * AFTER the upgrade starts OFF; the substitute's down() restores the default and touches no row. The canonical body, run by hand
+     * on the same rows, rewrites all of them to OFF: that is the behaviour the owner refused, kept here as the documented contrast.
+     */
+    public function test_order_note_default_off_edge_substitute_preserves_populated_on_and_off_rows_while_the_canonical_body_would_rewrite_them(): void
     {
         $conn = DB::connection('tenant');
         $conn->table('receipt_layout_settings')->where('document_type', 'like', 'note-probe-%')->delete();
         $notes = fn () => $conn->table('receipt_layout_settings')->where('document_type', 'like', 'note-probe-%')->orderBy('document_type')->pluck('show_order_note', 'document_type')->map(fn ($v) => (int) $v)->all();
         $default = fn () => (string) $conn->selectOne("SELECT column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'receipt_layout_settings' AND column_name = 'show_order_note'")->d;
+        $insert = function (string $type, ?int $value) use ($conn) {
+            $row = ['branch_id' => $this->branchId, 'document_type' => $type, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()];
+            if ($value !== null) {
+                $row['show_order_note'] = $value;
+            }
+            $conn->table('receipt_layout_settings')->insert($row);
+        };
 
         $this->proveUpgrade('2026_11_02_000002_order_note_toggle_default_off', EdgeTenantMigrationManifest::EDGE_REQUIRED,
-            function ($conn) {
+            function ($conn) use ($insert) {
                 $conn->statement('ALTER TABLE receipt_layout_settings MODIFY show_order_note TINYINT(1) NOT NULL DEFAULT 1');
                 foreach (['note-probe-on' => 1, 'note-probe-off' => 0, 'note-probe-default' => null] as $type => $value) {
-                    $row = ['branch_id' => $this->branchId, 'document_type' => $type, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()];
-                    if ($value !== null) {
-                        $row['show_order_note'] = $value;
-                    }
-                    $conn->table('receipt_layout_settings')->insert($row);
+                    $insert($type, $value);
                 }
             },
-            function ($conn) use ($notes, $default) {
+            function ($conn) use ($notes, $default, $insert) {
+                $this->assertSame('0', $default(), 'new layouts default OFF');
+                $this->assertSame(['note-probe-default' => 1, 'note-probe-off' => 0, 'note-probe-on' => 1], $notes(), 'NO stored value changed: ON stays ON, OFF stays OFF');
+                $insert('note-probe-after', null);
+                $this->assertSame(0, (int) $conn->table('receipt_layout_settings')->where('document_type', 'note-probe-after')->value('show_order_note'), 'a layout created after the upgrade starts OFF');
+
+                $substitute = new OrderNoteToggleDefaultOnly();
+                $substitute->down();
+                $this->assertSame('1', $default(), "the substitute's down() restores the default");
+                $this->assertSame(['note-probe-after' => 0, 'note-probe-default' => 1, 'note-probe-off' => 0, 'note-probe-on' => 1], $notes(), 'and touches no row');
+                $substitute->up();
                 $this->assertSame('0', $default());
-                $this->assertSame(['note-probe-default' => 0, 'note-probe-off' => 0, 'note-probe-on' => 0], $notes(), 'EVERY row is OFF after the rewrite — including the one an operator had switched ON');
-                $this->migrationObject('2026_11_02_000002_order_note_toggle_default_off')->down();
-                $this->assertSame('1', $default(), 'down() restores the default');
-                $this->assertSame(['note-probe-default' => 0, 'note-probe-off' => 0, 'note-probe-on' => 0], $notes(), 'but not the rows: the rewrite is one-way');
+
+                // The refused behaviour, for the record: the canonical body rewrites every row (never executed by the upgrader on an appliance).
                 $this->migrationObject('2026_11_02_000002_order_note_toggle_default_off')->up();
-                $this->assertSame('0', $default());
+                $this->assertSame(['note-probe-after' => 0, 'note-probe-default' => 0, 'note-probe-off' => 0, 'note-probe-on' => 0], $notes(), 'canonical body: EVERY row OFF, the operator ON choice lost — the reason for the substitute');
                 $conn->table('receipt_layout_settings')->where('document_type', 'like', 'note-probe-%')->delete();
             });
     }

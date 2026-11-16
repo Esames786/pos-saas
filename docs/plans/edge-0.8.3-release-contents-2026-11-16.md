@@ -28,7 +28,12 @@ tests: `EdgeTenantMigrationUpgradeMySqlTest`, `EdgeShiftCounterScopeMySqlTest`, 
 | A6 | `print_prepares` wipe classification for the transaction reset (Edge tree) | `25fbb425` | optional at runtime (the reset never runs on an appliance) — ships because it is in the tree |
 | A7 | Catch-up / promotion / Phase F records, system map | docs | n/a |
 
-### B. NOT in the baseline — decision needed: `rel/0.8.3-service-reliability` (Agent F, worktree `pos-saas-rel-083`, head `0b73606f`)
+### B. `rel/0.8.3-service-reliability` (Agent F, head `0b73606f`) — **MERGED 16 Nov 2026 (owner decision item 4), merge `30d90dfd`**
+
+Owner decision 16 Nov 2026: approved for the Edge development branch ONLY; the frozen baseline tag stays at 5bb43b7c
+(not moved); reviewed no-ff merge; the two system-map files regenerated; focused gates recorded in
+`docs/status/edge-083-unblock-2026-11-16.md` §1. Optional items (printer reachability, scoped control) included: green on
+the branch and additive.
 
 | item | content | class |
 |---|---|---|
@@ -65,28 +70,29 @@ focused gates for the touched workers (`EdgeLocalPrint*`, `EdgeLocalAuthority*`,
 | `2026_11_03_000002_create_goods_receipt_revisions` | EDGE_SCHEMA_SAFE | ready |
 | `2026_11_08_000001_add_deal_split_report_columns` | EDGE_SCHEMA_SAFE | ready |
 | `2026_10_23_000002_sale_line_entered_unit` (and the other post-0.8.2 EDGE_REQUIRED ones already proven) | EDGE_REQUIRED | ready |
-| **`2026_10_23_000001_decimal_pack_sizes`** (R-1) | EDGE_REQUIRED, non-additive (type change) | **OWNER_REVIEW — approval withheld** |
-| **`2026_11_03_000003_let_a_purchase_bill_be_voided`** | EDGE_SCHEMA_SAFE, non-additive (ENUM MODIFY) | **OWNER_REVIEW — approval withheld** |
-| **`2026_11_02_000002_order_note_toggle_default_off`** | EDGE_REQUIRED, data rewrite | **OWNER_REVIEW — approval withheld** |
-| `…add_process_identity_to_edge_worker_state` (rel/0.8.3, EDGE_OWNED) | — | only if B is merged |
+| **`2026_10_23_000001_decimal_pack_sizes`** (R-1) | EDGE_REQUIRED, non-additive (type change) | **APPROVED 16 Nov 2026** (`OWNER_APPROVAL = owner-decision:2026-11-16 …`; fractional-value protection + rollback limits documented) |
+| **`2026_11_03_000003_let_a_purchase_bill_be_voided`** | EDGE_SCHEMA_SAFE, non-additive (ENUM MODIFY) | **APPROVED 16 Nov 2026**, forward-only (ordinals kept; empty down(); recovery = backup-based) |
+| **`2026_11_02_000002_order_note_toggle_default_off`** | EDGE_REQUIRED, data rewrite | **REWRITE NOT APPROVED** → Edge execution = SUBSTITUTE `OrderNoteToggleDefaultOnly` (default OFF only, rows untouched, canonical name recorded); `OWNER_APPROVAL = PENDING` → **RELEASE BLOCKER until the owner approves the substitute** |
+| `2026_10_30_000001_add_process_identity_to_edge_worker_state` (rel/0.8.3, EDGE_OWNED) | — | in the tree since merge `30d90dfd` |
 | `delivery_place_sightings`, `print_prepares` | CLOUD_ONLY | excluded from the package |
 
-**Enforcement note (honest).** `OWNER_REVIEW_REQUIRED` is validated and reported by the manifest (`ownerReviewRequired()`, plan entries),
-but the plan verdict only turns RELEASE_BLOCKER on an unclassified file — a reviewed-but-unapproved migration is still `RUN`. Today the block
-is procedural: the owner's "no release build" rule. Optional hardening for 0.8.3 (not done, needs the owner's word): an `OWNER_APPROVED`
-key per OWNER_REVIEW entry, with `plan()` listing unapproved ones as blockers, so the package builder itself refuses.
+**Enforcement (owner decision 16 Nov 2026, item 5 — DONE).** Every shipped `OWNER_REVIEW_REQUIRED` entry carries an explicit,
+migration-specific `OWNER_APPROVAL` (`release:<x.y.z>-edge …` | `owner-decision:<YYYY-MM-DD> …` | `PENDING …`); `PENDING` is the plan
+decision `ABORT_OWNER_APPROVAL_PENDING` = `RELEASE_BLOCKER`, and db-init, schema-upgrade, the artifact builder and the update installer
+all fail closed (regression tests in `EdgeTenantMigrationManifestTest` + `EdgeTenantMigrationGateMySqlTest`). Details:
+`docs/status/edge-083-unblock-2026-11-16.md` §2.
 
 Approval evidence per migration: `docs/status/edge-promotion-2026-11-16.md` §2 (exact DDL, existing-row effects, upgrade guards,
 rollback, copy-of-LAB run) plus the populated-data run (`C:\Users\Dell\BingooEdgeLab\evidence\migrev-20261116\populated-run-log.txt`)
 and the three suite tests `test_*_populated_rows_*` in `EdgeTenantMigrationUpgradeMySqlTest`.
 
-## 3. Release blockers (as of this record)
+## 3. Release blockers (updated 16 Nov 2026, evening)
 
-1. The three OWNER_REVIEW migrations are in the tree: a package built from the baseline would carry and RUN them → no build until each
-   is approved (or the owner decides to hold one back, which means a code change to defer it).
-2. Decision on B (rel/0.8.3 reliability): without it, 0.8.3 carries no Windows reboot/sleep fixes; the LAB record shows these matter for a
-   pilot. Not a blocker for the LAB demo (0.8.2 stays).
+1. ~~The three OWNER_REVIEW migrations~~ → R-1 and purchase_bills APPROVED; **order_note default-off: the substitute strategy awaits the
+   owner's approval** — `OWNER_APPROVAL = PENDING` makes the tree a RELEASE BLOCKER by the gate itself (the artifact builder refuses).
+2. ~~Decision on B~~ → merged (`30d90dfd`).
 3. LAB demo first (owner priority): no release install on the LAB before the supervised demonstration.
+4. Owner item 6: no build, sign or install until the order-note strategy and all mandatory release gates are resolved.
 
 ## 4. Procedure once unblocked (P5B custody, unchanged)
 

@@ -36,6 +36,15 @@
 |   CLOUD_ONLY_CLASS_DEPENDENCY ('none' or the class/seeder the migration loads), PACKAGE_DECISION SHIP_AND_RUN|EXCLUDE
 |   (SHIP-NO-RUN is not allowed), UPGRADE_TEST (Tests\…::test_method, a list of them, or 'n/a: CLOUD_ONLY'),
 |   OWNER_REVIEW_REQUIRED (true whenever !ADDITIVE_ONLY || DATA_REWRITE — the owner review list), BASELINE, NOTE.
+|   OWNER_APPROVAL (OWNER DECISION 16 Nov 2026, item 5 — REQUIRED on every shipped OWNER_REVIEW_REQUIRED entry; forbidden on
+|   CLOUD_ONLY): 'release:<x.y.z>-edge …' = the Edge release that already executed it on every appliance, or
+|   'owner-decision:<YYYY-MM-DD> …' = the owner's dated, migration-specific approval; 'PENDING …' = the plan decision is
+|   ABORT_OWNER_APPROVAL_PENDING and the verdict RELEASE_BLOCKER — db-init, schema-upgrade, the artifact builder and the
+|   update installer all refuse (fail closed). Nothing else counts as approval (a test grant marks itself TEST-ONLY).
+|   EDGE_EXECUTION (optional, default RUN) + EDGE_SUBSTITUTE (OWNER DECISION 16 Nov 2026, item 3): SUBSTITUTE names a class
+|   implementing App\Services\Edge\MigrationSubstitutes\EdgeMigrationSubstitute written for this exact migration; the
+|   appliance runs THAT body and records the canonical NAME (decision RUN_EDGE_SUBSTITUTE, visible in every plan / audit).
+|   The canonical file is never edited. A substitute still needs OWNER_APPROVAL.
 |
 | Dependency watch (tables whose appliance shape now DIVERGES from the Cloud because a CLOUD_ONLY migration is skipped —
 | a future canonical migration that assumes the Cloud shape of one of these must be re-checked before it is classified
@@ -46,7 +55,7 @@
 */
 
 return [
-    'manifest_version' => 'edge-tenant-migration-manifest@2026-11-15.1', // Rehearsal chunks 9-11 (15 Nov 2026): canonical 073238de..5c74107f, 10 new tenant migrations classified (4 EDGE_REQUIRED / 4 EDGE_SCHEMA_SAFE / 2 CLOUD_ONLY; 2 OWNER_REVIEW_REQUIRED)
+    'manifest_version' => 'edge-tenant-migration-manifest@2026-11-16.1', // OWNER DECISION 16 Nov 2026: explicit OWNER_APPROVAL on every shipped review entry (fail-closed gate, item 5); order_note default-off = Edge SUBSTITUTE awaiting approval (item 3); R-1 + purchase_bills ENUM approved // Rehearsal chunks 9-11 (15 Nov 2026): canonical 073238de..5c74107f, 10 new tenant migrations classified (4 EDGE_REQUIRED / 4 EDGE_SCHEMA_SAFE / 2 CLOUD_ONLY; 2 OWNER_REVIEW_REQUIRED)
     'meta' => [
         'baseline_release' => '0.7.0-edge',
         'baseline_commit' => '7b8f886',
@@ -328,6 +337,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -343,6 +353,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -358,6 +369,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -373,6 +385,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1033,6 +1046,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1063,6 +1077,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1138,6 +1153,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1363,6 +1379,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1453,6 +1470,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1468,6 +1486,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1498,6 +1517,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1528,6 +1548,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1618,6 +1639,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1678,6 +1700,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1708,6 +1731,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1723,6 +1747,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -1888,6 +1913,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline permission seed for a Cloud-side feature; harmless on the appliance (the permission graph is rebuilt from the users section on every refresh).',
         ],
@@ -1918,6 +1944,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); Cloud-module table(s) carried empty on the appliance (module excluded from the artifact).',
         ],
@@ -2008,6 +2035,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -2113,6 +2141,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); table(s) used by the appliance runtime / bootstrap sections.',
         ],
@@ -2158,6 +2187,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeLocalDbInitMySqlTest::test_db_init_provisions_edge_schema_while_raw_migrate_stays_denied', 'Tests\\MySql\\EdgeLocalSchemaUpgradeMySqlTest::test_upgrade_applies_only_pending_forward_migrations_and_preserves_every_operational_row'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.7.0-edge (baseline 7b8f886: executed by every 0.7.0 appliance, the LAB included — P5B custody release)',
             'BASELINE' => true,
             'NOTE' => 'Baseline (0.7.0 appliance schema); Cloud-module table(s) carried empty on the appliance (module excluded from the artifact).',
         ],
@@ -2908,6 +2938,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeCustomerIdentityMigrationMySqlTest::test_the_schema_upgrade_on_a_branch_server_leaves_pre_existing_address_uuid_null_while_the_cloud_backfills_it', 'Tests\\MySql\\EdgeCustomerRefreshMySqlTest'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.8.2-edge (a6113772: executed by the LAB 0.8.2 upgrade under the owner-attended install, docs/status/edge-0.8.2-lab-install-record.md)',
             'BASELINE' => false,
             'NOTE' => 'Phase 4 offline add-customer: customers.phone_normalized (+backfill), customer_addresses.address_uuid (Cloud backfills; the appliance leaves pre-existing rows null), customer_uuid_aliases. Proven end to end on the disposable pair (W15).',
         ],
@@ -3303,6 +3334,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_return_without_bill_schema_upgrades_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'release:0.8.2-edge (a6113772: executed by the LAB 0.8.2 upgrade under the owner-attended install, docs/status/edge-0.8.2-lab-install-record.md)',
             'BASELINE' => false,
             'NOTE' => 'CANONICAL 025728d8 (22 Oct 2026) RETURN-NO-BILL-1 (schema): NON-ADDITIVE — sales_returns.sales_order_id and sales_return_lines.sales_order_line_id become NULLable (MODIFY, ALGORITHM=INPLACE, LOCK=NONE, lock_wait_timeout 10, FKs kept) + sales_return_lines.unit_cost DECIMAL(15,4) NULL and inventory_batch_id BIGINT NULL (INSTANT). No row is touched; the appliance never writes a NULL there (no no-bill twin — capability returnWithoutBill OFF). Owner review D7-6 (integration matrix §2): recommended EDGE_REQUIRED / SHIP_AND_RUN; the shared models and services assume the columns exist.',
         ],
@@ -3427,8 +3459,9 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_decimal_pack_sizes_upgrade_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'owner-decision:2026-11-16 R-1 APPROVED for the next Edge release on the populated-data tests and the guarded rollback; the fractional-value protection (down() keeps factor DECIMAL while a fractional pack exists) and the conversion/rollback limits stay documented (docs/status/edge-promotion-2026-11-16.md §2, docs/plans/edge-0.8.3-release-contents-2026-11-16.md §2)',
             'BASELINE' => false,
-            'NOTE' => 'CANONICAL 7308db7e UNITS-PACKS F1: product_pack_units.factor INT → DECIMAL(15,4) (MODIFY on a tiny table; unique (product_id, factor) kept) and pack_size DECIMAL(15,4) NULL added with ALGORITHM=INSTANT to the eight line tables (no copy of sales_order_lines); every existing line keeps pack_factor and has pack_size NULL — readers take pack_size, else pack_factor. NON-ADDITIVE by the column-type change → OWNER_REVIEW_REQUIRED (rehearsal item R-1); no row rewritten; lock_wait_timeout 10. sales_order_lines / sales_return_lines are OPERATIONAL on the appliance and the shared return arithmetic reads CounterPacks::sizeOf, so the appliance needs the Cloud shape.',
+            'NOTE' => 'CANONICAL 7308db7e UNITS-PACKS F1: product_pack_units.factor INT → DECIMAL(15,4) (MODIFY on a tiny table; unique (product_id, factor) kept) and pack_size DECIMAL(15,4) NULL added with ALGORITHM=INSTANT to the eight line tables (no copy of sales_order_lines); every existing line keeps pack_factor and has pack_size NULL — readers take pack_size, else pack_factor. NON-ADDITIVE by the column-type change → OWNER_REVIEW_REQUIRED (rehearsal item R-1); no row rewritten; lock_wait_timeout 10. sales_order_lines / sales_return_lines are OPERATIONAL on the appliance and the shared return arithmetic reads CounterPacks::sizeOf, so the appliance needs the Cloud shape. OWNER DECISION 16 Nov 2026: APPROVED (see OWNER_APPROVAL); populated-data proof test_decimal_pack_sizes_populated_rows_survive_upgrade_and_rollback.',
         ],
         '2026_10_23_000002_sale_line_entered_unit' => [
             'MIGRATION' => '2026_10_23_000002_sale_line_entered_unit',
@@ -3518,10 +3551,13 @@ return [
             'LOCK_RISK' => 'low',
             'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
-            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_order_note_toggle_default_off_upgrades_an_older_appliance',
+            'UPGRADE_TEST' => ['Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_order_note_toggle_default_off_upgrades_an_older_appliance_through_the_edge_substitute_keeping_an_operator_on_choice', 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_order_note_default_off_edge_substitute_preserves_populated_on_and_off_rows_while_the_canonical_body_would_rewrite_them', 'Tests\\MySql\\EdgeTenantMigrationGateMySqlTest::test_a_run_edge_substitute_migration_records_the_canonical_name_and_executes_only_the_substitute_body'],
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'PENDING owner decision 16 Nov 2026 (item 3): the EXISTING-ROW REWRITE IS NOT APPROVED; the Edge execution proposed below (SUBSTITUTE = default OFF for new layouts, no row touched, operator ON/OFF choices preserved) awaits the owner\'s word — until then this entry is a RELEASE BLOCKER (ABORT_OWNER_APPROVAL_PENDING)',
+            'EDGE_EXECUTION' => 'SUBSTITUTE',
+            'EDGE_SUBSTITUTE' => \App\Services\Edge\MigrationSubstitutes\OrderNoteToggleDefaultOnly::class, // Edge body: the ALTER (default 0) only — never the UPDATE
             'BASELINE' => false,
-            'NOTE' => 'CANONICAL c51b2fe7 KOT-ORDER-NOTE-1 (2): ALTER receipt_layout_settings MODIFY show_order_note DEFAULT 0 (a column MODIFY = not additive by the manifest rule) and UPDATE every existing row to 0 (DATA_REWRITE on a config table — on an appliance the rows are the replicated layouts, re-upserted by the next refresh anyway). OWNER_REVIEW_REQUIRED by the rule (owner decision 15 Nov 2026: keep review status for any non-additive or data-rewrite change until separately approved); proven lossless on the isolated set by the named upgrade test (clean install and upgrade end with the same shape).',
+            'NOTE' => 'CANONICAL c51b2fe7 KOT-ORDER-NOTE-1 (2): ALTER receipt_layout_settings MODIFY show_order_note DEFAULT 0 (a column MODIFY = not additive by the manifest rule) and UPDATE every existing row to 0 (DATA_REWRITE on a config table — on an appliance the rows are the replicated layouts, re-upserted by the next refresh anyway). OWNER_REVIEW_REQUIRED by the rule (owner decision 15 Nov 2026: keep review status for any non-additive or data-rewrite change until separately approved); proven lossless on the isolated set by the named upgrade test (clean install and upgrade end with the same shape). OWNER DECISION 16 Nov 2026 (item 3): the existing-row rewrite is NOT approved — the canonical body never runs on an appliance; EDGE_EXECUTION=SUBSTITUTE (OrderNoteToggleDefaultOnly: ALTER default 0 only, rows untouched, canonical name recorded). Proof: test_order_note_toggle_default_off_upgrades_an_older_appliance_through_the_edge_substitute_keeping_an_operator_on_choice + test_order_note_default_off_edge_substitute_preserves_populated_on_and_off_rows_while_the_canonical_body_would_rewrite_them (EdgeTenantMigrationUpgradeMySqlTest), RUN_EDGE_SUBSTITUTE mechanics in EdgeTenantMigrationGateMySqlTest. On the appliance the rows are the replicated Cloud layouts (next refresh re-upserts them — Cloud = truth); the substitute guarantees the UPGRADE changes no operator choice.',
         ],
         '2026_11_02_000003_create_delivery_place_sightings_table' => [
             'MIGRATION' => '2026_11_02_000003_create_delivery_place_sightings_table',
@@ -3580,8 +3616,9 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_purchase_bill_voidable_upgrades_an_older_appliance',
             'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => 'owner-decision:2026-11-16 APPROVED for the next Edge release; ordinal compatibility preserved (\'voided\' is APPENDED, ordinals 1–4 unchanged); FORWARD-ONLY: down() is empty by canonical design, recovery from an incompatible schema state is backup-based (P5B pre-install backup)',
             'BASELINE' => false,
-            'NOTE' => 'CANONICAL f0019787 PURCHASE-EDIT-1 (1/3): ALTER purchase_bills MODIFY status ENUM(... , voided) — an ENUM value APPENDED by raw SQL (SHOW COLUMNS + MODIFY COLUMN keeping NULL/DEFAULT), plus voided_at / voided_by_user_id / void_reason NULL columns. The ENUM MODIFY is NOT additive by the manifest rule (same class as R-1 decimal_pack_sizes), no row is rewritten; purchase_bills is empty on an appliance (not a bootstrap section), so the rebuild is instant. OWNER_REVIEW_REQUIRED (owner decision 15 Nov 2026: keep review status for any non-additive ENUM change until separately approved); the named upgrade test proves the appended value and the clean-install shape on the isolated set. down() is empty on purpose (canonical).',
+            'NOTE' => 'CANONICAL f0019787 PURCHASE-EDIT-1 (1/3): ALTER purchase_bills MODIFY status ENUM(... , voided) — an ENUM value APPENDED by raw SQL (SHOW COLUMNS + MODIFY COLUMN keeping NULL/DEFAULT), plus voided_at / voided_by_user_id / void_reason NULL columns. The ENUM MODIFY is NOT additive by the manifest rule (same class as R-1 decimal_pack_sizes), no row is rewritten; purchase_bills is empty on an appliance (not a bootstrap section), so the rebuild is instant. OWNER_REVIEW_REQUIRED (owner decision 15 Nov 2026: keep review status for any non-additive ENUM change until separately approved); the named upgrade test proves the appended value and the clean-install shape on the isolated set. down() is empty on purpose (canonical). OWNER DECISION 16 Nov 2026: APPROVED, forward-only (see OWNER_APPROVAL); populated-data proof test_purchase_bill_voidable_populated_rows_survive_upgrade_and_rollback.',
         ],
         '2026_11_08_000001_add_deal_split_report_columns' => [
             'MIGRATION' => '2026_11_08_000001_add_deal_split_report_columns',

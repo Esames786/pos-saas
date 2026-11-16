@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Tests\MySql\Support\EdgeGateProbeSubstitute;
 use Tests\MySql\Support\EdgeLocalRuntimeFixture;
 use Tests\MySql\Support\TenantFixtures;
 
@@ -29,6 +30,8 @@ class EdgeTenantMigrationGateMySqlTest extends MySqlTenantTestCase
 
     private const CLOUD_ONLY_PLANTED = '2026_10_16_000001_add_branding_to_web_settings';   // a CLOUD_ONLY manifest entry
     private const UNCLASSIFIED_PLANTED = '2026_12_31_000001_edge_unclassified_probe';
+    private const OWNER_REVIEW_PLANTED = '2026_12_31_000002_edge_owner_review_probe';      // OWNER DECISION 16 Nov 2026 (item 5)
+    private const SUBSTITUTE_PLANTED = EdgeGateProbeSubstitute::MIGRATION;                 // OWNER DECISION 16 Nov 2026 (item 3)
 
     private string $fixtureDir;
     private int $paidId;
@@ -57,7 +60,9 @@ class EdgeTenantMigrationGateMySqlTest extends MySqlTenantTestCase
         @rmdir($this->fixtureDir);
         try {
             Schema::connection('tenant')->dropIfExists('edge_unclassified_probe');
-            DB::connection('tenant')->table('migrations')->whereIn('migration', [self::CLOUD_ONLY_PLANTED, self::UNCLASSIFIED_PLANTED])->delete();
+            Schema::connection('tenant')->dropIfExists('edge_owner_review_probe');
+            Schema::connection('tenant')->dropIfExists(EdgeGateProbeSubstitute::TABLE);
+            DB::connection('tenant')->table('migrations')->whereIn('migration', [self::CLOUD_ONLY_PLANTED, self::UNCLASSIFIED_PLANTED, self::OWNER_REVIEW_PLANTED, self::SUBSTITUTE_PLANTED])->delete();
         } catch (\Throwable $e) {
         }
         $this->resetRuntimeRole();
@@ -97,6 +102,41 @@ PHP);
     private function upgrader(): EdgeLocalSchemaUpgrader
     {
         return app(EdgeLocalSchemaUpgrader::class)->withAdditionalTenantPaths([$this->fixtureDir]);
+    }
+
+    /** A planted OWNER_REVIEW_REQUIRED entry with the given OWNER_APPROVAL (+ overrides), installed on top of the test manifest. */
+    private function installReviewEntry(string $name, string $approval, array $overrides = []): void
+    {
+        EdgeTenantMigrationManifest::overrideForTests(EdgeTenantMigrationManifest::load()->withEntriesForTests([$name => array_merge([
+            'MIGRATION' => $name,
+            'CLASSIFICATION' => EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            'TABLES_CHANGED' => ['edge_probe'],
+            'EDGE_CODE_REFERENCES' => ['none'],
+            'ADDITIVE_ONLY' => false,
+            'DATA_REWRITE' => false,
+            'LOCK_RISK' => 'none',
+            'CLOUD_ONLY_CLASS_DEPENDENCY' => 'none',
+            'PACKAGE_DECISION' => EdgeTenantMigrationManifest::PACKAGE_SHIP_AND_RUN,
+            'UPGRADE_TEST' => 'Tests\\MySql\\EdgeTenantMigrationGateMySqlTest',
+            'OWNER_REVIEW_REQUIRED' => true,
+            'OWNER_APPROVAL' => $approval,
+        ], $overrides)]));
+    }
+
+    private function assertUpgradeRefusedWithOwnerApprovalPending(array $names): void
+    {
+        try {
+            $this->upgrader()->upgrade();
+            $this->fail('an owner-approval-pending migration must refuse the upgrade');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('SCHEMA_UPGRADE_OWNER_APPROVAL_PENDING', $e->getMessage());
+            $this->assertStringNotContainsString('UNCLASSIFIED', $e->getMessage(), 'the operator reads the real reason');
+            foreach ($names as $n) {
+                $this->assertStringContainsString($n, $e->getMessage());
+            }
+        }
+        $this->assertNothingChanged();
+        $this->assertFalse(DB::connection('tenant')->table('migrations')->whereIn('migration', $names)->exists(), 'nothing recorded');
     }
 
     private function assertNothingChanged(): void
@@ -185,18 +225,134 @@ PHP);
         $this->assertSame([self::CLOUD_ONLY_PLANTED], $json['skipped']);
     }
 
+    // ── OWNER DECISION 16 Nov 2026 (item 5): OWNER_REVIEW_REQUIRED is enforced at plan / upgrade time, fail closed ──
+
+    public function test_the_real_manifest_blocks_every_owner_approval_pending_migration_before_touching_the_database(): void
+    {
+        EdgeTenantMigrationManifest::overrideForTests(null); // the REAL file, no test grant
+        $pending = EdgeTenantMigrationManifest::load()->ownerApprovalPending();
+        if ($pending === []) {
+            $this->assertSame(EdgeTenantMigrationManifest::VERDICT_OK, app(EdgeLocalSchemaUpgrader::class)->plan()['verdict']);
+            $this->markTestSkipped('no owner approval is pending in the real manifest — nothing to block');
+        }
+        $conn = DB::connection('tenant');
+        $ran = $conn->table('migrations')->whereIn('migration', $pending)->get(); // the test DB ran the canonical bodies (migrate:fresh)
+        $this->assertCount(count($pending), $ran);
+        try {
+            $conn->table('migrations')->whereIn('migration', $pending)->delete(); // make them pending, as on an appliance being upgraded
+            $plan = app(EdgeLocalSchemaUpgrader::class)->plan();
+            $this->assertSame($pending, $plan['blockers']);
+            $this->assertSame(EdgeTenantMigrationManifest::VERDICT_RELEASE_BLOCKER, $plan['verdict']);
+            foreach ($pending as $n) {
+                $this->assertSame(EdgeTenantMigrationManifest::DECISION_ABORT_OWNER_APPROVAL_PENDING, $plan['blocker_reasons'][$n]);
+                $this->assertNotContains($n, $plan['run']);
+                $this->assertNotContains($n, $plan['substitute']);
+            }
+            try {
+                app(EdgeLocalSchemaUpgrader::class)->upgrade();
+                $this->fail('the real manifest must refuse the upgrade while an owner approval is pending');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('SCHEMA_UPGRADE_OWNER_APPROVAL_PENDING', $e->getMessage());
+                foreach ($pending as $n) {
+                    $this->assertStringContainsString($n, $e->getMessage());
+                }
+            }
+            $this->assertNothingChanged();
+            $this->assertFalse($conn->table('migrations')->whereIn('migration', $pending)->exists(), 'nothing recorded');
+            $this->assertSame(1, Artisan::call('edge:local:schema-upgrade', ['--dry-run' => true, '--json' => true]), 'the dry run exits non-zero');
+            $out = Artisan::output();
+            $this->assertSame($pending, $this->lastJson($out)['blockers']);
+            $this->assertStringContainsString('OWNER_APPROVAL_PENDING', $out);
+        } finally {
+            foreach ($ran as $r) {
+                $conn->table('migrations')->insert(['migration' => $r->migration, 'batch' => $r->batch]);
+            }
+        }
+    }
+
+    public function test_a_reviewed_but_unapproved_planted_migration_blocks_and_only_an_explicit_approval_lets_it_run(): void
+    {
+        $this->plant(self::OWNER_REVIEW_PLANTED, "Schema::connection('tenant')->create('edge_owner_review_probe', fn (Blueprint \$t) => \$t->id());");
+
+        $this->installReviewEntry(self::OWNER_REVIEW_PLANTED, 'PENDING owner review 16 Nov 2026');
+        $plan = $this->upgrader()->plan();
+        $this->assertSame([self::OWNER_REVIEW_PLANTED], $plan['blockers']);
+        $this->assertSame(EdgeTenantMigrationManifest::VERDICT_RELEASE_BLOCKER, $plan['verdict']);
+        $entry = array_column($plan['entries'], null, 'migration')[self::OWNER_REVIEW_PLANTED];
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_ABORT_OWNER_APPROVAL_PENDING, $entry['decision']);
+        $this->assertSame(EdgeTenantMigrationManifest::EDGE_REQUIRED, $entry['classification'], 'classified, reviewed — and still blocked');
+        $this->assertTrue($entry['owner_review_required']);
+        $this->assertSame('PENDING owner review 16 Nov 2026', $entry['owner_approval']);
+        $this->assertUpgradeRefusedWithOwnerApprovalPending([self::OWNER_REVIEW_PLANTED]);
+        $this->assertFalse(Schema::connection('tenant')->hasTable('edge_owner_review_probe'), 'the body never ran');
+
+        $this->installReviewEntry(self::OWNER_REVIEW_PLANTED, 'owner-decision:2026-11-16 probe approved for the gate test');
+        $plan = $this->upgrader()->plan();
+        $this->assertSame([], $plan['blockers']);
+        $this->assertContains(self::OWNER_REVIEW_PLANTED, $plan['run']);
+        $this->assertSame(EdgeTenantMigrationManifest::VERDICT_OK, $plan['verdict']);
+        $result = $this->upgrader()->upgrade();
+        $this->assertContains(self::OWNER_REVIEW_PLANTED, $result['applied']);
+        $this->assertSame([], $result['substituted']);
+        $this->assertTrue(Schema::connection('tenant')->hasTable('edge_owner_review_probe'));
+        $this->assertTrue(DB::connection('tenant')->table('migrations')->where('migration', self::OWNER_REVIEW_PLANTED)->exists());
+        $this->assertSame([], $this->upgrader()->upgrade()['applied'], 'never re-applied');
+    }
+
+    // ── OWNER DECISION 16 Nov 2026 (item 3): an Edge substitute runs INSTEAD of the canonical body, under the canonical name ──
+
+    public function test_a_run_edge_substitute_migration_records_the_canonical_name_and_executes_only_the_substitute_body(): void
+    {
+        $this->plant(self::SUBSTITUTE_PLANTED, "throw new \\RuntimeException('CANONICAL BODY EXECUTED — the Edge substitute must run instead');");
+        $substitute = ['DATA_REWRITE' => true, 'EDGE_EXECUTION' => EdgeTenantMigrationManifest::EXECUTION_SUBSTITUTE, 'EDGE_SUBSTITUTE' => EdgeGateProbeSubstitute::class];
+
+        // a substitute still needs the owner's approval
+        $this->installReviewEntry(self::SUBSTITUTE_PLANTED, 'PENDING', $substitute);
+        $plan = $this->upgrader()->plan();
+        $this->assertSame([self::SUBSTITUTE_PLANTED], $plan['blockers']);
+        $this->assertSame([], $plan['substitute']);
+        $this->assertUpgradeRefusedWithOwnerApprovalPending([self::SUBSTITUTE_PLANTED]);
+        $this->assertFalse(Schema::connection('tenant')->hasTable(EdgeGateProbeSubstitute::TABLE));
+
+        $this->installReviewEntry(self::SUBSTITUTE_PLANTED, 'owner-decision:2026-11-16 substitute approved for the gate test', $substitute);
+        $plan = $this->upgrader()->plan();
+        $this->assertSame([], $plan['blockers']);
+        $this->assertSame([self::SUBSTITUTE_PLANTED], $plan['substitute']);
+        $this->assertNotContains(self::SUBSTITUTE_PLANTED, $plan['run'], 'never handed to the migrator');
+        $this->assertSame(EdgeTenantMigrationManifest::VERDICT_OK, $plan['verdict']);
+        $entry = array_column($plan['entries'], null, 'migration')[self::SUBSTITUTE_PLANTED];
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_RUN_EDGE_SUBSTITUTE, $entry['decision']);
+        $this->assertSame(EdgeGateProbeSubstitute::class, $entry['edge_substitute']);
+
+        app()->instance(EdgeLocalSchemaUpgrader::class, $this->upgrader());
+        $this->assertSame(0, Artisan::call('edge:local:schema-upgrade', ['--dry-run' => true]));
+        $this->assertStringContainsString('RUN_EDGE_SUBSTITUTE', Artisan::output(), 'the dry run names the Edge execution — nothing silent');
+
+        $result = $this->upgrader()->upgrade();
+        $this->assertContains(self::SUBSTITUTE_PLANTED, $result['applied']);
+        $this->assertSame([self::SUBSTITUTE_PLANTED => EdgeGateProbeSubstitute::class], $result['substituted']);
+        $this->assertSame($plan['plan_hash'], $result['plan_hash']);
+        $this->assertTrue(Schema::connection('tenant')->hasTable(EdgeGateProbeSubstitute::TABLE), 'the substitute body ran');
+        $this->assertTrue(DB::connection('tenant')->table('migrations')->where('migration', self::SUBSTITUTE_PLANTED)->exists(), 'recorded under the CANONICAL name — history aligned, never re-applied');
+        $meta = EdgeLocalMeta::current();
+        $this->assertNull($meta->last_error);
+        $this->assertNotSame('edge-local-schema@before-gate', $meta->edge_schema_version);
+        $this->assertSame([], $this->upgrader()->upgrade()['applied'], 'idempotent');
+        $this->assertSame([], $this->upgrader()->plan()['substitute']);
+    }
+
     public function test_the_dry_run_json_is_the_exact_plan_document_the_updater_hashes(): void
     {
         $this->plant(self::CLOUD_ONLY_PLANTED, "throw new \\RuntimeException('never');");
         app()->instance(EdgeLocalSchemaUpgrader::class, $this->upgrader());
         $this->assertSame(0, Artisan::call('edge:local:schema-upgrade', ['--dry-run' => true, '--json' => true]));
         $json = $this->lastJson(Artisan::output());
-        foreach (['format', 'manifest_version', 'entries', 'run', 'skip', 'blockers', 'plan_hash', 'verdict', 'edge_schema_version', 'pending'] as $key) {
+        foreach (['format', 'manifest_version', 'entries', 'run', 'substitute', 'skip', 'blockers', 'blocker_reasons', 'plan_hash', 'verdict', 'edge_schema_version', 'pending'] as $key) {
             $this->assertArrayHasKey($key, $json, $key);
         }
         $this->assertSame($this->upgrader()->plan()['plan_hash'], $json['plan_hash']);
         $this->assertSame(EdgeTenantMigrationManifest::planHash($json['entries']), $json['plan_hash'], 'the hash is recomputable from the printed entries');
-        $this->assertSame(['migration', 'group', 'classification', 'decision', 'tables', 'owner_review_required'], array_keys($json['entries'][0]));
+        $this->assertSame(['migration', 'group', 'classification', 'decision', 'tables', 'owner_review_required', 'owner_approval', 'edge_substitute'], array_keys($json['entries'][0]));
     }
 
     public function test_the_test_seam_refuses_a_non_test_directory(): void

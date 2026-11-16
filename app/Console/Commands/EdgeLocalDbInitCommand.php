@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Edge\EdgeLocalSchemaUpgrader;
 use App\Services\Edge\EdgeTenantMigrationManifest;
 use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeRuntime;
@@ -103,18 +104,16 @@ class EdgeLocalDbInitCommand extends Command
             // package — the artifact builder excludes it) is skipped with record and never executed on an appliance.
             $files = $migrator->getMigrationFiles([database_path('migrations/tenant')]);
             $plan = EdgeTenantMigrationManifest::load()->plan(['tenant' => array_values(array_diff(array_keys($files), $migrator->getRepository()->getRan()))]);
+            // Owner decision 16 Nov 2026 (item 5): a reviewed-but-unapproved migration blocks here too, fail closed.
             if ($plan['blockers'] !== []) {
-                throw new RuntimeException('SCHEMA_INIT_UNCLASSIFIED_MIGRATION: RELEASE BLOCKER — tenant migration(s) without a manifest classification: '
-                    . implode(', ', $plan['blockers']) . ' (nothing was applied).');
+                throw new RuntimeException(EdgeTenantMigrationManifest::blockerMessage('SCHEMA_INIT', $plan) . '; nothing was applied.');
             }
             foreach ($plan['skip'] as $name) {
                 $this->warn("  SKIP_CLOUD_ONLY {$name} (recorded, never executed on an appliance)");
             }
-            $this->line('  migration plan: run ' . count($plan['run']) . ', skip ' . count($plan['skip']) . ', plan_hash ' . $plan['plan_hash']);
-            $approved = array_values(array_intersect_key($files, array_flip($plan['run'])));
-            if ($approved !== []) {
-                $migrator->run($approved);
-            }
+            $this->line('  migration plan: run ' . count($plan['run']) . ', substitute ' . count($plan['substitute']) . ', skip ' . count($plan['skip']) . ', plan_hash ' . $plan['plan_hash']);
+            // RUN files through the migrator (one batch), RUN_EDGE_SUBSTITUTE names through their Edge substitute (item 3).
+            app(EdgeLocalSchemaUpgrader::class)->runTenantPlan($migrator, [database_path('migrations/tenant')], $plan, $this->output, step: false);
             $migrator->run([database_path('migrations/edge')]);
         });
     }

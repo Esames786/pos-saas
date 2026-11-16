@@ -10,6 +10,7 @@ use App\Services\Edge\EdgeEnrollmentCrypto;
 use App\Services\Edge\EdgeEnrollmentIssuer;
 use App\Services\Edge\EdgePairingService;
 use App\Services\Edge\EdgeSigningKeyStore;
+use App\Services\Edge\EdgeTenantMigrationManifest;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
@@ -265,6 +266,32 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
             $args[] = '-NoGateway';
         }
         $this->startProcess(array_merge(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $this->pkgA . '\\scripts\\Install-EdgeAppliance.ps1'], $args), $this->scratch, 'installer', $this->applianceEnv());
+        // OWNER DECISION 16 Nov 2026 (item 5): the installer is a REAL process (no PHPUnit seam — it reads the manifest shipped in
+        // the package). While the real manifest has an owner approval pending, db-init MUST refuse fail-closed and the install
+        // cannot proceed: proven here, and the rest of the clean-machine proof resumes once the owner approves.
+        $pending = EdgeTenantMigrationManifest::load(base_path(), ignoreTestOverride: true)->ownerApprovalPending();
+        if ($pending !== []) {
+            [$code, $out] = $this->waitProcess('installer', 60 * 60);
+            $this->assertNotSame(0, $code, "the installer must fail while an owner approval is pending:\n" . $out);
+            $this->assertStringContainsString('SCHEMA_INIT_OWNER_APPROVAL_PENDING', $out);
+            foreach ($pending as $name) {
+                $this->assertStringContainsString($name, $out);
+            }
+            $this->assertStringContainsString('INSTALL FAILED', $out);
+            $this->assertStringNotContainsString('INSTALL COMPLETE', $out);
+            $this->assertFileDoesNotExist($codeFile, 'the pairing step was never reached');
+            try {
+                $tables = $this->pdo($this->installDb)->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+            } catch (\PDOException) {
+                $tables = []; // the fresh database was not even created
+            }
+            $this->assertSame([], array_values(array_diff($tables, ['migrations'])), 'fail closed: no schema was applied to the fresh database (at most the empty bookkeeping table)');
+            if ($tables !== []) {
+                $this->assertSame(0, (int) $this->pdo($this->installDb)->query('SELECT COUNT(*) FROM migrations')->fetchColumn(), 'nothing recorded');
+            }
+            $this->report['CLEAN_MACHINE_INSTALL'] = 'REFUSED at db-init, fail closed (SCHEMA_INIT_OWNER_APPROVAL_PENDING): ' . implode(', ', $pending);
+            $this->markTestSkipped('clean-machine install proof: the real installer refused fail-closed at db-init (owner approval pending for ' . implode(', ', $pending) . '); the full proof resumes once the owner approves.');
+        }
         $this->waitForLog('installer', 'waiting up to', 60 * 60, 'the installer reaching the pairing step (db-init on a fresh database)');
         $issued = app(EdgePairingService::class)->generateCode($tenant, $branch, $this->userId);
         file_put_contents($codeFile, $issued['code']);

@@ -88,12 +88,12 @@ class EdgeLocalSchemaUpgradeCommand extends Command
             } else {
                 $this->table(['migration', 'group', 'classification', 'decision', 'tables'], EdgeTenantMigrationManifest::planRows($plan));
             }
-            $this->line('  run       : ' . count($plan['run']) . '   skip (CLOUD_ONLY): ' . count($plan['skip']) . '   blockers: ' . count($plan['blockers']));
+            $this->line('  run       : ' . count($plan['run']) . '   substitute (Edge body): ' . count($plan['substitute'] ?? []) . '   skip (CLOUD_ONLY): ' . count($plan['skip']) . '   blockers: ' . count($plan['blockers']));
             $this->line('  plan_hash : ' . $plan['plan_hash']);
             $this->line('  verdict   : ' . $plan['verdict']);
         }
         if ($plan['verdict'] !== EdgeTenantMigrationManifest::VERDICT_OK) {
-            $this->error('RELEASE BLOCKER — unclassified tenant migration(s): ' . implode(', ', $plan['blockers']));
+            $this->error(EdgeTenantMigrationManifest::blockerMessage('PLAN', $plan));
 
             return self::FAILURE;
         }

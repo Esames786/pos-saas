@@ -2,6 +2,7 @@
 
 namespace App\Services\Edge;
 
+use App\Services\Edge\MigrationSubstitutes\EdgeMigrationSubstitute;
 use RuntimeException;
 
 /**
@@ -21,6 +22,14 @@ use RuntimeException;
  *   - an UNCLASSIFIED tenant migration present in the runtime is a RELEASE BLOCKER (plan verdict RELEASE_BLOCKER,
  *     upgrade/db-init abort before touching the DB, artifact plan refused);
  *   - a destructive / drop / rename / data-rewrite migration carries OWNER_REVIEW_REQUIRED=true;
+ *   - OWNER DECISION (16 Nov 2026, item 5): every shipped OWNER_REVIEW_REQUIRED entry states its OWNER_APPROVAL — the
+ *     Edge release that already executed it (release:<x.y.z>-edge …) or the dated owner decision (owner-decision:<date> …);
+ *     while it is PENDING the decision is ABORT_OWNER_APPROVAL_PENDING = RELEASE_BLOCKER (plan, db-init, upgrade, artifact
+ *     build and update install all fail closed). A reviewed-but-unapproved migration is never RUN;
+ *   - OWNER DECISION (16 Nov 2026, item 3): an entry may name an Edge SUBSTITUTE (EDGE_EXECUTION=SUBSTITUTE +
+ *     EDGE_SUBSTITUTE=class implementing MigrationSubstitutes\EdgeMigrationSubstitute): the canonical file is untouched, the
+ *     substitute body runs on the appliance, the canonical NAME is recorded — decision RUN_EDGE_SUBSTITUTE, visible in
+ *     every plan / audit; it still needs the owner approval above;
  *   - CLOUD_ONLY never becomes a package dependency: PACKAGE_DECISION is EXCLUDE and UPGRADE_TEST is "n/a: CLOUD_ONLY";
  *   - the schema upgrader operates ONLY from the approved (RUN) set this manifest yields;
  *   - the dry-run plan is stable and hashable (planHash) so the installed LAB update can stop when the actual plan
@@ -47,6 +56,19 @@ final class EdgeTenantMigrationManifest
     public const DECISION_RUN = 'RUN';
     public const DECISION_SKIP_CLOUD_ONLY = 'SKIP_CLOUD_ONLY';
     public const DECISION_ABORT_UNCLASSIFIED = 'ABORT_UNCLASSIFIED';
+    /** OWNER DECISION (16 Nov 2026, item 5): reviewed but not approved by the owner — a RELEASE BLOCKER, fail closed. */
+    public const DECISION_ABORT_OWNER_APPROVAL_PENDING = 'ABORT_OWNER_APPROVAL_PENDING';
+    /** OWNER DECISION (16 Nov 2026, item 3): the NAME is recorded, the BODY that runs is the manifest's EDGE_SUBSTITUTE class. */
+    public const DECISION_RUN_EDGE_SUBSTITUTE = 'RUN_EDGE_SUBSTITUTE';
+
+    public const EXECUTION_RUN = 'RUN';
+    public const EXECUTION_SUBSTITUTE = 'SUBSTITUTE';
+
+    /** OWNER_APPROVAL values: 'PENDING …' blocks; an approval is EXPLICIT and migration-specific — the Edge release that already executed it, or the dated owner decision. */
+    public const OWNER_APPROVAL_PENDING = 'PENDING';
+    public const OWNER_APPROVAL_PATTERN = '/^(release:\d+\.\d+\.\d+-edge|owner-decision:\d{4}-\d{2}-\d{2})(\s|$)/';
+    private const OWNER_APPROVAL_PENDING_PATTERN = '/^PENDING(\s|$)/';
+    private const TEST_GRANT = 'owner-decision:0000-00-00 TEST-ONLY grant by the PHPUnit base TestCase — NOT an owner approval; ignored outside tests';
 
     public const PACKAGE_SHIP_AND_RUN = 'SHIP_AND_RUN';
     public const PACKAGE_EXCLUDE = 'EXCLUDE';
@@ -62,6 +84,9 @@ final class EdgeTenantMigrationManifest
     public const VERDICT_OK = 'OK';
     public const VERDICT_RELEASE_BLOCKER = 'RELEASE_BLOCKER';
 
+    /** Test-only seam (see overrideForTests): ['root' => normalised root, 'sha' => sha256 of the source file or null, 'manifest' => self]. */
+    private static ?array $testOverride = null;
+
     /** @param array<string,array<string,mixed>> $migrations */
     private function __construct(
         private readonly string $version,
@@ -71,10 +96,24 @@ final class EdgeTenantMigrationManifest
     ) {
     }
 
-    /** Load + validate the manifest of a source tree (default: this application). Throws on an invalid manifest. */
-    public static function load(?string $root = null): self
+    /**
+     * Load + validate the manifest of a source tree (default: this application). Throws on an invalid manifest.
+     *
+     * Inside PHPUnit a manifest installed by overrideForTests() is returned instead for its own root and for any tree
+     * whose manifest file is byte-identical to the one it was loaded from (a package or artifact built from this tree);
+     * the base TestCase installs the real manifest with its pending approvals granted so the suites exercise an
+     * installable tree. Pass $ignoreTestOverride to read the real file regardless. Outside PHPUnit the seam does not exist.
+     */
+    public static function load(?string $root = null, bool $ignoreTestOverride = false): self
     {
-        $path = rtrim(str_replace('\\', '/', $root ?? base_path()), '/') . '/' . self::FILE;
+        $dir = rtrim(str_replace('\\', '/', $root ?? base_path()), '/');
+        $path = $dir . '/' . self::FILE;
+        if (! $ignoreTestOverride && self::$testOverride !== null && app()->runningUnitTests()) {
+            if (self::$testOverride['root'] === $dir
+                || (self::$testOverride['sha'] !== null && is_file($path) && hash_equals(self::$testOverride['sha'], (string) hash_file('sha256', $path)))) {
+                return self::$testOverride['manifest'];
+            }
+        }
         if (! is_file($path)) {
             throw new RuntimeException('EDGE_MIGRATION_MANIFEST_MISSING: ' . self::FILE . ' is not present at ' . $path);
         }
@@ -90,6 +129,47 @@ final class EdgeTenantMigrationManifest
     public static function existsIn(string $root): bool
     {
         return is_file(rtrim(str_replace('\\', '/', $root), '/') . '/' . self::FILE);
+    }
+
+    // ── test-only seams (every one is inert outside PHPUnit) ─────────────────
+
+    /** Install the manifest load() returns for its source root (null clears). Ignored unless app()->runningUnitTests(). */
+    public static function overrideForTests(?self $manifest): void
+    {
+        if ($manifest === null) {
+            self::$testOverride = null;
+
+            return;
+        }
+        $dir = rtrim(str_replace('\\', '/', dirname($manifest->source, substr_count(self::FILE, '/') + 1)), '/');
+        self::$testOverride = [
+            'root' => $dir,
+            'sha' => is_file($manifest->source) ? (string) hash_file('sha256', $manifest->source) : null,
+            'manifest' => $manifest,
+        ];
+    }
+
+    /** A copy whose PENDING approvals carry a marker that says what it is (a test grant), so the suites see an installable tree. */
+    public function withOwnerApprovalsGrantedForTests(): self
+    {
+        $migrations = $this->migrations;
+        foreach ($migrations as $name => $entry) {
+            if (is_string($entry['OWNER_APPROVAL'] ?? null) && self::approvalIsPending($entry['OWNER_APPROVAL'])) {
+                $migrations[$name]['OWNER_APPROVAL'] = self::TEST_GRANT . ' (was: ' . $entry['OWNER_APPROVAL'] . ')';
+            }
+        }
+
+        return new self($this->version . '+test-approvals', $this->meta, $migrations, $this->source);
+    }
+
+    /** A copy with entries added/replaced (validated like the file). Test-only: refused outside PHPUnit. */
+    public function withEntriesForTests(array $entries): self
+    {
+        if (! app()->runningUnitTests()) {
+            throw new RuntimeException('EDGE_MIGRATION_MANIFEST_SEAM: withEntriesForTests is a test-only seam.');
+        }
+
+        return self::fromArray(['manifest_version' => $this->version, 'meta' => $this->meta, 'migrations' => array_merge($this->migrations, $entries)], $this->source);
     }
 
     public static function fromArray(array $data, string $source = 'array'): self
@@ -184,6 +264,36 @@ final class EdgeTenantMigrationManifest
             if ($destructive && ($entry['OWNER_REVIEW_REQUIRED'] ?? false) !== true) {
                 $p[] = "[{$name}] destructive/data-rewrite migrations must carry OWNER_REVIEW_REQUIRED=true";
             }
+            // OWNER DECISION (16 Nov 2026, item 5): explicit, migration-specific approval on every shipped review entry.
+            $review = ($entry['OWNER_REVIEW_REQUIRED'] ?? false) === true;
+            $approval = $entry['OWNER_APPROVAL'] ?? null;
+            if ($class === self::CLOUD_ONLY) {
+                if (array_key_exists('OWNER_APPROVAL', $entry)) {
+                    $p[] = "[{$name}] CLOUD_ONLY is never executed on an appliance — it must not carry OWNER_APPROVAL";
+                }
+            } elseif ($review) {
+                if (! is_string($approval) || ! (self::approvalIsPending($approval) || preg_match(self::OWNER_APPROVAL_PATTERN, $approval) === 1)) {
+                    $p[] = "[{$name}] OWNER_REVIEW_REQUIRED entries must carry OWNER_APPROVAL = 'PENDING …' or an explicit approval ('release:<x.y.z>-edge …' | 'owner-decision:<YYYY-MM-DD> …')";
+                }
+            } elseif (array_key_exists('OWNER_APPROVAL', $entry)) {
+                $p[] = "[{$name}] OWNER_APPROVAL is only meaningful on an OWNER_REVIEW_REQUIRED entry";
+            }
+            // OWNER DECISION (16 Nov 2026, item 3): an Edge substitute is declared explicitly and written for this exact migration.
+            $execution = $entry['EDGE_EXECUTION'] ?? self::EXECUTION_RUN;
+            if (! in_array($execution, [self::EXECUTION_RUN, self::EXECUTION_SUBSTITUTE], true)) {
+                $p[] = "[{$name}] EDGE_EXECUTION must be RUN or SUBSTITUTE";
+            } elseif ($execution === self::EXECUTION_SUBSTITUTE) {
+                $sub = $entry['EDGE_SUBSTITUTE'] ?? null;
+                if ($class === self::CLOUD_ONLY) {
+                    $p[] = "[{$name}] a CLOUD_ONLY migration cannot have an Edge substitute (it is never executed)";
+                } elseif (! is_string($sub) || ! class_exists($sub) || ! is_subclass_of($sub, EdgeMigrationSubstitute::class)) {
+                    $p[] = "[{$name}] EDGE_EXECUTION=SUBSTITUTE needs EDGE_SUBSTITUTE = a class implementing " . EdgeMigrationSubstitute::class;
+                } elseif ($sub::forMigration() !== $name) {
+                    $p[] = "[{$name}] EDGE_SUBSTITUTE {$sub} is written for " . $sub::forMigration() . ', not this migration';
+                }
+            } elseif (array_key_exists('EDGE_SUBSTITUTE', $entry)) {
+                $p[] = "[{$name}] EDGE_SUBSTITUTE needs EDGE_EXECUTION=SUBSTITUTE";
+            }
             if (array_key_exists('PENDING_MERGE_FROM', $entry) && (! is_string($entry['PENDING_MERGE_FROM']) || ! preg_match('/^[0-9a-f]{7,40}$/', $entry['PENDING_MERGE_FROM']))) {
                 $p[] = "[{$name}] PENDING_MERGE_FROM must be a canonical commit hash";
             }
@@ -261,6 +371,54 @@ final class EdgeTenantMigrationManifest
         return array_keys(array_filter($this->migrations, fn ($e) => ($e['OWNER_REVIEW_REQUIRED'] ?? false) === true));
     }
 
+    public static function approvalIsPending(string $approval): bool
+    {
+        return preg_match(self::OWNER_APPROVAL_PENDING_PATTERN, $approval) === 1;
+    }
+
+    /** The entry's OWNER_APPROVAL statement (null when the entry needs none: not review-required, CLOUD_ONLY, unknown). */
+    public function ownerApproval(string $migration): ?string
+    {
+        $v = $this->migrations[$migration]['OWNER_APPROVAL'] ?? null;
+
+        return is_string($v) ? $v : null;
+    }
+
+    /** True when the migration may execute on an appliance: not review-required, or explicitly approved (release / owner decision). */
+    public function isOwnerApproved(string $migration): bool
+    {
+        $e = $this->migrations[$migration] ?? null;
+        if ($e === null || ($e['OWNER_REVIEW_REQUIRED'] ?? false) !== true) {
+            return true;
+        }
+        $approval = $this->ownerApproval($migration);
+
+        return $approval !== null && ! self::approvalIsPending($approval) && preg_match(self::OWNER_APPROVAL_PATTERN, $approval) === 1;
+    }
+
+    /** @return array<int,string> shipped (non-CLOUD_ONLY) review-required entries whose owner approval is still PENDING — release blockers */
+    public function ownerApprovalPending(): array
+    {
+        return array_values(array_filter(array_keys($this->migrations), fn ($n) => $this->classification($n) !== self::CLOUD_ONLY && ! $this->isOwnerApproved($n)));
+    }
+
+    /** RUN (the canonical body) or SUBSTITUTE (the Edge body named by substituteFor()). */
+    public function executionMode(string $migration): string
+    {
+        return (string) ($this->migrations[$migration]['EDGE_EXECUTION'] ?? self::EXECUTION_RUN);
+    }
+
+    /** The EdgeMigrationSubstitute class that executes instead of the canonical body, or null. */
+    public function substituteFor(string $migration): ?string
+    {
+        if ($this->executionMode($migration) !== self::EXECUTION_SUBSTITUTE) {
+            return null;
+        }
+        $c = $this->migrations[$migration]['EDGE_SUBSTITUTE'] ?? null;
+
+        return is_string($c) ? $c : null;
+    }
+
     /** Artifact-relative paths the package must NOT contain (CLOUD_ONLY tenant migrations). */
     public function packageExcludedPaths(): array
     {
@@ -269,11 +427,13 @@ final class EdgeTenantMigrationManifest
 
     // ── decisions / plan ─────────────────────────────────────────────────────
 
-    /** RUN | SKIP_CLOUD_ONLY | ABORT_UNCLASSIFIED for one tenant migration name. */
+    /** RUN | RUN_EDGE_SUBSTITUTE | SKIP_CLOUD_ONLY | ABORT_OWNER_APPROVAL_PENDING | ABORT_UNCLASSIFIED for one tenant migration name. */
     public function decisionFor(string $migration): string
     {
         return match ($this->classification($migration)) {
-            self::EDGE_REQUIRED, self::EDGE_SCHEMA_SAFE => self::DECISION_RUN,
+            self::EDGE_REQUIRED, self::EDGE_SCHEMA_SAFE => ! $this->isOwnerApproved($migration)
+                ? self::DECISION_ABORT_OWNER_APPROVAL_PENDING
+                : ($this->executionMode($migration) === self::EXECUTION_SUBSTITUTE ? self::DECISION_RUN_EDGE_SUBSTITUTE : self::DECISION_RUN),
             self::CLOUD_ONLY => self::DECISION_SKIP_CLOUD_ONLY,
             default => self::DECISION_ABORT_UNCLASSIFIED,
         };
@@ -282,13 +442,13 @@ final class EdgeTenantMigrationManifest
     /**
      * Plan entry for one pending migration (stable field order — this is what gets hashed and printed).
      *
-     * @return array{migration:string,group:string,classification:string,decision:string,tables:array<int,string>,owner_review_required:bool}
+     * @return array{migration:string,group:string,classification:string,decision:string,tables:array<int,string>,owner_review_required:bool,owner_approval:?string,edge_substitute:?string}
      */
     public function planEntry(string $migration, string $group): array
     {
         if ($group !== 'tenant') {
             // migrations/edge (and test-only extra paths) are Edge-owned by definition.
-            return ['migration' => $migration, 'group' => $group, 'classification' => self::EDGE_OWNED, 'decision' => self::DECISION_RUN, 'tables' => [], 'owner_review_required' => false];
+            return ['migration' => $migration, 'group' => $group, 'classification' => self::EDGE_OWNED, 'decision' => self::DECISION_RUN, 'tables' => [], 'owner_review_required' => false, 'owner_approval' => null, 'edge_substitute' => null];
         }
         $e = $this->entry($migration);
 
@@ -299,6 +459,8 @@ final class EdgeTenantMigrationManifest
             'decision' => $this->decisionFor($migration),
             'tables' => array_values((array) ($e['TABLES_CHANGED'] ?? [])),
             'owner_review_required' => (bool) ($e['OWNER_REVIEW_REQUIRED'] ?? false),
+            'owner_approval' => $this->ownerApproval($migration),
+            'edge_substitute' => $this->substituteFor($migration),
         ];
     }
 
@@ -306,7 +468,7 @@ final class EdgeTenantMigrationManifest
      * The exact migration plan for a set of pending names per group — machine-readable, deterministic, hashable.
      *
      * @param  array<string,array<int,string>>  $pendingByGroup  e.g. ['tenant' => [...], 'edge' => [...]]
-     * @return array{format:string,manifest_version:string,entries:array<int,array>,run:array<int,string>,skip:array<int,string>,blockers:array<int,string>,plan_hash:string,verdict:string}
+     * @return array{format:string,manifest_version:string,entries:array<int,array>,run:array<int,string>,substitute:array<int,string>,skip:array<int,string>,blockers:array<int,string>,blocker_reasons:array<string,string>,plan_hash:string,verdict:string}
      */
     public function plan(array $pendingByGroup): array
     {
@@ -318,12 +480,13 @@ final class EdgeTenantMigrationManifest
                 $entries[] = $this->planEntry((string) $name, (string) $group);
             }
         }
-        $run = $skip = $blockers = [];
+        $run = $substitute = $skip = $blockers = $reasons = [];
         foreach ($entries as $e) {
             match ($e['decision']) {
                 self::DECISION_RUN => $run[] = $e['migration'],
+                self::DECISION_RUN_EDGE_SUBSTITUTE => $substitute[] = $e['migration'],
                 self::DECISION_SKIP_CLOUD_ONLY => $skip[] = $e['migration'],
-                default => $blockers[] = $e['migration'],
+                default => [$blockers[] = $e['migration'], $reasons[$e['migration']] = $e['decision']],
             };
         }
 
@@ -332,11 +495,42 @@ final class EdgeTenantMigrationManifest
             'manifest_version' => $this->version,
             'entries' => $entries,
             'run' => $run,
+            'substitute' => $substitute,
             'skip' => $skip,
             'blockers' => $blockers,
+            'blocker_reasons' => $reasons,
             'plan_hash' => self::planHash($entries),
             'verdict' => $blockers === [] ? self::VERDICT_OK : self::VERDICT_RELEASE_BLOCKER,
         ];
+    }
+
+    /**
+     * The operator-facing RELEASE BLOCKER line for a blocked plan, with a code per cause:
+     * <prefix>_UNCLASSIFIED_MIGRATION for files without a classification, <prefix>_OWNER_APPROVAL_PENDING for reviewed
+     * files the owner has not approved (both when both apply). Empty string for a clean plan.
+     */
+    public static function blockerMessage(string $prefix, array $plan): string
+    {
+        $reasons = (array) ($plan['blocker_reasons'] ?? []);
+        $unclassified = $pending = [];
+        foreach ((array) ($plan['blockers'] ?? []) as $name) {
+            if (($reasons[$name] ?? self::DECISION_ABORT_UNCLASSIFIED) === self::DECISION_ABORT_OWNER_APPROVAL_PENDING) {
+                $pending[] = $name;
+            } else {
+                $unclassified[] = $name;
+            }
+        }
+        $parts = [];
+        if ($unclassified !== []) {
+            $parts[] = "{$prefix}_UNCLASSIFIED_MIGRATION: RELEASE BLOCKER — tenant migration(s) without a manifest classification: "
+                . implode(', ', $unclassified) . ' (classify them in ' . self::FILE . ')';
+        }
+        if ($pending !== []) {
+            $parts[] = "{$prefix}_OWNER_APPROVAL_PENDING: RELEASE BLOCKER — owner approval pending for reviewed tenant migration(s): "
+                . implode(', ', $pending) . ' (OWNER_APPROVAL in ' . self::FILE . ' — owner decision 16 Nov 2026, item 5)';
+        }
+
+        return implode('; ', $parts);
     }
 
     /** sha256 over the canonical (migration, group, classification, decision) tuples in plan order. */
@@ -369,6 +563,8 @@ final class EdgeTenantMigrationManifest
                 $problems[] = "UNCLASSIFIED tenant migration in the artifact plan (RELEASE BLOCKER): {$name}";
             } elseif ($this->classification($name) === self::CLOUD_ONLY) {
                 $problems[] = "CLOUD_ONLY tenant migration must not ship: {$name}";
+            } elseif (! $this->isOwnerApproved($name)) {
+                $problems[] = "OWNER_APPROVAL_PENDING tenant migration in the artifact plan (RELEASE BLOCKER — owner decision 16 Nov 2026, item 5): {$name}";
             }
         }
 

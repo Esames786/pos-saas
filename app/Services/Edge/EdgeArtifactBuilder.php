@@ -92,9 +92,12 @@ class EdgeArtifactBuilder
             throw new RuntimeException('ARTIFACT_MIGRATION_MANIFEST_MISSING: the tree ships tenant migrations but has no ' . EdgeTenantMigrationManifest::FILE . ' (RELEASE BLOCKER).');
         }
         $manifest = EdgeTenantMigrationManifest::load($root);
-        $blockers = array_filter($manifest->artifactProblems($tenant), fn ($p) => str_starts_with($p, 'UNCLASSIFIED'));
+        // RELEASE BLOCKERS: an unclassified file, or (owner decision 16 Nov 2026, item 5) a reviewed file without the owner's
+        // approval — the package builder itself refuses, before any artifact exists.
+        $blockers = array_filter($manifest->artifactProblems($tenant), fn ($p) => str_starts_with($p, 'UNCLASSIFIED') || str_starts_with($p, 'OWNER_APPROVAL_PENDING'));
         if ($blockers !== []) {
-            throw new RuntimeException('ARTIFACT_UNCLASSIFIED_TENANT_MIGRATION: RELEASE BLOCKER — ' . implode('; ', $blockers));
+            $code = array_filter($blockers, fn ($p) => str_starts_with($p, 'UNCLASSIFIED')) !== [] ? 'ARTIFACT_UNCLASSIFIED_TENANT_MIGRATION' : 'ARTIFACT_OWNER_APPROVAL_PENDING_TENANT_MIGRATION';
+            throw new RuntimeException($code . ': RELEASE BLOCKER — ' . implode('; ', $blockers));
         }
         $excluded = array_flip($manifest->packageExcludedPaths());
 

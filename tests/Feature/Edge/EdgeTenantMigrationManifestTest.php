@@ -34,9 +34,10 @@ class EdgeTenantMigrationManifestTest extends TestCase
         parent::tearDown();
     }
 
+    /** The REAL manifest file — never the test grant the base TestCase installs. */
     private function manifest(): EdgeTenantMigrationManifest
     {
-        return EdgeTenantMigrationManifest::load(base_path());
+        return EdgeTenantMigrationManifest::load(base_path(), ignoreTestOverride: true);
     }
 
     /** @return array<string,true> artifact-relative paths of the real plan (computed once — it walks vendor) */
@@ -128,7 +129,10 @@ class EdgeTenantMigrationManifestTest extends TestCase
                 $this->assertArrayHasKey($rel, $plan, "SHIP_AND_RUN migration missing from the artifact plan: {$rel}");
             }
         }
-        $this->assertSame([], $m->artifactProblems(array_keys($plan)));
+        // The REAL manifest reports exactly the owner approvals still pending (fail-closed gate, 16 Nov 2026) — never an unclassified or CLOUD_ONLY file.
+        $problems = $m->artifactProblems(array_keys($plan));
+        $this->assertSame([], array_values(array_filter($problems, fn ($p) => ! str_starts_with($p, 'OWNER_APPROVAL_PENDING'))));
+        $this->assertSame($m->ownerApprovalPending(), array_values(array_map(fn ($p) => substr($p, strrpos($p, ': ') + 2), $problems)));
     }
 
     public function test_every_shipped_migration_names_an_upgrade_test_that_exists_and_cloud_only_names_none(): void
@@ -230,7 +234,7 @@ class EdgeTenantMigrationManifestTest extends TestCase
         $this->assertSame(EdgeTenantMigrationManifest::DECISION_ABORT_UNCLASSIFIED, $byName['2026_12_31_000001_unclassified_probe']['decision']);
         $this->assertSame(EdgeTenantMigrationManifest::UNCLASSIFIED, $byName['2026_12_31_000001_unclassified_probe']['classification']);
         $this->assertSame(EdgeTenantMigrationManifest::EDGE_OWNED, $byName['2026_12_31_000002_edge_probe']['classification']);
-        $this->assertSame(['migration', 'group', 'classification', 'decision', 'tables', 'owner_review_required'], array_keys($plan['entries'][0]), 'stable entry shape');
+        $this->assertSame(['migration', 'group', 'classification', 'decision', 'tables', 'owner_review_required', 'owner_approval', 'edge_substitute'], array_keys($plan['entries'][0]), 'stable entry shape');
 
         // Deterministic: order-independent input, same hash; any change in the set changes the hash; empty plan hashes too.
         $again = $m->plan(['tenant' => [$required, '2026_12_31_000001_unclassified_probe', $cloudOnly], 'edge' => ['2026_12_31_000002_edge_probe']]);
@@ -239,6 +243,144 @@ class EdgeTenantMigrationManifestTest extends TestCase
         $this->assertNotSame($plan['plan_hash'], $m->plan(['tenant' => [$required], 'edge' => []])['plan_hash']);
         $this->assertSame(EdgeTenantMigrationManifest::VERDICT_OK, $m->plan(['tenant' => [], 'edge' => []])['verdict']);
         $this->assertSame($m->plan(['tenant' => [], 'edge' => []])['plan_hash'], EdgeTenantMigrationManifest::planHash([]));
+    }
+
+    // ── OWNER DECISION 16 Nov 2026 (item 5): explicit, migration-specific approvals — fail closed ─────────────
+
+    public function test_every_shipped_owner_review_entry_carries_an_explicit_approval_and_the_16_nov_decisions_are_recorded(): void
+    {
+        $m = $this->manifest();
+        foreach ($m->ownerReviewRequired() as $name) {
+            if ($m->classification($name) === EdgeTenantMigrationManifest::CLOUD_ONLY) {
+                $this->assertNull($m->ownerApproval($name), "{$name}: CLOUD_ONLY is never executed and carries no approval");
+                continue;
+            }
+            $approval = $m->ownerApproval($name);
+            $this->assertIsString($approval, "{$name}: an OWNER_REVIEW_REQUIRED migration must state its approval (or PENDING)");
+            $this->assertTrue(EdgeTenantMigrationManifest::approvalIsPending($approval) || preg_match(EdgeTenantMigrationManifest::OWNER_APPROVAL_PATTERN, $approval) === 1, "{$name}: {$approval}");
+            if ($m->entry($name)['BASELINE'] ?? false) {
+                $this->assertStringStartsWith('release:0.7.0-edge', $approval, "{$name}: a baseline migration was executed by the 0.7.0 release");
+            }
+        }
+        // The owner's 16 Nov 2026 decisions, in effect:
+        $this->assertStringStartsWith('owner-decision:2026-11-16', $m->ownerApproval('2026_10_23_000001_decimal_pack_sizes'), 'R-1 decimal_pack_sizes APPROVED');
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_RUN, $m->decisionFor('2026_10_23_000001_decimal_pack_sizes'));
+        $this->assertStringStartsWith('owner-decision:2026-11-16', $m->ownerApproval('2026_11_03_000003_let_a_purchase_bill_be_voided'), "purchase_bills ENUM 'voided' APPROVED (forward-only)");
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_RUN, $m->decisionFor('2026_11_03_000003_let_a_purchase_bill_be_voided'));
+        // order_note default-off: the existing-row rewrite is NOT approved — the canonical body is never the Edge decision.
+        $note = '2026_11_02_000002_order_note_toggle_default_off';
+        $this->assertSame(EdgeTenantMigrationManifest::EXECUTION_SUBSTITUTE, $m->executionMode($note));
+        $this->assertSame(\App\Services\Edge\MigrationSubstitutes\OrderNoteToggleDefaultOnly::class, $m->substituteFor($note));
+        $this->assertNotSame(EdgeTenantMigrationManifest::DECISION_RUN, $m->decisionFor($note), 'the canonical rewrite body must never run on an appliance');
+        $this->assertContains($m->decisionFor($note), [EdgeTenantMigrationManifest::DECISION_ABORT_OWNER_APPROVAL_PENDING, EdgeTenantMigrationManifest::DECISION_RUN_EDGE_SUBSTITUTE]);
+        // Today's state (16 Nov 2026): the substitute strategy awaits the owner's word — change this line together with the manifest when it comes.
+        $this->assertSame([$note], $m->ownerApprovalPending());
+    }
+
+    public function test_a_pending_owner_approval_blocks_the_plan_while_an_explicit_approval_runs_and_a_substitute_runs_as_substitute(): void
+    {
+        $probe = '2026_12_31_000002_edge_owner_review_probe';
+        $sub = \Tests\MySql\Support\EdgeGateProbeSubstitute::MIGRATION;
+        $make = fn (array $probeOverrides, array $subOverrides = []) => EdgeTenantMigrationManifest::fromArray(['manifest_version' => 'x@2026-01-01.1', 'migrations' => [
+            $probe => $this->entry($probe, EdgeTenantMigrationManifest::EDGE_REQUIRED, ['ADDITIVE_ONLY' => false, 'OWNER_REVIEW_REQUIRED' => true] + $probeOverrides),
+            $sub => $this->entry($sub, EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE, ['DATA_REWRITE' => true, 'OWNER_REVIEW_REQUIRED' => true, 'EDGE_EXECUTION' => 'SUBSTITUTE', 'EDGE_SUBSTITUTE' => \Tests\MySql\Support\EdgeGateProbeSubstitute::class] + $subOverrides),
+        ]]);
+
+        $m = $make(['OWNER_APPROVAL' => 'PENDING awaiting the owner'], ['OWNER_APPROVAL' => 'PENDING']);
+        $this->assertSame([$probe, $sub], $m->ownerApprovalPending());
+        $plan = $m->plan(['tenant' => [$probe, $sub], 'edge' => []]);
+        $this->assertSame([$probe, $sub], $plan['blockers']);
+        $this->assertSame([], $plan['run']);
+        $this->assertSame([], $plan['substitute']);
+        $this->assertSame(EdgeTenantMigrationManifest::VERDICT_RELEASE_BLOCKER, $plan['verdict']);
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_ABORT_OWNER_APPROVAL_PENDING, $plan['blocker_reasons'][$probe]);
+        $by = array_column($plan['entries'], null, 'migration');
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_ABORT_OWNER_APPROVAL_PENDING, $by[$probe]['decision']);
+        $this->assertSame('PENDING awaiting the owner', $by[$probe]['owner_approval']);
+        $this->assertStringContainsString('X_OWNER_APPROVAL_PENDING', EdgeTenantMigrationManifest::blockerMessage('X', $plan));
+        $this->assertStringNotContainsString('UNCLASSIFIED', EdgeTenantMigrationManifest::blockerMessage('X', $plan));
+        $this->assertNotEmpty(array_filter($m->artifactProblems(['database/migrations/tenant/' . $probe . '.php']), fn ($p) => str_starts_with($p, 'OWNER_APPROVAL_PENDING')));
+
+        $m = $make(['OWNER_APPROVAL' => 'owner-decision:2026-11-16 approved'], ['OWNER_APPROVAL' => 'release:0.8.2-edge executed']);
+        $this->assertSame([], $m->ownerApprovalPending());
+        $plan = $m->plan(['tenant' => [$probe, $sub], 'edge' => []]);
+        $this->assertSame([$probe], $plan['run']);
+        $this->assertSame([$sub], $plan['substitute'], 'a substitute never reaches the migrator run list');
+        $this->assertSame([], $plan['blockers']);
+        $this->assertSame(EdgeTenantMigrationManifest::VERDICT_OK, $plan['verdict']);
+        $by = array_column($plan['entries'], null, 'migration');
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_RUN_EDGE_SUBSTITUTE, $by[$sub]['decision']);
+        $this->assertSame(\Tests\MySql\Support\EdgeGateProbeSubstitute::class, $by[$sub]['edge_substitute']);
+        $this->assertNull($by[$probe]['edge_substitute']);
+        $this->assertSame([], $m->artifactProblems(['database/migrations/tenant/' . $probe . '.php', 'database/migrations/tenant/' . $sub . '.php']));
+        // the decision is part of the hashed plan: approving / substituting changes the plan hash
+        $this->assertNotSame($plan['plan_hash'], $make(['OWNER_APPROVAL' => 'PENDING'], ['OWNER_APPROVAL' => 'PENDING'])->plan(['tenant' => [$probe, $sub], 'edge' => []])['plan_hash']);
+        // the test grant marks itself as such and never counts as an owner approval
+        $granted = $make(['OWNER_APPROVAL' => 'PENDING'], ['OWNER_APPROVAL' => 'PENDING'])->withOwnerApprovalsGrantedForTests();
+        $this->assertSame([], $granted->ownerApprovalPending());
+        $this->assertStringContainsString('TEST-ONLY', $granted->ownerApproval($probe));
+        $this->assertStringContainsString('+test-approvals', $granted->version());
+    }
+
+    public function test_the_loader_rejects_a_missing_malformed_or_misplaced_approval_and_a_wrong_substitute(): void
+    {
+        $base = ['manifest_version' => 'x@2026-01-01.1'];
+        $probe = '2026_01_01_000001_probe';
+        $problems = fn (array $overrides, string $class = EdgeTenantMigrationManifest::EDGE_REQUIRED) => EdgeTenantMigrationManifest::problems($base + ['migrations' => [$probe => $this->entry($probe, $class, $overrides)]]);
+        $has = fn (array $p, string $needle) => array_filter($p, fn ($x) => str_contains($x, $needle)) !== [];
+
+        $this->assertTrue($has($problems(['ADDITIVE_ONLY' => false, 'OWNER_REVIEW_REQUIRED' => true]), 'OWNER_APPROVAL'), 'review-required without any approval statement');
+        $this->assertTrue($has($problems(['ADDITIVE_ONLY' => false, 'OWNER_REVIEW_REQUIRED' => true, 'OWNER_APPROVAL' => true]), 'OWNER_APPROVAL'), 'a bare boolean is not an explicit approval');
+        $this->assertTrue($has($problems(['ADDITIVE_ONLY' => false, 'OWNER_REVIEW_REQUIRED' => true, 'OWNER_APPROVAL' => 'approved by someone']), 'OWNER_APPROVAL'), 'free text is not an approval');
+        $this->assertTrue($has($problems(['ADDITIVE_ONLY' => false, 'OWNER_REVIEW_REQUIRED' => true, 'OWNER_APPROVAL' => 'owner-decision:16-11-2026']), 'OWNER_APPROVAL'), 'the date must be ISO');
+        $this->assertTrue($has($problems(['OWNER_APPROVAL' => 'owner-decision:2026-11-16']), 'OWNER_APPROVAL'), 'an approval on a non-review entry is misplaced');
+        $this->assertTrue($has($problems(['ADDITIVE_ONLY' => false, 'OWNER_REVIEW_REQUIRED' => true, 'OWNER_APPROVAL' => 'x'], EdgeTenantMigrationManifest::CLOUD_ONLY), 'OWNER_APPROVAL'), 'CLOUD_ONLY never executes — no approval');
+        $this->assertSame([], $problems(['ADDITIVE_ONLY' => false, 'OWNER_REVIEW_REQUIRED' => true, 'OWNER_APPROVAL' => 'PENDING']));
+        $this->assertSame([], $problems(['ADDITIVE_ONLY' => false, 'OWNER_REVIEW_REQUIRED' => true, 'OWNER_APPROVAL' => 'release:0.7.0-edge baseline']));
+        $this->assertSame([], $problems(['ADDITIVE_ONLY' => false, 'OWNER_REVIEW_REQUIRED' => true, 'OWNER_APPROVAL' => 'owner-decision:2026-11-16 R-1']));
+
+        $this->assertTrue($has($problems(['EDGE_EXECUTION' => 'MAYBE']), 'EDGE_EXECUTION'));
+        $this->assertTrue($has($problems(['EDGE_EXECUTION' => 'SUBSTITUTE']), 'EDGE_SUBSTITUTE'), 'SUBSTITUTE needs the class');
+        $this->assertTrue($has($problems(['EDGE_EXECUTION' => 'SUBSTITUTE', 'EDGE_SUBSTITUTE' => 'App\\Nope\\Missing']), 'EDGE_SUBSTITUTE'));
+        $this->assertTrue($has($problems(['EDGE_EXECUTION' => 'SUBSTITUTE', 'EDGE_SUBSTITUTE' => \Tests\MySql\Support\EdgeGateProbeSubstitute::class]), 'written for'), 'the substitute must be written for this exact migration');
+        $this->assertTrue($has($problems(['EDGE_SUBSTITUTE' => \Tests\MySql\Support\EdgeGateProbeSubstitute::class]), 'EDGE_EXECUTION'), 'a class without the SUBSTITUTE mode');
+        $this->assertTrue($has($problems(['EDGE_EXECUTION' => 'SUBSTITUTE', 'EDGE_SUBSTITUTE' => \Tests\MySql\Support\EdgeGateProbeSubstitute::class], EdgeTenantMigrationManifest::CLOUD_ONLY), 'CLOUD_ONLY'));
+    }
+
+    public function test_the_artifact_builder_refuses_a_tree_with_an_owner_approval_pending_migration_and_so_does_the_real_tree_while_one_is_pending(): void
+    {
+        $root = $this->syntheticTree(['2026_01_01_000001_probe_a', '2026_01_01_000002_probe_b']);
+        $builder = new EdgeArtifactBuilder(['include' => ['database/migrations'], 'exclude' => [], 'forbidden' => []]);
+        $this->writeManifest($root, [
+            '2026_01_01_000001_probe_a' => $this->entry('2026_01_01_000001_probe_a', EdgeTenantMigrationManifest::EDGE_REQUIRED),
+            '2026_01_01_000002_probe_b' => $this->entry('2026_01_01_000002_probe_b', EdgeTenantMigrationManifest::EDGE_REQUIRED, ['DATA_REWRITE' => true, 'OWNER_REVIEW_REQUIRED' => true, 'OWNER_APPROVAL' => 'PENDING']),
+        ]);
+        try {
+            $builder->plan($root);
+            $this->fail('an owner-approval-pending tenant migration must refuse the artifact plan');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('ARTIFACT_OWNER_APPROVAL_PENDING_TENANT_MIGRATION', $e->getMessage());
+            $this->assertStringContainsString('probe_b', $e->getMessage());
+        }
+        $this->writeManifest($root, [
+            '2026_01_01_000001_probe_a' => $this->entry('2026_01_01_000001_probe_a', EdgeTenantMigrationManifest::EDGE_REQUIRED),
+            '2026_01_01_000002_probe_b' => $this->entry('2026_01_01_000002_probe_b', EdgeTenantMigrationManifest::EDGE_REQUIRED, ['DATA_REWRITE' => true, 'OWNER_REVIEW_REQUIRED' => true, 'OWNER_APPROVAL' => 'owner-decision:2026-11-16 approved']),
+        ]);
+        $this->assertContains('database/migrations/tenant/2026_01_01_000002_probe_b.php', $builder->plan($root));
+
+        // The REAL tree, without the test grant: buildable exactly when no approval is pending (fail closed, item 5).
+        EdgeTenantMigrationManifest::overrideForTests(null);
+        $pending = $this->manifest()->ownerApprovalPending();
+        try {
+            EdgeArtifactBuilder::fromConfig()->plan(base_path());
+            $this->assertSame([], $pending, 'the real tree built an artifact plan although an owner approval is pending');
+        } catch (RuntimeException $e) {
+            $this->assertNotSame([], $pending, 'the real tree refused although nothing is pending: ' . $e->getMessage());
+            $this->assertStringContainsString('ARTIFACT_OWNER_APPROVAL_PENDING_TENANT_MIGRATION', $e->getMessage());
+            foreach ($pending as $name) {
+                $this->assertStringContainsString($name, $e->getMessage());
+            }
+        }
     }
 
     // ── artifact builder + package audit mechanics on synthetic trees ─────────
