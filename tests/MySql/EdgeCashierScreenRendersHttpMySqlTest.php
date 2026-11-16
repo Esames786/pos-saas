@@ -137,4 +137,40 @@ class EdgeCashierScreenRendersHttpMySqlTest extends MySqlTenantTestCase
         $this->flushSession();
         $this->get('/edge/local/pos')->assertStatus(302)->assertRedirect('/edge/local/login');
     }
+
+    /**
+     * RECALL-HIDDEN-ITEM-1 twin (canonical 69536d3a, rehearsal chunk 11): an active, sellable item HIDDEN from the POS rides in a
+     * list of its own (`recallProductsPayload`) that ONLY the recall of a saved bill reads — never the grid / search / scan —
+     * built from the synced menu through the SAME tile builder, so a recalled line carries exactly what a tile carries. A
+     * switched-off item is in neither list (the recall then refuses to open half a bill, shared JS).
+     */
+    public function test_pos_hidden_sellable_items_ride_only_in_the_recall_list(): void
+    {
+        $kitchenOnly = $this->makeCategory(['name' => 'Kitchen only']);
+        $hidden = $this->makeProduct($kitchenOnly, ['name' => 'Singaporean Rice (Khass)', 'is_sellable' => 1, 'is_pos_visible' => 0, 'status' => 'active', 'default_selling_price' => 450]);
+        $retired = $this->makeProduct($kitchenOnly, ['name' => 'Retired Dish', 'is_sellable' => 1, 'is_pos_visible' => 0, 'status' => 'inactive', 'default_selling_price' => 300]);
+        $notForSale = $this->makeProduct($kitchenOnly, ['name' => 'Raw Flour', 'is_sellable' => 0, 'is_pos_visible' => 0, 'status' => 'active', 'default_selling_price' => 0]);
+
+        $res = $this->get('/edge/local/pos')->assertOk();
+
+        $grid = collect($res->viewData('productsPayload'))->pluck('id')->map(fn ($id) => (int) $id);
+        $this->assertTrue($grid->contains($this->productId), 'the visible item is a tile');
+        $this->assertFalse($grid->contains($hidden), 'a hidden item is never a tile');
+
+        $recall = collect($res->viewData('recallProductsPayload'));
+        $this->assertSame([$hidden], $recall->pluck('id')->map(fn ($id) => (int) $id)->all(), 'only the hidden SELLABLE item — never a switched-off or not-for-sale one, never a tile');
+        $tile = $recall->first();
+        $this->assertSame('Singaporean Rice (Khass)', $tile['name']);
+        $this->assertSame(450.0, (float) $tile['price'], 'the same tile builder: the sale-resolved price');
+        $this->assertFalse((bool) $tile['pos_grid_visible']);
+        $this->assertArrayHasKey('variants', $tile);
+        $this->assertArrayHasKey('stock_by_branch', $tile);
+
+        $html = $res->getContent();
+        $this->assertStringContainsString('const recallProducts = ', $html, 'the shared recall JS reads the list');
+        $this->assertSame(1, substr_count($html, 'Singaporean Rice (Khass)'), 'the hidden item reaches the page ONCE — in the recall list, not in the grid payload');
+        $this->assertStringNotContainsString('Retired Dish', $html);
+        $this->assertStringNotContainsString('Raw Flour', $html);
+        $this->assertSame($notForSale, (int) DB::connection('tenant')->table('products')->where('id', $notForSale)->value('id'));
+    }
 }
