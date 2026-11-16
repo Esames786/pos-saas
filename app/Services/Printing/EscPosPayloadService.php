@@ -383,7 +383,10 @@ class EscPosPayloadService
             $out .= $this->brandingFooter();
         }
 
-        return $out . str_repeat('-', 42) . "\n\n\n" . self::CUT;
+        // SLIP-TOP-GAP-1 (16 Nov): ends like the KOT — last line, then the cut. The cut (GS V 66 0)
+        // feeds the paper to the cutter by itself; the 3 blank lines that sat here only added ~1.2 cm
+        // of empty paper under every reminder (owner's photo).
+        return $out . str_repeat('-', 42) . "\n" . self::CUT;
     }
 
     /**

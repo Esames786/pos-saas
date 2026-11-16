@@ -36,7 +36,7 @@
 ; NAYA AppId — 2.6.x machine-wide tha (AppId = AppName). Per-user ka apna; purana [Code] me dhoond kar hataya jata hai.
 AppId={{2E8B4C6A-9D3F-4A71-B5E2-7C1D0F9A3B64}
 AppName=Bingoo Print Agent
-AppVersion=2.7.0
+AppVersion=2.7.1
 AppPublisher=Bingoo POS
 DefaultDirName={localappdata}\Programs\BingooPrintAgent
 DisableDirPage=yes
