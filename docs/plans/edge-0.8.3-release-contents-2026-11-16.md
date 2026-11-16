@@ -72,7 +72,7 @@ focused gates for the touched workers (`EdgeLocalPrint*`, `EdgeLocalAuthority*`,
 | `2026_10_23_000002_sale_line_entered_unit` (and the other post-0.8.2 EDGE_REQUIRED ones already proven) | EDGE_REQUIRED | ready |
 | **`2026_10_23_000001_decimal_pack_sizes`** (R-1) | EDGE_REQUIRED, non-additive (type change) | **APPROVED 16 Nov 2026** (`OWNER_APPROVAL = owner-decision:2026-11-16 …`; fractional-value protection + rollback limits documented) |
 | **`2026_11_03_000003_let_a_purchase_bill_be_voided`** | EDGE_SCHEMA_SAFE, non-additive (ENUM MODIFY) | **APPROVED 16 Nov 2026**, forward-only (ordinals kept; empty down(); recovery = backup-based) |
-| **`2026_11_02_000002_order_note_toggle_default_off`** | EDGE_REQUIRED, data rewrite | **REWRITE NOT APPROVED** → Edge execution = SUBSTITUTE `OrderNoteToggleDefaultOnly` (default OFF only, rows untouched, canonical name recorded); `OWNER_APPROVAL = PENDING` → **RELEASE BLOCKER until the owner approves the substitute** |
+| **`2026_11_02_000002_order_note_toggle_default_off`** | EDGE_REQUIRED, data rewrite | rewrite NOT approved → Edge execution = SUBSTITUTE `OrderNoteToggleDefaultOnly` (default OFF only, rows untouched, canonical name recorded) — **substitute APPROVED 16 Nov 2026 (night)**: `owner-decision:2026-11-16 Edge default-only substitute approved; preserve existing operator values`; Cloud refresh remains authoritative |
 | `2026_10_30_000001_add_process_identity_to_edge_worker_state` (rel/0.8.3, EDGE_OWNED) | — | in the tree since merge `30d90dfd` |
 | `delivery_place_sightings`, `print_prepares` | CLOUD_ONLY | excluded from the package |
 
@@ -88,8 +88,8 @@ and the three suite tests `test_*_populated_rows_*` in `EdgeTenantMigrationUpgra
 
 ## 3. Release blockers (updated 16 Nov 2026, evening)
 
-1. ~~The three OWNER_REVIEW migrations~~ → R-1 and purchase_bills APPROVED; **order_note default-off: the substitute strategy awaits the
-   owner's approval** — `OWNER_APPROVAL = PENDING` makes the tree a RELEASE BLOCKER by the gate itself (the artifact builder refuses).
+1. ~~The three OWNER_REVIEW migrations~~ → all three resolved 16 Nov 2026: R-1 and purchase_bills APPROVED, order_note default-off
+   APPROVED as the Edge substitute (night). `ownerApprovalPending() = []` — the gate no longer blocks a build.
 2. ~~Decision on B~~ → merged (`30d90dfd`).
 3. LAB demo first (owner priority): no release install on the LAB before the supervised demonstration.
 4. Owner item 6: no build, sign or install until the order-note strategy and all mandatory release gates are resolved.

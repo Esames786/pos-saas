@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Tests\MySql\Support\EdgeGateFailingSubstitute;
 use Tests\MySql\Support\EdgeGateProbeSubstitute;
 use Tests\MySql\Support\EdgeLocalRuntimeFixture;
 use Tests\MySql\Support\TenantFixtures;
@@ -32,6 +33,7 @@ class EdgeTenantMigrationGateMySqlTest extends MySqlTenantTestCase
     private const UNCLASSIFIED_PLANTED = '2026_12_31_000001_edge_unclassified_probe';
     private const OWNER_REVIEW_PLANTED = '2026_12_31_000002_edge_owner_review_probe';      // OWNER DECISION 16 Nov 2026 (item 5)
     private const SUBSTITUTE_PLANTED = EdgeGateProbeSubstitute::MIGRATION;                 // OWNER DECISION 16 Nov 2026 (item 3)
+    private const FAILING_SUBSTITUTE_PLANTED = EdgeGateFailingSubstitute::MIGRATION;        // owner contract items 7 + 10
 
     private string $fixtureDir;
     private int $paidId;
@@ -62,7 +64,8 @@ class EdgeTenantMigrationGateMySqlTest extends MySqlTenantTestCase
             Schema::connection('tenant')->dropIfExists('edge_unclassified_probe');
             Schema::connection('tenant')->dropIfExists('edge_owner_review_probe');
             Schema::connection('tenant')->dropIfExists(EdgeGateProbeSubstitute::TABLE);
-            DB::connection('tenant')->table('migrations')->whereIn('migration', [self::CLOUD_ONLY_PLANTED, self::UNCLASSIFIED_PLANTED, self::OWNER_REVIEW_PLANTED, self::SUBSTITUTE_PLANTED])->delete();
+            DB::connection('tenant')->table('migrations')->whereIn('migration', [self::CLOUD_ONLY_PLANTED, self::UNCLASSIFIED_PLANTED, self::OWNER_REVIEW_PLANTED, self::SUBSTITUTE_PLANTED, self::FAILING_SUBSTITUTE_PLANTED])->delete();
+            DB::connection('tenant')->table('edge_local_meta')->update(['last_error' => null]);
         } catch (\Throwable $e) {
         }
         $this->resetRuntimeRole();
@@ -339,6 +342,51 @@ PHP);
         $this->assertNotSame('edge-local-schema@before-gate', $meta->edge_schema_version);
         $this->assertSame([], $this->upgrader()->upgrade()['applied'], 'idempotent');
         $this->assertSame([], $this->upgrader()->plan()['substitute']);
+    }
+
+    /** Owner contract items 7 + 10: a substitute whose body fails leaves NO ledger row (planned again next time), records the failure, applies nothing. */
+    public function test_a_failing_substitute_body_records_nothing_in_the_ledger_and_fails_closed(): void
+    {
+        $this->plant(self::FAILING_SUBSTITUTE_PLANTED, "throw new \\RuntimeException('CANONICAL BODY EXECUTED — must never happen');");
+        $this->installReviewEntry(self::FAILING_SUBSTITUTE_PLANTED, 'owner-decision:2026-11-16 failing probe approved for the gate test', ['DATA_REWRITE' => true, 'EDGE_EXECUTION' => EdgeTenantMigrationManifest::EXECUTION_SUBSTITUTE, 'EDGE_SUBSTITUTE' => EdgeGateFailingSubstitute::class]);
+        $plan = $this->upgrader()->plan();
+        $this->assertSame([self::FAILING_SUBSTITUTE_PLANTED], $plan['substitute']);
+        try {
+            $this->upgrader()->upgrade();
+            $this->fail('a failing substitute body must fail the upgrade');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('SCHEMA_UPGRADE_FAILED', $e->getMessage());
+            $this->assertStringContainsString('SUBSTITUTE_PRECONDITION_FAILED', $e->getMessage());
+        }
+        $this->assertFalse(DB::connection('tenant')->table('migrations')->where('migration', self::FAILING_SUBSTITUTE_PLANTED)->exists(), 'the canonical identity reaches the ledger ONLY after a successful substitute execution');
+        $meta = EdgeLocalMeta::current();
+        $this->assertStringContainsString('SUBSTITUTE_PRECONDITION_FAILED', (string) $meta->last_error, 'the failure is recorded on the appliance');
+        $this->assertSame('edge-local-schema@before-gate', $meta->edge_schema_version, 'the applied version did not advance');
+        $this->assertSame('paid', DB::connection('tenant')->table('sales_orders')->where('id', $this->paidId)->value('status'));
+        $this->assertSame([self::FAILING_SUBSTITUTE_PLANTED], $this->upgrader()->plan()['substitute'], 'planned again on the next run');
+    }
+
+    /** Owner contract item 10: a plan that names a substitute the manifest does not map (tampered / stale plan document) fails closed. */
+    public function test_an_unmapped_substitute_in_the_plan_fails_closed_before_executing_anything(): void
+    {
+        $this->plant(self::OWNER_REVIEW_PLANTED, "Schema::connection('tenant')->create('edge_owner_review_probe', fn (Blueprint \$t) => \$t->id());");
+        $this->installReviewEntry(self::OWNER_REVIEW_PLANTED, 'owner-decision:2026-11-16 probe approved for the gate test');
+        $plan = $this->upgrader()->plan();
+        $this->assertContains(self::OWNER_REVIEW_PLANTED, $plan['run']);
+        // tamper: move the RUN entry into the substitute list although the manifest maps no substitute for it
+        $tampered = $plan;
+        $tampered['run'] = array_values(array_diff($plan['run'], [self::OWNER_REVIEW_PLANTED]));
+        $tampered['substitute'] = [self::OWNER_REVIEW_PLANTED];
+        /** @var \Illuminate\Database\Migrations\Migrator $migrator */
+        $migrator = app('migrator');
+        try {
+            $migrator->usingConnection('tenant', fn () => $this->upgrader()->runTenantPlan($migrator, [database_path('migrations/tenant'), $this->fixtureDir], $tampered));
+            $this->fail('an unmapped substitute must fail closed');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('SCHEMA_UPGRADE_SUBSTITUTE_MISSING', $e->getMessage());
+        }
+        $this->assertFalse(Schema::connection('tenant')->hasTable('edge_owner_review_probe'), 'nothing executed');
+        $this->assertFalse(DB::connection('tenant')->table('migrations')->where('migration', self::OWNER_REVIEW_PLANTED)->exists(), 'nothing recorded');
     }
 
     public function test_the_dry_run_json_is_the_exact_plan_document_the_updater_hashes(): void

@@ -273,8 +273,10 @@ class EdgeTenantMigrationManifestTest extends TestCase
         $this->assertSame(\App\Services\Edge\MigrationSubstitutes\OrderNoteToggleDefaultOnly::class, $m->substituteFor($note));
         $this->assertNotSame(EdgeTenantMigrationManifest::DECISION_RUN, $m->decisionFor($note), 'the canonical rewrite body must never run on an appliance');
         $this->assertContains($m->decisionFor($note), [EdgeTenantMigrationManifest::DECISION_ABORT_OWNER_APPROVAL_PENDING, EdgeTenantMigrationManifest::DECISION_RUN_EDGE_SUBSTITUTE]);
-        // Today's state (16 Nov 2026): the substitute strategy awaits the owner's word — change this line together with the manifest when it comes.
-        $this->assertSame([$note], $m->ownerApprovalPending());
+        // Owner approval 16 Nov 2026 (night): "Edge default-only substitute approved; preserve existing operator values" — exact value, nothing pending.
+        $this->assertSame('owner-decision:2026-11-16 Edge default-only substitute approved; preserve existing operator values', $m->ownerApproval($note));
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_RUN_EDGE_SUBSTITUTE, $m->decisionFor($note));
+        $this->assertSame([], $m->ownerApprovalPending(), 'no owner approval pending in the real manifest (0.8.3 build gate)');
     }
 
     public function test_a_pending_owner_approval_blocks_the_plan_while_an_explicit_approval_runs_and_a_substitute_runs_as_substitute(): void

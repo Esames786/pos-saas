@@ -2,6 +2,8 @@
 
 namespace App\Services\Edge;
 
+use App\Services\Edge\MigrationSubstitutes\EdgeMigrationSubstitute;
+
 use App\Models\Edge\EdgeLocalMeta;
 use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeRuntime;
@@ -242,10 +244,17 @@ class EdgeLocalSchemaUpgrader
                 $flush(); // everything before it in name order has run
                 $class = $manifest->substituteFor($name);
                 if ($class === null) {
-                    throw new RuntimeException("SCHEMA_UPGRADE_SUBSTITUTE_MISSING: {$name} is planned as RUN_EDGE_SUBSTITUTE but the manifest names no substitute.");
+                    throw new RuntimeException("SCHEMA_UPGRADE_SUBSTITUTE_MISSING: {$name} is planned as RUN_EDGE_SUBSTITUTE but the manifest names no substitute; nothing was applied for it.");
+                }
+                // Fail closed (owner contract item 10): the class must exist, implement the contract and be written for THIS migration —
+                // validated at manifest load, checked again here because this is the moment it executes.
+                if (! class_exists($class) || ! is_subclass_of($class, EdgeMigrationSubstitute::class) || $class::forMigration() !== $name) {
+                    throw new RuntimeException("SCHEMA_UPGRADE_SUBSTITUTE_MISMATCH: {$class} is not an Edge substitute written for {$name}; nothing was applied for it.");
                 }
                 $output?->writeln("  <comment>RUN_EDGE_SUBSTITUTE</comment> {$name} via {$class} — " . $class::why());
                 (new $class())->up();
+                // Contract item 7: the canonical identity reaches the ledger ONLY after the substitute body succeeded (an exception
+                // above leaves no row, so the next upgrade plans it again and the failure is recorded on edge_local_meta).
                 $repository = $migrator->getRepository();
                 $repository->log($name, $repository->getNextBatchNumber());
                 Log::info('[edge-schema-upgrade] RUN_EDGE_SUBSTITUTE', ['migration' => $name, 'substitute' => $class, 'why' => $class::why()]);

@@ -55,7 +55,7 @@
 */
 
 return [
-    'manifest_version' => 'edge-tenant-migration-manifest@2026-11-16.1', // OWNER DECISION 16 Nov 2026: explicit OWNER_APPROVAL on every shipped review entry (fail-closed gate, item 5); order_note default-off = Edge SUBSTITUTE awaiting approval (item 3); R-1 + purchase_bills ENUM approved // Rehearsal chunks 9-11 (15 Nov 2026): canonical 073238de..5c74107f, 10 new tenant migrations classified (4 EDGE_REQUIRED / 4 EDGE_SCHEMA_SAFE / 2 CLOUD_ONLY; 2 OWNER_REVIEW_REQUIRED)
+    'manifest_version' => 'edge-tenant-migration-manifest@2026-11-16.2', // OWNER DECISION 16 Nov 2026: explicit OWNER_APPROVAL on every shipped review entry (fail-closed gate, item 5); R-1 + purchase_bills ENUM approved; order_note default-off = Edge SUBSTITUTE, APPROVED 16 Nov (night): "Edge default-only substitute approved; preserve existing operator values" — no owner approval pending // Rehearsal chunks 9-11 (15 Nov 2026): canonical 073238de..5c74107f, 10 new tenant migrations classified (4 EDGE_REQUIRED / 4 EDGE_SCHEMA_SAFE / 2 CLOUD_ONLY; 2 OWNER_REVIEW_REQUIRED)
     'meta' => [
         'baseline_release' => '0.7.0-edge',
         'baseline_commit' => '7b8f886',
@@ -3553,7 +3553,7 @@ return [
             'PACKAGE_DECISION' => 'SHIP_AND_RUN',
             'UPGRADE_TEST' => ['Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_order_note_toggle_default_off_upgrades_an_older_appliance_through_the_edge_substitute_keeping_an_operator_on_choice', 'Tests\\MySql\\EdgeTenantMigrationUpgradeMySqlTest::test_order_note_default_off_edge_substitute_preserves_populated_on_and_off_rows_while_the_canonical_body_would_rewrite_them', 'Tests\\MySql\\EdgeTenantMigrationGateMySqlTest::test_a_run_edge_substitute_migration_records_the_canonical_name_and_executes_only_the_substitute_body'],
             'OWNER_REVIEW_REQUIRED' => true,
-            'OWNER_APPROVAL' => 'PENDING owner decision 16 Nov 2026 (item 3): the EXISTING-ROW REWRITE IS NOT APPROVED; the Edge execution proposed below (SUBSTITUTE = default OFF for new layouts, no row touched, operator ON/OFF choices preserved) awaits the owner\'s word — until then this entry is a RELEASE BLOCKER (ABORT_OWNER_APPROVAL_PENDING)',
+            'OWNER_APPROVAL' => 'owner-decision:2026-11-16 Edge default-only substitute approved; preserve existing operator values', // the canonical rewrite body stays NOT approved: only the substitute below executes
             'EDGE_EXECUTION' => 'SUBSTITUTE',
             'EDGE_SUBSTITUTE' => \App\Services\Edge\MigrationSubstitutes\OrderNoteToggleDefaultOnly::class, // Edge body: the ALTER (default 0) only — never the UPDATE
             'BASELINE' => false,

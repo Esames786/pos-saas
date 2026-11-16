@@ -194,6 +194,10 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
 
     public function test_a_fresh_machine_installs_from_the_package_binds_to_the_cloud_serves_the_cashier_backs_up_updates_and_uninstalls_safely(): void
     {
+        // Owner (16 Nov 2026, night): this proof runs WITHOUT the TEST-ONLY approval grant — the packages are built and audited from the
+        // REAL manifest, and the installer / updater are real processes that never had the seam.
+        EdgeTenantMigrationManifest::overrideForTests(null);
+        $this->report['MANIFEST_APPROVAL_STATE'] = 'real manifest ' . EdgeTenantMigrationManifest::load(base_path(), ignoreTestOverride: true)->version() . '; pending owner approvals: ' . (implode(', ', EdgeTenantMigrationManifest::load(base_path(), ignoreTestOverride: true)->ownerApprovalPending()) ?: 'none');
         // 1. Packages: A = 0.1.0-edge (install), B = 0.2.0-edge (signed update). Real `edge:build-package` runs.
         // P5B §2 — the packages are signed from an ENCRYPTED custody keystore (never a plaintext key file): the same
         // `edge:update:keygen` + `--signing-keystore` path the pilot release uses.
