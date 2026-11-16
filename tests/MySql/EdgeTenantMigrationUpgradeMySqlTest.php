@@ -619,6 +619,9 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
         $this->proveUpgrade('2026_11_03_000001_add_entry_date_to_supplier_ledgers', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
             function ($conn, $schema) {
                 if ($schema->hasColumn('supplier_ledgers', 'entry_date')) {
+                    // MySQL keeps the composite (supplier_id, entry_date) index for the supplier_id FK on a fresh DB — an older
+                    // appliance had its own plain index; give the FK one for the probe (removed once the upgrade restored the composite).
+                    $conn->statement('ALTER TABLE supplier_ledgers ADD INDEX sl_probe_supplier_idx (supplier_id)');
                     $schema->table('supplier_ledgers', fn (Blueprint $t) => $t->dropIndex('supplier_ledgers_supplier_entry_date_index'));
                 }
                 $this->dropColumns('supplier_ledgers', ['entry_date']);
@@ -626,6 +629,7 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             function ($conn, $schema) {
                 $this->assertTrue($schema->hasColumn('supplier_ledgers', 'entry_date'));
                 $this->assertSame(1, (int) $conn->selectOne("SELECT COUNT(DISTINCT index_name) AS c FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'supplier_ledgers' AND index_name = 'supplier_ledgers_supplier_entry_date_index'")->c);
+                $conn->statement('ALTER TABLE supplier_ledgers DROP INDEX sl_probe_supplier_idx');
             });
     }
 

@@ -467,6 +467,7 @@ class EdgeInboundSaleIngestionService
         // W6 v2 and PHASE 4 v3 (⊇ v2) consume modifier linked stock; v1 semantics stay frozen.
         $consumeModifiers = in_array((string) ($envelope['envelope_schema_version'] ?? ''), [self::ENVELOPE_SCHEMA_V2, self::ENVELOPE_SCHEMA_V3], true);
         $sale->setRelation('branch', $branch);
+        $headerIdByCombo = [];   // DEAL-SPLIT-REPORT-1 ingestion (rehearsal chunk 11): the last header seen per deal, in envelope order
         foreach (($envelope['lines'] ?? []) as $line) {
             $product = Product::on('tenant')->findOrFail((int) $line['product_id']);
             $variant = ($line['product_variant_id'] ?? null)
@@ -493,7 +494,20 @@ class EdgeInboundSaleIngestionService
                 'modifiers' => $line['modifiers'] ?? null,
             ]);
             $newLine->line_uuid = (string) $line['line_uuid'];
+            // DEAL-SPLIT-REPORT-1 (canonical 7762ab39) on an Edge-sold deal: the Cloud report pairs a deal's parts with their header
+            // by parent_sales_order_line_id (SalesReportEngine::dealSplitPartOn) — a component without the link is not a part and
+            // the header keeps the whole money. The envelope carries no parent reference (local ids mean nothing here), so a
+            // component is linked to the most recent header of its deal in envelope order — the order the till wrote them
+            // (header first, then its components; EdgeLocalPosService::resolveLines/expandCombo). deal_share itself is stamped by
+            // SalesOrderLine::creating (DealSplit::stamp) from the CLOUD's parts when the tenant's Master switch is on.
+            $lineKind = (string) ($line['line_kind'] ?? 'standard');
+            if ($lineKind === 'component' && ! empty($line['combo_id'])) {
+                $newLine->parent_sales_order_line_id = $headerIdByCombo[(int) $line['combo_id']] ?? null;
+            }
             $newLine->save();
+            if ($lineKind === 'combo_header' && ! empty($line['combo_id'])) {
+                $headerIdByCombo[(int) $line['combo_id']] = (int) $newLine->id;
+            }
 
             // Official COGS/stock authority (Cloud FEFO) — never the Edge provisional movement.
             $method = $product->inventory_consumption_method ?? 'stock_item';

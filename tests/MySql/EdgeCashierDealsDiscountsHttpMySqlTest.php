@@ -352,4 +352,60 @@ class EdgeCashierDealsDiscountsHttpMySqlTest extends MySqlTenantTestCase
         $this->grantEdgePermission($this->userId, $permission);
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
     }
+
+    /**
+     * DEAL-WHOLE-SPLIT-1 twin (canonical 8c8ee79e / SplitBillDealWholeMySqlTest, rehearsal chunk 11): Split Bill moves a deal WHOLE —
+     * its items go with it, linked to the new deal line; an item of a deal cannot be split alone; a deal splits in whole deals.
+     */
+    public function test_split_bill_moves_a_deal_whole_with_its_items_linked_to_the_new_deal_line(): void
+    {
+        $sessionId = $this->postJson("/edge/local/pos/restaurant/tables/{$this->tableId}/open", ['guest_count' => 2])->json('session_id');
+        $hold = $this->postJson('/edge/local/pos/held-sales', [
+            'order_type' => 'dine_in', 'restaurant_table_session_id' => $sessionId,
+            'lines' => [['combo_id' => $this->comboId, 'quantity' => 2], ['product_id' => $this->naan, 'quantity' => 1]],
+        ])->assertStatus(201)->assertJsonPath('grand_total', 490);
+        $parentId = (int) $hold->json('sale_id');
+        $shape = fn (int $saleId) => DB::connection('tenant')->table('sales_order_lines')->where('sales_order_id', $saleId)->orderBy('id')->get()
+            ->map(fn ($l) => [$l->line_kind, (int) $l->product_id, (float) $l->quantity, (float) $l->line_total, $l->parent_sales_order_line_id === null ? null : 'linked'])->all();
+        $lines = DB::connection('tenant')->table('sales_order_lines')->where('sales_order_id', $parentId)->orderBy('id')->get();
+        $header = $lines->firstWhere('line_kind', 'combo_header');
+        $karahiPart = $lines->first(fn ($l) => $l->line_kind === 'component' && (int) $l->product_id === $this->karahi);
+        $this->assertSame((int) $header->id, (int) $karahiPart->parent_sales_order_line_id, 'the till links a deal\'s items to their header');
+        $before = $shape($parentId);
+        $bills = DB::connection('tenant')->table('sales_orders')->count();
+
+        // An item of the deal alone: refused with Online's words, nothing changes.
+        $alone = $this->postJson("/edge/local/pos/held-sales/{$parentId}/split", ['lines' => [['sales_order_line_id' => $karahiPart->id, 'quantity' => 1]]]);
+        $alone->assertStatus(422);
+        // the JSON answer escapes the em-dash (—): compare the decoded message, as the browser reads it.
+        $this->assertSame('Chicken Karahi is part of a deal — split the deal itself; its items go with it.', $alone->json('message'), "Online's words");
+        // Half a deal: refused.
+        $half = $this->postJson("/edge/local/pos/held-sales/{$parentId}/split", ['lines' => [['sales_order_line_id' => $header->id, 'quantity' => 0.5]]]);
+        $half->assertStatus(422);
+        // the counted-line rule answers first for a counted header product (Online's order too — canonical's test asserts 'whole').
+        $this->assertStringContainsString('whole', (string) $half->json('message'));
+        $this->assertSame($before, $shape($parentId), 'the bill is as it was');
+        $this->assertSame($bills, DB::connection('tenant')->table('sales_orders')->count(), 'no new bill');
+
+        // One of the two deals moves whole: its items follow, linked to the NEW deal line; the drink stays.
+        $split = $this->postJson("/edge/local/pos/held-sales/{$parentId}/split", ['lines' => [['sales_order_line_id' => $header->id, 'quantity' => 1]]])->assertStatus(201);
+        $childId = (int) $split->json('child.id');
+        $this->assertSame([
+            ['combo_header', $this->karahi, 1.0, 220.0, null],
+            ['component', $this->karahi, 1.0, 0.0, 'linked'],
+            ['component', $this->naan, 2.0, 0.0, 'linked'],
+        ], $shape($childId), 'the new bill: one deal and its items, linked');
+        $childHeader = DB::connection('tenant')->table('sales_order_lines')->where('sales_order_id', $childId)->where('line_kind', 'combo_header')->first();
+        $this->assertSame([(int) $childHeader->id, (int) $childHeader->id], DB::connection('tenant')->table('sales_order_lines')->where('sales_order_id', $childId)->where('line_kind', 'component')->pluck('parent_sales_order_line_id')->map(fn ($v) => (int) $v)->all(), 'linked to the NEW header, not the old one');
+        // (the Edge hold writes the plain line before the deal's rows — line order by id, as the bill was written)
+        $this->assertSame([
+            ['standard', $this->naan, 1.0, 50.0, null],
+            ['combo_header', $this->karahi, 1.0, 220.0, null],
+            ['component', $this->karahi, 1.0, 0.0, 'linked'],
+            ['component', $this->naan, 2.0, 0.0, 'linked'],
+        ], $shape($parentId), 'the old bill keeps the other deal with its items, and the naan');
+        $this->assertSame(220.0, (float) $split->json('child.grand_total'));
+        $this->assertSame(270.0, (float) $split->json('parent.grand_total'), 'money: 490 before = 220 + 270 after');
+        $this->assertSame(2, DB::connection('tenant')->table('sales_order_lines')->where('sales_order_id', $childId)->where('line_kind', 'component')->count());
+    }
 }
