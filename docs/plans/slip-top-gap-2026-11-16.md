@@ -73,3 +73,19 @@ No Master switch. The server half reaches every tenant on deploy. The agent half
 - On a 2.6.x PC, Windows asks for admin permission **once**. Click Yes (or enter the admin password).
 - The old agent stops, the new one starts by itself, and the pairing stays.
 - From then on, every slip on that PC's printers has ~1.2 cm less blank paper on top.
+
+## Done on prod (16 Nov, ~16:25 UTC / 21:25 PKT)
+- Merge `3adc2430` (prod `fbb811a5` → `3adc2430`). `git diff` between the tested tree and the merge was empty; origin == HEAD
+  before deploy. `deploy.sh` exited 0.
+- Checks:
+  - PERMISSIONS OK;
+  - ACCOUNTS OK (every chart unchanged);
+  - smoke 13/13 identical to before (tb_diff 0, no negatives);
+  - log ERROR count 10 → 10. All 10 are the known Kashif Kitchen `jobs`-table catering mail error (open item), none new.
+- Live proof:
+  - **Shelf:** newest = **2.7.1** (builds 2.7.1 / 2.6.6 / 2.6.5); `Setup.exe` and `releases/…-2.7.1.exe` sha256 `658b3058…`.
+  - **The photo's reminder (job 200348) rebuilt by the live code:** it ends `2D 2D 2D 2D 2D 0A 1D 56 42 00` (last line,
+    then the cut). The stored copy from before the fix ends `… 0A 0A 0A 1D 56 42 00`.
+  - **Demo agent `AG-DEMO-LOCAL`** (this laptop, upgraded 2.7.0 → 2.7.1 without pairing) reports `agent_version 2.7.1`.
+- **Next is the owner:** run the 2.7.1 setup on each restaurant PC (normal Download button, see Rollout). 2.6.x PCs do not
+  report a version; after the upgrade each one shows `2.7.1` on Print Agents.
