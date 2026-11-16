@@ -687,6 +687,148 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             });
     }
 
+    // ── POPULATED-DATA upgrade / rollback proofs for the three OWNER_REVIEW migrations (owner, 16 Nov 2026) ──────────────
+    // The clean-install proofs above run on empty tables; these seed the rows each migration touches, upgrade through the
+    // appliance upgrader, roll back with the migration's own down(), and upgrade again — every seeded value must survive.
+
+    /** Loads the migration file and returns its anonymous class (default connection is `tenant` in setUp). */
+    private function migrationObject(string $migration): object
+    {
+        return require database_path("migrations/tenant/{$migration}.php");
+    }
+
+    /** R-1: product_pack_units.factor INT → DECIMAL(15,4) keeps every factor and the (product_id, factor) unique key; lines keep pack_factor. */
+    public function test_decimal_pack_sizes_populated_rows_survive_upgrade_and_rollback(): void
+    {
+        $conn = DB::connection('tenant');
+        $productId = (int) $conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->value('product_id');
+        $conn->table('product_pack_units')->whereIn('name', ['Dozen', 'Box', 'Bag 2.5kg'])->delete();
+
+        $this->proveUpgrade('2026_10_23_000001_decimal_pack_sizes', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn, $schema) use ($productId) {
+                foreach (['sales_order_lines', 'sales_return_lines', 'goods_receipt_lines', 'purchase_order_lines', 'purchase_bill_lines', 'purchase_return_lines', 'stock_adjustment_lines', 'stock_transfer_lines'] as $t) {
+                    if ($schema->hasTable($t)) {
+                        $this->dropColumns($t, ['pack_size']);
+                    }
+                }
+                $conn->statement('ALTER TABLE `product_pack_units` MODIFY `factor` INT UNSIGNED NOT NULL');
+                $dozen = $conn->table('product_pack_units')->insertGetId(['product_id' => $productId, 'name' => 'Dozen', 'factor' => 12, 'created_at' => now(), 'updated_at' => now()]);
+                $conn->table('product_pack_units')->insert(['product_id' => $productId, 'name' => 'Box', 'factor' => 6, 'created_at' => now(), 'updated_at' => now()]);
+                $conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->update(['pack_unit_id' => $dozen, 'pack_factor' => 12]);
+            },
+            function ($conn, $schema) use ($productId) {
+                $factors = fn () => $conn->table('product_pack_units')->where('product_id', $productId)->orderBy('name')->pluck('factor', 'name')->map(fn ($v) => (float) $v)->all();
+                $this->assertSame(['Box' => 6.0, 'Dozen' => 12.0], $factors(), 'whole factors survive the widening');
+                $this->assertStringStartsWith('decimal', strtolower((string) $conn->selectOne("SELECT COLUMN_TYPE AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'product_pack_units' AND column_name = 'factor'")->t));
+                $line = $conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->first();
+                $this->assertSame(12, (int) $line->pack_factor, 'the line keeps pack_factor');
+                $this->assertNull($line->pack_size, 'pack_size NULL on an existing line (readers fall back to pack_factor)');
+                try {
+                    $conn->table('product_pack_units')->insert(['product_id' => $productId, 'name' => 'DupDozen', 'factor' => 12, 'created_at' => now(), 'updated_at' => now()]);
+                    $this->fail('the (product_id, factor) unique key must survive the type change');
+                } catch (\Illuminate\Database\QueryException $e) {
+                    $this->assertStringContainsString('product_pack_units_product_id_factor_unique', $e->getMessage());
+                }
+
+                $m = $this->migrationObject('2026_10_23_000001_decimal_pack_sizes');
+                // rollback with a FRACTIONAL pack present: pack_size columns go, factor stays DECIMAL (the migration's own rule)
+                $conn->table('product_pack_units')->insert(['product_id' => $productId, 'name' => 'Bag 2.5kg', 'factor' => 2.5, 'created_at' => now(), 'updated_at' => now()]);
+                $m->down();
+                $this->assertFalse($schema->hasColumn('sales_order_lines', 'pack_size'));
+                $this->assertStringStartsWith('decimal', strtolower((string) $conn->selectOne("SELECT COLUMN_TYPE AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'product_pack_units' AND column_name = 'factor'")->t), 'a fractional pack keeps the column DECIMAL on rollback');
+                $this->assertSame(2.5, (float) $conn->table('product_pack_units')->where('name', 'Bag 2.5kg')->value('factor'));
+                $m->up();
+                $this->assertTrue($schema->hasColumn('sales_order_lines', 'pack_size'));
+                // rollback with whole packs only: factor returns to INT UNSIGNED, every value and the line's pack_factor kept
+                $conn->table('product_pack_units')->where('name', 'Bag 2.5kg')->delete();
+                $m->down();
+                $this->assertStringContainsString('int', strtolower((string) $conn->selectOne("SELECT COLUMN_TYPE AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'product_pack_units' AND column_name = 'factor'")->t));
+                $this->assertSame(['Box' => 6.0, 'Dozen' => 12.0], $factors(), 'factors survive the rollback');
+                $this->assertSame(12, (int) $conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->value('pack_factor'));
+                $m->up();
+                $this->assertSame(['Box' => 6.0, 'Dozen' => 12.0], $factors(), 'and the second upgrade');
+                $conn->table('product_pack_units')->whereIn('name', ['Dozen', 'Box'])->delete();
+                $conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->update(['pack_unit_id' => null, 'pack_factor' => null]);
+            });
+    }
+
+    /** purchase_bills.status ENUM append: every existing bill keeps its status AND ordinal; 'voided' becomes usable; down() leaves the shape. */
+    public function test_purchase_bill_voidable_populated_rows_survive_upgrade_and_rollback(): void
+    {
+        $conn = DB::connection('tenant');
+        $conn->table('purchase_bills')->where('bill_no', 'like', 'MR-%')->delete();
+        $conn->table('suppliers')->where('code', 'MIGREV')->delete();
+        $supplierId = $conn->table('suppliers')->insertGetId(['code' => 'MIGREV', 'name' => 'Migration review supplier', 'created_at' => now(), 'updated_at' => now()]);
+        $bills = fn () => $conn->table('purchase_bills')->where('bill_no', 'like', 'MR-%')->orderBy('bill_no')->selectRaw('bill_no, status, status+0 AS ordinal')->get()->map(fn ($r) => [$r->bill_no, $r->status, (int) $r->ordinal])->all();
+
+        $this->proveUpgrade('2026_11_03_000003_let_a_purchase_bill_be_voided', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function ($conn) use ($supplierId) {
+                $this->dropColumns('purchase_bills', ['voided_at', 'voided_by_user_id', 'void_reason']);
+                $values = array_values(array_diff($this->enumValues('purchase_bills', 'status'), ['voided']));
+                $col = $conn->selectOne("SHOW COLUMNS FROM purchase_bills WHERE Field = 'status'");
+                $null = ($col->Null ?? '') === 'YES' ? 'NULL' : 'NOT NULL';
+                $default = $col->Default !== null ? " DEFAULT '" . $col->Default . "'" : '';
+                $conn->statement("ALTER TABLE purchase_bills MODIFY COLUMN status ENUM('" . implode("','", $values) . "') {$null}{$default}");
+                $i = 0;
+                foreach ($values as $status) {
+                    $conn->table('purchase_bills')->insert(['bill_no' => 'MR-' . ++$i, 'supplier_id' => $supplierId, 'branch_id' => $this->branchId, 'bill_date' => now()->toDateString(), 'status' => $status, 'subtotal' => 100 * $i, 'grand_total' => 100 * $i, 'balance_due' => 100 * $i, 'created_at' => now(), 'updated_at' => now()]);
+                }
+                $this->seededBills = $this->billsSnapshot();
+                $this->assertCount(count($values), $this->seededBills);
+            },
+            function ($conn, $schema) {
+                $this->assertSame($this->seededBills, $this->billsSnapshot(), 'every bill keeps its status and its ENUM ordinal');
+                $conn->table('purchase_bills')->where('bill_no', 'MR-1')->update(['status' => 'voided', 'voided_at' => now(), 'void_reason' => 'review probe']);
+                $this->assertSame('voided', $conn->table('purchase_bills')->where('bill_no', 'MR-1')->value('status'), "'voided' is usable");
+                $conn->table('purchase_bills')->where('bill_no', 'MR-1')->update(['status' => 'draft', 'voided_at' => null, 'void_reason' => null]);
+                // down() is intentionally empty: the member and the three columns stay, rows untouched
+                $this->migrationObject('2026_11_03_000003_let_a_purchase_bill_be_voided')->down();
+                $this->assertContains('voided', $this->enumValues('purchase_bills', 'status'));
+                $this->assertTrue($schema->hasColumn('purchase_bills', 'voided_at'));
+                $this->assertSame($this->seededBills, $this->billsSnapshot());
+                $conn->table('purchase_bills')->where('bill_no', 'like', 'MR-%')->delete();
+                $conn->table('suppliers')->where('code', 'MIGREV')->delete();
+            });
+    }
+
+    private array $seededBills = [];
+
+    private function billsSnapshot(): array
+    {
+        return DB::connection('tenant')->table('purchase_bills')->where('bill_no', 'like', 'MR-%')->orderBy('bill_no')
+            ->selectRaw('bill_no, status, status+0 AS ordinal')->get()->map(fn ($r) => [$r->bill_no, $r->status, (int) $r->ordinal])->all();
+    }
+
+    /** order_note default-off: an operator's ON choice is rewritten to OFF (the owner-review risk); down() restores the default only. */
+    public function test_order_note_default_off_populated_rows_are_rewritten_and_rollback_restores_only_the_default(): void
+    {
+        $conn = DB::connection('tenant');
+        $conn->table('receipt_layout_settings')->where('document_type', 'like', 'note-probe-%')->delete();
+        $notes = fn () => $conn->table('receipt_layout_settings')->where('document_type', 'like', 'note-probe-%')->orderBy('document_type')->pluck('show_order_note', 'document_type')->map(fn ($v) => (int) $v)->all();
+        $default = fn () => (string) $conn->selectOne("SELECT column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'receipt_layout_settings' AND column_name = 'show_order_note'")->d;
+
+        $this->proveUpgrade('2026_11_02_000002_order_note_toggle_default_off', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn) {
+                $conn->statement('ALTER TABLE receipt_layout_settings MODIFY show_order_note TINYINT(1) NOT NULL DEFAULT 1');
+                foreach (['note-probe-on' => 1, 'note-probe-off' => 0, 'note-probe-default' => null] as $type => $value) {
+                    $row = ['branch_id' => $this->branchId, 'document_type' => $type, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()];
+                    if ($value !== null) {
+                        $row['show_order_note'] = $value;
+                    }
+                    $conn->table('receipt_layout_settings')->insert($row);
+                }
+            },
+            function ($conn) use ($notes, $default) {
+                $this->assertSame('0', $default());
+                $this->assertSame(['note-probe-default' => 0, 'note-probe-off' => 0, 'note-probe-on' => 0], $notes(), 'EVERY row is OFF after the rewrite — including the one an operator had switched ON');
+                $this->migrationObject('2026_11_02_000002_order_note_toggle_default_off')->down();
+                $this->assertSame('1', $default(), 'down() restores the default');
+                $this->assertSame(['note-probe-default' => 0, 'note-probe-off' => 0, 'note-probe-on' => 0], $notes(), 'but not the rows: the rewrite is one-way');
+                $this->migrationObject('2026_11_02_000002_order_note_toggle_default_off')->up();
+                $this->assertSame('0', $default());
+                $conn->table('receipt_layout_settings')->where('document_type', 'like', 'note-probe-%')->delete();
+            });
+    }
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void
