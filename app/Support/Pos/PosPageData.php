@@ -48,6 +48,15 @@ final class PosPageData
         // page is exactly today's; no new route or endpoint — the sale/held/split stores carry pack_unit_id / inventory_batch_id /
         // batch_note on the existing lines. Edge twin: OFF (EdgeLocalPosController) — a follow-up owner decision builds it.
         'medicalCounter' => 'bool — MEDICAL-COUNTER-1: the medical-store counter is on for this tenant (Master switch)',
+        // CANONICAL REHEARSAL (Agent B, 30 Oct 2026): UNITS-PACKS F3 (canonical 7e85f640) — "Packs at the normal counter": a scanned carton
+        // sells as 1 Carton on the SAME page (tile payload gains `packs`, cart lines carry pack_unit_id/pack_factor). Master switch
+        // counter_packs (needs packs). Edge twin: OFF (EdgeLocalPosController) — the Edge sale twin has no pack-line pricing yet.
+        'counterPacks' => 'bool — UNITS-PACKS F3: packs sell at the normal counter for this tenant (Master switch counter_packs)',
+        // CANONICAL REHEARSAL chunk 11 (15 Nov 2026): RECALL-HIDDEN-ITEM-1 (canonical 69536d3a) — every active, sellable item HIDDEN
+        // from the POS, in a list of its own that ONLY the recall of a saved bill reads (a website order can carry one); the grid,
+        // search, barcode scan and combos keep reading productsPayload. Edge twin: EdgeLocalPosController::sharedMenu builds it
+        // from the synced menu with the same tile builder, so a recalled line carries exactly what a grid tile carries.
+        'recallProductsPayload' => 'array[] — RECALL-HIDDEN-ITEM-1: POS-hidden sellable items, read only by recall (same tile shape)',
     ];
 
     /** @param  array<string,mixed>  $data */

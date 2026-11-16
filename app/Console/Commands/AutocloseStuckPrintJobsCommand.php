@@ -80,6 +80,15 @@ class AutocloseStuckPrintJobsCommand extends Command
                 continue;
             }
 
+            // PRINT-PREPARE-1 — "screen khulte hi tayyari" ki rows asli parche nahi; ek din baad bekaar. Server par jama
+            // na hon (PC par PDF ka hisaab agent khud rakhta hai). Dry run sirf ginti batata hai.
+            if (Schema::connection('tenant')->hasTable('print_prepares')) {
+                $count = \App\Models\Tenant\PrintPrepare::purgeOlderThanADay($dryRun);
+                if ($count > 0) {
+                    $this->line("[{$tenant->tenant_code}] tayyari ki {$count} purani rows ".($dryRun ? 'mitti (dry run)' : 'mita di'));
+                }
+            }
+
             $cutoff   = now()->subMinutes($minutes);
             $inFlight = now()->subMinutes(self::IN_FLIGHT_LEASE_MINUTES);
 

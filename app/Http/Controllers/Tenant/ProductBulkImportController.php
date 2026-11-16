@@ -42,8 +42,9 @@ class ProductBulkImportController extends Controller
 
         $imported = 0;
         $skipped  = 0;
+        $keptUnit = 0;
 
-        DB::transaction(function () use ($handle, $header, &$imported, &$skipped) {
+        DB::transaction(function () use ($handle, $header, &$imported, &$skipped, &$keptUnit) {
             while (($row = fgetcsv($handle)) !== false) {
                 $data = array_combine($header, $row);
 
@@ -74,11 +75,20 @@ class ProductBulkImportController extends Controller
                 $type = in_array($data['product_type'] ?? '', ['simple', 'recipe', 'hybrid', 'service'])
                     ? $data['product_type'] : 'simple';
 
+                // UB-10: an existing item whose stock or purchases ran in its unit keeps that unit — the import must
+                // not make every old entry read in another one. The rest of the row is imported as before.
+                $unitId = $unit?->id;
+                $existing = Product::where('sku', $sku)->first(['id', 'unit_id']);
+                if ($existing && \App\Support\StockUnitGuard::changes($existing, $unitId) && \App\Support\StockUnitGuard::hasHistory((int) $existing->id)) {
+                    $unitId = $existing->unit_id;
+                    $keptUnit++;
+                }
+
                 $product = Product::updateOrCreate(
                     ['sku' => $sku],
                     [
                         'category_id'            => $category?->id,
-                        'unit_id'                => $unit?->id,
+                        'unit_id'                => $unitId,
                         'name'                   => $data['name'],
                         'slug'                   => Str::slug($data['name']) . '-' . strtolower($sku),
                         'product_type'           => $type,
@@ -110,6 +120,7 @@ class ProductBulkImportController extends Controller
 
         fclose($handle);
 
-        return redirect('/products')->with('status', "Import complete. Imported: {$imported}, Skipped: {$skipped}");
+        return redirect('/products')->with('status', "Import complete. Imported: {$imported}, Skipped: {$skipped}"
+            . ($keptUnit ? ". {$keptUnit} kept its unit — its stock or purchases already ran in it" : ''));
     }
 }

@@ -65,6 +65,7 @@
                         @endif
                     </td>
                     <td class="text-end">
+                        @include('partials.edit-in-product', ['productId' => $recipe->product_id, 'tab' => 'recipe'])
                         @can('tenant.recipes.edit')
                             <a href="{{ url('/recipes/' . $recipe->id . '/edit') }}" class="btn btn-sm btn-light">Edit</a>
                         @endcan

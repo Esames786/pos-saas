@@ -30,6 +30,8 @@ class WebSetting extends Model
         'seo_title', 'seo_description', 'seo_keywords', 'privacy_policy', 'faqs',
         // DELIVERY-RADIUS-1: area (har area ki fee) | distance (branch se doori ke bands).
         'delivery_fee_mode',
+        // WEB-PICKUP-SWITCH-1: website par Pick-Up on/off.
+        'pickup_enabled',
     ];
 
     protected function casts(): array
@@ -47,7 +49,14 @@ class WebSetting extends Model
             'upsell_category_id' => 'integer',
             'popular_auto' => 'boolean',
             'faqs' => 'array',
+            'pickup_enabled' => 'boolean',
         ];
+    }
+
+    /** Website par Pick-Up chalta hai? Khaali (nayi row jo DB ka default wapas nahi parhti) = haan. */
+    public function pickupOn(): bool
+    {
+        return $this->pickup_enabled !== false;
     }
 
     /** @return list<array{category: string, q: string, a: string}> */

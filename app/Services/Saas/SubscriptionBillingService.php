@@ -141,10 +141,23 @@ class SubscriptionBillingService
             return;
         }
 
+        // BILLING-DATE-KEEP-1 (31 Oct 2026): invoice paid hone se khatam hone ki tareekh sirf AAGE ja sakti hai, kabhi
+        // peeche nahi. Pehle ye seedha invoice ka period_end likh deta tha: kisi ki tareekh saal bhar aage ho, to
+        // November ki invoice paid hote hi 30 November ho jati — agli raat band. Aur period_end ek DATE hai (raat
+        // 12 baje), is liye paid mahine ka aakhri din bhi nahi ginta tha: 31 Oct 00:10 ko sweep ne aik live tenant band kiya.
+        // Is liye: period_end us din ke aakhir tak, aur jo tareekh pehle se aage ho wohi rehti hai.
+        $endsAt = $subscription->current_period_ends_at;
+        if ($invoice->period_end) {
+            $paidUntil = $invoice->period_end->copy()->setTime(23, 59, 59);
+            if (! $endsAt || $paidUntil->gt($endsAt)) {
+                $endsAt = $paidUntil;
+            }
+        }
+
         $subscription->update([
             'status'                 => 'active',
             'plan_id'                => $invoice->plan_id ?: $subscription->plan_id,
-            'current_period_ends_at' => $invoice->period_end ?: $subscription->current_period_ends_at,
+            'current_period_ends_at' => $endsAt,
         ]);
 
         // Close out any plan-change request that this invoice was created for.

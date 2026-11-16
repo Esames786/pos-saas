@@ -36,17 +36,15 @@
 
         {{-- Jab source aur shelf alag hon, wo farq LIKHA jata hai. Yehi khamoshi
              thi jis ne galat installer client ke PC tak pahunchaya. --}}
+        {{-- AGENT-UPGRADE-1 (11 Nov) — sach wohi, mashwara badla. Pehle yahan "plain .exe lo aur install-service.ps1
+             chalao" likha tha: wohi SYSTEM + Highest task jo 9 Oct ko A4/A5 documents maar gaya (elevated Chrome PDF
+             nahi banata). Ab naya agent pehle ek dukan par aazmaya jata hai aur shelf par baad me aata hai — us beech
+             ye farq sirf ITTILA hai, khatra nahi: button wohi deta hai jo likha hai. --}}
         @if($stn !== $agentVersion)
-            <div class="alert alert-warning py-2 px-3 mt-2 small text-start">
-                <i class="ti ti-alert-triangle me-1"></i>
-                The code on this server is <strong>{{ $agentVersion }}</strong>, but the newest
-                installer on the shelf is <strong>{{ $stn ?? 'none' }}</strong>. The installer is
-                built separately, so until it is rebuilt this button gives
-                {{ $stn ?? 'nothing' }} — not {{ $agentVersion }}.
-                <a class="ms-1" href="{{ url('/print/agents/download/windows') . '?raw=1&v=' . $agentVersion }}">
-                    Download {{ $agentVersion }} as a plain .exe instead
-                </a>
-                <span class="text-muted">(then run <code>install-service.ps1</code> beside it).</span>
+            <div class="alert alert-info py-2 px-3 mt-2 small text-start">
+                <i class="ti ti-info-circle me-1"></i>
+                A newer agent (<strong>{{ $agentVersion }}</strong>) is being tried at one shop first. Until it is on the
+                shelf, this button gives <strong>{{ $stn ?? 'nothing' }}</strong> — which keeps working as before.
             </div>
         @endif
         @if(!empty($agentBuilds) && count($agentBuilds) > 1)
@@ -81,6 +79,16 @@
             <h2 class="h5 mb-1">Pairing code for <strong>{{ $pairing['agent_name'] }}</strong> ({{ $pairing['agent_code'] }})</h2>
             <p class="text-muted mb-3">Enter this code in the agent app on the shop PC. It expires in 15 minutes and works only once.</p>
             <div class="display-4 fw-bold font-monospace mb-2" id="pairing-code-value">{{ $pairing['code'] }}</div>
+            {{-- AGENT-UPGRADE-1 — "ek click": isi PC par khola ho to yahan se download karo; server aur code installer
+                 me pehle se bhare hote hain (file ke naam me). Purani file se pairing waise hi hoti hai jaise pehle. --}}
+            @if(! empty($pairing['prefill_url']))
+                <div class="mb-3">
+                    <a class="btn btn-success" href="{{ $pairing['prefill_url'] }}">
+                        <i class="ti ti-download me-1"></i>Download agent {{ $pairing['prefill_version'] }} — code already filled in
+                    </a>
+                    <div class="small text-muted mt-1">Run it on the shop PC within 15 minutes: no admin password, nothing to type.</div>
+                </div>
+            @endif
             <div class="mb-3">
                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('{{ str_replace('-', '', $pairing['code']) }}'); this.textContent='Copied!';">Copy code</button>
                 <span class="text-muted small ms-2">Server URL: <code>{{ $pairing['server_url'] }}</code></span>
@@ -170,6 +178,8 @@
                         @if($agent->paired_device_platform || $agent->device_os || $agent->local_ip)
                             <small class="d-block text-muted">{{ $agent->paired_device_platform ?: $agent->device_os }} {{ $agent->local_ip }}</small>
                         @endif
+                        {{-- AGENT-UPGRADE-1 — 2.7.0 se agent har heartbeat par apna version batata hai. Pehle wale nahi batate. --}}
+                        <small class="d-block text-muted">Agent {{ $agent->agent_version ?? 'older than 2.7.0' }}</small>
                     </td>
                     <td>{{ $agent->last_seen_at?->diffForHumans() ?? 'Never' }}</td>
                     <td>

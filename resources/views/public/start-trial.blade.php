@@ -95,11 +95,17 @@
                              say "per month" even when the visitor had chosen Yearly on the pricing page. --}}
                         <h4 class="fw-bold mb-1" id="selPlanName">{{ __($selectedPlan->name) }}</h4>
                         <p class="text-muted small mb-2" id="selPlanDesc">{{ __((string) $selectedPlan->public_description) }}</p>
+                        @if($pricesHidden)
+                            {{-- WEBSITE-HIDE-PRICES-1 --}}
+                            <div class="fw-semibold fs-5 mb-1">{{ __('Price on request') }}</div>
+                            <div class="text-muted small mb-2">{{ __('No payment required') }}</div>
+                        @else
                         <div class="plan-price"><bdi><span id="selPlanCurrency">{{ $selectedPlan->currency_code }}</span> <span id="selPlanAmount">{{ $money($planPrices[$selectedPlan->id][$billingChoice]) }}</span></bdi></div>
                         <div class="text-muted small mb-1" id="selPlanPer">{{ $billingChoice === 'yearly' ? __('per year') : __('per month') }}</div>
                         <div class="small text-success mb-2" id="selPlanSaving" @if($billingChoice !== 'yearly') hidden @endif>
                             {{ __('2 months free') }} · <bdi id="selPlanMonthlyEq">{{ $selectedPlan->currency_code }} {{ $perMonthOfYear($selectedPlan) }}</bdi> {{ __('a month') }}
                         </div>
+                        @endif
                         @if($selectedPlan->trial_days)
                             <span class="badge bg-success-subtle text-success mb-3">{{ __(':days-day free trial', ['days' => $selectedPlan->trial_days]) }}</span>
                         @endif
@@ -210,6 +216,8 @@
 
                             {{-- Billing cycle (CLOUD-BILLING-2) — posts billing_period only; the server prices it.
                                  Pre-selected from ?billing=, so it works without JS. --}}
+                            {{-- WEBSITE-HIDE-PRICES-1: no cycle to choose while prices are hidden (an absent cycle posts as monthly). --}}
+                            @unless($pricesHidden)
                             <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;"><i class="ti ti-calendar me-1"></i>{{ __('Billing cycle') }}</h6>
                             <div class="row g-3 mb-4" id="billingCycle">
                                 @foreach(['monthly' => [__('Monthly'), __('Billed every month')], 'yearly' => [__('Yearly'), __("2 months free — 10 months' price, billed once for 12 months")]] as $cycle => [$label, $sub])
@@ -224,6 +232,7 @@
                                     </div>
                                 @endforeach
                             </div>
+                            @endunless
 
                             @if($pb)
                                 {{-- WEBSITE-I18N-GEO-1 P2: what was chosen in the plan builder. Posted as counts only; the
@@ -252,9 +261,12 @@
                                         <label class="plan-card d-block p-3 h-100 {{ $plan->code==='restaurant_pro' ? 'plan-card-popular' : '' }}" style="cursor:pointer;">
                                             <div class="form-check">
                                                 <input class="form-check-input plan-radio" type="radio" name="plan_id" value="{{ $plan->id }}" {{ $checked ? 'checked' : '' }} required
-                                                       data-name="{{ __($plan->name) }}" data-desc="{{ __((string) $plan->public_description) }}" data-currency="{{ $plan->currency_code }}"
+                                                       data-name="{{ __($plan->name) }}" data-desc="{{ __((string) $plan->public_description) }}"
+                                                       @unless($pricesHidden)
+                                                       data-currency="{{ $plan->currency_code }}"
                                                        data-monthly="{{ $money($planPrices[$plan->id]['monthly']) }}" data-yearly="{{ $money($planPrices[$plan->id]['yearly']) }}"
                                                        data-yearly-month="{{ $perMonthOfYear($plan) }}"
+                                                       @endunless
                                                        data-branches="{{ $limitLabel($feature($plan,'branch_limit')) }}" data-users="{{ $limitLabel($feature($plan,'user_limit')) }}"
                                                        data-modules="{{ $plan->enabledModules->count() }}">
                                                 <span class="form-check-label fw-semibold">{{ __($plan->name) }}</span>
@@ -264,6 +276,7 @@
                                                 <div class="mt-2"><span class="fw-bold">{{ $pbMoney($perBranch['plans'][$plan->code]['quote']['unit']) }}</span> <small class="text-muted">{{ __('per branch / month') }}</small></div>
                                             @else
                                             <div class="mt-2">
+                                                @unless($pricesHidden)
                                                 <span class="plan-price-monthly" @if($billingChoice !== 'monthly') hidden @endif>
                                                     <span class="fw-bold"><bdi>{{ $plan->currency_code }} {{ $money($planPrices[$plan->id]['monthly']) }}</bdi></span>
                                                     <small class="text-muted">/ {{ __('month') }}</small>
@@ -272,6 +285,7 @@
                                                     <span class="fw-bold"><bdi>{{ $plan->currency_code }} {{ $money($planPrices[$plan->id]['yearly']) }}</bdi></span>
                                                     <small class="text-muted">/ {{ __('year') }}</small>
                                                 </span>
+                                                @endunless
                                                 @if($plan->trial_days)<small class="text-success ms-2">{{ __(':days-day trial', ['days' => $plan->trial_days]) }}</small>@endif
                                             </div>
                                             <div class="small text-muted mt-1">

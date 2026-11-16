@@ -61,7 +61,8 @@
                         <div class="icon-wrap mb-3"><i class="ti {{ $ico }}"></i></div>
                         <h5 class="fw-bold mb-2">{{ $title }}</h5>
                         <p class="text-muted small mb-3">{{ $desc }}</p>
-                        <a href="#contact-details" class="btn btn-sm btn-outline-primary">{{ __('Contact us') }}</a>
+                        {{-- CONTACT-FORM-1: card ab seedha form par le jata hai (aur mauzu pehle se chun deta hai). --}}
+                        <a href="#contact-form" class="btn btn-sm btn-outline-primary">{{ __('Contact us') }}</a>
                     </div>
                 </div>
             @endforeach
@@ -109,6 +110,139 @@
 </section>
 @endif
 
+{{-- CONTACT FORM (CONTACT-FORM-1) --}}
+<section id="contact-form" class="section-pad" style="background:#f8faff;">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="gradient-card p-4 p-md-5 reveal">
+                    <div class="text-center mb-4">
+                        <div class="icon-wrap mx-auto mb-3"><i class="ti ti-message-2"></i></div>
+                        <h3 class="fw-bold mb-2">{{ __('Send us a message') }}</h3>
+                        <p class="text-muted mb-0">{{ __('Tell us what you need and our sales team will get back to you.') }}</p>
+                    </div>
+
+                    @if(session('contact_sent'))
+                        <div class="alert alert-success" role="status">
+                            <i class="ti ti-circle-check me-1"></i>
+                            <strong>{{ __('Thank you — your message has reached us.') }}</strong>
+                            <div class="small mt-1">{{ __('Our sales team will contact you shortly. We have also emailed you a confirmation.') }}</div>
+                        </div>
+                    @endif
+
+                    @if($errors->any())
+                        <div class="alert alert-danger">
+                            <ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
+                        </div>
+                    @endif
+
+                    {{-- Usi zaban ke safhe par wapas post hota hai, taki ghaltiyan bhi usi zaban me aayein. --}}
+                    <form method="POST" action="{{ $lurl('/contact') }}">
+                        @csrf
+
+                        {{-- Honeypot: asli visitor ko ye dikhta hi nahi; bot aksar har khana bhar dete hain. --}}
+                        <div style="position:absolute;inset-inline-start:-9999px;" aria-hidden="true">
+                            <label>Website</label>
+                            <input type="text" name="website" tabindex="-1" autocomplete="off" value="{{ old('website') }}">
+                        </div>
+
+                        {{-- Jis plan ya mauzu ke link se aaya, wo saath chalta hai. --}}
+                        <input type="hidden" name="plan_hint" value="{{ old('plan_hint', request('plan')) }}">
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="cf-name" class="form-label">{{ __('Your name') }} <span class="text-danger">*</span></label>
+                                <input id="cf-name" type="text" name="name" value="{{ old('name') }}" required maxlength="255"
+                                       autocomplete="name" class="form-control @error('name') is-invalid @enderror">
+                                @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label for="cf-business" class="form-label">{{ __('Business name') }}</label>
+                                <input id="cf-business" type="text" name="business_name" value="{{ old('business_name') }}" maxlength="255"
+                                       autocomplete="organization" class="form-control @error('business_name') is-invalid @enderror">
+                                @error('business_name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label for="cf-email" class="form-label">{{ __('Email') }} <span class="text-danger">*</span></label>
+                                <input id="cf-email" type="email" name="email" value="{{ old('email') }}" required maxlength="255"
+                                       autocomplete="email" dir="ltr" class="form-control @error('email') is-invalid @enderror">
+                                @error('email')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label for="cf-phone" class="form-label">{{ __('Phone / WhatsApp') }}</label>
+                                <input id="cf-phone" type="text" name="phone" value="{{ old('phone') }}" maxlength="50"
+                                       autocomplete="tel" dir="ltr" class="form-control @error('phone') is-invalid @enderror">
+                                @error('phone')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                            <div class="col-12">
+                                <label for="cf-topic" class="form-label">{{ __('What is this about?') }}</label>
+                                @php
+                                    // ?topic=fbr jaise link se aaya to wohi pehle se chuna hua.
+                                    $topics = \App\Models\Master\ContactEnquiry::TOPICS;
+                                    if (! $pakistanSite) { unset($topics['fbr']); }
+                                    $selectedTopic = old('topic', request('topic'));
+                                @endphp
+                                <select id="cf-topic" name="topic" class="form-select @error('topic') is-invalid @enderror">
+                                    <option value="">{{ __('Choose a topic') }}</option>
+                                    @foreach($topics as $key => $label)
+                                        <option value="{{ $key }}" @selected($selectedTopic === $key)>{{ __($label) }}</option>
+                                    @endforeach
+                                </select>
+                                @error('topic')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                            <div class="col-12">
+                                <label for="cf-message" class="form-label">{{ __('Your message') }} <span class="text-danger">*</span></label>
+                                <textarea id="cf-message" name="message" rows="5" required minlength="10" maxlength="5000"
+                                          class="form-control @error('message') is-invalid @enderror"
+                                          placeholder="{{ __('How many branches and counters? What kind of business? Anything else we should know?') }}">{{ old('message') }}</textarea>
+                                @error('message')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                        </div>
+
+                        {{-- RECAPTCHA-TRIAL-1 ka wohi box, wohi shart: sirf jab dono keys lagi hon.
+
+                             🔴 Yahan `@php(...)` wala chhota form JAAN BOOJH KAR istemal NAHI hota.
+                             Blade pehle `/@php(.*?)@endphp/s` chalata hai: chhote form ka `@php`
+                             us ke BAAD aane wale kisi bhi `@endphp` se jurr jata hai. Is safhe par
+                             neeche ek asli `@php … @endphp` block hai, to darmiyan ka poora HTML
+                             raw block ban kar literal text ban gaya — `$hasPhone` kabhi set hi
+                             nahi hua aur safha 500 de gaya. Compiled PHP phir bhi `php -l` paas
+                             karta hai (wo bas directives ko TEXT ki tarah chhapta hai), is liye
+                             ye sirf safha render kar ke pakRa jata hai. --}}
+                        @php $recaptchaKey = \App\Services\Saas\Recaptcha::siteKey(); @endphp
+                        @if ($recaptchaKey)
+                            <div class="recaptcha-box mt-4">
+                                <div class="g-recaptcha" data-sitekey="{{ $recaptchaKey }}"></div>
+                            </div>
+                            @push('scripts')
+                                <script src="https://www.google.com/recaptcha/api.js?hl={{ app()->getLocale() }}" async defer></script>
+                            @endpush
+                            @push('styles')
+                                <style>
+                                    /* Google draws the box at a fixed 304px; inside the card's padding a small
+                                       phone has less, so it is scaled (not clipped) below 420px. */
+                                    .recaptcha-box { display:flex; justify-content:center; min-height:78px; }
+                                    @media (max-width: 420px) {
+                                        .recaptcha-box { min-height:68px; }
+                                        .recaptcha-box .g-recaptcha { transform:scale(.86); transform-origin:top center; }
+                                    }
+                                </style>
+                            @endpush
+                        @endif
+
+                        <button type="submit" class="btn btn-primary btn-lg w-100 mt-4">
+                            <i class="ti ti-send me-2"></i>{{ __('Send message') }}
+                        </button>
+                        <p class="text-muted small text-center mt-3 mb-0">
+                            {{ __('We use your details only to answer this enquiry.') }}
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
 {{-- CONTACT DETAILS --}}
 <section id="contact-details" class="section-pad" style="background:#f8faff;">
     <div class="container">
@@ -117,8 +251,13 @@
                 <div class="gradient-card p-5 reveal text-center">
                     <div class="icon-wrap mx-auto mb-3"><i class="ti ti-mail-forward"></i></div>
                     <h3 class="fw-bold mb-2">{{ __('Contact our sales team') }}</h3>
-                    <p class="text-muted mb-4">{{ __('For now, reach us directly. An automated contact form will be added later.') }}</p>
-                    @php $contact = config('saas.contact', []); @endphp
+                    <p class="text-muted mb-4">{{ __('Send us a message below, or reach us directly — whichever is easier.') }}</p>
+                    @php
+                        $contact = config('saas.contact', []);
+                        // CONTACT-FORM-1: SAAS_CONTACT_PHONE khaali ho to number ka khana dikhta hi
+                        // nahi — jhoota "+92 XXX XXXXXXX" chhapne se behtar.
+                        $numbers = \App\Support\ContactNumbers::all();
+                    @endphp
                     <div class="row g-3 justify-content-center mb-3">
                         <div class="col-md-4">
                             <div class="p-3 rounded-3 border bg-white">
@@ -142,10 +281,19 @@
                             </div>
                         </div>
                     </div>
-                    <p class="text-muted small mb-4">
-                        <i class="ti ti-brand-whatsapp me-1"></i>{{ __('WhatsApp / Phone:') }} <strong><bdi dir="ltr">{{ $contact['phone'] ?? '+92 XXX XXXXXXX' }}</bdi></strong>
-                        <span class="d-block mt-1"><i class="ti ti-alert-triangle me-1"></i>{{ __('Phone is a placeholder — replace before production.') }}</span>
-                    </p>
+                    @if($numbers)
+                        {{-- Number sirf likha hua nahi — phone par dabate hi WhatsApp khul jata hai. --}}
+                        <div class="d-flex flex-wrap justify-content-center gap-2 mb-4">
+                            @foreach($numbers as $number)
+                                <a href="{{ $number['wa'] }}" target="_blank" rel="noopener"
+                                   class="btn btn-sm d-inline-flex align-items-center gap-2"
+                                   style="background:#25D366;color:#06331C;font-weight:600;">
+                                    <i class="ti ti-brand-whatsapp"></i>
+                                    <bdi dir="ltr">{{ $number['display'] }}</bdi>
+                                </a>
+                            @endforeach
+                        </div>
+                    @endif
                     <div class="d-flex flex-wrap justify-content-center gap-2">
                         <a href="{{ $lurl('/start-trial') }}" class="btn btn-primary">{{ __('Start a Self-Service Trial') }}</a>
                         <a href="{{ $lurl('/demos') }}" class="btn btn-outline-primary">{{ __('Try a Live Demo') }}</a>

@@ -45,7 +45,6 @@ final class ReturnLines
                 continue;
             }
             $name = $p->name;
-            $part = in_array($p->unit?->unit_type, ['weight', 'volume', 'length'], true);
             $packs = PackLines::packsOf($p, $packsOn);
 
             $base = 0.0;
@@ -55,7 +54,8 @@ final class ReturnLines
                     continue;
                 }
                 $pack = $packs[(string) $key] ?? null;
-                if (! $pack || ! is_numeric($raw) || (float) $raw < 0 || (! $part && floor((float) $raw) != (float) $raw)) {
+                // ROLLOUT-1: the same rule as the receipt (LineQuantity::packTakesParts).
+                if (! $pack || ! is_numeric($raw) || (float) $raw < 0 || (! LineQuantity::packTakesParts($p->unit, (float) $pack['factor']) && floor((float) $raw) != (float) $raw)) {
                     $errors["lines.$i.packs"] = "{$name}: " . ($pack ? "{$pack['name']} must be a whole number." : 'the quantity must be a number.');
                     continue 2;
                 }
@@ -63,6 +63,14 @@ final class ReturnLines
             }
             if ($base <= 0) {
                 $errors["lines.$i.packs"] = "{$name}: how many go back? Type it in any of the boxes.";
+                continue;
+            }
+            // W2-C: exact once (a 4th decimal refused; a counted item whole where switched on) before the batch check
+            // and the cost read it.
+            try {
+                $base = LineQuantity::forStock($base, $p->unit, $name, "lines.$i.packs");
+            } catch (ValidationException $e) {
+                $errors["lines.$i.packs"] = (string) collect($e->errors())->flatten()->first();
                 continue;
             }
 
@@ -115,6 +123,7 @@ final class ReturnLines
                 'reason_code'        => $reason,
                 'pack_unit_id'       => $buy['id'],
                 'pack_factor'        => PackLines::wholeOrNull($buy['factor']),
+                'pack_size'          => (float) $buy['factor'],
                 'base_quantity'      => round($base, 3),
                 'notes'              => PackLines::withNote(self::note($packs, $l, $buy, $priceRaw, $batch), $l),
             ];

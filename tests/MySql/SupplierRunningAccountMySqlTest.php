@@ -83,7 +83,8 @@ class SupplierRunningAccountMySqlTest extends MySqlTenantTestCase
             'lines' => [['product_id' => $this->item, 'quantity_received' => 1, 'unit_cost' => $total]],
         ]));
         $grn = GoodsReceipt::on('tenant')->latest('id')->firstOrFail();
-        app(PurchaseBillController::class)->store(Request::create('/purchase-bills', 'POST', ['goods_receipt_id' => $grn->id, 'bill_date' => $date]));
+        // SUPPLIER-CREDIT-CLARITY-1: the screen asks for this tick when the invoice uses an advance (the person's yes).
+        app(PurchaseBillController::class)->store(Request::create('/purchase-bills', 'POST', ['goods_receipt_id' => $grn->id, 'bill_date' => $date, 'confirm_credit' => '1']));
 
         return PurchaseBill::latest('id')->firstOrFail();
     }

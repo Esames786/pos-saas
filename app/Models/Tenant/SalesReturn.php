@@ -29,6 +29,9 @@ class SalesReturn extends Model
         'terminal_id',
         // REFUND-SHIFT-H1: the paying shift's STABLE identity (shifts.shift_uuid) — the only shift identity that crosses systems
         'processing_shift_uuid',
+        // UB-06: the form this return was posted from (posted once)
+        'submission_key',
+        'submission_hash',
     ];
 
     protected function casts(): array

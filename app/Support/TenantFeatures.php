@@ -17,8 +17,33 @@ final class TenantFeatures
     public const PURCHASING_V2 = 'purchasing_v2';
     public const MEDICAL_COUNTER = 'medical_counter';
     public const RETURN_NO_BILL = 'return_no_bill';
+    // UNITS-PACKS F3
+    public const COUNTER_PACKS = 'counter_packs';
+    // W2-C
+    public const WHOLE_COUNTED_STOCK = 'whole_counted_stock';
 
     public const REPORT_DELIVERY_V2 = 'report_delivery_v2';
+    // W3/W4 S4
+    public const PURCHASE_WORKSPACE = 'purchase_workspace';
+
+    // VOID-PURGE-1: the Owner may delete, permanently, an entry already voided on its own date. Off everywhere by default.
+    public const VOID_PURGE = 'void_purge';
+
+    // SHIFT-HANDOVER-1: a cashier with open orders hands in his own cash and opens the next cashier's shift on the same counter.
+    public const SHIFT_HANDOVER = 'shift_handover';
+
+    // PURCHASE-EDIT-1: correct a posted receipt + its invoice in place (same numbers), and void one that has an invoice.
+    public const PURCHASE_EDIT = 'purchase_edit';
+
+    // SUPPLIER-LEDGER-DAILY-1: the supplier ledger by the document's own date, day by day, and for all suppliers.
+    public const SUPPLIER_LEDGER_DAILY = 'supplier_ledger_daily';
+
+    // DEAL-SPLIT-REPORT-1: a deal's money shown in the reports under the items inside it (report-only).
+    public const DEAL_SPLIT = 'deal_split';
+
+    // PRINT-PREPARE-1: a catering document's PDF is made on the print agent as soon as its screen opens, so
+    // "Send to network" only has to hand it to the printer. Needs print agent 2.7.0+. Off everywhere by default.
+    public const PRINT_PREPARE = 'print_prepare';
 
     /**
      * shots (MASTER-NEW-SCREENS-1): pictures of the screens the switch shows, slug => caption
@@ -50,6 +75,13 @@ final class TenantFeatures
                 'where' => 'Purchasing → Purchase Orders, GRN and Returns → New; tabs on every purchasing page; Inventory → Batches',
                 'shots' => ['grn-entry' => 'GRN entry area', 'purchase-return' => 'Purchase return', 'batches' => 'Batches'],
             ],
+            // W3/W4 S4
+            self::PURCHASE_WORKSPACE => [
+                'label' => 'One purchase screen',
+                'says'  => 'Record a purchase in one go: the goods that arrived, the supplier\'s invoice and a payment — or only the parts you have today (receive now, invoice later; or invoice goods already received). One Post saves the chosen parts together, or none of them.',
+                'where' => 'Purchasing → New purchase',
+                'needs' => [self::PURCHASING_V2],
+            ],
             // REPORT-DELIVERY-V2-1
             // MEDICAL-COUNTER-1
             self::MEDICAL_COUNTER => [
@@ -65,6 +97,55 @@ final class TenantFeatures
                 'says'  => 'A customer can bring an item back without the bill: today\'s price at most, back into its batch or thrown away, a reason every time, and the branch\'s manager PIN when it asks for one.',
                 'where' => 'Sales → Sales Returns → New → "Without bill" (also from the POS Return button)',
                 'shots' => ['return-no-bill' => 'Return without a bill'],
+            ],
+            // W2-C
+            self::WHOLE_COUNTED_STOCK => [
+                'label' => 'Whole numbers for counted items in purchasing and stock',
+                'says'  => 'A counted item (piece, bottle, box) is bought, returned, moved and counted in whole numbers only, the same as at the counter. Kg, litre and metre items still take up to 3 decimals. Leave it off while some counted items are still bought in parts.',
+                'where' => 'Purchase orders, GRN, supplier returns, stock adjustments, transfers and counts',
+            ],
+            // UNITS-PACKS F3
+            self::COUNTER_PACKS => [
+                'label' => 'Packs at the normal counter',
+                'says'  => 'Scan a carton or box barcode at the normal counter and it sells as 1 Carton at the carton\'s price; its pieces leave stock. The counter looks exactly the same. An item with an expiry date never sells from an expired batch here (the medical counter\'s rule). No prescription questions.',
+                'where' => 'POS (scan) · Products → packs',
+                'needs' => [self::PACKS],
+            ],
+            // VOID-PURGE-1 (production)
+            self::VOID_PURGE => [
+                'label' => 'Delete voided entries permanently',
+                'says'  => 'A user given the permission can delete a voided entry together with its reversal, so neither shows anywhere. Totals today stay the same. When the void was dated another day, the screen first says which days\' cash closing changes and asks to confirm. A hidden copy is kept in Deleted entries. Risk: a recorded cash movement can disappear from every screen.',
+                'where' => 'Cash Book and the entry\'s own page → "Delete permanently" on a voided row; Finance → Deleted entries',
+            ],
+            // SHIFT-HANDOVER-1
+            self::SHIFT_HANDOVER => [
+                'label' => 'Hand the counter to the next cashier',
+                'says'  => 'A cashier whose shift still has open orders or tables counts and hands in his own cash, then opens the next cashier\'s shift on the same counter in one step — the next cashier types his own password. The open orders and tables move into the new shift; their counter, date and amounts stay as they are. Same day only: after midnight the open orders are settled first, as today.',
+                'where' => 'Shifts → Close Shift (only when the shift has open orders or tables)',
+            ],
+            // PURCHASE-EDIT-1
+            self::PURCHASE_EDIT => [
+                'label' => 'Edit or void a purchase after its invoice',
+                'says'  => 'Open a GRN, press Edit, change a quantity, a rate or a date, and Save: the GRN and invoice keep their numbers, and the supplier\'s account and the accounts are corrected on the invoice\'s own date (stock today). Every change is listed on the GRN. Void works even after the invoice. Old receipts with an earlier correction, returns or purchase orders still cannot be edited.',
+                'where' => 'Purchasing → Goods Receipts → open a GRN → Edit / Void (also from the Supplier Invoice page)',
+            ],
+            // SUPPLIER-LEDGER-DAILY-1
+            self::SUPPLIER_LEDGER_DAILY => [
+                'label' => 'Supplier ledger day by day',
+                'says'  => 'Each entry in a supplier\'s ledger shows on its own date (the invoice, payment or return date — not the day it was typed), with From / To dates, a "day by day" view (opening, bills, payments, closing for each day) and "All suppliers".',
+                'where' => 'Purchasing → Suppliers → Ledger',
+            ],
+            // DEAL-SPLIT-REPORT-1
+            self::DEAL_SPLIT => [
+                'label' => 'Deal money by item in reports',
+                'says'  => 'On a deal\'s form the owner can choose "Each item\'s rate" and type each item\'s part (a platter of 900 = biryani 400 + BBQ 500, adding up to the deal\'s price). Deals sold after that show in Categories, Items and the daily report under those items instead of as one line; the Deals list still shows the deal. The bill, the customer\'s price, payments and the accounts do not change. Deals left on "One rate" and everything sold before stay as they were.',
+                'where' => 'Products → Deals → Add / Edit; Reports → Sales Report Center, POS Quick Report, dashboard, daily report',
+            ],
+            // PRINT-PREPARE-1
+            self::PRINT_PREPARE => [
+                'label' => 'Print ready before Send',
+                'says'  => 'When a kitchen sheet, quotation, proforma or invoice screen opens, the print agent makes its PDF in the background, so "Send to network" only has to hand it to the printer. The screen shows "Preparing…" then "Ready" with a refresh button; Send always works, ready or not. A changed order is never printed from an old PDF. The agent also checks for new print jobs every second instead of every three. Needs print agent 2.7.0 or newer on the PC.',
+                'where' => 'Catering → any document preview → Send to network; Printing → Print Agents',
             ],
             self::REPORT_DELIVERY_V2 => [
                 'label' => 'New daily report delivery',

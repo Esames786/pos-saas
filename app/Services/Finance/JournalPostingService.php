@@ -669,49 +669,7 @@ class JournalPostingService
                 return null;
             }
 
-            // GRN-NON-STOCK-1: the part of the bill bought as purchase-only (no stock) is a cost now,
-            // not inventory — 1400 would never be relieved, since a sale only takes COGS out of stock
-            // it holds. Split by the receipt's own line values; charges, discount and tax follow the
-            // same proportion, exactly as the GRN spread the charges into the stocked lines' cost.
-            $bill->loadMissing('goodsReceipt.lines');
-            $grnLines = $bill->goodsReceipt?->lines ?? collect();
-            $toCost = self::nonStockShare(
-                $grnLines->map(fn ($l) => [
-                    'value' => (float) $l->quantity_received * (float) $l->unit_cost,
-                    'stock' => $l->affects_stock !== false,
-                ])->all(),
-                $amount
-            );
-            $toStock = round($amount - $toCost, 4);
-
-            // PNL-COST-BY-CATEGORY-1: the purchase-only share lands on each line's category cost
-            // account (5100 when unmapped — then this is the single 5100 line it always was).
-            $costAccounts = app(NonStockCostAccounts::class);
-            $lineAccount = $grnLines->mapWithKeys(fn ($l) => [$l->id => $l->affects_stock !== false ? null : $costAccounts->forProduct($l->product_id ? (int) $l->product_id : null)]);
-            $toCostByAccount = NonStockCostAccounts::split($grnLines->map(fn ($l) => [
-                'value'   => (float) $l->quantity_received * (float) $l->unit_cost,
-                'stock'   => $l->affects_stock !== false,
-                'account' => $lineAccount[$l->id],
-            ])->values()->all(), $toCost);
-
-            $lines = [];
-            if ($toStock > 0) {
-                $lines[] = ['account_code' => '1400', 'branch_id' => $bill->branch_id, 'description' => 'Inventory Asset', 'debit' => $toStock, 'credit' => 0];
-            }
-            foreach ($toCostByAccount as $accountId => $part) {
-                if ($part > 0) {
-                    $lines[] = ($accountId ? ['account_id' => $accountId] : ['account_code' => NonStockCostAccounts::DEFAULT_CODE])
-                        + ['branch_id' => $bill->branch_id, 'description' => 'Purchased without stock '.$bill->bill_no, 'debit' => $part, 'credit' => 0];
-                }
-            }
-            $lines = array_merge($lines, [
-                // AP-SUPPLIER-DIMENSION-1: the AP line names its supplier, so 2100 can be read by supplier
-                // straight from the GL (Trial Balance party detail). Only the manual-journal screen mirrors
-                // supplier-tagged AP lines into supplier_ledgers; this posting never calls that, so the
-                // bill's own supplier-ledger row is not doubled.
-                ['account_code' => '2100', 'branch_id' => $bill->branch_id, 'description' => 'Purchase bill '.$bill->bill_no, 'debit' => 0, 'credit' => $amount,
-                    'counterparty_type' => 'supplier', 'supplier_id' => $bill->supplier_id],
-            ]);
+            [$lines, $lineAccount] = $this->purchaseBillLines($bill, $amount, false);
 
             $alreadyPosted = $this->journal->findPostedForSource('purchase_bill', $bill->id) !== null;
 
@@ -740,6 +698,101 @@ class JournalPostingService
 
             return null;
         }
+    }
+
+    /**
+     * PURCHASE-EDIT-1 — the corrected invoice's journal, after the one in force was reversed on its own date. The same
+     * lines postPurchaseBill builds, dated the invoice date, under its own source (purchase_bill_revision / revision
+     * id): JournalService::post would hand back the reversed original for 'purchase_bill'. A purchase-only line keeps
+     * the head it was first booked to (cost_account_id), so an edit never moves cost between heads by itself; a line
+     * that never had one takes its category's head now, as a first posting would. Fail-soft: null = not posted.
+     */
+    public function postPurchaseBillRevision(PurchaseBill $bill, int $revisionId, ?int $userId = null): ?JournalEntry
+    {
+        try {
+            $amount = round((float) $bill->grand_total, 4);
+            if ($amount <= 0) {
+                return null;
+            }
+
+            [$lines, $lineAccount] = $this->purchaseBillLines($bill, $amount, true);
+
+            $entry = $this->journal->post(
+                'purchase_bill_revision',
+                $revisionId,
+                $bill->bill_no,
+                'Purchase bill '.$bill->bill_no.' (corrected)',
+                $bill->bill_date?->toDateString() ?? now()->toDateString(),
+                $lines,
+                $userId
+            );
+
+            foreach ($lineAccount->filter() as $lineId => $accountId) {
+                \App\Models\Tenant\GoodsReceiptLine::whereKey($lineId)->whereNull('cost_account_id')->update(['cost_account_id' => $accountId]);
+            }
+
+            return $entry;
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    /**
+     * The invoice's journal lines (shared by the first posting and a corrected one).
+     *
+     * GRN-NON-STOCK-1: the part of the bill bought as purchase-only (no stock) is a cost now, not inventory — 1400
+     * would never be relieved, since a sale only takes COGS out of stock it holds. Split by the receipt's own line
+     * values; charges, discount and tax follow the same proportion, exactly as the GRN spread the charges into the
+     * stocked lines' cost.
+     *
+     * @return array{0: list<array<string, mixed>>, 1: \Illuminate\Support\Collection<int, ?int>} lines, purchase-only line id => account
+     */
+    private function purchaseBillLines(PurchaseBill $bill, float $amount, bool $keepBookedHeads): array
+    {
+        $bill->loadMissing('goodsReceipt.lines');
+        $grnLines = $bill->goodsReceipt?->lines ?? collect();
+        $toCost = self::nonStockShare(
+            $grnLines->map(fn ($l) => [
+                'value' => (float) $l->quantity_received * (float) $l->unit_cost,
+                'stock' => $l->affects_stock !== false,
+            ])->all(),
+            $amount
+        );
+        $toStock = round($amount - $toCost, 4);
+
+        // PNL-COST-BY-CATEGORY-1: the purchase-only share lands on each line's category cost
+        // account (5100 when unmapped — then this is the single 5100 line it always was).
+        $costAccounts = app(NonStockCostAccounts::class);
+        $lineAccount = $grnLines->mapWithKeys(fn ($l) => [$l->id => $l->affects_stock !== false ? null
+            : (($keepBookedHeads && $l->cost_account_id) ? (int) $l->cost_account_id : $costAccounts->forProduct($l->product_id ? (int) $l->product_id : null))]);
+        $toCostByAccount = NonStockCostAccounts::split($grnLines->map(fn ($l) => [
+            'value'   => (float) $l->quantity_received * (float) $l->unit_cost,
+            'stock'   => $l->affects_stock !== false,
+            'account' => $lineAccount[$l->id],
+        ])->values()->all(), $toCost);
+
+        $lines = [];
+        if ($toStock > 0) {
+            $lines[] = ['account_code' => '1400', 'branch_id' => $bill->branch_id, 'description' => 'Inventory Asset', 'debit' => $toStock, 'credit' => 0];
+        }
+        foreach ($toCostByAccount as $accountId => $part) {
+            if ($part > 0) {
+                $lines[] = ($accountId ? ['account_id' => $accountId] : ['account_code' => NonStockCostAccounts::DEFAULT_CODE])
+                    + ['branch_id' => $bill->branch_id, 'description' => 'Purchased without stock '.$bill->bill_no, 'debit' => $part, 'credit' => 0];
+            }
+        }
+        $lines = array_merge($lines, [
+            // AP-SUPPLIER-DIMENSION-1: the AP line names its supplier, so 2100 can be read by supplier
+            // straight from the GL (Trial Balance party detail). Only the manual-journal screen mirrors
+            // supplier-tagged AP lines into supplier_ledgers; this posting never calls that, so the
+            // bill's own supplier-ledger row is not doubled.
+            ['account_code' => '2100', 'branch_id' => $bill->branch_id, 'description' => 'Purchase bill '.$bill->bill_no, 'debit' => 0, 'credit' => $amount,
+                'counterparty_type' => 'supplier', 'supplier_id' => $bill->supplier_id],
+        ]);
+
+        return [$lines, $lineAccount];
     }
 
     /**
@@ -797,6 +850,63 @@ class JournalPostingService
                 // hat jata. Prod par bacha ye ke chaaron tenants par purchase returns 0 hain.
                 // Ye satar bilkul wohi hai jo us commit se pehle thi.
                 $return->return_date?->toDateString() ?? now()->toDateString(),
+                $lines,
+                $userId
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    /**
+     * SUPPLIER-NET-BILL-1 — GL for a return the supplier's invoice already takes off: the exact mirror of that
+     * return's own entry, so the return is booked once in effect. The return put Dr 2100 / Cr 1400 (its purchase-only
+     * part out of its cost heads); the invoice is net of it, so this puts the same back: Dr 1400 (and the cost heads) /
+     * Cr 2100. With the return and the net invoice: inventory = stock value, payable = the invoice. Dated on the bill's
+     * date. Idempotent per (purchase_bill_netting, id); never throws.
+     */
+    public function postPurchaseBillReturnNetting(\App\Models\Tenant\PurchaseBillReturnNetting $netting, ?int $userId = null): ?JournalEntry
+    {
+        try {
+            $amount = round((float) $netting->amount, 4);
+            $netting->loadMissing('bill', 'purchaseReturn.lines');
+            $return = $netting->purchaseReturn;
+            $bill = $netting->bill;
+            if ($amount <= 0 || ! $return || ! $bill) {
+                return null;
+            }
+
+            $costAccounts = app(NonStockCostAccounts::class);
+            $returnLines = $return->lines->map(fn ($l) => [
+                'value' => (float) $l->quantity * (float) $l->unit_cost,
+                'stock' => $stock = self::returnLineAffectsStock($l),
+                'account' => $stock ? null : $costAccounts->forReturnLine($l),
+            ])->values()->all();
+            $toCost = self::nonStockShare($returnLines, $amount);
+            $toCostByAccount = NonStockCostAccounts::split($returnLines, $toCost);
+            $toStock = round($amount - $toCost, 4);
+
+            $lines = [];
+            if ($toStock > 0) {
+                $lines[] = ['account_code' => '1400', 'branch_id' => $bill->branch_id, 'description' => 'Inventory Asset — return ' . $return->return_no . ' already off invoice ' . $bill->bill_no, 'debit' => $toStock, 'credit' => 0];
+            }
+            foreach ($toCostByAccount as $accountId => $part) {
+                if ($part > 0) {
+                    $lines[] = ($accountId ? ['account_id' => $accountId] : ['account_code' => NonStockCostAccounts::DEFAULT_CODE])
+                        + ['branch_id' => $bill->branch_id, 'description' => 'Return ' . $return->return_no . ' already off invoice ' . $bill->bill_no, 'debit' => $part, 'credit' => 0];
+                }
+            }
+            $lines[] = ['account_code' => '2100', 'branch_id' => $bill->branch_id, 'description' => 'Return ' . $return->return_no . ' already off invoice ' . $bill->bill_no,
+                'debit' => 0, 'credit' => $amount, 'counterparty_type' => 'supplier', 'supplier_id' => $bill->supplier_id];
+
+            return $this->journal->post(
+                'purchase_bill_netting',
+                $netting->id,
+                $bill->bill_no,
+                'Return ' . $return->return_no . ' already taken off invoice ' . $bill->bill_no,
+                $bill->bill_date?->toDateString() ?? now()->toDateString(),
                 $lines,
                 $userId
             );

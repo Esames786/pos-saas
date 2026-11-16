@@ -10,6 +10,7 @@ use App\Models\Tenant\PurchaseReturnLine;
 use App\Models\Tenant\StockBalance;
 use App\Services\Finance\JournalPostingService;
 use App\Services\Inventory\InventoryService;
+use App\Support\LineQuantity;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -43,21 +44,26 @@ class PurchaseReturnService
      */
     public function createDraft(array $header, array $lines, ?int $userId = null): PurchaseReturn
     {
+        // W2-C: each quantity exact once (3 decimals; counted items whole where switched on), old and new screen alike.
+        $lines = LineQuantity::prepareStockLines($lines, 'quantity');
+
         return DB::connection('tenant')->transaction(function () use ($header, $lines, $userId) {
-            $return = PurchaseReturn::create([
+            $return = $this->createNumbered([
                 'branch_id'         => (int) $header['branch_id'],
                 'supplier_id'       => (int) $header['supplier_id'],
                 'purchase_order_id' => $header['purchase_order_id'] ?? null,
                 'goods_receipt_id'  => $header['goods_receipt_id'] ?? null,
-                'return_no'         => $this->nextReturnNo(),
                 'return_date'       => $header['return_date'],
                 'status'            => 'draft',
                 'reason_code'       => $header['reason_code'] ?? null,
                 'notes'             => $header['notes'] ?? null,
                 'created_by'        => $userId,
-            ]);
+            ] + (! empty($header['submission_key'])   // UB-06: set only by the caller that checked the column exists
+                ? ['submission_key' => $header['submission_key'], 'submission_hash' => $header['submission_hash'] ?? null]
+                : []));
 
             $this->syncLines($return, $lines);
+            $this->assertWithinReceived($return);
             $this->calculateTotals($return);
 
             return $return->fresh(['lines']);
@@ -69,6 +75,7 @@ class PurchaseReturnService
         if (! $return->canEdit()) {
             throw new RuntimeException('Only draft returns can be edited.');
         }
+        $lines = LineQuantity::prepareStockLines($lines, 'quantity');
 
         return DB::connection('tenant')->transaction(function () use ($return, $header, $lines) {
             $return->update([
@@ -79,6 +86,7 @@ class PurchaseReturnService
 
             $return->lines()->delete();
             $this->syncLines($return, $lines);
+            $this->assertWithinReceived($return);
             $this->calculateTotals($return);
 
             return $return->fresh(['lines']);
@@ -127,6 +135,32 @@ class PurchaseReturnService
             ->sum('quantity');
 
         return (float) $grnLine->quantity_received - $alreadyReturned;
+    }
+
+    /**
+     * W2-C: as soon as a draft is saved it says how much of each receipt line can still go back, in the counter's
+     * words. The full check (batch, branch stock) runs again when the return is posted.
+     */
+    private function assertWithinReceived(PurchaseReturn $return): void
+    {
+        $return->load('lines.product.unit');
+        foreach ($return->lines->where('source_line_type', 'goods_receipt_line')->groupBy('source_line_id') as $sourceLineId => $lines) {
+            $grnLine = GoodsReceiptLine::find($sourceLineId);
+            if (! $grnLine) {
+                continue;   // syncLines has already refused a line that does not exist
+            }
+            $requested = round((float) $lines->sum('quantity'), LineQuantity::DECIMALS);
+            $left = round(max($this->returnableForGrnLine($grnLine, $return->id), 0), LineQuantity::DECIMALS);
+            if ($requested <= $left + 0.0005) {
+                continue;
+            }
+            $product = $lines->first()->product;
+            $name = $product?->name ?? ('#' . $grnLine->product_id);
+            $unit = LineQuantity::unitName($product?->unit);
+            throw new RuntimeException($left <= 0.0005
+                ? "{$name}: nothing is left to return on this receipt — all " . LineQuantity::withUnit((float) $grnLine->quantity_received, $unit) . ' already went back.'
+                : "{$name}: only " . LineQuantity::withUnit($left, $unit) . ' can still be returned, not ' . LineQuantity::show($requested) . '.');
+        }
     }
 
     public function validateReturnableQuantities(PurchaseReturn $return): void
@@ -203,6 +237,18 @@ class PurchaseReturnService
             /** @var PurchaseReturn $doc */
             $doc = PurchaseReturn::query()->whereKey($return->id)->lockForUpdate()->firstOrFail();
 
+            // UB-06: two returns against the same receipt line, posted at the same moment by two people, each saw
+            // the other as not yet posted and together sent back more than was received (and credited the supplier
+            // twice). Lock the receipt lines this return draws on FIRST — before any plain read, which would fix the
+            // transaction's snapshot ahead of the other return's commit — so the second waits and then counts the
+            // first. Ordered by id, so two returns on overlapping lines never deadlock.
+            $sourceIds = PurchaseReturnLine::query()->where('purchase_return_id', $doc->id)
+                ->where('source_line_type', 'goods_receipt_line')->whereNotNull('source_line_id')
+                ->lockForUpdate()->pluck('source_line_id')->unique()->sort()->values();
+            if ($sourceIds->isNotEmpty()) {
+                GoodsReceiptLine::query()->whereIn('id', $sourceIds)->orderBy('id')->lockForUpdate()->get(['id']);
+            }
+
             if ($doc->isPosted()) {
                 throw new RuntimeException("Return {$doc->return_no} is already posted.");
             }
@@ -254,7 +300,8 @@ class PurchaseReturnService
                 $doc->id,
                 $doc->return_no,
                 $doc->notes,
-                $userId
+                $userId,
+                PurchasingService::ledgerDay($doc->return_date),
             );
 
             // SUPPLIER-RUNNING-ACCOUNT-1: a return is credit too — it settles its own bill (through its
@@ -302,6 +349,21 @@ class PurchaseReturnService
     }
 
     // ── Internals ────────────────────────────────────────────────────────────
+
+    /** The return row, numbered; a "PRET-<second>-<3 digits>" already taken draws another (it clashed ~1 in 900). */
+    private function createNumbered(array $attributes): PurchaseReturn
+    {
+        for ($try = 1; ; $try++) {
+            $no = $this->nextReturnNo();
+            try {
+                return PurchaseReturn::create(['return_no' => $no] + $attributes);
+            } catch (\Illuminate\Database\QueryException $e) {
+                if ($try >= 5 || ! \App\Support\SubmissionKey::duplicateValue($e, $no)) {
+                    throw $e;
+                }
+            }
+        }
+    }
 
     private function syncLines(PurchaseReturn $return, array $lines): void
     {
@@ -356,6 +418,7 @@ class PurchaseReturnService
                 // PURCHASE-RETURN-V2: the pack it was typed in, for the screen and the paper only.
                 'pack_unit_id'       => $line['pack_unit_id'] ?? null,
                 'pack_factor'        => $line['pack_factor'] ?? null,
+            ] + \App\Support\CounterPacks::sizeColumns('purchase_return_lines', $line['pack_size'] ?? null) + [
                 'base_quantity'      => $line['base_quantity'] ?? null,
             ]);
             $created++;

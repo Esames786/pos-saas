@@ -31,6 +31,9 @@
         <div class="alert alert-warning">
             This entry was reversed by
             <a href="{{ url('/finance/manual-journals/' . $reversal->id) }}" class="fw-semibold">{{ $reversal->entry_no }}</a>.
+            @include('tenant.finance.voided-entries.partials.purge-button', ['purgeType' => 'manual_journal', 'purgeId' => $manualJournal->id,
+                'purgeLabel' => 'Manual journal ' . $manualJournal->entry_no, 'purgeDate' => optional($manualJournal->entry_date)->format('d M Y'),
+                'purgeAmount' => number_format((float) $manualJournal->total_debit, 2)])
         </div>
     @endif
     @if($manualJournal->reversedEntry)
@@ -210,4 +213,5 @@
     {{-- B3 — Post Reversal pehle click par band; doosri request token ki wajah se rukti hai. --}}
     @include('tenant.catering.partials.submit-guard')
     @endif
+@include('tenant.finance.voided-entries.partials.purge-modal')
 @endsection

@@ -15,16 +15,41 @@ use Illuminate\Support\Facades\DB;
  *                                         receipts and refunds, expense vouchers, supplier payments,
  *                                         manual-journal cash lines)
  *   expense heads used by vouchers     → expense category "code · name"
+ *   expense heads bills post to        → the bill's supplier (PNL-DETAIL-1: "suppliers for bill postings")
  *
- * RULE: party lines always add up to their account. What cannot be attributed goes to an explicit
- * "Unassigned" line — it is never dropped. Built from the same lines, filters and date split as
+ * RULE: party lines always add up to their account. What cannot be attributed goes to one explicit
+ * catch-all line — it is never dropped. Built from the same lines, filters and date split as
  * FinancialExportService::trialBalancePeriod(), in one grouped query plus one batched lookup per
- * source table, whatever the number of rows.
+ * source table, whatever the number of rows. The P&L's detail lines (ProfitLossReport) are these.
  */
 class TrialBalancePartyService
 {
     private const UNASSIGNED = '~unassigned';
     private const NO_CASH = '~no-cash';
+
+    /**
+     * The catch-all, in each kind of account's own words (FINANCE-PDF-DOWNLOADS-1): accountants read
+     * "Unassigned" under cash as an error — it is cash posted without naming a drawer; under an expense
+     * it is what the P&L calls "Other".
+     */
+    private const CATCH_ALL = [
+        'ap'      => 'Unassigned',
+        'event'   => 'Unassigned',
+        'cash'    => 'Not linked to a drawer / bank',
+        'expense' => 'Other',
+    ];
+
+    /**
+     * A bill or a return (or its reversal) — the documents that name a supplier on an expense line. PNL-DETAIL-RECOST-1:
+     * also a bill's recost (finance:recost-nonstock-bills, source = the bill) and a bill's corrected journal after a GRN
+     * edit (PURCHASE-EDIT-1, source = goods_receipt_revisions.id). Without them the supplier kept the cost the recost or
+     * the edit took away, and an equal minus showed as "Other" (Khatri 5100-3, 6 Nov).
+     * PNL-DETAIL-STOCK-EXPENSE-1: also the stock-to-cost move of inventory:expense-purchase-stock (source = the GRN line).
+     * Without it that money showed as "Other" on a head with bills, and a head with only these moves had no detail at all.
+     */
+    private const BILL_SOURCES = ['purchase_bill', 'purchase_bill_reversal', 'purchase_return', 'purchase_return_reversal',
+        'purchase_bill_recost', 'purchase_bill_recost_reversal', 'purchase_bill_revision', 'purchase_bill_revision_reversal',
+        'grn_line_stock_expense', 'grn_line_stock_expense_reversal'];
 
     private const CASH_SOURCES = [
         'catering_advance'       => 'catering_advances',
@@ -37,9 +62,10 @@ class TrialBalancePartyService
     ];
 
     private const SUPPLIER_SOURCES = [
-        'purchase_bill'    => 'purchase_bills',
-        'supplier_payment' => 'supplier_payments',
-        'purchase_return'  => 'purchase_returns',
+        'purchase_bill'        => 'purchase_bills',
+        'purchase_bill_recost' => 'purchase_bills',
+        'supplier_payment'     => 'supplier_payments',
+        'purchase_return'      => 'purchase_returns',
     ];
 
     public function __construct(
@@ -60,6 +86,14 @@ class TrialBalancePartyService
         $event = array_values(array_diff(array_intersect($conn->table('accounts')->whereIn('code', ['2300', '1300'])->pluck('id')->map(fn ($i) => (int) $i)->all(), $accountIds), $ap));
         $cash = array_values(array_diff(array_intersect($conn->table('cash_bank_accounts')->whereNotNull('account_id')->distinct()->pluck('account_id')->map(fn ($i) => (int) $i)->all(), $accountIds), $ap, $event));
         $expense = array_values(array_diff(array_intersect($conn->table('expense_voucher_lines')->whereNotNull('account_id')->distinct()->pluck('account_id')->map(fn ($i) => (int) $i)->all(), $accountIds), $ap, $event, $cash));
+        // PNL-DETAIL-1: an expense account that bills post to is split by supplier too, not only by voucher category.
+        $expenseTyped = $conn->table('accounts')->whereIn('id', array_diff($accountIds, $ap, $event, $cash, $expense))
+            ->where('type', 'expense')->pluck('id')->map(fn ($i) => (int) $i)->all();
+        if ($expenseTyped) {
+            $expense = array_values(array_merge($expense, $conn->table('journal_lines as l')->join('journal_entries as e', 'e.id', '=', 'l.journal_entry_id')
+                ->where('e.status', 'posted')->whereDate('e.entry_date', '<=', $to)->whereIn('l.account_id', $expenseTyped)
+                ->whereIn('e.source_type', self::BILL_SOURCES)->distinct()->pluck('l.account_id')->map(fn ($i) => (int) $i)->all()));
+        }
 
         $kindOf = [];
         foreach (['ap' => $ap, 'event' => $event, 'cash' => $cash, 'expense' => $expense] as $kind => $ids) {
@@ -99,6 +133,14 @@ class TrialBalancePartyService
             $ids = $sourceIds([$type]);
             $supplierOf[$type] = $ids ? $conn->table($table)->whereIn('id', $ids)->pluck('supplier_id', 'id')->all() : [];
         }
+        // A GRN edit's corrected journal names its bill's supplier through the revision.
+        $ids = $sourceIds(['purchase_bill_revision']);
+        $supplierOf['purchase_bill_revision'] = $ids ? $conn->table('goods_receipt_revisions as r')->join('purchase_bills as b', 'b.id', '=', 'r.purchase_bill_id')
+            ->whereIn('r.id', $ids)->pluck('b.supplier_id', 'r.id')->all() : [];
+        // A stock-to-cost move names the supplier of the receipt its GRN line came on.
+        $ids = $sourceIds(['grn_line_stock_expense']);
+        $supplierOf['grn_line_stock_expense'] = $ids ? $conn->table('goods_receipt_lines as gl')->join('goods_receipts as g', 'g.id', '=', 'gl.goods_receipt_id')
+            ->whereIn('gl.id', $ids)->pluck('g.supplier_id', 'gl.id')->all() : [];
         $cashOf = [];
         foreach (array_unique(self::CASH_SOURCES) as $table) {
             $types = array_keys(array_filter(self::CASH_SOURCES, fn ($t) => $t === $table));
@@ -149,11 +191,11 @@ class TrialBalancePartyService
                 case 'ap':
                     $sid = $g->supplier_id
                         ?: ($g->base === 'supplier_opening_balance' ? $g->source_id
-                            : (isset(self::SUPPLIER_SOURCES[$g->base]) ? ($supplierOf[$g->base][$g->source_id] ?? null) : null));
+                            : ($supplierOf[$g->base][$g->source_id] ?? null));
                     if ($sid && isset($supplierNames[$sid])) {
                         $add($account, 'supplier:' . $sid, $supplierNames[$sid], $opening, $debit, $credit);
                     } else {
-                        $add($account, self::UNASSIGNED, 'Unassigned', $opening, $debit, $credit);
+                        $add($account, self::UNASSIGNED, self::CATCH_ALL['ap'], $opening, $debit, $credit);
                     }
                     break;
 
@@ -162,7 +204,7 @@ class TrialBalancePartyService
                     if ($ev) {
                         $add($account, 'event:' . $ev['event_id'], trim($ev['event_no'] . ' · ' . ($ev['customer_name'] ?? '')), $opening, $debit, $credit);
                     } else {
-                        $add($account, self::UNASSIGNED, 'Unassigned', $opening, $debit, $credit);
+                        $add($account, self::UNASSIGNED, self::CATCH_ALL['event'], $opening, $debit, $credit);
                     }
                     break;
 
@@ -185,7 +227,7 @@ class TrialBalancePartyService
                             $add($account, 'cash:' . $acct->id, $acct->name, $opening, $d, $c);
                         }
                         if ($leftD > 0.00005 || $leftC > 0.00005) {
-                            $add($account, self::UNASSIGNED, 'Unassigned', $opening, $leftD, $leftC);
+                            $add($account, self::UNASSIGNED, self::CATCH_ALL['cash'], $opening, $leftD, $leftC);
                         }
                         break;
                     }
@@ -197,11 +239,21 @@ class TrialBalancePartyService
                     } elseif ($found && in_array($table, ['catering_advances', 'catering_refunds'], true)) {
                         $add($account, self::NO_CASH, 'No cash/bank account on the receipt', $opening, $debit, $credit);
                     } else {
-                        $add($account, self::UNASSIGNED, 'Unassigned', $opening, $debit, $credit);
+                        $add($account, self::UNASSIGNED, self::CATCH_ALL['cash'], $opening, $debit, $credit);
                     }
                     break;
 
                 case 'expense':
+                    // PNL-DETAIL-1: a bill or a return on an expense account names its supplier.
+                    if ($g->base !== 'expense_voucher') {
+                        $sid = $g->supplier_id ?: ($supplierOf[$g->base][$g->source_id] ?? null);
+                        if ($sid && isset($supplierNames[$sid])) {
+                            $add($account, 'supplier:' . $sid, $supplierNames[$sid], $opening, $debit, $credit);
+                        } else {
+                            $add($account, self::UNASSIGNED, self::CATCH_ALL['expense'], $opening, $debit, $credit);
+                        }
+                        break;
+                    }
                     $parts = $g->base === 'expense_voucher'
                         ? $voucherLines->where('expense_voucher_id', $g->source_id)->where('account_id', $account)
                             ->groupBy('expense_category_id')
@@ -211,7 +263,7 @@ class TrialBalancePartyService
                         : collect();
                     $total = $parts->sum('weight');
                     if ($total <= 0) {
-                        $add($account, self::UNASSIGNED, 'Unassigned', $opening, $debit, $credit);
+                        $add($account, self::UNASSIGNED, self::CATCH_ALL['expense'], $opening, $debit, $credit);
                         break;
                     }
                     // Split by the voucher's own lines on this account; the last share takes the

@@ -105,22 +105,28 @@ class EdgeReturnRaceTest extends MySqlTenantTestCase
         $this->assertLessThanOrEqual(4.0, $returned, 'never more than sold');
         $totalReturnedLines = (float) DB::table('sales_return_lines')->sum('quantity');
         $this->assertSame($returned, $totalReturnedLines);
-        // The second winner (if both won) was CAPPED to the remainder: 3 + 1.
-        $this->assertSame($okCount === 2 ? 4.0 : 3.0, $returned, implode(' | ', $results));
+        // Phase E R-3 / C-2 (W2-B in the shared arithmetic): the loser is REFUSED with what is left — never capped, never a second
+        // winner; exactly ONE return of 3 exists and the refused till saw "only 1 … can still be returned, not 3".
+        $this->assertSame(1, $okCount, implode(' | ', $results));
+        $this->assertSame(3.0, $returned, implode(' | ', $results));
+        $loser = (string) collect($results)->first(fn ($r) => ! str_starts_with($r, 'OK:'));
+        $this->assertStringContainsString('only 1 can still be returned, not 3.', $loser, implode(' | ', $results));
         $this->assertSame($onHandBefore + $returned, (float) DB::table('edge_operational_stock_balances')->where('product_id', $this->productId)->sum('quantity_on_hand'), 'operational stock moved exactly by what was accepted');
         $refunded = (float) DB::table('shifts')->sum('total_cash_refunds');
         $this->assertSame($returned * 100.0, $refunded, 'the tills refunded exactly what was accepted');
         $this->assertSame($okCount, DB::table('edge_sync_outbox')->where('envelope_schema_version', EdgeReturnEnvelopeBuilder::SCHEMA)->count(), 'one immutable event per accepted return');
 
-        // RACE B: a return is already pending; another request for the ORIGINAL quantity (4) is capped to what is left (0 or 1).
+        // RACE B: a return is already pending; another request for the ORIGINAL quantity (4) is REFUSED with what is left (1) —
+        // Phase E R-3 / C-2 — and nothing moves; returning exactly the remainder then closes the bill.
         $remaining = 4.0 - $returned;
+        $this->assertSame(1.0, $remaining);
         $out = $this->finish($this->spawn($sale->id, $lineId, 4, $this->terminalB, '-', microtime(true)));
-        if ($remaining > 0) {
-            $this->assertStringStartsWith('OK:', $out);
-            $this->assertSame(4.0, (float) DB::table('sales_order_lines')->where('id', $lineId)->value('returned_quantity'));
-        } else {
-            $this->assertStringStartsWith('ERR:', $out, 'nothing left to return');
-        }
+        $this->assertStringStartsWith('ERR:', $out, 'an over-return is refused');
+        $this->assertStringContainsString('only 1 can still be returned, not 4.', $out);
+        $this->assertSame(3.0, (float) DB::table('sales_order_lines')->where('id', $lineId)->value('returned_quantity'), 'a refusal moves nothing');
+        $out = $this->finish($this->spawn($sale->id, $lineId, 1, $this->terminalB, '-', microtime(true)));
+        $this->assertStringStartsWith('OK:', $out, $out);
+        $this->assertSame(4.0, (float) DB::table('sales_order_lines')->where('id', $lineId)->value('returned_quantity'));
         $this->assertLessThanOrEqual(4.0, (float) DB::table('sales_return_lines')->sum('quantity'));
         $this->assertSame('returned', DB::table('sales_orders')->where('id', $sale->id)->value('status'));
     }

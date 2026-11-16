@@ -20,6 +20,8 @@ class PurchaseBill extends Model
         'bill_date'  => 'date',
         'due_date'   => 'date',
         'posted_at'  => 'datetime',
+        // PURCHASE-EDIT-1: an invoice voided together with its receipt.
+        'voided_at'  => 'datetime',
     ];
 
     public function supplier()
@@ -40,6 +42,12 @@ class PurchaseBill extends Model
     public function goodsReceipt()
     {
         return $this->belongsTo(GoodsReceipt::class);
+    }
+
+    /** SUPPLIER-NET-BILL-1: returns this invoice already takes off. */
+    public function nettings()
+    {
+        return $this->hasMany(PurchaseBillReturnNetting::class, 'purchase_bill_id');
     }
 
     public function lines()

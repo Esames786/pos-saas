@@ -208,6 +208,8 @@
                 </div></div>
             </div>
             @endif
+            {{-- DASHBOARD-CARDS-WHEN-USED-1: only where tax is charged (like Service Charge / Tips above). --}}
+            @if($showTax ?? true)
             <div class="col-md-3 col-sm-6">
                 <div class="card border-0 shadow-sm"><div class="card-body">
                     <span class="text-muted small">Tax Collected</span>
@@ -219,18 +221,22 @@
                     @endif
                 </div></div>
             </div>
+            @endif
             <div class="col-md-3 col-sm-6">
                 <div class="card border-0 shadow-sm"><div class="card-body">
                     <span class="text-muted small">Open Shifts</span>
                     <h5 class="mt-1 mb-0">{{ $fig($openShifts, 0) }}</h5>
                 </div></div>
             </div>
+            {{-- DASHBOARD-CARDS-WHEN-USED-1: only where the business tracks expiry. --}}
+            @if($showExpiry ?? true)
             <div class="col-md-3 col-sm-6">
                 <div class="card border-0 shadow-sm @if($expiryCount > 0) border-warning @endif"><div class="card-body">
                     <span class="text-muted small">Expiry Alerts (30d)</span>
                     <h5 class="mt-1 mb-0 @if($expiryCount > 0) text-warning @endif">{{ $fig($expiryCount, 0) }}</h5>
                 </div></div>
             </div>
+            @endif
 
             {{-- DASHBOARD-LAYOUT-1 — billing ke khanay bhi ISI row me. Pehle ye apni alag
                  row me `col-md-6` par thay, yani aik hi card hota to aadhi row khaali. Ab ye baqi
@@ -268,7 +274,8 @@
             @if(($billing['accruing'] ?? 0) > 0)
                 <div class="col-md-3 col-sm-6">
                     <div class="card border-0 shadow-sm h-100"><div class="card-body">
-                        <span class="text-muted small"><i class="ti ti-brand-whatsapp me-1"></i>Usage so far</span>
+                        {{-- WhatsApp only = its logo; with website orders too = a neutral receipt, so the box is not read as WhatsApp-only. --}}
+                        <span class="text-muted small"><i class="ti {{ (($billing['accruingWebsite'] ?? 0) != 0) ? 'ti-receipt' : 'ti-brand-whatsapp' }} me-1"></i>Usage so far</span>
                         <h5 class="mt-1 mb-0">{{ number_format($billing['accruing'], 2) }}</h5>
                         <div class="text-muted small mt-1">
                             @if(($billing['accruingWebsite'] ?? 0) != 0)
@@ -357,7 +364,7 @@
                                 @foreach($categoriesToday as $cat)
                                 <tr>
                                     <td>{{ $cat['name'] }}</td>
-                                    <td class="text-end">{{ $fig($cat['net_qty']) }}</td>
+                                    <td class="text-end">{{ \App\Support\QtyMix::label((float) $cat['net_qty'], $cat['net_mix'] ?? null, $fig) }}</td>
                                     <td class="text-end">{{ $fig($cat['net_value']) }}</td>
                                 </tr>
                                 @endforeach
@@ -368,7 +375,7 @@
                                          so this sits a little under the Net Sales tile (Kashif Food 10 Oct:
                                          1,037,450 against 1,043,086.50). The label says so before anyone asks. --}}
                                     <td title="Bill-level charges such as delivery are not in any category">Items total</td>
-                                    <td class="text-end">{{ $fig(array_sum(array_column($categoriesToday, 'net_qty'))) }}</td>
+                                    <td class="text-end">{{ \App\Support\QtyMix::label((float) array_sum(array_column($categoriesToday, 'net_qty')), \App\Support\QtyMix::sum($categoriesToday, 'net_mix', 'net_qty'), $fig) }}</td>
                                     <td class="text-end" id="dashboard-category-total">{{ $fig(array_sum(array_column($categoriesToday, 'net_value'))) }}</td>
                                 </tr>
                             </tfoot>

@@ -15,7 +15,7 @@
 @php
     $sbSelected = collect($supplierBox['suppliers'])->firstWhere('id', (int) $selectedSupplierId);
 @endphp
-<label for="sup-q" class="form-label required">Supplier <span class="text-muted fw-normal" lang="ur">سپلائر</span></label>
+<label for="sup-q" class="form-label required">Supplier</label>
 <div class="sb" id="sb">
     <div class="d-flex gap-2">
         <div class="flex-grow-1 position-relative">
@@ -36,7 +36,7 @@
     <div id="sup-info" class="sb-info" aria-live="polite"></div>
 
     <div id="sup-add" class="sb-add" hidden>
-        <div class="fw-bold mb-2">New supplier <span class="text-muted fw-normal" lang="ur">نیا سپلائر</span></div>
+        <div class="fw-bold mb-2">New supplier</div>
         <div class="row g-2">
             <div class="col-md-6"><label class="form-label small" for="sup-add-name">Name</label><input id="sup-add-name" class="form-control" maxlength="255" autocomplete="off"></div>
             <div class="col-md-6"><label class="form-label small" for="sup-add-phone">Phone</label><input id="sup-add-phone" class="form-control" maxlength="50" inputmode="tel" autocomplete="off"></div>

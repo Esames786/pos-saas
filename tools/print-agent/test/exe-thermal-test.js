@@ -123,6 +123,8 @@ function startCloud(printerPort) {
             POS_PRINT_AGENT_CODE:   'AG-TEST',
             POS_PRINT_AGENT_TOKEN:  'tok-test',
             POS_PRINT_POLL_MS:      '400',
+            // AGENT-UPGRADE-1: developer ke PC par asli agent pehle se chal raha ho to bhi test chale (client PC par kabhi set nahi).
+            BINGOO_AGENT_ALLOW_OTHER: '1',
         },
         windowsHide: true,
         stdio: 'ignore',
@@ -136,9 +138,12 @@ function startCloud(printerPort) {
         assert.ok(cloud.seen.polls > 0, 'exe ko server se baat karni chahiye thi');
         ok(`exe ne server se baat ki (${cloud.seen.polls} poll)`);
 
-        assert.strictEqual(cloud.seen.caps, 'document',
-            'exe ko apni salahiyat header me batani chahiye — isi se purane agents mehfooz rehte hain');
-        ok('X-Print-Agent-Caps: document — catering ka kaam is exe se ho sakta hai');
+        // 2.7.0 (PRINT-PREPARE-1): `document,prepare`. Server dono ko alag parakhta hai — `document` ke baghair A4/A5
+        // kaam nahi, `prepare` ke baghair tayyari ka kaam nahi — is liye yahan dono ki maujoodgi dekhi jati hai.
+        const caps = String(cloud.seen.caps || '').split(',').map((c) => c.trim());
+        assert.ok(caps.includes('document') && caps.includes('prepare'),
+            `exe ko apni salahiyat header me batani chahiye — isi se purane agents mehfooz rehte hain (mila: ${cloud.seen.caps})`);
+        ok('X-Print-Agent-Caps: document,prepare — catering ka kaam aur tayyari is exe se ho sakti hai');
 
         assert.ok(printer.got.length > 0, 'thermal printer tak ticket pahunchna chahiye tha');
         assert.ok(printer.got[0].includes('KOT-TEST-PAYLOAD-'),

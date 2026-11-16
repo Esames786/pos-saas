@@ -237,9 +237,27 @@
                     <div class="form-text fs-12">Khana kitchen se nikalne ka waqt.</div>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Venue</label>
-                    <input type="text" name="venue" class="form-control"
+                    {{-- VENUE-NAME-ONLY-1 (5 Nov) — owner: venue me sirf 1-2 lafz ka NAAM.
+
+                         Venue ka khana poore pate se bhara ja raha tha (1 Oct se 77 bhare
+                         venue me 32 me 5+ lafz: "Universal Banquet (Zaver), 4K chorangi k
+                         baad, right side pe…"), aur aksar wohi pata Address me bhi — is
+                         liye kitchen sheet par pata do baar aata tha. Ab venue = hall ya
+                         jagah ka naam, poora pata Address me (wo isi booking ka hai,
+                         graahak ki address book me nahi likha jata).
+
+                         Hadd HUROOF ki hai, lafzon ki nahi: "Candle Banquet Johar" teen
+                         lafz ka naam hai aur use rokna ghalat hota. `maxlength` typing ko
+                         wahin rok deta hai — koi error nahi aata. Purani booking ka lamba
+                         venue form me waise hi aata hai aur bina chhede save ho jata hai
+                         (browser sirf CHHEDE hue khane par maxlength lagata hai; server
+                         bhi sirf badle hue venue ko parakhta hai). --}}
+                    <label class="form-label" for="event-venue">Venue <span class="text-muted fw-normal fs-12">(sirf naam)</span></label>
+                    <input type="text" name="venue" id="event-venue" class="form-control"
+                           maxlength="{{ \App\Models\Tenant\CateringEvent::VENUE_MAX_LENGTH }}"
+                           placeholder="Jaise: Universal Banquet"
                            value="{{ old('venue', $event?->venue) }}">
+                    <div class="form-text fs-12">Sirf hall ya jagah ka naam. Poora pata upar <strong>Address</strong> me likhein.</div>
                 </div>
                 <div class="col-md-3">
                     {{-- CATERING-PAX-OPTIONAL-1: an inquiry often arrives before the

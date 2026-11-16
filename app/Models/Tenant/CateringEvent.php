@@ -47,6 +47,14 @@ class CateringEvent extends Model
         self::STATUS_CANCELLED,
     ];
 
+    /**
+     * VENUE-NAME-ONLY-1 (5 Nov) — venue = hall ya jagah ka NAAM, poora pata nahi.
+     * Form ka `maxlength` aur controller ka pehra dono yahin se parhte hain.
+     * Huroof ki hadd, lafzon ki nahi: "Al Mehmil Banquet Five Star" (27) samata
+     * hai, "a 489 bl 5 gulshan iqbal near sirsyed university…" (66) nahi.
+     */
+    public const VENUE_MAX_LENGTH = 30;
+
     /** States in which the event still accepts commercial (estimate) changes. */
     public const OPEN_STATUSES = [
         self::STATUS_INQUIRY,

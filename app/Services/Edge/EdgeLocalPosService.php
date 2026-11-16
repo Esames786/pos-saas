@@ -12,6 +12,7 @@ use App\Models\Tenant\RestaurantTable;
 use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\RestaurantWaiter;
 use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\SalesOrderLine;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\User;
@@ -1056,10 +1057,26 @@ class EdgeLocalPosService
                 'delivery_address' => $delivery['address'],
                 'delivery_charge_amount' => $delivery['charge'],
             ];
+        } elseif ($session && (int) $sale->restaurant_table_session_id !== (int) $session->id) {
+            // MOVE-TABLE-CART-1 twin (canonical a4eec6f8 HeldSaleController::store; Phase E item R-4, 30 Oct 2026): a held bill
+            // stays where it was made. The shared cashier view locks the order type and table once a bill is held, so a save
+            // that names ANOTHER open table session can only be a stale cart (22 Oct, Kashif Food: after Move Table the cart
+            // still held a car's quick sale and the next Hold re-homed it onto table 32 beside that table's own bill). Same
+            // key, same words as Online so the page shows the cashier the identical message; nothing is saved. Moving or
+            // merging tables rewrites the bill's own session (EdgeLocalTableOperationsService), so those never trip this, and
+            // the explicit R21 `change_order_details` revision above is the only sanctioned way to re-home a check.
+            $here = 'Table ' . ($session->table?->table_no ?? $session->restaurant_table_id);
+            $there = $sale->restaurant_table_session_id
+                ? 'belongs to Table ' . (RestaurantTable::on('tenant')->find($sale->restaurant_table_id)?->table_no ?? $sale->restaurant_table_id)
+                : 'is a ' . (['quick_sale' => 'Quick Sale', 'takeaway' => 'Takeaway', 'delivery' => 'Delivery'][$sale->order_type] ?? 'separate') . ' bill';
+            throw ValidationException::withMessages([
+                'held_sale_id' => "Bill {$sale->sale_no} {$there}, not {$here}. Nothing was saved. "
+                    . "Press Add Round, then add the items for {$here} again.",
+            ]);
         } elseif ((int) $sale->restaurant_table_session_id !== (int) ($session?->id ?? 0)) {
-            // LOCK-ORDER GUARD: a dine-in check may only be revised with its session supplied (and therefore
-            // LOCKED, shift → session → sale) — otherwise a revision could run unserialized against a
-            // concurrent session close. A mismatched or omitted session is refused, never inferred.
+            // LOCK-ORDER GUARD (Edge safety check, kept): a dine-in check may only be revised with its session supplied (and
+            // therefore LOCKED, shift → session → sale) — otherwise a revision could run unserialized against a concurrent
+            // session close. An omitted session is refused, never inferred (Online keeps the bill's own session instead).
             throw ValidationException::withMessages(['restaurant_table_session_id' => 'This held sale belongs to a different table session — submit its own session.']);
         }
 
@@ -1686,52 +1703,59 @@ class EdgeLocalPosService
                 if (! $heldLine) {
                     throw ValidationException::withMessages(['lines' => 'A split line does not belong to this order.']);
                 }
-                $splitQty = (float) $input['quantity'];
+
+                // DEAL-WHOLE-SPLIT-1 twin (canonical 8c8ee79e, rehearsal chunk 11): a deal moves WHOLE. Its items are not rows of
+                // their own on the split page — they follow their deal below. Moving one alone left the deal's price on one bill
+                // and its food on the other (and, with DEAL-SPLIT-REPORT-1, the report could no longer split it). Online's words.
+                if (($heldLine->line_kind ?? 'standard') === 'component' && $heldLine->parent_sales_order_line_id) {
+                    throw new RuntimeException($heldLine->product_name . ' is part of a deal — split the deal itself; its items go with it.');
+                }
+
+                $splitQty = \App\Support\LineQuantity::normalize($input['quantity'], (string) $heldLine->product_name);
                 $availableQty = (float) $heldLine->quantity;
+                if ($splitQty <= 0) {
+                    continue;
+                }
+
+                // W2-B (canonical SplitBillController::store; owner C-2 REFUSE_NOT_CAP, 15 Nov 2026): a pack line splits in whole
+                // packs and a counted item in whole pieces — unless it moves everything the line holds (a line split in the past
+                // may hold a part). The SAME words as Online, so the two tills never disagree on what may be split.
+                $countedLine = \App\Support\CounterPacks::sizeOf($heldLine) > 0 || ! \App\Support\LineQuantity::partsAllowed($heldLine->product?->unit);
+                if ($countedLine && ! \App\Support\LineQuantity::isWhole($splitQty) && abs($splitQty - $availableQty) > 0.0005) {
+                    throw new RuntimeException(\App\Support\LineQuantity::wholeMessage((string) $heldLine->product_name,
+                        \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? (string) ($heldLine->unit_code ?: '') : \App\Support\LineQuantity::unitName($heldLine->product?->unit), $splitQty));
+                }
+
+                $isDeal = ($heldLine->line_kind ?? 'standard') === 'combo_header';
+                if ($isDeal && ! \App\Support\LineQuantity::isWhole($splitQty) && abs($splitQty - $availableQty) > 0.0005) {
+                    throw new RuntimeException($heldLine->product_name . ' is a deal — it splits in whole deals, not ' . \App\Support\LineQuantity::show($splitQty) . '.');
+                }
+
                 if ($splitQty > $availableQty + 0.0001) {
                     throw new RuntimeException('Split quantity exceeds available quantity for ' . $heldLine->product_name . '.');
                 }
                 $ratio = $availableQty > 0 ? $splitQty / $availableQty : 0;
-                $splitDiscount = round((float) $heldLine->discount_amount * $ratio, 2);
-                $splitTax = round((float) $heldLine->tax_amount * $ratio, 2);
-                $splitSubtotal = round($splitQty * (float) $heldLine->unit_price, 2);
-                $splitLineTotal = max($splitSubtotal - $splitDiscount + $splitTax, 0);
 
-                $child->lines()->create([
-                    'product_id' => $heldLine->product_id,
-                    'product_variant_id' => $heldLine->product_variant_id,
-                    'product_name' => $heldLine->product_name,
-                    'variant_name' => $heldLine->variant_name,
-                    'quantity' => $splitQty,
-                    'unit_price' => $heldLine->unit_price,
-                    'unit_cost' => 0, 'cost_total' => 0,
-                    'discount_amount' => $splitDiscount,
-                    'tax_amount' => $splitTax,
-                    'line_total' => $splitLineTotal,
-                    'modifiers' => $heldLine->modifiers ?? [],
-                    'unit_code' => $heldLine->unit_code,
-                    'line_kind' => $heldLine->line_kind ?? 'standard',
-                    'combo_id' => $heldLine->combo_id,
-                    'kitchen_note' => $heldLine->kitchen_note,
-                    // already sent as part of the original order — paying it later must not re-KOT it.
-                    'kot_sent' => (float) $heldLine->kot_sent_quantity > 0,
-                    'kot_sent_quantity' => min((float) $heldLine->kot_sent_quantity, $splitQty),
-                ]);
-                $subtotal += $splitSubtotal; $discountTotal += $splitDiscount; $taxTotal += $splitTax; $grandTotal += $splitLineTotal;
+                // The deal's items (locked with the rest above), read before the deal line moves — a fully moved deal line is deleted.
+                $items = $isDeal
+                    ? $existing->filter(fn ($l) => (int) $l->parent_sales_order_line_id === (int) $heldLine->id)->sortBy('id')->values()
+                    : collect();
 
-                $remainingQty = $availableQty - $splitQty;
-                if ($remainingQty <= 0.0001) {
-                    $heldLine->delete();
-                } else {
-                    $remainingRatio = $remainingQty / $availableQty;
-                    $heldLine->update([
-                        'quantity' => $remainingQty,
-                        'discount_amount' => round((float) $heldLine->discount_amount * $remainingRatio, 2),
-                        'tax_amount' => round((float) $heldLine->tax_amount * $remainingRatio, 2),
-                        'line_total' => round((float) $heldLine->line_total * $remainingRatio, 2),
-                        'kot_sent_quantity' => min((float) $heldLine->kot_sent_quantity, $remainingQty),
-                    ]);
+                // DEAL-SPLIT-REPORT-1: moved lines keep the parts they were sold with (or none) — never re-stamped from the deal.
+                [$moved, $newDealLine] = \App\Support\DealSplit::copying(fn () => $this->moveSplitLine($child, $heldLine, $splitQty, $ratio, null));
+                foreach ($items as $item) {
+                    $itemQty = round((float) $item->quantity * $ratio, 3);
+                    if ($itemQty <= 0) {
+                        continue;
+                    }
+                    $itemRatio = min($itemQty / max((float) $item->quantity, 0.000001), 1);
+                    [$itemMoved] = \App\Support\DealSplit::copying(fn () => $this->moveSplitLine($child, $item, $itemQty, $itemRatio, (int) $newDealLine->id));
+                    foreach ($itemMoved as $k => $v) {
+                        $moved[$k] += $v;
+                    }
                 }
+
+                $subtotal += $moved['subtotal']; $discountTotal += $moved['discount']; $taxTotal += $moved['tax']; $grandTotal += $moved['total'];
             }
             if ($child->lines()->count() === 0) {
                 throw new RuntimeException('No valid split lines found.');
@@ -1748,6 +1772,73 @@ class EdgeLocalPosService
 
             return ['child' => $child->fresh(), 'parent' => $sale->fresh()];
         });
+    }
+
+    /**
+     * Move $splitQty of a held line onto the child check (same price, its share of discount / tax / kitchen-sent state) and
+     * shrink — or remove — what stays: EXACTLY canonical SplitBillController::moveLine. DEAL-WHOLE-SPLIT-1: a deal's item passes
+     * its new deal line as $parentId, so it stays linked to its deal on the new bill. A pack / batch column rides only when the
+     * line carries one (the Branch Server sells no packs today; the columns exist after the manifest migrations).
+     *
+     * @return array{0: array{subtotal: float, discount: float, tax: float, total: float}, 1: SalesOrderLine}
+     */
+    private function moveSplitLine(SalesOrder $child, SalesOrderLine $heldLine, float $splitQty, float $ratio, ?int $parentId): array
+    {
+        $availableQty = (float) $heldLine->quantity;
+        $splitDiscount = round((float) $heldLine->discount_amount * $ratio, 2);
+        $splitTax = round((float) $heldLine->tax_amount * $ratio, 2);
+        $splitSubtotal = round($splitQty * (float) $heldLine->unit_price, 2);
+        $splitLineTotal = max($splitSubtotal - $splitDiscount + $splitTax, 0);
+
+        $carried = array_filter([
+            'pack_unit_id' => $heldLine->pack_unit_id ?? null,
+            'pack_factor' => $heldLine->pack_factor ?? null,
+            'pack_size' => $heldLine->pack_size ?? null,
+            'base_quantity' => \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? round($splitQty * \App\Support\CounterPacks::sizeOf($heldLine), 3) : null,
+            'inventory_batch_id' => $heldLine->inventory_batch_id ?? null,
+        ], fn ($v) => $v !== null);
+
+        $newLine = $child->lines()->make([
+            'product_id' => $heldLine->product_id,
+            'product_variant_id' => $heldLine->product_variant_id,
+            'product_name' => $heldLine->product_name,
+            'variant_name' => $heldLine->variant_name,
+            'quantity' => $splitQty,
+            'unit_price' => $heldLine->unit_price,
+            'unit_cost' => 0, 'cost_total' => 0,
+            'discount_amount' => $splitDiscount,
+            'tax_amount' => $splitTax,
+            'line_total' => $splitLineTotal,
+            'modifiers' => $heldLine->modifiers ?? [],
+            'unit_code' => $heldLine->unit_code,
+            'line_kind' => $heldLine->line_kind ?? 'standard',
+            'combo_id' => $heldLine->combo_id,
+            'kitchen_note' => $heldLine->kitchen_note,
+            // already sent as part of the original order — paying it later must not re-KOT it.
+            'kot_sent' => (float) $heldLine->kot_sent_quantity > 0,
+            'kot_sent_quantity' => min((float) $heldLine->kot_sent_quantity, $splitQty),
+        ] + $carried + ($parentId ? ['parent_sales_order_line_id' => $parentId] : []));
+        // DEAL-SPLIT-REPORT-1: named only when it has a value (a switch-off tenant — every Branch Server — never names the column).
+        if (($heldLine->deal_share ?? null) !== null) {
+            $newLine->forceFill(['deal_share' => $heldLine->deal_share]);
+        }
+        $newLine->save();
+
+        $remainingQty = round($availableQty - $splitQty, 6);
+        if ($remainingQty <= 0.0001) {
+            $heldLine->delete();
+        } else {
+            $remainingRatio = $remainingQty / $availableQty;
+            $heldLine->update([
+                'quantity' => $remainingQty,
+                'discount_amount' => round((float) $heldLine->discount_amount * $remainingRatio, 2),
+                'tax_amount' => round((float) $heldLine->tax_amount * $remainingRatio, 2),
+                'line_total' => round((float) $heldLine->line_total * $remainingRatio, 2),
+                'kot_sent_quantity' => min((float) $heldLine->kot_sent_quantity, $remainingQty),
+            ] + (\App\Support\CounterPacks::sizeOf($heldLine) > 0 ? ['base_quantity' => round($remainingQty * \App\Support\CounterPacks::sizeOf($heldLine), 3)] : []));
+        }
+
+        return [['subtotal' => $splitSubtotal, 'discount' => $splitDiscount, 'tax' => $splitTax, 'total' => $splitLineTotal], $newLine];
     }
 
     /**

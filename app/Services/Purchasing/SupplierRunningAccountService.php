@@ -107,9 +107,14 @@ class SupplierRunningAccountService
             $credits[] = ['type' => SupplierCreditAllocation::SOURCE_PAYMENT, 'id' => (int) $p->id,
                 'date' => (string) $p->payment_date?->toDateString(), 'amount' => (float) $p->amount];
         }
+        // SUPPLIER-NET-BILL-1: a return an invoice already takes off is spent — it is never offered again.
+        $netted = \Illuminate\Support\Facades\Schema::connection('tenant')->hasTable('purchase_bill_return_nettings')
+            ? \App\Models\Tenant\PurchaseBillReturnNetting::where('supplier_id', $supplierId)->pluck('amount', 'purchase_return_id')
+            : collect();
         foreach (PurchaseReturn::where('supplier_id', $supplierId)->where('status', 'posted')->get(['id', 'return_date', 'grand_total']) as $r) {
             $credits[] = ['type' => SupplierCreditAllocation::SOURCE_RETURN, 'id' => (int) $r->id,
-                'date' => (string) \Illuminate\Support\Carbon::parse($r->return_date)->toDateString(), 'amount' => (float) $r->grand_total];
+                'date' => (string) \Illuminate\Support\Carbon::parse($r->return_date)->toDateString(),
+                'amount' => (float) $r->grand_total - (float) ($netted[$r->id] ?? 0)];
         }
 
         $open = [];
@@ -125,17 +130,148 @@ class SupplierRunningAccountService
     }
 
     /** Open bills to settle: the preferred one first, then oldest by bill date. Locked for this transaction. */
-    private function openBills(int $supplierId, ?int $preferredBillId)
+    private function openBills(int $supplierId, ?int $preferredBillId, bool $lock = true)
     {
-        return PurchaseBill::query()
+        $query = PurchaseBill::query()
             ->where('supplier_id', $supplierId)
             ->whereIn('status', ['posted', 'partial'])
             ->where('balance_due', '>', self::CENT)
             ->orderByRaw('id = ? DESC', [(int) $preferredBillId])
             ->orderBy('bill_date')
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get();
+            ->orderBy('id');
+
+        return $lock ? $query->lockForUpdate()->get() : $query->get();
+    }
+
+    /**
+     * SUPPLIER-CREDIT-CLARITY-1 — what settleCredit() would do with this payment, written nowhere: the bills it pays, in
+     * the order it pays them, and the advance left over. The payment screen shows this list before Save and the server
+     * posts only when it is still the same list (a payment or an invoice in between changes it).
+     *
+     * @return array{lines: list<array{bill_id:int, bill_no:string, amount:float}>, advance: float}
+     */
+    public function planSettle(int $supplierId, float $amount, ?int $preferredBillId = null): array
+    {
+        $left = round($amount, 4);
+        $lines = [];
+        foreach ($this->openBills($supplierId, $preferredBillId, false) as $bill) {
+            if ($left <= self::CENT) {
+                break;
+            }
+            $take = round(min($left, (float) $bill->balance_due), 4);
+            $lines[] = ['bill_id' => (int) $bill->id, 'bill_no' => (string) $bill->bill_no, 'amount' => round($take, 2)];
+            $left = round($left - $take, 4);
+        }
+
+        return ['lines' => $lines, 'advance' => round(max(0.0, $left), 2)];
+    }
+
+    /**
+     * SUPPLIER-CREDIT-CLARITY-1 — the supplier's unused credit, oldest first (the order a new invoice uses it), each named
+     * as people know it: the payment or return number and its date. The invoice review lists these.
+     *
+     * @return list<array{type:string, id:int, label:string, date:string, remaining:float}>
+     */
+    public function creditSources(int $supplierId): array
+    {
+        $credits = $this->unallocatedCredits($supplierId);
+        $ids = fn (string $type) => array_column(array_filter($credits, fn ($c) => $c['type'] === $type), 'id');
+        $payments = SupplierPayment::whereIn('id', $ids(SupplierCreditAllocation::SOURCE_PAYMENT))->pluck('payment_no', 'id');
+        $returns = PurchaseReturn::whereIn('id', $ids(SupplierCreditAllocation::SOURCE_RETURN))->pluck('return_no', 'id');
+
+        return array_map(fn ($c) => $c + ['label' => $c['type'] === SupplierCreditAllocation::SOURCE_PAYMENT
+            ? 'Payment ' . ($payments[$c['id']] ?? '#' . $c['id']) : 'Return ' . ($returns[$c['id']] ?? '#' . $c['id'])], $credits);
+    }
+
+    /**
+     * SUPPLIER-CREDIT-CLARITY-1 — what paid this invoice: each payment or return with the part of it on this invoice,
+     * oldest first. The invoice page lists these (its amount paid is their sum).
+     *
+     * @return list<array{type:string, id:int, label:string, date:string, amount:float}>
+     */
+    public function paidBy(PurchaseBill $bill): array
+    {
+        $rows = SupplierCreditAllocation::where('purchase_bill_id', $bill->id)
+            ->selectRaw('source_type, source_id, SUM(amount) AS total')->groupBy('source_type', 'source_id')->get();
+        $ids = fn (string $type) => $rows->where('source_type', $type)->pluck('source_id')->all();
+        $payments = SupplierPayment::whereIn('id', $ids(SupplierCreditAllocation::SOURCE_PAYMENT))->get(['id', 'payment_no', 'payment_date'])->keyBy('id');
+        $returns = PurchaseReturn::whereIn('id', $ids(SupplierCreditAllocation::SOURCE_RETURN))->get(['id', 'return_no', 'return_date'])->keyBy('id');
+
+        $out = [];
+        foreach ($rows as $r) {
+            if ((float) $r->total <= self::CENT) {
+                continue;
+            }
+            $pay = $r->source_type === SupplierCreditAllocation::SOURCE_PAYMENT;
+            $doc = $pay ? $payments->get($r->source_id) : $returns->get($r->source_id);
+            $date = $doc ? ($pay ? $doc->payment_date : $doc->return_date) : null;
+            $out[] = ['type' => (string) $r->source_type, 'id' => (int) $r->source_id,
+                'label' => $pay ? 'Payment ' . ($doc->payment_no ?? '#' . $r->source_id) : 'Return ' . ($doc->return_no ?? '#' . $r->source_id),
+                'date' => $date ? \Illuminate\Support\Carbon::parse($date)->toDateString() : '', 'amount' => round((float) $r->total, 2)];
+        }
+        usort($out, fn ($a, $b) => [$a['date'], $a['type'], $a['id']] <=> [$b['date'], $b['type'], $b['id']]);
+
+        return $out;
+    }
+
+    /**
+     * SUPPLIER-CREDIT-CLARITY-1 — the invoices one payment paid, and how much on each, in bill order.
+     *
+     * @return list<array{bill_id:int, bill_no:string, bill_date:string, amount:float}>
+     */
+    public function paymentPaid(SupplierPayment $payment): array
+    {
+        return SupplierCreditAllocation::where('source_type', SupplierCreditAllocation::SOURCE_PAYMENT)->where('source_id', $payment->id)
+            ->selectRaw('purchase_bill_id, SUM(amount) AS total')->groupBy('purchase_bill_id')->get()
+            ->filter(fn ($r) => (float) $r->total > self::CENT)
+            ->map(function ($r) {
+                $bill = PurchaseBill::find($r->purchase_bill_id, ['id', 'bill_no', 'bill_date']);
+
+                return ['bill_id' => (int) $r->purchase_bill_id, 'bill_no' => (string) ($bill->bill_no ?? '#' . $r->purchase_bill_id),
+                    'bill_date' => (string) $bill?->bill_date?->toDateString(), 'amount' => round((float) $r->total, 2)];
+            })
+            ->sortBy(fn ($l) => [$l['bill_date'], $l['bill_id']])->values()->all();
+    }
+
+    /**
+     * SUPPLIER-CREDIT-CLARITY-1 — move part of what a payment or return pays on one invoice to another invoice of the same
+     * supplier: the first owes that much again, the second that much less. The supplier's balance, its ledger, cash and
+     * the GL do not change — allocations only say which invoice the money settled. Each move is recorded.
+     */
+    public function moveAllocation(PurchaseBill $from, string $sourceType, int $sourceId, PurchaseBill $to, float $amount, ?int $userId, string $reason): void
+    {
+        $amount = round($amount, 4);
+        DB::connection('tenant')->transaction(function () use ($from, $sourceType, $sourceId, $to, $amount, $userId, $reason) {
+            Supplier::whereKey($from->supplier_id)->lockForUpdate()->first();
+            $from = PurchaseBill::query()->whereKey($from->id)->lockForUpdate()->firstOrFail();
+            $to = PurchaseBill::query()->whereKey($to->id)->lockForUpdate()->firstOrFail();
+
+            if ($amount <= self::CENT) {
+                throw new \RuntimeException('Enter an amount to move.');
+            }
+            if ($from->id === $to->id) {
+                throw new \RuntimeException('Choose a different invoice to move it to.');
+            }
+            if ((int) $to->supplier_id !== (int) $from->supplier_id) {
+                throw new \RuntimeException('The other invoice is for a different supplier.');
+            }
+            if (! in_array($to->status, ['posted', 'partial'], true) || (float) $to->balance_due + self::CENT < $amount) {
+                throw new \RuntimeException($to->bill_no . ' owes ' . number_format((float) $to->balance_due, 2) . ' — less than ' . number_format($amount, 2) . '. Nothing was moved.');
+            }
+            $here = round((float) SupplierCreditAllocation::where('source_type', $sourceType)->where('source_id', $sourceId)
+                ->where('purchase_bill_id', $from->id)->sum('amount'), 4);
+            if ($here + self::CENT < $amount) {
+                throw new \RuntimeException('This pays only ' . number_format($here, 2) . ' on ' . $from->bill_no . '. Nothing was moved.');
+            }
+
+            $this->releaseCreditFrom($sourceType, $sourceId, [$from->id => $amount]);
+            $this->allocate($sourceType, $sourceId, $to, $amount);
+            DB::connection('tenant')->table('supplier_credit_moves')->insert([
+                'supplier_id' => $from->supplier_id, 'source_type' => $sourceType, 'source_id' => $sourceId,
+                'from_purchase_bill_id' => $from->id, 'to_purchase_bill_id' => $to->id, 'amount' => $amount,
+                'reason' => mb_substr($reason, 0, 255), 'moved_by' => $userId, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        });
     }
 
     private function allocate(string $sourceType, int $sourceId, PurchaseBill $bill, float $amount): void
@@ -153,6 +289,58 @@ class SupplierRunningAccountService
             'amount'           => $amount,
         ]);
         $this->recomputeBill($bill);
+    }
+
+    /**
+     * SUPPLIER-NET-BILL-1 — take a credit back off the bills it settled, because its source is now spent elsewhere (a
+     * return the supplier's next invoice already takes off). A return made before its own bill settles the supplier's
+     * OLDEST open bills; the supplier never credited those, so they owe that amount again. Allocations are this
+     * account's working rows (a bill's paid = their sum), not posted documents: the return itself is never touched.
+     * Called inside the transaction that holds the supplier row.
+     */
+    public function releaseCredit(string $sourceType, int $sourceId): void
+    {
+        $rows = SupplierCreditAllocation::query()->where('source_type', $sourceType)->where('source_id', $sourceId);
+        $billIds = (clone $rows)->pluck('purchase_bill_id')->unique()->sort()->values();
+        if ($billIds->isEmpty()) {
+            return;
+        }
+        $bills = PurchaseBill::query()->whereIn('id', $billIds)->orderBy('id')->lockForUpdate()->get();
+        $rows->delete();
+        foreach ($bills as $bill) {
+            $this->recomputeBill($bill);
+        }
+    }
+
+    /**
+     * SUPPLIER-NET-BILL-1 (partial deduction) — take back only PART of a credit: the given amount off each given bill,
+     * newest allocation row first; whatever stays allocated keeps settling that bill. Called inside the transaction that
+     * holds the supplier row, with the bills already locked by the caller.
+     *
+     * @param  array<int, float>  $amountsByBill  purchase bill id => amount to take back from it
+     */
+    public function releaseCreditFrom(string $sourceType, int $sourceId, array $amountsByBill): void
+    {
+        foreach ($amountsByBill as $billId => $amount) {
+            $left = round((float) $amount, 4);
+            $rows = SupplierCreditAllocation::query()->where('source_type', $sourceType)->where('source_id', $sourceId)
+                ->where('purchase_bill_id', $billId)->orderByDesc('id')->lockForUpdate()->get();
+            foreach ($rows as $row) {
+                if ($left <= self::CENT) {
+                    break;
+                }
+                $take = min($left, round((float) $row->amount, 4));
+                $rest = round((float) $row->amount - $take, 4);
+                $rest > self::CENT ? $row->update(['amount' => $rest]) : $row->delete();
+                $left = round($left - $take, 4);
+            }
+            if ($left > self::CENT) {
+                throw new \RuntimeException('Supplier credit to take back is more than this bill holds — nothing was saved.');
+            }
+            if ($bill = PurchaseBill::query()->whereKey($billId)->first()) {
+                $this->recomputeBill($bill);
+            }
+        }
     }
 
     /** A bill's paid amount is the sum of its allocations — the one rule every bill follows here. */

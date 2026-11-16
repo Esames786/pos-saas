@@ -7,6 +7,8 @@
 <form method="POST" action="{{ url('/sales-returns') }}" id="nb-form" novalidate>
     @csrf
     <input type="hidden" name="mode" value="no_bill">
+    {{-- UB-06: posted once --}}
+    <input type="hidden" name="submission_key" value="{{ old('submission_key') ?: \App\Support\SubmissionKey::fresh() }}">
     @if(request('terminal_id'))
         <input type="hidden" name="terminal_id" value="{{ (int) request('terminal_id') }}">
     @endif
@@ -231,7 +233,9 @@
             // the smallest pack first (a Strip, not the Box or a loose Tablet), as the counter does
             var unit = 0;
             item.units.forEach(function (u, k) { if (u.factor > 1 && (unit === 0 || u.factor < item.units[unit].factor)) { unit = k; } });
-            rows.push({ item: item, unit: unit, qty: '1', price: money(item.units[unit].price), batch: '', batchNo: '', expiry: '', restock: !!item.shelf && item.tracked });
+            // UB-04: a medicine (an item with an expiry) back without a bill starts as "Thrown away" — the cashier
+            // puts it back on the shelf only after checking it.
+            rows.push({ item: item, unit: unit, qty: '1', price: money(item.units[unit].price), batch: '', batchNo: '', expiry: '', restock: !!item.shelf && item.tracked && !item.has_expiry });
             at = rows.length - 1;
         }
         hide();
@@ -340,7 +344,12 @@
                 html: 'This branch needs a manager to approve a return.<br>Refund: <strong>' + money(t) + '</strong>'
                     + '<input id="nb-pin" type="password" inputmode="numeric" autocomplete="off" class="swal2-input" placeholder="Manager PIN">',
                 icon: 'warning', showCancelButton: true, confirmButtonText: 'Approve & post', focusConfirm: false,
-                didOpen: function () { document.getElementById('nb-pin').focus(); },
+                // MANAGER-PIN-ENTER-1: Enter approves, like every manager code box.
+                didOpen: function () {
+                    var box = document.getElementById('nb-pin');
+                    box.focus();
+                    box.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); Swal.clickConfirm(); } });
+                },
                 preConfirm: function () {
                     var pin = document.getElementById('nb-pin').value;
                     if (!pin) { Swal.showValidationMessage('Enter the manager PIN'); return false; }

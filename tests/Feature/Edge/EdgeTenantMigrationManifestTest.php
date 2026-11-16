@@ -192,8 +192,21 @@ class EdgeTenantMigrationManifestTest extends TestCase
         // CANONICAL_RELEASE_FREEZE 025728d8 (22 Oct 2026): + restocked, ask_prescription, return_without_bill_schema (EDGE_REQUIRED ×3).
         // POST_FREEZE_EXCEPTION 59787ff6 (22 Oct 2026): + add_updated_by_to_categories (EDGE_REQUIRED).
         // REFUND-SHIFT-H1 (owner decision H1, 22 Oct 2026): + add_processing_shift_uuid_to_sales_returns (EDGE_REQUIRED).
-        $this->assertSame(217, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6) + 025728d8 (3) + 59787ff6 exception (1) + H1 (1)');
-        $this->assertSame(24, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
+        // CANONICAL REHEARSAL (Agent B, 30 Oct 2026) chunk 1 (canonical 59787ff6 range): + submission_key sales_returns (EDGE_REQUIRED),
+        // submission_key purchase_returns (EDGE_SCHEMA_SAFE), purchase_bill_return_nettings (CLOUD_ONLY), expensed_to_cost ENUM (EDGE_REQUIRED).
+        // chunk 2 (ed9a8431 VOID-PURGE): + purged_entries tables (EDGE_SCHEMA_SAFE by Agent B; Phase E R-2 -> CLOUD_ONLY on Edge-code evidence).
+        // chunk 3 (4b745532 UNIFIED-W3W4): + decimal_pack_sizes (EDGE_REQUIRED, owner review), sale_line_entered_unit (EDGE_REQUIRED), goods_receipts submission_key (CLOUD_ONLY).
+        // chunk 5 (567a7752 SUPPLIER-CREDIT-CLARITY-1): + supplier_credit_moves (CLOUD_ONLY).
+        // chunk 8 (073238de WEB-PICKUP-SWITCH-1): + web_settings.pickup_enabled (CLOUD_ONLY).
+        // chunks 9-11 (15 Nov 2026, canonical 073238de..5c74107f): + order_note toggle + default_off, deal_heading toggle, customer_font_size (EDGE_REQUIRED ×4);
+        // supplier_ledgers.entry_date, goods_receipt_revisions, purchase_bill voidable (ENUM, owner review), deal_split columns (EDGE_SCHEMA_SAFE ×4);
+        // delivery_place_sightings, print_prepares (CLOUD_ONLY ×2).
+        $this->assertSame(237, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6) + 025728d8 (3) + 59787ff6 exception (1) + H1 (1) + rehearsal chunks 1–8 (10) + chunks 9–11 (10)');
+        $this->assertSame(31, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
+        $this->assertSame(4, count(array_filter(['2026_11_02_000001_add_order_note_toggle', '2026_11_02_000002_order_note_toggle_default_off', '2026_11_11_000001_add_deal_heading_toggle', '2026_11_14_000001_add_customer_font_size_to_receipt_layouts'], fn ($n) => $m->classification($n) === EdgeTenantMigrationManifest::EDGE_REQUIRED)), 'the replicated receipt layout columns are EDGE_REQUIRED');
+        $this->assertTrue($m->entry('2026_11_03_000003_let_a_purchase_bill_be_voided')['OWNER_REVIEW_REQUIRED'], 'ENUM MODIFY keeps owner review (owner, 15 Nov 2026)');
+        $this->assertTrue($m->entry('2026_11_02_000002_order_note_toggle_default_off')['OWNER_REVIEW_REQUIRED'], 'a data rewrite keeps owner review (owner, 15 Nov 2026)');
+        $this->assertSame(EdgeTenantMigrationManifest::CLOUD_ONLY, $m->classification('2026_10_22_000001_create_purged_entries_tables'), 'Phase E R-2: the purge tables are a Cloud back-office feature');
         $baselineCloudOnly = array_filter($m->entries(), fn ($e) => ($e['BASELINE'] ?? false) && $e['CLASSIFICATION'] === EdgeTenantMigrationManifest::CLOUD_ONLY);
         $this->assertSame([], array_keys($baselineCloudOnly), 'baseline rule: no 0.7.0 migration is CLOUD_ONLY in this manifest version');
     }

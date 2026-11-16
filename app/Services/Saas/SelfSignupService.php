@@ -6,9 +6,11 @@ use App\Models\Master\Plan;
 use App\Models\Master\Subscription;
 use App\Models\Master\Tenant;
 use App\Models\Master\TenantDomain;
+use App\Services\Central\TenantBusinessService;
 use App\Services\Tenancy\TenancyManager;
 use App\Services\Tenancy\TenantProvisioner;
 use App\Support\PublicLocale;
+use App\Support\TenantFeatureDefaults;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
@@ -94,7 +96,11 @@ class SelfSignupService
                 'timezone'      => $extra['timezone'],
                 'status'        => 'pending',
                 'trial_ends_at' => $trialEndsAt,
+                // ROLLOUT-1: the switches a new tenant starts with, from its plan (its business is not known yet).
+                'features'      => TenantFeatureDefaults::for(null, $plan->enabledModules->pluck('key')->all()),
             ]);
+            // Enrolled in the defaults policy: its business switches come on when its business is first set.
+            app(TenantBusinessService::class)->enrollInDefaults($tenant, null, 'new tenant (self-signup): switches from the defaults policy');
 
             TenantDomain::create([
                 'tenant_id'  => $tenant->id,

@@ -58,6 +58,12 @@ class WebsiteOrderService
         $settings = WebSetting::tenantDefault();
         $pickup = $in['type'] === 'pickup';
 
+        // WEB-PICKUP-SWITCH-1: Pick-Up band ho to seedha saaf jawab (warna "closed" jaisa ghalat paigham).
+        if ($pickup && ! $settings->pickupOn()) {
+            $this->fail('type', 'Pick-up is not available. Please choose Delivery.');
+        }
+        $orPickup = $settings->pickupOn() ? ' or Pick-Up' : '';
+
         $zone = null;
         if ($pickup) {
             $branch = Branch::where('status', 'active')->find((int) ($in['branch'] ?? $settings->default_branch_id));
@@ -65,7 +71,7 @@ class WebsiteOrderService
             $zone = DeliveryZone::where('is_active', true)->find((int) ($in['area'] ?? 0));
             $branch = $zone ? Branch::where('status', 'active')->find($zone->branch_id) : null;
             if (! $zone) {
-                $this->fail('area', 'We do not deliver to this area. Please choose another area or Pick-Up.');
+                $this->fail('area', 'We do not deliver to this area. Please choose another area'.$orPickup.'.');
             }
         }
         if (! $branch) {
@@ -93,7 +99,7 @@ class WebsiteOrderService
                 isset($pin['lat'], $pin['lng']) ? (float) $pin['lat'] : null, isset($pin['lat'], $pin['lng']) ? (float) $pin['lng'] : null);
             if (! $quote['ok']) {
                 $this->fail('distance', 'We deliver up to '.rtrim(rtrim(number_format((float) $quote['max_km'], 1), '0'), '.').' km from our branch — your location is '
-                    .$quote['km'].' km away. Please choose Pick-Up.');
+                    .$quote['km'].' km away.'.($orPickup !== '' ? ' Please choose Pick-Up.' : ''));
             }
             $fee = ($zone->free_delivery_above !== null && $subtotal >= (float) $zone->free_delivery_above) ? 0.0 : $quote['fee'];
         }
@@ -403,6 +409,24 @@ class WebsiteOrderService
         }
 
         return Str::limit(implode(' | ', $parts), 2000, '');
+    }
+
+    /**
+     * KOT-ORDER-NOTE-1 — from readableNote()'s text, only what the kitchen cooks by: item notes, the customer's
+     * "Note:" and anything a cashier added. Payment, landmark, location, distance, phone and map stay on the POS
+     * and the bill. A note rewritten at the counter (no longer ours) prints as typed.
+     */
+    public static function kitchenPart(string $notes): ?string
+    {
+        $notes = trim($notes);
+        if (! str_starts_with($notes, 'WEBSITE ORDER')) {
+            return $notes !== '' ? $notes : null;
+        }
+        $keep = array_filter(array_map('trim', explode(' | ', $notes)), fn ($p) => $p !== ''
+            && ! in_array($p, ['WEBSITE ORDER', 'CASH ON DELIVERY', 'CASH ON PICK-UP'], true)
+            && ! Str::startsWith($p, ['Landmark: ', 'Location: ', 'Distance: ', 'Alt phone: ', 'Map: ']));
+
+        return $keep ? implode(' | ', $keep) : null;
     }
 
     /** Pakistan mobile ko POS ki shakl me: +92 300… / 92300… → 0300… */

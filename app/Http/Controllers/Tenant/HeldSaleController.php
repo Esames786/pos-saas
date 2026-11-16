@@ -123,6 +123,10 @@ class HeldSaleController extends Controller
                     // MEDICAL-COUNTER-1: a recalled pack line comes back as the same pack and batch.
                     'pack_unit_id'       => $l->pack_unit_id ? (int) $l->pack_unit_id : null,
                     'pack_factor'        => $l->pack_factor ? (int) $l->pack_factor : null,
+                'pack_size'          => \App\Support\CounterPacks::sizeOf($l) ?: null,
+                // UNITS-PACKS F2: a line typed as "250 g" comes back as 250 g.
+                'entered_quantity'   => $l->entered_quantity !== null ? (float) $l->entered_quantity : null,
+                'entered_unit_code'  => $l->entered_unit_code ?? null,
                     'inventory_batch_id' => $l->inventory_batch_id ? (int) $l->inventory_batch_id : null,
                 ])->values(),
             ]),
@@ -242,6 +246,10 @@ class HeldSaleController extends Controller
                 'kitchen_note'       => $l->kitchen_note,
                 'pack_unit_id'       => $l->pack_unit_id ? (int) $l->pack_unit_id : null,
                 'pack_factor'        => $l->pack_factor ? (int) $l->pack_factor : null,
+                'pack_size'          => \App\Support\CounterPacks::sizeOf($l) ?: null,
+                // UNITS-PACKS F2: a line typed as "250 g" comes back as 250 g.
+                'entered_quantity'   => $l->entered_quantity !== null ? (float) $l->entered_quantity : null,
+                'entered_unit_code'  => $l->entered_unit_code ?? null,
                 'inventory_batch_id' => $l->inventory_batch_id ? (int) $l->inventory_batch_id : null,
             ])->values(),
         ];
@@ -305,6 +313,8 @@ class HeldSaleController extends Controller
             'lines.*.modifiers'           => 'nullable|string',
             // MEDICAL-COUNTER-1: the pack a line is sold in.
             'lines.*.pack_unit_id'        => 'nullable|integer',
+            'lines.*.entered_quantity'    => 'nullable|numeric|min:0',
+            'lines.*.entered_unit_code'   => 'nullable|string|max:10',
             'lines.*.inventory_batch_id'  => 'nullable|integer',
             'void_items'                  => 'nullable|array',
             'void_items.*.old_line_id'    => 'nullable|integer',
@@ -323,6 +333,10 @@ class HeldSaleController extends Controller
         $isDraft = (bool) ($data['save_as_draft'] ?? false);
 
         $data = $this->validateDeliveryAttribution($data);
+        // W2-B: the same quantity rules as a paid sale, so a held line can never hold what the sale would refuse.
+        if (isset($data['lines']) && is_array($data['lines'])) {
+            $data['lines'] = \App\Support\LineQuantity::prepareSaleLines($data['lines']);
+        }
 
         if (($data['discount_type'] ?? 'none') !== 'none' || (float) ($data['discount_value'] ?? 0) > 0) {
             throw ValidationException::withMessages([
@@ -532,6 +546,22 @@ class HeldSaleController extends Controller
             if ((int) $sale->branch_id !== (int) $data['branch_id']) {
                 throw ValidationException::withMessages([
                     'branch_id' => 'A recalled order cannot be moved to another branch.',
+                ]);
+            }
+
+            // MOVE-TABLE-CART-1: a held bill stays where it was made. The POS locks the order type and
+            // table once a bill is held, so a save that names ANOTHER table session can only be a stale
+            // cart. 22 Oct, Kashif Food: after Move Table the cart still held a car's quick sale, and the
+            // next Hold re-homed it onto table 32 next to that table's own bill. Moving or merging tables
+            // keeps or rewrites the bill's own session, so those never trip this.
+            if ($tableSession && (int) $sale->restaurant_table_session_id !== (int) $tableSession->id) {
+                $here = 'Table ' . ($tableSession->table?->table_no ?? $tableSession->restaurant_table_id);
+                $there = $sale->restaurant_table_session_id
+                    ? 'belongs to Table ' . (RestaurantTable::find($sale->restaurant_table_id)?->table_no ?? $sale->restaurant_table_id)
+                    : 'is a ' . (['quick_sale' => 'Quick Sale', 'takeaway' => 'Takeaway', 'delivery' => 'Delivery'][$sale->order_type] ?? 'separate') . ' bill';
+                throw ValidationException::withMessages([
+                    'held_sale_id' => "Bill {$sale->sale_no} {$there}, not {$here}. Nothing was saved. "
+                        . "Press Add Round, then add the items for {$here} again.",
                 ]);
             }
 
@@ -756,7 +786,11 @@ class HeldSaleController extends Controller
             // MEDICAL-COUNTER-1: a line held in a pack keeps it (and its tablets) for the recall and the sale.
             $pack = $product && (($line['line_kind'] ?? 'standard') === 'standard')
                 ? \App\Support\CounterPacks::resolve($product, (array) $line, (float) $line['quantity']) : null;
-            if ($pack && ! isset($line['unit_price'])) {
+            if ($pack && \App\Support\CounterPacks::serverPricesPacks()) {
+                // UNITS-PACKS F3: the normal counter's pack price is the server's — its own, else size × the branch price.
+                $line['unit_price'] = $pack['pack_own_price'] ? $pack['pack_price']
+                    : round($pack['pack_size'] * app(\App\Services\Sales\SalePricingService::class)->resolveSellingPrice($product, $variant, (int) $sale->branch_id, null), 2);
+            } elseif ($pack && ! isset($line['unit_price'])) {
                 $line['unit_price'] = $pack['pack_price'];
             }
             $preferBatch = $product && (($line['line_kind'] ?? 'standard') === 'standard')
@@ -811,6 +845,7 @@ class HeldSaleController extends Controller
                 'kot_sent_quantity'  => $kotSentQty,
                 'pack_unit_id'       => $pack['pack_unit_id'] ?? null,
                 'pack_factor'        => $pack['pack_factor'] ?? null,
+            ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $pack['pack_size'] ?? null) + ($pack ? [] : \App\Support\LineQuantity::enteredColumns($line)) + [
                 'base_quantity'      => $pack['base_quantity'] ?? null,
                 'inventory_batch_id' => $preferBatch,
             ]);

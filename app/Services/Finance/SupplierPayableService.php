@@ -61,9 +61,18 @@ class SupplierPayableService
     public function recordPayment(array $data, ?int $userId = null): SupplierPayment
     {
         return DB::connection('tenant')->transaction(function () use ($data, $userId) {
-            $payment = SupplierPayment::create([
+            // W3/W4 S0: a payment against an invoice pays THAT supplier's invoice. Nothing checked it, and with the
+            // running account off postPayment() then marked another supplier's invoice paid. Neither screen filters
+            // its invoice list by supplier, so a wrong pick was one click away.
+            if (! empty($data['purchase_bill_id'])) {
+                $billSupplier = PurchaseBill::query()->whereKey($data['purchase_bill_id'])->value('supplier_id');
+                if ($billSupplier === null || (int) $billSupplier !== (int) ($data['supplier_id'] ?? 0)) {
+                    throw new RuntimeException('That supplier invoice belongs to another supplier. Choose one of this supplier\'s invoices, or pay without one.');
+                }
+            }
+
+            $payment = $this->createNumbered([
                 ...$data,
-                'payment_no'        => $this->purchasing->nextPaymentNo(),
                 'posted_by_user_id' => $userId,
             ]);
 
@@ -95,6 +104,24 @@ class SupplierPayableService
 
             return $payment;
         });
+    }
+
+    /**
+     * W3/W4 S0: the payment row, numbered. "PAY-<second>-<3 digits>" can clash when two payments are made in the same
+     * second; a number already taken draws another (as supplier invoices do) instead of failing the payment.
+     */
+    private function createNumbered(array $attributes): SupplierPayment
+    {
+        for ($try = 1; ; $try++) {
+            $no = $this->purchasing->nextPaymentNo();
+            try {
+                return SupplierPayment::create(['payment_no' => $no] + $attributes);
+            } catch (\Illuminate\Database\QueryException $e) {
+                if ($try >= 5 || ! \App\Support\SubmissionKey::duplicateValue($e, $no)) {
+                    throw $e;
+                }
+            }
+        }
     }
 
     /**
@@ -146,10 +173,11 @@ class SupplierPayableService
             }
             $reversal = app(JournalService::class)->reverse($entry, $note, $userId, VoidDate::resolve($dateMode, $entry->entry_date));
 
-            // 2. Supplier subledger — payable wapas barha.
+            // 2. Supplier subledger — payable wapas barha. SUPPLIER-LEDGER-DAILY-1: usi din jis din GL reversal hua.
             $this->purchasing->postSupplierLedger(
                 $supplier, 'payment_void', 'debit', $amount,
-                SupplierPayment::class, (int) $locked->id, (string) $locked->payment_no, $note, $userId
+                SupplierPayment::class, (int) $locked->id, (string) $locked->payment_no, $note, $userId,
+                PurchasingService::ledgerDay($reversal->entry_date),
             );
 
             // 3. Bills
@@ -380,7 +408,8 @@ class SupplierPayableService
                 (int) $entry->id,
                 (string) $entry->entry_no,
                 $line->description ?: $entry->description,
-                $userId
+                $userId,
+                PurchasingService::ledgerDay($entry->entry_date),
             );
 
             // Journal adjustment bhi advance nahi bana sakta — wohi usool jo payment par hai.

@@ -6,10 +6,10 @@ use App\Http\Controllers\Concerns\NormalizesBranchIds;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Services\Finance\FinancialExportService;
+use App\Services\Finance\TrialBalanceLayout;
 use App\Services\Finance\TrialBalancePartyService;
 use App\Support\CsvStreamer;
-use Dompdf\Dompdf;
-use Dompdf\Options;
+use App\Support\FinancePdf;
 use Illuminate\Http\Request;
 
 class TrialBalanceController extends Controller
@@ -19,6 +19,7 @@ class TrialBalanceController extends Controller
     public function __construct(
         private FinancialExportService $exportService,
         private TrialBalancePartyService $partyService,
+        private TrialBalanceLayout $layout,
     ) {}
 
     /**
@@ -52,11 +53,18 @@ class TrialBalanceController extends Controller
             ? $this->partyService->partiesFor($from, $to, $branchIds, array_column($tb['rows'], 'account_id'))
             : [];
 
+        // TB-SECTION-HEADS-1: grouped under the heads of the books, parents over their children, a
+        // subtotal per head. Default ON; group=0 is the flat list (and the flat CSV) as before.
+        $grouped = (string) $request->input('group', '1') !== '0';
+        $sections = $grouped ? $this->layout->sections($tb['rows']) : [];
+
         if ($request->boolean('export_csv')) {
-            return $this->csv($tb, $parties, $from, $to, $branchIds);
+            return $grouped
+                ? $this->groupedCsv($tb, $sections, $parties, $from, $to, $branchIds)
+                : $this->csv($tb, $parties, $from, $to, $branchIds);
         }
         if ($request->query('format') === 'pdf') {
-            return $this->pdf($tb, $parties, $from, $to, $branchIds);
+            return $this->pdf($tb, $parties, $from, $to, $branchIds, $grouped, $sections);
         }
 
         return view('tenant.finance.trial-balance.index', [
@@ -69,6 +77,8 @@ class TrialBalanceController extends Controller
             'selectedBranchIds' => $branchIds ?? [],
             'parties'           => $parties,
             'showParties'       => $showParties,
+            'grouped'           => $grouped,
+            'sections'          => $sections,
         ]);
     }
 
@@ -132,40 +142,96 @@ class TrialBalanceController extends Controller
             fputcsv($fp, ['', '', 'Difference', '', '', '', $n($tb['difference'])]);
         });
     }
+
     /**
-     * Part 2 — Print. A4 portrait, column headings on every page, "Page X of Y", the totals block
-     * kept on one page, signature lines. Dompdf, as the Sales Report PDF already uses.
+     * TB-SECTION-HEADS-1 — the grouped CSV. Every row says what it is ("Row"): a SUM of Debit or Credit
+     * over the "Account" rows equals the grand total; Head, Party and Subtotal rows are summaries.
      */
-    private function pdf(array $tb, array $parties, string $from, string $to, ?array $branchIds)
+    private function groupedCsv(array $tb, array $sections, array $parties, string $from, string $to, ?array $branchIds)
+    {
+        $header = CsvStreamer::financeHeader('Trial Balance', [
+            'From'   => $from,
+            'To'     => $to,
+            'Branch' => $this->branchLabel($branchIds),
+        ]);
+
+        return CsvStreamer::download('trial-balance-' . $from . '-to-' . $to . '.csv', $header, function ($fp) use ($tb, $sections, $parties) {
+            $n = fn (float $v) => number_format($v, 2, '.', '');
+            $money = fn (array $r) => [
+                self::sided($r['opening_debit'], $r['opening_credit'], false),
+                $n($r['period_debit']), $n($r['period_credit']),
+                self::sided($r['closing_debit'], $r['closing_credit'], false),
+            ];
+            fputcsv($fp, ['Section', 'Row', 'Level', 'Code', 'Account', 'Opening', 'Debit', 'Credit', 'Balance']);
+            foreach ($sections as $s) {
+                foreach ($s['lines'] as $l) {
+                    fputcsv($fp, [$s['label'], $l['kind'] === 'head' ? 'Head' : 'Account', $l['depth'], $l['code'], $l['name'], ...$money($l)]);
+                    if ($l['kind'] !== 'head') {
+                        foreach ($parties[$l['account_id']] ?? [] as $p) {
+                            fputcsv($fp, [$s['label'], 'Party', $l['depth'] + 1, '', $p['label'], ...$money($p)]);
+                        }
+                    }
+                }
+                fputcsv($fp, [$s['label'], 'Subtotal', 0, '', 'Total ' . $s['label'], ...$money($s['subtotal'])]);
+            }
+            $t = $tb['totals'];
+            fputcsv($fp, [
+                '', 'Total', '', '', 'TOTAL',
+                $n($t['opening_debit']) . ' Dr / ' . $n($t['opening_credit']) . ' Cr',
+                $n($t['period_debit']), $n($t['period_credit']),
+                $n($t['closing_debit']) . ' Dr / ' . $n($t['closing_credit']) . ' Cr',
+            ]);
+            fputcsv($fp, ['', 'Difference', '', '', '', '', '', '', $n($tb['difference'])]);
+        });
+    }
+    /**
+     * Part 2 — Print; FINANCE-PDF-DOWNLOADS-1 — as the hand-made sample: Debit / Credit pairs for Opening, Transactions
+     * and Closing, a total per head, the Grand Total from the service's totals, the difference in the footer.
+     * Downloaded (attachment), never opened in a blank tab.
+     */
+    private function pdf(array $tb, array $parties, string $from, string $to, ?array $branchIds, bool $grouped = false, array $sections = [])
     {
         $html = view('tenant.finance.trial-balance.print', [
-            'rows'        => $tb['rows'],
-            'totals'      => $tb['totals'],
-            'difference'  => $tb['difference'],
-            'parties'     => $parties,
-            'from'        => $from,
-            'to'          => $to,
-            'branchLabel' => $this->branchLabel($branchIds),
-            'company'     => app()->bound('tenant') ? (app('tenant')->business_name ?? '') : '',
+            'rows'          => $tb['rows'],
+            'totals'        => $tb['totals'],
+            'difference'    => $tb['difference'],
+            'parties'       => $parties,
+            'showParties'   => (bool) $parties,
+            'grouped'       => $grouped,
+            'sections'      => $sections,
+            'sectionTotals' => self::sectionTotals($sections),
+            'from'          => $from,
+            'to'            => $to,
+            'branchLabel'   => $this->branchLabel($branchIds),
+            'company'       => app()->bound('tenant') ? (app('tenant')->business_name ?? '') : '',
         ])->render();
 
-        $options = new Options;
-        $options->set('defaultFont', 'DejaVu Sans');
-        $options->set('isRemoteEnabled', false);
-        $options->set('isPhpEnabled', false);
+        return FinancePdf::download($html, 'trial-balance-' . $from . '-to-' . $to . '.pdf');
+    }
 
-        $dompdf = new Dompdf($options);
-        $dompdf->setPaper('a4', 'portrait');
-        $dompdf->loadHtml($html, 'UTF-8');
-        $dompdf->render();
+    /**
+     * A head's total in the PDF's Debit / Credit pairs: each column summed over its ACCOUNT rows (the heads only sum
+     * them again), as an accountant adds a column — the opening and closing debits and credits are not netted.
+     *
+     * @return array<string, array<string,float>> section key => column => amount
+     */
+    public static function sectionTotals(array $sections): array
+    {
+        $cols = ['opening_debit', 'opening_credit', 'period_debit', 'period_credit', 'closing_debit', 'closing_credit'];
+        $out = [];
+        foreach ($sections as $s) {
+            $sum = array_fill_keys($cols, 0.0);
+            foreach ($s['lines'] as $l) {
+                if ($l['kind'] === 'head') {
+                    continue;
+                }
+                foreach ($cols as $c) {
+                    $sum[$c] += (float) $l[$c];
+                }
+            }
+            $out[$s['key']] = array_map(fn ($v) => round($v, 2), $sum);
+        }
 
-        $canvas = $dompdf->getCanvas();
-        $font = $dompdf->getFontMetrics()->getFont('DejaVu Sans');
-        $canvas->page_text($canvas->get_width() - 110, $canvas->get_height() - 28, 'Page {PAGE_NUM} of {PAGE_COUNT}', $font, 8, [0.35, 0.35, 0.35]);
-
-        return response($dompdf->output(), 200, [
-            'Content-Type'        => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="trial-balance-' . $from . '-to-' . $to . '.pdf"',
-        ]);
+        return $out;
     }
 }

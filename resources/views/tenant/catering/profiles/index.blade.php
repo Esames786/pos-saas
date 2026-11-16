@@ -113,6 +113,18 @@
                         <td>{{ $profile->production_station ?? '—' }}</td>
                         <td><span class="badge bg-{{ $profile->catering_enabled ? 'success' : 'secondary' }}">{{ $profile->catering_enabled ? 'Yes' : 'No' }}</span></td>
                         <td class="text-end">
+                            {{-- CATERING-SIMPLIFY-1 (owner, 27 Oct): one Edit, not three. Where the product form opens and its
+                                 Event costing tab may be edited, Edit opens that tab — price, cost blocks, labels, on / off —
+                                 in a new tab, so the list stays. Otherwise the buttons stay as they were. --}}
+                            @php
+                                $formEdit = \App\Support\ScreenAccess::allows('tenant.catering.profiles.update')
+                                    ? \App\Support\ProductFormLink::to($profile->product_id, 'catering') : null;
+                            @endphp
+                            @if($formEdit)
+                                <a href="{{ $formEdit }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary" data-edit-in-product data-one-edit
+                                   title="Opens this dish in the product form (a new tab): its price, cost blocks and labels, all in one place.">Edit</a>
+                            @else
+                            @include('partials.edit-in-product', ['productId' => $profile->product_id, 'tab' => 'catering', 'class' => 'btn btn-sm btn-outline-primary'])
                             @can('tenant.catering.cost-blocks.edit')
                                 <a href="{{ url('/catering/profiles/' . $profile->id . '/blocks') }}"
                                    class="btn btn-sm btn-light" data-bs-toggle="tooltip"
@@ -124,6 +136,7 @@
                                 <button class="btn btn-sm btn-light edit-profile"
                                         data-profile='@json($profilePayload)'>Edit</button>
                             @endcan
+                            @endif
                         </td>
                     </tr>
                     @empty

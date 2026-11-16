@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\CashBankAccount;
 use App\Models\Tenant\PurchaseBill;
+use App\Models\Tenant\PurchasingSetting;
 use App\Models\Tenant\Supplier;
 use App\Models\Tenant\SupplierPayment;
 use App\Services\Finance\SupplierPayableService;
 use App\Services\Purchasing\PurchasingService;
+use App\Services\Purchasing\SupplierRunningAccountService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -70,9 +72,61 @@ class SupplierPaymentController extends Controller
             ? url('/suppliers/' . $supplierPreset->id . '/ledger')
             : url('/supplier-payments');
 
+        // SUPPLIER-CREDIT-CLARITY-1: with the running account on, the screen asks where the payment goes and lists, before
+        // Save, the invoices it pays — from these: each supplier's open invoices in the order the server pays them.
+        $openBills = PurchasingSetting::supplierRunningAccount()
+            ? PurchaseBill::whereIn('status', ['posted', 'partial'])->where('balance_due', '>', 0.00005)
+                ->orderBy('supplier_id')->orderBy('bill_date')->orderBy('id')->get(['id', 'bill_no', 'supplier_id', 'bill_date', 'balance_due'])
+            : collect();
+
         return view('tenant.supplier-payments.create', compact(
-            'branches', 'suppliers', 'bills', 'bill', 'cashBankAccounts', 'supplierPreset', 'returnTo'
+            'branches', 'suppliers', 'bills', 'bill', 'cashBankAccounts', 'supplierPreset', 'returnTo', 'openBills'
         ));
+    }
+
+    /**
+     * SUPPLIER-CREDIT-CLARITY-1 — with the running account on: where this payment goes is the person's own choice (one
+     * invoice, or the oldest open invoices first — nothing is chosen for them), and it posts only if the invoices it
+     * pays are still the ones the screen listed. Otherwise nothing is saved and the screen lists them again.
+     *
+     * @return array<string, string>|null  errors to show, or null to go on
+     */
+    private function checkPlace(Request $request, array $data): ?array
+    {
+        $place = (string) $request->input('pay_to', '');
+        if (! in_array($place, ['bill', 'oldest'], true)) {
+            return ['pay_to' => 'Choose where this payment goes: one invoice, or the oldest open invoices first.'];
+        }
+        if ($place === 'bill' && empty($data['purchase_bill_id'])) {
+            return ['purchase_bill_id' => 'Choose the invoice this payment is for.'];
+        }
+
+        $plan = app(SupplierRunningAccountService::class)->planSettle((int) $data['supplier_id'], (float) $data['amount'],
+            $place === 'bill' ? (int) $data['purchase_bill_id'] : null);
+        if (! $this->sameAsShown($plan, (string) $request->input('plan', ''))) {
+            // the page comes back with today's open invoices and lists them again
+            return ['plan' => 'Check where this payment goes (listed below), then press Post again.'];
+        }
+
+        return null;
+    }
+
+    /** The plan the page listed ("billId:amount;billId:amount|advance") against the server's — same invoices, same order, to the paisa. */
+    private function sameAsShown(array $plan, string $shown): bool
+    {
+        [$lines, $advance] = array_pad(explode('|', $shown, 2), 2, '');
+        $pairs = array_values(array_filter(explode(';', $lines), fn ($p) => $p !== ''));
+        if (count($pairs) !== count($plan['lines']) || abs((float) $advance - $plan['advance']) > 0.011) {
+            return false;
+        }
+        foreach ($plan['lines'] as $i => $line) {
+            [$id, $amount] = array_pad(explode(':', $pairs[$i], 2), 2, '');
+            if ((int) $id !== $line['bill_id'] || abs((float) $amount - $line['amount']) > 0.011) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function store(Request $request)
@@ -103,6 +157,15 @@ class SupplierPaymentController extends Controller
         // BAAD alag padha jata hai aur $data me nahi jata (warna SupplierPayment::create()
         // use fillable samajh kar chhorta, aur ek chupa hua column-mismatch banta).
 
+        // SUPPLIER-CREDIT-CLARITY-1: on account, the person says where it goes and sees the invoices it pays first.
+        if (PurchasingSetting::supplierRunningAccount()) {
+            if ($request->input('pay_to') === 'oldest') {
+                $data['purchase_bill_id'] = null;
+            }
+            if ($errors = $this->checkPlace($request, $data)) {
+                return back()->withInput()->withErrors($errors);
+            }
+        }
 
         // recordPayment EK transaction mein payment row + supplier subledger + bill (agar diya ho)
         // + cash/bank + GL journal, sab likhta hai. Purchase bill ki zaroorat NAHI.
@@ -126,7 +189,11 @@ class SupplierPaymentController extends Controller
     public function show(SupplierPayment $supplierPayment)
     {
         $supplierPayment->load(['supplier', 'branch', 'bill', 'postedBy', 'voidedBy']);
-        return view('tenant.supplier-payments.show', compact('supplierPayment'));
+        // SUPPLIER-CREDIT-CLARITY-1: on a running account, the invoices this payment paid and the advance left from it.
+        $runningAccount = PurchasingSetting::supplierRunningAccount();
+        $paid = $runningAccount ? app(SupplierRunningAccountService::class)->paymentPaid($supplierPayment) : [];
+
+        return view('tenant.supplier-payments.show', compact('supplierPayment', 'runningAccount', 'paid'));
     }
 
     /**

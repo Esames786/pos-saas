@@ -1,12 +1,12 @@
 @extends('layouts.app')
 
-@section('title', 'Purchase Bills')
+@section('title', 'Supplier Invoices')
 
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">Purchase Bills</h1>
-        <p class="fw-medium">Purchase bills create supplier payable ledger entries.</p>
+        <h1 class="mb-1">Supplier Invoices</h1>
+        <p class="fw-medium">A supplier invoice records what you owe a supplier for one goods receipt.</p>
     </div>
     @can('tenant.purchase-bills.create')
         <a href="{{ url('/purchase-bills/create') }}" class="btn btn-primary">
@@ -26,7 +26,7 @@
 <div class="card mb-3">
     <div class="card-body">
         <form method="GET" action="{{ url('/purchase-bills') }}" class="row g-3 align-items-end">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label for="bill-supplier" class="form-label">Supplier</label>
                 <select id="bill-supplier" name="supplier_id" class="form-select">
                     <option value="">All Suppliers</option>
@@ -37,7 +37,7 @@
                     @endforeach
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="bill-status" class="form-label">Status</label>
                 <select id="bill-status" name="status" class="form-select">
                     <option value="">All</option>
@@ -46,8 +46,19 @@
                     @endforeach
                 </select>
             </div>
-            <div class="col-md-3">
+            {{-- BILL-DATE-FILTER-1: invoice date From / To; Today / Yesterday keep the supplier and status chosen above. --}}
+            <div class="col-6 col-md-2">
+                <label for="bill-date-from" class="form-label">From</label>
+                <input type="date" id="bill-date-from" name="date_from" value="{{ $dateFrom ?? '' }}" class="form-control">
+            </div>
+            <div class="col-6 col-md-2">
+                <label for="bill-date-to" class="form-label">To</label>
+                <input type="date" id="bill-date-to" name="date_to" value="{{ $dateTo ?? '' }}" class="form-control">
+            </div>
+            <div class="col-md-3 d-flex flex-wrap gap-2">
                 <button class="btn btn-dark" type="submit">Filter</button>
+                <button class="btn btn-outline-secondary" type="submit" name="range" value="today">Today</button>
+                <button class="btn btn-outline-secondary" type="submit" name="range" value="yesterday">Yesterday</button>
                 <a href="{{ url('/purchase-bills') }}" class="btn btn-light">Reset</a>
             </div>
         </form>
@@ -57,12 +68,12 @@
 <div class="card">
     <div class="card-body table-responsive">
         <table class="table table-nowrap align-middle">
-            <caption class="visually-hidden">Purchase bill list</caption>
+            <caption class="visually-hidden">Supplier invoice list</caption>
             <thead>
             <tr>
-                <th scope="col">Bill No</th>
+                <th scope="col">Invoice No</th>
                 <th scope="col">Supplier</th>
-                <th scope="col">GRN</th>
+                <th scope="col">Goods Receipt</th>
                 <th scope="col">Date</th>
                 <th scope="col">Total</th>
                 <th scope="col">Paid</th>
@@ -102,7 +113,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="9" class="text-center text-muted py-4">No purchase bills found.</td>
+                    <td colspan="9" class="text-center text-muted py-4">No supplier invoices found.</td>
                 </tr>
             @endforelse
             </tbody>

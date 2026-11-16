@@ -582,4 +582,63 @@ class EdgeInboundSaleIngestionMySqlTest extends MySqlTenantTestCase
 
         return $out !== '' ? $out : 'STDERR:' . $err;
     }
+
+    // ── DEAL-SPLIT-REPORT-1 on an Edge-sold deal (canonical 7762ab39, rehearsal chunk 11) ──────────────────────
+
+    /**
+     * The Cloud files a split deal's money under its items from `sales_order_lines.deal_share`, stamped at the moment of sale by
+     * SalesOrderLine::creating (DealSplit::stamp) and paired with the header by parent_sales_order_line_id. An Edge-sold deal
+     * reaches the Cloud as an envelope whose lines are created through the same model: with the tenant's Master switch ON the
+     * Cloud stamps the CLOUD's parts and links the components to their header; with it OFF nothing is written (no envelope change
+     * on either side — a Branch Server never carries the switch).
+     */
+    public function test_an_edge_sold_deal_is_stamped_with_its_parts_and_linked_to_its_header_on_the_cloud(): void
+    {
+        $conn = DB::connection('tenant');
+        $conn->table('combo_components')->whereIn('combo_id', $conn->table('combos')->where('code', 'DSPLIT-EDGE')->select('id'))->delete();
+        $conn->table('combos')->where('code', 'DSPLIT-EDGE')->delete();
+        $comboId = (int) $conn->table('combos')->insertGetId(['branch_id' => null, 'code' => 'DSPLIT-EDGE', 'name' => 'Platter', 'price' => 900, 'report_by_items' => 1, 'sort_order' => 0, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $conn->table('combo_components')->insert([
+            ['combo_id' => $comboId, 'product_id' => $this->productId, 'quantity' => 1, 'report_amount' => 400, 'sort_order' => 0, 'created_at' => now(), 'updated_at' => now()],
+            ['combo_id' => $comboId, 'product_id' => $this->serviceId, 'quantity' => 1, 'report_amount' => 500, 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $dealLines = fn () => [
+            ['line_uuid' => (string) Str::ulid(), 'line_kind' => 'combo_header', 'product_id' => $this->productId, 'product_variant_id' => null, 'combo_id' => $comboId, 'product_name' => 'Platter', 'quantity' => 1.0, 'unit_price' => 900.0, 'discount_amount' => 0.0, 'tax_amount' => 0.0, 'line_total' => 900.0, 'modifiers' => []],
+            ['line_uuid' => (string) Str::ulid(), 'line_kind' => 'component', 'product_id' => $this->productId, 'product_variant_id' => null, 'combo_id' => $comboId, 'product_name' => 'Widget', 'quantity' => 1.0, 'unit_price' => 0.0, 'discount_amount' => 0.0, 'tax_amount' => 0.0, 'line_total' => 0.0, 'modifiers' => []],
+            ['line_uuid' => (string) Str::ulid(), 'line_kind' => 'component', 'product_id' => $this->serviceId, 'product_variant_id' => null, 'combo_id' => $comboId, 'product_name' => 'Service', 'quantity' => 1.0, 'unit_price' => 0.0, 'discount_amount' => 0.0, 'tax_amount' => 0.0, 'line_total' => 0.0, 'modifiers' => []],
+        ];
+        $payment = fn () => [['payment_uuid' => (string) Str::ulid(), 'payment_method_id' => $this->cashMethodId, 'method_type' => 'cash', 'amount' => 900.0, 'tendered_amount' => 900.0, 'change_amount' => 0.0, 'transaction_ref' => null, 'paid_at' => now()->toIso8601String()]];
+        $rows = fn (string $saleUuid) => SalesOrder::on('tenant')->where('sale_uuid', $saleUuid)->firstOrFail()->lines()->orderBy('id')->get();
+
+        // The Master switch as the Cloud sees it: the tenant bound to this request.
+        $tenant = new \App\Models\Master\Tenant();
+        $tenant->features = [\App\Support\TenantFeatures::DEAL_SPLIT => true];
+        app()->instance('tenant', $tenant);
+        \App\Support\DealSplit::flush();
+        try {
+            $this->assertTrue(\App\Support\DealSplit::active());
+            $on = $this->envelope([], $dealLines(), $payment());
+            $this->assertSame('applied', $this->ingest($on)['status']);
+            $lines = $rows($on['sale_uuid']);
+            $this->assertSame(['combo_header', 'component', 'component'], $lines->pluck('line_kind')->all());
+            $this->assertSame(['900.00', '400.00', '500.00'], $lines->map(fn ($l) => $l->deal_share === null ? null : number_format((float) $l->deal_share, 2, '.', ''))->all(), 'stamped from the CLOUD parts at ingestion');
+            $this->assertNull($lines[0]->parent_sales_order_line_id);
+            $this->assertSame([(int) $lines[0]->id, (int) $lines[0]->id], [(int) $lines[1]->parent_sales_order_line_id, (int) $lines[2]->parent_sales_order_line_id], 'the parts are linked to their header, so the report can pair them');
+            // The header is the priced bundle, never stock: official stock moved once, for the component.
+            $this->assertSame(49.0, (float) DB::connection('tenant')->table('stock_balances')->where('product_id', $this->productId)->sum('quantity_on_hand'));
+
+            // Switch OFF: nothing stamped, the link still kept (it is the bill's own structure).
+            $tenant->features = [\App\Support\TenantFeatures::DEAL_SPLIT => false];
+            app()->instance('tenant', $tenant);
+            $this->assertFalse(\App\Support\DealSplit::active());
+            $off = $this->envelope([], $dealLines(), $payment());
+            $this->assertSame('applied', $this->ingest($off)['status']);
+            $lines = $rows($off['sale_uuid']);
+            $this->assertSame([null, null, null], $lines->pluck('deal_share')->all(), 'switch off: no part written');
+            $this->assertSame((int) $lines[0]->id, (int) $lines[1]->parent_sales_order_line_id);
+        } finally {
+            app()->forgetInstance('tenant');
+            \App\Support\DealSplit::flush();
+        }
+    }
 }

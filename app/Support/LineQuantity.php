@@ -1,0 +1,217 @@
+<?php
+
+namespace App\Support;
+
+use App\Models\Tenant\Product;
+use App\Models\Tenant\Unit;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * W2-B (22 Oct) — one set of quantity rules for every new sale, hold, split and return line, checked on the server.
+ *
+ *  - Precision: a quantity is stored with 3 decimals (DECIMAL(…,3)). It is made exact ONCE, before price, stock or a
+ *    return reads it, so the line total and the stock always use the same number. Float noise from the browser
+ *    (0.30000000000000004) is cleaned; a real fourth decimal (1.2345 kg) is refused, never rounded silently.
+ *  - Counted items (piece, bottle, plate, no unit at all) are whole numbers. Weight, volume and length items take
+ *    parts (StandardUnits::allowsParts — the same test every screen already uses). Packs are whole (CounterPacks).
+ *  - Returns: never more than is still returnable, said with its unit; a counted line comes back whole, or as
+ *    everything still left — so a line that was split in the past (sold 1, 0.001 returned) can still be closed.
+ *
+ * Old lines are read exactly as stored; nothing here rewrites history.
+ */
+final class LineQuantity
+{
+    public const DECIMALS = 3;
+
+    private const NOISE = 1e-6;   // float noise, far below a thousandth
+
+    private const WHOLE = 0.0005; // half a thousandth: the stored precision
+
+    /** The quantity as it will be stored, or a refusal when it has more decimals than can be stored. */
+    public static function normalize($value, string $label, string $field = 'quantity'): float
+    {
+        $q = (float) $value;
+        $exact = round($q, self::DECIMALS);
+        if (abs($q - $exact) > self::NOISE) {
+            throw ValidationException::withMessages([
+                $field => "{$label}: a quantity can have at most 3 decimal places — " . self::show($q, 6) . ' has more.',
+            ]);
+        }
+
+        return $exact;
+    }
+
+    public static function isWhole(float $q): bool
+    {
+        return abs($q - round($q)) < self::WHOLE;
+    }
+
+    public static function partsAllowed(?Unit $unit): bool
+    {
+        return StandardUnits::allowsParts($unit);
+    }
+
+    /**
+     * ROLLOUT-1 (25 Oct) — may a purchase or stock quantity typed in this pack be a part? Kg, litre and metre: always.
+     * A counted item: in its own unit (a pack of one) only while the business has not switched "whole numbers for
+     * counted items" on — the switch forStock() follows, and the entry area is told the same, so page and server answer
+     * alike. A bigger pack (a Box of 10) is always typed whole.
+     */
+    public static function packTakesParts(?Unit $unit, float $factor): bool
+    {
+        if (self::partsAllowed($unit)) {
+            return true;
+        }
+
+        return ! self::wholeCountedInStock() && abs($factor - 1.0) < self::WHOLE;
+    }
+
+    /**
+     * Every sale or held line, made exact and checked, before anything reads it. Combo components and modifiers are
+     * derived from their parent and are not checked here; a line in a pack is checked by CounterPacks (whole packs).
+     */
+    public static function prepareSaleLines(array $lines): array
+    {
+        $ids = collect($lines)->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $products = $ids ? Product::with('unit')->whereIn('id', $ids)->get()->keyBy('id') : collect();
+        $packsOn = CounterPacks::packsOn();
+        // UNITS-PACKS F2: g / kg entry comes with the packs switch; with it off a posted entry is ignored, as before.
+        $gramsOn = PackUnits::enabled();
+
+        foreach ($lines as $i => $line) {
+            if (! is_array($line) || ! isset($line['quantity']) || $line['quantity'] === '') {
+                continue;
+            }
+            $product = $products->get((int) ($line['product_id'] ?? 0));
+            $label = $product?->name ?? (string) ($line['line_name'] ?? 'Item');
+            // UNITS-PACKS F2: "250 g" of a kg item. The server works the stock quantity out itself from what was typed;
+            // the screen's own arithmetic is never trusted.
+            if ($gramsOn && ! empty($line['entered_unit_code']) && empty($line['pack_unit_id']) && isset($line['entered_quantity']) && $line['entered_quantity'] !== '') {
+                [$lines[$i]['quantity'], $lines[$i]['entered_quantity'], $lines[$i]['entered_unit_code']]
+                    = self::fromEnteredUnit($line, $product, $label, "lines.{$i}.quantity");
+                $line['quantity'] = $lines[$i]['quantity'];
+            } else {
+                unset($lines[$i]['entered_quantity'], $lines[$i]['entered_unit_code']);
+            }
+            $qty = self::normalize($line['quantity'], $label, "lines.{$i}.quantity");
+            $lines[$i]['quantity'] = $qty;
+
+            $kind = $line['line_kind'] ?? 'standard';
+            $inPack = $packsOn && ! empty($line['pack_unit_id']);
+            if ($product && in_array($kind, ['standard', 'combo_header'], true) && ! $inPack
+                && ! self::partsAllowed($product->unit) && ! self::isWhole($qty)) {
+                throw ValidationException::withMessages(["lines.{$i}.quantity" => self::wholeMessage($label, self::unitName($product->unit), $qty)]);
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * UNITS-PACKS F2: the typed quantity and unit to write on a sale line, when the table has the columns (they ship
+     * before the code that writes them) and the line was typed in another unit; else nothing.
+     */
+    public static function enteredColumns(array $line): array
+    {
+        static $has = [];
+        $key = \Illuminate\Support\Facades\DB::connection('tenant')->getDatabaseName();
+        $has[$key] ??= \Illuminate\Support\Facades\Schema::connection('tenant')->hasColumn('sales_order_lines', 'entered_unit_code');
+
+        return $has[$key] && ! empty($line['entered_unit_code']) && isset($line['entered_quantity'])
+            ? ['entered_quantity' => $line['entered_quantity'], 'entered_unit_code' => $line['entered_unit_code']] : [];
+    }
+
+    /**
+     * UNITS-PACKS F2 — a quantity typed in another unit of the item's own family ("250 g" for a kg item) as the stock
+     * quantity, plus what was typed. Refused, with nothing written, when the unit is not of the item's family or when the
+     * stock could not keep it exactly (0.5 g is finer than 0.001 kg).
+     *
+     * @return array{0: float, 1: float, 2: string}  stock quantity, entered quantity, entered unit code
+     */
+    private static function fromEnteredUnit(array $line, ?Product $product, string $label, string $field): array
+    {
+        $code = strtoupper(trim((string) $line['entered_unit_code']));
+        $stockUnit = self::unitName($product?->unit) ?: 'its own unit';
+        $factor = $product ? StandardUnits::codeFactor($code, $product->unit) : null;
+        if ($factor === null) {
+            throw ValidationException::withMessages([$field => "{$label} is sold in {$stockUnit} — it cannot be entered in " . strtolower($code) . '.']);
+        }
+        $entered = self::normalize($line['entered_quantity'], $label, $field);
+        if ($entered <= 0) {
+            throw ValidationException::withMessages([$field => "{$label}: how much? Type more than 0."]);
+        }
+        $raw = $entered * $factor;
+        if (abs($raw - round($raw, self::DECIMALS)) > self::NOISE) {
+            throw ValidationException::withMessages([$field => "{$label}: " . self::show($entered, 6) . ' ' . strtolower($code) . " is finer than the stock keeps — {$stockUnit} is kept to 3 decimals, so the smallest step is "
+                . self::show(0.001 / $factor, 6) . ' ' . strtolower($code) . '.']);
+        }
+
+        return [round($raw, self::DECIMALS), $entered, $code];
+    }
+
+    /**
+     * W2-C (23 Oct) — a typed purchase or stock quantity (PO, GRN, supplier return, adjustment, transfer, count): made
+     * exact to 3 decimals once, the same as a sale line. A counted item has to be whole only where the business has
+     * switched that on: some live businesses buy counted items in parts, and their units stay as they are.
+     */
+    public static function forStock($value, ?Unit $unit, string $label, string $field = 'quantity'): float
+    {
+        $q = self::normalize($value, $label, $field);
+        if (self::wholeCountedInStock() && ! self::partsAllowed($unit) && ! self::isWhole($q)) {
+            throw ValidationException::withMessages([$field => self::wholeMessage($label, self::unitName($unit), $q)]);
+        }
+
+        return $q;
+    }
+
+    /**
+     * W2-C: every typed purchase or stock line, made exact and checked before a total, the stock or a return reads it.
+     * $field is the line's quantity key (quantity_ordered, quantity_received, quantity). A blank quantity is left to
+     * the screen's own rule (a supplier return skips a blank line).
+     */
+    public static function prepareStockLines(array $lines, string $field = 'quantity'): array
+    {
+        $ids = collect($lines)->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $products = $ids ? Product::with('unit')->whereIn('id', $ids)->get()->keyBy('id') : collect();
+
+        foreach ($lines as $i => $line) {
+            if (! is_array($line) || empty($line['product_id']) || ! isset($line[$field]) || $line[$field] === '') {
+                continue;   // a row with no item is dropped by the screen's own rule
+            }
+            $product = $products->get((int) $line['product_id']);
+            $lines[$i][$field] = self::forStock($line[$field], $product?->unit, $product?->name ?? 'Item', "lines.{$i}.{$field}");
+        }
+
+        return $lines;
+    }
+
+    public static function wholeCountedInStock(): bool
+    {
+        return TenantFeatures::on(TenantFeatures::WHOLE_COUNTED_STOCK);
+    }
+
+    public static function wholeMessage(string $label, string $unit, float $qty): string
+    {
+        return "{$label} is counted in whole numbers" . ($unit !== '' ? " ({$unit})" : '') . ' — ' . self::show($qty) . ' is not a whole number.';
+    }
+
+    /** The unit's name, or '' when the item has none (the message then says the number alone). */
+    public static function unitName(?Unit $unit): string
+    {
+        return (string) ($unit?->name ?: ($unit?->code ?: ''));
+    }
+
+    /** "3 Strip", or "3" when there is no unit. */
+    public static function withUnit(float $q, string $unit): string
+    {
+        return self::show($q) . ($unit !== '' ? " {$unit}" : '');
+    }
+
+    /** 1.5 → "1.5", 2.000 → "2", 0.25 → "0.25". */
+    public static function show(float $q, int $decimals = self::DECIMALS): string
+    {
+        $s = number_format($q, $decimals, '.', '');
+
+        return str_contains($s, '.') ? rtrim(rtrim($s, '0'), '.') : $s;
+    }
+}

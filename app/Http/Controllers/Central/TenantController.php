@@ -20,6 +20,7 @@ use App\Services\Central\TenantBranchService;
 use App\Services\Central\TenantBusinessService;
 use App\Services\Central\TenantOpsService;
 use App\Support\Business;
+use App\Support\TenantFeatureDefaults;
 use App\Support\TenantFeatures;
 use App\Services\Tenancy\TenantProvisioner;
 use Illuminate\Http\Request;
@@ -71,6 +72,8 @@ class TenantController extends Controller
     public function store(StoreTenantRequest $request)
     {
         $trialDays = (int) ($request->trial_days ?: 60);
+        // ROLLOUT-1: the switches a new tenant starts with, from the plan picked here (none without a plan).
+        $plan = $request->filled('plan_id') ? Plan::with('enabledModules')->find($request->plan_id) : null;
 
         $tenant = Tenant::create([
             'tenant_code'   => $request->tenant_code,
@@ -80,7 +83,10 @@ class TenantController extends Controller
             'currency_code' => $request->currency_code,
             'status'        => 'pending',
             'trial_ends_at' => $trialDays > 0 ? now()->addDays($trialDays) : null,
+            'features'      => $plan ? TenantFeatureDefaults::for(null, $plan->enabledModules->pluck('key')->all()) : null,
         ]);
+        // Enrolled in the defaults policy: its business switches come on when its business is first set.
+        app(TenantBusinessService::class)->enrollInDefaults($tenant, auth('central')->id(), 'new tenant (Master create): switches from the defaults policy');
 
         TenantDomain::create([
             'tenant_id'  => $tenant->id,

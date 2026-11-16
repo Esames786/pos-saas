@@ -201,8 +201,13 @@ class SalesOrderController extends Controller
                 $businessDate = app(TenantClock::class)->businessDateForSale($shift, $branch);
                 $orderType = $data['order_type'];
 
+                // RECALL-HIDDEN-ITEM-2: the lines already saved on the bill being paid (line id => product id).
+                $savedLineProducts = ! empty($data['held_sale_id'])
+                    ? \App\Models\Tenant\SalesOrderLine::where('sales_order_id', (int) $data['held_sale_id'])->pluck('product_id', 'id')
+                    : collect();
+
                 // Resolve line prices first so SalesTotalsService gets accurate per-line data
-                $resolvedLines = $lines->map(function ($line) use ($branch, $inventoryService) {
+                $resolvedLines = $lines->map(function ($line) use ($branch, $inventoryService, $savedLineProducts) {
                     $product = Product::with('unit')->findOrFail($line['product_id']);
                     $variant = $inventoryService->resolveVariant($product, $line['product_variant_id'] ?? null);
                     $qty     = (float) $line['quantity'];
@@ -211,9 +216,18 @@ class SalesOrderController extends Controller
                     // PRODUCT-BOUNDARY-2: a normal POS line must be a saleable, POS-visible,
                     // active product. Combo header/component lines are managed by the combo
                     // system and are exempt (components are intentionally not POS-visible).
+                    //
+                    // RECALL-HIDDEN-ITEM-2 (15 Nov): "hidden" means the counter has no BUTTON for the item;
+                    // the item is still sold (the product form says so: in a deal, as an add-on, or on the
+                    // website). A website order carrying one could be recalled but never paid: "Singaporean
+                    // Rice (Khass) is not available for POS sale" on a 4,500 bill. So an item that is ALREADY
+                    // on the bill being paid — the same saved line, the same product — may be hidden. Ringing
+                    // one up by hand is still refused, and so is a switched-off or not-for-sale item.
+                    $alreadyOnBill = ! empty($line['sales_order_line_id'])
+                        && (int) ($savedLineProducts[(int) $line['sales_order_line_id']] ?? 0) === (int) $product->id;
                     if (
                         $lineKind === 'standard'
-                        && (! $product->is_sellable || ! $product->is_pos_visible || $product->status !== 'active')
+                        && (! $product->is_sellable || $product->status !== 'active' || (! $product->is_pos_visible && ! $alreadyOnBill))
                     ) {
                         throw new RuntimeException($product->name . ' is not available for POS sale.');
                     }
@@ -222,7 +236,11 @@ class SalesOrderController extends Controller
                     // MEDICAL-COUNTER-1: a line sold in a pack (Box / Strip / Tablet) — quantity in packs, the
                     // price of one pack; its tablets go beside it for stock. Off = null = today's line.
                     $pack = $lineKind === 'standard' ? \App\Support\CounterPacks::resolve($product, (array) $line, $qty) : null;
-                    if ($pack && $submittedPrice === null) {
+                    if ($pack && \App\Support\CounterPacks::serverPricesPacks()) {
+                        // UNITS-PACKS F3: the normal counter's pack price is the server's — its own, else size × the branch price.
+                        $submittedPrice = $pack['pack_own_price'] ? $pack['pack_price']
+                            : round($pack['pack_size'] * $this->resolveSellingPrice($product, $variant, $branch->id, null), 2);
+                    } elseif ($pack && $submittedPrice === null) {
                         $submittedPrice = $pack['pack_price'];
                     }
                     // …and the batch the cashier picked goes first (checked: this product's, this branch's, not expired).
@@ -255,6 +273,7 @@ class SalesOrderController extends Controller
                         'pack_unit_id'    => $pack['pack_unit_id'] ?? null,
                         'pack_name'       => $pack['pack_name'] ?? null,
                         'pack_factor'     => $pack['pack_factor'] ?? null,
+                        'pack_size'       => $pack['pack_size'] ?? null,
                         'base_quantity'   => $pack['base_quantity'] ?? null,
                         'inventory_batch_id' => $preferBatch,
                     ]);
@@ -567,6 +586,7 @@ class SalesOrderController extends Controller
                         'kot_sent_quantity'  => $sentQuantity,
                         'pack_unit_id'       => $line['pack_unit_id'] ?? null,
                         'pack_factor'        => $line['pack_factor'] ?? null,
+                    ] + \App\Support\CounterPacks::sizeColumns('sales_order_lines', $line['pack_size'] ?? null) + \App\Support\LineQuantity::enteredColumns($line) + [
                         'base_quantity'      => $line['base_quantity'] ?? null,
                         'inventory_batch_id' => $line['inventory_batch_id'] ?? null,
                     ]);
@@ -888,6 +908,8 @@ class SalesOrderController extends Controller
             'lines.*.modifiers'          => ['nullable', 'string'],
             // MEDICAL-COUNTER-1: the pack a line is sold in (checked against the product in CounterPacks).
             'lines.*.pack_unit_id'       => ['nullable', 'integer'],
+            'lines.*.entered_quantity'   => ['nullable', 'numeric', 'min:0'],
+            'lines.*.entered_unit_code'  => ['nullable', 'string', 'max:10'],
             'lines.*.inventory_batch_id' => ['nullable', 'integer'],
 
             'void_items'                            => ['nullable', 'array'],
@@ -908,6 +930,9 @@ class SalesOrderController extends Controller
             'payments.*.cheque_date'           => ['nullable', 'date'],
             'payments.*.notes'                 => ['nullable', 'string'],
         ]);
+
+        // W2-B: every line's quantity made exact (3 decimals) and counted items whole, before price, stock or KOT reads it.
+        $data['lines'] = \App\Support\LineQuantity::prepareSaleLines($data['lines']);
 
         return $this->validateDeliveryAttribution($data);
     }

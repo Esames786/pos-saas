@@ -2303,6 +2303,11 @@
                     <strong id="qty-modal-product-name"></strong>
                     <div class="text-muted" id="qty-modal-price-hint"></div>
                 </div>
+                {{-- UNITS-PACKS F2: a kg item may be typed in grams (250 g); the line still keeps 0.250 kg. --}}
+                <div class="mb-2" id="qty-modal-units-wrap" hidden>
+                    <div class="small text-muted mb-1">Type it in</div>
+                    <div class="btn-group" role="group" aria-label="Unit" id="qty-modal-units"></div>
+                </div>
                 <div class="mb-3">
                     <label for="qty-modal-input" class="form-label">
                         Quantity <span id="qty-modal-unit" class="text-muted fw-normal"></span>
@@ -2310,6 +2315,7 @@
                     <input type="number" id="qty-modal-input"
                            class="form-control form-control-lg text-end"
                            step="0.001" min="0.001" placeholder="0.000">
+                    <div class="text-danger small mt-1" id="qty-modal-error" role="alert" hidden></div>
                 </div>
                 <div class="mb-0">
                     <label for="qty-modal-amount-input" class="form-label small text-muted">Or enter amount</label>
@@ -2417,11 +2423,16 @@ function setButtonBusy(button, busy, label) {
 
 document.addEventListener('DOMContentLoaded', function () {
     const products   = @json($productsPayload);
+    // RECALL-HIDDEN-ITEM-1: items hidden from the POS. ONLY the recall of a saved bill reads this list (a
+    // website order can carry one), so the grid, search and barcode scan never offer them.
+    const recallProducts = @json($recallProductsPayload ?? []);
     const combos     = @json($combosPayload);
     const categories = @json($categories);
     const heldSale   = @json($heldSaleJson);
     // MEDICAL-COUNTER-1: the medical-store counter (Master switch). Off = this page works exactly as before.
     const medicalCounter = @json((bool) ($medicalCounter ?? false));
+    // UNITS-PACKS F3: "Packs at the normal counter" — a scanned carton sells as 1 Carton; the screen is the normal one.
+    const counterPacks = @json((bool) ($counterPacks ?? false));
     // RX-BRANCH-SETTING-1: per branch — does the counter ask for the prescription? (medical counter only)
     const medAskRx = @json(($medicalCounter ?? false) ? $branches->mapWithKeys(fn ($b) => [(string) $b->id => (bool) ($b->ask_prescription ?? true)]) : (object) []);
     const branchCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_cancellation_approval_mode ?? 'manager_required']));
@@ -3237,6 +3248,8 @@ document.addEventListener('DOMContentLoaded', function () {
         qtyInput.min    = product.quantity_step || 0.001;
         qtyInput.value  = '';
         amountInput.value = '';
+        document.getElementById('qty-modal-error').hidden = true;
+        buildQtyModalUnits(product);
 
         if (!_qtyModal) {
             _qtyModal = new bootstrap.Modal(document.getElementById('qtyEntryModal'));
@@ -3250,13 +3263,28 @@ document.addEventListener('DOMContentLoaded', function () {
         var amount = parseFloat(this.value) || 0;
         var price  = productPrice(_qtyModalProduct, _qtyModalVariant);
         if (price > 0 && amount > 0) {
-            document.getElementById('qty-modal-input').value = (amount / price).toFixed(3);
+            var to = _qtyModalUnit ? _qtyModalUnit.to_stock : 1;
+            document.getElementById('qty-modal-input').value = (amount / price / to).toFixed(to < 1 ? Math.max(0, 3 - Math.round(-Math.log10(to))) : 3);
         }
     });
 
     document.getElementById('qty-modal-confirm').addEventListener('click', function () {
         var qty = parseFloat(document.getElementById('qty-modal-input').value) || 0;
         if (qty <= 0) { document.getElementById('qty-modal-input').focus(); return; }
+        var u = _qtyModalUnit;
+        if (u && Math.abs(u.to_stock - 1) > 1e-9) {
+            var raw = qty * u.to_stock, stockQty = Math.round(raw * 1000) / 1000;
+            if (stockQty <= 0 || Math.abs(raw - stockQty) > 1e-7) {
+                var err = document.getElementById('qty-modal-error');
+                err.textContent = 'That is finer than the stock keeps — the smallest step is ' + qtyModalStep(u) + ' ' + u.label + '.';
+                err.hidden = false;
+                document.getElementById('qty-modal-input').focus();
+                return;
+            }
+            if (_qtyModal) _qtyModal.hide();
+            addToCart(_qtyModalProduct, _qtyModalVariant, stockQty, undefined, undefined, { quantity: qty, unit_code: u.code, label: u.label });
+            return;
+        }
         if (_qtyModal) _qtyModal.hide();
         addToCart(_qtyModalProduct, _qtyModalVariant, qty);
     });
@@ -3264,6 +3292,39 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('qty-modal-input').addEventListener('keydown', function (event) {
         if (event.key === 'Enter') { event.preventDefault(); document.getElementById('qty-modal-confirm').click(); }
     });
+
+    // UNITS-PACKS F2: the units the weight popup offers for this item (g / kg), the stock unit picked first.
+    var _qtyModalUnit = null;
+    function qtyModalStep(u) { return Math.round(0.001 / (u ? u.to_stock : 1) * 1000000) / 1000000; }
+    function buildQtyModalUnits(product) {
+        var units = product.entry_units || [], wrap = document.getElementById('qty-modal-units-wrap'), group = document.getElementById('qty-modal-units');
+        group.innerHTML = '';
+        _qtyModalUnit = null;
+        if (units.length < 2) { wrap.hidden = true; return; }
+        units.forEach(function (u) {
+            var b = document.createElement('button');
+            b.type = 'button'; b.className = 'btn btn-outline-primary'; b.textContent = u.label; b.dataset.code = u.code;
+            b.addEventListener('click', function () { pickQtyModalUnit(u); document.getElementById('qty-modal-input').focus(); });
+            group.appendChild(b);
+        });
+        wrap.hidden = false;
+        pickQtyModalUnit(units.find(function (u) { return Math.abs(u.to_stock - 1) < 1e-9; }) || units[units.length - 1]);
+    }
+    function pickQtyModalUnit(u) {
+        _qtyModalUnit = u;
+        document.querySelectorAll('#qty-modal-units button').forEach(function (b) {
+            var on = b.dataset.code === u.code;
+            b.classList.toggle('btn-primary', on); b.classList.toggle('btn-outline-primary', !on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        var input = document.getElementById('qty-modal-input');
+        input.step = qtyModalStep(u); input.min = qtyModalStep(u); input.value = '';
+        document.getElementById('qty-modal-unit').textContent = '(' + u.label + ')';
+        document.getElementById('qty-modal-error').hidden = true;
+    }
+    function enteredLabel(product, code) {
+        var u = ((product && product.entry_units) || []).find(function (x) { return x.code === code; });
+        return u ? u.label : String(code || '').toLowerCase();
+    }
 
     function openModifierModal(product, variant, qty, preselectedIds, editKey) {
         _modifierModalProduct = product;
@@ -3477,7 +3538,7 @@ document.addEventListener('DOMContentLoaded', function () {
         renderCart();
     }
 
-    function addToCart(product, variant, forceQty, selectedModifiers, pack) {
+    function addToCart(product, variant, forceQty, selectedModifiers, pack, entered) {
         // F-1 (8 Nov 2026): a runtime that cannot write (Edge STANDBY / handback) refuses to grow the cart and says why —
         // the server would refuse the quote anyway (422) and the cashier must not build a bill nobody can take. Online:
         // POS.canMutate() is always true. An existing cart is left as it is.
@@ -3525,6 +3586,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 backorderToast(product.name);
             }
             existing.quantity = newQty;
+            existing.entered_quantity = null; existing.entered_unit_code = null; existing.entered_label = null;   // now a sum: said in the stock unit
         } else {
             if (stockQty !== null && addQty > stockQty + 0.0001) {
                 if (!branchAllowsNegative()) {
@@ -3552,6 +3614,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 _dbLineId:          null,
                 kot_sent:           false,
                 kot_sent_quantity:  0,
+                // UNITS-PACKS F2: what the cashier typed ("250 g"); the quantity above is in the stock unit.
+                entered_quantity:   entered ? entered.quantity : null,
+                entered_unit_code:  entered ? entered.unit_code : null,
+                entered_label:      entered ? entered.label : null,
             });
         }
 
@@ -3598,7 +3664,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 cart.splice(index, 1);
             }
         } else {
-            item.quantity = newQuantity;
+            item.quantity = item.pack_unit_id && !medicalCounter ? Math.max(1, Math.round(newQuantity)) : newQuantity;
+            item.entered_quantity = null; item.entered_unit_code = null; item.entered_label = null;
             if (item.line_kind === 'combo_header') updateComboComponents(item.key);
         }
         renderCart();
@@ -3742,6 +3809,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<div class="d-flex justify-content-between gap-2 mb-2">' +
                     '<div>' +
                         '<div class="fw-bold">' + escapeHtml(item.name) + '</div>' +
+                        (item.entered_unit_code ? '<div class="small text-primary" data-entered>' + escapeHtml(String(Number(item.entered_quantity)) + ' ' + (item.entered_label || enteredLabel(item.product, item.entered_unit_code))) + '</div>' : '') +
                         '<div class="small text-muted">' + escapeHtml(item.variant_name || 'Default') + ' &middot; ' + money(item.unit_price) + (lineUnitLabel(item) ? ' / ' + escapeHtml(lineUnitLabel(item)) : '') + '</div>' +
                         modifierHtml +
                         componentHtml +
@@ -3754,8 +3822,8 @@ document.addEventListener('DOMContentLoaded', function () {
                         '<button type="button" class="qty-btn" data-minus="' + index + '">-</button>' +
                         '<input type="number" class="form-control form-control-sm text-end" style="width:80px" ' +
                             'data-qty-input="' + index + '" ' +
-                            'step="' + qtyStep(item.product) + '" ' +
-                            'min="' + qtyStep(item.product) + '" ' +
+                            'step="' + lineStep(item) + '" ' +
+                            'min="' + lineStep(item) + '" ' +
                             'value="' + formatQty(item.quantity, item.product) + '">' +
                         (lineUnitLabel(item) ? '<span class="small text-muted">' + lineUnitLabel(item) + '</span>' : '') +
                         '<button type="button" class="qty-btn" data-plus="' + index + '">+</button>' +
@@ -3783,7 +3851,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 if (newQty <= 0.0001) { requestItemQuantity(i, 0); return; }
                 var stockQty = availableQty(item.product, item.variant);
-                if (stockQty !== null && newQty > stockQty + 0.0001) {
+                // UNITS-PACKS F3: a pack line is counted in its pieces, with the item's other lines beside it.
+                var wanted = item.pack_unit_id && !medicalCounter
+                    ? baseInCart(item.product_id) + (newQty - Number(item.quantity || 0)) * Number(item.pack_factor || 1)
+                    : newQty;
+                if (stockQty !== null && wanted > stockQty + 0.0001) {
                     blockAlert(unavailableMessage(item.product, stockQty));
                     input.value = formatQty(item.quantity, item.product);
                     return;
@@ -3796,10 +3868,11 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.addEventListener('click', function () {
                 var i    = Number(btn.dataset.plus);
                 var item = cart[i];
-                var step = qtyStep(item.product);
+                var step = lineStep(item);
                 item.quantity = isMeasurableProduct(item.product)
                     ? parseFloat((Number(item.quantity || 0) + step).toFixed(3))
                     : Number(item.quantity || 0) + 1;
+                item.entered_quantity = null; item.entered_unit_code = null; item.entered_label = null;
                 if (item.line_kind === 'combo_header') updateComboComponents(item.key);
                 renderCart();
             });
@@ -3808,7 +3881,7 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.addEventListener('click', function () {
                 var i    = Number(btn.dataset.minus);
                 var item = cart[i];
-                var step = qtyStep(item.product);
+                var step = lineStep(item);
                 const newQuantity = isMeasurableProduct(item.product)
                     ? parseFloat((Number(item.quantity || 0) - step).toFixed(3))
                     : Number(item.quantity || 0) - 1;
@@ -4137,7 +4210,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ? medPacks(product, variant).find(function (p) { return Number(p.id) === Number(line.pack_unit_id); })
             : medPacks(product, variant).find(function (p) { return p.id === null; });
         item.pack_unit_id = line.pack_unit_id ? Number(line.pack_unit_id) : null;
-        item.pack_factor = pk ? pk.factor : (Number(line.pack_factor) || 1);
+        item.pack_factor = pk ? pk.factor : (Number(line.pack_size || line.pack_factor) || 1);   // UNITS-PACKS: a 2.5 kg Bag keeps its size
         item.pack_name = pk ? pk.name : (line.unit_code || '');
         item.inventory_batch_id = line.inventory_batch_id ? Number(line.inventory_batch_id) : null;
     }
@@ -5188,6 +5261,8 @@ document.addEventListener('DOMContentLoaded', function () {
             // counter posts exactly what it posted before.
             if (item.pack_unit_id) fields.pack_unit_id = item.pack_unit_id;
             if (item.inventory_batch_id) fields.inventory_batch_id = item.inventory_batch_id;
+            // UNITS-PACKS F2: typed in another unit ("250 g"); the server works the quantity out again from this.
+            if (item.entered_unit_code && item.entered_quantity) { fields.entered_quantity = item.entered_quantity; fields.entered_unit_code = item.entered_unit_code; }
             Object.keys(fields).forEach(function (field) {
                 var inp  = document.createElement('input');
                 inp.type = 'hidden';
@@ -5494,6 +5569,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* ── Manager PIN Modal ──────────────────────────────────────────── */
 
+    // POS-PIN-FOCUS-1 (10 Nov): a SweetAlert box opened from inside a Bootstrap window (the pay window's discount →
+    // Manager Approval) could not be clicked or typed in. Bootstrap's focus trap pulls the cursor back into its own
+    // window the moment it lands anywhere else, so the code went into Tendered Amount instead. The box sits on top
+    // and is the one being answered: a focus that lands inside it stays there. Every other focus is left to Bootstrap.
+    window.addEventListener('focusin', function (e) {
+        if (e.target && e.target.closest && e.target.closest('.swal2-container')) { e.stopPropagation(); }
+    }, true);
+
     function showManagerPinModal(actionType, payload, onSuccess, onCancel) {
         Swal.fire({
             title: 'Manager Approval',
@@ -5502,6 +5585,14 @@ document.addEventListener('DOMContentLoaded', function () {
             confirmButtonText: 'Verify',
             cancelButtonText: 'Cancel',
             showCancelButton: true,
+            // MANAGER-PIN-ENTER-1 (owner, 2 Nov): the cursor waits in the code box and Enter verifies — no click on Verify.
+            focusConfirm: false,
+            // REHEARSAL chunk 9 (15 Nov): the SHARED prompt — the first field is the employee code on Edge, the PIN on the Cloud
+            // (POS.managerCredentialFocus); Enter verifies from either field.
+            didOpen: function (popup) {
+                POS.managerCredentialFocus();
+                popup.querySelectorAll('input.swal2-input').forEach(function (box) { box.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); Swal.clickConfirm(); } }); });
+            },
             preConfirm: function () {
                 const credential = POS.managerCredentialFromPrompt();   // {pin} | {manager_employee_code, manager_credential}
                 if (!credential) { Swal.showValidationMessage('Enter PIN'); return false; }
@@ -5520,7 +5611,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (!data.ok) { Swal.showValidationMessage(data.message || 'Invalid PIN'); return false; }
                     return data;
                 })
-                .catch(function () { Swal.showValidationMessage('Verification failed'); return false; });
+                // The server's own words (Invalid manager PIN / not authorized for the order branch), not a blanket line.
+                .catch(function (e) { Swal.showValidationMessage((e && e.message) || 'Verification failed'); return false; });
             },
         }).then(function (result) {
             if (result.isConfirmed && result.value) {
@@ -6528,15 +6620,60 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // RECALL-HIDDEN-ITEM-1 — a saved bill's item: the POS list first, then the hidden-items list.
+    function productForHeldLine(line) {
+        var id = Number(line && line.product_id);
+        if (!id) return null;
+        return products.find(function (p) { return Number(p.id) === id; })
+            || recallProducts.find(function (p) { return Number(p.id) === id; })
+            || null;
+    }
+
+    // The bill's items the POS cannot load at all (switched off, no longer for sale, or removed). Before this,
+    // recall left them out of the cart without a word. A line that never had a product keeps today's behaviour.
+    function heldBillMissingItems(lines) {
+        var names = [];
+        (lines || []).forEach(function (line) {
+            if (!line || !line.product_id || productForHeldLine(line)) return;
+            var name = line.product_name || ('Item #' + line.product_id);
+            if (names.indexOf(name) === -1) names.push(name);
+        });
+        return names;
+    }
+
+    // Never open half a bill: without these items the total would be wrong on screen, on the printed bill and
+    // at Pay. The bill stays saved exactly as it is.
+    function showHeldBillNotOpened(saleNo, names, after) {
+        var list = names.map(function (n) { return '<b>' + escapeHtml(n) + '</b>'; }).join('<br>');
+        Swal.fire({
+            icon: 'error',
+            titleText: 'Bill ' + (saleNo || '') + ' was not opened',
+            html: 'These items on the bill are switched off in Products, so the POS cannot load them:<br>' + list
+                + '<br><br>Without them the total would be wrong, so the bill was not opened. The bill is still saved and nothing was changed.'
+                + ' Ask the manager to switch the item on in Products, then press Recall again.'
+                + '<hr class="my-2"><div class="small">Is bill ke yeh items Products mein band hain, is liye POS inhein nahi khol sakta.'
+                + ' Inke baghair total ghalat banta, is liye bill nahi khola. Bill mehfooz hai. Manager item ko Active kare, phir dobara Recall karein.</div>',
+            confirmButtonText: 'OK',
+            allowOutsideClick: false,
+        }).then(function () { if (after) after(); });
+    }
+
     function recallHeldSale(sale) {
         var _hsModal = bootstrap.Modal.getInstance(heldSalesModalEl);
         if (_hsModal) _hsModal.hide();
+
+        // RECALL-HIDDEN-ITEM-1: every item or nothing — the cart is left exactly as it was.
+        var missingItems = heldBillMissingItems(sale.lines);
+        if (missingItems.length) {
+            showHeldBillNotOpened(sale.sale_no, missingItems);
+            return;
+        }
 
         // Rebuild cart from recalled sale
         cart = [];
         var recalledLineKeys = {};
         sale.lines.forEach(function (line) {
-            const product = products.find(function (p) { return Number(p.id) === Number(line.product_id); });
+            const product = productForHeldLine(line);
             if (!product) return;
             const variant = (product.variants || []).find(function (v) {
                 return Number(v.id) === Number(line.product_variant_id);
@@ -6545,7 +6682,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const lineKind = line.line_kind || 'standard';
             const key = (lineKind === 'combo_header' || lineKind === 'component')
                 ? 'held-line:' + line.id
-                : cartKey(product, variant, modifiers, medicalCounter ? line.pack_unit_id : null);
+                : cartKey(product, variant, modifiers, (medicalCounter || counterPacks) ? line.pack_unit_id : null);
             const parentKey = line.parent_sales_order_line_id ? recalledLineKeys[line.parent_sales_order_line_id] : '';
             // Honour the STORED price exactly — combo components are 0, and a falsy-OR
             // would wrongly re-price them to full catalog price (inflating the total).
@@ -6585,8 +6722,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 _dbLineId:          line.id || null,
                 kot_sent:           !!line.kot_sent,
                 kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
+                // UNITS-PACKS F2: a line typed as "250 g" comes back saying 250 g.
+                entered_quantity:   line.entered_unit_code ? Number(line.entered_quantity) : null,
+                entered_unit_code:  line.entered_unit_code || null,
+                entered_label:      line.entered_unit_code ? enteredLabel(product, line.entered_unit_code) : null,
             });
             if (medicalCounter) medAdoptLine(cart[cart.length - 1], product, variant, line);   // MEDICAL-COUNTER-1
+            else if (counterPacks && line.pack_unit_id) packAdoptLine(cart[cart.length - 1], product, line);   // UNITS-PACKS F3
             recalledLineKeys[line.id] = key;
         });
 
@@ -7289,6 +7431,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     line_kind:       it.line_kind || 'standard',
                     variant_name:    it.variant_name || null,
                     modifiers:       normalizeModifiers(it.modifiers || []),
+                    entered_quantity:  it.entered_unit_code ? it.entered_quantity : null,
+                    entered_unit_code: it.entered_unit_code || null,
                 }, medicalCounter ? medPreviewFields(it) : {});
             }),
         };
@@ -7589,13 +7733,24 @@ document.addEventListener('DOMContentLoaded', function () {
             .finally(function () { setButtonBusy(button, false); });
     }
 
+    // MOVE-TABLE-CART-1 (22 Oct, Kashif Food): after a move the POS steps into the moved table. If the
+    // cart holds anything else (a quick sale that was just held, another table's bill) it is NOT this
+    // table's order, so clear it first, the same as opening or continuing a table does. Without this
+    // the next Hold saved a car's quick sale onto table 32.
+    function enterMovedTableSession(session) {
+        var current = (document.getElementById('restaurant_table_session_id') || {}).value || '';
+        if (String(current) !== String(session.id)) clearCart();
+        applyTableSession(session);
+    }
+
     function showTableMove(sessionId, sourceTableId) {
         showTableWorkspaceView('table-workspace-move');
         var body = document.getElementById('table-workspace-move-body');
         var targets = Array.from(tableBoardEl.querySelectorAll('[data-open-table="1"]')).filter(function (button) { return String(button.dataset.tableId) !== String(sourceTableId); });
         body.innerHTML = '<h3 class="h5 mb-3">Move Table</h3>' + (targets.length ? '<div class="table-action-list">' + targets.map(function (button) { return '<button type="button" class="btn btn-outline-primary p-3" data-move-target="' + escapeHtml(button.dataset.tableId) + '">' + escapeHtml(button.dataset.tableNo) + '</button>'; }).join('') + '</div>' : '<div class="alert alert-light border">No eligible destination table is currently available.</div>');
         body.querySelectorAll('[data-move-target]').forEach(function (button) {
-            button.addEventListener('click', function () { postTableOperation(POS.route('tableMove', { session: sessionId }), { target_table_id: button.dataset.moveTarget }, function (data) { applyTableSession(data.session); refreshTableBoard(data.session.id); showTableWorkspaceView('table-workspace-board'); }, button); });
+            {{-- MOVE-TABLE-CART-1 (canonical a4eec6f8, rehearsal 30 Oct 2026): runtime route (shared view, both runtimes) + canonical's enterMovedTableSession (a cart that is not the moved table's is cleared first). --}}
+            button.addEventListener('click', function () { postTableOperation(POS.route('tableMove', { session: sessionId }), { target_table_id: button.dataset.moveTarget }, function (data) { enterMovedTableSession(data.session); refreshTableBoard(data.session.id); showTableWorkspaceView('table-workspace-board'); }, button); });
         });
     }
 
@@ -7862,6 +8017,58 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* search / barcode scan */
 
+    // UNITS-PACKS F3 — packs at the normal counter. A pack line is its own cart line (1 Carton, 2 Bag), counted in whole
+    // packs; its price is the pack's own, else its size × the item's price; the server works both out again.
+    function packPrice(product, pack, variant) {
+        return pack.own_price != null ? Number(pack.own_price) : Math.round(Number(pack.factor) * productPrice(product, variant || null) * 100) / 100;
+    }
+    function baseInCart(productId) {
+        return cart.filter(function (i) { return i.product_id === productId; }).reduce(function (t, i) {
+            return t + Number(i.quantity || 0) * (i.pack_unit_id ? Number(i.pack_factor || 1) : 1);
+        }, 0);
+    }
+    function lineStep(item) { return item.pack_unit_id ? 1 : qtyStep(item.product); }
+    function packScanAdd(code) {
+        for (var i = 0; i < products.length; i++) {
+            var pk = (products[i].packs || []).find(function (k) { return k.barcode && String(k.barcode).toLowerCase() === code; });
+            if (pk) { addPackLine(products[i], pk); return true; }
+        }
+        return false;
+    }
+    function addPackLine(product, pack) {
+        ensureSaleUuid();
+        // The item's own variant, as a tapped tile or a scan picks it: the stock is kept on it.
+        var variant = product.variants && product.variants.length ? product.variants[0] : null;
+        var key = cartKey(product, variant, [], pack.id);
+        var existing = cart.find(function (item) { return item.key === key; });
+        var stockQty = availableQty(product, variant);
+        if (stockQty !== null && baseInCart(product.id) + Number(pack.factor) > stockQty + 0.0001) {
+            if (!branchAllowsNegative()) { blockAlert(unavailableMessage(product, stockQty)); return; }
+            backorderToast(product.name);
+        }
+        if (existing) {
+            existing.quantity = Number(existing.quantity || 0) + 1;
+            existing.tax_amount = lineTax(product, existing.quantity, existing.unit_price, existing.discount_amount || 0);
+        } else {
+            var price = packPrice(product, pack, variant);
+            cart.push({
+                key: key, product_id: product.id, product_variant_id: variant ? variant.id : null, name: product.name, variant_name: variant ? variant.name : null,
+                unit_code: pack.name, quantity: 1, unit_price: price, base_unit_price: price, modifiers: [],
+                discount_amount: 0, tax_amount: lineTax(product, 1, price, 0), product: product, variant: variant,
+                _dbLineId: null, kot_sent: false, kot_sent_quantity: 0,
+                pack_unit_id: pack.id, pack_factor: Number(pack.factor), pack_name: pack.name,
+            });
+        }
+        renderCart();
+    }
+    // A recalled pack line keeps its pack (and the size it was held at).
+    function packAdoptLine(item, product, line) {
+        var pk = (product.packs || []).find(function (k) { return k.id === Number(line.pack_unit_id); });
+        item.pack_unit_id = Number(line.pack_unit_id);
+        item.pack_factor = Number(line.pack_size || line.pack_factor || (pk && pk.factor) || 1);
+        item.pack_name = line.unit_code || (pk && pk.name) || 'Pack';
+    }
+
     function handlePosBarcodeScan(rawQuery) {
         var query = (rawQuery || '').trim().toLowerCase();
         if (!query) return false;
@@ -7869,6 +8076,13 @@ document.addEventListener('DOMContentLoaded', function () {
         // MEDICAL-COUNTER-1: a pack's own barcode sells that pack (the Box barcode = 1 Box).
         if (medicalCounter && medScanPack(query)) {
             medLastScan = Date.now();
+            searchEl.value = '';
+            searchEl.focus();
+            renderProducts();
+            return true;
+        }
+        // UNITS-PACKS F3: the same at the normal counter — the Carton barcode = 1 Carton, its pieces leave stock.
+        if (counterPacks && packScanAdd(query)) {
             searchEl.value = '';
             searchEl.focus();
             renderProducts();
@@ -8188,14 +8402,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* preload held sale (page-load recall via ?held_sale_id=) */
 
-    if (heldSale && heldSale.lines) {
+    // RECALL-HIDDEN-ITEM-1: the same rule when a bill is opened by its address (?held_sale_id=, e.g. the
+    // website window's fallback). The page would otherwise keep this bill's number with half its items, so
+    // after the message the cashier lands on a fresh POS.
+    var _preloadMissing = (heldSale && heldSale.lines) ? heldBillMissingItems(heldSale.lines) : [];
+    if (_preloadMissing.length) {
+        { const el = document.querySelector('input[name="held_sale_id"]'); if (el) el.value = ''; }
+        // REHEARSAL chunk 11: the runtime's own address (POS.route), never an app-URL literal in the shared view.
+        showHeldBillNotOpened(heldSale.sale_no, _preloadMissing, function () { window.location.href = POS.route('posIndex'); });
+    } else if (heldSale && heldSale.lines) {
         _currentHeldSaleId = heldSale.id;
         _currentHeldSaleNo = heldSale.sale_no || '';
         _currentHeldSaleIsDraft = !!heldSale.is_draft;   // POS-DRAFT-1
         var preloadedLineKeys = {};
 
         heldSale.lines.forEach(function (line) {
-            const product = products.find(function (p) { return Number(p.id) === Number(line.product_id); });
+            const product = productForHeldLine(line);
             if (!product) return;
 
             const variant = (product.variants || []).find(function (v) { return Number(v.id) === Number(line.product_variant_id); });
@@ -8203,7 +8425,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const lineKind = line.line_kind || 'standard';
             const key = (lineKind === 'combo_header' || lineKind === 'component')
                 ? 'held-line:' + line.id
-                : cartKey(product, variant, modifiers, medicalCounter ? line.pack_unit_id : null);
+                : cartKey(product, variant, modifiers, (medicalCounter || counterPacks) ? line.pack_unit_id : null);
             const parentKey = line.parent_sales_order_line_id ? preloadedLineKeys[line.parent_sales_order_line_id] : '';
             // Honour the STORED price exactly (combo components are 0; a falsy-OR re-prices them).
             const unitPrice = (line.unit_price !== undefined && line.unit_price !== null)
@@ -8244,8 +8466,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 _dbLineId:          line.id || null,
                 kot_sent:           !!line.kot_sent,
                 kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
+                // UNITS-PACKS F2: a line typed as "250 g" comes back saying 250 g.
+                entered_quantity:   line.entered_unit_code ? Number(line.entered_quantity) : null,
+                entered_unit_code:  line.entered_unit_code || null,
+                entered_label:      line.entered_unit_code ? enteredLabel(product, line.entered_unit_code) : null,
             });
             if (medicalCounter) medAdoptLine(cart[cart.length - 1], product, variant, line);   // MEDICAL-COUNTER-1
+            else if (counterPacks && line.pack_unit_id) packAdoptLine(cart[cart.length - 1], product, line);   // UNITS-PACKS F3
             preloadedLineKeys[line.id] = key;
         });
     }

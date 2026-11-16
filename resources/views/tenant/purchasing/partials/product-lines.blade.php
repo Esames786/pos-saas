@@ -188,6 +188,8 @@
 <script>
 (function () {
     var $ = window.jQuery;
+    // W2-C: a counted item takes whole numbers only where the business switched that on; the server checks it too.
+    var WHOLE_COUNTED = {{ \App\Support\LineQuantity::wholeCountedInStock() ? 'true' : 'false' }};
 
     function csrfToken() {
         var meta = document.querySelector('meta[name="csrf-token"]');
@@ -280,6 +282,7 @@
             }
         }
         if (qtyInput && !money(qtyInput.value)) { qtyInput.value = '1'; }
+        if (qtyInput) { qtyInput.step = (data.allow_decimal || !WHOLE_COUNTED) ? '0.001' : '1'; }
 
         if (stockBadge) {
             if (data.current_stock == null) { stockBadge.textContent = 'n/a'; stockBadge.className = 'purchase-stock-badge badge bg-light text-muted border'; }

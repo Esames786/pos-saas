@@ -30,7 +30,12 @@ return [
         'sales_email'   => env('SAAS_SALES_EMAIL', 'sales@bingoopos.com'),
         'support_email' => env('SAAS_SUPPORT_EMAIL', 'support@bingoopos.com'),
         'website'       => env('SAAS_WEBSITE_URL', 'https://bingoopos.com'),
-        'phone'         => env('SAAS_CONTACT_PHONE', '+92 XXX XXXXXXX'),
+        // CONTACT-FORM-1: ek ya ZYADA number, comma se alag, poore international shakl me bina
+        // '+' ke — wahi shakl jo wa.me ka link maangta hai (923328252838). Safhe par parhne wali
+        // shakl (+92 332 825 2838) App\Support\ContactNumbers khud bana leta hai.
+        // Default jaan boojh kar KHAALI hai: jhoota "+92 XXX XXXXXXX" chhapne se behtar hai ke
+        // number ka khana hi na dikhe.
+        'phone'         => env('SAAS_CONTACT_PHONE', ''),
     ],
 
     'default_currency' => env('SAAS_DEFAULT_CURRENCY', 'PKR'),
@@ -95,6 +100,10 @@ return [
         'secret_key' => env('SAAS_RECAPTCHA_SECRET_KEY'),
         'verify_url' => 'https://www.google.com/recaptcha/api/siteverify',
     ],
+    // WEBSITE-HIDE-PRICES-1 — hide every subscription price on the public website (a client demo, a price
+    // change). Plans, features, demos and the free trial stay; each price reads "Price on request", and no
+    // figure is sent to the browser. Signups still price and record the plan on the server as always.
+    'hide_public_prices' => (bool) env('SAAS_HIDE_PUBLIC_PRICES', false),
     // Per-branch markets: from N branches, P% off the whole plan. 11+ is Enterprise (Contact Sales).
     'branch_discounts' => [3 => 10, 6 => 15],
     'max_self_service_branches' => 10,

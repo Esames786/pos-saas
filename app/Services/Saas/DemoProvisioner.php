@@ -66,6 +66,12 @@ class DemoProvisioner
         return array_keys(self::PLAN_MAP);
     }
 
+    /** The switches a demo of this industry starts with — on every provision and every nightly reset. */
+    public static function featuresFor(string $industry, Plan $plan): array
+    {
+        return \App\Support\TenantFeatureDefaults::for(self::PRIMARY_BUSINESS[$industry] ?? null, $plan->enabledModules->pluck('key')->all(), demo: true);
+    }
+
     public function provision(string $industry, bool $fresh = false): Tenant
     {
         if (! isset(self::PLAN_MAP[$industry])) {
@@ -110,13 +116,12 @@ class DemoProvisioner
                 'is_demo'       => true,
                 'trial_ends_at' => $farFuture,
                 'primary_business' => self::PRIMARY_BUSINESS[$industry] ?? null,
-                // Demos show the newest screens; live customers get them when the owner switches them on.
-                // The pharmacy demo also shows packs (box / strip / tablet) — PHARMACY-PACKS-1 — and the
-                // medical-store counter (MEDICAL-COUNTER-1), and returns without a bill (RETURN-NO-BILL-1) — set here
-                // because the nightly reset recreates the tenant row, so a switch flipped by hand would not survive it.
-                'features'      => [\App\Support\TenantFeatures::PRODUCT_SCREEN_V2 => true]
-                    + ((self::PRIMARY_BUSINESS[$industry] ?? null) === \App\Support\Business::PHARMACY ? [\App\Support\TenantFeatures::PACKS => true, \App\Support\TenantFeatures::PURCHASING_V2 => true, \App\Support\TenantFeatures::MEDICAL_COUNTER => true, \App\Support\TenantFeatures::RETURN_NO_BILL => true] : []),
+                // ROLLOUT-1: the same defaults as a new customer of this business and plan (TenantFeatureDefaults), plus
+                // what only a demo shows (returns without a bill on the pharmacy demo). Set here because the nightly
+                // reset recreates the tenant row, so a switch flipped by hand would not survive it.
+                'features'      => self::featuresFor($industry, $plan),
             ]);
+            app(\App\Services\Central\TenantBusinessService::class)->enrollInDefaults($tenant, null, 'new demo tenant: switches from the defaults policy');
 
             TenantDomain::create([
                 'tenant_id'  => $tenant->id,

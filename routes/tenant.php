@@ -407,6 +407,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/department-counts/{session}/cancel', [DepartmentCountController::class, 'cancel'])->name('tenant.department-counts.cancel');
 
                 // Suppliers
+                // SUPPLIER-LEDGER-DAILY-1: all suppliers' ledger, day by day (switch-gated in the controller). Before the
+                // resource, so "ledger" is never read as a supplier id by /suppliers/{supplier}.
+                Route::get('/suppliers/ledger', [SupplierController::class, 'ledgerAll'])
+                    ->name('tenant.suppliers.ledger-all');
                 Route::resource('suppliers', SupplierController::class)->names([
                     'index' => 'tenant.suppliers.index',
                     'create' => 'tenant.suppliers.create',
@@ -436,6 +440,11 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel'])
                     ->name('tenant.purchase-orders.cancel');
 
+                // W3/W4 S4 — the purchase workspace (behind the purchase_workspace switch; each step checks its own permission).
+                Route::get('/purchases/new', [\App\Http\Controllers\Tenant\PurchaseWorkspaceController::class, 'create'])->name('tenant.purchases.workspace');
+                Route::post('/purchases', [\App\Http\Controllers\Tenant\PurchaseWorkspaceController::class, 'store'])->name('tenant.purchases.workspace.store');
+                Route::get('/purchases/receipts/{goodsReceipt}', [\App\Http\Controllers\Tenant\PurchaseWorkspaceController::class, 'receipt'])->name('tenant.purchases.workspace.receipt');
+
                 // Goods Receipts
                 Route::get('/goods-receipts', [GoodsReceiptController::class, 'index'])
                     ->name('tenant.goods-receipts.index');
@@ -449,6 +458,11 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // can be followed by a crawler or a refresh.
                 Route::post('/goods-receipts/{goodsReceipt}/void', [GoodsReceiptController::class, 'void'])
                     ->name('tenant.goods-receipts.void');
+                // PURCHASE-EDIT-1: correct a posted receipt (and its invoice) in place — switch-gated in the controller.
+                // "revise", not "edit"/"update": those fall into the Permission Center's generic Edit box.
+                Route::post('/goods-receipts/{goodsReceipt}/revise', [GoodsReceiptController::class, 'revise'])
+                    ->middleware('prevent.duplicate.submit')
+                    ->name('tenant.goods-receipts.revise');
 
                 // Purchase Bills
                 Route::get('/purchase-bills', [PurchaseBillController::class, 'index'])
@@ -459,6 +473,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     ->name('tenant.purchase-bills.store');
                 Route::get('/purchase-bills/{purchaseBill}', [PurchaseBillController::class, 'show'])
                     ->name('tenant.purchase-bills.show');
+                // SUPPLIER-CREDIT-CLARITY-1 — move a payment's part on this invoice to another invoice of the supplier.
+                Route::post('/purchase-bills/{purchaseBill}/move-credit', [PurchaseBillController::class, 'moveCredit'])
+                    ->middleware('prevent.duplicate.submit')
+                    ->name('tenant.purchase-bills.move-credit');
 
                 // Supplier Payments
                 Route::get('/supplier-payments', [SupplierPaymentController::class, 'index'])
@@ -905,6 +923,12 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/finance/manual-journals/{manualJournal}', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'show'])->name('tenant.finance.manual-journals.show');
                 Route::post('/finance/manual-journals/{manualJournal}/reverse', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'reverse'])->middleware('prevent.duplicate.submit')->name('tenant.finance.manual-journals.reverse');
 
+                // VOID-PURGE-1: the Owner deletes, permanently, an entry already voided on its own date (Master switch, off by default).
+                Route::post('/finance/voided-entries/{type}/{id}/purge', [\App\Http\Controllers\Tenant\Finance\VoidPurgeController::class, 'purge'])
+                    ->whereIn('type', ['manual_journal', 'expense', 'supplier_payment', 'catering_receipt'])->whereNumber('id')
+                    ->middleware('prevent.duplicate.submit')->name('tenant.finance.voided-entries.purge');
+                Route::get('/finance/voided-entries', [\App\Http\Controllers\Tenant\Finance\VoidPurgeController::class, 'index'])->name('tenant.finance.voided-entries.index');
+
                 // Finance — Opening Balances / Owner Capital (FIN-13)
                 Route::get('/finance/opening-balances', [OpeningBalanceController::class, 'index'])->name('tenant.finance.opening-balances.index');
                 Route::get('/finance/opening-balances/create', [OpeningBalanceController::class, 'create'])->name('tenant.finance.opening-balances.create');
@@ -1267,6 +1291,9 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
             Route::post('/jobs/{printJob}/failed', [PrintAgentApiController::class, 'failed'])->name('tenant.api.print-agent.jobs.failed');
             // PRINTER-HEALTH-1: park a ticket whose printer is cooling — re-queued, never lost.
             Route::post('/jobs/{printJob}/defer', [PrintAgentApiController::class, 'defer'])->name('tenant.api.print-agent.jobs.defer');
+            // PRINT-PREPARE-1: agent ne PDF bana kar rakh li (chhapi NAHI) / nahi bana saka.
+            Route::post('/prepares/{printPrepare}/ready', [PrintAgentApiController::class, 'prepareReady'])->name('tenant.api.print-agent.prepares.ready');
+            Route::post('/prepares/{printPrepare}/failed', [PrintAgentApiController::class, 'prepareFailed'])->name('tenant.api.print-agent.prepares.failed');
             // v2.5.0 remote Test/Reboot commands.
             Route::get('/commands', [PrintAgentApiController::class, 'commands'])->name('tenant.api.print-agent.commands');
             Route::post('/commands/{printAgentCommand}/result', [PrintAgentApiController::class, 'commandResult'])->name('tenant.api.print-agent.commands.result');

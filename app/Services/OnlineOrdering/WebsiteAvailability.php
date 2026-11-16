@@ -32,6 +32,10 @@ class WebsiteAvailability
         $hours = $settings->hours ?: WebSetting::defaultHours();
 
         $branches = $this->staffed();
+        // WEB-PICKUP-SWITCH-1: Pick-Up band = kisi branch par nahi (website aur checkout dono yahin se parhte hain).
+        if (! $settings->pickupOn()) {
+            $branches = array_map(fn ($b) => ['pickup' => false] + $b, $branches);
+        }
         $base = ['branches' => $branches, 'opens_at' => null];
 
         if (! $settings->is_enabled) {

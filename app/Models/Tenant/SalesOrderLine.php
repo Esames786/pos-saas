@@ -43,7 +43,8 @@ class SalesOrderLine extends Model
         'void_reason_id',
         'manager_approval_id',
         // MEDICAL-COUNTER-1: the pack a line was sold in (quantity = packs, base_quantity = tablets) and its batch.
-        'pack_unit_id', 'pack_factor', 'base_quantity', 'inventory_batch_id', 'batch_note',
+        'pack_unit_id', 'pack_factor', 'pack_size', 'base_quantity', 'inventory_batch_id', 'batch_note',
+        'entered_quantity', 'entered_unit_code',
     ];
 
     protected function casts(): array
@@ -63,7 +64,18 @@ class SalesOrderLine extends Model
             'kitchen_started_at'   => 'datetime',
             'kitchen_ready_at'     => 'datetime',
             'kitchen_completed_at' => 'datetime',
+            // DEAL-SPLIT-REPORT-1: the deal's part for this line, copied at the moment of sale (report-only).
+            'deal_share'        => 'decimal:2',
         ];
+    }
+
+    /**
+     * DEAL-SPLIT-REPORT-1: every write path creates its lines through this model, so the deal's parts are copied
+     * here, once. Not in $fillable on purpose: only DealSplit::stamp() sets it, and only when it has a value.
+     */
+    protected static function booted(): void
+    {
+        static::creating(fn (self $line) => \App\Support\DealSplit::stamp($line));
     }
 
     /**

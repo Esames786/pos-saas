@@ -77,7 +77,12 @@
                                 <td class="text-muted small">{{ $row['variant'] !== '—' ? $row['variant'] : '' }}</td>
                                 <td class="text-muted small"><code>{{ $row['sku'] }}</code></td>
                                 <td class="text-muted small">{{ $row['category'] }}</td>
-                                <td class="text-end">{{ number_format($row['qty_on_hand'], 3) }}</td>
+                                <td class="text-end">
+                                    {{ number_format($row['qty_on_hand'], 3) }} {{ $row['unit'] }}
+                                    @if($row['packs'])
+                                        <small class="d-block text-muted">{{ $row['packs'] }}</small>
+                                    @endif
+                                </td>
                                 <td class="text-end text-muted">{{ number_format($row['average_cost'], 4) }}</td>
                                 <td class="text-end fw-semibold">{{ number_format($row['total_value'], 2) }}</td>
                             </tr>

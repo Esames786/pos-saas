@@ -186,6 +186,27 @@ class PosQuickReportMySqlTest extends MySqlTenantTestCase
         $this->assertNotEmpty($job->raw_payload);
     }
 
+    /**
+     * REPORT-NETWORK-GAPS-1 — Items by Category, Deals and By Order Type were loaded for the browser
+     * print but never handed to the slip, so ticking them sent paper with nothing under them.
+     */
+    public function test_send_to_network_carries_items_by_category_deals_and_by_order_type(): void
+    {
+        $printerId = $this->makePrinter(['branch_id' => $this->branchId, 'printer_type' => 'network', 'ip_address' => '127.0.0.1', 'is_active' => 1]);
+        Auth::guard('tenant')->login($this->permittedUser());
+
+        $resp = $this->controller()->sendToNetwork(
+            Request::create('/x', 'POST', ['date' => $this->date, 'sections' => ['category_items', 'deals', 'order_type_combos'], 'printer_id' => $printerId]),
+            app(\App\Services\Printing\EscPosPayloadService::class)
+        );
+        $this->assertTrue($resp->getData(true)['ok']);
+
+        $slip = (string) DB::connection('tenant')->table('print_jobs')->where('document_type', 'report')->latest('id')->value('raw_payload');
+        foreach (['ITEMS BY CATEGORY', 'DEALS', 'BY ORDER TYPE', 'DINE IN - CATEGORIES', 'TAKEAWAY - ITEMS', 'Biryani', 'Drinks'] as $text) {
+            $this->assertStringContainsString($text, $slip);
+        }
+    }
+
     /* ── per-user saved settings round-trip ─────────────────────────────────────────────────────── */
     public function test_saved_settings_round_trip(): void
     {

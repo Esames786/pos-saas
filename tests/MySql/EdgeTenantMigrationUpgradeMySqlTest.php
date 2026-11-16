@@ -295,9 +295,14 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
                 $schema->dropIfExists('product_pack_units');
                 foreach ($lineTables as $t) {
                     if ($schema->hasTable($t)) {
-                        $this->dropColumns($t, ['pack_unit_id', 'pack_factor', 'base_quantity']);
+                        // Phase E (30 Oct 2026): pack_size belongs to the LATER decimal_pack_sizes migration, which also re-types
+                        // factor; an appliance older than product_pack_units has neither, so both must run forward again —
+                        // otherwise the shared harness DB is left with INT factor and the clean-install comparison fails here
+                        // and in test_decimal_pack_sizes_upgrade_an_older_appliance.
+                        $this->dropColumns($t, ['pack_unit_id', 'pack_factor', 'base_quantity', 'pack_size']);
                     }
                 }
+                $conn->table('migrations')->where('migration', '2026_10_23_000001_decimal_pack_sizes')->delete();
             },
             function ($conn, $schema) use ($lineTables) {
                 $this->assertTrue($schema->hasTable('product_pack_units'));
@@ -436,6 +441,252 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             });
     }
 
+    // ── CANONICAL REHEARSAL (Agent B, 30 Oct 2026) — chunk 1 (canonical 59787ff6 range); MySQL proof PENDING (not run in the rehearsal) ──
+
+    /** UB-06 (canonical 5c49790c): sales_returns.submission_key / submission_hash + unique index — posted once. */
+    public function test_submission_key_on_sales_returns_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_21_000001_add_submission_key_to_sales_returns', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn, $schema) {
+                if ($schema->hasColumn('sales_returns', 'submission_key')) {
+                    $schema->table('sales_returns', fn (Blueprint $t) => $t->dropUnique('sales_returns_submission_key_unique'));
+                }
+                $this->dropColumns('sales_returns', ['submission_key', 'submission_hash']);
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('sales_returns', 'submission_key'));
+                $this->assertTrue($schema->hasColumn('sales_returns', 'submission_hash'));
+                $this->assertSame('YES', $conn->selectOne("SELECT IS_NULLABLE AS n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sales_returns' AND column_name = 'submission_key'")->n, 'NULL on every row the till writes (it sends no key)');
+                $this->assertSame(1, (int) $conn->selectOne("SELECT COUNT(DISTINCT index_name) AS c FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'sales_returns' AND index_name = 'sales_returns_submission_key_unique' AND non_unique = 0")->c);
+            });
+    }
+
+    /** UB-06 (canonical 5c49790c): the same on purchase_returns — carried on the appliance, never written there. */
+    public function test_submission_key_on_purchase_returns_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_21_000002_add_submission_key_to_purchase_returns', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function ($conn, $schema) {
+                if ($schema->hasColumn('purchase_returns', 'submission_key')) {
+                    $schema->table('purchase_returns', fn (Blueprint $t) => $t->dropUnique('purchase_returns_submission_key_unique'));
+                }
+                $this->dropColumns('purchase_returns', ['submission_key', 'submission_hash']);
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('purchase_returns', 'submission_key'));
+                $this->assertTrue($schema->hasColumn('purchase_returns', 'submission_hash'));
+            });
+    }
+
+    /** KHATRI-STOCK-TO-PNL-1 (canonical 18d552a0): stock_ledgers.movement_type gains 'expensed_to_cost' at the end of the ENUM. */
+    public function test_expensed_to_cost_movement_type_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_21_000010_add_expensed_to_cost_movement_type', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn, $schema) {
+                $values = array_values(array_filter($this->enumValues('stock_ledgers', 'movement_type'), fn ($v) => $v !== 'expensed_to_cost'));
+                $list = implode(',', array_map(fn ($v) => "'" . $v . "'", $values));
+                // Phase E (30 Oct 2026): keep the column's own nullability (the migration preserves it) — forcing NOT NULL here
+                // made the "upgraded = clean install" comparison fail on a column that is nullable on a clean install.
+                $null = (DB::connection('tenant')->selectOne("SHOW COLUMNS FROM stock_ledgers WHERE Field = 'movement_type'")->Null ?? 'NO') === 'YES' ? 'NULL' : 'NOT NULL';
+                $conn->statement("ALTER TABLE stock_ledgers MODIFY COLUMN movement_type ENUM({$list}) {$null}");
+            },
+            function ($conn, $schema) {
+                $values = $this->enumValues('stock_ledgers', 'movement_type');
+                $this->assertContains('expensed_to_cost', $values);
+                $this->assertSame('expensed_to_cost', end($values), 'appended at the end — existing rows keep their ordinal');
+                $this->assertSame(0, $conn->table('stock_ledgers')->where('movement_type', 'expensed_to_cost')->count(), 'nothing on the appliance writes it');
+            });
+    }
+
+    /**
+     * VOID-PURGE-1 (canonical 9550e045) — Phase E resolution of owner item R-2: purged_entries + purged_numbers are CLOUD_ONLY
+     * (no Edge runtime path reads or writes them; the purge is a Cloud back-office screen). The appliance never gets the file
+     * (artifact EXCLUDE) and would skip it with record if it did; the SHIPPED number generators stay safe without the tables
+     * because PurgedNumbers is table-guarded (ready() → false → null / 0) — the shape the deploy window was designed for.
+     */
+    public function test_purged_entries_tables_are_cloud_only_and_the_generators_stay_safe_without_them(): void
+    {
+        $name = '2026_10_22_000001_create_purged_entries_tables';
+        $m = EdgeTenantMigrationManifest::load();
+        $this->assertSame(EdgeTenantMigrationManifest::CLOUD_ONLY, $m->classification($name));
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_SKIP_CLOUD_ONLY, $m->decisionFor($name));
+        $plan = $m->plan(['tenant' => [$name]]);
+        $this->assertSame([$name], $plan['skip'], 'present on an appliance → skipped with record, never executed');
+        $this->assertSame([], $plan['run']);
+        $this->assertSame([], $plan['blockers']);
+
+        $conn = DB::connection('tenant');
+        $schema = $conn->getSchemaBuilder();
+        // The appliance shape: neither table exists (nothing on the appliance ever purges).
+        $schema->dropIfExists('purged_numbers');
+        $schema->dropIfExists('purged_entries');
+        \App\Support\PurgedNumbers::forget();
+        $this->assertFalse(\App\Support\PurgedNumbers::ready());
+        $this->assertNull(\App\Support\PurgedNumbers::highest(\App\Support\PurgedNumbers::JOURNAL_ENTRY, 'JE-'), 'JournalService::nextEntryNo sees "nothing removed"');
+        $this->assertSame(0, \App\Support\PurgedNumbers::highestInt(\App\Support\PurgedNumbers::MANUAL_JOURNAL));
+        $this->assertNull(\App\Support\PurgedNumbers::highest(\App\Support\PurgedNumbers::EXPENSE_VOUCHER, 'EXP-'));
+        \App\Support\PurgedNumbers::forget();
+    }
+
+    /** UNITS-PACKS F1 (canonical 7308db7e): product_pack_units.factor DECIMAL(15,4); pack_size on the eight line tables. Owner review R-1. */
+    public function test_decimal_pack_sizes_upgrade_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_23_000001_decimal_pack_sizes', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn, $schema) {
+                foreach (['sales_order_lines', 'sales_return_lines', 'goods_receipt_lines', 'purchase_order_lines', 'purchase_bill_lines', 'purchase_return_lines', 'stock_adjustment_lines', 'stock_transfer_lines'] as $t) {
+                    if ($schema->hasTable($t)) {
+                        $this->dropColumns($t, ['pack_size']);
+                    }
+                }
+                $conn->statement('ALTER TABLE `product_pack_units` MODIFY `factor` INT UNSIGNED NOT NULL');
+            },
+            function ($conn, $schema) {
+                $this->assertStringStartsWith('decimal', strtolower((string) $conn->selectOne("SELECT COLUMN_TYPE AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'product_pack_units' AND column_name = 'factor'")->t));
+                $this->assertTrue($schema->hasColumn('sales_order_lines', 'pack_size'));
+                $this->assertTrue($schema->hasColumn('sales_return_lines', 'pack_size'));
+                $this->assertSame(1, $conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->whereNull('pack_size')->count(), 'existing lines keep pack_factor, pack_size NULL');
+            });
+    }
+
+    /** UNITS-PACKS F2 (canonical 9ec6b22f): sales_order_lines.entered_quantity / entered_unit_code (what the cashier typed). */
+    public function test_sale_line_entered_unit_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_10_23_000002_sale_line_entered_unit', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            fn () => $this->dropColumns('sales_order_lines', ['entered_quantity', 'entered_unit_code']),
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('sales_order_lines', 'entered_quantity'));
+                $this->assertTrue($schema->hasColumn('sales_order_lines', 'entered_unit_code'));
+                $this->assertSame(1, $conn->table('sales_order_lines')->where('sales_order_id', $this->paidId)->whereNull('entered_unit_code')->count(), 'NULL on every line typed in the stock unit');
+            });
+    }
+
+    // ── CANONICAL REHEARSAL chunks 9-11 (15 Nov 2026) — canonical 073238de..5c74107f ─────────────────────────────────────
+
+    /** KOT-ORDER-NOTE-1 (canonical 114413b9 + c51b2fe7): the toggle lands with its default flipped by the second migration. */
+    public function test_order_note_toggle_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_02_000001_add_order_note_toggle', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn) {
+                $this->dropColumns('receipt_layout_settings', ['show_order_note']);
+                // the default-off migration depends on the column: an appliance older than the toggle runs both forward again
+                $conn->table('migrations')->where('migration', '2026_11_02_000002_order_note_toggle_default_off')->delete();
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('receipt_layout_settings', 'show_order_note'));
+                $this->assertTrue($conn->table('migrations')->where('migration', '2026_11_02_000002_order_note_toggle_default_off')->exists(), 'the default-off step ran with it');
+                $this->assertSame('0', (string) $conn->selectOne("SELECT column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'receipt_layout_settings' AND column_name = 'show_order_note'")->d, 'OFF by default (canonical c51b2fe7)');
+            });
+    }
+
+    /** KOT-ORDER-NOTE-1 (2) (canonical c51b2fe7): the default flips to OFF and every existing layout row is set OFF — owner-review item (data rewrite). */
+    public function test_order_note_toggle_default_off_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_02_000002_order_note_toggle_default_off', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            function ($conn) {
+                $conn->statement('ALTER TABLE receipt_layout_settings MODIFY show_order_note TINYINT(1) NOT NULL DEFAULT 1');
+                $branchId = (int) $conn->table('branches')->orderBy('id')->value('id');
+                $conn->table('receipt_layout_settings')->where('document_type', 'kot-upgrade-probe')->delete();
+                $conn->table('receipt_layout_settings')->insert(['branch_id' => $branchId, 'document_type' => 'kot-upgrade-probe', 'show_order_note' => 1, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            },
+            function ($conn) {
+                $this->assertSame('0', (string) $conn->selectOne("SELECT column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'receipt_layout_settings' AND column_name = 'show_order_note'")->d);
+                $this->assertSame(0, (int) $conn->table('receipt_layout_settings')->where('document_type', 'kot-upgrade-probe')->value('show_order_note'), 'an existing layout row is switched OFF, as on the Cloud');
+                $conn->table('receipt_layout_settings')->where('document_type', 'kot-upgrade-probe')->delete();
+            });
+    }
+
+    /** KOT-DEAL-HEADING-1 (canonical 7230a7b3). */
+    public function test_deal_heading_toggle_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_11_000001_add_deal_heading_toggle', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            fn () => $this->dropColumns('receipt_layout_settings', ['show_deal_as_heading']),
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('receipt_layout_settings', 'show_deal_as_heading'));
+                $this->assertSame('0', (string) $conn->selectOne("SELECT column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'receipt_layout_settings' AND column_name = 'show_deal_as_heading'")->d, 'OFF unless the owner switches it on per tenant');
+            });
+    }
+
+    /** RECEIPT-CUSTOMER-SIZE-1 (canonical c8e333d9). */
+    public function test_customer_font_size_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_14_000001_add_customer_font_size_to_receipt_layouts', EdgeTenantMigrationManifest::EDGE_REQUIRED,
+            fn () => $this->dropColumns('receipt_layout_settings', ['customer_font_size']),
+            fn ($conn, $schema) => $this->assertTrue($schema->hasColumn('receipt_layout_settings', 'customer_font_size')));
+    }
+
+    /** PURCHASE-EDIT-1 (1/3) + SUPPLIER-LEDGER-DAILY-1 (canonical f0019787 / 0d07db90): entry_date + its index, carried. */
+    public function test_supplier_ledger_entry_date_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_03_000001_add_entry_date_to_supplier_ledgers', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function ($conn, $schema) {
+                if ($schema->hasColumn('supplier_ledgers', 'entry_date')) {
+                    // MySQL keeps the composite (supplier_id, entry_date) index for the supplier_id FK on a fresh DB — an older
+                    // appliance had its own plain index; give the FK one for the probe (removed once the upgrade restored the composite).
+                    $conn->statement('ALTER TABLE supplier_ledgers ADD INDEX sl_probe_supplier_idx (supplier_id)');
+                    $schema->table('supplier_ledgers', fn (Blueprint $t) => $t->dropIndex('supplier_ledgers_supplier_entry_date_index'));
+                }
+                $this->dropColumns('supplier_ledgers', ['entry_date']);
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('supplier_ledgers', 'entry_date'));
+                $this->assertSame(1, (int) $conn->selectOne("SELECT COUNT(DISTINCT index_name) AS c FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'supplier_ledgers' AND index_name = 'supplier_ledgers_supplier_entry_date_index'")->c);
+                $conn->statement('ALTER TABLE supplier_ledgers DROP INDEX sl_probe_supplier_idx');
+            });
+    }
+
+    /** PURCHASE-EDIT-1 (1/3) (canonical f0019787): the revision record table + goods_receipts.revision_no, carried empty. */
+    public function test_goods_receipt_revisions_upgrade_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_03_000002_create_goods_receipt_revisions', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function ($conn, $schema) {
+                $schema->dropIfExists('goods_receipt_revisions');
+                $this->dropColumns('goods_receipts', ['revision_no']);
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasTable('goods_receipt_revisions'));
+                $this->assertTrue($schema->hasColumn('goods_receipts', 'revision_no'));
+                $this->assertSame(0, (int) $conn->table('goods_receipt_revisions')->count(), 'empty on the appliance — goods receipts are Cloud screens');
+            });
+    }
+
+    /** PURCHASE-EDIT-1 (1/3) (canonical f0019787): the ENUM gains voided (owner-review item: a column MODIFY) + the void columns. */
+    public function test_purchase_bill_voidable_upgrades_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_03_000003_let_a_purchase_bill_be_voided', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function ($conn) {
+                $this->dropColumns('purchase_bills', ['voided_at', 'voided_by_user_id', 'void_reason']);
+                $values = array_values(array_diff($this->enumValues('purchase_bills', 'status'), ['voided']));
+                $this->assertNotEmpty($values);
+                $col = $conn->selectOne("SHOW COLUMNS FROM purchase_bills WHERE Field = 'status'");
+                $null = ($col->Null ?? '') === 'YES' ? 'NULL' : 'NOT NULL';
+                $default = $col->Default !== null ? " DEFAULT '" . $col->Default . "'" : '';
+                $conn->statement("ALTER TABLE purchase_bills MODIFY COLUMN status ENUM('" . implode("','", $values) . "') {$null}{$default}");
+                $this->assertNotContains('voided', $this->enumValues('purchase_bills', 'status'), 'older appliance: no voided status');
+            },
+            function ($conn, $schema) {
+                $this->assertContains('voided', $this->enumValues('purchase_bills', 'status'));
+                foreach (['voided_at', 'voided_by_user_id', 'void_reason'] as $c) {
+                    $this->assertTrue($schema->hasColumn('purchase_bills', $c), $c);
+                }
+            });
+    }
+
+    /** DEAL-SPLIT-REPORT-1 (canonical 7762ab39): the three report-only columns, carried; never written by the till. */
+    public function test_deal_split_report_columns_upgrade_an_older_appliance(): void
+    {
+        $this->proveUpgrade('2026_11_08_000001_add_deal_split_report_columns', EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE,
+            function () {
+                $this->dropColumns('sales_order_lines', ['deal_share']);
+                $this->dropColumns('combo_components', ['report_amount']);
+                $this->dropColumns('combos', ['report_by_items']);
+            },
+            function ($conn, $schema) {
+                $this->assertTrue($schema->hasColumn('sales_order_lines', 'deal_share'));
+                $this->assertTrue($schema->hasColumn('combo_components', 'report_amount'));
+                $this->assertTrue($schema->hasColumn('combos', 'report_by_items'));
+                $this->assertSame('YES', $conn->selectOne("SELECT IS_NULLABLE AS n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sales_order_lines' AND column_name = 'deal_share'")->n, 'NULL on every line the till writes');
+            });
+    }
+
     // ── the manifest names only tests that exist here ───────────────────────────
 
     public function test_every_post_baseline_shipped_migration_names_a_test_method_of_this_class_or_a_phase4_proof(): void
@@ -468,7 +719,14 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
             '2026_10_21_000020_add_updated_by_to_categories',
             // REFUND-SHIFT-H1 (owner decision H1, 22 Oct 2026)
             '2026_10_22_000001_add_processing_shift_uuid_to_sales_returns',
+            // CANONICAL REHEARSAL (Agent B, 30 Oct 2026) chunk 1
+            '2026_10_21_000001_add_submission_key_to_sales_returns', '2026_10_21_000002_add_submission_key_to_purchase_returns',
+            '2026_10_21_000010_add_expensed_to_cost_movement_type',
+            // chunk 2: purged_entries tables — Phase E R-2 → CLOUD_ONLY (asserted below as SKIP, not RUN)
+            // chunk 3
+            '2026_10_23_000001_decimal_pack_sizes', '2026_10_23_000002_sale_line_entered_unit',
         ];
+        $this->assertSame(EdgeTenantMigrationManifest::DECISION_SKIP_CLOUD_ONLY, $m->decisionFor('2026_10_22_000001_create_purged_entries_tables'), 'Phase E R-2');
         foreach ($canonicalRun as $name) {
             $this->assertFalse($m->entry($name)['BASELINE'] ?? true, $name);
             $this->assertSame(EdgeTenantMigrationManifest::DECISION_RUN, $m->decisionFor($name), $name);

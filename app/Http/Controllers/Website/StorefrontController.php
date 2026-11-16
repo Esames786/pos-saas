@@ -66,6 +66,8 @@ class StorefrontController extends Controller
                 'mode' => $settings->branch_mode,
                 'eta' => $settings->default_eta_minutes,
                 'pickupEta' => $settings->pickup_eta_minutes,
+                // WEB-PICKUP-SWITCH-1: band ho to website par Pick-Up ka button hi nahi.
+                'pickup' => $settings->pickupOn(),
                 'defaultBranch' => $branchId,
             ],
             'areas' => $zones->map(fn ($z) => [

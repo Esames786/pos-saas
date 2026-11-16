@@ -295,7 +295,13 @@
                         <small class="d-block">{{ $line->product_name }}</small>
                     </td>
                     <td>{{ $line->variant_name ?? '—' }}</td>
-                    <td>{{ number_format($line->quantity, 3) }}</td>
+                    <td>
+                        {{ number_format($line->quantity, 3) }}
+                        @php($qtyWords = \App\Support\CounterPacks::lineWords($line))
+                        @if($qtyWords)
+                            <small class="d-block text-muted">{{ $qtyWords }}</small>
+                        @endif
+                    </td>
                     <td>{{ number_format($line->unit_price, 2) }}</td>
                     <td>{{ number_format($line->discount_amount, 2) }}</td>
                     <td>{{ number_format($line->tax_amount, 2) }}</td>

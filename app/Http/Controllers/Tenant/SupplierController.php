@@ -5,8 +5,12 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Supplier;
 use App\Models\Tenant\SupplierLedger;
+use App\Services\Purchasing\SupplierLedgerDays;
 use App\Support\ScreenAccess;
+use App\Support\TenantClock;
+use App\Support\TenantFeatures;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 
 class SupplierController extends Controller
@@ -53,6 +57,8 @@ class SupplierController extends Controller
                 'entry_type'       => 'opening_balance',
                 'direction'        => 'debit',
                 'amount'           => $openingBalance,
+                // SUPPLIER-LEDGER-DAILY-1: the same day its GL entry carries (postSupplierOpeningBalance).
+                'entry_date'       => $supplier->created_at?->toDateString() ?? now()->toDateString(),
                 'balance_after'    => $openingBalance,
                 'reference_no'     => 'OPENING',
                 'created_by_user_id' => auth('tenant')->id(),
@@ -162,13 +168,90 @@ class SupplierController extends Controller
         return redirect(url('/suppliers'))->with('status', 'Supplier deleted.');
     }
 
-    public function ledger(Supplier $supplier)
+    public function ledger(Supplier $supplier, ?Request $request = null)
     {
+        $request ??= request();
+
+        // SUPPLIER-LEDGER-DAILY-1: switched on, the ledger is read by the document's own date, day by day.
+        if (TenantFeatures::on(TenantFeatures::SUPPLIER_LEDGER_DAILY)) {
+            return $this->ledgerByDate($request, $supplier);
+        }
+
+        // SUPPLIER-LEDGER-RANGE-1 (owner, 14 Nov): From / To and Today / Yesterday on this ledger. The dates are the Date
+        // column's own: the day the entry was typed, in the shop's time (stored times are UTC). No dates = every entry.
+        $clock = app(TenantClock::class);
+        $tz = $clock->displayTimezone();
+        [$dateFrom, $dateTo] = $this->ledgerRange($request, $clock->now($tz)->toDateString());
+
         $ledgers = SupplierLedger::where('supplier_id', $supplier->id)
+            ->when($dateFrom, fn ($q) => $q->where('created_at', '>=', Carbon::parse($dateFrom, $tz)->startOfDay()->utc()->toDateTimeString()))
+            ->when($dateTo, fn ($q) => $q->where('created_at', '<', Carbon::parse($dateTo, $tz)->addDay()->startOfDay()->utc()->toDateTimeString()))
             ->with('createdBy')
             ->orderByDesc('created_at')
-            ->paginate(30);
+            ->paginate(30)
+            ->withQueryString();
 
-        return view('tenant.suppliers.ledger', compact('supplier', 'ledgers'));
+        return view('tenant.suppliers.ledger', compact('supplier', 'ledgers', 'dateFrom', 'dateTo'));
+    }
+
+    /** SUPPLIER-LEDGER-RANGE-1: the Today / Yesterday buttons send `range`; otherwise the typed From / To (real dates only). */
+    private function ledgerRange(Request $request, string $today): array
+    {
+        $day = function ($v): ?string {
+            if (! is_string($v) || ! preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $m)) {
+                return null;
+            }
+
+            return checkdate((int) $m[2], (int) $m[3], (int) $m[1]) ? $v : null;
+        };
+
+        [$from, $to] = match ($request->input('range')) {
+            'today'     => [$today, $today],
+            'yesterday' => [($y = Carbon::parse($today)->subDay()->toDateString()), $y],
+            default     => [$day($request->input('date_from')), $day($request->input('date_to'))],
+        };
+        if ($from && $to && $from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+
+        return [$from, $to];
+    }
+
+    /** SUPPLIER-LEDGER-DAILY-1: every supplier's bills, payments and total payable, day by day. */
+    public function ledgerAll(?Request $request = null)
+    {
+        abort_unless(TenantFeatures::on(TenantFeatures::SUPPLIER_LEDGER_DAILY), 404);
+
+        return $this->ledgerByDate($request ?? request(), null);
+    }
+
+    private function ledgerByDate(Request $request, ?Supplier $supplier)
+    {
+        $clock = app(TenantClock::class);
+        $today = $clock->now($clock->businessTimezone())->toDateString();
+
+        $data = $request->validate([
+            'from' => 'nullable|date',
+            'to'   => 'nullable|date',
+            'view' => 'nullable|in:entries,days',
+        ]);
+        $from = $data['from'] ?? substr($today, 0, 8) . '01';
+        $to = $data['to'] ?? $today;
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+        // A year at a time keeps the page quick on a busy supplier; the balance before From is still exact.
+        if (\Illuminate\Support\Carbon::parse($from)->diffInDays(\Illuminate\Support\Carbon::parse($to)) > 366) {
+            throw ValidationException::withMessages(['from' => 'Choose at most one year (From and To).']);
+        }
+
+        return view('tenant.suppliers.ledger-daily', [
+            'supplier'  => $supplier,
+            'suppliers' => Supplier::orderBy('name')->get(['id', 'name']),
+            'from'      => $from,
+            'to'        => $to,
+            'view'      => $data['view'] ?? 'days',
+            'ledger'    => app(SupplierLedgerDays::class)->build($supplier?->id, $from, $to),
+        ]);
     }
 }

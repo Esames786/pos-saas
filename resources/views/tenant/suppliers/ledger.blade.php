@@ -19,6 +19,32 @@
     </div>
 </div>
 
+@php
+    $clock = app(\App\Support\TenantClock::class);
+    $ledgerUrl = url('/suppliers/' . $supplier->id . '/ledger');
+    $today = $clock->now()->toDateString();
+    $yesterday = \Illuminate\Support\Carbon::parse($today)->subDay()->toDateString();
+    $isDay = fn (string $d) => $dateFrom === $d && $dateTo === $d;
+@endphp
+
+{{-- SUPPLIER-LEDGER-RANGE-1: From / To + Today / Yesterday. The dates are the Date column's (the day it was typed). --}}
+<form method="GET" action="{{ $ledgerUrl }}" class="card mb-3" id="supplier-ledger-range">
+    <div class="card-body d-flex flex-wrap align-items-end gap-2">
+        <div>
+            <label for="ledger-date-from" class="form-label mb-1">From</label>
+            <input type="date" id="ledger-date-from" name="date_from" value="{{ $dateFrom }}" class="form-control">
+        </div>
+        <div>
+            <label for="ledger-date-to" class="form-label mb-1">To</label>
+            <input type="date" id="ledger-date-to" name="date_to" value="{{ $dateTo }}" class="form-control">
+        </div>
+        <button type="submit" class="btn btn-dark">Show</button>
+        <button type="submit" name="range" value="today" class="btn {{ $isDay($today) ? 'btn-primary' : 'btn-outline-secondary' }}">Today</button>
+        <button type="submit" name="range" value="yesterday" class="btn {{ $isDay($yesterday) ? 'btn-primary' : 'btn-outline-secondary' }}">Yesterday</button>
+        <a href="{{ $ledgerUrl }}" class="btn btn-light">All dates</a>
+    </div>
+</form>
+
 <div class="card">
     <div class="card-body table-responsive p-0">
         <table class="table table-nowrap align-middle mb-0">
@@ -38,7 +64,8 @@
             <tbody>
             @forelse($ledgers as $ledger)
                 <tr>
-                    <td>{{ $ledger->created_at->format('Y-m-d H:i') }}</td>
+                    {{-- Stored in UTC; shown in the shop's time so Today / Yesterday and this column agree. --}}
+                    <td>{{ $clock->format($ledger->created_at, 'Y-m-d H:i') }}</td>
                     <td>{{ str_replace('_', ' ', ucfirst($ledger->entry_type)) }}</td>
                     <td>{{ $ledger->reference_no ?: '—' }}</td>
                     <td>{{ \Illuminate\Support\Str::limit($ledger->notes ?: '—', 60) }}</td>
@@ -52,7 +79,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-4">No ledger entries found.</td>
+                    <td colspan="8" class="text-center text-muted py-4">{{ $dateFrom || $dateTo ? 'No ledger entries between these dates.' : 'No ledger entries found.' }}</td>
                 </tr>
             @endforelse
             </tbody>

@@ -286,6 +286,11 @@ class CateringDocumentController extends Controller
 
     public function printFinalInvoice(Request $request, CateringFinalInvoice $cateringFinalInvoice)
     {
+        // PRINT-PREPARE-1 — invoice ka safha bhi screen khulte hi tayyari mangta hai, usi raaste aur usi ijazat se.
+        if (in_array($request->input('mode'), ['prepare', 'status'], true)) {
+            return $this->prepareInvoice($request, $cateringFinalInvoice);
+        }
+
         // WOHI BRANCH JO `printEstimate()` PAR PEHLE SE HAI.
         //
         // 11 Oct tak yahan har printer ke liye `CateringDocumentPrintService`
@@ -299,6 +304,59 @@ class CateringDocumentController extends Controller
             // Thermal par wohi purani English slip — ek harf nahi badla.
             : app(CateringDocumentPrintService::class)
                 ->queueFinalInvoice($cateringFinalInvoice, $printer, $lang, $request->user()?->id, $reprint));
+    }
+
+    /**
+     * PRINT-PREPARE-1 — final invoice ki tayyari / haal (JSON). Bulk wale `prepareResponse` jaisa, ek document ke liye.
+     * Switch band, printer thermal, ya koi bhi ghalti → `off`: Send pehle jaisa chalta hai.
+     */
+    private function prepareInvoice(Request $request, CateringFinalInvoice $invoice): \Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate([
+            'printer_id' => ['required', 'integer', 'exists:printers,id'],
+            'lang' => ['nullable', 'string', \Illuminate\Validation\Rule::in(CateringSetting::PRINT_PROFILES)],
+            'mode' => ['required', 'string', 'in:prepare,status'],
+            'force' => ['nullable', 'boolean'],
+            'known' => ['nullable', 'array'],
+            'known.*' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        if (! \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::PRINT_PREPARE)) {
+            return response()->json(['ok' => true, 'state' => 'off']);
+        }
+
+        $printer = Printer::where('is_active', true)->find($data['printer_id']);
+        if (! $printer || $printer->printer_type !== Printer::TYPE_WINDOWS) {
+            return response()->json(['ok' => true, 'state' => 'off']);
+        }
+
+        $queue = app(CateringDocumentQueueService::class);
+        $lang = $data['lang'] ?? 'en';   // wohi jo Send (`queueDocument`) leta hai
+
+        try {
+            if ($data['mode'] === 'prepare') {
+                $row = $queue->prepare(CateringDocumentQueueService::KIND_FINAL_INVOICE, $invoice, $printer, $lang, (bool) ($data['force'] ?? false));
+                $item = ['state' => $row->isFreshReady() ? 'ready' : 'preparing', 'fingerprint' => $row->fingerprint,
+                    'changed' => false, 'ready_at' => $row->ready_at?->toIso8601String()];
+            } else {
+                $item = $queue->prepareStatus(CateringDocumentQueueService::KIND_FINAL_INVOICE, $invoice, $printer, $lang,
+                    ((array) ($data['known'] ?? []))[$invoice->id] ?? null);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['ok' => false, 'state' => 'off']);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'state' => $item['state'],
+            'ready' => $item['state'] === 'ready' ? 1 : 0,
+            'total' => 1,
+            'changed' => (bool) ($item['changed'] ?? false),
+            'agent_online' => $queue->agentOnlineFor($printer, $invoice->event?->branch_id),
+            'items' => [['id' => $invoice->id] + $item],
+        ]);
     }
 
     /** Shared validation, printer resolution and honest failure for both documents. */

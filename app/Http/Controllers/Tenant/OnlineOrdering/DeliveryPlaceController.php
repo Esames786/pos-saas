@@ -145,7 +145,8 @@ class DeliveryPlaceController extends Controller
         } else {
             $q = DeliveryZonePlace::whereNull('geo_area_place_id')->findOrFail($id);
             $q->update(match ($data['action']) {
-                'move' => ['delivery_zone_id' => $zoneId],
+                // PLACE-LEARNING-1: an admin's Move makes a learned place the admin's — orders stop changing its area.
+                'move' => ['delivery_zone_id' => $zoneId] + ($q->source === DeliveryZonePlace::SOURCE_LEARNED ? ['source' => DeliveryZonePlace::SOURCE_MANUAL] : []),
                 'hide' => ['status' => 'hidden'],
                 default => ['status' => 'active'],
             });
@@ -168,6 +169,12 @@ class DeliveryPlaceController extends Controller
             return back()->with('status', "“{$p->name}” hidden for your restaurant.");
         }
         $q = DeliveryZonePlace::whereNull('geo_area_place_id')->findOrFail($id);
+        // PLACE-LEARNING-1: a learned place comes back with the next order — removing it hides it for good instead.
+        if ($q->source === DeliveryZonePlace::SOURCE_LEARNED) {
+            $q->update(['status' => 'hidden']);
+
+            return back()->with('status', "“{$q->name}” hidden — it was learned from orders, and stays hidden.");
+        }
         $q->delete();
 
         return back()->with('status', "“{$q->name}” removed.");

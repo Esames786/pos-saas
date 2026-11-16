@@ -324,6 +324,10 @@ class EdgeArtifactTest extends TestCase
             'app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'app/Http/Controllers/Edge/EdgeInboundSupplierFinanceApiController.php',
             'app/Http/Controllers/Edge/EdgeSupplierFinanceCacheApiController.php', 'app/Models/Tenant/EdgeInboundSupplierFinanceIngestion.php',
             'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
+            // Phase E (C-7) — VOID-PURGE Cloud finance purge never ships (imports excluded Catering*/Supplier* models).
+            'app/Services/Finance/VoidPurgeService.php', 'app/Services/Finance/VoidPurgeNeedsConfirmation.php',
+            'app/Http/Controllers/Tenant/Finance/VoidPurgeController.php', 'resources/views/tenant/finance/voided-entries/index.blade.php',
+            'resources/views/tenant/finance/voided-entries/partials/purge-button.blade.php',
             // F3 — Cloud purchase-return authority / projection / ingestion never ship.
             'app/Services/Edge/EdgePurchaseReturnProjectionService.php', 'app/Services/Edge/EdgeInboundPurchaseReturnIngestionService.php',
             'app/Http/Controllers/Edge/EdgeInboundPurchaseReturnApiController.php', 'app/Http/Controllers/Edge/EdgePurchaseReturnCacheApiController.php',

@@ -297,13 +297,22 @@ class DashboardController extends Controller
         // ya ghalat wali ki adaegi karwata hai ya be-waja ghabrata hai.
         $billing = $this->billingSummary();
 
+        // DASHBOARD-CARDS-WHEN-USED-1 (owner, 2 Nov): Tax and Expiry only where they mean something — the same rule as
+        // Service Charge and Tips below them. Tax: a branch charges tax, or tax was taken / sits on an open bill today.
+        // Expiry: the business tracks expiry (a product or a stock batch carries it), or an alert exists.
+        $showTax = Branch::where('status', 'active')->where('is_tax_enabled', true)->exists()
+            || (float) ($today['total_tax'] ?? 0) > 0 || (float) ($openBills->tax ?? 0) > 0;
+        $showExpiry = $expiryCount > 0
+            || \App\Models\Tenant\Product::where('has_expiry', true)->exists()
+            || InventoryBatch::whereNotNull('expiry_date')->exists();
+
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
             'cashToday', 'cardToday', 'openShifts', 'failedPrints',
             'lowStockCount', 'expiryCount', 'topProducts', 'categoriesToday', 'salesWindowRows', 'salesWindowKeys', 'windowDays',
             'todayBusinessDate', 'openBills',
             'cateringCalendar', 'cateringKpis', 'cateringNextSeven',
-            'maySeeAmounts', 'billing'
+            'maySeeAmounts', 'billing', 'showTax', 'showExpiry'
         ));
     }
 

@@ -53,7 +53,8 @@ class PosScriptScopeRegressionTest extends TestCase
 
         // Comments discuss these helpers by name (the customer block carries a note about toast()
         // being unreachable) — scan code only, or the guard flags its own documentation.
-        preg_match_all('/\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/', $this->stripComments($secondBlock), $matches);
+        // A name may start with `$` (the customer block's own `$id` helper): `\b` would split the `$` off and report `id`.
+        preg_match_all('/(?<![A-Za-z0-9_$.])([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/', $this->stripComments($secondBlock), $matches);
 
         $unreachable = [];
         foreach (array_unique($matches[1]) as $name) {

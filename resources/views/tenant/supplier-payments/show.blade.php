@@ -31,6 +31,9 @@
         Voided on {{ $supplierPayment->voided_at->format('Y-m-d H:i') }}
         by {{ $supplierPayment->voidedBy?->name ?? '—' }} — {{ $supplierPayment->void_reason }}.
         {{ number_format((float) $supplierPayment->amount, 2) }} went back into the cash/bank account and onto the supplier's balance.
+        @include('tenant.finance.voided-entries.partials.purge-button', ['purgeType' => 'supplier_payment', 'purgeId' => $supplierPayment->id,
+            'purgeLabel' => 'Supplier payment ' . $supplierPayment->payment_no, 'purgeDate' => \Illuminate\Support\Carbon::parse($supplierPayment->payment_date)->format('d M Y'),
+            'purgeAmount' => number_format((float) $supplierPayment->amount, 2)])
     </div>
 @endif
 
@@ -51,6 +54,23 @@
                     — (general payment)
                 @endif
             </dd>
+
+            {{-- SUPPLIER-CREDIT-CLARITY-1: on a running account, exactly which invoices this payment paid, and how much on each. --}}
+            @if(($runningAccount ?? false) && ! $supplierPayment->isVoided())
+                @php $notOnInvoice = round((float) $supplierPayment->amount - array_sum(array_column($paid, 'amount')), 2); @endphp
+                <dt class="col-sm-3">This payment paid</dt>
+                <dd class="col-sm-9" id="payment-paid">
+                    @forelse($paid as $line)
+                        <div><a href="{{ url('/purchase-bills/' . $line['bill_id']) }}">{{ $line['bill_no'] }}</a>
+                            <span class="text-muted">({{ $line['bill_date'] }})</span>: {{ number_format($line['amount'], 2) }}</div>
+                    @empty
+                        <div class="text-muted">No invoice yet.</div>
+                    @endforelse
+                    @if($notOnInvoice > 0.005)
+                        <div>Not on any invoice yet: {{ number_format($notOnInvoice, 2) }}</div>
+                    @endif
+                </dd>
+            @endif
 
             <dt class="col-sm-3">Branch</dt>
             <dd class="col-sm-9">{{ $supplierPayment->branch?->name ?? '—' }}</dd>
@@ -139,4 +159,5 @@
         @include('tenant.catering.partials.submit-guard')
     @endcan
 @endif
+@include('tenant.finance.voided-entries.partials.purge-modal')
 @endsection

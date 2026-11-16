@@ -155,7 +155,9 @@ class StockCountController extends Controller
         ]);
 
         $raw = $data['counted_quantity'];
-        $line->counted_quantity = ($raw === null || $raw === '') ? null : round((float) $raw, 3);
+        // W2-C: exact once — a 4th decimal is refused instead of rounded silently; a counted item whole where switched on.
+        $line->counted_quantity = ($raw === null || $raw === '') ? null
+            : \App\Support\LineQuantity::forStock($raw, $line->product?->unit, $line->product?->name ?? 'Item', 'counted_quantity');
         $line->notes            = $data['notes'] ?? null;
         $line->recalculate();
         $line->save();

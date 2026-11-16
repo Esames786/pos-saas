@@ -178,15 +178,17 @@ class EdgeReturnAuthorityMySqlTest extends MySqlTenantTestCase
         $this->assertSame(hash('sha256', app(EdgeBootstrapService::class)->canonicalJson($copy)), $row->content_hash, 'content hash is self-consistent');
         $this->assertSame(EdgeSyncOutbox::STATE_PENDING, $row->state);
 
-        // Remaining returnable shrank immediately; asking for more is CAPPED (Online) and a mismatched refund figure is refused.
+        // Remaining returnable shrank immediately; asking for more is REFUSED with what is left (W2-B in the shared arithmetic —
+        // Phase E R-3 / C-2: the Online form and the Edge till refuse alike; 0.8.2 used to cap silently).
         $view = $this->returns()->returnable($sale->id, $this->user());
         $this->assertSame(2.0, collect($view['lines'])->firstWhere('product_id', $this->wholeProductId)['returnable']);
         try {
             $this->returns()->processReturn($sale->id, [['sales_order_line_id' => $this->lineId($sale, $this->wholeProductId), 'quantity' => 5]], null, 'cash', 500.0, $this->user(), $this->terminalId);
-            $this->fail('over-return with an over-stated refund must be refused');
+            $this->fail('an over-return must be refused');
         } catch (ValidationException $e) {
-            $this->assertStringContainsString('must match the calculated refund of 180.00', collect($e->errors())->flatten()->first());
+            $this->assertStringContainsString('Burger: only 2 Piece can still be returned, not 5.', collect($e->errors())->flatten()->first());
         }
+        $this->assertSame(2.0, collect($this->returns()->returnable($sale->id, $this->user())['lines'])->firstWhere('product_id', $this->wholeProductId)['returnable'], 'a refusal moves nothing');
 
         // FULL: the rest (2 Burger + 1.0 kg) → completes the order → the delivery charge comes back too.
         // burger 200 − 20 = 180; mutton 200 − 20 = 180; + delivery 50 = 410.
@@ -373,13 +375,19 @@ class EdgeReturnAuthorityMySqlTest extends MySqlTenantTestCase
         $this->assertSame(777001, $env['original']['cloud_sales_order_id']);
         $this->assertSame(5001, $env['lines'][0]['cloud_sales_order_line_id']);
         $this->assertSame('rw:v1', $env['freshness']['returnable_cache_watermark']);
-        // RETURNABLE = sold − Cloud returned − LOCAL pending: 3 − 1 − 1 = 1; a second ask for 2 is capped to 1 (never over-return).
+        // RETURNABLE = sold − Cloud returned − LOCAL pending: 3 − 1 − 1 = 1; a second ask for 2 is REFUSED (Phase E R-3 / C-2), 1 is accepted.
         $this->assertSame(1.0, collect($this->returns()->returnable($shadowId, $this->user())['lines'])->firstWhere('product_id', $this->wholeProductId)['returnable']);
         // A cache REFRESH with the same Cloud position must keep the local pending return subtracted (no double return).
         $cache->apply($this->cloudPackage('rw:v1'));
         $this->assertSame(2.0, (float) DB::table('sales_order_lines')->where('id', $burgerLine['sales_order_line_id'])->value('returned_quantity'), 'Cloud 1 + local pending 1');
-        $r2 = $this->returns()->processReturn($shadowId, [['sales_order_line_id' => $burgerLine['sales_order_line_id'], 'quantity' => 2]], null, 'cash', 100.0, $this->user(), $this->terminalId);
-        $this->assertSame(100.0, $r2['totals']['grand_total'], 'capped to the one remaining unit');
+        try {
+            $this->returns()->processReturn($shadowId, [['sales_order_line_id' => $burgerLine['sales_order_line_id'], 'quantity' => 2]], null, 'cash', 200.0, $this->user(), $this->terminalId);
+            $this->fail('asking for 2 when 1 is left must be refused');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('Burger: only 1 Piece can still be returned, not 2.', collect($e->errors())->flatten()->first());
+        }
+        $r2 = $this->returns()->processReturn($shadowId, [['sales_order_line_id' => $burgerLine['sales_order_line_id'], 'quantity' => 1]], null, 'cash', 100.0, $this->user(), $this->terminalId);
+        $this->assertSame(100.0, $r2['totals']['grand_total'], 'the one remaining unit');
         $this->assertSame(3.0, (float) DB::table('sales_order_lines')->where('id', $burgerLine['sales_order_line_id'])->value('returned_quantity'));
         // Local reports: two offline returns of an Online sale show as Ret 2 / 200 on this branch today.
         $ov = $engine->overview($engine->normalizeFilters(['date_from' => now()->subDay()->toDateString(), 'date_to' => now()->addDay()->toDateString(), 'branch_ids' => [$this->branchId]]));

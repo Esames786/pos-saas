@@ -181,6 +181,8 @@ class MasterSeeder extends Seeder
             'central.tenants.business.impact',
             'central.tenants.business.update',
             'central.tenants.features.update',
+            // UB-10 — read-only readiness of a tenant's items for the new screens.
+            'central.tenants.readiness',
 
             // MASTER-UNIVERSE-1 — dashboard "Refresh now" (read-only usage snapshot) and adding a
             // branch from the tenant hub.
@@ -220,6 +222,18 @@ class MasterSeeder extends Seeder
             'central.subscription-requests.show',
             'central.subscription-requests.approve',
             'central.subscription-requests.reject',
+
+            // CONTACT-FORM-1 — enquiries from the public "Contact Sales" form.
+            'central.contact-enquiries.index',
+            'central.contact-enquiries.handled',
+
+            // MASTER-HISAB-1 — Bingoo ka apna hisab. Safha dekhne wala us ka har kaam kar sakta hai.
+            'central.hisab.index',
+            'central.hisab.export',   // MASTER-HISAB-EXCEL-1 — Excel download
+            'central.hisab.entries.store',
+            'central.hisab.entries.update',
+            'central.hisab.entries.destroy',
+            'central.hisab.setup.update',
         ];
 
         foreach ($permissions as $permission) {
