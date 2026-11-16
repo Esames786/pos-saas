@@ -239,7 +239,9 @@ class EdgeCanonicalAlignmentMySqlTest extends MySqlTenantTestCase
         $conn = DB::connection('tenant');
         $printerId = $conn->table('printers')->insertGetId(['branch_id' => $this->branchId, 'name' => 'K', 'code' => 'P-K', 'printer_type' => 'network', 'print_role' => 'kot', 'supports_reminder' => 0, 'ip_address' => '10.0.0.2', 'port' => 9100, 'is_default' => 1, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
         $conn->table('category_printer_mappings')->insert(['branch_id' => $this->branchId, 'terminal_id' => $this->terminalId, 'category_id' => null, 'printer_id' => $printerId, 'print_role' => 'kot', 'order_type' => 'all', 'reminder_confirm_on_addition' => 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
-        $conn->table('receipt_layout_settings')->insert(['branch_id' => $this->branchId, 'document_type' => 'kot', 'item_font_size' => 14, 'time_font_size' => 16, 'show_column_dividers' => 1, 'show_category_header' => 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $conn->table('receipt_layout_settings')->insert(['branch_id' => $this->branchId, 'document_type' => 'kot', 'item_font_size' => 14, 'time_font_size' => 16, 'show_column_dividers' => 1, 'show_category_header' => 0,
+            // rehearsal chunks 10-11 (15 Nov 2026): the three canonical switches the KOT / receipt Blades read
+            'show_order_note' => 1, 'show_deal_as_heading' => 1, 'customer_font_size' => 17, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
 
         $svc = new class(app(OfflineEdgeEntitlementService::class), app(TenancyManager::class), app(EdgePairingService::class)) extends EdgeBootstrapService {
             public function sectionsFor(Tenant $t, Branch $b): array
@@ -259,6 +261,10 @@ class EdgeCanonicalAlignmentMySqlTest extends MySqlTenantTestCase
         $this->assertSame(16, (int) $layout['time_font_size']);
         $this->assertSame(1, (int) $layout['show_column_dividers']);
         $this->assertSame(0, (int) $layout['show_category_header']);
+        // KOT-ORDER-NOTE-1 / KOT-DEAL-HEADING-1 / RECEIPT-CUSTOMER-SIZE-1 (rehearsal chunks 10-11): replicated, so the Branch Server prints what the Cloud prints.
+        $this->assertSame(1, (int) $layout['show_order_note'], 'the KOT order-note switch replicates');
+        $this->assertSame(1, (int) $layout['show_deal_as_heading'], 'the KOT deal-heading switch replicates');
+        $this->assertSame(17, (int) $layout['customer_font_size'], 'the receipt customer-lines size replicates');
     }
     // ── CATALOG-GUARD-1 parity: the Edge runtime is fail-safe for a contradictory replicated row ──
 

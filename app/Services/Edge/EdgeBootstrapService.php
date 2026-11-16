@@ -844,7 +844,11 @@ class EdgeBootstrapService
                 ['id', 'branch_id', 'document_type', 'paper_size', 'show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone', 'show_tax_number',
                  'show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time', 'show_item_codes', 'show_payment_breakdown', 'header_text', 'footer_text', 'font_size', 'kot_font_size',
                  // PRINT-LAYOUT-ROWS-1 (canonical 468b9ef) — the row/time sizes and divider/category toggles must replicate too.
-                 'item_font_size', 'time_font_size', 'show_column_dividers', 'show_category_header', 'is_active']),
+                 'item_font_size', 'time_font_size', 'show_column_dividers', 'show_category_header',
+                 // CANONICAL REHEARSAL chunks 10-11 (15 Nov 2026): KOT-ORDER-NOTE-1 (show_order_note, canonical 114413b9),
+                 // KOT-DEAL-HEADING-1 (show_deal_as_heading, 7230a7b3), RECEIPT-CUSTOMER-SIZE-1 (customer_font_size, c8e333d9) —
+                 // the Edge print worker renders the canonical KOT / receipt Blades from THIS row, so every switch they read replicates.
+                 'show_order_note', 'show_deal_as_heading', 'customer_font_size', 'is_active']),
             // same §16 parity rule: routing accepts branch-or-GLOBAL mappings.
             'category_printer_mappings' => $rows($conn->table('category_printer_mappings')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id')), ['id', 'branch_id', 'terminal_id', 'category_id', 'printer_id', 'print_role', 'order_type', 'reminder_confirm_on_addition', 'is_active']),
             'terminal_printer_settings' => $rows($conn->table('terminal_printer_settings')->whereIn('terminal_id', $terminalIds ?: [0]), ['id', 'terminal_id', 'receipt_printer_id', 'kot_printer_id', 'auto_print_receipt', 'auto_print_kot']),
