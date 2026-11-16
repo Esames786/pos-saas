@@ -47,6 +47,7 @@ class TenantResetTransactionsCommand extends Command
         // PLACE-LEARNING-1: the evidence goes with its orders; the learned places stay (like every delivery place).
         'delivery_place_sightings', 'sales_orders',
         'sales_ledgers', 'manager_approvals', 'print_jobs', 'restaurant_table_sessions',
+        'print_prepares', // PRINT-PREPARE-1 (canonical 2b054814): agent-side PDF preparation cache (FK printers, cleaned daily) — transactional like print_jobs
         // OFFLINE EDGE (Cloud side): the exactly-once registry of Branch-Server sales applied into the
         // sales tables above. It belongs WITH those sales — kept alone it would make a replayed Edge
         // sale read as "already applied" and silently vanish after a reset. Absent on tenants that

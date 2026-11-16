@@ -3631,8 +3631,9 @@ document.addEventListener('DOMContentLoaded', function () {
         ['complete-sale-btn', 'hold-sale-btn', 'bill-preview-btn'].forEach(function (id) {
             var b = document.getElementById(id);
             if (b) {
+                b.disabled = empty || buttonIsBusy(b);
                 // F-1: a gated button (data-pos-gate, STANDBY / handback) stays disabled whatever the cart does.
-                b.disabled = empty || buttonIsBusy(b) || b.getAttribute('data-pos-gate') === '1';
+                if (b.getAttribute('data-pos-gate') === '1') { b.disabled = true; }
                 b.classList.toggle('opacity-50', empty);
             }
         });
