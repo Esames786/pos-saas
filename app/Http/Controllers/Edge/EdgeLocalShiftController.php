@@ -158,6 +158,7 @@ class EdgeLocalShiftController extends Controller
         $branch = $this->branch();
         $row = Shift::on('tenant')->with(['branch', 'terminal'])->where('branch_id', $branch->id)->where('status', 'open')->find($shift);
         abort_if(! $row, 404, 'No open shift with that number on this Branch Server.');
+        $this->denyOtherCountersShift($row);
         $maySeeAmounts = $this->maySeeAmounts($branch);
         if (! $maySeeAmounts) {
             foreach (['expected_cash', 'total_sales', 'total_cash', 'total_card', 'total_bank_transfer', 'total_cheque', 'total_discount', 'total_refunds', 'total_tax', 'opening_cash'] as $field) {
@@ -170,6 +171,11 @@ class EdgeLocalShiftController extends Controller
             'shift' => $row,
             'currency' => Currency::on('tenant')->where('is_default', true)->with('denominations')->first(),
             'maySeeAmounts' => $maySeeAmounts,
+            // SHIFT-HANDOVER-1 (canonical 2814f44d, rehearsal chunk 9): the shared close view reads $handover unguarded. The
+            // handover (close with open orders, the next cashier opens on the same counter) is behind the Master switch
+            // TenantFeatures::SHIFT_HANDOVER, which a Branch Server never carries (the bootstrap tenant row has no features) —
+            // so the block is null here exactly as Online renders it with the switch off. A local twin is a separate owner item.
+            'handover' => null,
             'posRuntime' => $this->runtime($request),
         ]);
     }
@@ -221,6 +227,13 @@ class EdgeLocalShiftController extends Controller
             'date_to' => ['nullable', 'date_format:Y-m-d'],
         ]);
         $query = Shift::on('tenant')->with(['branch', 'terminal', 'openedBy', 'closedBy'])->where('branch_id', $branch->id)->orderByDesc('id');
+        // SHIFT-LIST-COUNTER-1 twin (canonical 4769655e, rehearsal chunk 11): a cashier tied to certain counters sees only those
+        // counters' shifts (cash included) — the same terminal binding that already limits the shift he may open or close here.
+        // Owner / manager (unbound) see every shift of the bound branch exactly as before.
+        $counterIds = $this->counterIds();
+        if ($counterIds) {
+            $query->whereIn('terminal_id', $counterIds);
+        }
         if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
@@ -243,6 +256,7 @@ class EdgeLocalShiftController extends Controller
             'shifts' => $query->paginate(15)->withQueryString(),
             'branches' => collect([$branch]),
             'openCounts' => Shift::on('tenant')->where('branch_id', $branch->id)->where('status', 'open')
+                ->when($counterIds, fn ($q) => $q->whereIn('terminal_id', $counterIds))
                 ->selectRaw('branch_id, COUNT(*) as c')->groupBy('branch_id')->pluck('c', 'branch_id'),
             'maySeeAmounts' => [(int) $branch->id => $this->maySeeAmounts($branch)],
             'today' => $today,
@@ -260,6 +274,7 @@ class EdgeLocalShiftController extends Controller
         $row = Shift::on('tenant')->with(['branch', 'terminal', 'openedBy', 'closedBy', 'cashCountLines.denomination'])
             ->where('branch_id', $branch->id)->find($shift);
         abort_if(! $row, 404, 'No such shift on this branch server.');
+        $this->denyOtherCountersShift($row);
 
         return view('tenant.shifts.show', [
             'shift' => $row,
@@ -592,6 +607,10 @@ class EdgeLocalShiftController extends Controller
         ]);
         $query = Shift::on('tenant')->with(['terminal:id,name', 'openedBy:id,name', 'closedBy:id,name'])
             ->where('branch_id', $branch->id)->orderByDesc('id');
+        $counterIds = $this->counterIds();   // SHIFT-LIST-COUNTER-1 twin — see indexPage
+        if ($counterIds) {
+            $query->whereIn('terminal_id', $counterIds);
+        }
         if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
@@ -617,7 +636,8 @@ class EdgeLocalShiftController extends Controller
             'userName' => $user?->name,
             'shifts' => $shifts,
             'maySeeAmounts' => $this->maySeeAmounts($branch),
-            'openCount' => Shift::on('tenant')->where('branch_id', $branch->id)->where('status', 'open')->count(),
+            'openCount' => Shift::on('tenant')->where('branch_id', $branch->id)->where('status', 'open')
+                ->when($counterIds, fn ($q) => $q->whereIn('terminal_id', $counterIds))->count(),
             'filters' => $filters,
             'today' => $today,
             'yesterday' => \Carbon\Carbon::parse($today)->subDay()->format('Y-m-d'),
@@ -639,6 +659,7 @@ class EdgeLocalShiftController extends Controller
         $row = Shift::on('tenant')->with(['terminal:id,name', 'openedBy:id,name', 'closedBy:id,name', 'cashCountLines.denomination'])
             ->where('branch_id', $branch->id)->find($shift);
         abort_if(! $row, 404, 'No such shift on this branch server.');
+        $this->denyOtherCountersShift($row);
         $maySeeAmounts = $this->maySeeAmounts($branch);
         $user = auth('tenant')->user();
 
@@ -655,6 +676,26 @@ class EdgeLocalShiftController extends Controller
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /** SHIFT-LIST-COUNTER-1: the counters this operator is tied to (empty = unbound: owner / manager, every counter). */
+    private function counterIds(): array
+    {
+        return app(\App\Services\Security\UserDataScope::class)->terminalIds(auth('tenant')->user());
+    }
+
+    /**
+     * SHIFT-LIST-COUNTER-1 twin (canonical ShiftController::denyOtherCountersShift): a cashier tied to certain counters may not
+     * open another counter's shift — its page or its close screen — by id, the way the list no longer offers it. Same rule
+     * as closing it (UserDataScope::canOperateTerminal); owner / manager reach every counter. Online's words.
+     */
+    private function denyOtherCountersShift(Shift $shift): void
+    {
+        abort_unless(
+            app(\App\Services\Security\UserDataScope::class)->canOperateTerminal(auth('tenant')->user(), (int) $shift->terminal_id),
+            403,
+            'This shift belongs to another counter.'
+        );
+    }
 
     /** Tender breakup + cancellations/voids for ONE shift (SHIFT-CANCELLATIONS-1 / SHIFT-RECONCILE-2), masked per the rule. */
     private function breakup(Shift $shift, bool $maySeeAmounts): array
