@@ -12,6 +12,8 @@ use Tests\TestCase;
 
 class EscPosKotPayloadTest extends TestCase
 {
+    use \Tests\Support\AssertsThermalSlipEnd;
+
     public function test_normal_and_addition_headings_use_batch_sequence(): void
     {
         $normal = $this->renderKot(['kot_event_type' => 'normal', 'kot_sequence_no' => 1]);
@@ -59,6 +61,15 @@ class EscPosKotPayloadTest extends TestCase
         $this->assertStringContainsString('2 BURGER PATTY', $output);
         $this->assertStringNotContainsString('PCS', $output);
         $this->assertStringContainsString('NOTE: Cancel from combo', $output);
+    }
+
+    /** SLIP-END-LINES-1: the KOT ends with its last line and then the cut — no blank lines (and the cut is there). */
+    public function test_kot_ends_with_its_last_line_then_the_cut(): void
+    {
+        foreach (['normal', 'addition', 'cancel'] as $event) {
+            $this->assertSlipEndsWithOneLineThenTheCut(
+                $this->renderKot(['kot_event_type' => $event, 'kot_sequence_no' => 1]), "KOT ({$event})");
+        }
     }
 
     private function renderKot(array $payload): string

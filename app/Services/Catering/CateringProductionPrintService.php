@@ -240,7 +240,8 @@ class CateringProductionPrintService
             }
         }
 
-        $out .= $rule."\n".$center('NO PRICES - PRODUCTION DOCUMENT')."\n\n\n".self::CUT;
+        // SLIP-END-LINES-1: no blank lines before the cut; the cut feeds to the cutter itself.
+        $out .= $rule."\n".$center('NO PRICES - PRODUCTION DOCUMENT')."\n".self::CUT;
 
         return $out;
     }
