@@ -139,3 +139,19 @@ has always printed.
 - **Related:**
   - unit printing 44, 1 red: the known `EscPosReportPayloadTest` decimals, red on prod code too;
   - **27 MySQL files that render slips: 196/196 OK**.
+
+## Part 2 done on prod (17 Nov, ~15:14 UTC / 20:14 PKT)
+- Merge `f5644a5f` (prod `3adc2430` → `f5644a5f`). The tested tree and the merge were identical; origin == HEAD; `deploy.sh`
+  exited 0.
+- Checks:
+  - PERMISSIONS OK;
+  - ACCOUNTS OK;
+  - smoke identical;
+  - log ERROR count 69 → 69. None of these come from this deploy: they are `reports:dispatch-scheduled` retries since
+    01:00 UTC, caused by the SMTP login of `info@bingoopos.com` returning 535. See the memory note; it is not code.
+- **Live proof:**
+  - The owner's bill (job 202089) rebuilt by the live code ends `… 39 31 37 37 0A 1D 56 42 00`: the footer line, then the cut.
+    The stored copy ended `… 0A 0A 0A 1D 56 42 00`.
+  - Kashif Food's first real bill after the deploy (202161) ends the same way.
+- Kashif Food's PC already runs agent 2.7.1 (since 19:48 PKT), so both the top and the bottom are trimmed there. The client
+  said: "ab chota hogaya hai".
