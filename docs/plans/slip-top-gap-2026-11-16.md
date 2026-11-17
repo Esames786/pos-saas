@@ -89,3 +89,53 @@ No Master switch. The server half reaches every tenant on deploy. The agent half
   - **Demo agent `AG-DEMO-LOCAL`** (this laptop, upgraded 2.7.0 → 2.7.1 without pairing) reports `agent_version 2.7.1`.
 - **Next is the owner:** run the 2.7.1 setup on each restaurant PC (normal Download button, see Rollout). 2.6.x PCs do not
   report a version; after the upgrade each one shows `2.7.1` on Print Agents.
+
+---
+
+# Part 2: SLIP-END-LINES-1, no blank lines UNDER any slip (17 Nov 2026)
+
+## The owner's ask
+- After the Kashif Food PC got 2.7.1, the owner sent a bill with a big top gap: "abhi bhi aa raha hai, tumne reminder mein
+  theek kiya hai".
+- That bill (job 202089, T1) was the **first** slip on T1 after the upgrade. The slip before it (KOT 202067, 19:42 PKT) was
+  printed by the old agent, so its 3 lines sat on top of this bill. Later slips were smaller; the client confirmed:
+  "ab chota hogaya hai".
+- He was right about one thing I had said wrongly: the bill also ends with blank lines before its cut, not only the reminder.
+- His instruction: "KOT, reminder, preview sub pe fix karo — lekin printer cutter chalna chahye".
+
+## Census of every thermal builder (before)
+| Document | Lines before the cut | Now |
+|---|---|---|
+| Bill and bill preview (`EscPosPayloadService::receipt`, one builder) | 2 | 0 |
+| Report (Quick Report / Report Center to a printer, `buildReport`) | 3 | 0 |
+| Reminder | 3 | 0 (Part 1) |
+| KOT | 0 (always "rule, newline, cut") | unchanged |
+| Catering quotation / invoice, thermal (`CateringDocumentPrintService`) | 2 | 0 |
+| Catering production slip (`CateringProductionPrintService`) | 3 | 0 |
+| Print Agents "Test Print" | no cut at all; the agent still adds its 3 lines | unchanged on purpose |
+
+Every document still ends with the cut `GS V 66 0`. The cut feeds the last line to the cutter by itself, which is how the KOT
+has always printed.
+
+## Impact (system map)
+- No tables, no screens, no switch.
+- Bytes of every bill, bill preview, report and catering thermal slip, at every tenant, from the deploy on. Already-queued jobs
+  keep their stored bytes.
+- No PC install is needed; this half is server-side.
+
+## Tests
+- `tests/Support/AssertsThermalSlipEnd`: the cut is present (owner: the cutter must run), the last line is finished, and there
+  is no blank line before the cut.
+- Used by:
+  - new `ThermalSlipEndMySqlTest`: paid bill, bill preview, branding on and footer-last, report;
+  - `EscPosKotPayloadTest` (normal / addition / cancel);
+  - `CateringDocumentPrintMySqlTest`;
+  - `CateringProductionPrintMySqlTest`.
+- **Sabotage, all RED:**
+  - A: bill blank lines back;
+  - B: bill cut removed ("must still END WITH THE CUT");
+  - C: report lines back;
+  - D: production slip lines back.
+- **Related:**
+  - unit printing 44, 1 red: the known `EscPosReportPayloadTest` decimals, red on prod code too;
+  - **27 MySQL files that render slips: 196/196 OK**.
