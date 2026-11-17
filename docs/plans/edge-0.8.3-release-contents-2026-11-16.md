@@ -94,7 +94,11 @@ and the three suite tests `test_*_populated_rows_*` in `EdgeTenantMigrationUpgra
 3. LAB demo first (owner priority): no release install on the LAB before the supervised demonstration.
 4. Owner item 6: no build, sign or install until the order-note strategy and all mandatory release gates are resolved.
 
-## 4. Procedure once unblocked (P5B custody, unchanged)
+## 4. Procedure once unblocked (P5B custody) — EXECUTED up to the install gate (17 Nov 2026)
+
+Built, signed, audited and rehearsed from 37731e16: `docs/status/edge-0.8.3-release-readiness-2026-11-17.md` (package hash 684ecf12…,
+plan hash `sha256:f93da939…`). Held: the LAB install waits for the owner's attended window after the real offline demonstration.
+
 
 Build from the (possibly moved) tag → artifact verification → disposable copy install + upgrade proof (labcopy) → signed update →
 owner-attended LAB install under the 0.8.2 record's phases A–D. Not started.
