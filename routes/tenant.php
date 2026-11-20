@@ -655,6 +655,9 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/api/pos/held-sales', [HeldSaleController::class, 'ajaxList'])->name('tenant.api.pos.held-sales');
                 Route::get('/api/pos/table-sessions', [HeldSaleController::class, 'ajaxTableSessions'])->name('tenant.api.pos.table-sessions');
                 Route::get('/api/pos/print-jobs/{saleId}', [PrintJobController::class, 'ajaxForSale'])->name('tenant.api.pos.print-jobs');
+                // PRINT-OFFLINE-HERE-1: POS ki printer batti. `tenant.api.pos` prefix EnsureRoutePermission me khula
+                // hai — har counter user tak pahunchta hai, naya permission nahi; counter ki ijazat controller me.
+                Route::get('/api/pos/print-health', [PrintJobController::class, 'health'])->name('tenant.api.pos.print-health');
                 Route::post('/api/pos/totals/quote', [POSController::class, 'quoteTotals'])->name('tenant.api.pos.totals.quote');
                 // BILL-PREVIEW-PARITY-1: proforma of the current cart rendered from the REAL receipt template.
                 Route::post('/api/pos/bill-preview', [POSController::class, 'billPreview'])->name('tenant.api.pos.bill-preview');
@@ -734,6 +737,8 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/printing/jobs/reminder/{salesOrder}/confirm', [PrintJobController::class, 'confirmReminders'])->name('tenant.printing.jobs.confirm-reminders');
                 Route::post('/printing/jobs/{printJob}/reminder-reprint', [PrintJobController::class, 'reprintReminder'])->name('tenant.printing.jobs.reprint-reminder');
                 Route::post('/printing/jobs/{printJob}/mark-printed', [PrintJobController::class, 'markPrinted'])->name('tenant.printing.jobs.mark-printed');
+                // PRINT-OFFLINE-HERE-1: agent chup ho to counter parchi khud chhaapta hai — network ki line se uthao.
+                Route::post('/printing/jobs/{printJob}/print-here', [PrintJobController::class, 'printHere'])->name('tenant.printing.jobs.print-here');
                 Route::post('/printing/jobs/{printJob}/retry', [PrintJobController::class, 'retry'])->name('tenant.printing.jobs.retry');
                 Route::post('/printing/jobs/{printJob}/dismiss', [PrintJobController::class, 'dismiss'])->name('tenant.printing.jobs.dismiss');
 
