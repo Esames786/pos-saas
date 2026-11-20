@@ -658,11 +658,16 @@
                 </div>
                 {{-- PRINT-OFFLINE-HERE-1: is counter ki parchi printer tak pahunchegi ya nahi — print agent ki
                      zindagi se, har 10 s (laal par har 3 s). Laal = parchi isi computer se niklegi. --}}
+                {{-- Shared-view contract (Edge integration, 21 Nov 2026): the agent-health pill is a CLOUD concern — the
+                     Branch Server prints straight to the LAN printers (no agent, no /api/pos/print-health route), so the
+                     Edge runtime renders no pill and the script below exits on the missing element. --}}
+                @if($posRuntime->mode !== \App\Support\Pos\PosRuntime::MODE_EDGE)
                 <div id="pos-print-health" class="small" style="display:none">
                     <span class="pos-ph-pill" id="pos-print-health-pill" role="status" aria-live="polite">
                         <span class="pos-ph-dot" aria-hidden="true"></span><span id="pos-print-health-text"></span>
                     </span>
                 </div>
+                @endif
                 <div id="no-terminal-warning" class="small text-warning-emphasis" style="display:none">
                     <i class="ti ti-alert-triangle me-1"></i>No terminal — auto receipt/KOT print is off
                 </div>
