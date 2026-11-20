@@ -48,7 +48,12 @@ EDGE_PACKAGE=0.8.3-edge HELD and immutable (manifest e62976f1…, package_hash 6
   NEW: 0.8.4-edge built + signed from a23d1f26 (C:\Users\Dell\.bingoo-edge-release\releases\BingooEdge-0.8.4-edge, package_hash
   497cf87e196cff92c22b744ce4e8d2a159169647c420a175fa9f9f3d49ab459f, edge:audit-package ok, source proof PASS 2361 files 0 mismatches,
   signing key a2eaf8a3d3e66a48; evidence C:\Users\Dell\BingooEdgeLab\evidence\release-0.8.4-edge\build\). Kit copy
-  BingooEdge-0.8.4-edge-CANDIDATE\ (separate folder; the labcopy upgrade rehearsal 0.8.x→0.8.4 is in progress by Agent D).
+  BingooEdge-0.8.4-edge-CANDIDATE\ (separate folder + README-CANDIDATE.md). Labcopy rehearsal PASS (Agent D, evidence
+  evidence\release-0.8.4-edge\labcopy\): dry-run through the copy's real launcher verdict OK, plan hash
+  sha256:20a8aad4febae276d8a5319caf0c717b77b2356c0cad17c6c7c6d0c105c12a95, 0 migrations; apply 0.8.2→0.8.4 in 5 min, ledger applied,
+  artifact d26b8357… = signed; health 0.8.4; pointer rollback clean; unauthenticated probes on the staged runtime: /edge/local/health 200
+  (0.8.4-edge), login 200, POST switch-offline without CSRF → 419, with a session token but no login → 302 to login, unknown → 404, never
+  500, authority still standby. Real LAB untouched.
 SIGNED_RELEASE_NEEDED=YES for the buttons at Khatri — the owner-control UI lives in the appliance code; the held 0.8.3 has no buttons
   (CLI only). Either install 0.8.3 (held, LAB-rehearsed) or 0.8.4 (buttons; needs the owner's separate installation approval and the
   D-D LAB certification on the same package).
