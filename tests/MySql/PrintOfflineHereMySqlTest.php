@@ -274,9 +274,25 @@ class PrintOfflineHereMySqlTest extends MySqlTenantTestCase
 
         foreach (['id="pos-print-health"', 'id="pos-print-stuck"', 'id="print-here-queue"', 'id="print-here-next-btn"',
                   '/api/pos/print-health', 'window.printHereQueue', 'window.posPrintHealthPoke',
-                  'window.printHereQueueDismissed', 'data-print-here-queue'] as $needle) {
+                  'window.printHereQueueDismissed', 'data-print-here-queue', "/preview?here=1'", 'function kotSentToast'] as $needle) {
             $this->assertStringContainsString($needle, $html, "POS par {$needle} hona chahiye");
         }
+    }
+
+    /** Queue ki window me parchi pehle hi darj hai — preview ke apne "Mark Printed" button wahan uljhate. */
+    public function test_queue_wali_window_me_parchi_ke_mark_printed_buttons_nahi(): void
+    {
+        $saleId = $this->sale();
+        $this->makeSaleLine($saleId, $this->productId, ['quantity' => 1, 'line_total' => 100, 'product_name' => 'Chicken Tikka']);
+        $sale = SalesOrder::on('tenant')->with('lines')->findOrFail($saleId);
+        $job = app(PrintJobService::class)->queueKot($sale, \App\Models\Tenant\Printer::on('tenant')->findOrFail($this->printerId), [], (string) $this->terminalId)[0];
+
+        $here = $this->asCashier()->get('http://' . $this->host . '/printing/documents/' . $job->id . '/preview?here=1')->assertOk()->getContent();
+        $this->assertStringContainsString('KOT', $here, 'parchi khud dikhni chahiye');
+        $this->assertStringNotContainsString('Mark Printed', $here, 'queue me "Mark Printed" nahi');
+
+        $plain = $this->asCashier()->get('http://' . $this->host . '/printing/documents/' . $job->id . '/preview')->assertOk()->getContent();
+        $this->assertStringContainsString('Mark Printed', $plain, 'seedha khola gaya preview pehle jaisa');
     }
 
     public function test_printers_page_agent_chup_ho_to_sach_bataye(): void

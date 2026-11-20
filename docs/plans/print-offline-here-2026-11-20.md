@@ -146,3 +146,25 @@ Decisions (owner asked me to suggest; these are my defaults, written here so the
     "Sab yahin print karo".
   - Only slips made in the last 2 minutes open by themselves. Older ones wait on the bar, for example slips from before
     the page was opened.
+
+## After the owner's demo (20 Nov 2026, local Khatri copy)
+The owner ran it on his laptop.
+- **Green:** the KOTs went to the fake Delivery and BBQ printers.
+- **Agent stopped:** the light went red with "4 parchiyan printer tak nahi pahunchi". The queue window opened by itself and
+  printed all 4 KOTs ("4 / 4 sab ho gayin"). All 4 were recorded `printed_here: agent_offline`, and nothing reached the
+  network printers.
+
+Three polish items from that run:
+1. **Toast.** While red, "KOT sent to kitchen" now reads "Printer se rabta nahi — KOT isi computer se print ho rahi hai"
+   (`kotSentToast`).
+2. **Preview buttons.** The queue opens the preview with `?here=1`. KOT, receipt and reminder previews then hide their own
+   "Print / Mark Printed" buttons, because the slip is already recorded. A preview opened directly is unchanged.
+3. **Auto-close.** The window closes by itself 2 s after the last slip, if every slip printed or was skipped. If one is
+   stuck, it stays open.
+
+Re-run on a fresh DB set `_poh2`:
+- Target 15/15.
+- Sabotages A–F all RED; F brings the buttons back.
+- Related MySQL set **198/198**, now with KOT deal heading, thermal item layout, vehicle number and KOT ticket time.
+- Unit: the same 5 reds, all red on prod.
+- The live POS page's 10 inline scripts pass `node --check`.

@@ -2224,7 +2224,18 @@
     function advance() {
         var next = -1;
         for (var i = 0; i < Q.items.length; i++) { if (Q.items[i].status === 'wait') { next = i; break; } }
-        if (next === -1) { Q.idx = -1; renderQueue(); return; }
+        if (next === -1) {
+            Q.idx = -1; renderQueue();
+            // Sab chhap gayin (ya agent pehle chhaap chuka) → 2 s baad window khud band. Koi atki ho to khuli rahe.
+            var allDone = Q.items.length && Q.items.every(function (x) { return x.status === 'done' || x.status === 'skipped'; });
+            if (allDone) {
+                setTimeout(function () {
+                    var stillDone = Q.active && Q.idx === -1 && Q.items.every(function (x) { return x.status === 'done' || x.status === 'skipped'; });
+                    if (stillDone) { var m = bootstrap.Modal.getInstance(modalEl); if (m) m.hide(); }
+                }, 2000);
+            }
+            return;
+        }
         Q.idx = next;
         var it = Q.items[next];
         it.status = 'taking'; renderQueue();
@@ -2238,7 +2249,8 @@
             if (s === 'taken') {
                 it.status = 'printing'; Q.done[it.job.id] = true; renderQueue();
                 _afterPrint = function () { if (it.status === 'printing') { it.status = 'done'; } renderQueue(); advance(); };
-                frame.src = '{{ url('/printing/documents') }}/' + Number(it.job.id) + '/preview';
+                // ?here=1 — parchi darj ho chuki; preview ke apne "Print / Mark Printed" buttons nahi chahiyen.
+                frame.src = '{{ url('/printing/documents') }}/' + Number(it.job.id) + '/preview?here=1';
                 return;
             }
             it.status = s === 'already_printed' ? 'skipped' : (s === 'in_flight' ? 'busy' : 'error');
@@ -6146,10 +6158,19 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // PRINT-OFFLINE-HERE-1: batti laal ho to "KOT sent to kitchen" jhoot hai — parchi isi computer se nikal rahi hai.
+    function kotSentToast(kind) {
+        if (window.posPrintOffline && window.posPrintOffline()) {
+            toast('warning', '<i class="ti ti-printer-off me-1"></i> Printer se rabta nahi — KOT isi computer se print ho rahi hai');
+            return;
+        }
+        toast(kind, kind === 'info' ? '<i class="ti ti-printer me-1"></i> KOT sent to kitchen' : 'KOT sent to kitchen');
+    }
+
     function handleKotAfterSale(saleId, saleNo, terminalId) {
         if (terminalAutoKot(terminalId)) {
             fireKotSilently(saleId, terminalId);
-            toast('info', '<i class="ti ti-printer me-1"></i> KOT sent to kitchen');
+            kotSentToast('info');
         } else if (typeof Swal !== 'undefined') {
             Swal.fire({
                 title:              'Print Kitchen Order?',
@@ -6163,7 +6184,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }).then(function (result) {
                 if (result.isConfirmed) {
                     fireKotSilently(saleId, terminalId);
-                    toast('success', 'KOT sent to kitchen');
+                    kotSentToast('success');
                 }
             });
         }
