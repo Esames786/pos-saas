@@ -70,7 +70,8 @@ Critical: `PrintOfflineHereMySqlTest`, `EdgeNoDuplicatePrintAfterSyncMySqlTest`,
    long-running transaction on any tenant (the INSTANT/INPLACE DDL waits at most 10 s).
 3. **deploy.sh** (unchanged procedure: git pull --ff-only → composer install --no-dev → `migrate --force` (master) → MasterSeeder →
    route:clear + `system:routes-sync` → per tenant migrate + CoA seeder + Owner permissions → permission caches → optimize:clear →
-   config/route/view cache → queue:restart → ownership → PHP-FPM reload). Capture the full output. Expected: `tenants ok=9 skipped=0`.
+   config/route/view cache → queue:restart → ownership → PHP-FPM reload). Capture the full output. Expected: `tenants ok=13 skipped=0`
+   (13 tenants per the latest deployment records, 26 Oct; the census count printed by deploy.sh is the truth on the day).
 4. **Post-deploy checks** (read-only, 5 min): every tenant login page 200; Khatri POS page 200 with the agent-health pill working
    (PRINT-OFFLINE-HERE-1 unchanged); a Cloud print job on Khatri reaches the agent and prints once; `GET /edge/api/device/me` without a
    device → 401; `POST /edge/api/authority/heartbeat` without a device → 401; Offline Edge menu absent for every tenant (gate 2 off);
