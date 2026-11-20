@@ -15,9 +15,13 @@ against production.
 | held appliance package | `BingooEdge-0.8.3-edge`, package hash `684ecf12…`, plan hash `sha256:f93da939…` (unchanged) |
 
 Merge result: 30 production files over Edge (SLIP-END-LINES-1, PRINT-OFFLINE-HERE-1), code auto-merged; the only conflict was
-`docs/system-map/*` (regenerated from the candidate). One shared-view resolution: the PRINT-OFFLINE-HERE-1 agent-health pill is
-Cloud-only in `tenant.pos.index` (the Edge runtime renders the same blade through `sharedScreen` and has no agent and no
-`/api/pos/print-health` route; the script exits on the missing element, its callers are `if (window.posPrintHealthPoke)` guarded).
+`docs/system-map/*` (regenerated from the candidate). One shared-view resolution (the only code change on top of the merge):
+PRINT-OFFLINE-HERE-1 had put three `url('/…')` literals into the ONE shared cashier blade `tenant.pos.index`, which the Edge
+runtime renders too (`sharedScreen`) — the shared-view contract tests (`SharedPosViewRenderTest`, `EdgeSharedPosRegressionStaticGateTest`)
+refuse any URL literal and any runtime branch. Resolution: two new runtime-map route keys `printHealth` (Cloud `/api/pos/print-health`,
+Edge `null`) and `printHereTake` (Cloud `/printing/jobs/{job}/print-here`, Edge `null`), the preview through the existing `printDocument`
+key, the agent-health pill rendered only where `printHealth` is non-null, the poller exits when the route is null. Cloud behaviour is
+byte-for-byte the same endpoints; on the Branch Server (which has no print agent) nothing is rendered or polled. 24 contract tests green.
 
 ## 2. What production receives
 
