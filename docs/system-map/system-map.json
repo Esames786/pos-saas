@@ -1,25 +1,25 @@
 {
-    "built_at": "2026-11-20T20:46:01+00:00",
+    "built_at": "2026-11-20T23:45:39+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "be3693e4",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas-edge",
             "branch": "feat/edge-config-refresh-v1",
-            "head": "e519b716",
+            "head": "a23d1f26",
             "behind_prod": 12,
-            "ahead_of_prod": 273,
-            "last_commit": "2026-11-21\u00b7docs: Khatri 21 Nov morning execution sheet (safe now / GO needed / blocked by Cloud deployment / pass-fail / evidence), USB kit install worksheet + MySQL 8.0.30 kit README, operator takeover/handback instructions + training checklist (D-E, no assignments), offline_edge enablement + pairing procedure (D-B, not executed)",
+            "ahead_of_prod": 277,
+            "last_commit": "2026-11-21\u00b7edge(owner control): tenant.offline-edge.security in the POS permission catalogue (manager group; Online route + Edge controller); system map rebuilt (two authority routes)",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-integ-khatri",
             "branch": "integ/khatri-cloud-edge-20261121",
-            "head": "c4c3e610",
+            "head": "dab7e1f3",
             "behind_prod": 0,
-            "ahead_of_prod": 274,
-            "last_commit": "2026-11-21\u00b7pos(shared view): PRINT-OFFLINE-HERE-1 agent-health pill is rendered only on the Cloud runtime - the Edge runtime (same tenant.pos.index blade via sharedScreen) has no print agent and no /api/pos/print-health route; the script already exits on the missing element and its callers are guarded",
-            "uncommitted_files": 0
+            "ahead_of_prod": 280,
+            "last_commit": "2026-11-21\u00b7docs: Khatri deployment-day runbook (phases 1-5, who/command/expect/STOP, rollback per phase, 8-hour timeline); plan tenant count from the latest records",
+            "uncommitted_files": 24
         },
         {
             "path": "D:/laragon2/www/pos-saas",
@@ -410,7 +410,7 @@
             "modified": "2026-11-20"
         }
     ],
-    "git": "c4c3e610",
+    "git": "dab7e1f3",
     "source": {
         "tenant_db": "pos_integ_prodschema_tenant",
         "master_db": "pos_integ_prodschema_master"

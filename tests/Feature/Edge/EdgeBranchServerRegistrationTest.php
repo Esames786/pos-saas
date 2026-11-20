@@ -150,6 +150,9 @@ class EdgeBranchServerRegistrationTest extends TestCase
             // EDGE-CASHIER-UI-5 (deliberately approved): Quick Report on the canonical report authority.
             // P4 (deliberately approved): the ONE operator/admin health page.
             'edge/local/pos/health',
+            // KHATRI OWNER CONTROL (21 Nov 2026, deliberately approved): Switch to Offline / Return to Online on the health page.
+            'edge/local/pos/authority/switch-offline',
+            'edge/local/pos/authority/return-online',
             'edge/local/pos/quick-report/options',
             'edge/local/pos/quick-report/view',
             'edge/local/pos/quick-report/network',

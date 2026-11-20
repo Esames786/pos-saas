@@ -287,6 +287,9 @@ return [
         'edge.local.pos.quick-report.email',
         // P4 — the ONE operator/admin health page (non-secret).
         'edge.local.pos.health.view',
+        // KHATRI OWNER CONTROL (21 Nov 2026): Switch to Offline / Return to Online on the health page (EdgeLocalAuthorityControlController).
+        'edge.local.pos.authority.switch-offline',
+        'edge.local.pos.authority.return-online',
         // ── W1 (Team 1, parity directive 20 Sep 2026) — shell (each name deliberate; mirrors routes/edge_runtime.php W1) ──
         'edge.local.assets',   // whitelisted public/assets streamer (EdgeLocalAssetController; unauthenticated, no session)
         'edge.local.storage',  // W-C: whitelisted storage/app/public image streamer (EdgeLocalAssetController::storage; images only, no session)

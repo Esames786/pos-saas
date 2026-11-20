@@ -93,6 +93,13 @@ final class PosPermissionCatalog
             'edge' => 'EdgeLocalHeldSalesController@reattachTable (denyUnlessCan)',
             'online' => 'POST /held-sales/{salesOrder}/reattach-table — HeldSaleController@reattachTable',
         ],
+        // KHATRI OWNER CONTROL (21 Nov 2026): the explicit action permission behind "Switch to Offline" / "Return to Online" on
+        // the Branch Server status page — the same permission that guards the Cloud's Offline Edge security controls.
+        'tenant.offline-edge.security' => [
+            'groups' => ['manager'],
+            'edge' => 'app/Http/Controllers/Edge/EdgeLocalAuthorityControlController.php — POST /edge/local/pos/authority/switch-offline|return-online (buttons on /edge/local/pos/health)',
+            'online' => 'GET /settings/offline-edge/security — OfflineEdgeController@security (BRANCH-DEVICE-PAIRING-1 HARDEN-1)',
+        ],
         'tenant.sales-orders.split-bill' => [
             'groups' => ['cashier'],
             'edge' => 'shared POS view resources/views/tenant/pos/partials/table-board.blade.php @can (Split Bill button) — rendered on Edge from W-B',

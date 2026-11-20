@@ -70,6 +70,53 @@
         @endif
     </section>
 
+    {{-- KHATRI OWNER CONTROL (21 Nov 2026): the simplest usable Offline experience over the EXISTING engine — one block that
+         says who sells now and offers the two supervised actions. Refusals are the engine's own words; nothing is bypassed. --}}
+    @php
+        $ctl = session('authority_control');
+        $auth = (array) ($report['authority'] ?? []);
+        $isLocal = in_array((string) ($auth['state'] ?? ''), ['local_active', 'handing_back'], true);
+        $canControl = (bool) auth('tenant')->user()?->can(\App\Http\Controllers\Edge\EdgeLocalAuthorityControlController::PERMISSION);
+        $blockedGates = is_array($auth['gates'] ?? null) && ! isset($auth['gates']['error']) ? array_keys(array_filter($auth['gates'], fn ($ok) => ! $ok)) : [];
+        $connOk = in_array((string) ($auth['connection_state'] ?? ''), ['online', 'connection_restored'], true);
+        $printers = (array) ($report['print']['printers'] ?? []);
+        $printersReachable = count(array_filter($printers, function ($p) {
+            $r = is_array($p) ? ($p['reachability'] ?? null) : null;
+            $s = is_array($r) ? (string) ($r['status'] ?? $r['state'] ?? $r['result'] ?? '') : (string) $r;
+            return $s === 'reachable';
+        }));
+    @endphp
+    <section class="headline" id="selling-authority" style="flex-direction:column;align-items:stretch;gap:.6rem">
+        <h2 style="margin:0;font-size:.95rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Selling authority</h2>
+        @if(is_array($ctl))
+            <div id="authority-control-result" role="alert" class="{{ $ctl['ok'] ? 'ok' : 'bad' }}" style="border:1px solid currentColor;border-radius:8px;padding:.5rem .8rem">{{ $ctl['message'] }} <span class="muted">({{ $ctl['at'] }})</span></div>
+        @endif
+        <dl>
+            <dt>Internet / Cloud</dt><dd class="{{ $connOk ? 'ok' : 'warn' }}">{{ $auth['connection_state'] ?? 'unknown' }} @if(!empty($auth['last_heartbeat_ack_at']))<span class="muted">· last Cloud acknowledgement {{ $auth['last_heartbeat_ack_at'] }}</span>@endif</dd>
+            <dt>Who sells now</dt><dd class="{{ $isLocal ? 'warn' : 'ok' }}"><strong>{{ $isLocal ? 'This Branch Server — OFFLINE (Local Mode)' : 'Cloud — ONLINE POS' }}</strong> <span class="muted">· {{ str_replace('_', ' ', (string) ($report['status'] ?? '')) }}</span></dd>
+            <dt>Offline readiness</dt><dd class="{{ $blockedGates === [] ? 'ok' : 'bad' }}">{{ $blockedGates === [] ? 'ready — every takeover gate passes' : 'blocked: ' . implode(', ', $blockedGates) }}</dd>
+            <dt>Return readiness</dt><dd class="{{ empty($auth['handback_blockers']) ? 'ok' : 'warn' }}">{{ empty($auth['handback_blockers']) ? ($isLocal ? 'ready — sync clean, Cloud reachable' : 'n/a — the Cloud sells now') : 'blocked: ' . implode(', ', (array) $auth['handback_blockers']) }}</dd>
+            <dt>Configuration / stock freshness</dt><dd class="{{ (($report['freshness']['config']['ok'] ?? false) && ($report['freshness']['stock']['ok'] ?? false)) ? 'ok' : 'warn' }}">config {{ ($report['freshness']['config']['ok'] ?? false) ? 'fresh' : 'stale/unknown' }} (rev {{ $report['freshness']['config']['applied_revision'] ?? '—' }}) · stock {{ ($report['freshness']['stock']['ok'] ?? false) ? 'fresh' : 'stale/unknown' }}</dd>
+            <dt>Sync to Cloud</dt><dd class="{{ (($report['sync']['outbox_pending'] ?? 0) + ($report['sync']['outbox_failed_permanent'] ?? 0)) > 0 ? 'warn' : 'ok' }}">pending {{ $report['sync']['outbox_pending'] ?? '—' }} · in flight {{ $report['sync']['outbox_leased'] ?? '—' }} · needs attention {{ $report['sync']['outbox_failed_permanent'] ?? '—' }}</dd>
+            <dt>Printers</dt><dd>{{ count($printers) }} configured@if(count($printers) > 0) · {{ $printersReachable }} reachable@endif</dd>
+        </dl>
+        @if($canControl)
+            <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:center">
+                <form method="POST" action="{{ url('/edge/local/pos/authority/switch-offline') }}" style="margin:0" onsubmit="return confirm('Switch this branch to OFFLINE?\n\nOnly when the Internet is really down. The Branch Server will refuse if the Cloud still holds the branch or any readiness gate is blocked. Cashiers then use the BINGOO Offline POS.');">
+                    @csrf<input type="hidden" name="confirm" value="yes">
+                    <button type="submit" id="btn-switch-offline" style="background:rgba(79,70,229,.25);border-color:var(--accent);font-weight:600;padding:.7rem 1.2rem" @disabled($isLocal)>Switch to Offline</button>
+                </form>
+                <form method="POST" action="{{ url('/edge/local/pos/authority/return-online') }}" style="margin:0" onsubmit="return confirm('Return this branch to ONLINE?\n\nThe Branch Server will refuse while any sale is still syncing or the Cloud is not reachable. Close the Edge shift first. Cashiers then go back to the BINGOO Online POS.');">
+                    @csrf<input type="hidden" name="confirm" value="yes">
+                    <button type="submit" id="btn-return-online" style="background:rgba(22,163,74,.2);border-color:var(--ok);font-weight:600;padding:.7rem 1.2rem" @disabled(! $isLocal)>Return to Online</button>
+                </form>
+                <span class="muted">Supervised only — no automatic failover, no stale override here. The CLI stays the recovery tool.</span>
+            </div>
+        @else
+            <span class="muted">Switching this branch Offline / Online needs the Offline Edge security permission ({{ \App\Http\Controllers\Edge\EdgeLocalAuthorityControlController::PERMISSION }}) — ask the owner.</span>
+        @endif
+    </section>
+
     <section class="card">
         <h2>Cloud connection &amp; authority</h2>
         <dl>

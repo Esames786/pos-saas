@@ -128,6 +128,11 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::post('/quick-report/email', [EdgeQuickReportController::class, 'email'])->name('quick-report.email');
         // P4 §11 — the ONE operator/admin health page (non-secret; same report as edge:local:health).
         Route::get('/health', [\App\Http\Controllers\Edge\EdgeLocalHealthController::class, 'view'])->name('health.view');
+        // KHATRI OWNER CONTROL (21 Nov 2026) — the two supervised authority actions as buttons on that page, over the EXISTING
+        // engine paths (EdgeAuthorityService::takeOver without stale override; EdgeHandbackOrchestrator::run). Explicit action
+        // permission + confirm field + CSRF + lock + audit in EdgeLocalAuthorityControlController. No Artisan over HTTP.
+        Route::post('/authority/switch-offline', [\App\Http\Controllers\Edge\EdgeLocalAuthorityControlController::class, 'switchOffline'])->middleware('throttle:6,1')->name('authority.switch-offline');
+        Route::post('/authority/return-online', [\App\Http\Controllers\Edge\EdgeLocalAuthorityControlController::class, 'returnOnline'])->middleware('throttle:6,1')->name('authority.return-online');
 
         // ═══════════════ PARITY WORKSTREAM ROUTES (owner directive 20 Sep 2026) — one block per team, append-only ═══════════════
         // Every new URI must ALSO be added, deliberately, to the approved census in tests/Feature/Edge/EdgeBranchServerRegistrationTest.
