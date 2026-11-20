@@ -221,10 +221,56 @@ class PrintJobController extends Controller
                     ? (int) ($j->copy_no ?? 0)
                     : null,
                 'fallback'      => empty($j->printer_id),
+                'printed_here'  => ! empty($j->payload['printed_here']),
                 'preview_url'   => url('/printing/documents/' . $j->id . '/' . $j->document_type),
                 'created_at'    => $j->created_at->diffForHumans(),
             ])->values()->all(),
         ]);
+    }
+
+    /**
+     * PRINT-OFFLINE-HERE-1 — POS ki printer batti: is counter ka agent zinda hai ya nahi, aur agar nahi to is
+     * counter ki kaun si parchiyan line mein ruki hain. Sirf us counter ki jo is user ko chalane ki ijazat hai.
+     */
+    public function health(Request $request, \App\Services\Printing\PrintHealthService $health)
+    {
+        $terminalId = $this->reprintTerminalId($request);
+        $branchId = $request->filled('branch_id') ? (int) $request->input('branch_id') : null;
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        if ($branchId && $scope->hasBranchAssignments(auth('tenant')->user())
+            && ! in_array($branchId, $scope->branchIds(auth('tenant')->user()), true)) {
+            $branchId = null;
+        }
+
+        return response()->json($health->forTerminalId($terminalId, $branchId) + [
+            'terminal_id' => $terminalId,
+            'checked_at'  => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * PRINT-OFFLINE-HERE-1 — counter ye parchi khud chhaapega: network ki line se utha lo. `already_printed`
+     * par counter dobara NAHI chhaapta (agent wapas aa kar chhaap chuka); `in_flight` par ruk jata hai.
+     */
+    public function printHere(Request $request, PrintJob $printJob)
+    {
+        $this->assertPrintJobAccess($printJob);
+
+        $result = $this->printJobService->printHere($printJob, auth('tenant')->id(), (string) ($request->input('reason') ?: 'agent_offline'));
+        $messages = [
+            'taken'           => null,
+            'already_printed' => 'Ye parchi printer se nikal chuki hai — dobara nahi chhapi.',
+            'in_flight'       => 'Printer abhi ye parchi chhaap raha hai — thori der baad dekhein.',
+            'not_allowed'     => 'Ye parchi band ho chuki hai — Reprint se dobara banayein.',
+        ];
+
+        return response()->json([
+            'status'      => $result,
+            'job_id'      => $printJob->id,
+            'job_no'      => $printJob->job_no,
+            'preview_url' => url('/printing/documents/' . $printJob->id . '/preview'),
+            'message'     => $messages[$result] ?? null,
+        ], $result === 'in_flight' ? 409 : ($result === 'not_allowed' ? 422 : 200));
     }
 
     public function markPrinted(Request $request, PrintJob $printJob)
