@@ -658,16 +658,14 @@
                 </div>
                 {{-- PRINT-OFFLINE-HERE-1: is counter ki parchi printer tak pahunchegi ya nahi — print agent ki
                      zindagi se, har 10 s (laal par har 3 s). Laal = parchi isi computer se niklegi. --}}
-                {{-- Shared-view contract (Edge integration, 21 Nov 2026): the agent-health pill exists only where the runtime
-                     map carries the printHealth endpoint (Cloud). The Branch Server prints straight to the LAN printers — its
-                     map has printHealth = null, so no pill is rendered and the poller below exits on the missing element. --}}
-                @if($posRuntime->route('printHealth') !== null)
+                {{-- Shared-view contract (Edge integration, 21 Nov 2026): the SAME hidden pill skeleton in both runtimes; it is
+                     shown only by the poller, which starts only where the runtime map carries printHealth (Cloud). On the
+                     Branch Server printHealth is null (it prints straight to the LAN printers), so the pill stays hidden. --}}
                 <div id="pos-print-health" class="small" style="display:none">
                     <span class="pos-ph-pill" id="pos-print-health-pill" role="status" aria-live="polite">
                         <span class="pos-ph-dot" aria-hidden="true"></span><span id="pos-print-health-text"></span>
                     </span>
                 </div>
-                @endif
                 <div id="no-terminal-warning" class="small text-warning-emphasis" style="display:none">
                     <i class="ti ti-alert-triangle me-1"></i>No terminal — auto receipt/KOT print is off
                 </div>
