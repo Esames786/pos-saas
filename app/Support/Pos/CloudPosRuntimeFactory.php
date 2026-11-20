@@ -125,6 +125,9 @@ final class CloudPosRuntimeFactory
             'websiteOrders' => '/api/pos/website-orders',
             'websiteOrderHold' => '/api/pos/website-orders/{salesOrder}/hold',
             'websiteOrderVerify' => '/api/pos/website-orders/{salesOrder}/verify',
+            // PRINT-OFFLINE-HERE-1 (production 7b7abd7c): tenant.api.pos.print-health + tenant.printing.jobs.print-here.
+            'printHealth' => '/api/pos/print-health',
+            'printHereTake' => '/printing/jobs/{job}/print-here',
         ]);
 
         return new PosRuntime(

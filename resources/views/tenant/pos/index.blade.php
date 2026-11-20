@@ -658,10 +658,10 @@
                 </div>
                 {{-- PRINT-OFFLINE-HERE-1: is counter ki parchi printer tak pahunchegi ya nahi — print agent ki
                      zindagi se, har 10 s (laal par har 3 s). Laal = parchi isi computer se niklegi. --}}
-                {{-- Shared-view contract (Edge integration, 21 Nov 2026): the agent-health pill is a CLOUD concern — the
-                     Branch Server prints straight to the LAN printers (no agent, no /api/pos/print-health route), so the
-                     Edge runtime renders no pill and the script below exits on the missing element. --}}
-                @if($posRuntime->mode !== \App\Support\Pos\PosRuntime::MODE_EDGE)
+                {{-- Shared-view contract (Edge integration, 21 Nov 2026): the agent-health pill exists only where the runtime
+                     map carries the printHealth endpoint (Cloud). The Branch Server prints straight to the LAN printers — its
+                     map has printHealth = null, so no pill is rendered and the poller below exits on the missing element. --}}
+                @if($posRuntime->route('printHealth') !== null)
                 <div id="pos-print-health" class="small" style="display:none">
                     <span class="pos-ph-pill" id="pos-print-health-pill" role="status" aria-live="polite">
                         <span class="pos-ph-dot" aria-hidden="true"></span><span id="pos-print-health-text"></span>
@@ -2266,7 +2266,7 @@
         Q.idx = next;
         var it = Q.items[next];
         it.status = 'taking'; renderQueue();
-        fetch('{{ url('/printing/jobs') }}/' + Number(it.job.id) + '/print-here', {
+        fetch(POS.route('printHereTake', { job: Number(it.job.id) }), {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
         }).then(function (r) {
@@ -2277,7 +2277,7 @@
                 it.status = 'printing'; Q.done[it.job.id] = true; renderQueue();
                 _afterPrint = function () { if (it.status === 'printing') { it.status = 'done'; } renderQueue(); advance(); };
                 // ?here=1 — parchi darj ho chuki; preview ke apne "Print / Mark Printed" buttons nahi chahiyen.
-                frame.src = '{{ url('/printing/documents') }}/' + Number(it.job.id) + '/preview?here=1';
+                frame.src = POS.route('printDocument', { job: Number(it.job.id) }) + '?here=1';
                 return;
             }
             it.status = s === 'already_printed' ? 'skipped' : (s === 'in_flight' ? 'busy' : 'error');
@@ -2365,7 +2365,7 @@
      - purani (agent girne se pehle ki / page khulne se pehle ki) → patti par ek button.
    Koi doosri window (payment, Swal) khuli ho to us ke band hone ka intezar. */
 (function () {
-    var URL = '{{ url('/api/pos/print-health') }}';
+    var URL = POS.route('printHealth');   // null on the Branch Server (no print agent) → this poller never starts
     var wrap  = document.getElementById('pos-print-health');
     var pill  = document.getElementById('pos-print-health-pill');
     var text  = document.getElementById('pos-print-health-text');
@@ -2373,7 +2373,7 @@
     var stuckTitle  = document.getElementById('pos-print-stuck-title');
     var stuckDetail = document.getElementById('pos-print-stuck-detail');
     var stuckBtn    = document.getElementById('pos-print-stuck-btn');
-    if (!wrap || !pill) return;
+    if (!URL || !wrap || !pill) return;
 
     var FRESH_SECONDS = 120;
     var cur = { state: null, waiting: [] };

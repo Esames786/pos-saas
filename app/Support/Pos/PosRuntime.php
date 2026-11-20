@@ -64,6 +64,11 @@ final class PosRuntime implements JsonSerializable
         // CANONICAL MERGE (D8) — ONLINE-ORDERING-1 (canonical bd84466d…): the POS website-orders inbox (list / hold / verify).
         // Cloud: tenant.api.pos.website-orders*; Edge: null — a website order needs the Cloud (capability websiteOrders off, D4).
         'websiteOrders', 'websiteOrderHold', 'websiteOrderVerify',
+        // KHATRI CLOUD/EDGE INTEGRATION (21 Nov 2026) — PRINT-OFFLINE-HERE-1 (production 7b7abd7c): the counter's print-agent
+        // health poll and "take this slip off the network queue, print it here". Cloud: /api/pos/print-health +
+        // /printing/jobs/{job}/print-here; Edge: null — the Branch Server prints straight to the LAN printers (no agent, no
+        // network queue to take from), so the health pill is not rendered and the poller exits (route-null gate, no mode branch).
+        'printHealth', 'printHereTake',
     ];
 
     /** Every capability flag the shared view may ask for. Factories MUST define all of them. */
