@@ -17,6 +17,25 @@
     <div class="alert alert-danger">{{ $errors->first() }}</div>
 @endif
 
+{{-- PRINT-OFFLINE-HERE-1: Health column agent ki AAKHRI jaanch hai. Agent chup ho to wo jaanch purani hai —
+     "Online · 4ms" 21 ghante baad bhi likha rehta tha. Isliye agent offline ho to saaf likho, aur Health ko
+     "pata nahi" kaho. --}}
+@php
+    $offlineAgents = $offlineAgents ?? [];
+    $lastAgent = $offlineAgents[0] ?? null;
+    $healthTz = app(\App\Support\TenantClock::class)->displayTimezone(auth('tenant')->user());
+@endphp
+@if($lastAgent)
+    <div class="alert alert-danger d-flex align-items-start gap-2" id="print-agent-offline-banner" role="alert">
+        <i class="ti ti-plug-connected-x fs-3"></i>
+        <div>
+            <strong>Print agent "{{ $lastAgent['name'] }}"@if($lastAgent['device']) ({{ $lastAgent['device'] }})@endif offline hai.</strong>
+            Aakhri baar {{ $lastAgent['last_seen'] }} par bola.
+            Neeche printers ki haalat us waqt ki hai, abhi ki nahi. Counters par parchiyan isi computer se print ho rahi hain.
+        </div>
+    </div>
+@endif
+
 {{-- Printers table --}}
 <div class="card mb-4">
     <div class="card-body p-0">
@@ -86,9 +105,14 @@
                             $ok   = $p->last_ping_ok;
                             $hcls = $ok === null ? 'secondary' : ($ok ? 'success' : 'danger');
                             $htxt = $ok === null ? 'Unknown' : ($ok ? 'Online' . ($p->last_ping_ms !== null ? ' · ' . $p->last_ping_ms . 'ms' : '') : 'Offline');
+                            if ($lastAgent) {
+                                // Agent chup hai: aakhri jaanch purani hai, sach "pata nahi" hai.
+                                $hcls = 'secondary';
+                                $htxt = 'Pata nahi' . ($p->last_ping_at ? ' · aakhri jaanch ' . $p->last_ping_at->copy()->setTimezone($healthTz)->format('j M g:i A') : '');
+                            }
                         @endphp
                         <span class="printer-health badge bg-{{ $net ? $hcls : 'light text-muted' }}"
-                              data-printer-id="{{ $p->id }}" data-net="{{ $net ? 1 : 0 }}"
+                              data-printer-id="{{ $p->id }}" data-net="{{ $net ? 1 : 0 }}" data-agent-offline="{{ $lastAgent ? 1 : 0 }}"
                               @if($p->last_ping_at) title="checked {{ $p->last_ping_at->diffForHumans() }}" @endif>{{ $net ? $htxt : '—' }}</span>
                     </td>
                     <td class="text-end">
@@ -306,7 +330,8 @@
         if (!el || el.dataset.net !== '1') return null;
         try {
             const d = await fetch(base + '/' + id + '/status', { headers: { Accept: 'application/json' } }).then(r => r.json());
-            paint(el, d.last_ping_ok, d.last_ping_ms);
+            // PRINT-OFFLINE-HERE-1: agent chup ho to aakhri jaanch purani hai — "Online" mat likho.
+            if (el.dataset.agentOffline !== '1') paint(el, d.last_ping_ok, d.last_ping_ms);
             return d;
         } catch (e) { return null; }
     }

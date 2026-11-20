@@ -24,6 +24,7 @@ use Tests\MySql\Support\TenantFixtures;
 class CateringDocumentPrintMySqlTest extends MySqlTenantTestCase
 {
     use TenantFixtures;
+    use \Tests\Support\AssertsThermalSlipEnd;
 
     private CateringEvent $event;
 
@@ -85,6 +86,8 @@ class CateringDocumentPrintMySqlTest extends MySqlTenantTestCase
         $this->assertNotEmpty($job->raw_payload, 'the ESC/POS bytes are frozen at queue time');
         $this->assertStringContainsString('QUOTATION', $job->raw_payload);
         $this->assertStringContainsString('Chicken Biryani', $job->raw_payload);
+        // SLIP-END-LINES-1: last line, then the cut — no blank paper under the quotation.
+        $this->assertSlipEndsWithOneLineThenTheCut($job->raw_payload, 'catering quotation (thermal)');
     }
 
     /**

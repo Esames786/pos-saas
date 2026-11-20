@@ -125,6 +125,9 @@ function startCloud(printerPort) {
             POS_PRINT_POLL_MS:      '400',
             // AGENT-UPGRADE-1: developer ke PC par asli agent pehle se chal raha ho to bhi test chale (client PC par kabhi set nahi).
             BINGOO_AGENT_ALLOW_OTHER: '1',
+            // 16 Nov: is laptop par ab 2.7.0 PER-USER agent chalta hai, jis ka lock LOCALAPPDATA me hai — ALLOW_OTHER sirf
+            // process wali jaanch chhorta hai, lock wali nahi. Test ko apna khali LOCALAPPDATA: asli agent chhua hi nahi jata.
+            LOCALAPPDATA: fs.mkdtempSync(path.join(require('os').tmpdir(), 'bingoo-exe-test-')),
         },
         windowsHide: true,
         stdio: 'ignore',
@@ -149,6 +152,12 @@ function startCloud(printerPort) {
         assert.ok(printer.got[0].includes('KOT-TEST-PAYLOAD-'),
             `printer par wohi bytes aane chahiyen the; mila: ${JSON.stringify(printer.got[0].slice(0, 60))}`);
         ok('ESC/POS ticket network printer tak pahuncha — restaurant ka kaam waisa hi chalta hai');
+
+        // SLIP-TOP-GAP-1 (2.7.1) — the ticket ends with a cut, so NOTHING may follow it. Until 2.7.0 the exe added
+        // '\n\n\n' here, which became blank paper on top of the next slip (owner's photo, 16 Nov).
+        assert.strictEqual(printer.got[0], TICKET,
+            `cut ke baad koi khali line nahi jani chahiye; mila: ${JSON.stringify(printer.got[0].slice(-12))}`);
+        ok('printer ko bilkul wohi bytes mile — cut ke baad koi khali line nahi (agli parchi ke sar par jagah nahi)');
 
         assert.ok(cloud.seen.printed.length > 0, 'agent ko "printed" wapas batana chahiye tha');
         ok('job "printed" nishan-zada hui');

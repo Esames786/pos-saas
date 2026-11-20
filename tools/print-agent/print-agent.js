@@ -30,7 +30,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.7.0';
+const AGENT_VERSION = '2.7.1';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -517,6 +517,24 @@ async function getPendingJobs() {
     return res.json || {};
 }
 
+/*
+ * SLIP-TOP-GAP-1 (2.7.1, 16 Nov). Owner's photo: a reminder with ~2.4 cm of blank paper on top.
+ *
+ * Since the first agent we sent 3 line feeds AFTER every ticket. But every ticket the server
+ * builds (KOT, bill, reminder, report, catering) already ends with a cut, GS V, and that command
+ * feeds the paper to the cutter by itself. Feeds sent after the cut cannot reach the slip that
+ * was just cut. They only add blank paper to the top of the NEXT slip. Proof from prod: KOT 200344
+ * ended in `1D 56 42 00`; the reminder printed 1 s later on the same printer had the gap.
+ *
+ * So: a ticket that ends with a cut gets no extra feed. Anything else (no cut, e.g. the ESC @
+ * wake-up job) keeps the old 3 lines, so its last line still comes out of the printer.
+ */
+const CUT_AT_END = /(?:\x1D\x56(?:[\x00\x01\x30\x31]|[\x41\x42\x61\x62\x67\x68][\s\S])|\x1B[\x69\x6D])$/;
+
+function trailingFeedFor(payload) {
+    return CUT_AT_END.test(String(payload || '')) ? '' : '\n\n\n';
+}
+
 function sendToNetworkPrinter(ip, port, payload) {
     return new Promise((resolve, reject) => {
         if (!ip) {
@@ -544,7 +562,10 @@ function sendToNetworkPrinter(ip, port, payload) {
             // Connected — the printer is awake, so allow the slower transfer budget.
             socket.setTimeout(TRANSFER_TIMEOUT_MS);
             socket.write(payload || '');
-            socket.write('\n\n\n');
+            const feed = trailingFeedFor(payload);
+            if (feed) {
+                socket.write(feed);
+            }
             payloadSent = true;
             socket.end();
         });
@@ -1809,4 +1830,7 @@ module.exports = {
     _waitPrepares: () => prepareChain,
     READY_FRESH_MS,
     READY_KEEP_MS,
+    // SLIP-TOP-GAP-1 — the exact bytes a thermal printer receives.
+    sendToNetworkPrinter,
+    trailingFeedFor,
 };

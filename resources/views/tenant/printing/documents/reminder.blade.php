@@ -127,6 +127,8 @@
     @if(!empty($layout->footer_text))<div class="rule"></div><div class="center">{{ $layout->footer_text }}</div>@endif
     @if(!empty($layout->show_bingoo_branding))<div class="center">BingooPos</div><div class="center">Bingoopos.com</div>@endif
 </main>
+@unless(request()->boolean('here'))
 <button class="print-btn" type="button" onclick="window.print()">Print Reminder</button>
+@endunless
 </body>
 </html>

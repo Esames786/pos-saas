@@ -593,6 +593,59 @@ class PrintJobService
     }
 
     /**
+     * PRINT-OFFLINE-HERE-1 — counter ne ye parchi apne printer (browser) se chhapni hai, kyunke network printer
+     * tak pahunchane wala agent chup hai. Parchi network ki line se UTHA li jati hai taake agent wapas aa kar
+     * use dobara na chhaape.
+     *
+     * Ye sach mein chhapne wali parchi hai (counter ka printer), is liye `markPrinted()` hi chalta hai — KOT ki
+     * "kitchen bhej di" ginti, print counters, sab wohi jo network print par hota. Upar se sirf
+     * `payload.printed_here` likha jata hai: kab, kis ne, kyun.
+     *
+     * Jawab:
+     *  - `taken`            — ab ye counter chhaape.
+     *  - `already_printed`  — agent ek lamha pehle chhaap chuka; counter DOBARA na chhaape.
+     *  - `in_flight`        — agent ne abhi utha li hai (lease ke andar); chhap rahi ho sakti hai, counter ruke.
+     *  - `not_allowed`      — band (cancelled) parchi; pehle Reprint.
+     *
+     * Row lock agent ke `pending()` wale lock se takrata hai, is liye dono ek parchi ek saath nahi utha sakte.
+     */
+    public function printHere(PrintJob $job, ?int $userId, string $reason = 'agent_offline'): string
+    {
+        return DB::connection('tenant')->transaction(function () use ($job, $userId, $reason) {
+            $locked = PrintJob::whereKey($job->id)->lockForUpdate()->first();
+            if (! $locked) {
+                return 'not_allowed';
+            }
+
+            if ($locked->print_status === 'printed') {
+                return 'already_printed';
+            }
+
+            if (! in_array($locked->print_status, ['queued', 'failed'], true)) {
+                return 'not_allowed';
+            }
+
+            if ($locked->claimed_at !== null
+                && $locked->claimed_at->gt(now()->subMinutes(PrintHealthService::CLAIM_LEASE_MINUTES))) {
+                return 'in_flight';
+            }
+
+            $this->markPrinted($locked);
+
+            $payload = $locked->fresh()->payload ?? [];
+            $payload['printed_here'] = [
+                'at'      => now()->toIso8601String(),
+                'by'      => $userId,
+                'reason'  => $reason,
+                'printer' => $locked->printer_id,
+            ];
+            $locked->forceFill(['payload' => $payload, 'claimed_by_agent_id' => null, 'claimed_at' => null])->save();
+
+            return 'taken';
+        });
+    }
+
+    /**
      * PRINTER-HEALTH-1: a job whose printer is currently unreachable (the agent's circuit breaker is
      * cooling that printer down) must be RE-QUEUED, not failed — a kitchen ticket cannot silently
      * vanish because a printer was switched off for a minute.

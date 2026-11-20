@@ -90,6 +90,26 @@ class EscPosReminderPayloadTest extends TestCase
         $this->assertStringContainsString('APPROVED BY: Manager', $output);
     }
 
+    /**
+     * SLIP-TOP-GAP-1 (16 Nov): the reminder ends like the KOT, with the last line and then the cut.
+     * There are no blank lines before the cut; GS V 66 0 feeds to the cutter by itself. Before the fix
+     * every reminder carried 3 empty lines (~1.2 cm) under its last line (owner's photo).
+     */
+    public function test_reminder_ends_with_its_last_line_then_the_cut_no_blank_lines(): void
+    {
+        foreach ([[], ['footer_text' => 'Thank you'], ['show_bingoo_branding' => true]] as $layout) {
+            $output = $this->render([
+                'heading' => 'REMINDER', 'revision' => 1, 'sale_no' => 'HS-102', 'order_type' => 'dine_in',
+                'layout' => $layout,
+                'lines' => [['line_id' => 1, 'product_name' => 'Tea', 'quantity' => 1, 'round_delta' => 1]],
+            ]);
+
+            $this->assertStringEndsWith(str_repeat('-', 42) . "\n\x1D\x56\x42\x00", $output,
+                'reminder = last rule, ONE newline, then the cut (layout ' . json_encode($layout) . ')');
+            $this->assertStringNotContainsString("\n\n\x1D\x56", $output, 'no blank line right before the cut');
+        }
+    }
+
     private function render(array $payload): string
     {
         return (new EscPosPayloadService())->buildReminder(new PrintJob(['payload' => $payload]));

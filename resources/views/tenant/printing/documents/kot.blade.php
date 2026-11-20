@@ -275,6 +275,9 @@
 <div class="center">{{ $layout->footer_text }}</div>
 @endif
 
+{{-- PRINT-OFFLINE-HERE-1: POS ki "Print Here" queue (?here=1) parchi pehle hi darj kar chuki hoti hai — wahan ye
+     buttons staff ko uljhate, is liye nahi dikhte. Seedha khola gaya preview pehle jaisa. --}}
+@unless(request()->boolean('here'))
 <div class="no-print" style="text-align:center;margin:12px 0;display:flex;gap:8px;justify-content:center">
     <button class="print-btn" style="margin:0" onclick="window.print()">🖨 Print KOT</button>
     @if(!empty($job))
@@ -284,6 +287,7 @@
     </form>
     @endif
 </div>
+@endunless
 
 @if(!empty($job) && $job->printer?->printer_type === 'browser')
 <script>

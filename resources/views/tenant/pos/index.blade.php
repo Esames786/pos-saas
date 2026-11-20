@@ -656,6 +656,13 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="pos-reminder-toggle"
                             @disabled(! $posRuntime->can('reminderPause')) @unless($posRuntime->can('reminderPause')) title="{{ $posRuntime->capabilityHint('reminderPause') }}" @endunless></button>
                 </div>
+                {{-- PRINT-OFFLINE-HERE-1: is counter ki parchi printer tak pahunchegi ya nahi — print agent ki
+                     zindagi se, har 10 s (laal par har 3 s). Laal = parchi isi computer se niklegi. --}}
+                <div id="pos-print-health" class="small" style="display:none">
+                    <span class="pos-ph-pill" id="pos-print-health-pill" role="status" aria-live="polite">
+                        <span class="pos-ph-dot" aria-hidden="true"></span><span id="pos-print-health-text"></span>
+                    </span>
+                </div>
                 <div id="no-terminal-warning" class="small text-warning-emphasis" style="display:none">
                     <i class="ti ti-alert-triangle me-1"></i>No terminal — auto receipt/KOT print is off
                 </div>
@@ -686,6 +693,20 @@
                             <option value="{{ $w->id }}" @selected(($heldSale?->restaurant_waiter_id) == $w->id)>{{ $w->name }}</option>
                         @endforeach
                     </select>
+                </div>
+            </div>
+
+            {{-- PRINT-OFFLINE-HERE-1: agent chup ho aur is counter ki parchiyan line mein phansi hon. --}}
+            <div id="pos-print-stuck" class="alert alert-danger py-2 px-3 mb-2 d-none" role="alert">
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <i class="ti ti-printer-off fs-4"></i>
+                    <div class="flex-grow-1" style="min-width:220px">
+                        <strong id="pos-print-stuck-title"></strong>
+                        <div class="small" id="pos-print-stuck-detail"></div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-danger" id="pos-print-stuck-btn">
+                        <i class="ti ti-printer me-1"></i>Sab yahin print karo
+                    </button>
                 </div>
             </div>
 
@@ -2096,6 +2117,23 @@
 {{-- POS-PRINT-HERE: local/USB fallback print in a SAME-SCREEN window (no redirect / new tab).
      Reused by the failed-print Swal (auto-detect, Approach A) and the Recent Prints "Print Here"
      button (Approach B), for KOT / receipt / reminder alike. --}}
+<style>
+    /* PRINT-OFFLINE-HERE-1: printer ki batti + queue ki fehrist */
+    .pos-ph-pill { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:2px 10px; font-weight:600; border:1px solid transparent; white-space:nowrap; }
+    .pos-ph-pill.ok { background:#e4f6e8; color:#1d7a33; border-color:#bfe6c8; }
+    .pos-ph-pill.offline { background:#fbe5e5; color:#a52323; border-color:#f2c1c1; }
+    .pos-ph-pill.unknown { background:#eceef3; color:#4a5266; border-color:#dde0e7; }
+    .pos-ph-dot { width:9px; height:9px; border-radius:50%; background:currentColor; display:inline-block; }
+    .pos-ph-pill.offline .pos-ph-dot { animation: posPhBlink 1.4s infinite; }
+    @keyframes posPhBlink { 50% { opacity:.3; } }
+    @media (prefers-reduced-motion: reduce) { .pos-ph-pill.offline .pos-ph-dot { animation:none; } }
+    #print-here-queue-list li { display:flex; align-items:center; gap:8px; padding:3px 0; }
+    #print-here-queue-list .ph-n { width:20px; height:20px; border-radius:50%; display:inline-grid; place-items:center; font-size:11px; font-weight:700; background:#eceef3; color:#4a5266; flex:0 0 auto; }
+    #print-here-queue-list li.ph-now .ph-n { background:#206bc4; color:#fff; }
+    #print-here-queue-list li.ph-done .ph-n { background:#2fb344; color:#fff; }
+    #print-here-queue-list li.ph-skip .ph-n, #print-here-queue-list li.ph-err .ph-n { background:#f59f00; color:#fff; }
+    #print-here-queue-list .ph-state { margin-left:auto; font-weight:600; white-space:nowrap; }
+</style>
 <div class="modal fade" id="printHereModal" tabindex="-1" aria-labelledby="printHereModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" style="max-width:430px">
         <div class="modal-content" style="height:88vh">
@@ -2103,11 +2141,18 @@
                 <h2 class="modal-title h6 mb-0" id="printHereModalLabel"><i class="ti ti-printer me-1"></i>Print Here</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            {{-- PRINT-OFFLINE-HERE-1: agent chup ho to kai parchiyan baari baari — KOT pehle, phir bill. --}}
+            <div id="print-here-queue" class="px-3 pt-2 pb-1 border-bottom d-none" style="border-top:4px solid #d63939">
+                <div class="small fw-semibold text-danger mb-1" id="print-here-queue-title"></div>
+                <ol class="list-unstyled mb-1 small" id="print-here-queue-list"></ol>
+            </div>
             <div class="modal-body p-0" style="flex:1 1 auto;overflow:hidden">
                 <iframe id="print-here-frame" title="Print document" style="width:100%;height:100%;border:0" src="about:blank"></iframe>
             </div>
             <div class="modal-footer py-2">
+                <span class="small text-muted me-auto" id="print-here-queue-step"></span>
                 <button type="button" class="btn btn-primary" id="print-here-print-btn"><i class="ti ti-printer me-1"></i>Print</button>
+                <button type="button" class="btn btn-outline-primary d-none" id="print-here-next-btn">Agli parchi <i class="ti ti-arrow-right ms-1"></i></button>
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
@@ -2118,8 +2163,14 @@
     var modalEl  = document.getElementById('printHereModal');
     var frame    = document.getElementById('print-here-frame');
     var printBtn = document.getElementById('print-here-print-btn');
+    var nextBtn  = document.getElementById('print-here-next-btn');
+    var queueEl  = document.getElementById('print-here-queue');
+    var listEl   = document.getElementById('print-here-queue-list');
+    var titleEl  = document.getElementById('print-here-queue-title');
+    var stepEl   = document.getElementById('print-here-queue-step');
     if (!modalEl || !frame) return;
     var _promptedFailedJobs = {};
+    var _afterPrint = null;
 
     function doPrint() {
         try { frame.contentWindow.focus(); frame.contentWindow.print(); }
@@ -2137,9 +2188,131 @@
 
     if (printBtn) printBtn.addEventListener('click', doPrint);
     frame.addEventListener('load', function () {
-        if (frame.src && frame.src.indexOf('about:blank') === -1) setTimeout(doPrint, 300);
+        if (!frame.src || frame.src.indexOf('about:blank') !== -1) return;
+        setTimeout(function () {
+            // PRINT-OFFLINE-HERE-1: queue ki parchi ho to dialog band hote hi agli. `afterprint` dialog band
+            // hone par chalta hai (print kiya ho ya cancel); jahan wo na ho wahan print() khud ruk jata hai.
+            var cb = _afterPrint; _afterPrint = null;
+            var fired = false;
+            var finish = function () { if (fired) return; fired = true; if (cb) setTimeout(cb, 300); };
+            var w = null;
+            try { w = frame.contentWindow; if (cb && w && ('onafterprint' in w)) w.addEventListener('afterprint', finish); } catch (e) {}
+            doPrint();
+            try { if (cb && !(w && ('onafterprint' in w))) finish(); } catch (e) { finish(); }
+        }, 300);
     });
-    modalEl.addEventListener('hidden.bs.modal', function () { frame.src = 'about:blank'; });
+    modalEl.addEventListener('hidden.bs.modal', function () {
+        frame.src = 'about:blank';
+        _afterPrint = null;
+        // Jo parchi counter ne chhaape bina window band kar ke chhod di, wo dobara KHUD nahi khulti — laal
+        // patti ke "Sab yahin print karo" par rehti hai. Warna har 3 s wohi window wapas aati.
+        Q.items.forEach(function (it) { if (it.status !== 'done' && it.status !== 'skipped') Q.dismissed[it.job.id] = true; });
+        Q.items = []; Q.idx = -1; Q.active = false;
+        queueEl.classList.add('d-none'); nextBtn.classList.add('d-none'); stepEl.textContent = '';
+        printBtn.innerHTML = '<i class="ti ti-printer me-1"></i>Print';
+        if (window.posPrintHealthPoke) window.posPrintHealthPoke();
+    });
+
+    /* ── PRINT-OFFLINE-HERE-1: queue ───────────────────────────────────────────────────────
+       Har parchi pehle server se "network ki line se utha lo" (print-here) — taake agent wapas aa kar
+       dobara na chhaape — phir yahin chhapti hai. Agent ek lamha pehle chhaap chuka ho to server
+       `already_printed` kehta hai aur ye parchi chhod di jati hai. */
+    var Q = { items: [], idx: -1, active: false, done: {}, dismissed: {} };
+    var LABEL = { kot: 'KOT', reminder: 'Reminder', receipt: 'Bill' };
+    var STATE = {
+        wait:     ['', 'Intezar'],
+        taking:   ['ph-now', 'Utha rahe hain…'],
+        printing: ['ph-now', 'Ab chhap rahi hai'],
+        done:     ['ph-done', 'Chhap gayi'],
+        skipped:  ['ph-skip', 'Printer se nikal chuki'],
+        busy:     ['ph-err', 'Printer chhaap raha hai'],
+        error:    ['ph-err', 'Nahi hui'],
+    };
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+    function renderQueue() {
+        listEl.innerHTML = Q.items.map(function (it, i) {
+            var st = STATE[it.status] || STATE.wait;
+            var j = it.job;
+            return '<li class="' + st[0] + '"><span class="ph-n">' + (it.status === 'done' ? '✓' : (i + 1)) + '</span>'
+                + '<span>' + esc(LABEL[j.document_type] || j.document_type) + ' · ' + esc(j.printer_name || '')
+                + (j.reference_no ? '<br><span class="text-muted">' + esc(j.reference_no) + '</span>' : '') + '</span>'
+                + '<span class="ph-state"' + (it.msg ? ' title="' + esc(it.msg) + '"' : '') + '>' + esc(st[1]) + '</span></li>';
+        }).join('');
+        var left = Q.items.filter(function (it) { return it.status === 'wait'; }).length;
+        var cur = Q.idx >= 0 ? Q.idx + 1 : Q.items.length;
+        stepEl.textContent = Q.items.length ? (cur + ' / ' + Q.items.length + (left ? '' : ' · sab ho gayin')) : '';
+        nextBtn.classList.toggle('d-none', !left);
+    }
+    function advance() {
+        var next = -1;
+        for (var i = 0; i < Q.items.length; i++) { if (Q.items[i].status === 'wait') { next = i; break; } }
+        if (next === -1) {
+            Q.idx = -1; renderQueue();
+            // Sab chhap gayin (ya agent pehle chhaap chuka) → 2 s baad window khud band. Koi atki ho to khuli rahe.
+            var allDone = Q.items.length && Q.items.every(function (x) { return x.status === 'done' || x.status === 'skipped'; });
+            if (allDone) {
+                setTimeout(function () {
+                    var stillDone = Q.active && Q.idx === -1 && Q.items.every(function (x) { return x.status === 'done' || x.status === 'skipped'; });
+                    if (stillDone) { var m = bootstrap.Modal.getInstance(modalEl); if (m) m.hide(); }
+                }, 2000);
+            }
+            return;
+        }
+        Q.idx = next;
+        var it = Q.items[next];
+        it.status = 'taking'; renderQueue();
+        fetch('{{ url('/printing/jobs') }}/' + Number(it.job.id) + '/print-here', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+        }).then(function (r) {
+            return r.json().catch(function () { return {}; });
+        }).then(function (d) {
+            var s = d && d.status;
+            if (s === 'taken') {
+                it.status = 'printing'; Q.done[it.job.id] = true; renderQueue();
+                _afterPrint = function () { if (it.status === 'printing') { it.status = 'done'; } renderQueue(); advance(); };
+                // ?here=1 — parchi darj ho chuki; preview ke apne "Print / Mark Printed" buttons nahi chahiyen.
+                frame.src = '{{ url('/printing/documents') }}/' + Number(it.job.id) + '/preview?here=1';
+                return;
+            }
+            it.status = s === 'already_printed' ? 'skipped' : (s === 'in_flight' ? 'busy' : 'error');
+            it.msg = d && d.message;
+            if (s === 'already_printed' || s === 'not_allowed') Q.done[it.job.id] = true;
+            renderQueue();
+            setTimeout(advance, 300);
+        }).catch(function () {
+            it.status = 'error'; it.msg = 'Server se rabta nahi'; renderQueue();
+        });
+    }
+    if (nextBtn) nextBtn.addEventListener('click', function () {
+        var it = Q.items[Q.idx];
+        if (it && it.status === 'printing') it.status = 'done';
+        _afterPrint = null;
+        advance();
+    });
+
+    /** jobs: [{id, document_type, printer_name, reference_no}] — sab is screen ke printer par, baari baari. */
+    window.printHereQueue = function (jobs, title) {
+        (jobs || []).forEach(function (j) {
+            if (!j || !j.id || Q.done[j.id]) return;
+            if (Q.items.some(function (x) { return x.job.id === j.id; })) return;
+            Q.items.push({ job: j, status: 'wait' });
+        });
+        if (!Q.items.length) return;
+        titleEl.textContent = title || 'Printer se rabta nahi — ye parchiyan isi computer se niklengi';
+        queueEl.classList.remove('d-none');
+        printBtn.innerHTML = '<i class="ti ti-printer me-1"></i>Dobara print';
+        renderQueue();
+        if (!Q.active) {
+            Q.active = true;
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            advance();
+        } else if (Q.idx === -1) {
+            advance();
+        }
+    };
+    window.printHereQueueHandled = function (jobId) { return !!Q.done[jobId] || Q.items.some(function (x) { return x.job.id === jobId; }); };
+    window.printHereQueueDismissed = function (jobId) { return !!Q.dismissed[jobId]; };
 
     // Approach A: after a network print is fired, poll THIS sale's jobs across the agent's retry/
     // timeout window; a freshly FAILED job pops a Swal offering Print Here (same-screen). Covers
@@ -2157,6 +2330,9 @@
     }
     window.watchPrintFailure = function (saleId) {
         if (!saleId) return;
+        // PRINT-OFFLINE-HERE-1: parchi abhi bani — batti foran dobara poochhe, taake agent chup ho to
+        // window 3 s ke intezar ke bajaye isi lamhe khule.
+        if (window.posPrintHealthPoke) window.posPrintHealthPoke();
         [4000, 9000, 15000].forEach(function (delay) {
             setTimeout(function () {
                 fetch(POS.route('printJobsForSale', { sale: Number(saleId) }), { headers: { 'Accept': 'application/json' } })
@@ -2173,6 +2349,118 @@
             }, delay);
         });
     };
+})();
+</script>
+<script>
+/* ── PRINT-OFFLINE-HERE-1: printer ki batti ───────────────────────────────────────────────────
+   Har 10 s (laal par har 3 s, aur har parchi bante hi foran) server se poochho: is counter ki
+   parchi uthane wala print agent zinda hai? Nahi to batti laal, aur is counter ki line mein ruki
+   parchiyan isi computer se:
+     - jo abhi abhi bani (2 minute ke andar) → window khud khulti hai (force),
+     - purani (agent girne se pehle ki / page khulne se pehle ki) → patti par ek button.
+   Koi doosri window (payment, Swal) khuli ho to us ke band hone ka intezar. */
+(function () {
+    var URL = '{{ url('/api/pos/print-health') }}';
+    var wrap  = document.getElementById('pos-print-health');
+    var pill  = document.getElementById('pos-print-health-pill');
+    var text  = document.getElementById('pos-print-health-text');
+    var stuck = document.getElementById('pos-print-stuck');
+    var stuckTitle  = document.getElementById('pos-print-stuck-title');
+    var stuckDetail = document.getElementById('pos-print-stuck-detail');
+    var stuckBtn    = document.getElementById('pos-print-stuck-btn');
+    if (!wrap || !pill) return;
+
+    var FRESH_SECONDS = 120;
+    var cur = { state: null, waiting: [] };
+    var timer = null, busy = false;
+
+    function terminalId() { return (document.getElementById('terminal_id') || {}).value || ''; }
+    function branchId() { return (document.getElementById('branch_id') || {}).value || ''; }
+    function schedule(ms) { clearTimeout(timer); timer = setTimeout(poll, ms); }
+    function otherWindowOpen() {
+        if (window.Swal && Swal.isVisible && Swal.isVisible()) return true;
+        return !!document.querySelector('.modal.show:not(#printHereModal)');
+    }
+    function pending(list) {
+        return (list || []).filter(function (j) { return !(window.printHereQueueHandled && window.printHereQueueHandled(j.id)); });
+    }
+
+    function render(d) {
+        cur = d || { state: 'unknown', waiting: [] };
+        if (!d || d.state === 'none') { wrap.style.display = 'none'; stuck.classList.add('d-none'); return; }
+        wrap.style.display = '';
+        var a = d.agent || {};
+        if (d.state === 'ok') {
+            pill.className = 'pos-ph-pill ok';
+            text.textContent = 'Printer chal rahe hain';
+            pill.title = 'Print agent ' + (a.name || '') + (a.device ? ' (' + a.device + ')' : '') + ' — ' + (d.silent_seconds != null ? d.silent_seconds + ' sec pehle bola' : '');
+            stuck.classList.add('d-none');
+            return;
+        }
+        if (d.state === 'offline') {
+            pill.className = 'pos-ph-pill offline';
+            text.textContent = 'Printer se rabta nahi · parchi yahin niklegi';
+            pill.title = a.name
+                ? 'Print agent ' + a.name + (a.device ? ' (' + a.device + ')' : '') + ' aakhri baar ' + a.last_seen + ' par bola'
+                : 'Is counter ke liye koi print agent nahi laga';
+            var left = pending(d.waiting);
+            if (left.length) {
+                stuckTitle.textContent = left.length + ' parchi' + (left.length === 1 ? '' : 'yan') + ' printer tak nahi pahunchi';
+                stuckDetail.textContent = 'Network printer ka agent ' + (a.last_seen ? a.last_seen + ' se ' : '') + 'chup hai. Abhi yahin print kar lein, warna 60 minute baad ye khud band ho jayengi.';
+                stuck.classList.remove('d-none');
+            } else {
+                stuck.classList.add('d-none');
+            }
+            autoOpen(d, left);
+            return;
+        }
+        pill.className = 'pos-ph-pill unknown';
+        text.textContent = 'Server se rabta nahi';
+        pill.title = 'Is computer ka internet dekhein';
+        stuck.classList.add('d-none');
+    }
+
+    // Abhi abhi bani parchiyan (is order ki) khud khul jati hain; purani sirf patti par.
+    function autoOpen(d, left) {
+        if (!left.length || !window.printHereQueue) return;
+        var now = Date.parse(d.checked_at || '') || Date.now();
+        var fresh = left.filter(function (j) {
+            var made = Date.parse(j.created_at || '');
+            if (window.printHereQueueDismissed && window.printHereQueueDismissed(j.id)) return false;
+            return made && (now - made) / 1000 <= FRESH_SECONDS;
+        });
+        if (!fresh.length) return;
+        if (otherWindowOpen()) { schedule(1500); return; }
+        window.printHereQueue(fresh);
+    }
+
+    function poll() {
+        var tid = terminalId();
+        if (!tid) { render({ state: 'none' }); schedule(10000); return; }
+        if (busy) { schedule(1000); return; }
+        busy = true;
+        fetch(URL + '?terminal_id=' + encodeURIComponent(tid) + '&branch_id=' + encodeURIComponent(branchId()), {
+            headers: { 'Accept': 'application/json' },
+        }).then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) {
+              busy = false;
+              if (!d) { schedule(10000); return; }
+              render(d);
+              schedule(d.state === 'offline' ? 3000 : 10000);
+          })
+          .catch(function () { busy = false; render({ state: 'unknown' }); schedule(5000); });
+    }
+
+    window.posPrintHealthPoke = function () { schedule(250); };
+    window.posPrintOffline = function () { return cur && cur.state === 'offline'; };
+
+    if (stuckBtn) stuckBtn.addEventListener('click', function () {
+        if (window.printHereQueue) window.printHereQueue(pending(cur.waiting));
+    });
+    var tsel = document.getElementById('terminal_id');
+    if (tsel) tsel.addEventListener('change', function () { schedule(200); });
+
+    schedule(800);
 })();
 </script>
 
@@ -5917,10 +6205,19 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // PRINT-OFFLINE-HERE-1: batti laal ho to "KOT sent to kitchen" jhoot hai — parchi isi computer se nikal rahi hai.
+    function kotSentToast(kind) {
+        if (window.posPrintOffline && window.posPrintOffline()) {
+            toast('warning', '<i class="ti ti-printer-off me-1"></i> Printer se rabta nahi — KOT isi computer se print ho rahi hai');
+            return;
+        }
+        toast(kind, kind === 'info' ? '<i class="ti ti-printer me-1"></i> KOT sent to kitchen' : 'KOT sent to kitchen');
+    }
+
     function handleKotAfterSale(saleId, saleNo, terminalId) {
         if (terminalAutoKot(terminalId)) {
             fireKotSilently(saleId, terminalId);
-            toast('info', '<i class="ti ti-printer me-1"></i> KOT sent to kitchen');
+            kotSentToast('info');
         } else if (typeof Swal !== 'undefined') {
             Swal.fire({
                 title:              'Print Kitchen Order?',
@@ -5934,7 +6231,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }).then(function (result) {
                 if (result.isConfirmed) {
                     fireKotSilently(saleId, terminalId);
-                    toast('success', 'KOT sent to kitchen');
+                    kotSentToast('success');
                 }
             });
         }
@@ -7067,14 +7364,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 // POS-PRINT-HERE (Approach B): a FAILED job can be printed locally (browser/USB) in a
                 // same-screen window — the primary recovery when the network printer is offline.
+                // PRINT-OFFLINE-HERE-1: agent chup ho to QUEUED parchi bhi kabhi failed nahi banti — us par
+                // bhi "Print Here", magar network ki line se utha kar (taake agent baad mein dobara na chhaape).
+                const offlineQueued = j.print_status === 'queued' && !j.fallback
+                    && window.posPrintOffline && window.posPrintOffline();
                 const printHereBtn = j.print_status === 'failed'
                     ? '<button class="btn btn-sm btn-primary py-0 me-1" data-print-here="' + Number(j.id) + '" title="Print here — local / USB printer"><i class="ti ti-printer me-1"></i>Print Here</button>'
-                    : '';
+                    : (offlineQueued
+                        ? '<button class="btn btn-sm btn-danger py-0 me-1" data-print-here-queue="' + Number(j.id) + '" data-doc="' + escapeHtml(j.document_type) + '" data-printer="' + escapeHtml(j.printer_name) + '" title="Printer se rabta nahi — isi computer se print karein"><i class="ti ti-printer me-1"></i>Print Here</button>'
+                        : '');
 
                 html += '<tr' + (j.print_status === 'failed' ? ' class="table-danger"' : '') + '>' +
                     '<td class="ps-3 fw-semibold small">' + escapeHtml(j.job_no) + '</td>' +
                     '<td>' + typeBadge(j.document_type) + '</td>' +
-                    '<td>' + statusBadge(j.print_status) + '</td>' +
+                    '<td>' + (j.printed_here
+                        ? '<span class="badge bg-success" title="Printer se rabta nahi tha — counter se chhapi">printed here</span>'
+                        : statusBadge(j.print_status)) + '</td>' +
                     '<td class="text-muted small">' + escapeHtml(j.printer_name) + '</td>' +
                     '<td class="text-muted small">' + escapeHtml(itemsCell) + '</td>' +
                     '<td class="text-muted small">' + escapeHtml(j.created_at) + '</td>' +
@@ -7111,6 +7416,26 @@ document.addEventListener('DOMContentLoaded', function () {
             body.querySelectorAll('[data-print-here]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
                     if (window.openPrintHere) window.openPrintHere(Number(btn.dataset.printHere));
+                });
+            });
+            // PRINT-OFFLINE-HERE-1: queued parchi — network ki line se utha kar yahin.
+            body.querySelectorAll('[data-print-here-queue]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    const job = {
+                        id: Number(btn.dataset.printHereQueue),
+                        document_type: btn.dataset.doc,
+                        printer_name: btn.dataset.printer,
+                    };
+                    const go = function () {
+                        if (window.printHereQueue) window.printHereQueue([job], 'Printer se rabta nahi — ye parchi isi computer se niklegi');
+                    };
+                    // Ek window band ho jaye, phir doosri — do Bootstrap modals ek saath focus khinchte hain.
+                    if (_lastPrintModal && lastPrintModalEl.classList.contains('show')) {
+                        lastPrintModalEl.addEventListener('hidden.bs.modal', go, { once: true });
+                        _lastPrintModal.hide();
+                    } else {
+                        go();
+                    }
                 });
             });
 

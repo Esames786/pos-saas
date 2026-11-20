@@ -19,6 +19,7 @@ use Tests\MySql\Support\TenantFixtures;
 class CateringProductionPrintMySqlTest extends MySqlTenantTestCase
 {
     use TenantFixtures;
+    use \Tests\Support\AssertsThermalSlipEnd;
 
     private CateringEstimateService $estimates;
 
@@ -124,6 +125,8 @@ class CateringProductionPrintMySqlTest extends MySqlTenantTestCase
         }
         $this->assertStringContainsString('NO PRICES', $riceJob->raw_payload);
         $this->assertStringContainsString('Less spicy', $riceJob->raw_payload);
+        // SLIP-END-LINES-1: last line, then the cut — no blank paper under the production slip.
+        $this->assertSlipEndsWithOneLineThenTheCut($riceJob->raw_payload, 'catering production slip');
 
         // A production ticket is NOT a POS KOT.
         $this->assertSame(0, (int) $this->tenant()->table('kot_batches')->count());
