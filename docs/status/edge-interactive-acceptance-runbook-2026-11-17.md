@@ -18,6 +18,14 @@ Standing references (already written, not repeated here): 0.8.2 LAB record `docs
 `docs/plans/lab-mysql-switchover-checkpoint-2026-11-08.md`, `docs/plans/lab-offline-acceptance-checklist-2026-11-08.md`,
 `docs/status/edge-0.8.3-release-readiness-2026-11-17.md`, Agent F record §5 reboot drill, `docs/status/edge-p5-physical-certification.md`.
 
+**Owner decision D-D (21 Nov 2026) — ordering change:** the acceptance certifies the SAME release candidate intended for Khatri, so
+item 8 (separate 0.8.3-edge LAB installation, expected plan hash `sha256:f93da939…`) moves BEFORE items 3–7; items 1–2 stay first.
+The LAB Cloud must serve the Cloud/Edge integration candidate (`integ/khatri-cloud-edge-20261121`) so that "Online/Edge compatibility"
+is proven against the code that will be deployed, not against the Edge branch alone. Must prove: Online/Edge compatibility, Local Mode
+takeover, real second-laptop cash sale, receipt + KOT through the FakePrinter, exactly-once Cloud ingestion, financial and stock
+reconciliation, controlled handback, STANDBY_READY recovery (item 9 reboot drill). New order: 1 → 2 → 8 → (3+4) → 5 → 6 → 7 → 9.
+Nothing below runs without the owner present and a GO at each gate; the real LAB is untouched until then.
+
 | # | item | prerequisite the OWNER provides | what runs (prepared, nothing invented) | pass criteria | gate |
 |---|---|---|---|---|---|
 | 1 | Phase C — temporary LAB admin + manager PIN | the private password file `C:\Users\Dell\BingooEdgeLab\secrets\admin.pass` (owner writes it; never shown); the approver's PIN typed by the owner in the browser; the browsable LAB Cloud (`Start-LabCloud-Browsable.ps1` if `edgehomelab.localhost:9701` is not answering) | `php scripts\Create-LabAdmin.php pos_lab_tenant_edge` → owner logs in at `http://edgehomelab.localhost:9701/login` → `/users/2/manager-pin` → PIN set → non-secret verification (`manager_pins` row, `may_approve_pos`) → `php scripts\Disable-LabAdmin.php pos_lab_tenant_edge` + session files removed | TEMP_ADMIN_CREATED / APPROVER_PIN_READY / TEMP_ADMIN_DISABLED / ADMIN_SESSIONS_REVOKED all YES; approver `LABMF2DE` eligible | owner present; Create / Disable each on the owner's word |
