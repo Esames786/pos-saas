@@ -53,6 +53,11 @@ green sets. The print agent itself (`tools/print-agent`, 2.7.1) is unchanged by 
 2. Owner GO to merge the candidate into `feat/14d-2-plan-upgrade-requests` (`Merge KHATRI-CLOUD-EDGE: …`) — not done.
 3. Owner GO for the deployment window (plan §4): verified backups → pre-flight → `deploy.sh` → post-checks.
 
-## Full MySQL suite — final line
+## Full MySQL suite — runs and classification
 
-(pending at the time of writing)
+| run | head | result | classification |
+|---|---|---|---|
+| chain 2 (started 02:00, stopped by the lead at 04:40 at 2701 passed / 0 errors / 2 failed) | 4c4894d1 + fixes landing mid-run | `CateringKitchenSheetLanguageMySqlTest::…print_time…` — **pre-existing** (fails identically on the untouched Edge branch d15c1320; Urdu LTR print-time regex on the catering kitchen sheet, no Edge/Cloud file involved) · `PrintOfflineHereMySqlTest::test_pos_par_batti_patti_aur_queue_window_maujood` — **stale-test artefact** (PHPUnit loaded the test file before its contract update f4e0cd95; the class re-ran green on the final code, 30 tests) | not release-gating; the run was stopped so a clean run could start on the final head |
+| **final run** (started 04:44, `scratchpad/integ-gates-final.log`) | **35684723** (candidate = production be3693e4 + Edge a23d1f26 incl. the owner-control UI) | full MySQL suite then Feature+Unit — appended below when it ends (≈ 07:15) | **this is the release gate**; expected reds: the catering print-time debt and the 6 pre-existing unit regressions listed above, nothing else |
+
+Final line: (pending — the lead appends it)
