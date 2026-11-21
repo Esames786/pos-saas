@@ -77,6 +77,8 @@
     <div class="card mb-3">
         <div class="card-body d-flex flex-wrap gap-4">
             <div><div class="text-muted small text-uppercase">Licensed devices</div><div class="fw-semibold">{{ $activeDevices }} / {{ $deviceLimit }} active</div></div>
+            <div class="edge-enrollment-key-id"><div class="text-muted small text-uppercase">Cloud key id</div>
+                <div class="fw-semibold font-monospace" title="The Offline Counter wizard and the Branch Server setup show the same id">{{ $enrollmentKeyId ?? 'not configured' }}</div></div>
             <div><div class="text-muted small text-uppercase">Branch Server Setup</div>
                 <div class="fw-semibold">{{ $installerAvailable ? ('Available' . ($installerVersion ? ' v'.$installerVersion : '')) : 'Not available yet' }}</div>
                 @if(!empty($latestRelease))
@@ -157,7 +159,7 @@
                                             <div class="edge-device-lan">
                                                 @if($row['lan_ready'])
                                                     LAN <span class="font-monospace">{{ $st['lan_hostname'] }}</span> · <span class="font-monospace">{{ $st['lan_ip'] }}:{{ $st['lan_port'] }}</span>
-                                                    · CA <span class="font-monospace" title="{{ $st['lan_ca_sha256'] }}">{{ substr((string) $st['lan_ca_sha256'], 0, 16) }}…</span>
+                                                    <div class="edge-device-ca">CA SHA-256 <span class="font-monospace text-break">{{ \App\Services\Edge\Cloud\DeviceProfileService::colonHex($st['lan_ca_sha256']) }}</span></div>
                                                 @else
                                                     <span class="text-muted">LAN address and certificate not reported yet</span>
                                                 @endif

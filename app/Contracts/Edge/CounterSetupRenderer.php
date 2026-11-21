@@ -31,6 +31,21 @@ interface CounterSetupRenderer
     public function renderWindows(array $lanProfile, string $onlinePosUrl, string $branchLabel): string;
 
     /**
+     * EDGE 0.9 (owner, 21 Nov 2026) — the cashier SELF-SERVICE Offline Counter wizard (WPF, PowerShell 5.1: Install / Repair /
+     * Remove, explicit confirmation before the root CA is trusted). The console renderWindows() stays for operator/unattended use.
+     *
+     * $context (all keys optional):
+     *   tenant_label    string  business name
+     *   terminal        {id: int, label: string}  the user's default counter (a binding HINT)
+     *   signed_profile  {profile: {lan_hostname, lan_ip, https_port, ca_sha256, branch_id, …}, signature: base64 Ed25519 over
+     *                   EdgeCanonicalJson::encode(profile) (= EdgeEnrollmentCrypto::canonicalJson) with the Cloud ENROLLMENT
+     *                   signing key, public_key: base64}
+     *   enrollment      {assertion: EdgeEnrollmentIssuer::issue(...) for the LOGGED-IN user only, user_label: "Name (code)"}
+     * A download carrying `enrollment` holds a single-use 15-minute assertion: it is served no-store, only to that user.
+     */
+    public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context): string;
+
+    /**
      * Phone onboarding data for resources/views/tenant/offline-edge/partials/phone-onboarding.blade.php (stream D).
      * Expected keys (the Cloud page renders QR codes for login_url and ca_download_url when present):
      *   login_url        string  https://<lan_ip>:<port>/edge/local/login (by IP — phones do not use the hosts file)

@@ -332,6 +332,7 @@ class OfflineEdgeController extends Controller
             'context'   => $context,
             'problem'   => $problem,
             'canEnroll' => $context !== null && \App\Support\EdgeUserAuthz::isEdgeLoginEligible($user),
+            'enrollmentKeyId' => $this->profiles->enrollmentKeyId(),
             'user'      => $user,
         ]);
         $response->headers->set('Cache-Control', 'no-store, private, max-age=0');
@@ -363,12 +364,13 @@ class OfflineEdgeController extends Controller
             if (! $renderer) {
                 throw EdgeSetupException::of(EdgeSetupException::NOT_CONFIGURED, 'Counter setup is not available on this Cloud yet.');
             }
+            // Stream D's WPF wizard (Install / Repair / Remove, CA confirmation gate, signed profile, own Edge PIN).
+            $context = $bundles->wizardContext(app('tenant'), $user, $branch, $device, url('/pos'), $withSelfEnrollment);
             try {
-                $script = $renderer->renderWindows($this->profiles->lanProfile($device), url('/pos'), (string) $branch->name);
+                $script = $renderer->renderWindowsWizard($this->profiles->lanProfile($device), url('/pos'), (string) $branch->name, $context);
             } catch (\InvalidArgumentException|\RuntimeException $e) {
                 throw EdgeSetupException::of(EdgeSetupException::LAN_PROFILE_INVALID, 'Counter setup could not be built: ' . $e->getMessage());
             }
-            $bundle = $bundles->bundle(app('tenant'), $user, $branch, $device, url('/pos'), $withSelfEnrollment);
         } catch (EdgeSetupException $e) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => $e->getMessage(), 'code' => $e->setupCode] + $e->context, $e->httpStatus());
@@ -377,12 +379,13 @@ class OfflineEdgeController extends Controller
             return redirect(url('/pos/offline-counter'))->withErrors(['counter' => $e->getMessage()]);
         }
 
-        return response($script . \App\Services\Edge\Cloud\CounterBundleService::scriptBlock($bundle), 200, [
+        // Carries a single-use 15-minute assertion when $withSelfEnrollment: never cacheable, only in this user's response.
+        return response($script, 200, [
             'Content-Type'           => 'text/plain; charset=utf-8',
-            'Content-Disposition'    => 'attachment; filename="' . CounterSetupRendererAdapter::fileNameFor($renderer, (string) $branch->name, (int) $branch->id) . '"',
+            'Content-Disposition'    => 'attachment; filename="' . CounterSetupRendererAdapter::wizardFileNameFor($renderer, (string) $branch->name, (int) $branch->id) . '"',
             'Cache-Control'          => 'no-store, private, max-age=0',
+            'Pragma'                 => 'no-cache',
             'X-Content-Type-Options' => 'nosniff',
-            'X-Edge-Counter-Bundle'  => \App\Services\Edge\Cloud\CounterBundleService::VERSION,
         ]);
     }
 
@@ -587,6 +590,7 @@ class OfflineEdgeController extends Controller
             'setupCode'          => $setupCode,
             'canSecurity'        => (bool) $user?->can(self::SECURITY_PERMISSION),
             'rendererAvailable'  => $this->renderer() !== null,
+            'enrollmentKeyId'    => $this->profiles->enrollmentKeyId(),
         ]));
 
         if ($newCode !== null || $setupCode !== null) {

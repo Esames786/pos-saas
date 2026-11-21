@@ -25,7 +25,9 @@
                 <div class="row g-3 small">
                     <div class="col-md-4"><div class="text-muted text-uppercase">Branch</div><div class="fw-semibold">{{ $context['branch']->name }}</div></div>
                     <div class="col-md-4"><div class="text-muted text-uppercase">Branch Server</div><div class="font-monospace">{{ $d->lan_hostname }} · {{ $d->lan_ip }}:{{ $d->lan_https_port }}</div></div>
-                    <div class="col-md-4"><div class="text-muted text-uppercase">Certificate (SHA-256)</div><div class="font-monospace text-break">{{ $d->lan_ca_sha256 }}</div></div>
+                    <div class="col-md-4"><div class="text-muted text-uppercase">Cloud key id</div><div class="font-monospace edge-enrollment-key-id">{{ $enrollmentKeyId ?? 'not configured' }}</div></div>
+                    <div class="col-12"><div class="text-muted text-uppercase">Branch certificate (SHA-256)</div><div class="font-monospace text-break edge-counter-ca">{{ \App\Services\Edge\Cloud\DeviceProfileService::colonHex($d->lan_ca_sha256) }}</div>
+                        <div class="text-muted">The setup window on the counter shows the same key id and certificate fingerprint — do not continue if they differ.</div></div>
                 </div>
             </div>
         </div>

@@ -37,6 +37,8 @@ class OfflineEdgeAutoTakeoverCounterHttpMySqlTest extends MySqlTenantTestCase
 
     public const TENANT_CODE = 'e09cauto';
 
+    private ?object $renderer = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -185,17 +187,32 @@ class OfflineEdgeAutoTakeoverCounterHttpMySqlTest extends MySqlTenantTestCase
         $c = DB::connection('tenant');
         $term = $c->table('terminals')->insertGetId(['branch_id' => $this->branchA, 'code' => 'T1', 'name' => 'Till 1', 'created_at' => now(), 'updated_at' => now()]);
         $c->table('users')->where('id', $this->users['cashier'])->update(['default_terminal_id' => $term]);
-        $this->app->instance(CounterSetupRenderer::class, new class implements CounterSetupRenderer {
+        $this->renderer = new class implements CounterSetupRenderer {
+            public array $contexts = [];
+
             public function renderWindows(array $lanProfile, string $onlinePosUrl, string $branchLabel): string
             {
-                return "# counter setup for {$branchLabel} {$lanProfile['lan_ip']}\r\n";
+                return "# console setup for {$branchLabel}\r\n";
             }
 
             public function phoneOnboarding(array $lanProfile): array
             {
                 return [];
             }
-        });
+
+            public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context): string
+            {
+                $this->contexts[] = ['lan' => $lanProfile, 'online' => $onlinePosUrl, 'branch' => $branchLabel, 'context' => $context];
+
+                return "# wizard for {$branchLabel} {$lanProfile['lan_ip']}\r\n";
+            }
+
+            public function wizardFileName(string $branchLabel): string
+            {
+                return 'Install-Offline-Counter-' . str_replace(' ', '-', $branchLabel) . '.ps1';
+            }
+        };
+        $this->app->instance(CounterSetupRenderer::class, $this->renderer);
         $this->grantTo('cashier', ['tenant.offline-edge.counter-install']);
 
         return $device;
@@ -207,35 +224,46 @@ class OfflineEdgeAutoTakeoverCounterHttpMySqlTest extends MySqlTenantTestCase
         $page = $this->asUser('cashier')->get($this->tenantUrl('/pos/offline-counter'))->assertOk();
         $page->assertSee('Alpha Branch')->assertSee('192.168.100.52')->assertSee('Download with my Edge PIN setup');
 
-        $res = $this->asUser('cashier')->get($this->tenantUrl('/pos/offline-counter/setup'))->assertOk();
-        $this->assertStringContainsString('attachment; filename="Setup-alpha-branch-Counter.ps1"', (string) $res->headers->get('Content-Disposition'));
-        $script = $res->getContent();
-        $this->assertStringStartsWith('# counter setup for Alpha Branch 192.168.100.52', $script);
-        $bundle = CounterBundleService::extract($script);
-        $this->assertIsArray($bundle);
-        $this->assertTrue(EdgeEnrollmentCrypto::verifySignature($bundle, $this->enrollmentKeys['public']), 'the bundle verifies with the enrollment PUBLIC key');
-        $p = $bundle['payload'];
-        $this->assertSame('edge-counter-bundle', $p['purpose']);
-        $this->assertSame($this->branchA, $p['branch_id']);
-        $this->assertSame($device->public_uuid, $p['branch_server']['device_public_uuid']);
-        $this->assertSame($device->fresh()->lan_ca_sha256, $p['branch_server']['ca_sha256']);
-        $this->assertSame($this->users['cashier'], $p['user']['id']);
-        $this->assertSame('T1', $p['terminal_hint']['code']);
-        $this->assertNull($p['self_enrollment'], 'GET never carries an enrollment assertion');
-        $this->assertSame($this->tenantUrl('/pos'), $p['online_pos_url']);
-        $this->assertLessThanOrEqual(900, $p['expires_at'] - $p['issued_at']);
-        $this->assertStringNotContainsString('PRIVATE KEY', base64_decode(preg_replace('/\s+/', '', (string) preg_replace('/^.*?v1\r?\n|BINGOO-COUNTER-BUNDLE-END.*$/s', '', $script))) ?: '');
+        $keyId = (string) app(\App\Services\Edge\Cloud\DeviceProfileService::class)->enrollmentKeyId();
+        $this->assertSame(strtoupper(substr(hash('sha256', base64_decode($this->enrollmentKeys['public'])), 0, 16)), $keyId);
+        $page->assertSee($keyId)->assertSee(\App\Services\Edge\Cloud\DeviceProfileService::colonHex($device->fresh()->lan_ca_sha256));
 
-        // A bundle is NOT an enrollment assertion (different purpose) — tampering breaks it.
-        $this->assertNotSame(EdgeEnrollmentCrypto::PURPOSE, $p['purpose']);
-        $bad = $bundle;
-        $bad['payload']['user']['id'] = $this->users['owner'];
-        $this->assertFalse(EdgeEnrollmentCrypto::verifySignature($bad, $this->enrollmentKeys['public']));
+        $res = $this->asUser('cashier')->get($this->tenantUrl('/pos/offline-counter/setup'))->assertOk();
+        $this->assertStringContainsString('attachment; filename="Install-Offline-Counter-Alpha-Branch.ps1"', (string) $res->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('no-store', (string) $res->headers->get('Cache-Control'));
+        $this->assertStringStartsWith('# wizard for Alpha Branch 192.168.100.52', $res->getContent());
+        $call = end($this->renderer->contexts);
+        $ctx = $call['context'];
+        $this->assertSame($this->tenantUrl('/pos'), $call['online']);
+        $this->assertSame('Edge 0.9 C ' . self::TENANT_CODE, $ctx['tenant_label']);
+        $this->assertSame(['id' => (int) DB::connection('tenant')->table('terminals')->where('code', 'T1')->value('id'), 'label' => 'Till 1 (T1)'], $ctx['terminal']);
+        $this->assertNull($ctx['enrollment'], 'GET never carries an enrollment assertion');
+
+        // The signed profile: Ed25519 over EdgeCanonicalJson::encode(profile) with the enrollment key; public key included.
+        $sp = $ctx['signed_profile'];
+        $this->assertSame($this->enrollmentKeys['public'], $sp['public_key']);
+        $this->assertTrue(sodium_crypto_sign_verify_detached(base64_decode($sp['signature']), \App\Services\Edge\EdgeCanonicalJson::encode($sp['profile']), base64_decode($sp['public_key'])));
+        $p = $sp['profile'];
+        $this->assertSame('edge-counter-profile', $p['purpose']);
+        $this->assertNotSame(EdgeEnrollmentCrypto::PURPOSE, $p['purpose'], 'a signed profile can never pass as an enrollment assertion');
+        $this->assertSame($this->branchA, $p['branch_id']);
+        $this->assertSame($device->public_uuid, $p['device_public_uuid']);
+        $this->assertSame(['bingoo-edge.local', '192.168.100.52', 8443, $device->fresh()->lan_ca_sha256],
+            [$p['lan_hostname'], $p['lan_ip'], $p['https_port'], $p['ca_sha256']]);
+        $this->assertSame($this->users['cashier'], $p['user_id']);
+        $this->assertLessThanOrEqual(900, $p['expires_at'] - $p['issued_at']);
+        $tampered = $p;
+        $tampered['lan_ip'] = '10.6.6.6';
+        $this->assertFalse(sodium_crypto_sign_verify_detached(base64_decode($sp['signature']), \App\Services\Edge\EdgeCanonicalJson::encode($tampered), base64_decode($sp['public_key'])));
+        $this->assertStringNotContainsString($this->enrollmentKeys['secret'], json_encode($ctx), 'the private key never leaves the Cloud');
 
         // POST my-enrollment: ONE assertion, for the requesting user themselves, issued by themselves, audited.
         Log::spy();
-        $mine = CounterBundleService::extract($this->asUser('cashier')->post($this->tenantUrl('/pos/offline-counter/my-enrollment'))->assertOk()->getContent());
-        $a = $mine['payload']['self_enrollment']['assertion'];
+        $mine = $this->asUser('cashier')->post($this->tenantUrl('/pos/offline-counter/my-enrollment'))->assertOk();
+        $this->assertStringContainsString('no-store', (string) $mine->headers->get('Cache-Control'));
+        $e = end($this->renderer->contexts)['context']['enrollment'];
+        $a = $e['assertion'];
+        $this->assertSame('Cashier (CSH1)', $e['user_label']);
         $this->assertTrue(EdgeEnrollmentCrypto::verifySignature($a, $this->enrollmentKeys['public']));
         $this->assertSame(EdgeEnrollmentCrypto::PURPOSE, $a['payload']['purpose']);
         $this->assertSame($this->users['cashier'], $a['payload']['user_id']);
@@ -244,8 +272,8 @@ class OfflineEdgeAutoTakeoverCounterHttpMySqlTest extends MySqlTenantTestCase
         Log::shouldHaveReceived('info')->withArgs(fn ($m, $c = []) => $m === '[edge-enrollment-issued]' && ($c['via'] ?? null) === 'self_service_counter'
             && $c['target_user_id'] === $this->users['cashier'] && ! array_key_exists('assertion', $c))->once();
         // The body cannot ask for someone else: any user_id input is ignored.
-        $other = CounterBundleService::extract($this->asUser('cashier')->post($this->tenantUrl('/pos/offline-counter/my-enrollment'), ['user_id' => $this->users['owner']])->getContent());
-        $this->assertSame($this->users['cashier'], $other['payload']['self_enrollment']['assertion']['payload']['user_id']);
+        $this->asUser('cashier')->post($this->tenantUrl('/pos/offline-counter/my-enrollment'), ['user_id' => $this->users['owner']])->assertOk();
+        $this->assertSame($this->users['cashier'], end($this->renderer->contexts)['context']['enrollment']['assertion']['payload']['user_id']);
 
         // The Online POS entry: Cloud runtime offers it to this user; the Edge runtime never does.
         $this->actingAs(User::on('tenant')->find($this->users['cashier']), 'tenant');

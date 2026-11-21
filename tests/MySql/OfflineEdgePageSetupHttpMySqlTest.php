@@ -118,7 +118,8 @@ class OfflineEdgePageSetupHttpMySqlTest extends MySqlTenantTestCase
         $this->app->instance(CounterSetupRenderer::class, new FakeCounterSetupRenderer());
         $html = $this->asUser('owner')->get($this->tenantUrl('/settings/offline-edge'))->assertOk()->getContent();
         $this->assertStringContainsString('192.168.100.52:8443', $html);
-        $this->assertStringContainsString(substr($cert['sha256'], 0, 16), $html);
+        $this->assertStringContainsString(\App\Services\Edge\Cloud\DeviceProfileService::colonHex($cert['sha256']), $html, 'the full CA SHA-256 the counter wizard shows');
+        $this->assertStringContainsString((string) app(\App\Services\Edge\Cloud\DeviceProfileService::class)->enrollmentKeyId(), $html, 'the Cloud key id the wizard shows');
         $this->assertStringContainsString('/settings/offline-edge/branches/' . $this->branchA . '/counter-setup', $html);
         $this->assertStringContainsString('/settings/offline-edge/branches/' . $this->branchA . '/phone', $html);
         $this->assertStringNotContainsString('LAN address and certificate not reported yet', $html);
@@ -241,5 +242,10 @@ class FakeCounterSetupRenderer implements CounterSetupRenderer
         $this->lastProfile = $lanProfile;
 
         return [];
+    }
+
+    public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context): string
+    {
+        return '# wizard for ' . $branchLabel;
     }
 }

@@ -31,7 +31,7 @@ final class CounterSetupRendererAdapter implements CounterSetupRenderer
         if ($instance instanceof CounterSetupRenderer) {
             return $instance;
         }
-        if (method_exists($instance, 'renderWindows') && method_exists($instance, 'phoneOnboarding')) {
+        if (method_exists($instance, 'renderWindows') && method_exists($instance, 'phoneOnboarding')) {   // renderWindowsWizard optional (pre-a5a8446d D)
             return new self($instance);
         }
 
@@ -46,6 +46,29 @@ final class CounterSetupRendererAdapter implements CounterSetupRenderer
     public function phoneOnboarding(array $lanProfile): array
     {
         return $this->inner->phoneOnboarding($lanProfile);
+    }
+
+    public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context): string
+    {
+        if (! method_exists($this->inner, 'renderWindowsWizard')) {
+            throw new \RuntimeException('The Offline Counter wizard is not available on this Cloud yet.');
+        }
+
+        return $this->inner->renderWindowsWizard($lanProfile, $onlinePosUrl, $branchLabel, $context);
+    }
+
+    /** The wizard's download name (stream D: wizardFileName), else Install-Offline-Counter-<branch>.ps1. */
+    public static function wizardFileNameFor(CounterSetupRenderer $renderer, string $branchLabel, int $branchId): string
+    {
+        $target = $renderer instanceof self ? $renderer->inner : $renderer;
+        if (method_exists($target, 'wizardFileName')) {
+            $name = (string) $target->wizardFileName($branchLabel);
+            if (preg_match('/^[A-Za-z0-9._-]{1,120}\.ps1$/', $name)) {
+                return $name;
+            }
+        }
+
+        return 'Install-Offline-Counter-' . (Str::slug($branchLabel) ?: 'Branch-' . $branchId) . '.ps1';
     }
 
     /** The renderer's own download name when it has one (stream D: windowsFileName), else Setup-<branch>-Counter.ps1. */

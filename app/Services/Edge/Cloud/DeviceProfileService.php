@@ -54,6 +54,23 @@ class DeviceProfileService
         return base64_encode(sodium_crypto_sign_publickey_from_secretkey($sk));
     }
 
+    /**
+     * The enrollment key id users compare with the Offline Counter wizard: the first 16 hex (upper case) of SHA-256 over the RAW
+     * 32-byte public key — the same value stream D's wizard shows (key_sha256 prefix). Null when no signing key is configured.
+     */
+    public function enrollmentKeyId(): ?string
+    {
+        $pk = $this->enrollmentPublicKey();
+
+        return $pk === null ? null : strtoupper(substr(hash('sha256', (string) base64_decode($pk, true)), 0, 16));
+    }
+
+    /** "AB:CD:…" — the CA fingerprint the way the Offline Counter wizard displays it. */
+    public static function colonHex(?string $hex): string
+    {
+        return $hex ? implode(':', str_split(strtoupper($hex), 2)) : '';
+    }
+
     /** The key id (fingerprint) of the configured update PUBLIC key, or null. */
     public function updateKeyId(): ?string
     {
