@@ -1055,6 +1055,19 @@ function Invoke-WizUpdate($ctx) {
     $pending = [int](Get-WizValue $before 'sync.outbox_pending' 0) + [int](Get-WizValue $before 'sync.outbox_leased' 0)
     if ($auth -ne 'standby') { throw "WIZARD_UPDATE_REFUSED: the Branch Server is $auth - press Return to Online first (updates run only while the Cloud sells)" }
     if ($pending -gt 0) { throw "WIZARD_UPDATE_REFUSED: $pending event(s) still waiting to sync - wait until the outbox is empty" }
+    # K2 in UPDATE mode (optional, owner's setup code from the Offline Edge page): proves this is still the Cloud's active Branch
+    # Server for this tenant/branch (same installation id, same device id) before anything changes; nothing is re-paired.
+    if (Get-WizValue $ctx.Answers 'update.use_setup_code' $false) {
+        $code = Get-WizSecret $ctx 'setup_code' 'Setup code from the Cloud Offline Edge page (update)'
+        $setup = Invoke-WizRedeem $ctx $code
+        $bTenant = [string](Get-WizValue $before 'binding.tenant_code' '')
+        $bBranch = [int](Get-WizValue $before 'binding.branch_id' 0)
+        $bDevice = Get-WizApplianceEnvValue $ctx 'EDGE_SYNC_DEVICE_ID'
+        if ($setup.Mode -ne 'update') { throw 'WIZARD_SETUP_NOT_UPDATE: the Cloud has no active Branch Server for this branch any more (revoked?) - the setup code is an install code; nothing was changed.' }
+        if ($setup.TenantCode -ne $bTenant -or $setup.BranchId -ne $bBranch) { throw "WIZARD_SETUP_WRONG_BRANCH: the setup code is for $($setup.TenantCode) / branch $($setup.BranchId), this Branch Server serves $bTenant / branch $bBranch - nothing was changed." }
+        if ($setup.DeviceId -and $bDevice -and $setup.DeviceId -ne $bDevice) { throw "WIZARD_SETUP_WRONG_DEVICE: the Cloud's active device is $($setup.DeviceId), this Branch Server is $bDevice - nothing was changed." }
+        Write-WizLog $ctx 'ok' ("setup code (update) confirmed: tenant $bTenant, branch $bBranch, device $bDevice, installation " + $ctx.InstallationUuid)
+    }
 
     # the exact migration plan of the NEW runtime, for the owner to approve (UI shows it; headless needs the hash).
     $upd = @(Get-ChildItem -Path (Join-Path $ctx.PackageRoot 'update') -Filter 'edge-update-*.json')[0].FullName
@@ -1101,6 +1114,12 @@ function Invoke-WizUpdate($ctx) {
     if ($verdictH.Ok) {
         Remove-Item -Force -Path $snap -ErrorAction SilentlyContinue
         Invoke-WizArtisan $ctx @('edge:local:report-status', 'updated', "--message=setup wizard: $previous -> $to") | Out-Null
+        # K5 from the updated runtime (an appliance installed before 0.9 never reported its LAN profile).
+        $caFile = Join-Path $ctx.DataRoot 'ca\bingoo-edge-branch-ca.crt'
+        $k5 = @('edge:local:report-lan-profile', '--json')
+        if (Test-Path $caFile) { $k5 += "--ca-file=$caFile" }
+        $k5r = Invoke-WizArtisan $ctx $k5 -TimeoutSec 60
+        Write-WizLog $ctx 'info' ('K5 LAN profile: ' + $k5r.StdOut.Trim())
         Write-WizLog $ctx 'ok' ("updated $previous -> $to, health OK (no new problem; status " + [string]$after.status + ')')
         Remove-WizSecureDir $ctx
         return [pscustomobject]@{ Mode = 'update'; From = $previous; To = $to; Result = 'updated'; Health = [string]$after.status }
