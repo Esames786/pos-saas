@@ -126,7 +126,9 @@ final class MySqlRuntimeBundler
                 continue;
             }
             foreach ($rels as $rel) {
-                $slimmedOut = $keepBin !== null && (str_starts_with($rel, 'bin/') && ! in_array($rel, $keepBin, true) || str_starts_with($rel, 'lib/'));
+                // lib/private (ICU data for REGEXP; present in the official zip, absent in Laragon's copy) is server runtime data.
+                $slimmedOut = $keepBin !== null && (str_starts_with($rel, 'bin/') && ! in_array($rel, $keepBin, true)
+                    || str_starts_with($rel, 'lib/') && ! str_starts_with($rel, 'lib/private/'));
                 if ($slimmedOut || self::isExcluded($rel)) {
                     $excluded[] = $rel;
 

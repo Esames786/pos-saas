@@ -55,7 +55,8 @@ class EdgePackageMySqlRuntimeBundlerTest extends TestCase
         file_put_contents($src . '/bin/mysqld.exe', "MZ ... LIBSSL-1_1-X64.dll ... KERNEL32.dll");
         file_put_contents($src . '/bin/mysql.exe', 'MZ ... jemalloc.dll');
         file_put_contents($src . '/bin/libssl-1_1-x64.dll', 'MZ ... libcrypto-1_1-x64.dll');
-        foreach (['bin/libcrypto-1_1-x64.dll', 'bin/libmecab.dll', 'bin/mysqlpump.exe', 'bin/myisamchk.exe', 'bin/mysqlbinlog.exe'] as $rel) {
+        foreach (['bin/libcrypto-1_1-x64.dll', 'bin/libmecab.dll', 'bin/mysqlpump.exe', 'bin/myisamchk.exe', 'bin/mysqlbinlog.exe', 'lib/private/icudt69l/unames.icu'] as $rel) {
+            @mkdir(dirname($src . '/' . $rel), 0777, true);
             file_put_contents($src . '/' . $rel, 'x ' . $rel);
         }
         $dst = $this->tmp();
@@ -67,7 +68,8 @@ class EdgePackageMySqlRuntimeBundlerTest extends TestCase
         $this->assertSame(['jemalloc.dll', 'libcrypto-1_1-x64.dll', 'libssl-1_1-x64.dll', 'mysql.exe', 'mysqladmin.exe', 'mysqld.exe', 'mysqldump.exe'], $bin);
         $this->assertFileExists($dst . '/share/english/errmsg.sys');
         $this->assertFileExists($dst . '/share/charsets/Index.xml');
-        $this->assertDirectoryDoesNotExist($dst . '/lib', 'no plugins in the server profile');
+        $this->assertDirectoryDoesNotExist($dst . '/lib/plugin', 'no plugins in the server profile');
+        $this->assertFileExists($dst . '/lib/private/icudt69l/unames.icu', 'ICU data for REGEXP is server runtime data (official zip)');
         $this->assertFileExists($dst . '/LICENSE');
         // mysqldump is part of the server profile contract.
         unlink($src . '/bin/mysqldump.exe');
