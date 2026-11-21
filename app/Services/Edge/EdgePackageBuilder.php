@@ -2,15 +2,25 @@
 
 namespace App\Services\Edge;
 
+use App\Services\Edge\Packaging\MySqlRuntimeBundler;
+use App\Services\Edge\Packaging\PackageLayoutInspector;
+use App\Services\Edge\Packaging\PhpIniValidator;
+use App\Services\Edge\Packaging\PhpRuntimePackager;
+use App\Services\Edge\Packaging\UpdateSignatureAudit;
 use RuntimeException;
 
 /**
  * P4 §5 — build the restricted WINDOWS APPLIANCE PACKAGE from the accepted artifact, and verify one.
  *
- * Package layout (edge-package-v1):
+ * Package layout (edge-package-v1; Edge 0.9 K8 additions marked *):
  *   package-manifest.json      identity + every file's sha256 + the boundary audit result (written LAST)
+ *   Setup-BingooEdge.cmd     * the setup wizard launcher (copy of app/scripts/edge/Setup-BingooEdge.cmd, when present)
  *   app/                        the restricted Edge artifact (EdgeArtifactBuilder; includes edge-build-manifest.json)
+ *   app/scripts/edge/wizard/ * stream B's setup wizard (optional in a dev build, REQUIRED in a 0.9+ release build)
  *   php/                        the PHP runtime (bundled when a runtime dir is given; otherwise the installer's -PhpPath)
+ *                            * php/php.ini is WRITTEN by the builder (PhpIniValidator: relative extension_dir, no host
+ *                              path, curl.cainfo/openssl.cafile = "__BINGOO_PHP_DIR__\cacert.txt") + php/cacert.txt
+ *   mysql/                   * the MySQL 8.0 server runtime (bin/share/lib only; when --mysql-runtime is given)
  *   gateway/nginx.exe           the TLS gateway binary (vendored when given; otherwise the installer's -GatewayPath)
  *   scripts/                    the reviewed appliance PowerShell scripts + launcher (copied from app/scripts/edge)
  *   templates/                  appliance.env.template (no values), nginx mime.types, README-INSTALL.md
@@ -20,10 +30,17 @@ use RuntimeException;
  * certs, dumps, tests, .git, logs…), any Cloud-only module the artifact excludes, node_modules or a dev scratch file
  * fails the build and the partial package is removed. Production secrets never exist in the package: the env
  * template carries KEYS ONLY and the installer provisions values into <data-root>/config/appliance.env.
+ *
+ * LAYOUT GATES (Edge 0.9): a non-portable php.ini and a Windows-10-incompatible task duration ([TimeSpan]::MaxValue,
+ * > 3650 days) in any packaged script always fail the build; a missing wizard / root Setup-BingooEdge.cmd and a
+ * non-central -CloudUrl default or example fail a 0.9+ RELEASE build and are warnings in a dev build.
  */
 class EdgePackageBuilder
 {
     public const FORMAT = 'edge-package-v1';
+
+    /** Fingerprint of the P5B custody release key v1 (public); any other signing key marks the package as DEV-signed. */
+    public const RELEASE_SIGNING_KEY_ID = 'a2eaf8a3d3e66a48';
 
     /** Package-level forbidden patterns on top of the artifact's own list. */
     private const PACKAGE_FORBIDDEN = [
@@ -82,17 +99,33 @@ class EdgePackageBuilder
         'app/scripts/edge/appliance/mime.types',
     ];
 
+    private readonly PhpRuntimePackager $phpRuntime;
+
+    private readonly MySqlRuntimeBundler $mysqlRuntime;
+
+    private readonly PackageLayoutInspector $layout;
+
     public function __construct(
         private readonly EdgeArtifactBuilder $artifacts,
         private readonly EdgeUpdatePackageService $updates,
+        ?PhpRuntimePackager $phpRuntime = null,
+        ?MySqlRuntimeBundler $mysqlRuntime = null,
+        ?PackageLayoutInspector $layout = null,
     ) {
+        $this->phpRuntime = $phpRuntime ?? new PhpRuntimePackager();
+        $this->mysqlRuntime = $mysqlRuntime ?? new MySqlRuntimeBundler();
+        $this->layout = $layout ?? new PackageLayoutInspector();
     }
 
     /**
      * @param array{
      *   source_root:string, artifact_meta:array, php_runtime?:?string, gateway_binary?:?string, signing_key?:?string,
-     *   runtime_dirs?:array
+     *   runtime_dirs?:array, ca_bundle?:?string, php_smoke?:bool, mysql_runtime?:?string, mysql_probe?:bool,
+     *   strict_layout?:?bool, signing_key_id?:?string
      * } $opts
+     *   php_smoke    run the packaged php.exe with its packaged php.ini (default true; false only for fake test runtimes)
+     *   mysql_probe  run `mysqld --version` on the bundled MySQL (default true; false only for fake test runtimes)
+     *   strict_layout force (true) / waive (false) the 0.9 release layout gates; null = derive from build_mode + version
      */
     public function build(string $dest, array $opts): array
     {
@@ -112,16 +145,24 @@ class EdgePackageBuilder
                 // Test/dev aid: the artifact was built WITHOUT vendor; point the package at a shared vendor closure.
                 @exec('cmd /c mklink /J "' . str_replace('/', '\\', $dest . '/app/vendor') . '" "' . $opts['vendor_junction'] . '" 2>&1');
             }
-            // 2. php/ — bundled runtime (optional).
+            // 2. php/ — bundled runtime (optional), made PORTABLE: the builder writes php/php.ini + php/cacert.txt itself
+            //    and refuses a runtime whose packaged ini would still point at the build host (Khatri 0.8.4 finding).
             $php = (string) ($opts['php_runtime'] ?? '');
             if ($php !== '') {
-                if (! is_file(rtrim($php, "/\\") . DIRECTORY_SEPARATOR . 'php.exe')) {
-                    throw new RuntimeException('PACKAGE_PHP_RUNTIME_INVALID: no php.exe under ' . $php);
-                }
-                $n = $this->copyTree($php, $dest . '/php');
-                $components['php'] = ['bundled' => true, 'source' => $php, 'file_count' => $n, 'version' => $this->phpVersionOf(rtrim($php, "/\\") . DIRECTORY_SEPARATOR . 'php.exe')];
+                $components['php'] = $this->phpRuntime->package($php, $dest . '/php', [
+                    'ca_bundle' => $opts['ca_bundle'] ?? null,
+                    'smoke' => (bool) ($opts['php_smoke'] ?? true),
+                ]);
+                $components['php']['version'] ??= $this->phpVersionOf(rtrim($php, "/\\") . DIRECTORY_SEPARATOR . 'php.exe');
             } else {
-                $components['php'] = ['bundled' => false, 'note' => 'installer -PhpPath must point at a PHP ' . config('edge.min_php') . '+ runtime with pdo_mysql, openssl, sodium, mbstring, gd'];
+                $components['php'] = ['bundled' => false, 'note' => 'installer -PhpPath must point at a PHP ' . config('edge.min_php') . '+ runtime with ' . implode(', ', PhpIniValidator::REQUIRED_EXTENSIONS)];
+            }
+            // 2b. mysql/ — the MySQL 8.0 server runtime (optional, Edge 0.9 wizard installs the BingooEdgeMySQL service from it).
+            $mysql = (string) ($opts['mysql_runtime'] ?? '');
+            if ($mysql !== '') {
+                $components['mysql'] = $this->mysqlRuntime->bundle($mysql, $dest . '/mysql', ['probe' => (bool) ($opts['mysql_probe'] ?? true)]);
+            } else {
+                $components['mysql'] = ['bundled' => false, 'note' => 'no MySQL runtime bundled — the server needs a local MySQL 8.0 (installer -DbHost/-DbPort)'];
             }
             // 3. gateway/ — nginx binary (optional).
             $gw = (string) ($opts['gateway_binary'] ?? '');
@@ -144,7 +185,18 @@ class EdgePackageBuilder
                     copy($src, $dest . '/templates/' . $t);
                 }
             }
+            // 4b. K8 — the wizard launcher at the package ROOT (the wizard itself ships inside app/scripts/edge/wizard/).
+            $setup = $dest . '/app/scripts/edge/' . PackageLayoutInspector::SETUP_CMD;
+            if (is_file($setup)) {
+                copy($setup, $dest . '/' . PackageLayoutInspector::SETUP_CMD);
+            }
             $components['scripts'] = ['file_count' => count($this->walk($dest . '/scripts'))];
+            // 4c. LAYOUT GATES (Edge 0.9).
+            $strict = PackageLayoutInspector::isStrict($components['app']['build_mode'] ?? null, (string) $components['app']['edge_app_version'], $opts['strict_layout'] ?? null);
+            $layout = $this->layoutChecks($dest, $strict);
+            if ($layout['errors'] !== []) {
+                throw new RuntimeException('PACKAGE_LAYOUT_FAILED: ' . implode(' | ', $layout['errors']));
+            }
             // 5. update/ — the signed update package for this artifact.
             $key = (string) ($opts['signing_key'] ?? '');
             if ($key !== '') {
@@ -152,7 +204,8 @@ class EdgePackageBuilder
                 @mkdir($dest . '/update', 0755, true);
                 $file = 'edge-update-' . preg_replace('/[^A-Za-z0-9._+-]/', '_', (string) $pkg['payload']['edge_app_version']) . '.json';
                 file_put_contents($dest . '/update/' . $file, json_encode($pkg, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                $components['update'] = ['signed' => true, 'signing_key_id' => ($opts['signing_key_id'] ?? null), 'file' => 'update/' . $file, 'edge_app_version' => $pkg['payload']['edge_app_version'], 'artifact_manifest_hash' => $pkg['payload']['artifact_manifest_hash']];
+                $keyId = $opts['signing_key_id'] ?? null;
+                $components['update'] = ['signed' => true, 'signing_key_id' => $keyId, 'signing_key_role' => $keyId === null ? null : ($keyId === self::RELEASE_SIGNING_KEY_ID ? 'release' : 'dev'), 'file' => 'update/' . $file, 'edge_app_version' => $pkg['payload']['edge_app_version'], 'artifact_manifest_hash' => $pkg['payload']['artifact_manifest_hash']];
             } else {
                 $components['update'] = ['signed' => false, 'note' => 'no signing key given — release builds must be signed (EDGE_UPDATE_SIGNING_KEY on the build host only)'];
             }
@@ -177,6 +230,8 @@ class EdgePackageBuilder
                 'min_db' => (string) config('edge.min_db'),
                 'components' => $components,
                 'boundary_audit' => $audit,
+                'layout_checks' => $layout['checks'],
+                'warnings' => $layout['warnings'],
                 'file_count' => count($files),
                 'package_hash' => hash('sha256', json_encode($files)),
                 'files' => $files,
@@ -192,8 +247,14 @@ class EdgePackageBuilder
         }
     }
 
-    /** Verify a package on disk: every listed file present + unchanged, no unlisted file, boundary still clean. */
-    public function verify(string $dir): array
+    /**
+     * Verify a package on disk: every listed file present + unchanged, no unlisted file, boundary still clean — and
+     * (Edge 0.9) the packaged php.ini still portable, the layout gates, the MySQL runtime entry and, when a public key is
+     * given, the Ed25519 signature of the update manifest.
+     *
+     * @param array{public_key?:?string, require_signature?:bool, strict?:?bool} $opts
+     */
+    public function verify(string $dir, array $opts = []): array
     {
         $dir = rtrim(str_replace('\\', '/', $dir), '/');
         $path = $dir . '/package-manifest.json';
@@ -204,6 +265,7 @@ class EdgePackageBuilder
         if (! is_array($manifest) || ($manifest['package_format_version'] ?? null) !== self::FORMAT || ! is_array($manifest['files'] ?? null)) {
             return ['ok' => false, 'error' => 'PACKAGE_MANIFEST_INVALID'];
         }
+        $extended = $this->verifyExtended($dir, $manifest, $opts);
         $listed = $manifest['files'];
         $actual = $this->hashTree($dir, ['package-manifest.json']);
         $missing = array_values(array_diff(array_keys($listed), array_keys($actual)));
@@ -217,19 +279,138 @@ class EdgePackageBuilder
         ksort($listed);
         $hashOk = hash_equals((string) ($manifest['package_hash'] ?? ''), hash('sha256', json_encode($listed)));
         $audit = $this->audit($dir);
-        $ok = $missing === [] && $unlisted === [] && $tampered === [] && $hashOk && $audit['ok'];
+        $ok = $missing === [] && $unlisted === [] && $tampered === [] && $hashOk && $audit['ok'] && $extended['errors'] === [];
 
         return [
             'ok' => $ok,
             'edge_app_version' => $manifest['edge_app_version'] ?? null,
+            'build_mode' => $manifest['build_mode'] ?? null,
             'artifact_manifest_hash' => $manifest['artifact_manifest_hash'] ?? null,
+            'package_hash' => $manifest['package_hash'] ?? null,
             'file_count' => count($listed),
             'missing' => $missing,
             'unlisted' => $unlisted,
             'tampered' => $tampered,
             'package_hash_ok' => $hashOk,
             'boundary_audit' => $audit,
+            'strict_layout' => $extended['strict'],
+            'php_ini' => $extended['php_ini'],
+            'wizard' => $extended['wizard'],
+            'mysql_runtime' => $extended['mysql_runtime'],
+            'script_compat' => $extended['script_compat'],
+            'cloud_url' => $extended['cloud_url'],
+            'signature' => $extended['signature'],
+            'signature_ok' => $extended['signature']['signature_ok'],
+            'signing_key_id' => $manifest['components']['update']['signing_key_id'] ?? null,
+            'signing_key_role' => $manifest['components']['update']['signing_key_role'] ?? null,
+            'errors' => $extended['errors'],
+            'warnings' => $extended['warnings'],
         ];
+    }
+
+    /**
+     * The Edge 0.9 layout gates over an ASSEMBLED package directory (build time and audit time share them).
+     *
+     * @return array{checks:array, errors:list<string>, warnings:list<string>}
+     */
+    private function layoutChecks(string $dir, bool $strict): array
+    {
+        $wizard = $this->layout->wizard($dir, $strict);
+        $compat = $this->layout->scriptCompatibility($dir);
+        $cloud = $this->layout->cloudUrl($dir, $strict);
+        $errors = [];
+        $warnings = [];
+        if (! $compat['ok']) {
+            $errors[] = 'SCRIPT_WIN10_INCOMPATIBLE: ' . implode(', ', array_merge($compat['timespan_maxvalue'], $compat['long_durations'])) . ' (Windows 10 Task Scheduler rejects [TimeSpan]::MaxValue / durations over ' . PackageLayoutInspector::MAX_TASK_DAYS . ' days)';
+        }
+        if ($wizard['severity'] === 'error') {
+            $errors[] = 'WIZARD_MISSING: ' . $wizard['message'] . ' (required in a ' . PackageLayoutInspector::STRICT_FROM_VERSION . '+ release package)';
+        } elseif ($wizard['severity'] === 'warning') {
+            $warnings[] = 'WIZARD_ABSENT: ' . $wizard['message'] . ' (dev build: allowed; a ' . PackageLayoutInspector::STRICT_FROM_VERSION . '+ release build refuses)';
+        }
+        if ($cloud['severity'] === 'error') {
+            $errors[] = 'CLOUD_URL_NOT_CENTRAL: ' . $cloud['message'];
+        } elseif ($cloud['severity'] === 'warning') {
+            $warnings[] = 'CLOUD_URL_NOT_CENTRAL: ' . $cloud['message'] . ' (dev build: allowed; a release build refuses)';
+        }
+
+        return ['checks' => ['strict' => $strict, 'wizard' => $wizard, 'script_compat' => $compat, 'cloud_url' => $cloud], 'errors' => $errors, 'warnings' => $warnings];
+    }
+
+    /** @return array{strict:bool, php_ini:array, wizard:array, mysql_runtime:array, script_compat:array, cloud_url:array, signature:array, errors:list<string>, warnings:list<string>} */
+    private function verifyExtended(string $dir, array $manifest, array $opts): array
+    {
+        $strict = PackageLayoutInspector::isStrict($manifest['build_mode'] ?? null, (string) ($manifest['edge_app_version'] ?? ''), $opts['strict'] ?? null);
+        $layout = $this->layoutChecks($dir, $strict);
+        $errors = $layout['errors'];
+        $warnings = $layout['warnings'];
+        // php.ini — re-validated from the bytes on disk (a package built before 0.9 reports its Laragon paths here).
+        $phpBundled = (bool) ($manifest['components']['php']['bundled'] ?? false) || is_file($dir . '/php/php.exe');
+        if ($phpBundled) {
+            $iniPath = $dir . '/php/php.ini';
+            $check = is_file($iniPath) ? (new PhpIniValidator())->validate((string) file_get_contents($iniPath), $dir . '/php')
+                : ['ok' => false, 'problems' => ['PHP_INI_MISSING: php/php.ini is not in the package']];
+            $caOk = is_file($dir . '/php/' . PhpIniValidator::CA_FILE);
+            if (! $caOk) {
+                $check['problems'][] = 'CA_BUNDLE_MISSING: php/' . PhpIniValidator::CA_FILE . ' is not in the package';
+            }
+            $phpIni = ['bundled' => true, 'ok' => $check['ok'] && $caOk, 'problems' => $check['problems'], 'extension_dir' => $check['extension_dir'] ?? null,
+                'curl_cainfo' => $check['curl_cainfo'] ?? null, 'openssl_cafile' => $check['openssl_cafile'] ?? null, 'cacert_present' => $caOk];
+            if (! $phpIni['ok']) {
+                $errors[] = 'PHP_INI_INVALID: ' . implode(' | ', array_slice($phpIni['problems'], 0, 10));
+            }
+        } else {
+            $phpIni = ['bundled' => false, 'ok' => true, 'problems' => []];
+        }
+        // MySQL runtime — the manifest entry must describe what is on disk.
+        $entry = (array) ($manifest['components']['mysql'] ?? []);
+        $listedMysql = array_values(array_filter(array_keys((array) $manifest['files']), fn ($rel) => str_starts_with($rel, 'mysql/')));
+        if (($entry['bundled'] ?? false) === true || $listedMysql !== []) {
+            $problems = [];
+            if (($entry['bundled'] ?? false) !== true) {
+                $problems[] = 'MYSQL_MANIFEST_ENTRY_MISSING: mysql/ files are listed but components.mysql does not describe them';
+            }
+            foreach (MySqlRuntimeBundler::REQUIRED as $req) {
+                if (! is_file($dir . '/mysql/' . $req)) {
+                    $problems[] = 'MYSQL_FILE_MISSING: mysql/' . $req;
+                }
+            }
+            if ((int) ($entry['file_count'] ?? -1) !== count($listedMysql)) {
+                $problems[] = 'MYSQL_FILE_COUNT_MISMATCH: manifest entry ' . ($entry['file_count'] ?? '?') . ' vs ' . count($listedMysql) . ' listed';
+            }
+            $excludedPresent = array_values(array_filter($listedMysql, fn ($rel) => MySqlRuntimeBundler::isExcluded(substr($rel, 6))));
+            if ($excludedPresent !== []) {
+                $problems[] = 'MYSQL_EXCLUDED_FILES_PRESENT: ' . implode(', ', array_slice($excludedPresent, 0, 10));
+            }
+            if (isset($entry['mysqld_sha256']) && is_file($dir . '/mysql/bin/mysqld.exe') && ! hash_equals((string) $entry['mysqld_sha256'], (string) hash_file('sha256', $dir . '/mysql/bin/mysqld.exe'))) {
+                $problems[] = 'MYSQL_MYSQLD_TAMPERED: mysql/bin/mysqld.exe does not match the manifest entry';
+            }
+            $mysqlRuntime = ['bundled' => true, 'ok' => $problems === [], 'version' => $entry['version'] ?? null, 'file_count' => count($listedMysql), 'size_bytes' => $entry['size_bytes'] ?? null, 'problems' => $problems];
+            if ($problems !== []) {
+                $errors[] = 'MYSQL_RUNTIME_INVALID: ' . implode(' | ', $problems);
+            }
+        } else {
+            $mysqlRuntime = ['bundled' => false, 'ok' => true, 'problems' => []];
+        }
+        // Signature of the update manifest (Ed25519, the appliance's own verification primitive).
+        $publicKey = array_key_exists('public_key', $opts) ? $opts['public_key'] : null;
+        if (($opts['public_key_source'] ?? 'option') === 'config' && ($manifest['components']['update']['signed'] ?? false) !== true) {
+            $publicKey = null; // the ambient configured key never fails an intentionally unsigned dev package; an explicit key does
+        }
+        $signature = (new UpdateSignatureAudit($this->updates))->audit($dir, $manifest, $publicKey);
+        if ($signature['checked'] && ! $signature['ok']) {
+            $errors[] = 'SIGNATURE: ' . implode(' | ', $signature['problems']);
+        }
+        if (! $signature['checked'] && ($opts['require_signature'] ?? false)) {
+            $errors[] = 'SIGNATURE_NOT_CHECKED: a public key is required (--public-key) to audit this package';
+        }
+        if (($manifest['components']['update']['signing_key_role'] ?? null) === 'dev') {
+            $warnings[] = 'DEV_SIGNED: the update manifest is signed with a DEV key (' . ($manifest['components']['update']['signing_key_id'] ?? '?') . ') — never install at a live branch';
+        }
+
+        return ['strict' => $strict, 'php_ini' => $phpIni, 'wizard' => $layout['checks']['wizard'], 'mysql_runtime' => $mysqlRuntime,
+            'script_compat' => $layout['checks']['script_compat'], 'cloud_url' => $layout['checks']['cloud_url'], 'signature' => $signature,
+            'errors' => $errors, 'warnings' => $warnings];
     }
 
     /** The boundary audit: forbidden patterns, Cloud-only sentinels absent, Edge runtime sentinels present. */
