@@ -1,6 +1,6 @@
 # Khatri Branch Server — onsite installation steps for the signed 0.8.5-edge package (21 Nov 2026)
 
-Package: `<USB>\BingooEdge-0.8.5-edge` (commit a23d1f26, `signing_key_id a2eaf8a3d3e66a48`; manifest sha256 = the kit's `package-manifest.json`).
+Package: `<USB>\BingooEdge-0.8.5-edge` (commit a23d1f26, `signing_key_id a2eaf8a3d3e66a48`; manifest sha256 = the kit's `package-manifest.json`; 0.8.5-edge: manifest sha256 `7a2145212aa30ba7e0d9c5218d446b7551e7874bef2fdb23c642e6145ac4543f`, package_hash `e341c9c8…`, built from Edge 408ecd26).
 NOT `BingooEdge-0.8.3-edge` and NOT `BingooEdge-0.8.4-edge-CANDIDATE` (0.8.4 is superseded: its `php\php.ini` carried laptop-absolute paths and broke the install on the Khatri PC — see `edge-package-portable-php-runtime-2026-11-21.md`). Every command below uses the parameter names of the scripts in that folder (`scripts\*.ps1`, read 21 Nov).
 Who: **OWNER-ELEV** = owner, PowerShell "Run as administrator" · **OWNER-PS** = owner, normal PowerShell · **OWNER-BROWSER** · **OWNER-FILE** = the
 owner writes a one-line file with Notepad (a secret is never typed on a command line, never pasted into chat). `<USB>` = the kit drive letter;

@@ -101,6 +101,21 @@ NEXT_OWNER_ACTION=say "ENABLE KHATRI" → runbook 2.1 (EDGE_FEATURE_ENABLED=true
   installer parameters) — phases 3–5 of the runbook are superseded by that file where they differ. No takeover today.
 ```
 
+## Closing state, 21 Nov 14:00 PKT (on site, shop open, no offline use)
+
+```
+KHATRI_BRANCH_SERVER=INSTALLED 13:15 PKT — 0.8.5-edge on DESKTOP-B9MO2QG (static 192.168.100.52, https://bingoo-edge.local:8443), device
+  a7d57f56-360c-42c1-b0e8-926b58289173, paired through https://bingoopos.com (central domain), bootstrap acknowledged, recovery key escrowed,
+  7 services running, firewall rule, branch CA trusted on the PC, desktop shortcuts; STANDBY (DEGRADED only until the stock cache fills);
+  6 users enrolled (OWNER1 own PIN; DELIVERY/DINEIN/TAKEAWAY/QUICKSALE/NOMAN = one shared PIN chosen by the owner). Nobody pressed Switch to Offline.
+  The PC also runs the Online Print Agent (untouched). Evidence: C:\BingooEdge\evidence\ (shop PC), C:\Users\Dell\BingooEdgeLab\evidence\khatri-install-20261121\.
+PACKAGE_USED=0.8.5-edge (0.8.4 failed on step [2]: php.ini carried laptop-absolute paths → portable runtime, see edge-package-portable-php-runtime-2026-11-21.md)
+ON_SITE_DEFECTS=tenant-domain CloudUrl in docs (404 on pair; central domain is right) · Windows 10 rejects [TimeSpan]::MaxValue in Register-EdgeServices
+  (fixed 29926f71; kit copy needs the workaround in onsite steps §5.5) · Notepad .txt pitfall · hidden PIN prompt · Blade printers row (fixed eacf489f)
+STILL_OPEN=other counter devices: trust the branch CA + hosts line (or use the IP) · evidence to USB · LAB acceptance of 0.8.5 (D-D) · supervised
+  takeover/handback drill with the owner present (off hours) · AUTO_FAILOVER_ENABLED=no stays · kit mysql README + template updated 21 Nov
+```
+
 Agent outputs: C (operator readiness) → docs/operator-khatri/ + kit operator\; D (package/printer/site) → evidence
 C:\Users\Dell\BingooEdgeLab\evidence\khatri-readiness-20261121\ (0.8.3 immutable; TCP 9100 receipt delivered by the real print worker on
 labcopy-082 to the FakePrinter on 9611, spool captured; mappings replicated on the appliance DB; no Local Mode, no takeover), then the
