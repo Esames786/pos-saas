@@ -478,10 +478,14 @@ switch ($step) {
         [$c, $dev] = cloud(['device']);
         $dev = lastJson($dev);
         $baseSurvival = $base['after']['survival'] ?? null;
+        if (isset($argv[3])) {   // an explicit later baseline (S fingerprint > file), e.g. after the supervised seed correction
+            $alt = json_decode((string) @file_get_contents(EVID . DIRECTORY_SEPARATOR . $argv[3]), true);
+            $baseSurvival = $alt['survival'] ?? $baseSurvival;
+        }
         $doc = ['label' => $label, 'at' => date('c'), 'pointer' => pointer(), 'version' => $h['runtime']['edge_app_version'] ?? null, 'status' => $h['status'] ?? null,
             'problems' => $h['problems'] ?? null, 'authority_state' => $auth, 'device_id' => envValue('EDGE_SYNC_DEVICE_ID'),
             'same_device_as_090' => ($base['after']['device_id'] ?? null) === envValue('EDGE_SYNC_DEVICE_ID'),
-            'survival_equal_to_090' => $baseSurvival !== null ? array_diff_key($baseSurvival, ['edge_local_meta' => 1]) == array_diff_key($fp, ['edge_local_meta' => 1]) : null,
+            'survival_baseline' => $argv[3] ?? 'state-090.json', 'survival_equal_to_baseline' => $baseSurvival !== null ? array_diff_key($baseSurvival, ['edge_local_meta' => 1]) == array_diff_key($fp, ['edge_local_meta' => 1]) : null,
             'migrations_0_9' => $migs, 'probe_table_exists' => $probe, 'mirror_counts' => $mirror, 'pin_logins' => $logins,
             'cloud_device' => array_intersect_key((array) ($dev['device'] ?? []), array_flip(['public_uuid', 'status', 'app_version', 'reported_version', 'install_phase', 'update_now_requested_at', 'maintenance_window_start', 'maintenance_window_end'])),
             'auto_update_status' => lastJson(edge(['edge:local:auto-update', '--status', '--json'])[1]), 'survival' => $fp];
