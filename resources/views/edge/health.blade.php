@@ -58,7 +58,7 @@
     <section class="headline">
         <span class="pill {{ $report['status'] }}" id="status-pill">{{ str_replace('_', ' ', $report['status']) }}</span>
         <span class="big">{{ $report['status_label'] }}</span>
-        <span class="muted">as of {{ $report['generated_at'] }} · auto-refresh 30s · automatic failover: off (supervised takeover only)</span>
+        <span class="muted">as of {{ $report['generated_at'] }} · auto-refresh 30s · automatic failover: {{ ($report['auto_failover_enabled'] ?? false) ? 'ON (optional automatic takeover after a sustained Cloud loss)' : 'off (supervised takeover only)' }}</span>
         @if($report['problems'] !== [])
             <ul class="problems" id="problems">
                 @foreach($report['problems'] as $p)
@@ -88,6 +88,12 @@
         // Computed here, not inline: a Blade directive glued to the preceding word (no non-word boundary before the
         // "@") is not compiled and was rendered literally on the Khatri status page (21 Nov 2026).
         $printerText = count($printers) . ' configured' . (count($printers) > 0 ? ' · ' . $printersReachable . ' reachable' : '');
+        // EDGE 0.9 (stream B): the optional Automatic Offline Takeover - effective state + the last automatic decision.
+        $autoTk = (array) ($report['auto_takeover'] ?? []);
+        $autoTkText = ! empty($autoTk['enabled'])
+            ? 'ON after ' . (int) ($autoTk['after_seconds'] ?? 300) . ' s of lost Cloud connection'
+            : 'OFF' . (! empty($autoTk['cloud_enabled']) && empty($autoTk['allowed']) ? ' (on for the branch on the Cloud, not allowed on this Branch Server)' : '');
+        $autoTkLast = ! empty($autoTk['last_decision']) ? 'last decision ' . $autoTk['last_decision'] . (! empty($autoTk['last_reasons']) ? ': ' . $autoTk['last_reasons'] : '') . (! empty($autoTk['last_decision_at']) ? ' (' . $autoTk['last_decision_at'] . ')' : '') : '';
     @endphp
     <section class="headline" id="selling-authority" style="flex-direction:column;align-items:stretch;gap:.6rem">
         <h2 style="margin:0;font-size:.95rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Selling authority</h2>
@@ -102,6 +108,7 @@
             <dt>Configuration / stock freshness</dt><dd class="{{ (($report['freshness']['config']['ok'] ?? false) && ($report['freshness']['stock']['ok'] ?? false)) ? 'ok' : 'warn' }}">config {{ ($report['freshness']['config']['ok'] ?? false) ? 'fresh' : 'stale/unknown' }} (rev {{ $report['freshness']['config']['applied_revision'] ?? '—' }}) · stock {{ ($report['freshness']['stock']['ok'] ?? false) ? 'fresh' : 'stale/unknown' }}</dd>
             <dt>Sync to Cloud</dt><dd class="{{ (($report['sync']['outbox_pending'] ?? 0) + ($report['sync']['outbox_failed_permanent'] ?? 0)) > 0 ? 'warn' : 'ok' }}">pending {{ $report['sync']['outbox_pending'] ?? '—' }} · in flight {{ $report['sync']['outbox_leased'] ?? '—' }} · needs attention {{ $report['sync']['outbox_failed_permanent'] ?? '—' }}</dd>
             <dt>Printers</dt><dd>{{ $printerText }}</dd>
+            <dt>Automatic Offline Takeover</dt><dd id="auto-takeover" class="{{ ! empty($autoTk['enabled']) ? 'warn' : 'muted' }}">{{ $autoTkText }}@if($autoTkLast !== '')<div class="muted">{{ $autoTkLast }}</div>@endif</dd>
         </dl>
         @if($canControl)
             <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:center">

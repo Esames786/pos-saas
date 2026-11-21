@@ -64,6 +64,10 @@ return [
         'handback_min_consecutive_acks' => (int) env('EDGE_AUTHORITY_HANDBACK_MIN_ACKS', 2),
         // Q — how many outbox envelopes one worker tick may drain while local (bounded work per tick).
         'drain_batch'             => (int) env('EDGE_AUTHORITY_DRAIN_BATCH', 25),
+        // EDGE 0.9 (lead decisions 21 Nov 2026 §2) — the appliance KILL SWITCH for the optional Automatic Offline Takeover.
+        // Effective only when the Cloud branch setting is ALSO on (AutoTakeoverEvaluator). Default false in every 0.9 package:
+        // enabling it at a real site needs the owner's GO twice (Cloud setting + this env).
+        'auto_takeover_allowed'   => filter_var(env('EDGE_AUTO_TAKEOVER_ALLOWED', false), FILTER_VALIDATE_BOOL),
     ],
 
     /*
@@ -169,6 +173,15 @@ return [
     | change; the full pre-update DB snapshot otherwise) → K4 status. Never in Local Mode, never with unsynced events.
     | No secret lives here (device credentials stay in edge.sync.*).
     */
+    /*
+    | EDGE 0.9 (stream B, lead decisions 21 Nov 2026 §5) — the OPTIONAL appliance endpoint POST /edge/local/enroll through which
+    | a counter wizard sets the logged-in cashier's OWN Edge PIN with a Cloud-signed assertion (EdgeEnrollmentConsumer: signature,
+    | expiry, replay, binding, PIN strength). Off by default; LAN + TLS only; 5/min/IP; the PIN is never logged.
+    */
+    'local_enroll_endpoint' => [
+        'enabled' => filter_var(env('EDGE_LOCAL_ENROLL_ENDPOINT_ENABLED', false), FILTER_VALIDATE_BOOL),
+    ],
+
     'auto_update' => [
         'enabled'                => filter_var(env('EDGE_AUTO_UPDATE_ENABLED', true), FILTER_VALIDATE_BOOL),
         // The central Cloud base URL (written by edge:local:pair) — every endpoint below defaults to it + the contract path.
