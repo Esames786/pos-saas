@@ -18,7 +18,8 @@ WAN restored → the appliance REMAINS the writer → sync/reconcile → control
 | `app/` | the restricted artifact (no Cloud finance authorities, no ingestion, no Catering, no tests, no secrets) |
 | `app/scripts/edge/wizard/` | the setup wizard itself (also under `scripts/wizard/`) |
 | `php/` | PHP runtime (when bundled) — else pass `-PhpPath`. **Portable:** `php.ini` is written by the builder (see below), the CA bundle is `php/cacert.txt` |
-| `mysql/` | MySQL 8.0 server binaries (`bin/`, `share/`, `lib/`) when bundled — the wizard registers the `BingooEdgeMySQL` service from it |
+| `mysql/` | MySQL 8.0 server when bundled (slim "server" profile, ~85 MB: `mysqld`, `mysql`, `mysqladmin`, `mysqldump` + their DLLs, `share/`) — the wizard registers the `BingooEdgeMySQL` service from it |
+| `prereqs/VC_redist.x64.exe` | the official Microsoft Visual C++ 2015-2022 x64 runtime installer (PHP and MySQL need it; a clean Windows lacks it) — `scripts\Install-EdgePrereqs.ps1` installs it silently when missing |
 | `gateway/nginx.exe` | the TLS gateway (when bundled) — else pass `-GatewayPath` |
 | `scripts/` | the reviewed PowerShell scripts (below) |
 | `templates/` | `appliance.env.template` (keys only), `edge-launcher.php`, `mime.types`, this file |

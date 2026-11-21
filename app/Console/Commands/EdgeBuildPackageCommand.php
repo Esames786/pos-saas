@@ -31,7 +31,9 @@ class EdgeBuildPackageCommand extends Command
         {--php-runtime= : PHP runtime directory to bundle (php.exe inside); omit to rely on the installer -PhpPath}
         {--ca-bundle= : CA bundle (Mozilla cacert) shipped as php/cacert.txt; default: the runtime cacert.txt / extras/ssl/cacert.pem / the file its php.ini trusted}
         {--mysql-runtime= : MySQL 8.0 runtime directory (bin/share/lib) to bundle under mysql/}
-        {--strict-layout : Apply the 0.9 RELEASE layout gates (wizard + root Setup-BingooEdge.cmd required, central -CloudUrl) even to a dev build}
+        {--mysql-profile=server : server = mysqld/mysql/mysqladmin/mysqldump + their DLLs + share (slim, default); full = every bin/lib file}
+        {--vc-redist= : The OFFICIAL VC_redist.x64.exe (complete, Authenticode-valid Microsoft bundle) shipped as prereqs/VC_redist.x64.exe}
+        {--strict-layout : Apply the 0.9 RELEASE layout gates (wizard + root Setup-BingooEdge.cmd required, central -CloudUrl, VC++ prerequisite, signed SHA256SUMS) even to a dev build}
         {--gateway= : nginx.exe to bundle; omit to rely on the installer -GatewayPath}
         {--signing-keystore= : RELEASE: the encrypted release-signing keystore minted by edge:update:keygen (needs --signing-passphrase-file)}
         {--signing-passphrase-file= : File holding the keystore passphrase (never argv, never printed)}
@@ -167,6 +169,8 @@ class EdgeBuildPackageCommand extends Command
                 'php_smoke' => true,
                 'mysql_runtime' => $this->option('mysql-runtime') ?: null,
                 'mysql_probe' => true,
+                'mysql_profile' => (string) ($this->option('mysql-profile') ?: 'server'),
+                'vc_redist' => $this->option('vc-redist') ?: null,
                 'strict_layout' => $this->option('strict-layout') ? true : null,
                 'gateway_binary' => $this->option('gateway') ?: null,
                 'signing_key' => $key,

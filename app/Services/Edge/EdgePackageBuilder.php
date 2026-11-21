@@ -8,6 +8,7 @@ use App\Services\Edge\Packaging\PackageLayoutInspector;
 use App\Services\Edge\Packaging\PhpIniValidator;
 use App\Services\Edge\Packaging\PhpRuntimePackager;
 use App\Services\Edge\Packaging\UpdateSignatureAudit;
+use App\Services\Edge\Packaging\VcRedistPrerequisite;
 use RuntimeException;
 
 /**
@@ -109,24 +110,30 @@ class EdgePackageBuilder
 
     private readonly PackageLayoutInspector $layout;
 
+    private readonly VcRedistPrerequisite $vcRedist;
+
     public function __construct(
         private readonly EdgeArtifactBuilder $artifacts,
         private readonly EdgeUpdatePackageService $updates,
         ?PhpRuntimePackager $phpRuntime = null,
         ?MySqlRuntimeBundler $mysqlRuntime = null,
         ?PackageLayoutInspector $layout = null,
+        ?VcRedistPrerequisite $vcRedist = null,
     ) {
         $this->phpRuntime = $phpRuntime ?? new PhpRuntimePackager();
         $this->mysqlRuntime = $mysqlRuntime ?? new MySqlRuntimeBundler();
         $this->layout = $layout ?? new PackageLayoutInspector();
+        $this->vcRedist = $vcRedist ?? new VcRedistPrerequisite();
     }
 
     /**
      * @param array{
      *   source_root:string, artifact_meta:array, php_runtime?:?string, gateway_binary?:?string, signing_key?:?string,
      *   runtime_dirs?:array, ca_bundle?:?string, php_smoke?:bool, mysql_runtime?:?string, mysql_probe?:bool,
-     *   strict_layout?:?bool, signing_key_id?:?string
+     *   strict_layout?:?bool, signing_key_id?:?string, vc_redist?:?string, mysql_profile?:string
      * } $opts
+     *   vc_redist    the official VC_redist.x64.exe (Authenticode-verified, complete Burn bundle) -> prereqs/
+     *   mysql_profile 'server' (default: mysqld/mysql/mysqladmin/mysqldump + their DLLs + share) or 'full'
      *   php_smoke    run the packaged php.exe with its packaged php.ini (default true; false only for fake test runtimes)
      *   mysql_probe  run `mysqld --version` on the bundled MySQL (default true; false only for fake test runtimes)
      *   strict_layout force (true) / waive (false) the 0.9 release layout gates; null = derive from build_mode + version
@@ -164,10 +171,15 @@ class EdgePackageBuilder
             // 2b. mysql/ — the MySQL 8.0 server runtime (optional, Edge 0.9 wizard installs the BingooEdgeMySQL service from it).
             $mysql = (string) ($opts['mysql_runtime'] ?? '');
             if ($mysql !== '') {
-                $components['mysql'] = $this->mysqlRuntime->bundle($mysql, $dest . '/mysql', ['probe' => (bool) ($opts['mysql_probe'] ?? true)]);
+                $components['mysql'] = $this->mysqlRuntime->bundle($mysql, $dest . '/mysql', ['probe' => (bool) ($opts['mysql_probe'] ?? true), 'profile' => (string) ($opts['mysql_profile'] ?? 'server')]);
             } else {
                 $components['mysql'] = ['bundled' => false, 'note' => 'no MySQL runtime bundled — the server needs a local MySQL 8.0 (installer -DbHost/-DbPort)'];
             }
+            // 2c. prereqs/ — the Microsoft VC++ 2015-2022 x64 runtime installer (php.exe and mysqld.exe need it; a clean
+            //     Windows lacks it). Only the official, Authenticode-valid, COMPLETE bundle is accepted.
+            $vc = (string) ($opts['vc_redist'] ?? '');
+            $components['prereqs'] = ['vc_redist' => $vc !== '' ? $this->vcRedist->bundle($vc, $dest)
+                : ['bundled' => false, 'note' => 'no VC++ runtime installer bundled — the target PC must already have the VC++ 2015-2022 x64 runtime']];
             // 3. gateway/ — nginx binary (optional).
             $gw = (string) ($opts['gateway_binary'] ?? '');
             if ($gw !== '') {
@@ -305,6 +317,7 @@ class EdgePackageBuilder
             'wizard' => $extended['wizard'],
             'mysql_runtime' => $extended['mysql_runtime'],
             'script_compat' => $extended['script_compat'],
+            'prereqs' => $extended['prereqs'],
             'cloud_url' => $extended['cloud_url'],
             'signature' => $extended['signature'],
             'signature_ok' => $extended['signature']['signature_ok'],
@@ -342,8 +355,22 @@ class EdgePackageBuilder
         } elseif ($cloud['severity'] === 'warning') {
             $warnings[] = 'CLOUD_URL_NOT_CENTRAL: ' . $cloud['message'] . ' (dev build: allowed; a release build refuses)';
         }
+        // A package that bundles php.exe / mysqld.exe must carry the VC++ runtime installer (clean Windows lacks it).
+        $runtimes = is_file($dir . '/php/php.exe') || is_file($dir . '/mysql/bin/mysqld.exe');
+        $vcPresent = is_file($dir . '/' . VcRedistPrerequisite::FILE);
+        $vcBurn = $vcPresent ? VcRedistPrerequisite::burnLayout($dir . '/' . VcRedistPrerequisite::FILE) : null;
+        $prereqs = ['vc_redist_present' => $vcPresent, 'vc_redist_complete' => $vcBurn['complete'] ?? null, 'runtimes_bundled' => $runtimes];
+        if ($vcPresent && ! ($vcBurn['complete'] ?? false)) {
+            $errors[] = 'PREREQ_VCREDIST_INCOMPLETE: ' . VcRedistPrerequisite::FILE . ' is not a complete Burn bundle (payload container missing)';
+        } elseif ($runtimes && ! $vcPresent) {
+            if ($strict) {
+                $errors[] = 'PREREQ_VCREDIST_MISSING: ' . VcRedistPrerequisite::FILE . ' is required when php/ or mysql/ is bundled (0.9+ release)';
+            } else {
+                $warnings[] = 'PREREQ_VCREDIST_MISSING: no ' . VcRedistPrerequisite::FILE . ' (dev build: allowed; a clean Windows cannot start php/mysqld)';
+            }
+        }
 
-        return ['checks' => ['strict' => $strict, 'wizard' => $wizard, 'script_compat' => $compat, 'cloud_url' => $cloud], 'errors' => $errors, 'warnings' => $warnings];
+        return ['checks' => ['strict' => $strict, 'wizard' => $wizard, 'script_compat' => $compat, 'cloud_url' => $cloud, 'prereqs' => $prereqs], 'errors' => $errors, 'warnings' => $warnings];
     }
 
     /** @return array{strict:bool, php_ini:array, wizard:array, mysql_runtime:array, script_compat:array, cloud_url:array, signature:array, errors:list<string>, warnings:list<string>} */
@@ -434,10 +461,24 @@ class EdgePackageBuilder
         if (($manifest['components']['update']['signing_key_role'] ?? null) === 'dev') {
             $warnings[] = 'DEV_SIGNED: the update manifest is signed with a DEV key (' . ($manifest['components']['update']['signing_key_id'] ?? '?') . ') — never install at a live branch';
         }
+        // The bundled VC++ runtime installer: re-verified (Authenticode + Microsoft signer + complete bundle + 14.x) at audit time.
+        $prereqs = $layout['checks']['prereqs'];
+        if ($prereqs['vc_redist_present']) {
+            $vc = $this->vcRedist->inspect($dir . '/' . VcRedistPrerequisite::FILE);
+            $prereqs['vc_redist'] = ['version' => $vc['version'], 'sha256' => $vc['sha256'], 'authenticode_status' => $vc['authenticode']['status'],
+                'signer' => $vc['authenticode']['signer'], 'ok' => $vc['ok'], 'problems' => $vc['problems'],
+                'manifest_entry' => (bool) (($manifest['components']['prereqs']['vc_redist']['file'] ?? null) === VcRedistPrerequisite::FILE)];
+            if (! $vc['ok']) {
+                $errors[] = 'PREREQ_VCREDIST_INVALID: ' . implode(' | ', $vc['problems']);
+            }
+            if (! $prereqs['vc_redist']['manifest_entry']) {
+                $errors[] = 'PREREQ_VCREDIST_UNDECLARED: ' . VcRedistPrerequisite::FILE . ' is not described by components.prereqs';
+            }
+        }
 
         return ['strict' => $strict, 'php_ini' => $phpIni, 'wizard' => $layout['checks']['wizard'], 'mysql_runtime' => $mysqlRuntime,
             'script_compat' => $layout['checks']['script_compat'], 'cloud_url' => $layout['checks']['cloud_url'], 'signature' => $signature,
-            'checksums' => $checksums, 'errors' => $errors, 'warnings' => $warnings];
+            'checksums' => $checksums, 'prereqs' => $prereqs, 'errors' => $errors, 'warnings' => $warnings];
     }
 
     /** The boundary audit: forbidden patterns, Cloud-only sentinels absent, Edge runtime sentinels present. */
