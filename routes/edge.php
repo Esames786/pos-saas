@@ -26,6 +26,12 @@ Route::domain(config('tenancy.central_domain'))
             ->middleware('throttle:10,1,edge-setup-redeem')
             ->name('edge.api.setup.redeem');
 
+        // EDGE 0.9 (K2b) — a fresh pairing code for an INSTALL setup session whose code expired / is in its last 3 minutes
+        // (public: the wizard has no device credential yet; X-Edge-Setup-Token scopes it to the session's tenant + branch).
+        Route::post('/setup/pairing-code', [\App\Http\Controllers\Edge\EdgeSetupApiController::class, 'pairingCode'])
+            ->middleware('throttle:10,1,edge-setup-pairing')
+            ->name('edge.api.setup.pairing-code');
+
         // EDGE 0.9 (K6) — the release zip behind a 15-minute SIGNED URL bound to an active device (issued by updates/latest).
         Route::get('/updates/{release}/download', [\App\Http\Controllers\Edge\EdgeUpdatesApiController::class, 'download'])
             ->middleware(['signed', 'throttle:10,1,edge-release-download'])

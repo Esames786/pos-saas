@@ -21,7 +21,7 @@ class EdgeRelease extends Model
     protected $fillable = [
         'public_uuid', 'channel', 'version', 'status', 'manifest_sha256', 'package_hash', 'zip_sha256', 'size_bytes',
         'signing_key_id', 'min_from_version', 'schema_generation', 'source_revision', 'update_package_file', 'storage_path',
-        'file_count', 'published_by', 'published_at', 'withdrawn_at',
+        'file_count', 'published_by', 'published_at', 'withdrawn_at', 'approved_plan_hashes',
     ];
 
     protected $casts = [
@@ -29,6 +29,8 @@ class EdgeRelease extends Model
         'file_count'   => 'integer',
         'published_at' => 'datetime',
         'withdrawn_at' => 'datetime',
+        // K6 plan approval: {"<from_version>": "sha256:<64 hex>"} - written only by an audited Cloud operator command.
+        'approved_plan_hashes' => 'array',
     ];
 
     public function scopePublished($query)

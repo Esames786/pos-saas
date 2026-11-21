@@ -22,6 +22,7 @@ class EdgeSetupSession extends Model
         'public_uuid', 'tenant_id', 'branch_id', 'mode', 'code_hash', 'active_slot', 'code_expires_at', 'attempts',
         'max_attempts', 'created_by_user_id', 'redeemed_at', 'redeemed_installation_uuid', 'redeemed_device_name',
         'setup_token_hash', 'token_expires_at', 'pairing_code_uuid', 'assertions_issued', 'last_used_at', 'cancelled_at',
+        'pairing_codes_issued',
     ];
 
     protected $casts = [
@@ -32,6 +33,7 @@ class EdgeSetupSession extends Model
         'max_attempts'       => 'integer',
         'created_by_user_id' => 'integer',
         'assertions_issued'  => 'integer',
+        'pairing_codes_issued' => 'integer',
         'code_expires_at'    => 'datetime',
         'redeemed_at'        => 'datetime',
         'token_expires_at'   => 'datetime',

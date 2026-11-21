@@ -38,6 +38,12 @@ class EdgeSetupApiController extends Controller
         return $this->noStore(response()->json($this->sessions->redeem($data)));
     }
 
+    /** K2b — POST /api/edge/setup/pairing-code (public, throttled, X-Edge-Setup-Token of an INSTALL session). */
+    public function pairingCode(Request $request): JsonResponse
+    {
+        return $this->noStore(response()->json($this->sessions->reissuePairingCode($request->header(self::TOKEN_HEADER))));
+    }
+
     public function enrollmentAssertions(Request $request): JsonResponse
     {
         /** @var EdgeDevice $device */
