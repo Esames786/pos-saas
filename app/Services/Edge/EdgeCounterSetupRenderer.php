@@ -199,8 +199,8 @@ class EdgeCounterSetupRenderer
                     'Agar phone "Your connection is not private" dikhaye to RUK jayein: Advanced / Proceed / Visit website kabhi na dabayein. Pehle certificate install karein (QR 1).'
                 ),
                 self::step(
-                    'Offline login works only inside the shop network. Log in with the employee code and the Edge PIN (not the Cloud password).',
-                    'Offline login sirf dukaan ke network ke andar chalta hai. Employee code aur Edge PIN se login karein (Cloud wala password nahin).'
+                    'Offline login works only inside the shop network. Log in with the employee code and the Edge PIN (the Cloud login does not work there).',
+                    'Offline login sirf dukaan ke network ke andar chalta hai. Employee code aur Edge PIN se login karein (Cloud wala login wahan nahin chalta).'
                 ),
             ],
         ];
