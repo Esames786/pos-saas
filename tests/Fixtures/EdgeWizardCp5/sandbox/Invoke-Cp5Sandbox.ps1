@@ -1079,8 +1079,11 @@ function Invoke-ScenarioS {
     if (-not (Test-Path $p)) { throw 'NOT_DELIVERED: Invoke-Cp5CounterSelfService.ps1 is not in the kit' }
     $r = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', $p, '-Evidence', $Ev, '-LanIp', $script:LanIp,
         '-Kit', $Kit, '-Pkgs', $Pkgs, '-Work', $Work, '-CloudPhp', $CloudPhp, '-CloudIni', $CloudIni, '-LanHost', $LanHost, '-HttpsPort', [string]$HttpsPort) (Join-Path $Ev 's-driver.log') 3600
-    # the cashier's PIN was changed by s (secrets\pin-<id>): keep the redaction list current
-    foreach ($f in @(Get-ChildItem $Secrets -Filter 'pin-*')) { [void]$script:SecretValues.Add((Get-Content -Raw $f.FullName).Trim()) }
+    # s changed the cashier's PIN (secrets\pin-<id>) and keeps its own s-*.keep secrets: every short secret file joins the
+    # redaction list of the final evidence scan
+    foreach ($f in @(Get-ChildItem $Secrets -File | Where-Object { $_.Length -gt 0 -and $_.Length -lt 256 -and ($_.Name -like 'pin-*' -or $_.Name -like '*.keep') })) {
+        [void]$script:SecretValues.Add((Get-Content -Raw $f.FullName).Trim())
+    }
     $sf = Join-Path $Ev 's-selfservice.json'
     $j = $(if (Test-Path $sf) { Get-Content -Raw $sf | ConvertFrom-Json } else { $null })
     Confirm-CloudUp
