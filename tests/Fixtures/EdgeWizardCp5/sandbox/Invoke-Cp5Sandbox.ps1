@@ -942,7 +942,7 @@ function Set-AutoTakeover([bool]$CloudOn, [bool]$ApplianceAllowed, [int]$After =
     # the Cloud switch reaches the appliance with the next config revision (heartbeat ack -> config refresh)
     [void](Wait-Until {
             $h = Get-Health
-            $s = $h.auto_takeover.settings
+            $s = $h.auto_takeover   # flat: cloud_enabled, allowed, enabled, after_seconds, last_decision, last_reasons, cloud_skew_seconds
             if ($s -and [bool]$s.cloud_enabled -eq $CloudOn -and [bool]$s.allowed -eq $ApplianceAllowed) { $s }
         } 300 10 "auto-takeover settings cloud=$CloudOn appliance=$ApplianceAllowed on the appliance")
     Write-Log 'info' "auto-takeover: Cloud setting $CloudOn (after $After s), appliance switch $ApplianceAllowed"
@@ -974,7 +974,7 @@ function Invoke-G1 {
     Save-Evidence 'g1-off.json' ([ordered]@{ cloud_down_seconds = 300; samples = $samples })
     $neverTook = -not ($samples | Where-Object { $_.state -ne 'standby' })
     $last = $samples[$samples.Count - 1]
-    $shownOff = [string]$last.health_auto_takeover.decision -eq 'disabled' -and -not [bool]$last.health_auto_takeover.settings.enabled
+    $shownOff = [string]$last.health_auto_takeover.last_decision -eq 'disabled' -and -not [bool]$last.health_auto_takeover.enabled
     return [ordered]@{ verdict_ok = ($neverTook -and $shownOff); stayed_standby = $neverTook; health_shows_off = $shownOff; last_decision = $last.decision; last_reasons = $last.reasons }
 }
 function Invoke-G3 {
