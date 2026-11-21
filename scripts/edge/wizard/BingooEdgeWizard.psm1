@@ -298,6 +298,14 @@ function Invoke-WizRedeem($ctx, [Security.SecureString]$SetupCode) {
         if (-not (Get-WizValue $doc $k $null)) { throw "WIZARD_REDEEM_INCOMPLETE: the Cloud answer has no $k" }
     }
     $cloud = [string](Get-WizValue $doc 'cloud_url' $ctx.CloudUrl)
+    # The Cloud names its canonical URL as scheme://<central domain>, which drops a non-default port. When that is the same
+    # scheme + host the wizard has just reached it through, keep the port it used (CP5: http://127.0.0.1 instead of
+    # http://127.0.0.1:9831 would have paired the fresh install against port 80). Production (https://bingoopos.com) unchanged.
+    try {
+        $mine = [Uri]$ctx.CloudUrl
+        $theirs = [Uri]$cloud
+        if ($theirs.Host -eq $mine.Host -and $theirs.Scheme -eq $mine.Scheme -and $theirs.IsDefaultPort -and -not $mine.IsDefaultPort) { $cloud = $ctx.CloudUrl }
+    } catch { }
     $ctx.Setup = @{
         TenantCode = [string]$doc.tenant_code
         BranchId = [int]$doc.branch_id

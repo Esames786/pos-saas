@@ -164,11 +164,14 @@ switch ($cmd) {
         break;
 
     case 'setup-code':
+        // One live code per branch: an unredeemed earlier code is cancelled first (the owner's "Cancel" on the Offline Edge page).
         $t = $tenantFn();
         $s = $readState();
-        $r = app(App\Services\Edge\Cloud\SetupSessionService::class)->create($t, Branch::findOrFail((int) $s['branch_id']), (int) $s['users'][0]);
+        $svc = app(App\Services\Edge\Cloud\SetupSessionService::class);
+        $cancelled = $svc->liveSessionForBranch((int) $t->id, (int) $s['branch_id']) ? $svc->cancel($t, (int) $s['branch_id'], (int) $s['users'][0]) : 0;
+        $r = $svc->create($t, Branch::findOrFail((int) $s['branch_id']), (int) $s['users'][0]);
         file_put_contents((string) $argv[2], (string) $r['code']);
-        $out(['result' => 'ok', 'mode' => $r['mode'], 'expires_at' => $r['expires_at']]);
+        $out(['result' => 'ok', 'mode' => $r['mode'], 'expires_at' => $r['expires_at'], 'cancelled_before' => $cancelled]);
         break;
 
     case 'assertion':
@@ -246,6 +249,26 @@ switch ($cmd) {
         $lease = DB::connection('tenant')->table('edge_branch_authority_leases')->first();
         $now = now();
         $out(['now' => $now->format('Y-m-d H:i:s'), 'lease' => $lease, 'expires_in_s' => $lease && $lease->expires_at ? \Illuminate\Support\Carbon::parse($lease->expires_at)->getTimestamp() - $now->getTimestamp() : null]);
+        break;
+
+    case 'auto-takeover':
+        // The owner's Offline Edge switch (OfflineEdgeController::autoTakeover): on <after_seconds> | off. Same columns, same
+        // audit line; the appliance receives it with the next config revision (branches.updated_at is in the watermark).
+        $t = $tenantFn();
+        $s = $readState();
+        $branch = Branch::findOrFail((int) $s['branch_id']);
+        $before = App\Services\Edge\EdgeBootstrapService::autoTakeoverSetting($branch);
+        $enabled = ($argv[2] ?? '') === 'on';
+        $after = (int) ($argv[3] ?? $before['after_seconds']);
+        $branch->forceFill([
+            'edge_auto_takeover_enabled' => $enabled,
+            'edge_auto_takeover_after_seconds' => max(180, min(3600, $after)),
+            'edge_auto_takeover_set_by_user_id' => (int) $s['users'][0],
+            'edge_auto_takeover_set_at' => now(),
+        ])->save();
+        Illuminate\Support\Facades\Log::info('[edge-setup-audit] edge.branch.auto_takeover_changed', ['tenant_id' => $t->id, 'branch_id' => $branch->id,
+            'user_id' => (int) $s['users'][0], 'enabled' => $enabled, 'after_seconds' => (int) $branch->edge_auto_takeover_after_seconds, 'previous_enabled' => $before['enabled']]);
+        $out(['result' => 'ok', 'before' => $before, 'after' => App\Services\Edge\EdgeBootstrapService::autoTakeoverSetting($branch->fresh())]);
         break;
 
     case 'counter-wizard':

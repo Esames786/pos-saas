@@ -1,19 +1,21 @@
-# CP5 prep (stream B, HOST side, NOT elevated, changes nothing outside C:\Users\Dell\BingooEdgeLab\e09\b\cp5):
-# assembles the Windows Sandbox kit and writes the .wsb files.
+# CP5 (stream B, HOST side, NOT elevated, changes nothing outside the cp5 folder it is given - D:\BingooEdgeLab-e09\cp5 by
+# the owner's rule that disposable packages / staging / evidence live on D:): assembles the Windows Sandbox kit and writes the
+# .wsb files - every mapped folder on D:.
 #   cp5\kit\        the sandbox scripts (this repo's tests\Fixtures\EdgeWizardCp5\sandbox), the DEV update PUBLIC key facts,
 #                   prereqs\ = the Visual C++ 2015-2022 x64 runtime MSIs from this PC's Package Cache (+ the runtime DLLs as a
 #                   fallback) - a clean sandbox has no VC++ runtime and PHP / MySQL / nginx need it
 #   cp5\evidence\   the ONLY writable mapped folder
-#   cp5\BingooEdge-CP5-auto.wsb    a..e headless (0.8.5 install, wizard update, auto-update + rollback, counter wizard)
-#   cp5\BingooEdge-CP5-manual.wsb  a, then the owner clicks through the WPF wizard; desktop "CP5 continue (c-e)"
-#   cp5\BingooEdge-CP5-fresh.wsb   f: the 0.9 wizard FRESH INSTALL (a separate sandbox session)
-# Mapped READ-ONLY: kit, pkgs (cp5\pkgs), the real signed 0.8.5 package (never modified), the Cloud code tree (cp5\src\tree).
+#   cp5\BingooEdge-CP5-auto-<6g|4g>.wsb    a, w-update, b, c, d, e, s, h, g1 g3 g4 g2
+#   cp5\BingooEdge-CP5-manual-<6g|4g>.wsb  a, then the owner clicks through the WPF wizard; desktop "CP5 continue (c-e)"
+#   cp5\BingooEdge-CP5-fresh-<6g|4g>.wsb   w-fresh + f: the 0.9 wizard FRESH INSTALL (a separate sandbox session)
+# Mapped READ-ONLY: kit, pkgs, a byte copy of the real signed 0.8.5 package (cp5\rel085, the original is never touched), the
+# Cloud code tree (cp5\src\tree).
 param(
-    [string]$Cp5 = 'C:\Users\Dell\BingooEdgeLab\e09\b\cp5',
+    [string]$Cp5 = 'D:\BingooEdgeLab-e09\cp5',
     [string]$Repo = 'D:\laragon2\www\pos-saas-e09-b',
-    [string]$Rel085 = 'C:\Users\Dell\.bingoo-edge-release\releases\BingooEdge-0.8.5-edge',
+    [string]$Rel085 = 'D:\BingooEdgeLab-e09\cp5\rel085\BingooEdge-0.8.5-edge',
     [string]$DevFacts = 'C:\Users\Dell\BingooEdgeLab\e09\dev-signing\dev-public-facts.json',
-    [int]$MemoryMB = 6144
+    [int[]]$MemoryMB = @(6144, 4096)
 )
 $ErrorActionPreference = 'Stop'
 $kit = Join-Path $Cp5 'kit'
@@ -50,7 +52,7 @@ foreach ($dll in @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'ms
     if (Test-Path $src) { Copy-Item -Force $src (Join-Path $kit 'prereqs\vcrt') }
 }
 
-function New-Wsb([string]$Name, [string]$ScenarioArg) {
+function New-Wsb([string]$Name, [string]$ScenarioArg, [int]$Mem) {
     $map = @(
         @{ host = $kit; box = 'C:\cp5\kit'; ro = 'true' },
         @{ host = $pkgs; box = 'C:\cp5\pkgs'; ro = 'true' },
@@ -70,7 +72,7 @@ function New-Wsb([string]$Name, [string]$ScenarioArg) {
   <PrinterRedirection>Disable</PrinterRedirection>
   <ClipboardRedirection>Enable</ClipboardRedirection>
   <ProtectedClient>Disable</ProtectedClient>
-  <MemoryInMB>$MemoryMB</MemoryInMB>
+  <MemoryInMB>$Mem</MemoryInMB>
   <MappedFolders>
 $folders
   </MappedFolders>
@@ -83,10 +85,10 @@ $folders
     [IO.File]::WriteAllText($path, $xml, (New-Object Text.UTF8Encoding($false)))
     return $path
 }
-$w = @(
-    (New-Wsb 'BingooEdge-CP5-auto.wsb' 'auto'),
-    (New-Wsb 'BingooEdge-CP5-manual.wsb' 'manual'),
-    (New-Wsb 'BingooEdge-CP5-fresh.wsb' 'fresh')
-)
+$w = @()
+foreach ($mem in $MemoryMB) {
+    $tag = [string][int]($mem / 1024) + 'g'
+    foreach ($s in @('auto', 'manual', 'fresh')) { $w += New-Wsb ("BingooEdge-CP5-$s-$tag.wsb") $s $mem }
+}
 Get-ChildItem -Recurse $kit | Where-Object { -not $_.PSIsContainer } | ForEach-Object { '{0,10:N0}  {1}' -f $_.Length, $_.FullName.Substring($Cp5.Length + 1) }
 $w | ForEach-Object { 'wsb: ' + $_ }

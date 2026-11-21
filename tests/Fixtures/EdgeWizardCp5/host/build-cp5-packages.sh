@@ -9,9 +9,9 @@
 # Export first:  git -C <b worktree> archive HEAD | tar -x -C <cp5>/src/tree   (vendor already copied into the tree)
 set -u
 export PATH="/d/laragon2/bin/php/php-8.3.16-Win32-vs16-x64:$PATH"
-CP5=/c/Users/Dell/BingooEdgeLab/e09/b/cp5
+CP5=${CP5_DIR:-/d/BingooEdgeLab-e09/cp5}   # owner rule 22 Nov: disposable packages / staging / evidence on D:
 TREE=$CP5/src/tree
-OUT='C:/Users/Dell/BingooEdgeLab/e09/b/cp5/pkgs'
+OUT=$(cygpath -m "$CP5/pkgs" 2>/dev/null || echo "D:/BingooEdgeLab-e09/cp5/pkgs")
 KS='C:/Users/Dell/BingooEdgeLab/e09/dev-signing/edge-update-signing-dev-e09.keystore.json'
 PASS='C:/Users/Dell/BingooEdgeLab/e09/dev-signing/edge-update-signing-dev-e09.passphrase'
 VENDOR='C:/Users/Dell/BingooEdgeLab/e09/e/vendor-closure-7d7da307/vendor'
