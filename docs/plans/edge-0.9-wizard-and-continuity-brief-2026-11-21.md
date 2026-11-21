@@ -115,6 +115,14 @@ C. **Shift and order continuity**: today Edge starts "from zero" after Switch to
 - **Update mode**: if `C:\ProgramData\BingooEdge\config\appliance.env` exists, the wizard verifies the new package and runs the
   existing signed-update path (`edge:local:update` + `edge:local:schema-upgrade`), re-registers services, re-runs health. No
   re-pairing, no data loss; rollback = pointer rollback (already exists).
+- **Auto-update of old versions (owner requirement, 21 Nov):** once 0.9 is installed, later versions must reach the appliance
+  WITHOUT the owner running a wizard again. Design: the Cloud publishes a signed package; the heartbeat response advertises
+  `update_available` (version, artifact hash); the appliance's existing `BingooEdgeUpdate`-style task downloads it over HTTPS from
+  the Cloud, verifies the Ed25519 signature + manifest hash (existing `EdgeUpdateVerifier`), stages it, and applies it
+  **only in STANDBY and only in the owner-set maintenance window** (never in Local Mode, never with a non-empty outbox); pointer
+  rollback on a failed health check; the status page and the Cloud device row show "updated to X at HH:MM" or "update failed,
+  rolled back". The owner can also press "Update now" on the Cloud device row or on the status page. The 0.8.5 → 0.9 step is the
+  last one that needs the wizard (0.8.5 has no auto-update client); from 0.9 on it is automatic.
 - Fix the Register-EdgeServices duration for Win10 in the package; portable php.ini enforced by the builder (stream E).
 
 ### 4.3 Cloud side (stream C)
@@ -138,7 +146,7 @@ C. **Shift and order continuity**: today Edge starts "from zero" after Switch to
 | stream | scope | est. elapsed |
 |---|---|---|
 | A Continuity | mirror tables + channel, adopt in takeover, merge in handback/ingestion, shared-view badges, MySQL tests both runtimes | 8–10 days |
-| B Server wizard | wizard app, install + update modes, users & PINs page, finish page | 8–10 days |
+| B Server wizard | wizard app, install + update modes, users & PINs page, finish page, **auto-update client** (download, verify, stage, apply in standby/maintenance window, rollback, "Update now") | 9–11 days |
 | C Cloud | downloads on the Offline Edge page, wizard endpoints, bulk assertions, progress, "update available" | 4–5 days |
 | D Cashier bundle | per-branch generated setup + QR/phone page | 2 days |
 | E Packaging | builder php.ini validation, Win10 task durations, central-domain default | 1–2 days |
@@ -167,6 +175,8 @@ Critical path ≈ A or B + integration → **about 3 weeks** to a signed 0.9 ins
 1. A fresh Windows 10/11 PC: download from the Offline Edge page → wizard → STANDBY_READY with all listed users able to log in on
    Edge, shortcuts present, no command typed by the owner. ≤ 20 min.
 2. Khatri (0.8.5): the same wizard updates in place; device id, pairing, users, data unchanged; health green.
+2b. After 0.9: publishing a signed 0.9.1 on the Cloud updates the LAB appliance by itself in the maintenance window (standby only,
+    outbox empty), with rollback proven on a deliberately broken package; the owner never runs a command or a wizard.
 3. Counter PC: one click → CA trusted, hosts, shortcuts, green padlock. Phone: QR → login page without warning after CA install.
 4. LAB drill: internet cut → after lease lapse Switch to Offline → every terminal's Edge shift is already open as a continuation,
    open table orders appear as drafts, cashier pays them → internet back → Return to Online → Cloud shows ONE shift per counter with
