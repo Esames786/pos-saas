@@ -130,6 +130,9 @@ class EdgeAutoUpdateVerificationTest extends TestCase
     private function verifier(): EdgeAutoUpdatePackageVerifier
     {
         return new class(app(EdgeUpdateVerifier::class)) extends EdgeAutoUpdatePackageVerifier {
+            /** stream E SHA256SUMS(.sig) is proven by its own suite; mini packages here carry none. */
+            protected function verifyChecksums(string $root): void {}
+
             protected function verifyTree(string $root): array
             {
                 $manifest = json_decode((string) file_get_contents($root . '/package-manifest.json'), true);

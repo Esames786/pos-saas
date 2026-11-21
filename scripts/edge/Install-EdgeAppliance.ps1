@@ -18,7 +18,7 @@
 #  13  edge:local:health             the consolidated report; exit 0 only when the appliance is bound
 #
 # Usage (elevated):
-#   .\Install-EdgeAppliance.ps1 -PackageRoot D:\pkg\BingooEdge-0.1.0 -CloudUrl https://pos.example.com `
+#   .\Install-EdgeAppliance.ps1 -PackageRoot D:\pkg\BingooEdge-0.9.0-edge -CloudUrl https://bingoopos.com `
 #       -DbUser bingoo_edge -DbPasswordFile C:\secure\dbpw.txt -PairingCodeFile C:\secure\code.txt `
 #       -EnrollmentAssertionFile C:\secure\assertion.json -EnrollmentCredentialFile C:\secure\cred.txt `
 #       -EnrollmentPublicKey <base64> -UpdatePublicKey <base64> -RecoveryKeyFile C:\secure\recovery.key `
@@ -148,24 +148,30 @@ if ($manifest.build_mode -ne 'release') { Write-Warning 'This is a DEV package (
 # ---- 2. install root -------------------------------------------------------------------------------------------
 Step 2 "Laying out install root $InstallRoot"
 New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
+$bundledPhp = $false
 if (-not $PhpPath) {
-    if (Test-Path (Join-Path $PackageRoot 'php\php.exe')) { Copy-Tree (Join-Path $PackageRoot 'php') (Join-Path $InstallRoot 'php'); $PhpPath = Join-Path $InstallRoot 'php\php.exe' }
+    if (Test-Path (Join-Path $PackageRoot 'php\php.exe')) { Copy-Tree (Join-Path $PackageRoot 'php') (Join-Path $InstallRoot 'php'); $PhpPath = Join-Path $InstallRoot 'php\php.exe'; $bundledPhp = $true }
     else { Fail 'the package bundles no PHP runtime - pass -PhpPath' }
 }
 if (-not (Test-Path $PhpPath)) { Fail "PHP not found at $PhpPath" }
 $php = $PhpPath
-# EDGE 0.9 / stream E: the packaged php.ini carries __BINGOO_PHP_DIR__ (curl.cainfo / openssl.cafile) - point it at THIS php dir.
-$phpDir = Split-Path -Parent $php
-$phpIni = Join-Path $phpDir 'php.ini'
-if ((Test-Path $phpIni) -and ((Get-Content -Path $phpIni -Raw) -match '__BINGOO_PHP_DIR__')) {
-    $iniText = (Get-Content -Path $phpIni -Raw).Replace('__BINGOO_PHP_DIR__', $phpDir)
-    Write-Utf8NoBom $phpIni $iniText
-    Write-Host "  php.ini paths set to $phpDir"
-}
-foreach ($helper in @((Join-Path $scriptDir 'appliance\Set-EdgePhpIniPaths.ps1'), (Join-Path $PackageRoot 'app\scripts\edge\appliance\Set-EdgePhpIniPaths.ps1'))) {
+# EDGE 0.9 / stream E contract: the packaged php.ini carries the placeholder __BINGOO_PHP_DIR__ (curl.cainfo / openssl.cafile ->
+# cacert.txt). Rewrite it in the INSTALLED copy only (never the package folder, which is verified against the manifest), BEFORE the
+# first php.exe call. A package that ships Set-EdgePhpIniPaths.ps1 does it (non-zero exit = install fails); an older package without
+# the helper gets the same literal substitution inline. An external -PhpPath (lab) is never touched.
+if ($bundledPhp) {
+    $phpDir = Join-Path $InstallRoot 'php'
+    $helper = Join-Path $PackageRoot 'app\scripts\edge\appliance\Set-EdgePhpIniPaths.ps1'
     if (Test-Path $helper) {
-        try { & $helper -PhpDir $phpDir | Out-Host } catch { Write-Warning "Set-EdgePhpIniPaths.ps1 did not run ($($_.Exception.Message)); the inline substitution above applies." }
-        break
+        $global:LASTEXITCODE = 0
+        try { & $helper -PhpDir $phpDir | Out-Host } catch { Fail "Set-EdgePhpIniPaths.ps1 failed: $($_.Exception.Message)" }
+        if ($LASTEXITCODE -ne 0) { Fail "Set-EdgePhpIniPaths.ps1 exited $LASTEXITCODE" }
+    } else {
+        $phpIni = Join-Path $phpDir 'php.ini'
+        if ((Test-Path $phpIni) -and ((Get-Content -Path $phpIni -Raw) -match '__BINGOO_PHP_DIR__')) {
+            Write-Utf8NoBom $phpIni ((Get-Content -Path $phpIni -Raw).Replace('__BINGOO_PHP_DIR__', $phpDir))
+            Write-Host "  php.ini paths set to $phpDir"
+        }
     }
 }
 $phpVersion = (& $php -r 'echo PHP_VERSION;')

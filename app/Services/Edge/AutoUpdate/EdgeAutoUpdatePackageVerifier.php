@@ -73,6 +73,9 @@ class EdgeAutoUpdatePackageVerifier
             ]);
             throw new RuntimeException('AUTO_UPDATE_PACKAGE_TAMPERED: ' . (implode('; ', $detail) ?: 'package verification failed') . '.');
         }
+        // 3b. stream E contract: SHA256SUMS + its Ed25519 signature (SHA256SUMS.sig) over the whole package with the SAME update key —
+        //     covers the files outside app/ (scripts\, php\, gateway\) BEFORE anything from the package runs.
+        $this->verifyChecksums($root);
         // 4.
         $updateFile = $this->updateFileFor($root, $version);
         $package = json_decode((string) file_get_contents($updateFile), true);
@@ -104,6 +107,29 @@ class EdgeAutoUpdatePackageVerifier
         }
 
         return ['package' => $package, 'manifest' => array_diff_key($manifest, ['files' => true]), 'update_file' => $updateFile, 'version' => $version, 'signing_key_id' => $keyId];
+    }
+
+    /**
+     * Stream E: App\Services\Edge\Packaging\PackageChecksums::verify($dir, $publicKey) (SHA256SUMS + SHA256SUMS.sig). Resolved at
+     * integration when the class is not on this branch yet: absent class = notice only (the manifest + Ed25519 update chain above
+     * and below still applies); present = fail closed on a throw, false, or {ok:false}.
+     */
+    protected function verifyChecksums(string $root): void
+    {
+        $class = 'App\\Services\\Edge\\Packaging\\PackageChecksums';
+        if (! class_exists($class)) {
+            \Illuminate\Support\Facades\Log::notice('[edge-auto-update] PackageChecksums not available in this build - SHA256SUMS signature not checked');
+
+            return;
+        }
+        try {
+            $r = $class::verify($root, (string) config('edge.update.public_key'));
+        } catch (\Throwable $e) {
+            throw new RuntimeException('AUTO_UPDATE_CHECKSUMS_INVALID: ' . mb_substr($e->getMessage(), 0, 300), 0, $e);
+        }
+        if ($r === false || (is_array($r) && ! ($r['ok'] ?? false))) {
+            throw new RuntimeException('AUTO_UPDATE_CHECKSUMS_INVALID: SHA256SUMS / SHA256SUMS.sig do not verify' . (is_array($r) && isset($r['error']) ? ' (' . $r['error'] . ')' : '') . '.');
+        }
     }
 
     /** Every file + package hash + boundary audit. Seam: the gating tests use mini packages without a full Edge runtime. */
