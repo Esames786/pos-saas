@@ -43,6 +43,12 @@ class EdgeAutoUpdateStager
         }
         $zip = $downloads . DIRECTORY_SEPARATOR . $safe . '.zip';
         $this->client->download($url, $zip, (int) config('edge.auto_update.max_download_bytes', 2147483647), isset($release['size_bytes']) ? (int) $release['size_bytes'] : null);
+        // K6 (stream C): the zip's own sha256 is advertised — wrong bytes are never even extracted.
+        $zipSha = strtolower(trim((string) ($release['zip_sha256'] ?? '')));
+        if ($zipSha !== '' && ! hash_equals($zipSha, (string) hash_file('sha256', $zip))) {
+            @unlink($zip);
+            throw new RuntimeException('AUTO_UPDATE_ZIP_MISMATCH: the downloaded zip does not hash to the advertised zip_sha256.');
+        }
         try {
             $this->extract($zip, $stagingDir);
         } finally {

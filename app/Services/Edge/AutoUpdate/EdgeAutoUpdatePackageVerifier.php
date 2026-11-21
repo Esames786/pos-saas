@@ -77,7 +77,7 @@ class EdgeAutoUpdatePackageVerifier
         //     covers the files outside app/ (scripts\, php\, gateway\) BEFORE anything from the package runs.
         $this->verifyChecksums($root);
         // 4.
-        $updateFile = $this->updateFileFor($root, $version);
+        $updateFile = $this->updateFileFor($root, $version, isset($release['update_package_file']) ? (string) $release['update_package_file'] : null);
         $package = json_decode((string) file_get_contents($updateFile), true);
         if (! is_array($package) || ! isset($package['payload'], $package['signature'])) {
             throw new RuntimeException('AUTO_UPDATE_NO_SIGNED_UPDATE: the signed update file is not a {payload, signature} document.');
@@ -138,9 +138,21 @@ class EdgeAutoUpdatePackageVerifier
         return app(EdgePackageBuilder::class)->verify($root);
     }
 
-    private function updateFileFor(string $root, string $version): string
+    private function updateFileFor(string $root, string $version, ?string $advertised = null): string
     {
         $dir = $root . DIRECTORY_SEPARATOR . 'update';
+        if ($advertised !== null && $advertised !== '') {
+            $rel = str_replace('\\', '/', $advertised);
+            if (! preg_match('#^update/edge-update-[A-Za-z0-9._+-]+\.json$#', $rel)) {
+                throw new RuntimeException('AUTO_UPDATE_NO_SIGNED_UPDATE: the advertised update_package_file [' . mb_substr($advertised, 0, 120) . '] is not an update/edge-update-*.json path.');
+            }
+            $full = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $rel);
+            if (! is_file($full)) {
+                throw new RuntimeException('AUTO_UPDATE_NO_SIGNED_UPDATE: the package carries no ' . $rel . '.');
+            }
+
+            return $full;
+        }
         $safe = preg_replace('/[^A-Za-z0-9._+-]/', '_', $version);
         $exact = $dir . DIRECTORY_SEPARATOR . 'edge-update-' . $safe . '.json';
         if (is_file($exact)) {

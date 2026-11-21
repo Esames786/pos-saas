@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Schema;
  * The automatic trigger calls the SAME EdgeAuthorityService::takeOver(true, 'auto-takeover', false, null) — no stale override —
  * under the SAME appliance-wide lock as the "Switch to Offline" button. It decides "take over" only when EVERY guard holds:
  *
- *   1. effective enabled = the Cloud branch setting (replicated `branches.edge_auto_takeover_enabled`) AND the appliance kill
+ *   1. effective enabled = the Cloud branch setting (replicated restrictions[0].auto_takeover, see settings()) AND the appliance kill
  *      switch edge.authority.auto_takeover_allowed (env EDGE_AUTO_TAKEOVER_ALLOWED, default false);
  *   2. authority is STANDBY (an already-local appliance has nothing to do; handing back is never interrupted);
  *   3. SUSTAINED loss: ≥ 3 consecutive failed heartbeats AND no acknowledged heartbeat for ≥ after_seconds (Cloud setting,
@@ -55,18 +55,28 @@ class AutoTakeoverEvaluator
     ) {
     }
 
-    /** The effective setting: Cloud branch setting AND appliance kill switch. @return array{cloud_enabled:bool,allowed:bool,enabled:bool,after_seconds:int} */
+    /**
+     * The effective setting: the REPLICATED Cloud branch setting AND the appliance kill switch. The Cloud setting arrives in the
+     * informational `restrictions` section of the bootstrap / config refresh (restrictions[0].auto_takeover, stream C) and is
+     * kept on edge_local_meta.auto_takeover_setting by recordCloudSetting(). Absent / unreadable = OFF (fail closed).
+     *
+     * @return array{cloud_enabled:bool,allowed:bool,enabled:bool,after_seconds:int,set_by:?int,set_at:?string}
+     */
     public function settings(): array
     {
         $cloud = false;
         $after = self::DEFAULT_AFTER;
+        $setBy = null;
+        $setAt = null;
         try {
-            $branchId = $this->context->boundBranchId();
-            if ($branchId !== null && Schema::connection('tenant')->hasColumn('branches', 'edge_auto_takeover_enabled')) {
-                $row = DB::connection('tenant')->table('branches')->where('id', $branchId)->first();
-                $cloud = (bool) ($row->edge_auto_takeover_enabled ?? false);
-                if (isset($row->edge_auto_takeover_after_seconds) && $row->edge_auto_takeover_after_seconds !== null) {
-                    $after = (int) $row->edge_auto_takeover_after_seconds;
+            if (Schema::connection('tenant')->hasColumn('edge_local_meta', 'auto_takeover_setting')) {
+                $raw = DB::connection('tenant')->table('edge_local_meta')->where('singleton_guard', 1)->value('auto_takeover_setting');
+                $s = is_string($raw) ? json_decode($raw, true) : null;
+                if (is_array($s)) {
+                    $cloud = ($s['enabled'] ?? false) === true;
+                    $after = isset($s['after_seconds']) && is_numeric($s['after_seconds']) ? (int) $s['after_seconds'] : self::DEFAULT_AFTER;
+                    $setBy = isset($s['set_by']) && is_numeric($s['set_by']) ? (int) $s['set_by'] : null;
+                    $setAt = isset($s['set_at']) && is_string($s['set_at']) ? $s['set_at'] : null;
                 }
             }
         } catch (\Throwable) {
@@ -79,7 +89,44 @@ class AutoTakeoverEvaluator
             'allowed' => $allowed,
             'enabled' => $cloud && $allowed,
             'after_seconds' => max(self::MIN_AFTER, min(self::MAX_AFTER, $after)),
+            'set_by' => $setBy,
+            'set_at' => $setAt,
         ];
+    }
+
+    /**
+     * Hook for the bootstrap importer and the config-refresh applier (the lead wires one line in each, after a successful
+     * apply): persist restrictions[0].auto_takeover from the package. A package without the key (an older Cloud) turns the
+     * setting OFF. Accepts the whole `restrictions` section or the setting itself. Never throws; returns what was stored.
+     */
+    public function recordCloudSetting(mixed $restrictions): ?array
+    {
+        $setting = null;
+        if (is_array($restrictions)) {
+            $candidate = array_is_list($restrictions) ? (($restrictions[0] ?? [])['auto_takeover'] ?? null) : ($restrictions['auto_takeover'] ?? (array_key_exists('enabled', $restrictions) ? $restrictions : null));
+            if (is_array($candidate) && array_key_exists('enabled', $candidate)) {
+                $setting = [
+                    'enabled' => $candidate['enabled'] === true,
+                    'after_seconds' => max(self::MIN_AFTER, min(self::MAX_AFTER, is_numeric($candidate['after_seconds'] ?? null) ? (int) $candidate['after_seconds'] : self::DEFAULT_AFTER)),
+                    'set_by' => is_numeric($candidate['set_by'] ?? null) ? (int) $candidate['set_by'] : null,
+                    'set_at' => is_string($candidate['set_at'] ?? null) ? mb_substr($candidate['set_at'], 0, 40) : null,
+                ];
+            }
+        }
+        try {
+            if (Schema::connection('tenant')->hasColumn('edge_local_meta', 'auto_takeover_setting')) {
+                $before = DB::connection('tenant')->table('edge_local_meta')->where('singleton_guard', 1)->value('auto_takeover_setting');
+                $json = $setting === null ? null : json_encode($setting, JSON_UNESCAPED_SLASHES);
+                DB::connection('tenant')->table('edge_local_meta')->where('singleton_guard', 1)->update(['auto_takeover_setting' => $json]);
+                if ($before !== $json) {
+                    Log::info('[edge-auto-takeover] Cloud branch setting replicated', ['setting' => $setting]);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[edge-auto-takeover] could not store the replicated setting', ['error' => mb_substr($e->getMessage(), 0, 200)]);
+        }
+
+        return $setting;
     }
 
     /**

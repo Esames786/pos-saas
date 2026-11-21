@@ -64,7 +64,9 @@ class EdgeAutoUpdateService
         // 1. CHECK — at most once per interval, unless forced or an Update now is waiting.
         $release = $state['available'] ?? null;
         $lastCheck = isset($state['last_check_at']) ? CarbonImmutable::parse((string) $state['last_check_at']) : null;
-        $due = ($opts['force_check'] ?? false) || $updateNow !== null || $release === null || $lastCheck === null
+        // A cached advertisement whose package is not staged yet is re-checked: its signed download URL lives 15 minutes only.
+        $staged = is_array($release) && is_array($state['staged'] ?? null) && ($state['staged']['manifest_sha256'] ?? null) === ($release['manifest_sha256'] ?? '');
+        $due = ($opts['force_check'] ?? false) || $updateNow !== null || $release === null || $lastCheck === null || ! $staged
             || $lastCheck->addMinutes((int) config('edge.auto_update.check_interval_minutes', 15) - 1)->lessThanOrEqualTo($now);
         if ($due) {
             if (! $this->cloud->deviceConfigured()) {
@@ -78,7 +80,11 @@ class EdgeAutoUpdateService
                 return $this->remember(['result' => 'check_failed', 'code' => self::code($e), 'message' => mb_substr($e->getMessage(), 0, 300)]);
             }
             $release = ! empty($doc['available']) ? self::normaliseRelease($doc) : null;
-            $this->store->merge(['last_check_at' => $now->toIso8601String(), 'last_check' => ['ok' => true], 'available' => $release]);
+            $this->store->merge(['last_check_at' => $now->toIso8601String(), 'last_check' => ['ok' => true, 'reason' => $doc['reason'] ?? null, 'latest_version' => $doc['latest_version'] ?? null, 'cloud_current_version' => $doc['current_version'] ?? null], 'available' => $release]);
+            if ($release === null && ($doc['reason'] ?? null) === 'requires_min_version') {
+                // K6: the newest release cannot be reached from this version automatically — the setup wizard (update mode) is needed.
+                return $this->remember(['result' => 'requires_wizard', 'version' => (string) ($doc['latest_version'] ?? ''), 'message' => 'Edge ' . ($doc['latest_version'] ?? '?') . ' needs at least ' . ($doc['min_from_version'] ?? '?') . ' - run the setup wizard (update mode)']);
+            }
             if ($release !== null && ! empty($doc['update_now']) && $updateNow === null) {
                 // The owner pressed "Update now" on the Cloud device row: same request as the status page button.
                 $updateNow = $this->store->requestUpdateNow('cloud', 'cloud');
@@ -107,6 +113,12 @@ class EdgeAutoUpdateService
             $verified = $this->verifier->verify($root, $release, $current, (string) config('edge.config_schema'));
         } catch (\Throwable $e) {
             $code = self::code($e);
+            if ($code !== null && (str_starts_with($code, 'AUTO_UPDATE_DOWNLOAD') || $code === 'AUTO_UPDATE_NO_ENDPOINT')) {
+                // Transient (network, expired 15-minute URL): never blacklist the bytes - check again next run with a fresh URL.
+                $this->store->merge(['available' => null, 'staged' => null]);
+
+                return $this->remember(['result' => 'download_failed', 'version' => $version, 'code' => $code, 'message' => mb_substr($e->getMessage(), 0, 300)]);
+            }
             $this->store->merge(['refused' => ['manifest_sha256' => $release['manifest_sha256'], 'version' => $version, 'code' => $code, 'message' => mb_substr($e->getMessage(), 0, 300), 'at' => $now->toIso8601String()], 'staged' => null]);
             // Never keep refused bytes around: drop the whole staging dir of this advertisement.
             $this->stager->removeTree($work . DIRECTORY_SEPARATOR . 'staging' . DIRECTORY_SEPARATOR . EdgeRuntimePointer::safe($version) . '-' . substr((string) $release['manifest_sha256'], 0, 8));
@@ -132,7 +144,8 @@ class EdgeAutoUpdateService
 
         // 4. APPLY.
         $by = (string) ($opts['performed_by'] ?? ('auto-update:' . $gate['mode'] . ($updateNow !== null ? ' (requested by ' . ($updateNow['requested_by'] ?? '?') . ')' : '')));
-        $this->cloud->reportStatus('updating', $version, true, 'applying ' . $current . ' → ' . $version . ' (' . $gate['mode'] . ')');
+        // K4 reported_version is what the Cloud offers releases against (stream C): it stays the RUNNING version until 'updated'.
+        $this->cloud->reportStatus('updating', $current, true, 'applying ' . $current . ' → ' . $version . ' (' . $gate['mode'] . ')');
         $result = $this->applier->apply($root, $verified['package'], $release, $by);
         $phase = match ($result['result']) {
             EdgeAutoUpdateApplier::UPDATED => 'updated',
@@ -192,6 +205,12 @@ class EdgeAutoUpdateService
             'maintenance_window' => is_array($doc['maintenance_window'] ?? null) ? $doc['maintenance_window'] : null,
             'plan_hashes' => is_array($doc['plan_hashes'] ?? null) ? $doc['plan_hashes'] : null,
             'expected_plan_hash' => isset($doc['expected_plan_hash']) ? (string) $doc['expected_plan_hash'] : null,
+            // stream C K6 additions
+            'release_id' => isset($doc['release_id']) ? (string) $doc['release_id'] : null,
+            'zip_sha256' => isset($doc['zip_sha256']) ? strtolower((string) $doc['zip_sha256']) : null,
+            'update_package_file' => isset($doc['update_package_file']) ? (string) $doc['update_package_file'] : null,
+            'download_expires_at' => isset($doc['download_expires_at']) ? (string) $doc['download_expires_at'] : null,
+            'channel' => isset($doc['channel']) ? (string) $doc['channel'] : null,
         ];
     }
 

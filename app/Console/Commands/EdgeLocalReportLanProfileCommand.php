@@ -100,6 +100,11 @@ class EdgeLocalReportLanProfileCommand extends Command
                 if (stripos($bc, 'CA:TRUE') === false) {
                     throw new \RuntimeException('the certificate is not a CA (basicConstraints CA:TRUE missing) — report the BRANCH CA, not the server certificate');
                 }
+                $from = (int) ($parsed['validFrom_time_t'] ?? 0);
+                $to = (int) ($parsed['validTo_time_t'] ?? 0);
+                if ($from > time() || $to < time()) {
+                    throw new \RuntimeException('the CA certificate is not currently valid (' . date('c', $from) . ' .. ' . date('c', $to) . ')');
+                }
             }
             $profile['ca_certificate_pem'] = $pem;
             $profile['ca_sha256'] = hash('sha256', $der);

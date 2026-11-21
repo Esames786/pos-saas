@@ -32,8 +32,8 @@ use Tests\MySql\Support\TenantFixtures;
  * path refuses too); enabled + expired lease + gates pass → the EXISTING takeOver runs (Cloud already fenced BEFORE that moment;
  * holder EDGE after the next beat); flapping resets the timer; unknown / large clock skew refuses; a held lock / repeated
  * evaluation → exactly one takeover; reconnect keeps EDGE (no automatic handback); a recent handback and the 60 s retry
- * window refuse. The setting itself is replicated from the Cloud (branches.edge_auto_takeover_*); the appliance has no UI to
- * enable it.
+ * window refuse. The setting itself is replicated from the Cloud (restrictions[0].auto_takeover in the bootstrap / refresh);
+ * the appliance has no UI to enable it.
  */
 class EdgeAutoTakeoverMySqlTest extends MySqlTenantTestCase
 {
@@ -48,7 +48,6 @@ class EdgeAutoTakeoverMySqlTest extends MySqlTenantTestCase
     private bool $online = true;
     private int $cloudSkew = 0;
     private ?string $lastServerTime = null;
-    private bool $addedColumns = false;
 
     protected function setUp(): void
     {
@@ -58,11 +57,6 @@ class EdgeAutoTakeoverMySqlTest extends MySqlTenantTestCase
         \Illuminate\Support\Facades\Artisan::call('migrate', ['--database' => 'tenant', '--path' => 'database/migrations/edge', '--force' => true]);
         $this->cleanTenant(['edge_branch_authority_leases', 'edge_local_connection_transitions', 'edge_operational_stock_movements', 'edge_operational_stock_balances',
             'edge_operational_stock_baselines', 'edge_local_user_credentials', 'edge_local_meta', 'products', 'categories', 'terminals', 'branches', 'users']);
-        // The Cloud branch setting (stream C adds these columns via a tenant migration; replicated to the appliance's branches).
-        if (! Schema::connection('tenant')->hasColumn('branches', 'edge_auto_takeover_enabled')) {
-            DB::connection('tenant')->statement('ALTER TABLE branches ADD COLUMN edge_auto_takeover_enabled TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN edge_auto_takeover_after_seconds INT NULL');
-            $this->addedColumns = true;
-        }
         config(['app.role' => 'branch_server']);
         Carbon::setTestNow(Carbon::now()->startOfSecond());
 
@@ -121,9 +115,7 @@ class EdgeAutoTakeoverMySqlTest extends MySqlTenantTestCase
     {
         Carbon::setTestNow();
         try {
-            if ($this->addedColumns) {
-                DB::connection('tenant')->statement('ALTER TABLE branches DROP COLUMN edge_auto_takeover_enabled, DROP COLUMN edge_auto_takeover_after_seconds');
-            }
+
             $m = DB::connection('master');
             $m->table('edge_devices')->where('public_uuid', self::DEVICE)->delete();
             $m->table('tenants')->where('tenant_code', 'edgeautotk')->delete();
@@ -135,9 +127,13 @@ class EdgeAutoTakeoverMySqlTest extends MySqlTenantTestCase
 
     // ── helpers ───────────────────────────────────────────────────────────────────────────────
 
+    /** What the bootstrap / config refresh delivers (stream C: restrictions[0].auto_takeover), through the importer hook. */
     private function setCloudSetting(bool $enabled, ?int $after = null): void
     {
-        DB::connection('tenant')->table('branches')->where('id', $this->branchId)->update(['edge_auto_takeover_enabled' => $enabled ? 1 : 0, 'edge_auto_takeover_after_seconds' => $after]);
+        app(AutoTakeoverEvaluator::class)->recordCloudSetting([[
+            'phase' => 'offline-v1', 'blocked_payment_types' => ['card'],
+            'auto_takeover' => ['enabled' => $enabled, 'after_seconds' => $after ?? 300, 'set_by' => 7, 'set_at' => '2026-11-21T10:00:00+00:00'],
+        ]]);
     }
 
     /** One appliance heartbeat through the REAL engine + the skew hook the lead wires after an accepted ack. */
@@ -211,7 +207,13 @@ class EdgeAutoTakeoverMySqlTest extends MySqlTenantTestCase
         $this->assertContains('CLOUD_SETTING_OFF', $this->codes($d));
         $this->assertSame('standby', $this->state());
 
+        // An older Cloud whose restrictions carry no auto_takeover key = OFF.
         $this->setCloudSetting(true, 180);
+        $this->assertTrue($this->evaluator()->settings()['cloud_enabled']);
+        $this->assertNull($this->evaluator()->recordCloudSetting([['phase' => 'offline-v1']]));
+        $this->assertSame(AutoTakeoverEvaluator::DISABLED, $this->evaluator()->evaluate()['decision']);
+        $this->setCloudSetting(true, 180);
+        $this->assertSame(7, $this->evaluator()->settings()['set_by']);
         config(['edge.authority.auto_takeover_allowed' => false]);
         $d = $this->evaluator()->evaluateAndAct();
         $this->assertSame(AutoTakeoverEvaluator::DISABLED, $d['decision']);

@@ -44,6 +44,7 @@ class EdgeAutoUpdateGatingTest extends TestCase
     public ?RuntimeException $verifyFailure = null;
     public ?array $applierResult = null;
     public array $reports = [];
+    public int $downloadFailures = 0;
 
     protected function setUp(): void
     {
@@ -224,6 +225,58 @@ class EdgeAutoUpdateGatingTest extends TestCase
         $this->assertNotContains('apply', $this->calls, 'a package that failed health is not re-applied until the Cloud advertises other bytes');
     }
 
+    public function test_a_failed_download_is_transient_and_retried_with_a_fresh_advertisement(): void
+    {
+        $this->downloadFailures = 1;
+        $r = $this->service()->tick(['now' => $this->inWindow()]);
+        $this->assertSame('download_failed', $r['result']);
+        $this->assertNotContains('apply', $this->calls);
+        $this->assertSame([], array_column($this->reports, 'phase'), 'a download hiccup is not reported as a failed update');
+        $this->calls = [];
+        $r = $this->service()->tick(['now' => $this->inWindow()]);
+        $this->assertSame('updated', $r['result'], 'never blacklisted: re-checked (fresh 15-minute URL) and applied');
+        $this->assertContains('check', $this->calls);
+    }
+
+    public function test_k6_requires_min_version_asks_for_the_wizard_and_updating_reports_the_running_version(): void
+    {
+        $this->release = ['available' => false, 'reason' => 'requires_min_version', 'latest_version' => '1.0.0-edge', 'min_from_version' => '0.9.5-edge', 'current_version' => '0.9.0-edge'];
+        $r = $this->service()->tick(['now' => $this->inWindow()]);
+        $this->assertSame('requires_wizard', $r['result']);
+        $this->assertStringContainsString('setup wizard', $r['message']);
+
+        $this->release = ['available' => true, 'version' => '0.9.1-edge', 'manifest_sha256' => str_repeat('d', 64), 'package_hash' => str_repeat('e', 64), 'download_url' => 'https://bingoopos.com/dl/y', 'zip_sha256' => str_repeat('f', 64)];
+        $this->service()->tick(['now' => $this->inWindow(), 'force_check' => true]);
+        $this->assertSame([['phase' => 'updating', 'version' => '0.9.0-edge', 'ok' => true], ['phase' => 'updated', 'version' => '0.9.1-edge', 'ok' => true]], $this->reports, 'K4 reported_version = the running version until updated');
+    }
+
+    public function test_the_stager_refuses_a_zip_that_does_not_match_the_advertised_zip_sha256(): void
+    {
+        if (! class_exists(\ZipArchive::class)) {
+            $this->markTestSkipped('ZipArchive not available');
+        }
+        $src = $this->work . '/src.zip';
+        @mkdir($this->work, 0775, true);
+        $zip = new \ZipArchive();
+        $zip->open($src, \ZipArchive::CREATE);
+        $zip->addFromString('package-manifest.json', '{}');
+        $zip->close();
+        $client = new class($src) extends EdgeDeviceCloudClient {
+            public function __construct(private string $src) {}
+            public function download(string $url, string $dest, int $maxBytes, ?int $expectedBytes = null): int { copy($this->src, $dest); return (int) filesize($dest); }
+        };
+        $stager = new EdgeAutoUpdateStager($client);
+        $release = ['version' => '0.9.1-edge', 'manifest_sha256' => str_repeat('a', 64), 'download_url' => 'https://bingoopos.com/x'];
+        try {
+            $stager->stage($release + ['zip_sha256' => str_repeat('0', 64)], $this->work . '/w');
+            $this->fail('a zip with other bytes must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringStartsWith('AUTO_UPDATE_ZIP_MISMATCH', $e->getMessage());
+        }
+        $root = $stager->stage($release + ['zip_sha256' => hash_file('sha256', $src)], $this->work . '/w');
+        $this->assertFileExists($root . '/package-manifest.json');
+    }
+
     // ── the applier: K6 rollback rule ────────────────────────────────────────────────────────
 
     public function test_no_schema_change_healthy_update_needs_no_snapshot(): void
@@ -353,7 +406,17 @@ class EdgeAutoUpdateGatingTest extends TestCase
         };
         $stager = new class($t) extends EdgeAutoUpdateStager {
             public function __construct(private $t) {}
-            public function stage(array $release, string $workDir): string { $this->t->calls[] = 'stage'; $d = $workDir . '/staging/pkg'; @mkdir($d, 0775, true); return $d; }
+            public function stage(array $release, string $workDir): string
+            {
+                $this->t->calls[] = 'stage';
+                if ($this->t->downloadFailures > 0) {
+                    $this->t->downloadFailures--;
+                    throw new RuntimeException('AUTO_UPDATE_DOWNLOAD_FAILED: HTTP 403 (signed URL expired)');
+                }
+                $d = $workDir . '/staging/pkg';
+                @mkdir($d, 0775, true);
+                return $d;
+            }
             public function prune(string $workDir, ?string $keepDir, int $keep): void {}
         };
         $verifier = new class($t) extends EdgeAutoUpdatePackageVerifier {

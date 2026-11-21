@@ -93,6 +93,12 @@ try {
             $log('k2.jsonl', ['installation_uuid' => $state['installation_uuid'], 'device_name' => $state['device_name']]);
 
             return $respond(200, [
+                // stream C K2 shape (edge09/c-cloud c305c5a7)
+                'mode' => 'install',
+                'setup_session_id' => 'fake-session-' . substr(hash('sha256', $token), 0, 8),
+                'setup_token_expires_at' => date('c', time() + 3600),
+                'pairing_code_expires_at' => date('c', time() + 900),
+                'device_id' => null,
                 'setup_token' => $token,
                 'cloud_url' => 'http://127.0.0.1:' . $_SERVER['SERVER_PORT'],
                 'tenant_code' => (string) $t->tenant_code,
@@ -131,7 +137,7 @@ try {
                 }
                 try {
                     $a = app(App\Services\Edge\EdgeEnrollmentIssuer::class)->issue($t, (int) $d->branch_id, $d, $user, (int) $state['issuer_user_id']);
-                    $assertions[] = ['user_id' => $id, 'employee_code' => (string) $user->employee_code, 'name' => (string) $user->name, 'assertion' => $a];
+                    $assertions[] = ['user_id' => $id, 'employee_code' => (string) $user->employee_code, 'name' => (string) $user->name, 'assertion' => $a, 'expires_at' => date('c', (int) $a['payload']['expires_at'])];
                 } catch (Throwable $e) {
                     $skipped[] = ['user_id' => $id, 'reason' => mb_substr($e->getMessage(), 0, 120)];
                 }
@@ -148,14 +154,16 @@ try {
             }
             $log($path === '/api/edge/device/status' ? 'k4.jsonl' : 'k5.jsonl', ['device' => (string) $d->public_uuid] + $body);
 
-            return $respond(200, ['ok' => true]);
+            return $respond(200, $path === '/api/edge/device/status'
+                ? ['status' => 'recorded', 'phase' => (string) ($body['phase'] ?? ''), 'reported_version' => (string) ($body['version'] ?? ''), 'recorded_at' => date('c'), 'update_now' => false]
+                : ['status' => 'recorded']);
 
         case '/api/edge/updates/latest':
             if (! $device()) {
                 return $respond(401, ['code' => 'EDGE_DEVICE_UNAUTHENTICATED']);
             }
 
-            return $respond(200, $state['release'] ?? ['available' => false]);
+            return $respond(200, $state['release'] ?? ['available' => false, 'reason' => 'no_release', 'channel' => 'stable', 'update_now' => false]);
     }
 } catch (Throwable $e) {
     return $respond(500, ['code' => 'FAKE_CLOUD_ERROR', 'message' => mb_substr(get_class($e) . ': ' . $e->getMessage(), 0, 400)]);
