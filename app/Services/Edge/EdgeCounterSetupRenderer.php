@@ -14,6 +14,10 @@ use RuntimeException;
  *   Public-Desktop shortcuts with the Bingoo icon, a TLS check by name and by IP with FULL certificate validation,
  *   bilingual (English + Roman Urdu) messages, self-unblock, self-elevation that explains non-admin users, window stays
  *   open, exit code 0/1.
+ * - renderWindowsWizard(): the cashier SELF-SERVICE "Install Offline Counter" wizard (WPF window in PowerShell 5.1,
+ *   docs/plans/edge-0.9-auto-takeover-and-counter-self-service-2026-11-21.md §4): Install / Repair / Remove, explicit
+ *   confirmation before the root CA is trusted, Cloud-signed LAN profile verified in PowerShell (pure Ed25519), HTTPS checks,
+ *   optional "set my Edge PIN" through the Branch Server's /edge/local/enroll, counter hint, no internet use at runtime.
  * - phoneOnboarding(): the data for the Android / iPhone page (login URL by IP, branch-CA download route, per-OS steps),
  *   rendered by resources/views/tenant/offline-edge/partials/phone-onboarding.blade.php.
  *
@@ -28,6 +32,8 @@ use RuntimeException;
 class EdgeCounterSetupRenderer
 {
     public const TEMPLATE = 'resources/edge/counter-setup/Setup-Counter.ps1.stub';
+
+    public const WIZARD_TEMPLATE = 'resources/edge/counter-setup/Setup-CounterWizard.ps1.stub';
 
     public const LOGO = 'public/assets/img/logo-small.png';
 
@@ -65,39 +71,106 @@ class EdgeCounterSetupRenderer
     public function renderWindows(array $lanProfile, string $onlinePosUrl, string $branchLabel): string
     {
         $p = $this->normalizeLanProfile($lanProfile);
-        $online = $this->validateOnlinePosUrl($onlinePosUrl);
+        $tokens = $this->baseTokens($p, $this->validateOnlinePosUrl($onlinePosUrl), $this->sanitizeLabel($branchLabel), $this->windowsFileName($branchLabel));
+
+        return $this->fill(self::TEMPLATE, $tokens + [
+            '{{BINGOO_CHECK_BY_NAME}}' => $this->edgeUrl($p['lan_hostname'], $p['lan_https_port'], self::HEALTH_PATH),
+            '{{BINGOO_CHECK_BY_IP}}' => $this->edgeUrl($p['lan_ip'], $p['lan_https_port'], self::HEALTH_PATH),
+        ]);
+    }
+
+    /**
+     * The cashier SELF-SERVICE counter wizard (WPF window, PowerShell 5.1): Install / Repair / Remove, explicit confirmation
+     * before the root CA is trusted, hosts line for the Branch Server name only, shortcuts, HTTPS checks by name and IP with
+     * full validation + the Edge login page, optional "set my Edge PIN" (when the download carries the user's OWN assertion),
+     * the counter (terminal) hint, "Offline Counter Ready" or an actionable error. It never contacts the internet.
+     *
+     * $context (all optional):
+     *   tenant_label    string  business name shown on the first page
+     *   signed_profile  array   {profile: {...K5...}, signature: base64 Ed25519 over the canonical JSON of profile,
+     *                           public_key: base64} from the Cloud enrollment key — verified here (sodium) AND in the wizard
+     *   enrollment      array   {assertion: {payload, signature}, user_label?: string} — the downloading user's OWN assertion
+     *   terminal        array   {id: int, label?: string} — the user's default counter
+     *
+     * @param  array<string, mixed>  $lanProfile
+     * @param  array<string, mixed>  $context
+     */
+    public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context = []): string
+    {
+        $p = $this->normalizeLanProfile($lanProfile);
         $label = $this->sanitizeLabel($branchLabel);
+        $tenant = $this->sanitizeLabel((string) ($context['tenant_label'] ?? ''), '');
+        $signed = ! empty($context['signed_profile']) ? $this->verifySignedProfile($context['signed_profile'], $p) : null;
+        $enroll = ! empty($context['enrollment']) ? $this->validateEnrollment($context['enrollment'], $p, $signed) : null;
+        $terminal = ! empty($context['terminal']) ? $this->validateTerminal($context['terminal']) : null;
 
-        $template = @file_get_contents($this->basePath . DIRECTORY_SEPARATOR . self::TEMPLATE);
-        if (! is_string($template) || $template === '') {
-            throw new RuntimeException('Counter setup template is missing: ' . self::TEMPLATE);
-        }
+        $tokens = $this->baseTokens($p, $this->validateOnlinePosUrl($onlinePosUrl), $label, $this->wizardFileName($branchLabel));
 
-        $hostsLine = $p['lan_ip'] . '  ' . $p['lan_hostname'] . '  # Bingoo Edge branch server';
+        return $this->fill(self::WIZARD_TEMPLATE, $tokens + [
+            '{{BINGOO_TENANT_LABEL_TEXT}}' => $tenant !== '' ? $tenant : '-',
+            '{{BINGOO_TENANT_LABEL}}' => self::psLiteral($tenant),
+            '{{BINGOO_EDGE_BASE_BY_NAME}}' => $this->edgeUrl($p['lan_hostname'], $p['lan_https_port'], ''),
+            '{{BINGOO_EDGE_BASE_BY_IP}}' => $this->edgeUrl($p['lan_ip'], $p['lan_https_port'], ''),
+            '{{BINGOO_CA_SHA256_DISPLAY}}' => self::colonHex($p['ca_sha256']),
+            '{{BINGOO_CA_VALID_UNTIL}}' => gmdate('Y-m-d', $p['ca_valid_to']),
+            '{{BINGOO_SIGNED_PROFILE_B64}}' => $signed['canonical_b64'] ?? '',
+            '{{BINGOO_SIGNED_PROFILE_SIG}}' => $signed['signature'] ?? '',
+            '{{BINGOO_SIGNED_PROFILE_KEY}}' => $signed['public_key'] ?? '',
+            '{{BINGOO_SIGNED_PROFILE_KEY_SHA256}}' => $signed['key_sha256'] ?? '',
+            '{{BINGOO_SIGNED_PROFILE_KEY_ID}}' => $signed !== null ? substr($signed['key_sha256'], 0, 16) : '',
+            '{{BINGOO_ENROLL_ASSERTION_B64}}' => $enroll['assertion_b64'] ?? '',
+            '{{BINGOO_ENROLL_USER_LABEL}}' => self::psLiteral($enroll['user_label'] ?? ''),
+            '{{BINGOO_ENROLL_EXPIRES_AT}}' => (string) ($enroll['expires_at'] ?? 0),
+            '{{BINGOO_TERMINAL_ID}}' => (string) ($terminal['id'] ?? 0),
+            '{{BINGOO_TERMINAL_LABEL}}' => self::psLiteral($terminal['label'] ?? ''),
+        ]);
+    }
+
+    /** Download file name of the wizard, e.g. "Install-Offline-Counter-Khatri-Biryani.ps1". */
+    public function wizardFileName(string $branchLabel): string
+    {
+        return 'Install-Offline-Counter-' . $this->fileSlug($branchLabel) . '.ps1';
+    }
+
+    /**
+     * Tokens both templates share.
+     *
+     * @param  array<string, mixed>  $p
+     * @return array<string, string>
+     */
+    private function baseTokens(array $p, string $online, string $label, string $fileName): array
+    {
         $octets = explode('.', $p['lan_ip']);
 
-        $script = strtr($template, [
+        return [
             '{{BINGOO_BRANCH_LABEL_TEXT}}' => $label,
             '{{BINGOO_BRANCH_LABEL}}' => self::psLiteral($label),
-            '{{BINGOO_FILE_NAME}}' => $this->windowsFileName($branchLabel),
+            '{{BINGOO_FILE_NAME}}' => $fileName,
             '{{BINGOO_GENERATED_AT}}' => gmdate('Y-m-d H:i') . ' UTC',
             '{{BINGOO_EDGE_IP}}' => $p['lan_ip'],
             '{{BINGOO_EDGE_HOST}}' => $p['lan_hostname'],
             '{{BINGOO_EDGE_PORT}}' => (string) $p['lan_https_port'],
-            '{{BINGOO_HOSTS_LINE}}' => $hostsLine,
+            '{{BINGOO_HOSTS_LINE}}' => $p['lan_ip'] . '  ' . $p['lan_hostname'] . '  # Bingoo Edge branch server',
             '{{BINGOO_LAN_HINT}}' => $octets[0] . '.' . $octets[1] . '.' . $octets[2] . '.x',
             '{{BINGOO_URL_ONLINE}}' => self::psLiteral($online),
             '{{BINGOO_URL_OFFLINE}}' => $this->edgeUrl($p['lan_hostname'], $p['lan_https_port'], self::LOGIN_PATH),
             '{{BINGOO_URL_STATUS}}' => $this->edgeUrl($p['lan_hostname'], $p['lan_https_port'], self::STATUS_PATH),
-            '{{BINGOO_CHECK_BY_NAME}}' => $this->edgeUrl($p['lan_hostname'], $p['lan_https_port'], self::HEALTH_PATH),
-            '{{BINGOO_CHECK_BY_IP}}' => $this->edgeUrl($p['lan_ip'], $p['lan_https_port'], self::HEALTH_PATH),
             '{{BINGOO_CA_NAME}}' => self::psLiteral($p['ca_name']),
             '{{BINGOO_CA_SHA1}}' => $p['ca_sha1'],
             '{{BINGOO_CA_SHA256}}' => $p['ca_sha256'],
             '{{BINGOO_CA_PEM}}' => $p['ca_pem'],
             '{{BINGOO_ICON_B64}}' => base64_encode($this->iconBytes()),
-        ]);
+        ];
+    }
 
+    /** @param array<string, string> $tokens */
+    private function fill(string $templatePath, array $tokens): string
+    {
+        $template = @file_get_contents($this->basePath . DIRECTORY_SEPARATOR . $templatePath);
+        if (! is_string($template) || $template === '') {
+            throw new RuntimeException('Counter setup template is missing: ' . $templatePath);
+        }
+        $script = strtr($template, $tokens);
         if (str_contains($script, '{{BINGOO_')) {
             throw new RuntimeException('Counter setup template has an unknown placeholder.');
         }
@@ -106,6 +179,95 @@ class EdgeCounterSetupRenderer
         }
 
         return str_replace("\n", "\r\n", str_replace(["\r\n", "\r"], "\n", $script));
+    }
+
+    /**
+     * The Cloud-signed LAN profile: the signature must verify over the canonical JSON (same canonicalisation as the
+     * enrollment assertions) and the signed values must be exactly the profile being rendered.
+     *
+     * @param  array<string, mixed>  $p
+     * @return array{canonical_b64: string, signature: string, public_key: string, key_sha256: string}
+     */
+    private function verifySignedProfile(mixed $block, array $p): array
+    {
+        $profile = is_array($block) ? ($block['profile'] ?? null) : null;
+        $sig = is_array($block) && is_string($block['signature'] ?? null) ? base64_decode($block['signature'], true) : false;
+        $key = is_array($block) && is_string($block['public_key'] ?? null) ? base64_decode($block['public_key'], true) : false;
+        if (! is_array($profile) || $sig === false || strlen($sig) !== 64 || $key === false || strlen($key) !== 32) {
+            throw new InvalidArgumentException('signed_profile must be {profile, signature (Ed25519, base64), public_key (base64)}.');
+        }
+        if (! function_exists('sodium_crypto_sign_verify_detached')) {
+            throw new RuntimeException('ext-sodium is required to verify the signed LAN profile.');
+        }
+        $canonical = EdgeCanonicalJson::encode($profile);
+        if (! sodium_crypto_sign_verify_detached($sig, $canonical, $key)) {
+            throw new InvalidArgumentException('signed_profile: the Cloud signature does not verify.');
+        }
+        $sha = strtoupper((string) preg_replace('/[\s:]/', '', (string) ($profile['lan_ca_sha256'] ?? $profile['ca_sha256'] ?? '')));
+        $port = $profile['lan_https_port'] ?? $profile['https_port'] ?? null;
+        if (strtolower((string) ($profile['lan_hostname'] ?? '')) !== $p['lan_hostname']
+            || (string) ($profile['lan_ip'] ?? '') !== $p['lan_ip']
+            || ! is_numeric($port) || (int) $port !== $p['lan_https_port']
+            || $sha !== $p['ca_sha256']) {
+            throw new InvalidArgumentException('signed_profile does not match the LAN profile being rendered (hostname, IP, port, CA SHA-256).');
+        }
+        if ($p['branch_id'] !== null && isset($profile['branch_id']) && (string) $profile['branch_id'] !== (string) $p['branch_id']) {
+            throw new InvalidArgumentException('signed_profile is for another branch.');
+        }
+
+        return [
+            'canonical_b64' => base64_encode($canonical),
+            'signature' => base64_encode($sig),
+            'public_key' => base64_encode($key),
+            'key_sha256' => strtoupper(hash('sha256', $key)),
+        ];
+    }
+
+    /**
+     * The downloading user's OWN enrollment assertion, passed through byte-for-byte to the Branch Server's
+     * /edge/local/enroll; when the profile is signed, the assertion must be signed by the same Cloud key.
+     *
+     * @param  array<string, mixed>  $p
+     * @param  array<string, string>|null  $signed
+     * @return array{assertion_b64: string, user_label: string, expires_at: int}
+     */
+    private function validateEnrollment(mixed $enrollment, array $p, ?array $signed): array
+    {
+        $assertion = is_array($enrollment) ? ($enrollment['assertion'] ?? null) : null;
+        $payload = is_array($assertion) ? ($assertion['payload'] ?? null) : null;
+        $sig = is_array($assertion) && is_string($assertion['signature'] ?? null) ? base64_decode($assertion['signature'], true) : false;
+        if (! is_array($payload) || $sig === false || strlen($sig) !== 64
+            || ($payload['purpose'] ?? null) !== EdgeEnrollmentCrypto::PURPOSE
+            || ! is_int($payload['user_id'] ?? null) || ! is_int($payload['expires_at'] ?? null)) {
+            throw new InvalidArgumentException('enrollment must carry the user\'s own assertion {payload (edge-user-enrollment), signature}.');
+        }
+        if ($p['branch_id'] !== null && isset($payload['branch_id']) && (string) $payload['branch_id'] !== (string) $p['branch_id']) {
+            throw new InvalidArgumentException('enrollment assertion is for another branch.');
+        }
+        if ($signed !== null && ! sodium_crypto_sign_verify_detached($sig, EdgeCanonicalJson::encode($payload), base64_decode($signed['public_key']))) {
+            throw new InvalidArgumentException('enrollment assertion is not signed by the same Cloud key as the LAN profile.');
+        }
+        $userLabel = $this->sanitizeLabel((string) ($enrollment['user_label'] ?? ''), 'user #' . $payload['user_id']);
+
+        return [
+            'assertion_b64' => base64_encode(json_encode($assertion, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)),
+            'user_label' => $userLabel,
+            'expires_at' => $payload['expires_at'],
+        ];
+    }
+
+    /** @return array{id: int, label: string} */
+    private function validateTerminal(mixed $terminal): array
+    {
+        $id = is_array($terminal) ? ($terminal['id'] ?? null) : null;
+        if (is_string($id) && preg_match('/^\d{1,9}$/', $id)) {
+            $id = (int) $id;
+        }
+        if (! is_int($id) || $id < 1) {
+            throw new InvalidArgumentException('terminal must be {id: positive integer, label?: string}.');
+        }
+
+        return ['id' => $id, 'label' => $this->sanitizeLabel((string) ($terminal['label'] ?? ''), 'Terminal ' . $id)];
     }
 
     /**
@@ -209,11 +371,16 @@ class EdgeCounterSetupRenderer
     /** Download file name, e.g. "Setup-Khatri-Biryani-Counter.ps1". */
     public function windowsFileName(string $branchLabel): string
     {
+        return 'Setup-' . $this->fileSlug($branchLabel) . '-Counter.ps1';
+    }
+
+    private function fileSlug(string $branchLabel): string
+    {
         $slug = Str::slug(Str::ascii($branchLabel));
         $slug = implode('-', array_map('ucfirst', array_filter(explode('-', $slug), fn ($w) => $w !== '')));
         $slug = rtrim(substr($slug, 0, 40), '-');
 
-        return 'Setup-' . ($slug !== '' ? $slug : 'Branch') . '-Counter.ps1';
+        return $slug !== '' ? $slug : 'Branch';
     }
 
     /**
