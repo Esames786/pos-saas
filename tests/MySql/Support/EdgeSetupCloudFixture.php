@@ -150,6 +150,42 @@ trait EdgeSetupCloudFixture
         return $this->actingAs(User::on('tenant')->find($this->users['owner']), 'tenant');
     }
 
+    /**
+     * A throwaway self-signed certificate: a branch CA (basicConstraints CA:TRUE) or a leaf (CA:FALSE).
+     *
+     * @return array{pem:string, sha256:string, key_pem:string}
+     */
+    protected function makeCertificate(bool $ca = true, string $cn = 'Bingoo Test Branch CA'): array
+    {
+        $dir = storage_path('framework/testing');
+        @mkdir($dir, 0755, true);
+        $cnf = $dir . '/e09c-openssl-' . getmypid() . '.cnf';
+        file_put_contents($cnf, "[ req ]\ndistinguished_name = dn\nprompt = no\n[ dn ]\nCN = x\n"
+            . "[ v3_ca ]\nbasicConstraints = critical,CA:TRUE\nkeyUsage = critical,keyCertSign,cRLSign\nsubjectKeyIdentifier = hash\n"
+            . "[ v3_leaf ]\nbasicConstraints = CA:FALSE\nkeyUsage = digitalSignature,keyEncipherment\n");
+        $opts = ['config' => $cnf, 'private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048, 'digest_alg' => 'sha256'];
+        $key = openssl_pkey_new($opts);
+        $csr = openssl_csr_new(['commonName' => $cn], $key, $opts);
+        $cert = openssl_csr_sign($csr, null, $key, 365, $opts + ['x509_extensions' => $ca ? 'v3_ca' : 'v3_leaf'], random_int(1, PHP_INT_MAX));
+        openssl_x509_export($cert, $pem);
+        openssl_pkey_export($key, $keyPem, null, $opts);
+        @unlink($cnf);
+
+        return ['pem' => $pem, 'sha256' => strtolower(openssl_x509_fingerprint($cert, 'sha256')), 'key_pem' => $keyPem];
+    }
+
+    /** Store a valid LAN profile on a device directly (the K5 endpoint itself is proven in EdgeSetupDeviceProfileHttpMySqlTest). */
+    protected function giveLanProfile(EdgeDevice $device, ?array $cert = null): array
+    {
+        $cert ??= $this->makeCertificate();
+        $device->forceFill([
+            'lan_hostname' => 'bingoo-edge.local', 'lan_ip' => '192.168.100.52', 'lan_https_port' => 8443,
+            'lan_ca_pem' => $cert['pem'], 'lan_ca_sha256' => $cert['sha256'], 'lan_reported_at' => now(),
+        ])->save();
+
+        return $cert;
+    }
+
     protected function cleanupEdgeCloud(): void
     {
         $m = DB::connection('master');
