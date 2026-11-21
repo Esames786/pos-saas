@@ -25,6 +25,10 @@ foreach ($p in @($Rel085, $tree, $pkgs, (Join-Path $pkgs 'BingooEdge-0.9.0-dev')
 }
 New-Item -ItemType Directory -Force -Path $kit, (Join-Path $kit 'prereqs\vcrt'), $evidence | Out-Null
 Copy-Item -Force (Join-Path $Repo 'tests\Fixtures\EdgeWizardCp5\sandbox\*') $kit
+foreach ($c in @(Get-ChildItem -Path $kit -Filter '*.cmd')) {   # cmd.exe wants CRLF
+    $t = [IO.File]::ReadAllText($c.FullName) -replace "`r?`n", "`r`n"
+    [IO.File]::WriteAllText($c.FullName, $t, (New-Object Text.ASCIIEncoding))
+}
 
 # PUBLIC facts only (the key id and the public key; never the keystore or its passphrase)
 $facts = Get-Content -Raw $DevFacts | ConvertFrom-Json
