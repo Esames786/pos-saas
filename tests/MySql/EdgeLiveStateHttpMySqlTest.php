@@ -175,7 +175,16 @@ class EdgeLiveStateHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame([['name' => 'Large']], $l1['modifiers']);
         $this->assertSame('fired', $l1['kot_state']);
         $this->assertSame($c->table('kot_batches')->where('id', $this->ids['kot2'])->value('event_uuid'), $l1['kot_batch_uuid'], 'the latest batch of the line');
-        $this->assertSame('partial', $l2['kot_state']);
+        $this->assertSame('pending', $l2['kot_state'], 'partly sent (1 of 3) is pending — stream A\'s rule');
+        $this->assertSame(['450.00', '0.00', '0.00'], [$l1['unit_price'], $l1['discount_amount'], $l1['tax_amount']]);
+        $this->assertSame('Biryani', $l1['product_name']);
+        $this->assertArrayHasKey('line_kind', $l1);
+        $this->assertArrayHasKey('combo_id', $l1);
+        $this->assertArrayHasKey('restaurant_waiter_id', $ts);
+        $this->assertArrayHasKey('restaurant_waiter_id', $o1);
+        $this->assertSame('0.00', $o1['service_charge']);
+        $this->assertNotEmpty($ts['session_no']);
+        $this->assertSame('2026-11-21', $s['business_date']);
         $this->assertSame('1', $l2['kot_sent_qty']);
         $this->assertTrue($ts['orders'][1]['is_draft']);
         $this->assertSame('pending', $ts['orders'][1]['lines'][0]['kot_state']);
@@ -184,6 +193,11 @@ class EdgeLiveStateHttpMySqlTest extends MySqlTenantTestCase
         // Held sales: branch A's stand-alone held sale only.
         $this->assertSame([$this->ids['oHeld']], array_column($j['held_sales'], 'order_id'));
         $this->assertSame('450.75', $j['held_sales'][0]['total']);
+        foreach (['order_type', 'order_no', 'shift_uuid', 'subtotal', 'discount', 'tax', 'service_charge', 'order_uuid', 'held_at', 'terminal_id', 'customer_id', 'lines'] as $k) {
+            $this->assertArrayHasKey($k, $j['held_sales'][0], "held_sales[].{$k}");
+        }
+        $this->assertSame(26, strlen((string) $j['held_sales'][0]['order_uuid']), 'identities are the stored ULIDs');
+        $this->assertSame('takeaway', $j['held_sales'][0]['order_type']);
         $this->assertSame('1.5', $j['held_sales'][0]['lines'][0]['qty']);
         $this->assertSame('300.50', $j['held_sales'][0]['lines'][0]['unit_price']);
         $this->assertNotEmpty($j['held_sales'][0]['held_at']);

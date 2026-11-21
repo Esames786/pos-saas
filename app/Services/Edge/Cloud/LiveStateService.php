@@ -190,7 +190,9 @@ class LiveStateService
                 'qty'               => self::qty($qty),
                 'unit_price'        => self::money($l->unit_price),
                 'discount'          => self::money($l->discount_amount),
+                'discount_amount'   => self::money($l->discount_amount),   // stream A's name (alias of discount)
                 'tax'               => self::money($l->tax_amount),
+                'tax_amount'        => self::money($l->tax_amount),        // stream A's name (alias of tax)
                 'line_total'        => self::money($l->line_total),
                 'notes'             => $l->kitchen_note,
                 'modifiers'         => self::jsonList($l->modifiers),
@@ -232,7 +234,8 @@ class LiveStateService
                 'terminal_id'     => $o->terminal_id !== null ? (int) $o->terminal_id : null,
                 'shift_uuid'      => $o->shift_id ? ($shiftUuid[(int) $o->shift_id] ?? null) : null,
                 'table_id'        => $o->restaurant_table_id !== null ? (int) $o->restaurant_table_id : null,
-                'waiter_id'       => $o->restaurant_waiter_id !== null ? (int) $o->restaurant_waiter_id : null,
+                'restaurant_waiter_id' => $o->restaurant_waiter_id !== null ? (int) $o->restaurant_waiter_id : null,
+                'waiter_id'       => $o->restaurant_waiter_id !== null ? (int) $o->restaurant_waiter_id : null,   // alias
                 'customer_id'     => $o->customer_id !== null ? (int) $o->customer_id : null,
                 'subtotal'        => self::money($o->subtotal),
                 'discount'        => self::money($o->discount_amount),
@@ -297,7 +300,8 @@ class LiveStateService
             'status'            => (string) $s->status,
             'opened_at'         => self::iso($s->opened_at),
             'covers'            => $s->guest_count !== null ? (int) $s->guest_count : null,
-            'waiter_id'         => $s->restaurant_waiter_id !== null ? (int) $s->restaurant_waiter_id : null,
+            'restaurant_waiter_id' => $s->restaurant_waiter_id !== null ? (int) $s->restaurant_waiter_id : null,   // restaurant_waiters.id
+            'waiter_id'         => $s->restaurant_waiter_id !== null ? (int) $s->restaurant_waiter_id : null,   // alias
             'opened_by_user_id' => $s->opened_by_user_id !== null ? (int) $s->opened_by_user_id : null,
             'opened_shift_uuid' => $s->opened_shift_id ? ($shiftUuid[(int) $s->opened_shift_id] ?? null) : null,
             'business_date'     => $s->business_date !== null ? substr((string) $s->business_date, 0, 10) : null,
@@ -309,14 +313,13 @@ class LiveStateService
 
     /* ── formatting ─────────────────────────────────────────────────────── */
 
-    /** fired = every unit sent to the kitchen; partial = some; pending = none (legacy rows: the kot_sent flag alone). */
+    /**
+     * Stream A's rule (21 Nov 2026): "fired" when kot_sent_quantity >= quantity, else "pending" (a partly sent line is pending;
+     * kot_sent_qty carries the exact sent quantity). $flag (the legacy kot_sent boolean) is deliberately not consulted.
+     */
     public static function kotState(float $qty, float $sent, bool $flag): string
     {
-        if ($sent > 0.0) {
-            return $sent + 1e-9 >= $qty ? 'fired' : 'partial';
-        }
-
-        return $flag ? 'fired' : 'pending';
+        return $qty > 0.0 && $sent + 1e-9 >= $qty ? 'fired' : 'pending';
     }
 
     public static function money(mixed $v): string
