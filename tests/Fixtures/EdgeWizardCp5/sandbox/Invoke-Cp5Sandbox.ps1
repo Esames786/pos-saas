@@ -1,12 +1,28 @@
 # CP5 (stream B) - the Windows-native, ELEVATED 0.9 proof. Runs ONLY inside a Windows Sandbox (its own administrator); the
 # host is never elevated or changed. Started by Start-Cp5.cmd (the .wsb LogonCommand).
 #
-#   -Scenario auto      prereqs + Cloud, then a (0.8.5 elevated install: MySQL service, CA, gateway, tasks), b (0.9 wizard
-#                       Setup-BingooEdge.cmd UPDATE headless), c (auto-update 0.9.1 with REAL task control + heartbeat-gap /
-#                       fencing watch), d (0.9.2 broken health -> pointer rollback with real services), e (counter wizard)
-#   -Scenario manual    prereqs + Cloud + a, then the owner clicks through the WPF wizard (update); desktop "CP5 continue" = c..e
-#   -Scenario continue  c, d, e after a manual wizard run (same sandbox session)
-#   -Scenario fresh     prereqs + Cloud, then f (0.9 wizard FRESH INSTALL headless with a setup code)
+#   -Scenario auto      prereqs -> cloud -> a (0.8.5 elevated install: MySQL service, CA, gateway, tasks) -> w-update (the REAL
+#                       WPF wizard, Setup-BingooEdge.cmd, driven through UI Automation: UPDATE 0.8.5 -> 0.9.0-dev) -> b (post
+#                       checks: K5 with the CA, tasks + LOCAL SERVICE grant, logins; headless update only if w-update could not
+#                       start it) -> c (auto-update 0.9.1, REAL task control, heartbeat-gap / fencing watch) -> d (0.9.2 broken
+#                       health -> rollback) -> e (counter wizard) -> s (Agent D) -> h (Agent A) -> g1 g3 g4 g2 (automatic
+#                       offline takeover: OFF, flapping, clock skew, real takeover + supervised handback)
+#   -Scenario manual    prereqs + Cloud + a, then the owner clicks through the WPF wizard (update); desktop "CP5 continue" = c..g
+#   -Scenario continue  c .. g after a manual wizard run (same sandbox session)
+#   -Scenario fresh     prereqs + Cloud, then w-fresh (WPF wizard FRESH INSTALL through UI Automation, setup code) -> f (post
+#                       checks; headless fresh install only if w-fresh could not start it)
+#   -Only a,b,c         run only these scenario ids (prereqs and cloud always run); a scenario whose prerequisite was not run
+#                       is skipped. Start-Cp5.cmd passes its 2nd argument here.
+#
+# PLUG-IN SCENARIOS (other agents): the kit may carry Invoke-Cp5CounterSelfService.ps1 (scenario s, Agent D) and
+# Invoke-Cp5Continuity.ps1 (scenario h, Agent A). Contract: the file is DOT-SOURCED inside this driver and must define a
+# function of the same name (no parameters) that returns an ordered dictionary with at least verdict_ok [bool]; it may use every
+# helper and variable of this driver (Write-Log, Save-Evidence, Invoke-Cloud, Invoke-Edge, Invoke-Logged, Invoke-Sql,
+# Get-EdgeMeta, Get-CloudLease, Get-Health, Get-CloudDevice, Get-Users, Test-PinLogins, Get-ApplianceSnapshot, Get-TaskFacts,
+# Stop-CloudPhp, Start-CloudPhp, Restart-EdgeTask, Set-ApplianceEnv, Wait-Until, Write-Secret, Get-Secret, New-Pin, the UI
+# Automation helpers of Cp5UiAutomation.ps1; $Ev, $Work, $Kit, $Secrets, $CloudPhp, $CloudIni, $CloudUrl, $InstallRoot,
+# $DataRoot, $script:LanIp, $script:CaPem, $script:CaThumbprint). Evidence files start with 's-' / 'h-'. It must leave the
+# appliance in STANDBY with the Cloud up (g runs after it). A missing file = the scenario is recorded as not delivered.
 #
 # Mapped folders (see the .wsb): C:\cp5\kit, C:\cp5\pkgs, C:\cp5\rel085, C:\cp5\cloudsrc READ-ONLY; C:\cp5\evidence writable.
 # Secrets (MySQL / PFX passwords, PINs, setup + pairing codes) are generated INSIDE the sandbox under C:\cp5w\secrets, never
@@ -20,6 +36,7 @@ param(
     [string]$CloudSrc = 'C:\cp5\cloudsrc',
     [string]$EvidenceRoot = 'C:\cp5\evidence',
     [string]$Work = 'C:\cp5w',
+    [string]$Only = '',
     # HOST pre-flight only (not elevated): start the disposable Cloud exactly as the sandbox would (package php + package MySQL
     # on 127.0.0.1, read-only code tree), run a few Cloud commands, stop only the processes it started. No appliance step.
     [switch]$CloudSmoke
@@ -47,6 +64,7 @@ $script:SecretValues = New-Object System.Collections.ArrayList
 foreach ($d in @($Work, (Join-Path $Work 'cloud'), $Secrets, $EvidenceRoot)) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
 $env:CP5_TREE = $CloudSrc; $env:CP5_WORK = $Work; $env:CP5_KIT = $Kit
 $env:CP5_CLOUD_PORT = [string]$CloudPort; $env:CP5_CLOUD_DB_PORT = [string]$CloudDbPort
+. (Join-Path $Kit 'Cp5UiAutomation.ps1')   # UI Automation helpers (scenario w)
 
 # ---------------------------------------------------------------------------------------------------------------- basics
 $prevRun = $null
@@ -216,12 +234,70 @@ function Get-ApplianceSnapshot([string]$Label) {
         mysql_service = [string](Get-Service BingooEdgeMySQL -ErrorAction SilentlyContinue).Status }
 }
 
+# ---- probes + controls used by g / h / s (read-only SQL; only OUR recorded Cloud php pid is ever stopped) ----
+function Invoke-Sql([ValidateSet('edge', 'cloud', 'cloud-master')][string]$Target, [string]$Sql) {
+    $r = Invoke-Logged $CloudPhp @('-c', $CloudIni, (Join-Path $Kit 'cp5-sql.php'), $Target, $Sql) (Join-Path $Work 'sql.log') 60
+    return (Get-LastJson $r.Out)
+}
+function Get-EdgeMeta { $j = Invoke-Sql 'edge' 'SELECT * FROM edge_local_meta LIMIT 1'; if ($j -and $j.rows) { return @($j.rows)[0] }; return $null }
+function Get-CloudLease { $j = Invoke-Sql 'cloud' 'SELECT * FROM edge_branch_authority_leases ORDER BY id LIMIT 1'; if ($j -and $j.rows) { return @($j.rows)[0] }; return $null }
+function Wait-Until([scriptblock]$Condition, [int]$TimeoutSec, [int]$EverySec = 5, [string]$What = 'condition') {
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    do { $v = & $Condition; if ($v) { return $v }; Start-Sleep -Seconds $EverySec } while ((Get-Date) -lt $deadline)
+    throw "WAIT_TIMEOUT: $What not reached within $TimeoutSec s"
+}
+function Stop-CloudPhp {
+    $rs = Get-Content -Raw $RunFile | ConvertFrom-Json
+    if ($rs.cloud_php_pid) { Stop-OwnTree ([int]$rs.cloud_php_pid) }
+    [void](Wait-Until { -not (Wait-Port $CloudPort 1) } 30 1 'the Cloud php to stop')
+    Write-Log 'info' "Cloud php stopped (pid $($rs.cloud_php_pid))"
+}
+function Start-CloudPhp([int]$ClockOffsetSec = 0) {
+    $log = Join-Path $Work ('cloud\serve-' + (Get-Date -Format 'HHmmss') + '.log')
+    if ($ClockOffsetSec -ne 0) { $env:CP5_CLOUD_CLOCK_OFFSET = [string]$ClockOffsetSec }
+    try {
+        $p = Start-Process -FilePath $CloudPhp -ArgumentList ('-c "' + $CloudIni + '" -S 127.0.0.1:' + $CloudPort + ' -t "' + (Join-Path $CloudSrc 'public') + '" "' + (Join-Path $Kit 'cp5-router.php') + '"') -RedirectStandardOutput $log -RedirectStandardError ($log + '.err') -WindowStyle Hidden -PassThru
+    } finally { Remove-Item env:CP5_CLOUD_CLOCK_OFFSET -ErrorAction SilentlyContinue }
+    Save-RunState @{ cloud_php_pid = $p.Id; cloud_clock_offset = $ClockOffsetSec }
+    if (-not (Wait-Port $CloudPort 60)) { throw 'the Cloud did not listen on 9831' }
+    Write-Log 'info' ("Cloud php started (pid $($p.Id))" + $(if ($ClockOffsetSec) { ", clock offset $ClockOffsetSec s" } else { '' }))
+}
+function Set-ApplianceEnv([string]$Key, [string]$Value) {
+    $f = Join-Path $DataRoot 'config\appliance.env'
+    $lines = @(Get-Content -Path $f)
+    $hit = $false
+    $lines = @($lines | ForEach-Object { if ($_ -match ('^' + [regex]::Escape($Key) + '=')) { $hit = $true; "$Key=$Value" } else { $_ } })
+    if (-not $hit) { $lines += "$Key=$Value" }
+    [IO.File]::WriteAllText($f, (($lines -join "`r`n") + "`r`n"), (New-Object Text.ASCIIEncoding))
+}
+function Start-LeaseWatch([string]$Tag, [string]$StopFile, [int]$MaxSec = 5400) {
+    # 1 s samples of the Cloud lease row + the appliance's authority facts + the runtime pointer (cp5-lease-watch.php)
+    if (-not $env:CP5_EDGE_ROOT_PASSFILE) { $env:CP5_EDGE_ROOT_PASSFILE = Join-Path $Secrets 'mysql-root.keep' }
+    Remove-Item -Force $StopFile -ErrorAction SilentlyContinue
+    return (Start-Process -FilePath $CloudPhp -ArgumentList ('-c "' + $CloudIni + '" "' + (Join-Path $Kit 'cp5-lease-watch.php') + '" "' + (Join-Path $Ev ($Tag + '-lease')) + '" "' + $StopFile + '" ' + $MaxSec) -WindowStyle Hidden -PassThru)
+}
+function Stop-LeaseWatch($Watch, [string]$StopFile) { Set-Content -Path $StopFile -Value 'stop'; [void]$Watch.WaitForExit(60000) }
+function Restart-EdgeTask([string]$Name) {
+    $t = Get-ScheduledTask -TaskName $Name
+    $t | Stop-ScheduledTask
+    Start-Sleep -Seconds 3
+    $t | Start-ScheduledTask
+    Write-Log 'info' "task $Name restarted"
+}
+
 # ---- scenarios ----
 $script:Results = [ordered]@{}
+$script:OnlyIds = @($Only -split '[,; ]+' | Where-Object { $_ })
 if ($Scenario -eq 'continue' -and (Test-Path (Join-Path $Ev 'scenarios.json'))) {
     (Get-Content -Raw (Join-Path $Ev 'scenarios.json') | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $script:Results[$_.Name] = $_.Value }
 }
 function Invoke-Scenario([string]$Id, [string]$Title, [string[]]$Needs, [scriptblock]$Body) {
+    # the base chain of a fresh sandbox (prereqs, cloud, a, b / f) always runs; -Only selects among the rest
+    if ($script:OnlyIds.Count -gt 0 -and @('prereqs', 'cloud', 'a', 'b', 'f') -notcontains $Id -and $script:OnlyIds -notcontains $Id) {
+        $script:Results[$Id] = [ordered]@{ title = $Title; ok = $false; skipped = 'not selected (-Only)' }
+        Save-Evidence 'scenarios.json' $script:Results
+        return
+    }
     foreach ($n in $Needs) {
         if (-not ($script:Results.Contains($n) -and $script:Results[$n].ok)) {
             $script:Results[$Id] = [ordered]@{ title = $Title; ok = $false; skipped = "needs $n" }
@@ -339,12 +415,7 @@ log_error=$(ConvertTo-Fwd (Join-Path $cm 'error.log'))
         Write-Log 'info' 'Cloud setup: master + tenant DBs, offline_edge plan, users, stock, open shift / table / held bill (several minutes)'
         $r = Invoke-Cloud @('setup') 3600 'cloud-setup.json'
     }
-    if (-not (Wait-Port $CloudPort 1)) {
-        $log = Join-Path $Work 'cloud\serve.log'
-        $p = Start-Process -FilePath $CloudPhp -ArgumentList ('-c "' + $CloudIni + '" -S 127.0.0.1:' + $CloudPort + ' -t "' + (Join-Path $CloudSrc 'public') + '" "' + (Join-Path $Kit 'cp5-router.php') + '"') -RedirectStandardOutput $log -RedirectStandardError ($log + '.err') -WindowStyle Hidden -PassThru
-        Save-RunState @{ cloud_php_pid = $p.Id }
-        if (-not (Wait-Port $CloudPort 60)) { throw 'the Cloud did not listen on 9831' }
-    }
+    if (-not (Wait-Port $CloudPort 1)) { Start-CloudPhp }
     try { $code = (Invoke-WebRequest -UseBasicParsing -Uri ($CloudUrl + '/up') -TimeoutSec 60).StatusCode } catch { $code = [int]$_.Exception.Response.StatusCode }
     $keys = Get-LastJson (Invoke-Cloud @('public-keys')).Out
     $script:EnrollmentPublic = [string]$keys.enrollment_public
@@ -394,6 +465,7 @@ default-character-set=utf8mb4
     }
     $root = Get-Secret 'mysql-root' { New-SecretValue }
     $edge = Get-Secret 'mysql-edge' { New-SecretValue }
+    $env:CP5_EDGE_ROOT_PASSFILE = Join-Path $Secrets 'mysql-root.keep'   # read-only probes (cp5-sql.php, lease watch) read it; never printed
     if (-not (Get-Service BingooEdgeMySQL -ErrorAction SilentlyContinue)) {
         # README-MYSQL step 4 + the on-site init-file fix (root@127.0.0.1 for skip-name-resolve), as ONE first-start init file
         $sql = "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '$root';`nGRANT ALL ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;`nALTER USER 'root'@'localhost' IDENTIFIED BY '$root';`n" +
@@ -510,9 +582,41 @@ function Invoke-SetupCmd([string]$AnswersFile, [string]$LogName, [hashtable]$Sec
     Write-Log 'warn' 'Setup-BingooEdge.cmd admin probe (net session) fails in this sandbox - starting the same wizard script directly'
     return Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', (Join-Path $Pkg090 'app\scripts\edge\wizard\Start-BingooEdgeWizard.ps1'), '-Headless', '-AnswersFile', $AnswersFile) (Join-Path $Ev $LogName) 5400 $SecretEnv
 }
+function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}) {
+    # the same proof for the UI-driven and the headless update: same device, 0.9 runtime, K5 with the CA on the Cloud, tasks
+    # re-registered with BingooEdgeUpdater + the LOCAL SERVICE control grant, every user's PIN still logs in
+    Save-BeforeUpdate   # loads the pre-update snapshot of this sandbox session when the update ran in another driver process
+    Start-Sleep -Seconds 20
+    $after = Get-ApplianceSnapshot 'after-wizard-update'
+    $dev = Get-CloudDevice
+    $logins = Test-PinLogins 'http://127.0.0.1:8090'
+    $grant = @($after.tasks | Where-Object { $_.name -ne 'BingooEdgeUpdater' } | Where-Object { -not $_.local_service_control_ace } | ForEach-Object { $_.name })
+    $k5 = @(Get-ChildItem (Join-Path $Ev 'wizard-logs') -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'K5 LAN profile' }) | Select-Object -Last 1
+    $d = $dev.device
+    $b = $script:DeviceBeforeUpdate.device
+    $doc = [ordered]@{ via = $Via; k5_line = $k5; before = $script:BeforeUpdate; after = $after; cloud_device_before = $script:DeviceBeforeUpdate; cloud_device_after = $dev
+        pin_logins_loopback = $logins; tasks_without_local_service_grant = $grant }
+    foreach ($k in $Extra.Keys) { $doc[$k] = $Extra[$k] }
+    Save-Evidence 'b-state-090.json' $doc
+    $ok = $after.pointer -eq '0.9.0-dev' -and $d.lan_ca_pem_present -and [string]$d.lan_ip -eq $script:LanIp -and [int]$d.lan_https_port -eq $HttpsPort -and
+        [string]$d.public_uuid -eq [string]$b.public_uuid -and [string]$d.installation_uuid -eq [string]$b.installation_uuid -and
+        -not (@($logins.Values) | Where-Object { -not $_.ok }) -and @($after.tasks | Where-Object { $_.name -eq 'BingooEdgeUpdater' }).Count -eq 1 -and $grant.Count -eq 0
+    return [ordered]@{ verdict_ok = $ok; via = $Via; pointer = $after.pointer; k5_ca_on_cloud = [bool]$d.lan_ca_pem_present; lan_ip = $d.lan_ip
+        same_device = ([string]$d.public_uuid -eq [string]$b.public_uuid); status = $after.status; tasks_missing_ls_grant = $grant; k5 = $k5 }
+}
+function Save-BeforeUpdate {
+    $f = Join-Path $Work 'before-update.json'
+    if (-not $script:BeforeUpdate -and (Test-Path $f)) {   # a 'continue' run after the owner's WPF update
+        $j = Get-Content -Raw $f | ConvertFrom-Json
+        $script:BeforeUpdate = $j.snapshot; $script:DeviceBeforeUpdate = $j.device
+    }
+    if (-not $script:BeforeUpdate) {
+        $script:BeforeUpdate = Get-ApplianceSnapshot 'before-wizard-update'; $script:DeviceBeforeUpdate = Get-CloudDevice
+        [IO.File]::WriteAllText($f, ([ordered]@{ snapshot = $script:BeforeUpdate; device = $script:DeviceBeforeUpdate } | ConvertTo-Json -Depth 12), (New-Object Text.UTF8Encoding($false)))
+    }
+}
 function Invoke-WizardUpdateHeadless {
-    $before = Get-ApplianceSnapshot 'before-wizard-update'
-    $deviceBefore = Get-CloudDevice
+    Save-BeforeUpdate
     $sc = Get-SetupCode
     $r1 = Invoke-SetupCmd (New-UpdateAnswers $null 'b-wizard-result-unapproved.json') 'b-wizard-unapproved.out.txt' @{ BINGOO_WIZARD_TEST_SECRETS = '1'; BINGOO_WIZARD_SECRET_SETUP_CODE = $sc.Code }
     $m = [regex]::Match($r1.Out + $r1.Err, 'approve plan (sha256:[0-9a-f]{64})')
@@ -523,21 +627,173 @@ function Invoke-WizardUpdateHeadless {
     $t0 = Get-Date
     $r2 = Invoke-SetupCmd (New-UpdateAnswers $plan 'b-wizard-result-approved.json') 'b-wizard-approved.out.txt' @{ BINGOO_WIZARD_TEST_SECRETS = '1'; BINGOO_WIZARD_SECRET_SETUP_CODE = $sc.Code }
     $wizSec = [int]((Get-Date) - $t0).TotalSeconds
-    $k5 = [regex]::Match($r2.Out + $r2.Err, 'K5 LAN profile: (\{.*\})').Groups[1].Value
-    Start-Sleep -Seconds 20
-    $after = Get-ApplianceSnapshot 'after-wizard-update'
-    $dev = Get-CloudDevice
-    $logins = Test-PinLogins 'http://127.0.0.1:8090'
-    $grant = @($after.tasks | Where-Object { $_.name -ne 'BingooEdgeUpdater' } | Where-Object { -not $_.local_service_control_ace } | ForEach-Object { $_.name })
-    $doc = [ordered]@{ plan_hash = $plan; wizard_exit_unapproved = $r1.Code; wizard_exit = $r2.Code; wizard_seconds = $wizSec; k5_line = $k5
-        before = $before; after = $after; cloud_device_before = $deviceBefore; cloud_device_after = $dev; pin_logins_loopback = $logins; tasks_without_local_service_grant = $grant }
-    Save-Evidence 'b-state-090.json' $doc
-    $d = $dev.device
-    $ok = $r2.Code -eq 0 -and $after.pointer -eq '0.9.0-dev' -and $d.lan_ca_pem_present -and [string]$d.lan_ip -eq $script:LanIp -and [int]$d.lan_https_port -eq $HttpsPort -and
-        [string]$d.public_uuid -eq [string]$deviceBefore.device.public_uuid -and [string]$d.installation_uuid -eq [string]$deviceBefore.device.installation_uuid -and
-        -not (@($logins.Values) | Where-Object { -not $_.ok }) -and @($after.tasks | Where-Object { $_.name -eq 'BingooEdgeUpdater' }).Count -eq 1
-    return [ordered]@{ verdict_ok = $ok; plan = $plan; wizard_seconds = $wizSec; pointer = $after.pointer; k5_ca_on_cloud = [bool]$d.lan_ca_pem_present; lan_ip = $d.lan_ip
-        same_device = ([string]$d.public_uuid -eq [string]$deviceBefore.device.public_uuid); status = $after.status; tasks_missing_ls_grant = $grant }
+    $r = Invoke-UpdateChecks 'headless Setup-BingooEdge.cmd -Headless' @{ plan_hash = $plan; wizard_exit_unapproved = $r1.Code; wizard_exit = $r2.Code; wizard_seconds = $wizSec }
+    $r['verdict_ok'] = $r.verdict_ok -and $r2.Code -eq 0
+    $r['plan'] = $plan
+    $r['wizard_seconds'] = $wizSec
+    return $r
+}
+
+# ---------------------------------------------------------- w) the REAL WPF wizard driven through UI Automation (update/fresh)
+function Start-WizardWindow([string]$AnswersFile) {
+    # Setup-BingooEdge.cmd exactly as the owner double-clicks it (elevation probe -> the WPF window); no -Headless
+    $p = Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c "' + (Join-Path $Pkg090 'Setup-BingooEdge.cmd') + '" -AnswersFile "' + $AnswersFile + '"') -PassThru
+    $script:WizardLauncherPid = $p.Id
+    return (Find-UiWindow 240)
+}
+function Save-Shot($Window, [string]$Name, [string[]]$Mask = @()) {
+    $path = Join-Path $Ev ('ui-' + $Name + '.png')
+    try { [void](Save-UiShot $Window $path $Mask); [void]$script:Shots.Add($path) } catch { Write-Log 'warn' ("screenshot $Name failed: " + $_.Exception.Message) }
+}
+function Wait-UiChecksDone($Window) {
+    $deadline = (Get-Date).AddSeconds(300)
+    do { Start-Sleep -Seconds 2; $s = Get-UiStatus $Window } while ($s -ne 'Checks done.' -and (Get-Date) -lt $deadline)
+    $checks = Get-UiChecks $Window
+    $fails = @($checks.Keys | Where-Object { $checks[$_].status -eq 'FAIL' })
+    return @{ Status = $s; Checks = $checks; Fails = $fails }
+}
+function Wait-UiProgress($Window, [string]$UntilPage, [int]$TimeoutSec, [string]$ShotPrefix) {
+    # the Install / Update page streams the step log; returns when $UntilPage shows or the failure panel appears
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $mid = $false
+    $t0 = Get-Date
+    do {
+        Start-Sleep -Seconds 10
+        $page = Get-UiPage $Window
+        if ($page -eq $UntilPage) { return @{ Ok = $true; Page = $page; Log = (Get-UiListItems $Window 'LogList') } }
+        $fail = Get-UiText $Window 'FailText'
+        if ($fail) { Save-Shot $Window ($ShotPrefix + '-failed'); return @{ Ok = $false; Page = $page; Fail = $fail; Log = (Get-UiListItems $Window 'LogList') } }
+        if (-not $mid -and ((Get-Date) - $t0).TotalSeconds -gt 120) { Save-Shot $Window ($ShotPrefix + '-progress'); $mid = $true }
+    } while ((Get-Date) -lt $deadline)
+    Save-Shot $Window ($ShotPrefix + '-timeout')
+    return @{ Ok = $false; Page = (Get-UiPage $Window); Fail = "timeout after $TimeoutSec s"; Log = (Get-UiListItems $Window 'LogList') }
+}
+function Invoke-WizardUiUpdate {
+    Save-BeforeUpdate
+    $script:Shots = New-Object System.Collections.ArrayList
+    $a = [ordered]@{ cloud_url = $CloudUrl; allow_http_cloud = $true; log_dir = (Join-Path $Ev 'wizard-logs'); update_public_key = $script:DevPublic
+        mysql = [ordered]@{ base_dir = $Base }; services = [ordered]@{ register = $true; gateway = $true }; update = [ordered]@{ health_wait_seconds = 150 } }
+    $af = Join-Path $Work 'answers-ui-update.json'
+    [IO.File]::WriteAllText($af, ($a | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+    $doc = [ordered]@{ pages = New-Object System.Collections.ArrayList }
+    $w = Start-WizardWindow $af
+    $t0 = Get-Date
+    try {
+        [void]$doc.pages.Add(@{ page = (Get-UiPage $w); text = (Get-UiText $w 'WelcomeText') }); Save-Shot $w 'update-01-welcome'
+        Invoke-UiButton $w 'BtnNext'
+        Wait-UiPage $w 'Check this PC' 60 | Out-Null
+        $c = Wait-UiChecksDone $w
+        [void]$doc.pages.Add(@{ page = 'Check this PC'; status = $c.Status; checks = $c.Checks }); Save-Shot $w 'update-02-checks'
+        if ($c.Fails.Count -gt 0) { throw ('UI prerequisite check FAILED: ' + ($c.Fails -join ', ') + ' - Next stays disabled') }
+        Invoke-UiButton $w 'BtnNext'
+        Wait-UiPage $w 'Update plan' 60 | Out-Null
+        $plan = Wait-Until { $t = Get-UiText $w 'UpdateText'; if ($t -and $t -ne 'Reading the update plan...') { $t } } 900 5 'the update plan text'
+        [void]$doc.pages.Add(@{ page = 'Update plan'; text = $plan }); Save-Shot $w 'update-03-plan'
+        if ($plan -match 'cannot be installed') { throw "UI update plan refused: $plan" }
+        Set-UiChecked $w 'ChkApprove' $true
+        Save-Shot $w 'update-04-approved'
+        Invoke-UiButton $w 'BtnNext'
+        Wait-UiPage $w 'Update' 60 | Out-Null
+        Save-Shot $w 'update-05-updating'
+        $p = Wait-UiProgress $w 'Finish' 3600 'update-06'
+        $doc.progress_log = $p.Log
+        if (-not $p.Ok) { throw ('UI update stopped: ' + $p.Fail) }
+        $finish = Wait-Until { $t = Get-UiText $w 'FinishText'; if ($t) { $t } } 120 3 'the finish text'
+        [void]$doc.pages.Add(@{ page = 'Finish'; text = $finish }); Save-Shot $w 'update-07-finish'
+        $doc.finish = $finish
+        Invoke-UiButton $w 'BtnNext'   # Close
+        [void](Wait-Until { -not ($UiA::RootElement.FindFirst($UiTree::Children, (New-Object System.Windows.Automation.PropertyCondition($UiA::NameProperty, $script:UiWindowTitle)))) } 60 2 'the wizard window to close')
+    } catch {
+        $doc.error = $_.Exception.Message
+        Save-Shot $w 'update-99-error'
+        Close-UiWindow $w
+    } finally {
+        $doc.seconds = [int]((Get-Date) - $t0).TotalSeconds
+        $doc.screenshots = @($script:Shots | ForEach-Object { Split-Path -Leaf $_ })
+        Save-Evidence 'w-update-ui.json' $doc
+    }
+    $ok = -not $doc.Contains('error') -and [string]$doc.finish -like 'Updated*'
+    return [ordered]@{ verdict_ok = $ok; seconds = $doc.seconds; finish = $doc.finish; error = $doc.error; screenshots = $doc.screenshots.Count; pointer = (Get-Pointer) }
+}
+function Invoke-WizardUiFresh {
+    if (Test-Path (Join-Path $InstallRoot 'appliance.json')) { throw 'an appliance is already installed in this sandbox - use a NEW sandbox (BingooEdge-CP5-fresh .wsb)' }
+    $script:Shots = New-Object System.Collections.ArrayList
+    $users = Get-Users
+    $a = [ordered]@{ cloud_url = $CloudUrl; allow_http_cloud = $true; device_name = 'CP5-SANDBOX-FRESH-UI'; log_dir = (Join-Path $Ev 'wizard-logs'); update_public_key = $script:DevPublic
+        mysql = [ordered]@{ mode = 'install'; base_dir = $Base; port = 3306 }; certificates = [ordered]@{ mode = 'branch_ca' }
+        lan = [ordered]@{ hostname = $LanHost; ip = $script:LanIp; https_port = $HttpsPort; http_port = 80 }
+        services = [ordered]@{ register = $true; gateway = $true; firewall = $true; hosts_line = $true }; shortcuts = [ordered]@{ create = $true } }
+    $af = Join-Path $Work 'answers-ui-fresh.json'
+    [IO.File]::WriteAllText($af, ($a | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+    $doc = [ordered]@{ pages = New-Object System.Collections.ArrayList; secret_entry = [ordered]@{} }
+    $w = Start-WizardWindow $af
+    $t0 = Get-Date
+    try {
+        Save-Shot $w 'fresh-01-welcome'
+        Invoke-UiButton $w 'BtnNext'
+        Wait-UiPage $w 'Check this PC' 60 | Out-Null
+        $c = Wait-UiChecksDone $w
+        [void]$doc.pages.Add(@{ page = 'Check this PC'; status = $c.Status; checks = $c.Checks }); Save-Shot $w 'fresh-02-checks'
+        if ($c.Fails.Count -gt 0) { throw ('UI prerequisite check FAILED: ' + ($c.Fails -join ', ') + ' - Next stays disabled') }
+        Invoke-UiButton $w 'BtnNext'
+        Wait-UiPage $w 'Setup code' 60 | Out-Null
+        Save-Shot $w 'fresh-03-code-empty'
+        $sc = Get-SetupCode
+        if ($sc.Mode -ne 'install') { throw "the Cloud answered setup mode [$($sc.Mode)], expected install" }
+        Set-UiText $w 'TxtDevice' 'CP5-SANDBOX-FRESH-UI'
+        Set-UiText $w 'TxtCode' $sc.Code
+        $sc = $null
+        Invoke-UiButton $w 'BtnRedeem'          # the wizard clears the code field on click; no screenshot while it is filled
+        $red = Wait-Until { $t = Get-UiText $w 'RedeemText'; if ($t) { $t } } 120 2 'the redeemed business / branch'
+        [void]$doc.pages.Add(@{ page = 'Setup code'; redeemed = $red; status = (Get-UiStatus $w) }); Save-Shot $w 'fresh-04-code-accepted' @('TxtCode')
+        Set-UiChecked $w 'ChkRedeemOk' $true
+        Invoke-UiButton $w 'BtnNext'
+        Wait-UiPage $w 'Passwords' 60 | Out-Null
+        $root = Get-Secret 'mysql-root' { New-SecretValue }
+        $doc.secret_entry.root = Set-UiSecret $w 'PwRoot' $root
+        [void](Set-UiSecret $w 'PwRoot2' $root)
+        $root = $null
+        Set-UiText $w 'TxtIp' $script:LanIp; Set-UiText $w 'TxtHost' $LanHost; Set-UiText $w 'TxtPort' ([string]$HttpsPort)
+        Save-Shot $w 'fresh-05-passwords' @('PwRoot', 'PwRoot2')
+        Invoke-UiButton $w 'BtnNext'   # Install
+        Wait-UiPage $w 'Install' 60 | Out-Null
+        Save-Shot $w 'fresh-06-installing'
+        $p = Wait-UiProgress $w 'Users and PINs' 3600 'fresh-07'
+        $doc.progress_log = $p.Log
+        if (-not $p.Ok) { throw ('UI install stopped: ' + $p.Fail) }
+        Save-Shot $w 'fresh-08-users'
+        foreach ($u in $users) {
+            if (-not (Find-Ui $w ('UserPin_' + $u.id) 5 -Optional)) { $doc.secret_entry[('user_' + $u.id)] = 'no row (no employee code?)'; continue }
+            $pin = (Get-Content -Raw (Join-Path $Secrets ('pin-' + $u.id))).Trim()
+            $doc.secret_entry[('user_' + $u.id)] = Set-UiSecret $w ('UserPin_' + $u.id) $pin
+            [void](Set-UiSecret $w ('UserPin2_' + $u.id) $pin)
+            Set-UiChecked $w ('UserChk_' + $u.id) $true
+        }
+        $pin = $null
+        Invoke-UiButton $w 'BtnEnroll'
+        [void](Wait-Until { $s = Get-UiStatus $w; if ($s -like 'PINs saved*' -or $s -like 'PINs not set*') { $s } } 600 3 'the PIN result')
+        $res = [ordered]@{}
+        foreach ($u in $users) { $res[$u.code] = Get-UiText $w ('UserResult_' + $u.id) }
+        [void]$doc.pages.Add(@{ page = 'Users and PINs'; status = (Get-UiStatus $w); results = $res }); Save-Shot $w 'fresh-09-pins-set'
+        Invoke-UiButton $w 'BtnNext'
+        Wait-UiPage $w 'Finish' 60 | Out-Null
+        $finish = Wait-Until { $t = Get-UiText $w 'FinishText'; if ($t -and $t -notlike 'Finishing*') { $t } } 600 3 'the finish text'
+        [void]$doc.pages.Add(@{ page = 'Finish'; text = $finish }); Save-Shot $w 'fresh-10-finish'
+        $doc.finish = $finish
+        $doc.pin_results = $res
+        Invoke-UiButton $w 'BtnNext'
+    } catch {
+        $doc.error = $_.Exception.Message
+        Save-Shot $w 'fresh-99-error'
+        Close-UiWindow $w
+    } finally {
+        $doc.seconds = [int]((Get-Date) - $t0).TotalSeconds
+        $doc.screenshots = @($script:Shots | ForEach-Object { Split-Path -Leaf $_ })
+        Save-Evidence 'w-fresh-ui.json' $doc
+    }
+    $pinsOk = $doc.Contains('pin_results') -and -not (@($doc.pin_results.Values) | Where-Object { $_ -ne 'PIN set' })
+    $ok = -not $doc.Contains('error') -and [string]$doc.finish -like '*WARM STANDBY*' -and $pinsOk
+    return [ordered]@{ verdict_ok = $ok; seconds = $doc.seconds; finish = $doc.finish; pins = $doc.pin_results; error = $doc.error; screenshots = $doc.screenshots.Count; pointer = (Get-Pointer) }
 }
 
 function Invoke-WizardUpdateManual {
@@ -563,9 +819,7 @@ function Invoke-UpdaterRun([string]$Tag, [string]$PkgDir, [string]$ExpectPointer
     $before = Get-ApplianceSnapshot ('before-' + $Tag)
     $stop = Join-Path $Work ($Tag + '-watch.stop')
     Remove-Item -Force $stop -ErrorAction SilentlyContinue
-    $env:CP5_EDGE_ROOT_PASSFILE = Write-Secret 'watch-root.pass' (Get-Secret 'mysql-root' { throw 'no root password' })
-    $watch = Start-Process -FilePath $CloudPhp -ArgumentList ('-c "' + $CloudIni + '" "' + (Join-Path $Kit 'cp5-lease-watch.php') + '" "' + (Join-Path $Ev ($Tag + '-lease')) + '" "' + $stop + '" 5400') -WindowStyle Hidden -PassThru
-    Remove-Item env:CP5_EDGE_ROOT_PASSFILE
+    $watch = Start-LeaseWatch $Tag $stop
     Start-Sleep -Seconds 8
     $t0 = Get-Date
     Write-Log 'info' "$Tag : Start-ScheduledTask BingooEdgeUpdater (runs as its own principal, LOCAL SERVICE)"
@@ -587,7 +841,6 @@ function Invoke-UpdaterRun([string]$Tag, [string]$PkgDir, [string]$ExpectPointer
     Start-Sleep -Seconds 90
     Set-Content -Path $stop -Value 'stop'
     $watch.WaitForExit(60000) | Out-Null
-    Remove-Item -Force (Join-Path $Secrets 'watch-root.pass') -ErrorAction SilentlyContinue
     $lease = Get-Content -Raw (Join-Path $Ev ($Tag + '-lease.summary.json')) | ConvertFrom-Json
     $status = Get-LastJson (Invoke-Edge @('edge:local:auto-update', '--status', '--json')).Out
     $after = Get-ApplianceSnapshot ('after-' + $Tag)
@@ -647,6 +900,12 @@ function Invoke-FreshInstall {
     $t0 = Get-Date
     $r = Invoke-SetupCmd $af 'f-wizard.out.txt' $envs
     $sec = [int]((Get-Date) - $t0).TotalSeconds
+    $res = Invoke-FreshChecks 'headless Setup-BingooEdge.cmd -Headless' $sec
+    $res['verdict_ok'] = $res.verdict_ok -and $r.Code -eq 0
+    $res['wizard_exit'] = $r.Code
+    return $res
+}
+function Invoke-FreshChecks([string]$Via, [int]$Sec) {
     Start-Sleep -Seconds 20
     $after = Get-ApplianceSnapshot 'after-fresh-install'
     $dev = Get-CloudDevice
@@ -659,16 +918,171 @@ function Invoke-FreshInstall {
         $byIp = Test-PinLogins ("https://" + $script:LanIp + ":$HttpsPort") $script:CaPem
     }
     $loop = Test-PinLogins 'http://127.0.0.1:8090'
-    Save-Evidence 'f-state-fresh.json' ([ordered]@{ wizard_exit = $r.Code; wizard_seconds = $sec; after = $after; cloud_device = $dev; pin_logins_loopback = $loop; pin_logins_gateway_by_ip = $byIp })
-    $ok = $r.Code -eq 0 -and $after.pointer -eq '0.9.0-dev' -and $dev.device.lan_ca_pem_present -and -not (@($loop.Values) | Where-Object { -not $_.ok })
-    return [ordered]@{ verdict_ok = $ok; wizard_seconds = $sec; pointer = $after.pointer; status = $after.status; k5_ca_on_cloud = [bool]$dev.device.lan_ca_pem_present; tasks = @($after.tasks | ForEach-Object { $_.name + '=' + $_.state }) }
+    $updater = @($after.tasks | Where-Object { $_.name -eq 'BingooEdgeUpdater' }).Count -eq 1
+    Save-Evidence 'f-state-fresh.json' ([ordered]@{ via = $Via; wizard_seconds = $Sec; after = $after; cloud_device = $dev; pin_logins_loopback = $loop; pin_logins_gateway_by_ip = $byIp })
+    $gwOk = $byIp -and -not (@($byIp.Values) | Where-Object { -not ($_.ok -and $_.tls.verified) })
+    $ok = $after.pointer -eq '0.9.0-dev' -and $dev.device.lan_ca_pem_present -and $updater -and -not (@($loop.Values) | Where-Object { -not $_.ok }) -and $gwOk
+    return [ordered]@{ verdict_ok = $ok; via = $Via; wizard_seconds = $Sec; pointer = $after.pointer; status = $after.status; k5_ca_on_cloud = [bool]$dev.device.lan_ca_pem_present
+        gateway_pin_logins_full_tls = [bool]$gwOk; tasks = @($after.tasks | ForEach-Object { $_.name + '=' + $_.state }) }
+}
+
+# ------------------------------------------------------------------------- g) optional Automatic Offline Takeover (sandbox)
+function Get-TakeoverFacts {
+    $m = Get-EdgeMeta
+    $h = Get-Health
+    $at = $h.auto_takeover
+    return [ordered]@{ at = (Get-Date).ToUniversalTime().ToString('s'); state = [string]$m.authority_state; last_ack = $m.authority_last_ack_at; failures = $m.heartbeat_consecutive_failures
+        takeover_at = $m.authority_takeover_at; skew = $m.authority_cloud_skew_seconds; decision = $m.auto_takeover_last_decision; reasons = $m.auto_takeover_last_reasons
+        health_auto_takeover = $at }
+}
+function Set-AutoTakeover([bool]$CloudOn, [bool]$ApplianceAllowed, [int]$After = 180) {
+    [void](Invoke-Cloud @('auto-takeover', $(if ($CloudOn) { 'on' } else { 'off' }), [string]$After))
+    Set-ApplianceEnv 'EDGE_AUTO_TAKEOVER_ALLOWED' $(if ($ApplianceAllowed) { 'true' } else { 'false' })
+    Restart-EdgeTask 'BingooEdgeAuthorityWorker'
+    # the Cloud switch reaches the appliance with the next config revision (heartbeat ack -> config refresh)
+    [void](Wait-Until {
+            $h = Get-Health
+            $s = $h.auto_takeover.settings
+            if ($s -and [bool]$s.cloud_enabled -eq $CloudOn -and [bool]$s.allowed -eq $ApplianceAllowed) { $s }
+        } 300 10 "auto-takeover settings cloud=$CloudOn appliance=$ApplianceAllowed on the appliance")
+    Write-Log 'info' "auto-takeover: Cloud setting $CloudOn (after $After s), appliance switch $ApplianceAllowed"
+}
+function Wait-CloudAck([int]$TimeoutSec = 180) {
+    $t = (Get-Date).ToUniversalTime()
+    [void](Wait-Until { $m = Get-EdgeMeta; if ($m.authority_last_ack_at -and ([datetime]::SpecifyKind([datetime]$m.authority_last_ack_at, 'Utc')) -gt $t -and [int]$m.heartbeat_consecutive_failures -eq 0) { $m } } $TimeoutSec 5 'a fresh Cloud acknowledgement')
+}
+function Wait-HandbackQuiet {
+    # the evaluator refuses an automatic takeover within 15 min of a handback (RECENT_HANDBACK); wait it out when needed
+    $j = Invoke-Sql 'edge' "SELECT MAX(occurred_at) AS last_handback FROM edge_local_connection_transitions WHERE from_state = 'handing_back'"
+    $last = $(if ($j -and $j.rows) { @($j.rows)[0].last_handback } else { $null })
+    if (-not $last) { return 0 }
+    $left = 900 - [int]((Get-Date).ToUniversalTime() - [datetime]::SpecifyKind([datetime]$last, 'Utc')).TotalSeconds + 20
+    if ($left -gt 0) { Write-Log 'info' "last handback at $last UTC - waiting $left s (RECENT_HANDBACK guard)"; Start-Sleep -Seconds $left; return $left }
+    return 0
+}
+function Invoke-G1 {
+    Set-AutoTakeover $false $false 180
+    $stop = Join-Path $Work 'g1-watch.stop'; $watch = Start-LeaseWatch 'g1' $stop 1800
+    $samples = New-Object System.Collections.ArrayList
+    Stop-CloudPhp
+    $t0 = Get-Date
+    try {
+        while (((Get-Date) - $t0).TotalSeconds -lt 300) { Start-Sleep -Seconds 30; [void]$samples.Add((Get-TakeoverFacts)) }
+    } finally { Start-CloudPhp }
+    Wait-CloudAck
+    Stop-LeaseWatch $watch $stop
+    Save-Evidence 'g1-off.json' ([ordered]@{ cloud_down_seconds = 300; samples = $samples })
+    $neverTook = -not ($samples | Where-Object { $_.state -ne 'standby' })
+    $last = $samples[$samples.Count - 1]
+    $shownOff = [string]$last.health_auto_takeover.decision -eq 'disabled' -and -not [bool]$last.health_auto_takeover.settings.enabled
+    return [ordered]@{ verdict_ok = ($neverTook -and $shownOff); stayed_standby = $neverTook; health_shows_off = $shownOff; last_decision = $last.decision; last_reasons = $last.reasons }
+}
+function Invoke-G3 {
+    Set-AutoTakeover $true $true 180
+    $stop = Join-Path $Work 'g3-watch.stop'; $watch = Start-LeaseWatch 'g3' $stop 3600
+    $samples = New-Object System.Collections.ArrayList
+    for ($i = 1; $i -le 5; $i++) {
+        Stop-CloudPhp
+        $t = Get-Date
+        while (((Get-Date) - $t).TotalSeconds -lt 60) { Start-Sleep -Seconds 15; [void]$samples.Add((Get-TakeoverFacts)) }
+        Start-CloudPhp
+        Start-Sleep -Seconds 45
+        [void]$samples.Add((Get-TakeoverFacts))
+    }
+    Wait-CloudAck
+    Stop-LeaseWatch $watch $stop
+    Save-Evidence 'g3-flapping.json' ([ordered]@{ cycles = 5; down_s = 60; up_s = 45; samples = $samples })
+    $took = @($samples | Where-Object { $_.state -ne 'standby' }).Count
+    $decisions = @($samples | ForEach-Object { [string]$_.decision } | Select-Object -Unique)
+    return [ordered]@{ verdict_ok = ($took -eq 0 -and $decisions -notcontains 'take_over'); stayed_standby = ($took -eq 0); decisions_seen = $decisions
+        reasons_seen = @($samples | ForEach-Object { [string]$_.reasons } | Where-Object { $_ } | Select-Object -Unique) }
+}
+function Invoke-G4 {
+    # a REAL measured skew: only the Cloud process runs 45 s ahead; the appliance measures it from the heartbeat ack server_time
+    Stop-CloudPhp
+    Start-CloudPhp -ClockOffsetSec 45
+    $skewed = Wait-Until { $m = Get-EdgeMeta; if ($m.authority_cloud_skew_seconds -ne $null -and [math]::Abs([int]$m.authority_cloud_skew_seconds) -gt 10) { $m } } 180 5 'a measured Cloud clock skew above 10 s'
+    $stop = Join-Path $Work 'g4-watch.stop'; $watch = Start-LeaseWatch 'g4' $stop 1800
+    Stop-CloudPhp
+    $samples = New-Object System.Collections.ArrayList
+    $t0 = Get-Date
+    try {
+        while (((Get-Date) - $t0).TotalSeconds -lt 300) { Start-Sleep -Seconds 20; [void]$samples.Add((Get-TakeoverFacts)) }
+    } finally { Start-CloudPhp }
+    Wait-CloudAck
+    $after = Get-EdgeMeta
+    Stop-LeaseWatch $watch $stop
+    Save-Evidence 'g4-skew.json' ([ordered]@{ measured_skew_s = $skewed.authority_cloud_skew_seconds; how = 'Cloud php started with CP5_CLOUD_CLOCK_OFFSET=45 (Cloud clock only)'; samples = $samples; skew_after_restore = $after.authority_cloud_skew_seconds })
+    $took = @($samples | Where-Object { $_.state -ne 'standby' }).Count
+    $refusedSkew = [bool](@($samples | Where-Object { [string]$_.decision -eq 'refused' -and [string]$_.reasons -match 'CLOCK_SKEW_TOO_LARGE' }).Count)
+    return [ordered]@{ verdict_ok = ($took -eq 0 -and $refusedSkew); measured_skew_s = $skewed.authority_cloud_skew_seconds; refused_for_skew = $refusedSkew; stayed_standby = ($took -eq 0)
+        skew_after_restore = $after.authority_cloud_skew_seconds }
+}
+function Invoke-G2 {
+    $waited = Wait-HandbackQuiet
+    Set-AutoTakeover $true $true 180
+    Wait-CloudAck
+    $before = Get-TakeoverFacts
+    if ($before.state -ne 'standby') { throw "not in standby before g2 ($($before.state))" }
+    $stop = Join-Path $Work 'g2-watch.stop'; $watch = Start-LeaseWatch 'g2' $stop 3600
+    Stop-CloudPhp
+    $tStop = (Get-Date).ToUniversalTime()
+    $samples = New-Object System.Collections.ArrayList
+    $took = $null
+    try {
+        $took = Wait-Until { $f = Get-TakeoverFacts; [void]$samples.Add($f); if ($f.state -eq 'local_active') { $f } } 600 10 'the automatic takeover (local_active)'
+    } catch { Start-CloudPhp; Stop-LeaseWatch $watch $stop; Save-Evidence 'g2-takeover.json' ([ordered]@{ before = $before; samples = $samples; error = $_.Exception.Message }); throw }
+    $lease = Get-CloudLease   # read from the Cloud DB while the Cloud php is still down
+    $meta = Get-EdgeMeta
+    $audit = @(Get-ChildItem (Join-Path $DataRoot 'logs') -Filter 'edge-*.log' -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'edge-auto-takeover' }) | Select-Object -Last 12
+    Start-CloudPhp
+    Start-Sleep -Seconds 120
+    $afterReconnect = Get-TakeoverFacts
+    $leaseAfter = Get-CloudLease
+    # supervised handback (an operator decision; never automatic)
+    $hb = New-Object System.Collections.ArrayList
+    for ($i = 0; $i -lt 8; $i++) {
+        $r = Invoke-Edge @('edge:local:authority-handback', '--by=cp5-supervisor') 300
+        $st = [string](Get-EdgeMeta).authority_state
+        [void]$hb.Add([ordered]@{ attempt = $i + 1; exit = $r.Code; output = ($r.Out + $r.Err).Trim(); state = $st })
+        if ($st -eq 'standby') { break }
+        Start-Sleep -Seconds 30
+    }
+    Start-Sleep -Seconds 30
+    $final = Get-TakeoverFacts
+    $leaseFinal = Get-CloudLease
+    Stop-LeaseWatch $watch $stop
+    Set-AutoTakeover $false $false 180
+    $ttl = [int]$meta.authority_lease_ttl_seconds
+    $lastAck = [datetime]::SpecifyKind([datetime]$meta.authority_last_ack_at, 'Utc')
+    $takeAt = [datetime]::SpecifyKind([datetime]$meta.authority_takeover_at, 'Utc')
+    $expires = [datetime]::SpecifyKind([datetime]$lease.expires_at, 'Utc')
+    $gap = [int]($takeAt - $lastAck).TotalSeconds
+    $doc = [ordered]@{ handback_quiet_wait_s = $waited; before = $before; cloud_stopped_at = $tStop.ToString('s'); takeover = $took; meta_at_takeover = $meta; cloud_lease_at_takeover = $lease
+        audit_lines = $audit; after_reconnect = $afterReconnect; cloud_lease_after_reconnect = $leaseAfter; handback = $hb; final = $final; cloud_lease_final = $leaseFinal
+        checks = [ordered]@{ seconds_last_ack_to_takeover = $gap; lease_ttl_s = $ttl; required_min_s = [math]::Max($ttl + 30, 180)
+            lease_expired_before_takeover = ($expires -le $takeAt); cloud_lease_expires_at = $lease.expires_at; takeover_at = $meta.authority_takeover_at } }
+    Save-Evidence 'g2-takeover.json' $doc
+    $ok = $gap -ge [math]::Max($ttl + 30, 180) -and ($expires -le $takeAt) -and [string]$meta.authority_state_reason -match 'auto-takeover' -and $audit.Count -gt 0 -and
+        $afterReconnect.state -eq 'local_active' -and [string]$leaseAfter.holder -eq 'edge' -and $final.state -eq 'standby' -and [string]$leaseFinal.holder -eq 'cloud'
+    return [ordered]@{ verdict_ok = $ok; seconds_last_ack_to_takeover = $gap; lease_expired_before_takeover = ($expires -le $takeAt); reason = $meta.authority_state_reason
+        holder_after_reconnect = $leaseAfter.holder; state_after_reconnect = $afterReconnect.state; handback_attempts = $hb.Count; final_state = $final.state; final_holder = $leaseFinal.holder }
+}
+
+# ------------------------------------------------------------------------------- s / h) plug-in scenarios of agents D and A
+function Invoke-Plugin([string]$File, [string]$Function) {
+    $p = Join-Path $Kit $File
+    if (-not (Test-Path $p)) { throw "PLUGIN_NOT_DELIVERED: $File is not in the kit" }
+    . $p
+    if (-not (Get-Command $Function -ErrorAction SilentlyContinue)) { throw "PLUGIN_CONTRACT: $File does not define $Function" }
+    return (& $Function)
 }
 
 # ---------------------------------------------------------------------------------- evidence hygiene + summary (always)
 function Protect-Evidence {
     $hits = 0
     $vals = @($script:SecretValues | Where-Object { $_ -and $_.Length -ge 6 } | Select-Object -Unique)
-    foreach ($f in @(Get-ChildItem -Path $Ev -Recurse -File)) {
+    foreach ($f in @(Get-ChildItem -Path $Ev -Recurse -File | Where-Object { @('.png', '.zip', '.snap', '.enc') -notcontains $_.Extension })) {
         $t = Read-Shared $f.FullName
         $n = $t
         foreach ($v in $vals) { if ($n.Contains($v)) { $hits++; $n = $n.Replace($v, '<REDACTED>') } }
@@ -710,19 +1124,29 @@ try {
         $ca = New-Object Security.Cryptography.X509Certificates.X509Certificate2($caCrt)
         $script:CaThumbprint = $ca.Thumbprint
         $script:CaPem = Join-Path $Work 'branch-ca.pem'
-        $script:Results['b'] = [ordered]@{ title = 'wizard update by hand (WPF)'; ok = ((Get-Pointer) -eq '0.9.0-dev'); pointer = (Get-Pointer) }
+        $env:CP5_EDGE_ROOT_PASSFILE = Join-Path $Secrets 'mysql-root.keep'
+        $script:Results['b'] = [ordered]@{ title = 'wizard update by hand (WPF)'; ok = $false; pointer = (Get-Pointer) }
+        Invoke-Scenario 'b' 'post-checks after the owner''s WPF update (K5 with the CA, tasks + grant, logins)' @() { Invoke-UpdateChecks 'owner WPF click-through' }
     }
     switch ($Scenario) {
         'auto' {
             Invoke-Scenario 'a' '0.8.5 elevated install (MySQL service, branch CA, gateway, tasks) paired to the sandbox Cloud' @('cloud') { Invoke-Install085 }
-            Invoke-Scenario 'b' '0.9 wizard Setup-BingooEdge.cmd UPDATE 0.8.5 -> 0.9.0-dev (headless; K5 with the branch CA)' @('a') { Invoke-WizardUpdateHeadless }
+            Invoke-Scenario 'w-update' 'the REAL WPF wizard (Setup-BingooEdge.cmd) driven by UI Automation: UPDATE 0.8.5 -> 0.9.0-dev' @('a') { Invoke-WizardUiUpdate }
+            Invoke-Scenario 'b' 'update post-checks: same device, K5 with the branch CA, tasks + LOCAL SERVICE grant, PIN logins' @('a') {
+                if ((Get-Pointer) -eq '0.9.0-dev') { Invoke-UpdateChecks 'WPF wizard via UI Automation' }
+                else { Write-Log 'warn' 'the UI-driven update did not reach 0.9.0-dev - headless Setup-BingooEdge.cmd so the chain can continue'; Invoke-WizardUpdateHeadless }
+            }
         }
         'manual' {
             Invoke-Scenario 'a' '0.8.5 elevated install (MySQL service, branch CA, gateway, tasks) paired to the sandbox Cloud' @('cloud') { Invoke-Install085 }
-            Invoke-Scenario 'b-manual' 'owner clicks through the WPF wizard (update)' @('a') { Invoke-WizardUpdateManual }
+            Invoke-Scenario 'b-manual' 'owner clicks through the WPF wizard (update)' @('a') { Save-BeforeUpdate; Save-RunState @{ before_update_saved = $true }; Invoke-WizardUpdateManual }
         }
         'fresh' {
-            Invoke-Scenario 'f' '0.9 wizard FRESH INSTALL (headless, setup code, MySQL from the package, branch CA, tasks)' @('cloud') { Invoke-FreshInstall }
+            Invoke-Scenario 'w-fresh' 'the REAL WPF wizard driven by UI Automation: FRESH INSTALL with a setup code' @('cloud') { Invoke-WizardUiFresh }
+            Invoke-Scenario 'f' 'fresh-install post-checks: MySQL service, CA, tasks, K5, PIN logins (loopback + gateway full TLS)' @('cloud') {
+                if (Test-Path (Join-Path $InstallRoot 'appliance.json')) { Invoke-FreshChecks 'WPF wizard via UI Automation' 0 }
+                else { Write-Log 'warn' 'the UI-driven install did not install - headless fresh install instead'; Invoke-FreshInstall }
+            }
         }
     }
     if (@('auto', 'continue') -contains $Scenario) {
@@ -737,6 +1161,12 @@ try {
             $r
         }
         Invoke-Scenario 'e' 'counter setup wizard: CA only after confirmation, hosts, shortcuts, TLS by name and IP, Repair, Remove' @('b') { Invoke-CounterScenario }
+        Invoke-Scenario 's' 'cashier self-service counter install (Agent D plug-in)' @('b') { Invoke-Plugin 'Invoke-Cp5CounterSelfService.ps1' 'Invoke-Cp5CounterSelfService' }
+        Invoke-Scenario 'h' 'shift / order continuity (Agent A plug-in)' @('b') { Invoke-Plugin 'Invoke-Cp5Continuity.ps1' 'Invoke-Cp5Continuity' }
+        Invoke-Scenario 'g1' 'auto takeover default OFF: Cloud down > after_seconds -> NO takeover, health shows OFF' @('b') { Invoke-G1 }
+        Invoke-Scenario 'g3' 'auto takeover ON, flapping Cloud (60 s down / 45 s up x5) -> NO takeover' @('b') { Invoke-G3 }
+        Invoke-Scenario 'g4' 'auto takeover ON, Cloud clock skew 45 s -> refused CLOCK_SKEW_TOO_LARGE' @('b') { Invoke-G4 }
+        Invoke-Scenario 'g2' 'auto takeover ON (after 180 s, TTL 120): lease expires -> takeover -> Cloud back stays EDGE -> supervised handback' @('b') { Invoke-G2 }
     }
 } finally {
     $hits = Protect-Evidence

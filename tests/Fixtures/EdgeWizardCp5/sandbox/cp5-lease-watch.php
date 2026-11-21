@@ -73,9 +73,17 @@ while (time() - $t0 < $max && ! is_file($stopFile)) {
     }
     try {
         $edge ??= $edgePw !== '' ? $connect('3306', $edgeDb, 'root', $edgePw) : null;
-        $m = $edge?->query('SELECT authority_state, authority_last_ack_at FROM edge_local_meta LIMIT 1')->fetch(PDO::FETCH_ASSOC);
+        $m = $edge?->query('SELECT * FROM edge_local_meta LIMIT 1')->fetch(PDO::FETCH_ASSOC);
         if ($m) {
             $row['edge'] = ['state' => $m['authority_state'], 'last_ack' => $m['authority_last_ack_at']];
+            // scenario g: the connection / auto-takeover facts (columns exist from 0.9 on)
+            foreach (['heartbeat_consecutive_failures' => 'failures', 'authority_takeover_at' => 'takeover_at', 'authority_cloud_skew_seconds' => 'skew',
+                'auto_takeover_last_decision' => 'at_decision', 'auto_takeover_last_reasons' => 'at_reasons', 'auto_takeover_last_attempt_at' => 'at_attempt',
+                'authority_state_reason' => 'reason', 'connection_state' => 'connection'] as $col => $key) {
+                if (array_key_exists($col, $m)) {
+                    $row['edge'][$key] = is_string($m[$col]) ? mb_substr($m[$col], 0, 160) : $m[$col];
+                }
+            }
             if ($m['authority_last_ack_at'] && end($edgeAcks) !== $m['authority_last_ack_at']) {
                 $edgeAcks[] = $m['authority_last_ack_at'];
             }
