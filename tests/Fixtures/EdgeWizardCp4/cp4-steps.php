@@ -287,7 +287,10 @@ switch ($step) {
         $t0 = time();
         $s = cloudState();
         if (is_dir(APPL)) {
-            exec('rmdir /s /q "' . APPL . '" 2>&1');
+            for ($i = 0; $i < 6 && is_dir(APPL); $i++) {   // a scanner can hold a just-emptied directory for a moment
+                exec('rmdir /s /q "' . APPL . '" 2>&1');
+                is_dir(APPL) && sleep(3);
+            }
             if (is_dir(APPL)) {
                 fail('could not remove the previous disposable appliance ' . APPL);
             }
@@ -484,6 +487,42 @@ switch ($step) {
             'auto_update_status' => lastJson(edge(['edge:local:auto-update', '--status', '--json'])[1]), 'survival' => $fp];
         evid("verify-{$label}.json", $doc);
         say("verify {$label}: " . json_encode(array_diff_key($doc, ['survival' => 1, 'auto_update_status' => 1, 'at' => 1])));
+        break;
+
+    case 'takeover':
+        // A REAL supervised takeover on the disposable appliance (the authority engine untouched): one fresh standby tick, then
+        // no heartbeats until the Cloud lease lapses on the appliance clock (lease TTL + skew margin), then the takeover command.
+        $t0 = time();
+        [$c, $o] = edge(['edge:local:authority-worker', '--max-ticks=1', '--interval=1'], 120);
+        $meta = pdo()->query('SELECT authority_state, authority_last_ack_at, authority_lease_ttl_seconds FROM edge_local_meta LIMIT 1')->fetch(PDO::FETCH_ASSOC);
+        $lapse = strtotime((string) $meta['authority_last_ack_at'] . ' UTC') + (int) ($meta['authority_lease_ttl_seconds'] ?: 120) + (int) (envValue('EDGE_AUTHORITY_SKEW_MARGIN') ?: 30) + 2;
+        say('standby fresh (last ack ' . $meta['authority_last_ack_at'] . ' UTC, lease ttl ' . $meta['authority_lease_ttl_seconds'] . ' s); waiting ' . max(0, $lapse - time()) . ' s for the lease to lapse on the appliance clock');
+        while (time() < $lapse) {
+            usleep(500000);
+        }
+        [$code, $out] = edge(['edge:local:authority-takeover', '--confirm', '--by=cp4-rehearsal'], 300);
+        $state = pdo()->query('SELECT authority_state, authority_state_reason FROM edge_local_meta LIMIT 1')->fetch(PDO::FETCH_ASSOC);
+        evid('takeover-' . date('His') . '.json', ['exit' => $code, 'seconds' => time() - $t0, 'output' => preg_replace('/\e\[[0-9;]*m/', '', $out), 'state' => $state]);
+        say("takeover exit {$code} in " . (time() - $t0) . ' s: ' . json_encode($state));
+        break;
+
+    case 'handback':
+        // The controlled handback (Q): stable connection first (consecutive acknowledged heartbeats), then the orchestration.
+        $t0 = time();
+        $log = [];
+        for ($i = 0; $i < 4; $i++) {
+            [$c, $o] = edge(['edge:local:authority-worker', '--max-ticks=3', '--interval=3'], 300);
+            [$code, $out] = edge(['edge:local:authority-handback', '--by=cp4-rehearsal'], 300);
+            $state = (string) pdo()->query('SELECT authority_state FROM edge_local_meta LIMIT 1')->fetchColumn();
+            $log[] = ['attempt' => $i + 1, 'exit' => $code, 'output' => mb_substr(preg_replace('/\e\[[0-9;]*m/', '', $out), -1500), 'state' => $state];
+            if ($state === 'standby') {
+                break;
+            }
+        }
+        [$c, $o] = edge(['edge:local:authority-worker', '--max-ticks=2', '--interval=3'], 300);
+        $state = pdo()->query('SELECT authority_state, authority_state_reason FROM edge_local_meta LIMIT 1')->fetch(PDO::FETCH_ASSOC);
+        evid('handback-' . date('His') . '.json', ['seconds' => time() - $t0, 'attempts' => $log, 'state' => $state]);
+        say('handback after ' . count($log) . ' attempt(s) in ' . (time() - $t0) . ' s: ' . json_encode($state));
         break;
 
     case 'edge':
