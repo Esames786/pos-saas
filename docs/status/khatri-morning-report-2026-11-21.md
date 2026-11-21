@@ -1,4 +1,4 @@
-# Khatri morning report (21 Nov 2026, written ~05:00 PKT; the suite line is refreshed when the clean run ends ≈ 07:15)
+# Khatri morning report (21 Nov 2026, written ~05:00 PKT; final suite line added 06:30 PKT — the clean run ended 06:24)
 
 Everything below was done without touching production, the real LAB, Khatri, other tenants or the held 0.8.3 package.
 
@@ -31,6 +31,10 @@ PRODUCTION_INTEGRATION=candidate integ/khatri-cloud-edge-20261121 @ 35684723 (wo
   (runtime-map keys printHealth/printHereTake, no url() literals, identical skeleton on both runtimes). NOT merged into the production
   branch. Plan: docs/plans/khatri-cloud-edge-production-deployment-plan-2026-11-21.md; day runbook:
   docs/status/khatri-deployment-day-runbook-2026-11-21.md; GO/NO-GO: docs/status/khatri-cloud-edge-go-no-go-2026-11-21.md.
+  CLEAN FULL-SUITE RUN on the 35684723 tree FINISHED 06:24 PKT: full MySQL suite 2794 passed / 1 failed / 0 errors (the failure =
+  the pre-existing catering print-time debt); Feature+Unit 426 tests → 6 failures = the 6 pre-existing unit regressions that fail
+  identically on the untouched Edge branch. No red outside the expected list; EdgeLocalAuthorityControlHttpMySqlTest 7/7 inside the
+  run. GO/NO-GO verdict: GO for owner review; nothing deployed.
 ALL_TENANT_MIGRATION_GATE=11 Cloud migrations (4 master on edge_* tables with 0 rows; 7 per tenant: 5 CREATE new edge_* tables,
   customers/customer_addresses ADD columns + batched backfill of derived phone_normalized/address_uuid, sales_returns ADD COLUMN
   INSTANT + ADD INDEX INPLACE LOCK=NONE with lock_wait_timeout 10). Rehearsed on disposable copies built from production's own migration
@@ -74,8 +78,8 @@ KHATRI_SITE_CHECKLIST=docs\KHATRI-MORNING-ONE-PAGE.md (kit) = docs/status/khatri
 MORNING_INSTALL_READY=SURVEY + PC PREP: yes (read-only survey, printers 9100 connect-only, Cloud 443, MySQL 8 from the kit, reserved IP,
   CA/cert, firewall, cashier trust — each host change on your GO). APPLIANCE INSTALL/PAIRING: NO until the Cloud deployment (production
   has only pair + bootstrap endpoints today) and the Khatri offline_edge enablement (D-B, your GO).
-BLOCKERS=1) your unambiguous "DEPLOY NOW" for the candidate 35684723 (or the pre-UI f4e0cd95 state) after the clean full-suite line is
-  appended to the GO/NO-GO; 2) Khatri offline_edge enablement + EDGE_FEATURE_ENABLED (D-B, your GO); 3) which package goes to Khatri
+BLOCKERS=1) your unambiguous "DEPLOY NOW" for the candidate 35684723 (or the pre-UI f4e0cd95 state) — the clean full-suite line is in
+  the GO/NO-GO, no new red; 2) Khatri offline_edge enablement + EDGE_FEATURE_ENABLED (D-B, your GO); 3) which package goes to Khatri
   (0.8.3 held vs 0.8.4 buttons) + the D-D LAB certification before any real takeover; 4) PC host changes on site (MySQL, IP, cert,
   firewall) on your GO; 5) operators named by you (none assigned).
 NEXT_OWNER_ACTION=read docs/status/khatri-cloud-edge-go-no-go-2026-11-21.md (final suite line) → say "DEPLOY NOW" (runbook phase 1, ~20
