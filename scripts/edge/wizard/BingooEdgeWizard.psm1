@@ -465,12 +465,10 @@ function Test-WizPrerequisites($ctx) {
         [void]$checks.Add((New-WizCheck 'mysql' 'MySQL' 'warn' ('other MySQL services found: ' + (($mysqlSvc | ForEach-Object { $_.Name }) -join ', ') + ' - Bingoo Edge uses its own')))
     } else { [void]$checks.Add((New-WizCheck 'mysql' 'MySQL' 'ok' $(if ($mode -eq 'install') { 'will be installed from the package' } else { 'existing server per answers' }))) }
 
-    $vc = Get-WizVcRuntime
-    if ($vc) { [void]$checks.Add((New-WizCheck 'vcredist' 'Visual C++ runtime' 'ok' ('2015-2022 x64 runtime ' + $vc))) }
-    else {
-        $bundled = Get-WizVcRedistInstaller $ctx
-        [void]$checks.Add((New-WizCheck 'vcredist' 'Visual C++ runtime' 'fail' $(if ($bundled) { 'the Microsoft Visual C++ 2015-2022 x64 runtime is missing (PHP and the gateway need it) - press Fix to install it from the package' } else { 'the Microsoft Visual C++ 2015-2022 x64 runtime is missing (PHP and the gateway need it) - install VC_redist.x64.exe from microsoft.com, then Check again' }) $(if ($bundled) { 'vcredist' } else { '' })))
-    }
+    $vc = Test-WizPrereqs $ctx
+    if ($vc.Code -eq 0) { [void]$checks.Add((New-WizCheck 'vcredist' 'Visual C++ runtime' 'ok' $vc.Message)) }
+    elseif ($vc.Code -eq 2) { [void]$checks.Add((New-WizCheck 'vcredist' 'Visual C++ runtime' 'warn' ($vc.Message + ' - it is installed from the package as the first setup step'))) }
+    else { [void]$checks.Add((New-WizCheck 'vcredist' 'Visual C++ runtime' 'fail' $vc.Message)) }
 
     $pkg = Test-Path (Join-Path $ctx.PackageRoot 'package-manifest.json')
     [void]$checks.Add((New-WizCheck 'package' 'Setup package' $(if ($pkg) { 'ok' } else { 'fail' }) $ctx.PackageRoot))
@@ -478,21 +476,36 @@ function Test-WizPrerequisites($ctx) {
     return , $checks.ToArray()
 }
 
-# The VC++ 2015-2022 x64 runtime version (registry, as Microsoft documents it), or $null when missing.
-function Get-WizVcRuntime {
-    foreach ($k in @('HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64')) {
-        $v = Get-ItemProperty -Path $k -ErrorAction SilentlyContinue
-        if ($v -and $v.PSObject.Properties['Installed'] -and [int]$v.Installed -eq 1) { return [string]$v.Version }
-    }
-    return $null
-}
-
-function Get-WizVcRedistInstaller($ctx) {
-    foreach ($p in @('prereqs\VC_redist.x64.exe', 'vcredist\VC_redist.x64.exe', 'VC_redist.x64.exe')) {
+# The Microsoft Visual C++ 2015-2022 x64 runtime (php.exe, mysqld.exe and the gateway need it) through stream E's
+# <package>\scripts\Install-EdgePrereqs.ps1 ONLY: it checks the version against the bundled installer, verifies the installer
+# (Authenticode + Microsoft signer + its SHA256SUMS line) and installs it quietly. Exit 0 present, 3010 installed (reboot
+# later), 2 (-CheckOnly) missing / older, 1 refused / failed.
+function Get-WizPrereqScript($ctx) {
+    foreach ($p in @('scripts\Install-EdgePrereqs.ps1', 'app\scripts\edge\Install-EdgePrereqs.ps1')) {
         $full = Join-Path $ctx.PackageRoot $p
         if (Test-Path $full) { return $full }
     }
     return $null
+}
+function Test-WizPrereqs($ctx) {
+    $script = Get-WizPrereqScript $ctx
+    if (-not $script) { return @{ Code = 1; Message = 'the package carries no scripts\Install-EdgePrereqs.ps1' } }
+    $r = Invoke-WizProcess -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script, '-PackageRoot', $ctx.PackageRoot, '-CheckOnly') -TimeoutSec 120
+    return @{ Code = [int]$r.ExitCode; Message = (($r.StdOut + ' ' + $r.StdErr).Trim() -replace '\s+', ' ') }
+}
+# The FIRST setup step in install AND update mode (elevated). 3010 = continue, the operator reboots later.
+function Invoke-WizPrereqs($ctx) {
+    $script = Get-WizPrereqScript $ctx
+    if (-not $script) { throw 'WIZARD_NO_PREREQS: the package carries no scripts\Install-EdgePrereqs.ps1' }
+    Write-WizLog $ctx 'step' 'Visual C++ runtime (Install-EdgePrereqs.ps1)'
+    $r = Invoke-WizProcess -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script, '-PackageRoot', $ctx.PackageRoot) -TimeoutSec 1800
+    $msg = (($r.StdOut + ' ' + $r.StdErr).Trim() -replace '\s+', ' ')
+    switch ([int]$r.ExitCode) {
+        0 { Write-WizLog $ctx 'ok' $msg }
+        3010 { $ctx.RebootRecommended = $true; Write-WizLog $ctx 'warn' ($msg + ' - setup continues; restart Windows later (outside shop hours)') }
+        default { throw ('WIZARD_PREREQS_FAILED (exit ' + $r.ExitCode + '): ' + $msg) }
+    }
+    return [int]$r.ExitCode
 }
 
 function Invoke-WizFix($ctx, [string]$fix) {
@@ -508,12 +521,7 @@ function Invoke-WizFix($ctx, [string]$fix) {
             & powercfg /change standby-timeout-ac 0 | Out-Null
             & powercfg /change hibernate-timeout-ac 0 | Out-Null
         }
-        'vcredist' {
-            $exe = Get-WizVcRedistInstaller $ctx
-            if (-not $exe) { throw 'WIZARD_NO_VCREDIST: the package carries no VC_redist.x64.exe' }
-            $r = Invoke-WizProcess -FilePath $exe -ArgumentList @('/install', '/quiet', '/norestart') -TimeoutSec 900
-            if (@(0, 1638, 3010) -notcontains $r.ExitCode) { throw "WIZARD_VCREDIST_FAILED: VC_redist exited $($r.ExitCode)" }
-        }
+
         'network_private' {
             $lan = Get-WizLanInfo
             if ($lan) { Set-NetConnectionProfile -InterfaceIndex $lan.InterfaceIndex -NetworkCategory Private }
@@ -1003,6 +1011,7 @@ function Get-WizHeadlessPins($ctx, $users) {
 }
 
 function Invoke-WizInstall($ctx) {
+    [void](Invoke-WizPrereqs $ctx)
     $checks = Test-WizPrerequisites $ctx
     foreach ($fix in @('clock', 'sleep', 'network_private')) {
         $want = Get-WizValue $ctx.Answers ('prerequisites.fix_' + $fix) $false
@@ -1079,6 +1088,7 @@ function Invoke-WizUpdate($ctx) {
     $runtimeRoot = [string]$layout.runtime_root
     $previous = (Get-Content -Raw -Path (Join-Path $runtimeRoot 'current')).Trim()
     Write-WizLog $ctx 'step' "update mode: installed $previous -> package $to"
+    [void](Invoke-WizPrereqs $ctx)
     [void](Resolve-WizUpdatePublicKey $ctx)
     $before = Get-WizHealth $ctx
     if ($before.PSObject.Properties['error']) { throw ('WIZARD_UPDATE_HEALTH: cannot read the current health: ' + $before.error) }

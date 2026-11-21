@@ -308,6 +308,7 @@ function Start-Install {
     $ui.FailPanel.Visibility = 'Collapsed'
     $ui.ProgressTitle.Text = 'Installing - this takes 5 to 20 minutes'
     Start-Background @'
+[void](Invoke-WizPrereqs $ctx)
 Install-WizMySql $ctx
 New-WizCertificates $ctx
 Invoke-WizApplianceInstall $ctx
@@ -452,6 +453,7 @@ $ui.BtnNext.Add_Click({
                 $r = $sync.Result
                 $script:result = $(if ($r.Result -eq 'updated') { 0 } else { 2 })
                 $ui.FinishText.Text = $(if ($r.Result -eq 'updated') { 'Updated ' + $r.From + ' -> ' + $r.To + '. Health: ' + $r.Health + '. From now on updates arrive automatically in the maintenance window.' } else { 'The new version was not healthy, so the Branch Server went back to ' + $r.From + ' (' + $r.Rollback + '). Nothing was lost. Reasons: ' + ($r.Reasons -join '; ') })
+                if ($ctx.RebootRecommended) { $ui.FinishText.Text += "`nThe Visual C++ runtime was installed: restart Windows later (outside shop hours)." }
                 Show-Page ([array]::IndexOf($pages, 'PageFinish'))
             }
         }
@@ -462,7 +464,7 @@ $ui.BtnNext.Add_Click({
                 if ($sync.Error) { $ui.FinishText.Text = 'Installed, but finishing reported: ' + $sync.Error; return }
                 $h = $sync.Result.Health
                 $script:result = 0
-                $ui.FinishText.Text = 'The Branch Server is installed as a WARM STANDBY.' + "`nStatus: " + [string](Get-WizValue $h 'status_label' (Get-WizValue $h 'status' '?')) + "`nDesktop links: BINGOO Online, BINGOO Offline, Branch Server Status." + "`nCounters: download 'Counter Setup' from the Cloud Offline Edge page and run it on each counter PC."
+                $ui.FinishText.Text = 'The Branch Server is installed as a WARM STANDBY.' + "`nStatus: " + [string](Get-WizValue $h 'status_label' (Get-WizValue $h 'status' '?')) + "`nDesktop links: BINGOO Online, BINGOO Offline, Branch Server Status." + "`nCounters: download 'Counter Setup' from the Cloud Offline Edge page and run it on each counter PC." + $(if ($ctx.RebootRecommended) { "`nThe Visual C++ runtime was installed: restart Windows later (outside shop hours)." } else { '' })
             }
         }
         'PageFinish' { $window.Close() }
