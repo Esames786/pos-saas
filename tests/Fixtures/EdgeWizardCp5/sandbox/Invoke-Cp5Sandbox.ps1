@@ -640,7 +640,10 @@ function Invoke-WizardUpdateHeadless {
 # ---------------------------------------------------------- w) the REAL WPF wizard driven through UI Automation (update/fresh)
 function Start-WizardWindow([string]$AnswersFile) {
     # Setup-BingooEdge.cmd exactly as the owner double-clicks it (elevation probe -> the WPF window); no -Headless
-    $p = Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c "' + (Join-Path $Pkg090 'Setup-BingooEdge.cmd') + '" -AnswersFile "' + $AnswersFile + '"') -PassThru
+    # cmd /c strips the first and the LAST quote of a line with more than two quotes: both paths are space-free, pass them bare
+    $cmd = Join-Path $Pkg090 'Setup-BingooEdge.cmd'
+    if ("$cmd$AnswersFile" -match '\s') { throw "paths with spaces are not supported here: $cmd / $AnswersFile" }
+    $p = Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c ' + $cmd + ' -AnswersFile ' + $AnswersFile) -PassThru
     $script:WizardLauncherPid = $p.Id
     return (Find-UiWindow 240)
 }
@@ -811,7 +814,7 @@ function Invoke-WizardUpdateManual {
     $sc = $null
     $cont = Join-Path ([Environment]::GetFolderPath('Desktop')) 'CP5 continue (c-e).cmd'
     [IO.File]::WriteAllText($cont, "@echo off`r`ncall C:\cp5\kit\Start-Cp5.cmd continue`r`n", (New-Object Text.ASCIIEncoding))
-    Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c "' + (Join-Path $Pkg090 'Setup-BingooEdge.cmd') + '" -AnswersFile "' + $answers + '"')
+    Start-Process -FilePath 'cmd.exe' -ArgumentList ('/c ' + (Join-Path $Pkg090 'Setup-BingooEdge.cmd') + ' -AnswersFile ' + $answers)   # space-free paths, see Start-WizardWindow
     return [ordered]@{ launched = 'Setup-BingooEdge.cmd (WPF) with the rehearsal answers (DEV update key, HTTP Cloud)'; continue_shortcut = $cont }
 }
 
