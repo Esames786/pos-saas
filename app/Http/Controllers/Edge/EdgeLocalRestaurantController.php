@@ -46,6 +46,8 @@ class EdgeLocalRestaurantController extends Controller
      */
     public function restaurantBoardHtml(Request $request): JsonResponse
     {
+        // EDGE 0.9 CONTINUITY: the first touch after Switch to Offline adopts the mirrored tables / held bills / shifts (best-effort).
+        app(\App\Services\Edge\Continuity\ContinuityAdoptionService::class)->ensureAdoptedQuietly(auth('tenant')->user(), $request->integer('terminal_id') ?: null);
         $branchId = (int) $this->context->requireCurrent()->branch_id;
         $tableSession = null;
         if ($request->filled('selected_session_id')) {
@@ -105,6 +107,8 @@ class EdgeLocalRestaurantController extends Controller
      */
     public function restaurantBoard(): JsonResponse
     {
+        // EDGE 0.9 CONTINUITY: the first touch after Switch to Offline adopts the mirrored tables / held bills / shifts (best-effort).
+        app(\App\Services\Edge\Continuity\ContinuityAdoptionService::class)->ensureAdoptedQuietly(auth('tenant')->user(), null);
         $branchId = (int) $this->context->requireCurrent()->branch_id;
         $floors = RestaurantFloor::on('tenant')->where('branch_id', $branchId)
             ->where('status', 'active')->orderBy('sort_order')->orderBy('name')
