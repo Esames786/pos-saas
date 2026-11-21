@@ -270,37 +270,44 @@ class ContinuityAdoptionService
     }
 
     /**
-     * Handback preparation (owner: "adopted-but-untouched drafts are discarded at handback — the Cloud copy remains the truth"):
-     * every adopted order still held, unpaid, with no kitchen ticket raised on the appliance and its lines exactly as mirrored is
-     * removed (it never became an Edge fact — no outbox row, no print), and an adopted table session left without orders is
-     * released. Anything the cashier touched stays and must be settled or cancelled on the appliance (the handback gates are
-     * unchanged). Wiring (route / health-page button / orchestrator pre-step) belongs to the lead.
+     * Handback preparation (owner: "adopted-but-untouched drafts are discarded at handback, the Cloud copy remains the truth"):
+     * every adopted order still held, unpaid, with no kitchen ticket raised ON THE APPLIANCE (the Cloud KOT events recorded at
+     * adoption do not count) and its lines exactly as mirrored is removed (it never became an Edge fact: no outbox row, no
+     * print), and an adopted table session left without orders is released. Anything the cashier touched stays and must be
+     * settled or cancelled on the appliance (the handback gates are unchanged). The orchestrator calls it before assessing.
+     *
+     * CP3 gap 1: with $shiftId only the adopted orders of THAT shift are considered: closing a continued shift with the drawer
+     * count first releases the drafts the counter never touched, so they no longer hold the close (unresolved work).
      *
      * @return array{released_orders:int, released_sessions:int, kept:int}
      */
-    public function releaseUntouched(): array
+    public function releaseUntouched(?int $shiftId = null): array
     {
         $out = ['released_orders' => 0, 'released_sessions' => 0, 'kept' => 0];
         $conn = DB::connection('tenant');
-        $conn->transaction(function () use ($conn, &$out) {
+        $conn->transaction(function () use ($conn, $shiftId, &$out) {
             $rows = $conn->table('edge_mirror_adoptions')->whereIn('kind', [self::KIND_HELD, self::KIND_TABLE_ORDER])->where('status', 'adopted')->lockForUpdate()->get();
             foreach ($rows as $a) {
                 $sale = SalesOrder::on('tenant')->where('id', (int) $a->local_id)->lockForUpdate()->first();
+                if ($sale && $shiftId !== null && (int) $sale->shift_id !== $shiftId) {
+                    continue;   // another counter's shift: not this close's business
+                }
                 if (! $sale || (string) $sale->status !== 'held' || (string) $sale->adopted_from_order_uuid !== (string) $a->source_uuid) {
                     $out['kept']++;
                     continue;
                 }
                 $lines = $sale->lines()->lockForUpdate()->get();
-                $kots = $conn->table('kot_batches')->where('sales_order_id', $sale->id)->count();
-                $untouched = $sale->payments()->count() === 0 && $kots === 0
+                $untouched = $sale->payments()->count() === 0 && $this->edgeKotEvents($sale) === 0
                     && hash_equals((string) $a->fingerprint, ContinuityFingerprint::fromOrder($sale, $lines));
                 if (! $untouched) {
                     $out['kept']++;
                     continue;
                 }
+                $conn->table('kot_batches')->where('sales_order_id', $sale->id)->delete();   // only the recorded Cloud events
                 $sale->lines()->delete();
                 $conn->table('sales_orders')->where('id', $sale->id)->delete();
-                $conn->table('edge_mirror_adoptions')->where('id', $a->id)->update(['status' => 'released', 'reason' => 'untouched at handback', 'updated_at' => now()]);
+                $conn->table('edge_mirror_adoptions')->where('id', $a->id)->update(['status' => 'released',
+                    'reason' => $shiftId !== null ? 'untouched at the close of the continued shift' : 'untouched at handback', 'updated_at' => now()]);
                 $out['released_orders']++;
             }
             $sessions = $conn->table('edge_mirror_adoptions')->where('kind', self::KIND_SESSION)->where('status', 'adopted')->lockForUpdate()->get();
@@ -315,12 +322,34 @@ class ContinuityAdoptionService
                 }
                 $conn->table('restaurant_table_sessions')->where('id', $session->id)->delete();
                 RestaurantTable::on('tenant')->where('id', $session->restaurant_table_id)->update(['status' => 'available']);
-                $conn->table('edge_mirror_adoptions')->where('id', $a->id)->update(['status' => 'released', 'reason' => 'untouched at handback', 'updated_at' => now()]);
+                $conn->table('edge_mirror_adoptions')->where('id', $a->id)->update(['status' => 'released', 'reason' => 'no order left on the adopted table', 'updated_at' => now()]);
                 $out['released_sessions']++;
             }
         });
 
         return $out;
+    }
+
+    /** KOT events raised ON THE APPLIANCE for an adopted order (the Cloud events recorded at adoption excluded). */
+    public function edgeKotEvents(SalesOrder $sale): int
+    {
+        $cloud = array_column(self::cloudKotEvents((string) $sale->adopted_from_order_uuid), 'event_uuid');
+
+        return DB::connection('tenant')->table('kot_batches')->where('sales_order_id', $sale->id)
+            ->when($cloud !== [], fn ($q) => $q->whereNotIn('event_uuid', $cloud))->count();
+    }
+
+    /** The mirrored Cloud KOT events of one order (table order or held bill). @return list<array{event_uuid:string, sequence_no:int, event_type:string}> */
+    public static function cloudKotEvents(string $orderUuid): array
+    {
+        if ($orderUuid === '') {
+            return [];
+        }
+        $c = DB::connection('tenant');
+        $json = $c->table('edge_mirror_table_orders')->where('order_uuid', $orderUuid)->value('kot_batches')
+            ?? $c->table('edge_mirror_held_sales')->where('order_uuid', $orderUuid)->value('kot_batches');
+
+        return array_values(array_filter((array) json_decode((string) $json, true), 'is_array'));
     }
 
     // ── cashier-facing facts (data-driven, identical DOM on both runtimes: the Cloud never sends these blocks) ─────────────
@@ -552,7 +581,7 @@ class ContinuityAdoptionService
             'discount_amount' => (float) $mo->discount,
             'tax_amount' => (float) $mo->tax,
             'service_charge_amount' => (float) $mo->service_charge,
-            'delivery_charge_amount' => 0,
+            'delivery_charge_amount' => (float) ($mo->delivery_charge ?? 0),
             'tip_amount' => 0,
             'grand_total' => (float) $mo->total,
             'paid_amount' => 0, 'change_amount' => 0,
@@ -577,33 +606,65 @@ class ContinuityAdoptionService
         ]);
         $sale->save();
 
-        foreach ($lines as $l) {
+        // CP3 gap 4: deal rows exactly as the Cloud wrote them. Headers and standard lines first (in Cloud order), then every
+        // component linked to the header it belongs to (parent_line_uuid) so Add Round / settle / the envelope see a coherent deal.
+        $ordered = $lines->sortBy(fn ($l) => [(string) $l->line_kind === 'component' ? 1 : 0, (int) $l->position])->values();
+        $idByUuid = [];
+        foreach ($ordered as $l) {
             $product = $products->get((int) $l->product_id);
             $variant = $l->variant_id ? \App\Models\Tenant\ProductVariant::on('tenant')->where('product_id', $product->id)->find((int) $l->variant_id) : null;
             if ($l->variant_id && ! $variant) {
                 throw new ContinuitySkip('VARIANT_UNKNOWN');
             }
+            $kind = (string) ($l->line_kind ?: 'standard');
+            $comboId = $l->combo_id ? (int) $l->combo_id : null;
+            if ($comboId !== null && ! \App\Models\Tenant\Combo::on('tenant')->whereKey($comboId)->exists()) {
+                throw new ContinuitySkip('COMBO_UNKNOWN');
+            }
+            $parentId = null;
+            if ($kind === 'component') {
+                $parentId = $idByUuid[(string) $l->parent_line_uuid] ?? null;
+                if ($parentId === null) {
+                    throw new ContinuitySkip('DEAL_STRUCTURE_INVALID');
+                }
+            }
             $qty = (float) $l->qty;
             $price = (float) $l->unit_price;
+            // What the kitchen already has: the exact Cloud sent quantity when K1 carries it (a line sent in part fires only
+            // the rest), else the line state (anything but a not-sent state counts as fired: never re-print a ticket).
             $fired = ! in_array(strtolower((string) ($l->kot_state ?? '')), self::NOT_FIRED_STATES, true) || $l->kot_state === null;
+            $sent = $l->kot_sent_qty !== null ? max(0.0, min($qty, (float) $l->kot_sent_qty)) : ($fired ? $qty : 0.0);
             $row = new SalesOrderLine([
                 'sales_order_id' => $sale->id,
+                'parent_sales_order_line_id' => $parentId,
+                'line_kind' => $kind,
+                'combo_id' => $comboId,
                 'product_id' => (int) $product->id,
                 'product_name' => $l->product_name ?: $product->name,
                 'product_variant_id' => $variant?->id,
                 'variant_name' => $variant?->name,
                 'unit_code' => $product->unit?->code,
                 'kitchen_note' => $l->notes,
-                'line_kind' => 'standard',
                 'quantity' => $qty, 'unit_price' => $price, 'unit_cost' => 0, 'cost_total' => 0,
                 'discount_amount' => (float) $l->discount_amount, 'tax_amount' => (float) $l->tax_amount,
                 'line_total' => $qty * $price - (float) $l->discount_amount + (float) $l->tax_amount,
                 'modifiers' => ($m = json_decode((string) $l->modifiers, true)) ? $m : null,
-                'kot_sent' => $fired,
-                'kot_sent_quantity' => $fired ? $qty : 0,
+                'kot_sent' => $sent > 0 && $sent + 0.0005 >= $qty,
+                'kot_sent_quantity' => $sent,
             ]);
             $row->line_uuid = (string) $l->line_uuid;   // the Cloud line identity (kept until a revision re-creates the row)
             $row->save();
+            $idByUuid[(string) $l->line_uuid] = (int) $row->id;
+        }
+
+        // CP3 gap 5: the Cloud KOT events of the order, recorded with their Cloud identities and numbers (no lines: the kitchen
+        // already has that food). The shared KOT pipeline numbers the next ticket max + 1 as an "addition", so the kitchen sees
+        // KOT #3 after the Cloud's #1 and #2, never a second #1. They are not appliance KOT events (edgeKotEvents excludes them).
+        foreach (self::cloudKotEvents((string) $mo->order_uuid) as $b) {
+            \App\Models\Tenant\KotBatch::on('tenant')->create([
+                'event_uuid' => (string) $b['event_uuid'], 'sales_order_id' => $sale->id, 'sequence_no' => (int) $b['sequence_no'],
+                'event_type' => (string) $b['event_type'], 'copy_no' => 1, 'created_by_user_id' => null,
+            ]);
         }
 
         return $sale;

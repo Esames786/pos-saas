@@ -590,8 +590,9 @@ class EdgeInboundSaleIngestionService
             throw new IngestionRefusal('ADOPTED_ORDER_CONFLICT', 'the online order carries a payment recorded on the Cloud — it cannot be paid twice');
         }
         foreach ($cloudLines as $cl) {
-            if ((string) ($cl->line_kind ?? 'standard') !== 'standard' || $cl->combo_id !== null) {
-                throw new IngestionRefusal('ADOPTED_ORDER_UNSUPPORTED', 'the online order carries deal rows, which the live-state mirror does not adopt');
+            // CP3 gap 4: deal rows (combo header + components) are adoptable; anything else is not a sale line kind.
+            if (! in_array((string) ($cl->line_kind ?? 'standard'), ['standard', 'combo_header', 'component'], true)) {
+                throw new IngestionRefusal('ADOPTED_ORDER_UNSUPPORTED', 'the online order carries a line kind the live-state mirror does not adopt');
             }
         }
         if (! hash_equals((string) $envelope['adoption']['cloud_fingerprint'], Continuity\ContinuityFingerprint::fromOrder($order, $cloudLines))) {
@@ -599,7 +600,9 @@ class EdgeInboundSaleIngestionService
         }
         $env = array_values((array) ($envelope['lines'] ?? []));
         $map = [];
-        $same = fn ($cl, array $el, bool $exactQty) => (string) ($el['line_kind'] ?? 'standard') === 'standard'
+        // The same economic line: kind + deal + product + variant + captured price (a kept deal row keeps its Cloud parent link).
+        $same = fn ($cl, array $el, bool $exactQty) => (string) ($el['line_kind'] ?? 'standard') === (string) ($cl->line_kind ?? 'standard')
+            && (int) ($el['combo_id'] ?? 0) === (int) ($cl->combo_id ?? 0)
             && (int) ($el['product_id'] ?? 0) === (int) $cl->product_id
             && (int) ($el['product_variant_id'] ?? 0) === (int) ($cl->product_variant_id ?? 0)
             && abs((float) ($el['unit_price'] ?? 0) - (float) $cl->unit_price) < 0.005

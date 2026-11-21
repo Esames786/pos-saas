@@ -41,6 +41,8 @@ class EdgeContinuityAdoptionMySqlTest extends MySqlTenantTestCase
     private int $naan;
     private int $tableId;
     private int $waiterId;
+    private int $comboId;
+    private int $cashMethodId;
     private array $pkg = [];
 
     protected function setUp(): void
@@ -64,7 +66,7 @@ class EdgeContinuityAdoptionMySqlTest extends MySqlTenantTestCase
             'edge_local_connection_transitions', 'edge_auth_audit', 'edge_local_user_credentials', 'edge_local_meta', 'model_has_permissions', 'permissions',
             'print_jobs', 'kot_batch_lines', 'kot_batches', 'sales_order_line_cancellations', 'category_printer_mappings', 'terminal_printer_settings', 'printers',
             'sales_ledgers', 'sale_payments', 'sales_order_lines', 'sales_orders', 'restaurant_table_sessions', 'restaurant_tables', 'restaurant_floors', 'restaurant_waiters',
-            'payment_methods', 'products', 'categories', 'shifts', 'terminals', 'branches', 'users',
+            'payment_methods', 'combo_components', 'combos', 'products', 'categories', 'shifts', 'terminals', 'branches', 'users',
         ]);
         $this->branchId = $this->makeBranch(['name' => 'Khatri-like Branch', 'timezone' => 'Asia/Karachi']);
         $this->t1 = $this->makeTerminal($this->branchId, ['code' => 'T1', 'name' => '1-Counter']);
@@ -74,7 +76,13 @@ class EdgeContinuityAdoptionMySqlTest extends MySqlTenantTestCase
         $this->biryani = $this->makeProduct($this->cat, $p + ['name' => 'Biryani', 'default_selling_price' => 150]);
         $this->raita = $this->makeProduct($this->cat, $p + ['name' => 'Raita', 'default_selling_price' => 50]);
         $this->naan = $this->makeProduct($this->cat, $p + ['name' => 'Naan', 'default_selling_price' => 30]);
-        $this->makePaymentMethod(['method_type' => 'cash']);
+        // CP3 gap 4: a deal (Family Deal 500 = Biryani x2 + Raita x1), bootstrapped config on the appliance.
+        $this->comboId = DB::table('combos')->insertGetId(['branch_id' => null, 'code' => 'FAM' . Str::random(4), 'name' => 'Family Deal', 'price' => 500, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('combo_components')->insert([
+            ['combo_id' => $this->comboId, 'product_id' => $this->biryani, 'quantity' => 2, 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['combo_id' => $this->comboId, 'product_id' => $this->raita, 'quantity' => 1, 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $this->cashMethodId = $this->makePaymentMethod(['method_type' => 'cash']);
         $printer = $this->makePrinter(['code' => 'P-KOT', 'print_role' => 'kot', 'branch_id' => $this->branchId, 'ip_address' => '127.0.0.1', 'port' => 9813]);
         foreach ([$this->t1, $this->t2] as $term) {
             DB::table('category_printer_mappings')->insert(['branch_id' => $this->branchId, 'terminal_id' => $term, 'category_id' => $this->cat, 'printer_id' => $printer,
@@ -405,5 +413,141 @@ class EdgeContinuityAdoptionMySqlTest extends MySqlTenantTestCase
         $this->assertTrue(SalesOrder::on('tenant')->where('sale_uuid', $this->pkg['table_order'])->where('status', 'held')->exists());
         $this->assertSame('released', DB::table('edge_mirror_adoptions')->where('source_uuid', $this->pkg['held'])->value('status'));
         $this->assertSame(0, DB::table('edge_sync_outbox')->count());
+    }
+
+    // ═══════════════════════════════ CP3 gaps (Job 2): 1 close with count, 4 deals, 5 KOT numbering ═══════════════════════════════
+
+    /**
+     * Live state for the gap tests: T1 + T2 online shifts; table T12 with ONE order = a Family Deal (header + Biryani x2 + Raita x1,
+     * all in the kitchen) + Naan x3 of which only 1 was sent; the Cloud already printed KOT #1 and #2 for it; a held takeaway bill
+     * on T1 whose KOT #1 also went out.
+     */
+    private function mirrorGapState(): void
+    {
+        $u = fn () => (string) Str::ulid();
+        $this->pkg = ['t1_shift' => $u(), 't2_shift' => $u(), 'session' => $u(), 'table_order' => $u(), 'held' => $u(),
+            'header' => $u(), 'c_biryani' => $u(), 'c_raita' => $u(), 'naan' => $u(), 'held_line' => $u(),
+            'kot1' => (string) Str::uuid(), 'kot2' => (string) Str::uuid(), 'held_kot' => (string) Str::uuid()];
+        $k = $this->pkg;
+        $l = fn (string $uuid, int $product, string $qty, string $price, array $extra = []) => array_merge(['line_uuid' => $uuid, 'product_id' => $product, 'variant_id' => null,
+            'qty' => $qty, 'unit_price' => $price, 'modifiers' => [], 'kot_state' => 'fired', 'kot_sent_qty' => $qty, 'line_kind' => 'standard', 'combo_id' => null, 'parent_line_uuid' => null], $extra);
+        app(LiveStateMirror::class)->apply([
+            'revision' => 'rev-gaps', 'generated_at' => now()->toIso8601String(), 'branch_id' => $this->branchId,
+            'shifts' => [
+                ['shift_uuid' => $k['t1_shift'], 'terminal_id' => $this->t1, 'status' => 'open', 'opening_cash' => '1500.00', 'running' => ['expected_cash' => '5700.00']],
+                ['shift_uuid' => $k['t2_shift'], 'terminal_id' => $this->t2, 'status' => 'open', 'opening_cash' => '500.00', 'running' => ['expected_cash' => '900.00']],
+            ],
+            'table_sessions' => [['session_uuid' => $k['session'], 'table_id' => $this->tableId, 'covers' => 4, 'orders' => [[
+                'order_uuid' => $k['table_order'], 'order_no' => 'SO-CLOUD-DEAL', 'status' => 'open', 'shift_uuid' => $k['t2_shift'],
+                'subtotal' => '590.00', 'discount' => '0.00', 'tax' => '0.00', 'total' => '590.00', 'payments' => [],
+                'kot_batches' => [['event_uuid' => $k['kot1'], 'sequence_no' => 1, 'event_type' => 'normal'], ['event_uuid' => $k['kot2'], 'sequence_no' => 2, 'event_type' => 'addition']],
+                'lines' => [
+                    $l($k['header'], $this->biryani, '1', '500.00', ['line_kind' => 'combo_header', 'combo_id' => $this->comboId]),
+                    $l($k['c_biryani'], $this->biryani, '2', '0.00', ['line_kind' => 'component', 'combo_id' => $this->comboId, 'parent_line_uuid' => $k['header']]),
+                    $l($k['c_raita'], $this->raita, '1', '0.00', ['line_kind' => 'component', 'combo_id' => $this->comboId, 'parent_line_uuid' => $k['header']]),
+                    $l($k['naan'], $this->naan, '3', '30.00', ['kot_state' => 'pending', 'kot_sent_qty' => '1']),
+                ]]]]],
+            'held_sales' => [['order_uuid' => $k['held'], 'order_no' => 'SO-CLOUD-HELD', 'order_type' => 'takeaway', 'terminal_id' => $this->t1, 'shift_uuid' => $k['t1_shift'], 'total' => '150.00',
+                'kot_batches' => [['event_uuid' => $k['held_kot'], 'sequence_no' => 1, 'event_type' => 'normal']],
+                'lines' => [$l($k['held_line'], $this->biryani, '1', '150.00')]]],
+        ]);
+    }
+
+    public function test_gap1_closing_a_continued_shift_with_the_drawer_count_releases_untouched_drafts_and_keeps_touched_work(): void
+    {
+        $this->mirrorGapState();
+        $this->switchToOffline();
+        $this->login();
+        $this->getJson('/edge/local/pos/shift?terminal_id=' . $this->t1)->assertOk()->assertJsonPath('open', true);
+        $this->assertTrue(SalesOrder::on('tenant')->where('sale_uuid', $this->pkg['held'])->exists(), 'the held bill was adopted onto T1');
+
+        // No count for a drawer holding 5 700: refused — and the release inside the close transaction is rolled back with it.
+        $this->postJson('/edge/local/pos/shift/close', ['terminal_id' => $this->t1])->assertStatus(422);
+        $this->assertTrue(SalesOrder::on('tenant')->where('sale_uuid', $this->pkg['held'])->where('status', 'held')->exists(), 'a refused close releases nothing');
+
+        // With the drawer count: the untouched held bill (its only KOT is the Cloud one) is handed back, the segment closes.
+        $r = $this->postJson('/edge/local/pos/shift/close', ['terminal_id' => $this->t1, 'counted_cash' => 5700])->assertOk();
+        $this->assertSame('closed', $r->json('status'));
+        $this->assertTrue((bool) $r->json('continuity.segment_closed'));
+        $this->assertSame($this->pkg['t1_shift'], $r->json('continuity.cloud_shift_uuid'));
+        $this->assertSame(1, (int) $r->json('continuity.released_untouched'));
+        $this->assertSame(0.0, (float) $r->json('cash_variance'));
+        $this->assertFalse(SalesOrder::on('tenant')->where('sale_uuid', $this->pkg['held'])->exists());
+        $this->assertSame(0, DB::table('kot_batches')->whereIn('event_uuid', [$this->pkg['held_kot']])->count(), 'its recorded Cloud KOT event went with it');
+        $this->assertSame('released', DB::table('edge_mirror_adoptions')->where('source_uuid', $this->pkg['held'])->value('status'));
+
+        // T2: the cashier touched the adopted table order (KOT for the rest of the Naan) → the close is held by that work, untouched or not.
+        $order = SalesOrder::on('tenant')->where('sale_uuid', $this->pkg['table_order'])->firstOrFail();
+        app(EdgeLocalPosService::class)->queueKotEvents((int) $order->id, User::on('tenant')->find($this->cashierId), $this->t2);
+        $this->postJson('/edge/local/pos/shift/close', ['terminal_id' => $this->t2, 'counted_cash' => 900])->assertStatus(422);
+        $this->assertTrue(SalesOrder::on('tenant')->where('sale_uuid', $this->pkg['table_order'])->where('status', 'held')->exists(), 'touched work is never released');
+        $this->assertSame('open', DB::table('shifts')->where('terminal_id', $this->t2)->value('status'));
+    }
+
+    public function test_gap5_the_kitchen_ticket_numbering_continues_the_cloud_sequence_and_only_unsent_food_fires(): void
+    {
+        $this->mirrorGapState();
+        $this->switchToOffline();
+        $user = $this->login();
+        $this->assertSame('adopted', $this->adoption()->ensureAdopted($user, $this->t2)['status']);
+        $order = SalesOrder::on('tenant')->with('lines')->where('sale_uuid', $this->pkg['table_order'])->firstOrFail();
+        $this->assertSame([1 => $this->pkg['kot1'], 2 => $this->pkg['kot2']], DB::table('kot_batches')->where('sales_order_id', $order->id)->orderBy('sequence_no')->pluck('event_uuid', 'sequence_no')->all(),
+            'the Cloud KOT events are recorded with their Cloud identity and number');
+        $naan = $order->lines->firstWhere('line_uuid', $this->pkg['naan']);
+        $this->assertSame([1.0, false], [(float) $naan->kot_sent_quantity, (bool) $naan->kot_sent], 'a line sent in part keeps its exact sent quantity');
+        $this->assertSame(0, $this->adoption()->edgeKotEvents($order), 'recorded Cloud events are not appliance KOT events');
+
+        $kot = app(EdgeLocalPosService::class)->queueKotEvents((int) $order->id, $user, $this->t2);
+        $this->assertSame(3, (int) $kot['batch']->sequence_no, 'KOT #3 after the Cloud #1 and #2 — never a second #1');
+        $this->assertSame('addition', (string) $kot['batch']->event_type);
+        $fired = DB::table('kot_batch_lines')->where('kot_batch_id', $kot['batch']->id)->get(['product_id', 'quantity'])->map(fn ($r) => [(int) $r->product_id, (float) $r->quantity])->all();
+        $this->assertSame([[$this->naan, 2.0]], $fired, 'only the 2 Naan the kitchen does not have yet; the fired deal is not re-printed');
+        $this->assertSame(1, $this->adoption()->edgeKotEvents($order->fresh()));
+    }
+
+    public function test_gap4_a_deal_order_is_adopted_with_its_structure_and_settles_as_a_coherent_deal(): void
+    {
+        $this->mirrorGapState();
+        $this->assertTrue((bool) DB::table('edge_mirror_table_orders')->where('order_uuid', $this->pkg['table_order'])->value('adoptable'), 'a coherent deal is adoptable');
+        $this->switchToOffline();
+        $user = $this->login();
+        $this->adoption()->ensureAdopted($user, $this->t2);
+        $order = SalesOrder::on('tenant')->with('lines')->where('sale_uuid', $this->pkg['table_order'])->firstOrFail();
+        $byUuid = $order->lines->keyBy('line_uuid');
+        $header = $byUuid[$this->pkg['header']];
+        $this->assertSame(['combo_header', $this->comboId, null], [(string) $header->line_kind, (int) $header->combo_id, $header->parent_sales_order_line_id]);
+        foreach (['c_biryani', 'c_raita'] as $c) {
+            $this->assertSame(['component', $this->comboId, (int) $header->id], [(string) $byUuid[$this->pkg[$c]]->line_kind, (int) $byUuid[$this->pkg[$c]]->combo_id, (int) $byUuid[$this->pkg[$c]]->parent_sales_order_line_id]);
+        }
+
+        // Add Round carrying the deal (re-expanded server-side, components continue the old rows) + one new Raita, then pay.
+        $pos = app(EdgeLocalPosService::class);
+        $naan = $byUuid[$this->pkg['naan']];
+        $revised = $pos->holdOrReviseSale(['held_sale_id' => $order->id, 'restaurant_table_session_id' => $order->restaurant_table_session_id, 'order_type' => 'dine_in',
+            'lines' => [['combo_id' => $this->comboId, 'quantity' => 1, 'sales_order_line_id' => $header->id], ['product_id' => $this->naan, 'quantity' => 3, 'sales_order_line_id' => $naan->id],
+                ['product_id' => $this->raita, 'quantity' => 1]]], $user, $this->t2);
+        $settled = $pos->settleHeldSale((int) $revised->id, ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => (float) $revised->grand_total]]], $user, $this->t2);
+        $this->assertSame('paid', $settled->status);
+        $env = json_decode((string) DB::table('edge_sync_outbox')->where('sale_uuid', $this->pkg['table_order'])->value('envelope'), true);
+        $this->assertSame(\App\Services\Edge\EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V4, $env['envelope_schema_version']);
+        $kinds = array_count_values(array_map(fn ($l) => $l['line_kind'] . ':' . ($l['combo_id'] ?? '-'), $env['lines']));
+        $this->assertSame(1, $kinds['combo_header:' . $this->comboId]);
+        $this->assertSame(2, $kinds['component:' . $this->comboId]);
+        $this->assertSame(2, $kinds['standard:-'], 'Naan + the new Raita');
+        $this->assertSame($this->pkg['table_order'], $env['adoption']['adopted_from_order_uuid']);
+    }
+
+    public function test_gap4_an_incoherent_deal_or_a_line_voided_online_stays_with_the_cloud(): void
+    {
+        $header = (string) Str::ulid();
+        $order = fn (array $lines) => ['order_uuid' => (string) Str::ulid(), 'order_type' => 'takeaway', 'terminal_id' => $this->t1, 'total' => '500.00', 'lines' => $lines];
+        $line = fn (array $x) => array_merge(['line_uuid' => (string) Str::ulid(), 'product_id' => $this->biryani, 'qty' => '1', 'unit_price' => '0.00', 'line_kind' => 'standard'], $x);
+        app(LiveStateMirror::class)->apply(['revision' => 'rev-bad-deals', 'generated_at' => now()->toIso8601String(), 'branch_id' => $this->branchId, 'shifts' => [], 'table_sessions' => [],
+            'held_sales' => [
+                $order([$line(['line_uuid' => $header, 'line_kind' => 'combo_header', 'combo_id' => $this->comboId, 'unit_price' => '500.00'])]),                       // a header without components
+                $order([$line(['line_kind' => 'combo_header', 'combo_id' => $this->comboId, 'unit_price' => '500.00']), $line(['line_kind' => 'component', 'combo_id' => $this->comboId, 'parent_line_uuid' => (string) Str::ulid()])]), // orphan component
+                $order([$line(['unit_price' => '500.00', 'voided' => true])]),
+            ]]);
+        $this->assertSame(['DEAL_STRUCTURE_INVALID', 'DEAL_STRUCTURE_INVALID', 'LINE_VOIDED_ONLINE'], DB::table('edge_mirror_held_sales')->orderBy('id')->pluck('not_adoptable_reason')->all());
     }
 }

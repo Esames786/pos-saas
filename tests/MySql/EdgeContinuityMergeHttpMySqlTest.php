@@ -45,7 +45,7 @@ class EdgeContinuityMergeHttpMySqlTest extends MySqlTenantTestCase
     use EdgeLocalRuntimeFixture;
     use EdgeCloudBridgeFixture;
 
-    private const CONFIG_TABLES = ['branches', 'users', 'categories', 'units', 'products', 'terminals', 'payment_methods', 'restaurant_floors', 'restaurant_tables', 'restaurant_waiters'];
+    private const CONFIG_TABLES = ['branches', 'users', 'categories', 'units', 'products', 'combos', 'combo_components', 'terminals', 'payment_methods', 'restaurant_floors', 'restaurant_tables', 'restaurant_waiters'];
 
     private int $branchId;
     private int $userId;
@@ -70,7 +70,7 @@ class EdgeContinuityMergeHttpMySqlTest extends MySqlTenantTestCase
             'edge_branch_authority_leases', 'edge_inbound_sale_ingestions', 'kot_batch_lines', 'kot_batches', 'print_jobs',
             'sales_ledgers', 'cash_bank_account_transactions', 'journal_lines', 'journal_entries', 'accounts', 'cash_bank_accounts', 'stock_ledgers', 'stock_balances', 'inventory_batches',
             'sale_payments', 'sales_order_lines', 'sales_orders', 'restaurant_table_sessions', 'restaurant_tables', 'restaurant_floors', 'restaurant_waiters',
-            'shifts', 'payment_methods', 'products', 'categories', 'units', 'terminals', 'branches', 'users',
+            'shifts', 'payment_methods', 'combo_components', 'combos', 'products', 'categories', 'units', 'terminals', 'branches', 'users',
         ]);
         (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
         $this->branchId = $this->makeBranch(['name' => 'Continuity Branch', 'allow_negative_stock' => 0]);
@@ -150,14 +150,25 @@ class EdgeContinuityMergeHttpMySqlTest extends MySqlTenantTestCase
     {
         return $this->asCloud(function () {
             $c = DB::connection('tenant');
-            $lines = fn (int $orderId) => $c->table('sales_order_lines')->where('sales_order_id', $orderId)->orderBy('id')->get()->map(fn ($l) => [
-                'line_uuid' => $l->line_uuid, 'product_id' => (int) $l->product_id, 'variant_id' => $l->product_variant_id, 'qty' => (string) $l->quantity,
-                'unit_price' => (string) $l->unit_price, 'notes' => $l->kitchen_note, 'modifiers' => [], 'line_kind' => $l->line_kind ?? 'standard',
-                'kot_state' => (float) $l->kot_sent_quantity + 0.0005 >= (float) $l->quantity ? 'fired' : 'pending', 'kot_batch_uuid' => null,
-            ])->all();
+            // The K1 line shape stream C's LiveStateService serves: deal structure (line_kind / combo_id / parent_line_uuid), the exact
+            // kitchen-sent quantity, and per order the Cloud KOT events (event_uuid / sequence_no / event_type).
+            $lines = function (int $orderId) use ($c) {
+                $rows = $c->table('sales_order_lines')->where('sales_order_id', $orderId)->orderBy('id')->get();
+                $uuidById = $rows->pluck('line_uuid', 'id')->all();
+
+                return $rows->map(fn ($l) => [
+                    'line_uuid' => $l->line_uuid, 'product_id' => (int) $l->product_id, 'variant_id' => $l->product_variant_id, 'qty' => (string) $l->quantity,
+                    'unit_price' => (string) $l->unit_price, 'notes' => $l->kitchen_note, 'modifiers' => [], 'line_kind' => $l->line_kind ?? 'standard',
+                    'combo_id' => $l->combo_id !== null ? (int) $l->combo_id : null,
+                    'parent_line_uuid' => $l->parent_sales_order_line_id ? ($uuidById[(int) $l->parent_sales_order_line_id] ?? null) : null,
+                    'kot_state' => (float) $l->kot_sent_quantity + 0.0005 >= (float) $l->quantity ? 'fired' : 'pending', 'kot_sent_qty' => (string) ($l->kot_sent_quantity ?? '0'), 'kot_batch_uuid' => null,
+                ])->all();
+            };
             $order = fn ($o) => ['order_uuid' => $o->sale_uuid, 'order_no' => $o->sale_no, 'status' => 'open', 'shift_uuid' => $c->table('shifts')->where('id', $o->shift_id)->value('shift_uuid'),
                 'terminal_id' => (int) $o->terminal_id, 'subtotal' => (string) $o->subtotal, 'discount' => (string) $o->discount_amount, 'tax' => (string) $o->tax_amount,
                 'service_charge' => (string) ($o->service_charge_amount ?? 0), 'total' => (string) $o->grand_total, 'lines' => $lines((int) $o->id),
+                'kot_batches' => $c->table('kot_batches')->where('sales_order_id', $o->id)->orderBy('sequence_no')->get()
+                    ->map(fn ($b) => ['event_uuid' => $b->event_uuid, 'sequence_no' => (int) $b->sequence_no, 'event_type' => $b->event_type])->all(),
                 'payments' => $c->table('sale_payments')->where('sales_order_id', $o->id)->get()->map(fn ($p) => ['payment_uuid' => $p->payment_uuid, 'method' => 'cash', 'amount' => (string) $p->amount])->all()];
             $pkg = [
                 'generated_at' => now()->toIso8601String(), 'branch_id' => $this->branchId,
@@ -416,4 +427,91 @@ class EdgeContinuityMergeHttpMySqlTest extends MySqlTenantTestCase
             $this->assertNull($c->table('shifts')->value('continues_cloud_shift_uuid'));
         });
     }
+
+    /**
+     * CP3 gaps 4 + 5 end to end: a table with a DEAL order (Family Deal = header + Biryani x2 + Raita x1) whose KOT #1 went out
+     * online. Adopted with its structure and its Cloud KOT event; Add Round (+1 Raita) fires KOT #2 with only the Raita; paid on
+     * the appliance; merged on the Cloud: the SAME order, the three deal rows kept as they were (identity, parent links), the
+     * Raita appended, official stock for the components and the new line only (never the header), one payment, no KOT batch added.
+     */
+    public function test_a_deal_order_merges_in_place_with_its_structure_and_the_kitchen_sequence_continues(): void
+    {
+        $dealUuid = $this->asCloud(function () {
+            $c = DB::connection('tenant');
+            $combo = $c->table('combos')->insertGetId(['branch_id' => null, 'code' => 'FAM1', 'name' => 'Family Deal', 'price' => 500, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+            $c->table('combo_components')->insert([
+                ['combo_id' => $combo, 'product_id' => $this->biryani, 'quantity' => 2, 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+                ['combo_id' => $combo, 'product_id' => $this->raita, 'quantity' => 1, 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
+            ]);
+            $table = $this->makeTable($this->branchId, ['table_no' => 'T14', 'status' => 'occupied']);
+            $shift = $c->table('shifts')->where('id', $this->cloudShiftId)->first();
+            $sessionUuid = (string) Str::ulid();
+            $session = $c->table('restaurant_table_sessions')->insertGetId(['session_uuid' => $sessionUuid, 'session_no' => 'TS-' . $sessionUuid, 'branch_id' => $this->branchId,
+                'restaurant_table_id' => $table, 'opened_by_user_id' => $this->userId, 'opened_shift_id' => $shift->id, 'business_date' => $shift->business_date, 'guest_count' => 4,
+                'status' => 'open', 'opened_at' => now()->subMinutes(20), 'created_at' => now(), 'updated_at' => now()]);
+            $uuid = (string) Str::ulid();
+            $order = $this->makeSale($this->branchId, ['sale_no' => 'SO-ONLINE-DEAL', 'sale_uuid' => $uuid, 'client_uuid' => (string) Str::uuid(), 'terminal_id' => $this->t1,
+                'shift_id' => $shift->id, 'order_type' => 'dine_in', 'status' => 'held', 'subtotal' => 500, 'grand_total' => 500, 'inventory_posted' => 0, 'created_by_user_id' => $this->userId,
+                'restaurant_table_session_id' => $session, 'restaurant_table_id' => $table, 'business_date' => $shift->business_date]);
+            $header = $this->makeSaleLine($order, $this->biryani, ['line_uuid' => (string) Str::ulid(), 'product_name' => 'Family Deal', 'line_kind' => 'combo_header', 'combo_id' => $combo,
+                'quantity' => 1, 'unit_price' => 500, 'line_total' => 500, 'kot_sent' => 1, 'kot_sent_quantity' => 1]);
+            foreach ([[$this->biryani, 2], [$this->raita, 1]] as [$p, $q]) {
+                $this->makeSaleLine($order, $p, ['line_uuid' => (string) Str::ulid(), 'product_name' => 'component', 'line_kind' => 'component', 'combo_id' => $combo, 'parent_sales_order_line_id' => $header,
+                    'quantity' => $q, 'unit_price' => 0, 'line_total' => 0, 'kot_sent' => 1, 'kot_sent_quantity' => $q]);
+            }
+            $c->table('kot_batches')->insert(['event_uuid' => (string) Str::uuid(), 'sales_order_id' => $order, 'sequence_no' => 1, 'event_type' => 'normal', 'copy_no' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            $this->dealOrderId = $order;
+            $this->dealLineUuids = $c->table('sales_order_lines')->where('sales_order_id', $order)->orderBy('id')->pluck('line_uuid')->all();
+
+            return $uuid;
+        });
+        $this->mirrorConfigToAppliance(['combos', 'combo_components', 'restaurant_floors', 'restaurant_tables']);
+        $this->assertSame('refreshed:initial', $this->tick()['work']['stock']);
+        $this->asEdge(fn () => app(LiveStateMirror::class)->apply($this->cloudLiveState()));
+        $this->assertTrue((bool) $this->asEdge(fn () => DB::connection('tenant')->table('edge_mirror_table_orders')->where('order_uuid', $dealUuid)->value('adoptable')), 'a coherent deal is adoptable');
+        $adopted = $this->goLocalAndAdopt();
+        $this->assertSame(2, (int) $adopted['table_sessions'], json_encode($adopted));
+
+        $kot = $this->asEdge(function () use ($dealUuid) {
+            $user = User::on('tenant')->find($this->userId);
+            $pos = app(EdgeLocalPosService::class);
+            $order = SalesOrder::on('tenant')->with('lines')->where('sale_uuid', $dealUuid)->firstOrFail();
+            $header = $order->lines->firstWhere('line_kind', 'combo_header');
+            $revised = $pos->holdOrReviseSale(['held_sale_id' => $order->id, 'restaurant_table_session_id' => $order->restaurant_table_session_id, 'order_type' => 'dine_in',
+                'lines' => [['combo_id' => (int) $header->combo_id, 'quantity' => 1, 'sales_order_line_id' => $header->id], ['product_id' => $this->raita, 'quantity' => 1]]], $user, $this->t1);
+            $k = $pos->queueKotEvents((int) $revised->id, $user, $this->t1);
+            $pos->settleHeldSale((int) $revised->id, ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => (float) $revised->grand_total]]], $user, $this->t1);
+
+            return ['sequence_no' => (int) $k['batch']->sequence_no, 'event_type' => (string) $k['batch']->event_type,
+                'lines' => DB::connection('tenant')->table('kot_batch_lines')->where('kot_batch_id', $k['batch']->id)->get(['product_id', 'quantity'])->map(fn ($r) => [(int) $r->product_id, (float) $r->quantity])->all()];
+        });
+        $this->assertSame(['sequence_no' => 2, 'event_type' => 'addition', 'lines' => [[$this->raita, 1.0]]], $kot, 'KOT #2 after the online #1, only the new Raita');
+
+        $this->bridgeFailures = [];
+        $this->tick();
+        $this->asCloud(function () use ($dealUuid) {
+            $c = DB::connection('tenant');
+            $reg = $c->table('edge_inbound_sale_ingestions')->where('sale_uuid', $dealUuid)->first();
+            $this->assertSame('applied', $reg?->status, json_encode($reg));
+            $order = $c->table('sales_orders')->where('id', $this->dealOrderId)->first();
+            $this->assertSame(['paid', 'SO-ONLINE-DEAL', '550.00', $this->cloudShiftId], [$order->status, $order->sale_no, (string) $order->grand_total, (int) $order->shift_id]);
+            $lines = $c->table('sales_order_lines')->where('sales_order_id', $this->dealOrderId)->orderBy('id')->get();
+            $this->assertCount(4, $lines, 'the three deal rows kept + the Raita appended');
+            $this->assertSame($this->dealLineUuids, $lines->take(3)->pluck('line_uuid')->all(), 'the deal rows are the SAME Cloud rows');
+            $header = $lines[0];
+            $this->assertSame([null, null], [$header->parent_sales_order_line_id, $lines[3]->parent_sales_order_line_id]);
+            $this->assertSame([(int) $header->id, (int) $header->id], [(int) $lines[1]->parent_sales_order_line_id, (int) $lines[2]->parent_sales_order_line_id], 'components keep their header');
+            $out = $c->table('stock_ledgers')->where('reference_type', 'sales_order')->where('reference_id', $this->dealOrderId)->where('direction', 'out')
+                ->selectRaw('product_id, SUM(quantity) q')->groupBy('product_id')->pluck('q', 'product_id')->map(fn ($q) => (float) $q)->all();
+            ksort($out);
+            $expected = [$this->biryani => 2.0, $this->raita => 2.0];
+            ksort($expected);
+            $this->assertSame($expected, $out, 'components + the new Raita only; the header never moves stock');
+            $this->assertSame(1, (int) $c->table('sale_payments')->where('sales_order_id', $this->dealOrderId)->count());
+            $this->assertSame(1, (int) $c->table('kot_batches')->where('sales_order_id', $this->dealOrderId)->count(), 'the Cloud kitchen history is untouched');
+        });
+    }
+
+    private int $dealOrderId = 0;
+    private array $dealLineUuids = [];
 }
