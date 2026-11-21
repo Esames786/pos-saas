@@ -226,6 +226,9 @@ $script:timer.Add_Tick({
     }
 })
 function New-Brush([string]$hex) { return (New-Object Windows.Media.BrushConverter).ConvertFromString($hex) }
+# Stable UI Automation ids for the rows built at run time (named XAML controls already expose their Name): screen readers and
+# the CP5 UI-automation proof find "Check_<id>", "UserPin_<userId>" etc. instead of positions.
+function Set-AutoId($element, [string]$id) { [Windows.Automation.AutomationProperties]::SetAutomationId($element, ($id -replace '[^A-Za-z0-9_]', '_')) }
 
 function Show-Checks {
     $ui.CheckList.Children.Clear()
@@ -237,12 +240,14 @@ function Show-Checks {
         $badge.FontWeight = [Windows.FontWeights]::SemiBold
         $badge.Text = $c.Status.ToUpper()
         $badge.Foreground = New-Brush $(if ($c.Status -eq 'ok') { '#86EFAC' } elseif ($c.Status -eq 'warn') { '#FCD34D' } else { '#FCA5A5' })
+        Set-AutoId $badge ('CheckStatus_' + $c.Id)
         [Windows.Controls.DockPanel]::SetDock($badge, 'Left')
         [void]$row.Children.Add($badge)
         if ($c.Fix) {
             $btn = New-Object Windows.Controls.Button
             $btn.Content = 'Fix'
             $btn.Tag = $c.Fix
+            Set-AutoId $btn ('CheckFix_' + $c.Id)
             [Windows.Controls.DockPanel]::SetDock($btn, 'Right')
             $btn.Add_Click({
                 param($sender, $e)
@@ -256,6 +261,7 @@ function Show-Checks {
         }
         $t = New-Object Windows.Controls.TextBlock
         $t.Text = $c.Name + ': ' + $c.Detail
+        Set-AutoId $t ('Check_' + $c.Id)
         [void]$row.Children.Add($t)
         [void]$ui.CheckList.Children.Add($row)
     }
@@ -289,6 +295,8 @@ function Show-Users {
         $pw2.Width = 110; $pw2.Margin = New-Object Windows.Thickness(6, 0, 0, 0)
         $res = New-Object Windows.Controls.TextBlock
         $res.Margin = New-Object Windows.Thickness(8, 0, 0, 0); $res.Width = 200
+        Set-AutoId $chk ('UserChk_' + $u.id); Set-AutoId $label ('UserLabel_' + $u.id); Set-AutoId $pw ('UserPin_' + $u.id)
+        Set-AutoId $pw2 ('UserPin2_' + $u.id); Set-AutoId $res ('UserResult_' + $u.id)
         foreach ($el in @($chk, $label, $pw, $pw2, $res)) { [void]$row.Children.Add($el) }
         [void]$ui.UserList.Children.Add($row)
         $script:userRows += [pscustomobject]@{ User = $u; Check = $chk; Pin = $pw; Pin2 = $pw2; Result = $res }
