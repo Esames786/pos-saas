@@ -23,6 +23,12 @@
 #       -EnrollmentAssertionFile C:\secure\assertion.json -EnrollmentCredentialFile C:\secure\cred.txt `
 #       -EnrollmentPublicKey <base64> -UpdatePublicKey <base64> -RecoveryKeyFile C:\secure\recovery.key `
 #       -LanHostname bingoo-edge.local -LanIp 192.168.1.50 -CertPfx C:\secure\server.pfx -CertPfxPasswordFile C:\secure\pfx.txt
+#
+# EDGE 0.9: the setup wizard (scripts\wizard\Start-BingooEdgeWizard.ps1) drives this script with the values from the Cloud
+# setup code (K2) - the operator never types this command. -CloudUrl defaults to the CENTRAL domain (the Edge API lives there;
+# a tenant domain answers 404 api/edge/pair - Khatri 21 Nov 2026). New: -InstallationUuid (the id the setup code was redeemed
+# with), -EnrollmentType pin|password for -EnrollmentAssertionFile, the auto-update maintenance window, the auto-update work
+# dir (<DataRoot>\updates) and the service account's right to stage a signed runtime under <InstallRoot>\runtime.
 param(
     [Parameter(Mandatory = $true)][string]$PackageRoot,
     [string]$InstallRoot = 'C:\Program Files\Bingoo Edge',
@@ -34,11 +40,13 @@ param(
     [string]$DbName = 'bingoo_edge_local',
     [Parameter(Mandatory = $true)][string]$DbUser,
     [string]$DbPasswordFile,
-    [string]$CloudUrl,
+    [string]$CloudUrl = 'https://bingoopos.com',
+    [string]$InstallationUuid,
     [string]$PairingCodeFile,
     [string]$DeviceName,
     [string]$EnrollmentAssertionFile,
     [string]$EnrollmentCredentialFile,
+    [ValidateSet('password', 'pin')][string]$EnrollmentType = 'password',
     [string]$EnrollmentPublicKey,
     [string]$UpdatePublicKey,
     [string]$RecoveryKeyFile,
@@ -59,7 +67,10 @@ param(
     [switch]$AllowHttpCloud,
     [switch]$SkipWarmSync,
     [int]$PairingCodeWaitSeconds = 900,
-    [string]$AppEnv = 'production'
+    [string]$AppEnv = 'production',
+    [string]$AutoUpdateWindowStart,
+    [string]$AutoUpdateWindowEnd,
+    [string]$AutoUpdateWindowTz
 )
 $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -143,6 +154,20 @@ if (-not $PhpPath) {
 }
 if (-not (Test-Path $PhpPath)) { Fail "PHP not found at $PhpPath" }
 $php = $PhpPath
+# EDGE 0.9 / stream E: the packaged php.ini carries __BINGOO_PHP_DIR__ (curl.cainfo / openssl.cafile) - point it at THIS php dir.
+$phpDir = Split-Path -Parent $php
+$phpIni = Join-Path $phpDir 'php.ini'
+if ((Test-Path $phpIni) -and ((Get-Content -Path $phpIni -Raw) -match '__BINGOO_PHP_DIR__')) {
+    $iniText = (Get-Content -Path $phpIni -Raw).Replace('__BINGOO_PHP_DIR__', $phpDir)
+    Write-Utf8NoBom $phpIni $iniText
+    Write-Host "  php.ini paths set to $phpDir"
+}
+foreach ($helper in @((Join-Path $scriptDir 'appliance\Set-EdgePhpIniPaths.ps1'), (Join-Path $PackageRoot 'app\scripts\edge\appliance\Set-EdgePhpIniPaths.ps1'))) {
+    if (Test-Path $helper) {
+        try { & $helper -PhpDir $phpDir | Out-Host } catch { Write-Warning "Set-EdgePhpIniPaths.ps1 did not run ($($_.Exception.Message)); the inline substitution above applies." }
+        break
+    }
+}
 $phpVersion = (& $php -r 'echo PHP_VERSION;')
 if ([version]($phpVersion -replace '[^0-9.].*$', '') -lt [version]$manifest.min_php) { Fail "PHP $phpVersion is below the required $($manifest.min_php)" }
 $mods = (& $php -m) -join ' '
@@ -173,16 +198,19 @@ $launcher = Join-Path $InstallRoot 'artisan'
 
 # ---- 3. data root ----------------------------------------------------------------------------------------------
 Step 3 "Laying out data root $DataRoot"
-foreach ($d in @('config', 'certs', 'logs', 'backups', 'gateway')) { New-Item -ItemType Directory -Path (Join-Path $DataRoot $d) -Force | Out-Null }
+foreach ($d in @('config', 'certs', 'logs', 'backups', 'gateway', 'updates')) { New-Item -ItemType Directory -Path (Join-Path $DataRoot $d) -Force | Out-Null }
 $envFile = Join-Path $DataRoot 'config\appliance.env'
 if (Test-Path $envFile) { Fail "an appliance configuration already exists at $envFile - this box is already installed (use Update-EdgeAppliance.ps1)" }
 if (Test-IsAdmin) {
     $acct = if ($CurrentUserServices) { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name } else { $ServiceAccount }
     & icacls (Join-Path $DataRoot 'config') /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "$($acct):(OI)(CI)RX" | Out-Null
     & icacls (Join-Path $DataRoot 'certs')  /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "$($acct):(OI)(CI)RX" | Out-Null
-    foreach ($d in @('logs', 'backups', 'gateway')) { & icacls (Join-Path $DataRoot $d) /grant "$($acct):(OI)(CI)M" | Out-Null }
+    foreach ($d in @('logs', 'backups', 'gateway', 'updates')) { & icacls (Join-Path $DataRoot $d) /grant "$($acct):(OI)(CI)M" | Out-Null }
+    # EDGE 0.9 auto-update: the updater task (same account) stages a VERIFIED signed runtime into runtime\versions and switches
+    # runtime\current. appliance.json, php\, gateway\ and scripts\ stay admin-only.
+    & icacls $runtimeRoot /grant "$($acct):(OI)(CI)M" | Out-Null
     foreach ($d in @('bootstrap\cache', 'storage')) { & icacls (Join-Path $versionDir $d) /grant "$($acct):(OI)(CI)M" | Out-Null }
-    Write-Host "  ACLs restricted (config/certs: SYSTEM + Administrators full, $acct read; logs/backups/storage: $acct modify)"
+    Write-Host "  ACLs restricted (config/certs: SYSTEM + Administrators full, $acct read; logs/backups/updates/storage/runtime: $acct modify)"
 } else {
     Write-Warning 'Not elevated: ACLs were NOT restricted. Apply the config/certs ACLs (SYSTEM + Administrators full, service account read) before go-live.'
 }
@@ -222,6 +250,13 @@ $values = @{
     'EDGE_LAN_HOSTNAME' = $LanHostname
     'EDGE_LAN_IP' = $LanIp
 }
+if ($InstallationUuid) {
+    if ($InstallationUuid -notmatch '^[0-9a-fA-F-]{36}$') { Fail 'InstallationUuid must be a UUID' }
+    $values['EDGE_INSTALLATION_UUID'] = $InstallationUuid.ToLower()
+}
+if ($AutoUpdateWindowStart) { $values['EDGE_AUTO_UPDATE_WINDOW_START'] = $AutoUpdateWindowStart }
+if ($AutoUpdateWindowEnd) { $values['EDGE_AUTO_UPDATE_WINDOW_END'] = $AutoUpdateWindowEnd }
+if ($AutoUpdateWindowTz) { $values['EDGE_AUTO_UPDATE_WINDOW_TZ'] = $AutoUpdateWindowTz }
 if ($AllowHttpCloud) { $values['EDGE_CLOUD_ALLOW_HTTP'] = 'true' }
 $lines = $template -split "`r?`n"
 $out = New-Object System.Collections.Generic.List[string]
@@ -275,7 +310,7 @@ if ($PairingCodeFile -and $CloudUrl) {
 # ---- 8. first local user ---------------------------------------------------------------------------------------
 if ($EnrollmentAssertionFile) {
     Step 8 'edge:local:enroll (first local user)'
-    $enrollArgs = @('edge:local:enroll', $EnrollmentAssertionFile, '--no-interaction')
+    $enrollArgs = @('edge:local:enroll', $EnrollmentAssertionFile, "--type=$EnrollmentType", '--no-interaction')
     if ($EnrollmentCredentialFile) { $enrollArgs += "--credential-file=$EnrollmentCredentialFile" }
     if ((Invoke-Edge $enrollArgs) -ne 0) { Fail 'enrollment failed' }
 } else { Step 8 'edge:local:enroll skipped (no assertion) - enroll users from the Cloud Offline Edge page' }

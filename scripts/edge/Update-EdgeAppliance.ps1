@@ -8,6 +8,11 @@
 #
 # Usage (elevated):
 #   .\Update-EdgeAppliance.ps1 -InstallRoot "C:\Program Files\Bingoo Edge" -PackageRoot D:\pkg\BingooEdge-0.2.0
+#
+# EDGE 0.9 (setup wizard, update mode): -ReRegisterServices re-registers the tasks from the NEW plan (so an appliance updated
+# from 0.8.x gains the BingooEdgeUpdater task and the Win10-safe repetition), the installed scripts\ are refreshed from the
+# package (Register-EdgeServices, wizard, ...), and the auto-update work dir + runtime rights for the service account are put
+# in place when elevated. Health evaluation and the K6 rollback rule are the wizard's job (it compares health before/after).
 param(
     [string]$InstallRoot = 'C:\Program Files\Bingoo Edge',
     [Parameter(Mandatory = $true)][string]$PackageRoot,
@@ -15,7 +20,9 @@ param(
     [switch]$NoServices,
     [switch]$NoGateway,
     [switch]$AllowLocalActive,
-    [string]$ExpectedPlanHash
+    [string]$ExpectedPlanHash,
+    [switch]$ReRegisterServices,
+    [string]$ServiceAccount = 'NT AUTHORITY\LOCAL SERVICE'
 )
 $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -111,13 +118,30 @@ foreach ($d in @('bootstrap\cache', 'storage\framework\cache\data', 'storage\fra
 $layout.edge_app_version = $current
 [System.IO.File]::WriteAllText((Join-Path $InstallRoot 'appliance.json'), ($layout | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
 
+# 4c. EDGE 0.9 - refresh the installed operator scripts from the package (a 0.8.x box keeps its old copies otherwise: the
+#     Win10 [TimeSpan]::MaxValue Register script, no wizard) and give the service account what the auto-updater needs.
+$pkgScripts = Join-Path $PackageRoot 'scripts'
+if (Test-Path $pkgScripts) {
+    & robocopy $pkgScripts (Join-Path $InstallRoot 'scripts') /E /XJ /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+    if ($LASTEXITCODE -ge 8) { Write-Warning "scripts refresh failed (robocopy exit $LASTEXITCODE) - the previous scripts stay" } else { Write-Host 'Installed scripts refreshed from the package.' }
+    $scriptDir = Join-Path $InstallRoot 'scripts'
+}
+$isAdmin = (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($isAdmin) {
+    $updatesDir = Join-Path ([string]$layout.data_root) 'updates'
+    New-Item -ItemType Directory -Path $updatesDir -Force | Out-Null
+    & icacls $updatesDir /grant "$($ServiceAccount):(OI)(CI)M" | Out-Null
+    & icacls ([string]$layout.runtime_root) /grant "$($ServiceAccount):(OI)(CI)M" | Out-Null
+}
+
 # 5. re-render the plan for the new version, start, health
 $planArgs = @('edge:local:service-plan', "--php=$php", "--app-root=$InstallRoot", "--data-root=$($layout.data_root)", '--write-gateway-config', '--json')
 if ($layout.gateway) { $planArgs += "--gateway=$($layout.gateway)" }
 $planJson = & $php $launcher @planArgs
 if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($planFile, ($planJson -join "`n"), (New-Object System.Text.UTF8Encoding($false))) }
 if (-not $NoServices -and (Test-Path $planFile)) {
-    $startArgs = @{ Action = 'Start'; PlanFile = $planFile }
+    $startArgs = @{ Action = $(if ($ReRegisterServices) { 'Register' } else { 'Start' }); PlanFile = $planFile }
+    if ($ReRegisterServices) { $startArgs['ServiceAccount'] = $ServiceAccount }
     if ($NoGateway) { $startArgs['NoGateway'] = $true }
     & (Join-Path $scriptDir 'Register-EdgeServices.ps1') @startArgs
 }
