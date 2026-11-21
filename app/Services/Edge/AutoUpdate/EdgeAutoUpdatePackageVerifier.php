@@ -11,7 +11,10 @@ use RuntimeException;
  * EDGE 0.9 (stream B) — verify a downloaded + extracted release package against what the Cloud ADVERTISED (K6) and against
  * the appliance's own trust root, BEFORE anything is staged into the runtime. Fail closed, stable AUTO_UPDATE_* / UPDATE_* codes:
  *
- *   1. package-manifest.json bytes hash to the advertised manifest_sha256 (binds the advertisement to these bytes);
+ *   1. the advertised manifest_sha256 is the package's artifact_manifest_hash (K6 / ReleaseRegistry definition: the SIGNED
+ *      payload's artifact_manifest_hash, which the builder also writes at the top of package-manifest.json); step 5 then proves
+ *      the signed payload carries the same value and that it recomputes from the app\ bytes (CP4 found the earlier
+ *      "sha256 of package-manifest.json" reading here disagreed with the Cloud registry);
  *   2. the manifest names the advertised version and package_hash;
  *   3. every listed file is present and unchanged, nothing unlisted, the package hash recomputes, the boundary audit is clean
  *      (EdgePackageBuilder::verify — the same check the build and the operator update use);
@@ -42,13 +45,14 @@ class EdgeAutoUpdatePackageVerifier
         if ($version === '' || $advertisedManifestSha === '' || $advertisedPackageHash === '') {
             throw new RuntimeException('AUTO_UPDATE_RELEASE_INCOMPLETE: the release advertisement lacks version / manifest_sha256 / package_hash.');
         }
-        // 1.
-        if (! hash_equals($advertisedManifestSha, hash_file('sha256', $manifestPath))) {
-            throw new RuntimeException('AUTO_UPDATE_MANIFEST_MISMATCH: package-manifest.json does not hash to the advertised manifest_sha256.');
-        }
         $manifest = json_decode((string) file_get_contents($manifestPath), true);
         if (! is_array($manifest)) {
             throw new RuntimeException('AUTO_UPDATE_NOT_A_PACKAGE: package-manifest.json is not valid JSON.');
+        }
+        // 1.
+        $packageArtifactHash = strtolower(trim((string) ($manifest['artifact_manifest_hash'] ?? '')));
+        if ($packageArtifactHash === '' || ! hash_equals($advertisedManifestSha, $packageArtifactHash)) {
+            throw new RuntimeException('AUTO_UPDATE_MANIFEST_MISMATCH: the package artifact_manifest_hash does not match the advertised manifest_sha256.');
         }
         // 2.
         if ((string) ($manifest['edge_app_version'] ?? '') !== $version) {
@@ -97,6 +101,9 @@ class EdgeAutoUpdatePackageVerifier
         }
         // 5. (signature, artifact bytes, version transition, schema, pin) — throws UPDATE_* codes.
         $this->updateVerifier->verify($package, $root . DIRECTORY_SEPARATOR . 'app', $currentVersion, $currentSchema);
+        if (! hash_equals($advertisedManifestSha, strtolower((string) ($package['payload']['artifact_manifest_hash'] ?? '')))) {
+            throw new RuntimeException('AUTO_UPDATE_MANIFEST_MISMATCH: the signed artifact_manifest_hash does not match the advertised manifest_sha256.');
+        }
         if ((string) ($package['payload']['edge_app_version'] ?? '') !== $version) {
             throw new RuntimeException('AUTO_UPDATE_VERSION_MISMATCH: the signed update names ' . (string) ($package['payload']['edge_app_version'] ?? '?') . '.');
         }

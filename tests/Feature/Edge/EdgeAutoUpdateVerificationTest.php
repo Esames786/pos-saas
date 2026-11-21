@@ -52,6 +52,11 @@ class EdgeAutoUpdateVerificationTest extends TestCase
     {
         $cases = [
             'advertised manifest sha differs' => [fn (&$root, &$rel) => $rel['manifest_sha256'] = str_repeat('0', 64), 'AUTO_UPDATE_MANIFEST_MISMATCH'],
+            'package manifest names another artifact hash' => [function (&$root, &$rel) {
+                $m = json_decode(file_get_contents($root . '/package-manifest.json'), true);
+                $m['artifact_manifest_hash'] = str_repeat('1', 64);
+                file_put_contents($root . '/package-manifest.json', json_encode($m));
+            }, 'AUTO_UPDATE_MANIFEST_MISMATCH'],
             'advertised package hash differs' => [fn (&$root, &$rel) => $rel['package_hash'] = str_repeat('0', 64), 'AUTO_UPDATE_PACKAGE_HASH_MISMATCH'],
             'advertised version differs' => [fn (&$root, &$rel) => $rel['version'] = '0.9.2-edge', 'AUTO_UPDATE_VERSION_MISMATCH'],
             'a file was changed after the build' => [fn (&$root, &$rel) => file_put_contents($root . '/app/app/A.php', '<?php // evil'), 'AUTO_UPDATE_PACKAGE_TAMPERED'],
@@ -179,12 +184,13 @@ class EdgeAutoUpdateVerificationTest extends TestCase
         $manifest = [
             'package_format_version' => 'edge-package-v1', 'runtime_mode_supported' => 'branch_server', 'edge_app_version' => $version,
             'components' => ['update' => array_filter(['signed' => true, 'signing_key_id' => $manifestKeyId ? $keyId : null])],
+            'artifact_manifest_hash' => (string) $signed['payload']['artifact_manifest_hash'], // as EdgePackageBuilder writes it
             'package_hash' => hash('sha256', json_encode($files)), 'files' => $files,
         ];
         file_put_contents($root . '/package-manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         return [$root, [
-            'version' => $version, 'manifest_sha256' => hash_file('sha256', $root . '/package-manifest.json'), 'package_hash' => $manifest['package_hash'],
+            'version' => $version, 'manifest_sha256' => (string) $signed['payload']['artifact_manifest_hash'], 'package_hash' => $manifest['package_hash'],
             'signing_key_id' => $keyId, 'min_from_version' => '0.9.0-edge', 'download_url' => 'https://bingoopos.com/x',
         ]];
     }
