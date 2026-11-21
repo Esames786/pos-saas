@@ -304,6 +304,7 @@ class CateringDocumentPrintService
             $out .= self::BOLD_ON.$row('BALANCE DUE', number_format((float) $payload['balance'], 2))."\n".self::BOLD_OFF;
         }
 
-        return $out."\n\n".self::CUT;
+        // SLIP-END-LINES-1: no blank lines before the cut; the cut feeds to the cutter itself.
+        return $out.self::CUT;
     }
 }

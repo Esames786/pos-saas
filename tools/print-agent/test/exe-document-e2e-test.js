@@ -154,6 +154,8 @@ function printToVerbRegistered() {
             POS_PRINT_POLL_MS: '400',
             // AGENT-UPGRADE-1: developer ke PC par asli agent pehle se chal raha ho to bhi test chale (client PC par kabhi set nahi).
             BINGOO_AGENT_ALLOW_OTHER: '1',
+            // 16 Nov: 2.7.0 per-user agent ka lock LOCALAPPDATA me — test ko apna khali LOCALAPPDATA (asli agent nahi chhuta).
+            LOCALAPPDATA: fs.mkdtempSync(path.join(require('os').tmpdir(), 'bingoo-exe-test-')),
         },
         windowsHide: true,
         stdio: 'ignore',

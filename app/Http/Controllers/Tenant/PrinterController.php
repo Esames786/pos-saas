@@ -22,7 +22,10 @@ class PrinterController extends Controller
 
         $terminalSettings = TerminalPrinterSetting::with(['receiptPrinter', 'kotPrinter'])->get()->keyBy('terminal_id');
 
-        return view('tenant.printing.printers.index', compact('printers', 'branches', 'terminals', 'terminalSettings'));
+        // PRINT-OFFLINE-HERE-1: koi agent zinda nahi to Health ki aakhri jaanch purani hai — page saaf bataye.
+        $offlineAgents = app(\App\Services\Printing\PrintHealthService::class)->branchOfflineAgents();
+
+        return view('tenant.printing.printers.index', compact('printers', 'branches', 'terminals', 'terminalSettings', 'offlineAgents'));
     }
 
     /* ── PRINTER-HEALTH-1: live status + remote Test / Reset / Reboot ─────────────────────────── */

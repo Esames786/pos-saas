@@ -383,7 +383,10 @@ class EscPosPayloadService
             $out .= $this->brandingFooter();
         }
 
-        return $out . str_repeat('-', 42) . "\n\n\n" . self::CUT;
+        // SLIP-TOP-GAP-1 (16 Nov): ends like the KOT — last line, then the cut. The cut (GS V 66 0)
+        // feeds the paper to the cutter by itself; the 3 blank lines that sat here only added ~1.2 cm
+        // of empty paper under every reminder (owner's photo).
+        return $out . str_repeat('-', 42) . "\n" . self::CUT;
     }
 
     /**
@@ -848,7 +851,8 @@ class EscPosPayloadService
             }
         }
 
-        return $out . $rule . "\n\n\n" . self::CUT;
+        // SLIP-END-LINES-1: last rule, then the cut. No blank lines; the cut feeds to the cutter itself.
+        return $out . $rule . "\n" . self::CUT;
     }
 
     private function receipt(SalesOrder $sale): string
@@ -1064,8 +1068,10 @@ class EscPosPayloadService
         if ($show('show_bingoo_branding')) {
             $out .= $this->brandingFooter();
         }
-        $out .= "\n\n";
 
+        // SLIP-END-LINES-1 (17 Nov): no blank lines before the cut. The cut (GS V 66 0) feeds the last line
+        // to the cutter by itself, as the KOT has always done. The 2 lines here were ~0.8 cm of empty paper
+        // under every bill and bill preview (owner: "KOT, reminder, preview sub pe fix karo").
         return $out . self::CUT;
     }
 

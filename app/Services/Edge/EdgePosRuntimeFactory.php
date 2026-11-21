@@ -351,6 +351,10 @@ class EdgePosRuntimeFactory
             'websiteOrders' => null,
             'websiteOrderHold' => null,
             'websiteOrderVerify' => null,
+            // KHATRI CLOUD/EDGE INTEGRATION (21 Nov 2026): PRINT-OFFLINE-HERE-1 is a Cloud concern — the Branch Server has no print
+            // agent and prints straight to the LAN printers (EdgeLocalPrintDeliveryService); the shared view renders no agent pill.
+            'printHealth' => null,
+            'printHereTake' => null,
         ];
     }
 
