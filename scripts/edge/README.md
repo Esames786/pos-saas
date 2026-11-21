@@ -97,3 +97,14 @@ operator-chosen directory outside the repository.
   authority and pulled by the paired device (never typed in, never the appliance's secret alone). `Restore-EdgeAppliance.ps1
   -PullConfig` (or `-PullRecoveryKey`) pulls it on a replacement machine; `edge:local:restore --pull-recovery-key` is the CLI form.
 - Cloud admins: `php artisan edge:recovery-key status|rotate --tenant=<code> --branch=<id> --reason=...` (ids + audit, never material).
+
+## Edge 0.9 - packaging contract (stream E, 21 Nov 2026)
+
+| Item | Contract |
+|---|---|
+| `Setup-BingooEdge.cmd` | shipped at the package ROOT (copy of `scripts/edge/Setup-BingooEdge.cmd`); the wizard ships in `app/scripts/edge/wizard/` (+ `scripts/wizard/`). Required in a 0.9+ release package. |
+| `php/php.ini` | written by the builder: `extension_dir = "ext"`, `include_path = "."`, no build-host path, `curl.cainfo` / `openssl.cafile` = `"__BINGOO_PHP_DIR__\cacert.txt"`; CA bundle = `php/cacert.txt`. |
+| `appliance/Set-EdgePhpIniPaths.ps1` | run by the installer/updater after copying `php\` to its final folder: `-PhpDir "<InstallRoot>\php"` replaces the token, checks `cacert.txt` + `ext\`, and proves `php.exe` trusts the bundle (exit 0 ready / 1 refused). Idempotent. |
+| `mysql/` | optional MySQL 8.0 server runtime (`--mysql-runtime`): `bin/ share/ lib/` + licence only; no `my.ini`, data, debug, docs, tests. |
+| Task durations | no `[TimeSpan]::MaxValue` and no day count above 3650 in any packaged script (Windows 10 Task Scheduler); the build fails otherwise. |
+| `-CloudUrl` | the central domain `https://bingoopos.com` in defaults and examples (a 0.9+ release build refuses anything else). |
