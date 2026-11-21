@@ -1,9 +1,9 @@
 # CP5 (stream B, HOST side, NOT elevated, changes nothing outside the cp5 folder it is given - D:\BingooEdgeLab-e09\cp5 by
 # the owner's rule that disposable packages / staging / evidence live on D:): assembles the Windows Sandbox kit and writes the
 # .wsb files - every mapped folder on D:.
-#   cp5\kit\        the sandbox scripts (this repo's tests\Fixtures\EdgeWizardCp5\sandbox), the DEV update PUBLIC key facts,
-#                   prereqs\ = the Visual C++ 2015-2022 x64 runtime MSIs from this PC's Package Cache (+ the runtime DLLs as a
-#                   fallback) - a clean sandbox has no VC++ runtime and PHP / MySQL / nginx need it
+#   cp5\kit\        the sandbox scripts (this repo's tests\Fixtures\EdgeWizardCp5\sandbox) and the DEV update PUBLIC key facts.
+#                   No VC++ stop-gap any more: the sandbox installs the runtime with stream E's Install-EdgePrereqs.ps1 and the
+#                   verified VC_redist.x64.exe the 0.9.0-dev package carries (this PC's Package Cache bundle is stripped).
 #   cp5\evidence\   the ONLY writable mapped folder
 #   cp5\BingooEdge-CP5-auto-<6g|4g>.wsb    a, w-update, b, c, d, e, s, h, g1 g3 g4 g2
 #   cp5\BingooEdge-CP5-manual-<6g|4g>.wsb  a, then the owner clicks through the WPF wizard; desktop "CP5 continue (c-e)"
@@ -25,7 +25,11 @@ $pkgs = Join-Path $Cp5 'pkgs'
 foreach ($p in @($Rel085, $tree, $pkgs, (Join-Path $pkgs 'BingooEdge-0.9.0-dev'), (Join-Path $pkgs 'BingooEdge-0.9.1-dev'), (Join-Path $pkgs 'BingooEdge-0.9.2-dev'))) {
     if (-not (Test-Path $p)) { throw "missing: $p" }
 }
-New-Item -ItemType Directory -Force -Path $kit, (Join-Path $kit 'prereqs\vcrt'), $evidence | Out-Null
+foreach ($v in @('0.9.0-dev', '0.9.1-dev', '0.9.2-dev')) {   # every 0.9 package must carry E's prerequisite (strict layout)
+    foreach ($f in @('prereqs\VC_redist.x64.exe', 'scripts\Install-EdgePrereqs.ps1')) { if (-not (Test-Path (Join-Path $pkgs "BingooEdge-$v\$f"))) { throw "BingooEdge-$v lacks $f" } }
+}
+New-Item -ItemType Directory -Force -Path $kit, $evidence | Out-Null
+Remove-Item -Recurse -Force (Join-Path $kit 'prereqs') -ErrorAction SilentlyContinue
 Copy-Item -Force (Join-Path $Repo 'tests\Fixtures\EdgeWizardCp5\sandbox\*') $kit
 foreach ($c in @(Get-ChildItem -Path $kit -Filter '*.cmd')) {   # cmd.exe wants CRLF
     $t = [IO.File]::ReadAllText($c.FullName) -replace "`r?`n", "`r`n"
@@ -36,21 +40,6 @@ foreach ($c in @(Get-ChildItem -Path $kit -Filter '*.cmd')) {   # cmd.exe wants 
 $facts = Get-Content -Raw $DevFacts | ConvertFrom-Json
 [IO.File]::WriteAllText((Join-Path $kit 'dev-public-facts.json'), (([ordered]@{ public_key = [string]$facts.public_key; key_id = [string]$facts.key_id; note = 'DEV update key (rehearsal only)' }) | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 
-# Visual C++ runtime for the sandbox: the cached MSIs (installed with msiexec inside the sandbox) + the DLLs as a fallback
-$cache = 'C:\ProgramData\Package Cache'
-foreach ($pair in @(@('vc_runtimeMinimum_x64.msi', 'minimum'), @('vc_runtimeAdditional_x64.msi', 'additional'))) {
-    $src = Get-ChildItem -Path $cache -Recurse -Filter $pair[0] -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $src) { Write-Warning "$($pair[0]) not found in the Package Cache"; continue }
-    $dst = Join-Path $kit ('prereqs\' + $pair[1])
-    New-Item -ItemType Directory -Force -Path $dst | Out-Null
-    Copy-Item -Force $src.FullName $dst
-    Get-ChildItem -Path $src.DirectoryName -Filter '*.cab' | Copy-Item -Destination $dst -Force   # each MSI keeps its external cab1.cab
-}
-Remove-Item -Force (Join-Path $kit 'prereqs\*.msi') -ErrorAction SilentlyContinue
-foreach ($dll in @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'concrt140.dll')) {
-    $src = Join-Path $env:SystemRoot ('System32\' + $dll)
-    if (Test-Path $src) { Copy-Item -Force $src (Join-Path $kit 'prereqs\vcrt') }
-}
 
 function New-Wsb([string]$Name, [string]$ScenarioArg, [int]$Mem) {
     $map = @(

@@ -14,15 +14,15 @@
 #   -Only a,b,c         run only these scenario ids (prereqs and cloud always run); a scenario whose prerequisite was not run
 #                       is skipped. Start-Cp5.cmd passes its 2nd argument here.
 #
-# PLUG-IN SCENARIOS (other agents): the kit may carry Invoke-Cp5CounterSelfService.ps1 (scenario s, Agent D) and
-# Invoke-Cp5Continuity.ps1 (scenario h, Agent A). Contract: the file is DOT-SOURCED inside this driver and must define a
-# function of the same name (no parameters) that returns an ordered dictionary with at least verdict_ok [bool]; it may use every
-# helper and variable of this driver (Write-Log, Save-Evidence, Invoke-Cloud, Invoke-Edge, Invoke-Logged, Invoke-Sql,
-# Get-EdgeMeta, Get-CloudLease, Get-Health, Get-CloudDevice, Get-Users, Test-PinLogins, Get-ApplianceSnapshot, Get-TaskFacts,
-# Stop-CloudPhp, Start-CloudPhp, Restart-EdgeTask, Set-ApplianceEnv, Wait-Until, Write-Secret, Get-Secret, New-Pin, the UI
-# Automation helpers of Cp5UiAutomation.ps1; $Ev, $Work, $Kit, $Secrets, $CloudPhp, $CloudIni, $CloudUrl, $InstallRoot,
-# $DataRoot, $script:LanIp, $script:CaPem, $script:CaThumbprint). Evidence files start with 's-' / 'h-'. It must leave the
-# appliance in STANDBY with the Cloud up (g runs after it). A missing file = the scenario is recorded as not delivered.
+# OTHER AGENTS' SCENARIOS, called with the signatures they delivered:
+#   s (Agent D)  a separate STA process: Invoke-Cp5CounterSelfService.ps1 -Evidence -LanIp -Kit -Pkgs -Work [-CloudPhp -CloudIni
+#                -LanHost -HttpsPort]; exit 0 = every verdict true; results in <Ev>\s-selfservice.json (verdict.all, web_driver).
+#                It stops the in-sandbox Cloud php on purpose and changes the cashier's secrets\pin-<id>.
+#   h (Agent A)  in-process: & Invoke-Cp5Continuity.ps1 -Evidence -LanIp -CaPem [-Kit -Work -CloudSrc -CloudPhp -CloudIni -LanHost
+#                -HttpsPort -CloudPort -CloudDbPort]; returns an ordered hashtable (verdict_ok, checks, failed_checks, ...). A
+#                SUPERVISED takeover: the automatic takeover is switched OFF before it. It restarts the Cloud php itself and
+#                writes the new pid into cp5-run.json.
+#   The Cloud php is restarted (Confirm-CloudUp) after s, before h and before g.
 #
 # Mapped folders (see the .wsb): C:\cp5\kit, C:\cp5\pkgs, C:\cp5\rel085, C:\cp5\cloudsrc READ-ONLY; C:\cp5\evidence writable.
 # Secrets (MySQL / PFX passwords, PINs, setup + pairing codes) are generated INSIDE the sandbox under C:\cp5w\secrets, never
@@ -335,30 +335,18 @@ function Invoke-Prereqs {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     if (-not ((New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))) { throw 'the driver needs the sandbox administrator (run Start-Cp5.cmd from the .wsb LogonCommand)' }
     foreach ($p in @($Kit, $Pkg090, $Pkg091, $Pkg092, $Rel085, $CloudSrc)) { if (-not (Test-Path $p)) { throw "missing mapped folder: $p" } }
-    # Visual C++ 2015-2022 x64 runtime (PHP, MySQL, the gateway need it; a clean sandbox has none)
-    $vcKey = 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64'
-    $how = 'present'
-    if (-not (Get-ItemProperty $vcKey -ErrorAction SilentlyContinue)) {
-        $how = 'msi'
-        foreach ($msi in @('minimum\vc_runtimeMinimum_x64.msi', 'additional\vc_runtimeAdditional_x64.msi')) {
-            $f = Join-Path $Kit ('prereqs\' + $msi)
-            if (Test-Path $f) {
-                $mlog = Join-Path $Ev ('prereq-' + [IO.Path]::GetFileNameWithoutExtension($f) + '.log')
-                $r = Start-Process msiexec.exe -ArgumentList ('/i "' + $f + '" /qn /norestart /l*v "' + $mlog + '"') -Wait -PassThru
-                Write-Log 'info' "$msi exit $($r.ExitCode)"
-            }
-        }
-        if (-not (Test-Path (Join-Path $env:SystemRoot 'System32\vcruntime140.dll'))) {
-            $how = 'dll-copy'
-            Copy-Item (Join-Path $Kit 'prereqs\vcrt\*.dll') (Join-Path $env:SystemRoot 'System32') -Force
-        }
-        if (-not (Get-ItemProperty $vcKey -ErrorAction SilentlyContinue)) {
-            # the MSIs alone may not write the bundle's detection key the wizard checks; the runtime itself is in place
-            New-Item -Path $vcKey -Force | Out-Null
-            New-ItemProperty -Path $vcKey -Name Installed -Value 1 -PropertyType DWord -Force | Out-Null
-            New-ItemProperty -Path $vcKey -Name Version -Value 'v14.51.36247.00' -PropertyType String -Force | Out-Null
-            $how += '+detection-key'
-        }
+    # Visual C++ 2015-2022 x64 runtime: a clean sandbox has none, and the Cloud php / mysqld here plus the REAL 0.8.5 install of
+    # scenario a (no bundled prerequisite) need it BEFORE any 0.9 wizard runs. Installed with stream E's own
+    # Install-EdgePrereqs.ps1 + the verified VC_redist.x64.exe that the 0.9.0-dev package carries (Authenticode + Microsoft
+    # signer + SHA256SUMS line) - the same script the wizard runs as its first step (which then finds the runtime present).
+    $prereq = Join-Path $Pkg090 'scripts\Install-EdgePrereqs.ps1'
+    if (-not (Test-Path $prereq)) { throw 'the 0.9.0-dev package carries no scripts\Install-EdgePrereqs.ps1' }
+    $chk = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $prereq, '-PackageRoot', $Pkg090, '-CheckOnly') (Join-Path $Ev 'prereq-check-before.log') 120
+    $how = 'present (check exit 0)'
+    if ($chk.Code -ne 0) {
+        $ins = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $prereq, '-PackageRoot', $Pkg090) (Join-Path $Ev 'prereq-install.log') 1800
+        if (@(0, 3010) -notcontains $ins.Code) { throw ('Install-EdgePrereqs.ps1 failed (exit ' + $ins.Code + '): ' + ($ins.Out + $ins.Err).Trim()) }
+        $how = "check exit $($chk.Code), installed by Install-EdgePrereqs.ps1 (exit $($ins.Code)$(if ($ins.Code -eq 3010) { ', reboot recommended - not needed for this run' }))"
     }
     $lan = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | Sort-Object InterfaceMetric)
     if ($lan.Count -lt 1) { throw 'no IPv4 LAN address in the sandbox (Networking must be Enable in the .wsb)' }
@@ -967,6 +955,7 @@ function Wait-HandbackQuiet {
     return 0
 }
 function Invoke-G1 {
+    Confirm-CloudUp
     Set-AutoTakeover $false $false 180
     $stop = Join-Path $Work 'g1-watch.stop'; $watch = Start-LeaseWatch 'g1' $stop 1800
     $samples = New-Object System.Collections.ArrayList
@@ -1075,13 +1064,44 @@ function Invoke-G2 {
         holder_after_reconnect = $leaseAfter.holder; state_after_reconnect = $afterReconnect.state; handback_attempts = $hb.Count; final_state = $final.state; final_holder = $leaseFinal.holder }
 }
 
-# ------------------------------------------------------------------------------- s / h) plug-in scenarios of agents D and A
-function Invoke-Plugin([string]$File, [string]$Function) {
-    $p = Join-Path $Kit $File
-    if (-not (Test-Path $p)) { throw "PLUGIN_NOT_DELIVERED: $File is not in the kit" }
-    . $p
-    if (-not (Get-Command $Function -ErrorAction SilentlyContinue)) { throw "PLUGIN_CONTRACT: $File does not define $Function" }
-    return (& $Function)
+# ------------------------------------------------------------------------------- s / h) the scenarios of agents D and A
+function Confirm-CloudUp {
+    # s stops the in-sandbox Cloud php on purpose (its test 7); h restarts it itself and records the new pid in cp5-run.json
+    if (-not (Wait-Port $CloudPort 1)) {
+        Write-Log 'info' 'the Cloud php is down (stopped by a previous scenario) - restarting it'
+        Start-CloudPhp
+        Wait-CloudAck 240
+    }
+}
+function Invoke-ScenarioS {
+    # Agent D's own STA process (headless Edge / cookie driver + the REAL counter wizard window); exit 0 = every verdict true
+    $p = Join-Path $Kit 'Invoke-Cp5CounterSelfService.ps1'
+    if (-not (Test-Path $p)) { throw 'NOT_DELIVERED: Invoke-Cp5CounterSelfService.ps1 is not in the kit' }
+    $r = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', $p, '-Evidence', $Ev, '-LanIp', $script:LanIp,
+        '-Kit', $Kit, '-Pkgs', $Pkgs, '-Work', $Work, '-CloudPhp', $CloudPhp, '-CloudIni', $CloudIni, '-LanHost', $LanHost, '-HttpsPort', [string]$HttpsPort) (Join-Path $Ev 's-driver.log') 3600
+    # the cashier's PIN was changed by s (secrets\pin-<id>): keep the redaction list current
+    foreach ($f in @(Get-ChildItem $Secrets -Filter 'pin-*')) { [void]$script:SecretValues.Add((Get-Content -Raw $f.FullName).Trim()) }
+    $sf = Join-Path $Ev 's-selfservice.json'
+    $j = $(if (Test-Path $sf) { Get-Content -Raw $sf | ConvertFrom-Json } else { $null })
+    Confirm-CloudUp
+    return [ordered]@{ verdict_ok = ($r.Code -eq 0 -and $j -and [bool]$j.verdict.all); exit = $r.Code; web_driver = $(if ($j) { $j.web_driver } else { $null })
+        verdict = $(if ($j) { $j.verdict } else { 's-selfservice.json missing' }) }
+}
+function Invoke-ScenarioH {
+    $p = Join-Path $Kit 'Invoke-Cp5Continuity.ps1'
+    if (-not (Test-Path $p)) { throw 'NOT_DELIVERED: Invoke-Cp5Continuity.ps1 is not in the kit' }
+    Confirm-CloudUp
+    # h is a SUPERVISED takeover: the optional automatic takeover must be OFF (if it fired first, h's
+    # adoption_audited_supervised check fails by design)
+    $at = (Get-Health).auto_takeover
+    if ([bool]$at.enabled -or [bool]$at.cloud_enabled -or [bool]$at.allowed) { Set-AutoTakeover $false $false 180 }
+    Write-Log 'info' ('automatic takeover before h: cloud=' + [bool]$at.cloud_enabled + ' appliance=' + [bool]$at.allowed + ' (OFF required)')
+    $res = & $p -Evidence $Ev -LanIp $script:LanIp -CaPem $script:CaPem -Kit $Kit -Work $Work -CloudSrc $CloudSrc -CloudPhp $CloudPhp -CloudIni $CloudIni `
+        -LanHost $LanHost -HttpsPort $HttpsPort -CloudPort $CloudPort -CloudDbPort $CloudDbPort
+    if ($res -is [array]) { $res = @($res | Where-Object { $_ -is [Collections.IDictionary] }) | Select-Object -Last 1 }
+    Confirm-CloudUp
+    if (-not ($res -is [Collections.IDictionary])) { throw 'h returned no result dictionary' }
+    return $res
 }
 
 # ---------------------------------------------------------------------------------- evidence hygiene + summary (always)
@@ -1177,8 +1197,8 @@ try {
             $r
         }
         Invoke-Scenario 'e' 'counter setup wizard: CA only after confirmation, hosts, shortcuts, TLS by name and IP, Repair, Remove' @('b') { Invoke-CounterScenario }
-        Invoke-Scenario 's' 'cashier self-service counter install (Agent D plug-in)' @('b') { Invoke-Plugin 'Invoke-Cp5CounterSelfService.ps1' 'Invoke-Cp5CounterSelfService' }
-        Invoke-Scenario 'h' 'shift / order continuity (Agent A plug-in)' @('b') { Invoke-Plugin 'Invoke-Cp5Continuity.ps1' 'Invoke-Cp5Continuity' }
+        Invoke-Scenario 's' 'cashier self-service "Install Offline Counter" (Agent D: headless Edge + the real counter wizard)' @('b') { Invoke-ScenarioS }
+        Invoke-Scenario 'h' 'shift / order continuity across a supervised takeover + handback (Agent A)' @('b') { Invoke-ScenarioH }
         Invoke-Scenario 'g1' 'auto takeover default OFF: Cloud down > after_seconds -> NO takeover, health shows OFF' @('b') { Invoke-G1 }
         Invoke-Scenario 'g3' 'auto takeover ON, flapping Cloud (60 s down / 45 s up x5) -> NO takeover' @('b') { Invoke-G3 }
         Invoke-Scenario 'g4' 'auto takeover ON, Cloud clock skew 45 s -> refused CLOCK_SKEW_TOO_LARGE' @('b') { Invoke-G4 }

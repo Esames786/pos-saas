@@ -15,9 +15,10 @@ OUT=$(cygpath -m "$CP5/pkgs" 2>/dev/null || echo "D:/BingooEdgeLab-e09/cp5/pkgs"
 KS='C:/Users/Dell/BingooEdgeLab/e09/dev-signing/edge-update-signing-dev-e09.keystore.json'
 PASS='C:/Users/Dell/BingooEdgeLab/e09/dev-signing/edge-update-signing-dev-e09.passphrase'
 VENDOR='C:/Users/Dell/BingooEdgeLab/e09/e/vendor-closure-7d7da307/vendor'
-PHPRT='D:/laragon2/bin/php/php-8.3.16-Win32-vs16-x64'
+PHPRT='C:/Users/Dell/BingooEdgeLab/php-runtime-8.3.16-portable'   # as E's release recipe (tools/edge-release/Build-EdgeReleasePackage.ps1)
 GW='D:/laragon2/bin/nginx/nginx-1.22.0/nginx.exe'
 MYSQL='D:/laragon2/bin/mysql/mysql-8.0.30-winx64'
+VCREDIST='D:/BingooEdgeLab-e09/e/prereqs/VC_redist.x64.exe'   # E's verified official installer (Authenticode valid, complete payload)
 DEVPUB=$(php -r 'echo json_decode(file_get_contents("C:/Users/Dell/BingooEdgeLab/e09/dev-signing/dev-public-facts.json"), true)["public_key"];')
 LOGS=$CP5/build-logs
 COMMIT=${CP5_COMMIT:-$(git -C /d/laragon2/www/pos-saas-e09-b rev-parse --short HEAD)}
@@ -29,7 +30,7 @@ build() {
   local t0=$(date +%s)
   echo "=== build $v ($(date -Is))"
   EDGE_APP_VERSION=$v php artisan edge:build-package "$OUT/BingooEdge-$v" --force --allow-dirty --git-commit="b-$COMMIT-cp5-$v" --strict-layout \
-    --signing-keystore="$KS" --signing-passphrase-file="$PASS" --vendor-from="$VENDOR" --php-runtime="$PHPRT" --gateway="$GW" "$@" \
+    --signing-keystore="$KS" --signing-passphrase-file="$PASS" --vendor-from="$VENDOR" --php-runtime="$PHPRT" --gateway="$GW" --vc-redist="$VCREDIST" "$@" \
     > "$LOGS/cp5-build-$v.log" 2>&1
   local rc=$?
   echo "build $v exit $rc in $(( $(date +%s) - t0 )) s"; if [ $rc -ne 0 ]; then echo "STOP: build $v failed"; exit 1; fi
@@ -38,7 +39,7 @@ build() {
   echo "audit $v exit $? in $(( $(date +%s) - t1 )) s: $(php -r '$a=json_decode(file_get_contents($argv[1]),true); echo json_encode(["ok"=>$a["ok"]??null,"signature_ok"=>$a["signature_ok"]??null,"checksums_signature_ok"=>$a["checksums_signature_ok"]??null,"version"=>$a["edge_app_version"]??null,"files"=>$a["file_count"]??null,"package_hash"=>$a["package_hash"]??null]);' "$LOGS/cp5-audit-$v.json")"
 }
 
-build 0.9.0-dev --mysql-runtime="$MYSQL"
+build 0.9.0-dev --mysql-runtime="$MYSQL" --mysql-profile=server
 
 php -r '$f="app/Support/EdgeRuntime.php"; file_put_contents($f, file_get_contents($f) . "\n// CP5 rehearsal: 0.9.1-dev trivial app change (no behaviour change).\n");'
 build 0.9.1-dev
