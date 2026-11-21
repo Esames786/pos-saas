@@ -25,6 +25,11 @@ class EdgeDevice extends Model
         'public_uuid', 'tenant_id', 'branch_id', 'installation_uuid', 'device_name',
         'device_secret_hash', 'status', 'active_slot', 'app_version', 'schema_version',
         'paired_at', 'last_authenticated_at', 'revoked_at', 'revoked_by_user_id', 'revoke_reason',
+        // EDGE 0.9 (K4/K5/K6) — operator-facing facts; never read by pairing, the lease, the fence or ingestion.
+        'install_phase', 'install_ok', 'install_message', 'install_reported_at', 'reported_version',
+        'lan_hostname', 'lan_ip', 'lan_https_port', 'lan_ca_pem', 'lan_ca_sha256', 'lan_reported_at',
+        'update_now_requested_at', 'maintenance_window_start', 'maintenance_window_end',
+        'live_state_revision', 'live_state_hash', 'live_state_changed_at',
     ];
 
     protected $casts = [
@@ -37,7 +42,21 @@ class EdgeDevice extends Model
         'compatibility_reported_at' => 'datetime',
         // W-F VERSION REPORTING — when the heartbeat last recorded a (changed) build block.
         'build_reported_at'         => 'datetime',
+        // EDGE 0.9 — K4 install/update status, K5 LAN profile, K6 update-now.
+        'install_ok'                => 'boolean',
+        'install_reported_at'       => 'datetime',
+        'lan_https_port'            => 'integer',
+        'lan_reported_at'           => 'datetime',
+        'update_now_requested_at'   => 'datetime',
+        'live_state_revision'       => 'integer',
+        'live_state_changed_at'     => 'datetime',
     ];
+
+    /** K5 — true once the appliance reported a usable LAN profile (hostname or IP, port and the branch CA). */
+    public function hasLanProfile(): bool
+    {
+        return ($this->lan_ip || $this->lan_hostname) && $this->lan_https_port && $this->lan_ca_pem && $this->lan_ca_sha256;
+    }
 
     protected $hidden = ['device_secret_hash'];
 
