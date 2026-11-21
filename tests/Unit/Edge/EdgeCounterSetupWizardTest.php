@@ -150,17 +150,20 @@ class EdgeCounterSetupWizardTest extends TestCase
         // ... and $confirmed is the ticked box AND a Yes on the confirmation dialog, set right before the call
         $this->assertStringContainsString('$confirmed = ($ui.ChkTrustCa.IsChecked -eq $true) -and ($answer -eq [System.Windows.MessageBoxResult]::Yes)', $r['functions']['Initialize-CounterWindow']);
         $this->assertLessThan(strpos($r['functions']['Initialize-CounterWindow'], 'Invoke-CaStep -Confirmed $confirmed'), strpos($r['functions']['Initialize-CounterWindow'], "'Confirm the branch certificate'"));
-        $this->assertSame(['Invoke-UninstallCore'], $calls->where('name', 'Remove-CaFromStore')->pluck('in')->unique()->values()->all());
+        $this->assertSame(['Invoke-CaStep', 'Invoke-UninstallCore'], $calls->where('name', 'Remove-CaFromStore')->pluck('in')->unique()->sort()->values()->all());
+        // Repair replaces an older CA ONLY under the same confirmation, only after the new CA is in, and only a Bingoo branch CA
+        $this->assertMatchesRegularExpression('/if \(-not \(Test-BingooBranchCa \$o\) -or \$o\.Thumbprint -eq \$CaThumbprint\) \{ continue \}\r?\n\s+Remove-CaFromStore -Thumbprint \$o\.Thumbprint -Confirmed \$Confirmed/', $r['functions']['Invoke-CaStep']);
+        $this->assertLessThan(strpos($r['functions']['Invoke-CaStep'], 'Remove-CaFromStore'), strpos($r['functions']['Invoke-CaStep'], 'Add-CaToStore'));
         $this->assertStringContainsString('$removeCa = ($ui.ChkRemoveCa.IsChecked -eq $true) -and ($caAnswer -eq [System.Windows.MessageBoxResult]::Yes)', $r['functions']['Initialize-CounterWindow']);
         foreach (['Add-CaToStore', 'Remove-CaFromStore'] as $primitive) {
             $this->assertMatchesRegularExpression('/^function ' . $primitive . " \{\r?\n\s+param\([^)]*\[bool\]\\\$Confirmed\)\r?\n\s+if \(-not \\\$Confirmed\) \{ throw /", $r['functions'][$primitive], "$primitive refuses without confirmation first");
         }
         // Invoke-CaStep never reaches the store without confirmation when the CA is missing
-        $this->assertMatchesRegularExpression('/if \(-not \$Confirmed\) \{ return @\{ Ok = \$false.*\r?\n\s+Add-CaToStore -Certificate \$cert -Confirmed \$Confirmed/', $r['functions']['Invoke-CaStep']);
+        $this->assertMatchesRegularExpression('/if \(-not \$Confirmed\) \{ return @\{ Ok = \$false.*\r?\n\s+if \(-not \$trusted\) \{\r?\n\s+Add-CaToStore -Certificate \$cert -Confirmed \$Confirmed/', $r['functions']['Invoke-CaStep']);
 
         // system access only inside the 7 primitives
         foreach ($r['functions'] as $name => $text) {
-            if (! in_array($name, ['Get-CounterPaths', 'Get-UserDesktops', 'Test-CaInStore', 'Add-CaToStore', 'Remove-CaFromStore', 'Clear-DnsCache', 'Update-IconCache'], true)) {
+            if (! in_array($name, ['Get-CounterPaths', 'Get-UserDesktops', 'Test-CaInStore', 'Get-RootCertificates', 'Add-CaToStore', 'Remove-CaFromStore', 'Clear-DnsCache', 'Update-IconCache'], true)) {
                 $this->assertDoesNotMatchRegularExpression('/X509Store|Cert:\\\\|SystemRoot|GetFolderPath|ProgramData|ipconfig|ie4uinit/', $text, "$name touches the system");
             }
         }
@@ -396,7 +399,145 @@ class EdgeCounterSetupWizardTest extends TestCase
         $this->assertSame($r['before'], $r['after']);
     }
 
+    // ---- Repair: an older / rotated Bingoo branch CA is replaced (after confirmation; never a non-Bingoo CA) --------
+
+    private const OLD_SAME = 'OLDSAMEBRANCH000000000000000000000000001';
+
+    private const OTHER_BRANCH = 'OTHERBRANCH00000000000000000000000000002';
+
+    private const LOOKALIKE_ORG = 'LOOKALIKE000000000000000000000000000003';
+
+    private const LOOKALIKE_CN = 'LOOKALIKE000000000000000000000000000004';
+
+    private const OLD_RENAMED = 'OLDRENAMED00000000000000000000000000005';
+
+    private const NON_BINGOO = 'NONBINGOO00000000000000000000000000006';
+
+    public static function rotations(): array
+    {
+        return [
+            'state names the previous CA (renamed branch) + a rotated CA of this branch' => [self::OLD_RENAMED, false, [self::OLD_RENAMED, self::OLD_SAME], true],
+            'no state file (PC set up by the console script)' => [null, false, [self::OLD_SAME], true],
+            'tampered state names a NON-Bingoo root' => [self::NON_BINGOO, false, [self::OLD_SAME], true],
+            'new CA already trusted, older one still there' => [self::OLD_RENAMED, true, [self::OLD_RENAMED, self::OLD_SAME], false],
+        ];
+    }
+
+    /** @param list<string> $replaced */
+    #[DataProvider('rotations')]
+    public function test_repair_replaces_only_the_older_bingoo_ca_of_this_branch_and_only_after_confirmation(?string $state, bool $currentTrusted, array $replaced, bool $added): void
+    {
+        $r = $this->harness(self::ROTATE_SCENARIO, $this->wizard($this->fullContext()), ['state' => $state, 'currentTrusted' => $currentTrusted]);
+        sort($replaced);
+        $keep = ['FOREIGNCA0000000000000000000000000000000', self::OTHER_BRANCH, self::LOOKALIKE_ORG, self::LOOKALIKE_CN, self::NON_BINGOO];
+        if (! in_array(self::OLD_RENAMED, $replaced, true)) {
+            $keep[] = self::OLD_RENAMED;
+        }
+
+        // without confirmation: nothing at all changes, the pending replacement is reported
+        $this->assertFalse($r['no']['Ok']);
+        $this->assertSame('waiting for your confirmation', $r['no']['Detail']);
+        $this->assertSame($replaced, collect($r['no']['Pending'])->sort()->values()->all());
+        $this->assertSame($r['before'], $r['afterNo']);
+        $this->assertSame([], $r['callsNo']);
+
+        // confirmed: the new CA is trusted FIRST, then exactly the older Bingoo CA(s) of this branch are removed
+        $this->assertTrue($r['yes']['Ok'], (string) ($r['yes']['Detail'] ?? ''));
+        $this->assertSame($added, $r['yes']['Added']);
+        $this->assertSame($replaced, collect($r['yes']['Replaced'])->sort()->values()->all());
+        $this->assertContains($this->caThumbprint(), $r['after']);
+        foreach ($replaced as $tp) {
+            $this->assertNotContains($tp, $r['after']);
+        }
+        foreach ($keep as $tp) {
+            $this->assertContains($tp, $r['after'], "$tp must never be removed");
+        }
+        $expectedCalls = array_merge($added ? ['store-add:True'] : [], array_map(fn ($tp) => 'store-remove:True:' . $tp, $replaced));
+        $this->assertSame(collect($expectedCalls)->sort()->values()->all(), collect($r['calls'])->sort()->values()->all());
+        if ($added) {
+            $this->assertSame('store-add:True', $r['calls'][0], 'the new CA is in before any old one goes');
+        }
+
+        // the state now describes the NEW CA (its own added-by-setup flag) and remembers what was replaced
+        $this->assertSame($this->caThumbprint(), $r['state']['ca_thumbprint']);
+        $this->assertSame($added, $r['state']['ca_added_by_setup']);
+        $this->assertSame($replaced, collect((array) $r['state']['ca_replaced'])->sort()->values()->all());
+        // a second Repair converges: nothing pending, nothing to confirm
+        $this->assertTrue($r['again']['Ok']);
+        $this->assertSame('already trusted on this PC - nothing changed', $r['again']['Detail']);
+    }
+
+    public function test_only_a_real_bingoo_branch_ca_subject_qualifies(): void
+    {
+        $subjects = [
+            'khatri (real)' => null,
+            'plain name' => ['commonName' => 'Bingoo Edge Branch CA', 'organizationName' => 'Bingoo POS Edge'],
+            'other branch' => ['commonName' => 'Bingoo Edge Branch CA (Other-02)', 'organizationName' => 'Bingoo POS Edge'],
+            'comma trick in O' => ['commonName' => 'Bingoo Edge Branch CA (Khatri-01)', 'organizationName' => 'Evil, O=Bingoo POS Edge'],
+            'lower-case O' => ['commonName' => 'Bingoo Edge Branch CA (Khatri-01)', 'organizationName' => 'bingoo pos edge'],
+            'CN with a suffix' => ['commonName' => 'Bingoo Edge Branch CA (Khatri-01) copy', 'organizationName' => 'Bingoo POS Edge'],
+            'O only as OU' => ['commonName' => 'Bingoo Edge Branch CA (Khatri-01)', 'organizationName' => 'Corp', 'organizationalUnitName' => 'Bingoo POS Edge'],
+            // PHP cannot write two O attributes: this one is built in memory by .NET (CertificateRequest, no store)
+            'two O attributes' => 'CN=Bingoo Edge Branch CA (Khatri-01), O=Bingoo POS Edge, O=Evil',
+        ];
+        $items = [];
+        foreach ($subjects as $name => $dn) {
+            $items[$name] = match (true) {
+                $dn === null => ['pem' => self::caPem()],
+                is_string($dn) => ['dn' => $dn],
+                default => ['pem' => self::selfSigned($dn)],
+            };
+        }
+        $pems = $items;
+
+        $r = $this->harness(self::FACTS_SCENARIO, $this->wizard(), ['items' => array_values($items)]);
+
+        $this->assertSame([true, true, true, false, false, false, false, false], array_column($r, 'bingoo'), json_encode(array_combine(array_keys($pems), $r)));
+        $this->assertSame('Bingoo Edge Branch CA (Khatri-01)', $r[0]['cn']);
+        $this->assertSame('Bingoo POS Edge', $r[0]['org']);
+    }
+
+    public function test_the_real_window_repair_asks_before_replacing_the_old_ca(): void
+    {
+        $r = $this->harness(self::UI_REPAIR_SCENARIO, $this->wizard($this->fullContext()));
+
+        $this->assertSame('repair', $r['mode']);
+        $this->assertSame('PageCa', $r['page']);
+        $this->assertStringContainsString('OLDER branch certificate', $r['caStatus']);
+        $this->assertStringContainsString(self::OLD_SAME, $r['caStatus']);
+        $this->assertSame('Replace the old certificate', $r['button']);
+        $this->assertFalse($r['nextBefore']);
+        $this->assertContains(self::OLD_SAME, $r['storeAfterNo'], 'a No keeps everything as it was');
+        $this->assertNotContains($this->caThumbprint(), $r['storeAfterNo']);
+        $this->assertContains($this->caThumbprint(), $r['storeAfterYes']);
+        $this->assertNotContains(self::OLD_SAME, $r['storeAfterYes']);
+        $this->assertContains('FOREIGNCA0000000000000000000000000000000', $r['storeAfterYes']);
+        $this->assertTrue($r['nextAfter']);
+        $this->assertStringContainsString('will be REMOVED', end($r['dialogs']));
+        $this->assertStringContainsString(self::OLD_SAME, end($r['dialogs']));
+        $this->assertSame(['ask:Confirm the branch certificate', 'ask:Confirm the branch certificate', 'store-add:True', 'store-remove:True:' . self::OLD_SAME], $r['calls']);
+        $this->assertSame([self::OLD_SAME], (array) $r['state']['ca_replaced']);
+        $this->assertTrue($r['state']['ca_added_by_setup']);
+    }
+
     // ---- helpers -------------------------------------------------------------------------------------------------
+
+    /** A throw-away self-signed CA with the given subject (PEM), for the subject-parsing checks. */
+    private static function selfSigned(array $dn): string
+    {
+        $cnf = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'bingoo-counter-wizard-openssl-' . getmypid() . '.cnf';
+        file_put_contents($cnf, "[req]\ndistinguished_name=dn\n[dn]\n[v3_ca]\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n");
+        $opts = ['config' => $cnf, 'private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048, 'digest_alg' => 'sha256', 'x509_extensions' => 'v3_ca'];
+        try {
+            $key = openssl_pkey_new($opts);
+            $cert = openssl_csr_sign(openssl_csr_new($dn, $key, $opts), null, $key, 30, $opts, random_int(1, PHP_INT_MAX));
+            openssl_x509_export($cert, $pem);
+        } finally {
+            @unlink($cnf);
+        }
+
+        return $pem;
+    }
 
     /** @param array<string, mixed> $context */
     private function wizard(array $context = []): string
@@ -556,7 +697,7 @@ $ErrorActionPreference = 'Stop'
 $tokens = $null; $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$tokens, [ref]$errors)
 if (@($errors).Count -gt 0) { throw 'the generated script does not parse' }
-$Primitives = @('Get-CounterPaths', 'Get-UserDesktops', 'Test-CaInStore', 'Add-CaToStore', 'Remove-CaFromStore', 'Clear-DnsCache', 'Update-IconCache')
+$Primitives = @('Get-CounterPaths', 'Get-UserDesktops', 'Test-CaInStore', 'Get-RootCertificates', 'Add-CaToStore', 'Remove-CaFromStore', 'Clear-DnsCache', 'Update-IconCache')
 $SystemPattern = 'X509Store|Cert:\\|SystemRoot|SystemDrive|GetFolderPath|ProgramData|env:PUBLIC|ipconfig|ie4uinit'
 $functions = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false))
 $firstFunction = ($functions | ForEach-Object { $_.Extent.StartOffset } | Measure-Object -Minimum).Minimum
@@ -575,9 +716,12 @@ $global:FakeStore = New-Object System.Collections.ArrayList
 $global:Calls = New-Object System.Collections.ArrayList
 function Get-CounterPaths { return @{ Hosts = (Join-Path $Sandbox 'etc\hosts'); PublicDesktop = (Join-Path $Sandbox 'Public\Desktop'); IconPath = (Join-Path $Sandbox 'ProgramData\BingooPOS\bingoo.ico'); StateFile = (Join-Path $Sandbox 'ProgramData\BingooPOS\counter\state.json'); LogDir = (Join-Path $Sandbox 'ProgramData\BingooPOS\logs') } }
 function Get-UserDesktops { return @(Join-Path $Sandbox 'Users\cashier\Desktop') }
-function Test-CaInStore { param([string]$Thumbprint) return $global:FakeStore.Contains($Thumbprint) }
-function Add-CaToStore { param($Certificate, [bool]$Confirmed) [void]$global:Calls.Add('store-add:' + $Confirmed); if (-not $Confirmed) { throw 'not confirmed' }; [void]$global:FakeStore.Add($Certificate.Thumbprint) }
-function Remove-CaFromStore { param([string]$Thumbprint, [bool]$Confirmed) [void]$global:Calls.Add('store-remove:' + $Confirmed); if (-not $Confirmed) { throw 'not confirmed' }; $global:FakeStore.Remove($Thumbprint) }
+function Test-CaInStore { param([string]$Thumbprint) return @($global:FakeStore | Where-Object { $_.Thumbprint -eq $Thumbprint }).Count -gt 0 }
+function Get-RootCertificates { return @($global:FakeStore) }
+function Add-CaToStore { param($Certificate, [bool]$Confirmed) [void]$global:Calls.Add('store-add:' + $Confirmed); if (-not $Confirmed) { throw 'not confirmed' }; [void]$global:FakeStore.Add((ConvertTo-CaFacts $Certificate)) }
+function Remove-CaFromStore { param([string]$Thumbprint, [bool]$Confirmed) [void]$global:Calls.Add('store-remove:' + $Confirmed + ':' + $Thumbprint); if (-not $Confirmed) { throw 'not confirmed' }; foreach ($c in @($global:FakeStore | Where-Object { $_.Thumbprint -eq $Thumbprint })) { $global:FakeStore.Remove($c) } }
+function Add-FakeCa { param([string]$Thumbprint, [string]$CommonName, [string]$Organization) [void]$global:FakeStore.Add([pscustomobject]@{ Thumbprint = $Thumbprint; CommonName = $CommonName; Organization = $Organization; NotAfter = '2030-01-01' }) }
+function Get-StoreThumbprints { return , @($global:FakeStore | ForEach-Object { $_.Thumbprint } | Sort-Object) }
 function Clear-DnsCache { }
 function Update-IconCache { }
 function Get-SandboxSnapshot {
@@ -585,7 +729,7 @@ function Get-SandboxSnapshot {
     $files = @(Get-ChildItem -LiteralPath $Sandbox -Recurse -File | Where-Object { -not $_.FullName.StartsWith($logs) } | ForEach-Object { $_.FullName.Substring($Sandbox.Length) } | Sort-Object)
     $hosts = ''
     if (Test-Path -LiteralPath (Get-CounterPaths).Hosts) { $hosts = [IO.File]::ReadAllText((Get-CounterPaths).Hosts) }
-    return [ordered]@{ files = $files; hosts = $hosts; store = @($global:FakeStore | Sort-Object) }
+    return [ordered]@{ files = $files; hosts = $hosts; store = (Get-StoreThumbprints) }
 }
 function Get-SandboxLog {
     $dir = (Get-CounterPaths).LogDir
@@ -598,14 +742,14 @@ function Initialize-SandboxPc {
     [IO.File]::WriteAllText((Get-CounterPaths).Hosts, "# hosts`r`n127.0.0.1 localhost`r`n10.0.0.9 printer.local`r`n")
     Set-Content -LiteralPath (Join-Path $Sandbox 'Public\Desktop\Notes.txt') -Value 'mine' -Encoding ASCII
     Set-Content -LiteralPath (Join-Path $Sandbox 'Users\cashier\Desktop\Chrome.url') -Value @('[InternetShortcut]', 'URL=https://example.com/') -Encoding ASCII
-    [void]$global:FakeStore.Add('FOREIGNCA0000000000000000000000000000000')
+    Add-FakeCa 'FOREIGNCA0000000000000000000000000000000' 'Foreign Root CA' 'Other Org'
 }
 
 PS1;
 
     private const ROUNDTRIP_SCENARIO = <<<'PS1'
 Initialize-SandboxPc
-if ($Data.preexisting) { [void]$global:FakeStore.Add($CaThumbprint) }
+if ($Data.preexisting) { Add-FakeCa $CaThumbprint 'Bingoo Edge Branch CA (Khatri-01)' 'Bingoo POS Edge' }
 $before = Get-SandboxSnapshot
 $ca = Invoke-CaStep -Confirmed $true
 $net = Invoke-NetworkStep
@@ -618,7 +762,7 @@ PS1;
 
     private const NOCONFIRM_SCENARIO = <<<'PS1'
 $r = Invoke-CaStep -Confirmed $false
-[pscustomobject]@{ result = $r; store = @($global:FakeStore); calls = @($global:Calls) } | ConvertTo-Json -Depth 4 -Compress
+[pscustomobject]@{ result = $r; store = (Get-StoreThumbprints); calls = @($global:Calls) } | ConvertTo-Json -Depth 4 -Compress
 PS1;
 
     private const REPAIR_SCENARIO = <<<'PS1'
@@ -696,11 +840,54 @@ $r = Invoke-EdgeChecks
 [pscustomobject]@{ Ok = $r.Ok; Lines = @($r.Lines); Hints = @($r.Hints) } | ConvertTo-Json -Depth 4 -Compress
 PS1;
 
-    private const UI_SCENARIO = <<<'PS1'
+    private const ROTATE_SCENARIO = <<<'PS1'
+Initialize-SandboxPc
+$cn = (ConvertTo-CaFacts (Get-EmbeddedCa)).CommonName
+Add-FakeCa 'OLDSAMEBRANCH000000000000000000000000001' $cn 'Bingoo POS Edge'
+Add-FakeCa 'OTHERBRANCH00000000000000000000000000002' 'Bingoo Edge Branch CA (Other-02)' 'Bingoo POS Edge'
+Add-FakeCa 'LOOKALIKE000000000000000000000000000003' $cn 'Bingoo POS Edge Fake'
+Add-FakeCa 'LOOKALIKE000000000000000000000000000004' ($cn + ' x') 'Bingoo POS Edge'
+Add-FakeCa 'OLDRENAMED00000000000000000000000000005' 'Bingoo Edge Branch CA (Khatri-Old)' 'Bingoo POS Edge'
+Add-FakeCa 'NONBINGOO00000000000000000000000000006' 'Corp Root' 'Corp'
+if ($Data.currentTrusted) { Add-FakeCa $CaThumbprint $cn 'Bingoo POS Edge' }
+if ($Data.state) {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent (Get-CounterPaths).StateFile) | Out-Null
+    Set-Content -LiteralPath (Get-CounterPaths).StateFile -Value ('{"ca_thumbprint":"' + $Data.state + '","ca_added_by_setup":true,"installed_at":"2026-11-01T10:00:00"}') -Encoding ASCII
+}
+$before = Get-StoreThumbprints
+$no = Invoke-CaStep -Confirmed $false
+$afterNo = Get-StoreThumbprints
+$callsNo = @($global:Calls)
+$yes = Invoke-CaStep -Confirmed $true
+$after = Get-StoreThumbprints
+$calls = @($global:Calls)
+$again = Invoke-CaStep -Confirmed $false
+[pscustomobject]@{ before = $before; no = $no; afterNo = $afterNo; callsNo = $callsNo; yes = $yes; after = $after; calls = $calls; again = $again; state = (Get-CounterState) } | ConvertTo-Json -Depth 5 -Compress
+PS1;
+
+    private const FACTS_SCENARIO = <<<'PS1'
+$out = @()
+foreach ($item in @($Data.items)) {
+    if ($item.dn) {
+        $rsa = [System.Security.Cryptography.RSA]::Create(2048)
+        $request = New-Object System.Security.Cryptography.X509Certificates.CertificateRequest -ArgumentList (New-Object System.Security.Cryptography.X509Certificates.X500DistinguishedName -ArgumentList $item.dn), $rsa, ([System.Security.Cryptography.HashAlgorithmName]::SHA256), ([System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+        $cert = $request.CreateSelfSigned([DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddDays(30))
+    } else {
+        $b64 = ($item.pem -replace '-----(BEGIN|END) CERTIFICATE-----', '') -replace '\s', ''
+        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList (, [Convert]::FromBase64String($b64))
+    }
+    $f = ConvertTo-CaFacts $cert
+    $out += [pscustomobject]@{ cn = $f.CommonName; org = $f.Organization; bingoo = [bool](Test-BingooBranchCa $f) }
+}
+ConvertTo-Json -InputObject @($out) -Depth 3 -Compress
+PS1;
+
+    private const UI_PRELUDE = <<<'PS1'
 foreach ($assembly in @('PresentationFramework, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35', 'PresentationCore, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35', 'WindowsBase, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35', 'System.Xaml, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089')) { [void][System.Reflection.Assembly]::Load($assembly) }
 $global:Answers = New-Object System.Collections.Queue
+$global:Dialogs = New-Object System.Collections.ArrayList
 $global:SentBody = ''
-function Show-Message { param([string]$Text, [string]$Title, [string]$Buttons = 'OK', [string]$Icon = 'Information') [void]$global:Calls.Add('ask:' + $Title); if ($global:Answers.Count -gt 0) { return $global:Answers.Dequeue() }; return [System.Windows.MessageBoxResult]::No }
+function Show-Message { param([string]$Text, [string]$Title, [string]$Buttons = 'OK', [string]$Icon = 'Information') [void]$global:Calls.Add('ask:' + $Title); [void]$global:Dialogs.Add($Text); if ($global:Answers.Count -gt 0) { return $global:Answers.Dequeue() }; return [System.Windows.MessageBoxResult]::No }
 function Update-UiNow { }
 function Invoke-EdgeHttp {
     param([string]$Url, [string]$Method = 'GET', [string]$JsonBody = '', [int]$TimeoutMs = 10000)
@@ -721,6 +908,37 @@ function New-SandboxWindow {
     return , $missing
 }
 
+PS1;
+
+    private const UI_REPAIR_SCENARIO = self::UI_PRELUDE . <<<'PS1'
+Initialize-SandboxPc
+$cn = (ConvertTo-CaFacts (Get-EmbeddedCa)).CommonName
+Add-FakeCa 'OLDSAMEBRANCH000000000000000000000000001' $cn 'Bingoo POS Edge'
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent (Get-CounterPaths).StateFile) | Out-Null
+Set-Content -LiteralPath (Get-CounterPaths).StateFile -Value '{"ca_thumbprint":"OLDSAMEBRANCH000000000000000000000000001","ca_added_by_setup":true,"edge_host":"bingoo-edge.local","edge_ip":"192.168.100.52","installed_at":"2026-11-01T10:00:00","shortcuts":[]}' -Encoding ASCII
+$out = [ordered]@{}
+[void](New-SandboxWindow)
+$out.mode = $State.Mode
+Click $ui.BtnNext
+$out.page = $State.Page
+$out.caStatus = $ui.TxtCaStatus.Text
+$out.button = [string]$ui.BtnTrustCa.Content
+$out.nextBefore = [bool]$ui.BtnNext.IsEnabled
+$ui.ChkTrustCa.IsChecked = $true
+$global:Answers.Enqueue([System.Windows.MessageBoxResult]::No)
+Click $ui.BtnTrustCa
+$out.storeAfterNo = Get-StoreThumbprints
+$global:Answers.Enqueue([System.Windows.MessageBoxResult]::Yes)
+Click $ui.BtnTrustCa
+$out.storeAfterYes = Get-StoreThumbprints
+$out.nextAfter = [bool]$ui.BtnNext.IsEnabled
+$out.dialogs = @($global:Dialogs)
+$out.calls = @($global:Calls)
+$out.state = Get-CounterState
+$out | ConvertTo-Json -Depth 5 -Compress
+PS1;
+
+    private const UI_SCENARIO = self::UI_PRELUDE . <<<'PS1'
 Initialize-SandboxPc
 $out = [ordered]@{}
 $out.before = Get-SandboxSnapshot
