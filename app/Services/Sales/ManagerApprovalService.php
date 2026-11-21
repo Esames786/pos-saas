@@ -59,36 +59,77 @@ class ManagerApprovalService
 
     /**
      * CLOUD manager identity: resolve the manager by their manager PIN (Hash::check over active pins),
-     * then mint the approval via the SHARED creator below. Behaviorally identical to the original.
+     * then mint the approval via the SHARED creator below.
+     *
+     * MANAGER-PIN-SHARED-1 (22 Nov 2026): a shop may give the SAME PIN to several people (every counter and the owner).
+     * The PIN then names a group, not one person, and the old "first matching PIN wins" picked whoever's row came first —
+     * when that row was the requester's own, the request was refused as self-approval although another manager with the
+     * same PIN could approve it. So: among the matching PINs, take the first person who may approve THIS request — not
+     * the requester, holds the action's permission, works on the order's branch. One person, one PIN: unchanged.
+     * The refusals keep their wording and their order: no match → invalid PIN; only the requester's own PIN →
+     * self-approval; nobody else holding the action permission → not authorized; nobody on the branch → branch refusal
+     * (from the shared creator).
      */
     public function verifyPin(string $pin, string $actionType, int $requestingUserId, ?array $payload = null): ManagerApproval
     {
         $managerPins = ManagerPin::with('user')
             ->where('is_active', true)
             ->whereHas('user', fn ($query) => $query->where('status', 'active'))
+            ->orderBy('id')
             ->get();
 
-        $managerPin = $managerPins->first(fn (ManagerPin $candidate) => Hash::check($pin, $candidate->pin_hash));
+        $matching = $managerPins->filter(fn (ManagerPin $candidate) => Hash::check($pin, $candidate->pin_hash))->values();
 
-        if (!$managerPin) {
+        if ($matching->isEmpty()) {
             throw new RuntimeException('Invalid manager PIN.');
+        }
+
+        // Self-approval is refused before anything else (the shared creator refuses it again — defence in depth). With a
+        // shared PIN the requester's own row is skipped; only a PIN that belongs to nobody else is refused.
+        $candidates = $matching->reject(fn (ManagerPin $candidate) => (int) $candidate->user_id === $requestingUserId)->values();
+        if ($candidates->isEmpty()) {
+            throw new RuntimeException('You cannot approve your own request. Ask another manager to approve.');
         }
 
         // Owner §1 (Cloud identity path): "approver must still possess the permission required for the action being
         // approved" — a manager PIN is identity, not authority over the action. The Edge enforces the same map in
         // EdgeLocalAuthService::verifyManager (its permissions live in the flattened bootstrap graph, not Spatie).
-        if ((int) $managerPin->user_id === $requestingUserId) {
-            // self-approval is refused before anything else (the shared creator refuses it again — defence in depth)
-            throw new RuntimeException('You cannot approve your own request. Ask another manager to approve.');
-        }
         $actionPermission = self::ACTION_PERMISSIONS[$actionType] ?? null;
-        if ($actionPermission !== null && ! self::holdsTenantPermission($managerPin->user, $actionPermission)) {
-            throw new RuntimeException(self::NOT_AUTHORIZED_FOR_ACTION);
+        if ($actionPermission !== null) {
+            $candidates = $candidates->filter(fn (ManagerPin $candidate) => self::holdsTenantPermission($candidate->user, $actionPermission))->values();
+            if ($candidates->isEmpty()) {
+                throw new RuntimeException(self::NOT_AUTHORIZED_FOR_ACTION);
+            }
         }
+
+        // Prefer someone on the order's branch. When nobody is, the first candidate goes on and the shared creator gives
+        // the branch refusal (and the missing-order refusal) exactly as before.
+        $branchId = $this->approvalBranchId($payload);
+        $managerPin = $branchId > 0
+            ? ($candidates->first(fn (ManagerPin $candidate) => $this->managerHasBranchAccess($candidate->user, $branchId)) ?? $candidates->first())
+            : $candidates->first();
 
         $managerPin->update(['last_used_at' => now()]);
 
         return $this->createApprovalForAuthenticatedManager($managerPin->user, $actionType, $requestingUserId, $payload);
+    }
+
+    /** The branch an approval is for: the order's branch when the payload names an order, else payload.branch_id (0 = none or unknown order). */
+    private function approvalBranchId(?array $payload): int
+    {
+        $saleId = (int) ($payload['sales_order_id'] ?? 0);
+        if ($saleId > 0) {
+            return (int) (SalesOrder::whereKey($saleId)->value('branch_id') ?? 0);
+        }
+
+        return (int) ($payload['branch_id'] ?? 0);
+    }
+
+    /** A manager works on a branch when it is their default branch or an active branch assignment. */
+    private function managerHasBranchAccess($manager, int $branchId): bool
+    {
+        return (int) $manager->default_branch_id === $branchId
+            || $manager->branches()->where('branches.id', $branchId)->wherePivot('is_active', true)->exists();
     }
 
     /**
@@ -125,9 +166,7 @@ class ManagerApprovalService
         }
 
         if ($branchId > 0) {
-            $hasBranchAccess = (int) $manager->default_branch_id === $branchId
-                || $manager->branches()->where('branches.id', $branchId)->wherePivot('is_active', true)->exists();
-            if (!$hasBranchAccess) {
+            if (! $this->managerHasBranchAccess($manager, $branchId)) {
                 throw new RuntimeException('This manager is not authorized for the order branch.');
             }
         }
