@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-11-21T16:08:53+00:00",
+    "built_at": "2026-11-21T18:16:31+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "dc0babbf",
     "work": [
@@ -60,11 +60,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-e09-integ",
             "branch": "edge09/integ",
-            "head": "e580d6ba",
+            "head": "7af48aec",
             "behind_prod": 0,
-            "ahead_of_prod": 64,
-            "last_commit": "2026-11-21\u00b7test(edge 0.9 CP4): verify step takes an explicit survival baseline (after the supervised seed correction)",
-            "uncommitted_files": 3
+            "ahead_of_prod": 65,
+            "last_commit": "2026-11-21\u00b7integ(edge 0.9 CP4): stop the workers only right before the pointer switch, not before the ~7 min copy",
+            "uncommitted_files": 1
         },
         {
             "path": "D:/laragon2/www/pos-saas-edge",
@@ -464,7 +464,7 @@
             "modified": "2026-11-21"
         }
     ],
-    "git": "e580d6ba",
+    "git": "7af48aec",
     "source": {
         "tenant_db": "pos_sysmap_e09_tenant",
         "master_db": "pos_test_master_e09i"
