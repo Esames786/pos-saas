@@ -2,9 +2,12 @@
 
 namespace App\Services\Edge\AutoUpdate;
 
+use App\Services\Edge\EdgeArtifactBuilder;
 use App\Services\Edge\EdgePackageBuilder;
 use App\Services\Edge\EdgeSigningKeyStore;
+use App\Services\Edge\EdgeUpdatePackageService;
 use App\Services\Edge\EdgeUpdateVerifier;
+use App\Services\Edge\Packaging\PackageChecksums;
 use RuntimeException;
 
 /**
@@ -117,32 +120,34 @@ class EdgeAutoUpdatePackageVerifier
     }
 
     /**
-     * Stream E: App\Services\Edge\Packaging\PackageChecksums::verify($dir, $publicKey) (SHA256SUMS + SHA256SUMS.sig). Resolved at
-     * integration when the class is not on this branch yet: absent class = notice only (the manifest + Ed25519 update chain above
-     * and below still applies); present = fail closed on a throw, false, or {ok:false}.
+     * Stream E: (new PackageChecksums)->verify($dir, $publicKey) — SHA256SUMS + its detached Ed25519 signature (SHA256SUMS.sig)
+     * with the appliance's update key. Fail closed: a throw, a missing/unsigned SHA256SUMS or any problem refuses the package.
+     * (CP4: an earlier static call of this INSTANCE method failed on every real package.)
      */
     protected function verifyChecksums(string $root): void
     {
-        $class = 'App\\Services\\Edge\\Packaging\\PackageChecksums';
-        if (! class_exists($class)) {
-            \Illuminate\Support\Facades\Log::notice('[edge-auto-update] PackageChecksums not available in this build - SHA256SUMS signature not checked');
-
-            return;
-        }
+        $publicKey = (string) config('edge.update.public_key');
         try {
-            $r = $class::verify($root, (string) config('edge.update.public_key'));
+            $r = (new PackageChecksums())->verify($root, $publicKey);
         } catch (\Throwable $e) {
             throw new RuntimeException('AUTO_UPDATE_CHECKSUMS_INVALID: ' . mb_substr($e->getMessage(), 0, 300), 0, $e);
         }
-        if ($r === false || (is_array($r) && ! ($r['ok'] ?? false))) {
-            throw new RuntimeException('AUTO_UPDATE_CHECKSUMS_INVALID: SHA256SUMS / SHA256SUMS.sig do not verify' . (is_array($r) && isset($r['error']) ? ' (' . $r['error'] . ')' : '') . '.');
+        if (! ($r['ok'] ?? false) || ! ($r['signature_checked'] ?? false) || ($r['signature_ok'] ?? false) !== true) {
+            throw new RuntimeException('AUTO_UPDATE_CHECKSUMS_INVALID: SHA256SUMS / SHA256SUMS.sig do not verify (' . mb_substr(implode(' | ', array_slice((array) ($r['problems'] ?? []), 0, 3)), 0, 300) . ').');
         }
     }
 
-    /** Every file + package hash + boundary audit. Seam: the gating tests use mini packages without a full Edge runtime. */
+    /**
+     * Every file + package hash + boundary audit + layout + update/checksum signatures with the appliance's update key — the SAME
+     * construction and options the Cloud registry uses before it publishes (ReleaseRegistry::publish). Seam: the gating tests use
+     * mini packages without a full Edge runtime. (CP4: the container cannot build EdgePackageBuilder — its EdgeArtifactBuilder
+     * takes the artifact config array — so the earlier app(EdgePackageBuilder::class) failed on every real package.)
+     */
     protected function verifyTree(string $root): array
     {
-        return app(EdgePackageBuilder::class)->verify($root);
+        $packages = new EdgePackageBuilder(EdgeArtifactBuilder::fromConfig(), app(EdgeUpdatePackageService::class));
+
+        return $packages->verify($root, ['public_key' => (string) config('edge.update.public_key'), 'require_signature' => true]);
     }
 
     private function updateFileFor(string $root, string $version, ?string $advertised = null): string

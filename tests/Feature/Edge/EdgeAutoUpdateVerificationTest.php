@@ -92,6 +92,34 @@ class EdgeAutoUpdateVerificationTest extends TestCase
         $this->assertRefused($root, $release, 'UPDATE_DOWNGRADE_REFUSED', 'downgrade');
     }
 
+    /**
+     * CP4 regression: the REAL whole-tree and SHA256SUMS checks (no seam) run on the appliance — the container must be able to
+     * build them and they must fail CLOSED with stable codes on a package that is not a full signed 0.9 package (earlier:
+     * app(EdgePackageBuilder::class) was unresolvable and PackageChecksums::verify was called statically, so EVERY real
+     * release was refused before CP4 caught it).
+     */
+    public function test_the_real_tree_and_checksum_checks_run_and_fail_closed(): void
+    {
+        [$root, $release] = $this->package();
+        $real = app(EdgeAutoUpdatePackageVerifier::class);
+        $tree = (new \ReflectionMethod($real, 'verifyTree'))->invoke($real, $root);
+        $this->assertIsArray($tree);
+        $this->assertFalse($tree['ok'] ?? null, 'a mini package is not a full Edge package');
+        try {
+            (new \ReflectionMethod($real, 'verifyChecksums'))->invoke($real, $root);
+            $this->fail('a package without SHA256SUMS must be refused');
+        } catch (\RuntimeException $e) {
+            $this->assertStringStartsWith('AUTO_UPDATE_CHECKSUMS_INVALID', $e->getMessage());
+            $this->assertStringContainsString('SHA256SUMS_MISSING', $e->getMessage());
+        }
+        // A signed SHA256SUMS over the package (stream E writer, the appliance's own key) passes the checksum step.
+        $kp = sodium_crypto_sign_seed_keypair(random_bytes(SODIUM_CRYPTO_SIGN_SEEDBYTES));
+        config(['edge.update.public_key' => base64_encode(sodium_crypto_sign_publickey($kp))]);
+        (new \App\Services\Edge\Packaging\PackageChecksums())->write($root, base64_encode(sodium_crypto_sign_secretkey($kp)), null);
+        (new \ReflectionMethod($real, 'verifyChecksums'))->invoke($real, $root);
+        $this->addToAssertionCount(1);
+    }
+
     public function test_the_stager_refuses_zip_slip_entries(): void
     {
         foreach (['../evil.php', 'a/../../evil', '/abs/path', 'C:/Windows/x', "a\0b"] as $bad) {
