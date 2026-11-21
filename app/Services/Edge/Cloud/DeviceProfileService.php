@@ -31,12 +31,25 @@ class DeviceProfileService
 
     /* ── public setup material ──────────────────────────────────────────── */
 
-    /** The CENTRAL Cloud URL (the Edge API host) — never a tenant subdomain (Khatri lesson, 21 Nov). */
+    /**
+     * The CENTRAL Cloud URL (the Edge API host) — never a tenant subdomain (Khatri lesson, 21 Nov). Scheme from app.url; a
+     * NON-default port of app.url is kept when app.url's host IS the central domain (a Cloud on http://127.0.0.1:9831 says so;
+     * CP5 pre-flight, 22 Nov). https://bingoopos.com (no port, or :443) stays exactly https://bingoopos.com.
+     */
     public function cloudUrl(): string
     {
-        $scheme = parse_url((string) config('app.url'), PHP_URL_SCHEME) ?: 'https';
+        $parts = parse_url((string) config('app.url')) ?: [];
+        $scheme = strtolower((string) ($parts['scheme'] ?? '')) ?: 'https';
+        $central = (string) config('tenancy.central_domain');
+        $url = $scheme . '://' . $central;
 
-        return $scheme . '://' . config('tenancy.central_domain');
+        $port = isset($parts['port']) ? (int) $parts['port'] : null;
+        $default = $scheme === 'http' ? 80 : 443;
+        if ($port !== null && $port !== $default && strcasecmp((string) ($parts['host'] ?? ''), $central) === 0) {
+            $url .= ':' . $port;
+        }
+
+        return $url;
     }
 
     /** The enrollment PUBLIC key (base64) derived from the Cloud's private signing key, or null when not configured. */
