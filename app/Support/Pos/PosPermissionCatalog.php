@@ -100,6 +100,44 @@ final class PosPermissionCatalog
             'edge' => 'app/Http/Controllers/Edge/EdgeLocalAuthorityControlController.php — POST /edge/local/pos/authority/switch-offline|return-online (buttons on /edge/local/pos/health)',
             'online' => 'GET /settings/offline-edge/security — OfflineEdgeController@security (BRANCH-DEVICE-PAIRING-1 HARDEN-1)',
         ],
+        // EDGE 0.9 (stream C) — Cloud-only Offline Edge setup / auto-update / counter onboarding actions. Route-named (granted to
+        // the Owner by the route-catalog sync on deploy); NOT checked on a Branch Server — catalogued so the manager group
+        // lists every Offline Edge control. The setup code additionally requires tenant.offline-edge.security in-controller.
+        'tenant.offline-edge.setup-code.generate' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (the Branch Server setup wizard redeems the code at POST /api/edge/setup/redeem)',
+            'online' => 'POST /settings/offline-edge/branches/{branch}/setup-code — OfflineEdgeController@generateSetupCode (+ tenant.offline-edge.security)',
+        ],
+        'tenant.offline-edge.setup-code.cancel' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only security control',
+            'online' => 'POST /settings/offline-edge/branches/{branch}/setup-code/cancel — OfflineEdgeController@cancelSetupCode',
+        ],
+        'tenant.offline-edge.devices.update-now' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (the appliance reads the flag from GET /api/edge/updates/latest)',
+            'online' => 'POST /settings/offline-edge/devices/{edgeDevice}/update-now — OfflineEdgeController@updateNow',
+        ],
+        'tenant.offline-edge.devices.maintenance-window' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (the appliance reads the window from GET /api/edge/updates/latest)',
+            'online' => 'POST /settings/offline-edge/devices/{edgeDevice}/maintenance-window — OfflineEdgeController@maintenanceWindow',
+        ],
+        'tenant.offline-edge.counter-setup' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (downloads the per-branch counter setup script)',
+            'online' => 'GET /settings/offline-edge/branches/{branch}/counter-setup — OfflineEdgeController@counterSetup',
+        ],
+        'tenant.offline-edge.phone' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (phone onboarding page with QR codes)',
+            'online' => 'GET /settings/offline-edge/branches/{branch}/phone — OfflineEdgeController@phone',
+        ],
+        'tenant.offline-edge.ca' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (the branch CA certificate download)',
+            'online' => 'GET /settings/offline-edge/branches/{branch}/ca.crt — OfflineEdgeController@caCertificate',
+        ],
         'tenant.sales-orders.split-bill' => [
             'groups' => ['cashier'],
             'edge' => 'shared POS view resources/views/tenant/pos/partials/table-board.blade.php @can (Split Bill button) — rendered on Edge from W-B',
