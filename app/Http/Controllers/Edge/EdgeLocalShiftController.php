@@ -307,6 +307,17 @@ class EdgeLocalShiftController extends Controller
         return Branch::on('tenant')->findOrFail((int) $this->context->requireCurrent()->branch_id);
     }
 
+    /** EDGE 0.9 CONTINUITY: the cashier-facing reason when this segment's adoption was refused (stale / untrusted / nothing mirrored). */
+    private function continuityRefusal(\App\Services\Edge\Continuity\ContinuityAdoptionService $continuity): ?array
+    {
+        $verdict = $continuity->verdict();
+        if (! $verdict || $verdict['status'] === \App\Services\Edge\Continuity\ContinuityAdoptionService::STATUS_ADOPTED || ! $verdict['reason']) {
+            return null;
+        }
+
+        return ['status' => $verdict['status'], 'banner' => (string) $verdict['reason']];
+    }
+
     private function maySeeAmounts(?Branch $branch = null): bool
     {
         return app(AmountVisibility::class)->allows(auth('tenant')->user(), $branch ?? $this->branch());
@@ -336,6 +347,11 @@ class EdgeLocalShiftController extends Controller
         if ($terminal instanceof JsonResponse) {
             return $terminal;
         }
+        // EDGE 0.9 CONTINUITY: the first touch after a supervised Switch to Offline adopts the mirrored live state (the counter's
+        // online shift continues here, no shift to open by hand) — best-effort, never breaks this badge; stale / untrusted
+        // mirrored state is refused and the reason rides the `continuity` block.
+        $continuity = app(\App\Services\Edge\Continuity\ContinuityAdoptionService::class);
+        $continuity->ensureAdoptedQuietly(auth('tenant')->user(), (int) $terminal->id);
         $open = Shift::on('tenant')->where('terminal_id', $terminal->id)->where('status', 'open')->latest('id')->first();
         // HIDE-AMOUNTS parity (W0b, audit R1.1/R1.4): the SAME AmountVisibility rule as the shift summary — figures are
         // STRIPPED for an operator the branch hides them from, never merely hidden in the page.
@@ -344,6 +360,10 @@ class EdgeLocalShiftController extends Controller
         $clock = app(TenantClock::class);
 
         return response()->json([
+            // EDGE 0.9 CONTINUITY (additive; the Cloud badge never carries it): open continuation → {banner: "Continuing online
+            // shift (mirrored HH:MM:SS)", cloud_shift_uuid, mirrored_at…}; no open shift after a refused adoption → {status,
+            // banner: the reason}; otherwise null. The shared page shows `banner` verbatim — identical markup on both runtimes.
+            'continuity' => $open ? $continuity->continuityFor($open) : $this->continuityRefusal($continuity),
             'terminal_id' => $terminal->id,
             'terminal_name' => $terminal->name,
             'has_terminal' => true,
