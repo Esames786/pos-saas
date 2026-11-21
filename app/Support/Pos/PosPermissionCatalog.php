@@ -133,7 +133,7 @@ final class PosPermissionCatalog
             'edge' => 'none — Cloud-only (phone onboarding page with QR codes)',
             'online' => 'GET /settings/offline-edge/branches/{branch}/phone — OfflineEdgeController@phone',
         ],
-        'tenant.offline-edge.ca' => [
+        'tenant.offline-edge.branch.ca' => [
             'groups' => ['manager'],
             'edge' => 'none — Cloud-only (the branch CA certificate download)',
             'online' => 'GET /settings/offline-edge/branches/{branch}/ca.crt — OfflineEdgeController@caCertificate',

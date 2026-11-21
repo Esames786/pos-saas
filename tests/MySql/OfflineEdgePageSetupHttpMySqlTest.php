@@ -153,7 +153,7 @@ class OfflineEdgePageSetupHttpMySqlTest extends MySqlTenantTestCase
 
     public function test_counter_setup_phone_page_and_ca_downloads(): void
     {
-        $this->grantTo('owner', ['tenant.offline-edge.counter-setup', 'tenant.offline-edge.phone', 'tenant.offline-edge.ca']);
+        $this->grantTo('owner', ['tenant.offline-edge.counter-setup', 'tenant.offline-edge.phone', 'tenant.offline-edge.branch.ca']);
         $base = '/settings/offline-edge/branches/' . $this->branchA;
         $this->asUser('owner')->get($this->tenantUrl($base . '/counter-setup'))->assertNotFound();   // no device yet
         $device = $this->makeDevice($this->branchA, 'page-secret');
@@ -196,7 +196,7 @@ class OfflineEdgePageSetupHttpMySqlTest extends MySqlTenantTestCase
 
         $ca = $this->asUser('owner')->get($this->tenantUrl($base . '/ca.crt'))->assertOk();
         $this->assertStringContainsString('-----BEGIN CERTIFICATE-----', $ca->getContent());
-        $this->assertStringContainsString('Bingoo-alpha-branch-CA.crt', (string) $ca->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('bingoo-branch-ca.crt', (string) $ca->headers->get('Content-Disposition'));
     }
 
     public function test_every_new_action_is_refused_without_its_permission_or_the_entitlement(): void

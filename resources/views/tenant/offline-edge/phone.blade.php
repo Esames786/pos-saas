@@ -12,6 +12,11 @@
         <a href="{{ url('/settings/offline-edge') }}" class="btn btn-outline-secondary btn-sm align-self-start"><i class="ti ti-arrow-left me-1"></i>Back</a>
     </div>
 
+    @if($hasPartial)
+        {{-- Stream D's phone onboarding (its own QR codes, bilingual steps); the CA link is the Cloud's 30-minute signed URL. --}}
+        @include('tenant.offline-edge.partials.phone-onboarding', ['phone' => $onboarding, 'caDownloadUrl' => $profile['ca_download_url'], 'branch' => $branch])
+        <p class="small text-muted">The certificate QR link works for {{ $caTtl }} minutes. Reload the page for a new one.</p>
+    @else
     <div class="row g-3">
         <div class="col-md-6">
             <div class="card h-100 edge-phone-ca">
@@ -38,9 +43,6 @@
 
     <div class="card mt-3">
         <div class="card-body">
-            @if($hasPartial)
-                @include('tenant.offline-edge.partials.phone-onboarding', ['onboarding' => $onboarding, 'profile' => $profile, 'branch' => $branch])
-            @else
                 <div class="row">
                     @foreach(($onboarding['steps'] ?? []) as $os => $steps)
                         <div class="col-md-6 edge-phone-steps" data-os="{{ $os }}">
@@ -53,9 +55,9 @@
                         </div>
                     @endforeach
                 </div>
-            @endif
             <p class="small text-muted mb-0">Never accept a certificate warning on the login page — if one appears, the certificate is not installed (or the phone is on another network).</p>
         </div>
     </div>
+    @endif
 </div>
 @endsection

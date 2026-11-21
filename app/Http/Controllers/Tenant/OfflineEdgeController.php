@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Master\EdgeDevice;
 use App\Models\Master\EdgeSetupSession;
 use App\Models\Tenant\Branch;
+use App\Services\Edge\Cloud\CounterSetupRendererAdapter;
 use App\Services\Edge\Cloud\DeviceProfileService;
 use App\Services\Edge\Cloud\EdgeSetupException;
 use App\Services\Edge\Cloud\QrSvg;
@@ -211,8 +212,12 @@ class OfflineEdgeController extends Controller
         if (! $renderer) {
             return redirect(url('/settings/offline-edge'))->withErrors(['counter' => 'Counter setup is not available on this Cloud yet.']);
         }
-        $script = $renderer->renderWindows($this->profiles->lanProfile($device), url('/pos'), (string) $branch->name);
-        $name = 'Setup-' . (Str::slug((string) $branch->name) ?: 'Branch-' . $branch->id) . '-Counter.ps1';
+        try {
+            $script = $renderer->renderWindows($this->profiles->lanProfile($device), url('/pos'), (string) $branch->name);
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return redirect(url('/settings/offline-edge'))->withErrors(['counter' => 'Counter setup could not be built: ' . $e->getMessage()]);
+        }
+        $name = CounterSetupRendererAdapter::fileNameFor($renderer, (string) $branch->name, (int) $branch->id);
 
         return response($script, 200, [
             'Content-Type'        => 'text/plain; charset=utf-8',
@@ -237,7 +242,13 @@ class OfflineEdgeController extends Controller
         ]);
 
         $renderer = $this->renderer();
-        $onboarding = $renderer ? $renderer->phoneOnboarding($profile) : [];
+        try {
+            $onboarding = $renderer ? $renderer->phoneOnboarding($profile) : [];
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return redirect(url('/settings/offline-edge'))->withErrors(['phone' => 'Phone onboarding could not be built: ' . $e->getMessage()]);
+        }
+        // Stream D's partial renders its own QR codes from its phoneOnboarding() shape (qr_text, ca{…}, branch_server{…}).
+        $useStreamDPartial = view()->exists('tenant.offline-edge.partials.phone-onboarding') && isset($onboarding['qr_text'], $onboarding['login_url']);
         $host = str_contains((string) $profile['lan_ip'], ':') ? '[' . $profile['lan_ip'] . ']' : (string) $profile['lan_ip'];
         $onboarding += [
             'login_url'       => 'https://' . $host . ':' . (int) $profile['https_port'] . '/edge/local/login',
@@ -250,10 +261,10 @@ class OfflineEdgeController extends Controller
             'branch'      => $branch,
             'profile'     => $profile,
             'onboarding'  => $onboarding,
-            'loginQr'     => QrSvg::encode((string) $onboarding['login_url'])->svg(220, 'Branch Server login (IP address)'),
-            'caQr'        => ! empty($onboarding['ca_download_url']) ? QrSvg::encode((string) $onboarding['ca_download_url'])->svg(220, 'Branch CA certificate download') : null,
+            'loginQr'     => $useStreamDPartial ? null : QrSvg::encode((string) $onboarding['login_url'])->svg(220, 'Branch Server login (IP address)'),
+            'caQr'        => ! $useStreamDPartial && ! empty($onboarding['ca_download_url']) ? QrSvg::encode((string) $onboarding['ca_download_url'])->svg(220, 'Branch CA certificate download') : null,
             'caTtl'       => self::CA_LINK_TTL_MINUTES,
-            'hasPartial'  => view()->exists('tenant.offline-edge.partials.phone-onboarding'),
+            'hasPartial'  => $useStreamDPartial,
         ]);
         $response->headers->set('Cache-Control', 'no-store, private, max-age=0');
 
@@ -284,7 +295,7 @@ class OfflineEdgeController extends Controller
 
     private function caResponse(EdgeDevice $device, Branch $branch)
     {
-        $name = 'Bingoo-' . (Str::slug((string) $branch->name) ?: 'Branch-' . $branch->id) . '-CA.crt';
+        $name = 'bingoo-branch-ca.crt';   // the file name stream D's counter setup and phone steps refer to
 
         return response((string) $device->lan_ca_pem, 200, [
             'Content-Type'        => 'application/x-x509-ca-cert',
@@ -295,18 +306,10 @@ class OfflineEdgeController extends Controller
         ]);
     }
 
-    /** The K7 renderer: a container binding when present, else stream D's class when it exists, else null. */
+    /** The K7 renderer: a container binding when present, else stream D's class when it exists (adapted), else null. */
     private function renderer(): ?CounterSetupRenderer
     {
-        if (app()->bound(CounterSetupRenderer::class)) {
-            return app(CounterSetupRenderer::class);
-        }
-        $class = 'App\\Services\\Edge\\EdgeCounterSetupRenderer';
-        if (class_exists($class) && is_subclass_of($class, CounterSetupRenderer::class)) {
-            return app($class);
-        }
-
-        return null;
+        return CounterSetupRendererAdapter::resolve();
     }
 
     private function ownedActiveDevice(EdgeDevice $device): EdgeDevice

@@ -795,7 +795,7 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/settings/offline-edge/branches/{branch}/phone', [OfflineEdgeController::class, 'phone'])
                     ->name('tenant.offline-edge.phone');
                 Route::get('/settings/offline-edge/branches/{branch}/ca.crt', [OfflineEdgeController::class, 'caCertificate'])
-                    ->name('tenant.offline-edge.ca');
+                    ->name('tenant.offline-edge.branch.ca');   // the route name stream D's renderer refers to
 
                 // Sales Controls — Promotions
                 Route::get('/promotions', [PromotionController::class, 'index'])->name('tenant.promotions.index');
