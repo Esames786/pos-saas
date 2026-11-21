@@ -182,6 +182,17 @@ return [
         'enabled' => filter_var(env('EDGE_LOCAL_ENROLL_ENDPOINT_ENABLED', false), FILTER_VALIDATE_BOOL),
     ],
 
+    // EDGE 0.9 CONTINUITY (stream A) — read-only live-state mirror pulled in the standby phase; adoption refuses a mirror older
+    // than max_mirror_age_seconds measured from the last acknowledged heartbeat (stale fails closed → normal open-shift flow).
+    // live_state_url: when empty it is derived from EDGE_STANDBY_CONFIG_REFRESH_URL (…/config/refresh → …/live-state).
+    'continuity' => [
+        'live_state_url'          => env('EDGE_CONTINUITY_LIVE_STATE_URL'),
+        'poll_seconds'            => (int) env('EDGE_CONTINUITY_POLL_SECONDS', 30),
+        'max_mirror_age_seconds'  => (int) env('EDGE_CONTINUITY_MAX_MIRROR_AGE', 120),
+        'connect_timeout'         => 5,
+        'timeout'                 => 15,
+    ],
+
     'auto_update' => [
         'enabled'                => filter_var(env('EDGE_AUTO_UPDATE_ENABLED', true), FILTER_VALIDATE_BOOL),
         // The central Cloud base URL (written by edge:local:pair) — every endpoint below defaults to it + the contract path.
@@ -339,6 +350,9 @@ return [
         // KHATRI OWNER CONTROL (21 Nov 2026): Switch to Offline / Return to Online on the health page (EdgeLocalAuthorityControlController).
         'edge.local.pos.authority.switch-offline',
         'edge.local.pos.authority.return-online',
+        // EDGE 0.9 (21 Nov 2026): status-page "Update now" (stream B) and the counter self-enrolment endpoint (stream B / D).
+        'edge.local.pos.updates.update-now',
+        'edge.local.enroll',
         // ── W1 (Team 1, parity directive 20 Sep 2026) — shell (each name deliberate; mirrors routes/edge_runtime.php W1) ──
         'edge.local.assets',   // whitelisted public/assets streamer (EdgeLocalAssetController; unauthenticated, no session)
         'edge.local.storage',  // W-C: whitelisted storage/app/public image streamer (EdgeLocalAssetController::storage; images only, no session)

@@ -153,6 +153,9 @@ class EdgeBranchServerRegistrationTest extends TestCase
             // KHATRI OWNER CONTROL (21 Nov 2026, deliberately approved): Switch to Offline / Return to Online on the health page.
             'edge/local/pos/authority/switch-offline',
             'edge/local/pos/authority/return-online',
+            // EDGE 0.9 (deliberately approved): Update now + counter self-enrolment.
+            'edge/local/pos/updates/update-now',
+            'edge/local/enroll',
             'edge/local/pos/quick-report/options',
             'edge/local/pos/quick-report/view',
             'edge/local/pos/quick-report/network',

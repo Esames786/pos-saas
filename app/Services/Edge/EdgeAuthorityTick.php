@@ -45,6 +45,18 @@ class EdgeAuthorityTick
             $work = ['kind' => 'local_sync'] + $this->drainAndReconcile($owner);
         }
 
+        // EDGE 0.9 — OPTIONAL AUTOMATIC OFFLINE TAKEOVER (default OFF; effective only when the Cloud branch setting AND the appliance
+        // allowance are both on). Runs on standby ticks whether or not this beat was acknowledged — a lapse is exactly when it can
+        // matter. It decides through the SAME gates and calls the SAME EdgeAuthorityService::takeOver under the SAME lock as the
+        // status-page button; it never throws into the tick.
+        if ($this->authority->state() === EdgeAuthorityService::STANDBY) {
+            try {
+                $work['auto_takeover'] = app(\App\Services\Edge\AutoTakeover\AutoTakeoverEvaluator::class)->evaluateAndAct();
+            } catch (\Throwable $e) {
+                $work['auto_takeover'] = ['acted' => false, 'error' => $e->getMessage()];
+            }
+        }
+
         $after = $this->states->evaluate();
 
         return ['heartbeat' => $hb, 'state' => $after, 'state_before_work' => $before['state'], 'work' => $work];
