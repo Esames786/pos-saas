@@ -20,7 +20,7 @@ use RuntimeException;
  * snapshotted or restored (EdgeLocalDatabase naming guard), and restore refuses a snapshot of another database.
  *
  * File format (edge-db-snapshot-v1, one record per line): a plaintext header line (non-secret metadata), then encrypted
- * lines each holding a gzip+JSON batch {t, create} / {t, rows}, then an encrypted trailer {end, tables, rows}.
+ * lines each holding a gzip+JSON batch {t, create} / {t, rows}, then an encrypted trailer {end, total_tables, total_rows}.
  */
 class EdgeDatabaseSnapshot
 {
@@ -70,7 +70,7 @@ class EdgeDatabaseSnapshot
                     $rows += count($batch);
                 }
             }
-            $this->writeRecord($fh, ['end' => true, 'tables' => count($tables), 'rows' => $rows]);
+            $this->writeRecord($fh, ['end' => true, 'total_tables' => count($tables), 'total_rows' => $rows]);
         } catch (\Throwable $e) {
             fclose($fh);
             @unlink($tmp);
@@ -102,10 +102,10 @@ class EdgeDatabaseSnapshot
         $this->readRecords($file, function (array $rec) use (&$tables, &$rows, &$ended) {
             if (isset($rec['create'])) {
                 $tables++;
-            } elseif (isset($rec['rows'])) {
+            } elseif (isset($rec['rows']) && is_array($rec['rows'])) {
                 $rows += count($rec['rows']);
             } elseif (! empty($rec['end'])) {
-                $ended = (int) $rec['tables'] === $tables && (int) $rec['rows'] === $rows;
+                $ended = (int) $rec['total_tables'] === $tables && (int) $rec['total_rows'] === $rows;
             }
         }, $header);
         if (! $ended) {
@@ -141,7 +141,7 @@ class EdgeDatabaseSnapshot
                 if (isset($rec['create'])) {
                     $conn->statement((string) $rec['create']);
                     $tables++;
-                } elseif (isset($rec['rows']) && $rec['rows'] !== []) {
+                } elseif (isset($rec['rows']) && is_array($rec['rows']) && $rec['rows'] !== []) {
                     $decoded = array_map(fn ($r) => array_map([self::class, 'decodeValue'], $r), $rec['rows']);
                     foreach (array_chunk($decoded, 200) as $chunk) {
                         $conn->table((string) $rec['t'])->insert($chunk);
