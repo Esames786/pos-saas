@@ -259,6 +259,11 @@ function Test-CaInStore {
     return @(Get-ChildItem -Path 'Cert:\LocalMachine\Root' | Where-Object { $_.Thumbprint -eq $Thumbprint }).Count -gt 0
 }
 
+function Get-RootCertificates {
+    # read-only: thumbprint + parsed subject of every certificate in this PC's Trusted Root store
+    return @(Get-ChildItem -Path 'Cert:\LocalMachine\Root' | ForEach-Object { ConvertTo-CaFacts $_ })
+}
+
 function Add-CaToStore {
     param($Certificate, [bool]$Confirmed)
     if (-not $Confirmed) { throw 'The branch certificate is only trusted after you confirm it.' }
@@ -311,6 +316,43 @@ function Get-EmbeddedCa {
     if ($cert.Thumbprint -ne $CaThumbprint) { throw ('the embedded certificate (' + $cert.Thumbprint + ') is not the expected one (' + $CaThumbprint + ')') }
     if ((Get-Sha256Hex $cert.RawData) -ne $CaSha256) { throw 'the embedded certificate SHA-256 fingerprint does not match' }
     return $cert
+}
+
+# ---- replacing an older / rotated Bingoo branch CA (Repair) ----
+
+function ConvertTo-CaFacts {
+    param($Certificate)
+    # the subject read RDN by RDN (one per line), so a quoted value can never pose as another attribute
+    $rdns = @($Certificate.SubjectName.Decode([System.Security.Cryptography.X509Certificates.X500DistinguishedNameFlags]::UseNewLines) -split "`r?`n")
+    $orgs = @()
+    foreach ($rdn in $rdns) { if ($rdn -cmatch '^O=(.*)$') { $orgs += $Matches[1].Trim('"') } }
+    $org = $orgs -join ' | '   # several O attributes never read as one organisation
+    return [pscustomobject]@{
+        Thumbprint   = [string]$Certificate.Thumbprint
+        CommonName   = [string]$Certificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+        Organization = $org
+        NotAfter     = $Certificate.NotAfter.ToString('yyyy-MM-dd')
+    }
+}
+
+function Test-BingooBranchCa {
+    param($Facts)
+    # ONLY a Bingoo branch CA: O exactly "Bingoo POS Edge" and CN "Bingoo Edge Branch CA" or "Bingoo Edge Branch CA (<branch>)"
+    return ([string]$Facts.Organization -ceq 'Bingoo POS Edge') -and ([string]$Facts.CommonName -cmatch '^Bingoo Edge Branch CA( \([^()]+\))?$')
+}
+
+function Get-ReplacedBingooCas {
+    # The older Bingoo CA(s) of THIS branch still trusted on this PC: the one this setup trusted before (state file) or one with
+    # exactly the same name as the new branch CA (a rotated CA of the same branch). Never the new CA, never another branch's
+    # CA, never a non-Bingoo certificate.
+    $current = ConvertTo-CaFacts (Get-EmbeddedCa)
+    $previous = ''
+    $state = Get-CounterState
+    if ($state -and $state.ca_thumbprint) { $previous = [string]$state.ca_thumbprint }
+    return @(Get-RootCertificates | Where-Object {
+            $_.Thumbprint -ne $CaThumbprint -and (Test-BingooBranchCa $_) -and
+            (($previous -and $_.Thumbprint -eq $previous) -or ($_.CommonName -ceq $current.CommonName))
+        })
 }
 
 # ---- Ed25519 signature verification (RFC 8032), pure PowerShell 5.1 + System.Numerics ----
@@ -434,19 +476,35 @@ function Get-OriginCheck {
 function Invoke-CaStep {
     param([bool]$Confirmed)
     $cert = Get-EmbeddedCa
+    $old = @(Get-ReplacedBingooCas)
+    $pending = @($old | ForEach-Object { $_.Thumbprint })
+    $trusted = Test-CaInStore $CaThumbprint
     $added = $false
-    if (Test-CaInStore $CaThumbprint) {
+    $replaced = @()
+    if ($trusted -and $old.Count -eq 0) {
         $detail = 'already trusted on this PC - nothing changed'
     } else {
-        if (-not $Confirmed) { return @{ Ok = $false; Added = $false; Detail = 'waiting for your confirmation' } }
-        Add-CaToStore -Certificate $cert -Confirmed $Confirmed
-        if (-not (Test-CaInStore $CaThumbprint)) { throw 'the certificate is not in the Trusted Root store after adding it' }
-        $added = $true
-        $detail = 'installed in Trusted Root'
+        if (-not $Confirmed) { return @{ Ok = $false; Added = $false; Replaced = @(); Pending = $pending; Detail = 'waiting for your confirmation' } }
+        if (-not $trusted) {
+            Add-CaToStore -Certificate $cert -Confirmed $Confirmed
+            if (-not (Test-CaInStore $CaThumbprint)) { throw 'the certificate is not in the Trusted Root store after adding it' }
+            $added = $true
+        }
+        # the new CA is trusted first; only then the older Bingoo CA(s) of this branch go (re-checked, by thumbprint)
+        foreach ($o in $old) {
+            if (-not (Test-BingooBranchCa $o) -or $o.Thumbprint -eq $CaThumbprint) { continue }
+            Remove-CaFromStore -Thumbprint $o.Thumbprint -Confirmed $Confirmed
+            if (Test-CaInStore $o.Thumbprint) { throw ('the older branch certificate ' + $o.Thumbprint + ' is still trusted after removing it') }
+            $replaced += $o.Thumbprint
+        }
+        $parts = @()
+        if ($added) { $parts += 'installed in Trusted Root' } else { $parts += 'already trusted' }
+        if ($replaced.Count -gt 0) { $parts += ('replaced the older branch certificate ' + ($replaced -join ', ')) }
+        $detail = $parts -join '; '
     }
-    Update-CounterState @{ ca_thumbprint = $CaThumbprint; ca_added_by_setup = $added }
+    Update-CounterState @{ ca_thumbprint = $CaThumbprint; ca_added_by_setup = $added; ca_replaced = $replaced }
     Write-CounterLog ('certificate ' + $CaThumbprint + ': ' + $detail)
-    return @{ Ok = $true; Added = $added; Detail = $detail }
+    return @{ Ok = $true; Added = $added; Replaced = $replaced; Pending = @(); Detail = $detail }
 }
 
 # ---- hosts file (only lines that name the Branch Server host are ever touched) ----
@@ -559,10 +617,14 @@ function Update-CounterState {
     $state = @{}
     $old = Get-CounterState
     if ($old) { foreach ($prop in $old.PSObject.Properties) { $state[$prop.Name] = $prop.Value } }
+    # a NEW branch CA starts its own history: whether the setup added it is about this certificate, not the replaced one
+    $newCa = $Changes.ContainsKey('ca_thumbprint') -and ([string]$state['ca_thumbprint'] -ne [string]$Changes['ca_thumbprint'])
     foreach ($key in $Changes.Keys) {
-        if ($key -like '*_added_by_setup') {
+        if ($key -eq 'ca_added_by_setup' -and $newCa) {
+            $state[$key] = [bool]$Changes[$key]
+        } elseif ($key -like '*_added_by_setup') {
             $state[$key] = ([bool]$state[$key]) -or ([bool]$Changes[$key])
-        } elseif ($key -eq 'shortcuts') {
+        } elseif ($key -eq 'shortcuts' -or $key -eq 'ca_replaced') {
             $state[$key] = @(@($state[$key]) + @($Changes[$key]) | Where-Object { $_ } | Select-Object -Unique)
         } else {
             $state[$key] = $Changes[$key]
@@ -944,12 +1006,18 @@ function Update-NextButton {
 
 function Enter-CaPage {
     $r = Invoke-CaStep -Confirmed $false
+    $State.CaPending = @($r.Pending)
     if ($r.Ok) {
         $State.CaOk = $true
         Set-Status $ui.TxtCaStatus 'This certificate is already trusted on this PC - nothing to do. / Yeh certificate pehle se trusted hai.' 'ok'
         $ui.ChkTrustCa.IsChecked = $true
         $ui.ChkTrustCa.IsEnabled = $false
         $ui.BtnTrustCa.IsEnabled = $false
+    } elseif ($State.CaPending.Count -gt 0) {
+        Set-Status $ui.TxtCaStatus ('An OLDER branch certificate of this branch is still trusted on this PC (' + ($State.CaPending -join ', ') + '). Compare the new SHA-256, tick the box and click Replace: the new certificate is trusted and the old one is REMOVED. Only Bingoo branch certificates are ever removed. / Purana branch certificate hata kar naya lagaya jayega (sirf tasdeeq ke baad).') 'warn'
+        $ui.BtnTrustCa.Content = 'Replace the old certificate'
+        $ui.ChkTrustCa.IsEnabled = $true
+        $ui.BtnTrustCa.IsEnabled = ($ui.ChkTrustCa.IsChecked -eq $true)
     } else {
         Set-Status $ui.TxtCaStatus 'Not trusted on this PC yet. Compare the SHA-256, tick the box and click Trust this certificate. / Abhi trusted nahin: SHA-256 milayein, box tick karein aur button dabayein.' 'warn'
         $ui.ChkTrustCa.IsEnabled = $true
@@ -1036,7 +1104,7 @@ function Initialize-CounterWindow {
     }
     $script:State = @{
         Mode = 'install'; Page = 'PageWelcome'; Origin = $null; CaOk = $false; NetworkOk = $false; Checks = $null; Health = $null
-        PinStatus = 'not-offered'; TerminalStatus = $null; Removed = $false; RemoveResults = $null; ExitCode = 1
+        PinStatus = 'not-offered'; TerminalStatus = $null; Removed = $false; RemoveResults = $null; ExitCode = 1; CaPending = @()
     }
 
     $Window.Title = 'Bingoo Offline Counter - ' + $BranchLabel
@@ -1107,12 +1175,15 @@ function Initialize-CounterWindow {
     $ui.BtnTrustCa.Add_Click({
             Invoke-UiAction {
                 if ($ui.ChkTrustCa.IsChecked -ne $true) { return }
-                $answer = Show-Message ('Trust this branch certificate on this PC?' + "`n`n" + $CaName + "`nSHA-256: " + $CaSha256Display + "`n`n" + 'Click Yes ONLY if this SHA-256 is the same as on the Offline Edge page. / Sirf tab Yes dabayein jab SHA-256 bilkul wohi ho.') 'Confirm the branch certificate' 'YesNo' 'Warning'
+                $replaceNote = ''
+                if (@($State.CaPending).Count -gt 0) { $replaceNote = "`n`n" + 'The OLDER branch certificate ' + (@($State.CaPending) -join ', ') + ' will be REMOVED from this PC. / Purana certificate hata diya jayega.' }
+                $answer = Show-Message ('Trust this branch certificate on this PC?' + "`n`n" + $CaName + "`nSHA-256: " + $CaSha256Display + $replaceNote + "`n`n" + 'Click Yes ONLY if this SHA-256 is the same as on the Offline Edge page. / Sirf tab Yes dabayein jab SHA-256 bilkul wohi ho.') 'Confirm the branch certificate' 'YesNo' 'Warning'
                 $confirmed = ($ui.ChkTrustCa.IsChecked -eq $true) -and ($answer -eq [System.Windows.MessageBoxResult]::Yes)
                 if (-not $confirmed) { return }
                 $r = Invoke-CaStep -Confirmed $confirmed
                 $State.CaOk = $r.Ok
                 if ($r.Ok) {
+                    $State.CaPending = @()
                     Set-Status $ui.TxtCaStatus ('Trusted: ' + $r.Detail + '. / Certificate trust ho gaya.') 'ok'
                     $ui.BtnTrustCa.IsEnabled = $false
                     $ui.ChkTrustCa.IsEnabled = $false
