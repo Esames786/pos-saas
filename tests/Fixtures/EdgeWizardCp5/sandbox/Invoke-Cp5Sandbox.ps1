@@ -39,7 +39,9 @@ param(
     [string]$Only = '',
     # HOST pre-flight only (not elevated): start the disposable Cloud exactly as the sandbox would (package php + package MySQL
     # on 127.0.0.1, read-only code tree), run a few Cloud commands, stop only the processes it started. No appliance step.
-    [switch]$CloudSmoke
+    [switch]$CloudSmoke,
+    # host pre-flight only: leave the disposable Cloud running for a UI pre-flight; its pids are in <Work>\cp5-run.json
+    [switch]$KeepCloud
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -184,7 +186,8 @@ function Invoke-Cloud([string[]]$A, [int]$TimeoutSec = 1800, [string]$EvidenceNa
     $log = Join-Path $Work ('cloud-' + $A[0] + '-' + (Get-Date -Format 'HHmmssfff') + '.log')
     $r = Invoke-Logged $CloudPhp (@('-c', $CloudIni, (Join-Path $Kit 'cp5-cloud.php')) + $A) $log $TimeoutSec
     if ($EvidenceName) { Save-Evidence $EvidenceName ($r.Out + $(if ($r.Err) { "`n--- stderr ---`n" + $r.Err } else { '' })) }
-    if ($r.Code -ne 0) { throw ('cloud ' + $A[0] + ' exit ' + $r.Code + ': ' + ($r.Err + $r.Out).Trim().Substring(0, [Math]::Min(600, ($r.Err + $r.Out).Trim().Length))) }
+    # Laravel's exception renderer can leave the plain-php driver with exit 0: an "In <File>.php line N:" block is a failure too
+    if ($r.Code -ne 0 -or ($r.Out + $r.Err) -match '(?m)^\s*In [A-Za-z0-9_.]+\.php line \d+:') { throw ('cloud ' + $A[0] + ' exit ' + $r.Code + ': ' + ($r.Err + $r.Out).Trim().Substring(0, [Math]::Min(600, ($r.Err + $r.Out).Trim().Length))) }
     return $r
 }
 function Invoke-Edge([string[]]$A, [int]$TimeoutSec = 900) {
@@ -1096,15 +1099,25 @@ Write-Log 'step' "Bingoo Edge CP5 sandbox driver - scenario $Scenario - evidence
 if ($CloudSmoke) {
     try {
         Invoke-Scenario 'cloud' 'HOST pre-flight: the sandbox Cloud (package php + package MySQL, read-only tree)' @() { Start-Cloud }
-        Invoke-Scenario 'cloud-commands' 'HOST pre-flight: setup code + public keys + device' @('cloud') {
+        Invoke-Scenario 'cloud-commands' 'HOST pre-flight: setup code + public keys + device + auto-takeover switch + SQL probe + clock offset' @('cloud') {
             $sc = Get-SetupCode
             $sc.Code = $null
-            [ordered]@{ setup_mode = $sc.Mode; device = (Get-CloudDevice) }
+            $on = Get-LastJson (Invoke-Cloud @('auto-takeover', 'on', '180')).Out
+            $off = Get-LastJson (Invoke-Cloud @('auto-takeover', 'off', '180')).Out
+            $sql = Invoke-Sql 'cloud' 'SELECT id, name, edge_auto_takeover_enabled, edge_auto_takeover_after_seconds FROM branches ORDER BY id LIMIT 1'
+            Stop-CloudPhp
+            Start-CloudPhp -ClockOffsetSec 45
+            $hdr = (Invoke-WebRequest -UseBasicParsing -Uri ($CloudUrl + '/up') -TimeoutSec 60).Headers['Date']
+            $skew = [int]([datetime]::Parse($hdr).ToUniversalTime() - (Get-Date).ToUniversalTime()).TotalSeconds
+            Stop-CloudPhp
+            Start-CloudPhp
+            [ordered]@{ setup_mode = $sc.Mode; device = (Get-CloudDevice); auto_takeover_on = $on.after; auto_takeover_off = $off.after; branch_row = $sql.rows; offset_date_header_skew_s = $skew }
         }
     } finally {
         if (Test-Path $RunFile) {
             $rs = Get-Content -Raw $RunFile | ConvertFrom-Json
-            foreach ($p in @($rs.cloud_php_pid, $rs.cloud_mysqld_pid)) { if ($p) { Stop-OwnTree ([int]$p) } }
+            if ($KeepCloud) { Write-Log 'info' "Cloud kept running: php pid $($rs.cloud_php_pid), mysqld pid $($rs.cloud_mysqld_pid)" }
+            else { foreach ($p in @($rs.cloud_php_pid, $rs.cloud_mysqld_pid)) { if ($p) { Stop-OwnTree ([int]$p) } } }
         }
         [void](Protect-Evidence)
         Save-Evidence 'summary.json' ([ordered]@{ scenario = 'cloud-smoke'; results = $script:Results })

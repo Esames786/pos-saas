@@ -164,11 +164,14 @@ switch ($cmd) {
         break;
 
     case 'setup-code':
+        // One live code per branch: an unredeemed earlier code is cancelled first (the owner's "Cancel" on the Offline Edge page).
         $t = $tenantFn();
         $s = $readState();
-        $r = app(App\Services\Edge\Cloud\SetupSessionService::class)->create($t, Branch::findOrFail((int) $s['branch_id']), (int) $s['users'][0]);
+        $svc = app(App\Services\Edge\Cloud\SetupSessionService::class);
+        $cancelled = $svc->liveSessionForBranch((int) $t->id, (int) $s['branch_id']) ? $svc->cancel($t, (int) $s['branch_id'], (int) $s['users'][0]) : 0;
+        $r = $svc->create($t, Branch::findOrFail((int) $s['branch_id']), (int) $s['users'][0]);
         file_put_contents((string) $argv[2], (string) $r['code']);
-        $out(['result' => 'ok', 'mode' => $r['mode'], 'expires_at' => $r['expires_at']]);
+        $out(['result' => 'ok', 'mode' => $r['mode'], 'expires_at' => $r['expires_at'], 'cancelled_before' => $cancelled]);
         break;
 
     case 'assertion':
