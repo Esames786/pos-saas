@@ -524,6 +524,17 @@ function Add-WizDone($ctx, [string]$step, [hashtable]$data = @{}) { [void]$ctx.D
 # MySQL 8 from the package's mysql\ dir as the BingooEdgeMySQL service. Khatri lessons: skip-log-bin (log_bin=OFF ENABLES a
 # binlog named OFF), and with skip-name-resolve root@localhost is unreachable over TCP -> root@127.0.0.1 is created by the
 # SAME one-time --init-file that sets every password (written to the user-only dir, deleted right after initialisation).
+# The package's MySQL runtime: stream E's builder ships it AT <package>\mysql (bin\, share\); an older hand-made layout had a
+# versioned sub-folder <package>\mysql\mysql-8.0.x-winx64. (CP5 prep: only the second was looked at, so a fresh install
+# from a real 0.9 package would have stopped with WIZARD_NO_MYSQL.)
+function Get-WizPackageMySqlDir($ctx) {
+    $root = Join-Path $ctx.PackageRoot 'mysql'
+    if (Test-Path (Join-Path $root 'bin\mysqld.exe')) { return $root }
+    $sub = Get-ChildItem -Path $root -Directory -Filter 'mysql-*' -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName 'bin\mysqld.exe') } | Select-Object -First 1
+    if ($sub) { return $sub.FullName }
+    return $null
+}
+
 function Install-WizMySql($ctx) {
     $mode = Get-WizValue $ctx.Answers 'mysql.mode' 'install'
     $dbName = Get-WizValue $ctx.Answers 'mysql.db_name' 'bingoo_edge_local'
@@ -544,10 +555,10 @@ function Install-WizMySql($ctx) {
     $existing = Get-Service -Name $svcName -ErrorAction SilentlyContinue
     if (-not $existing) {
         if (-not (Test-Path (Join-Path $mysqlDir 'bin\mysqld.exe'))) {
-            $src = Get-ChildItem -Path (Join-Path $ctx.PackageRoot 'mysql') -Directory -Filter 'mysql-*' -ErrorAction SilentlyContinue | Select-Object -First 1
-            if (-not $src) { throw 'WIZARD_NO_MYSQL: the package has no mysql\mysql-*-winx64 directory' }
+            $src = Get-WizPackageMySqlDir $ctx
+            if (-not $src) { throw 'WIZARD_NO_MYSQL: the package has no MySQL runtime (mysql\bin\mysqld.exe)' }
             New-Item -ItemType Directory -Force -Path $mysqlDir | Out-Null
-            & robocopy $src.FullName $mysqlDir /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+            & robocopy $src $mysqlDir /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
             if ($LASTEXITCODE -ge 8) { throw "WIZARD_MYSQL_COPY: robocopy exit $LASTEXITCODE" }
             Add-WizDone $ctx 'mysql_files' @{ Dir = $mysqlDir }
         }
