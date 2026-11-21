@@ -45,6 +45,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $ReleaseKeyId = 'a2eaf8a3d3e66a48'   # P5B custody release key v1 (public fingerprint)
+$WinTar = Join-Path $env:SystemRoot 'System32\tar.exe'   # Windows bsdtar (zip + drive-letter paths); never Git's GNU tar from PATH
 $t0 = Get-Date
 $timings = [ordered]@{}
 
@@ -99,7 +100,7 @@ if ((& git -C $build rev-parse HEAD).Trim() -ne $sha) { Fail 'the build tree HEA
 if (& git -C $build status --porcelain) { Fail 'the build tree is not clean right after checkout' }
 New-Item -ItemType Directory -Force -Path $src | Out-Null
 & git -C $build archive --format=tar -o (Join-Path $work 'archive.tar') $sha
-& tar.exe -x -f (Join-Path $work 'archive.tar') -C $src
+& $WinTar -x -f (Join-Path $work 'archive.tar') -C $src
 if ($LASTEXITCODE -ne 0) { Fail 'git archive extraction failed' }
 Remove-Item -LiteralPath (Join-Path $work 'archive.tar') -Force
 Done '1_clean_source'
@@ -159,7 +160,7 @@ Done '5_audit'
 
 # ---- 6. zip ------------------------------------------------------------------------------------------------------
 Step '6 zip'
-& tar.exe -a -c -f "$out.zip" -C $OutRoot $name
+& $WinTar -a -c -f "$out.zip" -C $OutRoot $name
 if ($LASTEXITCODE -ne 0) { Fail 'zip failed' }
 $zipSha = Get-Sha256 "$out.zip"
 Done '6_zip'
