@@ -50,9 +50,10 @@ function New-EdgeSettings {
 function New-EdgeTrigger($task) {
     $trigger = New-ScheduledTaskTrigger -AtStartup
     if ($task.kind -eq 'periodic' -and $task.repeat_minutes) {
+        # [TimeSpan]::MaxValue serialises to P99999999DT23H59M59S, rejected by Windows 10 Task Scheduler (found at Khatri 21 Nov 2026)
         $repeat = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
             -RepetitionInterval (New-TimeSpan -Minutes ([int]$task.repeat_minutes)) `
-            -RepetitionDuration ([TimeSpan]::MaxValue)).Repetition
+            -RepetitionDuration (New-TimeSpan -Days 3650)).Repetition
         $trigger.Repetition = $repeat
     }
     return $trigger
