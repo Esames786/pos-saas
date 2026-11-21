@@ -48,7 +48,7 @@ final class CounterSetupRendererAdapter implements CounterSetupRenderer
         return $this->inner->phoneOnboarding($lanProfile);
     }
 
-    public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context): string
+    public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context = []): string
     {
         if (! method_exists($this->inner, 'renderWindowsWizard')) {
             throw new \RuntimeException('The Offline Counter wizard is not available on this Cloud yet.');

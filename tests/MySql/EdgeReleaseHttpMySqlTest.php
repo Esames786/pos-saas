@@ -96,6 +96,8 @@ class EdgeReleaseHttpMySqlTest extends MySqlTenantTestCase
             array_merge(['min_previous_edge_version' => '0.8.5-edge'], $updateOverrides));
         $updateRel = 'update/edge-update-' . $version . '.json';
         $this->writeFile($dir . '/' . $updateRel, json_encode($pkg, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        // Edge 0.9 (stream E): SHA256SUMS + detached Ed25519 signature with the SAME key, written before the manifest (as the builder does).
+        (new \App\Services\Edge\Packaging\PackageChecksums())->write($dir, $signingSecret ?? $this->releaseKey['secret']);
 
         $files = [];
         $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS));
@@ -192,8 +194,12 @@ class EdgeReleaseHttpMySqlTest extends MySqlTenantTestCase
         $other = EdgeEnrollmentCrypto::generateKeypair();
         [$code, $out] = $this->publish($this->buildPackage('0.9.2-edge', $other['secret']));
         $this->assertSame(1, $code);
-        $this->assertStringContainsString('RELEASE_VERIFY_FAILED', $out['error']);
-        $this->assertStringContainsString('UPDATE_SIGNATURE_INVALID', $out['error']);
+        // Since stream E's package verification is merged, a foreign key is refused at the PACKAGE level first: both the update
+        // manifest signature and the SHA256SUMS signature are reported false (nothing is registered either way).
+        $this->assertStringContainsString('RELEASE_PACKAGE_INVALID', $out['error']);
+        $this->assertStringContainsString('"signature_ok":false', $out['error']);
+        $this->assertStringContainsString('"checksums_signature_ok":false', $out['error']);
+        $this->assertSame(0, EdgeRelease::count());
 
         $tampered = $this->buildPackage('0.9.3-edge');
         file_put_contents($tampered . '/app/config/app.php', "<?php return ['name' => 'evil'];\n");

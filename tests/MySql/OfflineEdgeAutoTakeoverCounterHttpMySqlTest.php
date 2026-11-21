@@ -200,7 +200,7 @@ class OfflineEdgeAutoTakeoverCounterHttpMySqlTest extends MySqlTenantTestCase
                 return [];
             }
 
-            public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context): string
+            public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context = []): string
             {
                 $this->contexts[] = ['lan' => $lanProfile, 'online' => $onlinePosUrl, 'branch' => $branchLabel, 'context' => $context];
 

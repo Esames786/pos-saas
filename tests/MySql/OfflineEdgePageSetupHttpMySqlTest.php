@@ -244,7 +244,7 @@ class FakeCounterSetupRenderer implements CounterSetupRenderer
         return [];
     }
 
-    public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context): string
+    public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context = []): string
     {
         return '# wizard for ' . $branchLabel;
     }
