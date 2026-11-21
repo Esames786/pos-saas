@@ -73,6 +73,11 @@ class EdgeUpdatesApiController extends Controller
             'update_package_file' => $r->update_package_file,
             'min_from_version'    => $r->min_from_version,
             'schema_generation'   => $r->schema_generation,
+            // K6 plan approval: the owner-approved migration plan hashes {"<from_version>": "sha256:…"} and the one for THIS
+            // device's installed version (null when none was approved — an appliance with pending migrations then refuses).
+            'plan_hashes'         => (object) (is_array($r->approved_plan_hashes) ? $r->approved_plan_hashes : []),
+            'expected_plan_hash'  => $offer['current_version'] !== null && is_array($r->approved_plan_hashes)
+                ? ($r->approved_plan_hashes[$offer['current_version']] ?? null) : null,
             'download_url'        => $this->releases->signedDownloadUrl($r, $device),
             'download_expires_at' => now()->addMinutes(ReleaseRegistry::DOWNLOAD_TTL_MINUTES)->toIso8601String(),
         ]));

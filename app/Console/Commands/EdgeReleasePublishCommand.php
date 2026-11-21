@@ -12,6 +12,7 @@ use RuntimeException;
  * EDGE 0.9 (K6) — register a SIGNED Branch Server package on the Cloud (setup download + auto-update channel).
  *
  *   php artisan edge:release:publish D:\out\BingooEdge-0.9.1-edge [--channel=stable] [--dry-run] [--json]
+ *       [--approve-plan=<from_version>=sha256:<hex> …]   (repeatable: the OWNER-APPROVED migration plan per upgrade path, K6)
  *
  * Refuses (non-zero exit, nothing registered) unless the package directory passes the existing integrity + boundary audit
  * (EdgePackageBuilder::verify) AND its signed update package verifies against the configured EDGE_UPDATE_PUBLIC_KEY
@@ -24,6 +25,7 @@ class EdgeReleasePublishCommand extends Command
         {dir : the built package directory (edge-package-v1, with update/edge-update-<version>.json)}
         {--channel=stable : release channel}
         {--dry-run : verify only — register nothing}
+        {--approve-plan=* : <from_version>=<plan_hash> — the owner-approved migration plan hash for that upgrade path (repeatable)}
         {--json : emit JSON}';
 
     protected $description = 'Verify a signed Branch Server package and register it as a Cloud release (setup download + auto-update).';
@@ -42,6 +44,7 @@ class EdgeReleasePublishCommand extends Command
                 (string) ($this->option('channel') ?: EdgeRelease::CHANNEL_STABLE),
                 'cli:' . (get_current_user() ?: 'unknown'),
                 (bool) $this->option('dry-run'),
+                (array) $this->option('approve-plan'),
             );
         } catch (RuntimeException $e) {
             if ($this->option('json')) {
@@ -67,6 +70,7 @@ class EdgeReleasePublishCommand extends Command
             'size_bytes'      => $result['size_bytes'] ?? null,
             'release_id'      => $release?->public_uuid,
             'storage_path'    => $release?->storage_path,
+            'approved_plan_hashes' => $release?->approved_plan_hashes ?: (object) [],
         ];
         if ($this->option('json')) {
             $this->line(json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));

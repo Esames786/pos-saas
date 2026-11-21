@@ -13,6 +13,7 @@ use App\Services\Tenancy\TenancyManager;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Tests\MySql\Support\EdgeSetupCloudFixture;
 use ZipArchive;
@@ -300,6 +301,66 @@ class EdgeReleaseHttpMySqlTest extends MySqlTenantTestCase
         $this->device->forceFill(['reported_version' => '0.8.2-edge'])->save();
         $this->latest()->assertOk()->assertJsonPath('available', false)->assertJsonPath('reason', 'requires_min_version')->assertJsonPath('min_from_version', '0.8.5-edge');
         $this->getJson($this->central('/api/edge/updates/latest'))->assertStatus(401);
+    }
+
+    /* ── K6 plan approval (owner-approved migration plan per upgrade path) ─── */
+
+    public function test_plan_approvals_are_operator_only_validated_audited_and_advertised_per_installed_version(): void
+    {
+        $a = 'sha256:' . str_repeat('a', 64);
+        $b = 'sha256:' . str_repeat('b', 64);
+        $c = 'sha256:' . str_repeat('c', 64);
+
+        // Before any approval: the offer carries an empty map and no expected hash (the appliance then refuses pending migrations).
+        $this->assertSame(0, $this->publish($this->buildPackage('0.9.1-edge'))[0]);
+        $j = $this->latest()->assertOk()->json();
+        $this->assertSame([], $j['plan_hashes']);
+        $this->assertNull($j['expected_plan_hash']);
+        $this->assertStringContainsString('"plan_hashes":{}', $this->latest()->getContent(), 'an empty map is a JSON object');
+
+        // A malformed approval refuses the whole publish — nothing is registered.
+        [$code, $out] = $this->publish($this->buildPackage('0.9.2-edge'), ['--approve-plan' => ['0.9.0-edge=deadbeef']]);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('RELEASE_PLAN_HASH_INVALID', $out['error']);
+        [$code, $out] = $this->publish($this->buildPackage('0.9.2-edge'), ['--approve-plan' => ['no-equals-sign']]);
+        $this->assertStringContainsString('RELEASE_PLAN_APPROVAL_INVALID', $out['error']);
+        $this->assertFalse(EdgeRelease::where('version', '0.9.2-edge')->exists());
+
+        // --approve-plan is repeatable and recorded at publish time; a dry run records nothing.
+        [$code, $out] = $this->publish($this->buildPackage('0.9.3-edge'), ['--approve-plan' => ['0.9.0-edge=' . strtoupper($a), '0.8.5-edge=' . $b], '--dry-run' => true]);
+        $this->assertSame(0, $code);
+        $this->assertFalse(EdgeRelease::where('version', '0.9.3-edge')->exists());
+        Log::spy();
+        [$code, $out] = $this->publish($this->buildPackage('0.9.3-edge'), ['--approve-plan' => ['0.9.0-edge=' . strtoupper($a), '0.8.5-edge=' . $b]]);
+        $this->assertSame(0, $code, json_encode($out));
+        $this->assertSame(['0.8.5-edge' => $b, '0.9.0-edge' => $a], $out['approved_plan_hashes']);
+        Log::shouldHaveReceived('info')->withArgs(fn ($m, $ctx = []) => $m === '[edge-release-audit] edge.release.plan_approved')->twice();
+
+        // K6 latest: the whole map + the hash for THIS device's installed version (0.9.0-edge via app_version).
+        $j = $this->latest()->assertOk()->json();
+        $this->assertSame('0.9.3-edge', $j['version']);
+        $this->assertSame(['0.8.5-edge' => $b, '0.9.0-edge' => $a], $j['plan_hashes']);
+        $this->assertSame($a, $j['expected_plan_hash']);
+        $this->device->forceFill(['reported_version' => '0.8.9-edge'])->save();
+        $j = $this->latest()->assertOk()->json();
+        $this->assertTrue($j['available']);
+        $this->assertNull($j['expected_plan_hash'], 'no approval for 0.8.9-edge — never invented');
+
+        // The separate operator command: by version or id, audited with the previous value; bad input changes nothing.
+        $r = EdgeRelease::where('version', '0.9.3-edge')->firstOrFail();
+        Log::spy();
+        $this->assertSame(0, Artisan::call('edge:release:approve-plan', ['release' => '0.9.3-edge', 'from_version' => '0.8.9-edge', 'plan_hash' => $c, '--json' => true]));
+        $this->assertSame(0, Artisan::call('edge:release:approve-plan', ['release' => $r->public_uuid, 'from_version' => '0.9.0-edge', 'plan_hash' => $c, '--json' => true]));
+        Log::shouldHaveReceived('info')->withArgs(fn ($m, $ctx = []) => $m === '[edge-release-audit] edge.release.plan_approved'
+            && $ctx['from_version'] === '0.9.0-edge' && $ctx['previous_plan_hash'] === $a && $ctx['plan_hash'] === $c)->once();
+        $this->assertSame(1, Artisan::call('edge:release:approve-plan', ['release' => '9.9.9-edge', 'from_version' => '0.9.0-edge', 'plan_hash' => $c]));
+        $this->assertSame(1, Artisan::call('edge:release:approve-plan', ['release' => '0.9.3-edge', 'from_version' => '0.9.0-edge', 'plan_hash' => 'sha256:xyz']));
+        $this->assertSame(['0.8.5-edge' => $b, '0.8.9-edge' => $c, '0.9.0-edge' => $c], EdgeRelease::findOrFail($r->id)->approved_plan_hashes);
+        $this->assertSame($c, $this->latest()->json('expected_plan_hash'), 'the device on 0.8.9-edge now gets its approved plan');
+
+        // A withdrawn release cannot be approved.
+        $r->forceFill(['status' => EdgeRelease::STATUS_WITHDRAWN])->save();
+        $this->assertSame(1, Artisan::call('edge:release:approve-plan', ['release' => '0.9.3-edge', 'from_version' => '0.9.1-edge', 'plan_hash' => $c]));
     }
 
     /* ── gate 3 + the page download ─────────────────────────────────────── */

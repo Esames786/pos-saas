@@ -42,6 +42,10 @@ class SetupSessionService
     /** Unambiguous alphabet: no 0/O, 1/I/L. */
     public const ALPHABET         = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
     private const GEN_RETRIES     = 20;
+    /** K2b: a fresh pairing code is issued only when the current one has less than this left (or is gone). */
+    public const REISSUE_WINDOW_SECONDS = 180;
+    /** K2b: pairing codes one setup session may receive in total (the redeem's included). */
+    public const MAX_PAIRING_CODES = 10;
 
     public function __construct(
         private readonly EdgePairingService $pairing,
@@ -279,7 +283,7 @@ class SetupSessionService
                     $this->audit('edge.setup.redeem_refused', ['tenant_id' => $tenant->id, 'branch_id' => $branch->id, 'session' => $session->public_uuid, 'reason' => $e->setupCode]);
                     throw $e;
                 }
-                $session->forceFill(['pairing_code_uuid' => $pairing['public_uuid'], 'mode' => EdgeSetupSession::MODE_INSTALL])->save();
+                $session->forceFill(['pairing_code_uuid' => $pairing['public_uuid'], 'mode' => EdgeSetupSession::MODE_INSTALL, 'pairing_codes_issued' => 1])->save();
             } else {
                 $session->forceFill(['mode' => EdgeSetupSession::MODE_UPDATE])->save();
             }
@@ -379,6 +383,77 @@ class SetupSessionService
         $s->increment('attempts');
         if ($s->attempts >= $s->max_attempts) {
             $s->update(['active_slot' => null]);
+        }
+    }
+
+    /* ── K2b fresh pairing code (public, setup token) ───────────────────── */
+
+    /**
+     * POST /api/edge/setup/pairing-code — the wizard of an INSTALL session whose pairing code expired, was used without a device
+     * surviving, or has less than REISSUE_WINDOW_SECONDS left gets a fresh one, minted through the existing pairing service in
+     * the same tenant/branch scope as the redeem. Refused (409) while the current code still has more than 3 minutes, when the
+     * branch already has an active device, when a hand-made code is live (never replaced — same as redeem), for an update
+     * session, and after MAX_PAIRING_CODES. The plaintext code is returned once and never stored.
+     *
+     * @return array{pairing_code:string, pairing_code_expires_at:string, branch_id:int, setup_session_id:string}
+     */
+    public function reissuePairingCode(?string $token): array
+    {
+        $token = trim((string) $token);
+        $s = ($token !== '' && strlen($token) <= 200) ? EdgeSetupSession::where('setup_token_hash', self::tokenHash($token))->first() : null;
+        if (! $s || ! $s->tokenIsUsable()) {
+            throw EdgeSetupException::of(EdgeSetupException::TOKEN_INVALID);
+        }
+        if ($s->mode !== EdgeSetupSession::MODE_INSTALL) {
+            throw EdgeSetupException::of(EdgeSetupException::NOT_INSTALL_SESSION);
+        }
+        $tenant = Tenant::find($s->tenant_id);
+        if (! $tenant || $tenant->status !== 'active') {
+            throw EdgeSetupException::of(EdgeSetupException::TOKEN_INVALID);
+        }
+
+        $this->tenancy->activate($tenant);
+        try {
+            if (! $this->entitlement->featureIsEnabled() || ! $this->entitlement->tenantHasOfflineEdgeAccess()) {
+                throw EdgeSetupException::of(EdgeSetupException::ENTITLEMENT);
+            }
+            $branch = Branch::find($s->branch_id);
+            if (! $branch || $branch->status !== 'active') {
+                throw EdgeSetupException::of(EdgeSetupException::BRANCH_NOT_ELIGIBLE);
+            }
+            if ($this->pairing->activeDeviceForBranch((int) $tenant->id, (int) $branch->id)) {
+                throw EdgeSetupException::of(EdgeSetupException::DEVICE_ALREADY_PAIRED);
+            }
+            $current = $s->pairing_code_uuid ? EdgePairingCode::where('public_uuid', $s->pairing_code_uuid)->first() : null;
+            if ($current && (int) $current->active_slot === EdgePairingCode::ACTIVE_SLOT && $current->used_at === null
+                && $current->cancelled_at === null && $current->expires_at !== null
+                && $current->expires_at->gt(now()->addSeconds(self::REISSUE_WINDOW_SECONDS))) {
+                throw EdgeSetupException::of(EdgeSetupException::PAIRING_CODE_STILL_VALID, null,
+                    ['pairing_code_expires_at' => $current->expires_at->toIso8601String()]);
+            }
+            if ((int) $s->pairing_codes_issued >= self::MAX_PAIRING_CODES) {
+                throw EdgeSetupException::of(EdgeSetupException::PAIRING_CODES_EXHAUSTED);
+            }
+
+            $pairing = $this->mintPairingCode($tenant, $branch, $s);   // hand-made live code → 409 PAIRING_CODE_ACTIVE
+            EdgeSetupSession::whereKey($s->id)->update([
+                'pairing_code_uuid' => $pairing['public_uuid'],
+                'pairing_codes_issued' => DB::raw('pairing_codes_issued + 1'),
+                'last_used_at' => now(), 'updated_at' => now(),
+            ]);
+            $this->audit('edge.setup.pairing_code_reissued', [
+                'tenant_id' => $tenant->id, 'branch_id' => $branch->id, 'session' => $s->public_uuid,
+                'previous_pairing_code_uuid' => $current?->public_uuid, 'pairing_code_uuid' => $pairing['public_uuid'],
+            ]);
+
+            return [
+                'pairing_code'            => $pairing['code'],
+                'pairing_code_expires_at' => $pairing['expires_at'],
+                'branch_id'               => (int) $branch->id,
+                'setup_session_id'        => (string) $s->public_uuid,
+            ];
+        } finally {
+            $this->tenancy->deactivate();
         }
     }
 

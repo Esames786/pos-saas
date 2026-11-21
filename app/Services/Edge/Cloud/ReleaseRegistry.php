@@ -44,8 +44,10 @@ class ReleaseRegistry
      * @return array{status:string, release:?EdgeRelease, version:string, manifest_sha256:string, package_hash:string, signing_key_id:?string, zip_sha256?:string, size_bytes?:int}
      * @throws RuntimeException with a stable RELEASE_* code
      */
-    public function publish(string $dir, string $channel = EdgeRelease::CHANNEL_STABLE, ?string $publishedBy = null, bool $dryRun = false): array
+    public function publish(string $dir, string $channel = EdgeRelease::CHANNEL_STABLE, ?string $publishedBy = null, bool $dryRun = false, array $approvePlans = []): array
     {
+        // Plan approvals given on the command line are validated BEFORE anything is verified or written.
+        $approvePlans = self::normalisePlanApprovals($approvePlans);
         $dir = rtrim(str_replace('\\', '/', $dir), '/');
         if (! preg_match('/^[a-z][a-z0-9_-]{0,31}$/', $channel)) {
             throw new RuntimeException('RELEASE_CHANNEL_INVALID: ' . $channel);
@@ -115,6 +117,9 @@ class ReleaseRegistry
         $existing = EdgeRelease::where('channel', $channel)->where('version', $version)->first();
         if ($existing) {
             if (hash_equals((string) $existing->package_hash, $packageHash) && $this->isServable($existing)) {
+                foreach ($dryRun ? [] : $approvePlans as $from => $hash) {
+                    $existing = $this->approvePlan($existing, (string) $from, $hash, (string) $publishedBy);
+                }
                 return ['status' => 'already_published', 'release' => $existing, 'version' => $version, 'manifest_sha256' => $manifestSha,
                     'package_hash' => $packageHash, 'signing_key_id' => $keyId, 'zip_sha256' => $existing->zip_sha256, 'size_bytes' => $existing->size_bytes];
             }
@@ -159,6 +164,9 @@ class ReleaseRegistry
             'published_by'        => $publishedBy ? Str::limit($publishedBy, 190, '') : null,
             'published_at'        => now(),
         ]);
+        foreach ($approvePlans as $from => $hash) {
+            $release = $this->approvePlan($release, (string) $from, $hash, (string) $publishedBy);
+        }
         Log::info('[edge-release-audit] edge.release.published', [
             'release' => $release->public_uuid, 'channel' => $channel, 'version' => $version, 'zip_sha256' => $zipSha,
             'signing_key_id' => $keyId, 'size_bytes' => $size,
@@ -204,6 +212,72 @@ class ReleaseRegistry
         $norm = fn (string $p) => strtolower(rtrim(str_replace('\\', '/', $p), '/'));
 
         return $real === false || $parent === false || $norm($real) !== $norm($parent . '/' . basename($path));
+    }
+
+    /* ── K6 plan approval ───────────────────────────────────────────────── */
+
+    public const PLAN_HASH_PATTERN = '/^sha256:[0-9a-f]{64}$/';
+
+    /**
+     * Record the OWNER-APPROVED migration plan hash for appliances upgrading FROM $fromVersion to this release. Written only by a
+     * Cloud operator (edge:release:publish --approve-plan / edge:release:approve-plan); the Cloud never computes or approves a
+     * plan on a device's behalf — the hash is the one the dry run on a copy of that appliance reported. Audited (identifiers
+     * only; the previous value is recorded when it is replaced).
+     */
+    public function approvePlan(EdgeRelease $release, string $fromVersion, string $planHash, string $operator): EdgeRelease
+    {
+        [$fromVersion, $planHash] = self::validatePlanApproval($fromVersion, $planHash);
+        if ($release->status !== EdgeRelease::STATUS_PUBLISHED) {
+            throw new RuntimeException('RELEASE_NOT_PUBLISHED: plans can only be approved for a published release.');
+        }
+        $map = is_array($release->approved_plan_hashes) ? $release->approved_plan_hashes : [];
+        $previous = $map[$fromVersion] ?? null;
+        $map[$fromVersion] = $planHash;
+        ksort($map);
+        $release->forceFill(['approved_plan_hashes' => $map])->save();
+        Log::info('[edge-release-audit] edge.release.plan_approved', [
+            'release' => $release->public_uuid, 'version' => $release->version, 'from_version' => $fromVersion,
+            'plan_hash' => $planHash, 'previous_plan_hash' => $previous, 'operator' => Str::limit($operator, 190, ''),
+        ]);
+
+        return $release->refresh();
+    }
+
+    /** @return array{0:string,1:string} */
+    public static function validatePlanApproval(string $fromVersion, string $planHash): array
+    {
+        $fromVersion = trim($fromVersion);
+        $planHash = strtolower(trim($planHash));
+        if (! preg_match('/^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$/', $fromVersion)) {
+            throw new RuntimeException('RELEASE_PLAN_FROM_VERSION_INVALID: ' . $fromVersion);
+        }
+        if (! preg_match(self::PLAN_HASH_PATTERN, $planHash)) {
+            throw new RuntimeException('RELEASE_PLAN_HASH_INVALID: expected sha256:<64 lowercase hex> (the plan_hash of the appliance dry run).');
+        }
+
+        return [$fromVersion, $planHash];
+    }
+
+    /**
+     * @param  array<int|string,string>  $approvals  ["<from>=<hash>", …] or [from => hash]
+     * @return array<string,string>
+     */
+    public static function normalisePlanApprovals(array $approvals): array
+    {
+        $out = [];
+        foreach ($approvals as $k => $v) {
+            if (is_int($k)) {
+                $parts = explode('=', (string) $v, 2);
+                if (count($parts) !== 2) {
+                    throw new RuntimeException('RELEASE_PLAN_APPROVAL_INVALID: use --approve-plan=<from_version>=<plan_hash>');
+                }
+                [$k, $v] = $parts;
+            }
+            [$from, $hash] = self::validatePlanApproval((string) $k, (string) $v);
+            $out[$from] = $hash;
+        }
+
+        return $out;
     }
 
     /* ── queries ────────────────────────────────────────────────────────── */

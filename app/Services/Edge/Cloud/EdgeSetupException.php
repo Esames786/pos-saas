@@ -32,6 +32,11 @@ class EdgeSetupException extends RuntimeException
     public const DEVICE_NOT_CURRENT    = 'EDGE_DEVICE_NOT_CURRENT';
     public const LAN_PROFILE_INVALID   = 'EDGE_LAN_PROFILE_INVALID';
     public const RELEASE_UNAVAILABLE   = 'EDGE_RELEASE_UNAVAILABLE';
+    // K2b — fresh pairing code for an install-mode setup session.
+    public const NOT_INSTALL_SESSION   = 'EDGE_SETUP_NOT_AN_INSTALL_SESSION';
+    public const DEVICE_ALREADY_PAIRED = 'EDGE_SETUP_DEVICE_ALREADY_PAIRED';
+    public const PAIRING_CODE_STILL_VALID = 'EDGE_SETUP_PAIRING_CODE_STILL_VALID';
+    public const PAIRING_CODES_EXHAUSTED = 'EDGE_SETUP_PAIRING_CODES_EXHAUSTED';
 
     public function __construct(
         public readonly string $setupCode,
@@ -65,6 +70,10 @@ class EdgeSetupException extends RuntimeException
             self::DEVICE_NOT_CURRENT   => 'This device is not the current Branch Server of its branch.',
             self::LAN_PROFILE_INVALID  => 'The reported LAN profile is not valid.',
             self::RELEASE_UNAVAILABLE  => 'The requested Branch Server release is not available.',
+            self::NOT_INSTALL_SESSION  => 'This setup session updates an existing Branch Server; it has no pairing code.',
+            self::DEVICE_ALREADY_PAIRED => 'A Branch Server is already paired to this branch.',
+            self::PAIRING_CODE_STILL_VALID => 'The current pairing code is still valid; a new one is issued only in its last 3 minutes or after it expired.',
+            self::PAIRING_CODES_EXHAUSTED => 'This setup session has issued its maximum number of pairing codes. Create a new setup code on the Offline Edge page.',
             default                    => 'Invalid setup code.',
         };
     }
@@ -74,7 +83,8 @@ class EdgeSetupException extends RuntimeException
         return match ($this->setupCode) {
             self::CODE_USED, self::CODE_ALREADY_ACTIVE, self::PAIRING_CODE_ACTIVE, self::PAIRING_UNAVAILABLE,
             self::DEVICE_LIMIT, self::BRANCH_NOT_ELIGIBLE, self::ENROLLMENT_UNAVAILABLE, self::DEVICE_NOT_CURRENT,
-            self::RELEASE_UNAVAILABLE => 409,
+            self::RELEASE_UNAVAILABLE, self::NOT_INSTALL_SESSION, self::DEVICE_ALREADY_PAIRED, self::PAIRING_CODE_STILL_VALID,
+            self::PAIRING_CODES_EXHAUSTED => 409,
             self::ENTITLEMENT, self::TOKEN_INVALID, self::TOKEN_SCOPE => 403,
             self::NOT_CONFIGURED => 503,
             default => 422,
