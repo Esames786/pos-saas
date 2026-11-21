@@ -8,6 +8,7 @@ use App\Services\Edge\EdgePackageBuilder;
 use App\Services\Edge\EdgeSigningKeyStore;
 use App\Services\Edge\EdgeUpdatePackageService;
 use App\Services\Edge\Packaging\PhpIniValidator;
+use App\Services\Edge\Packaging\VcRedistPrerequisite;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -54,7 +55,24 @@ class EdgePackageRuntimeLayoutTest extends TestCase
         $cfg['include'] = ['app', 'bootstrap', 'config', 'routes', 'public/index.php', 'artisan', 'composer.json', 'scripts/edge', 'database/migrations'];
         $cfg['runtime_dirs'] = ['bootstrap/cache', 'storage/logs'];
 
-        return new EdgePackageBuilder(new EdgeArtifactBuilder($cfg), app(EdgeUpdatePackageService::class));
+        // The VC++ prerequisite probe is faked (Microsoft-signed 14.44) so the fake bundle below stands in for the real one.
+        $vc = new VcRedistPrerequisite(fn (string $exe) => ['status' => 'Valid', 'signer' => 'CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US',
+            'issuer' => 'CN=Microsoft Code Signing PCA 2011', 'version' => '14.44.35211.0']);
+
+        return new EdgePackageBuilder(new EdgeArtifactBuilder($cfg), app(EdgeUpdatePackageService::class), null, null, null, $vc);
+    }
+
+    /** A minimal complete WiX Burn bundle (".wixburn" header with stub + UX + attached container) — stands in for VC_redist.x64.exe. */
+    private function fakeVcRedist(): string
+    {
+        $pe = 'MZ' . str_repeat("\0", 0x3A) . pack('V', 0x40) . "PE\0\0" . pack('vvVVVvv', 0x8664, 1, 0, 0, 0, 0, 0x22)
+            . str_pad('.wixburn', 8, "\0") . pack('VVVVVVvvV', 64, 0x1000, 64, 0x200, 0, 0, 0, 0, 0);
+        $pe = str_pad($pe, 0x200, "\0") . pack('VV', 0x00F14300, 2) . str_repeat("\x11", 16) . pack('VVVVVVVV', 1024, 0, 0, 0, 1, 2, 500, 4000);
+        $file = $this->tmp() . '.exe';
+        $this->tempDirs[] = $file;
+        file_put_contents($file, str_pad($pe, 1024, "\0") . str_repeat('U', 500) . str_repeat('P', 4000));
+
+        return $file;
     }
 
     private function build(array $extra = [], array $meta = []): array
@@ -109,7 +127,7 @@ class EdgePackageRuntimeLayoutTest extends TestCase
     private function fakeMysqlRuntime(): string
     {
         $dir = $this->tmp();
-        foreach (['bin/mysqld.exe', 'bin/mysql.exe', 'bin/mysqladmin.exe', 'bin/mysqld.pdb', 'share/english/errmsg.sys', 'share/install_rewriter.sql', 'my.ini', 'LICENSE'] as $rel) {
+        foreach (['bin/mysqld.exe', 'bin/mysql.exe', 'bin/mysqladmin.exe', 'bin/mysqldump.exe', 'bin/mysqlpump.exe', 'bin/mysqld.pdb', 'share/english/errmsg.sys', 'share/install_rewriter.sql', 'my.ini', 'LICENSE'] as $rel) {
             @mkdir(dirname($dir . '/' . $rel), 0777, true);
             file_put_contents($dir . '/' . $rel, 'x ' . $rel);
         }
@@ -140,7 +158,19 @@ class EdgePackageRuntimeLayoutTest extends TestCase
         $kp = EdgeEnrollmentCrypto::generateKeypair();
         $keyId = EdgeSigningKeyStore::keyId($kp['public']);
         [$dest, $summary] = $this->build(['php_runtime' => $this->fakePhpRuntime(), 'php_smoke' => false,
-            'mysql_runtime' => $this->fakeMysqlRuntime(), 'mysql_probe' => false, 'signing_key' => $kp['secret'], 'signing_key_id' => $keyId]);
+            'mysql_runtime' => $this->fakeMysqlRuntime(), 'mysql_probe' => false, 'signing_key' => $kp['secret'], 'signing_key_id' => $keyId,
+            'vc_redist' => $this->fakeVcRedist()]);
+
+        // prereqs/ — the VC++ runtime installer rides in the package, in the manifest and in SHA256SUMS.
+        $this->assertFileExists($dest . '/prereqs/VC_redist.x64.exe');
+        $vcEntry = $summary['components']['prereqs']['vc_redist'];
+        $this->assertSame('prereqs/VC_redist.x64.exe', $vcEntry['file']);
+        $this->assertSame('14.44.35211.0', $vcEntry['version']);
+        $this->assertSame(hash_file('sha256', $dest . '/prereqs/VC_redist.x64.exe'), $vcEntry['sha256']);
+        $this->assertTrue($vcEntry['burn_complete']);
+        $this->assertStringContainsString($vcEntry['sha256'] . "  prereqs/VC_redist.x64.exe\n", (string) file_get_contents($dest . '/SHA256SUMS'));
+        $this->assertArrayHasKey('prereqs/VC_redist.x64.exe', json_decode((string) file_get_contents($dest . '/package-manifest.json'), true)['files']);
+        $this->assertFileExists($dest . '/scripts/Install-EdgePrereqs.ps1');
 
         // php/ — the ini is the sanitised one, the CA bundle is cacert.txt, no CA .pem / ini backup came along.
         $ini = (string) file_get_contents($dest . '/php/php.ini');
@@ -168,7 +198,8 @@ class EdgePackageRuntimeLayoutTest extends TestCase
         $this->assertFileDoesNotExist($dest . '/mysql/bin/mysqld.pdb');
         $this->assertFileDoesNotExist($dest . '/mysql/my.ini');
         $this->assertFileDoesNotExist($dest . '/mysql/share/install_rewriter.sql');
-        $this->assertSame(5, $summary['components']['mysql']['file_count']);
+        $this->assertSame(6, $summary['components']['mysql']['file_count']); // server profile: 4 programs + errmsg.sys + LICENSE
+        $this->assertFileDoesNotExist($dest . '/mysql/bin/mysqlpump.exe');
         // Signing provenance: a non-release key is recorded as a DEV key.
         $this->assertSame('dev', $summary['components']['update']['signing_key_role']);
         $this->assertNotEmpty(array_filter($summary['warnings'], fn ($w) => str_starts_with($w, 'WIZARD_ABSENT')) ?: (is_dir(base_path('scripts/edge/wizard')) ? ['wizard present'] : []));
@@ -178,8 +209,10 @@ class EdgePackageRuntimeLayoutTest extends TestCase
         $this->assertTrue($verify['ok'], json_encode($verify['errors']));
         $this->assertTrue($verify['php_ini']['ok']);
         $this->assertTrue($verify['php_ini']['cacert_present']);
+        $this->assertTrue($verify['prereqs']['vc_redist']['ok']);
+        $this->assertTrue($verify['prereqs']['vc_redist']['manifest_entry']);
         $this->assertTrue($verify['mysql_runtime']['ok']);
-        $this->assertSame(5, $verify['mysql_runtime']['file_count']);
+        $this->assertSame(6, $verify['mysql_runtime']['file_count']);
         $this->assertTrue($verify['signature_ok']);
         $this->assertTrue($verify['signature']['key_id_matches']);
         $this->assertTrue($verify['signature']['artifact_bytes_match']);
@@ -283,6 +316,34 @@ class EdgePackageRuntimeLayoutTest extends TestCase
         // The same gate is derived for a 0.9+ RELEASE build without any override.
         config(['edge.app_version' => '0.9.0-edge']);
         $this->assertStringContainsString('WIZARD_MISSING', $this->assertBuildRefused([], 'PACKAGE_LAYOUT_FAILED', ['build_mode' => 'release']));
+    }
+
+    /** The 0.9 release layout with the REAL tree (stream B's wizard): the VC++ prerequisite is mandatory, then everything passes. */
+    public function test_a_strict_0_9_release_package_needs_the_vc_prerequisite_and_then_passes_the_strict_audit(): void
+    {
+        if (! is_dir(base_path('scripts/edge/wizard')) || ! is_file(base_path('scripts/edge/Setup-BingooEdge.cmd'))) {
+            $this->markTestSkipped('stream B wizard not in this tree');
+        }
+        $msg = $this->assertBuildRefused(['strict_layout' => true, 'php_runtime' => $this->fakePhpRuntime(), 'php_smoke' => false], 'PACKAGE_LAYOUT_FAILED');
+        $this->assertStringContainsString('PREREQ_VCREDIST_MISSING', $msg);
+
+        $kp = EdgeEnrollmentCrypto::generateKeypair();
+        [$dest, $summary] = $this->build(['strict_layout' => true, 'php_runtime' => $this->fakePhpRuntime(), 'php_smoke' => false,
+            'mysql_runtime' => $this->fakeMysqlRuntime(), 'mysql_probe' => false, 'vc_redist' => $this->fakeVcRedist(),
+            'signing_key' => $kp['secret'], 'signing_key_id' => EdgeSigningKeyStore::keyId($kp['public'])]);
+        $this->assertSame([], array_values(array_filter($summary['warnings'], fn ($w) => ! str_starts_with($w, 'DEV_SIGNED'))), json_encode($summary['warnings']));
+        $verify = $this->builder()->verify($dest, ['public_key' => $kp['public'], 'require_signature' => true, 'strict' => true]);
+        $this->assertTrue($verify['ok'], json_encode($verify['errors']));
+        $this->assertTrue($verify['strict_layout']);
+        $this->assertSame('ok', $verify['wizard']['severity']);
+        $this->assertSame('ok', $verify['cloud_url']['severity']);
+        $this->assertTrue($verify['checksums_signature_ok']);
+        $this->assertTrue($verify['prereqs']['vc_redist']['ok']);
+        // A strict audit refuses the same package once its VC++ installer is removed (and lists it as missing).
+        unlink($dest . '/prereqs/VC_redist.x64.exe');
+        $broken = $this->builder()->verify($dest, ['public_key' => $kp['public'], 'strict' => true]);
+        $this->assertFalse($broken['ok']);
+        $this->assertNotEmpty(array_filter($broken['errors'], fn ($e) => str_starts_with($e, 'PREREQ_VCREDIST_MISSING')));
     }
 
     public function test_a_packaged_script_with_timespan_maxvalue_fails_the_build(): void

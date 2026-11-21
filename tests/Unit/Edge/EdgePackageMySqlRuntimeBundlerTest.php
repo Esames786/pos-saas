@@ -48,11 +48,38 @@ class EdgePackageMySqlRuntimeBundlerTest extends TestCase
         return $src;
     }
 
-    public function test_only_the_server_runtime_is_bundled(): void
+    public function test_the_slim_server_profile_keeps_only_the_four_programs_their_dlls_and_share(): void
+    {
+        $src = $this->fakeRuntime();
+        // Import names as the PE stores them: mysqld -> libssl -> libcrypto (transitive), mysql -> jemalloc.
+        file_put_contents($src . '/bin/mysqld.exe', "MZ ... LIBSSL-1_1-X64.dll ... KERNEL32.dll");
+        file_put_contents($src . '/bin/mysql.exe', 'MZ ... jemalloc.dll');
+        file_put_contents($src . '/bin/libssl-1_1-x64.dll', 'MZ ... libcrypto-1_1-x64.dll');
+        foreach (['bin/libcrypto-1_1-x64.dll', 'bin/libmecab.dll', 'bin/mysqlpump.exe', 'bin/myisamchk.exe', 'bin/mysqlbinlog.exe'] as $rel) {
+            file_put_contents($src . '/' . $rel, 'x ' . $rel);
+        }
+        $dst = $this->tmp();
+        $entry = (new MySqlRuntimeBundler())->bundle($src, $dst, ['probe' => false]);
+        $this->assertSame('server', $entry['profile']);
+        $this->assertSame(['bin/jemalloc.dll', 'bin/libcrypto-1_1-x64.dll', 'bin/libssl-1_1-x64.dll'], $entry['dlls']);
+        $bin = array_map('basename', glob($dst . '/bin/*') ?: []);
+        sort($bin);
+        $this->assertSame(['jemalloc.dll', 'libcrypto-1_1-x64.dll', 'libssl-1_1-x64.dll', 'mysql.exe', 'mysqladmin.exe', 'mysqld.exe', 'mysqldump.exe'], $bin);
+        $this->assertFileExists($dst . '/share/english/errmsg.sys');
+        $this->assertFileExists($dst . '/share/charsets/Index.xml');
+        $this->assertDirectoryDoesNotExist($dst . '/lib', 'no plugins in the server profile');
+        $this->assertFileExists($dst . '/LICENSE');
+        // mysqldump is part of the server profile contract.
+        unlink($src . '/bin/mysqldump.exe');
+        $this->expectExceptionMessage('PACKAGE_MYSQL_RUNTIME_INVALID: bin/mysqldump.exe');
+        (new MySqlRuntimeBundler())->bundle($src, $this->tmp(), ['probe' => false]);
+    }
+
+    public function test_the_full_profile_keeps_every_runtime_file_but_never_the_excluded_classes(): void
     {
         $src = $this->fakeRuntime();
         $dst = $this->tmp();
-        $entry = (new MySqlRuntimeBundler())->bundle($src, $dst, ['probe' => false]);
+        $entry = (new MySqlRuntimeBundler())->bundle($src, $dst, ['probe' => false, 'profile' => 'full']);
 
         foreach (['bin/mysqld.exe', 'bin/mysql.exe', 'bin/mysqladmin.exe', 'bin/mysqldump.exe', 'bin/libssl-1_1-x64.dll', 'bin/jemalloc.dll',
             'share/english/errmsg.sys', 'share/charsets/Index.xml', 'lib/plugin/auth_socket.dll', 'LICENSE', 'README'] as $kept) {
