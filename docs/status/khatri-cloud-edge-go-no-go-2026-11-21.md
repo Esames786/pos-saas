@@ -60,4 +60,19 @@ green sets. The print agent itself (`tools/print-agent`, 2.7.1) is unchanged by 
 | chain 2 (started 02:00, stopped by the lead at 04:40 at 2701 passed / 0 errors / 2 failed) | 4c4894d1 + fixes landing mid-run | `CateringKitchenSheetLanguageMySqlTest::…print_time…` — **pre-existing** (fails identically on the untouched Edge branch d15c1320; Urdu LTR print-time regex on the catering kitchen sheet, no Edge/Cloud file involved) · `PrintOfflineHereMySqlTest::test_pos_par_batti_patti_aur_queue_window_maujood` — **stale-test artefact** (PHPUnit loaded the test file before its contract update f4e0cd95; the class re-ran green on the final code, 30 tests) | not release-gating; the run was stopped so a clean run could start on the final head |
 | **final run** (started 04:44, `scratchpad/integ-gates-final.log`) | **35684723** (candidate = production be3693e4 + Edge a23d1f26 incl. the owner-control UI) | full MySQL suite then Feature+Unit — appended below when it ends (≈ 07:15) | **this is the release gate**; expected reds: the catering print-time debt and the 6 pre-existing unit regressions listed above, nothing else |
 
-Final line: (pending — the lead appends it)
+**Final line (clean run on the 35684723 tree, started 04:44, ended 06:24 PKT, log `scratchpad/integ-gates-final.log`):**
+
+| suite | result | reds | classification |
+|---|---|---|---|
+| full MySQL (`phpunit.mysql.xml`, 1 process, isolated `*_integk_edge` DB set) | **2794 passed · 1 failed · 0 errors** (phpunit exit 255 = that failure) | `CateringKitchenSheetLanguageMySqlTest::test_the_sheet_carries_its_print_time_the_right_way_round` | **pre-existing canonical debt** (fails identically on the untouched Edge branch d15c1320; catering kitchen sheet, no Edge/Cloud file) |
+| Feature + Unit (SQLite, 426 tests, 44 723 assertions, 4 skipped) | **6 failures** | `CateringClientFeedbackUi…sidebar_collapsed`, `ClosureCapturesItsVariables…` (SupplierController:200), `EscPosReportPayload…two_decimal_money`, `AgentDownloadIsVersioned…` ×2, `DeliveryRiderReassignment…` | **the 6 pre-existing unit regressions** listed above — reproduced on the untouched Edge branch; none touches the merge |
+
+No red outside the expected list. The owner-control UI is inside the gate: `EdgeLocalAuthorityControlHttpMySqlTest` 7/7 passed in this run
+(log lines 17359–17423), `EdgePermissionCatalogTest` and `EdgeBranchServerRegistrationTest` green in the fast suite. Note on the head
+stamp: the log header says `HEAD=dab7e1f3` because the merge commit 35684723 was created 97 s after PHPUnit started; the working
+tree already held every auto-merged code file (git writes them at merge time — only `docs/system-map/system-map.json` was in conflict
+and was rebuilt), and the diff dab7e1f3→35684723 outside `docs/system-map` is exactly the 22 Edge files (incl. the new test that ran).
+The only commit after 35684723 (6862caa8) is this document.
+
+**Release-gate verdict: GO for owner review — the candidate carries no regression attributable to the integration; every red is
+pre-existing debt. The deployment itself still waits for the owner's unambiguous "DEPLOY NOW" (plan §4, runbook phase 1).**
