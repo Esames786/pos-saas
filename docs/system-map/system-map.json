@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-11-21T13:39:44+00:00",
+    "built_at": "2026-11-21T13:48:30+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "dc0babbf",
     "work": [
@@ -33,10 +33,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-e09-c",
             "branch": "edge09/c-cloud",
-            "head": "c305c5a7",
+            "head": "40cfef60",
             "behind_prod": 0,
-            "ahead_of_prod": 26,
-            "last_commit": "2026-11-21\u00b7edge09(c): K1 live state aligned with stream A's consumer",
+            "ahead_of_prod": 56,
+            "last_commit": "2026-11-21\u00b7edge09(c): K6 owner-approved plan hashes + K2b fresh pairing code for install setup sessions",
             "uncommitted_files": 0
         },
         {
@@ -60,11 +60,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-e09-integ",
             "branch": "edge09/integ",
-            "head": "5c40a1f8",
+            "head": "594aeb0e",
             "behind_prod": 0,
-            "ahead_of_prod": 54,
-            "last_commit": "2026-11-21\u00b7integ(edge 0.9): align C's renderer adapter/fakes with the optional wizard context; release fixture carries the signed SHA256SUMS like the real builder; a foreign-key package is refused at package level (both signatures false). MySQL gate: 35 classes green",
-            "uncommitted_files": 2
+            "ahead_of_prod": 57,
+            "last_commit": "2026-11-21\u00b7Merge edge09/c-cloud follow-up (K6 approved plan hashes, K2b fresh pairing code) into the 0.9 integration",
+            "uncommitted_files": 1
         },
         {
             "path": "D:/laragon2/www/pos-saas-edge",
@@ -464,7 +464,7 @@
             "modified": "2026-11-21"
         }
     ],
-    "git": "5c40a1f8",
+    "git": "594aeb0e",
     "source": {
         "tenant_db": "pos_sysmap_e09_tenant",
         "master_db": "pos_test_master_e09i"
@@ -43478,7 +43478,8 @@
                 "published_at timestamp",
                 "withdrawn_at timestamp",
                 "created_at timestamp",
-                "updated_at timestamp"
+                "updated_at timestamp",
+                "approved_plan_hashes json"
             ],
             "fk_out": [],
             "inferred_out": [
@@ -43590,7 +43591,8 @@
                 "last_used_at timestamp",
                 "cancelled_at timestamp",
                 "created_at timestamp",
-                "updated_at timestamp"
+                "updated_at timestamp",
+                "pairing_codes_issued int unsigned"
             ],
             "fk_out": [],
             "inferred_out": [

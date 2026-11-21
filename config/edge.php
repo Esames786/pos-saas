@@ -576,6 +576,7 @@ return [
             'app/Http/Controllers/Edge/EdgeUpdatesApiController.php',
             'app/Http/Controllers/Edge/EdgeLiveStateApiController.php',
             'app/Console/Commands/EdgeReleasePublishCommand.php',
+            'app/Console/Commands/EdgeReleaseApprovePlanCommand.php',
             'resources/edge/counter-setup',
             // CANONICAL REHEARSAL Phase E (30 Oct 2026, C-7): VOID-PURGE-1/2/3 - the Owner's permanent deletion of a voided
             // finance entry is a Cloud back-office feature (Master switch void_purge; routes only in the Cloud tenant group;
