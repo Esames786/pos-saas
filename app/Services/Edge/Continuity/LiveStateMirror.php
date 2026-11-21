@@ -280,7 +280,9 @@ class LiveStateMirror
 
     /**
      * One order (table order or held sale) + its lines. ADOPTABLE only when the Branch Server can take it over EXACTLY: unpaid,
-     * every line a plain product line (no deal rows — K1 carries no deal structure yet), coherent money, at least one line.
+     * every line a product line or a coherent DEAL (a combo header with its components, linked by parent_line_uuid; K1 carries
+     * the structure), no line voided online, coherent money, at least one line. The Cloud KOT events of the order are kept so
+     * the appliance continues the kitchen ticket numbering.
      *
      * @return array{0: array<string,mixed>, 1: list<array<string,mixed>>}
      */
@@ -304,23 +306,29 @@ class LiveStateMirror
         foreach ($lines as $i => $l) {
             $l = (array) $l;
             $kind = (string) ($l['line_kind'] ?? 'standard');
-            if ($kind !== 'standard' || ! empty($l['combo_id'])) {
-                $reason ??= 'DEAL_LINES_NOT_MIRRORED';
+            if (! in_array($kind, ['standard', 'combo_header', 'component'], true)) {
+                $reason ??= 'LINE_KIND_UNSUPPORTED';
             }
             $qty = round((float) ($l['qty'] ?? 0), 3);
             $price = round((float) ($l['unit_price'] ?? 0), 2);
             if ($qty <= 0) {
                 $reason ??= 'LINE_QUANTITY_INVALID';
             }
+            if (! empty($l['voided'])) {
+                $reason ??= 'LINE_VOIDED_ONLINE';
+            }
             $sum += $qty * $price;
             $lineDiscounts += (float) ($l['discount_amount'] ?? 0);
             $lineTaxes += (float) ($l['tax_amount'] ?? 0);
+            $parent = isset($l['parent_line_uuid']) && $l['parent_line_uuid'] ? $this->ulid($l['parent_line_uuid'], 'parent_line_uuid') : null;
             $lineRows[] = [
                 'order_uuid' => $uuid,
                 'source' => $source,
                 'line_uuid' => $this->ulid($l['line_uuid'] ?? null, 'line_uuid'),
                 'position' => $i,
                 'line_kind' => mb_substr($kind, 0, 20),
+                'combo_id' => isset($l['combo_id']) && $l['combo_id'] !== null && $l['combo_id'] !== '' ? (int) $l['combo_id'] : null,
+                'parent_line_uuid' => $parent,
                 'product_id' => (int) ($l['product_id'] ?? 0),
                 'variant_id' => isset($l['variant_id']) && $l['variant_id'] !== null ? (int) $l['variant_id'] : null,
                 'product_name' => isset($l['product_name']) ? mb_substr((string) $l['product_name'], 0, 255) : null,
@@ -331,7 +339,9 @@ class LiveStateMirror
                 'notes' => isset($l['notes']) && $l['notes'] !== '' ? mb_substr((string) $l['notes'], 0, 1000) : null,
                 'modifiers' => json_encode(is_array($l['modifiers'] ?? null) ? $l['modifiers'] : [], JSON_UNESCAPED_UNICODE),
                 'kot_state' => isset($l['kot_state']) ? mb_substr((string) $l['kot_state'], 0, 20) : null,
+                'kot_sent_qty' => isset($l['kot_sent_qty']) && is_numeric($l['kot_sent_qty']) ? round((float) $l['kot_sent_qty'], 3) : null,
                 'kot_batch_uuid' => isset($l['kot_batch_uuid']) && $l['kot_batch_uuid'] !== '' ? mb_substr((string) $l['kot_batch_uuid'], 0, 36) : null,
+                'voided' => ! empty($l['voided']),
                 'revision' => $revision, 'created_at' => $now, 'updated_at' => $now,
             ];
             if ((int) ($l['product_id'] ?? 0) <= 0) {
@@ -339,24 +349,36 @@ class LiveStateMirror
             }
         }
         $this->assertUnique(array_column($lineRows, 'line_uuid'), 'line_uuid');
+        if (($why = self::dealStructureProblem($lineRows)) !== null) {
+            $reason ??= $why;
+        }
 
         $total = round((float) ($o['total'] ?? 0), 2);
         $subtotal = array_key_exists('subtotal', $o) ? round((float) $o['subtotal'], 2) : round($sum, 2);
         $discount = array_key_exists('discount', $o) ? round((float) $o['discount'], 2) : round($lineDiscounts, 2);
         $tax = array_key_exists('tax', $o) ? round((float) $o['tax'], 2) : round($lineTaxes, 2);
         $service = round((float) ($o['service_charge'] ?? 0), 2);
+        $delivery = round((float) ($o['delivery_charge'] ?? 0), 2);
         if ($lines === []) {
             $reason ??= 'NO_LINES';
         }
         if ($paid > 0.0049) {
             $reason ??= 'PAID_IN_PART_ONLINE';
         }
-        if (abs(($subtotal - $discount + $tax + $service) - $total) > 0.011) {
+        if (abs(($subtotal - $discount + $tax + $service + $delivery) - $total) > 0.011) {
             $reason ??= 'MONEY_INCOHERENT';
         }
         $orderType = $source === 'table' ? 'dine_in' : (string) ($o['order_type'] ?? 'takeaway');
         if ($source === 'held' && ! in_array($orderType, self::HELD_ORDER_TYPES, true)) {
             $reason ??= 'ORDER_TYPE_UNSUPPORTED';
+        }
+        $kotBatches = [];
+        foreach ((array) ($o['kot_batches'] ?? []) as $b) {
+            $b = (array) $b;
+            $event = trim((string) ($b['event_uuid'] ?? ''));
+            if (\App\Support\Edge\EdgeIdentity::isValid($event, \App\Support\Edge\EdgeIdentity::FORMAT_UUID) && (int) ($b['sequence_no'] ?? 0) > 0) {
+                $kotBatches[] = ['event_uuid' => strtolower($event), 'sequence_no' => (int) $b['sequence_no'], 'event_type' => mb_substr((string) ($b['event_type'] ?? 'normal'), 0, 30)];
+            }
         }
 
         $row = [
@@ -364,22 +386,59 @@ class LiveStateMirror
             'order_no' => isset($o['order_no']) ? mb_substr((string) $o['order_no'], 0, 100) : null,
             'shift_uuid' => isset($o['shift_uuid']) && $o['shift_uuid'] ? $this->ulid($o['shift_uuid'], 'shift_uuid') : null,
             'terminal_id' => isset($o['terminal_id']) ? (int) $o['terminal_id'] : null,
-            'subtotal' => $subtotal, 'discount' => $discount, 'tax' => $tax, 'service_charge' => $service, 'total' => $total,
+            'subtotal' => $subtotal, 'discount' => $discount, 'tax' => $tax, 'service_charge' => $service, 'delivery_charge' => $delivery, 'total' => $total,
             'paid_total' => round($paid, 2),
             'adoptable' => $reason === null,
             'not_adoptable_reason' => $reason,
             'fingerprint' => ContinuityFingerprint::fromMirror($o),
+            'kot_batches' => json_encode($kotBatches),
+            'payments' => json_encode($payments, JSON_UNESCAPED_UNICODE),
             'revision' => $revision, 'mirrored_at' => $now, 'created_at' => $now, 'updated_at' => $now,
         ];
         if ($source === 'table') {
-            $row += ['session_uuid' => (string) $sessionUuid, 'status' => mb_substr((string) ($o['status'] ?? 'open'), 0, 30),
-                'payments' => json_encode($payments, JSON_UNESCAPED_UNICODE)];
+            $row += ['session_uuid' => (string) $sessionUuid, 'status' => mb_substr((string) ($o['status'] ?? 'open'), 0, 30)];
         } else {
             $row += ['order_type' => $orderType, 'held_at' => $this->instant($o['held_at'] ?? null),
                 'customer_id' => isset($o['customer_id']) && $o['customer_id'] !== null ? (int) $o['customer_id'] : null];
         }
 
         return [$row, $lineRows];
+    }
+
+    /**
+     * A deal is adoptable only as the Cloud wrote it: every combo header names its combo and has at least one component; every
+     * component names the same combo and points (parent_line_uuid) at a header of THIS order; a standard line carries no combo.
+     */
+    public static function dealStructureProblem(array $lineRows): ?string
+    {
+        $headers = [];
+        foreach ($lineRows as $r) {
+            if ($r['line_kind'] === 'combo_header') {
+                if (! $r['combo_id']) {
+                    return 'DEAL_STRUCTURE_INVALID';
+                }
+                $headers[$r['line_uuid']] = ['combo_id' => (int) $r['combo_id'], 'components' => 0];
+            }
+        }
+        foreach ($lineRows as $r) {
+            if ($r['line_kind'] === 'standard' && $r['combo_id']) {
+                return 'DEAL_STRUCTURE_INVALID';
+            }
+            if ($r['line_kind'] === 'component') {
+                $p = $r['parent_line_uuid'] ?? null;
+                if (! $p || ! isset($headers[$p]) || (int) $r['combo_id'] !== $headers[$p]['combo_id']) {
+                    return 'DEAL_STRUCTURE_INVALID';
+                }
+                $headers[$p]['components']++;
+            }
+        }
+        foreach ($headers as $h) {
+            if ($h['components'] < 1) {
+                return 'DEAL_STRUCTURE_INVALID';
+            }
+        }
+
+        return null;
     }
 
     private function ulid(mixed $value, string $field): string

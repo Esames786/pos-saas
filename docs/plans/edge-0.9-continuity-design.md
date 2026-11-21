@@ -41,5 +41,19 @@ Branch `edge09/a-continuity`. Brief §3C/§4.1, impact map K1. Mirror → adopt 
 | F9 | Stale / untrusted state is never adopted | mirror older than `max_mirror_age_seconds` before the last acknowledged heartbeat, an integrity error since the last good refresh, no revision or another branch ⇒ segment decided `refused_stale` / `refused_untrusted`, nothing adopted, reason on the cashier badge |
 | F10 | Manual = automatic takeover | adoption is keyed on LOCAL_ACTIVE + `authority_takeover_at` only; the takeover actor (`auto-takeover` or the supervisor) is audit (`edge_mirror_adoptions.takeover_by/mode`, `edge_mirror_meta.adoption_takeover_by`) |
 
-Out of scope for milestone 1 (listed in the stream report): returns / cash-in-out inside a continuation, deal lines and partly
-paid orders (mirrored, not adoptable), Edge voids of mirrored lines (refused at merge), the handback wiring of `releaseUntouched`.
+| F11 | A closed offline segment is not a second shift | closing a continued Edge shift with the drawer count releases ONLY that counter's untouched adopted drafts (inside the close transaction: a refused close releases nothing), records the count/variance on the Edge segment, sends nothing to the Cloud; the online shift stays open and is closed online after Return to Online |
+| F12 | One kitchen sequence | adoption records the order's Cloud KOT events (Cloud event_uuid + sequence_no, no lines); the shared pipeline numbers the next ticket max + 1 as an addition; exact `kot_sent_qty` fires only what the kitchen does not have |
+
+## CP3 gaps (22 Nov)
+
+1. Close a continued shift with the drawer count: done (F11, `EdgeLocalShiftController` + scoped `releaseUntouched`).
+2. Orders paid in part online: still NOT adoptable (`PAID_IN_PART_ONLINE`; the whole table stays with the Cloud). Needs a
+   balance-due settle in `EdgeLocalPosService::settleHeldSale` (not stream A) and a Cloud finance decision on how a partial
+   payment of a held order is posted (stream report lists the exact changes).
+3. Returns in a continued shift: the return envelope names the Edge processing shift; the Cloud cannot resolve it, so the refund
+   is not counted in the original shift. Needs `processing_shift.continues_cloud_shift_uuid` in `EdgeReturnEnvelopeBuilder` and its
+   resolution in `EdgeInboundReturnIngestionService` (not stream A). Cash in/out: the appliance has no such feature (nothing to merge).
+4. Deal lines: done (K1 structure mirrored and validated, adoption keeps header/component links, merge matches by kind + combo).
+5. KOT sequence continuity: done (F12).
+
+Still out of scope: Edge voids of mirrored lines (refused at merge: ADOPTED_LINES_DIVERGED).

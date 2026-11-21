@@ -111,7 +111,7 @@ class EdgeLiveStateMirrorMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1, $c->table('edge_mirror_order_lines')->distinct()->count('revision'), 'one revision on every row');
         $this->assertSame('5700.00', (string) $c->table('edge_mirror_shifts')->value('expected_cash'));
         $reasons = $c->table('edge_mirror_held_sales')->orderBy('order_no')->pluck('not_adoptable_reason', 'order_no')->all();
-        $this->assertSame(['SO-1003' => null, 'SO-1004' => 'MONEY_INCOHERENT', 'SO-1005' => 'DEAL_LINES_NOT_MIRRORED'], $reasons);
+        $this->assertSame(['SO-1003' => null, 'SO-1004' => 'MONEY_INCOHERENT', 'SO-1005' => 'DEAL_STRUCTURE_INVALID'], $reasons);
         $this->assertSame('PAID_IN_PART_ONLINE', $c->table('edge_mirror_table_orders')->where('order_no', 'SO-1002')->value('not_adoptable_reason'));
         $this->assertSame(1, (int) $c->table('edge_mirror_table_orders')->where('order_no', 'SO-1001')->value('adoptable'));
         $this->assertSame(64, strlen((string) $c->table('edge_mirror_table_orders')->where('order_no', 'SO-1001')->value('fingerprint')));
