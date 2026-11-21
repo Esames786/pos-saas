@@ -96,3 +96,21 @@ by a PIN, so it is not touched.
 On the owner's order, every active manager PIN at the live restaurant (owner + 5 counter/cashier users, 6 rows) was set
 to one shared PIN. The old hashes are saved on the laptop, not in the repo. With the old code a counter then got the
 owner as approver, but the owner logged in could not approve anything. This fix makes the owner case work too.
+
+## Deployed (22 Nov 2026 ~00:55 PKT, prod `dc0babbf` → `ead217f5`)
+
+- **Before / after:**
+  - Permissions: no role or user lost anything; grants unchanged on every tenant.
+  - Chart of accounts: identical on every tenant.
+  - Smoke: same 13 lines before and after, `tb_diff=0`, `neg_on_disallowed=0`, `department_negative=0`.
+  - Log ERRORs: 20 before and 20 after. These are the known catering-mail queue error, which has been there daily
+    since before 10 Nov.
+- **HTTP:** `/login` 200; `/sales-returns/create` → login redirect.
+- **Live proof** at the restaurant, rolled back so no approval was kept. All 8 users share one PIN, and the replay is a
+  return approval on the order that was refused on 21 Nov.
+  - Owner logged in → approved by the next holder (a counter).
+  - Every other user → approved by the owner.
+  - A wrong PIN → "Invalid manager PIN.".
+  - Approvals kept: 0.
+- **Data the same night (owner's order):** the shared PIN was put on all 8 active users there (2 new rows). The
+  previous hashes are saved on the laptop.
