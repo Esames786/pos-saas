@@ -299,6 +299,8 @@ class EdgePackageRuntimeLayoutTest extends TestCase
         $cfg = (array) config('edge.artifact');
         $cfg['include'] = ['app', 'bootstrap', 'config', 'routes', 'public/index.php', 'artisan', 'composer.json', 'scripts/edge', 'database/migrations', 'resources/edge'];
         $cfg['runtime_dirs'] = ['bootstrap/cache', 'storage/logs'];
+        // Prove the BOUNDARY gate on its own: drop the artifact-level exclusion (config/edge.php also excludes the templates since 0.9).
+        $cfg['exclude'] = array_values(array_diff((array) ($cfg['exclude'] ?? []), ['resources/edge/counter-setup']));
         $meta = ['artifact_meta' => ['git_commit' => 'x', 'build_mode' => 'dev'], 'source_root' => base_path()];
         // Without the exclusion `resources` would carry it: the package boundary refuses (Cloud-only sentinel).
         $dest = $this->tmp();

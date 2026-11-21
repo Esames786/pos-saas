@@ -43,7 +43,7 @@ interface CounterSetupRenderer
      *   enrollment      {assertion: EdgeEnrollmentIssuer::issue(...) for the LOGGED-IN user only, user_label: "Name (code)"}
      * A download carrying `enrollment` holds a single-use 15-minute assertion: it is served no-store, only to that user.
      */
-    public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context): string;
+    public function renderWindowsWizard(array $lanProfile, string $onlinePosUrl, string $branchLabel, array $context = []): string;
 
     /**
      * Phone onboarding data for resources/views/tenant/offline-edge/partials/phone-onboarding.blade.php (stream D).

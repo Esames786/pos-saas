@@ -99,14 +99,19 @@ PEM;
 
     public function test_builds_the_ca_link_from_stream_c_route_and_the_branch(): void
     {
-        Route::get('/settings/offline-edge/branches/{branch}/ca', fn () => 'ca')->name(EdgeCounterSetupRenderer::CA_DOWNLOAD_ROUTE);
-        app('router')->getRoutes()->refreshNameLookups();
+        // Stream C registers the real route (…/branches/{branch}/ca.crt) inside the tenant subdomain group; the tenant
+        // middleware supplies {subdomain} at runtime, so the test does the same.
+        \Illuminate\Support\Facades\URL::defaults(['subdomain' => 'khatri']);
+        if (! Route::has(EdgeCounterSetupRenderer::CA_DOWNLOAD_ROUTE)) {
+            Route::get('/settings/offline-edge/branches/{branch}/ca.crt', fn () => 'ca')->name(EdgeCounterSetupRenderer::CA_DOWNLOAD_ROUTE);
+            app('router')->getRoutes()->refreshNameLookups();
+        }
 
         $html = view(self::VIEW, ['phone' => $this->phone(), 'branch' => 12])->render();
         $this->assertSame(2, substr_count($html, '<svg '));
-        $this->assertMatchesRegularExpression('#href="[^"]*/settings/offline-edge/branches/12/ca"#', $html);
+        $this->assertMatchesRegularExpression('#href="[^"]*/settings/offline-edge/branches/12/ca\.crt"#', $html);
 
         $fromProfile = view(self::VIEW, ['phone' => $this->phone(['branch_id' => 5])])->render();
-        $this->assertMatchesRegularExpression('#href="[^"]*/settings/offline-edge/branches/5/ca"#', $fromProfile);
+        $this->assertMatchesRegularExpression('#href="[^"]*/settings/offline-edge/branches/5/ca\.crt"#', $fromProfile);
     }
 }

@@ -29,7 +29,7 @@ use RuntimeException;
  *
  * Implements App\Contracts\Edge\CounterSetupRenderer (stream C) — the `implements` clause is added at integration.
  */
-class EdgeCounterSetupRenderer
+class EdgeCounterSetupRenderer implements \App\Contracts\Edge\CounterSetupRenderer
 {
     public const TEMPLATE = 'resources/edge/counter-setup/Setup-Counter.ps1.stub';
 

@@ -500,6 +500,15 @@ return [
             'app/Models/Master/EdgeBackupRecoveryAudit.php',
             'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
             'resources/views/tenant/finance/manual-journals',
+            // EDGE 0.9 (21 Nov 2026) — Cloud-only setup/release/live-state/device-status authority (stream C) and the
+            // Cloud-rendered counter-setup templates (stream D) never ship on the appliance.
+            'app/Services/Edge/Cloud',
+            'app/Http/Controllers/Edge/EdgeSetupApiController.php',
+            'app/Http/Controllers/Edge/EdgeDeviceStatusApiController.php',
+            'app/Http/Controllers/Edge/EdgeUpdatesApiController.php',
+            'app/Http/Controllers/Edge/EdgeLiveStateApiController.php',
+            'app/Console/Commands/EdgeReleasePublishCommand.php',
+            'resources/edge/counter-setup',
             // CANONICAL REHEARSAL Phase E (30 Oct 2026, C-7): VOID-PURGE-1/2/3 - the Owner's permanent deletion of a voided
             // finance entry is a Cloud back-office feature (Master switch void_purge; routes only in the Cloud tenant group;
             // VoidPurgeService imports the EXCLUDED CateringAdvance / CateringEvent / SupplierPayment models). No Edge runtime
