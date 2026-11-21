@@ -85,6 +85,9 @@
             $s = is_array($r) ? (string) ($r['status'] ?? $r['state'] ?? $r['result'] ?? '') : (string) $r;
             return $s === 'reachable';
         }));
+        // Computed here, not inline: a Blade directive glued to the preceding word (no non-word boundary before the
+        // "@") is not compiled and was rendered literally on the Khatri status page (21 Nov 2026).
+        $printerText = count($printers) . ' configured' . (count($printers) > 0 ? ' · ' . $printersReachable . ' reachable' : '');
     @endphp
     <section class="headline" id="selling-authority" style="flex-direction:column;align-items:stretch;gap:.6rem">
         <h2 style="margin:0;font-size:.95rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Selling authority</h2>
@@ -98,7 +101,7 @@
             <dt>Return readiness</dt><dd class="{{ empty($auth['handback_blockers']) ? 'ok' : 'warn' }}">{{ empty($auth['handback_blockers']) ? ($isLocal ? 'ready — sync clean, Cloud reachable' : 'n/a — the Cloud sells now') : 'blocked: ' . implode(', ', (array) $auth['handback_blockers']) }}</dd>
             <dt>Configuration / stock freshness</dt><dd class="{{ (($report['freshness']['config']['ok'] ?? false) && ($report['freshness']['stock']['ok'] ?? false)) ? 'ok' : 'warn' }}">config {{ ($report['freshness']['config']['ok'] ?? false) ? 'fresh' : 'stale/unknown' }} (rev {{ $report['freshness']['config']['applied_revision'] ?? '—' }}) · stock {{ ($report['freshness']['stock']['ok'] ?? false) ? 'fresh' : 'stale/unknown' }}</dd>
             <dt>Sync to Cloud</dt><dd class="{{ (($report['sync']['outbox_pending'] ?? 0) + ($report['sync']['outbox_failed_permanent'] ?? 0)) > 0 ? 'warn' : 'ok' }}">pending {{ $report['sync']['outbox_pending'] ?? '—' }} · in flight {{ $report['sync']['outbox_leased'] ?? '—' }} · needs attention {{ $report['sync']['outbox_failed_permanent'] ?? '—' }}</dd>
-            <dt>Printers</dt><dd>{{ count($printers) }} configured@if(count($printers) > 0) · {{ $printersReachable }} reachable@endif</dd>
+            <dt>Printers</dt><dd>{{ $printerText }}</dd>
         </dl>
         @if($canControl)
             <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:center">
