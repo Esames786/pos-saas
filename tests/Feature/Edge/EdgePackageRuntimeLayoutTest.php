@@ -184,6 +184,17 @@ class EdgePackageRuntimeLayoutTest extends TestCase
         $this->assertTrue($verify['signature']['key_id_matches']);
         $this->assertTrue($verify['signature']['artifact_bytes_match']);
         $this->assertNotEmpty(array_filter($verify['warnings'], fn ($w) => str_starts_with($w, 'DEV_SIGNED')));
+        // SHA256SUMS of the distributable scripts/executables, signed with the same key (no Authenticode certificate exists).
+        $this->assertFileExists($dest . '/SHA256SUMS');
+        $this->assertFileExists($dest . '/SHA256SUMS.sig');
+        $this->assertTrue($summary['components']['checksums']['signed']);
+        $this->assertSame($keyId, $summary['components']['checksums']['signing_key_id']);
+        $sums = (string) file_get_contents($dest . '/SHA256SUMS');
+        foreach (['php/php.exe', 'mysql/bin/mysqld.exe', 'scripts/Install-EdgeAppliance.ps1', 'templates/edge-launcher.php'] as $rel) {
+            $this->assertStringContainsString(hash_file('sha256', $dest . '/' . $rel) . '  ' . $rel . "\n", $sums);
+        }
+        $this->assertTrue($verify['checksums']['ok']);
+        $this->assertTrue($verify['checksums_signature_ok']);
 
         // A foreign key refuses the signature.
         $foreign = EdgeEnrollmentCrypto::generateKeypair();
@@ -191,6 +202,7 @@ class EdgePackageRuntimeLayoutTest extends TestCase
         $this->assertFalse($bad['ok']);
         $this->assertFalse($bad['signature_ok']);
         $this->assertFalse($bad['signature']['key_id_matches']);
+        $this->assertFalse($bad['checksums_signature_ok']);
 
         // A tampered signed payload is refused even with the right key.
         $updFile = $dest . '/' . $summary['components']['update']['file'];
@@ -281,12 +293,43 @@ class EdgePackageRuntimeLayoutTest extends TestCase
         $this->assertStringContainsString('Install-EdgeZzProbeTask.ps1:2', $msg);
     }
 
+    public function test_the_cloud_rendered_counter_setup_templates_never_ride_in_a_package(): void
+    {
+        $this->plant('resources/edge/counter-setup/Setup-Counter.ps1.tpl', "# counter template planted by EdgePackageRuntimeLayoutTest\n");
+        $cfg = (array) config('edge.artifact');
+        $cfg['include'] = ['app', 'bootstrap', 'config', 'routes', 'public/index.php', 'artisan', 'composer.json', 'scripts/edge', 'database/migrations', 'resources/edge'];
+        $cfg['runtime_dirs'] = ['bootstrap/cache', 'storage/logs'];
+        $meta = ['artifact_meta' => ['git_commit' => 'x', 'build_mode' => 'dev'], 'source_root' => base_path()];
+        // Without the exclusion `resources` would carry it: the package boundary refuses (Cloud-only sentinel).
+        $dest = $this->tmp();
+        try {
+            (new EdgePackageBuilder(new EdgeArtifactBuilder($cfg), app(EdgeUpdatePackageService::class)))->build($dest, $meta);
+            $this->fail('a package carrying resources/edge/counter-setup must be refused');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('PACKAGE_BOUNDARY_FAILED', $e->getMessage());
+            $this->assertStringContainsString('resources\/edge\/counter-setup', $e->getMessage());
+        }
+        // edge:build-package adds the exclusion: the package builds and the template is absent.
+        $this->assertStringContainsString("'resources/edge/counter-setup'", (string) file_get_contents(app_path('Console/Commands/EdgeBuildPackageCommand.php')));
+        $cfg['exclude'][] = 'resources/edge/counter-setup';
+        $dest2 = $this->tmp();
+        (new EdgePackageBuilder(new EdgeArtifactBuilder($cfg), app(EdgeUpdatePackageService::class)))->build($dest2, $meta);
+        $this->assertFileDoesNotExist($dest2 . '/app/resources/edge/counter-setup/Setup-Counter.ps1.tpl');
+        $this->assertTrue($this->builder()->verify($dest2)['boundary_audit']['ok']);
+    }
+
     public function test_the_audit_command_verifies_the_signature_with_a_given_public_key(): void
     {
         $kp = EdgeEnrollmentCrypto::generateKeypair();
         [$dest] = $this->build(['signing_key' => $kp['secret'], 'signing_key_id' => EdgeSigningKeyStore::keyId($kp['public'])]);
         $this->artisan('edge:audit-package', ['dir' => $dest, '--public-key' => $kp['public']])
             ->expectsOutputToContain('signature VALID')->assertExitCode(0);
+        // --server-cert: the Branch Server certificate rules (iOS/Android) checked beside the package.
+        $good = $this->mintCertFile(730);
+        $this->artisan('edge:audit-package', ['dir' => $dest, '--public-key' => $kp['public'], '--server-cert' => $good, '--server-cert-host' => 'bingoo-edge.local', '--server-cert-ip' => '192.168.100.52'])
+            ->expectsOutputToContain('Server certificate: OK')->assertExitCode(0);
+        $this->artisan('edge:audit-package', ['dir' => $dest, '--public-key' => $kp['public'], '--server-cert' => $this->mintCertFile(900)])
+            ->expectsOutputToContain('VALIDITY_TOO_LONG')->assertExitCode(1);
         $keyFile = $this->tmp() . '.pub';
         $this->tempDirs[] = $keyFile;
         file_put_contents($keyFile, EdgeEnrollmentCrypto::generateKeypair()['public'] . "\n");
@@ -305,6 +348,23 @@ class EdgePackageRuntimeLayoutTest extends TestCase
         $this->artisan('edge:audit-package', ['dir' => $unsigned])->expectsOutputToContain('not checked')->assertExitCode(0);
         $this->artisan('edge:audit-package', ['dir' => $unsigned, '--require-signature' => true])->assertExitCode(1);
         $this->artisan('edge:audit-package', ['dir' => $unsigned, '--public-key' => $kp['public']])->assertExitCode(1);
+    }
+
+    /** A DER .crt (what Export-Certificate -Type CERT writes) with serverAuth + DNS/IP SAN, valid $days days. */
+    private function mintCertFile(int $days): string
+    {
+        $cnf = $this->tmp() . '.cnf';
+        $this->tempDirs[] = $cnf;
+        file_put_contents($cnf, "[req]\ndistinguished_name = dn\nprompt = no\n[dn]\nCN = bingoo-edge.local\n[v3_req]\nbasicConstraints = CA:FALSE\nextendedKeyUsage = serverAuth\nsubjectAltName = DNS:bingoo-edge.local, IP:192.168.100.52\n");
+        $cfg = ['config' => $cnf, 'digest_alg' => 'sha256', 'private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA, 'x509_extensions' => 'v3_req'];
+        $key = openssl_pkey_new($cfg);
+        $x509 = openssl_csr_sign(openssl_csr_new(['commonName' => 'bingoo-edge.local'], $key, $cfg), null, $key, $days, $cfg);
+        openssl_x509_export($x509, $pem);
+        $file = $this->tmp() . '.crt';
+        $this->tempDirs[] = $file;
+        file_put_contents($file, base64_decode((string) preg_replace('/-----[^-]+-----|\s/', '', $pem)));
+
+        return $file;
     }
 
     private function rrmdir(string $dir): void

@@ -13,6 +13,7 @@ WAN restored → the appliance REMAINS the writer → sync/reconcile → control
 | Path | What |
 |---|---|
 | `package-manifest.json` | identity, every file's SHA-256, boundary audit result (`edge:audit-package` verifies) |
+| `SHA256SUMS` + `SHA256SUMS.sig` | SHA-256 of every distributable script/executable + its Ed25519 detached signature (see "Integrity without Authenticode") |
 | `Setup-BingooEdge.cmd` | **0.9+: start here.** Double-click (Run as administrator): the setup wizard installs or updates this server |
 | `app/` | the restricted artifact (no Cloud finance authorities, no ingestion, no Catering, no tests, no secrets) |
 | `app/scripts/edge/wizard/` | the setup wizard itself (also under `scripts/wizard/`) |
@@ -82,6 +83,25 @@ build when the result would still point at the build host:
    → `ok: true`, `signature_ok: true` (Ed25519 over the update manifest, same primitive as the appliance), `php_ini.ok`,
    `wizard`, `mysql_runtime`, `script_compat`, `cloud_url`. A package signed by any key other than the pinned release key
    id `a2eaf8a3d3e66a48` is reported `signing_key_role: dev` (never install it at a live branch).
+   `--server-cert=<bingoo-edge-server.crt> [--server-cert-host=bingoo-edge.local --server-cert-ip=<LAN IP>]` also checks the
+   Branch Server certificate for phones and tablets: validity <= 825 days (iOS/macOS refuse longer even from a trusted CA),
+   serverAuth EKU, DNS + IP SAN, RSA >= 2048, SHA-2, not a CA (PEM or DER).
+
+## Integrity without Authenticode (SHA256SUMS)
+
+There is **no Authenticode code-signing certificate** yet, so Windows SmartScreen cannot vouch for `Setup-BingooEdge.cmd`,
+the scripts or the bundled `php.exe` / `mysqld.exe` / `nginx.exe`. Every package therefore carries:
+
+- `SHA256SUMS` — `<sha256>  <path>` for every distributable `*.ps1 *.psm1 *.psd1 *.cmd *.bat *.vbs *.exe *.dll *.phar` and the
+  PHP launchers outside the application code (`templates/edge-launcher.php`, `app/scripts/**`); `app/vendor` is not listed and
+  the application code is bound by the signed artifact manifest;
+- `SHA256SUMS.sig` — an Ed25519 **detached signature** over the exact bytes of `SHA256SUMS`, made with the package signing key
+  (the same key as `update/edge-update-<v>.json`; key id in the file).
+
+Check a single file on any PC: `(Get-FileHash .\Setup-BingooEdge.cmd -Algorithm SHA256).Hash` must equal its line in
+`SHA256SUMS`. `edge:audit-package --public-key=<base64>` verifies the whole list and the signature (`checksums_signature_ok`);
+an installed appliance can verify a new package with its own `EDGE_UPDATE_PUBLIC_KEY` before running any new script. The
+Cloud download page should also publish the SHA-256 of the zip it serves.
 
 ## Certifying a lab appliance (Administrator)
 

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Edge\EdgePackageBuilder;
+use App\Services\Edge\Packaging\ServerCertificateCheck;
 use Illuminate\Console\Command;
 
 /**
@@ -26,7 +27,10 @@ class EdgeAuditPackageCommand extends Command
         {--public-key= : Base64 Ed25519 update PUBLIC key to verify the signed update manifest against (else edge.update.public_key)}
         {--public-key-file= : File holding that base64 public key}
         {--require-signature : Fail when the signature cannot be checked (no key / unsigned package)}
-        {--strict-layout : Apply the 0.9 RELEASE layout gates whatever the package build mode}';
+        {--strict-layout : Apply the 0.9 RELEASE layout gates whatever the package build mode}
+        {--server-cert= : Also check a Branch Server TLS certificate file (.crt PEM or DER): <= 825 days, serverAuth EKU, DNS + IP SAN, RSA>=2048, SHA-2}
+        {--server-cert-host= : Expected DNS SAN in --server-cert (e.g. bingoo-edge.local)}
+        {--server-cert-ip= : Expected IP SAN in --server-cert (the reserved LAN IP)}';
 
     protected $description = 'Verify a built Bingoo Edge appliance package (integrity + boundary + portable runtime + signature).';
 
@@ -54,11 +58,29 @@ class EdgeAuditPackageCommand extends Command
             'require_signature' => (bool) $this->option('require-signature'),
             'strict' => $this->option('strict-layout') ? true : null,
         ]);
+        $certFile = (string) ($this->option('server-cert') ?? '');
+        if ($certFile !== '') {
+            $cert = is_file($certFile)
+                ? (new ServerCertificateCheck())->inspect((string) file_get_contents($certFile), $this->option('server-cert-host') ?: null, $this->option('server-cert-ip') ?: null)
+                : ['ok' => false, 'problems' => ['CERT_FILE_MISSING: ' . $certFile]];
+            $cert['file'] = $certFile;
+            $result['server_certificate'] = $cert;
+            if (! $cert['ok']) {
+                $result['ok'] = false;
+                $result['errors'][] = 'SERVER_CERTIFICATE: ' . implode(' | ', $cert['problems']);
+            }
+        }
         if ($this->option('json')) {
             $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         } else {
             $this->line(($result['ok'] ? '<info>PACKAGE OK</info>' : '<error>PACKAGE FAILED</error>') . ' — ' . ($result['edge_app_version'] ?? '?') . ' · files ' . ($result['file_count'] ?? 0)
-                . ' · signature ' . $this->signatureLabel($result));
+                . ' · signature ' . $this->signatureLabel($result)
+                . (isset($result['checksums']) ? ' · SHA256SUMS ' . ($result['checksums']['present'] ? $result['checksums']['entries'] . ' entries' . ($result['checksums']['signature_ok'] === null ? '' : ($result['checksums']['signature_ok'] ? ', signature VALID' : ', signature INVALID')) : 'absent') : ''));
+            if (isset($result['server_certificate']['validity_days'])) {
+                $c = $result['server_certificate'];
+                $this->line('Server certificate: ' . ($c['ok'] ? 'OK' : 'FAILED') . ' — CN ' . ($c['subject_cn'] ?? '?') . ' · ' . $c['validity_days'] . ' days (max ' . $c['max_validity_days'] . ') · serverAuth ' . ($c['server_auth_eku'] ? 'yes' : 'NO')
+                    . ' · SAN DNS ' . (implode(',', $c['san_dns']) ?: 'none') . ' · SAN IP ' . (implode(',', $c['san_ip']) ?: 'none'));
+            }
             foreach (['missing', 'unlisted', 'tampered'] as $k) {
                 if (! empty($result[$k])) {
                     $this->warn(strtoupper($k) . ': ' . implode(', ', array_slice($result[$k], 0, 20)));

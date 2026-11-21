@@ -3,6 +3,7 @@
 namespace App\Services\Edge;
 
 use App\Services\Edge\Packaging\MySqlRuntimeBundler;
+use App\Services\Edge\Packaging\PackageChecksums;
 use App\Services\Edge\Packaging\PackageLayoutInspector;
 use App\Services\Edge\Packaging\PhpIniValidator;
 use App\Services\Edge\Packaging\PhpRuntimePackager;
@@ -70,6 +71,9 @@ class EdgePackageBuilder
         'app/Services/Edge/EdgeBackupRecoveryAuthority.php',
         'app/Http/Controllers/Tenant/SupplierPaymentController.php',
         'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
+        // Edge 0.9 — the counter-setup templates are rendered by the CLOUD per branch (stream D); `resources` ships whole,
+        // so edge:build-package excludes this directory and the boundary refuses a package that carries it.
+        'resources/edge/counter-setup',
     ];
 
     /** Edge runtime sentinels that must be PRESENT in app/. */
@@ -209,6 +213,9 @@ class EdgePackageBuilder
             } else {
                 $components['update'] = ['signed' => false, 'note' => 'no signing key given — release builds must be signed (EDGE_UPDATE_SIGNING_KEY on the build host only)'];
             }
+            // 5b. SHA256SUMS of every distributable script/executable + its Ed25519 detached signature (same key): the
+            //     fallback while no Authenticode code-signing certificate exists. Written before the manifest, so hashed too.
+            $components['checksums'] = (new PackageChecksums())->write($dest, $key !== '' ? $key : null, $opts['signing_key_id'] ?? null);
             // 6. BOUNDARY GATE over the whole tree, then the manifest LAST.
             $audit = $this->audit($dest);
             if (! $audit['ok']) {
@@ -301,6 +308,8 @@ class EdgePackageBuilder
             'cloud_url' => $extended['cloud_url'],
             'signature' => $extended['signature'],
             'signature_ok' => $extended['signature']['signature_ok'],
+            'checksums' => $extended['checksums'],
+            'checksums_signature_ok' => $extended['checksums']['signature_ok'],
             'signing_key_id' => $manifest['components']['update']['signing_key_id'] ?? null,
             'signing_key_role' => $manifest['components']['update']['signing_key_role'] ?? null,
             'errors' => $extended['errors'],
@@ -404,13 +413,31 @@ class EdgePackageBuilder
         if (! $signature['checked'] && ($opts['require_signature'] ?? false)) {
             $errors[] = 'SIGNATURE_NOT_CHECKED: a public key is required (--public-key) to audit this package';
         }
+        // SHA256SUMS (+ detached signature) of the distributable scripts/executables.
+        $checksums = (new PackageChecksums())->verify($dir, $publicKey);
+        if ($checksums['present']) {
+            if (! $checksums['ok']) {
+                $errors[] = 'CHECKSUMS: ' . implode(' | ', array_slice($checksums['problems'], 0, 5));
+            }
+            if (! $checksums['signed']) {
+                if ($strict) {
+                    $errors[] = 'CHECKSUMS_UNSIGNED: ' . PackageChecksums::SIG_FILE . ' missing (required in a 0.9+ release package)';
+                } else {
+                    $warnings[] = 'CHECKSUMS_UNSIGNED: ' . PackageChecksums::SIG_FILE . ' missing (unsigned dev build)';
+                }
+            }
+        } elseif ($strict) {
+            $errors[] = 'CHECKSUMS_MISSING: ' . PackageChecksums::FILE . ' is required in a 0.9+ release package';
+        } else {
+            $warnings[] = 'CHECKSUMS_MISSING: no ' . PackageChecksums::FILE . ' (a package built before Edge 0.9)';
+        }
         if (($manifest['components']['update']['signing_key_role'] ?? null) === 'dev') {
             $warnings[] = 'DEV_SIGNED: the update manifest is signed with a DEV key (' . ($manifest['components']['update']['signing_key_id'] ?? '?') . ') — never install at a live branch';
         }
 
         return ['strict' => $strict, 'php_ini' => $phpIni, 'wizard' => $layout['checks']['wizard'], 'mysql_runtime' => $mysqlRuntime,
             'script_compat' => $layout['checks']['script_compat'], 'cloud_url' => $layout['checks']['cloud_url'], 'signature' => $signature,
-            'errors' => $errors, 'warnings' => $warnings];
+            'checksums' => $checksums, 'errors' => $errors, 'warnings' => $warnings];
     }
 
     /** The boundary audit: forbidden patterns, Cloud-only sentinels absent, Edge runtime sentinels present. */

@@ -118,6 +118,9 @@ class EdgeBuildPackageCommand extends Command
         }
         $artifactConfig = (array) config('edge.artifact');
         $artifactConfig['runtime_dirs'] = ['bootstrap/cache', 'storage/framework/cache/data', 'storage/framework/views', 'storage/framework/sessions', 'storage/logs', 'storage/app'];
+        // Edge 0.9 — the per-branch counter-setup templates are Cloud-rendered (stream D), never packaged; `resources` ships
+        // whole, so prune them here (the package boundary also refuses them: EdgePackageBuilder CLOUD_ONLY_SENTINELS).
+        $artifactConfig['exclude'] = array_values(array_unique(array_merge((array) ($artifactConfig['exclude'] ?? []), ['resources/edge/counter-setup'])));
         if ($this->option('vendor-junction')) {
             $artifactConfig['include'] = array_values(array_diff((array) $artifactConfig['include'], ['vendor']));
         }
