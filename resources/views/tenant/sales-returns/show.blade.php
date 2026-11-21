@@ -1,4 +1,6 @@
-@extends('layouts.app')
+@extends(isset($posRuntime) && $posRuntime->isEdge() ? 'layouts.pos' : 'layouts.app')
+{{-- W-A: every endpoint of this shared screen comes from the runtime map; Online controllers pass no runtime → the Cloud one. --}}
+@php $posRuntime = $posRuntime ?? app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make(); @endphp
 
 @section('title', 'Return: ' . $salesReturn->return_no)
 
@@ -8,7 +10,7 @@
         <h1 class="mb-1">Sales Return</h1>
         <p class="fw-medium"><code>{{ $salesReturn->return_no }}</code></p>
     </div>
-    <a href="{{ url('/sales-returns') }}" class="btn btn-light">Back</a>
+    <a href="{{ $posRuntime->route('salesReturnIndexPage') }}" class="btn btn-light">Back</a>
 </div>
 
 <div class="card mb-3">
@@ -20,18 +22,16 @@
 
             <dt class="col-sm-3">Original Sale</dt>
             <dd class="col-sm-9">
-                {{-- RETURN-NO-BILL-1: a return without a bill has no sale to link to --}}
+                {{-- RETURN-NO-BILL-1: a return without a bill has no sale to link to; the link itself is the runtime's (none on Edge) --}}
                 @if(! $salesReturn->order)
                     <span class="badge bg-warning-subtle text-warning-emphasis">No bill</span>
                     <span class="text-muted small ms-1">returned without a bill, at today's price at most</span>
-                @else
-                    @can('tenant.sales-orders.show')
-                        <a href="{{ url('/sales-orders/' . $salesReturn->order->id) }}">
-                            <code>{{ $salesReturn->order->sale_no }}</code>
-                        </a>
-                    @else
+                @elseif($posRuntime->route('salesOrderShow') !== null && \Illuminate\Support\Facades\Gate::allows('tenant.sales-orders.show'))
+                    <a href="{{ $posRuntime->route('salesOrderShow', ['sale' => $salesReturn->order->id]) }}">
                         <code>{{ $salesReturn->order->sale_no }}</code>
-                    @endcan
+                    </a>
+                @else
+                    <code>{{ $salesReturn->order->sale_no }}</code>
                 @endif
             </dd>
 

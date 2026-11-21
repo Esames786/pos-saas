@@ -39,7 +39,7 @@ trait EdgeLocalRuntimeFixture
     }
 
     /** Seed (or replace) the singleton edge_local_meta binding for the given branch/epoch, and clear any cache. */
-    protected function bindEdgeLocalMeta(int $branchId, int $activationEpoch = 1, int $tenantId = 42, string $deviceUuid = 'test-device-uuid'): void
+    protected function bindEdgeLocalMeta(int $branchId, int $activationEpoch = 1, int $tenantId = 42, string $deviceUuid = 'test-device-uuid', int $configRevision = 1): void
     {
         DB::connection('tenant')->table('edge_local_meta')->truncate();
         DB::connection('tenant')->table('edge_local_meta')->insert([
@@ -50,6 +50,9 @@ trait EdgeLocalRuntimeFixture
             'device_uuid' => $deviceUuid,
             'activation_epoch' => $activationEpoch,
             'source_revision' => 'test-rev-1',
+            // OFFLINE-SYNC-ENGINE-1B: the envelope builder freezes this per sale — a real binding always has it.
+            'last_applied_config_revision' => $configRevision,
+            'config_schema_version' => 'edge-config-v1',
             'runtime_state' => EdgeLocalMeta::STATE_BOOTSTRAPPED,
             'imported_at' => now(),
             'created_at' => now(),
@@ -63,14 +66,98 @@ trait EdgeLocalRuntimeFixture
      * Seed a genuine ACTIVE Edge local credential (what enrollment produces) so the slice-1.1
      * session-freshness guard (EnsureEdgeAuthenticated) accepts the user's session. Returns the row id.
      */
+    /**
+     * W-E (owner decision A6) — the canonical `Cashier (Counter)` template, PosPermissionCatalog::cashier(): every
+     * permission the POS cashier workflows actually check at runtime (Edge endpoints enforce the SAME names as the
+     * Online routes — W0b), which is also what TenantProvisioner gives a NEW tenant's cashier role. It replaces the
+     * former route-derived list of 10 (the LAB drift). Every seeded cashier holds the whole set — a test that models a
+     * restricted operator revokes the one it studies (revokeEdgePermission). NOTE: the set includes
+     * tenant.pos.void-kot-item, which is the REQUESTER's void permission only — since Phase 3 (approver eligibility) a
+     * seeded cashier is NOT an offline approver; a test models the approving manager with markPosApprover().
+     *
+     * @return list<string>
+     */
+    protected function onlinePosParityPermissions(): array
+    {
+        return \App\Support\Pos\PosPermissionCatalog::cashier();
+    }
+
     protected function seedEdgeCredential(int $userId, int $branchId, int $activationEpoch = 1, string $password = 'CashierPass1'): int
     {
+        // Every seeded cashier holds the synced Online cashier permission set (the effective per-user set the Cloud
+        // exports) — a test that models a restricted operator revokes the permission it studies.
+        foreach ($this->onlinePosParityPermissions() as $permission) {
+            $this->grantEdgePermission($userId, $permission);
+        }
+
         return (int) DB::connection('tenant')->table('edge_local_user_credentials')->insertGetId([
             'user_id' => $userId, 'branch_id' => $branchId, 'activation_epoch' => $activationEpoch,
             'credential_hash' => password_hash($password, PASSWORD_ARGON2ID),
             'credential_type' => 'password', 'credential_version' => 1, 'status' => 'active',
             'enrolled_at' => now(), 'created_at' => now(), 'updated_at' => now(),
         ]);
+    }
+
+    /**
+     * Phase 3 (approver eligibility): mark a bootstrapped user as an eligible offline approver — what the Cloud exports
+     * as users[].may_approve_pos (active manager PIN AND active user, edge-bootstrap-v8) and the importer/applier store
+     * in the Edge-only users.may_approve_pos column. EdgeLocalAuthService::verifyManager requires it; the approver must
+     * ALSO hold the permission the approved action needs (seedEdgeCredential's template covers the cashier actions).
+     */
+    protected function markPosApprover(int $userId, bool $eligible = true): void
+    {
+        DB::connection('tenant')->table('users')->where('id', $userId)->update(['may_approve_pos' => $eligible ? 1 : 0]);
+    }
+
+    /**
+     * PHASE 4 — what the Cloud ADVERTISED on the last acknowledged heartbeat (EdgeAuthorityService::heartbeat stores the
+     * ACK's `capabilities` on edge_local_meta.cloud_capabilities_seen; EdgeCloudCapabilities reads it). A test that models
+     * an appliance paired to the current Cloud advertises ['customer_create' => true]; the default binding advertises
+     * nothing (an old Cloud / no heartbeat yet) and every capability reads false.
+     *
+     * @param  array<string,bool>|null  $capabilities  null = nothing advertised yet
+     */
+    protected function advertiseCloudCapabilities(?array $capabilities = ['customer_create' => true]): void
+    {
+        DB::connection('tenant')->table('edge_local_meta')->where('singleton_guard', 1)->update([
+            'cloud_capabilities_seen' => $capabilities === null ? null : json_encode($capabilities),
+            'cloud_capabilities_seen_at' => $capabilities === null ? null : now(),
+        ]);
+        app()->forgetInstance(EdgeBranchContext::class);
+    }
+
+    /** Grant a synced (spatie, tenant guard) permission directly to a user — idempotent across tests. */
+    protected function grantEdgePermission(int $userId, string $permission): void
+    {
+        $conn = DB::connection('tenant');
+        $permId = (int) ($conn->table('permissions')->where('name', $permission)->where('guard_name', 'tenant')->value('id')
+            ?: $conn->table('permissions')->insertGetId(['name' => $permission, 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now()]));
+        $conn->table('model_has_permissions')->insertOrIgnore([
+            'permission_id' => $permId, 'model_type' => \App\Models\Tenant\User::class, 'model_id' => $userId,
+        ]);
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        // The acting user model may already have lazily loaded its permissions (every gated endpoint calls can());
+        // a real request re-resolves the user from the session, so mirror that here by dropping the stale relations.
+        $acting = auth('tenant')->user();
+        if ($acting && (int) $acting->getKey() === $userId) {
+            $acting->unsetRelation('permissions');
+            $acting->unsetRelation('roles');
+        }
+    }
+
+    /** Remove a DIRECT (spatie, tenant guard) permission from a user — the counterpart of grantEdgePermission. */
+    protected function revokeEdgePermission(int $userId, string $permission): void
+    {
+        $conn = DB::connection('tenant');
+        $permId = (int) $conn->table('permissions')->where('name', $permission)->where('guard_name', 'tenant')->value('id');
+        $conn->table('model_has_permissions')->where('permission_id', $permId)
+            ->where('model_type', \App\Models\Tenant\User::class)->where('model_id', $userId)->delete();
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        $acting = auth('tenant')->user();
+        if ($acting && (int) $acting->getKey() === $userId) {
+            $acting->unsetRelation('permissions');
+            $acting->unsetRelation('roles');
+        }
     }
 
     /** Accept a TEST operational-stock baseline for the current binding. $items: [[product_id, variant, qty]]. */

@@ -1,0 +1,335 @@
+<?php
+
+namespace App\Services\Edge;
+
+use App\Models\Edge\EdgeLocalMeta;
+use App\Models\Edge\EdgeSyncOutbox;
+use App\Models\Tenant\SalesOrder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use RuntimeException;
+
+/**
+ * OFFLINE-SYNC-ENGINE-1B — the Edge outbox authority: same-transaction envelope creation and the
+ * LOCAL durable lease primitive the future 1D sender will drive. NO HTTP, NO Cloud calls, NO ACK
+ * faking lives here — leased→acknowledged / leased→failed_permanent are guarded primitives that
+ * only the future VERIFIED-ACK service (1D) may invoke with a real Cloud result.
+ */
+class EdgeSyncOutboxService
+{
+    public const CONN = 'tenant';
+    public const DEFAULT_LEASE_SECONDS = 120;
+
+    public function __construct(private readonly EdgeSaleEnvelopeBuilder $builder)
+    {
+    }
+
+    /**
+     * Create the immutable outbox row for a just-finalized PAID sale. MUST be called INSIDE the
+     * sale-finalizing transaction (the central 1B invariant: a paid offline sale cannot exist
+     * without its envelope, and a rolled-back sale leaves no envelope). Idempotent per sale_uuid:
+     * a POS replay that returns the already-finalized sale never reaches this method; the unique
+     * index is the last line of defense.
+     */
+    public function createForPaidSale(SalesOrder $sale): EdgeSyncOutbox
+    {
+        // Snapshot-consistent read INSIDE the sale transaction: this is the config revision that
+        // governed the sale's own catalog/price resolution (REPEATABLE READ — a refresh committing
+        // concurrently serializes on the meta row and never rewrites this envelope afterwards).
+        $meta = EdgeLocalMeta::query()->where('singleton_guard', EdgeLocalMeta::SINGLETON)->first();
+        if (! $meta) {
+            throw new RuntimeException('OUTBOX_UNAVAILABLE: no appliance binding — cannot create a sync envelope.');
+        }
+
+        $envelope = $this->builder->build($sale, $meta);
+
+        return EdgeSyncOutbox::create([
+            'sale_uuid' => (string) $sale->sale_uuid,
+            'envelope_schema_version' => (string) $envelope['envelope_schema_version'],
+            'config_revision' => (int) $envelope['config_revision'],
+            'activation_epoch' => (int) $envelope['activation_epoch'],
+            'envelope' => $this->builder->canonicalEnvelopeJson($envelope),
+            'content_hash' => (string) $envelope['content_hash'],
+            'state' => EdgeSyncOutbox::STATE_PENDING,
+        ]);
+    }
+
+    /**
+     * F1 — queue an immutable SALES-RETURN event in the SAME append-only outbox (same lease / hash / ACK / lost-ACK
+     * reconciliation machinery). The row's `sale_uuid` carries the return_uuid; the schema version tells the sender and
+     * the Cloud which authority applies. Must be called INSIDE the local return transaction.
+     */
+    public function createForReturn(array $envelope): EdgeSyncOutbox
+    {
+        return EdgeSyncOutbox::create([
+            'sale_uuid' => (string) $envelope['return_uuid'],
+            'envelope_schema_version' => (string) $envelope['envelope_schema_version'],
+            'config_revision' => (int) $envelope['config_revision'],
+            'activation_epoch' => (int) $envelope['activation_epoch'],
+            'envelope' => app(EdgeReturnEnvelopeBuilder::class)->canonicalEnvelopeJson($envelope),
+            'content_hash' => (string) $envelope['content_hash'],
+            'state' => EdgeSyncOutbox::STATE_PENDING,
+        ]);
+    }
+
+    /**
+     * Atomically lease the oldest eligible outbox row (pending, or leased with an EXPIRED lease) for
+     * one sender. Single-statement claim: two racing workers can never own the same row. Returns the
+     * claimed row or null when nothing is eligible. attempts increments on every claim;
+     * first_sent_at records the FIRST lease-for-sending.
+     */
+    /**
+     * OFFLINE EDGE F2 — queue an immutable supplier-finance event (supplier payment / supplier AP journal) in the SAME
+     * append-only outbox: sale_uuid carries the event_uuid; the schema version routes the sender to the Cloud's
+     * supplier-finance ingestion; lease / hash / verified-ACK / reconciliation are shared unchanged.
+     */
+    public function createForFinanceEvent(array $envelope): EdgeSyncOutbox
+    {
+        return EdgeSyncOutbox::create([
+            'sale_uuid' => (string) $envelope['event_uuid'],
+            'envelope_schema_version' => (string) $envelope['envelope_schema_version'],
+            'config_revision' => (int) $envelope['config_revision'],
+            'activation_epoch' => (int) $envelope['activation_epoch'],
+            'envelope' => app(EdgeSupplierFinanceEnvelopeBuilder::class)->canonicalEnvelopeJson($envelope),
+            'content_hash' => (string) $envelope['content_hash'],
+            'state' => EdgeSyncOutbox::STATE_PENDING,
+        ]);
+    }
+
+    public function lease(string $owner, int $leaseSeconds = self::DEFAULT_LEASE_SECONDS): ?EdgeSyncOutbox
+    {
+        $token = $owner . ':' . (string) Str::ulid();     // unique per claim → unambiguous readback
+        $conn = DB::connection(self::CONN);
+
+        // Deadlock-free claim under genuine concurrency (proven by the two-process races): SELECT the oldest
+        // eligible row FOR UPDATE **SKIP LOCKED** so each worker grabs a DISTINCT unlocked row (or none),
+        // then UPDATE it by primary key. A plain `UPDATE ... ORDER BY id LIMIT 1` gap-locks the scanned range
+        // and two simultaneous workers deadlock (InnoDB 1213); SKIP LOCKED is the canonical outbox pattern.
+        return $conn->transaction(function () use ($conn, $token, $leaseSeconds) {
+            $row = $conn->table('edge_sync_outbox')
+                ->where(function ($q) {
+                    $q->where('state', EdgeSyncOutbox::STATE_PENDING)
+                        ->orWhere(function ($q2) {
+                            $q2->where('state', EdgeSyncOutbox::STATE_LEASED)
+                                ->whereNotNull('lease_expires_at')
+                                ->where('lease_expires_at', '<=', now());
+                        });
+                })
+                ->orderBy('id')
+                ->lock('FOR UPDATE SKIP LOCKED')
+                ->first();
+
+            if (! $row) {
+                return null;
+            }
+
+            $now = $conn->getDriverName() === 'sqlite' ? "datetime('now')" : 'NOW()';
+            $conn->table('edge_sync_outbox')->where('id', $row->id)->update([
+                'state' => EdgeSyncOutbox::STATE_LEASED,
+                'lease_owner' => $token,
+                'lease_expires_at' => now()->addSeconds($leaseSeconds),
+                'attempts' => DB::raw('attempts + 1'),
+                'first_sent_at' => DB::raw('COALESCE(first_sent_at, ' . $now . ')'),
+                'updated_at' => now(),
+            ]);
+
+            return EdgeSyncOutbox::query()->whereKey($row->id)->firstOrFail();
+        });
+    }
+
+    /**
+     * OFFLINE-SYNC-ENGINE-1E — atomically lease ONE specific eligible row by sale_uuid (pending, or leased
+     * with an EXPIRED lease). Same single-statement SKIP LOCKED claim as lease(), but targeted: reconciliation
+     * must recover a specific sale, not "the oldest". Returns the claimed row, or null when that row is not
+     * currently eligible (already terminal, or held by a live lease). Never grabs a different row.
+     */
+    public function leaseSpecific(string $saleUuid, string $owner, int $leaseSeconds = self::DEFAULT_LEASE_SECONDS): ?EdgeSyncOutbox
+    {
+        $token = $owner . ':' . (string) Str::ulid();
+        $conn = DB::connection(self::CONN);
+
+        return $conn->transaction(function () use ($conn, $token, $saleUuid, $leaseSeconds) {
+            $row = $conn->table('edge_sync_outbox')
+                ->where('sale_uuid', $saleUuid)
+                ->where(function ($q) {
+                    $q->where('state', EdgeSyncOutbox::STATE_PENDING)
+                        ->orWhere(function ($q2) {
+                            $q2->where('state', EdgeSyncOutbox::STATE_LEASED)
+                                ->whereNotNull('lease_expires_at')
+                                ->where('lease_expires_at', '<=', now());
+                        });
+                })
+                ->lock('FOR UPDATE SKIP LOCKED')
+                ->first();
+
+            if (! $row) {
+                return null;
+            }
+
+            $now = $conn->getDriverName() === 'sqlite' ? "datetime('now')" : 'NOW()';
+            $conn->table('edge_sync_outbox')->where('id', $row->id)->update([
+                'state' => EdgeSyncOutbox::STATE_LEASED,
+                'lease_owner' => $token,
+                'lease_expires_at' => now()->addSeconds($leaseSeconds),
+                'attempts' => DB::raw('attempts + 1'),
+                'first_sent_at' => DB::raw('COALESCE(first_sent_at, ' . $now . ')'),
+                'updated_at' => now(),
+            ]);
+
+            return EdgeSyncOutbox::query()->whereKey($row->id)->firstOrFail();
+        });
+    }
+
+    /**
+     * W6 — bounded-backoff release: the row stays LEASED under a non-worker backoff token until `now + seconds`, after
+     * which lease()/leaseSpecific() reclaim it exactly like an expired lease. Other rows keep flowing meanwhile (the
+     * claim query skips a live lease), the envelope bytes / identity never change, and no worker token can ever
+     * acknowledge a deferred row (markAcknowledged requires the current lease_owner). Only the CURRENT owner may defer.
+     */
+    public function deferLease(EdgeSyncOutbox $row, int $seconds, ?string $error = null): void
+    {
+        if ($row->state !== EdgeSyncOutbox::STATE_LEASED) {
+            throw new RuntimeException('OUTBOX_STATE: only a leased row can be deferred.');
+        }
+        $affected = DB::connection(self::CONN)->table('edge_sync_outbox')
+            ->where('id', $row->id)
+            ->where('state', EdgeSyncOutbox::STATE_LEASED)
+            ->where('lease_owner', $row->lease_owner)
+            ->update([
+                'lease_owner' => 'backoff:' . (string) Str::ulid(),
+                'lease_expires_at' => now()->addSeconds(max(1, $seconds)),
+                'last_error' => $error !== null ? mb_substr($error, 0, 2000) : $row->last_error,
+                'updated_at' => now(),
+            ]);
+        if ($affected !== 1) {
+            throw new RuntimeException('OUTBOX_LEASE_LOST: the row is no longer leased by this worker.');
+        }
+    }
+
+    /** Retryable release: leased -> pending (the row becomes eligible again immediately). */
+    public function releaseLease(EdgeSyncOutbox $row, ?string $error = null): void
+    {
+        if ($row->state !== EdgeSyncOutbox::STATE_LEASED) {
+            throw new RuntimeException('OUTBOX_STATE: only a leased row can be released.');
+        }
+        $row->update([
+            'state' => EdgeSyncOutbox::STATE_PENDING,
+            'lease_owner' => null,
+            'lease_expires_at' => null,
+            'last_error' => $error !== null ? mb_substr($error, 0, 2000) : $row->last_error,
+        ]);
+    }
+
+    /**
+     * leased -> acknowledged. 1D-ONLY primitive: the caller must hold a VERIFIED Cloud ACK
+     * (sale_uuid + content_hash echo + Cloud ingestion identity). Nothing in 1B calls this from any
+     * HTTP path — HTTP transport does not exist yet. The row is retained forever (append-only).
+     */
+    public function markAcknowledged(EdgeSyncOutbox $row, string $ackIngestionUuid, array $ackPayload): void
+    {
+        if ($row->state !== EdgeSyncOutbox::STATE_LEASED) {
+            throw new RuntimeException('OUTBOX_STATE: only a leased row can be acknowledged.');
+        }
+        // ACK identity: only a verified terminal-success result for THIS exact envelope may acknowledge.
+        if (($ackPayload['sale_uuid'] ?? null) !== $row->sale_uuid
+            || ! hash_equals((string) $row->content_hash, (string) ($ackPayload['content_hash'] ?? ''))) {
+            throw new RuntimeException('OUTBOX_ACK_MISMATCH: the ACK does not identify this envelope (sale_uuid/content_hash).');
+        }
+        // §18 lease-owner guard: acknowledge ONLY if the DB row is still leased by THIS worker's token — a
+        // conditional atomic update. A stale worker whose row was reclaimed (lease expiry) finds its token no
+        // longer current and is refused, so it can never acknowledge a row another worker now owns.
+        $affected = DB::connection(self::CONN)->table('edge_sync_outbox')
+            ->where('id', $row->id)
+            ->where('state', EdgeSyncOutbox::STATE_LEASED)
+            ->where('lease_owner', $row->lease_owner)
+            ->update([
+                'state' => EdgeSyncOutbox::STATE_ACKNOWLEDGED,
+                'acknowledged_at' => now(),
+                'ack_ingestion_uuid' => $ackIngestionUuid,
+                'ack_payload' => json_encode($ackPayload),
+                'lease_owner' => null,
+                'lease_expires_at' => null,
+                'last_error' => null,
+                'updated_at' => now(),
+            ]);
+        if ($affected !== 1) {
+            throw new RuntimeException('OUTBOX_STALE_OWNER: this worker no longer owns the lease on this row; refusing to acknowledge.');
+        }
+        $row->refresh();
+    }
+
+    /**
+     * OFFLINE-SYNC-ENGINE-1E — "Retry Now" (§G): make a stuck row immediately eligible for the sender again.
+     * A leased row (typically an EXPIRED lease held by a dead worker) is released to pending; a pending row is
+     * already eligible (no-op). A failed_permanent row is NOT retried here — that requires the guarded
+     * supervisor requeue. An acknowledged row is terminal. Returns the resulting state.
+     */
+    public function retryNow(EdgeSyncOutbox $row): string
+    {
+        $row->refresh();
+        return match ($row->state) {
+            EdgeSyncOutbox::STATE_PENDING => EdgeSyncOutbox::STATE_PENDING,
+            EdgeSyncOutbox::STATE_LEASED => $this->releaseAndReturn($row),
+            EdgeSyncOutbox::STATE_FAILED_PERMANENT => throw new RuntimeException('OUTBOX_RETRY_TERMINAL: a permanently-failed row needs a supervisor requeue, not Retry Now.'),
+            default => throw new RuntimeException('OUTBOX_RETRY_INVALID: only a pending or leased row can be retried.'),
+        };
+    }
+
+    private function releaseAndReturn(EdgeSyncOutbox $row): string
+    {
+        $this->releaseLease($row, 'operator: retry now');
+
+        return EdgeSyncOutbox::STATE_PENDING;
+    }
+
+    /**
+     * OFFLINE-SYNC-ENGINE-1E — the guarded supervisor REQUEUE (§H): failed_permanent -> pending, reusing the
+     * SAME immutable envelope. Sanctioned ONLY when the parked failure is a REQUEUEABLE operational class
+     * (transient / insufficient_stock whose cause the supervisor has resolved). REFUSED for every terminal
+     * verdict whose cause a re-send of identical bytes cannot fix — hash conflict, wrong binding, stale
+     * activation, unsupported schema/feature, invalid payload, unresolved reference — those need reconciliation
+     * or a compensating action, never a blind requeue. The envelope is never edited; a full audit trail is kept.
+     */
+    public function requeueFailedPermanent(EdgeSyncOutbox $row, string $performedBy, string $reason): void
+    {
+        $row->refresh();
+        if ($row->state !== EdgeSyncOutbox::STATE_FAILED_PERMANENT) {
+            throw new RuntimeException('OUTBOX_REQUEUE_STATE: only a failed_permanent row can be requeued.');
+        }
+        if (trim($reason) === '') {
+            throw new RuntimeException('OUTBOX_REQUEUE_REASON: a requeue reason is required (why the cause is resolved).');
+        }
+
+        $class = EdgeSyncFailureClassifier::classify($row->last_error)['class'];
+        if (! in_array($class, EdgeSyncFailureClassifier::REQUEUEABLE_CLASSES, true)) {
+            throw new RuntimeException(
+                'OUTBOX_REQUEUE_REFUSED: this failure class [' . $class . '] cannot be requeued by re-sending the same envelope; '
+                . 'it requires reconciliation or a compensating action, not a blind requeue.'
+            );
+        }
+
+        $row->update([
+            'state' => EdgeSyncOutbox::STATE_PENDING,
+            'lease_owner' => null,
+            'lease_expires_at' => null,
+            'requeue_count' => (int) $row->requeue_count + 1,
+            'last_requeued_at' => now(),
+            'last_requeue_reason' => mb_substr($reason, 0, 500),
+            'last_requeued_by' => mb_substr($performedBy, 0, 191),
+        ]);
+    }
+
+    /** leased -> failed_permanent. 1C/1D-ONLY: explicit terminal Cloud verdict (e.g. hash conflict). */
+    public function markFailedPermanent(EdgeSyncOutbox $row, string $verdict): void
+    {
+        if ($row->state !== EdgeSyncOutbox::STATE_LEASED) {
+            throw new RuntimeException('OUTBOX_STATE: only a leased row can be marked failed_permanent.');
+        }
+        $row->update([
+            'state' => EdgeSyncOutbox::STATE_FAILED_PERMANENT,
+            'last_error' => mb_substr($verdict, 0, 2000),
+            'lease_owner' => null,
+            'lease_expires_at' => null,
+        ]);
+    }
+}

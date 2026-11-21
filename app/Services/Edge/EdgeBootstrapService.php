@@ -27,18 +27,36 @@ use Illuminate\Support\Str;
  */
 class EdgeBootstrapService
 {
-    // EDGE-LOCAL-RUNTIME-1 (Section J): bumped v3 -> v4. The wire contract materially changed — the
-    // manifest now carries the Cloud-authoritative activation_epoch (stale-device fencing), and three
-    // new sections are emitted (recipes, recipe_ingredients, unit_conversions) so the config bootstrap
-    // can carry the future phase-1b recipe configuration. No real appliance consumes v3 yet
-    // (EDGE_FEATURE_ENABLED=false, none deployed), so this is a clean forward bump, not a compat break.
-    public const SCHEMA_VERSION = 'edge-bootstrap-v4';
+    // EDGE-CONFIG-REFRESH-1: bumped v4 -> v5. The wire contract materially changed — the manifest now
+    // carries the Cloud-authoritative MONOTONIC config_revision plus config_schema_version (both part
+    // of the manifest hash), so ONE package format serves the initial bootstrap AND every subsequent
+    // config refresh. No real appliance consumes v4 yet (EDGE_FEATURE_ENABLED=false, none deployed),
+    // so this is a clean forward bump, not a compat break.
+    // v6: + promotions, promotion_targets, customers, customer_addresses (a v5 export lacks them and must be refused).
+    // v7 (W6, 0.7.0-edge): + product_modifier_group, GLOBAL (branch_id NULL) modifier groups + their modifiers, modifiers
+    // whose linked product is not POS-visible (the linked product ships as a bare config row), currencies +
+    // currency_denominations (the shift-close count grid), every ACTIVE payment method (non-cash rows are DISPLAY-ONLY —
+    // every Edge posting path and the sale envelope still accept cash only), and the tenant business name the appliance
+    // persists (edge_local_meta.tenant_business_name). A v6 appliance cannot import a v7 export (exact-match importer) and
+    // is classified software_update_required by EdgeCompatibilityService.
+    // v8 (Phase 3 security, approver eligibility): users[] carries the Cloud-authoritative boolean `may_approve_pos`
+    // (active manager PIN AND active user) which the Edge stores in the Edge-only users.may_approve_pos column; a v7
+    // appliance has no such column, so a v8 package must be refused whole (SCHEMA_UNSUPPORTED / update_required)
+    // instead of failing mid-import on an unknown column. Exact-match importer + applier, as for v6 → v7.
+    public const SCHEMA_VERSION = 'edge-bootstrap-v8';
+
+
+    // EDGE-CONFIG-REFRESH-1: the CONFIG payload contract (which sections exist, their column sets, and
+    // the upsert/tombstone semantics the refresh applier applies). Versioned separately from the wire
+    // envelope so the future compatibility contract can classify "package readable but config contract
+    // newer than this build understands".
+    public const CONFIG_SCHEMA_VERSION = 'edge-config-v1';
     public const TTL_HOURS      = 72;
     private const BUILD_WAIT_MS = 120;
     private const BUILD_WAITS   = 25;
 
     private const PHASE1_PAYMENT_TYPES  = ['cash'];
-    private const OFFLINE_DELIVERY_TYPES = ['own'];
+    private const OFFLINE_DELIVERY_TYPES = ['own', 'aggregator']; // AGGREGATOR-CUSTOMER-OPTIONAL parity needs the aggregator channels offline too
 
     public function __construct(
         private readonly OfflineEdgeEntitlementService $entitlement,
@@ -92,7 +110,14 @@ class EdgeBootstrapService
         if (! $branch) {
             throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
         }
-        if ($branch->local_edge_status !== Branch::STATUS_PENDING) {
+        // EDGE-CONFIG-REFRESH-1: an INITIAL bootstrap (device pending_bootstrap) still requires the
+        // branch to be PENDING. A READY device is an already-bootstrapped appliance pulling a config
+        // REFRESH — allowed while the branch stays in the Local-POS lifecycle (pending/active/closing),
+        // never for a suspended/inactive branch.
+        $allowedBranchStatuses = $device->status === EdgeDevice::STATUS_READY
+            ? [Branch::STATUS_PENDING, Branch::STATUS_ACTIVE, Branch::STATUS_CLOSING]
+            : [Branch::STATUS_PENDING];
+        if (! in_array($branch->local_edge_status, $allowedBranchStatuses, true)) {
             throw EdgeBootstrapException::of(EdgeBootstrapException::BRANCH_NOT_PENDING);
         }
 
@@ -119,6 +144,9 @@ class EdgeBootstrapService
     {
         try {
             [$tenant, $branch] = $this->assertContract($device);
+            // W-G3 (G3): BEFORE the claim watermark — a backfilled customer identity moves `customers.updated_at`, so doing
+            // it here keeps claim == txn == live (never a SOURCE_CHANGED on the very build that repaired the book).
+            $this->ensureCustomerIdentities();
             $claimRevision = $this->sourceRevision($branch);
 
             // EDGE-LOCAL-RUNTIME-1 (Section I): allocate (idempotently) the Cloud-authoritative
@@ -127,7 +155,13 @@ class EdgeBootstrapService
             // importer can store it and ack can fence a stale generation.
             $activationEpoch = app(EdgeActivationEpochService::class)->allocateForDevice($device);
 
-            $claim = DB::connection('master')->transaction(function () use ($device, $tenant, $branch, $claimRevision, $activationEpoch) {
+            // EDGE-CONFIG-REFRESH-1: allocate (idempotently) the monotonic config revision for THIS
+            // watermark before claiming — the snapshot/manifest carries it so the appliance can order
+            // refreshes. Same watermark => same revision (a rebuild never mints a new revision).
+            $configRevision = app(EdgeConfigRevisionService::class)
+                ->allocateForWatermark((int) $tenant->id, (int) $branch->id, $claimRevision);
+
+            $claim = DB::connection('master')->transaction(function () use ($device, $tenant, $branch, $claimRevision, $activationEpoch, $configRevision) {
                 $locked = EdgeDevice::whereKey($device->id)->lockForUpdate()->first();
                 $this->revalidateLocked($locked, $device);
 
@@ -136,6 +170,11 @@ class EdgeBootstrapService
                     // fix 6: only reuse a snapshot that belongs to the CURRENT activation generation —
                     // a snapshot minted under an older epoch must never be reused/served.
                     ->where('activation_epoch', $activationEpoch)
+                    // EDGE-CONFIG-REFRESH-1: and to the CURRENT config revision — if the watermark
+                    // reverted to an earlier value (edit then undo), the same content now carries a
+                    // NEWER revision, and a snapshot minted under the older revision number must not
+                    // be reused (the appliance would refuse it as stale).
+                    ->where('config_revision', $configRevision)
                     ->whereIn('status', [
                         EdgeBootstrapSnapshot::STATUS_READY, EdgeBootstrapSnapshot::STATUS_DOWNLOADED,
                         EdgeBootstrapSnapshot::STATUS_ACKNOWLEDGED, EdgeBootstrapSnapshot::STATUS_BUILDING,
@@ -149,7 +188,7 @@ class EdgeBootstrapService
                     'public_uuid' => (string) Str::uuid(), 'tenant_id' => $tenant->id, 'branch_id' => $branch->id,
                     'edge_device_id' => $device->id, 'schema_version' => self::SCHEMA_VERSION,
                     'status' => EdgeBootstrapSnapshot::STATUS_BUILDING, 'source_revision' => $claimRevision,
-                    'activation_epoch' => $activationEpoch,
+                    'activation_epoch' => $activationEpoch, 'config_revision' => $configRevision,
                 ]);
                 return ['snapshot' => $snapshot, 'build' => true];
             });
@@ -252,6 +291,8 @@ class EdgeBootstrapService
             'branch_id' => $snapshot->branch_id, 'status' => $snapshot->status,
             'device_public_uuid' => EdgeDevice::whereKey($snapshot->edge_device_id)->value('public_uuid'),
             'activation_epoch' => $snapshot->activation_epoch !== null ? (int) $snapshot->activation_epoch : null,
+            'config_revision' => $snapshot->config_revision !== null ? (int) $snapshot->config_revision : null,
+            'config_schema_version' => self::CONFIG_SCHEMA_VERSION,
             'source_revision' => $snapshot->source_revision,
             'manifest_hash' => $snapshot->manifest_hash, 'generated_at' => optional($snapshot->generated_at)->toIso8601String(),
             'expires_at' => optional($snapshot->expires_at)->toIso8601String(), 'sections' => $snapshot->section_summary ?? [],
@@ -421,7 +462,123 @@ class EdgeBootstrapService
 
     /* ── source watermark ────────────────────────────────────────────────── */
 
-    private function sourceRevision(Branch $branch): string
+    // Protected (not private) for the same reason as buildSections: the watermark behaviour is
+    // pinned by executable tests (EdgeConfigWatermarkMySqlTest) through a test-only subclass.
+    /**
+     * Q — WARM STANDBY FRESHNESS: the branch's CURRENT config watermark and its monotonic revision, advertised to the
+     * appliance on every accepted heartbeat. Allocation is idempotent (same watermark → same revision), so the
+     * heartbeat path mints a new revision exactly when the config content changed. Tenant must be active.
+     *
+     * @return array{watermark:string, revision:int}
+     */
+    public function currentConfigRevision(Tenant $tenant, Branch $branch): array
+    {
+        $watermark = $this->sourceRevision($branch);
+        $revision = app(EdgeConfigRevisionService::class)->allocateForWatermark((int) $tenant->id, (int) $branch->id, $watermark);
+
+        return ['watermark' => $watermark, 'revision' => $revision];
+    }
+
+    /**
+     * Q — WARM STANDBY FRESHNESS: the config REFRESH package for a paired device at the branch's current watermark —
+     * the same real sections a bootstrap ships (EDGE-CONFIG-REFRESH-1 upsert/tombstone contract), stamped with the
+     * monotonic config revision the appliance orders refreshes by. Deterministic identity per revision: the same
+     * revision always yields the same manifest (one revision = one content), so a re-pull can never conflict.
+     *
+     * Fails closed: contract (entitlement/pairing) as for bootstrap; the device must be the branch's CURRENT
+     * activation (a superseded device never receives config). Sections are read at one consistent point in time
+     * and published only if the watermark did not move during the read.
+     *
+     * @return array{manifest:array, sections:array}
+     */
+    public function refreshPackage(EdgeDevice $device): array
+    {
+        try {
+            [$tenant, $branch] = $this->refreshContract($device);
+            $epochs = app(EdgeActivationEpochService::class);
+            $activation = $epochs->currentActivation((int) $tenant->id, (int) $branch->id);
+            if (! $activation || (string) $activation->device_public_uuid !== (string) $device->public_uuid) {
+                throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
+            }
+            $epoch = (int) $activation->generation;
+            // W-G3 (G3): identity safety net BEFORE the claim watermark (see createOrReuse) — the repaired rows then mint
+            // the new revision this very refresh ships, and claim == txn.
+            $this->ensureCustomerIdentities();
+            $claim = $this->currentConfigRevision($tenant, $branch);
+            [$sections, $txnWatermark] = DB::connection('tenant')->transaction(function () use ($tenant, $branch) {
+                return [$this->buildSections($tenant, $branch), $this->sourceRevision($branch)];
+            });
+            if (! hash_equals($claim['watermark'], $txnWatermark)) {
+                throw EdgeBootstrapException::of(EdgeBootstrapException::SOURCE_CHANGED);
+            }
+            $summary = [];
+            foreach ($sections as $name => $rows) {
+                $summary[$name] = ['hash' => hash('sha256', $this->canonicalJson($rows)), 'count' => is_array($rows) ? count($rows) : 0];
+            }
+            $revision = (int) $claim['revision'];
+            $snapshotUuid = 'refresh-' . $revision . '-' . substr(hash('sha256', implode('|', [(int) $tenant->id, (int) $branch->id, (string) $device->public_uuid, $epoch, $revision])), 0, 24);
+            $manifest = [
+                'schema_version' => self::SCHEMA_VERSION,
+                'snapshot_uuid' => $snapshotUuid,
+                'tenant_code' => (string) $tenant->tenant_code,
+                'tenant_id' => (int) $tenant->id,
+                'branch_id' => (int) $branch->id,
+                'device_public_uuid' => (string) $device->public_uuid,
+                'activation_epoch' => $epoch,
+                'config_revision' => $revision,
+                'config_schema_version' => self::CONFIG_SCHEMA_VERSION,
+                'source_revision' => $claim['watermark'],
+                'sections' => $summary,
+                'generated_at' => now()->toIso8601String(),
+            ];
+            $manifest['manifest_hash'] = $this->computeManifestHash(
+                self::SCHEMA_VERSION, $snapshotUuid, (int) $tenant->id, (int) $branch->id, (string) $device->public_uuid,
+                $epoch, $revision, self::CONFIG_SCHEMA_VERSION, $summary
+            );
+
+            return ['manifest' => $manifest, 'sections' => $sections];
+        } finally {
+            $this->tenancy->deactivate();
+        }
+    }
+
+    /**
+     * Q — the contract for a config REFRESH: a paired, un-revoked device in the branch's active slot that is READY or
+     * ACTIVE (a running appliance is exactly the warm standby that refreshes), the tenant entitled and the feature on,
+     * the branch existing. Unlike the bootstrap contract it does NOT gate on the manual Local-Mode branch status: the
+     * lease decides authority; a standby must stay fresh whatever that switch says. Activates the tenant.
+     *
+     * @return array{0: Tenant, 1: Branch}
+     */
+    protected function refreshContract(EdgeDevice $device): array
+    {
+        $tenant = Tenant::find($device->tenant_id);
+        if (! $tenant) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
+        }
+        $this->tenancy->activate($tenant);
+        if ($device->isRevoked() || $device->active_slot !== EdgeDevice::ACTIVE_SLOT) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::DEVICE_REVOKED);
+        }
+        if (! in_array($device->status, [EdgeDevice::STATUS_READY, EdgeDevice::STATUS_ACTIVE], true)) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
+        }
+        $current = EdgeDevice::active()->where('tenant_id', $device->tenant_id)->where('branch_id', $device->branch_id)->first();
+        if (! $current || (int) $current->id !== (int) $device->id) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::DEVICE_REVOKED);
+        }
+        if (! $this->entitlement->featureIsEnabled() || ! $this->entitlement->tenantHasOfflineEdgeAccess()) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
+        }
+        $branch = Branch::find($device->branch_id);
+        if (! $branch) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
+        }
+
+        return [$tenant, $branch];
+    }
+
+    protected function sourceRevision(Branch $branch): string
     {
         $conn = DB::connection('tenant');
         $b = (int) $branch->id;
@@ -439,11 +596,20 @@ class EdgeBootstrapService
 
         $add('branches', 'id'); $add('terminals', 'branch_id'); $add('categories'); $add('units');
         $add('products'); $add('product_variants'); $add('product_barcodes'); $add('product_branch_prices', 'branch_id');
-        $add('modifier_groups', 'branch_id'); $add('modifiers'); $add('combos', 'branch_id'); $add('combo_components');
+        $add('modifier_groups'); $add('modifiers'); $add('combos', 'branch_id'); $add('combo_components');
+        // W6 bootstrap v7: product<->group links, global groups (above, no branch filter) and the denomination book.
+        $add('product_modifier_group'); $add('currencies'); $add('currency_denominations');
+        // W6: the contract generation is part of the watermark, so a schema bump always mints a NEW config revision (an
+        // already-bootstrapped appliance applies it as a newer revision instead of a same-revision content conflict).
+        $wm[] = 'bootstrap_schema=' . self::SCHEMA_VERSION;
         $add('payment_methods'); $add('restaurant_floors', 'branch_id'); $add('restaurant_tables', 'branch_id');
         $add('restaurant_waiters', 'branch_id'); $add('delivery_channels'); $add('delivery_riders', 'branch_id');
         $add('printers', 'branch_id'); $add('receipt_layout_settings', 'branch_id'); $add('category_printer_mappings', 'branch_id');
         $add('service_charge_settings', 'branch_id'); $add('void_reasons'); $add('roles'); $add('permissions');
+        // ONLINE-POS PARITY: promo codes and the customer book (delivery / attach customer) are synced config.
+        $add('promotions', 'branch_id'); $add('promotion_targets'); $add('customers'); $add('customer_addresses');
+        // PHASE 4: an alias minted by the Cloud create-or-match must reach the appliance (its local row is merged on refresh).
+        $add('customer_uuid_aliases');
         $add('branch_user', 'branch_id');
         // EDGE-LOCAL-RUNTIME-1 (K): recipe config is now part of the snapshot, so a recipe edit must
         // change the revision and trigger a fresh bootstrap.
@@ -451,6 +617,10 @@ class EdgeBootstrapService
 
         $users = $conn->table('users')->whereIn('id', $userIds ?: [0]);
         $wm[] = 'users=' . (string) $users->max('updated_at') . '|' . $users->count();
+        // Phase 3 (approver eligibility): a manager PIN set, replaced or disabled for a branch user changes who may approve
+        // offline, so it must mint a new config revision (users[].may_approve_pos follows manager_pins, not users).
+        $pins = $conn->table('manager_pins')->whereIn('user_id', $userIds ?: [0])->orderBy('user_id')->get(['user_id', 'is_active']);
+        $wm[] = 'manager_pins=' . implode(',', $pins->map(fn ($r) => $r->user_id . ':' . (int) $r->is_active)->all());
 
         $tps = $conn->table('terminal_printer_settings')->whereIn('terminal_id', $termIds ?: [0]);
         $wm[] = 'terminal_printer_settings=' . (string) $tps->max('updated_at') . '|' . $tps->count();
@@ -473,14 +643,67 @@ class EdgeBootstrapService
 
     /* ── deterministic branch-scoped sections (allowlists + coherence) ────── */
 
+    /**
+     * W-G3 (G3) — Cloud-side safety net: an appliance must NEVER receive a customer without a canonical identity (the Edge
+     * sale envelope refuses `customer_uuid` NULL — EdgeSaleEnvelopeBuilder::customerIdentity — so a cashier could not sell
+     * to that customer at all). The model (HasCanonicalIdentity) mints it on create and migration 2026_08_08_000010 backfilled,
+     * but rows inserted raw (legacy imports, seeds) can still be NULL. Generate-once, idempotent, the migration's own rule:
+     * a fresh ULID per NULL row; a populated value is NEVER changed. `updated_at` moves so the config watermark mints the
+     * revision that carries the identity to an already-bootstrapped appliance. Memory-bounded (1000 ids per round).
+     */
+    protected function ensureCustomerIdentities(): int
+    {
+        $conn = DB::connection('tenant');
+        $fixed = 0;
+        do {
+            $ids = $conn->table('customers')->whereNull('customer_uuid')->orderBy('id')->limit(1000)->pluck('id');
+            foreach ($ids as $id) {
+                // the NULL predicate re-checked in the UPDATE: a concurrent writer that already minted one wins (0 rows).
+                $fixed += $conn->table('customers')->where('id', $id)->whereNull('customer_uuid')
+                    ->update(['customer_uuid' => (string) Str::ulid(), 'updated_at' => now()]);
+            }
+        } while ($ids->count() > 0);
+
+        // PHASE 4 — the same safety net for the two identities the offline add-customer flow matches on: a row written raw
+        // (import/seed) without its phone match key gets it from `phone` (THE shared normaliser), and an address without a
+        // canonical address_uuid gets one — generate-once, populated values never change, the watermark moves.
+        $cursor = 0;
+        do {
+            // id cursor (not a re-select of NULLs): a phone with no digits has no key and must simply be skipped, never looped on
+            $rows = $conn->table('customers')->whereNull('phone_normalized')->whereNotNull('phone')->where('phone', '!=', '')
+                ->where('id', '>', $cursor)->orderBy('id')->limit(1000)->get(['id', 'phone']);
+            foreach ($rows as $row) {
+                $cursor = (int) $row->id;
+                $key = \App\Support\PhoneNormalizer::normalize((string) $row->phone);
+                if ($key === null) {
+                    continue;
+                }
+                $fixed += $conn->table('customers')->where('id', $row->id)->whereNull('phone_normalized')
+                    ->update(['phone_normalized' => $key, 'updated_at' => now()]);
+            }
+        } while ($rows->count() > 0);
+        do {
+            $ids = $conn->table('customer_addresses')->whereNull('address_uuid')->orderBy('id')->limit(1000)->pluck('id');
+            foreach ($ids as $id) {
+                $fixed += $conn->table('customer_addresses')->where('id', $id)->whereNull('address_uuid')
+                    ->update(['address_uuid' => (string) Str::ulid(), 'updated_at' => now()]);
+            }
+        } while ($ids->count() > 0);
+
+        return $fixed;
+    }
+
     protected function buildSections(Tenant $tenant, Branch $branch): array
     {
         $conn = DB::connection('tenant');
         $b = (int) $branch->id;
         $rows = fn ($q, array $cols) => collect($q->orderBy('id')->get($cols))->map(fn ($r) => (array) $r)->all();
+        // W-G3 (G3): defence in depth — a no-op after createOrReuse / refreshPackage ran it before their claim.
+        $this->ensureCustomerIdentities();
 
         $terminalIds = $conn->table('terminals')->where('branch_id', $b)->pluck('id')->all();
-        $groupIds    = $conn->table('modifier_groups')->where('branch_id', $b)->pluck('id')->all();
+        // W6 v7: the branch's groups PLUS the global ones (branch_id NULL) — the same set the Online POS offers.
+        $groupIds    = $conn->table('modifier_groups')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id'))->pluck('id')->all();
 
         // Included product set + included ACTIVE variant set (everything else is constrained to these).
         $productIds = $conn->table('products')->where('is_sellable', 1)->where('is_pos_visible', 1)->where('status', 'active')->pluck('id')->all();
@@ -516,8 +739,17 @@ class EdgeBootstrapService
         $ingredientProductIds = $ingredientRows->pluck('product_id')->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
         $ingredientVariantIds = $ingredientRows->pluck('product_variant_id')->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
 
-        // Full product/variant coverage the appliance must know about = sellable + recipe raw materials.
-        $allProductIds = array_values(array_unique(array_merge($productIds, $ingredientProductIds)));
+        // W6 v7: modifiers of the shipped groups ship whole; a modifier's linked product (often a raw ingredient that is not
+        // POS-visible) ships as a bare config row so Edge operational stock can consume it. A modifier whose linked product
+        // no longer exists is dropped (FK-coherent import).
+        $modifierRows = $conn->table('modifiers')->whereIn('modifier_group_id', $groupIds ?: [0])
+            ->where(fn ($q) => $q->whereNull('linked_product_id')->orWhereIn('linked_product_id', $conn->table('products')->select('id')))
+            ->orderBy('id')
+            ->get(['id', 'modifier_group_id', 'name', 'price_delta', 'linked_product_id', 'consume_stock', 'linked_quantity', 'linked_unit_id', 'is_default', 'sort_order', 'status']);
+        $modifierProductIds = $modifierRows->pluck('linked_product_id')->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
+
+        // Full product/variant coverage the appliance must know about = sellable + recipe raw materials + modifier-linked.
+        $allProductIds = array_values(array_unique(array_merge($productIds, $ingredientProductIds, $modifierProductIds)));
         $apid = $allProductIds ?: [0];
         $ingredientVariantRows = $ingredientVariantIds
             ? $conn->table('product_variants')->whereIn('id', $ingredientVariantIds)->orderBy('id')
@@ -533,6 +765,8 @@ class EdgeBootstrapService
             ->concat($ingredientRows->pluck('unit_id'))
             ->concat($unitConversionRows->pluck('from_unit_id'))
             ->concat($unitConversionRows->pluck('to_unit_id'))
+            ->concat($modifierRows->pluck('linked_unit_id'))
+            ->concat($conn->table('products')->whereIn('id', $apid)->pluck('unit_id'))
             ->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
 
         return [
@@ -571,18 +805,29 @@ class EdgeBootstrapService
             'product_branch_prices' => $rows($conn->table('product_branch_prices')->where('branch_id', $b)->whereIn('product_id', $pid)
                 ->where(fn ($q) => $q->whereNull('product_variant_id')->orWhereIn('product_variant_id', $vid)),
                 ['id', 'branch_id', 'product_id', 'product_variant_id', 'selling_price', 'minimum_selling_price', 'is_available']),
-            'modifier_groups' => $rows($conn->table('modifier_groups')->where('branch_id', $b),
+            'modifier_groups' => $rows($conn->table('modifier_groups')->whereIn('id', $groupIds ?: [0]),
                 ['id', 'branch_id', 'name', 'min_select', 'max_select', 'is_required', 'sort_order', 'status']),
-            // Modifiers only ship when their linked product (if any) is included.
-            'modifiers' => $rows($conn->table('modifiers')->whereIn('modifier_group_id', $groupIds ?: [0])
-                ->where(fn ($q) => $q->whereNull('linked_product_id')->orWhereIn('linked_product_id', $pid)),
-                ['id', 'modifier_group_id', 'name', 'price_delta', 'linked_product_id', 'consume_stock', 'linked_quantity', 'linked_unit_id', 'is_default', 'sort_order', 'status']),
+            // W6 v7: every modifier of a shipped group (its linked product ships in `products` above).
+            'modifiers' => $modifierRows->map(fn ($r) => (array) $r)->all(),
+            // W6 v7: which groups apply to which SELLABLE product (Online resolves options through this pivot).
+            'product_modifier_group' => $rows($conn->table('product_modifier_group')->whereIn('product_id', $pid)->whereIn('modifier_group_id', $groupIds ?: [0]),
+                ['id', 'product_id', 'modifier_group_id', 'sort_order']),
+            // PHASE 3 STAGE B (gap A of the same-dataset comparison): `category_id` ships — the shared cashier view derives its pill set
+            // from it (POS-COMBO-CATEGORY-1: a combo filed to a category gives that category a pill; only an UNCATEGORISED combo shows the
+            // legacy flat "Deals" pill), so without the column an appliance rendered a different pill set than the Online POS on the same
+            // data. Categories export every active row of the branch/shared tree above, so the FK is coherent. Same list for the config
+            // refresh (refreshPackage → buildSections); bootstrap schema stays v8 (unreleased cycle) — the applier upserts the row as is.
             'combos' => $rows($conn->table('combos')->where('branch_id', $b)->whereIn('id', $cid),
-                ['id', 'branch_id', 'code', 'name', 'price', 'sort_order', 'status', 'description']),
+                ['id', 'branch_id', 'category_id', 'code', 'name', 'price', 'sort_order', 'status', 'description']),
             'combo_components' => $rows($conn->table('combo_components')->whereIn('combo_id', $cid),
                 ['id', 'combo_id', 'product_id', 'product_variant_id', 'quantity', 'sort_order']),
-            'payment_methods' => $rows($conn->table('payment_methods')->where('is_active', 1)->whereIn('method_type', self::PHASE1_PAYMENT_TYPES),
+            // W6 v7: every active method — non-cash rows are DISPLAY-ONLY (Online lists them; Edge shows them disabled). The
+            // offline tender rule is unchanged: EdgeLocalPosService::assertPaymentsOffline + the sale envelope accept cash only.
+            'payment_methods' => $rows($conn->table('payment_methods')->where('is_active', 1),
                 ['id', 'code', 'name', 'method_type', 'requires_reference', 'is_cash_drawer', 'is_active']),
+            // W6 v7 (Team 4 C-3): the denomination book for the shift-close count grid (CashCountService reads the default currency).
+            'currencies' => $rows($conn->table('currencies'), ['id', 'code', 'name', 'symbol', 'decimal_places', 'is_default', 'is_active']),
+            'currency_denominations' => $rows($conn->table('currency_denominations'), ['id', 'currency_id', 'denomination_value', 'denomination_type', 'is_active']),
             'restaurant_floors' => $rows($conn->table('restaurant_floors')->where('branch_id', $b), ['id', 'branch_id', 'name', 'code', 'status', 'sort_order']),
             'restaurant_tables' => $rows($conn->table('restaurant_tables')->where('branch_id', $b), ['id', 'branch_id', 'restaurant_floor_id', 'table_no', 'name', 'capacity', 'status', 'sort_order']),
             'restaurant_waiters' => $rows($conn->table('restaurant_waiters')->where('branch_id', $b), ['id', 'branch_id', 'name', 'code', 'phone', 'status']),
@@ -597,12 +842,32 @@ class EdgeBootstrapService
                 ['id', 'branch_id', 'name', 'code', 'printer_type', 'print_role', 'supports_reminder', 'ip_address', 'port', 'paper_size', 'characters_per_line', 'is_default', 'is_active', 'agent_enabled']),
             'receipt_layout_settings' => $rows($conn->table('receipt_layout_settings')->where('branch_id', $b),
                 ['id', 'branch_id', 'document_type', 'paper_size', 'show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone', 'show_tax_number',
-                 'show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time', 'show_item_codes', 'show_payment_breakdown', 'header_text', 'footer_text', 'font_size', 'kot_font_size', 'is_active']),
+                 'show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time', 'show_item_codes', 'show_payment_breakdown', 'header_text', 'footer_text', 'font_size', 'kot_font_size',
+                 // PRINT-LAYOUT-ROWS-1 (canonical 468b9ef) — the row/time sizes and divider/category toggles must replicate too.
+                 'item_font_size', 'time_font_size', 'show_column_dividers', 'show_category_header',
+                 // CANONICAL REHEARSAL chunks 10-11 (15 Nov 2026): KOT-ORDER-NOTE-1 (show_order_note, canonical 114413b9),
+                 // KOT-DEAL-HEADING-1 (show_deal_as_heading, 7230a7b3), RECEIPT-CUSTOMER-SIZE-1 (customer_font_size, c8e333d9) —
+                 // the Edge print worker renders the canonical KOT / receipt Blades from THIS row, so every switch they read replicates.
+                 'show_order_note', 'show_deal_as_heading', 'customer_font_size', 'is_active']),
             // same §16 parity rule: routing accepts branch-or-GLOBAL mappings.
             'category_printer_mappings' => $rows($conn->table('category_printer_mappings')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id')), ['id', 'branch_id', 'terminal_id', 'category_id', 'printer_id', 'print_role', 'order_type', 'reminder_confirm_on_addition', 'is_active']),
             'terminal_printer_settings' => $rows($conn->table('terminal_printer_settings')->whereIn('terminal_id', $terminalIds ?: [0]), ['id', 'terminal_id', 'receipt_printer_id', 'kot_printer_id', 'auto_print_receipt', 'auto_print_kot']),
             'service_charge_settings' => $rows($conn->table('service_charge_settings')->where('branch_id', $b), ['id', 'branch_id', 'charge_type', 'charge_value', 'order_types', 'is_taxable', 'is_active']),
             'void_reasons' => $rows($conn->table('void_reasons')->where('is_active', 1), ['id', 'name', 'reason_type', 'requires_manager_approval', 'is_active']),
+            // ONLINE-POS PARITY: promotions the shared PromotionService resolves offline (branch or tenant-wide),
+            // and the customer book so delivery / attach-customer work from the same synced identities.
+            'promotions' => $rows($conn->table('promotions')->where('status', 'active')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id')),
+                ['id', 'branch_id', 'name', 'code', 'promotion_type', 'discount_type', 'discount_value', 'max_discount_amount', 'min_order_amount', 'order_types', 'requires_code', 'usage_limit', 'used_count', 'starts_at', 'ends_at', 'status', 'priority', 'notes']),
+            'promotion_targets' => $rows($conn->table('promotion_targets')->whereIn('promotion_id', $conn->table('promotions')->where('status', 'active')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id'))->select('id')),
+                ['id', 'promotion_id', 'target_type', 'target_id']),
+            // PHASE 4 (additive within the unreleased v8 generation): phone_normalized (the match key), address_uuid (the
+            // address identity) and the alias book, so the applier matches customers / addresses by IDENTITY, not numeric id.
+            'customers' => $rows($conn->table('customers')->where('status', 'active'),
+                ['id', 'customer_uuid', 'code', 'name', 'phone', 'phone_normalized', 'email', 'address', 'tax_number', 'date_of_birth', 'gender', 'status']),
+            'customer_addresses' => $rows($conn->table('customer_addresses')->whereIn('customer_id', $conn->table('customers')->where('status', 'active')->select('id')),
+                ['id', 'address_uuid', 'customer_id', 'label', 'address', 'is_default']),
+            'customer_uuid_aliases' => collect($conn->table('customer_uuid_aliases')->whereIn('customer_id', $conn->table('customers')->where('status', 'active')->select('id'))
+                ->orderBy('alias_uuid')->get(['alias_uuid', 'customer_id', 'customer_uuid', 'source_device_uuid', 'source']))->map(fn ($r) => (array) $r)->all(),
             // EDGE-LOCAL-RUNTIME-1 (Section K) — recipe CONFIG (no stock execution this sprint).
             'recipes' => $recipeRows->map(fn ($r) => (array) $r)->all(),
             'recipe_ingredients' => $ingredientRows->map(fn ($r) => (array) $r)->all(),
@@ -629,6 +894,12 @@ class EdgeBootstrapService
             ->orderBy('id')
             ->get(['id', 'employee_code', 'name', 'default_branch_id', 'default_terminal_id', 'allowed_order_types', 'default_order_type', 'status', 'locale']);
         $userIds = $users->pluck('id')->all();
+        // Phase 3 (approver eligibility, bootstrap v8): the ONE canonical approver flag. A user may approve POS actions on
+        // the appliance iff they hold an ACTIVE manager PIN on the Cloud (the Online approval mechanism) AND are active.
+        // Only the boolean ships — never the PIN hash (SECRET_FIELDS). Not a permission: never derived from roles.
+        $approverIds = $userIds
+            ? $conn->table('manager_pins')->whereIn('user_id', $userIds)->where('is_active', 1)->pluck('user_id')->map(fn ($v) => (int) $v)->flip()->all()
+            : [];
         $roleMap = [];
         $roleIdsByUser = [];
         $permissionMap = [];
@@ -663,6 +934,7 @@ class EdgeBootstrapService
             'default_terminal_id' => $u->default_terminal_id, 'status' => $u->status, 'locale' => $u->locale,
             'allowed_order_types' => json_decode($u->allowed_order_types ?: '[]', true) ?: array_keys(\App\Models\Tenant\User::ORDER_TYPES),
             'default_order_type' => $u->default_order_type,
+            'may_approve_pos' => isset($approverIds[(int) $u->id]) && $u->status === 'active',
             'roles' => $roleMap[$u->id] ?? [],
             'permissions' => collect($permissionMap[$u->id] ?? [])->unique()->sort()->values()->all(),
         ])->all();
@@ -672,20 +944,10 @@ class EdgeBootstrapService
 
     public function canonicalJson(mixed $data): string
     {
-        return json_encode($this->canonicalize($data), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        return EdgeCanonicalJson::encode($data); // P5: the dependency-free shared strategy (appliance classes use it directly)
     }
 
-    private function canonicalize(mixed $v): mixed
-    {
-        if (is_array($v)) {
-            if (array_is_list($v)) {
-                return array_map(fn ($x) => $this->canonicalize($x), $v);
-            }
-            ksort($v);
-            return array_map(fn ($x) => $this->canonicalize($x), $v);
-        }
-        return $v;
-    }
+    // canonicalize() moved to EdgeCanonicalJson (P5).
 
     private function manifestHash(EdgeBootstrapSnapshot $snapshot, array $summary): string
     {
@@ -696,6 +958,8 @@ class EdgeBootstrapService
             (int) $snapshot->branch_id,
             EdgeDevice::whereKey($snapshot->edge_device_id)->value('public_uuid'),
             $snapshot->activation_epoch !== null ? (int) $snapshot->activation_epoch : null,
+            $snapshot->config_revision !== null ? (int) $snapshot->config_revision : null,
+            self::CONFIG_SCHEMA_VERSION,
             $summary,
         );
     }
@@ -703,6 +967,8 @@ class EdgeBootstrapService
     /**
      * The ONE manifest-hash formula, used both when building a snapshot and by the local importer to
      * re-verify a package self-consistently. Any change here is a wire-contract change.
+     * EDGE-CONFIG-REFRESH-1 (v5): config_revision + config_schema_version are INSIDE the hash so a
+     * revision number can never be tampered with independently of the manifest.
      */
     public function computeManifestHash(
         string $schemaVersion,
@@ -711,15 +977,11 @@ class EdgeBootstrapService
         int $branchId,
         ?string $deviceUuid,
         ?int $activationEpoch,
+        ?int $configRevision,
+        string $configSchemaVersion,
         array $sectionSummary,
     ): string {
-        return hash('sha256', $this->canonicalJson([
-            'schema_version' => $schemaVersion, 'snapshot_uuid' => $snapshotUuid,
-            'tenant_id' => $tenantId, 'branch_id' => $branchId,
-            'device_public_uuid' => $deviceUuid,
-            'activation_epoch' => $activationEpoch,
-            'sections' => $sectionSummary,
-        ]));
+        return EdgeCanonicalJson::manifestHash($schemaVersion, $snapshotUuid, $tenantId, $branchId, $deviceUuid, $activationEpoch, $configRevision, $configSchemaVersion, $sectionSummary);
     }
 
     public function audit(string $event, EdgeBootstrapSnapshot $snapshot): void

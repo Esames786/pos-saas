@@ -1,0 +1,202 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Services\Edge\EdgeArtifactBuilder;
+use App\Services\Edge\EdgePackageBuilder;
+use App\Services\Edge\EdgeSigningKeyStore;
+use App\Services\Edge\EdgeUpdatePackageService;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Process;
+
+/**
+ * P4 §5 — build the restricted Windows appliance package (BUILD HOST / Cloud tree only; never allowlisted on an
+ * appliance). Same provenance rules as edge:build-artifact: a release build refuses a dirty tree and stamps the real
+ * HEAD; --allow-dirty produces a DEV package that can never be mistaken for a release.
+ *
+ *   php artisan edge:build-package D:\out\BingooEdge-0.1.0 --php-runtime="D:\laragon2\bin\php\php-8.3.16-Win32-vs16-x64" \
+ *        --gateway="D:\laragon2\bin\nginx\nginx-1.22.0\nginx.exe" --signing-keystore=D:\edge-release\keystore\edge-update-signing-v1.keystore.json --signing-passphrase-file=D:\edge-release\passphrase\v1.passphrase
+ *
+ * The signing key is read from a FILE (or EDGE_UPDATE_SIGNING_KEY on the build host) — never from argv. A RELEASE build
+ * signs from the encrypted custody keystore only (--signing-keystore + --signing-passphrase-file, P5B §2).
+ */
+class EdgeBuildPackageCommand extends Command
+{
+    protected $signature = 'edge:build-package {dest : Destination directory (must be empty or absent)}
+        {--php-runtime= : PHP runtime directory to bundle (php.exe inside); omit to rely on the installer -PhpPath}
+        {--gateway= : nginx.exe to bundle; omit to rely on the installer -GatewayPath}
+        {--signing-keystore= : RELEASE: the encrypted release-signing keystore minted by edge:update:keygen (needs --signing-passphrase-file)}
+        {--signing-passphrase-file= : File holding the keystore passphrase (never argv, never printed)}
+        {--signing-key-file= : DEV/TEST only: file holding a plaintext base64 Ed25519 signing key (else EDGE_UPDATE_SIGNING_KEY)}
+        {--no-sign : Build without a signed update package (dev only)}
+        {--allow-dirty : DEV/TEST only — permit a dirty tree + --git-commit override}
+        {--allow-untracked : DEV/TEST only — permit untracked files under public/ or resources/ (builds a DEV package, never a release)}
+        {--git-commit= : (dev only) override the stamped commit}
+        {--vendor-junction= : (dev/test only) build app/ without vendor and junction this vendor dir into it}
+        {--vendor-from= : RELEASE: the vendor closure from a separate `composer install --no-dev` tree (its composer.lock must equal this tree composer.lock)}
+        {--force : Delete a non-empty prior PACKAGE at dest first}';
+
+    protected $description = 'Build the restricted Bingoo Edge Windows appliance package from the accepted artifact (boundary-audited).';
+
+    public function handle(EdgeUpdatePackageService $updates): int
+    {
+        $dest = rtrim(str_replace('\\', '/', (string) $this->argument('dest')), '/');
+        $release = ! $this->option('allow-dirty') && ! $this->option('allow-untracked');
+        $head = trim((string) (Process::run('git rev-parse HEAD')->output() ?? ''));
+        $dirty = trim((string) (Process::run('git status --porcelain --untracked-files=no')->output() ?? '')) !== '';
+        // W-C (Edge next release §4.6) — `public` and `resources` ship WHOLE, so an untracked file there (a stray view, a
+        // font, a script) would ship silently in a build stamped with a clean commit. A RELEASE refuses; a dev build warns
+        // and is stamped dirty. `--untracked-files=no` above deliberately does not see these — hence the separate probe.
+        $untracked = $this->untrackedShippedFiles();
+        if ($untracked !== []) {
+            $listing = implode("\n  ", array_slice($untracked, 0, 20)) . (count($untracked) > 20 ? "\n  … (" . (count($untracked) - 20) . ' more)' : '');
+            if ($release) {
+                $this->error("Release package REFUSED — untracked files under public/ or resources/ would ship unreviewed:\n  {$listing}\nCommit or remove them (or use --allow-untracked for a DEV package).");
+
+                return self::FAILURE;
+            }
+            $this->warn("DEV package: untracked files under public/ or resources/ will ship (build stamped dirty):\n  {$listing}");
+            $dirty = true;
+        }
+        if ($release) {
+            if ($head === '' || $dirty || $this->option('git-commit')) {
+                $this->error('Release package REFUSED — needs a clean committed tree and no --git-commit override. Use --allow-dirty for a dev/test package.');
+
+                return self::FAILURE;
+            }
+            $commit = $head;
+            $sourceDirty = false;
+        } else {
+            $commit = (string) ($this->option('git-commit') ?: $head ?: 'unknown');
+            $sourceDirty = $dirty || (bool) $this->option('git-commit');
+        }
+        if (is_dir($dest) && (glob($dest . '/*') ?: []) !== []) {
+            if (! $this->option('force') || ! is_file($dest . '/package-manifest.json')) {
+                $this->error("Destination [$dest] is not empty (use --force only on a previous package with package-manifest.json).");
+
+                return self::FAILURE;
+            }
+            $this->recursiveDelete($dest);
+        }
+        $key = '';
+        $signingKeyId = null;
+        if (! $this->option('no-sign')) {
+            $keystore = (string) ($this->option('signing-keystore') ?? '');
+            if ($keystore !== '') {
+                // P5B §2 — RELEASE CUSTODY: the private key is opened from the encrypted keystore into process memory only.
+                try {
+                    $passphrase = EdgeSigningKeyStore::readPassphraseFile((string) ($this->option('signing-passphrase-file') ?? ''));
+                    $key = EdgeSigningKeyStore::open($keystore, $passphrase);
+                    sodium_memzero($passphrase);
+                    $signingKeyId = EdgeSigningKeyStore::describe($keystore)['key_id'];
+                } catch (\Throwable $e) {
+                    $this->error('Signing keystore refused: ' . $e->getMessage());
+
+                    return self::FAILURE;
+                }
+            } else {
+                if ($release) {
+                    $this->error('A release package must be signed from the custody keystore: --signing-keystore=<file> --signing-passphrase-file=<file> (plaintext --signing-key-file is dev/test only).');
+                    return self::FAILURE;
+                }
+                $file = (string) ($this->option('signing-key-file') ?? '');
+                $key = $file !== '' ? trim((string) @file_get_contents($file)) : trim((string) config('edge.update.signing_key', ''));
+                if ($key === '') {
+                    $this->warn('No signing key — building an UNSIGNED dev package.');
+                } else {
+                    $signingKeyId = EdgeSigningKeyStore::keyId(base64_encode(sodium_crypto_sign_publickey_from_secretkey((string) base64_decode($key, true))));
+                }
+            }
+        }
+        $artifactConfig = (array) config('edge.artifact');
+        $artifactConfig['runtime_dirs'] = ['bootstrap/cache', 'storage/framework/cache/data', 'storage/framework/views', 'storage/framework/sessions', 'storage/logs', 'storage/app'];
+        if ($this->option('vendor-junction')) {
+            $artifactConfig['include'] = array_values(array_diff((array) $artifactConfig['include'], ['vendor']));
+        }
+        $vendorFrom = rtrim(str_replace('\\', '/', (string) ($this->option('vendor-from') ?? '')), '/');
+        if ($vendorFrom !== '') {
+            // The no-dev closure must be the one this lock file describes — and must really be a no-dev install.
+            if (! is_file($vendorFrom . '/autoload.php') || ! is_file($vendorFrom . '/composer/installed.json')) {
+                $this->error("--vendor-from [$vendorFrom] is not a Composer vendor directory (autoload.php / composer/installed.json missing).");
+
+                return self::FAILURE;
+            }
+            $lockBeside = dirname($vendorFrom) . '/composer.lock';
+            if (! is_file($lockBeside) || hash_file('sha256', $lockBeside) !== hash_file('sha256', base_path('composer.lock'))) {
+                $this->error('--vendor-from: the composer.lock beside that vendor does not match this tree\'s composer.lock — rebuild the closure from THIS lock file.');
+
+                return self::FAILURE;
+            }
+            $installed = json_decode((string) file_get_contents($vendorFrom . '/composer/installed.json'), true);
+            if (! is_array($installed) || ($installed['dev'] ?? true) !== false) {
+                $this->error('--vendor-from: that closure was not installed with --no-dev (composer/installed.json reports dev=true).');
+
+                return self::FAILURE;
+            }
+            $artifactConfig['vendor_source'] = $vendorFrom;
+        } elseif ($release) {
+            $this->error('A release package needs --vendor-from=<no-dev vendor closure> (the developer vendor carries dev packages). Use --allow-dirty for a dev/test package.');
+
+            return self::FAILURE;
+        }
+        $meta = [
+            'git_commit' => $commit,
+            'source_dirty' => $sourceDirty,
+            'build_mode' => $release ? 'release' : 'dev',
+            'build_timestamp' => now()->toIso8601String(),
+            'artifact_version' => (string) config('edge.app_version') . '+' . substr($commit ?: 'nocommit', 0, 12) . ($sourceDirty ? '-dirty' : ''),
+        ];
+        $builder = new EdgePackageBuilder(new EdgeArtifactBuilder($artifactConfig), $updates);
+        try {
+            $summary = $builder->build($dest, [
+                'source_root' => base_path(),
+                'artifact_meta' => $meta,
+                'php_runtime' => $this->option('php-runtime') ?: null,
+                'gateway_binary' => $this->option('gateway') ?: null,
+                'signing_key' => $key,
+                'signing_key_id' => $signingKeyId,
+                'vendor_junction' => $this->option('vendor-junction') ?: null,
+            ]);
+        } catch (\Throwable $e) {
+            $this->error('Package build FAILED: ' . $e->getMessage());
+
+            return self::FAILURE;
+        }
+        $this->info(($release ? 'RELEASE' : 'DEV') . ' Edge appliance package built at: ' . $dest);
+        $this->table(['field', 'value'], collect($summary)->map(fn ($v, $k) => [$k, is_scalar($v) || $v === null ? var_export($v, true) : json_encode($v)])->values()->all());
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Untracked (not ignored) files under the shipped whole-directory roots public/ and resources/, as git reports them.
+     * Fail closed: when git cannot answer, the probe itself is returned as a finding so a release refuses.
+     *
+     * @return string[]
+     */
+    private function untrackedShippedFiles(): array
+    {
+        $result = Process::path(base_path())->run(['git', 'status', '--porcelain', '--untracked-files=all', '--', 'public', 'resources']);
+        if (! $result->successful()) {
+            return ['(git status failed — cannot prove public/ and resources/ carry no untracked file)'];
+        }
+        $files = [];
+        foreach (preg_split('/\r?\n/', (string) $result->output()) ?: [] as $line) {
+            if (str_starts_with($line, '?? ')) {
+                $files[] = trim(substr($line, 3), '"');
+            }
+        }
+        sort($files);
+
+        return $files;
+    }
+
+    private function recursiveDelete(string $dir): void
+    {
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($it as $f) {
+            $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+        }
+        @rmdir($dir);
+    }
+}

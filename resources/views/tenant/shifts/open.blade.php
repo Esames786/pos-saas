@@ -1,4 +1,6 @@
-@extends('layouts.app')
+@extends(isset($posRuntime) && $posRuntime->isEdge() ? 'layouts.pos' : 'layouts.app')
+{{-- W-A: every endpoint of this shared screen comes from the runtime map; Online controllers pass no runtime → the Cloud one. --}}
+@php $posRuntime = $posRuntime ?? app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make(); @endphp
 
 @section('title', 'Open Shift')
 
@@ -6,9 +8,9 @@
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
         <h1 class="mb-1">Open Shift</h1>
-        <p class="fw-medium">Pick a branch — all its terminals are selected by default. Deselect any you don't need.</p>
+        <p class="fw-medium">{{ $posRuntime->labels['shiftBranchWide'] ?? "Pick a branch — all its terminals are selected by default. Deselect any you don't need." }}</p>
     </div>
-    <a href="{{ url('/shifts') }}" class="btn btn-light">Back</a>
+    <a href="{{ $posRuntime->route('shiftIndexPage') }}" class="btn btn-light">Back</a>
 </div>
 
 @if($errors->any())
@@ -17,7 +19,7 @@
 
 <div class="card">
     <div class="card-body">
-        <form method="POST" action="{{ url('/shifts/open') }}" class="row g-3" novalidate>
+        <form method="POST" action="{{ $posRuntime->route('shiftOpenStore') }}" class="row g-3" novalidate>
             @csrf
 
             <div class="col-md-5">
@@ -78,7 +80,7 @@
                 <button type="submit" class="btn btn-primary">
                     <i class="ti ti-player-play me-1" aria-hidden="true"></i>Open Shift(s)
                 </button>
-                <a href="{{ url('/shifts') }}" class="btn btn-light ms-2">Cancel</a>
+                <a href="{{ $posRuntime->route('shiftIndexPage') }}" class="btn btn-light ms-2">Cancel</a>
             </div>
         </form>
     </div>

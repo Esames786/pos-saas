@@ -6,11 +6,13 @@ use App\Exceptions\SaleIdempotencyConflictException;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\KotBatch;
 use App\Models\Tenant\PaymentMethod;
+use App\Models\Tenant\Combo;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\RestaurantTable;
 use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\RestaurantWaiter;
 use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\SalesOrderLine;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\User;
@@ -57,11 +59,23 @@ class EdgeLocalPosService
     /** Cash only for the first offline sprint (card/wallet need a provider; other manual methods = phased). */
     private const OFFLINE_PAYMENT_TYPES = ['cash'];
 
-    /** Only order types whose full offline workflow exists yet. dine_in/delivery are added when wired. */
-    private const OFFLINE_ORDER_TYPES = ['quick_sale', 'takeaway'];
+    /**
+     * Direct Pay order types — the same four the Online POS validates (SalesOrderController::validateSale `in:`). A direct
+     * dine-in sale is refused exactly as Online refuses it when no open table is supplied ("Select an open table before
+     * completing a dine-in order.") — the Edge Direct Pay never carries a table session (a table's bill settles through
+     * its held check), so that Online rule is the whole outcome here, not a Branch-Server-only restriction.
+     */
+    private const OFFLINE_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
+
+    /**
+     * A17 tips — the sync contract carries them since W6 (0.7.0-edge): EdgeSaleEnvelopeBuilder no longer refuses a tipped
+     * sale (`totals.tip_amount` was always emitted) and Cloud ingestion projects it (GL tips account). Kept as a named
+     * switch so the boundary stays explicit (docs/status/edge-w6-contract-and-reconcile-plan.md §B4).
+     */
+    public const TIPS_SYNC_CONTRACT_READY = true;
 
     /** Order types a HELD (open-check) workflow exists for offline — dine_in additionally requires a table session. */
-    private const OFFLINE_HELD_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in'];
+    private const OFFLINE_HELD_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
 
     public function __construct(
         private readonly EdgeBranchContext $context,
@@ -75,7 +89,19 @@ class EdgeLocalPosService
         private readonly \App\Services\Printing\PrintJobService $printJobs,
         private readonly \App\Services\Sales\KotCancellationService $kotCancellations,
         private readonly \App\Services\Sales\SalesService $salesService, // closeRestaurantTableSession ONLY (everything else is fenced on branch_server)
+        private readonly EdgeSyncOutboxService $outbox,     // OFFLINE-SYNC-ENGINE-1B: same-txn envelope
     ) {
+    }
+
+    /**
+     * (1B test seam — same audit rationale as beforeSaleTransaction) Called INSIDE the finalizing
+     * transaction AFTER sale/lines/payments/operational-stock/settlement and BEFORE the outbox
+     * envelope insert. Production body is an unconditional no-op; only a test subclass can override
+     * it, so failure-atomicity tests can prove the WHOLE sale transaction (including the envelope)
+     * commits or rolls back as one.
+     */
+    protected function beforeOutboxInsert(): void
+    {
     }
 
     /**
@@ -115,10 +141,24 @@ class EdgeLocalPosService
         if (! $user->allowsOrderType($orderType)) {
             throw ValidationException::withMessages(['order_type' => "Order type [{$orderType}] is not allowed for this user."]);
         }
+        // ONLINE parity (SalesOrderController::store): a dine-in sale needs an open table session. Direct Pay carries none
+        // (a table's bill is its held check, settled through settleHeldSale), so the Online refusal applies verbatim.
+        if ($orderType === 'dine_in') {
+            throw ValidationException::withMessages(['restaurant_table_session_id' => 'Select an open table before completing a dine-in order.']);
+        }
+        // A17 tips: the shared totals input (Online `tip_amount`), refused on a PAID sale until the sync contract carries it.
+        $tipAmount = $this->tipAmountFor($data);
 
-        // (C) No unauthorized price reduction — discounts/promotions are BLOCKED offline this sprint (no proven
-        // manual-discount permission/manager-approval wiring yet). A request that carries any is refused.
-        $this->assertNoDiscountOrPromo($data);
+        // (C) Manual discount / promo code ride the SHARED SalesTotalsService (same calculation order as Cloud);
+        // a manual discount is gated by the branch approval mode and its manager approval is CONSUMED inside
+        // the transaction with the same payload binding as Cloud POST /pos. Never a silent price reduction.
+        $this->assertDiscountFieldsValid($data);
+        // PHASE 2b parity (canonical 0d41617): a Quick Sale REQUIRES a vehicle number AND a waiter — the SAME
+        // server-side rule as the Cloud POS (required_if), so an offline quick sale carries identical attribution.
+        $this->assertQuickSaleAttribution($orderType, $data);
+        // DELIVERY parity (canonical SalesOrderController::store): channel required; own delivery needs a
+        // customer, an aggregator channel owns its customer; rider optional; charge follows the branch lock rule.
+        $delivery = $this->resolveDeliveryAttribution($orderType, $data, $branch, null);
 
         $lines = array_values(array_filter($data['lines'] ?? [], fn ($l) => (float) ($l['quantity'] ?? 0) > 0));
         $payments = array_values(array_filter($data['payments'] ?? [], fn ($p) => (float) ($p['amount'] ?? 0) > 0));
@@ -128,7 +168,6 @@ class EdgeLocalPosService
         if (! $payments) {
             throw ValidationException::withMessages(['payments' => 'A paid sale needs at least one payment.']);
         }
-        $this->assertNoComboSelling($lines);
         $this->assertPaymentsOffline($payments);
 
         // ── idempotency: a valid client_uuid is MANDATORY for a durable retry ──
@@ -138,8 +177,8 @@ class EdgeLocalPosService
         }
         // (A) Hash the EFFECTIVE authoritative intent, not spoofable/ignored request fields: bound branch,
         // validated terminal, order_source=pos, no discounts/promo, and strip the unit_price/tax Edge ignores.
-        $payloadHash = $this->idempotency->buildPayloadHash($this->idempotency->canonicalSalePayload(
-            $this->effectiveIntent($data, $branchId, $terminal->id, $orderType, $lines, $payments)
+        $payloadHash = $this->idempotency->buildPayloadHash($this->edgeCanonicalIntent(
+            $data, $this->effectiveIntent($data, $branchId, $terminal->id, $orderType, $lines, $payments), $lines
         ));
 
         if ($existing = $this->idempotency->findFinalized($clientUuid)) {
@@ -149,7 +188,7 @@ class EdgeLocalPosService
         $this->beforeSaleTransaction(); // 2C test seam — no-op in production
 
         try {
-            return DB::connection('tenant')->transaction(function () use ($data, $user, $branch, $branchId, $terminal, $activationEpoch, $orderType, $lines, $payments, $clientUuid, $payloadHash) {
+            return DB::connection('tenant')->transaction(function () use ($data, $user, $branch, $branchId, $terminal, $activationEpoch, $orderType, $lines, $payments, $clientUuid, $payloadHash, $delivery, $tipAmount) {
                 // Race-safe: a concurrent request may already have finalized this key.
                 if ($winner = $this->idempotency->findFinalized($clientUuid)) {
                     return $this->replayOrConflict($winner, $payloadHash);
@@ -163,8 +202,23 @@ class EdgeLocalPosService
                 $shift = $this->shiftService->lockOpenShiftForTerminal($terminal);
                 $businessDate = $shift->business_date->toDateString();
 
+                // Deals expand server-side from the synced combo book (header carries the bundle price, components 0).
                 $resolved = $this->resolveLines($lines, $branch);
-                $totals = $this->totals->calculate($resolved, (string) ($data['discount_type'] ?? 'none'), (float) ($data['discount_value'] ?? 0), $branchId, $orderType, $data['promo_code'] ?? null, 0);
+                $totals = $this->totals->calculate(
+                    resolvedLines: $resolved,
+                    discountType: (string) ($data['discount_type'] ?? 'none'),
+                    discountValue: (float) ($data['discount_value'] ?? 0),
+                    branchId: $branchId,
+                    orderType: $orderType,
+                    promoCode: $data['promo_code'] ?? null,
+                    tipAmount: $tipAmount,
+                    deliveryCharge: $delivery['charge'],
+                );
+                $this->assertEnvelopeCanCarryLineDiscounts($resolved, (string) ($data['discount_type'] ?? 'none'), $totals['promotion_id'] ?? null);
+                // A2: a FIXED order discount can never exceed what is left of the bill after line discounts.
+                $this->assertFixedDiscountWithinBill($resolved, (string) ($data['discount_type'] ?? 'none'), (float) ($data['discount_value'] ?? 0));
+                $this->consumeManualDiscountApproval($totals, $data, $branch, $user, 0, $clientUuid);
+                $customer = $this->resolveHeldSaleCustomer($data, null);
 
                 $paidAmount = array_sum(array_map(fn ($p) => (float) $p['amount'], $payments));
                 if ($paidAmount + 1e-6 < (float) $totals['grand_total']) {
@@ -193,6 +247,15 @@ class EdgeLocalPosService
                     'order_type' => $orderType,
                     // VEHICLE-NUMBER-1: quick-sale (drive-through) capture — offline parity with Cloud.
                     'vehicle_number' => $this->vehicleNumberFor($orderType, $data),
+                    // PHASE 2b parity: a quick sale may carry its own waiter (validated against the bound branch).
+                    'restaurant_waiter_id' => $this->waiterIdFor($orderType, $data, $branchId),
+                    'customer_id' => $customer['id'],
+                    'customer_name' => $customer['name'],
+                    'customer_phone' => $customer['phone'],
+                    'delivery_channel_id' => $delivery['channel_id'],
+                    'delivery_rider_id' => $delivery['rider_id'],
+                    'delivery_address' => $delivery['address'],
+                    'delivery_charge_amount' => (float) ($totals['delivery_charge_amount'] ?? 0),
                     'sale_date' => now(),
                     'subtotal' => $totals['subtotal'],
                     'discount_type' => (string) ($data['discount_type'] ?? 'none'),
@@ -202,9 +265,12 @@ class EdgeLocalPosService
                     'promo_code' => $totals['promo_code'],
                     'tax_amount' => $totals['tax_amount'],
                     'service_charge_amount' => $totals['service_charge_amount'],
-                    'tip_amount' => 0,
+                    'tip_amount' => $totals['tip_amount'] ?? 0,
                     'grand_total' => $totals['grand_total'],
                     'paid_amount' => $paidAmount,
+                    // ONLINE parity (Direct Pay print intents): the SAME initial state Online stores, via the shared orchestrator.
+                    'direct_pay_print_state' => $this->directPayPrintState($data),
+                    'notes' => isset($data['notes']) && trim((string) $data['notes']) !== '' ? mb_substr(trim((string) $data['notes']), 0, 1000) : null,
                     'change_amount' => max($changeTotal, max($paidAmount - (float) $totals['grand_total'], 0)),
                     'status' => 'paid',
                     'completed_at' => now(),
@@ -219,18 +285,7 @@ class EdgeLocalPosService
                 $sale->sale_uuid = $saleUlid;
                 $sale->save();
 
-                foreach ($resolved as $r) {
-                    $qty = (float) $r['quantity'];
-                    $price = (float) $r['unit_price'];
-                    $sale->lines()->create([
-                        'product_id' => $r['product_id'], 'product_name' => $r['_product']->name,
-                        'product_variant_id' => $r['_variant']?->id, 'line_kind' => 'standard',
-                        'quantity' => $qty, 'unit_price' => $price, 'unit_cost' => 0, 'cost_total' => 0,
-                        'discount_amount' => (float) $r['discount_amount'], 'tax_amount' => (float) $r['tax_amount'],
-                        'line_total' => $qty * $price - (float) $r['discount_amount'] + (float) $r['tax_amount'],
-                        'modifiers' => $r['modifiers'] ?? null,
-                    ]);
-                }
+                $this->createSaleLines($sale, $resolved, []);
                 foreach ($payments as $p) {
                     // Grounded Cloud cash semantics: amount = applied to the invoice; tendered = physical cash;
                     // per-payment change = tendered − amount (what leaves the drawer as change).
@@ -253,6 +308,11 @@ class EdgeLocalPosService
                 // (G) SHARED operational settlement — the same sales-subledger + shift-counter rules Cloud
                 // finalizePaidSale uses, inside this same transaction (rolls back with the sale).
                 $this->settlement->settle($sale->fresh());
+
+                // OFFLINE-SYNC-ENGINE-1B: the immutable sync envelope is part of THIS transaction —
+                // a paid offline sale cannot commit without its outbox row (and vice versa).
+                $this->beforeOutboxInsert();
+                $this->outbox->createForPaidSale($sale->fresh());
 
                 return $sale->fresh();
             }, 3);
@@ -299,23 +359,139 @@ class EdgeLocalPosService
     }
 
     /** (C) Refuse any discount/promotion until a real authorized manual-discount contract is wired offline. */
-    private function assertNoDiscountOrPromo(array $data): void
+    /**
+     * Discount request validity — the same vocabulary the Cloud POS validates (none/fixed/percent, non-negative,
+     * percent ≤ 100). Whether a manual discount is ALLOWED is decided by the branch approval mode when the totals
+     * are known (consumeManualDiscountApproval). Line-level discounts remain a Cloud-only input.
+     */
+    private function assertDiscountFieldsValid(array $data): void
     {
         $type = (string) ($data['discount_type'] ?? 'none');
-        if ($type !== 'none' || (float) ($data['discount_value'] ?? 0) != 0.0 || ! empty($data['promo_code'])) {
-            throw ValidationException::withMessages(['discount' => 'Discounts and promotions are not yet available on the Branch Server.']);
+        $value = (float) ($data['discount_value'] ?? 0);
+        if (! in_array($type, ['none', 'fixed', 'percent'], true)) {
+            throw ValidationException::withMessages(['discount_type' => 'Discount type must be none, fixed or percent.']);
         }
-        // DELIVERY-CHARGE-1: delivery orders are not offered offline, so a delivery charge can never be
-        // part of a local sale — refusing (rather than ignoring) keeps the effective-intent hash contract
-        // and the Cloud/Edge money semantics identical.
-        if ((float) ($data['delivery_charge_amount'] ?? 0) != 0.0) {
-            throw ValidationException::withMessages(['delivery_charge_amount' => 'Delivery charges are not available on the Branch Server (delivery orders are Cloud-only).']);
+        if ($value < 0 || ($type === 'percent' && $value > 100)) {
+            throw ValidationException::withMessages(['discount_value' => 'The discount value is out of range.']);
         }
+        if ($type === 'none' && $value > 0) {
+            throw ValidationException::withMessages(['discount_type' => 'A discount value needs a discount type.']);
+        }
+        // W2 (A10 line discounts): Online accepts `lines.*.discount_amount` (min:0) and the SHARED SalesTotalsService folds
+        // it into manual_discount_amount — so a line discount rides the same branch approval gate as an order discount.
         foreach ($data['lines'] ?? [] as $line) {
-            if ((float) ($line['discount_amount'] ?? 0) != 0.0) {
-                throw ValidationException::withMessages(['discount' => 'Line discounts are not yet available on the Branch Server.']);
+            if ((float) ($line['discount_amount'] ?? 0) < 0) {
+                throw ValidationException::withMessages(['lines' => 'A line discount cannot be negative.']);
             }
         }
+    }
+
+    /**
+     * A2 (owner decision, manual discount aligned to Online): a FIXED order discount larger than the bill it
+     * reduces (subtotal − line discounts) is refused outright — the shared totals service would silently clamp
+     * it, which would bind a manager approval to a different amount than the cashier typed. A percent above 100
+     * is already refused by assertDiscountFieldsValid.
+     */
+    private function assertFixedDiscountWithinBill(array $resolvedLines, string $discountType, float $discountValue): void
+    {
+        if ($discountType !== 'fixed') {
+            return;
+        }
+        $subtotal = 0.0;
+        $lineDiscounts = 0.0;
+        foreach ($resolvedLines as $line) {
+            $subtotal += (float) ($line['quantity'] ?? 0) * (float) ($line['unit_price'] ?? 0);
+            $lineDiscounts += (float) ($line['discount_amount'] ?? 0);
+        }
+        if (round($discountValue, 2) > round(max($subtotal - $lineDiscounts, 0), 2) + 0.001) {
+            throw ValidationException::withMessages(['discount_value' => 'The discount cannot be more than the bill subtotal.']);
+        }
+    }
+
+    /**
+     * A2 (owner decision): Online refuses a manual ORDER discount while holding (HeldSaleController::store — the
+     * discount and its manager approval are a payment concern, applied when the check is paid). Same refusal and
+     * message here, for a new hold AND a revision, before anything is written. A bad discount type is left to
+     * assertDiscountFieldsValid (Online's validator answers it first too).
+     */
+    private function refuseManualDiscountAtHold(array $data): void
+    {
+        $type = (string) ($data['discount_type'] ?? 'none');
+        if (! in_array($type, ['none', 'fixed', 'percent'], true)) {
+            return;
+        }
+        if ($type !== 'none' || (float) ($data['discount_value'] ?? 0) > 0) {
+            throw ValidationException::withMessages([
+                'discount_value' => 'Manual discounts are applied with manager approval when taking payment, not while holding an order.',
+            ]);
+        }
+    }
+
+    /**
+     * Line discounts — W6 (0.7.0-edge) lifted the contract boundary: EdgeSaleEnvelopeBuilder accepts discount money
+     * explained by per-line discounts (the envelope always carried lines[].discount_amount; Cloud folds it into the
+     * header discount it posts). Kept as the single call site so the boundary history stays readable; it no longer
+     * refuses anything (the shared SalesTotalsService + manual-discount approval gate still apply upstream).
+     */
+    private function assertEnvelopeCanCarryLineDiscounts(iterable $lines, string $discountType, $promotionId): void
+    {
+    }
+
+    /**
+     * W6 (B0.3) — the Edge Direct-Pay idempotency fingerprint = the shared canonicalizer (tip, both print intents and
+     * per-line discounts are already in it) PLUS the client-controlled text fields the shared canonical form does not
+     * know: the sale note and per-line kitchen notes. They are appended ONLY when non-empty, so every pre-W6 retry key
+     * (no note) keeps its exact hash, while a retry with a DIFFERENT note is a conflict — never a silent replay.
+     */
+    private function edgeCanonicalIntent(array $data, array $intent, array $lines): array
+    {
+        $canonical = $this->idempotency->canonicalSalePayload($intent);
+        $notes = isset($data['notes']) && trim((string) $data['notes']) !== '' ? mb_substr(trim((string) $data['notes']), 0, 1000) : null;
+        if ($notes !== null) {
+            $canonical['edge_notes'] = $notes;
+        }
+        $kitchen = [];
+        foreach ($lines as $l) {
+            $note = isset($l['kitchen_note']) ? trim((string) $l['kitchen_note']) : '';
+            if ($note !== '') {
+                $kitchen[] = implode('|', [$l['product_id'] ?? '', $l['product_variant_id'] ?? '', $l['combo_id'] ?? '', $note]);
+            }
+        }
+        if ($kitchen !== []) {
+            sort($kitchen);
+            $canonical['edge_kitchen_notes'] = $kitchen;
+        }
+
+        return $canonical;
+    }
+
+    /** A17 — the requested tip (Online `tip_amount`, min:0); a PAID sale with a tip waits for the sync contract. */
+    private function tipAmountFor(array $data): float
+    {
+        $tip = round(max((float) ($data['tip_amount'] ?? 0), 0.0), 2);
+        if ($tip > 0 && ! self::TIPS_SYNC_CONTRACT_READY) {
+            throw ValidationException::withMessages(['tip_amount' => 'A tip cannot be recorded on a Branch Server sale until the Cloud sync contract carries tips — remove the tip to complete this sale.']);
+        }
+
+        return $tip;
+    }
+
+    /** Online parity: DirectPayPrintOrchestrator::initialState when BOTH Direct Pay print intents are supplied. */
+    private function directPayPrintState(array $data): ?array
+    {
+        if ($this->printIntent($data, 'kot_print_intent') === null || $this->printIntent($data, 'receipt_print_intent') === null) {
+            return null;
+        }
+
+        return \App\Services\Printing\DirectPayPrintOrchestrator::initialState((string) $data['kot_print_intent'], (string) $data['receipt_print_intent']);
+    }
+
+    /** A Direct Pay print intent only when it is one of Online's values (print|skip); anything else is ignored, never hashed. */
+    private function printIntent(array $data, string $key): ?string
+    {
+        $v = $data[$key] ?? null;
+
+        return is_string($v) && in_array($v, ['print', 'skip'], true) ? $v : null;
     }
 
     /**
@@ -331,31 +507,37 @@ class EdgeLocalPosService
             'terminal_id' => $terminalId,
             'order_source' => 'pos',
             'order_type' => $orderType,
-            'discount_type' => 'none',
-            'discount_value' => 0,
-            'promo_code' => null,
+            // The commercial intent the client controls: discount request, promo code, customer, delivery attribution.
+            'discount_type' => (string) ($data['discount_type'] ?? 'none'),
+            'discount_value' => round((float) ($data['discount_value'] ?? 0), 2),
+            'promo_code' => $data['promo_code'] ?? null,
+            // Online hashes the tip and both Direct Pay print intents too (SaleIdempotencyService::canonicalSalePayload).
+            'tip_amount' => isset($data['tip_amount']) && (float) $data['tip_amount'] > 0 ? round((float) $data['tip_amount'], 2) : null,
+            'kot_print_intent' => $this->printIntent($data, 'kot_print_intent'),
+            'receipt_print_intent' => $this->printIntent($data, 'receipt_print_intent'),
+            'customer_id' => isset($data['customer_id']) && $data['customer_id'] !== '' ? (int) $data['customer_id'] : null,
+            'delivery' => $orderType === 'delivery' ? [
+                'channel_id' => $data['delivery_channel_id'] ?? null,
+                'rider_id' => $data['delivery_rider_id'] ?? null,
+                'address' => $data['delivery_address'] ?? null,
+                'charge' => $data['delivery_charge_amount'] ?? null,
+            ] : null,
             'lines' => array_map(fn ($l) => [
                 'product_id' => $l['product_id'] ?? null,
                 'product_variant_id' => $l['product_variant_id'] ?? null,
-                'line_kind' => 'standard',
+                'combo_id' => $l['combo_id'] ?? null,
+                'line_kind' => ! empty($l['combo_id']) ? 'deal' : 'standard',
                 'quantity' => $l['quantity'] ?? null,
                 'modifiers' => $l['modifiers'] ?? null,
-                // unit_price / tax_amount / discount_amount deliberately omitted — Edge resolves them server-side.
+                // A line discount IS client intent (Online accepts lines.*.discount_amount) — hashed; absent stays null.
+                'discount_amount' => isset($l['discount_amount']) && (float) $l['discount_amount'] > 0 ? round((float) $l['discount_amount'], 2) : null,
+                // unit_price / tax_amount deliberately omitted — Edge resolves them server-side.
             ], $lines),
             'payments' => array_map(fn ($p) => [
                 'payment_method_id' => $p['payment_method_id'] ?? null,
                 'amount' => $p['amount'] ?? null,
             ], $payments),
         ];
-    }
-
-    private function assertNoComboSelling(array $lines): void
-    {
-        foreach ($lines as $line) {
-            if (in_array($line['line_kind'] ?? 'standard', ['combo_header', 'component'], true)) {
-                throw ValidationException::withMessages(['lines' => 'Combo selling is not yet supported on the Branch Server. Sell standard products.']);
-            }
-        }
     }
 
     /** Cash only offline this sprint — provider (card/wallet) and unproven manual methods are refused. */
@@ -379,6 +561,98 @@ class EdgeLocalPosService
     }
 
     /** (B) The principal MUST be the authenticated local cashier and be branch-authorized (preflight + in-txn). */
+    /**
+     * ONLINE-POS PARITY — Preview Bill: the running bill computed on the SAME server-side sale/totals truth,
+     * with ZERO mutation (no sale, payment, stock movement, outbox, KOT, receipt, or Cloud call). Read-only.
+     *
+     * PHASE 3 (B) — `$quoteOnly`: the running-totals QUOTE (Online `POSController::quoteTotals`, POST /api/pos/totals/quote)
+     * never validates a line's modifier selection — Online prices the client's lines and only the sale/hold store enforces
+     * min/max (validateModifierModal + the store). The shared view quotes on every cart change (while the modifier modal is
+     * still open, and with no modifiers at all on the quote body), so a strict quote answered 422 for every product carrying
+     * a required group and the page silently kept a stale service charge / promo amount. A quote therefore resolves the
+     * options it is given and ignores the selection rules; Preview Bill / the paid sale / a hold stay strict.
+     */
+    public function previewBill(array $data, User $user, ?int $terminalId, bool $quoteOnly = false): array
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $this->requireAuthorizedPrincipal($user, $branchId);
+        $this->requireActiveTerminal($terminalId, $branchId);
+        $branch = Branch::on('tenant')->findOrFail($branchId);
+        $orderType = (string) ($data['order_type'] ?? 'quick_sale');
+
+        $resolved = $this->resolveLines($data['lines'] ?? [], $branch, quoteOnly: $quoteOnly);
+        // The preview shows the SAME total the payment will charge — including the delivery charge under the
+        // branch lock rule (validation of channel/customer happens at payment; the preview only prices).
+        $deliveryCharge = $orderType === 'delivery' && empty($data['restaurant_table_session_id'])
+            ? ($branch->delivery_charge_locked ? (float) $branch->default_delivery_charge : max((float) ($data['delivery_charge_amount'] ?? 0), 0.0))
+            : 0.0;
+        $totals = $this->totals->calculate(
+            resolvedLines: $resolved,
+            discountType: (string) ($data['discount_type'] ?? 'none'),
+            discountValue: (float) ($data['discount_value'] ?? 0),
+            branchId: $branchId,
+            orderType: $orderType,
+            promoCode: $data['promo_code'] ?? null,
+            // A17: the tip is QUOTED like Online (POST /api/pos/totals/quote carries tip_amount); taking it waits for the contract.
+            tipAmount: round(max((float) ($data['tip_amount'] ?? 0), 0.0), 2),
+            deliveryCharge: $deliveryCharge,
+        );
+
+        // A16 promo feedback — the same answer Online's POST /api/pos/promotions/quote gives, on the SAME shared totals.
+        $requestedPromo = trim((string) ($data['promo_code'] ?? ''));
+        $promo = null;
+        if ($requestedPromo !== '') {
+            $applied = $totals['promotion_id'] ?? null;
+            $promo = $applied
+                ? ['valid' => true, 'promo_code' => $totals['promo_code'], 'promotion_id' => (int) $applied,
+                    'promotion_name' => \App\Models\Tenant\Promotion::on('tenant')->whereKey($applied)->value('name'),
+                    'discount_amount' => (float) ($totals['promotion_discount_amount'] ?? 0)]
+                : ['valid' => false, 'promo_code' => null, 'promotion_id' => null, 'promotion_name' => null, 'discount_amount' => 0.0,
+                    'message' => 'Promo code is invalid, expired, or does not apply to this order.'];
+        }
+
+        return ['order_type' => $orderType, 'lines' => array_map(fn ($r) => $this->lineView($r), $resolved), 'totals' => $totals, 'promo' => $promo];
+    }
+
+    /** The public (JSON-safe) view of a resolved line — what the bill preview / receipt facsimile renders. */
+    private function lineView(array $r): array
+    {
+        $qty = (float) $r['quantity'];
+        $price = (float) $r['unit_price'];
+
+        return [
+            'product_id' => (int) $r['product_id'],
+            'product_variant_id' => $r['_variant']?->id,
+            'product_name' => (string) ($r['_line_name'] ?? $r['_product']->name),
+            'variant_name' => $r['_variant']?->name,
+            'unit_code' => $r['_product']->unit?->code,
+            'line_kind' => (string) ($r['line_kind'] ?? 'standard'),
+            'combo_id' => $r['combo_id'] ?? null,
+            'quantity' => $qty,
+            'unit_price' => $price,
+            'discount_amount' => (float) $r['discount_amount'],
+            'tax_amount' => (float) $r['tax_amount'],
+            'line_total' => round($qty * $price - (float) $r['discount_amount'] + (float) $r['tax_amount'], 2),
+            'modifiers' => $r['modifiers'] ?? [],
+            'kitchen_note' => $r['kitchen_note'] ?? null,
+        ];
+    }
+
+    /**
+     * Team 3 request — the ONE principal rule for every Edge restaurant/lifecycle service: the acting user is the
+     * authenticated local cashier, active, Edge-eligible and authorized for the bound branch, and the appliance holds
+     * local authority. Reuse this instead of copying it.
+     */
+    public function assertAuthorizedPrincipal(User $user): int
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $this->requireAuthorizedPrincipal($user, $branchId);
+        $this->requireLocalAuthority();
+
+        return $branchId;
+    }
+
     private function requireAuthorizedPrincipal(User $user, int $branchId): void
     {
         $authUser = auth('tenant')->user();
@@ -393,8 +667,48 @@ class EdgeLocalPosService
         }
     }
 
+    /**
+     * ONLINE-POS PARITY — the customer for a held sale: the request's explicit customer wins; otherwise a
+     * SEATED reservation on this session's table carries its customer onto the order. Returns [id, name, phone].
+     */
+    private function resolveHeldSaleCustomer(array $data, ?RestaurantTableSession $session): array
+    {
+        if (array_key_exists('customer_id', $data) || array_key_exists('customer_name', $data) || array_key_exists('customer_phone', $data)) {
+            return [
+                'id' => isset($data['customer_id']) && $data['customer_id'] !== '' ? (int) $data['customer_id'] : null,
+                'name' => $data['customer_name'] ?? null,
+                'phone' => $data['customer_phone'] ?? null,
+            ];
+        }
+        if ($session) {
+            $r = \App\Models\Edge\EdgeTableReservation::on('tenant')
+                ->where('restaurant_table_session_id', $session->id)
+                ->where('status', \App\Models\Edge\EdgeTableReservation::STATUS_SEATED)->latest('id')->first();
+            if ($r) {
+                return ['id' => $r->customer_id !== null ? (int) $r->customer_id : null, 'name' => $r->customer_name, 'phone' => $r->customer_phone];
+            }
+        }
+
+        return ['id' => null, 'name' => null, 'phone' => null];
+    }
+
+    /**
+     * P0 BRANCH AUTHORITY: in lease mode the appliance mutates branch state only while it is the writer
+     * (local_active). Without lease mode the manual Local-Mode switch governs (no-op). Called by every
+     * mutation entry point BEFORE any work — a standby appliance fails closed with a business message.
+     */
+    private function requireLocalAuthority(): void
+    {
+        try {
+            app(EdgeAuthorityService::class)->assertLocalMutationAllowed();
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['authority' => $e->getMessage()]);
+        }
+    }
+
     private function requireActiveTerminal(?int $terminalId, int $branchId): Terminal
     {
+        $this->requireLocalAuthority();
         $terminal = Terminal::on('tenant')->where('id', (int) $terminalId)->where('branch_id', $branchId)->where('status', 'active')->first();
         if (! $terminal) {
             throw ValidationException::withMessages(['terminal_id' => 'Select an active terminal on this branch.']);
@@ -408,6 +722,40 @@ class EdgeLocalPosService
      * VEHICLE-NUMBER-1: quick-sale-only drive-through capture, trimmed and length-capped to the
      * column width. Other order types always persist NULL (never a stale carried-over value).
      */
+    /**
+     * OFFLINE quick-sale WAITER attribution (canonical PHASE 2b, 0d41617): a quick sale may carry its own
+     * waiter; dine-in inherits the session's. The waiter must be an ACTIVE waiter of the BOUND branch — a
+     * foreign or inactive id is refused, never silently dropped. Requiring it offline is a Batch-2 decision
+     * (docs/status/edge-canonical-gap-2026-08-23.md #17); the CAPTURE here is canonical-equivalent.
+     */
+    /** Canonical PHASE 2b rule: quick_sale => vehicle_number + restaurant_waiter_id are REQUIRED (takeaway carries neither). */
+    private function assertQuickSaleAttribution(string $orderType, array $data): void
+    {
+        if ($orderType !== 'quick_sale') {
+            return;
+        }
+        if (trim((string) ($data['vehicle_number'] ?? '')) === '') {
+            throw ValidationException::withMessages(['vehicle_number' => 'A Quick Sale requires a vehicle number.']);
+        }
+        if (empty($data['restaurant_waiter_id'])) {
+            throw ValidationException::withMessages(['restaurant_waiter_id' => 'A Quick Sale requires a waiter.']);
+        }
+    }
+
+    private function waiterIdFor(string $orderType, array $data, int $branchId): ?int
+    {
+        if ($orderType !== 'quick_sale' || empty($data['restaurant_waiter_id'])) {
+            return null;
+        }
+        $waiterId = (int) $data['restaurant_waiter_id'];
+        $ok = RestaurantWaiter::on('tenant')->where('id', $waiterId)->where('branch_id', $branchId)->where('status', 'active')->exists();
+        if (! $ok) {
+            throw ValidationException::withMessages(['restaurant_waiter_id' => 'The selected waiter is not an active waiter of this branch.']);
+        }
+
+        return $waiterId;
+    }
+
     private function vehicleNumberFor(string $orderType, array $data): ?string
     {
         if ($orderType !== 'quick_sale') {
@@ -468,7 +816,11 @@ class EdgeLocalPosService
                 throw ValidationException::withMessages(['restaurant_waiter_id' => 'Select an active waiter on this branch.']);
             }
         }
-        $guests = (int) ($data['guest_count'] ?? 1);
+        // Online RestaurantTableSessionController::open: guest_count REQUIRED, integer 1..100 (Team 3 request).
+        if (! isset($data['guest_count']) || $data['guest_count'] === '') {
+            throw ValidationException::withMessages(['guest_count' => 'Enter the number of guests.']);
+        }
+        $guests = (int) $data['guest_count'];
         if ($guests < 1 || $guests > 100) {
             throw ValidationException::withMessages(['guest_count' => 'Guest count must be between 1 and 100.']);
         }
@@ -512,6 +864,14 @@ class EdgeLocalPosService
 
             $table->update(['status' => 'occupied']);
 
+            // ONLINE-POS PARITY: opening a RESERVED table seats its reservation and carries the customer onto
+            // this session, so the first held sale inherits it (see the held-sale customer resolution below).
+            \App\Models\Edge\EdgeTableReservation::on('tenant')
+                ->where('restaurant_table_id', $table->id)
+                ->where('status', \App\Models\Edge\EdgeTableReservation::STATUS_ACTIVE)
+                ->lockForUpdate()->latest('id')->first()
+                ?->update(['status' => \App\Models\Edge\EdgeTableReservation::STATUS_SEATED, 'restaurant_table_session_id' => $session->id, 'seated_at' => now()]);
+
             return $session->fresh();
         });
     }
@@ -540,16 +900,38 @@ class EdgeLocalPosService
         if (! $user->allowsOrderType($orderType)) {
             throw ValidationException::withMessages(['order_type' => "Order type [{$orderType}] is not allowed for this user."]);
         }
-        $this->assertNoDiscountOrPromo($data);
+        // A2: no manual ORDER discount on a hold or a revision (Online HeldSaleController::store) — it is applied, with its
+        // manager approval, at settle. Promo codes and per-line discounts (W2) are unchanged.
+        $this->refuseManualDiscountAtHold($data);
+        $this->assertDiscountFieldsValid($data);
+        // PHASE 2b parity (canonical 0d41617): a Quick Sale REQUIRES a vehicle number AND a waiter — the SAME
+        // server-side rule as the Cloud POS (required_if), so an offline quick sale carries identical attribution.
+        $this->assertQuickSaleAttribution($orderType, $data);
+        // POS-DRAFT-1 offline parity (canonical 0b5df5a): every save writes the current intent — a normal
+        // Hold clears a draft; save_as_draft parks the held sale WITHOUT a kitchen ticket (server-enforced below).
+        $isDraft = (bool) ($data['save_as_draft'] ?? false);
         $lines = array_values(array_filter($data['lines'] ?? [], fn ($l) => (float) ($l['quantity'] ?? 0) > 0));
         if (! $lines) {
             throw ValidationException::withMessages(['lines' => 'A held order needs at least one line.']);
         }
-        $this->assertNoComboSelling($lines);
-
-        return DB::connection('tenant')->transaction(function () use ($data, $user, $branch, $branchId, $terminal, $activationEpoch, $orderType, $lines) {
+        $this->savedLineClientKeys = [];
+        return DB::connection('tenant')->transaction(function () use ($data, $user, $branch, $branchId, $terminal, $activationEpoch, $orderType, $lines, $isDraft) {
             [$user, $terminal] = $this->revalidateInTxn($user, $branchId, $terminal->id);
             $shift = $this->shiftService->lockOpenShiftForTerminal($terminal);
+
+            // ── R21 CHANGE ORDER DETAILS (Team 3 request; Online HeldSaleController::store revision writes the posted
+            //    order_type + table session): with `change_order_details` a held check may move to another open session /
+            //    change its order type. Lock order stays shift → sessions (ascending id: the check's current one AND the target)
+            //    → sale, so it serializes with open-table / hold / settle / close exactly like every other restaurant mutation. ──
+            $changeDetails = ! empty($data['held_sale_id']) && ! empty($data['change_order_details']);
+            if ($changeDetails) {
+                $currentSessionId = (int) SalesOrder::on('tenant')->where('id', (int) $data['held_sale_id'])->where('branch_id', $branchId)->value('restaurant_table_session_id');
+                $ids = array_values(array_unique(array_filter([$currentSessionId, (int) ($data['restaurant_table_session_id'] ?? 0)])));
+                sort($ids);
+                foreach ($ids as $sid) {
+                    RestaurantTableSession::on('tenant')->where('id', $sid)->lockForUpdate()->first();
+                }
+            }
 
             // ── table-session resolution (dine_in REQUIRES one; explicit session forces dine_in) ──
             $session = null;
@@ -568,7 +950,7 @@ class EdgeLocalPosService
             $businessDate = $session?->business_date?->toDateString() ?? $shift->business_date->toDateString();
 
             if (! empty($data['held_sale_id'])) {
-                return $this->reviseHeldSale($data, $user, $branch, $branchId, $shift, $session, $lines);
+                return $this->reviseHeldSale($data, $user, $branch, $branchId, $shift, $session, $lines, $changeDetails ? $orderType : null, (int) $terminal->id);
             }
 
             // ── new held sale (one open check per session) — LOCKING read: a snapshot exists() could
@@ -577,8 +959,25 @@ class EdgeLocalPosService
                 throw new RuntimeException('This table already has an open order — continue it (Add Round) instead of starting another.');
             }
 
+            $delivery = $this->resolveDeliveryAttribution($orderType, $data, $branch, $session);
             $resolved = $this->resolveLines($lines, $branch);
-            $totals = $this->totals->calculate($resolved, 'none', 0, $branchId, $orderType, null, 0);
+            // A2: the order discount is always none on a hold (refused above); only per-line discounts can reach the
+            // manual-discount gate here (W2 behaviour, unchanged).
+            $totals = $this->totals->calculate(
+                resolvedLines: $resolved,
+                discountType: 'none',
+                discountValue: 0,
+                branchId: $branchId,
+                orderType: $orderType,
+                promoCode: $data['promo_code'] ?? null,
+                tipAmount: 0,
+                deliveryCharge: $delivery['charge'],
+            );
+            $this->consumeManualDiscountApproval($totals, ['discount_type' => 'none', 'discount_value' => 0] + $data, $branch, $user, 0, null);
+
+            // ONLINE-POS PARITY: the request's customer wins; otherwise a seated reservation on this session's
+            // table carries its customer onto the order (matching "open reserved table -> customer on order").
+            $customer = $this->resolveHeldSaleCustomer($data, $session);
 
             $saleUlid = (string) Str::ulid();
             $sale = new SalesOrder([
@@ -592,42 +991,92 @@ class EdgeLocalPosService
                 'vehicle_number' => $this->vehicleNumberFor($orderType, $data),
                 'sale_date' => now(),
                 'subtotal' => $totals['subtotal'],
-                'discount_type' => 'none', 'discount_value' => 0, 'discount_amount' => $totals['discount_amount'],
+                'discount_type' => 'none',
+                'discount_value' => 0,
+                'discount_amount' => $totals['discount_amount'],
+                'promotion_id' => $totals['promotion_id'],
+                'promo_code' => $totals['promo_code'],
                 'tax_amount' => $totals['tax_amount'],
                 'service_charge_amount' => $totals['service_charge_amount'],
+                'delivery_channel_id' => $delivery['channel_id'],
+                'delivery_rider_id' => $delivery['rider_id'],
+                'delivery_address' => $delivery['address'],
+                'delivery_charge_amount' => (float) ($totals['delivery_charge_amount'] ?? 0),
                 'tip_amount' => 0,
                 'grand_total' => $totals['grand_total'],
                 'paid_amount' => 0, 'change_amount' => 0,
                 'status' => 'held',
+                'is_draft' => $isDraft,
+                // Online parity (HeldSaleController::store `notes`): the order note the cashier typed is kept on the check.
+                'notes' => isset($data['notes']) && trim((string) $data['notes']) !== '' ? mb_substr(trim((string) $data['notes']), 0, 1000) : null,
                 'created_by_user_id' => $user->id,
+                'customer_id' => $customer['id'],
+                'customer_name' => $customer['name'],
+                'customer_phone' => $customer['phone'],
                 'restaurant_table_session_id' => $session?->id,
                 'restaurant_table_id' => $session?->restaurant_table_id,
                 'restaurant_floor_id' => $session?->table?->restaurant_floor_id,
-                'restaurant_waiter_id' => $session?->restaurant_waiter_id,
+                'restaurant_waiter_id' => $session?->restaurant_waiter_id ?? $this->waiterIdFor($orderType, $data, $branchId),
                 'inventory_posted' => false,
                 'edge_sync_state' => 'pending',
                 'edge_activation_epoch' => $activationEpoch,
             ]);
             $sale->sale_uuid = $saleUlid;
             $sale->save();
-            $this->createHeldLines($sale, $resolved, []);
+            $this->createSaleLines($sale, $resolved, []);
 
             return $sale->fresh();
         });
     }
 
     /** Add Round / revision of an existing held sale — runs INSIDE holdOrReviseSale's transaction. */
-    private function reviseHeldSale(array $data, User $user, Branch $branch, int $branchId, Shift $shift, ?RestaurantTableSession $session, array $lines): SalesOrder
+    private function reviseHeldSale(array $data, User $user, Branch $branch, int $branchId, Shift $shift, ?RestaurantTableSession $session, array $lines, ?string $changeOrderType = null, ?int $operatorTerminalId = null): SalesOrder
     {
         $sale = SalesOrder::on('tenant')->where('id', (int) $data['held_sale_id'])
             ->where('branch_id', $branchId)->where('status', 'held')->lockForUpdate()->first();
         if (! $sale) {
             throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to revise.']);
         }
-        // LOCK-ORDER GUARD: a dine-in check may only be revised with its session supplied (and therefore
-        // LOCKED, shift → session → sale) — otherwise a revision could run unserialized against a
-        // concurrent session close. A mismatched or omitted session is refused, never inferred.
-        if ((int) $sale->restaurant_table_session_id !== (int) ($session?->id ?? 0)) {
+        $detailChange = [];
+        if ($changeOrderType !== null) {
+            // R21: both the check's current session and the target were locked (ascending) by holdOrReviseSale.
+            if ($session && (int) $sale->restaurant_table_session_id !== (int) $session->id
+                && SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)->where('status', 'held')->where('id', '!=', $sale->id)->lockForUpdate()->exists()) {
+                throw new RuntimeException('That table already has an open order — continue it (Add Round) instead of moving this check onto it.');
+            }
+            $delivery = $this->resolveDeliveryAttribution($changeOrderType, $data, $branch, $session);
+            $detailChange = [
+                'order_type' => $changeOrderType,
+                'restaurant_table_session_id' => $session?->id,
+                'restaurant_table_id' => $session?->restaurant_table_id,
+                'restaurant_floor_id' => $session?->table?->restaurant_floor_id,
+                'restaurant_waiter_id' => $session?->restaurant_waiter_id ?? $this->waiterIdFor($changeOrderType, $data, $branchId),
+                'vehicle_number' => $this->vehicleNumberFor($changeOrderType, $data),
+                'delivery_channel_id' => $delivery['channel_id'],
+                'delivery_rider_id' => $delivery['rider_id'],
+                'delivery_address' => $delivery['address'],
+                'delivery_charge_amount' => $delivery['charge'],
+            ];
+        } elseif ($session && (int) $sale->restaurant_table_session_id !== (int) $session->id) {
+            // MOVE-TABLE-CART-1 twin (canonical a4eec6f8 HeldSaleController::store; Phase E item R-4, 30 Oct 2026): a held bill
+            // stays where it was made. The shared cashier view locks the order type and table once a bill is held, so a save
+            // that names ANOTHER open table session can only be a stale cart (22 Oct, Kashif Food: after Move Table the cart
+            // still held a car's quick sale and the next Hold re-homed it onto table 32 beside that table's own bill). Same
+            // key, same words as Online so the page shows the cashier the identical message; nothing is saved. Moving or
+            // merging tables rewrites the bill's own session (EdgeLocalTableOperationsService), so those never trip this, and
+            // the explicit R21 `change_order_details` revision above is the only sanctioned way to re-home a check.
+            $here = 'Table ' . ($session->table?->table_no ?? $session->restaurant_table_id);
+            $there = $sale->restaurant_table_session_id
+                ? 'belongs to Table ' . (RestaurantTable::on('tenant')->find($sale->restaurant_table_id)?->table_no ?? $sale->restaurant_table_id)
+                : 'is a ' . (['quick_sale' => 'Quick Sale', 'takeaway' => 'Takeaway', 'delivery' => 'Delivery'][$sale->order_type] ?? 'separate') . ' bill';
+            throw ValidationException::withMessages([
+                'held_sale_id' => "Bill {$sale->sale_no} {$there}, not {$here}. Nothing was saved. "
+                    . "Press Add Round, then add the items for {$here} again.",
+            ]);
+        } elseif ((int) $sale->restaurant_table_session_id !== (int) ($session?->id ?? 0)) {
+            // LOCK-ORDER GUARD (Edge safety check, kept): a dine-in check may only be revised with its session supplied (and
+            // therefore LOCKED, shift → session → sale) — otherwise a revision could run unserialized against a concurrent
+            // session close. An omitted session is refused, never inferred (Online keeps the bill's own session instead).
             throw ValidationException::withMessages(['restaurant_table_session_id' => 'This held sale belongs to a different table session — submit its own session.']);
         }
 
@@ -651,13 +1100,58 @@ class EdgeLocalPosService
             $seenOldIds[$oldId] = true;
         }
 
-        // ── implicit-cancellation detection (Cloud rule): reducing below the KITCHEN-SENT quantity
-        //    requires an explicit matching void entry — silent shrinkage of sent food is refused. ──
-        $newQtyByLineId = [];
+        // ── resolve FIRST (a deal line expands server-side into header + components), carrying the captured
+        //    price of every named line and linking each resolved row to the old row it continues ──
+        $resolved = [];
         foreach ($lines as $l) {
-            if (! empty($l['sales_order_line_id'])) {
-                $id = (int) $l['sales_order_line_id'];
-                $newQtyByLineId[$id] = ($newQtyByLineId[$id] ?? 0) + (float) $l['quantity'];
+            $oldId = ! empty($l['sales_order_line_id']) ? (int) $l['sales_order_line_id'] : null;
+            foreach ($this->resolveLines([$l], $branch, $oldId !== null) as $r) {
+                if ($oldId !== null && ($r['line_kind'] ?? 'standard') !== 'component') {
+                    // The stored captured price belongs to ONE economic identity — a carried line id whose
+                    // product/variant/kind differs from the original is refused outright (it could otherwise
+                    // inherit a cheaper captured price, and its KOT-sent state would be nonsense anyway).
+                    $old = $existing->get($oldId);
+                    if ((int) $old->product_id !== (int) $r['product_id']
+                        || (int) ($old->product_variant_id ?? 0) !== (int) ($r['_variant']?->id ?? 0)
+                        || (string) $old->line_kind !== (string) $r['line_kind']) {
+                        throw ValidationException::withMessages(['lines' => 'A carried line no longer matches its original product/variant — submit the change as a new line.']);
+                    }
+                    // W2 modifiers: a carried line keeps the options it was ordered (and priced) with. Omitting them keeps them;
+                    // naming DIFFERENT options is a new line (Online edits options only on an unsent line, re-adding it).
+                    $oldModifiers = is_array($old->modifiers) ? $old->modifiers : [];
+                    if (empty($r['_keep_modifiers']) && $this->modifierSignature($r['modifiers'] ?? []) !== $this->modifierSignature($oldModifiers)) {
+                        throw ValidationException::withMessages(['lines' => 'A carried line\'s options changed — submit the change as a new line.']);
+                    }
+                    $r['modifiers'] = $oldModifiers ?: null; // the stored snapshot (names + deltas as ordered), never the request's
+                    if (! array_key_exists('kitchen_note', $l)) {
+                        $r['kitchen_note'] = $old->kitchen_note; // omitted = unchanged; a submitted note replaces it
+                    }
+                    // captured price: the round the guest ordered at keeps its price even if the catalog moved.
+                    $price = (float) $old->unit_price;
+                    $r['unit_price'] = $price;
+                    $r['tax_amount'] = $this->pricing->resolveTaxAmount($r['_product'], (float) $r['quantity'], $price, (float) $r['discount_amount'], null);
+                    $r['_old_line_id'] = $oldId;
+                } elseif ($oldId !== null) {
+                    // component of a CARRIED deal: continue the old component row of the same deal/product/variant
+                    // so its kitchen-sent state carries (a deal's parts are never resent as new food).
+                    $oldComponent = $existing->first(fn ($x) => (int) $x->parent_sales_order_line_id === $oldId
+                        && (int) $x->product_id === (int) $r['product_id']
+                        && (int) ($x->product_variant_id ?? 0) === (int) ($r['_variant']?->id ?? 0));
+                    $r['_old_line_id'] = $oldComponent?->id;
+                } else {
+                    $r['_old_line_id'] = null;
+                }
+                $resolved[] = $r;
+            }
+        }
+
+        // ── implicit-cancellation detection (Cloud rule): reducing below the KITCHEN-SENT quantity
+        //    requires an explicit matching void entry — silent shrinkage of sent food is refused.
+        //    Quantities are the RESOLVED ones (a deal's components scale with the deal). ──
+        $newQtyByLineId = [];
+        foreach ($resolved as $r) {
+            if (! empty($r['_old_line_id'])) {
+                $newQtyByLineId[$r['_old_line_id']] = ($newQtyByLineId[$r['_old_line_id']] ?? 0) + (float) $r['quantity'];
             }
         }
         $voidByLineId = collect($data['void_items'] ?? [])->keyBy(fn ($v) => (int) ($v['old_line_id'] ?? 0));
@@ -685,59 +1179,88 @@ class EdgeLocalPosService
         if ($detected) {
             // REAL Cloud service: permission + (branch-mode) manager approval consumption + cancel-KOT
             // business event + sales_order_line_cancellations rows with the frozen snapshot identities.
-            $this->kotCancellations->recordLineCancellations($sale, $detected, (int) $user->id);
+            $this->kotCancellations->recordLineCancellations($sale, $detected, (int) $user->id, $operatorTerminalId !== null ? (string) $operatorTerminalId : null); // T2-2: the cancel KOT routes at the voiding counter (Online operatorTerminalId)
         }
 
-        // ── per-line captured price + KOT-sent carry-over, then Cloud's delete+recreate churn ──
+        // ── KOT-sent carry-over, then Cloud's delete+recreate churn. ──
+        // A2 (owner decision, Online parity): a manual ORDER discount is never carried on a held check — it is applied
+        // with its manager approval at settle. Online's revision writes the posted discount, which is always none (a
+        // discount is refused at hold), so a revision writes none/0 here too. CONSEQUENCE: a LEGACY held check that still
+        // carries a stored order discount (held before A2) LOSES it on its next revision; the cashier re-applies it when
+        // taking payment. Per-line discounts keep their W2 behaviour (their gate runs only when the order discount
+        // changes, exactly as before).
         $kotSentByLineId = $existing->map(fn ($l) => (float) $l->kot_sent_quantity);
-        $resolved = [];
-        foreach ($lines as $l) {
-            $oldId = ! empty($l['sales_order_line_id']) ? (int) $l['sales_order_line_id'] : null;
-            $r = $this->resolveLines([$l], $branch)[0];
-            if ($oldId !== null) {
-                // The stored captured price belongs to ONE economic identity — a carried line id whose
-                // product/variant/kind differs from the original is refused outright (it could otherwise
-                // inherit a cheaper captured price, and its KOT-sent state would be nonsense anyway).
-                $old = $existing->get($oldId);
-                if ((int) $old->product_id !== (int) $r['product_id']
-                    || (int) ($old->product_variant_id ?? 0) !== (int) ($r['_variant']?->id ?? 0)
-                    || (string) $old->line_kind !== (string) $r['line_kind']) {
-                    throw ValidationException::withMessages(['lines' => 'A carried line no longer matches its original product/variant — submit the change as a new line.']);
-                }
-                // captured price: the round the guest ordered at keeps its price even if the catalog moved.
-                $price = (float) $old->unit_price;
-                $r['unit_price'] = $price;
-                $r['tax_amount'] = $this->pricing->resolveTaxAmount($r['_product'], (float) $r['quantity'], $price, 0.0, null);
-            }
-            $r['_old_line_id'] = $oldId;
-            $resolved[] = $r;
+        $discountType = 'none';
+        $discountValue = 0.0;
+        $promoCode = array_key_exists('promo_code', $data) ? ($data['promo_code'] ?: null) : $sale->promo_code;
+        $totals = $this->totals->calculate(
+            resolvedLines: $resolved,
+            discountType: $discountType,
+            discountValue: $discountValue,
+            branchId: $branchId,
+            orderType: (string) ($detailChange['order_type'] ?? $sale->order_type),
+            promoCode: $promoCode,
+            tipAmount: 0,
+            deliveryCharge: (float) ($detailChange['delivery_charge_amount'] ?? $sale->delivery_charge_amount ?? 0),
+        );
+        $discountChanged = $discountType !== (string) ($sale->discount_type ?? 'none') || abs($discountValue - (float) $sale->discount_value) > 0.0001;
+        if ($discountChanged) {
+            $this->consumeManualDiscountApproval($totals, ['discount_type' => $discountType, 'discount_value' => $discountValue] + $data, $branch, $user, (int) $sale->id, null);
         }
-        $totals = $this->totals->calculate($resolved, 'none', 0, $branchId, (string) $sale->order_type, null, 0);
 
         $sale->lines()->delete();
-        $sale->update([
+        $sale->update(array_merge(array_key_exists('notes', $data) ? [
+            // Online parity (HeldSaleController revision `notes`): a submitted order note replaces the stored one.
+            'notes' => isset($data['notes']) && trim((string) $data['notes']) !== '' ? mb_substr(trim((string) $data['notes']), 0, 1000) : null,
+        ] : [], [
             // shift_id + business_date are FROZEN at first hold; a revision never rolls them forward.
+            'is_draft' => (bool) ($data['save_as_draft'] ?? false),
+            // Dine-in keeps its session waiter; a quick sale may (re)attribute its own, else keep the stored one.
+            'restaurant_waiter_id' => $session?->restaurant_waiter_id
+                ?? (((string) $sale->order_type === 'quick_sale' && ! empty($data['restaurant_waiter_id'])) ? $this->waiterIdFor((string) $sale->order_type, $data, $branchId) : $sale->restaurant_waiter_id),
             'subtotal' => $totals['subtotal'],
+            'discount_type' => $discountType,
+            'discount_value' => $discountValue,
             'discount_amount' => $totals['discount_amount'],
+            'promotion_id' => $totals['promotion_id'],
+            'promo_code' => $totals['promo_code'],
             'tax_amount' => $totals['tax_amount'],
             'service_charge_amount' => $totals['service_charge_amount'],
             'grand_total' => $totals['grand_total'],
-        ]);
-        $this->createHeldLines($sale, $resolved, $kotSentByLineId->all());
+        ], $detailChange ? array_merge($detailChange, ['delivery_charge_amount' => (float) ($totals['delivery_charge_amount'] ?? 0)]) : []));
+        $this->createSaleLines($sale, $resolved, $kotSentByLineId->all());
 
         return $sale->fresh();
     }
 
-    /** @param array<int,float> $kotSentByLineId sent quantities of the PRE-churn lines, keyed by old line id */
-    private function createHeldLines(SalesOrder $sale, array $resolved, array $kotSentByLineId): void
+    /**
+     * Create the sale's line rows from resolved entries. A deal is written the way Cloud writes it: the header
+     * row (bundle price, product_name = deal name, line_kind combo_header, combo_id) first, then its component
+     * rows (price 0, line_kind component, combo_id, parent_sales_order_line_id → the header) — so KOT deal
+     * identity, receipt name-only, report identity and stock (components only) all follow the shared truth.
+     *
+     * @param array<int,float> $kotSentByLineId sent quantities of the PRE-churn lines, keyed by old line id
+     */
+    private function createSaleLines(SalesOrder $sale, array $resolved, array $kotSentByLineId): void
     {
+        $headerIds = []; // expansion key → created header line id
         foreach ($resolved as $r) {
             $qty = (float) $r['quantity'];
             $price = (float) $r['unit_price'];
             $sentQty = min((float) ($kotSentByLineId[$r['_old_line_id'] ?? 0] ?? 0), $qty);
-            $sale->lines()->create([
-                'product_id' => $r['product_id'], 'product_name' => $r['_product']->name,
-                'product_variant_id' => $r['_variant']?->id, 'line_kind' => 'standard',
+            $kind = (string) ($r['line_kind'] ?? 'standard');
+            $line = $sale->lines()->create([
+                'product_id' => $r['product_id'],
+                'product_name' => $r['_line_name'] ?? $r['_product']->name,
+                'product_variant_id' => $r['_variant']?->id,
+                // Online parity (SalesOrderController line create): variant + unit snapshots the KOT/receipt documents print.
+                'variant_name' => $r['_variant']?->name,
+                'unit_code' => $r['_product']->unit?->code,
+                // W2 kitchen note (sales_order_lines.kitchen_note — printed by the shared KOT/receipt/KDS documents).
+                'kitchen_note' => isset($r['kitchen_note']) && trim((string) $r['kitchen_note']) !== '' ? mb_substr(trim((string) $r['kitchen_note']), 0, 500) : null,
+                'line_kind' => $kind,
+                'combo_id' => $r['combo_id'] ?? null,
+                'parent_sales_order_line_id' => isset($r['_component_of']) ? ($headerIds[$r['_component_of']] ?? null) : null,
                 'quantity' => $qty, 'unit_price' => $price, 'unit_cost' => 0, 'cost_total' => 0,
                 'discount_amount' => (float) $r['discount_amount'], 'tax_amount' => (float) $r['tax_amount'],
                 'line_total' => $qty * $price - (float) $r['discount_amount'] + (float) $r['tax_amount'],
@@ -745,7 +1268,27 @@ class EdgeLocalPosService
                 'kot_sent' => $sentQty > 0 && $qty <= $sentQty,
                 'kot_sent_quantity' => $sentQty,
             ]);
+            if ($kind === 'combo_header' && isset($r['_key'])) {
+                $headerIds[$r['_key']] = (int) $line->id;
+            }
+            // W-G3 (G2): remember which page row (client_line_key) each created line continues — the hold response
+            // echoes it exactly like Online's HeldSaleController::store $savedLinePayload.
+            $this->savedLineClientKeys[(int) $line->id] = $r['_client_line_key'] ?? null;
         }
+    }
+
+    /** @var array<int,string|null> created line id → the page's client_line_key, for the LAST holdOrReviseSale (W-G3 G2). */
+    private array $savedLineClientKeys = [];
+
+    /**
+     * W-G3 (G2) — Online HeldSaleController::store answers `lines[] = {id, client_line_key, kot_sent, kot_sent_quantity}`
+     * so the page learns the saved id of every row it posted. The last holdOrReviseSale's mapping (line id → key).
+     *
+     * @return array<int,string|null>
+     */
+    public function lastSavedLineClientKeys(): array
+    {
+        return $this->savedLineClientKeys;
     }
 
     /**
@@ -772,8 +1315,13 @@ class EdgeLocalPosService
         if (! $sale) {
             throw ValidationException::withMessages(['sale' => 'No held or paid sale found for KOT.']);
         }
+        // POS-DRAFT-1 offline: Cloud skips the KOT in the browser; the Edge POS is API-driven, so the skip is
+        // enforced HERE — a draft is parked without a kitchen ticket until it is held normally.
+        if ((bool) $sale->is_draft) {
+            throw ValidationException::withMessages(['sale' => 'This order is saved as a DRAFT — hold it normally to send its KOT.']);
+        }
 
-        $jobs = $this->printJobs->queueKot($sale);
+        $jobs = $this->printJobs->queueKot($sale, null, [], $terminalId !== null ? (string) $terminalId : null); // T2-2: routes at THIS counter (RECALL-REPRINT-TERMINAL)
         foreach ($jobs as $job) {
             $eventType = (string) data_get($job->payload, 'kot_event_type', 'normal');
             if ($job->document_type === 'kot' && ! in_array($eventType, ['cancel', 'duplicate'], true)) {
@@ -786,12 +1334,13 @@ class EdgeLocalPosService
         return ['batch' => $jobs ? $batch : null, 'jobs' => $jobs];
     }
 
-    /** Which manager permission each offline approval action demands — unknown actions fail closed. */
-    private const MANAGER_ACTION_PERMISSIONS = [
-        'void_kot_item' => 'tenant.pos.void-kot-item',
-        'void_kot_items' => 'tenant.pos.void-kot-item',
-        'cancel_held_order' => 'tenant.pos.void-kot-item',
-    ];
+    /**
+     * Phase 3 (approver eligibility): the permission the APPROVED ACTION needs, which the approving manager must hold
+     * IN ADDITION to being an eligible approver (users.may_approve_pos — the Cloud manager-PIN flag, checked by
+     * EdgeLocalAuthService::verifyManager). tenant.pos.void-kot-item is no longer a blanket approver marker: it is
+     * required only where the action itself is a KOT void. Unknown actions fail closed.
+     */
+    private const MANAGER_ACTION_PERMISSIONS = \App\Services\Sales\ManagerApprovalService::ACTION_PERMISSIONS; // ONE map, Cloud + Edge
 
     /**
      * Manager re-auth on the appliance: the manager authenticates with THEIR OWN Edge-local credential
@@ -812,7 +1361,8 @@ class EdgeLocalPosService
             throw ValidationException::withMessages(['action_type' => "No offline manager-approval contract exists for [{$actionType}]."]);
         }
 
-        $manager = app(\App\Services\Edge\EdgeLocalAuthService::class)->verifyManager($employeeCode, $credential, $permission);
+        // Phase 3: the requester is passed so self-approval is refused server-side (approver_user_id ≠ requesting_user_id).
+        $manager = app(\App\Services\Edge\EdgeLocalAuthService::class)->verifyManager($employeeCode, $credential, $permission, (int) $requestingUser->id);
 
         return app(\App\Services\Sales\ManagerApprovalService::class)
             ->createApprovalForAuthenticatedManager($manager, $actionType, (int) $requestingUser->id, $payload);
@@ -842,20 +1392,48 @@ class EdgeLocalPosService
             throw ValidationException::withMessages(['client_uuid' => 'Settling a held sale requires a valid client_uuid for safe retries.']);
         }
 
+        // A2 (owner decision, Online parity — paying a held sale = POST /pos with held_sale_id): the manual discount and its
+        // manager approval are a SETTLEMENT concern. Only a request that carries the `discount_type` key reprices the check
+        // (the pre-A2 page never sends it, so its absence keeps the old behaviour and the old totals exactly).
+        $applyDiscount = array_key_exists('discount_type', $data);
+        $discountType = $applyDiscount ? (string) ($data['discount_type'] ?? 'none') : 'none';
+        $discountValue = $applyDiscount ? (float) ($data['discount_value'] ?? 0) : 0.0;
+        $tipAmount = 0.0;
+        if ($applyDiscount) {
+            $this->assertDiscountFieldsValid(['discount_type' => $discountType, 'discount_value' => $discountValue]);
+            $tipAmount = $this->tipAmountFor($data);
+        }
+        $requestPromoCode = array_key_exists('promo_code', $data) ? ($data['promo_code'] ?: null) : null;
+        // W-G1 (Online parity — paying a held sale IS POST /pos + held_sale_id, SalesOrderController::store :117/:392): the Direct Pay
+        // print intents, when BOTH are sent, become the sale's durable DirectPayPrintOrchestrator initial state and are part of
+        // the hashed intent (SaleIdempotencyService::canonicalSalePayload :57-58). Absent (the old page) → null, hash unchanged.
+        $directPayPrintState = $this->directPayPrintState($data);
+
         $preflight = SalesOrder::on('tenant')->where('id', $heldSaleId)->where('branch_id', $branchId)->first();
         if (! $preflight) {
             throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to settle.']);
         }
         // Effective settle intent: the held sale's durable identity + payments (lines are already
-        // server-authoritative rows — nothing about them is request-controlled here).
-        $payloadHash = $this->idempotency->buildPayloadHash($this->idempotency->canonicalSalePayload([
+        // server-authoritative rows — nothing about them is request-controlled here). A2: when the request
+        // carries a discount, the effective discount / promo / tip are client intent and are hashed (a retry with a
+        // different discount is a conflict, never a silent replay); absent, the hash is byte-for-byte the pre-A2 one
+        // so every pre-existing retry key keeps matching.
+        $payloadHash = $this->idempotency->buildPayloadHash($this->idempotency->canonicalSalePayload(array_merge([
             'branch_id' => $branchId, 'terminal_id' => $terminal->id, 'order_source' => 'pos',
             'order_type' => (string) $preflight->order_type,
             'held_sale_id' => $preflight->sale_uuid, // the durable identity, never the local PK
             'restaurant_table_session_id' => $preflight->restaurant_table_session_id,
             'discount_type' => 'none', 'discount_value' => 0, 'promo_code' => null,
             'payments' => array_map(fn ($p) => ['payment_method_id' => $p['payment_method_id'] ?? null, 'amount' => $p['amount'] ?? null], $payments),
-        ]));
+        ], $directPayPrintState ? [
+            'kot_print_intent' => $directPayPrintState['kot_intent'],
+            'receipt_print_intent' => $directPayPrintState['receipt_intent'],
+        ] : [], $applyDiscount ? [
+            'discount_type' => $discountType,
+            'discount_value' => round($discountValue, 2),
+            'promo_code' => $requestPromoCode,
+            'tip_amount' => $tipAmount > 0 ? $tipAmount : null,
+        ] : [])));
         if ($existing = $this->idempotency->findFinalized($clientUuid)) {
             return $this->replayOrConflict($existing, $payloadHash);
         }
@@ -863,7 +1441,7 @@ class EdgeLocalPosService
         $this->beforeSaleTransaction(); // shared 2C seam — no-op in production
 
         try {
-            return DB::connection('tenant')->transaction(function () use ($heldSaleId, $user, $branchId, $terminal, $payments, $clientUuid, $payloadHash) {
+            return DB::connection('tenant')->transaction(function () use ($heldSaleId, $user, $branchId, $terminal, $payments, $clientUuid, $payloadHash, $applyDiscount, $discountType, $discountValue, $tipAmount, $data, $directPayPrintState) {
                 if ($winner = $this->idempotency->findFinalized($clientUuid)) {
                     return $this->replayOrConflict($winner, $payloadHash);
                 }
@@ -899,6 +1477,51 @@ class EdgeLocalPosService
                 // LOCKING (current) read of the lines: the stock consumed MUST be the committed final
                 // rounds, never this transaction's stale snapshot of them (phantom-read hazard).
                 $currentLines = $sale->lines()->lockForUpdate()->get();
+                // W2 contract boundary (line discounts) — same guard as Direct Pay, before any payment row is written.
+                $this->assertEnvelopeCanCarryLineDiscounts($currentLines, (string) ($sale->discount_type ?? 'none'), $sale->promotion_id);
+
+                if ($applyDiscount) {
+                    // A2: reprice the check from its LOCKED stored rows (captured prices, line discounts, tax — never the
+                    // catalog, never the request), exactly as Online recomputes totals when a held sale is paid; the
+                    // approval is consumed here, bound to THIS held sale (payload sales_order_id = held sale id, as Online).
+                    // discount_type 'none' = remove the discount (clears any stored legacy order discount).
+                    $branch = Branch::on('tenant')->findOrFail($branchId);
+                    $products = Product::on('tenant')->whereIn('id', $currentLines->pluck('product_id')->filter()->unique()->all())->get()->keyBy('id');
+                    $resolved = $currentLines->map(fn ($l) => [
+                        'product_id' => (int) $l->product_id,
+                        'category_id' => $products->get((int) $l->product_id)?->category_id,
+                        'quantity' => (float) $l->quantity,
+                        'unit_price' => (float) $l->unit_price,
+                        'discount_amount' => (float) $l->discount_amount,
+                        'tax_amount' => (float) $l->tax_amount,
+                        'line_kind' => (string) ($l->line_kind ?? 'standard'),
+                        'combo_id' => $l->combo_id,
+                    ])->values()->all();
+                    $totals = $this->totals->calculate(
+                        resolvedLines: $resolved,
+                        discountType: $discountType,
+                        discountValue: $discountValue,
+                        branchId: $branchId,
+                        orderType: (string) $sale->order_type,
+                        promoCode: array_key_exists('promo_code', $data) ? ($data['promo_code'] ?: null) : $sale->promo_code,
+                        tipAmount: $tipAmount,
+                        deliveryCharge: (float) $sale->delivery_charge_amount,
+                    );
+                    $this->assertFixedDiscountWithinBill($resolved, $discountType, $discountValue);
+                    $this->consumeManualDiscountApproval($totals, ['discount_type' => $discountType, 'discount_value' => $discountValue] + $data, $branch, $user, (int) $sale->id, $clientUuid);
+                    $sale->update([
+                        'subtotal' => $totals['subtotal'],
+                        'discount_type' => $discountType,
+                        'discount_value' => $discountValue,
+                        'discount_amount' => $totals['discount_amount'],
+                        'promotion_id' => $totals['promotion_id'],
+                        'promo_code' => $totals['promo_code'],
+                        'tax_amount' => $totals['tax_amount'],
+                        'service_charge_amount' => $totals['service_charge_amount'],
+                        'tip_amount' => $totals['tip_amount'] ?? 0,
+                        'grand_total' => $totals['grand_total'],
+                    ]);
+                }
 
                 $paidAmount = array_sum(array_map(fn ($p) => (float) $p['amount'], $payments));
                 if ($paidAmount + 1e-6 < (float) $sale->grand_total) {
@@ -928,14 +1551,18 @@ class EdgeLocalPosService
                         : 0;
                 }, $payments));
 
-                $sale->update([
+                $sale->update(array_merge([
                     'client_uuid' => $clientUuid,
                     'client_payload_hash' => $payloadHash,
                     'paid_amount' => $paidAmount,
                     'change_amount' => max($changeTotal, max($paidAmount - (float) $sale->grand_total, 0)),
                     'status' => 'paid',
+                    // A paid order is never a draft — same finalization rule as Cloud SalesService::finalizePaidSale.
+                    'is_draft' => false,
                     'completed_at' => now(),
-                ]);
+                    // W-G1: the SAME initial Direct Pay print state Online writes when a held sale is paid (:392) — the
+                    // controller orchestrates KOT/receipt AFTER this commit (and on a replay) through the shared orchestrator.
+                ], $directPayPrintState ? ['direct_pay_print_state' => $directPayPrintState] : []));
 
                 // Operational stock: the FINAL quantities, exactly once, at settle (never during rounds).
                 // The sale carries the LOCKED current lines (loadMissing respects a set relation).
@@ -947,6 +1574,11 @@ class EdgeLocalPosService
                 // Shared operational settlement + the shared "payment settles the table" custody rule.
                 $this->settlement->settle($sale->fresh());
                 $this->salesService->closeRestaurantTableSession($sale->fresh());
+
+                // OFFLINE-SYNC-ENGINE-1B: ONE outbox row for the FINAL settled sale (never for holds
+                // or Add Rounds) — inside this same transaction, after every operational effect.
+                $this->beforeOutboxInsert();
+                $this->outbox->createForPaidSale($sale->fresh());
 
                 return $sale->fresh();
             }, 3);
@@ -962,19 +1594,272 @@ class EdgeLocalPosService
         }
     }
 
-    /** Cancel a whole held order (REAL KotCancellationService — permission + branch approval mode + cancel-KOT event). */
-    public function cancelHeldSale(int $saleId, int $reasonId, ?int $managerApprovalId, User $user): array
+    /**
+     * Cancel a whole held order (REAL KotCancellationService — permission + branch approval mode + cancel-KOT
+     * event, which frees the table). POS-CANCEL-TERMINAL-1 parity (canonical 22ad93e): the cancellation
+     * KOT/reminder print where the OPERATOR STANDS — the current cancelling counter — while the order itself
+     * keeps its original terminal_id for reporting (the shared service never rewrites it).
+     */
+    public function cancelHeldSale(int $saleId, int $reasonId, ?int $managerApprovalId, User $user, ?int $terminalId = null): array
     {
         $meta = $this->context->requireCurrent();
         $branchId = (int) $meta->branch_id;
         $this->requireAuthorizedPrincipal($user, $branchId);
+        $this->requireLocalAuthority();
+        $terminal = $terminalId !== null ? $this->requireActiveTerminal($terminalId, $branchId) : null;
 
         $sale = SalesOrder::on('tenant')->where('id', $saleId)->where('branch_id', $branchId)->where('status', 'held')->first();
         if (! $sale) {
             throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to cancel.']);
         }
 
-        return $this->kotCancellations->cancelHeldOrder($sale, $reasonId, $managerApprovalId, (int) $user->id);
+        return $this->kotCancellations->cancelHeldOrder($sale, $reasonId, $managerApprovalId, (int) $user->id, $terminal ? (string) $terminal->id : null);
+    }
+
+    /**
+     * SPLIT BILL parity (canonical SplitBillController::store): move selected quantities off a HELD check onto a
+     * NEW HELD check on the same table session — same customer, waiter, business_date, sale_date (SALE-DATE-TRUTH),
+     * terminal and shift — pro-rating discount / tax / service charge, carrying the kitchen-sent state (the split
+     * portion was already cooked: no re-KOT, no spurious "cancellation required"), and recalculating the parent.
+     * Each check then pays on its own (settleHeldSale → operational stock ONCE per check, ONE outbox row per settled
+     * sale, exactly-once by its own sale_uuid); the table frees when the LAST check settles (shared custody rule).
+     * Lock order: shift → session → sale (the restaurant order used everywhere else on the appliance).
+     *
+     * @return array{child: SalesOrder, parent: SalesOrder}
+     */
+    public function splitHeldSale(int $saleId, array $lines, User $user, ?int $terminalId, ?string $notes = null): array
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $activationEpoch = (int) $meta->activation_epoch;
+        $this->requireAuthorizedPrincipal($user, $branchId);
+        $terminal = $this->requireActiveTerminal($terminalId, $branchId);
+
+        $selected = collect($lines)->filter(fn ($l) => ! empty($l['sales_order_line_id']) && (float) ($l['quantity'] ?? 0) > 0)->values();
+        if ($selected->isEmpty()) {
+            throw ValidationException::withMessages(['lines' => 'Select at least one item quantity to split.']);
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($saleId, $selected, $user, $branchId, $terminal, $activationEpoch, $notes) {
+            [$user] = $this->revalidateInTxn($user, $branchId, $terminal->id);
+
+            $probe = SalesOrder::on('tenant')->where('id', $saleId)->where('branch_id', $branchId)->where('status', 'held')->first();
+            if (! $probe) {
+                throw ValidationException::withMessages(['held_sale_id' => 'Only held sales can be split.']);
+            }
+            $shift = Shift::on('tenant')->where('id', (int) $probe->shift_id)->lockForUpdate()->first();
+            if (! $shift || $shift->status !== 'open') {
+                throw new RuntimeException('The shift this check belongs to is not open.');
+            }
+            if ($probe->restaurant_table_session_id) {
+                RestaurantTableSession::on('tenant')->where('id', (int) $probe->restaurant_table_session_id)->lockForUpdate()->first();
+            }
+            $sale = SalesOrder::on('tenant')->where('id', $saleId)->where('status', 'held')->lockForUpdate()->first();
+            if (! $sale) {
+                throw ValidationException::withMessages(['held_sale_id' => 'Only held sales can be split.']);
+            }
+            $existing = $sale->lines()->lockForUpdate()->get()->keyBy('id');
+
+            $childUlid = (string) Str::ulid();
+            $child = new SalesOrder([
+                'sale_no' => 'SO-' . $branchId . '-' . (int) $sale->terminal_id . '-' . $childUlid,
+                'branch_id' => $branchId,
+                'terminal_id' => $sale->terminal_id,                 // the check's own counter (never the splitter's)
+                'shift_id' => $sale->shift_id,
+                'customer_id' => $sale->customer_id,
+                'customer_name' => $sale->customer_name,
+                'customer_phone' => $sale->customer_phone,
+                'customer_email' => $sale->customer_email,
+                'restaurant_floor_id' => $sale->restaurant_floor_id,
+                'restaurant_table_id' => $sale->restaurant_table_id,
+                'restaurant_table_session_id' => $sale->restaurant_table_session_id,
+                'restaurant_waiter_id' => $sale->restaurant_waiter_id,
+                'order_source' => $sale->order_source,
+                'order_type' => $sale->order_type,
+                'vehicle_number' => $sale->vehicle_number,
+                'delivery_channel_id' => $sale->delivery_channel_id,
+                'delivery_rider_id' => $sale->delivery_rider_id,
+                'delivery_address' => $sale->delivery_address,
+                // SALE-DATE-TRUTH-1 / business date: the child IS the same check — it inherits when the food was ordered.
+                'sale_date' => $sale->sale_date ?? now(),
+                'business_date' => $sale->business_date?->toDateString() ?? $shift->business_date?->toDateString(),
+                'subtotal' => 0, 'discount_type' => 'none', 'discount_value' => 0, 'discount_amount' => 0,
+                'tax_amount' => 0, 'service_charge_amount' => 0, 'delivery_charge_amount' => 0, 'tip_amount' => 0,
+                'grand_total' => 0, 'paid_amount' => 0, 'change_amount' => 0,
+                'status' => 'held',
+                'is_draft' => false,
+                'inventory_posted' => false,
+                'created_by_user_id' => $user->id,
+                'notes' => $notes ?: ('Split from ' . $sale->sale_no),
+                'edge_sync_state' => 'pending',
+                'edge_activation_epoch' => $activationEpoch,
+            ]);
+            $child->sale_uuid = $childUlid;
+            $child->save();
+
+            $subtotal = 0.0; $discountTotal = 0.0; $taxTotal = 0.0; $grandTotal = 0.0;
+            foreach ($selected as $input) {
+                $heldLine = $existing->get((int) $input['sales_order_line_id']);
+                if (! $heldLine) {
+                    throw ValidationException::withMessages(['lines' => 'A split line does not belong to this order.']);
+                }
+
+                // DEAL-WHOLE-SPLIT-1 twin (canonical 8c8ee79e, rehearsal chunk 11): a deal moves WHOLE. Its items are not rows of
+                // their own on the split page — they follow their deal below. Moving one alone left the deal's price on one bill
+                // and its food on the other (and, with DEAL-SPLIT-REPORT-1, the report could no longer split it). Online's words.
+                if (($heldLine->line_kind ?? 'standard') === 'component' && $heldLine->parent_sales_order_line_id) {
+                    throw new RuntimeException($heldLine->product_name . ' is part of a deal — split the deal itself; its items go with it.');
+                }
+
+                $splitQty = \App\Support\LineQuantity::normalize($input['quantity'], (string) $heldLine->product_name);
+                $availableQty = (float) $heldLine->quantity;
+                if ($splitQty <= 0) {
+                    continue;
+                }
+
+                // W2-B (canonical SplitBillController::store; owner C-2 REFUSE_NOT_CAP, 15 Nov 2026): a pack line splits in whole
+                // packs and a counted item in whole pieces — unless it moves everything the line holds (a line split in the past
+                // may hold a part). The SAME words as Online, so the two tills never disagree on what may be split.
+                $countedLine = \App\Support\CounterPacks::sizeOf($heldLine) > 0 || ! \App\Support\LineQuantity::partsAllowed($heldLine->product?->unit);
+                if ($countedLine && ! \App\Support\LineQuantity::isWhole($splitQty) && abs($splitQty - $availableQty) > 0.0005) {
+                    throw new RuntimeException(\App\Support\LineQuantity::wholeMessage((string) $heldLine->product_name,
+                        \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? (string) ($heldLine->unit_code ?: '') : \App\Support\LineQuantity::unitName($heldLine->product?->unit), $splitQty));
+                }
+
+                $isDeal = ($heldLine->line_kind ?? 'standard') === 'combo_header';
+                if ($isDeal && ! \App\Support\LineQuantity::isWhole($splitQty) && abs($splitQty - $availableQty) > 0.0005) {
+                    throw new RuntimeException($heldLine->product_name . ' is a deal — it splits in whole deals, not ' . \App\Support\LineQuantity::show($splitQty) . '.');
+                }
+
+                if ($splitQty > $availableQty + 0.0001) {
+                    throw new RuntimeException('Split quantity exceeds available quantity for ' . $heldLine->product_name . '.');
+                }
+                $ratio = $availableQty > 0 ? $splitQty / $availableQty : 0;
+
+                // The deal's items (locked with the rest above), read before the deal line moves — a fully moved deal line is deleted.
+                $items = $isDeal
+                    ? $existing->filter(fn ($l) => (int) $l->parent_sales_order_line_id === (int) $heldLine->id)->sortBy('id')->values()
+                    : collect();
+
+                // DEAL-SPLIT-REPORT-1: moved lines keep the parts they were sold with (or none) — never re-stamped from the deal.
+                [$moved, $newDealLine] = \App\Support\DealSplit::copying(fn () => $this->moveSplitLine($child, $heldLine, $splitQty, $ratio, null));
+                foreach ($items as $item) {
+                    $itemQty = round((float) $item->quantity * $ratio, 3);
+                    if ($itemQty <= 0) {
+                        continue;
+                    }
+                    $itemRatio = min($itemQty / max((float) $item->quantity, 0.000001), 1);
+                    [$itemMoved] = \App\Support\DealSplit::copying(fn () => $this->moveSplitLine($child, $item, $itemQty, $itemRatio, (int) $newDealLine->id));
+                    foreach ($itemMoved as $k => $v) {
+                        $moved[$k] += $v;
+                    }
+                }
+
+                $subtotal += $moved['subtotal']; $discountTotal += $moved['discount']; $taxTotal += $moved['tax']; $grandTotal += $moved['total'];
+            }
+            if ($child->lines()->count() === 0) {
+                throw new RuntimeException('No valid split lines found.');
+            }
+            // service charge pro-rated by subtotal against the original check (canonical BUG-048 rule).
+            $origSubtotal = (float) $sale->subtotal;
+            $origSC = (float) $sale->service_charge_amount;
+            $childSC = ($origSubtotal > 0 && $origSC > 0) ? round($origSC * ($subtotal / $origSubtotal), 2) : 0.0;
+            $child->update([
+                'subtotal' => $subtotal, 'discount_amount' => $discountTotal, 'tax_amount' => $taxTotal,
+                'service_charge_amount' => $childSC, 'grand_total' => $grandTotal + $childSC,
+            ]);
+            $this->recalculateHeldSaleAfterSplit($sale, $origSubtotal, $origSC);
+
+            return ['child' => $child->fresh(), 'parent' => $sale->fresh()];
+        });
+    }
+
+    /**
+     * Move $splitQty of a held line onto the child check (same price, its share of discount / tax / kitchen-sent state) and
+     * shrink — or remove — what stays: EXACTLY canonical SplitBillController::moveLine. DEAL-WHOLE-SPLIT-1: a deal's item passes
+     * its new deal line as $parentId, so it stays linked to its deal on the new bill. A pack / batch column rides only when the
+     * line carries one (the Branch Server sells no packs today; the columns exist after the manifest migrations).
+     *
+     * @return array{0: array{subtotal: float, discount: float, tax: float, total: float}, 1: SalesOrderLine}
+     */
+    private function moveSplitLine(SalesOrder $child, SalesOrderLine $heldLine, float $splitQty, float $ratio, ?int $parentId): array
+    {
+        $availableQty = (float) $heldLine->quantity;
+        $splitDiscount = round((float) $heldLine->discount_amount * $ratio, 2);
+        $splitTax = round((float) $heldLine->tax_amount * $ratio, 2);
+        $splitSubtotal = round($splitQty * (float) $heldLine->unit_price, 2);
+        $splitLineTotal = max($splitSubtotal - $splitDiscount + $splitTax, 0);
+
+        $carried = array_filter([
+            'pack_unit_id' => $heldLine->pack_unit_id ?? null,
+            'pack_factor' => $heldLine->pack_factor ?? null,
+            'pack_size' => $heldLine->pack_size ?? null,
+            'base_quantity' => \App\Support\CounterPacks::sizeOf($heldLine) > 0 ? round($splitQty * \App\Support\CounterPacks::sizeOf($heldLine), 3) : null,
+            'inventory_batch_id' => $heldLine->inventory_batch_id ?? null,
+        ], fn ($v) => $v !== null);
+
+        $newLine = $child->lines()->make([
+            'product_id' => $heldLine->product_id,
+            'product_variant_id' => $heldLine->product_variant_id,
+            'product_name' => $heldLine->product_name,
+            'variant_name' => $heldLine->variant_name,
+            'quantity' => $splitQty,
+            'unit_price' => $heldLine->unit_price,
+            'unit_cost' => 0, 'cost_total' => 0,
+            'discount_amount' => $splitDiscount,
+            'tax_amount' => $splitTax,
+            'line_total' => $splitLineTotal,
+            'modifiers' => $heldLine->modifiers ?? [],
+            'unit_code' => $heldLine->unit_code,
+            'line_kind' => $heldLine->line_kind ?? 'standard',
+            'combo_id' => $heldLine->combo_id,
+            'kitchen_note' => $heldLine->kitchen_note,
+            // already sent as part of the original order — paying it later must not re-KOT it.
+            'kot_sent' => (float) $heldLine->kot_sent_quantity > 0,
+            'kot_sent_quantity' => min((float) $heldLine->kot_sent_quantity, $splitQty),
+        ] + $carried + ($parentId ? ['parent_sales_order_line_id' => $parentId] : []));
+        // DEAL-SPLIT-REPORT-1: named only when it has a value (a switch-off tenant — every Branch Server — never names the column).
+        if (($heldLine->deal_share ?? null) !== null) {
+            $newLine->forceFill(['deal_share' => $heldLine->deal_share]);
+        }
+        $newLine->save();
+
+        $remainingQty = round($availableQty - $splitQty, 6);
+        if ($remainingQty <= 0.0001) {
+            $heldLine->delete();
+        } else {
+            $remainingRatio = $remainingQty / $availableQty;
+            $heldLine->update([
+                'quantity' => $remainingQty,
+                'discount_amount' => round((float) $heldLine->discount_amount * $remainingRatio, 2),
+                'tax_amount' => round((float) $heldLine->tax_amount * $remainingRatio, 2),
+                'line_total' => round((float) $heldLine->line_total * $remainingRatio, 2),
+                'kot_sent_quantity' => min((float) $heldLine->kot_sent_quantity, $remainingQty),
+            ] + (\App\Support\CounterPacks::sizeOf($heldLine) > 0 ? ['base_quantity' => round($remainingQty * \App\Support\CounterPacks::sizeOf($heldLine), 3)] : []));
+        }
+
+        return [['subtotal' => $splitSubtotal, 'discount' => $splitDiscount, 'tax' => $splitTax, 'total' => $splitLineTotal], $newLine];
+    }
+
+    /**
+     * Parent after a split — EXACTLY canonical SplitBillController::recalculateHeldSale: totals re-summed from the
+     * remaining lines (grand_total = Σ line_total); an emptied parent is cancelled. Cloud and Edge must land on the
+     * same numbers for the same split, so no Edge-side re-pro-rating is added here.
+     */
+    private function recalculateHeldSaleAfterSplit(SalesOrder $sale, float $origSubtotal, float $origSC): void
+    {
+        $lines = $sale->lines()->get();
+        if ($lines->isEmpty()) {
+            $sale->update(['subtotal' => 0, 'discount_amount' => 0, 'tax_amount' => 0, 'grand_total' => 0, 'status' => 'cancelled']);
+
+            return;
+        }
+        $sale->update([
+            'subtotal' => round((float) $lines->sum(fn ($l) => (float) $l->quantity * (float) $l->unit_price), 2),
+            'discount_amount' => round((float) $lines->sum('discount_amount'), 2),
+            'tax_amount' => round((float) $lines->sum('tax_amount'), 2),
+            'grand_total' => round((float) $lines->sum('line_total'), 2),
+        ]);
     }
 
     /** Close/cancel a table session with NO remaining open orders (Cloud close semantics) and free the table. */
@@ -983,6 +1868,7 @@ class EdgeLocalPosService
         $meta = $this->context->requireCurrent();
         $branchId = (int) $meta->branch_id;
         $this->requireAuthorizedPrincipal($user, $branchId);
+        $this->requireLocalAuthority();
         if (! in_array($targetStatus, ['closed', 'cancelled'], true)) {
             throw ValidationException::withMessages(['status' => 'A table session can only be closed or cancelled.']);
         }
@@ -994,37 +1880,327 @@ class EdgeLocalPosService
             }
             // LOCKING (current) read — a concurrent hold on this session serializes against the close
             // instead of slipping past the transaction snapshot (same rule as closeRestaurantTableSession).
+            // CANCEL-PAID-FREES-TABLE-1 (canonical 7a1d1087, merge D8): only a RUNNING bill (held / draft) keeps the table — an
+            // all-paid session closes from the board exactly as on the Online POS, with the SAME refusal text.
             if (SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)->whereIn('status', ['draft', 'held'])->lockForUpdate()->exists()) {
-                throw new RuntimeException('This table still has open orders — settle or cancel them first.');
+                throw new RuntimeException('This table has an open order now. Cancel or complete it through POS before closing.');
             }
             $session->update(['status' => $targetStatus, 'closed_by_user_id' => $user->id, 'closed_at' => now()]);
-            RestaurantTable::on('tenant')->where('id', $session->restaurant_table_id)->update(['status' => 'available']);
+            // EDGE-CONFIG-REFRESH-1: never resurrect a tombstoned table — if a config refresh removed
+            // this table while the session was open, closing must leave it 'inactive', not 'available'.
+            RestaurantTable::on('tenant')->where('id', $session->restaurant_table_id)
+                ->where('status', '!=', 'inactive')->update(['status' => 'available']);
 
             return $session->fresh();
         });
     }
 
-    /** Server-side line resolution. STANDARD lines NEVER trust request price/tax — resolved from catalog/config. */
-    private function resolveLines(array $lines, Branch $branch): array
+    /**
+     * Server-side line resolution. STANDARD lines NEVER trust request price/tax — resolved from catalog/config.
+     *
+     * HIDDEN-PRODUCT-HELD-BILL-1 parity (canonical cba7e09): a product hidden/deactivated AFTER it landed on
+     * an open bill must keep that bill recallable AND payable. A CARRIED line (named by its existing line id
+     * on Add Round) is therefore re-resolved for identity/tax only and never refused for visibility; a NEW
+     * line still has to be live on the menu.
+     */
+    private function resolveLines(array $lines, Branch $branch, bool $carriedFromOpenBill = false, bool $quoteOnly = false): array
     {
-        return array_map(function ($line) use ($branch) {
-            $product = Product::on('tenant')->with('unit')->findOrFail($line['product_id']);
-            $variant = $this->inventory->resolveVariant($product, $line['product_variant_id'] ?? null);
-            if (! $product->is_sellable || ! $product->is_pos_visible || $product->status !== 'active') {
+        $out = [];
+        foreach (array_values($lines) as $i => $line) {
+            // W-G3 (G2): the page's per-line identity key rides on the NAMED row only (Online's $savedLinePayload keys the
+            // line the client posted; a deal's server-expanded components carry none).
+            $clientKey = isset($line['client_line_key']) && $line['client_line_key'] !== '' ? (string) $line['client_line_key'] : null;
+            if (! empty($line['combo_id'])) {
+                // DEAL parity: the client names the deal + quantity ONLY; topology and prices come from the
+                // synced combo book (never a client-supplied header/component price).
+                foreach ($this->expandCombo((int) $line['combo_id'], (float) ($line['quantity'] ?? 0), $branch, 'deal-' . $i . '-' . (int) $line['combo_id']) as $entry) {
+                    if (($entry['line_kind'] ?? '') === 'combo_header') {
+                        $entry['_client_line_key'] = $clientKey;
+                    }
+                    $out[] = $entry;
+                }
+                continue;
+            }
+            $product = Product::on('tenant')->with('unit')->find((int) ($line['product_id'] ?? 0));
+            if (! $product) {
+                throw ValidationException::withMessages(['lines' => 'A product on this order is not in the synced menu.']);
+            }
+            $variant = $this->resolveLineVariant($product, $line['product_variant_id'] ?? null, $carriedFromOpenBill);
+            if (! $carriedFromOpenBill && (! $product->is_sellable || ! $product->is_pos_visible || $product->status !== 'active')) {
                 throw new RuntimeException($product->name . ' is not available for POS sale.');
             }
             $qty = (float) $line['quantity'];
-            // H6: ignore any submitted unit_price/tax on a standard line — server is the price authority.
-            $price = $this->pricing->resolveSellingPrice($product, $variant, $branch->id, null);
-            $disc = (float) ($line['discount_amount'] ?? 0);
+            // W2 modifiers (A7): options + price deltas come from the SYNCED modifier book (never the request). A carried
+            // line that names no options keeps the ones it was ordered with (reviseHeldSale fills them from the old row).
+            $keepModifiers = $carriedFromOpenBill && ! array_key_exists('modifiers', $line);
+            $modifiers = $keepModifiers ? [] : ($carriedFromOpenBill
+                ? $this->normalizeSubmittedModifiers($line['modifiers'] ?? null)
+                : $this->resolveModifiers($product, $line['modifiers'] ?? null, (int) $branch->id, enforceSelection: ! $quoteOnly));
+            // H6: ignore any submitted unit_price/tax on a standard line — server is the price authority. Modifier deltas fold
+            // into the unit price exactly as the Online POS folds them (productPrice + modifierPriceDelta).
+            $price = round($this->pricing->resolveSellingPrice($product, $variant, $branch->id, null)
+                + array_sum(array_map(fn ($m) => (float) $m['price_delta'], $modifiers)), 2);
+            $disc = round((float) ($line['discount_amount'] ?? 0), 2);
             $tax = $this->pricing->resolveTaxAmount($product, $qty, $price, $disc, null);
 
-            return [
+            $out[] = [
                 '_product' => $product, '_variant' => $variant, 'product_id' => $product->id,
                 'category_id' => $product->category_id, 'quantity' => $qty, 'unit_price' => $price,
                 'discount_amount' => $disc, 'tax_amount' => $tax, 'line_kind' => 'standard',
-                'modifiers' => $line['modifiers'] ?? null,
+                'modifiers' => $modifiers ?: null, '_keep_modifiers' => $keepModifiers,
+                'kitchen_note' => isset($line['kitchen_note']) ? (string) $line['kitchen_note'] : null,
+                '_client_line_key' => $clientKey,
             ];
-        }, $lines);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Expand a deal the way the current Online POS sells it: ONE header row (the first component's product as
+     * the header product, product_name = the deal name, the bundle price, line_kind combo_header, combo_id) and
+     * one component row per bundled item (price 0, line_kind component, quantity × deal quantity, combo_id).
+     * Components are exempt from the grid-visibility rule (they are deliberately not POS-visible); the deal
+     * itself must be active and on this branch.
+     */
+    private function expandCombo(int $comboId, float $qty, Branch $branch, string $key): array
+    {
+        if ($qty <= 0) {
+            throw ValidationException::withMessages(['lines' => 'A deal needs a quantity.']);
+        }
+        $combo = Combo::on('tenant')->with('components')->where('id', $comboId)->where('status', 'active')
+            ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branch->id))->first();
+        if (! $combo || $combo->components->isEmpty()) {
+            throw new RuntimeException('This deal is not available for POS sale.');
+        }
+        $components = $combo->components->sortBy('sort_order')->values();
+        $headerProduct = Product::on('tenant')->with('unit')->findOrFail((int) $components->first()->product_id);
+        $price = (float) $combo->price;
+
+        $entries = [[
+            '_product' => $headerProduct, '_variant' => null, 'product_id' => (int) $headerProduct->id,
+            'category_id' => $headerProduct->category_id, 'quantity' => $qty, 'unit_price' => $price,
+            'discount_amount' => 0.0, 'tax_amount' => $this->pricing->resolveTaxAmount($headerProduct, $qty, $price, 0.0, null),
+            'line_kind' => 'combo_header', 'combo_id' => (int) $combo->id, '_line_name' => (string) $combo->name,
+            '_key' => $key, 'modifiers' => null,
+        ]];
+        foreach ($components as $c) {
+            $product = Product::on('tenant')->with('unit')->findOrFail((int) $c->product_id);
+            $variant = $this->inventory->resolveVariant($product, $c->product_variant_id);
+            $entries[] = [
+                '_product' => $product, '_variant' => $variant, 'product_id' => (int) $product->id,
+                'category_id' => $product->category_id, 'quantity' => round((float) $c->quantity * $qty, 3),
+                'unit_price' => 0.0, 'discount_amount' => 0.0, 'tax_amount' => 0.0,
+                'line_kind' => 'component', 'combo_id' => (int) $combo->id, '_component_of' => $key, 'modifiers' => null,
+            ];
+        }
+
+        return $entries;
+    }
+
+    /**
+     * A8 VARIANTS — the variant a line sells: the named one must belong to the product (Online `exists:product_variants`
+     * + InventoryService::resolveVariant ownership) and, for a NEW line, be active on the synced menu; no variant named →
+     * the product's default variant (the shared resolveVariant rule — the same one Cloud uses).
+     */
+    private function resolveLineVariant(Product $product, $variantId, bool $carriedFromOpenBill): ?\App\Models\Tenant\ProductVariant
+    {
+        if ($variantId === null || $variantId === '' || (int) $variantId <= 0) {
+            return $this->inventory->resolveVariant($product, null);
+        }
+        $variant = \App\Models\Tenant\ProductVariant::on('tenant')->where('product_id', $product->id)->where('id', (int) $variantId)->first();
+        if (! $variant) {
+            throw ValidationException::withMessages(['lines' => 'The selected option of ' . $product->name . ' does not belong to it.']);
+        }
+        if (! $carriedFromOpenBill && ! (bool) ($variant->is_active ?? true)) {
+            throw new RuntimeException($product->name . ' (' . $variant->name . ') is not available for POS sale.');
+        }
+
+        return $variant;
+    }
+
+    /**
+     * A7 MODIFIERS — resolve the requested options against the SYNCED modifier book: every option must be ACTIVE and belong
+     * to an ACTIVE group attached to this product (product_modifier_group) that the bound branch may use (branch_id NULL
+     * or this branch — Online activeModifierGroups). Each attached group's min/max selection (Online validateModifierModal)
+     * is enforced HERE as well, so the kitchen can never receive a line missing a required choice. Names and price deltas
+     * come from the book, never the request. Returned in Online's normalizeLineModifiers shape (what the envelope, KOT and
+     * receipt already carry).
+     *
+     * PHASE 3 (B) — `$enforceSelection = false` is the totals QUOTE (previewBill $quoteOnly): the options the page sent are
+     * priced from the book, an option that is not on this product's menu is simply left out, and the min/max rules are not
+     * applied — Online's quoteTotals validates none of this. Every mutating path keeps the strict default.
+     *
+     * @return array<int, array{modifier_group_id:int, modifier_group_name:string, modifier_id:int, name:string, price_delta:float}>
+     */
+    private function resolveModifiers(Product $product, $requested, int $branchId, bool $enforceSelection = true): array
+    {
+        $requestedIds = collect($this->normalizeSubmittedModifiers($requested))->pluck('modifier_id')->unique()->values();
+        $groups = \App\Models\Tenant\ModifierGroup::on('tenant')
+            ->join('product_modifier_group as pmg', 'pmg.modifier_group_id', '=', 'modifier_groups.id')
+            ->where('pmg.product_id', $product->id)
+            ->where('modifier_groups.status', 'active')
+            // ONLINE-ORDERING-1 parity (merge D8): a website-only group is neither offered nor required at the till (showsOnPos()).
+            ->where(fn ($q) => $q->whereNull('modifier_groups.channel')->orWhere('modifier_groups.channel', '!=', 'website'))
+            ->where(fn ($q) => $q->whereNull('modifier_groups.branch_id')->orWhere('modifier_groups.branch_id', $branchId))
+            ->orderBy('pmg.sort_order')->orderBy('modifier_groups.sort_order')
+            ->get(['modifier_groups.*', 'pmg.sort_order as pivot_sort']);
+        $options = \App\Models\Tenant\Modifier::on('tenant')->whereIn('modifier_group_id', $groups->pluck('id')->all() ?: [0])
+            ->where('status', 'active')->orderBy('sort_order')->orderBy('id')->get()->keyBy('id');
+        // Online presents only groups that have options (activeModifierGroups) — an empty group is not a requirement.
+        $groups = $groups->filter(fn ($g) => $options->contains(fn ($o) => (int) $o->modifier_group_id === (int) $g->id))->values();
+
+        $selected = [];
+        foreach ($requestedIds as $id) {
+            $option = $options->get($id);
+            if (! $option) {
+                if (! $enforceSelection) {
+                    continue; // a quote prices what it can; the store refuses it
+                }
+                throw ValidationException::withMessages(['lines' => 'An option chosen for ' . $product->name . ' is not available on this menu.']);
+            }
+            $selected[] = $option;
+        }
+        foreach ($enforceSelection ? $groups : collect() as $group) {
+            $count = count(array_filter($selected, fn ($o) => (int) $o->modifier_group_id === (int) $group->id));
+            $min = (int) $group->min_select;
+            $max = $group->max_select !== null ? (int) $group->max_select : null;
+            if ($count < $min) {
+                throw ValidationException::withMessages(['lines' => 'Select at least ' . $min . ' option' . ($min === 1 ? '' : 's') . ' for ' . $group->name . ' on ' . $product->name . '.']);
+            }
+            if ($max !== null && $max > 0 && $count > $max) {
+                throw ValidationException::withMessages(['lines' => 'Select no more than ' . $max . ' option' . ($max === 1 ? '' : 's') . ' for ' . $group->name . ' on ' . $product->name . '.']);
+            }
+        }
+        $groupById = $groups->keyBy('id');
+
+        return collect($selected)
+            ->sortBy(fn ($o) => sprintf('%06d-%06d-%09d', (int) ($groupById->get($o->modifier_group_id)?->pivot_sort ?? 0), (int) $o->sort_order, (int) $o->id))
+            ->map(fn ($o) => [
+                'modifier_group_id' => (int) $o->modifier_group_id,
+                'modifier_group_name' => (string) ($groupById->get($o->modifier_group_id)?->name ?? ''),
+                'modifier_id' => (int) $o->id,
+                'name' => (string) $o->name,
+                'price_delta' => round((float) $o->price_delta, 2),
+            ])->values()->all();
+    }
+
+    /** Online SalesOrderController::normalizeLineModifiers — JSON string or array → the canonical option list. */
+    private function normalizeSubmittedModifiers($value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return collect($value)->filter(fn ($m) => is_array($m))
+            ->map(fn ($m) => [
+                'modifier_group_id' => (int) ($m['modifier_group_id'] ?? 0),
+                'modifier_group_name' => (string) ($m['modifier_group_name'] ?? ''),
+                'modifier_id' => (int) ($m['modifier_id'] ?? 0),
+                'name' => (string) ($m['name'] ?? ''),
+                'price_delta' => round((float) ($m['price_delta'] ?? 0), 2),
+            ])->filter(fn ($m) => $m['modifier_id'] > 0)->values()->all();
+    }
+
+    /** Online modifierSignature — the option identity of a line (group:option, sorted). */
+    private function modifierSignature(array $modifiers): string
+    {
+        $keys = array_map(fn ($m) => (int) ($m['modifier_group_id'] ?? 0) . ':' . (int) ($m['modifier_id'] ?? 0), $this->normalizeSubmittedModifiers($modifiers));
+        sort($keys);
+
+        return implode('|', $keys);
+    }
+
+    /**
+     * Manual discount gate — the same contract as Cloud POST /pos: a manual discount above 0.009 needs a manager
+     * approval unless the branch auto-approves; the approval is CONSUMED (single use, payload-bound) inside the
+     * sale transaction. On the appliance the approval is minted by verifyManagerApproval('manual_discount').
+     */
+    private function consumeManualDiscountApproval(array $totals, array $data, Branch $branch, User $user, int $saleId, ?string $clientUuid): void
+    {
+        $manual = (float) ($totals['manual_discount_amount'] ?? 0);
+        if ($manual <= 0.009) {
+            return;
+        }
+        $mode = $branch->manual_discount_approval_mode ?? Branch::MANUAL_DISCOUNT_MANAGER_REQUIRED;
+        if ($mode === Branch::MANUAL_DISCOUNT_AUTO_APPROVE) {
+            return;
+        }
+        if (empty($data['manager_approval_id'])) {
+            throw ValidationException::withMessages(['manager_approval_id' => 'Manager approval is required for a manual discount.']);
+        }
+        $approval = \App\Models\Tenant\ManagerApproval::on('tenant')->find((int) $data['manager_approval_id']);
+        if (! $approval) {
+            throw ValidationException::withMessages(['manager_approval_id' => 'Manager approval was not found.']);
+        }
+        try {
+            app(\App\Services\Sales\ManagerApprovalService::class)->consume($approval, 'manual_discount', (int) $user->id, [
+                'sales_order_id' => $saleId,
+                'branch_id' => (int) $branch->id,
+                'client_uuid' => (string) ($clientUuid ?? ''),
+                'discount_type' => (string) ($data['discount_type'] ?? 'none'),
+                'discount_value' => round((float) ($data['discount_value'] ?? 0), 2),
+                'discount_amount' => round($manual, 2),
+            ]);
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['manager_approval_id' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * DELIVERY parity (canonical SalesOrderController::store): a delivery order (without a table session) needs
+     * an active channel; an own-delivery channel needs a customer from the (synced) book while an AGGREGATOR
+     * channel owns its customer (AGGREGATOR-CUSTOMER-OPTIONAL); the rider is optional and must be active on this
+     * branch; the charge follows the branch lock (locked → configured default, else the submitted amount).
+     *
+     * @return array{channel_id:?int, rider_id:?int, address:?string, charge:float}
+     */
+    private function resolveDeliveryAttribution(string $orderType, array $data, Branch $branch, ?RestaurantTableSession $session): array
+    {
+        $none = ['channel_id' => null, 'rider_id' => null, 'address' => null, 'charge' => 0.0];
+        if ($orderType !== 'delivery' || $session) {
+            return $none;
+        }
+        $channel = ! empty($data['delivery_channel_id'])
+            ? \App\Models\Tenant\DeliveryChannel::on('tenant')->where('id', (int) $data['delivery_channel_id'])->where('is_active', true)->first()
+            : null;
+        if (! $channel) {
+            throw ValidationException::withMessages(['delivery_channel_id' => 'Select a delivery channel for delivery orders.']);
+        }
+        if ($channel->type !== 'aggregator' && empty($data['customer_id'])) {
+            throw ValidationException::withMessages(['customer_id' => 'Attach a customer before saving a delivery order.']);
+        }
+        if (! empty($data['customer_id']) && ! \App\Models\Tenant\Customer::on('tenant')->where('id', (int) $data['customer_id'])->exists()) {
+            throw ValidationException::withMessages(['customer_id' => 'Select a customer from the customer book.']);
+        }
+        $riderId = null;
+        // A14 ONLINE parity (SalesOrderController / HeldSaleController validateDeliveryAttribution): an OWN-delivery order
+        // needs a rider; an aggregator carries its own rider, so any submitted rider is discarded there.
+        $isOwn = $channel->isOwn();
+        if ($isOwn && empty($data['delivery_rider_id'])) {
+            throw ValidationException::withMessages(['delivery_rider_id' => 'Select a rider for own-delivery orders.']);
+        }
+        if ($isOwn && ! empty($data['delivery_rider_id'])) {
+            $rider = \App\Models\Tenant\DeliveryRider::on('tenant')->where('id', (int) $data['delivery_rider_id'])->where('status', 'active')
+                ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branch->id))->first();
+            if (! $rider) {
+                throw ValidationException::withMessages(['delivery_rider_id' => 'Select an active rider on this branch.']);
+            }
+            $riderId = (int) $rider->id;
+        }
+        $charge = $branch->delivery_charge_locked
+            ? (float) $branch->default_delivery_charge
+            : (float) ($data['delivery_charge_amount'] ?? 0);
+
+        return [
+            'channel_id' => (int) $channel->id,
+            'rider_id' => $riderId,
+            'address' => isset($data['delivery_address']) && trim((string) $data['delivery_address']) !== '' ? mb_substr(trim((string) $data['delivery_address']), 0, 500) : null,
+            'charge' => max($charge, 0.0),
+        ];
     }
 }

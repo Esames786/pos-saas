@@ -1,4 +1,6 @@
-@extends('layouts.app')
+@extends(isset($posRuntime) && $posRuntime->isEdge() ? 'layouts.pos' : 'layouts.app')
+{{-- W-A: every endpoint of this shared screen comes from the runtime map; Online controllers pass no runtime → the Cloud one. --}}
+@php $posRuntime = $posRuntime ?? app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make(); @endphp
 
 @section('title', 'Shifts')
 
@@ -11,12 +13,16 @@
 
     <div class="d-flex gap-2">
         @can('tenant.shifts.close')
-            <a href="{{ url('/shifts-close-branch') }}" class="btn btn-outline-danger">
+            @if($posRuntime->route('shiftCloseBranchPage') !== null)
+            <a href="{{ $posRuntime->route('shiftCloseBranchPage') }}" class="btn btn-outline-danger">
+            @else
+            <a class="btn btn-outline-danger disabled" aria-disabled="true" tabindex="-1" title="{{ $posRuntime->labels['shiftBranchWide'] ?? $posRuntime->capabilityHint('shiftPages') }}">
+            @endif
                 <i class="ti ti-lock me-1" aria-hidden="true"></i>Close Branch
             </a>
         @endcan
         @can('tenant.shifts.create')
-            <a href="{{ url('/shifts/open') }}" class="btn btn-primary">
+            <a href="{{ $posRuntime->route('shiftOpenPage') }}" class="btn btn-primary">
                 <i class="ti ti-plus me-1" aria-hidden="true"></i>Open Shift
             </a>
         @endcan
@@ -29,7 +35,7 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <form method="GET" action="{{ url('/shifts') }}" class="row g-3 align-items-end">
+        <form method="GET" action="{{ $posRuntime->route('shiftIndexPage') }}" class="row g-3 align-items-end">
             <div class="col-md-3">
                 <label for="branch-filter" class="form-label">Branch</label>
                 <select id="branch-filter" name="branch_id" class="form-select">
@@ -63,7 +69,7 @@
             </div>
             <div class="col-md-3">
                 <button class="btn btn-dark" type="submit">Filter</button>
-                <a href="{{ url('/shifts') }}" class="btn btn-light">Reset</a>
+                <a href="{{ $posRuntime->route('shiftIndexPage') }}" class="btn btn-light">Reset</a>
             </div>
             <div class="col-12 d-flex align-items-center gap-2 pt-1">
                 <span class="small text-muted">Jaldi se:</span>
@@ -151,7 +157,11 @@
                     <td class="text-end">
                         @if($branchOpen > 0)
                             @can('tenant.shifts.close')
-                                <a href="{{ url('/shifts-close-branch?branch_id=' . $branchId) }}" class="btn btn-sm btn-danger">
+                                @if($posRuntime->route('shiftCloseBranchPage') !== null)
+                                <a href="{{ $posRuntime->route('shiftCloseBranchPage') . '?branch_id=' . $branchId }}" class="btn btn-sm btn-danger">
+                                @else
+                                <a class="btn btn-sm btn-danger disabled" aria-disabled="true" tabindex="-1" title="{{ $posRuntime->labels['shiftBranchWide'] ?? $posRuntime->capabilityHint('shiftPages') }}">
+                                @endif
                                     <i class="ti ti-lock me-1" aria-hidden="true"></i>Close Branch
                                 </a>
                             @endcan
@@ -186,7 +196,7 @@
                                 </button>
                             @endif
                             @can('tenant.shifts.show')
-                                <a href="{{ url('/shifts/' . $shift->id) }}" class="btn btn-sm btn-dark">View</a>
+                                <a href="{{ $posRuntime->route('shiftShowPage', ['shift' => $shift->id]) }}" class="btn btn-sm btn-dark">View</a>
                             @endcan
                         </td>
                     </tr>

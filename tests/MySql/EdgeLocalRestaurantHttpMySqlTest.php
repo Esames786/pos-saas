@@ -96,6 +96,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         $this->seedEdgeCredential($this->userId, $this->branchId, 1);
         // the manager's OWN Edge-local credential — manager_pins are deliberately NEVER seeded on Edge.
         $this->seedEdgeCredential($this->managerId, $this->branchId, 1, 'MgrPass1');
+        $this->markPosApprover($this->managerId); // Phase 3: eligibility is the bootstrap flag, not a permission
         $this->managerCode = (string) User::on('tenant')->find($this->managerId)->employee_code;
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
         Auth::shouldUse('tenant');
@@ -154,7 +155,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         $this->postJson('/edge/local/pos/held-sales', [
             'order_type' => 'dine_in', 'restaurant_table_session_id' => $sessionId,
             'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
-        ])->assertStatus(422);
+        ])->assertStatus(409);
         // held sale consumed NO stock and produced NO settlement.
         $this->assertSame(20.0, $this->edgeOnHand($this->baselineId, $this->productId));
         $this->assertSame(0, DB::connection('tenant')->table('sales_ledgers')->count());
@@ -212,6 +213,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         $clientUuid = (string) Str::uuid();
         $settle = $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", [
             'client_uuid' => $clientUuid,
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 350, 'tendered_amount' => 400]],
         ]);
         $settle->assertOk()->assertJsonPath('status', 'paid')->assertJsonPath('sale_uuid', $saleUuid)
@@ -229,6 +231,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         // settle replay: same client_uuid → same sale, stock NOT consumed twice.
         $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", [
             'client_uuid' => $clientUuid,
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 350, 'tendered_amount' => 400]],
         ])->assertOk()->assertJsonPath('sale_id', $saleId);
         $this->assertSame(17.0, $this->edgeOnHand($this->baselineId, $this->productId));
@@ -280,7 +283,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
             'manager_employee_code' => $this->managerCode, 'manager_credential' => 'MgrPass1', 'action_type' => 'void_kot_item',
             'payload' => ['sales_order_id' => $saleId, 'sales_order_line_id' => $lineId, 'quantity' => 2],
         ]);
-        $verify->assertStatus(201);
+        $verify->assertStatus(200);
         $this->assertSame($this->userId, (int) auth('tenant')->id(), 'manager re-auth must not replace the cashier session');
         $approvalId = $verify->json('approval_id');
         $this->assertTrue(Str::isUlid($verify->json('approval_uuid')));
@@ -334,10 +337,20 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
             'payload' => ['sales_order_id' => $saleId, 'sales_order_line_id' => $lineId, 'quantity' => 1],
         ]);
 
-        // missing permission: enrolled Edge manager credential but NO tenant.pos.void-kot-item.
+        // Phase 3 (approver eligibility): a cashier holding the full template INCLUDING tenant.pos.void-kot-item but
+        // WITHOUT the bootstrap approver flag is not an approver (W-E Finding 1 closed).
         $noPermId = $this->makeUser(['default_branch_id' => $this->branchId, 'employee_code' => 'NOPERM' . Str::random(3)]);
         $this->seedEdgeCredential($noPermId, $this->branchId, 1, 'NoPermPass1');
-        $verify(User::on('tenant')->find($noPermId)->employee_code, 'NoPermPass1')->assertStatus(422);
+        $verify(User::on('tenant')->find($noPermId)->employee_code, 'NoPermPass1')->assertStatus(422)
+            ->assertJsonPath('message', 'This user is not an approving manager (no active manager PIN on the Cloud).');
+        // an ELIGIBLE approver who lacks the permission the action needs (void-kot-item for a KOT void) is refused too.
+        $this->markPosApprover($noPermId);
+        $this->revokeEdgePermission($noPermId, 'tenant.pos.void-kot-item');
+        $verify(User::on('tenant')->find($noPermId)->employee_code, 'NoPermPass1')->assertStatus(422)
+            ->assertJsonPath('message', 'This user is not authorized to approve that action.');
+        // self-approval: the requesting cashier's OWN code + credential is refused server-side.
+        $verify(User::on('tenant')->find($this->userId)->employee_code, 'CashierPass1')->assertStatus(422)
+            ->assertJsonPath('message', 'You cannot approve your own request. Ask another manager to approve.');
 
         // wrong branch: manager belongs to another branch (no assignment here) — refused before permission.
         $otherBranch = $this->makeBranch();
@@ -357,7 +370,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
 
         // and the restored, current manager works — proving the matrix refused for the right reasons.
         $ok = $verify($this->managerCode, 'MgrPass1');
-        $ok->assertStatus(201);
+        $ok->assertStatus(200);
         $this->assertSame($this->managerId, (int) DB::connection('tenant')->table('manager_approvals')->where('id', $ok->json('approval_id'))->value('approved_by_user_id'));
     }
 
@@ -448,6 +461,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
 
         $this->postJson("/edge/local/pos/held-sales/{$saleId}/settle", [
             'client_uuid' => (string) Str::uuid(),
+            'kot_print_intent' => 'skip', 'receipt_print_intent' => 'skip',
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
         ])->assertOk()->assertJsonPath('status', 'paid');
         $this->assertSame(19.0, $this->edgeOnHand($this->baselineId, $this->productId));

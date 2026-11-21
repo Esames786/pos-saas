@@ -28,10 +28,26 @@ class EdgeBuildInfoService
             'git_commit'              => $manifest['git_commit'] ?? (string) config('edge.git_commit', 'unknown'),
             'build_timestamp'         => $manifest['build_timestamp'] ?? null,
             'bootstrap_schema'        => (string) config('edge.bootstrap_schema'),
+            'config_schema'           => (string) config('edge.config_schema'),
+            'edge_schema_version'     => $this->edgeSchemaVersion(),
+            'capabilities'            => array_values((array) config('edge.capabilities', [])),
             'sync_protocol'           => (string) config('edge.sync_protocol'),
             'min_php'                 => (string) config('edge.min_php'),
             'php_version'             => PHP_VERSION,
         ];
+    }
+
+    /**
+     * EDGE-COMPATIBILITY-CONTRACT-1 — the Edge-local DDL generation this build ships, derived from the
+     * newest migration in database/migrations/edge (grounded and self-maintaining: adding an edge
+     * migration IS the schema bump; no manually-updated constant to drift).
+     */
+    public function edgeSchemaVersion(): string
+    {
+        $names = array_map(fn ($f) => basename($f, '.php'), glob(database_path('migrations/edge/*.php')) ?: []);
+        sort($names);
+
+        return $names !== [] ? 'edge-local-schema@' . end($names) : 'edge-local-schema@none';
     }
 
     /** Can this build consume a given bootstrap-snapshot schema? (exact match this sprint). */

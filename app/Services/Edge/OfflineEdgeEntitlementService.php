@@ -60,6 +60,9 @@ class OfflineEdgeEntitlementService
 
     public function tenantHasOfflineEdgeAccess(): bool
     {
+        if (config('edge.testing.assume_entitled', false) === true) {
+            return true; // TEST-ONLY (APP_ENV=testing): the cross-process install proof; inert in production.
+        }
         $result = $this->entitlementCheck();
 
         // Commercial gate = fail closed. Only an explicit "module_enabled" verdict
@@ -86,6 +89,10 @@ class OfflineEdgeEntitlementService
 
     public function featureIsEnabled(): bool
     {
+        if (config('edge.testing.assume_entitled', false) === true) {
+            return true; // TEST-ONLY (APP_ENV=testing)
+        }
+
         return (bool) config('app.edge_feature_enabled', false);
     }
 

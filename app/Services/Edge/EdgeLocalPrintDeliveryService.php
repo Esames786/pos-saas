@@ -138,8 +138,9 @@ class EdgeLocalPrintDeliveryService
                 'raw_payload' => (string) $job->raw_payload, // EXACT stored bytes — never rebuilt (§2)
                 'ip' => (string) $job->printer->ip_address,
                 'port' => (int) ($job->printer->port ?: 9100),
+                'printer_id' => (int) $job->printer_id, // 0.8.3: for failure logging only (never a routing input)
             ];
-        });
+        }, 3); // MySQL 1213 deadlock between two workers claiming at once → retry, never a raw leak (proven under full-suite load)
     }
 
     /** TRUE = this (current) lease completed the job. FALSE = stale token: NOTHING was mutated. */
@@ -194,8 +195,10 @@ class EdgeLocalPrintDeliveryService
             $error = mb_substr($error, 0, 500);
 
             if ($failures >= self::MAX_FAILURES) {
-                // terminal: the shared markFailed runs ONCE, while the token is still the current one.
-                $this->printJobs->markFailed($job, $error);
+                // terminal: the shared failure transition runs ONCE, while the token is still the current one.
+                // 0.8.3 (G4): the TERMINAL variant — the Edge ladder already retried; the Cloud agent's auto-requeue
+                // must never put a terminal_failed delivery's job back to `queued` (unclaimable + un-retryable).
+                $this->printJobs->markFailedTerminal($job, $error);
                 $delivery->update([
                     'delivery_state' => EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED,
                     'failure_count' => $failures,
@@ -232,22 +235,62 @@ class EdgeLocalPrintDeliveryService
      * is not an Edge terminal_failed delivery — the Edge path can never retry a random queued/printed
      * or Cloud-owned job.
      */
+    /** 0.8.3 (G3): read-only — did the delivery intent of this job reach the terminal state? (for failure logging) */
+    public function isTerminalFailed(int $printJobId): bool
+    {
+        return EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->value('delivery_state') === EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED;
+    }
+
     public function retryTerminalFailed(int $printJobId): void
     {
         DB::connection('tenant')->transaction(function () use ($printJobId) {
             // ONE lock order everywhere: print_job FIRST, then its delivery row.
             $job = PrintJob::where('id', $printJobId)->lockForUpdate()->first();
             $delivery = EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->lockForUpdate()->first();
-            if (! $job || ! $delivery || $delivery->delivery_state !== EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED) {
-                throw new RuntimeException('Only a terminally-failed local delivery can be retried.');
+            // W5 D-14: a DISMISSED job (shared `cancelled`) is retryable too — Online requeueFailed accepts
+            // failed|cancelled and the Online Retry offers it; its delivery row (if any) is not live.
+            $dismissed = $job && $job->print_status === 'cancelled' && ! ($delivery && $this->leaseIsLive($delivery));
+            if (! $job || (! $dismissed && (! $delivery || $delivery->delivery_state !== EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED))) {
+                // PHASE 3 (C): Online's refusal text (PrintJobService::requeueFailed :614) — the shared view toasts `message`
+                // verbatim, so the cashier reads the same sentence on both runtimes. The Edge RULE is unchanged (a terminally
+                // failed local delivery or a dismissed job; never a queued/leased/printed one).
+                throw new RuntimeException('Only failed or cancelled jobs can be retried.');
             }
             $this->printJobs->requeueFailed($job); // shared eligibility + field contract (failed|cancelled only)
-            $delivery->update([
+            $delivery?->update([
                 'delivery_state' => EdgeLocalPrintDelivery::STATE_WAITING,
                 'failure_count' => 0, 'worker_uuid' => null, 'lease_token' => null,
                 'claimed_at' => null, 'lease_expires_at' => null, 'next_attempt_at' => null,
             ]);
         });
+    }
+
+    /**
+     * W5 D-14 — DISMISS (Online PrintJobController::dismiss → the ONE shared PrintJobService::cancelObsolete):
+     * abandon a queued/failed job that will never be wanted, with NO print counters or KOT bookkeeping. The
+     * appliance adds one transport guard: a job the local worker is writing to the printer RIGHT NOW (a live
+     * lease) cannot be dismissed — its paper may already be coming out. The shared service refuses printed jobs.
+     */
+    public function dismiss(int $printJobId, string $reason): void
+    {
+        DB::connection('tenant')->transaction(function () use ($printJobId, $reason) {
+            // ONE lock order everywhere: print_job FIRST, then its delivery row.
+            $job = PrintJob::where('id', $printJobId)->lockForUpdate()->first();
+            $delivery = EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->lockForUpdate()->first();
+            if (! $job) {
+                throw new RuntimeException('No print job found.');
+            }
+            if ($delivery && $this->leaseIsLive($delivery)) {
+                throw new RuntimeException('This job is being sent to the printer right now — wait a moment, then dismiss it if it did not print.');
+            }
+            $this->printJobs->cancelObsolete($job, $reason); // shared: queued|failed only, no counters
+        });
+    }
+
+    private function leaseIsLive(EdgeLocalPrintDelivery $delivery): bool
+    {
+        return $delivery->delivery_state === EdgeLocalPrintDelivery::STATE_LEASED
+            && $delivery->lease_expires_at !== null && $delivery->lease_expires_at->isFuture();
     }
 
     /**

@@ -70,6 +70,8 @@ class ManagerApprovalComboVoidMySqlTest extends MySqlTenantTestCase
             'user_id' => $this->managerId, 'pin_hash' => Hash::make('password@'),
             'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
+        // Phase 3 (owner §1): the approver must hold the permission the approved action needs — a KOT void here.
+        $this->grantVoidPermission($this->managerId);
 
         $this->reasonId = (int) DB::connection('tenant')->table('void_reasons')->insertGetId([
             'name' => 'Customer changed mind', 'reason_type' => 'void',

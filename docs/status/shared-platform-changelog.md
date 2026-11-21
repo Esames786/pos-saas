@@ -65,6 +65,8 @@ Feature-specific work stays on its own branch. This file records the cherry-pick
 
 ## Production HEAD
 
+Prod (`bingoopos.com`, Hostinger) is on `feat/14d-2` at the latest shared commit above. Prod stays
+**cloud**, Edge/Local Mode inactive, `activation_ready=false`.
 Prod (`bingoopos.com`, Hostinger) is on `feat/14d-2` at `67efbc1` (Hold delivery-charge/vehicle recall fix). Prod stays
 **cloud**, Edge/Local Mode inactive, `activation_ready=false`.
 

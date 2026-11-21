@@ -272,11 +272,18 @@ class PrintOfflineHereMySqlTest extends MySqlTenantTestCase
         $res->assertOk();
         $html = $res->getContent();
 
+        // KHATRI CLOUD/EDGE INTEGRATION (21 Nov 2026): the shared cashier view carries endpoints through the runtime map
+        // (PosRuntime, serialised as window.POS_RUNTIME with JSON-escaped slashes), never as url() literals — so the page is
+        // checked for the route KEYS and the Cloud map for the paths.
         foreach (['id="pos-print-health"', 'id="pos-print-stuck"', 'id="print-here-queue"', 'id="print-here-next-btn"',
-                  '/api/pos/print-health', 'window.printHereQueue', 'window.posPrintHealthPoke',
-                  'window.printHereQueueDismissed', 'data-print-here-queue', "/preview?here=1'", 'function kotSentToast'] as $needle) {
+                  "POS.route('printHealth')", "POS.route('printHereTake'", 'window.printHereQueue', 'window.posPrintHealthPoke',
+                  'window.printHereQueueDismissed', 'data-print-here-queue', "'?here=1'", 'function kotSentToast'] as $needle) {
             $this->assertStringContainsString($needle, $html, "POS par {$needle} hona chahiye");
         }
+        $this->assertSame(1, preg_match('/window\.POS_RUNTIME = (\{.*?\});<\/script>/s', $html, $m));
+        $runtime = json_decode($m[1], true);
+        $this->assertSame('/api/pos/print-health', $runtime['routes']['printHealth'] ?? null, 'Cloud map: print-health endpoint');
+        $this->assertSame('/printing/jobs/{job}/print-here', $runtime['routes']['printHereTake'] ?? null, 'Cloud map: print-here endpoint');
     }
 
     /** Queue ki window me parchi pehle hi darj hai — preview ke apne "Mark Printed" button wahan uljhate. */

@@ -51,7 +51,7 @@
                            data-table-session-select="1"
                            data-session-id="{{ $session->id }}"
                            data-branch-id="{{ $selectedBranchId }}"
-                           data-fallback-href="{{ url('/pos?table_session_id=' . $session->id . '&mode=dine_in&branch_id=' . $selectedBranchId) }}">
+                           data-fallback-href="{{ ($posRuntime ?? app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make())->route('posIndex') . '?table_session_id=' . $session->id . '&mode=dine_in&branch_id=' . $selectedBranchId }}">
                             {{ $isSelectedSession ? 'Selected / Continue' : 'Continue Table' }}
                         </button>
                         @can('tenant.restaurant.table-sessions.bill-preview')

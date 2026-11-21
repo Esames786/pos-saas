@@ -24,11 +24,160 @@ use Illuminate\Support\Facades\DB;
 
 class SalesReturnService
 {
+    /**
+     * REFUND-SHIFT-H1 (owner decision H1, 22 Oct 2026): "the shift that actually pays the refund owns the refund cash
+     * movement … do not silently post a cash refund with no shift". ONE user-facing refusal, shown by the Online return
+     * form and the Edge till alike (the Edge twin throws it as a validation message under the key `shift`).
+     */
+    public const CASH_REFUND_NEEDS_SHIFT = 'A cash refund leaves a drawer — open a shift on this counter before refunding in cash.';
+
     public function __construct(
         private readonly InventoryService $inventoryService,
         private readonly SalesService $salesService,
         private readonly JournalPostingService $journalPosting,
     ) {}
+
+    /**
+     * THE return arithmetic, with no side effects (F1: one formula for Online posting AND the offline appliance).
+     *
+     * $salesOrder must carry its lines with ['product', 'variant', 'returnLines'] loaded (locked by the caller when
+     * the result is about to be posted). Returns the per-line result plus the totals exactly as processReturn posts
+     * them, including the delivery-charge rule (given back only when this return leaves nothing of the order behind).
+     *
+     * @param  array<int,array{sales_order_line_id:int|string, quantity:float|string}>  $lines
+     * @return array{
+     *   lines: array<int, array{order_line: SalesOrderLine, quantity: float, subtotal: float, discount: float, tax: float, line_total: float, final: bool}>,
+     *   subtotal: float, discount: float, tax: float, delivery_refund: float, grand_total: float, completes: bool, already_refunded_delivery: float
+     * }
+     */
+    public function computeReturn(SalesOrder $salesOrder, array $lines): array
+    {
+        $result = [];
+        $subtotal = 0;
+        $discount = 0;
+        $tax = 0;
+        $requested = []; // order line id => qty this return takes (for the completion check)
+
+        foreach ($lines as $lineData) {
+            $orderLine = $salesOrder->lines->firstWhere('id', $lineData['sales_order_line_id']);
+
+            if (!$orderLine) {
+                throw new \RuntimeException('A selected return line does not belong to this sale.');
+            }
+
+            if (in_array($orderLine->line_kind, ['component', 'modifier'], true)) {
+                throw new \RuntimeException('Component and modifier rows cannot be returned separately. Return their parent sale item.');
+            }
+
+            // BUG-011: measured against what is still returnable, not the original quantity.
+            // W2-B (canonical 0831cd41, rehearsal 30 Oct 2026): asking for more is refused with what is left, in the line's own
+            // unit — it used to be cut down silently to the remainder. A counted line comes back whole, or as everything still
+            // left. Lives in computeReturn so the Online form and the Edge till (EdgeLocalReturnService) refuse alike.
+            $alreadyReturned = (float) $orderLine->returned_quantity;
+            $returnable      = round((float) $orderLine->quantity - $alreadyReturned, 3);
+            $name            = (string) $orderLine->product_name;
+            $qty             = \App\Support\LineQuantity::normalize($lineData['quantity'] ?? 0, $name);
+            if ($qty <= 0) {
+                continue;
+            }
+            $packLine = $orderLine->base_quantity !== null && \App\Support\CounterPacks::sizeOf($orderLine) > 0;
+            $unit = $packLine ? (string) ($orderLine->unit_code ?: '') : \App\Support\LineQuantity::unitName($orderLine->product?->unit);
+            if ($returnable <= 0.0005) {
+                throw new \RuntimeException("{$name}: nothing is left to return — all "
+                    . \App\Support\LineQuantity::withUnit((float) $orderLine->quantity, $unit) . ' already came back.');
+            }
+            if ($qty > $returnable + 0.0005) {
+                throw new \RuntimeException("{$name}: only " . \App\Support\LineQuantity::withUnit($returnable, $unit) . ' can still be returned, not '
+                    . \App\Support\LineQuantity::show($qty) . '.');
+            }
+            $counted = $packLine || ! \App\Support\LineQuantity::partsAllowed($orderLine->product?->unit);
+            if ($counted && ! \App\Support\LineQuantity::isWhole($qty) && abs($qty - $returnable) > 0.0005) {
+                throw new \RuntimeException("{$name}" . ($unit !== '' ? ": {$unit} comes back whole" : ' comes back in whole numbers') . ' — '
+                    . \App\Support\LineQuantity::show($qty) . ' is not a whole number (or return all ' . \App\Support\LineQuantity::show($returnable) . ' still left).');
+            }
+            $qty = min($qty, $returnable);
+
+            $lineSubtotal = round($qty * (float) $orderLine->unit_price, 2);
+            $allocation = $this->originalLineAllocation($salesOrder, $orderLine);
+            $finalQuantity = $qty + 0.000001 >= $returnable;
+            $remainingDiscount = max($allocation['discount'] - (float) $orderLine->returnLines->sum('discount_amount'), 0);
+            $remainingTax = max($allocation['tax'] - (float) $orderLine->returnLines->sum('tax_amount'), 0);
+            $lineDiscount = $finalQuantity
+                ? round($remainingDiscount, 2)
+                : min(round(($remainingDiscount / $returnable) * $qty, 2), round($remainingDiscount, 2));
+            $lineTax = $finalQuantity
+                ? round($remainingTax, 2)
+                : min(round(($remainingTax / $returnable) * $qty, 2), round($remainingTax, 2));
+            $lineTotal = round($lineSubtotal - $lineDiscount + $lineTax, 2);
+
+            $result[] = [
+                'order_line' => $orderLine,
+                'quantity' => $qty,
+                'subtotal' => $lineSubtotal,
+                'discount' => $lineDiscount,
+                'tax' => $lineTax,
+                'line_total' => $lineTotal,
+                'final' => $finalQuantity,
+                // RETURN-RESTOCK-1 (canonical, merged 22 Oct 2026): back on the shelf (default — every caller before this) or
+                // thrown away; carried on the computed item so processReturn and the Edge twin read ONE source. The Edge till
+                // sends no restock key today (= restocked, today's behaviour).
+                'restock' => ! array_key_exists('restock', $lineData) || filter_var($lineData['restock'], FILTER_VALIDATE_BOOLEAN),
+            ];
+            $requested[(int) $orderLine->id] = ((float) ($requested[(int) $orderLine->id] ?? 0)) + $qty;
+
+            $subtotal += $lineSubtotal;
+            $discount += $lineDiscount;
+            $tax      += $lineTax;
+        }
+
+        if ($result === []) {
+            throw new \RuntimeException('Select at least one returnable sale item.');
+        }
+
+        $subtotal = round($subtotal, 2);
+        $discount = round($discount, 2);
+        $tax = round($tax, 2);
+
+        // THE WHOLE ORDER COMING BACK MUST GIVE BACK THE WHOLE CHARGE.
+        //
+        // Returns used to stop at subtotal − discount + tax, so the delivery charge could
+        // never be refunded. When a customer sent an entire order back the counter handed over
+        // the full amount, but the system recorded less money leaving than actually did — at
+        // Khatri that stranded 350 as "delivery income" the shop had already given back, and
+        // the close screen expected 350 more cash than the drawer held.
+        //
+        // A PARTIAL return keeps the charge: the rider still made that trip for the items the
+        // customer kept. It is only refunded when nothing of the order remains.
+        $completes = true;
+        foreach ($salesOrder->lines as $line) {
+            if (in_array($line->line_kind, ['component', 'modifier'], true)) {
+                continue;   // not customer-facing; they follow their parent
+            }
+            $after = (float) $line->returned_quantity + (float) ($requested[(int) $line->id] ?? 0);
+            if ($after + 0.000001 < (float) $line->quantity) {
+                $completes = false;
+                break;
+            }
+        }
+        // ('cloud_mirror' exists only on an appliance's mirrored Cloud returns; on the Cloud this is the posted set.)
+        $alreadyRefundedDelivery = (float) $salesOrder->returns()
+            ->whereIn('status', ['posted', 'cloud_mirror'])
+            ->sum('delivery_charge_amount');
+        $deliveryRefund = $completes
+            ? max(round((float) $salesOrder->delivery_charge_amount - $alreadyRefundedDelivery, 2), 0)
+            : 0.0;
+
+        return [
+            'lines' => $result,
+            'subtotal' => $subtotal,
+            'discount' => $discount,
+            'tax' => $tax,
+            'delivery_refund' => $deliveryRefund,
+            'grand_total' => round($subtotal - $discount + $tax + $deliveryRefund, 2),
+            'completes' => $completes,
+            'already_refunded_delivery' => $alreadyRefundedDelivery,
+        ];
+    }
 
     public function processReturn(
         SalesOrder $salesOrder,
@@ -38,9 +187,24 @@ class SalesReturnService
         ?float $refundAmount,
         int $userId,
         // REFUND-SHIFT-1: the open shift of the counter that pays the refund (the caller resolves it).
-        // Null = the sale's own shift while it is still open, as before; neither = no shift.
         ?int $refundShiftId = null,
-        // UB-06: the key the form was drawn with + a fingerprint of what it asked for. Null = posted as before.
+        // REFUND-SHIFT-H1 — the paying shift by STABLE identity (shifts.shift_uuid): an Edge return event names the
+        // appliance's local processing shift this way; the Cloud attributes the refund to the shifts row carrying that
+        // uuid when one exists (open or closed — identity, not state), and keeps the identity on the return row either way.
+        ?string $processingShiftUuid = null,
+        // REFUND-SHIFT-H1 — may the sale's OWN shift pay, while it is still open, when nothing else resolves? The
+        // historical default for callers that say nothing; the Online form and the Edge ingestion pass FALSE (the
+        // owner's rule: the original sale's shift is provenance of the sale, never the drawer of the refund).
+        bool $saleShiftFallback = true,
+        // REFUND-SHIFT-H1 — facts of the identified processing shift for the row when the Cloud holds no shifts row for
+        // it: ['terminal_id' => ?int, 'business_date' => ?'Y-m-d'] (the refund stays on that counter and that day).
+        ?array $processingShiftFacts = null,
+        // REFUND-SHIFT-H1 — LEGACY ONLY: an `edge-return-envelope-v1` event (an appliance built before H1) carries no
+        // shift identity; its cash refund DID leave a local drawer, so the Cloud must not fail closed on it. Nothing
+        // else may pass TRUE (see EdgeInboundReturnIngestionService::resolveProcessingShift).
+        bool $legacyCashWithoutShift = false,
+        // UB-06 (canonical, rehearsal 30 Oct 2026): the key the form was drawn with + a fingerprint of what it asked for.
+        // Null = posted as before. The Edge ingestion passes none (its exactly-once is the outbox sale_uuid + content_hash).
         ?string $submissionKey = null,
         ?string $submissionHash = null,
     ): SalesReturn {
@@ -55,7 +219,8 @@ class SalesReturnService
         $this->refuseIfPosted($key, $submissionHash);
 
         $salesReturn = $this->postedOnce($key, $submissionHash, fn () => DB::connection('tenant')->transaction(function () use (
-            $salesOrder, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId, $key, $submissionHash
+            $salesOrder, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId,
+            $processingShiftUuid, $saleShiftFallback, $processingShiftFacts, $legacyCashWithoutShift, $key, $submissionHash
         ) {
             $salesOrder = SalesOrder::query()
                 ->whereKey($salesOrder->id)
@@ -70,6 +235,8 @@ class SalesReturnService
                 ->lockForUpdate()
                 ->get());
 
+            $computed = $this->computeReturn($salesOrder, $lines);
+
             // REFUND-SHIFT-1 — the drawer that pays the refund, and the day it belongs to.
             //
             // REPORT-BUSINESS-DATE-1 anchored a return to the ORIGINAL sale's day, through that sale's shift —
@@ -77,10 +244,19 @@ class SalesReturnService
             // from yesterday returned today reached no shift and no day closing at all, and changed a closed
             // day's figures. Now the refund goes into the shift open at the counter paying it, on THAT shift's
             // business day (after midnight on an evening shift = the evening's day, as before); without one,
-            // the sale's own shift while still open (today's rule); without either, no shift, and the
-            // branch's current business day — never a past, closed day.
-            $refundShift = $this->refundShift($salesOrder, $refundShiftId);
+            // the branch's current business day — never a past, closed day.
+            //
+            // REFUND-SHIFT-H1 (owner, 22 Oct 2026): the PAYING shift is resolved in this order — (a) the open shift the
+            // caller named; (b) the shifts row carrying the processing shift's STABLE identity (shift_uuid); (c) the
+            // sale's own shift, only while open and only for callers that allow the fallback. The original sale's
+            // shift is never read for money otherwise and never mutated. A CASH refund with no paying shift and no
+            // paying-shift identity is refused (never silently posted); a non-cash refund may post without a shift.
+            $refundShift = $this->refundShift(
+                (int) $salesOrder->branch_id, $refundShiftId, $processingShiftUuid, $saleShiftFallback ? $salesOrder->shift_id : null
+            );
+            $this->assertCashRefundHasAPayingShift($refundMethod, $refundShift, $processingShiftUuid, $legacyCashWithoutShift);
             $businessDate = $refundShift?->business_date
+                ?? ($processingShiftFacts['business_date'] ?? null)
                 ?? app(\App\Support\TenantClock::class)->currentBusinessDate($salesOrder->branch);
 
             $salesReturn = $this->createReturn([
@@ -89,7 +265,9 @@ class SalesReturnService
                 'return_date'        => now(),
                 'business_date'      => $businessDate instanceof \DateTimeInterface ? $businessDate->format('Y-m-d') : $businessDate,
                 'shift_id'           => $refundShift?->id,
-                'terminal_id'        => $refundShift?->terminal_id,
+                'terminal_id'        => $refundShift?->terminal_id ?? ($processingShiftFacts['terminal_id'] ?? null),
+                // the paying shift's stable identity — kept even when this database holds no shifts row for it
+                'processing_shift_uuid' => $refundShift?->shift_uuid ?? $processingShiftUuid,
                 'subtotal'           => 0,
                 'discount_amount'    => 0,
                 'tax_amount'         => 0,
@@ -101,67 +279,15 @@ class SalesReturnService
                 'reason'             => $reason,
             ] + $this->submissionColumns($key, $submissionHash));
 
-            $subtotal = 0;
-            $discount = 0;
-            $tax      = 0;
-            $processedLines = 0;
-
-            foreach ($lines as $lineData) {
-                $orderLine = $salesOrder->lines->firstWhere('id', $lineData['sales_order_line_id']);
-
-                if (!$orderLine) {
-                    throw new \RuntimeException('A selected return line does not belong to this sale.');
-                }
-
-                if (in_array($orderLine->line_kind, ['component', 'modifier'], true)) {
-                    throw new \RuntimeException('Component and modifier rows cannot be returned separately. Return their parent sale item.');
-                }
-
-                // BUG-011: measured against what is still returnable, not the original quantity.
-                // W2-B (22 Oct): asking for more is refused with what is left, in the line's own unit — it used to be
-                // cut down silently to the remainder. A counted line comes back whole, or as everything still left.
-                $alreadyReturned = (float) $orderLine->returned_quantity;
-                $returnable      = round((float) $orderLine->quantity - $alreadyReturned, 3);
-                $name            = (string) $orderLine->product_name;
-                $qty             = \App\Support\LineQuantity::normalize($lineData['quantity'] ?? 0, $name);
-                if ($qty <= 0) {
-                    continue;
-                }
-                $packLine = $orderLine->base_quantity !== null && \App\Support\CounterPacks::sizeOf($orderLine) > 0;
-                $unit = $packLine ? (string) ($orderLine->unit_code ?: '') : \App\Support\LineQuantity::unitName($orderLine->product?->unit);
-                if ($returnable <= 0.0005) {
-                    throw new \RuntimeException("{$name}: nothing is left to return — all "
-                        . \App\Support\LineQuantity::withUnit((float) $orderLine->quantity, $unit) . ' already came back.');
-                }
-                if ($qty > $returnable + 0.0005) {
-                    throw new \RuntimeException("{$name}: only " . \App\Support\LineQuantity::withUnit($returnable, $unit) . ' can still be returned, not '
-                        . \App\Support\LineQuantity::show($qty) . '.');
-                }
-                $counted = $packLine || ! \App\Support\LineQuantity::partsAllowed($orderLine->product?->unit);
-                if ($counted && ! \App\Support\LineQuantity::isWhole($qty) && abs($qty - $returnable) > 0.0005) {
-                    throw new \RuntimeException("{$name}" . ($unit !== '' ? ": {$unit} comes back whole" : ' comes back in whole numbers') . ' — '
-                        . \App\Support\LineQuantity::show($qty) . ' is not a whole number (or return all ' . \App\Support\LineQuantity::show($returnable) . ' still left).');
-                }
-                $qty = min($qty, $returnable);
-
+            foreach ($computed['lines'] as $item) {
+                $orderLine = $item['order_line'];
+                $qty = $item['quantity'];
                 $originalQty = (float) $orderLine->quantity;
-                $lineSubtotal = round($qty * (float) $orderLine->unit_price, 2);
-                $allocation = $this->originalLineAllocation($salesOrder, $orderLine);
-                $finalQuantity = $qty + 0.000001 >= $returnable;
-                $remainingDiscount = max($allocation['discount'] - (float) $orderLine->returnLines->sum('discount_amount'), 0);
-                $remainingTax = max($allocation['tax'] - (float) $orderLine->returnLines->sum('tax_amount'), 0);
-                $lineDiscount = $finalQuantity
-                    ? round($remainingDiscount, 2)
-                    : min(round(($remainingDiscount / $returnable) * $qty, 2), round($remainingDiscount, 2));
-                $lineTax = $finalQuantity
-                    ? round($remainingTax, 2)
-                    : min(round(($remainingTax / $returnable) * $qty, 2), round($remainingTax, 2));
-                $lineTotal = round($lineSubtotal - $lineDiscount + $lineTax, 2);
 
                 // RETURN-RESTOCK-1: back on the shelf (the default — every caller before this) or thrown away
                 // (an opened strip, yesterday's bread, a dish): nothing goes back to stock, and the cost stays
                 // a loss (the GL reverses COGS only for restocked lines).
-                $restock = ! array_key_exists('restock', $lineData) || filter_var($lineData['restock'], FILTER_VALIDATE_BOOLEAN);
+                $restock = (bool) ($item['restock'] ?? true);
                 $factor = $orderLine->base_quantity !== null && \App\Support\CounterPacks::sizeOf($orderLine) > 0 ? \App\Support\CounterPacks::sizeOf($orderLine) : null;
 
                 $salesReturn->lines()->create([
@@ -170,9 +296,9 @@ class SalesReturnService
                     'product_variant_id'  => $orderLine->product_variant_id,
                     'quantity'            => $qty,
                     'unit_price'          => $orderLine->unit_price,
-                    'discount_amount'     => $lineDiscount,
-                    'tax_amount'          => $lineTax,
-                    'line_total'          => $lineTotal,
+                    'discount_amount'     => $item['discount'],
+                    'tax_amount'          => $item['tax'],
+                    'line_total'          => $item['line_total'],
                     'restocked'           => $restock,
                     // MEDICAL-COUNTER-1: a line sold in a pack comes back in that pack ("1 Strip" = 10 tablets)
                     'pack_unit_id'        => $factor ? $orderLine->pack_unit_id : null,
@@ -197,44 +323,13 @@ class SalesReturnService
                 } elseif ($restock) {
                     $this->restoreStock($salesOrder, $salesReturn, $orderLine, $qty, $userId);
                 }
-
-                $subtotal += $lineSubtotal;
-                $discount += $lineDiscount;
-                $tax      += $lineTax;
-                $processedLines++;
             }
 
-            if ($processedLines === 0) {
-                throw new \RuntimeException('Select at least one returnable sale item.');
-            }
-
-            $subtotal = round($subtotal, 2);
-            $discount = round($discount, 2);
-            $tax = round($tax, 2);
-
-            // THE WHOLE ORDER COMING BACK MUST GIVE BACK THE WHOLE CHARGE.
-            //
-            // Returns used to stop at subtotal − discount + tax, so the delivery charge could
-            // never be refunded. When a customer sent an entire order back the counter handed over
-            // the full amount, but the system recorded less money leaving than actually did — at
-            // Khatri that stranded 350 as "delivery income" the shop had already given back, and
-            // the close screen expected 350 more cash than the drawer held.
-            //
-            // A PARTIAL return keeps the charge: the rider still made that trip for the items the
-            // customer kept. It is only refunded when nothing of the order remains.
-            $deliveryRefund = 0.0;
-            $alreadyRefundedDelivery = (float) $salesOrder->returns()
-                ->where('status', 'posted')->where('id', '!=', $salesReturn->id)
-                ->sum('delivery_charge_amount');
-
-            if ($this->returnCompletesOrder($salesOrder)) {
-                $deliveryRefund = max(
-                    round((float) $salesOrder->delivery_charge_amount - $alreadyRefundedDelivery, 2),
-                    0
-                );
-            }
-
-            $grandTotal = round($subtotal - $discount + $tax + $deliveryRefund, 2);
+            $subtotal = $computed['subtotal'];
+            $discount = $computed['discount'];
+            $tax = $computed['tax'];
+            $deliveryRefund = $computed['delivery_refund'];
+            $grandTotal = $computed['grand_total'];
 
             if ($refundMethod && $refundAmount !== null && abs($refundAmount - $grandTotal) > 0.01) {
                 throw new \RuntimeException('Refund amount must match the calculated refund of ' . number_format($grandTotal, 2) . '.');
@@ -323,9 +418,9 @@ class SalesReturnService
         $salesReturn = $this->postedOnce($key, $submissionHash, fn () => DB::connection('tenant')->transaction(function () use (
             $branch, $lines, $reason, $refundMethod, $refundAmount, $userId, $refundShiftId, $key, $submissionHash
         ) {
-            $refundShift = $refundShiftId
-                ? Shift::query()->whereKey($refundShiftId)->where('branch_id', $branch->id)->where('status', 'open')->lockForUpdate()->first()
-                : null;
+            // REFUND-SHIFT-H1: no sale, so no fallback — the counter's open shift pays, and cash needs one.
+            $refundShift = $this->refundShift((int) $branch->id, $refundShiftId, null, null);
+            $this->assertCashRefundHasAPayingShift($refundMethod, $refundShift, null, false);
             $businessDate = $refundShift?->business_date
                 ?? app(\App\Support\TenantClock::class)->currentBusinessDate($branch);
 
@@ -336,6 +431,7 @@ class SalesReturnService
                 'business_date'      => $businessDate instanceof \DateTimeInterface ? $businessDate->format('Y-m-d') : $businessDate,
                 'shift_id'           => $refundShift?->id,
                 'terminal_id'        => $refundShift?->terminal_id,
+                'processing_shift_uuid' => $refundShift?->shift_uuid,
                 'subtotal'           => 0,
                 'discount_amount'    => 0,
                 'tax_amount'         => 0,
@@ -739,23 +835,53 @@ class SalesReturnService
     }
 
     /**
-     * REFUND-SHIFT-1 — the open shift that pays this refund: the one the caller named (this branch, open),
-     * else the sale's own shift while it is still open, else none. Locked, so a close cannot slip in between.
+     * REFUND-SHIFT-1 / H1 — the shift that pays this refund, locked so a close cannot slip in between:
+     *   (a) the shift the caller named, while open in this branch;
+     *   (b) the shifts row carrying the processing shift's STABLE identity (shift_uuid), open or closed — an Edge return
+     *       event names its local processing shift this way; on the Cloud the row exists only once Edge shifts are
+     *       mirrored there (none today), so (b) usually resolves nothing and the identity alone is kept on the return;
+     *   (c) the sale's own shift, while open — only when the caller passed it (saleShiftFallback);
+     *   else none.
      */
-    private function refundShift(SalesOrder $salesOrder, ?int $refundShiftId): ?Shift
+    private function refundShift(int $branchId, ?int $refundShiftId, ?string $processingShiftUuid, ?int $saleShiftId): ?Shift
     {
-        foreach (array_filter([$refundShiftId, $salesOrder->shift_id]) as $id) {
-            $shift = Shift::query()->whereKey($id)
-                ->where('branch_id', $salesOrder->branch_id)
-                ->where('status', 'open')
-                ->lockForUpdate()
-                ->first();
+        if ($refundShiftId) {
+            $shift = Shift::query()->whereKey($refundShiftId)->where('branch_id', $branchId)->where('status', 'open')->lockForUpdate()->first();
+            if ($shift) {
+                return $shift;
+            }
+        }
+        if ($processingShiftUuid !== null && $processingShiftUuid !== '') {
+            $shift = Shift::query()->where('shift_uuid', $processingShiftUuid)->where('branch_id', $branchId)->lockForUpdate()->first();
+            if ($shift) {
+                return $shift;
+            }
+        }
+        if ($saleShiftId) {
+            $shift = Shift::query()->whereKey($saleShiftId)->where('branch_id', $branchId)->where('status', 'open')->lockForUpdate()->first();
             if ($shift) {
                 return $shift;
             }
         }
 
         return null;
+    }
+
+    /**
+     * REFUND-SHIFT-H1 — a cash refund leaves a drawer: it needs a paying shift (a resolved row, or at least the
+     * processing shift's identity when this database holds no row for it). Card / bank / other refunds do not move
+     * a drawer and may post without one. $legacy = a pre-H1 Edge event (edge-return-envelope-v1) only.
+     */
+    private function assertCashRefundHasAPayingShift(?string $refundMethod, ?Shift $shift, ?string $processingShiftUuid, bool $legacy): void
+    {
+        if ($refundMethod !== 'cash' || $shift !== null || $legacy) {
+            return;
+        }
+        if ($processingShiftUuid !== null && $processingShiftUuid !== '') {
+            return;
+        }
+
+        throw new \RuntimeException(self::CASH_REFUND_NEEDS_SHIFT);
     }
 
     private function updateShiftForReturn(?Shift $shift, ?string $refundMethod, float $grandTotal): void

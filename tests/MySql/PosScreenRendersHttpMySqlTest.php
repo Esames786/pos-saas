@@ -96,12 +96,19 @@ class PosScreenRendersHttpMySqlTest extends MySqlTenantTestCase
         // POS-REMINDER-PAUSE-1: the Reminder switch sits in the context row and talks to its endpoint.
         $html = $res->getContent();
         $this->assertStringContainsString('id="pos-reminder-toggle"', $html);
-        $this->assertStringContainsString('/api/pos/reminder-pause', $html);
+        // Since the shared cashier view (Phase 3 / canonical merge) the endpoint reaches the page through the runtime contract
+        // (window.POS_RUNTIME.routes.reminderPause → POS.route('reminderPause')), never as a literal in the Blade: on the Cloud
+        // the route is still /api/pos/reminder-pause and the switch is enabled (capability reminderPause).
+        $this->assertStringContainsString('"reminderPause":"\/api\/pos\/reminder-pause"', $html, 'the Cloud runtime carries the reminder-pause endpoint');
+        $this->assertMatchesRegularExpression('/id="pos-reminder-toggle"(?![^>]*\sdisabled)/', $html, 'the switch is enabled on the Cloud');
 
         // POS-PIN-FOCUS-1: the manager code box opened from the pay window takes the cursor (Bootstrap's focus trap
         // used to pull it back into Tendered Amount). Proven in Chrome with the real libraries; here: the guard ships.
         $this->assertStringContainsString("e.target.closest('.swal2-container')) { e.stopPropagation(); }", $html);
-        $this->assertStringContainsString('id="swal-manager-pin"', $html);
+        // The PIN field comes from the SHARED prompt helper (POS.managerCredentialFieldsHtml: PIN on the Cloud, employee code +
+        // credential on Edge) — its id is in the runtime script, never an id= literal in the Blade; Enter verifies from the prompt.
+        $this->assertStringContainsString('swal-manager-pin', $html);
+        $this->assertStringContainsString('POS.managerCredentialFocus();', $html);
     }
 
     /**

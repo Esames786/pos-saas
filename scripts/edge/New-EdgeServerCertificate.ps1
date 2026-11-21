@@ -35,7 +35,13 @@ param(
     [Parameter(Mandatory = $true)][string] $ReservedIp,
     [Parameter(Mandatory = $true)][string] $CaThumbprint,
     [Parameter(Mandatory = $true)][string] $OutDir,
-    [int] $ValidYears = 2
+    [int] $ValidYears = 2,
+    # P4 — the TLS gateway (nginx) needs the certificate + private key as PEM files. -ExportPfx issues the key
+    # EXPORTABLE and writes an encrypted PFX to OutDir (password read from -PfxPasswordFile, never argv); the
+    # appliance then runs `edge:local:gateway-cert <pfx> --password-file=...` which converts it to PEM under
+    # <DataRoot>\certs with a restricted ACL. Without -ExportPfx the key stays non-exportable in the store.
+    [switch] $ExportPfx,
+    [string] $PfxPasswordFile
 )
 
 $ErrorActionPreference = 'Stop'
@@ -74,12 +80,24 @@ if ($PSCmdlet.ShouldProcess("$Hostname / $ReservedIp", "Issue server certificate
         -KeyAlgorithm RSA -KeyLength 2048 `
         -HashAlgorithm SHA256 `
         -NotAfter (Get-Date).AddYears($ValidYears) `
-        -KeyExportPolicy NonExportable `
+        -KeyExportPolicy $(if ($ExportPfx) { 'Exportable' } else { 'NonExportable' }) `
         -CertStoreLocation 'Cert:\LocalMachine\My'
 
     $publicPath = Join-Path $OutDir 'bingoo-edge-server.crt'
     Export-Certificate -Cert $cert -FilePath $publicPath -Type CERT | Out-Null
 
+    if ($ExportPfx) {
+        if (-not $PfxPasswordFile -or -not (Test-Path $PfxPasswordFile)) {
+            throw 'ExportPfx requires -PfxPasswordFile (a file holding the PFX password; it is deleted after use).'
+        }
+        $pfxRaw = Get-Content -Path $PfxPasswordFile -Raw
+        if ($null -eq $pfxRaw -or ([string]$pfxRaw).Trim() -eq '') { throw 'The PFX password file is empty.' }
+        $pfxPassword = ConvertTo-SecureString -String (([string]$pfxRaw).Trim()) -AsPlainText -Force
+        Remove-Item -Path $PfxPasswordFile -Force -ErrorAction SilentlyContinue
+        $pfxPath = Join-Path $OutDir 'bingoo-edge-server.pfx'
+        Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pfxPassword -ChainOption BuildChain | Out-Null
+        Write-Host "PFX (for edge:local:gateway-cert): $pfxPath - delete it after the gateway import."
+    }
     Write-Host "Server cert thumbprint: $($cert.Thumbprint)"
     Write-Host "Public server cert    : $publicPath"
     Write-Host "SAN                    : DNS=$Hostname, IP=$ReservedIp"

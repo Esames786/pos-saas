@@ -1,4 +1,6 @@
-@extends('layouts.app')
+@extends(isset($posRuntime) && $posRuntime->isEdge() ? 'layouts.pos' : 'layouts.app')
+{{-- W-A: every endpoint of this shared screen comes from the runtime map; Online controllers pass no runtime → the Cloud one. --}}
+@php $posRuntime = $posRuntime ?? app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make(); @endphp
 
 @section('title', 'Shift #' . $shift->id)
 
@@ -18,12 +20,12 @@
     <div class="action-toolbar">
         @if($shift->status === 'open')
             @can('tenant.shifts.close-form')
-                <a href="{{ url('/shifts/' . $shift->id . '/close') }}" class="btn btn-danger">
+                <a href="{{ $posRuntime->route('shiftClosePage', ['shift' => $shift->id]) }}" class="btn btn-danger">
                     Close Shift
                 </a>
             @endcan
         @endif
-        <a href="{{ url('/shifts') }}" class="btn btn-light">Back</a>
+        <a href="{{ $posRuntime->route('shiftIndexPage') }}" class="btn btn-light">Back</a>
     </div>
 </div>
 

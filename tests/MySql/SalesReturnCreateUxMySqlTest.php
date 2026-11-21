@@ -30,9 +30,20 @@ class SalesReturnCreateUxMySqlTest extends MySqlTenantTestCase
             'cash_bank_account_transactions', 'journal_lines', 'journal_entries', 'sales_ledgers',
             'sales_return_lines', 'sales_returns', 'sale_payments', 'payment_methods',
             'sales_order_lines', 'sales_orders', 'stock_ledgers', 'stock_balances', 'inventory_batches',
-            'products', 'categories', 'accounts', 'terminal_user', 'terminals', 'branches', 'users',
+            'products', 'categories', 'accounts', 'shifts', 'terminal_user', 'terminals', 'branches', 'users',
         ]);
         (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder)->run();
+    }
+
+    /** REFUND-SHIFT-H1: a cash refund from the form needs an open shift on a counter of the branch (the only one → it pays). */
+    private function openShift(int $branchId, int $userId): int
+    {
+        return (int) DB::connection('tenant')->table('shifts')->insertGetId([
+            'shift_uuid' => strtoupper(bin2hex(random_bytes(13))), 'branch_id' => $branchId, 'terminal_id' => $this->makeTerminal($branchId),
+            'opened_by_user_id' => $userId, 'opening_cash' => 0, 'total_sales' => 0, 'total_cash' => 0, 'total_refunds' => 0, 'total_cash_refunds' => 0,
+            'expected_cash' => 0, 'status' => 'open', 'business_date' => now()->toDateString(), 'timezone_name' => 'Asia/Karachi',
+            'opened_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     public function test_sale_search_is_scoped_to_the_operators_terminal(): void
@@ -105,6 +116,7 @@ class SalesReturnCreateUxMySqlTest extends MySqlTenantTestCase
 
         $this->actingAs(User::on('tenant')->find($userId), 'tenant');
         Auth::shouldUse('tenant');
+        $this->openShift($branchId, $userId);
 
         // The form posts EVERY line — the two the cashier did not touch stay at 0. This used to be
         // rejected by min:0.001; now the zero lines are skipped and only Item A is returned.
@@ -151,6 +163,7 @@ class SalesReturnCreateUxMySqlTest extends MySqlTenantTestCase
 
         $this->actingAs(User::on('tenant')->find($userId), 'tenant');
         Auth::shouldUse('tenant');
+        $this->openShift($branchId, $userId);
 
         // Outside the HTTP middleware, share the empty errors bag the layout expects.
         app('view')->share('errors', new \Illuminate\Support\ViewErrorBag);

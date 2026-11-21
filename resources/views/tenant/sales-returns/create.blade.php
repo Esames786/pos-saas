@@ -1,4 +1,6 @@
-@extends('layouts.app')
+@extends(isset($posRuntime) && $posRuntime->isEdge() ? 'layouts.pos' : 'layouts.app')
+{{-- W-A: every endpoint of this shared screen comes from the runtime map; Online controllers pass no runtime → the Cloud one. --}}
+@php $posRuntime = $posRuntime ?? app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make(); @endphp
 
 @section('title', 'Create Sales Return')
 
@@ -19,9 +21,11 @@
 @php
     // RETURN-NO-BILL-1: two ways on one screen. The tabs keep what the POS passed (embed, its counter).
     $mode = $mode ?? 'bill';
-    $noBillOn = \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::RETURN_NO_BILL);
+    // The no-bill way is a Cloud feature (Master switch) AND a runtime capability: the Branch Server has no processNoBillReturn twin,
+    // so on Edge the tab never renders (capability returnWithoutBill OFF — see docs/status/edge-capability-differences.md).
+    $noBillOn = \App\Support\TenantFeatures::on(\App\Support\TenantFeatures::RETURN_NO_BILL) && $posRuntime->can('returnWithoutBill');
     $keep = array_filter(['embed' => request('embed'), 'terminal_id' => request('terminal_id')]);
-    $tabUrl = fn (array $extra) => url('/sales-returns/create') . (($q = http_build_query($keep + $extra)) !== '' ? '?' . $q : '');
+    $tabUrl = fn (array $extra) => $posRuntime->route('salesReturnCreatePage') . (($q = http_build_query($keep + $extra)) !== '' ? '?' . $q : '');
 @endphp
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
     <div>
@@ -34,7 +38,7 @@
             @endif
         </p>
     </div>
-    <a href="{{ url('/sales-returns') }}" class="btn btn-light">Back</a>
+    <a href="{{ $posRuntime->route('salesReturnIndexPage') }}" class="btn btn-light">Back</a>
 </div>
 
 @if($noBillOn)
@@ -58,7 +62,7 @@
     <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
 @endif
 
-@if($mode === 'no_bill')
+@if($mode === 'no_bill' && $noBillOn)
     @include('tenant.sales-returns.partials.no-bill')
 @else
 
@@ -130,7 +134,7 @@
 </div>
 
 {{-- Step 3: select lines to return --}}
-<form method="POST" action="{{ url('/sales-returns') }}" novalidate id="return-form">
+<form method="POST" action="{{ $posRuntime->route('salesReturnStore') }}" novalidate id="return-form">
     @csrf
     {{-- UB-06: this form is posted once — a double click or a retry shows the return it already made --}}
     <input type="hidden" name="submission_key" value="{{ old('submission_key') ?: \App\Support\SubmissionKey::fresh() }}">
@@ -269,9 +273,11 @@
                         class="form-select @error('refund_method') is-invalid @enderror">
                     <option value="" disabled @selected(! $refundDefault)>Select refund method</option>
                     <option value="cash"          @selected($refundDefault === 'cash')>Cash</option>
-                    <option value="bank_transfer" @selected($refundDefault === 'bank_transfer')>Bank Transfer</option>
-                    <option value="card"          @selected($refundDefault === 'card')>Card</option>
-                    <option value="other"         @selected($refundDefault === 'other')>Other</option>
+                    {{-- Non-cash refunds are a runtime capability (Edge: cash-only policy, hint from the runtime). --}}
+                    @php $refundNonCashOff = ! $posRuntime->can('nonCashTender'); $refundHint = $posRuntime->labels['refundOnlineRequired'] ?? $posRuntime->capabilityHint('nonCashTender'); @endphp
+                    <option value="bank_transfer" @selected($refundDefault === 'bank_transfer') @disabled($refundNonCashOff) @if($refundNonCashOff) title="{{ $refundHint }}" @endif>Bank Transfer</option>
+                    <option value="card"          @selected($refundDefault === 'card') @disabled($refundNonCashOff) @if($refundNonCashOff) title="{{ $refundHint }}" @endif>Card</option>
+                    <option value="other"         @selected($refundDefault === 'other') @disabled($refundNonCashOff) @if($refundNonCashOff) title="{{ $refundHint }}" @endif>Other</option>
                 </select>
                 @error('refund_method') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
@@ -297,12 +303,17 @@
 
     <div class="d-flex gap-2 mb-4">
         <button class="btn btn-primary" type="submit">Post Return</button>
-        <a href="{{ url('/sales-returns') }}" class="btn btn-light">Cancel</a>
+        <a href="{{ $posRuntime->route('salesReturnIndexPage') }}" class="btn btn-light">Cancel</a>
     </div>
 </form>
 @endif
 
 @push('scripts')
+@unless($posRuntime->isEdge())
+{{-- layouts.app (Online) does not carry the shared POS transport; layouts.pos (Edge) already does. --}}
+<script>window.POS_RUNTIME = window.POS_RUNTIME || @json($posRuntime);</script>
+@include('tenant.pos.js.pos-runtime')
+@endunless
 <script>
 (function () {
     var $ = window.jQuery;
@@ -312,7 +323,7 @@
         $('#sale-picker').select2({
             width: '100%', placeholder: 'Search sale no / customer / phone…', minimumInputLength: 1,
             ajax: {
-                url: @json(url('/ajax/sales')), dataType: 'json', delay: 200, cache: false,
+                url: @json($posRuntime->route('salesReturnSearch')), dataType: 'json', delay: 200, cache: false,
                 data: function (params) { return { q: params.term || '', page: params.page || 1 }; },
                 processResults: function (data, params) {
                     params.page = params.page || 1;
@@ -320,10 +331,11 @@
                 },
             },
         }).on('select2:select', function (e) {
-            // keep how the page was opened (inside the POS window, and its counter) when another bill is picked
+            // keep how the page was opened (inside the POS window, and its counter) when another bill is picked — through the
+            // runtime route (the shared screen is rendered on both runtimes; Edge has no /sales-returns/create URL)
             var keep = new URLSearchParams(window.location.search);
             keep.set('sales_order_id', e.params.data.id);
-            window.location = @json(url('/sales-returns/create')) + '?' + keep.toString();
+            window.location = @json($posRuntime->route('salesReturnCreatePage')) + '?' + keep.toString();
         });
     }
 
@@ -442,36 +454,36 @@
 
     @if($needsManagerApproval)
     /** The same verify endpoint the POS uses for cancellations, with its own action type. */
+    var RETURN_PIN_FIELD = { id: 'return-manager-pin', placeholder: 'Manager PIN', attrs: 'inputmode="numeric" autocomplete="off"' };
     function askManagerPin(form, refund) {
         Swal.fire({
             title: 'Manager approval',
             html: 'This branch needs a manager to approve a return.'
                 + (refund > 0 ? '<br>Refund: <strong>' + refund.toFixed(2) + '</strong>' : '')
-                + '<input id="return-manager-pin" type="password" inputmode="numeric" autocomplete="off"'
-                + ' class="swal2-input" placeholder="Manager PIN">',
+                // shared prompt: the Online PIN field (unchanged) or the Edge employee code + credential (one row)
+                + POS.managerCredentialFieldsHtml(RETURN_PIN_FIELD),
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: 'Approve & post',
             focusConfirm: false,
-            // MANAGER-PIN-ENTER-1: Enter approves, like every manager code box.
-            didOpen: function () {
-                var box = document.getElementById('return-manager-pin');
-                box.focus();
-                box.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); Swal.clickConfirm(); } });
+            // MANAGER-PIN-ENTER-1: Enter approves, like every manager code box — on the SHARED prompt (Edge: employee code +
+            // credential; Online: PIN), so the first field is chosen by POS.managerCredentialFocus and Enter works from either.
+            didOpen: function (popup) {
+                POS.managerCredentialFocus(RETURN_PIN_FIELD);
+                popup.querySelectorAll('input.swal2-input').forEach(function (box) { box.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); Swal.clickConfirm(); } }); });
             },
             preConfirm: function () {
-                var pin = document.getElementById('return-manager-pin').value;
-                if (! pin) { Swal.showValidationMessage('Enter the manager PIN'); return false; }
+                var credential = POS.managerCredentialFromPrompt(RETURN_PIN_FIELD);   // {pin} | {manager_employee_code, manager_credential}
+                if (! credential) { Swal.showValidationMessage('Enter the manager PIN'); return false; }
 
-                return fetch('{{ url('/api/manager-approvals/verify') }}', {
+                return fetch(@json($posRuntime->route('managerVerify')), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}',
                         'Accept': 'application/json',
                     },
-                    body: JSON.stringify({
-                        pin: pin,
+                    body: JSON.stringify(Object.assign(credential, {
                         action_type: 'sales_return',
                         // The figure the manager is reading as they type the PIN. The server binds
                         // the approval to it, and SalesReturnService independently refuses any
@@ -482,7 +494,7 @@
                             refund_method: document.getElementById('refund_method').value,
                             refund_amount: Math.round(refund * 100) / 100,
                         },
-                    }),
+                    })),
                 }).then(function (r) {
                     return r.json().then(function (d) {
                         if (! r.ok) { throw new Error(d.message || 'Approval failed'); }

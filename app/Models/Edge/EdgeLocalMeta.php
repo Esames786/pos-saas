@@ -32,6 +32,38 @@ class EdgeLocalMeta extends Model
         'branch_id' => 'integer',
         'activation_epoch' => 'integer',
         'imported_at' => 'datetime',
+        // EDGE-CONFIG-REFRESH-1 — current applied configuration (bootstrap_* stays the initial record).
+        'last_applied_config_revision' => 'integer',
+        'last_refreshed_at' => 'datetime',
+        'last_schema_upgrade_at' => 'datetime', // EDGE-SCHEMA-UPGRADE-1
+        // P0 BRANCH AUTHORITY LEASE — appliance-clock timestamps compared as instants, never as strings.
+        'authority_last_ack_at' => 'datetime',
+        'authority_last_failure_at' => 'datetime',
+        'authority_takeover_at' => 'datetime',
+        'authority_lease_ttl_seconds' => 'integer',
+        'authority_heartbeat_seq' => 'integer',
+        // Q — connection state machine + warm standby freshness bookkeeping.
+        'connection_state_since' => 'datetime',
+        'heartbeat_consecutive_failures' => 'integer',
+        'heartbeat_consecutive_acks' => 'integer',
+        'standby_config_revision_seen' => 'integer',
+        'standby_stock_as_of_seen' => 'datetime',
+        'standby_config_refreshed_at' => 'datetime',
+        'standby_stock_refreshed_at' => 'datetime',
+        'reconcile_clean_at' => 'datetime',
+        // F1 / F2 — warm cache freshness stamps.
+        'returnable_cache_as_of' => 'datetime',
+        'returnable_cache_refreshed_at' => 'datetime',
+        'standby_returnable_as_of_seen' => 'datetime',
+        'supplier_finance_cache_as_of' => 'datetime',
+        'supplier_finance_cache_refreshed_at' => 'datetime',
+        'standby_supplier_finance_as_of_seen' => 'datetime',
+        'purchase_return_cache_as_of' => 'datetime',
+        'purchase_return_cache_refreshed_at' => 'datetime',
+        'standby_purchase_return_as_of_seen' => 'datetime',
+        // EDGE PHASE 4 — the Cloud's capability advertisement on the last acknowledged heartbeat ({name: bool}).
+        'cloud_capabilities_seen' => 'array',
+        'cloud_capabilities_seen_at' => 'datetime',
     ];
 
     /** Identity fields that become IMMUTABLE once set (fix 5). */

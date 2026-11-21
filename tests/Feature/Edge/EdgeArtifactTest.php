@@ -167,6 +167,44 @@ class EdgeArtifactTest extends TestCase
         // Sanity: real runtime files are present.
         $this->assertContains('composer.json', $plan);
         $this->assertContains('artisan', $plan);
+        // The ACTUAL cashier product ships in the restricted artifact: the ONE shared cashier view (Phase 3: the Online
+        // `tenant.pos.index` through `layouts.pos` + its partials/scripts, and the secondary tenant screens the Edge renders
+        // — shift open/close/list/detail, sales-return create/list/detail, split bill), the login page, the Quick Report
+        // front-end + the canonical report engine/thermal Blade it reuses, and the canonical print documents Print Here
+        // renders — while the Cloud report/catering controllers stay physically out. The old Edge page is deleted (Stage B).
+        $this->assertNotContains('resources/views/edge/pos/index.blade.php', $plan, 'Stage B: the old Edge cashier page is deleted');
+        $sharedViewFiles = array_map(
+            fn ($f) => str_replace('\\', '/', substr($f, strlen(base_path()) + 1)),
+            array_merge(glob(resource_path('views/tenant/pos/partials/*.blade.php')) ?: [], glob(resource_path('views/tenant/pos/js/*.blade.php')) ?: [])
+        );
+        $this->assertGreaterThanOrEqual(6, count($sharedViewFiles), 'the shared view\'s partials + runtime script exist');
+        foreach (array_merge([
+            'resources/views/tenant/pos/index.blade.php', 'resources/views/layouts/pos.blade.php',
+            'resources/views/tenant/shifts/open.blade.php', 'resources/views/tenant/shifts/close.blade.php',
+            'resources/views/tenant/shifts/index.blade.php', 'resources/views/tenant/shifts/show.blade.php',
+            'resources/views/tenant/sales-returns/create.blade.php', 'resources/views/tenant/sales-returns/index.blade.php',
+            'resources/views/tenant/sales-returns/show.blade.php', 'resources/views/tenant/sales-orders/split-bill.blade.php',
+        ], $sharedViewFiles) as $must) {
+            $this->assertContains($must, $plan, "the shared cashier view must ship: {$must}");
+        }
+        foreach ([
+            'resources/views/edge/auth/login.blade.php', 'resources/views/edge/health.blade.php',
+            'app/Http/Controllers/Edge/EdgeLocalPosController.php', 'app/Http/Controllers/Edge/EdgeQuickReportController.php',
+            'app/Services/Reports/SalesReportEngine.php', 'app/Services/Reports/SalesReportDocumentService.php',
+            'resources/views/tenant/reports/center/print.blade.php',
+            'resources/views/tenant/printing/documents/receipt.blade.php', 'resources/views/tenant/printing/documents/kot.blade.php',
+            'app/Http/Controllers/Tenant/PrintDocumentController.php',
+        ] as $must) {
+            $this->assertContains($must, $plan, "the cashier product must ship: {$must}");
+        }
+        // F2 — the operator pages of the supplier-finance surface ship with the cashier product.
+        foreach (['resources/views/edge/finance/suppliers.blade.php', 'resources/views/edge/finance/journal.blade.php', 'resources/views/edge/finance/purchase-returns.blade.php'] as $must) {
+            $this->assertContains($must, $plan, "the supplier-finance surface must ship: {$must}");
+        }
+        foreach (['app/Http/Controllers/Tenant/Reports/ShiftReportController.php', 'app/Services/Finance/SupplierPayableService.php',
+            'app/Services/Finance/ManualJournalService.php', 'app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'resources/views/tenant/supplier-payments/create.blade.php'] as $never) {
+            $this->assertNotContains($never, $plan, "Cloud-only source must stay out: {$never}");
+        }
         $this->assertTrue((bool) collect($plan)->first(fn ($p) => str_starts_with($p, 'app/')), 'app/ files present');
 
         // Secrets / VCS / dev / dumps / FakePrinter are NOT in the plan.
@@ -180,6 +218,215 @@ class EdgeArtifactTest extends TestCase
 
         // And the forbidden scan is clean on the real allowlisted plan.
         $this->assertSame([], $builder->forbidden($plan), 'the real Edge plan must contain no forbidden/secret files');
+    }
+
+    public function test_build_is_reproducible_from_the_same_source(): void
+    {
+        $root = $this->tempDir();
+        $this->writeFile($root, 'app/Good.php', '<?php // good');
+        $this->writeFile($root, 'app/nested/Ok.php', '<?php // ok');
+        $this->writeFile($root, 'composer.json', '{}');
+
+        // Two builds from the SAME source (ignore build timestamp, which we do not pass into meta).
+        $dest1 = $this->tempDir();
+        $dest2 = $this->tempDir();
+        $this->builder()->build($root, $dest1, ['git_commit' => 'deadbeef']);
+        $this->builder()->build($root, $dest2, ['git_commit' => 'deadbeef']);
+
+        $m1 = json_decode((string) file_get_contents($dest1 . '/edge-build-manifest.json'), true);
+        $m2 = json_decode((string) file_get_contents($dest2 . '/edge-build-manifest.json'), true);
+        $this->assertSame($m1['files'], $m2['files'], 'file inventory + checksums must be identical');
+        $this->assertSame($m1['manifest_hash'], $m2['manifest_hash'], 'manifest hash must be stable across builds');
+    }
+
+    public function test_manifest_declares_the_full_runtime_identity(): void
+    {
+        $root = $this->tempDir();
+        $this->writeFile($root, 'app/A.php', '<?php');
+        $this->writeFile($root, 'composer.json', '{}');
+        $manifest = $this->builder()->build($root, $this->tempDir(), ['git_commit' => 'abc123']);
+
+        foreach (['edge_app_version', 'artifact_format_version', 'bootstrap_schema', 'min_php', 'min_db',
+            'capabilities', 'runtime_mode_supported', 'manifest_hash', 'file_count'] as $key) {
+            $this->assertArrayHasKey($key, $manifest, "manifest must declare {$key}");
+        }
+        $this->assertSame('branch_server', $manifest['runtime_mode_supported']);
+        $this->assertSame('abc123', $manifest['git_commit']);
+        $this->assertIsArray($manifest['capabilities']);
+    }
+
+    public function test_real_plan_ships_the_offline_productization_runtime(): void
+    {
+        $plan = EdgeArtifactBuilder::fromConfig()->plan(base_path());
+
+        // The shippable box must actually contain the sync/reconciliation/baseline/backup runtime we built.
+        foreach ([
+            'app/Services/Edge/EdgeSyncSender.php',
+            'app/Services/Edge/EdgeSyncReconciliationService.php',
+            'app/Services/Edge/EdgeBaselineCutoverService.php',
+            'app/Services/Edge/EdgeBackupService.php',
+            'app/Services/Edge/EdgeRestoreService.php',
+            'app/Console/Commands/EdgeLocalBackupCommand.php',
+            'app/Console/Commands/EdgeLocalRestoreCommand.php',
+            // P5 — a canonical tenant migration RUNS this seeder: db-init on a fresh appliance needs it (release-shape finding).
+            'database/seeders/Tenant/CateringServiceTimePresetSeeder.php',
+            // P4 — the Windows appliance runtime: web backend, service plan, health, first-boot pairing/bootstrap, scripts.
+            'app/Services/Edge/EdgeSupervisionPlan.php',
+            'app/Services/Edge/EdgeApplianceHealthService.php',
+            'app/Console/Commands/EdgeLocalServeCommand.php',
+            'app/Console/Commands/EdgeLocalServicePlanCommand.php',
+            'app/Console/Commands/EdgeLocalHealthCommand.php',
+            'app/Console/Commands/EdgeLocalPairCommand.php',
+            'app/Console/Commands/EdgeLocalBootstrapPullCommand.php',
+            'app/Console/Commands/EdgeLocalGatewayCertCommand.php',
+            'app/Console/Commands/EdgeLocalUninstallDataCommand.php',
+            'scripts/edge/Install-EdgeAppliance.ps1',
+            'scripts/edge/Register-EdgeServices.ps1',
+            'scripts/edge/Update-EdgeAppliance.ps1',
+            'scripts/edge/Uninstall-EdgeAppliance.ps1',
+            'scripts/edge/appliance/edge-launcher.php',
+            'scripts/edge/appliance/appliance.env.template',
+        ] as $required) {
+            $this->assertContains($required, $plan, "the Edge artifact must ship {$required}");
+        }
+    }
+
+    public function test_built_artifact_physically_excludes_cloud_modules_and_keeps_edge_runtime(): void
+    {
+        // Build the REAL app/ tree (no vendor) with the production exclude list into a temp artifact.
+        $builder = new EdgeArtifactBuilder([
+            'include' => ['app'],
+            'exclude' => (array) config('edge.artifact.exclude'),
+            'forbidden' => (array) config('edge.artifact.forbidden'),
+        ]);
+        $dest = $this->tempDir();
+        $builder->build(base_path(), $dest);
+
+        // Cloud-only subsystems are PHYSICALLY absent from the appliance artifact.
+        $absent = [
+            'app/Services/Saas', 'app/Services/Central', 'app/Services/Manufacturing', 'app/Services/Purchasing',
+            'app/Http/Controllers/Central', 'app/Http/Controllers/Tenant/Manufacturing', 'app/Http/Controllers/Tenant/Reports',
+            'app/Services/Edge/EdgeInboundSaleIngestionService.php', 'app/Services/Edge/EdgeFinancePostingVerifier.php',
+            'app/Services/Edge/EdgeBaselineIssuanceService.php', 'app/Http/Controllers/Edge/EdgeSyncIngestionApiController.php',
+            'app/Http/Controllers/Edge/EdgeSyncReconciliationApiController.php', 'app/Http/Controllers/Edge/EdgeBaselineApiController.php',
+            'app/Models/Tenant/EdgeInboundSaleIngestion.php', 'app/Services/Finance/SupplierPayableService.php',
+            // POST-RECONCILIATION — the Cloud business domains merged from canonical must NOT ship (business
+            // logic; migrations are kept separately for schema coherence).
+            'app/Http/Controllers/Tenant/Catering', 'app/Models/Tenant/CateringProductProfile.php',
+            'app/Models/Tenant/ManufacturingBom.php', 'app/Models/Tenant/ProductionOrder.php',
+            'app/Http/Controllers/Tenant/PurchaseOrderController.php', 'app/Http/Controllers/Tenant/SupplierController.php',
+            'app/Models/Master/Subscription.php', 'app/Http/Controllers/Tenant/TenantBillingController.php',
+            'app/Console/Commands/DispatchCateringRemindersCommand.php',
+            // W6 reconcile (canonical b529c95) — Catering job + support classes under non-Catering basenames.
+            'app/Jobs/Catering/SendCateringCustomerMailJob.php', 'app/Support/Catering/CourseOrder.php',
+            // F2 — Cloud supplier-finance authority, projection and ingestion never ship.
+            'app/Services/Finance/ManualJournalService.php', 'app/Services/Edge/EdgeSupplierFinanceProjectionService.php',
+            'app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'app/Http/Controllers/Edge/EdgeInboundSupplierFinanceApiController.php',
+            'app/Http/Controllers/Edge/EdgeSupplierFinanceCacheApiController.php', 'app/Models/Tenant/EdgeInboundSupplierFinanceIngestion.php',
+            'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
+            // Phase E (C-7) — VOID-PURGE Cloud finance purge never ships (imports excluded Catering*/Supplier* models).
+            'app/Services/Finance/VoidPurgeService.php', 'app/Services/Finance/VoidPurgeNeedsConfirmation.php',
+            'app/Http/Controllers/Tenant/Finance/VoidPurgeController.php', 'resources/views/tenant/finance/voided-entries/index.blade.php',
+            'resources/views/tenant/finance/voided-entries/partials/purge-button.blade.php',
+            // F3 — Cloud purchase-return authority / projection / ingestion never ship.
+            'app/Services/Edge/EdgePurchaseReturnProjectionService.php', 'app/Services/Edge/EdgeInboundPurchaseReturnIngestionService.php',
+            'app/Http/Controllers/Edge/EdgeInboundPurchaseReturnApiController.php', 'app/Http/Controllers/Edge/EdgePurchaseReturnCacheApiController.php',
+            'app/Models/Tenant/EdgeInboundPurchaseReturnIngestion.php',
+        ];
+        foreach ($absent as $rel) {
+            $this->assertFileDoesNotExist($dest . '/' . $rel, "Cloud-only path must be excluded: {$rel}");
+        }
+
+        // The Edge runtime + the genuinely-shared primitives it needs remain.
+        $present = [
+            'app/Services/Edge/EdgeSyncSender.php', 'app/Services/Edge/EdgeSyncReconciliationService.php',
+            'app/Services/Edge/EdgeBaselineCutoverService.php', 'app/Services/Edge/EdgeBackupService.php',
+            'app/Services/Edge/EdgeRestoreService.php', 'app/Services/Edge/EdgeLocalPosService.php',
+            'app/Services/Edge/EdgeBootstrapService.php',        // KEPT: config reads its SCHEMA_VERSION constant
+            'app/Services/Finance/JournalPostingService.php',    // KEPT: shared finance primitive
+            'app/Services/Edge/EdgeSupplierFinanceCacheService.php', 'app/Services/Edge/EdgeLocalSupplierFinanceService.php',   // F2 appliance side
+        ];
+        foreach ($present as $rel) {
+            $this->assertFileExists($dest . '/' . $rel, "Edge runtime must ship: {$rel}");
+        }
+    }
+
+    public function test_built_artifact_source_scan_reports_zero_cloud_module_files(): void
+    {
+        $builder = new EdgeArtifactBuilder([
+            'include' => ['app'],
+            'exclude' => (array) config('edge.artifact.exclude'),
+            'forbidden' => (array) config('edge.artifact.forbidden'),
+        ]);
+        $dest = $this->tempDir();
+        $builder->build(base_path(), $dest);
+
+        $count = function (string $subdir) use ($dest): int {
+            $abs = $dest . '/' . $subdir;
+            if (! is_dir($abs)) {
+                return 0;
+            }
+            $n = 0;
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($abs, \FilesystemIterator::SKIP_DOTS)) as $f) {
+                $n += $f->isFile() ? 1 : 0;
+            }
+
+            return $n;
+        };
+
+        $this->assertSame(0, $count('app/Services/Catering'), 'CATERING_FILES');
+        $this->assertSame(0, $count('app/Services/Saas'), 'SAAS_BILLING_FILES');
+        $this->assertSame(0, $count('app/Services/Manufacturing'), 'MANUFACTURING_FILES');
+        $this->assertSame(0, $count('app/Services/Purchasing'), 'PURCHASING_FILES');
+        $this->assertSame(0, $count('app/Http/Controllers/Central'), 'CLOUD_ADMIN_FILES');
+        $this->assertFileDoesNotExist($dest . '/app/Services/Edge/EdgeInboundSaleIngestionService.php', 'CLOUD_INGESTION_FILES');
+        $this->assertFileDoesNotExist($dest . '/app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'CLOUD_SUPPLIER_FINANCE_INGESTION_FILES');
+        $this->assertFileDoesNotExist($dest . '/app/Services/Finance/SupplierPayableService.php', 'CLOUD_SUPPLIER_FINANCE_AUTHORITY_FILES');
+    }
+
+    /** P5 release-shape finding: a canonical tenant migration RUNS a seeder — the artifact must ship it and the models it loads. */
+    public function test_every_seeder_a_migration_runs_ships_with_the_models_it_loads(): void
+    {
+        $plan = array_flip(EdgeArtifactBuilder::fromConfig()->plan(base_path()));
+        $referenced = [];
+        foreach (array_merge(glob(base_path('database/migrations/tenant/*.php')) ?: [], glob(base_path('database/migrations/edge/*.php')) ?: []) as $migration) {
+            if (preg_match_all('/Database\\\\Seeders\\\\([A-Za-z0-9_\\\\]+)/', (string) file_get_contents($migration), $m)) {
+                foreach ($m[1] as $class) {
+                    $referenced[$class] = basename($migration);
+                }
+            }
+        }
+        $this->assertNotEmpty($referenced, 'the guard expects at least one migration-run seeder (the catering presets)');
+        foreach ($referenced as $class => $migration) {
+            $seederRel = 'database/seeders/' . str_replace('\\', '/', $class) . '.php';
+            $this->assertArrayHasKey($seederRel, $plan, "{$migration} runs {$class}: the artifact must ship {$seederRel} or db-init dies on a fresh appliance");
+            if (preg_match_all('/^use (App\\\\Models\\\\[A-Za-z0-9_\\\\]+);/m', (string) file_get_contents(base_path($seederRel)), $uses)) {
+                foreach ($uses[1] as $model) {
+                    $modelRel = str_replace('\\', '/', preg_replace('/^App\\\\/', 'app/', $model)) . '.php';
+                    $this->assertArrayHasKey($modelRel, $plan, "{$class} loads {$model}: the artifact must ship {$modelRel}");
+                }
+            }
+        }
+        // …and the keep list stays minimal: Catering RUNTIME is still physically excluded.
+        $this->assertArrayNotHasKey('app/Services/Catering/CateringEstimateService.php', $plan);
+        $this->assertArrayNotHasKey('database/seeders/Tenant/KashifClientMenuSeeder.php', $plan);
+        $this->assertArrayNotHasKey('database/seeders/MasterSeeder.php', $plan);
+    }
+
+    public function test_branch_server_allows_the_productization_commands_and_denies_cloud_ones(): void
+    {
+        config(['app.role' => 'branch_server']);
+        foreach (['edge:local:backup', 'edge:local:restore', 'edge:local:sync-send', 'edge:local:sync-status',
+            // P4 — packaging / install / operate commands run on the appliance …
+            'edge:local:serve', 'edge:local:service-plan', 'edge:local:health', 'edge:local:pair', 'edge:local:bootstrap-pull', 'edge:local:gateway-cert', 'edge:local:uninstall-data'] as $cmd) {
+            $this->assertTrue(\App\Support\EdgeConsoleBoundary::isAllowed($cmd), "{$cmd} must run on a Branch Server");
+        }
+        // A Cloud-only command stays denied on the appliance.
+        $this->assertFalse(\App\Support\EdgeConsoleBoundary::isAllowed('migrate:fresh'), 'a destructive Cloud command must be denied');
+        // … while the BUILD-HOST commands never run on an appliance.
+        $this->assertFalse(\App\Support\EdgeConsoleBoundary::isAllowed('edge:build-package'));
+        $this->assertFalse(\App\Support\EdgeConsoleBoundary::isAllowed('edge:build-artifact'));
+        config(['app.role' => null]);
     }
 
     private function rrmdir(string $dir): void

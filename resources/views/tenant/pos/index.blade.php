@@ -1,4 +1,4 @@
-@extends('layouts.app')
+@extends('layouts.pos')
 
 @section('title', ($kitchenTickets ?? true) ? 'Restaurant POS' : 'POS')
 
@@ -500,6 +500,8 @@
     @if($errors->any())
         <span class="alert alert-danger py-1 px-2 mb-0 small d-inline-flex align-items-center" role="alert">{{ $errors->first() }}</span>
     @endif
+    {{-- A5: the shared runtime-status slot (fixed 28px x 260px box at the row's right end; row height stays 38px). --}}
+    @include('tenant.pos.partials.pos-status-slot')
 </div>
 
 {{-- Selected table-session bar — JS-managed: always in the DOM, shown when a dine-in
@@ -508,7 +510,6 @@
      never gets the table bar at all — every JS reference to it is null-guarded. --}}
 @if(in_array('dine_in', $allowedOrderTypes, true))
 <div id="pos-session-bar" class="pos-card px-3 py-2 mb-3 d-flex flex-wrap align-items-center gap-2 pos-session-summary"
-     data-session-base="{{ url('/restaurant/table-sessions') }}"
      style="{{ $activeMode === 'dine_in' && $tableSession ? '' : 'display:none;' }}">
     <div class="session-context {{ $tableSession ? '' : 'd-none' }}" id="pos-session-details">
         <strong>Table <span id="pos-session-table-no">{{ $tableSession?->table?->table_no }}</span></strong>
@@ -524,7 +525,7 @@
         @endcan
         @can('tenant.restaurant.table-sessions.bill-requested')
             <form method="POST" id="pos-session-request-bill-form" class="d-inline"
-                  action="{{ $tableSession ? url('/restaurant/table-sessions/' . $tableSession->id . '/bill-requested') : '#' }}"
+                  action="{{ $tableSession ? $posRuntime->route('tableBillRequested', ['session' => $tableSession->id]) : '#' }}"
                   style="{{ $tableSession && $tableSession->status === 'open' ? '' : 'display:none;' }}">
                 @csrf
                 <button class="btn btn-sm btn-info" type="submit"
@@ -567,8 +568,9 @@
                 @php $reportToday = app(\App\Support\TenantClock::class)->now()->toDateString(); @endphp
                 <button type="button" class="btn btn-sm btn-outline-dark me-2" id="pos-report-btn"
                         data-bs-toggle="modal" data-bs-target="#posReportModal"
-                        data-report-url="{{ url('/reports/center') }}?date_from={{ $reportToday }}&date_to={{ $reportToday }}&embed=1"
-                        title="Open the Sales Report Center (today)">
+                        data-report-url="{{ $posRuntime->route('reportsCenter') }}?date_from={{ $reportToday }}&date_to={{ $reportToday }}&embed=1"
+                        @disabled(! $posRuntime->can('reports'))
+                        title="{{ $posRuntime->can('reports') ? 'Open the Sales Report Center (today)' : $posRuntime->capabilityHint('reports') }}">
                     <i class="ti ti-file-analytics me-1"></i>Report
                 </button>
             @endcan
@@ -578,8 +580,9 @@
                      leaving the POS. --}}
                 <button type="button" class="btn btn-sm btn-outline-danger me-2" id="pos-return-btn"
                         data-bs-toggle="modal" data-bs-target="#posReturnModal"
-                        data-return-url="{{ url('/sales-returns/create') }}?embed=1"
-                        title="Create a sales return (search a paid sale)">
+                        data-return-url="{{ $posRuntime->route('salesReturnCreatePage') }}?embed=1"
+                        @disabled(! $posRuntime->can('salesReturn'))
+                        title="{{ $posRuntime->can('salesReturn') ? 'Create a sales return (search a paid sale)' : $posRuntime->capabilityHint('salesReturn') }}">
                     <i class="ti ti-arrow-back-up me-1"></i>Return
                 </button>
             @endcan
@@ -589,7 +592,8 @@
                 @php $quickReportDate = app(\App\Support\TenantClock::class)->currentBusinessDate(); @endphp
                 <button type="button" class="btn btn-sm btn-outline-primary me-2" id="pos-quick-report-btn"
                         data-bs-toggle="modal" data-bs-target="#quickReportModal"
-                        title="Send or print a sales report (all data)">
+                        @disabled(! $posRuntime->can('quickReport'))
+                        title="{{ $posRuntime->can('quickReport') ? 'Send or print a sales report (all data)' : $posRuntime->capabilityHint('quickReport') }}">
                     <i class="ti ti-send me-1"></i>Quick Report
                 </button>
             @endcan
@@ -608,7 +612,7 @@
 </div>
 
 {{-- POS form --}}
-<form id="pos-sale-form" method="POST" action="{{ url('/pos') }}">
+<form id="pos-sale-form" method="POST" action="{{ $posRuntime->route('saleStore') }}">
     @csrf
     <input type="hidden" name="order_source"                id="pos-order-source"      value="pos">
     {{-- SALE-IDEMPOTENCY-1: one logical sale = one client_uuid (survives retry/refresh) --}}
@@ -641,16 +645,22 @@
                 <div id="pos-shift-status" class="small" style="display:none">
                     <span class="badge bg-secondary" id="pos-shift-badge"></span>
                     <span id="pos-shift-detail" class="text-muted ms-1"></span>
-                    <a href="{{ url('/shifts/open') }}" id="pos-shift-open-link" class="ms-1" style="display:none">Open shift</a>
+                    <a href="{{ $posRuntime->route('shiftOpenPage') }}" id="pos-shift-open-link" class="ms-1" style="display:none">Open shift</a>
                 </div>
                 {{-- POS-REMINDER-PAUSE-1: this terminal's Reminder slips — ON, or paused until its shift
                      closes. Hidden on a terminal with no Reminder rule; the state rides on the
                      shift-status poll, so a toggle at another POS shows up here too. --}}
                 <div id="pos-reminder-status" class="small" style="display:none">
-                    <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="pos-reminder-toggle"></button>
+                    {{-- POS-RUNTIME: the same control in the same slot on both runtimes, gated by capability reminderPause (Cloud ON;
+                         Branch Server ON since D2 — its twin stamps the local shift; a runtime with it off renders this disabled + hint). --}}
+                    <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="pos-reminder-toggle"
+                            @disabled(! $posRuntime->can('reminderPause')) @unless($posRuntime->can('reminderPause')) title="{{ $posRuntime->capabilityHint('reminderPause') }}" @endunless></button>
                 </div>
                 {{-- PRINT-OFFLINE-HERE-1: is counter ki parchi printer tak pahunchegi ya nahi — print agent ki
                      zindagi se, har 10 s (laal par har 3 s). Laal = parchi isi computer se niklegi. --}}
+                {{-- Shared-view contract (Edge integration, 21 Nov 2026): the SAME hidden pill skeleton in both runtimes; it is
+                     shown only by the poller, which starts only where the runtime map carries printHealth (Cloud). On the
+                     Branch Server printHealth is null (it prints straight to the LAN printers), so the pill stays hidden. --}}
                 <div id="pos-print-health" class="small" style="display:none">
                     <span class="pos-ph-pill" id="pos-print-health-pill" role="status" aria-live="polite">
                         <span class="pos-ph-dot" aria-hidden="true"></span><span id="pos-print-health-text"></span>
@@ -732,7 +742,9 @@
                         </div>
                         <div class="modal-body">
                             <label for="branch_id" class="form-label small mb-1 required">Branch</label>
-                            <select id="branch_id" name="branch_id" class="form-select form-select-sm mb-3" required>
+                            <select id="branch_id" name="branch_id" class="form-select form-select-sm mb-3" required
+                                    @disabled(! $posRuntime->can('branchSelect'))
+                                    @unless($posRuntime->can('branchSelect')) title="{{ $posRuntime->capabilityHint('branchSelect') }}" @endunless>
                                 @foreach($branches as $branch)
                                     <option value="{{ $branch->id }}"
                                         data-allow-negative="{{ $branch->allow_negative_stock ? 1 : 0 }}"
@@ -743,6 +755,10 @@
                                     </option>
                                 @endforeach
                             </select>
+                            {{-- A disabled select does not post: the bound branch still reaches the form. --}}
+                            @unless($posRuntime->can('branchSelect'))
+                                <input type="hidden" name="branch_id" value="{{ $selectedBranchId }}">
+                            @endunless
                             <label for="terminal_id" class="form-label small mb-1">Terminal</label>
                             <select id="terminal_id" name="terminal_id" class="form-select form-select-sm">
                                 <option value="">No Terminal</option>
@@ -1038,11 +1054,17 @@
                         </button>
                     </div>
                     {{-- ONLINE-ORDERING-1: website orders (bell + badge). Only on a plan with Online Ordering;
-                         stays hidden until this counter is routed for website orders or one is waiting. --}}
-                    @if(\App\Support\OnlineOrdering::enabledForTenant())
+                         stays hidden until this counter is routed for website orders or one is waiting.
+                         CANONICAL MERGE (D8): the inbox is the Cloud capability `websiteOrders` (owner D4: a website order needs the
+                         Cloud). The Online POS draws it for a plan with Online Ordering; a runtime without the capability draws the
+                         SAME slot disabled with the runtime hint (identical geometry — the slot stays hidden until routed). --}}
+                    @php
+                        $websiteOrdersSlot = $posRuntime->can('websiteOrders') ? \App\Support\OnlineOrdering::enabledForTenant() : true;
+                    @endphp
+                    @if($websiteOrdersSlot)
                     <div class="col-auto" hidden>
                         <button type="button" class="btn btn-outline-danger btn-lg px-3 position-relative" id="web-orders-btn"
-                                title="Website orders">
+                                @disabled(! $posRuntime->can('websiteOrders')) title="{{ $posRuntime->can('websiteOrders') ? 'Website orders' : $posRuntime->capabilityHint('websiteOrders') }}">
                             <i class="ti ti-world-www"></i>
                             <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="web-orders-badge" hidden>0</span>
                         </button>
@@ -1099,7 +1121,7 @@
                                     <label for="payment_method_id" class="form-label required">Payment Method</label>
                                     <select id="payment_method_id" class="form-select" required>
                                         @foreach($paymentMethods as $method)
-                                            <option value="{{ $method->id }}" data-type="{{ $method->method_type }}" @selected($method->method_type === 'cash')>{{ $method->name }}</option>
+                                            <option value="{{ $method->id }}" data-type="{{ $method->method_type }}" @selected($method->method_type === 'cash') @disabled(! $posRuntime->can('nonCashTender') && $method->method_type !== 'cash')>{{ $method->name }}</option>
                                         @endforeach
                                     </select>
                                 </div>
@@ -1160,10 +1182,10 @@
                                     {{-- Tip Buttons --}}
                                     <div class="d-flex gap-1 flex-wrap">
                                         <span class="small text-muted me-1 align-self-center">Tip:</span>
-                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="0">No Tip</button>
-                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="5">5%</button>
-                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="10">10%</button>
-                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="custom">Custom</button>
+                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" @disabled(! $posRuntime->can('tipOnPaidSale')) data-tip-type="percent" data-tip-value="0">No Tip</button>
+                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" @disabled(! $posRuntime->can('tipOnPaidSale')) data-tip-type="percent" data-tip-value="5">5%</button>
+                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" @disabled(! $posRuntime->can('tipOnPaidSale')) data-tip-type="percent" data-tip-value="10">10%</button>
+                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" @disabled(! $posRuntime->can('tipOnPaidSale')) data-tip-type="custom">Custom</button>
                                     </div>
                                 </div>
                                 {{-- Printing panel: live status + temporary (this-device) auto-print overrides --}}
@@ -1262,13 +1284,15 @@
                     </button>
                     <div class="ms-auto d-flex gap-2">
                         @can('tenant.restaurant.floors.index')
-                            <button type="button" class="btn btn-sm btn-outline-secondary" data-management-url="{{ url('/restaurant/floors?embed=1') }}">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-management-url="{{ $posRuntime->route('manageFloors') . '?embed=1' }}"
+                                    @disabled(! $posRuntime->can('manageFloorsTables')) @unless($posRuntime->can('manageFloorsTables')) title="{{ $posRuntime->capabilityHint('manageFloorsTables') }}" @endunless>
                                 <i class="ti ti-layers me-1"></i>Manage Floors
                             </button>
                         @endcan
                         @can('tenant.restaurant.tables.index')
                             <button type="button" class="btn btn-sm btn-outline-secondary"
-                                    data-management-url="{{ url('/restaurant/tables?branch_id=' . $selectedBranchId . '&embed=1') }}">
+                                    data-management-url="{{ $posRuntime->route('manageTables') . '?branch_id=' . $selectedBranchId . '&embed=1' }}"
+                                    @disabled(! $posRuntime->can('manageFloorsTables')) @unless($posRuntime->can('manageFloorsTables')) title="{{ $posRuntime->capabilityHint('manageFloorsTables') }}" @endunless>
                                 <i class="ti ti-settings me-1"></i>Manage Tables
                             </button>
                         @endcan
@@ -1276,7 +1300,7 @@
                 </div>
 
                 <section class="table-workspace-view" id="table-workspace-board">
-                    <div id="table-board-body" data-board-url="{{ url('/api/pos/table-board') }}">
+                    <div id="table-board-body" data-board-url="{{ $posRuntime->route('tableBoardHtml') }}">
                         @include('tenant.pos.partials.table-board')
                     </div>
                 </section>
@@ -1542,7 +1566,7 @@
         if (! tableId) { return; }
         if (btn) { btn.disabled = true; }
 
-        fetch('{{ url('/held-sales') }}/' + info.sale_id + '/reattach-table', {
+        fetch(POS.route('heldReattach', { sale: info.sale_id }), {
             method: 'POST',
             headers: {
                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
@@ -1563,7 +1587,7 @@
                 return;
             }
             // Us table par dobara load karo — ab bill zinda session par hai aur pay ho sakta hai.
-            window.location = '{{ url('/pos') }}?held_sale_id=' + info.sale_id
+            window.location = POS.route('posIndex') + '?held_sale_id=' + info.sale_id
                 + '&table_session_id=' + res.body.restaurant_table_session_id
                 + '&mode=dine_in&branch_id={{ $selectedBranchId }}';
         })
@@ -1912,10 +1936,12 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="qr-print">
                     <i class="ti ti-printer me-1"></i>Print here
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="qr-network">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="qr-network"
+                        @disabled(! $posRuntime->can('quickReportNetwork')) @unless($posRuntime->can('quickReportNetwork')) title="{{ $posRuntime->capabilityHint('quickReportNetwork') }}" @endunless>
                     <i class="ti ti-wifi me-1"></i>Send to network
                 </button>
-                <button type="button" class="btn btn-sm btn-primary" id="qr-email">
+                <button type="button" class="btn btn-sm btn-primary" id="qr-email"
+                        @disabled(! $posRuntime->can('quickReportEmail')) @unless($posRuntime->can('quickReportEmail')) title="{{ $posRuntime->capabilityHint('quickReportEmail') }}" @endunless>
                     <i class="ti ti-send me-1"></i>Send to owner
                 </button>
             </div>
@@ -1927,7 +1953,6 @@
     var modalEl = document.getElementById('quickReportModal');
     if (!modalEl) return;
     var csrf  = '{{ csrf_token() }}';
-    var base  = @json(url('/pos/quick-report'));
     var PRODUCTS = (typeof products !== 'undefined' && Array.isArray(products)) ? products : [];
     var chosenItems = {};   // id -> name
 
@@ -2031,7 +2056,7 @@
     };
     var qrSaveToggle = document.getElementById('qr-save');
     var saveNow = function () {
-        fetch(base + '/save-settings', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(collect()) }).catch(function () {});
+        fetch(POS.route('quickReportSave'), { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(collect()) }).catch(function () {});
     };
     var maybeSave = function () { if (qrSaveToggle.checked) saveNow(); };
     // Checking "Save my selection" persists the current picks straight away — not only when an action
@@ -2041,7 +2066,7 @@
     document.getElementById('qr-email').addEventListener('click', function () {
         var p = collect(); if (!p.sections.length) { toast('Tick at least one section.', false); return; }
         maybeSave(p);
-        fetch(base + '/email', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(p) })
+        fetch(POS.route('quickReportEmail'), { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(p) })
             .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
             .then(function (res) { toast(res.ok ? ('Emailed to: ' + (res.d.sent_to || []).join(', ')) : (res.d.message || 'Email failed.'), res.ok); })
             .catch(function () { toast('Email failed.', false); });
@@ -2051,7 +2076,7 @@
         var p = collect(); if (!p.sections.length) { toast('Tick at least one section.', false); return; }
         if (!p.printer_id) { toast('Choose a network printer first.', false); return; }
         maybeSave(p);
-        fetch(base + '/send-to-network', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(p) })
+        fetch(POS.route('quickReportNetwork'), { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(p) })
             .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
             .then(function (res) { toast(res.ok ? ('Queued to ' + res.d.printer + '.') : (res.d.message || 'Send failed.'), res.ok); })
             .catch(function () { toast('Send failed.', false); });
@@ -2060,14 +2085,14 @@
     document.getElementById('qr-print').addEventListener('click', function () {
         var p = collect(); if (!p.sections.length) { toast('Tick at least one section.', false); return; }
         maybeSave(p);
-        var w = window.open(base + '/print?' + toQuery(p), '_blank');
+        var w = window.open(POS.route('quickReportPrint') + '?' + toQuery(p), '_blank');
         if (w) { w.addEventListener('load', function () { try { w.print(); } catch (e) {} }); }
     });
 
     // Pre-fill from the user's saved selection on open.
     modalEl.addEventListener('show.bs.modal', function () {
         document.getElementById('qr-toast').classList.add('d-none');
-        fetch(base + '/settings', { headers: { Accept: 'application/json' } })
+        fetch(POS.route('quickReportSettings'), { headers: { Accept: 'application/json' } })
             .then(function (r) { return r.json(); })
             .then(function (res) {
                 var s = res && res.settings; if (!s) return;
@@ -2160,7 +2185,7 @@
     // which renders KOT / receipt / reminder by the job's own document_type.
     window.openPrintHere = function (jobId) {
         if (!jobId) return;
-        frame.src = '{{ url('/printing/documents') }}/' + Number(jobId) + '/preview';
+        frame.src = POS.route('printDocument', { job: Number(jobId) });
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
     };
 
@@ -2239,7 +2264,7 @@
         Q.idx = next;
         var it = Q.items[next];
         it.status = 'taking'; renderQueue();
-        fetch('{{ url('/printing/jobs') }}/' + Number(it.job.id) + '/print-here', {
+        fetch(POS.route('printHereTake', { job: Number(it.job.id) }), {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
         }).then(function (r) {
@@ -2250,7 +2275,7 @@
                 it.status = 'printing'; Q.done[it.job.id] = true; renderQueue();
                 _afterPrint = function () { if (it.status === 'printing') { it.status = 'done'; } renderQueue(); advance(); };
                 // ?here=1 — parchi darj ho chuki; preview ke apne "Print / Mark Printed" buttons nahi chahiyen.
-                frame.src = '{{ url('/printing/documents') }}/' + Number(it.job.id) + '/preview?here=1';
+                frame.src = POS.route('printDocument', { job: Number(it.job.id) }) + '?here=1';
                 return;
             }
             it.status = s === 'already_printed' ? 'skipped' : (s === 'in_flight' ? 'busy' : 'error');
@@ -2313,7 +2338,7 @@
         if (window.posPrintHealthPoke) window.posPrintHealthPoke();
         [4000, 9000, 15000].forEach(function (delay) {
             setTimeout(function () {
-                fetch('{{ url('/api/pos/print-jobs') }}/' + Number(saleId), { headers: { 'Accept': 'application/json' } })
+                fetch(POS.route('printJobsForSale', { sale: Number(saleId) }), { headers: { 'Accept': 'application/json' } })
                     .then(function (r) { return r.ok ? r.json() : null; })
                     .then(function (d) {
                         if (!d || !d.jobs) return;
@@ -2338,7 +2363,7 @@
      - purani (agent girne se pehle ki / page khulne se pehle ki) → patti par ek button.
    Koi doosri window (payment, Swal) khuli ho to us ke band hone ka intezar. */
 (function () {
-    var URL = '{{ url('/api/pos/print-health') }}';
+    var URL = POS.route('printHealth');   // null on the Branch Server (no print agent) → this poller never starts
     var wrap  = document.getElementById('pos-print-health');
     var pill  = document.getElementById('pos-print-health-pill');
     var text  = document.getElementById('pos-print-health-text');
@@ -2346,7 +2371,7 @@
     var stuckTitle  = document.getElementById('pos-print-stuck-title');
     var stuckDetail = document.getElementById('pos-print-stuck-detail');
     var stuckBtn    = document.getElementById('pos-print-stuck-btn');
-    if (!wrap || !pill) return;
+    if (!URL || !wrap || !pill) return;
 
     var FRESH_SECONDS = 120;
     var cur = { state: null, waiting: [] };
@@ -2526,7 +2551,8 @@
                             <input id="qa-address" class="form-control form-control-sm" maxlength="500" autocomplete="off">
                         </div>
                         <div class="col-12">
-                            <button type="button" class="btn btn-primary btn-sm" id="qa-save">
+                            <button type="button" class="btn btn-primary btn-sm" id="qa-save"
+                                    @disabled(! $posRuntime->can('customerCreate')) @unless($posRuntime->can('customerCreate')) title="{{ $posRuntime->capabilityHint('customerCreate') }}" @endunless>
                                 <i class="ti ti-check me-1"></i>Add &amp; Attach <span class="opacity-75 small">(Enter)</span>
                             </button>
                             <span id="qa-error" class="text-danger small ms-2"></span>
@@ -2547,7 +2573,8 @@
                     <div class="row g-2 align-items-end">
                         <div class="col-md-4"><input id="new-addr-label" class="form-control form-control-sm" placeholder="Label (Home…)" maxlength="50"></div>
                         <div class="col-md-6"><input id="new-addr-text" class="form-control form-control-sm" placeholder="Add another address" maxlength="500"></div>
-                        <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-primary w-100" id="new-addr-save">Save</button></div>
+                        <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-primary w-100" id="new-addr-save"
+                                    @disabled(! $posRuntime->can('customerAddressCreate')) @unless($posRuntime->can('customerAddressCreate')) title="{{ $posRuntime->capabilityHint('customerAddressCreate') }}" @endunless>Save</button></div>
                     </div>
                 </div>
             </div>
@@ -2708,7 +2735,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function buildPosUrl(params) {
         params = params || {};
-        var url = new URL('{{ url('/pos') }}', window.location.origin);
+        var url = new URL(POS.route('posIndex'), window.location.origin);
         Object.keys(params).forEach(function (key) {
             var val = params[key];
             if (val !== null && val !== undefined && val !== '') {
@@ -2760,7 +2787,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!session) return;
         var bar = document.getElementById('pos-session-bar');
         if (bar) {
-            var base = bar.dataset.sessionBase;
+            var base = POS.route('tableBillRequested');
             var put  = function (id, val) { var e = document.getElementById(id); if (e) e.textContent = (val == null ? '' : val); };
             put('pos-session-table-no', session.table_no);
             put('pos-session-no',       session.session_no);
@@ -2771,7 +2798,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (bp) bp.dataset.sessionId = session.id;
             var rb = document.getElementById('pos-session-request-bill-form');
             if (rb && base) {
-                rb.action = base + '/' + session.id + '/bill-requested';
+                rb.action = POS.route('tableBillRequested', { session: session.id });
                 rb.style.display = (!session.status || session.status === 'open') ? '' : 'none';
             }
             bar.classList.remove('d-none');
@@ -2816,7 +2843,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function continueTableSession(sessionId, branchId, fallbackHref) {
-        fetch('{{ url('/api/pos/table-sessions') }}/' + sessionId + '/open-orders', {
+        fetch(POS.route('tableSessionOpenOrders', { session: sessionId }), {
             headers: { 'Accept': 'application/json' },
         })
         .then(function (res) { return res.json(); })
@@ -2970,13 +2997,17 @@ document.addEventListener('DOMContentLoaded', function () {
             reminderBtn.title = 'Reminder slips print on this terminal.';
         }
         // The state is always visible; only a permitted user on an open shift can change it.
-        reminderBtn.disabled = !r.can_toggle || !shiftOpen;
+        // POS-RUNTIME: a runtime without the endpoint (capability reminderPause off) keeps the control disabled whatever the badge says.
+        reminderBtn.disabled = !r.can_toggle || !shiftOpen || !POS.route('reminderPause');
     }
 
     function sendReminderPause(paused) {
         if (!terminalEl || !terminalEl.value) return;
+        // POS-RUNTIME: the endpoint comes from the runtime (Cloud: its tenant.api.pos.reminder-pause route; Branch Server: the D2
+        // twin on the local shift row; null = capability off). No literal path lives in this shared view.
+        if (!POS.route('reminderPause')) { toast('error', POS.hintText('reminderPause')); return; }
         reminderBtn.disabled = true;
-        fetch('{{ url('/api/pos/reminder-pause') }}', {
+        fetch(POS.route('reminderPause'), {
             method: 'POST',
             headers: {
                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
@@ -3036,7 +3067,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!tid) { wrap.style.display = 'none'; renderReminderStatus(null); return; }
 
         var seq = ++_shiftStatusSeq;
-        fetch('{{ url('/api/pos/shift-status') }}?terminal_id=' + encodeURIComponent(tid), {
+        fetch(POS.route('shiftStatus') + '?terminal_id=' + encodeURIComponent(tid), {
             headers: { 'Accept': 'application/json' }, credentials: 'same-origin'
         })
             .then(function (r) { return r.ok ? r.json() : null; })
@@ -3700,6 +3731,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function addComboToCart(combo) {
+        // F-1 (15 Nov 2026, browser regression run 6): deals/combos bypassed the standby gate — same refusal as addToCart.
+        if (window.POS && typeof POS.canMutate === 'function' && !POS.canMutate()) { POS.notifyNoMutate(); return; }
         var avail = comboAvailability(combo);
         if (avail.makeable !== null && avail.makeable <= 0) {
             if (!branchAllowsNegative()) {
@@ -3797,6 +3830,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function addToCart(product, variant, forceQty, selectedModifiers, pack, entered) {
+        // F-1 (8 Nov 2026): a runtime that cannot write (Edge STANDBY / handback) refuses to grow the cart and says why —
+        // the server would refuse the quote anyway (422) and the cashier must not build a bill nobody can take. Online:
+        // POS.canMutate() is always true. An existing cart is left as it is.
+        if (window.POS && typeof POS.canMutate === 'function' && !POS.canMutate()) { POS.notifyNoMutate(); return; }
         // MEDICAL-COUNTER-1: a medicine goes in by its pack (a scanned Box = 1 Box; a click = 1 Strip).
         if (medicalCounter && product && product.med && !hasModifierGroups(product) && !(selectedModifiers && selectedModifiers.length)) {
             medAdd(product, variant, forceQty, pack);
@@ -3886,6 +3923,8 @@ document.addEventListener('DOMContentLoaded', function () {
             var b = document.getElementById(id);
             if (b) {
                 b.disabled = empty || buttonIsBusy(b);
+                // F-1: a gated button (data-pos-gate, STANDBY / handback) stays disabled whatever the cart does.
+                if (b.getAttribute('data-pos-gate') === '1') { b.disabled = true; }
                 b.classList.toggle('opacity-50', empty);
             }
         });
@@ -5137,7 +5176,8 @@ document.addEventListener('DOMContentLoaded', function () {
             medAlert('This sale is not saved yet. Hold it (Ctrl+S) or clear it, then scan the bill.', null);
             return;
         }
-        fetch('{{ url('/api/pos/held-sales') }}?branch_id=' + encodeURIComponent(selectedBranchId()), {
+        // CANONICAL MERGE (D8): the held list comes from the runtime (Cloud /api/pos/held-sales; Edge its own twin) — never a Cloud literal.
+        fetch(POS.route('heldList') + '?branch_id=' + encodeURIComponent(selectedBranchId()), {
             headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
         })
         .then(function (r) { return r.json(); })
@@ -5372,6 +5412,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 unit_price:      item.unit_price || 0,
                 discount_amount: item.discount_amount || 0,
                 tax_amount:      item.tax_amount || 0,
+                // PHASE 3 (B): the line's identity, so a runtime that prices on the server (Edge) quotes the SAME
+                // option-inclusive line Online reads off unit_price. Online's quote ignores these keys.
+                product_variant_id: item.product_variant_id || null,
+                combo_id:         item.combo_id || null,
+                line_kind:        item.line_kind || 'standard',
+                modifiers:        normalizeModifiers(item.modifiers || []),
             };
         });
     }
@@ -5382,7 +5428,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return Promise.resolve();
         }
 
-        return fetch('{{ url('/api/pos/totals/quote') }}', {
+        return fetch(POS.route('totalsQuote'), {
             method:  'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -5400,9 +5446,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 lines:          collectQuoteLines(),
             }),
         })
-        .then(function (res) { return res.json(); })
+        .then(function (res) { return res.json().then(function (d) { d.__status = res.status; return d; }); })
         .then(function (data) {
-            if (!data.ok) return;
+            if (!data.ok) {
+                // F-1: a Branch Server that is not the active writer answers 422 — tell the cashier instead of pricing silently.
+                if (data.__status === 422 && window.POS && POS.isAuthorityRefusal && POS.isAuthorityRefusal(data)) { POS.notifyNoMutate(data.message); }
+                return;
+            }
 
             _serviceChargeAmount = Number(data.service_charge_amount || 0);
 
@@ -5582,7 +5632,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const t = totals();
         const branchId = document.getElementById('branch_id')?.value || '';
         const orderType = document.getElementById('order_type')?.value || 'quick_sale';
-        fetch('{{ url('/api/pos/promotions/quote') }}', {
+        fetch(POS.route('promoQuote'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
             body: JSON.stringify({
@@ -5822,25 +5872,25 @@ document.addEventListener('DOMContentLoaded', function () {
         Swal.fire({
             title: 'Manager Approval',
             html: '<p class="text-muted small mb-3">Enter the manager approval code for this action.</p>' +
-                  '<input type="password" id="swal-manager-pin" class="swal2-input" placeholder="Manager code" maxlength="64" autocomplete="one-time-code">',
+                  POS.managerCredentialFieldsHtml(),   // PIN (Cloud) or employee code + credential on one row (Edge)
             confirmButtonText: 'Verify',
             cancelButtonText: 'Cancel',
             showCancelButton: true,
             // MANAGER-PIN-ENTER-1 (owner, 2 Nov): the cursor waits in the code box and Enter verifies — no click on Verify.
             focusConfirm: false,
+            // REHEARSAL chunk 9 (15 Nov): the SHARED prompt — the first field is the employee code on Edge, the PIN on the Cloud
+            // (POS.managerCredentialFocus); Enter verifies from either field.
             didOpen: function (popup) {
-                const box = popup.querySelector('#swal-manager-pin');
-                if (!box) { return; }
-                box.focus();
-                box.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); Swal.clickConfirm(); } });
+                POS.managerCredentialFocus();
+                popup.querySelectorAll('input.swal2-input').forEach(function (box) { box.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); Swal.clickConfirm(); } }); });
             },
             preConfirm: function () {
-                const pin = document.getElementById('swal-manager-pin').value;
-                if (!pin) { Swal.showValidationMessage('Enter PIN'); return false; }
-                return fetch('{{ url('/api/manager-approvals/verify') }}', {
+                const credential = POS.managerCredentialFromPrompt();   // {pin} | {manager_employee_code, manager_credential}
+                if (!credential) { Swal.showValidationMessage('Enter PIN'); return false; }
+                return fetch(POS.route('managerVerify'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
-                    body: JSON.stringify({ pin: pin, action_type: actionType, payload: payload || {} }),
+                    body: JSON.stringify(Object.assign(credential, { action_type: actionType, payload: payload || {} })),
                 })
                 .then(function (res) {
                     return res.json().then(function (data) {
@@ -6074,7 +6124,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function fireKotSilently(saleId, terminalId) {
         const query = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
-        return fetch('{{ url('/printing/jobs/kot') }}/' + saleId + query, {
+        return fetch(POS.route('kotQueue', { sale: saleId }) + query, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
         })
@@ -6132,7 +6182,7 @@ document.addEventListener('DOMContentLoaded', function () {
             reverseButtons: true,
         }).then(function (result) {
             var decision = result.isConfirmed ? 'confirm' : 'decline';
-            return fetch('{{ url('/printing/jobs/reminder') }}/' + saleId + '/confirm', {
+            return fetch(POS.route('reminderConfirm', { sale: saleId }), {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': '{{ csrf_token() }}',
@@ -6194,7 +6244,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function maybePrintReceipt(saleId, terminalId) {
         if (!autoPrintEnabled('receipt')) { return; }   // "No receipt" (toggle off)
         const query = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
-        fetch('{{ url('/printing/jobs/receipt') }}/' + saleId + query, {
+        fetch(POS.route('receiptQueue', { sale: saleId }) + query, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
         })
@@ -6377,7 +6427,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 confirmButtonColor: '#d4a72c',
             }).then(function (choice) {
                 if (!choice.isConfirmed) return printing;
-                return fetch('{{ url('/pos') }}/' + saleId + '/printing/retry', {
+                return fetch(POS.route('printingRetry', { sale: saleId }), {
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
                 }).then(function (response) {
@@ -6397,6 +6447,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function submitPaidSale(continuingFlow) {
         const submitBtn = document.getElementById('complete-sale-btn');
+        // F-1: defence in depth behind the disabled button (keyboard Enter / F10 paths call this directly).
+        if (window.POS && typeof POS.canMutate === 'function' && !POS.canMutate()) { POS.notifyNoMutate(); return; }
         if (!continuingFlow && (_completeSaleFlowActive || buttonIsBusy(submitBtn))) return;
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
         if (!requireDeliveryCustomer()) return;
@@ -6475,7 +6527,8 @@ document.addEventListener('DOMContentLoaded', function () {
             const terminalId = (document.getElementById('terminal_id') || {}).value || '';
             const printQuery = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
 
-            fetch('{{ url('/pos') }}', {
+            // A recalled held sale settles through the runtime's settle route (Online: the same POST /pos + held_sale_id).
+            fetch((function () { var h = form.querySelector('input[name="held_sale_id"]'); return h && h.value ? POS.route('saleHeldSettle', { sale: h.value }) : POS.route('saleStore'); })(), {
                 method:  'POST',
                 headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
                 body:    new FormData(form),
@@ -6568,7 +6621,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const heldFormData = new FormData(form);
             heldFormData.set('save_as_draft', asDraft ? '1' : '0');   // POS-DRAFT-1
-            fetch('{{ url('/held-sales') }}', {
+            fetch(POS.route('heldStore'), {
                 method:  'POST',
                 headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
                 body:    heldFormData,
@@ -6712,7 +6765,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // of a RECALLED order prints here and not at the counter that created it. The server still
         // validates it against this operator's own terminals and falls back to the sale's own.
         var cancelTerminal = (document.getElementById('terminal_id') || {}).value || '';
-        return fetch('{{ url('/held-sales') }}/' + saleId + '/cancel', {
+        return fetch(POS.route('heldCancel', { sale: saleId }), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
             body: JSON.stringify(Object.assign({ terminal_id: cancelTerminal }, details)),
@@ -6812,7 +6865,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const branchId = document.getElementById('branch_id').value;
         body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-secondary" role="status"></div></div>';
 
-        fetch('{{ url('/api/pos/held-sales') }}?branch_id=' + encodeURIComponent(branchId)
+        fetch(POS.route('heldList') + '?branch_id=' + encodeURIComponent(branchId)
             + (_heldTypeFilter ? '&order_type=' + encodeURIComponent(_heldTypeFilter) : ''), {
             headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
         })
@@ -7081,7 +7134,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (hasContext && !confirm('Start a completely new sale?\n\nAny open table check stays on its table and can be recalled later. Unsaved cart items will be discarded.')) {
             return;
         }
-        window.location.href = '{{ url('/pos') }}';
+        window.location.href = POS.route('posIndex');
     });
 
     document.getElementById('start-fresh-btn').addEventListener('click', function () {
@@ -7130,7 +7183,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function coLoadTableSessions() {
         const branchId = coBranchEl.value;
         coTableSessionEl.innerHTML = '<option value="">Loading…</option>';
-        fetch('{{ url('/api/pos/table-sessions') }}?branch_id=' + encodeURIComponent(branchId), {
+        fetch(POS.route('tableSessions') + '?branch_id=' + encodeURIComponent(branchId), {
             headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
         })
         .then(function (r) { return r.json(); })
@@ -7206,7 +7259,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 reverseButtons: true,
             }).then(function (r) {
                 if (r.isConfirmed) {
-                    window.location.href = '{{ url('/pos') }}?branch_id=' + newBranch + '&mode=' + newType;
+                    window.location.href = POS.route('posIndex') + '?branch_id=' + newBranch + '&mode=' + newType;
                 }
             });
             return;
@@ -7265,7 +7318,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const body = document.getElementById('last-print-modal-body');
         body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-secondary" role="status"></div></div>';
 
-        fetch('{{ url('/api/pos/print-jobs') }}/' + _lastSaleId, {
+        fetch(POS.route('printJobsForSale', { sale: _lastSaleId }), {
             headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
         })
         .then(function (r) { return r.json(); })
@@ -7460,7 +7513,7 @@ document.addEventListener('DOMContentLoaded', function () {
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
         if (jobType === 'reminder') {
-            fetch('{{ url('/printing/jobs') }}/' + jobId + '/reminder-reprint', {
+            fetch(POS.route('reminderReprint', { job: jobId }), {
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
             }).then(function (res) {
@@ -7474,7 +7527,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 loadRecentPrintJobs();
             }).catch(function (error) { btn.disabled = false; btn.innerHTML = orig; toast('error', error.message || 'Failed'); });
         } else if (jobType === 'kot') {
-            const base  = '{{ url('/printing/jobs/kot') }}/' + _lastSaleId;
+            const base  = POS.route('kotQueue', { sale: _lastSaleId });
             const query = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
             fetch(base + query, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
             .then(function (res) { return res.json(); })
@@ -7486,7 +7539,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }).catch(function () { btn.disabled = false; btn.innerHTML = orig; toast('error', 'Failed'); });
         } else {
             const q = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
-            fetch('{{ url('/printing/jobs/receipt') }}/' + _lastSaleId + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
+            fetch(POS.route('receiptQueue', { sale: _lastSaleId }) + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
             .then(function (res) { return res.json(); })
             .then(function (data) {
                 btn.disabled = false; btn.innerHTML = orig;
@@ -7501,7 +7554,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const orig = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-        fetch('{{ url('/printing/jobs') }}/' + jobId + '/retry', {
+        fetch(POS.route('printRetry', { job: jobId }), {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
         })
@@ -7553,7 +7606,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const body = document.getElementById('completed-orders-modal-body');
         const branchId = (branchEl ? branchEl.value : '') || '';
         body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-secondary" role="status"></div></div>';
-        fetch('{{ url('/api/pos/recent-sales') }}?branch_id=' + encodeURIComponent(branchId)
+        fetch(POS.route('recentSales') + '?branch_id=' + encodeURIComponent(branchId)
             + (_recentTypeFilter ? '&order_type=' + encodeURIComponent(_recentTypeFilter) : ''), { headers: { 'Accept': 'application/json' } })
         .then(function (res) { return res.json(); })
         .then(function (data) {
@@ -7567,8 +7620,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 // The rider now rides in posOrderMeta() alongside the channel, so it is not
                 // rendered twice here — one helper, one truth, for both lists.
                 var orderAction = s.order_type === 'delivery'
-                    ? '<a href="{{ url('/sales-orders') }}/' + Number(s.id) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View or change rider"><i class="ti ti-motorbike me-1"></i>Rider</a>'
-                    : '<a href="{{ url('/sales-orders') }}/' + Number(s.id) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View order"><i class="ti ti-eye"></i></a>';
+                    ? (POS.can('changeRider') && POS.route('salesOrderShow')
+                        ? '<a href="' + POS.route('salesOrderShow', { sale: Number(s.id) }) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View or change rider"><i class="ti ti-motorbike me-1"></i>Rider</a>'
+                        : '<a class="btn btn-sm btn-outline-secondary disabled" aria-disabled="true" tabindex="-1" title="' + POS.hint('changeRider') + '"><i class="ti ti-motorbike me-1"></i>Rider</a>')
+                    : (POS.route('salesOrderShow')
+                        ? '<a href="' + POS.route('salesOrderShow', { sale: Number(s.id) }) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View order"><i class="ti ti-eye"></i></a>'
+                        : '<a class="btn btn-sm btn-outline-secondary disabled" aria-disabled="true" tabindex="-1" title="' + POS.hint('salesOrderShow') + '"><i class="ti ti-eye"></i></a>');
                 if (s.printing && s.printing.resume_available) {
                     printStatus = '<div class="small text-warning mt-1"><i class="ti ti-alert-circle me-1"></i>Printing needs attention</div>';
                 }
@@ -7606,7 +7663,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var orig = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-        fetch('{{ url('/pos') }}/' + saleId + '/printing/retry', {
+        fetch(POS.route('printingRetry', { sale: saleId }), {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
         }).then(function (response) {
@@ -7633,10 +7690,10 @@ document.addEventListener('DOMContentLoaded', function () {
         btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
         let url, q;
         if (type === 'kot') {
-            url = '{{ url('/printing/jobs/kot') }}/' + saleId;
+            url = POS.route('kotQueue', { sale: saleId });
             q   = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
         } else {
-            url = '{{ url('/printing/jobs/receipt') }}/' + saleId;
+            url = POS.route('receiptQueue', { sale: saleId });
             q   = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
         }
         fetch(url + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
@@ -7708,7 +7765,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }),
         };
 
-        fetch('{{ url('/api/pos/bill-preview') }}', {
+        fetch(POS.route('billPreview'), {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json', 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -7741,7 +7798,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function showTableBillPreview(sessionId) {
-        fetch('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/bill-preview', { headers: { 'Accept': 'application/json' } })
+        fetch(POS.route('tableBillPreview', { session: sessionId }), { headers: { 'Accept': 'application/json' } })
             .then(function (response) { return response.json().then(function (data) { if (!response.ok || !data.ok) throw new Error(data.message || 'Unable to load table bill.'); return data; }); })
             .then(function (data) {
                 document.getElementById('billPreviewModalLabel').textContent = 'Table Bill Preview';
@@ -7773,7 +7830,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const terminalId = (document.getElementById('terminal_id') || {}).value || '';
         const q = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
         const queueReceipt = function (id) {
-            return fetch('{{ url('/printing/jobs/receipt') }}/' + id + q, {
+            return fetch(POS.route('receiptQueue', { sale: id }) + q, {
                 method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
             }).then(function (res) { return res.json(); });
         };
@@ -7885,7 +7942,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!saleId) { warnNoReprintable('reprinting KOT'); return; }
         setButtonBusy(btn, true, 'Reprinting KOT');
         const terminalId = (document.getElementById('terminal_id') || {}).value || '';
-        const base  = '{{ url('/printing/jobs/kot') }}/' + saleId;
+        const base  = POS.route('kotQueue', { sale: saleId });
         const query = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
         fetch(base + query, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
         .then(function (res) { return res.json(); })
@@ -7903,7 +7960,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!saleId) { warnNoReprintable('reprinting the receipt'); return; }
         const terminalId = (document.getElementById('terminal_id') || {}).value || '';
         const q = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
-        fetch('{{ url('/printing/jobs/receipt') }}/' + saleId + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
+        fetch(POS.route('receiptQueue', { sale: saleId }) + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
         .then(function (res) { return res.json(); })
         .then(function (data) {
             openFallbackPreviews(data);
@@ -7972,7 +8029,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     function loadTableOrders(sessionId, callback) {
-        fetch('{{ url('/api/pos/table-sessions') }}/' + sessionId + '/open-orders', { headers: { 'Accept': 'application/json' } })
+        fetch(POS.route('tableSessionOpenOrders', { session: sessionId }), { headers: { 'Accept': 'application/json' } })
             .then(function (response) { return response.json().then(function (data) { if (!response.ok || !data.ok) throw new Error(data.message || 'Unable to load table orders.'); return data; }); })
             .then(callback).catch(function (error) { toast('error', error.message); });
     }
@@ -8020,7 +8077,8 @@ document.addEventListener('DOMContentLoaded', function () {
         var targets = Array.from(tableBoardEl.querySelectorAll('[data-open-table="1"]')).filter(function (button) { return String(button.dataset.tableId) !== String(sourceTableId); });
         body.innerHTML = '<h3 class="h5 mb-3">Move Table</h3>' + (targets.length ? '<div class="table-action-list">' + targets.map(function (button) { return '<button type="button" class="btn btn-outline-primary p-3" data-move-target="' + escapeHtml(button.dataset.tableId) + '">' + escapeHtml(button.dataset.tableNo) + '</button>'; }).join('') + '</div>' : '<div class="alert alert-light border">No eligible destination table is currently available.</div>');
         body.querySelectorAll('[data-move-target]').forEach(function (button) {
-            button.addEventListener('click', function () { postTableOperation('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/move', { target_table_id: button.dataset.moveTarget }, function (data) { enterMovedTableSession(data.session); refreshTableBoard(data.session.id); showTableWorkspaceView('table-workspace-board'); }, button); });
+            {{-- MOVE-TABLE-CART-1 (canonical a4eec6f8, rehearsal 30 Oct 2026): runtime route (shared view, both runtimes) + canonical's enterMovedTableSession (a cart that is not the moved table's is cleared first). --}}
+            button.addEventListener('click', function () { postTableOperation(POS.route('tableMove', { session: sessionId }), { target_table_id: button.dataset.moveTarget }, function (data) { enterMovedTableSession(data.session); refreshTableBoard(data.session.id); showTableWorkspaceView('table-workspace-board'); }, button); });
         });
     }
 
@@ -8036,7 +8094,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function openSplitSale(order) {
-        document.getElementById('split-bill-modal-body').innerHTML = '<iframe title="Split bill" class="w-100 border-0" style="min-height:720px" src="{{ url('/sales-orders') }}/' + Number(order.id) + '/split-bill"></iframe>';
+        document.getElementById('split-bill-modal-body').innerHTML = '<iframe title="Split bill" class="w-100 border-0" style="min-height:720px" src="' + POS.route('splitBillPage', { sale: Number(order.id) }) + '"></iframe>';
         showModalAfterWorkspace(document.getElementById('splitBillModal'));
     }
 
@@ -8054,7 +8112,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             var open = event.target.closest('[data-open-table="1"]');
-            if (open) { document.getElementById('open-table-no').textContent = open.dataset.tableNo; document.getElementById('open-table-form').action = '{{ url('/restaurant/tables') }}/' + open.dataset.tableId + '/open'; selectWaiterChoice(''); showTableWorkspaceView('table-workspace-open'); return; }
+            if (open) { document.getElementById('open-table-no').textContent = open.dataset.tableNo; document.getElementById('open-table-form').action = POS.route('tableOpen', { table: open.dataset.tableId }); selectWaiterChoice(''); showTableWorkspaceView('table-workspace-open'); return; }
             var held = event.target.closest('[data-table-held-orders]');
             if (held) { showTableHeldOrders(held.dataset.tableHeldOrders); return; }
             var preview = event.target.closest('[data-table-bill-preview]');
@@ -8087,8 +8145,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     /* ── TABLE-RESERVATION-1 — reserve / cancel / details ─────────────────────────────────────── */
-    var _reserveTablesBase = '{{ url('/restaurant/tables') }}';
-    var _reserveCustBase   = '{{ url('/ajax/customers') }}';
+    var _reserveCustBase   = POS.route('customerSearch');
     function _rget(id) { return document.getElementById(id); }
 
     function openReserveModal(tableId, tableNo) {
@@ -8118,7 +8175,7 @@ document.addEventListener('DOMContentLoaded', function () {
             confirmButtonText: 'Close table',
         }).then(function (res) {
             if (!res.isConfirmed) return;
-            fetch('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/close', {
+            fetch(POS.route('tableClose', { session: sessionId }), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -8144,13 +8201,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function cancelReservation(tableId) {
         if (!confirm('Cancel this reservation? The table becomes available.')) return;
-        fetch(_reserveTablesBase + '/' + tableId + '/unreserve', { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', Accept: 'application/json' } })
+        fetch(POS.route('unreserve', { table: tableId }), { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', Accept: 'application/json' } })
             .then(function () { if (typeof refreshTableBoard === 'function') refreshTableBoard(); })
             .catch(function () {});
     }
 
     function showReservationDetails(tableId) {
-        fetch(_reserveTablesBase + '/' + tableId + '/reservation', { headers: { Accept: 'application/json' } })
+        fetch(POS.route('reservation', { table: tableId }), { headers: { Accept: 'application/json' } })
             .then(function (r) { return r.json(); })
             .then(function (res) {
                 if (!res.ok) return;
@@ -8203,7 +8260,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fd.append('reserved_phone', _rget('reserve-phone').value || '');
             fd.append('reserved_for', _rget('reserve-for').value || '');
             fd.append('reservation_note', _rget('reserve-note').value || '');
-            fetch(_reserveTablesBase + '/' + _rget('reserve-table-id').value + '/reserve', { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', Accept: 'application/json' }, body: fd })
+            fetch(POS.route('reserve', { table: _rget('reserve-table-id').value }), { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', Accept: 'application/json' }, body: fd })
                 .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
                 .then(function (res) {
                     if (!res.ok) { var el = _rget('reserve-toast'); el.className = 'alert alert-danger py-2 small mb-3'; el.textContent = res.d.message || 'Could not reserve the table.'; el.classList.remove('d-none'); return; }
@@ -8223,6 +8280,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var reviewPayBtn   = document.getElementById('review-pay-btn');
     if (reviewPayBtn && paymentModalEl && window.bootstrap) {
         reviewPayBtn.addEventListener('click', function () {
+            // F-1: the button is disabled by the write gate while the runtime cannot write; this guards keyboard shortcuts too.
+            if (window.POS && typeof POS.canMutate === 'function' && !POS.canMutate()) { POS.notifyNoMutate(); return; }
             if (!cart.length) {
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({ icon: 'info', title: 'Cart is empty', text: 'Add items before taking payment.', timer: 1600, showConfirmButton: false });
@@ -8280,7 +8339,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (branchEl) {
         branchEl.addEventListener('change', function () {
-            window.location.href = '{{ url('/pos') }}?branch_id=' + branchEl.value + '&mode=' + orderTypeEl.value;
+            window.location.href = POS.route('posIndex') + '?branch_id=' + branchEl.value + '&mode=' + orderTypeEl.value;
         });
     }
 
@@ -8677,7 +8736,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var _preloadMissing = (heldSale && heldSale.lines) ? heldBillMissingItems(heldSale.lines) : [];
     if (_preloadMissing.length) {
         { const el = document.querySelector('input[name="held_sale_id"]'); if (el) el.value = ''; }
-        showHeldBillNotOpened(heldSale.sale_no, _preloadMissing, function () { window.location.href = '{{ url('/pos') }}'; });
+        // REHEARSAL chunk 11: the runtime's own address (POS.route), never an app-URL literal in the shared view.
+        showHeldBillNotOpened(heldSale.sale_no, _preloadMissing, function () { window.location.href = POS.route('posIndex'); });
     } else if (heldSale && heldSale.lines) {
         _currentHeldSaleId = heldSale.id;
         _currentHeldSaleNo = heldSale.sale_no || '';
@@ -8763,7 +8823,9 @@ document.addEventListener('DOMContentLoaded', function () {
     window.posWebBridge = { handleKotAfterSale: handleKotAfterSale, cancelHeldSaleFromModal: cancelHeldSaleFromModal, toast: toast, recallHeldSale: recallHeldSale };
 });
 </script>
-@if(\App\Support\OnlineOrdering::enabledForTenant())
+{{-- CANONICAL MERGE (D8): same include rule as the bell slot (capability websiteOrders); the partial's own JS stops when the
+     runtime offers no websiteOrders route, so the Branch Server never polls a Cloud endpoint. --}}
+@if($websiteOrdersSlot ?? false)
     @include('tenant.pos.partials.website-orders')
 @endif
 
@@ -8897,15 +8959,17 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!selectedCustomer || selectedCustomer.id == null) return;
         const address = ($id('new-addr-text') || {}).value || '';
         if (!address.trim()) return;
-        const body = new FormData();
-        body.append('label', ($id('new-addr-label') || {}).value || '');
-        body.append('address', address.trim());
+        const body = {
+            label: ($id('new-addr-label') || {}).value || '',
+            address: address.trim(),
+        };
         setButtonBusy(saveAddrBtn, true, 'Saving address');
-        fetch('{{ url('/pos/customers') }}/' + selectedCustomer.id + '/addresses', {
-            method: 'POST', headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }, body: body,
-        })
-        .then(function (r) { return r.json(); })
+        POS.api('customerAddressStore', { customer: selectedCustomer.id }, { method: 'POST', body: body })
+        // an HTTP refusal resolves to its body (no `ok`) exactly like before; only a network failure reaches .catch
+        .catch(function (e) { if (e && (e.status || e.capabilityOff)) return e.body; throw e; })
         .then(function (data) {
+            // W-G3 (E3): capability off (customerAddressCreate, Edge) → the disabled button's hint, not the generic failure.
+            if (data && data.capabilityOff) { notify('error', POS.hintText('customerAddressCreate')); return; }
             if (!data || !data.ok) return;
             selectedCustomer.addresses = (selectedCustomer.addresses || []).concat([data.address]);
             ['new-addr-label', 'new-addr-text'].forEach(function (id) { const el = $id(id); if (el) el.value = ''; });
@@ -8962,7 +9026,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function runSearch(q) {
-        fetch('{{ url('/ajax/customers') }}?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
+        fetch(POS.route('customerSearch') + '?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 const box = $id('cust-search-results');
@@ -9033,18 +9097,24 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!name && !phone) { if (err) err.textContent = 'Enter a name or a phone number.'; return; }
         if (err) err.textContent = '';
 
-        const body = new FormData();
-        body.append('name', name || phone);          // a phone-only walk-in still gets a label
-        body.append('phone', phone);
-        body.append('address', ($id('qa-address') || {}).value || '');
+        const body = {
+            name: name || phone,          // a phone-only walk-in still gets a label
+            phone: phone,
+            address: ($id('qa-address') || {}).value || '',
+        };
         setButtonBusy(btn, true, 'Saving customer');
 
-        fetch('{{ url('/pos/customers/quick-store') }}', {
-            method: 'POST', headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }, body: body,
-        })
-            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+        POS.api('customerQuickStore', {}, { method: 'POST', body: body })
+            .then(function (j) { return { ok: true, json: j }; },
+                  function (e) { if (e && (e.status || e.capabilityOff)) return { ok: false, json: e.body || {} }; throw e; })
             .then(function (res) {
                 if (!res.ok || !res.json.ok) {
+                    // W-G3 (E3): capability off (customerCreate, Edge) → the SAME hint the disabled button carries, not the
+                    // generic failure text. Online never takes this branch (the route is always on).
+                    if (res.json && res.json.capabilityOff) {
+                        if (err) err.textContent = POS.hintText('customerCreate');
+                        return;
+                    }
                     if (err) err.textContent = (res.json && res.json.message) || 'Could not save the customer.';
                     return;
                 }
@@ -9115,6 +9185,13 @@ document.addEventListener('DOMContentLoaded', function () {
     // Also called when the page picks the terminal by itself (autoSelectTerminal), whichever runs first.
     window.__posUpdateContext = updateContextSummary;
     updateContextSummary();
+    // PHASE 3 (E) — root cause of "No terminal" beside a selected terminal on BOTH runtimes: this block runs while the
+    // document is still parsing, but the terminal is auto-selected (autoSelectTerminal → terminalEl.value = …, no 'change'
+    // event) inside the first block's DOMContentLoaded callback, which fires LATER. That callback was registered first, so
+    // a DOMContentLoaded hook registered here runs after it and reads the selected terminal. Same element, text only.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', updateContextSummary);
+    }
 
     /* modal opens: clean slate, focused on the one box */
     const modalEl = $id('customerModal');

@@ -44,6 +44,20 @@ class CustomerDirectory
             return null;
         }
 
+        // EDGE PHASE 4: the cross-system match key first (App\Support\PhoneNormalizer — "+92 300…", "0092 300…" and
+        // "0300…" are ONE phone). Indexed; the same key the Cloud sale ingestion matches an offline-created customer on,
+        // so Online's quick-store and the Edge create-or-match can never disagree about who owns a phone.
+        $matchKey = \App\Support\PhoneNormalizer::normalize($phone);
+        if ($matchKey !== null) {
+            $byKey = Customer::where('phone_normalized', $matchKey);
+            if ($lock) {
+                $byKey->lockForUpdate();
+            }
+            if ($customer = $byKey->orderBy('id')->first()) {
+                return $customer;
+            }
+        }
+
         // Under InnoDB's repeatable-read, lockForUpdate also locks the missing
         // key gap, so two simultaneous requests cannot both insert the same
         // newly-normalised phone.

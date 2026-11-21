@@ -93,7 +93,9 @@ class PlainStockVariantsMySqlTest extends MySqlTenantTestCase
 
     public function test_fefo_and_expiry_run_across_both_kinds_of_row(): void
     {
-        $this->in($this->a, null, 4, 140, 'E-OLD', now()->subMonth()->endOfMonth()->toDateString());   // expired, no variant
+        // subMonthNoOverflow: on the 31st, subMonth() overflows into THIS month and endOfMonth() lands on today (not expired) — a
+        // calendar flake found by the canonical rehearsal gate on 31 Oct 2026; the intent is "a batch that expired last month".
+        $this->in($this->a, null, 4, 140, 'E-OLD', now()->subMonthNoOverflow()->endOfMonth()->toDateString());   // expired, no variant
         $this->in($this->a, $this->plain, 3, 150, 'J-SOON', now()->addMonth()->endOfMonth()->toDateString());
         $this->in($this->a, null, 5, 145, 'M-LATER', now()->addMonths(3)->endOfMonth()->toDateString());
 

@@ -56,6 +56,10 @@ class EdgeLocalReadiness
             'activation_epoch' => $this->context->activationEpoch(),
             'config_revision' => $this->context->configRevision(),
             'bootstrap_schema' => $this->context->current()?->bootstrap_schema,
+            // EDGE-CONFIG-REFRESH-1 / EDGE-COMPATIBILITY-CONTRACT-1 — the CURRENT applied configuration.
+            'last_applied_config_revision' => $this->context->current()?->last_applied_config_revision,
+            'config_schema_version' => $this->context->current()?->config_schema_version,
+            'last_refreshed_at' => optional($this->context->current()?->last_refreshed_at)->toIso8601String(),
 
             // Config vs operational-stock: config may be imported, but stock is NEVER ready here.
             'config_ready' => $bound,

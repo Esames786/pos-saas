@@ -1,0 +1,408 @@
+<?php
+
+namespace App\Services\Edge;
+
+use App\Models\Edge\EdgeLocalMeta;
+use App\Models\Tenant\KotBatch;
+use App\Models\Tenant\RestaurantTableSession;
+use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\Shift;
+use App\Support\Edge\EdgeIdentity;
+use Illuminate\Support\Str;
+use RuntimeException;
+
+/**
+ * OFFLINE-SYNC-ENGINE-1B — build the IMMUTABLE `edge-sale-envelope-v1` for a PAID offline sale
+ * (docs/design/OFFLINE_SYNC_ENGINE_V1.md §5).
+ *
+ * Canonicalisation/hash REUSES the bootstrap wire strategy (EdgeBootstrapService::canonicalJson —
+ * recursive key-sort, unescaped unicode/slashes) — no second ad-hoc JSON/hash scheme.
+ * `content_hash = sha256(canonicalJson(envelope minus content_hash))`.
+ *
+ * FAIL-CLOSED (defense in depth, §8): only the offline-supported commercial shape may become a
+ * syncable envelope — paid status, quick_sale/takeaway/dine_in/delivery, cash-only payments, a
+ * discount explained by its type / promotion / line discounts, coherent deal rows. Anything else
+ * refuses loudly; nothing is silently dropped.
+ *
+ * W6 CONTRACT (0.7.0-edge, docs/status/edge-w6-contract-and-reconcile-plan.md §B0.2):
+ *   - v1 stays the byte shape of every plain sale. Additive optional keys ride v1 because an old Cloud
+ *     hashes the whole envelope and ignores unknown keys with the SAME money/stock outcome:
+ *     tips (`totals.tip_amount`, already carried), line-only discounts (`lines[].discount_amount`,
+ *     already carried), the held/Direct-Pay note (top-level `notes`, emitted ONLY when non-empty).
+ *   - `edge-sale-envelope-v2` is emitted ONLY for a sale with a selected modifier that consumes linked
+ *     stock (consume_stock=1): an old Cloud ignoring it would post WRONG official stock/COGS, so it must
+ *     refuse (SCHEMA_UNSUPPORTED — the appliance keeps the row pending, EdgeSyncSender) rather than guess.
+ *   - Direct-Pay print intents (kot/receipt_print_intent, direct_pay_print_state) are LOCAL ONLY — never a
+ *     key here (Cloud ingestion creates no print job; EdgeW6ContractEnvelopeMySqlTest asserts absence).
+ *
+ * Field authority: every value is read from the PERSISTED rows of the sale transaction (never the
+ * request), and parents are referenced by canonical identity (sale/line/payment/shift/session/KOT
+ * UUIDs). Numeric Edge PKs appear only as replicated-CONFIG references (product/terminal/user/
+ * branch/payment-method ids are Cloud-stable by bootstrap preservation). No secret field can appear:
+ * the envelope is assembled from explicit field lists and then scanned recursively as a final guard.
+ */
+class EdgeSaleEnvelopeBuilder
+{
+    public const SCHEMA_VERSION = 'edge-sale-envelope-v1';
+
+    /** W6: emitted only when a line carries a stock-consuming modifier (see class doc). */
+    public const SCHEMA_VERSION_V2 = 'edge-sale-envelope-v2';
+
+    /**
+     * EDGE PHASE 4 — emitted ONLY when the sale's customer is a `new_customer` intent (a customer or address born on this
+     * appliance that the Cloud has not sent back yet). v3 ⊇ v2: the Cloud consumes modifier stock exactly as for v2 AND
+     * runs the deterministic create-or-match on the customer block. An old Cloud answers SCHEMA_UNSUPPORTED (the sender
+     * parks the row under a bounded backoff — never failed_permanent, never a partial write) — and the appliance never
+     * emits v3 unless the Cloud advertised `customer_create` (EdgeCloudCapabilities), so that refusal is a deploy-ordering
+     * safety net, not the normal path. v1 / v2 byte shapes are unchanged for every other sale.
+     */
+    public const SCHEMA_VERSION_V3 = 'edge-sale-envelope-v3';
+
+    public const CUSTOMER_KIND_WALK_IN = 'walk_in';
+    public const CUSTOMER_KIND_CUSTOMER = 'customer';
+    public const CUSTOMER_KIND_NEW = 'new_customer';
+
+    /** V1 offline-supported commercial shape (mirrors the EdgeLocalPosService gates). */
+    private const SUPPORTED_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
+    private const SUPPORTED_METHOD_TYPES = ['cash'];
+
+    /** Same never-ship discipline as the bootstrap importer. */
+    private const SECRET_FIELDS = ['password', 'password_hash', 'remember_token', 'pin', 'pin_hash', 'manager_pin', 'device_secret', 'device_secret_hash', 'secret', 'credential_hash'];
+
+    public function __construct(
+        private readonly EdgeOperationalBaselineService $baselines,
+    ) {
+    }
+
+    /**
+     * Build the envelope (including content_hash) for a finalized PAID sale. Must be called INSIDE
+     * the sale's own transaction so every read is snapshot-consistent with the sale itself.
+     */
+    public function build(SalesOrder $sale, EdgeLocalMeta $meta): array
+    {
+        $this->assertSupported($sale, $meta);
+
+        $sale->loadMissing(['lines', 'payments.method', 'terminal']);
+        $shift = Shift::on('tenant')->findOrFail((int) $sale->shift_id);
+        $session = $sale->restaurant_table_session_id
+            ? RestaurantTableSession::on('tenant')->find((int) $sale->restaurant_table_session_id)
+            : null;
+        $user = \App\Models\Tenant\User::on('tenant')->find((int) $sale->created_by_user_id);
+
+        // PHASE 4: the customer block decides the schema generation (new_customer ⇒ v3) — resolved first, gated on the
+        // Cloud advertisement stored on the binding row.
+        $customer = $this->customerIdentity($sale, $meta);
+        $schema = ($customer['kind'] ?? '') === self::CUSTOMER_KIND_NEW
+            ? self::SCHEMA_VERSION_V3
+            : ($this->consumesModifierStock($sale) ? self::SCHEMA_VERSION_V2 : self::SCHEMA_VERSION);
+
+        $envelope = [
+            'envelope_schema_version' => $schema,
+
+            // Frozen binding + config context (§5 / §9 of the design).
+            'tenant_id' => (int) $meta->tenant_id,
+            'tenant_code' => (string) $meta->tenant_code,
+            'branch_id' => (int) $meta->branch_id,
+            'device_public_uuid' => (string) $meta->device_uuid,
+            'activation_epoch' => (int) $meta->activation_epoch,
+            'config_revision' => (int) $meta->last_applied_config_revision,
+            'config_schema_version' => (string) $meta->config_schema_version,
+
+            // Sale identity + occurred facts.
+            'sale_uuid' => (string) $sale->sale_uuid,
+            'sale_no' => (string) $sale->sale_no,
+            'client_uuid' => $sale->client_uuid !== null ? (string) $sale->client_uuid : null,
+            'business_date' => optional($sale->business_date)->toDateString(),
+            'sale_date' => optional($sale->sale_date)->toIso8601String(),
+            'completed_at' => optional($sale->completed_at)->toIso8601String(),
+            'created_at' => optional($sale->created_at)->toIso8601String(),
+            'order_type' => (string) $sale->order_type,
+            'order_source' => (string) $sale->order_source,
+            'vehicle_number' => $sale->vehicle_number !== null ? (string) $sale->vehicle_number : null,
+
+            // Principals (replicated-config references + human identity).
+            'terminal_id' => (int) $sale->terminal_id,
+            'terminal_code' => (string) ($sale->terminal?->code ?? ''),
+            'user_id' => (int) $sale->created_by_user_id,
+            'employee_code' => $user?->employee_code !== null ? (string) $user->employee_code : null,
+            // PHASE 2b parity: quick-sale waiter attribution (dine-in's waiter lives on the session snapshot).
+            'restaurant_waiter_id' => $sale->restaurant_waiter_id !== null ? (int) $sale->restaurant_waiter_id : null,
+
+            // Parent snapshots by canonical identity.
+            'shift' => [
+                'shift_uuid' => (string) $shift->shift_uuid,
+                'business_date' => optional($shift->business_date)->toDateString(),
+                'opened_at' => optional($shift->opened_at)->toIso8601String(),
+                'terminal_id' => (int) $shift->terminal_id,
+                'opened_by_user_id' => (int) $shift->opened_by_user_id,
+            ],
+            'table_session' => $session ? [
+                'session_uuid' => (string) $session->session_uuid,
+                'session_no' => (string) $session->session_no,
+                'restaurant_table_id' => (int) $session->restaurant_table_id,
+                'restaurant_waiter_id' => $session->restaurant_waiter_id !== null ? (int) $session->restaurant_waiter_id : null,
+                'opened_at' => optional($session->opened_at)->toIso8601String(),
+            ] : null,
+            'kot_events' => KotBatch::on('tenant')->where('sales_order_id', $sale->id)
+                ->orderBy('sequence_no')->get(['event_uuid', 'sequence_no', 'event_type'])
+                ->map(fn ($k) => ['event_uuid' => (string) $k->event_uuid, 'sequence_no' => (int) $k->sequence_no, 'event_type' => (string) $k->event_type])
+                ->all(),
+            // CROSS-SYSTEM customer identity (1B closure): never a local integer PK. Walk-in is explicit; an
+            // attached customer is carried by its canonical customer_uuid (+ the sale's own name/phone snapshot);
+            // PHASE 4: a customer born on this appliance travels as a `new_customer` intent (v3).
+            'customer' => $customer,
+
+            // Frozen commercial totals (envelope is the price authority at ingest — never repriced).
+            'totals' => [
+                'subtotal' => round((float) $sale->subtotal, 2),
+                'discount_amount' => round((float) $sale->discount_amount, 2),
+                // DISCOUNT/PROMO parity: how the discount was reached travels with the money (frozen, never repriced).
+                'discount_type' => (string) ($sale->discount_type ?? 'none'),
+                'discount_value' => round((float) ($sale->discount_value ?? 0), 2),
+                'promo_code' => $sale->promo_code !== null && $sale->promo_code !== '' ? (string) $sale->promo_code : null,
+                'tax_amount' => round((float) $sale->tax_amount, 2),
+                'service_charge_amount' => round((float) ($sale->service_charge_amount ?? 0), 2),
+                'delivery_charge_amount' => round((float) ($sale->delivery_charge_amount ?? 0), 2),
+                'tip_amount' => round((float) ($sale->tip_amount ?? 0), 2),
+                'grand_total' => round((float) $sale->grand_total, 2),
+                'paid_amount' => round((float) $sale->paid_amount, 2),
+                'change_amount' => round((float) $sale->change_amount, 2),
+            ],
+            // DELIVERY parity: channel / rider / address as attributed at the till (ids are the synced Cloud ids).
+            'delivery' => (string) $sale->order_type === 'delivery' ? [
+                'delivery_channel_id' => $sale->delivery_channel_id !== null ? (int) $sale->delivery_channel_id : null,
+                'delivery_rider_id' => $sale->delivery_rider_id !== null ? (int) $sale->delivery_rider_id : null,
+                'delivery_address' => $sale->delivery_address !== null && $sale->delivery_address !== '' ? (string) $sale->delivery_address : null,
+            ] : null,
+
+            'lines' => $sale->lines->map(fn ($line) => [
+                'line_uuid' => (string) $line->line_uuid,
+                'line_kind' => (string) ($line->line_kind ?? 'standard'),
+                'product_id' => (int) $line->product_id,
+                'product_variant_id' => $line->product_variant_id !== null ? (int) $line->product_variant_id : null,
+                'combo_id' => $line->combo_id !== null ? (int) $line->combo_id : null,
+                'product_name' => (string) $line->product_name,        // frozen snapshot
+                'quantity' => round((float) $line->quantity, 3),
+                'unit_price' => round((float) $line->unit_price, 2),
+                'discount_amount' => round((float) $line->discount_amount, 2),
+                'tax_amount' => round((float) $line->tax_amount, 2),
+                'line_total' => round((float) $line->line_total, 2),
+                'modifiers' => is_array($line->modifiers) ? $line->modifiers : [],
+            ])->values()->all(),
+
+            'payments' => $sale->payments->map(fn ($payment) => [
+                'payment_uuid' => (string) $payment->payment_uuid,
+                'payment_method_id' => (int) $payment->payment_method_id,
+                'method_type' => (string) ($payment->method?->method_type ?? ''),
+                'amount' => round((float) $payment->amount, 2),
+                'tendered_amount' => $payment->tendered_amount !== null ? round((float) $payment->tendered_amount, 2) : null,
+                'change_amount' => round((float) $payment->change_amount, 2),
+                'transaction_ref' => $payment->transaction_ref !== null ? (string) $payment->transaction_ref : null,
+                'paid_at' => optional($payment->created_at)->toIso8601String(),
+            ])->values()->all(),
+
+            // Provisional operational-stock evidence (audit input for Cloud validation — never
+            // official authority; Cloud posts FEFO itself at ingest).
+            'operational_stock' => [
+                'posted' => (bool) $sale->edge_operational_stock_posted,
+                'baseline_uuid' => $this->baselines->currentAccepted()?->baseline_uuid,
+            ],
+
+            // Local sync facts at envelope-creation time (audit).
+            'local_state' => [
+                'edge_sync_state' => (string) $sale->edge_sync_state,
+                'edge_activation_epoch' => (int) $sale->edge_activation_epoch,
+                'inventory_posted' => (bool) $sale->inventory_posted,
+                'is_draft' => (bool) $sale->is_draft,   // always false here: only a PAID sale becomes an envelope
+            ],
+        ];
+
+        // W6 (B5): the held-check / Direct-Pay note (Online persists it on the sale). Additive v1 key, present ONLY
+        // when there is a note, so a plain sale keeps its exact pre-W6 byte shape.
+        $notes = $sale->notes !== null ? trim((string) $sale->notes) : '';
+        if ($notes !== '') {
+            $envelope['notes'] = mb_substr($notes, 0, 1000);
+        }
+
+        $this->assertNoSecretFields($envelope);
+
+        $envelope['content_hash'] = hash('sha256', EdgeCanonicalJson::encode($envelope));
+
+        return $envelope;
+    }
+
+    /** The canonical JSON string of a built envelope — the exact immutable bytes the outbox stores. */
+    public function canonicalEnvelopeJson(array $envelope): string
+    {
+        return EdgeCanonicalJson::encode($envelope);
+    }
+
+    /**
+     * PHASE 4 contract (docs/status/edge-phase4-offline-add-customer.md §2):
+     *   walk_in       {kind, name, phone}                                   — no customer row;
+     *   customer      {kind, customer_uuid, name, phone}                    — a customer the Cloud already knows (synced book);
+     *   new_customer  {kind, customer_uuid, name, phone, new_customer:{…}}  — a customer born on THIS appliance
+     *                 (customers.edge_origin = 'local') or a synced customer with an address born here
+     *                 (customer_addresses.edge_origin = 'local'). `name`/`phone` stay the SALE's snapshot (as for `customer`);
+     *                 `new_customer` is the BOOK intent: {name, phone, phone_normalized, email, addresses[{address_uuid, label,
+     *                 address, is_default}]} — for a local customer every address, for a synced one only the local-born ones.
+     * The new kind is emitted ONLY while the Cloud advertised `customer_create` (stored on the binding row at the last
+     * acknowledged heartbeat): otherwise the sale fails closed here (422 at the till — pick a synced customer or walk-in)
+     * rather than shipping a kind the Cloud never said it can ingest (owner: the old Cloud refuses safely BEFORE a device
+     * emits unsupported envelopes).
+     *
+     * @return array{kind: string, customer_uuid?: string, name: ?string, phone: ?string, new_customer?: array<string,mixed>}
+     */
+    private function customerIdentity(SalesOrder $sale, EdgeLocalMeta $meta): array
+    {
+        $name = $sale->customer_name !== null && $sale->customer_name !== '' ? (string) $sale->customer_name : null;
+        $phone = $sale->customer_phone !== null && $sale->customer_phone !== '' ? (string) $sale->customer_phone : null;
+
+        if ($sale->customer_id === null) {
+            return ['kind' => self::CUSTOMER_KIND_WALK_IN, 'name' => $name, 'phone' => $phone];
+        }
+
+        $customer = \App\Models\Tenant\Customer::on('tenant')->find((int) $sale->customer_id);
+        if (! $customer || ! EdgeIdentity::isValid((string) $customer->customer_uuid, EdgeIdentity::FORMAT_ULID)) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: the sale references a customer without a canonical customer_uuid — a local id is never a cross-system identity.');
+        }
+
+        $identity = [
+            'kind' => self::CUSTOMER_KIND_CUSTOMER,
+            'customer_uuid' => (string) $customer->customer_uuid,
+            'name' => $name ?? (string) $customer->name,
+            'phone' => $phone ?? ($customer->phone !== null ? (string) $customer->phone : null),
+        ];
+
+        $localCustomer = (string) ($customer->getAttribute('edge_origin') ?? EdgeLocalCustomerService::ORIGIN_CLOUD) === EdgeLocalCustomerService::ORIGIN_LOCAL;
+        $addresses = \App\Models\Tenant\CustomerAddress::on('tenant')->where('customer_id', (int) $customer->id)
+            ->when(! $localCustomer, fn ($q) => $q->where('edge_origin', EdgeLocalCustomerService::ORIGIN_LOCAL))
+            ->orderByDesc('is_default')->orderBy('id')->get();
+        if (! $localCustomer && $addresses->isEmpty()) {
+            return $identity;
+        }
+
+        if (! EdgeCloudCapabilities::fromMeta($meta, EdgeCloudCapabilities::CUSTOMER_CREATE)) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: this customer (or an address) was added on this Branch Server, and the Online service has not confirmed offline customer support — attach a customer from the synced book or sell as walk-in.');
+        }
+        foreach ($addresses as $a) {
+            if (! EdgeIdentity::isValid((string) $a->address_uuid, EdgeIdentity::FORMAT_ULID)) {
+                throw new RuntimeException('ENVELOPE_UNSUPPORTED: a local address without a canonical address_uuid cannot be shipped.');
+            }
+        }
+
+        $identity['kind'] = self::CUSTOMER_KIND_NEW;
+        $identity['new_customer'] = [
+            'name' => (string) $customer->name,
+            'phone' => $customer->phone !== null && $customer->phone !== '' ? (string) $customer->phone : null,
+            'phone_normalized' => $customer->phone_normalized !== null && $customer->phone_normalized !== '' ? (string) $customer->phone_normalized : null,
+            'email' => $customer->email !== null && $customer->email !== '' ? (string) $customer->email : null,
+            'addresses' => $addresses->map(fn ($a) => [
+                'address_uuid' => (string) $a->address_uuid,
+                'label' => $a->label !== null && $a->label !== '' ? (string) $a->label : null,
+                'address' => (string) $a->address,
+                'is_default' => (bool) $a->is_default,
+            ])->values()->all(),
+        ];
+
+        return $identity;
+    }
+    // ── fail-closed guards ───────────────────────────────────────────────────
+
+    private function assertSupported(SalesOrder $sale, EdgeLocalMeta $meta): void
+    {
+        if ($meta->runtime_state !== EdgeLocalMeta::STATE_BOOTSTRAPPED || (int) ($meta->last_applied_config_revision ?? 0) < 1) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: the appliance binding/config revision is not available for envelope creation.');
+        }
+        if ($sale->status !== 'paid') {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: only a PAID sale can become a sync envelope.');
+        }
+        if ($sale->edge_sync_state !== 'pending') {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: only an offline-origin pending sale can become a sync envelope.');
+        }
+        if (! in_array((string) $sale->order_type, self::SUPPORTED_ORDER_TYPES, true)) {
+            throw new RuntimeException("ENVELOPE_UNSUPPORTED: order type [{$sale->order_type}] is not offline-syncable.");
+        }
+        if (! EdgeIdentity::isValid((string) $sale->sale_uuid, EdgeIdentity::FORMAT_ULID)) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: the sale is missing its canonical sale_uuid.');
+        }
+        $sale->loadMissing(['lines', 'payments.method']);
+        // DISCOUNT/PROMO parity: a manual discount / promotion is a legitimate offline outcome now (shared totals
+        // service + branch approval mode); the envelope carries how it was reached. A discount must still be
+        // coherent — money without a stated reason is refused. W6 (B3): per-line discounts are a stated reason
+        // (Online folds them into the manual discount; the envelope carries every lines[].discount_amount).
+        $lineDiscounts = (float) $sale->lines->sum(fn ($l) => (float) ($l->discount_amount ?? 0));
+        if ((float) $sale->discount_amount > 0 && (string) ($sale->discount_type ?? 'none') === 'none' && $sale->promotion_id === null && $lineDiscounts <= 0.0) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: a discount without a discount type, promotion or line discount is not syncable.');
+        }
+        // W6 (B4): a tip is carried in totals.tip_amount (Cloud projects it and credits the tips account) — the
+        // pre-W6 "tips are not supported offline" guard is lifted; a negative tip is still incoherent.
+        if ((float) ($sale->tip_amount ?? 0) < 0) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: a negative tip is not syncable.');
+        }
+
+        if ($sale->lines->isEmpty() || $sale->payments->isEmpty()) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: a syncable sale needs persisted lines and payments.');
+        }
+        // DEAL parity: header/component rows are syncable exactly as Cloud writes them. Coherence is enforced:
+        // a standard line never carries a combo_id; a deal row always does; every component belongs to a header
+        // of the same deal on this sale (a stray component would otherwise price at 0 with nothing paying for it).
+        $headerCombos = $sale->lines->where('line_kind', 'combo_header')->pluck('combo_id')->filter()->map(fn ($v) => (int) $v)->all();
+        foreach ($sale->lines as $line) {
+            $kind = (string) ($line->line_kind ?? 'standard');
+            if (! in_array($kind, ['standard', 'combo_header', 'component'], true)) {
+                throw new RuntimeException("ENVELOPE_UNSUPPORTED: line kind [{$kind}] is not offline-syncable.");
+            }
+            if ($kind === 'standard' && $line->combo_id !== null) {
+                throw new RuntimeException('ENVELOPE_UNSUPPORTED: a standard line must not carry a combo_id.');
+            }
+            if ($kind !== 'standard' && $line->combo_id === null) {
+                throw new RuntimeException('ENVELOPE_UNSUPPORTED: a deal row must name its combo.');
+            }
+            if ($kind === 'component' && ! in_array((int) $line->combo_id, $headerCombos, true)) {
+                throw new RuntimeException('ENVELOPE_UNSUPPORTED: a deal component without its header on the same sale is not syncable.');
+            }
+        }
+        foreach ($sale->payments as $payment) {
+            $type = (string) ($payment->method?->method_type ?? '');
+            if (! in_array($type, self::SUPPORTED_METHOD_TYPES, true)) {
+                throw new RuntimeException("ENVELOPE_UNSUPPORTED: payment method type [{$type}] is not offline-syncable.");
+            }
+        }
+    }
+
+    /**
+     * W6 (B1): does any line carry a selected modifier whose SYNCED config consumes linked stock? Read from the
+     * appliance's replicated modifier book (bootstrap v7) — the same book the local operational stock consumed.
+     */
+    private function consumesModifierStock(SalesOrder $sale): bool
+    {
+        $ids = [];
+        foreach ($sale->lines as $line) {
+            foreach ((is_array($line->modifiers) ? $line->modifiers : []) as $entry) {
+                $id = (int) (is_array($entry) ? ($entry['modifier_id'] ?? 0) : 0);
+                if ($id > 0) {
+                    $ids[$id] = true;
+                }
+            }
+        }
+        if ($ids === []) {
+            return false;
+        }
+
+        return \App\Models\Tenant\Modifier::on('tenant')->whereIn('id', array_keys($ids))
+            ->where('consume_stock', true)->where('linked_quantity', '>', 0)->exists();
+    }
+
+    private function assertNoSecretFields(array $node): void
+    {
+        foreach ($node as $key => $value) {
+            if (is_string($key) && in_array(strtolower($key), self::SECRET_FIELDS, true)) {
+                throw new RuntimeException("ENVELOPE_UNSUPPORTED: secret field [{$key}] must never enter a sync envelope.");
+            }
+            if (is_array($value)) {
+                $this->assertNoSecretFields($value);
+            }
+        }
+    }
+}

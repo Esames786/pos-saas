@@ -24,6 +24,10 @@ class RestaurantTableController extends Controller
     public function reserve(Request $request, RestaurantTable $restaurantTable)
     {
         $this->assertMayReserve();
+        // OFFLINE EDGE — while this branch is handed to its Branch Server (Local Mode), the Branch Server owns
+        // reservation mutation; the Cloud must not also write it (no split-brain). Same fence as sales.
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(Branch::findOrFail($restaurantTable->branch_id));
 
         if ($restaurantTable->openSession()->exists()) {
             return response()->json(['ok' => false, 'message' => 'This table has an open session — it cannot be reserved.'], 422);
@@ -58,6 +62,8 @@ class RestaurantTableController extends Controller
     public function unreserve(RestaurantTable $restaurantTable)
     {
         $this->assertMayReserve();
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(Branch::findOrFail($restaurantTable->branch_id));
 
         $restaurantTable->update([
             'status'               => 'available',

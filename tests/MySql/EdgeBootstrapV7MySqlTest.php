@@ -1,0 +1,327 @@
+<?php
+
+namespace Tests\MySql;
+
+use App\Models\Edge\EdgeLocalMeta;
+use App\Models\Master\Tenant;
+use App\Models\Tenant\Branch;
+use App\Services\Edge\EdgeAuthorityService;
+use App\Services\Edge\EdgeBootstrapService;
+use App\Services\Edge\EdgeLocalBootstrapImporter;
+use App\Services\Edge\EdgeLocalConfigRefreshApplier;
+use App\Services\Edge\EdgePairingService;
+use App\Services\Edge\OfflineEdgeEntitlementService;
+use App\Services\Tenancy\TenancyManager;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use PDO;
+use RuntimeException;
+
+/**
+ * W6 (Team 6, wave 2) — bootstrap contract `edge-bootstrap-v7`, proven with the REAL buildSections against a Cloud-source tenant
+ * DB and the REAL importer / config-refresh applier against a fresh Edge-local DB (the EdgeLocalImportMySqlTest pattern):
+ *
+ *  - product_modifier_group ships for the sellable set (Team 2's option resolver joins it — without it no option appears);
+ *  - GLOBAL (branch_id NULL) modifier groups + their modifiers ship; another branch's group never leaks;
+ *  - a stock-consuming modifier linked to a NON-POS-visible product ships, and so does that product (bare config row);
+ *  - currencies + currency_denominations ship (Team 4 C-3 — the shift-close count grid);
+ *  - every ACTIVE payment method ships (non-cash rows are display-only; an inactive method does not ship);
+ *  - the tenant business name is persisted on the appliance (Team 4 C-4) and follows a config refresh;
+ *  - a v6 package is refused by a v7 importer (exact-match contract); the watermark carries the new sections so a change to
+ *    them mints a new config revision; a refresh DEACTIVATES a removed denomination (cash_count_lines reference it) and
+ *    DELETES a removed product↔group link (pure composition).
+ */
+class EdgeBootstrapV7MySqlTest extends MySqlTenantTestCase
+{
+    private string $edgeDb;
+    private int $branchId;
+    private int $branchB;
+    private int $tikka;
+    private int $cheese;
+    private int $globalGroup;
+    private int $branchBGroup;
+    private int $cheeseModifier;
+    private int $cardId;
+    private int $d500;
+    private int $dealsCat;
+    private int $combo;
+    private object $svc;
+
+    private static bool $edgeReady = false;
+
+    private const EDGE_TABLES = [
+        'model_has_roles', 'users', 'roles', 'edge_local_meta',
+        'recipe_ingredients', 'recipes', 'unit_conversions',
+        'terminal_printer_settings', 'category_printer_mappings', 'receipt_layout_settings', 'printers',
+        'service_charge_settings', 'delivery_riders', 'delivery_channels',
+        'restaurant_waiters', 'restaurant_tables', 'restaurant_floors',
+        'combo_components', 'combos', 'product_modifier_group', 'modifiers', 'modifier_groups',
+        'product_branch_prices', 'product_barcodes', 'product_variants', 'products', 'categories',
+        'cash_count_lines', 'currency_denominations', 'currencies', 'units',
+        'terminals', 'payment_methods', 'void_reasons', 'branches',
+    ];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->edgeDb = \Tests\MySql\Support\EdgeTestDatabases::local();
+        config(['app.role' => 'branch_server']);
+
+        $this->svc = new class(app(OfflineEdgeEntitlementService::class), app(TenancyManager::class), app(EdgePairingService::class)) extends EdgeBootstrapService {
+            public function sectionsFor(Tenant $t, Branch $b): array
+            {
+                return $this->buildSections($t, $b);
+            }
+
+            public function watermark(Branch $b): string
+            {
+                return $this->sourceRevision($b);
+            }
+        };
+        $this->seedCloudSource();
+    }
+
+    protected function tearDown(): void
+    {
+        config(['database.connections.tenant.database' => $this->tenantDb]);
+        DB::purge('tenant');
+        parent::tearDown();
+    }
+
+    private function seedCloudSource(): void
+    {
+        $this->cleanTenant([
+            'combo_components', 'combos', 'product_modifier_group', 'modifiers', 'modifier_groups', 'cash_count_lines', 'currency_denominations', 'currencies',
+            'payment_methods', 'recipe_ingredients', 'recipes', 'unit_conversions',
+            'product_branch_prices', 'product_variants', 'products', 'categories', 'units',
+            'branch_user', 'model_has_roles', 'roles', 'users', 'terminals', 'branches',
+        ]);
+        $c = DB::connection('tenant');
+        $now = now();
+        $this->branchId = $c->table('branches')->insertGetId(['name' => 'A', 'code' => 'A', 'status' => 'active', 'timezone' => 'Asia/Karachi', 'created_at' => $now, 'updated_at' => $now]);
+        $this->branchB = $c->table('branches')->insertGetId(['name' => 'B', 'code' => 'B', 'status' => 'active', 'timezone' => 'Asia/Karachi', 'created_at' => $now, 'updated_at' => $now]);
+        $pc = $c->table('units')->insertGetId(['code' => 'PC', 'name' => 'Piece', 'unit_type' => 'quantity', 'base_factor' => 1, 'is_base' => 1, 'is_active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        $g = $c->table('units')->insertGetId(['code' => 'G', 'name' => 'Gram', 'unit_type' => 'weight', 'base_factor' => 0.001, 'is_base' => 0, 'is_active' => 0, 'created_at' => $now, 'updated_at' => $now]);
+        $cat = $c->table('categories')->insertGetId(['name' => 'Grills', 'code' => 'GR', 'slug' => 'grills', 'is_active' => 1, 'sort_order' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        $this->tikka = $c->table('products')->insertGetId(['category_id' => $cat, 'unit_id' => $pc, 'sku' => 'TIKKA', 'name' => 'Tikka', 'slug' => 'tikka', 'product_type' => 'simple', 'is_sellable' => 1, 'is_pos_visible' => 1, 'is_stock_tracked' => 1, 'default_selling_price' => 250, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        // a raw ingredient: not sellable, not POS-visible, stocked in an INACTIVE unit (must still ship, FK-coherent)
+        $this->cheese = $c->table('products')->insertGetId(['category_id' => $cat, 'unit_id' => $g, 'sku' => 'CHEESE', 'name' => 'Cheese', 'slug' => 'cheese', 'product_type' => 'simple', 'is_sellable' => 0, 'is_pos_visible' => 0, 'is_stock_tracked' => 1, 'default_selling_price' => 0, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $this->globalGroup = $c->table('modifier_groups')->insertGetId(['branch_id' => null, 'name' => 'Extras', 'min_select' => 0, 'max_select' => 2, 'is_required' => 0, 'sort_order' => 1, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $this->branchBGroup = $c->table('modifier_groups')->insertGetId(['branch_id' => $this->branchB, 'name' => 'B only', 'min_select' => 0, 'max_select' => 1, 'is_required' => 0, 'sort_order' => 2, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $this->cheeseModifier = $c->table('modifiers')->insertGetId(['modifier_group_id' => $this->globalGroup, 'name' => 'Extra Cheese', 'price_delta' => 30, 'linked_product_id' => $this->cheese, 'consume_stock' => 1, 'linked_quantity' => 50, 'linked_unit_id' => $g, 'is_default' => 0, 'sort_order' => 1, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $c->table('modifiers')->insert(['modifier_group_id' => $this->branchBGroup, 'name' => 'B option', 'price_delta' => 5, 'linked_product_id' => null, 'consume_stock' => 0, 'linked_quantity' => null, 'is_default' => 0, 'sort_order' => 1, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $c->table('product_modifier_group')->insert(['product_id' => $this->tikka, 'modifier_group_id' => $this->globalGroup, 'sort_order' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        // Stage B (gap A): a deal FILED to a product-less "Deals" category — the shared view's pill set depends on combos.category_id.
+        $this->dealsCat = $c->table('categories')->insertGetId(['name' => 'Deals', 'code' => 'DL', 'slug' => 'deals', 'is_active' => 1, 'sort_order' => 2, 'created_at' => $now, 'updated_at' => $now]);
+        $this->combo = $c->table('combos')->insertGetId(['branch_id' => $this->branchId, 'category_id' => $this->dealsCat, 'code' => 'FAM', 'name' => 'Family Deal', 'price' => 600, 'sort_order' => 1, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $c->table('combo_components')->insert(['combo_id' => $this->combo, 'product_id' => $this->tikka, 'quantity' => 2, 'sort_order' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        $pkr = $c->table('currencies')->insertGetId(['code' => 'PKR', 'name' => 'Pakistani Rupee', 'symbol' => 'Rs', 'decimal_places' => 0, 'is_default' => 1, 'is_active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        $c->table('currency_denominations')->insert(['currency_id' => $pkr, 'denomination_value' => 1000, 'denomination_type' => 'note', 'is_active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        $this->d500 = $c->table('currency_denominations')->insertGetId(['currency_id' => $pkr, 'denomination_value' => 500, 'denomination_type' => 'note', 'is_active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        $c->table('payment_methods')->insert(['code' => 'CASH', 'name' => 'Cash', 'method_type' => 'cash', 'is_active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        $this->cardId = $c->table('payment_methods')->insertGetId(['code' => 'CARD', 'name' => 'Card', 'method_type' => 'card', 'is_active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        $c->table('payment_methods')->insert(['code' => 'OLDBANK', 'name' => 'Old Bank', 'method_type' => 'bank_transfer', 'is_active' => 0, 'created_at' => $now, 'updated_at' => $now]);
+    }
+
+    private function package(string $businessName = 'Demo Foods', int $revision = 1, string $snapshot = 'snap-1', ?string $schema = null): array
+    {
+        $tenant = new Tenant(['tenant_code' => 'restaurantdemo', 'business_name' => $businessName, 'currency_code' => 'PKR']);
+        $tenant->id = 42;
+        $branch = Branch::on('tenant')->find($this->branchId);
+        $sections = $this->svc->sectionsFor($tenant, $branch);
+
+        return $this->packageFrom($sections, $revision, $snapshot, $schema ?? EdgeBootstrapService::SCHEMA_VERSION);
+    }
+
+    private function packageFrom(array $sections, int $revision, string $snapshot, string $schema): array
+    {
+        $summary = [];
+        foreach ($sections as $name => $rows) {
+            $summary[$name] = ['hash' => hash('sha256', $this->svc->canonicalJson($rows)), 'count' => count($rows)];
+        }
+        $manifest = [
+            'schema_version' => $schema, 'snapshot_uuid' => $snapshot, 'tenant_code' => 'restaurantdemo', 'tenant_id' => 42,
+            'branch_id' => $this->branchId, 'device_public_uuid' => 'device-A', 'activation_epoch' => 1, 'config_revision' => $revision,
+            'config_schema_version' => EdgeBootstrapService::CONFIG_SCHEMA_VERSION, 'source_revision' => 'rev-' . $revision, 'sections' => $summary,
+        ];
+        $manifest['manifest_hash'] = $this->svc->computeManifestHash($schema, $snapshot, 42, $this->branchId, 'device-A', 1, $revision, EdgeBootstrapService::CONFIG_SCHEMA_VERSION, $summary);
+
+        return ['manifest' => $manifest, 'sections' => $sections];
+    }
+
+    private function toEdgeDb(): void
+    {
+        $c = config('database.connections.tenant');
+        if (! self::$edgeReady) {
+            $pdo = new PDO("mysql:host={$c['host']};port={$c['port']};charset=utf8mb4", $c['username'], $c['password'] ?? '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+            $pdo->exec("DROP DATABASE IF EXISTS `{$this->edgeDb}`");
+            $pdo->exec("CREATE DATABASE `{$this->edgeDb}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            config(['database.connections.tenant.database' => $this->edgeDb, 'database.connections.edge_local.database' => $this->edgeDb]);
+            DB::purge('tenant');
+            Artisan::call('migrate', ['--database' => 'tenant', '--path' => 'database/migrations/tenant', '--force' => true]);
+            Artisan::call('migrate', ['--database' => 'tenant', '--path' => 'database/migrations/edge', '--force' => true]);
+            self::$edgeReady = true;
+        } else {
+            config(['database.connections.tenant.database' => $this->edgeDb, 'database.connections.edge_local.database' => $this->edgeDb]);
+            DB::purge('tenant');
+        }
+        $this->cleanTenant(self::EDGE_TABLES);
+    }
+
+    private function importer(): EdgeLocalBootstrapImporter
+    {
+        return app(EdgeLocalBootstrapImporter::class);
+    }
+
+    public function test_v7_export_carries_the_menu_denomination_payment_and_tenant_sections(): void
+    {
+        $this->assertSame('edge-bootstrap-v8', EdgeBootstrapService::SCHEMA_VERSION, 'Phase 3: v8 = v7 + users[].may_approve_pos');
+        $s = $this->package()['sections'];
+
+        $this->assertSame([[$this->tikka, $this->globalGroup]], array_map(fn ($r) => [(int) $r['product_id'], (int) $r['modifier_group_id']], $s['product_modifier_group']));
+        $groupIds = array_map(fn ($r) => (int) $r['id'], $s['modifier_groups']);
+        $this->assertContains($this->globalGroup, $groupIds, 'a GLOBAL group ships');
+        $this->assertNotContains($this->branchBGroup, $groupIds, "another branch's group never leaks");
+        $this->assertSame(['Extra Cheese'], array_column($s['modifiers'], 'name'));
+        $this->assertContains($this->cheese, array_map(fn ($r) => (int) $r['id'], $s['products']), 'the modifier-linked raw product ships as a config row');
+        $this->assertContains('G', array_column($s['units'], 'code'), 'the inactive unit it is stocked in ships too (FK-coherent)');
+        $this->assertSame(['PKR'], array_column($s['currencies'], 'code'));
+        $this->assertEqualsCanonicalizing([1000.0, 500.0], array_map('floatval', array_column($s['currency_denominations'], 'denomination_value')));
+        $this->assertEqualsCanonicalizing(['cash', 'card'], array_column($s['payment_methods'], 'method_type'), 'every ACTIVE method; the inactive one never ships');
+        $this->assertSame(['cash'], $s['restrictions'][0]['allowed_payment_types'], 'the offline tender rule is unchanged (cash only)');
+        $this->assertSame('Demo Foods', $s['tenant'][0]['business_name']);
+        // Stage B (gap A of the same-dataset comparison): a combo ships WITH its category_id — the shared view renders the real
+        // "Deals" category pill from it; without the column the appliance fell back to the legacy flat Deals pill (a different
+        // pill set than the Online POS on the same data). The category itself ships (active, shared tree) so the FK is coherent.
+        $this->assertSame([[$this->combo, $this->dealsCat]], array_map(fn ($r) => [(int) $r['id'], (int) $r['category_id']], $s['combos']));
+        $this->assertContains($this->dealsCat, array_map(fn ($r) => (int) $r['id'], $s['categories']));
+
+        // the watermark covers the new sections: a new product↔group link mints a new config revision
+        $before = $this->svc->watermark(Branch::on('tenant')->find($this->branchId));
+        DB::connection('tenant')->table('product_modifier_group')->insert(['product_id' => $this->cheese, 'modifier_group_id' => $this->globalGroup, 'sort_order' => 2, 'created_at' => now()->addSecond(), 'updated_at' => now()->addSecond()]);
+        $this->assertNotSame($before, $this->svc->watermark(Branch::on('tenant')->find($this->branchId)));
+    }
+
+    /**
+     * W-G3 (G3): an appliance must never receive a customer without a canonical identity (the Edge sale envelope refuses
+     * `customer_uuid` NULL, so the cashier could not sell to that customer). The exporter generates one ONCE for any NULL
+     * row before export (the migration-backfill rule), never touches a populated value, and moves the watermark so an
+     * already-bootstrapped appliance receives the repaired book with the next config revision.
+     */
+    public function test_the_export_generates_a_canonical_customer_uuid_once_for_any_null_row_and_never_changes_a_populated_one(): void
+    {
+        $c = DB::connection('tenant');
+        $c->table('customer_addresses')->delete();
+        $c->table('customers')->delete();
+        $now = now()->subMinute();
+        $known = (string) \Illuminate\Support\Str::ulid();
+        $legacyId = (int) $c->table('customers')->insertGetId(['customer_uuid' => null, 'code' => 'LEG', 'name' => 'Legacy Walk-in', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $keptId = (int) $c->table('customers')->insertGetId(['customer_uuid' => $known, 'code' => 'OK', 'name' => 'Already Canonical', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $inactiveId = (int) $c->table('customers')->insertGetId(['customer_uuid' => null, 'code' => 'OFF', 'name' => 'Inactive Legacy', 'status' => 'inactive', 'created_at' => $now, 'updated_at' => $now]);
+        $branch = Branch::on('tenant')->find($this->branchId);
+        $before = $this->svc->watermark($branch);
+
+        $s = $this->package()['sections'];
+        $byId = collect($s['customers'])->keyBy('id');
+        $this->assertTrue(\App\Support\Edge\EdgeIdentity::isValid((string) $byId[$legacyId]['customer_uuid'], \App\Support\Edge\EdgeIdentity::FORMAT_ULID), 'the NULL row ships WITH a canonical ULID');
+        $this->assertSame($known, $byId[$keptId]['customer_uuid'], 'a populated identity is never changed');
+        $minted = (string) $c->table('customers')->where('id', $legacyId)->value('customer_uuid');
+        $this->assertSame($minted, $byId[$legacyId]['customer_uuid'], 'the exported value IS the persisted value (generated once, before export)');
+        $this->assertNotNull($c->table('customers')->where('id', $inactiveId)->value('customer_uuid'), 'every NULL row is repaired, shipped or not');
+        $this->assertNotSame($before, $this->svc->watermark($branch), 'the repair moves the watermark → a new config revision carries it');
+
+        // Idempotent: a second export re-generates nothing and moves nothing.
+        $wm = $this->svc->watermark($branch);
+        $again = collect($this->package()['sections']['customers'])->keyBy('id');
+        $this->assertSame($minted, $again[$legacyId]['customer_uuid']);
+        $this->assertSame($known, $again[$keptId]['customer_uuid']);
+        $this->assertSame($wm, $this->svc->watermark($branch), 'no churn once every row carries its identity');
+    }
+
+    public function test_v7_imports_coherently_persists_the_business_name_and_a_v6_package_is_refused(): void
+    {
+        $package = $this->package();
+        $v6 = $this->packageFrom($package['sections'], 1, 'snap-v6', 'edge-bootstrap-v6');
+        $this->toEdgeDb();
+
+        try {
+            $this->importer()->import($v6);
+            $this->fail('a v7 build must refuse a v6 export');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('SCHEMA_UNSUPPORTED', $e->getMessage());
+        }
+        $this->assertSame(0, EdgeLocalMeta::query()->count(), 'nothing imported from a refused package');
+
+        $meta = $this->importer()->import($package);
+        $this->assertSame(EdgeLocalMeta::STATE_BOOTSTRAPPED, $meta->runtime_state);
+        $this->assertSame(EdgeBootstrapService::SCHEMA_VERSION, $meta->bootstrap_schema);
+        $this->assertSame('Demo Foods', $meta->tenant_business_name);
+        $c = DB::connection('tenant');
+        $this->assertSame(1, $c->table('product_modifier_group')->where('product_id', $this->tikka)->where('modifier_group_id', $this->globalGroup)->count());
+        $this->assertSame(1, $c->table('modifier_groups')->whereNull('branch_id')->count());
+        $this->assertSame((int) $this->cheese, (int) $c->table('modifiers')->where('id', $this->cheeseModifier)->value('linked_product_id'));
+        $this->assertTrue($c->table('products')->where('id', $this->cheese)->where('is_pos_visible', 0)->exists());
+        $this->assertSame(1, $c->table('currencies')->where('is_default', 1)->count());
+        $this->assertSame(2, $c->table('currency_denominations')->count());
+        $this->assertSame(['cash', 'card'], $c->table('payment_methods')->orderBy('id')->pluck('method_type')->all());
+        $this->assertSame($this->dealsCat, (int) $c->table('combos')->where('id', $this->combo)->value('category_id'), 'gap A: the appliance menu carries the combo category');
+    }
+
+    public function test_a_refresh_deactivates_a_removed_denomination_deletes_a_removed_link_and_follows_the_business_name(): void
+    {
+        $first = $this->package();
+        // revision 2 at the Cloud: the 500 note retired, the tikka↔Extras link removed, card retired, tenant renamed
+        DB::connection('tenant')->table('currency_denominations')->where('id', $this->d500)->delete();
+        DB::connection('tenant')->table('product_modifier_group')->delete();
+        DB::connection('tenant')->table('payment_methods')->where('id', $this->cardId)->update(['is_active' => 0]);
+        $second = $this->package('Demo Foods & Grill', 2, 'snap-2');
+
+        $this->toEdgeDb();
+        $this->importer()->import($first);
+        $meta = $this->importer()->import($second);
+
+        $this->assertSame(2, (int) $meta->last_applied_config_revision);
+        $this->assertSame('Demo Foods & Grill', $meta->tenant_business_name);
+        $c = DB::connection('tenant');
+        $this->assertSame(0, (int) $c->table('currency_denominations')->where('id', $this->d500)->value('is_active'), 'deactivated, never deleted (cash_count_lines reference it)');
+        $this->assertSame(0, $c->table('product_modifier_group')->count(), 'a pure composition row is deleted');
+        $this->assertSame(0, (int) $c->table('payment_methods')->where('id', $this->cardId)->value('is_active'));
+    }
+    /**
+     * Coordinator (25 Sep 2026, found by the 0.7.0-edge update dry-run): an appliance INSTALLED by the previous build carries
+     * `edge_local_meta.bootstrap_schema = edge-bootstrap-v6` — the software update does not (and must not) rewrite it. The
+     * first v7 revision the new build applies is the moment the local configuration conforms to v7, so the refresh applier
+     * records it; without that the SCHEMA_COMPATIBLE readiness gate stayed false for ever after an update (a refresh never
+     * touched the column, a re-bootstrap is refused on a bootstrapped device). The applier also refuses a package of
+     * another generation itself, because the standby freshness worker reaches it without the importer.
+     */
+    public function test_the_first_refresh_after_a_software_update_records_the_new_bootstrap_schema(): void
+    {
+        $first = $this->package();
+        $second = $this->package('Demo Foods', 2, 'snap-2');
+
+        $this->toEdgeDb();
+        $this->importer()->import($first);
+        // what the 0.6.0 build left behind, as the 0.7.0 update finds it
+        EdgeLocalMeta::query()->where('singleton_guard', EdgeLocalMeta::SINGLETON)->update(['bootstrap_schema' => 'edge-bootstrap-v6']);
+        $this->assertFalse(app(EdgeAuthorityService::class)->gates()['SCHEMA_COMPATIBLE'], 'a v6 record on a v7 build is not schema-compatible');
+
+        $meta = $this->importer()->import($second);
+
+        $this->assertSame(2, (int) $meta->last_applied_config_revision);
+        $this->assertSame(EdgeBootstrapService::SCHEMA_VERSION, $meta->bootstrap_schema, 'the applied revision records the current generation');
+        $this->assertSame(EdgeBootstrapService::SCHEMA_VERSION, EdgeLocalMeta::current()->bootstrap_schema);
+        $this->assertTrue(app(EdgeAuthorityService::class)->gates()['SCHEMA_COMPATIBLE'], 'SCHEMA_COMPATIBLE recovers with the first applied revision');
+
+        // the applier itself refuses another generation (the freshness worker bypasses the importer)
+        $foreign = $this->packageFrom($second['sections'], 3, 'snap-3', 'edge-bootstrap-v6');
+        try {
+            app(EdgeLocalConfigRefreshApplier::class)->apply($foreign['manifest'], $foreign['sections']);
+            $this->fail('the applier must refuse a package of another bootstrap generation');
+        } catch (RuntimeException $e) {
+            $this->assertStringStartsWith('SCHEMA_UNSUPPORTED', $e->getMessage());
+        }
+        $this->assertSame(2, (int) EdgeLocalMeta::current()->last_applied_config_revision, 'a refused package applies nothing');
+        $this->assertSame(EdgeBootstrapService::SCHEMA_VERSION, EdgeLocalMeta::current()->bootstrap_schema);
+    }
+}

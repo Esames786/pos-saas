@@ -23,6 +23,7 @@ class EdgeBootstrapSnapshot extends Model
         'public_uuid', 'tenant_id', 'branch_id', 'edge_device_id', 'schema_version', 'status',
         'source_revision', 'manifest_hash', 'section_summary', 'generated_at', 'expires_at',
         'downloaded_at', 'acknowledged_at', 'failure_code', 'last_error', 'activation_epoch',
+        'config_revision', // EDGE-CONFIG-REFRESH-1 (v5): the monotonic config revision the manifest MUST carry (P4 clean-install proof)
     ];
 
     protected $casts = [
@@ -32,6 +33,7 @@ class EdgeBootstrapSnapshot extends Model
         'downloaded_at'   => 'datetime',
         'acknowledged_at' => 'datetime',
         'activation_epoch' => 'integer',
+        'config_revision' => 'integer',
     ];
 
     public function sections(): HasMany

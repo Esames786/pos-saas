@@ -1,0 +1,176 @@
+<?php
+
+namespace Tests\MySql;
+
+use App\Models\Tenant\User;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Tests\MySql\Support\EdgeLocalRuntimeFixture;
+use Tests\MySql\Support\TenantFixtures;
+
+/**
+ * EDGE-CASHIER-UI-1 — the Branch-Server browser cashier POS page must actually LOAD, over real HTTP,
+ * through the real branch_server route → middleware → controller → view-model → Blade.
+ *
+ * This follows the canonical PosScreenRendersHttpMySqlTest lesson: hundreds of green service tests did not
+ * stop a till outage because the guard rebuilt the query instead of loading the real page. A test that
+ * reconstructs the expected payload cannot fail when the controller/Blade is wrong; only one that GETs the
+ * page can. So this asks for the cashier page the way a browser does — on a genuinely branch_server-booted
+ * app (APP_ROLE set before boot, so routes/web.php loads edge_runtime.php) — and insists on a 200 that
+ * carries the real operator surface (terminal, grid product, deal tab) and the bootstrap view-model.
+ */
+class EdgeCashierScreenRendersHttpMySqlTest extends MySqlTenantTestCase
+{
+    use TenantFixtures;
+    use EdgeLocalRuntimeFixture;
+
+    private int $branchId;
+    private int $terminalId;
+    private int $userId;
+    private int $productId;
+
+    protected function setUp(): void
+    {
+        // branch_server must be set BEFORE boot so edge_runtime.php routes are registered.
+        putenv('APP_ROLE=branch_server');
+        $_ENV['APP_ROLE'] = $_SERVER['APP_ROLE'] = 'branch_server';
+        $key = 'base64:' . base64_encode(random_bytes(32));
+        putenv("EDGE_LOCAL_APP_KEY={$key}");
+        $_ENV['EDGE_LOCAL_APP_KEY'] = $_SERVER['EDGE_LOCAL_APP_KEY'] = $key;
+        parent::setUp();
+
+        config(['database.connections.edge_local' => array_merge(
+            config('database.connections.edge_local', []),
+            ['host' => config('database.connections.tenant.host'), 'port' => config('database.connections.tenant.port'),
+                'database' => $this->tenantDb, 'username' => config('database.connections.tenant.username'),
+                'password' => config('database.connections.tenant.password')]
+        )]);
+        DB::purge('edge_local');
+        DB::setDefaultConnection('tenant');
+
+        $this->ensureEdgeSchema();
+        $this->cleanTenant(['edge_operational_stock_movements', 'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_auth_audit', 'edge_local_user_credentials', 'edge_local_meta', 'combo_components', 'combos', 'sale_payments', 'sales_order_lines', 'sales_orders', 'payment_methods', 'products', 'categories', 'shifts', 'terminals', 'branches', 'users']);
+        $this->branchId = $this->makeBranch(['allow_negative_stock' => 0, 'timezone' => 'Asia/Karachi']);
+        $this->terminalId = $this->makeTerminal($this->branchId, ['name' => 'Counter One']);
+        // DEFAULT-TERMINAL parity: the cashier's assigned terminal is what the page must land on.
+        $this->userId = $this->makeUser(['default_branch_id' => $this->branchId, 'default_terminal_id' => $this->terminalId, 'employee_code' => 'CASH' . Str::random(4)]);
+        $categoryId = $this->makeCategory(['name' => 'Grills']);
+        $this->productId = $this->makeProduct($categoryId, ['name' => 'Chicken Tikka', 'is_sellable' => 1, 'is_pos_visible' => 1, 'status' => 'active', 'default_selling_price' => 250]);
+        $this->makePaymentMethod(['method_type' => 'cash', 'name' => 'Cash']);
+        // A deal so the "Deals" tab renders (display-only tab; sells via header + components).
+        $comboId = DB::connection('tenant')->table('combos')->insertGetId([
+            'branch_id' => null, 'code' => 'DEAL1', 'name' => 'Family Deal', 'price' => 999, 'sort_order' => 0,
+            'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('tenant')->table('combo_components')->insert([
+            'combo_id' => $comboId, 'product_id' => $this->productId, 'quantity' => 1, 'sort_order' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->bindEdgeLocalMeta($this->branchId, 1);
+        $this->acceptTestBaseline([['product_id' => $this->productId, 'product_variant_id' => null, 'quantity' => 10]]);
+        $this->seedEdgeCredential($this->userId, $this->branchId, 1);
+        $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
+        Auth::shouldUse('tenant');
+    }
+
+    protected function tearDown(): void
+    {
+        putenv('APP_ROLE');
+        unset($_ENV['APP_ROLE'], $_SERVER['APP_ROLE']);
+        putenv('EDGE_LOCAL_APP_KEY');
+        unset($_ENV['EDGE_LOCAL_APP_KEY'], $_SERVER['EDGE_LOCAL_APP_KEY']);
+        parent::tearDown();
+    }
+
+    /** The cashier page loads over real HTTP and carries the real operator surface + view-model. */
+    public function test_cashier_pos_page_renders_over_real_http(): void
+    {
+        $res = $this->get('/edge/local/pos');
+        $res->assertOk();
+
+        // PHASE 3 STAGE A: THE Online cashier view (tenant.pos.index) through the shared layout + the Edge runtime.
+        $res->assertViewIs('tenant.pos.index');
+
+        $html = $res->getContent();
+        // The Online operator surface — the SAME Blade the Cloud renders, not an "offline lite" screen.
+        // PHARMACY-DEMO-1 (canonical merge D8, 19 Oct 2026): the title reads "Restaurant POS" when the counter feeds a kitchen, "POS" otherwise — same Blade, same rule as Online.
+        $this->assertMatchesRegularExpression('#<h1 class="h3 mb-0">(Restaurant )?POS</h1>#', $html);
+        $this->assertStringContainsString('View Tables', $html);
+        $this->assertStringContainsString('Review &amp; Pay', $html);
+        $this->assertStringContainsString('Preview Bill', $html);
+        // Real data flowed through the Online page-data contract into the page.
+        $this->assertStringContainsString('Counter One', $html);   // the assigned terminal
+        $this->assertStringContainsString('Chicken Tikka', $html);  // a grid product
+        $this->assertStringContainsString('Family Deal', $html);    // a deal (Deals tab)
+        // The runtime island the shared JS reads (mode, routes, capabilities) precedes every page script; the assigned
+        // terminal drives the Online default-terminal rule; the accepted baseline is the stock the tile shows.
+        $this->assertStringContainsString('window.POS_RUNTIME = {"mode":"edge"', $html);
+        $this->assertStringContainsString("var userDefault = String({$this->terminalId} || '')", $html);
+        $this->assertStringContainsString('"stock_by_branch":{"' . $this->branchId . '":10}', $html, 'operational stock of the accepted baseline');
+    }
+
+    /** DEFAULT-TERMINAL + TERMINAL-SWITCH-AUTH parity: a pinned operator (no change-terminal permission)
+     *  is offered ONLY his assigned terminal, even when the branch has other terminals. */
+    public function test_pinned_operator_is_offered_only_his_assigned_terminal(): void
+    {
+        // W-E: the seeded cashier holds the full catalogue template (incl. change-terminal) — model the pinned operator explicitly.
+        $this->revokeEdgePermission($this->userId, 'tenant.pos.change-terminal');
+        $other = $this->makeTerminal($this->branchId, ['name' => 'Counter Two']);
+
+        $html = $this->get('/edge/local/pos')->assertOk()->getContent();
+        // The page only presents the assigned terminal for a user without change-terminal permission.
+        $this->assertStringContainsString('Counter One', $html);
+        $this->assertStringNotContainsString('Counter Two', $html);
+        // The shared view has no page flag: the gate IS the scoped terminal list (X2, UserDataScope::terminalsForPos) plus the
+        // server's denyUnlessMayOperateTerminal; the runtime reports the session-held terminal selection.
+        $this->assertStringContainsString('"terminal_selection":"session"', $html);
+
+        // Sanity: the other terminal really exists on the branch (it is withheld by policy, not absence).
+        $this->assertSame($this->branchId, (int) DB::connection('tenant')->table('terminals')->where('id', $other)->value('branch_id'));
+    }
+
+    /** The cashier page fails closed for an unauthenticated browser — redirected to the local login. */
+    public function test_unauthenticated_cashier_page_redirects_to_local_login(): void
+    {
+        auth('tenant')->logout();
+        $this->flushSession();
+        $this->get('/edge/local/pos')->assertStatus(302)->assertRedirect('/edge/local/login');
+    }
+
+    /**
+     * RECALL-HIDDEN-ITEM-1 twin (canonical 69536d3a, rehearsal chunk 11): an active, sellable item HIDDEN from the POS rides in a
+     * list of its own (`recallProductsPayload`) that ONLY the recall of a saved bill reads — never the grid / search / scan —
+     * built from the synced menu through the SAME tile builder, so a recalled line carries exactly what a tile carries. A
+     * switched-off item is in neither list (the recall then refuses to open half a bill, shared JS).
+     */
+    public function test_pos_hidden_sellable_items_ride_only_in_the_recall_list(): void
+    {
+        $kitchenOnly = $this->makeCategory(['name' => 'Kitchen only']);
+        $hidden = $this->makeProduct($kitchenOnly, ['name' => 'Singaporean Rice (Khass)', 'is_sellable' => 1, 'is_pos_visible' => 0, 'status' => 'active', 'default_selling_price' => 450]);
+        $retired = $this->makeProduct($kitchenOnly, ['name' => 'Retired Dish', 'is_sellable' => 1, 'is_pos_visible' => 0, 'status' => 'inactive', 'default_selling_price' => 300]);
+        $notForSale = $this->makeProduct($kitchenOnly, ['name' => 'Raw Flour', 'is_sellable' => 0, 'is_pos_visible' => 0, 'status' => 'active', 'default_selling_price' => 0]);
+
+        $res = $this->get('/edge/local/pos')->assertOk();
+
+        $grid = collect($res->viewData('productsPayload'))->pluck('id')->map(fn ($id) => (int) $id);
+        $this->assertTrue($grid->contains($this->productId), 'the visible item is a tile');
+        $this->assertFalse($grid->contains($hidden), 'a hidden item is never a tile');
+
+        $recall = collect($res->viewData('recallProductsPayload'));
+        $this->assertSame([$hidden], $recall->pluck('id')->map(fn ($id) => (int) $id)->all(), 'only the hidden SELLABLE item — never a switched-off or not-for-sale one, never a tile');
+        $tile = $recall->first();
+        $this->assertSame('Singaporean Rice (Khass)', $tile['name']);
+        $this->assertSame(450.0, (float) $tile['price'], 'the same tile builder: the sale-resolved price');
+        $this->assertFalse((bool) $tile['pos_grid_visible']);
+        $this->assertArrayHasKey('variants', $tile);
+        $this->assertArrayHasKey('stock_by_branch', $tile);
+
+        $html = $res->getContent();
+        $this->assertStringContainsString('const recallProducts = ', $html, 'the shared recall JS reads the list');
+        $this->assertSame(1, substr_count($html, 'Singaporean Rice (Khass)'), 'the hidden item reaches the page ONCE — in the recall list, not in the grid payload');
+        $this->assertStringNotContainsString('Retired Dish', $html);
+        $this->assertStringNotContainsString('Raw Flour', $html);
+        $this->assertSame($notForSale, (int) DB::connection('tenant')->table('products')->where('id', $notForSale)->value('id'));
+    }
+}

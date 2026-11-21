@@ -31,6 +31,15 @@ Thumbs.db
 /tools/print-agent/dist/SumatraPDF-settings.txt
 /tools/print-agent/installer/windows/output/
 /tools/print-agent/node_modules/
+/tools/edge-browser-proof/node_modules/
+/tools/edge-browser-proof/evidence/
+# dev Edge instance (tools/edge-dev-instance): machine-local env with a generated dev app key — never committed
+.env.edgedev
+# dev Edge CLONE instance (tools/edge-dev-instance/serve-clone.sh): machine-local env + paired device secret — never committed
+.env.edgeclone
 
 # EDGE-RUNTIME-BOUNDARY-HARDEN-1: artifact marker is generated into a built artifact, never the source tree
 edge-build-manifest.json
+.env.edgedryrun
+.env.edgedryfresh
+.env.edgestress

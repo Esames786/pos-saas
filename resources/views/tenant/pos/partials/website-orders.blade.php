@@ -57,10 +57,14 @@ document.addEventListener('DOMContentLoaded', function () {
     var tabsEl = document.getElementById('web-orders-tabs');
     if (!btn || !modalEl || !body || !tabsEl) { return; }
 
-    var LIST = '{{ url('/api/pos/website-orders') }}';
-    var HOLD = '{{ url('/api/pos/website-orders') }}/';
-    var HELD = '{{ url('/api/pos/held-sales') }}';
-    var POS = '{{ url('/pos') }}';
+    // CANONICAL MERGE (D8): every endpoint comes from the runtime (PosRuntime / POS.route) — Cloud: the tenant.api.pos.website-orders
+    // routes; on a runtime without the capability (Branch Server) the route is null and this script stops here. No Cloud literal.
+    var LIST = POS.route('websiteOrders');
+    if (!LIST) { return; }
+    var HOLD_URL = function (id) { return POS.route('websiteOrderHold', { salesOrder: id }); };
+    var VERIFY_URL = function (id) { return POS.route('websiteOrderVerify', { salesOrder: id }); };
+    var HELD = POS.route('heldList');
+    var POS_URL = POS.route('posIndex');
     var CSRF = '{{ csrf_token() }}';
     var bridge = function () { return window.posWebBridge || {}; };
     var esc = function (s) {
@@ -289,7 +293,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // cannot be found there (older than that list's 50) does it fall back to the page-load recall.
     function recall(id, type, el) {
         el.disabled = true;
-        var fallback = function () { window.location = POS + '?held_sale_id=' + id; };
+        var fallback = function () { window.location = POS_URL + '?held_sale_id=' + id; };
         fetch(HELD + '?branch_id=' + encodeURIComponent(val('branch_id')) + (type ? '&order_type=' + encodeURIComponent(type) : ''), {
             headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF }, credentials: 'same-origin'
         }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
@@ -336,7 +340,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (verify) {
             if (verify.disabled) { return; }
             verify.disabled = true;
-            fetch(HOLD + verify.dataset.verify + '/verify', {
+            fetch(VERIFY_URL(verify.dataset.verify), {
                 method: 'POST', credentials: 'same-origin',
                 headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF }
             }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }).then(function (res) {
@@ -359,7 +363,7 @@ document.addEventListener('DOMContentLoaded', function () {
             var id = +hold.dataset.hold;
             var sel = body.querySelector('[data-rider="' + id + '"]');
             hold.disabled = true;
-            fetch(HOLD + id + '/hold', {
+            fetch(HOLD_URL(id), {
                 method: 'POST', credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
                 body: JSON.stringify({ delivery_rider_id: sel && sel.value ? +sel.value : null })

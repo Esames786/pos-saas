@@ -19,6 +19,7 @@ class EdgeLocalPrintWorkerState extends Model
 
     protected $fillable = [
         'singleton_guard', 'state', 'worker_uuid', 'runtime_version',
+        'worker_pid', 'worker_process_token', 'worker_host', // 0.8.3 F-G10: process identity next to the heartbeat
         'started_at', 'heartbeat_at', 'stop_requested_at', 'last_graceful_stop_at', 'last_error',
     ];
 

@@ -23,8 +23,9 @@ use RuntimeException;
  *  - DDL is done beforehand by edge:local:db-init — this runs ONLY the data import, in ONE InnoDB
  *    transaction, parents before children, preserving Cloud IDs, WITHOUT ever disabling
  *    FOREIGN_KEY_CHECKS; any late failure rolls the whole import back.
- *  - initial bootstrap only: same package retried => idempotent no-op; a different config revision
- *    after a successful bootstrap => controlled REFRESH_NOT_IMPLEMENTED (never DELETE+INSERT).
+ *  - same package retried => idempotent no-op; EDGE-CONFIG-REFRESH-1: a NEWER config revision after a
+ *    successful bootstrap is applied by EdgeLocalConfigRefreshApplier (upsert + tombstone — NEVER a
+ *    destructive re-import); an older revision or a same-revision content conflict is refused.
  */
 class EdgeLocalBootstrapImporter
 {
@@ -47,10 +48,14 @@ class EdgeLocalBootstrapImporter
      * Ordered import plan: [section, table, branchScoped]. Parents BEFORE children so real FKs are
      * satisfied without disabling FK checks. Sections not in this list (and not informational) are a
      * hard error — an unknown section must never be silently dropped.
+     * PUBLIC because the config-refresh applier walks the SAME plan (one section order, one contract).
      */
-    private const PLAN = [
+    public const PLAN = [
         ['branch', 'branches', false],               // the appliance's own branch row (id preserved)
         ['units', 'units', false],
+        // W6 bootstrap v7 (Team 4 C-3): the denomination book the shift-close count grid reads (CashCountService).
+        ['currencies', 'currencies', false],
+        ['currency_denominations', 'currency_denominations', false],
         ['categories', 'categories', true],          // self-referential — topologically ordered on insert; NULL branch_id = shared
         ['products', 'products', false],
         ['product_variants', 'product_variants', false],
@@ -59,6 +64,7 @@ class EdgeLocalBootstrapImporter
         ['terminals', 'terminals', true],
         ['modifier_groups', 'modifier_groups', true],
         ['modifiers', 'modifiers', false],
+        ['product_modifier_group', 'product_modifier_group', false], // W6 v7: which groups apply to which product
         ['combos', 'combos', true],
         ['combo_components', 'combo_components', false],
         ['payment_methods', 'payment_methods', false],
@@ -73,6 +79,12 @@ class EdgeLocalBootstrapImporter
         ['terminal_printer_settings', 'terminal_printer_settings', false],
         ['service_charge_settings', 'service_charge_settings', true],
         ['void_reasons', 'void_reasons', false],
+        // ONLINE-POS PARITY (warm standby): promotions + the customer book ride the same revisioned refresh.
+        ['promotions', 'promotions', true],
+        ['promotion_targets', 'promotion_targets', false],
+        ['customers', 'customers', false],
+        ['customer_addresses', 'customer_addresses', false],
+        ['customer_uuid_aliases', 'customer_uuid_aliases', false],   // PHASE 4: offline uuid → canonical customer (merge instructions for the applier)
         ['recipes', 'recipes', false],
         ['recipe_ingredients', 'recipe_ingredients', false],
         ['unit_conversions', 'unit_conversions', false],
@@ -80,8 +92,12 @@ class EdgeLocalBootstrapImporter
         ['users', 'users', false],                   // roles/permissions arrays handled specially
     ];
 
-    public function __construct(private readonly EdgeBootstrapService $bootstrap)
-    {
+    /** The validated sections of the package being imported (read by markImporting for display metadata). */
+    private array $pendingSections = [];
+
+    public function __construct(
+        private readonly EdgeLocalConfigRefreshApplier $refresh,
+    ) {
     }
 
     /**
@@ -98,6 +114,7 @@ class EdgeLocalBootstrapImporter
         $sections = $package['sections'] ?? [];
 
         $this->assertSchema($manifest);
+        $this->assertConfigContract($manifest);
         $this->assertNoForbiddenHistory($sections);
         $this->verifyIntegrity($manifest, $sections);
         $this->assertRequiredSections($sections);
@@ -113,6 +130,7 @@ class EdgeLocalBootstrapImporter
 
         $this->assertBranchScoping($sections, $branchId);
         $this->assertNoSecretFields($sections);
+        $this->pendingSections = $sections;
 
         // Idempotency + immutability + refresh boundary (N/H).
         $existing = EdgeLocalMeta::current();
@@ -122,8 +140,9 @@ class EdgeLocalBootstrapImporter
                 && (string) $existing->manifest_hash === $manifestHash) {
                 return $existing; // idempotent: same package already imported
             }
-            // Same appliance, different config — refresh is a later sprint (never blind DELETE+INSERT).
-            throw new RuntimeException('REFRESH_NOT_IMPLEMENTED: this appliance is already bootstrapped; config refresh is not implemented yet.');
+            // EDGE-CONFIG-REFRESH-1: same appliance, different config — apply it as a NON-DESTRUCTIVE
+            // config refresh (upsert + tombstone under the meta-row lock; revision-ordered; atomic).
+            return $this->refresh->apply($manifest, $sections)['meta'];
         }
 
         return DB::connection(self::CONN)->transaction(function () use (
@@ -183,7 +202,7 @@ class EdgeLocalBootstrapImporter
             if ($rows === null) {
                 throw new RuntimeException("Missing section payload for [{$name}].");
             }
-            $liveHash = hash('sha256', $this->bootstrap->canonicalJson($rows));
+            $liveHash = EdgeCanonicalJson::hash($rows);
             if (! hash_equals((string) ($meta['hash'] ?? ''), $liveHash)) {
                 throw new RuntimeException("SECTION_HASH_MISMATCH: section [{$name}] failed integrity verification.");
             }
@@ -192,17 +211,31 @@ class EdgeLocalBootstrapImporter
             }
         }
 
-        $recomputed = $this->bootstrap->computeManifestHash(
+        $recomputed = EdgeCanonicalJson::manifestHash(
             (string) $manifest['schema_version'],
             (string) $manifest['snapshot_uuid'],
             (int) $manifest['tenant_id'],
             (int) $manifest['branch_id'],
             $manifest['device_public_uuid'] ?? null,
             $manifest['activation_epoch'] !== null ? (int) $manifest['activation_epoch'] : null,
+            ($manifest['config_revision'] ?? null) !== null ? (int) $manifest['config_revision'] : null,
+            (string) ($manifest['config_schema_version'] ?? ''),
             $summary,
         );
         if (! hash_equals((string) ($manifest['manifest_hash'] ?? ''), $recomputed)) {
             throw new RuntimeException('HASH_MISMATCH: the manifest hash is not self-consistent.');
+        }
+    }
+
+    /** EDGE-CONFIG-REFRESH-1 (v5): the config revision + config contract version are mandatory. */
+    private function assertConfigContract(array $manifest): void
+    {
+        if ((int) ($manifest['config_revision'] ?? 0) < 1) {
+            throw new RuntimeException('CONFIG_REVISION_MISSING: a v5 package must carry a positive config_revision.');
+        }
+        $configSchema = (string) ($manifest['config_schema_version'] ?? '');
+        if ($configSchema !== EdgeBootstrapService::CONFIG_SCHEMA_VERSION) {
+            throw new RuntimeException("CONFIG_SCHEMA_UNSUPPORTED: package config schema [{$configSchema}] is not " . EdgeBootstrapService::CONFIG_SCHEMA_VERSION . '.');
         }
     }
 
@@ -281,8 +314,25 @@ class EdgeLocalBootstrapImporter
             'bootstrap_schema' => (string) $manifest['schema_version'],
             'source_revision' => $sourceRevision,
             'manifest_hash' => $manifestHash,
+            // EDGE-CONFIG-REFRESH-1: the initial import IS the first applied config revision.
+            'last_applied_config_revision' => (int) $manifest['config_revision'],
+            'config_schema_version' => (string) $manifest['config_schema_version'],
             'runtime_state' => EdgeLocalMeta::STATE_IMPORTING,
-        ]);
+        ] + self::tenantMetaFields($this->pendingSections));
+    }
+
+    /**
+     * W6 bootstrap v7 (Team 4 C-4): the informational `tenant` section's business name, persisted on the binding row so the
+     * Quick Report header (EdgeQuickReportController::businessName) prints the tenant name like Online. Display metadata
+     * only — never an identity/binding field. Empty when the section lacks it (older package shapes / tests).
+     *
+     * @return array<string, string|null>
+     */
+    public static function tenantMetaFields(array $sections): array
+    {
+        $name = trim((string) ($sections['tenant'][0]['business_name'] ?? ''));
+
+        return ['tenant_business_name' => $name !== '' ? mb_substr($name, 0, 190) : null];
     }
 
     /** Clear migration-seeded config so the package's authoritative rows import cleanly (children first). */
@@ -366,6 +416,9 @@ class EdgeLocalBootstrapImporter
             unset($row['roles'], $row['permissions']);
             // Never a Cloud password on the appliance.
             unset($row['password'], $row['remember_token']);
+            // Phase 3 (approver eligibility): the Cloud-authoritative boolean lands in the Edge-only users.may_approve_pos
+            // column (edge migration 2026_10_04_000001). Absent or false → NOT an approver (fail closed).
+            $row['may_approve_pos'] = ! empty($row['may_approve_pos']) ? 1 : 0;
             // allowed_order_types is a JSON column in the schema.
             if (isset($row['allowed_order_types']) && is_array($row['allowed_order_types'])) {
                 $row['allowed_order_types'] = json_encode($row['allowed_order_types']);

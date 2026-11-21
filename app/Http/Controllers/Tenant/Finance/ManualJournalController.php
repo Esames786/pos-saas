@@ -9,12 +9,12 @@ use App\Models\Tenant\CashBankAccount;
 use App\Models\Tenant\CashBankAccountTransaction;
 use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\Supplier;
-use App\Services\Finance\JournalService;
+use App\Services\Finance\ManualJournalReversalRefused;
+use App\Services\Finance\ManualJournalService;
 use App\Services\Finance\SupplierPayableService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -27,11 +27,17 @@ use Throwable;
  *
  * Optionally links cash/bank lines to operational cash_bank_account_transactions
  * so the cash/bank running balance stays in sync (same as opening balances do).
+ *
+ * D1 (owner decision, 20 Oct 2026) — a THIN caller: the business rules (MANUAL-JOURNAL-CASH-LINE-GUARD-1 R1–R3 cash
+ * lines, R5 narration, the AP-supplier rule) and the reverse rules (row lock, already-reversed refusal) live in
+ * ManualJournalService / ManualJournalRules, shared with the Edge offline General Journal and the Cloud ingestion.
+ * This controller validates the request shape, calls the service and translates its answers into the canonical
+ * responses (field-keyed validation errors, 404/422 aborts, the B3 "already reversed" redirect) — unchanged for users.
  */
 class ManualJournalController extends Controller
 {
     public function __construct(
-        private JournalService $journal,
+        private ManualJournalService $manualJournals,
         private SupplierPayableService $supplierPayable,
     ) {}
 
@@ -85,34 +91,13 @@ class ManualJournalController extends Controller
         $data = $this->validateData($request);
 
         try {
-            $entry = DB::connection('tenant')->transaction(function () use ($data, $request) {
-                $lines = $this->normalizeLines($data['lines']);
-
-                $entry = $this->journal->post(
-                    sourceType:  'manual_journal',
-                    sourceId:    $this->nextManualJournalId(),
-                    // `reference_no` validation me nullable hai, aur Laravel ka validate()
-                    // sirf mojood keys laut-ta hai — form hamesha khali string bhejta hai,
-                    // is liye ye aaj tak nahi phata; koi programmatic caller isay chhor de
-                    // to "Undefined array key" ban jata tha.
-                    sourceNo:    ($data['reference_no'] ?? null) ?: null,
-                    description: $data['description'],
-                    entryDate:   $data['entry_date'],
-                    lines:       $lines,
-                    userId:      Auth::guard('tenant')->id(),
-                );
-
-                // Update cash/bank operational balances for any cash/bank-linked lines.
-                $this->syncCashBankLines($entry, $data['lines'], $data['entry_date'], Auth::guard('tenant')->id());
-
-                // SUPPLIER-FINANCE-DIRECT-1 — jo satar Accounts Payable ko hilati hai, wo supplier
-                // subledger mein bhi utar-ti hai, USI transaction ke andar. Aaina ulta hota hai
-                // (Cr AP = supplier debit) — tafseel SupplierPayableService::mirrorApLinesToSupplierLedger
-                // ke docblock mein. Ek hi authority likhti hai; koi doosra engine nahi.
-                $this->supplierPayable->mirrorApLinesToSupplierLedger($entry, Auth::guard('tenant')->id());
-
-                return $entry;
-            });
+            // ONE official code path (ManualJournalService): the shared business rules (R1–R3, R5, AP supplier), then
+            // GL + cash/bank movements + supplier subledger mirror in one transaction — the same authority and the same
+            // rules the Edge supplier-finance ingestion posts through.
+            $entry = $this->manualJournals->post($data, Auth::guard('tenant')->id());
+        } catch (ValidationException $e) {
+            // A rule refused the journal: field-keyed errors back to the form (or 422 JSON) — the canonical response.
+            throw $e;
         } catch (Throwable $e) {
             return back()->withInput()->withErrors(['journal' => $e->getMessage()]);
         }
@@ -155,48 +140,30 @@ class ManualJournalController extends Controller
 
     public function reverse(Request $request, JournalEntry $manualJournal)
     {
-        abort_unless($manualJournal->source_type === 'manual_journal', 404);
-        abort_unless($manualJournal->status === 'posted', 422);
-        abort_unless(! $manualJournal->is_reversal, 422);
-
-        // Dobara dabaya gaya Reverse kuch nahi banata (B3) — user ko us reversal par le jao jo
-        // pehle ban chuki hai. Pehle ye error ke saath wapas bhejta tha aur reversal ka safha 404
-        // tha, is liye user ko pata hi nahi chalta tha ke kaam ho chuka hai.
-        $existing = JournalEntry::where('reversed_entry_id', $manualJournal->id)->first();
-        if ($existing) {
-            return redirect(\App\Support\CashBookReturn::from($request) ?? url('/finance/manual-journals/' . $existing->id))
-                ->with('status', $manualJournal->entry_no . ' was already reversed by ' . $existing->entry_no
-                    . ' — nothing was posted again.');
-        }
-
         $reason = $request->input('reason', 'Manual reversal');
         // VOID-ON-ORIGINAL-DATE-1: a wrong journal is wiped on its own date; a right one reversed today (default).
         $request->validate(['void_date_mode' => \App\Support\VoidDate::rule()]);
         $mode = \App\Support\VoidDate::mode($request->input('void_date_mode'));
 
         try {
-            $reversal = DB::connection('tenant')->transaction(function () use ($manualJournal, $reason, $mode) {
-                // Do tabs se ek saath Reverse: asal satar par taala, taake doosri request pehli ke
-                // commit ka intezar kare aur JournalService::reverse() ko bani hui reversal mile.
-                JournalEntry::whereKey($manualJournal->id)->lockForUpdate()->first();
+            // ONE official path, ONE rule set (D1): ManualJournalService::reverse locks the original row (two tabs pressing
+            // Reverse at once serialise), accepts only a posted manual journal that is not itself a reversal, and refuses
+            // an entry that already has a reversal without posting anything — then GL reversal + cash/bank counter-movements
+            // + supplier subledger mirror, the same authority the Edge supplier-finance ingestion posts through.
+            // VOID-ON-ORIGINAL-DATE-1 (canonical, merged 22 Oct 2026): the date mode rides the SAME service call — a wrong entry
+            // wiped on its own date, a right one reversed today; the service dates the GL reversal and the cash/bank counter-movements.
+            $reversal = $this->manualJournals->reverse($manualJournal, $reason, Auth::guard('tenant')->id(), $mode);
+        } catch (ManualJournalReversalRefused $e) {
+            // Dobara dabaya gaya Reverse kuch nahi banata (B3) — user ko us reversal par le jao jo pehle ban chuki hai.
+            // Pehle ye error ke saath wapas bhejta tha aur reversal ka safha 404 tha, is liye user ko pata hi nahi
+            // chalta tha ke kaam ho chuka hai.
+            if ($e->reason === ManualJournalReversalRefused::ALREADY_REVERSED && $e->existingReversal) {
+                return redirect(\App\Support\CashBookReturn::from($request) ?? url('/finance/manual-journals/' . $e->existingReversal->id))
+                    ->with('status', $e->getMessage());
+            }
 
-                $reversal = $this->journal->reverse(
-                    $manualJournal,
-                    $reason,
-                    Auth::guard('tenant')->id(),
-                    \App\Support\VoidDate::resolve($mode, $manualJournal->entry_date)
-                );
-
-                // Reverse the cash/bank operational movements too.
-                $this->reverseCashBankLines($manualJournal, Auth::guard('tenant')->id(), $mode);
-
-                // Supplier subledger bhi palte. JournalService::reverse() counterparty ko reversal
-                // ki satrein par saath le jata hai, is liye yahan wohi aaina ulta chal jata hai:
-                // asal Cr AP (supplier debit) ka reversal Dr AP hai (supplier credit).
-                $this->supplierPayable->mirrorApLinesToSupplierLedger($reversal, Auth::guard('tenant')->id());
-
-                return $reversal;
-            });
+            // The canonical abort codes: not a manual journal → 404; not posted / itself a reversal → 422.
+            abort($e->reason === ManualJournalReversalRefused::NOT_MANUAL_JOURNAL ? 404 : 422);
         } catch (Throwable $e) {
             return back()->withErrors(['journal' => $e->getMessage()]);
         }
@@ -207,8 +174,6 @@ class ManualJournalController extends Controller
                 . ($mode === \App\Support\VoidDate::ORIGINAL ? ' on its own date (' . $reversal->entry_date->format('d M Y') . ').' : ', dated today.'));
     }
 
-    // ── helpers ──────────────────────────────────────────────────────────
-
     private function validateData(Request $request): array
     {
         $data = $request->validate([
@@ -216,9 +181,11 @@ class ManualJournalController extends Controller
             'description'  => ['required', 'string', 'max:500'],
             'reference_no' => ['nullable', 'string', 'max:100'],
             'branch_id'    => ['nullable', 'integer', 'exists:branches,id'],
+
             'lines'                          => ['required', 'array', 'min:2'],
             'lines.*.account_id'             => ['required', 'integer', 'exists:accounts,id'],
             'lines.*.cash_bank_account_id'   => ['nullable', 'integer', 'exists:cash_bank_accounts,id'],
+            // SUPPLIER-FINANCE-DIRECT-1 — AP ki satar par supplier ka dimension (aaina subledger mein jata hai).
             'lines.*.counterparty_type'      => ['nullable', 'string', 'in:supplier'],
             'lines.*.supplier_id'            => ['nullable', 'integer', 'exists:tenant.suppliers,id'],
             'lines.*.description'            => ['nullable', 'string', 'max:255'],
@@ -226,293 +193,9 @@ class ManualJournalController extends Controller
             'lines.*.credit'                 => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        // Validate no line has both debit and credit.
-        foreach ($data['lines'] as $i => $line) {
-            $d = (float) ($line['debit']  ?? 0);
-            $c = (float) ($line['credit'] ?? 0);
-            if ($d > 0 && $c > 0) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
-                    "lines.$i.debit" => 'A line cannot have both a debit and a credit.',
-                ]);
-            }
-        }
-
-        // SUPPLIER-FINANCE-DIRECT-1 — koi bhi MANUAL Accounts Payable posting be-shanakht nahi.
-        //
-        // Pehle ye form 2100 par credit/debit kar sakta tha bina batae ke kis supplier ka. Nateeja:
-        // AP control hil jata aur supplier subledger ko pata bhi nahi chalta — yani wohi drift jo
-        // requirement K mana karti hai, aur wo bhi bilkul us screen se jo isay theek karne ke liye
-        // banayi gayi thi.
-        //
-        // Shart sirf IS raaste par hai (source_type = manual_journal). System ke banaye journals —
-        // purchase bill, purchase return, supplier opening balance, sale, catering — sab pehle jaise
-        // chalte hain; unke liye ye validation chalti hi nahi.
-        $apIds = $this->supplierPayable->apAccountIds();
-
-        if ($apIds) {
-            foreach ($data['lines'] as $i => $line) {
-                $debit  = (float) ($line['debit']  ?? 0);
-                $credit = (float) ($line['credit'] ?? 0);
-
-                // Khali satar par shart nahi — JournalService bhi usay chhor deta hai.
-                if ($debit <= 0 && $credit <= 0) {
-                    continue;
-                }
-
-                if (! in_array((int) ($line['account_id'] ?? 0), $apIds, true)) {
-                    continue;
-                }
-
-                if (($line['counterparty_type'] ?? null) !== 'supplier' || empty($line['supplier_id'])) {
-                    throw \Illuminate\Validation\ValidationException::withMessages([
-                        "lines.$i.supplier_id" => 'This line posts to Accounts Payable, so it must name the supplier '
-                            . 'it belongs to — otherwise the supplier ledger and the AP control account drift apart.',
-                    ]);
-                }
-            }
-        }
-
-        $this->guardNarration((string) $data['description']);
-        $data['lines'] = $this->guardCashLines($data['lines']);
-
+        // The business rules (debit XOR credit, every Accounts Payable line names its supplier, R5 narration, R1–R3 cash
+        // lines) are NOT here any more — ManualJournalService::post() enforces them (D1), shared with the Edge paths.
         return $data;
-    }
-
-    /**
-     * MANUAL-JOURNAL-CASH-LINE-GUARD-1 (R5) — narration asli ho.
-     *
-     * Ek live tenant ki paanchon ghalat entries ki narration sirf "." thi; baad me koi nahi bata
-     * sakta tha ke wo kis cheez ki thi. Kam az kam 3 characters, aur un me koi harf ya hindsa —
-     * ".", "-", "..." rad.
-     */
-    private function guardNarration(string $description): void
-    {
-        $text = trim($description);
-
-        if (mb_strlen($text) < 3 || ! preg_match('/[\p{L}\p{N}]/u', $text)) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'description' => 'Write what this entry is for, in at least 3 characters (e.g. "Owner drawing - cash"). '
-                    . 'A dot or a dash is not a description.',
-            ]);
-        }
-    }
-
-    /**
-     * MANUAL-JOURNAL-CASH-LINE-GUARD-1 — Cash/Bank sirf apni hi satar par.
-     *
-     * Pehle form har satar par Cash/Bank lene deta tha aur syncCashBankLines() usay aankh band
-     * kar ke maan leta tha: debit = paisa ANDAR, credit = BAHAR — chahe satar kisi bhi khaate
-     * ki ho. Ek live tenant par drawer drawing (debit) ki satar par chuna gaya, to drawing
-     * Cash Book me "In" ban gayi; aur jahan credit group head 1100 par gaya wahan drawer chuna
-     * hi nahi gaya, to paisa nikla magar Cash Book me kuch nahi aaya.
-     *
-     *   R1  drawer chuna hai → satar ka khaata wohi ho jis se drawer juda hai (CashBankAccount.account_id)
-     *   R2  satar kisi active drawer ke khaate par hai → drawer lazmi; ek hi juda ho to khud bhar do,
-     *       kai hon (jaise do drawer ek hi 1110 par) to user se chunwao
-     *   R3  group head (jis ke neeche khaate hain) par posting nahi
-     *
-     * Direction ka usool NAHI badla — sahi satar par debit = andar, credit = bahar theek hai.
-     * Shart sirf IS raaste par hai; system ke apne journals (JournalPostingService) par nahi.
-     * Reverse bhi azad hai: purani ghalat entry palatna hi to us ka ilaaj hai.
-     *
-     * @return array satrein — R2 ka khud bhara hua drawer samet
-     */
-    private function guardCashLines(array $lines): array
-    {
-        $accountIds = collect($lines)->pluck('account_id')->filter()->map(fn ($id) => (int) $id)->unique()->values();
-        $accounts   = Account::whereIn('id', $accountIds)->get(['id', 'code', 'name'])->keyBy('id');
-        $groupIds   = Account::whereIn('parent_id', $accountIds)->distinct()->pluck('parent_id')
-            ->map(fn ($id) => (int) $id)->all();
-
-        $drawers    = CashBankAccount::query()->get(['id', 'code', 'name', 'account_id', 'is_active'])->keyBy('id');
-        $activeByGl = $drawers->filter(fn ($d) => $d->is_active && $d->account_id)
-            ->groupBy(fn ($d) => (int) $d->account_id);
-        $drawerGls  = Account::whereIn('id', $drawers->pluck('account_id')->filter()->unique())
-            ->get(['id', 'code', 'name'])->keyBy('id');
-
-        $errors = [];
-
-        foreach ($lines as $i => $line) {
-            // Khali satar kuch post nahi karti (normalizeLines aur syncCashBankLines dono chhor dete hain).
-            if ((float) ($line['debit'] ?? 0) <= 0 && (float) ($line['credit'] ?? 0) <= 0) {
-                continue;
-            }
-
-            $accountId = (int) ($line['account_id'] ?? 0);
-            $account   = $accounts->get($accountId);
-            $label     = $account ? $account->code . ' ' . $account->name : 'this account';
-
-            // R3 — group head.
-            if (in_array($accountId, $groupIds, true)) {
-                $child = Account::where('parent_id', $accountId)->where('is_active', true)
-                    ->orderBy('sort_order')->orderBy('code')->first(['code', 'name']);
-                $errors["lines.$i.account_id"] = $label . ' is a group. Choose an account under it'
-                    . ($child ? ', e.g. ' . $child->code . ' ' . $child->name . '.' : '.');
-                continue;
-            }
-
-            $drawerId = (int) ($line['cash_bank_account_id'] ?? 0);
-
-            // R1 — chuna hua drawer apni hi satar par.
-            if ($drawerId) {
-                $drawer = $drawers->get($drawerId);
-                if ($drawer && (int) $drawer->account_id !== $accountId) {
-                    $gl = $drawerGls->get((int) $drawer->account_id);
-                    $errors["lines.$i.cash_bank_account_id"] = $gl
-                        ? $drawer->name . ' is linked to ' . $gl->code . ' ' . $gl->name . '. Choose it on the '
-                            . $gl->code . ' line, not on ' . $label . '.'
-                        : $drawer->name . ' is not linked to any account in the chart of accounts, so it cannot '
-                            . 'be used on a journal line. Link it on the Cash & Bank screen first.';
-                }
-                continue;
-            }
-
-            // R2 — cash ki satar bina drawer ke.
-            $linked = $activeByGl->get($accountId, collect());
-            if ($linked->count() === 1) {
-                $lines[$i]['cash_bank_account_id'] = $linked->first()->id;
-            } elseif ($linked->count() > 1) {
-                $errors["lines.$i.cash_bank_account_id"] = $label . ' is used by more than one cash/bank account ('
-                    . $linked->pluck('name')->implode(', ') . '). Choose which one the money went through.';
-            }
-        }
-
-        if ($errors) {
-            throw \Illuminate\Validation\ValidationException::withMessages($errors);
-        }
-
-        return $lines;
-    }
-
-    private function normalizeLines(array $lines): array
-    {
-        $normalized = [];
-        foreach ($lines as $line) {
-            $debit  = round((float) ($line['debit']  ?? 0), 4);
-            $credit = round((float) ($line['credit'] ?? 0), 4);
-            if ($debit === 0.0 && $credit === 0.0) {
-                continue;
-            }
-            $normalized[] = [
-                'account_id'        => (int) $line['account_id'],
-                'branch_id'         => ! empty($line['branch_id']) ? (int) $line['branch_id'] : null,
-                // Counterparty JournalService tak jata hai, jo isay journal_lines par likhta hai;
-                // aaina usi likhi hui satar se padha jata hai, form se nahi — is liye jo GL mein
-                // baitha hai aur jo subledger mein utra hai, wo ek hi cheez hai.
-                'counterparty_type' => $line['counterparty_type'] ?? null,
-                'supplier_id'       => ! empty($line['supplier_id']) ? (int) $line['supplier_id'] : null,
-                'description'       => $line['description'] ?? null,
-                'debit'             => $debit,
-                'credit'            => $credit,
-            ];
-        }
-        return $normalized;
-    }
-
-    private function syncCashBankLines(JournalEntry $entry, array $lines, string $entryDate, ?int $userId): void
-    {
-        foreach ($lines as $line) {
-            $cbId = (int) ($line['cash_bank_account_id'] ?? 0);
-            if (! $cbId) {
-                continue;
-            }
-
-            $debit  = round((float) ($line['debit']  ?? 0), 4);
-            $credit = round((float) ($line['credit'] ?? 0), 4);
-            if ($debit === 0.0 && $credit === 0.0) {
-                continue;
-            }
-
-            // Debit on a cash/bank account = money IN (e.g. receiving payment).
-            // Credit on a cash/bank account = money OUT (e.g. paying for asset).
-            $amount    = $debit > 0 ? $debit : $credit;
-            $direction = $debit > 0 ? 'in' : 'out';
-
-            $cash = CashBankAccount::whereKey($cbId)->lockForUpdate()->first();
-            if (! $cash) {
-                continue;
-            }
-
-            $newBalance = $direction === 'in'
-                ? (float) $cash->current_balance + $amount
-                : (float) $cash->current_balance - $amount;
-
-            CashBankAccountTransaction::create([
-                'cash_bank_account_id' => $cash->id,
-                'transaction_date'     => $entryDate,
-                'direction'            => $direction,
-                'amount'               => $amount,
-                'balance_after'        => $newBalance,
-                'transaction_type'     => 'manual_journal',
-                'reference_type'       => 'manual_journal',
-                'reference_id'         => $entry->id,
-                'notes'                => 'Manual journal ' . $entry->entry_no,
-                'created_by_user_id'   => $userId,
-            ]);
-
-            $cash->update(['current_balance' => $newBalance]);
-        }
-    }
-
-    private function reverseCashBankLines(JournalEntry $entry, ?int $userId, string $dateMode = \App\Support\VoidDate::TODAY): void
-    {
-        $txns = CashBankAccountTransaction::query()
-            ->where('reference_type', 'manual_journal')
-            ->where('reference_id', $entry->id)
-            ->where('transaction_type', 'manual_journal')
-            ->get();
-
-        foreach ($txns as $txn) {
-            $already = CashBankAccountTransaction::query()
-                ->where('reference_type', 'manual_journal_reversal')
-                ->where('reference_id', $txn->id)
-                ->exists();
-            if ($already) {
-                continue;
-            }
-
-            $cash = CashBankAccount::whereKey($txn->cash_bank_account_id)->lockForUpdate()->first();
-            if (! $cash) {
-                continue;
-            }
-
-            $reverseDir = $txn->direction === 'in' ? 'out' : 'in';
-            $newBalance = $reverseDir === 'in'
-                ? (float) $cash->current_balance + (float) $txn->amount
-                : (float) $cash->current_balance - (float) $txn->amount;
-
-            CashBankAccountTransaction::create([
-                'cash_bank_account_id' => $cash->id,
-                'transaction_date'     => \App\Support\VoidDate::resolve($dateMode, $txn->transaction_date),
-                'direction'            => $reverseDir,
-                'amount'               => $txn->amount,
-                'balance_after'        => $newBalance,
-                'transaction_type'     => 'manual_journal_reversal',
-                'reference_type'       => 'manual_journal_reversal',
-                'reference_id'         => $txn->id,
-                'notes'                => 'Reversal of manual journal ' . $entry->entry_no,
-                'created_by_user_id'   => $userId,
-            ]);
-
-            $cash->update(['current_balance' => $newBalance]);
-        }
-    }
-
-    /**
-     * Manual journals don't use the (source_type, source_id) idempotency key the same
-     * way automated ones do — each manual post is a NEW entry. We use a dedicated
-     * auto-increment sequence stored in a simple counter table row, falling back to
-     * a timestamp-based ID to avoid race conditions.
-     */
-    private function nextManualJournalId(): int
-    {
-        $highest = (int) DB::connection('tenant')
-            ->table('journal_entries')
-            ->where('source_type', 'manual_journal')
-            ->max('source_id');
-
-        // VOID-PURGE-1: a deleted manual journal's number is never reused.
-        return max($highest, \App\Support\PurgedNumbers::highestInt(\App\Support\PurgedNumbers::MANUAL_JOURNAL)) + 1;
     }
 
     private function formData(): array

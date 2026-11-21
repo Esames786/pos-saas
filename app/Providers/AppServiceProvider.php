@@ -13,6 +13,12 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // OFFLINE EDGE PRODUCTIZATION — the appliance backup recovery-key contract. The config/env provider
+        // is interim; a real Cloud KMS / key-vault provider implements the same interface later.
+        $this->app->bind(
+            \App\Services\Edge\EdgeBackupKeyProvider::class,
+            \App\Services\Edge\ConfigEdgeBackupKeyProvider::class,
+        );
         // ONLINE-ORDERING-1: rates aik request/job me aik dafa parhe jayen; agle job me dobara.
         $this->app->scoped(\App\Services\Saas\BillingRates::class);
     }
@@ -108,7 +114,10 @@ class AppServiceProvider extends ServiceProvider
         // Tenant subscription banner — only when a tenant is active in the
         // container (bound by TenancyManager::activate via IdentifyTenant).
         // Tenant is NOT on $request->attributes; it lives in app('tenant').
-        View::composer('layouts.app', function ($view) {
+        // The subscription banner composer is Cloud-only: a Branch Server never binds a tenant and must not reference the
+        // (excluded) Saas services at all — the shared POS layout carries no composer (POS-RUNTIME-1).
+        if (! \App\Support\EdgeRuntime::isBranchServer()) {
+                View::composer('layouts.app', function ($view) {
             if (!app()->bound('tenant')) {
                 return;
             }
@@ -124,5 +133,6 @@ class AppServiceProvider extends ServiceProvider
                 app(TenantSubscriptionAccessService::class)->subscriptionStatus($tenant)
             );
         });
+        }
     }
 }

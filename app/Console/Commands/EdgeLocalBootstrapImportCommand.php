@@ -63,11 +63,13 @@ class EdgeLocalBootstrapImportCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info('Bootstrap imported. Appliance is now bound to:');
+        $this->info('Package applied. Appliance binding / configuration:');
         $this->line('  tenant   : ' . $meta->tenant_code . ' (#' . $meta->tenant_id . ')');
         $this->line('  branch   : #' . $meta->branch_id);
         $this->line('  device   : ' . $meta->device_uuid);
         $this->line('  epoch    : ' . $meta->activation_epoch);
+        $this->line('  config   : revision ' . ($meta->last_applied_config_revision ?? '—') . ' (' . ($meta->config_schema_version ?: 'n/a') . ')');
+        $this->line('  refreshed: ' . ($meta->last_refreshed_at?->toDateTimeString() ?? 'initial bootstrap only'));
         $this->line('  revision : ' . $meta->source_revision);
         $this->line('  state    : ' . $meta->runtime_state . ' (NOT selling — operational stock stays not-ready)');
 

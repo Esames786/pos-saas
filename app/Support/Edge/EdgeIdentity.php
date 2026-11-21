@@ -47,6 +47,7 @@ final class EdgeIdentity
         \App\Models\Tenant\RestaurantTableSession::class => ['session_uuid', self::FORMAT_ULID],
         \App\Models\Tenant\ManagerApproval::class        => ['approval_uuid', self::FORMAT_ULID],
         \App\Models\Tenant\Customer::class               => ['customer_uuid', self::FORMAT_ULID],
+        \App\Models\Tenant\CustomerAddress::class        => ['address_uuid', self::FORMAT_ULID],   // EDGE PHASE 4 (migration 2026_10_06_000001)
     ];
 
     /** Reused, pre-existing canonical identities (own generation hooks; documented, not trait-managed). */

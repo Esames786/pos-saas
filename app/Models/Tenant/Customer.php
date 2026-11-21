@@ -3,6 +3,7 @@
 namespace App\Models\Tenant;
 
 use App\Models\Concerns\HasCanonicalIdentity;
+use App\Support\PhoneNormalizer;
 use Illuminate\Database\Eloquent\Model;
 
 class Customer extends Model
@@ -17,6 +18,20 @@ class Customer extends Model
      * the optional human `code`. Offline customer-create UI is NOT exposed in this sprint.
      */
     protected string $canonicalIdentityColumn = 'customer_uuid';
+
+    /**
+     * EDGE PHASE 4 — `phone_normalized` (App\Support\PhoneNormalizer) is the cross-system MATCH KEY, derived from `phone`
+     * on every Eloquent write (Cloud and Branch Server alike) so no code path can store a phone without its match key.
+     * It is never mass-assigned: the normaliser is the only writer.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $customer) {
+            if ($customer->isDirty('phone') || ($customer->phone_normalized === null && $customer->phone !== null)) {
+                $customer->phone_normalized = PhoneNormalizer::normalize($customer->phone !== null ? (string) $customer->phone : null);
+            }
+        });
+    }
 
     protected $fillable = [
         'code',
@@ -53,6 +68,12 @@ class Customer extends Model
     public function addresses()
     {
         return $this->hasMany(CustomerAddress::class);
+    }
+
+    /** EDGE PHASE 4 — offline-minted customer_uuids the Cloud matched to this customer (never duplicates). */
+    public function uuidAliases()
+    {
+        return $this->hasMany(CustomerUuidAlias::class);
     }
 
     public function ledgers()

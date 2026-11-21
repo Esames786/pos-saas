@@ -74,6 +74,23 @@ class EdgeRuntime
      * normal Cloud working tree does NOT contain it (git-ignored, only produced by the builder). A
      * present, branch_server-marked manifest is the signal "this is an appliance build".
      */
+    /** P4 — the version stamped into THIS runtime's edge-build-manifest.json (null on a dev/Cloud tree). */
+    public static function artifactVersion(): ?string
+    {
+        try {
+            $path = base_path('edge-build-manifest.json');
+        } catch (\Throwable) {
+            return null; // no application container yet (a bare include) — a dev tree answer
+        }
+        if (! is_file($path) || ! is_readable($path)) {
+            return null;
+        }
+        $manifest = json_decode((string) file_get_contents($path), true);
+        $version = is_array($manifest) ? ($manifest['edge_app_version'] ?? null) : null;
+
+        return is_string($version) && $version !== '' ? $version : null;
+    }
+
     public static function isPackagedEdgeArtifact(): bool
     {
         $path = base_path('edge-build-manifest.json');

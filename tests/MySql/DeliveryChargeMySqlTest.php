@@ -13,8 +13,8 @@ use Tests\MySql\Support\TenantFixtures;
 /**
  * DELIVERY-CHARGE-1 — the customer-facing delivery charge, end to end on real MySQL:
  * totals (delivery orders only), GL posting (credit 4150, revenue never inflated, balanced journal),
- * receipt payload line, zero effect on non-delivery sales, and the Edge/offline REFUSAL (delivery is
- * Cloud-only; the field must never slip into a local sale's intent).
+ * receipt payload line, zero effect on non-delivery sales — on the Cloud and on the Edge appliance alike
+ * (delivery sells offline since the Edge Phase A parity work; a non-delivery sale ignores the field as Online does).
  */
 class DeliveryChargeMySqlTest extends MySqlTenantTestCase
 {
@@ -111,7 +111,14 @@ class DeliveryChargeMySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString('Delivery Charge', app(EscPosPayloadService::class)->build(\App\Models\Tenant\PrintJob::findOrFail($plainJob)));
     }
 
-    public function test_edge_offline_sale_refuses_a_delivery_charge(): void
+    /**
+     * EDGE DELIVERY PARITY (Phase A): delivery now sells offline under the same branch charge rule as Online, so
+     * the former "offline refuses a delivery charge" contract is superseded. What stays identical to Online
+     * (POSController: `deliveryCharge = orderType === 'delivery' ? … : 0`) is that a delivery charge sent with a
+     * NON-delivery order is ignored — the customer is never charged for a delivery that is not one. The delivery
+     * order path itself (channel/aggregator rule, rider, lock) is proven in EdgeCashierDealsDiscountsHttpMySqlTest.
+     */
+    public function test_edge_offline_non_delivery_sale_ignores_a_delivery_charge_like_online(): void
     {
         $this->ensureEdgeSchema();
         $this->cleanTenant(['edge_operational_stock_movements', 'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_local_meta']);
@@ -121,23 +128,27 @@ class DeliveryChargeMySqlTest extends MySqlTenantTestCase
         $cash = $this->makePaymentMethod(['method_type' => 'cash']);
         $this->bindEdgeLocalMeta($this->branchId, 1);
         $this->asBranchServerRuntime();
+        // Selling stock exists only under an accepted Edge-only baseline (never official tables).
+        $this->acceptTestBaseline([['product_id' => $productId, 'product_variant_id' => null, 'quantity' => 10]]);
         $user = \App\Models\Tenant\User::on('tenant')->find($userId);
         \Illuminate\Support\Facades\Auth::guard('tenant')->setUser($user);
         \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+        // Same Online rules on the appliance: an open shift on the terminal before the first sale.
+        app(\App\Services\Sales\ShiftService::class)->open(\App\Models\Tenant\Branch::on('tenant')->find($this->branchId), \App\Models\Tenant\Terminal::on('tenant')->find($terminalId), $userId, 0.0);
 
         try {
-            app(\App\Services\Edge\EdgeLocalPosService::class)->completePaidSale([
-                'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            $sale = app(\App\Services\Edge\EdgeLocalPosService::class)->completePaidSale([
+                'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
                 'delivery_charge_amount' => 50,
                 'lines' => [['product_id' => $productId, 'quantity' => 1]],
-                'payments' => [['payment_method_id' => $cash, 'amount' => 150]],
+                'payments' => [['payment_method_id' => $cash, 'amount' => 100]],
             ], $user, $terminalId);
-            $this->fail('an offline sale must REFUSE a delivery charge');
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            $this->assertArrayHasKey('delivery_charge_amount', $e->errors());
         } finally {
             $this->resetRuntimeRole();
         }
-        $this->assertSame(0, SalesOrder::on('tenant')->count(), 'nothing persisted');
+        $sale = SalesOrder::on('tenant')->findOrFail($sale->id);
+        $this->assertSame(0.0, (float) $sale->delivery_charge_amount, 'a takeaway never carries a delivery charge — exactly as Online');
+        $this->assertSame(100.0, (float) $sale->grand_total, 'the customer pays the goods only');
+        $this->assertSame(1, SalesOrder::on('tenant')->count());
     }
 }

@@ -2,23 +2,29 @@
 
 namespace App\Http\Controllers\Edge;
 
-use App\Exceptions\ShiftException;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Edge\Concerns\ResolvesEdgePosContext;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\Category;
+use App\Models\Tenant\Combo;
 use App\Models\Tenant\PaymentMethod;
-use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\Product;
+use App\Models\Tenant\RestaurantWaiter;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
 use App\Services\Edge\EdgeBranchContext;
 use App\Services\Edge\EdgeLocalPosService;
 use App\Services\Edge\EdgeOperationalBaselineService;
-use App\Services\Sales\ShiftService;
+use App\Services\Security\UserDataScope;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * EDGE-LOCAL-POS-1 — the branch_server-only local POS HTTP surface.
+ * EDGE-LOCAL-POS-1 — the branch_server-only local POS HTTP surface (page, catalogue view-model, terminal, sale).
  *
  * Registered ONLY in routes/edge_runtime.php (absent — genuine 404 — on Cloud), behind `edge.auth`
  * (authenticated local tenant session) + `edge.branch` (bound appliance; request tenant/branch ids can never
@@ -27,18 +33,750 @@ use RuntimeException;
  * It never calls Cloud finance/inventory mutators (fenced anyway) and cannot bypass the accepted
  * operational-stock baseline (the service refuses before mutation). activation_ready stays false.
  *
- * The selected terminal is per-session (`edge_pos_terminal_id`) and re-validated on every use.
+ * W0c (20 Sep 2026): the former single controller is split by team ownership — shifts (EdgeLocalShiftController),
+ * tables/reservations (EdgeLocalRestaurantController), held checks (EdgeLocalHeldSalesController), manager approval
+ * (EdgeLocalManagerApprovalController), returns (EdgeLocalReturnController), printing (EdgeLocalPrintJobController).
+ * The shared authority helpers (selected terminal, route-permission gate, terminal authority, Complete Sale gate)
+ * live in Concerns\ResolvesEdgePosContext. Team 2 owns this file (menu + sale).
  */
 class EdgeLocalPosController extends Controller
 {
-    private const TERMINAL_SESSION_KEY = 'edge_pos_terminal_id';
+    use ResolvesEdgePosContext {
+        selectedTerminal as private resolveSelectedTerminal;
+    }
 
     public function __construct(
         private readonly EdgeBranchContext $context,
         private readonly EdgeLocalPosService $pos,
-        private readonly ShiftService $shifts,
         private readonly EdgeOperationalBaselineService $baselines,
     ) {
+    }
+
+    /** W-B canonical contract (§3.2): a missing / stale terminal answers 422 with Online's `code: INVALID_TERMINAL`. */
+    protected function selectedTerminal(Request $request): Terminal|JsonResponse
+    {
+        if ($refused = \App\Services\Edge\EdgePosRuntimeFactory::adoptRequestedTerminal($request, (int) $this->context->requireCurrent()->branch_id, fn ($t) => $this->denyUnlessMayOperateTerminal($t))) {
+            return $refused;
+        }
+
+        return \App\Services\Edge\EdgePosRuntimeFactory::terminalOrCoded($this->resolveSelectedTerminal($request));
+    }
+
+    // ═══════════════════════ W-B — the SHARED cashier view (tenant.pos.index) on the Branch Server ═══════════════════════
+
+    /**
+     * POS-RUNTIME-1 — render THE Online cashier page (`tenant.pos.index`, the same Blade the Cloud renders) from the local
+     * database, with the Edge runtime adapter. The variable set is EXACTLY what Online POSController::index passes (names and
+     * shapes), built from the bound branch only; everything that legitimately differs travels in `$posRuntime`
+     * (EdgePosRuntimeFactory). Route: `edge.local.pos.screen` (GET /edge/local/pos) since Phase 3 Stage A; the Phase 2
+     * alias `edge.local.pos.shared` is a 301 to it (sharedAlias). The old Edge page (resources/views/edge/pos/**) and its
+     * `screen()` delegate were deleted in Stage B — there is ONE cashier view.
+     */
+    public function sharedScreen(Request $request): View
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $branch = Branch::on('tenant')->findOrFail($branchId);
+        $user = auth('tenant')->user();
+        abort_unless((bool) $user?->can('tenant.pos.index'), 403, 'Permission denied — your account may not open the POS.');
+
+        $runtime = app(\App\Services\Edge\EdgePosRuntimeFactory::class)->make($request);
+
+        // W-A's closed page-data contract: a key the view needs can never be present on the Cloud and missing here.
+        return view('tenant.pos.index', \App\Support\Pos\PosPageData::fromArray($this->sharedPageData($request, $branch, $user, $runtime))
+            ->toViewData($runtime));
+    }
+
+    /**
+     * The Online POSController::index variable set, from the local DB (W-B §1.4). Public shape contract: the same keys the
+     * Online page receives — deadSession, branches, selectedBranchId, terminals, categories, pillCategoryIds,
+     * contentCategoryIds, hasUncategorizedCombos, productsPayload, combosPayload, paymentMethods, floors, waiters,
+     * quickReportBranches, quickReportPrinters, deliveryChannels, deliveryRiders, allowedOrderTypes, tableSession, heldSale,
+     * receiptLayouts, terminalPrintConfig, activeMode.
+     *
+     * @return array<string, mixed>
+     */
+    public function sharedPageData(Request $request, Branch $branch, $user, \App\Support\Pos\PosRuntime $runtime): array
+    {
+        $branchId = (int) $branch->id;
+        $allowedOrderTypes = array_values(array_intersect(
+            array_keys(\App\Models\Tenant\User::ORDER_TYPES),
+            $user?->effectiveAllowedOrderTypes() ?? array_keys(\App\Models\Tenant\User::ORDER_TYPES)
+        ));
+
+        // Deep links (the same query keys as Online): ?held_sale_id= / ?table_session_id= / ?mode= — bound branch only.
+        $heldSale = null;
+        if ($request->filled('held_sale_id')) {
+            $heldSale = \App\Models\Tenant\SalesOrder::on('tenant')->with([
+                'lines', 'customer', 'restaurantTableSession.table.floor', 'restaurantTableSession.waiter',
+                'restaurantTableSession.closedBy', 'restaurantTable', 'restaurantWaiter',
+            ])->where('status', 'held')->where('branch_id', $branchId)->find((int) $request->input('held_sale_id'));
+        }
+        $sessionWith = ['table.floor', 'waiter', 'salesOrders' => fn ($q) => $q->where('status', 'held')];
+        $tableSession = null;
+        if ($request->filled('table_session_id')) {
+            $tableSession = \App\Models\Tenant\RestaurantTableSession::on('tenant')->with($sessionWith)
+                ->whereIn('status', ['open', 'bill_requested'])->where('branch_id', $branchId)
+                ->find((int) $request->input('table_session_id'));
+        }
+        if (! $tableSession && $heldSale?->restaurant_table_session_id) {
+            $tableSession = \App\Models\Tenant\RestaurantTableSession::on('tenant')->with($sessionWith)
+                ->whereIn('status', ['open', 'bill_requested'])->where('branch_id', $branchId)
+                ->find((int) $heldSale->restaurant_table_session_id);
+        }
+        // HELD-SALE-DEAD-SESSION-1 / P5 — the orphaned bill facts, in Online's display format.
+        $deadSession = null;
+        if ($heldSale && $heldSale->restaurant_table_session_id && ! $tableSession) {
+            $info = app(\App\Services\Edge\EdgeLocalTableOperationsService::class)->deadSessionInfo($heldSale);
+            if ($info) {
+                $deadSession = array_merge($info, [
+                    'closed_at' => $info['closed_at'] ? app(\App\Support\TenantClock::class)->format($info['closed_at'], 'd M, h:i A') : null,
+                ]);
+            }
+        }
+
+        $requestedMode = $tableSession || $heldSale?->restaurant_table_session_id
+            ? 'dine_in'
+            : (string) $request->input('mode', $user?->effectiveDefaultOrderType() ?? 'quick_sale');
+        if (! in_array($requestedMode, $allowedOrderTypes, true)) {
+            $requestedMode = $user?->effectiveDefaultOrderType() ?? ($allowedOrderTypes[0] ?? 'quick_sale');
+            if (! in_array($requestedMode, $allowedOrderTypes, true)) {
+                $requestedMode = $allowedOrderTypes[0] ?? 'quick_sale';
+            }
+        }
+        if (($tableSession || $heldSale?->restaurant_table_session_id) && ! in_array('dine_in', $allowedOrderTypes, true)) {
+            abort(403, 'Your account is not allowed to use Dine In orders.');
+        }
+
+        // Terminals: the bound branch's active terminals; POS-TERMINAL-PIN-1 — a pinned operator sees only his own.
+        // W-G3 (X2) Online parity (PosController::index :430-433): UserDataScope::terminalsForPos scopes the list to the
+        // operator's ASSIGNED terminals (terminal_user) first, THEN pins it to default_terminal_id for an operator without
+        // tenant.pos.change-terminal. An operator holding change-terminal (the dev seed's DEVCASH1) sees every counter — on
+        // Online too; a terminal-assigned operator sees only his assigned ones (the server re-checks on every use).
+        $canChangeTerminal = (bool) $user?->can(UserDataScope::CHANGE_TERMINAL_PERMISSION);
+        $defaultTerminalId = $user?->default_terminal_id ? (int) $user->default_terminal_id : null;
+        $assignedTerminalIds = app(UserDataScope::class)->terminalIds($user);
+        $terminals = Terminal::on('tenant')->where('branch_id', $branchId)->where('status', 'active')->orderBy('name')->get()
+            ->when($assignedTerminalIds !== [], fn ($list) => $list->whereIn('id', $assignedTerminalIds)->values())
+            ->when(! $canChangeTerminal && $defaultTerminalId, fn ($list) => $list->where('id', $defaultTerminalId)->values());
+
+        [$productsPayload, $combosPayload, $categories, $pillCategoryIds, $contentCategoryIds, $recallProductsPayload] = $this->sharedMenu($branch, $runtime);
+
+        // Payment methods: EVERY active method, cash first (the Online select); non-cash rides flagged display-only —
+        // the page renders them disabled with the capability hint (nonCashTender=false); the server refuses them anyway.
+        $paymentMethods = PaymentMethod::on('tenant')->where('is_active', true)
+            ->orderByRaw("CASE WHEN method_type = 'cash' THEN 0 ELSE 1 END")->orderBy('name')->get()
+            ->each(function (PaymentMethod $m) {
+                $m->setAttribute('offline_supported', $m->method_type === 'cash');
+                $m->setAttribute('display_only', $m->method_type !== 'cash');
+            });
+
+        $canQuickReportSend = (bool) $user?->can('tenant.pos.quick-report-send');
+
+        return [
+            'deadSession' => $deadSession,
+            'branches' => collect([$branch]),
+            'selectedBranchId' => $branchId,
+            'terminals' => $terminals,
+            'categories' => $categories,
+            'pillCategoryIds' => $pillCategoryIds,
+            'contentCategoryIds' => $contentCategoryIds,
+            'hasUncategorizedCombos' => collect($combosPayload)->contains(fn ($c) => empty($c['category_id'])),
+            'productsPayload' => $productsPayload,
+            // RECALL-HIDDEN-ITEM-1 twin (canonical 69536d3a, rehearsal chunk 11): POS-hidden sellable items, read only by recall.
+            'recallProductsPayload' => $recallProductsPayload,
+            'combosPayload' => $combosPayload,
+            'paymentMethods' => $paymentMethods,
+            'floors' => $this->boardFloors($branchId),
+            'waiters' => RestaurantWaiter::on('tenant')
+                ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))
+                ->where('status', 'active')->orderBy('name')->get(),
+            'quickReportBranches' => $canQuickReportSend ? collect([$branch->only(['id', 'name'])])->map(fn ($b) => (object) $b) : collect(),
+            'quickReportPrinters' => $canQuickReportSend
+                ? \App\Models\Tenant\Printer::on('tenant')->where('is_active', 1)->where('printer_type', 'network')
+                    ->whereNotNull('ip_address')->orderBy('name')->get(['id', 'name', 'paper_size'])
+                : collect(),
+            'deliveryChannels' => \App\Models\Tenant\DeliveryChannel::on('tenant')->where('is_active', true)
+                ->orderBy('sort_order')->orderBy('name')->get(),
+            'deliveryRiders' => \App\Models\Tenant\DeliveryRider::on('tenant')->where('status', 'active')->orderBy('name')->get(),
+            'allowedOrderTypes' => $allowedOrderTypes,
+            'tableSession' => $tableSession,
+            'heldSale' => $heldSale,
+            'receiptLayouts' => $this->safeCollection(fn () => \App\Models\Tenant\ReceiptLayoutSetting::on('tenant')
+                ->where('document_type', 'receipt')->get()->keyBy('branch_id')
+                ->map(fn ($l) => [
+                    'header_text' => $l->header_text,
+                    'footer_text' => $l->footer_text,
+                    'paper_size' => $l->paper_size,
+                    'show_branch_name' => (bool) $l->show_branch_name,
+                ])),
+            'terminalPrintConfig' => $this->safeCollection(fn () => \App\Models\Tenant\TerminalPrinterSetting::on('tenant')->get()
+                ->keyBy('terminal_id')
+                ->map(fn ($s) => [
+                    'auto_print_receipt' => (bool) $s->auto_print_receipt,
+                    'auto_print_kot' => (bool) $s->auto_print_kot,
+                ])),
+            'activeMode' => $requestedMode,
+            'kitchenTickets' => $this->kitchenTicketsOn(),
+            // MEDICAL-COUNTER-1 twin (merge D8): OFF on the Branch Server for now — the feature is a Master switch read from the Cloud
+            // tenant row (TenantFeatures::on needs the `tenant` binding) and its packs / batches / prescription data are not part of
+            // the bootstrap sections yet. Non-medical tenants render exactly the same page on both runtimes; a medical tenant's Branch
+            // Server is a follow-up owner decision (recorded in docs/status/edge-canonical-merge-report.md).
+            'medicalCounter' => false,
+            // UNITS-PACKS F3 twin (canonical rehearsal, 30 Oct 2026): OFF on the Branch Server — counter_packs is a Master switch and the Edge
+            // sale twin prices no pack line (CounterPacks::serverPricesPacks is Cloud code); the page then renders exactly the Online page
+            // with the switch off. A medical/packs Branch Server is the same follow-up owner decision as medicalCounter.
+            'counterPacks' => false,
+        ];
+    }
+
+    /**
+     * PHARMACY-DEMO-1 twin (canonical POSController::kitchenTicketsOn, merge D8) — does this counter feed a kitchen? Online
+     * answers from the plan's modules (restaurant / kitchen_display / kitchen_inventory) or an active KOT-capable printer. The
+     * appliance carries no plan-module list, so the SAME two signals it does carry decide: an active KOT-capable printer
+     * (printers are a bootstrap section) or a configured dine-in board (restaurant floors are a bootstrap section — every
+     * live restaurant tenant has one). A medical store / shop has neither → no "Print Kitchen Order?" prompt, as on Online.
+     */
+    private function kitchenTicketsOn(): bool
+    {
+        return \App\Models\Tenant\Printer::on('tenant')->where('is_active', true)->whereIn('print_role', ['kot', 'both'])->exists()
+            || \App\Models\Tenant\RestaurantFloor::on('tenant')->exists();
+    }
+
+    /**
+     * The Online productsPayload / combosPayload / category pills from the SYNCED menu (Edge visibility + the Edge
+     * operational stock the sale actually refuses on). Prices are the resolved branch prices (SalePricingService — what
+     * the sale charges), so `branch_prices` is empty and the page's productPrice() falls through to price/selling_price.
+     *
+     * @return array{0: \Illuminate\Support\Collection, 1: \Illuminate\Support\Collection, 2: \Illuminate\Support\Collection, 3: array<int,int>, 4: array<int,int>}
+     */
+    private function sharedMenu(Branch $branch, \App\Support\Pos\PosRuntime $runtime): array
+    {
+        $branchId = (int) $branch->id;
+        $liveOrderProductIds = DB::connection('tenant')->table('sales_order_lines as l')
+            ->join('sales_orders as o', 'o.id', '=', 'l.sales_order_id')
+            ->where('o.branch_id', $branchId)->whereIn('o.status', ['held', 'draft'])
+            ->whereNotNull('l.product_id')->pluck('l.product_id')->map(fn ($id) => (int) $id)->unique()->values();
+        $comboComponentProductIds = DB::connection('tenant')->table('combo_components as cc')
+            ->join('combos as c', 'c.id', '=', 'cc.combo_id')->where('c.status', 'active')
+            ->where(fn ($q) => $q->whereNull('c.branch_id')->orWhere('c.branch_id', $branchId))
+            ->pluck('cc.product_id')->map(fn ($id) => (int) $id)->unique()->values();
+
+        $products = Product::on('tenant')
+            ->with([
+                'category:id,name,branch_id', 'unit:id,code,name,unit_type', 'variants', 'barcodes',
+                // W-G1: recipe config is in the bootstrap (recipes / recipe_ingredients / unit_conversions, Section K) — the same
+                // relations Online loads for the "makeable" preview (RecipeAvailability).
+                'activeRecipe.ingredients.product.unit', 'activeRecipe.ingredients.unit', 'activeRecipe.ingredients.variant',
+            ])
+            ->where(function ($q) use ($branchId, $liveOrderProductIds, $comboComponentProductIds) {
+                $q->where(function ($visible) use ($branchId) {
+                    $visible->where('status', 'active')->where('is_sellable', true)->where('is_pos_visible', true)
+                        ->where(fn ($scope) => $scope->whereNull('category_id')
+                            ->orWhereHas('category', fn ($c) => $c->forBranch($branchId)));
+                });
+                $escape = $liveOrderProductIds->merge($comboComponentProductIds)->unique()->values();
+                if ($escape->isNotEmpty()) {
+                    $q->orWhereIn('id', $escape->all());
+                }
+            })
+            ->orderBy('sort_order')->orderBy('name')
+            ->get();
+        // RECALL-HIDDEN-ITEM-1 twin (canonical 69536d3a): every active, sellable item hidden from the POS that the list above does
+        // not already carry (an open-bill or deal-component escape row stays where it is) rides in a list of its OWN, read only by
+        // the recall of a saved bill — the Online rule, from the synced menu. The grid / search / scan never see it.
+        $recallOnly = Product::on('tenant')
+            ->with([
+                'category:id,name,branch_id', 'unit:id,code,name,unit_type', 'variants', 'barcodes',
+                'activeRecipe.ingredients.product.unit', 'activeRecipe.ingredients.unit', 'activeRecipe.ingredients.variant',
+            ])
+            ->where('status', 'active')->where('is_sellable', true)->where('is_pos_visible', false)
+            ->whereNotIn('id', $products->modelKeys() ?: [0])
+            ->orderBy('id')
+            ->get();
+        $menu = $this->menuPayload($products->concat($recallOnly), $branch);
+
+        // W-G1: the recipe "makeable" preview from the ACCEPTED operational baseline — the very balances
+        // EdgeOperationalStockService::consumeRecipe decrements / refuses on — through the ONE shared computation Online uses.
+        // No accepted baseline → an empty lookup → 0 makeable (the sale refuses without a baseline too; never a guess).
+        $recipeAvailability = app(\App\Support\Pos\RecipeAvailability::class);
+        $recipeStock = $this->recipeStockLookup($branchId);
+
+        // One builder for both lists (Online: POSController $productPayload), so a recalled hidden item carries exactly what a tile carries.
+        $productPayload = function (Product $p) use ($menu, $branchId, $runtime, $branch, $recipeAvailability, $recipeStock) {
+            $m = $menu[(int) $p->id] ?? [];
+            $tracked = ($m['stock_kind'] ?? null) === 'tracked';
+            $visible = $p->status === 'active' && $p->is_sellable && $p->is_pos_visible
+                && ($p->category === null || $p->category->branch_id === null || (int) $p->category->branch_id === $branchId);
+            $imagePath = ltrim((string) $p->image_path, '/');
+            $imageUrl = $imagePath !== '' && (is_file(storage_path('app/public/' . $imagePath)) || is_file(public_path('storage/' . $imagePath)))
+                ? $runtime->asset('storage/' . $imagePath) : null; // only a file that is ON the appliance, served locally
+            $recipe = $recipeAvailability->forProduct($p, [$branch], $recipeStock);
+
+            return [
+                'id' => (int) $p->id,
+                'name' => $p->name,
+                'sku' => $p->sku,
+                'image_url' => $imageUrl,
+                'category_id' => $p->category_id ? (int) $p->category_id : null,
+                'category_name' => $p->category?->name,
+                'unit_id' => $p->unit_id ? (int) $p->unit_id : null,
+                'unit_name' => $p->unit?->name,
+                'unit_code' => $p->unit?->code,
+                'unit_type' => $m['unit_type'] ?? ($p->unit?->unit_type ?? 'quantity'),
+                'allow_decimal_qty' => (bool) ($m['allow_decimal_qty'] ?? false),
+                'quantity_step' => $m['quantity_step'] ?? 1,
+                'price' => (float) ($m['price'] ?? $p->default_selling_price ?? 0),
+                // Edge truth: only a stock item that tracks stock has an on-hand count the sale refuses on.
+                'is_stock_tracked' => $tracked,
+                'pos_grid_visible' => (bool) $visible,
+                'is_taxable' => (bool) ($m['is_taxable'] ?? false),
+                'tax_rate_percent' => (float) ($m['tax_rate_percent'] ?? 0),
+                'barcodes' => $m['barcodes'] ?? [],
+                'branch_prices' => [],
+                'modifier_groups' => $m['modifier_groups'] ?? [],
+                'variants' => collect($m['variants'] ?? [])->map(fn ($v) => [
+                    'id' => (int) $v['id'],
+                    'name' => $v['name'],
+                    'sku' => $v['sku'],
+                    'selling_price' => (float) $v['price'],
+                    'stock_by_branch' => $tracked ? [$branchId => (float) ($v['stock'] ?? 0)] : [],
+                    'barcodes' => $v['barcodes'],
+                ])->values(),
+                'stock_by_branch' => $tracked ? [$branchId => (float) ($m['stock'] ?? 0)] : [],
+                'is_recipe' => $recipe['is_recipe'],
+                'makeable_by_branch' => $recipe['makeable'],
+                'limiting_ingredient_by_branch' => $recipe['limiting'],
+            ];
+        };
+        $productsPayload = $products->map($productPayload)->values();
+        $recallProductsPayload = $recallOnly->map($productPayload)->values();
+
+        $productIndex = $products->keyBy('id');
+        $combosPayload = Combo::on('tenant')->with(['components'])
+            ->where('status', 'active')
+            ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))
+            ->orderBy('sort_order')->orderBy('name')->get()
+            ->map(function (Combo $combo) use ($productIndex) {
+                $components = $combo->components->filter(fn ($c) => $productIndex->has((int) $c->product_id))
+                    ->sortBy('sort_order')
+                    ->map(function ($c) use ($productIndex) {
+                        $product = $productIndex->get((int) $c->product_id);
+                        $variant = $c->product_variant_id ? $product?->variants->firstWhere('id', (int) $c->product_variant_id) : null;
+
+                        return [
+                            'id' => (int) $c->id,
+                            'product_id' => (int) $c->product_id,
+                            'product_variant_id' => $c->product_variant_id ? (int) $c->product_variant_id : null,
+                            'product_name' => $product?->name,
+                            'variant_name' => $variant?->name,
+                            'unit_code' => $product?->unit?->code,
+                            'quantity' => (float) $c->quantity,
+                            'sort_order' => (int) $c->sort_order,
+                        ];
+                    })->values();
+
+                return [
+                    'id' => (int) $combo->id,
+                    'branch_id' => $combo->branch_id ? (int) $combo->branch_id : null,
+                    'category_id' => $combo->category_id ? (int) $combo->category_id : null,
+                    'code' => $combo->code,
+                    'name' => $combo->name,
+                    'price' => (float) $combo->price,
+                    'sort_order' => (int) $combo->sort_order,
+                    'description' => $combo->description,
+                    'header_product_id' => (int) ($components->first()['product_id'] ?? 0),
+                    'components' => $components,
+                ];
+            })
+            ->filter(fn ($c) => $c['header_product_id'] > 0 && count($c['components']) > 0)
+            ->values();
+
+        // CATEGORY-BRANCH-SCOPE-1: parents + ACTIVE children this branch may show (the Online child strip).
+        $categories = Category::on('tenant')
+            ->with(['children' => fn ($q) => $q->where('is_active', true)->forBranch($branchId)->orderBy('sort_order')->orderBy('name')])
+            ->forBranch($branchId)
+            ->whereNull('parent_id')->where('is_active', true)
+            ->orderBy('sort_order')->orderBy('name')
+            ->get();
+        $contentCategoryIds = $productsPayload->filter(fn ($p) => $p['pos_grid_visible'])->pluck('category_id')
+            ->merge($combosPayload->pluck('category_id'))->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        $pillCategoryIds = $categories->filter(fn ($parent) => collect([$parent->id])->merge($parent->children->pluck('id'))
+            ->map(fn ($id) => (int) $id)->intersect($contentCategoryIds)->isNotEmpty())
+            ->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+        return [$productsPayload, $combosPayload, $categories, $pillCategoryIds, $contentCategoryIds->all(), $recallProductsPayload];
+    }
+
+    /**
+     * The dine-in board floors in the Online table-board partial shape (POSController::loadBoardFloors): active floors →
+     * non-inactive tables → openSession(waiter, held+paid orders). An ACTIVE Edge reservation (edge_table_reservations —
+     * never restaurant_tables config) is projected onto the in-memory table as Online's reserved_* attributes, so the
+     * SAME partial renders the reserved tile; nothing is saved.
+     */
+    public function boardFloors(int $branchId): \Illuminate\Support\Collection
+    {
+        $floors = \App\Models\Tenant\RestaurantFloor::on('tenant')->with([
+            'tables' => fn ($q) => $q->where('status', '!=', 'inactive')->orderBy('sort_order')->orderBy('table_no'),
+            'tables.openSession.waiter',
+            'tables.openSession.salesOrders' => fn ($q) => $q->whereIn('status', ['held', 'paid']),
+        ])->where('branch_id', $branchId)->where('status', 'active')->orderBy('sort_order')->orderBy('name')->get();
+
+        $reservations = \App\Models\Edge\EdgeTableReservation::on('tenant')
+            ->where('status', \App\Models\Edge\EdgeTableReservation::STATUS_ACTIVE)
+            ->whereIn('restaurant_table_id', $floors->flatMap(fn ($f) => $f->tables->pluck('id'))->all() ?: [0])
+            ->get()->keyBy('restaurant_table_id');
+        foreach ($floors as $floor) {
+            foreach ($floor->tables as $table) {
+                $r = $table->openSession ? null : $reservations->get($table->id);
+                if ($r) {
+                    $table->setAttribute('status', 'reserved');
+                    $table->setAttribute('reserved_customer_id', $r->customer_id);
+                    $table->setAttribute('reserved_name', $r->customer_name);
+                    $table->setAttribute('reserved_phone', $r->customer_phone);
+                    $table->setAttribute('reserved_for', $r->reserved_for);
+                    $table->setAttribute('reservation_note', $r->note);
+                    $table->syncOriginal(); // an in-memory projection only — never a dirty model that could be saved
+                }
+            }
+        }
+
+        return $floors;
+    }
+
+    /**
+     * W-G1 — `[branchId][productId][variantId|0] => qty` from the ACCEPTED operational baseline, the Edge counterpart of
+     * Online's grouped stock_balances lookup (RecipeAvailability::stockLookup). Raw-material (ingredient) products ride the
+     * baseline like any stock item (EdgeOperationalStockService::consumeRecipe decrements them), so the preview reads the
+     * same number the sale will. Empty when no baseline is accepted.
+     *
+     * @return array<int, array<int, array<int, float>>>
+     */
+    private function recipeStockLookup(int $branchId): array
+    {
+        $baseline = $this->baselines->currentAccepted();
+        if (! $baseline) {
+            return [];
+        }
+        $rows = DB::connection('tenant')->table('edge_operational_stock_balances')->where('baseline_id', $baseline->id)
+            ->get(['product_id', 'product_variant_id', 'quantity_on_hand'])
+            ->map(fn ($b) => ['branch_id' => $branchId, 'product_id' => $b->product_id, 'product_variant_id' => $b->product_variant_id, 'quantity_on_hand' => $b->quantity_on_hand]);
+
+        // UB-W2 (canonical, rehearsal 30 Oct 2026): plain + default-variant stock read as one, as Online does (shared helper).
+        return \App\Support\Pos\RecipeAvailability::mergePlainVariants(
+            \App\Support\Pos\RecipeAvailability::stockLookup($rows, 'quantity_on_hand'),
+            \App\Models\Tenant\ProductVariant::on('tenant')->where('is_default', true)->pluck('id', 'product_id')
+        );
+    }
+
+    /** A read that must never break the page (a table the appliance may not carry yet) → an empty collection. */
+    private function safeCollection(callable $read): \Illuminate\Support\Collection
+    {
+        try {
+            return collect($read());
+        } catch (\Throwable $e) {
+            report($e);
+
+            return collect();
+        }
+    }
+
+    /** Online `GET /api/server-time` twin — the header clock's resync source (`{epoch_ms}`). */
+    public function serverTime(): JsonResponse
+    {
+        return response()->json(['epoch_ms' => (int) round(microtime(true) * 1000)]);
+    }
+
+    /**
+     * Online `POST /api/pos/totals/quote` twin (O16) over the SAME sale truth as Preview Bill (EdgeLocalPosService::
+     * previewBill — server prices, deals, shared SalesTotalsService), answered in Online's FLAT keys. Zero mutation.
+     */
+    public function totalsQuote(Request $request): JsonResponse
+    {
+        $data = $this->quoteInput($request);
+        if ($data instanceof JsonResponse) {
+            return $data;
+        }
+        [$preview, $error] = $this->quotePreview($request, $data);
+        if ($error) {
+            return $error;
+        }
+        $t = $preview['totals'] ?? $preview;
+
+        return response()->json([
+            'ok' => true,
+            'subtotal' => (float) ($t['subtotal'] ?? 0),
+            'discount_amount' => (float) ($t['discount_amount'] ?? 0),
+            'promotion_id' => $t['promotion_id'] ?? (null),
+            'promo_code' => $t['promo_code'] ?? (null),
+            'promotion_discount_amount' => (float) ($t['promotion_discount_amount'] ?? 0),
+            'tax_amount' => (float) ($t['tax_amount'] ?? 0),
+            'service_charge_amount' => (float) ($t['service_charge_amount'] ?? 0),
+            'tip_amount' => (float) ($t['tip_amount'] ?? 0),
+            'delivery_charge_amount' => (float) ($t['delivery_charge_amount'] ?? 0),
+            'grand_total' => (float) ($t['grand_total'] ?? 0),
+        ]);
+    }
+
+    /** Online `POST /api/pos/promotions/quote` twin (O17): `{valid, discount_amount, promotion_id, promo_code, …}`, 422 when invalid. */
+    public function promoQuote(Request $request): JsonResponse
+    {
+        if (trim((string) $request->input('promo_code', '')) === '') {
+            return response()->json(['message' => 'The promo code field is required.', 'errors' => ['promo_code' => ['The promo code field is required.']]], 422);
+        }
+        $data = $this->quoteInput($request);
+        if ($data instanceof JsonResponse) {
+            return $data;
+        }
+        [$preview, $error] = $this->quotePreview($request, $data);
+        if ($error) {
+            return $error;
+        }
+        $promo = $preview['promo'] ?? [];
+        if (empty($promo['valid'])) {
+            return response()->json([
+                'valid' => false,
+                'message' => 'Promo code is invalid, expired, or does not apply to this order.',
+                'discount_amount' => 0,
+                'promotion_id' => null,
+                'promo_code' => null,
+            ], 422);
+        }
+        $promotion = \App\Models\Tenant\Promotion::on('tenant')->find((int) $promo['promotion_id']);
+
+        return response()->json([
+            'valid' => true,
+            'discount_amount' => round((float) ($promo['discount_amount'] ?? 0), 2),
+            'promotion_id' => (int) $promo['promotion_id'],
+            'promo_code' => $promo['promo_code'] ?? $promotion?->code,
+            'promotion_name' => $promo['promotion_name'] ?? $promotion?->name,
+            'discount_type' => $promotion?->discount_type,
+            'discount_value' => (float) ($promotion?->discount_value ?? 0),
+        ]);
+    }
+
+    /** The quote twins accept Online's body (lines with unit_price/category_id — ignored: the server prices) and map it. */
+    private function quoteInput(Request $request): array|JsonResponse
+    {
+        $data = $request->validate([
+            'order_type' => ['required', 'string', 'in:quick_sale,takeaway,dine_in,delivery'],
+            'discount_type' => ['nullable', 'in:none,fixed,percent'],
+            'discount_value' => ['nullable', 'numeric', 'min:0'],
+            'promo_code' => ['nullable', 'string', 'max:50'],
+            'tip_amount' => ['nullable', 'numeric', 'min:0'],
+            'delivery_charge_amount' => ['nullable', 'numeric', 'min:0'],
+            'lines' => ['nullable', 'array'],
+            'lines.*.product_id' => ['nullable', 'integer'],
+            'lines.*.combo_id' => ['nullable', 'integer'],
+            'lines.*.product_variant_id' => ['nullable', 'integer'],
+            'lines.*.quantity' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.modifiers' => ['nullable'],
+            'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.line_kind' => ['nullable', 'string'],
+        ]);
+        // Online quotes standard lines; a deal's component rows (line_kind component) are priced by their header here.
+        $data['lines'] = collect($data['lines'] ?? [])
+            ->filter(fn ($l) => (float) ($l['quantity'] ?? 0) > 0 && ($l['line_kind'] ?? 'standard') !== 'component'
+                && (! empty($l['product_id']) || ! empty($l['combo_id'])))
+            ->map(fn ($l) => array_filter([
+                'product_id' => isset($l['product_id']) ? (int) $l['product_id'] : null,
+                'combo_id' => isset($l['combo_id']) ? (int) $l['combo_id'] : null,
+                'product_variant_id' => isset($l['product_variant_id']) ? (int) $l['product_variant_id'] : null,
+                'quantity' => (float) $l['quantity'],
+                'modifiers' => is_array($l['modifiers'] ?? null) ? $l['modifiers'] : (is_string($l['modifiers'] ?? null) ? (json_decode($l['modifiers'], true) ?: []) : []),
+                'discount_amount' => isset($l['discount_amount']) ? (float) $l['discount_amount'] : null,
+            ], fn ($v) => $v !== null))
+            ->values()->all();
+        $data['discount_type'] ??= 'none';
+
+        return $data;
+    }
+
+    /**
+     * PHASE 3 (B): the quote twins are as lenient as Online's `POSController::quoteTotals` (:734) — NO modifier
+     * min/max validation at quote time (`previewBill(..., quoteOnly: true)`); the paid sale / hold keep enforcing it.
+     *
+     * @return array{0: array|null, 1: JsonResponse|null}
+     */
+    private function quotePreview(Request $request, array $data): array
+    {
+        if ($data['lines'] === []) {
+            // Online quotes an empty cart as zeros (every amount 0 except a locked delivery charge).
+            return [['totals' => ['subtotal' => 0, 'discount_amount' => 0, 'tax_amount' => 0, 'service_charge_amount' => 0,
+                'tip_amount' => 0, 'delivery_charge_amount' => 0, 'grand_total' => 0], 'promo' => ['valid' => false]], null];
+        }
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return [null, $terminal];
+        }
+        try {
+            return [$this->pos->previewBill($data, auth('tenant')->user(), $terminal->id, quoteOnly: true), null];
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return [null, response()->json(['ok' => false, 'message' => collect($e->errors())->flatten()->first(), 'errors' => $e->errors()], 422)];
+        } catch (\Throwable $e) {
+            return [null, response()->json(['ok' => false, 'message' => $e->getMessage()], 422)];
+        }
+    }
+
+    /**
+     * PHASE 3 STAGE B (6 Oct 2026) — the Phase 2 alias `edge.local.pos.shared` (GET /edge/local/pos/shared): a permanent
+     * redirect to THE cashier page, query string preserved (the W-B deep links `?held_sale_id=` / `?table_session_id=` /
+     * `?mode=` keep working for any bookmark or proof tool that still names the alias). Nothing renders under it any more.
+     */
+    public function sharedAlias(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        // The RAW query string (Symfony's getQueryString() would re-sort the parameters) — the deep link reaches THE page byte for byte.
+        $query = (string) $request->server->get('QUERY_STRING', '');
+
+        return redirect()->to(\App\Services\Edge\EdgePosRuntimeFactory::SHARED_PAGE . ($query !== '' ? '?' . $query : ''), 301);
+    }
+
+    /**
+     * W2 — the Online tile payload (POSController@index productsPayload) built from the SYNCED menu on the appliance:
+     * (NOT old-page-only — sharedMenu() builds the Online tile payload from it; the old Edge page is deleted, Stage B.)
+     * sku / image / unit + measurable flags (A6) / tax / branch-resolved price (the SAME SalePricingService rule the sale
+     * charges) / product + variant barcodes (A5) / variants with their own price, sku, barcodes and stock (A8) / modifier
+     * groups with active options (A7) / stock from the Edge OPERATIONAL balances of the accepted baseline (A4 — the stock
+     * this appliance actually refuses on). Keyed by product id; merged into the grid rows.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function menuPayload(\Illuminate\Support\Collection $products, Branch $branch): array
+    {
+        $branchId = (int) $branch->id;
+        $pricing = app(\App\Services\Sales\SalePricingService::class);
+        $baseline = $this->baselines->currentAccepted();
+        $stock = [];
+        if ($baseline) {
+            DB::connection('tenant')->table('edge_operational_stock_balances')->where('baseline_id', $baseline->id)
+                ->get(['product_id', 'product_variant_id', 'quantity_on_hand'])
+                ->each(function ($b) use (&$stock) {
+                    $stock[(int) $b->product_id . '-' . (int) ($b->product_variant_id ?? 0)] = (float) $b->quantity_on_hand;
+                });
+        }
+        $ids = $products->pluck('id')->all() ?: [0];
+        // Modifier groups attached to these products that this branch may use (Online activeModifierGroups).
+        $groupRows = DB::connection('tenant')->table('product_modifier_group as pmg')
+            ->join('modifier_groups as g', 'g.id', '=', 'pmg.modifier_group_id')
+            ->whereIn('pmg.product_id', $ids)->where('g.status', 'active')
+            // ONLINE-ORDERING-1 parity (canonical 66019bf7, merge D8): a "Website only" add-on group never reaches the counter —
+            // the SAME rule as ModifierGroup::showsOnPos() (null channel = pos), so both runtimes build the same tiles.
+            ->where(fn ($q) => $q->whereNull('g.channel')->orWhere('g.channel', '!=', 'website'))
+            ->where(fn ($q) => $q->whereNull('g.branch_id')->orWhere('g.branch_id', $branchId))
+            ->orderBy('pmg.sort_order')->orderBy('g.sort_order')
+            ->get(['pmg.product_id', 'pmg.sort_order as pivot_sort', 'g.id', 'g.branch_id', 'g.name', 'g.min_select', 'g.max_select', 'g.is_required', 'g.sort_order']);
+        $options = DB::connection('tenant')->table('modifiers')->whereIn('modifier_group_id', $groupRows->pluck('id')->unique()->all() ?: [0])
+            ->where('status', 'active')->orderBy('sort_order')->orderBy('id')
+            ->get(['id', 'modifier_group_id', 'name', 'price_delta', 'linked_product_id', 'is_default', 'sort_order'])->groupBy('modifier_group_id');
+        $groupsByProduct = $groupRows->groupBy('product_id');
+
+        $qtyFor = function (Product $p, ?int $variantId) use ($stock) {
+            if (! ($p->inventory_consumption_method === 'stock_item' && $p->is_stock_tracked)) {
+                return null; // recipe / service / none — the Edge refusal is not a plain on-hand count (see stock_kind)
+            }
+
+            return (float) ($stock[$p->id . '-' . ($variantId ?? 0)] ?? 0);
+        };
+
+        $out = [];
+        foreach ($products as $p) {
+            $variants = $p->variants->filter(fn ($v) => (bool) ($v->is_active ?? true))
+                ->sortBy(fn ($v) => ($v->is_default ? '0' : '1') . sprintf('%09d', $v->id))->values();
+            $barcodes = $p->barcodes;
+            $default = $variants->firstWhere('is_default', true);
+            $unitType = $p->unit?->unit_type ?? 'quantity';
+            $measurable = $p->unit !== null && $unitType !== 'quantity';
+            $groups = ($groupsByProduct->get($p->id) ?? collect())->map(fn ($g) => [
+                'id' => (int) $g->id,
+                'branch_id' => $g->branch_id ? (int) $g->branch_id : null,
+                'name' => $g->name,
+                'min_select' => (int) $g->min_select,
+                'max_select' => $g->max_select !== null ? (int) $g->max_select : null,
+                'is_required' => (bool) $g->is_required,
+                'sort_order' => (int) $g->pivot_sort,
+                'modifiers' => ($options->get($g->id) ?? collect())->map(fn ($m) => [
+                    'id' => (int) $m->id, 'name' => $m->name, 'price_delta' => (float) $m->price_delta,
+                    'linked_product_id' => $m->linked_product_id ? (int) $m->linked_product_id : null,
+                    'is_default' => (bool) $m->is_default, 'sort_order' => (int) $m->sort_order,
+                ])->values(),
+            ])->filter(fn ($g) => count($g['modifiers']) > 0)->values();
+            $imageUrl = null;
+            if ($p->image_path && is_file(public_path('storage/' . ltrim((string) $p->image_path, '/')))) {
+                $imageUrl = asset('storage/' . ltrim((string) $p->image_path, '/')); // only a file that is ON the appliance
+            }
+
+            $out[(int) $p->id] = [
+                'sku' => $p->sku,
+                'image_url' => $imageUrl,
+                'unit_code' => $p->unit?->code,
+                'unit_type' => $unitType,
+                'allow_decimal_qty' => $measurable,
+                'quantity_step' => $measurable ? 0.001 : 1,
+                'is_stock_tracked' => (bool) $p->is_stock_tracked,
+                'stock_kind' => ($p->inventory_consumption_method === 'stock_item' && $p->is_stock_tracked) ? 'tracked'
+                    : ($p->inventory_consumption_method === 'recipe' ? 'recipe' : 'service'),
+                'stock' => $qtyFor($p, $default?->id),
+                'is_taxable' => (bool) ($p->is_taxable ?? false),
+                'tax_rate_percent' => (float) ($p->tax_rate_percent ?? 0),
+                // The price the SALE will charge (branch price → default variant → catalog), not a display guess.
+                'price' => (float) $pricing->resolveSellingPrice($p, $default, $branchId, null),
+                'default_variant_id' => $default?->id ? (int) $default->id : null,
+                'barcodes' => $barcodes->whereNull('product_variant_id')->pluck('barcode')->filter()->map(fn ($b) => (string) $b)->values(),
+                'variants' => $variants->map(fn ($v) => [
+                    'id' => (int) $v->id,
+                    'name' => $v->name,
+                    'sku' => $v->sku,
+                    'is_default' => (bool) $v->is_default,
+                    'price' => (float) $pricing->resolveSellingPrice($p, $v, $branchId, null),
+                    'stock' => $qtyFor($p, (int) $v->id),
+                    'barcodes' => $barcodes->where('product_variant_id', $v->id)->pluck('barcode')
+                        ->push($v->barcode)->filter()->map(fn ($b) => (string) $b)->unique()->values(),
+                ])->values(),
+                'modifier_groups' => $groups,
+            ];
+        }
+
+        return $out;
+    }
+
+    /** ONLINE-POS PARITY — Preview Bill: the running bill on the same sale truth, ZERO mutation. */
+    public function previewBill(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            // Online validates order_type `in:` the four canonical types (SalesOrderController::validateSale).
+            'order_type' => ['nullable', 'string', 'in:quick_sale,takeaway,dine_in,delivery'],
+            'discount_type' => ['nullable', 'string'],
+            'discount_value' => ['nullable', 'numeric'],
+            'promo_code' => ['nullable', 'string', 'max:50'],
+            'tip_amount' => ['nullable', 'numeric', 'min:0'],
+            'manager_approval_id' => ['nullable', 'integer'],
+            'customer_id' => ['nullable', 'integer'],
+            'customer_name' => ['nullable', 'string', 'max:190'],
+            'customer_phone' => ['nullable', 'string', 'max:50'],
+            'delivery_channel_id' => ['nullable', 'integer'],
+            'delivery_rider_id' => ['nullable', 'integer'],
+            'delivery_address' => ['nullable', 'string', 'max:500'],
+            'delivery_charge_amount' => ['nullable', 'numeric', 'min:0', 'max:99999'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.product_id' => ['required_without:lines.*.combo_id', 'nullable', 'integer'],
+            'lines.*.combo_id' => ['nullable', 'integer'],
+            'lines.*.product_variant_id' => ['nullable', 'integer'],
+            'lines.*.quantity' => ['required', 'numeric', 'min:0.001'],
+            'lines.*.modifiers' => ['nullable', 'array'],
+            'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.kitchen_note' => ['nullable', 'string', 'max:500'],
+        ]);
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return $terminal;
+        }
+        try {
+            $preview = $this->pos->previewBill($data, auth('tenant')->user(), $terminal->id);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($preview);
     }
 
     /** Terminal-selection data: the bound branch's active terminals + open-shift state + current selection. */
@@ -77,7 +815,7 @@ class EdgeLocalPosController extends Controller
         ]);
     }
 
-    /** Select the operating terminal for this session (must belong to the bound branch and be active). */
+    /** Select the operating terminal for this session (must belong to the bound branch, be active, and be the operator's). */
     public function selectTerminal(Request $request): JsonResponse
     {
         $data = $request->validate(['terminal_id' => ['required', 'integer']]);
@@ -87,104 +825,90 @@ class EdgeLocalPosController extends Controller
         if (! $terminal) {
             return response()->json(['message' => 'Select an active terminal on this branch.'], 422);
         }
+        // TERMINAL-SWITCH-AUTH + assignment parity (W0b, Online UserDataScope): a pinned operator (no change-terminal
+        // permission, default terminal set) may only work on that terminal; a terminal-assigned operator only on
+        // an assigned terminal. Enforced HERE (not only hidden in the page) and re-checked on every use.
+        if ($denied = $this->denyUnlessMayOperateTerminal($terminal)) {
+            return $denied;
+        }
         $request->session()->put(self::TERMINAL_SESSION_KEY, $terminal->id);
 
         return response()->json(['selected_terminal_id' => $terminal->id]);
-    }
-
-    /** Current shift state for the selected terminal. */
-    public function shiftStatus(Request $request): JsonResponse
-    {
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        $open = Shift::on('tenant')->where('terminal_id', $terminal->id)->where('status', 'open')->latest('id')->first();
-
-        return response()->json([
-            'terminal_id' => $terminal->id,
-            'shift' => $open ? [
-                'id' => $open->id,
-                'shift_uuid' => $open->shift_uuid,
-                'business_date' => $open->business_date?->toDateString(),
-                'opened_at' => $open->opened_at?->toIso8601String(),
-                'total_sales' => (float) $open->total_sales,
-                'expected_cash' => (float) $open->expected_cash,
-            ] : null,
-        ]);
-    }
-
-    /** Open a shift on the selected terminal (the authenticated cashier is the opener). */
-    public function openShift(Request $request): JsonResponse
-    {
-        $data = $request->validate(['opening_cash' => ['nullable', 'numeric', 'min:0']]);
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        $branch = Branch::on('tenant')->find((int) $this->context->requireCurrent()->branch_id);
-        try {
-            $shift = $this->shifts->open($branch, $terminal, (int) auth('tenant')->id(), (float) ($data['opening_cash'] ?? 0));
-        } catch (ShiftException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['shift_id' => $shift->id, 'shift_uuid' => $shift->shift_uuid, 'business_date' => $shift->business_date?->toDateString()], 201);
-    }
-
-    /** Close the selected terminal's open shift — the SHARED ShiftService::closeShift operation. */
-    public function closeShift(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'counted_cash' => ['required', 'numeric', 'min:0'],
-            'closing_notes' => ['nullable', 'string', 'max:1000'],
-        ]);
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        $open = Shift::on('tenant')->where('terminal_id', $terminal->id)->where('status', 'open')->latest('id')->first();
-        if (! $open) {
-            return response()->json(['message' => 'No open shift on this terminal.'], 422);
-        }
-        try {
-            $closed = $this->shifts->closeShift($open, (int) auth('tenant')->id(), (float) $data['counted_cash'], $data['closing_notes'] ?? null);
-        } catch (ShiftException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json([
-            'shift_id' => $closed->id,
-            'status' => $closed->status,
-            'expected_cash' => (float) $closed->expected_cash,
-            'counted_cash' => (float) $closed->counted_cash,
-            'cash_variance' => (float) $closed->cash_variance,
-        ]);
     }
 
     /** Local paid Direct Pay (quick_sale/takeaway, cash) through EdgeLocalPosService. */
     public function storeSale(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'order_type' => ['required', 'string'],
+            // Online SalesOrderController::validateSale: order_type `in:` the four canonical types.
+            'order_type' => ['required', 'string', 'in:quick_sale,takeaway,dine_in,delivery'],
             'client_uuid' => ['required', 'string', 'max:36'],
             'discount_type' => ['nullable', 'string'],
             'discount_value' => ['nullable', 'numeric'],
-            'promo_code' => ['nullable', 'string'],
+            'promo_code' => ['nullable', 'string', 'max:50'],
+            // A17 (Online `tip_amount` min:0) — refused on a paid sale until the sync contract carries it (see the service).
+            'tip_amount' => ['nullable', 'numeric', 'min:0'],
+            // Online Direct Pay print intents (tenant.pos.store) — persisted as the shared DirectPayPrintOrchestrator state.
+            'kot_print_intent' => ['nullable', 'in:print,skip'],
+            'receipt_print_intent' => ['nullable', 'in:print,skip'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'manager_approval_id' => ['nullable', 'integer'],
+            'customer_id' => ['nullable', 'integer'],
+            'customer_name' => ['nullable', 'string', 'max:190'],
+            'customer_phone' => ['nullable', 'string', 'max:50'],
+            'delivery_channel_id' => ['nullable', 'integer'],
+            'delivery_rider_id' => ['nullable', 'integer'],
+            'delivery_address' => ['nullable', 'string', 'max:500'],
+            'delivery_charge_amount' => ['nullable', 'numeric', 'min:0', 'max:99999'],
             'lines' => ['required', 'array', 'min:1'],
-            'lines.*.product_id' => ['required', 'integer'],
+            'lines.*.product_id' => ['required_without:lines.*.combo_id', 'nullable', 'integer'],
+            'lines.*.combo_id' => ['nullable', 'integer'],
             'lines.*.product_variant_id' => ['nullable', 'integer'],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
-            'lines.*.modifiers' => ['nullable', 'array'],
+            // W-G3 (G1): Online `nullable|string` (JSON) decoded by normalizeLineModifiers; the old page's array form stays.
+            'lines.*.modifiers' => ['nullable'],
+            // Online validateSale: the page's per-line identity keys + line kind (a deal's component rows are dropped below).
+            'lines.*.client_line_key' => ['nullable', 'string', 'max:120'],
+            'lines.*.parent_client_line_key' => ['nullable', 'string', 'max:120'],
+            'lines.*.line_kind' => ['nullable', 'in:standard,combo_header,component,modifier'],
+            // W2 (A10): Online accepts lines.*.discount_amount (min:0); per-line kitchen note → sales_order_lines.kitchen_note.
+            'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.kitchen_note' => ['nullable', 'string', 'max:500'],
             'payments' => ['required', 'array', 'min:1'],
             'payments.*.payment_method_id' => ['required', 'integer'],
             'payments.*.amount' => ['required', 'numeric', 'gt:0'],
             'payments.*.tendered_amount' => ['nullable', 'numeric'],
+            // A20 Online "Reference / Card / Bank" field (payments.*.transaction_ref max:190) — stored on the payment + envelope.
+            'payments.*.transaction_ref' => ['nullable', 'string', 'max:190'],
+            // PHASE 2b parity: a Quick Sale requires vehicle + waiter (same required_if as the Cloud POS).
+            'vehicle_number' => ['nullable', 'string', 'max:50', 'required_if:order_type,quick_sale'],
+            'restaurant_waiter_id' => ['nullable', 'integer', 'required_if:order_type,quick_sale'],
         ]);
+        // PHASE 3 STAGE B (owner §5.2): Online SalesOrderController::store on tenant.pos.store refuses a Direct Pay without BOTH
+        // intents with the SAME 422 shape ({message, errors.printing}) BEFORE any terminal/authority work — the printing
+        // decision is part of the sale (the held settle enforces the identical rule since Stage A). An INVALID value still
+        // answers errors.kot_print_intent / errors.receipt_print_intent through the `in:` rules above, like Online validateSale.
+        if (! isset($data['kot_print_intent']) || ! isset($data['receipt_print_intent'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'printing' => 'Choose the Direct Pay KOT and Receipt intent before completing the sale.',
+            ]);
+        }
+        // W-G3 (G1): the shared view's multipart shape (JSON-string modifiers, deal component rows) → Online's normalised lines.
+        $data['lines'] = $this->normalizeSharedLines($data['lines']);
         $terminal = $this->selectedTerminal($request);
         if ($terminal instanceof JsonResponse) {
             return $terminal;
         }
+        if ($denied = $this->denyUnlessMayCompleteSale()) {
+            return $denied;
+        }
+        // PHASE 3 (F) — Online `idempotent_replay` (SalesOrderController::saleResponse :651-660; the Edge held settle carries it
+        // since W-G1): a sale already finalized under this client_uuid BEFORE this request is a replay (the service then verifies
+        // the payload hash — same intent replays, a different one is a 409). Read before the post so the flag is truthful for
+        // the request that actually created the sale.
+        $idempotency = app(\App\Services\Sales\SaleIdempotencyService::class);
+        $normalizedUuid = $idempotency->normalizeClientUuid($data['client_uuid']);
+        $replay = $normalizedUuid !== null && $idempotency->findFinalized($normalizedUuid) !== null;
 
         try {
             $sale = $this->pos->completePaidSale($data, auth('tenant')->user(), $terminal->id);
@@ -194,8 +918,21 @@ class EdgeLocalPosController extends Controller
             // controlled operational refusal (no baseline / stock / conversion / shift) — never a 500.
             return response()->json(['message' => $e->getMessage()], 422);
         }
+        // T2-1 (Team 5): Direct Pay printing AFTER the paid sale committed (and on an idempotent replay) — the shared orchestrator
+        // state drives it; a printing failure is recorded as retryable state and NEVER unwinds the sale (Online semantics).
+        $printing = null;
+        if ($sale->direct_pay_print_state && class_exists(\App\Services\Edge\EdgeLocalPrintDirectPayService::class)) {
+            try {
+                $printing = app(\App\Services\Edge\EdgeLocalPrintDirectPayService::class)
+                    ->afterPaidSale($sale, $sale->direct_pay_print_state['kot_intent'] ?? null, $sale->direct_pay_print_state['receipt_intent'] ?? null);
+            } catch (\Throwable $e) {
+                report($e);
+                $printing = null; // the page falls back to print_intents → POST /sales/{sale}/printing/retry
+            }
+        }
 
         return response()->json([
+            'printing' => $printing,
             'sale_id' => $sale->id,
             'sale_no' => $sale->sale_no,
             'sale_uuid' => $sale->sale_uuid,
@@ -204,232 +941,77 @@ class EdgeLocalPosController extends Controller
             'paid_amount' => (float) $sale->paid_amount,
             'change_amount' => (float) $sale->payments()->first()?->change_amount,
             'edge_sync_state' => $sale->edge_sync_state,
+            // Online saleResponse: the page toasts "already completed - printing re-checked" on a replay.
+            'idempotent_replay' => $replay,
+            // Online parity: the page follows the chosen Direct Pay print intents (Team 5 drives KOT/receipt from these).
+            'print_intents' => $sale->direct_pay_print_state
+                ? ['kot' => $sale->direct_pay_print_state['kot_intent'] ?? null, 'receipt' => $sale->direct_pay_print_state['receipt_intent'] ?? null]
+                : null,
         ], 201);
-    }
-
-    // ═══════════════════════ EDGE-LOCAL-POS-1 — restaurant layer (dine-in / held / KOT) ═══════════════════════
-
-    /** Table board data for the bound branch: floors → tables → open session + open-check summary. */
-    public function restaurantBoard(): JsonResponse
-    {
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $floors = \App\Models\Tenant\RestaurantFloor::on('tenant')->where('branch_id', $branchId)
-            ->where('status', 'active')->orderBy('sort_order')->orderBy('name')
-            ->with(['tables' => fn ($q) => $q->where('status', '!=', 'inactive')->orderBy('sort_order')->orderBy('table_no')
-                ->with(['openSession' => fn ($s) => $s->with('waiter')])])
-            ->get()
-            ->map(fn ($floor) => [
-                'id' => $floor->id, 'name' => $floor->name,
-                'tables' => $floor->tables->map(function ($t) {
-                    $session = $t->openSession;
-                    $held = $session ? SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)
-                        ->where('status', 'held')->get(['id', 'sale_no', 'sale_uuid', 'grand_total']) : collect();
-
-                    return [
-                        'id' => $t->id, 'table_no' => $t->table_no, 'name' => $t->name, 'capacity' => $t->capacity,
-                        'status' => $session ? ($session->status === 'bill_requested' ? 'bill_requested' : 'occupied') : $t->status,
-                        'session' => $session ? [
-                            'id' => $session->id, 'session_uuid' => $session->session_uuid, 'session_no' => $session->session_no,
-                            'guest_count' => $session->guest_count, 'status' => $session->status,
-                            'business_date' => $session->business_date?->toDateString(),
-                            'waiter_name' => $session->waiter?->name,
-                            'held_orders' => $held->values(),
-                        ] : null,
-                    ];
-                })->values(),
-            ])->values();
-
-        return response()->json(['branch_id' => $branchId, 'floors' => $floors]);
-    }
-
-    /** Open a dine-in table session on the selected terminal. */
-    public function openTable(Request $request, int $table): JsonResponse
-    {
-        $data = $request->validate([
-            'restaurant_waiter_id' => ['nullable', 'integer'],
-            'guest_count' => ['nullable', 'integer', 'min:1', 'max:100'],
-            'notes' => ['nullable', 'string', 'max:500'],
-        ]);
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        try {
-            $session = $this->pos->openTableSession($table, $data, auth('tenant')->user(), $terminal->id);
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json([
-            'session_id' => $session->id, 'session_uuid' => $session->session_uuid, 'session_no' => $session->session_no,
-            'table_id' => $session->restaurant_table_id, 'status' => $session->status,
-            'business_date' => $session->business_date?->toDateString(),
-        ], 201);
-    }
-
-    /** Close/cancel a table session that has no remaining open orders. */
-    public function closeTableSession(Request $request, int $session): JsonResponse
-    {
-        $data = $request->validate(['status' => ['nullable', 'string', 'in:closed,cancelled']]);
-        try {
-            $closed = $this->pos->closeTableSession($session, $data['status'] ?? 'closed', auth('tenant')->user());
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['session_id' => $closed->id, 'status' => $closed->status]);
-    }
-
-    /** Create or revise (Add Round) a HELD sale. */
-    public function storeHeldSale(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'held_sale_id' => ['nullable', 'integer'],
-            'order_type' => ['required', 'string'],
-            'restaurant_table_session_id' => ['nullable', 'integer'],
-            'notes' => ['nullable', 'string', 'max:1000'],
-            'lines' => ['required', 'array', 'min:1'],
-            'lines.*.sales_order_line_id' => ['nullable', 'integer'],
-            'lines.*.product_id' => ['required', 'integer'],
-            'lines.*.product_variant_id' => ['nullable', 'integer'],
-            'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
-            'lines.*.modifiers' => ['nullable', 'array'],
-            'void_items' => ['nullable', 'array'],
-            'void_items.*.old_line_id' => ['required_with:void_items', 'integer'],
-            'void_items.*.quantity' => ['required_with:void_items', 'numeric', 'gt:0'],
-            'void_items.*.reason_id' => ['required_with:void_items', 'integer'],
-            'void_items.*.manager_approval_id' => ['nullable', 'integer'],
-        ]);
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        try {
-            $sale = $this->pos->holdOrReviseSale($data, auth('tenant')->user(), $terminal->id);
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json([
-            'sale_id' => $sale->id, 'sale_no' => $sale->sale_no, 'sale_uuid' => $sale->sale_uuid,
-            'status' => $sale->status, 'grand_total' => (float) $sale->grand_total,
-            'restaurant_table_session_id' => $sale->restaurant_table_session_id,
-            'lines' => $sale->lines()->get(['id', 'line_uuid', 'product_id', 'quantity', 'unit_price', 'kot_sent', 'kot_sent_quantity']),
-        ], empty($data['held_sale_id']) ? 201 : 200);
-    }
-
-    /** Record the KOT business event for a held sale's unsent delta. */
-    public function queueKot(Request $request, int $sale): JsonResponse
-    {
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        try {
-            $result = $this->pos->queueKotEvents($sale, auth('tenant')->user(), $terminal->id);
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-        $batch = $result['batch'];
-
-        return response()->json([
-            'batch' => $batch ? [
-                'id' => $batch->id, 'event_uuid' => $batch->event_uuid, 'sequence_no' => $batch->sequence_no,
-                'event_type' => $batch->event_type,
-                'lines' => $batch->lines()->get(['id', 'kot_line_uuid', 'source_line_uuid', 'product_name', 'quantity']),
-            ] : null,
-            'jobs' => collect($result['jobs'])->map(fn ($j) => ['id' => $j->id, 'logical_key' => $j->logical_key, 'print_status' => $j->fresh()->print_status])->values(),
-            'message' => $batch ? null : 'No new items to send to kitchen.',
-        ]);
-    }
-
-    /** Settle (pay) a held sale with cash — closes the table session when it was the last open check. */
-    public function settleHeldSale(Request $request, int $sale): JsonResponse
-    {
-        $data = $request->validate([
-            'client_uuid' => ['required', 'string', 'max:36'],
-            'payments' => ['required', 'array', 'min:1'],
-            'payments.*.payment_method_id' => ['required', 'integer'],
-            'payments.*.amount' => ['required', 'numeric', 'gt:0'],
-            'payments.*.tendered_amount' => ['nullable', 'numeric'],
-        ]);
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        try {
-            $settled = $this->pos->settleHeldSale($sale, $data, auth('tenant')->user(), $terminal->id);
-        } catch (\App\Exceptions\SaleIdempotencyConflictException $e) {
-            throw $e; // renders its own 409/503
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json([
-            'sale_id' => $settled->id, 'sale_no' => $settled->sale_no, 'sale_uuid' => $settled->sale_uuid,
-            'status' => $settled->status, 'grand_total' => (float) $settled->grand_total,
-            'paid_amount' => (float) $settled->paid_amount,
-            'change_amount' => (float) $settled->payments()->first()?->change_amount,
-            'edge_sync_state' => $settled->edge_sync_state,
-        ]);
-    }
-
-    /** Cancel a whole held order (reason + branch-mode manager approval enforced by the real Cloud service). */
-    public function cancelHeldSale(Request $request, int $sale): JsonResponse
-    {
-        $data = $request->validate([
-            'reason_id' => ['required', 'integer'],
-            'manager_approval_id' => ['nullable', 'integer'],
-        ]);
-        try {
-            $result = $this->pos->cancelHeldSale($sale, (int) $data['reason_id'], isset($data['manager_approval_id']) ? (int) $data['manager_approval_id'] : null, auth('tenant')->user());
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['sale_id' => $result['sale']->id, 'status' => $result['sale']->status]);
     }
 
     /**
-     * Manager re-auth: the manager presents THEIR OWN Edge-local credential (employee code + local
-     * password — never a Cloud manager PIN, which does not exist on an appliance) and receives a
-     * single-use approval consumed by the action that needs it. The cashier session is untouched.
+     * CUSTOMER-UX parity: customers are looked up on demand (never the whole book in the page) from the SYNCED
+     * customer book, with their saved addresses (ADDRESS-ATTACH: picking one attaches it to the order).
+     *
+     * PHASE 3 STAGE B (gap B of the same-dataset comparison): Online `Ajax\CustomerLookupController` lists the first 20
+     * ACTIVE customers ordered by name for an empty / one-character query, so the shared customer modal opens populated on
+     * both runtimes — the former 2-character floor (an Edge-only "Start typing…" state) is gone. Limit 20 + name order kept.
      */
-    public function verifyManagerApproval(Request $request): JsonResponse
+    public function customers(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'manager_employee_code' => ['required', 'string', 'max:64'],
-            'manager_credential' => ['required', 'string', 'max:255'],
-            'action_type' => ['required', 'string', 'max:80'],
-            'payload' => ['nullable', 'array'],
-        ]);
-        try {
-            $approval = $this->pos->verifyManagerApproval(
-                $data['manager_employee_code'], $data['manager_credential'], $data['action_type'],
-                auth('tenant')->user(), $data['payload'] ?? null
-            );
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
+        $q = trim((string) $request->input('q', ''));
+        $id = (int) $request->input('id', 0);
+        // Team 1 request: `?id=N` = the exact customer (the Online `/pos?customer_id=` deep link preselects one).
+        $rows = \App\Models\Tenant\Customer::on('tenant')->where('status', 'active')
+            ->when($id > 0, fn ($w) => $w->whereKey($id))
+            ->when($id <= 0 && $q !== '', fn ($w) => $w->where(fn ($x) => $x->where('name', 'like', "%{$q}%")->orWhere('phone', 'like', "%{$q}%")->orWhere('code', 'like', "%{$q}%")))
+            ->orderBy('name')->limit(20)->get(['id', 'customer_uuid', 'name', 'phone', 'email', 'address']);
+        $addresses = \App\Models\Tenant\CustomerAddress::on('tenant')->whereIn('customer_id', $rows->pluck('id'))
+            ->orderByDesc('is_default')->orderBy('id')->get(['id', 'customer_id', 'label', 'address', 'is_default'])->groupBy('customer_id');
 
-        return response()->json(['approval_id' => $approval->id, 'approval_no' => $approval->approval_no, 'approval_uuid' => $approval->approval_uuid], 201);
+        // W-B canonical contract (§3.2): Online /ajax/customers keys {id, customer_uuid, name, phone, email, addresses[],
+        // legacy_address}; `address` stays for the old page (additive).
+        return response()->json(['customers' => $rows->map(fn ($c) => [
+            'id' => (int) $c->id, 'customer_uuid' => $c->customer_uuid, 'name' => $c->name, 'phone' => $c->phone,
+            'email' => $c->email, 'address' => $c->address, 'legacy_address' => $c->address,
+            'addresses' => ($addresses->get($c->id) ?? collect())->map(fn ($a) => ['id' => (int) $a->id, 'label' => $a->label, 'address' => $a->address, 'is_default' => (bool) $a->is_default])->values(),
+        ])->values()]);
     }
 
-    /** The session-selected terminal, re-validated against the bound branch on EVERY use. */
-    private function selectedTerminal(Request $request): Terminal|JsonResponse
+    /**
+     * Business-friendly sync state for the cashier header ("Pending sync: N"). Deliberately exposes NO
+     * engineering internals (no lease, hash, activation epoch, baseline uuid) — those live on the operator
+     * sync console, not the till.
+     */
+    public function syncSummary(): JsonResponse
     {
-        $terminalId = (int) $request->session()->get(self::TERMINAL_SESSION_KEY, 0);
-        if ($terminalId <= 0) {
-            return response()->json(['message' => 'Select a terminal first.'], 422);
-        }
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $terminal = Terminal::on('tenant')->where('id', $terminalId)->where('branch_id', $branchId)->where('status', 'active')->first();
-        if (! $terminal) {
-            $request->session()->forget(self::TERMINAL_SESSION_KEY);
+        $snap = app(\App\Services\Edge\EdgeSyncStatusService::class)->snapshot();
+        $outbox = $snap['outbox'] ?? [];
+        $pending = (int) ($outbox['pending'] ?? 0) + (int) ($outbox['leased'] ?? 0);
+        $attention = (int) ($outbox['failed_permanent'] ?? 0);
 
-            return response()->json(['message' => 'The selected terminal is no longer available — select a terminal.'], 422);
-        }
+        $authority = app(\App\Services\Edge\EdgeAuthorityService::class)->cashierState();
 
-        return $terminal;
+        return response()->json([
+            // F-1 (owner, 8 Nov 2026): the SAME authority block the page was rendered with (`POS_RUNTIME.authority`), so the
+            // shared cashier view can follow standby ↔ Local Mode ↔ handback transitions after it has loaded
+            // (POS.setAuthority → write gate). Cashier-facing labels + can_mutate only — no lease/epoch internals.
+            'authority' => array_intersect_key(
+                app(\App\Services\Edge\EdgePosRuntimeFactory::class)->authorityBlock(),
+                array_flip(['state', 'label', 'sub_label', 'can_mutate', 'tone', 'pending_sync', 'needs_attention'])
+            ),
+            'pending_sales' => $pending,
+            'needs_attention' => $attention,
+            'last_synced_at' => $snap['last_ack_at'] ?? null,
+            // P0 lease + Q state machine: the connection state the cashier should see (ONLINE / INTERNET CONNECTION
+            // UNSTABLE / INTERNET CONNECTION LOST / PREPARING LOCAL MODE / LOCAL MODE ACTIVE / CONNECTION RESTORED /
+            // SYNCHRONIZING / RETURNING TO ONLINE) — labels only, no internals.
+            'connection' => $authority['label'],
+            'state' => $attention > 0 ? 'attention' : ($pending > 0 ? 'pending' : 'up_to_date'),
+            'message' => $attention > 0
+                ? 'Some sales need attention before they can sync — tell your manager.'
+                : ($pending > 0 ? "{$pending} sale(s) waiting to sync — they are saved here and will sync when the connection returns." : 'All sales synced.'),
+        ]);
     }
 }

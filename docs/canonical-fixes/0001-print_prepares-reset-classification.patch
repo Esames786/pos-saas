@@ -1,0 +1,12 @@
+diff --git a/app/Console/Commands/TenantResetTransactionsCommand.php b/app/Console/Commands/TenantResetTransactionsCommand.php
+index 0df69052..e64601a5 100644
+--- a/app/Console/Commands/TenantResetTransactionsCommand.php
++++ b/app/Console/Commands/TenantResetTransactionsCommand.php
+@@ -47,6 +47,7 @@ class TenantResetTransactionsCommand extends Command
+         // PLACE-LEARNING-1: the evidence goes with its orders; the learned places stay (like every delivery place).
+         'delivery_place_sightings', 'sales_orders',
+         'sales_ledgers', 'manager_approvals', 'print_jobs', 'restaurant_table_sessions',
++        'print_prepares', // PRINT-PREPARE-1 (2b054814): agent-side PDF preparation cache (FK printers, cleaned daily) — transactional like print_jobs
+         // Ping/reboot work items handed to a print agent — transient, exactly like
+         // the print jobs beside them. The paired AGENTS and printers are master
+         // data and are kept; a week-old queued reboot is not.

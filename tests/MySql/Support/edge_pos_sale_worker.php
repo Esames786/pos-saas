@@ -67,7 +67,7 @@ try {
 
     // ── EDGE-LOCAL-POS-1 restaurant races: every mode drives the REAL EdgeLocalPosService with an
     //    authenticated principal (master unreachable — config above). ──
-    if (in_array($mode, ['open_table', 'hold', 'revise', 'kot', 'settle'], true)) {
+    if (in_array($mode, ['open_table', 'hold', 'revise', 'kot', 'settle', 'reserve', 'cancel_reservation'], true)) {
         $user = User::on('tenant')->findOrFail((int) $argv[2]);
         \Illuminate\Support\Facades\Auth::guard('tenant')->setUser($user);
         \Illuminate\Support\Facades\Auth::shouldUse('tenant');
@@ -75,6 +75,14 @@ try {
         $pos = app(EdgeLocalPosService::class);
 
         switch ($mode) {
+            case 'reserve': // reserve <user> <terminal> <table_id> — races table reservation.
+                $r = app(\App\Services\Edge\EdgeTableReservationService::class)->reserve((int) $argv[4], ['customer_name' => 'Racer'], $user);
+                echo 'OK:reserve:' . $r->id . "\n";
+                exit(0);
+            case 'cancel_reservation': // cancel_reservation <user> <terminal> <table_id>
+                $r = app(\App\Services\Edge\EdgeTableReservationService::class)->cancel((int) $argv[4], $user);
+                echo 'OK:cancel:' . $r->id . "\n";
+                exit(0);
             case 'open_table': // open_table <user> <terminal> <table_id>
                 $session = $pos->openTableSession((int) $argv[4], ['guest_count' => 1], $user, $terminalId);
                 echo 'OK:open_table:' . $session->id . "\n";
@@ -110,6 +118,10 @@ try {
                 ], $user, $terminalId);
                 echo 'OK:settle:' . $sale->id . ':' . $sale->status . "\n";
                 exit(0);
+            case 'close_session': // close_session <user> <terminal> <session_id> — TABLE-CLOSE-EMPTY under the server lock.
+                $closed = $pos->closeTableSession((int) $argv[4], 'closed', $user);
+                echo 'OK:close_session:' . $closed->id . ':' . $closed->status . "\n";
+                exit(0);
         }
     }
 
@@ -118,6 +130,13 @@ try {
         // closure §2: the zero-row first-ever-start race on a fresh appliance).
         $won = app(\App\Services\Edge\EdgeLocalPrintWorkerSupervisor::class)->acquire((string) $argv[2]);
         echo $won ? "OK:worker_acquire:won\n" : "OK:worker_acquire:refused\n";
+        // 0.8.3 (F-G10): the slot decision now asks the OS whether the recorded winner process still exists. A real
+        // winner keeps running; this synthetic racer must therefore LINGER so the loser sees a live process (an exited
+        // winner would — correctly — be taken over as "previous_process_gone").
+        if ($won) {
+            fflush(STDOUT);
+            sleep(6);
+        }
         exit(0);
     }
 
@@ -190,7 +209,7 @@ try {
     \Illuminate\Support\Facades\Auth::guard('tenant')->setUser($user);
     \Illuminate\Support\Facades\Auth::shouldUse('tenant');
     $sale = app(EdgeLocalPosService::class)->completePaidSale([
-        'order_type' => 'quick_sale',
+        'order_type' => 'takeaway', // PHASE 2b: quick_sale now requires vehicle + waiter; the race is about concurrency, not attribution
         'client_uuid' => (string) $clientUuid,
         'lines' => [['product_id' => (int) $productId, 'quantity' => (float) $qty]],
         'payments' => [['payment_method_id' => (int) $methodId, 'amount' => (float) $amount]],

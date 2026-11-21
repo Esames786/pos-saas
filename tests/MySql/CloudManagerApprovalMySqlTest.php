@@ -35,6 +35,14 @@ class CloudManagerApprovalMySqlTest extends MySqlTenantTestCase
         DB::connection('tenant')->table('manager_pins')->insert([
             'user_id' => $this->managerId, 'pin_hash' => Hash::make('password@'), 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
+        // Phase 3 (owner §1): the approver must hold the permission the approved action needs (void + manual discount here).
+        // Spatie manages its own relation + cache rows, so grant through the model.
+        DB::connection('tenant')->table('cache')->where('key', 'like', '%spatie.permission.cache%')->delete();
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        $manager = \App\Models\Tenant\User::on('tenant')->findOrFail($this->managerId);
+        foreach (['tenant.pos.void-kot-item', 'tenant.pos.store'] as $permission) {
+            $manager->givePermissionTo(\Spatie\Permission\Models\Permission::on('tenant')->firstOrCreate(['name' => $permission, 'guard_name' => 'tenant']));
+        }
     }
 
     private function svc(): ManagerApprovalService

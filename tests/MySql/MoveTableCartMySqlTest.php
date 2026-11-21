@@ -171,8 +171,11 @@ class MoveTableCartMySqlTest extends MySqlTenantTestCase
             '/function enterMovedTableSession\(session\) \{.*?String\(current\) !== String\(session\.id\)\) clearCart\(\);\s*applyTableSession\(session\);/s',
             $html, 'Move must clear a cart that belongs elsewhere, BEFORE stepping into the moved table'
         );
+        // CANONICAL REHEARSAL (30 Oct 2026, chunk 7 / Phase E): the ONE shared cashier view posts through the runtime route
+        // (`POS.route('tableMove', …)` — Online and Branch Server alike, owner requirement A5) instead of the literal
+        // `/restaurant/table-sessions/{id}/move`; the callback — enterMovedTableSession FIRST — is what this test guards.
         $this->assertMatchesRegularExpression(
-            "#/move', \{ target_table_id: button\.dataset\.moveTarget \}, function \(data\) \{ enterMovedTableSession\(data\.session\);#",
+            "#(/move'|POS\.route\('tableMove', \{ session: sessionId \}\)), \{ target_table_id: button\.dataset\.moveTarget \}, function \(data\) \{ enterMovedTableSession\(data\.session\);#",
             $html, 'the Move button must go through enterMovedTableSession, not straight to applyTableSession'
         );
         $this->assertScriptsParse($html);

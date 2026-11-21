@@ -101,6 +101,7 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/shift',
             'edge/local/pos/shift/open',
             'edge/local/pos/shift/close',
+            'edge/local/pos/reminder-pause',                  // D2 (deliberately approved, 20 Oct 2026): POS-REMINDER-PAUSE-1 twin on the local shift row
             'edge/local/pos/sales',
             // EDGE-LOCAL-POS-1 restaurant layer (deliberately approved).
             'edge/local/pos/restaurant/board',
@@ -110,7 +111,105 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/held-sales/{sale}/kot',
             'edge/local/pos/held-sales/{sale}/settle',
             'edge/local/pos/held-sales/{sale}/cancel',
+            'edge/local/pos/held-sales/{sale}/split',
             'edge/local/pos/manager-approvals/verify',
+            // ONLINE-POS PARITY (deliberately approved): Preview Bill + table reservations.
+            'edge/local/pos/preview-bill',
+            'edge/local/pos/restaurant/tables/{table}/reservation',
+            'edge/local/pos/restaurant/tables/{table}/reserve',
+            'edge/local/pos/restaurant/tables/{table}/unreserve',
+            // EDGE-CASHIER-UI-1/2 (deliberately approved): THE cashier page (tenant.pos.index + the Edge runtime since Phase 3 Stage A) + Recall reads.
+            'edge/local/pos',
+            'edge/local/pos/held-sales/{sale}',
+            'edge/local/pos/void-reasons',
+            'edge/local/pos/customers',
+            'edge/local/pos/customers/quick-store',           // EDGE PHASE 4 (deliberately approved): offline add-customer (Online quick-store twin)
+            'edge/local/pos/customers/{customer}/addresses',  // EDGE PHASE 4 (deliberately approved): offline add-address (Online add-address twin)
+            'edge/local/pos/returns/search',      // F1 sales returns
+            'edge/local/pos/returns/sales/{sale}',
+            'edge/local/pos/returns',
+            'edge/local/pos/returns/{return}',
+            'edge/local/pos/suppliers',           // F2 supplier finance: Suppliers → Supplier Ledger → Record Payment
+            'edge/local/pos/suppliers/options',
+            'edge/local/pos/suppliers/{supplier}/ledger',
+            'edge/local/pos/suppliers/payments',
+            'edge/local/pos/finance/events/{event}',
+            'edge/local/pos/finance/journal',     // F2 General Journal (supplier / AP dimension)
+            'edge/local/pos/finance/journal/options',
+            'edge/local/pos/purchase-returns',        // F3 purchase returns
+            'edge/local/pos/purchase-returns/options',
+            'edge/local/pos/purchase-returns/grns/{grn}',
+            'edge/local/pos/purchase-returns/{event}',
+            // EDGE-CASHIER-UI-4 (deliberately approved): printing.
+            'edge/local/pos/sales/{sale}/receipt',
+            'edge/local/pos/sales/{sale}/kot-reprint',
+            'edge/local/pos/print-jobs',
+            'edge/local/pos/print-jobs/{job}/document',
+            'edge/local/pos/print-jobs/{job}/printed',
+            'edge/local/pos/print-jobs/{job}/retry',
+            // EDGE-CASHIER-UI-5 (deliberately approved): Quick Report on the canonical report authority.
+            // P4 (deliberately approved): the ONE operator/admin health page.
+            'edge/local/pos/health',
+            // KHATRI OWNER CONTROL (21 Nov 2026, deliberately approved): Switch to Offline / Return to Online on the health page.
+            'edge/local/pos/authority/switch-offline',
+            'edge/local/pos/authority/return-online',
+            'edge/local/pos/quick-report/options',
+            'edge/local/pos/quick-report/view',
+            'edge/local/pos/quick-report/network',
+            'edge/local/pos/quick-report/email',
+            // Shift parity + business-friendly sync state (deliberately approved).
+            'edge/local/pos/shift/summary',
+            'edge/local/pos/sync/summary',
+            // ═══ PARITY WORKSTREAMS (owner directive 20 Sep 2026) — one block per team, append-only, mirrors routes/edge_runtime.php ═══
+            // ── W1 (Team 1) — shell / navigation ──
+            'edge/local/assets/{path}', // W1: whitelisted public/assets streamer (unauthenticated; tests/Feature/Edge/EdgeLocalAssetRouteTest)
+            'edge/local/storage/{path}', // W-C: whitelisted storage/app/public image streamer (unauthenticated; EdgeLocalAssetRouteTest)
+            // ── W2 (Team 2) — menu & sale ──
+            // ── W3 (Team 3) — tables & order lifecycle ──
+            'edge/local/pos/restaurant/table-sessions',
+            'edge/local/pos/restaurant/table-sessions/{session}',
+            'edge/local/pos/restaurant/table-sessions/{session}/bill-preview',
+            'edge/local/pos/restaurant/table-sessions/{session}/bill-requested',
+            'edge/local/pos/restaurant/table-sessions/{session}/move',
+            'edge/local/pos/restaurant/table-sessions/{session}/merge',
+            'edge/local/pos/held-sales/{sale}/reattach-table',
+            'edge/local/pos/recent-sales',
+            // ── W4 (Team 4) — shifts / permissions / finance ──
+            'edge/local/pos/shifts',                              // R1.8 shift history (tenant.shifts.index)
+            'edge/local/pos/shifts/{shift}',                      // R1.9 shift detail (tenant.shifts.show)
+            'edge/local/pos/sales-returns',                       // R3.6 returns list (tenant.sales-returns.index)
+            'edge/local/pos/sales-returns/{salesReturn}',         // R3.6 return detail (tenant.sales-returns.show)
+            'edge/local/pos/supplier-payments',                   // R8.4 (tenant.supplier-payments.index)
+            'edge/local/pos/supplier-payments/{event}',           // R8.4 (tenant.supplier-payments.show)
+            'edge/local/pos/finance/manual-journals',             // R8.6 (tenant.finance.manual-journals.index)
+            'edge/local/pos/finance/manual-journals/{event}',     // R8.6 (tenant.finance.manual-journals.show)
+            'edge/local/pos/purchase-return-list',                // R9.4 (tenant.purchase-returns.index)
+            'edge/local/pos/purchase-return-list/{event}',        // R9.4 (tenant.purchase-returns.show)
+            'edge/local/pos/quick-report/settings',               // R5.2 saved selection (tenant.pos.quick-report-send)
+            'edge/local/pos/quick-report/save-settings',
+            // ── W5 (Team 5) — printing ──
+            'edge/local/pos/sales/{sale}/kot',
+            'edge/local/pos/sales/{sale}/reminders/confirm',
+            'edge/local/pos/print-jobs/{job}/reminder-reprint',
+            'edge/local/pos/print-jobs/{job}/dismiss',
+            'edge/local/pos/sales/{sale}/printing/retry',
+            'edge/local/pos/bill-preview/document',
+            'edge/local/pos/print-preferences',
+            // ── W-B (next release) — the ONE shared cashier view + canonical JSON twins + the separate screens (same tenant views) ──
+            'edge/local/pos/shared',            // Phase 2 alias of edge/local/pos — Stage B: a 301 redirect to it
+            'edge/local/pos/server-time',
+            'edge/local/pos/totals/quote',
+            'edge/local/pos/promotions/quote',
+            'edge/local/pos/restaurant/board/html',
+            'edge/local/pos/restaurant/table-sessions/{session}/open-orders',
+            'edge/local/pos/shifts/open',
+            'edge/local/pos/shifts/{shift}/close',
+            'edge/local/pos/shared/shifts',
+            'edge/local/pos/shared/shifts/{shift}',
+            'edge/local/pos/sales-returns/create',
+            'edge/local/pos/shared/sales-returns',
+            'edge/local/pos/shared/sales-returns/{salesReturn}',
+            'edge/local/pos/held-sales/{sale}/split-bill',
         ];
 
         $uris = collect(\Illuminate\Support\Facades\Route::getRoutes()->getRoutes())

@@ -33,6 +33,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
     private int $productId;
     private int $cashMethodId;
     private int $baselineId;
+    private int $waiterId; // PHASE 2b: a quick sale requires a waiter (+ vehicle)
 
     protected function setUp(): void
     {
@@ -45,6 +46,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         $this->terminalId = $this->makeTerminal($this->branchId);
         $this->productId = $this->makeProduct($this->makeCategory(), ['inventory_consumption_method' => 'stock_item', 'is_stock_tracked' => 1, 'is_sellable' => 1, 'is_pos_visible' => 1, 'status' => 'active', 'default_selling_price' => 100]);
         $this->cashMethodId = $this->makePaymentMethod(['method_type' => 'cash']);
+        $this->waiterId = $this->makeWaiter($this->branchId);
         $this->bindEdgeLocalMeta($this->branchId, 1);
         $this->asBranchServerRuntime(); // EdgeBranchContext only binds on a branch_server
         // (H10/I) selling stock exists ONLY under an accepted Edge-only baseline — never official tables.
@@ -69,7 +71,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
     private function complete(array $overrides = [], ?int $terminalId = null): SalesOrder
     {
         $data = array_merge([
-            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
         ], $overrides);
@@ -176,25 +178,31 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         $this->complete(['order_type' => 'dine_in']);
     }
 
-    public function test_discount_is_refused(): void
+    /** DISCOUNT parity: the branch default (manager_required) refuses a manual discount without a consumed approval. */
+    public function test_manual_discount_without_manager_approval_is_refused(): void
     {
         $this->openShift();
         $this->expectException(ValidationException::class);
         $this->complete(['discount_type' => 'fixed', 'discount_value' => 50]);
     }
 
-    public function test_promo_is_refused(): void
+    /** PROMO parity: an unknown code resolves to no promotion (shared PromotionService) — the sale completes undiscounted. */
+    public function test_unknown_promo_code_applies_no_discount(): void
     {
         $this->openShift();
-        $this->expectException(ValidationException::class);
-        $this->complete(['promo_code' => 'SAVE10']);
+        $sale = $this->complete(['promo_code' => 'NOPE-404']);
+        $this->assertSame('paid', $sale->status);
+        $this->assertSame(0.0, (float) $sale->discount_amount);
+        $this->assertNull($sale->promo_code);
     }
 
-    public function test_combo_line_is_refused(): void
+    /** DEAL parity: a client-supplied line_kind is never trusted — without a combo_id the line is a standard product. */
+    public function test_client_supplied_combo_topology_is_ignored(): void
     {
         $this->openShift();
-        $this->expectException(ValidationException::class);
-        $this->complete(['lines' => [['product_id' => $this->productId, 'quantity' => 1, 'line_kind' => 'combo_header']]]);
+        $sale = $this->complete(['lines' => [['product_id' => $this->productId, 'quantity' => 1, 'line_kind' => 'combo_header', 'unit_price' => 1]]]);
+        $this->assertSame('standard', $sale->lines()->first()->line_kind);
+        $this->assertSame(100.0, (float) $sale->lines()->first()->unit_price, 'the server priced the product, not the client');
     }
 
     public function test_cross_branch_terminal_is_refused(): void
@@ -242,7 +250,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         auth('tenant')->logout();
         try {
             app(EdgeLocalPosService::class)->completePaidSale([
-                'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+                'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
                 'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
                 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
             ], User::on('tenant')->find($this->userId), $this->terminalId);
@@ -262,7 +270,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         // session belongs to A (setUp); supplying branch-authorized B must be refused.
         $this->expectException(ValidationException::class);
         app(EdgeLocalPosService::class)->completePaidSale([
-            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
         ], User::on('tenant')->find($userB), $this->terminalId);
@@ -454,6 +462,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
             app(\App\Services\Printing\PrintJobService::class),
             app(\App\Services\Sales\KotCancellationService::class),
             app(\App\Services\Sales\SalesService::class),
+            app(\App\Services\Edge\EdgeSyncOutboxService::class), // OFFLINE-SYNC-ENGINE-1B
         ) extends EdgeLocalPosService {
             public $toctouHook;
 
@@ -487,7 +496,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         });
         try {
             $svc->completePaidSale([
-                'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+                'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
                 'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
                 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
             ], User::on('tenant')->find($this->userId), $this->terminalId);
@@ -506,7 +515,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         });
         try {
             $svc->completePaidSale([
-                'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+                'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
                 'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
                 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
             ], User::on('tenant')->find($this->userId), $this->terminalId);

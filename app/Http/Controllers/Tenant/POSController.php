@@ -19,9 +19,12 @@ use App\Models\Tenant\SalesOrderLine;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\TerminalPrinterSetting;
-use App\Services\Kitchen\UnitConversionService;
 use App\Services\Sales\SalesTotalsService;
 use App\Services\Security\UserDataScope;
+use App\Support\Pos\CloudPosRuntimeFactory;
+use App\Support\Pos\PosPageData;
+use App\Support\Pos\RecentOrders;
+use App\Support\Pos\RecipeAvailability;
 use Illuminate\Http\Request;
 
 class POSController extends Controller
@@ -38,6 +41,9 @@ class POSController extends Controller
         $selectedBranchId = $branches->contains('id', $requestedBranchId)
             ? $requestedBranchId
             : (int) $branches->first()->id;
+
+        // W-A: the shared cashier view is driven by a PosRuntime (endpoint map, capabilities, asset base).
+        $posRuntime = app(CloudPosRuntimeFactory::class)->make($selectedBranchId, $branches->firstWhere('id', $selectedBranchId)?->name);
 
         $heldSale = null;
 
@@ -271,28 +277,19 @@ class POSController extends Controller
             ->groupBy(fn ($row) => $row->branch_id . ':' . $row->product_id . ':' . ($row->product_variant_id ?: 0));
 
         // Fast [branchId][productId][variantId] => qty lookup for recipe ingredient stock.
-        $stockLookup = [];
-        foreach ($stockRows as $row) {
-            $stockLookup[(int) $row->branch_id][(int) $row->product_id][(int) ($row->product_variant_id ?: 0)] = (float) $row->qty;
-        }
-        // UB-W2 (22 Oct): no variant and the default variant are one stock — the sale takes from both
-        // (InventoryService::plainVariantIds), so the count of what can be made reads both too.
-        $defaultVariantIds = \App\Models\Tenant\ProductVariant::where('is_default', true)->pluck('id', 'product_id');
-        foreach ($stockLookup as $branchKey => $byProduct) {
-            foreach ($byProduct as $productKey => $byVariant) {
-                $defaultId = (int) ($defaultVariantIds[$productKey] ?? 0);
-                if ($defaultId && isset($byVariant[$defaultId])) {
-                    $plain = ($byVariant[0] ?? 0.0) + $byVariant[$defaultId];
-                    $stockLookup[$branchKey][$productKey][0] = $plain;
-                    $stockLookup[$branchKey][$productKey][$defaultId] = $plain;
-                }
-            }
-        }
+        // UB-W2 (canonical 22 Oct, rehearsal 30 Oct 2026): plain + default-variant stock read as ONE — in the shared helper, so the
+        // Branch Server's recipe preview (EdgeLocalPosController) adds the same way.
+        $stockLookup = RecipeAvailability::mergePlainVariants(
+            RecipeAvailability::stockLookup($stockRows, 'qty'),
+            \App\Models\Tenant\ProductVariant::where('is_default', true)->pluck('id', 'product_id')
+        );
 
-        $unitConversion = app(UnitConversionService::class);
+        // W-G1: the recipe "makeable" preview is the ONE shared computation (also used by the Branch Server).
+        $recipeAvailability = app(RecipeAvailability::class);
 
         // One builder for both lists, so a recalled hidden item carries exactly what a grid item carries.
-        $productPayload = function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion, $medicalCounter, $counterPacks, $gramEntry, $batchBalances, $medToday) {
+        // (REHEARSAL chunk 11: the rehearsal's captures — RecipeAvailability + the runtime — not canonical's $unitConversion.)
+        $productPayload = function ($product) use ($stockByProduct, $branches, $stockLookup, $recipeAvailability, $posRuntime, $medicalCounter, $counterPacks, $gramEntry, $batchBalances, $medToday) {
             $defaultVariant = $product->defaultVariant ?: $product->variants->first();
 
             $barcodes = $product->barcodes
@@ -346,7 +343,7 @@ class POSController extends Controller
                 }
             }
 
-            $recipe = $this->recipeAvailability($product, $branches, $stockLookup, $unitConversion);
+            $recipe = $recipeAvailability->forProduct($product, $branches, $stockLookup);
             // ONLINE-ORDERING-1: "Website only" add-on group counter par kabhi na aaye — cashier ko
             // popup na khule aur kaam waisa hi rahe. Mojooda har group 'pos' hai, to aaj kuch nahi badalta.
             $modifierGroups = $product->modifierGroups
@@ -381,7 +378,7 @@ class POSController extends Controller
                 // PRODUCT-SCREEN-V2: a medicine's salt, so "paracetamol" finds every brand (null for everyone else).
                 'generic'           => $product->generic_name ?? null,
                 // POS-UX-1: tile image (public disk URL) — null keeps initials avatar.
-                'image_url'         => $product->image_path ? asset('storage/' . $product->image_path) : null,
+                'image_url'         => $product->image_path ? $posRuntime->asset('storage/' . $product->image_path) : null,
                 'category_id'       => $product->category_id ? (int) $product->category_id : null,
                 'category_name'     => $product->category?->name,
                 'unit_id'           => $product->unit_id ? (int) $product->unit_id : null,
@@ -485,7 +482,8 @@ class POSController extends Controller
             ->values()
             ->all();
 
-        return view('tenant.pos.index', [
+        // W-A: every page variable goes through the PosPageData contract (the Edge provider builds the same set).
+        return view('tenant.pos.index', PosPageData::fromArray([
             'deadSession'      => $deadSession,
             'branches'         => $branches,
             'selectedBranchId' => $selectedBranchId,
@@ -561,7 +559,7 @@ class POSController extends Controller
             'kitchenTickets'   => $this->kitchenTicketsOn(),
             'medicalCounter'   => $medicalCounter,
             'counterPacks'     => $counterPacks,
-        ]);
+        ])->toViewData($posRuntime));
     }
 
     /**
@@ -628,89 +626,10 @@ class POSController extends Controller
             'floors'           => $this->loadBoardFloors($selectedBranchId),
             'selectedBranchId' => $selectedBranchId,
             'tableSession'     => $tableSession,
+            'posRuntime'       => app(\App\Support\Pos\CloudPosRuntimeFactory::class)->make(),
         ])->render();
 
         return response()->json(['ok' => true, 'html' => $html]);
-    }
-
-    /**
-     * Proactive availability for recipe/service products: how many can be MADE per
-     * branch from current ingredient stock, plus the limiting ingredient name.
-     * Mirrors RecipeConsumptionService (same unit conversion) so the POS preview
-     * matches what checkout would actually consume. Backend remains authoritative.
-     *
-     * @return array{is_recipe:bool, makeable:array<int,int>, limiting:array<int,string>}
-     */
-    private function recipeAvailability(Product $product, $branches, array $stockLookup, UnitConversionService $unitConversion): array
-    {
-        $blank = ['is_recipe' => false, 'makeable' => [], 'limiting' => []];
-
-        if ($product->inventory_consumption_method !== 'recipe') {
-            return $blank;
-        }
-
-        $recipe = $product->activeRecipe;
-        if (! $recipe) {
-            return $blank;
-        }
-
-        // Only stock-tracked ingredients constrain how many we can make.
-        $ingredients = $recipe->ingredients->filter(
-            fn ($ing) => $ing->product && $ing->product->is_stock_tracked
-        );
-
-        if ($ingredients->isEmpty()) {
-            return $blank; // recipe with no stock-tracked ingredients → unlimited (plain service)
-        }
-
-        $yield = (float) ($recipe->yield_quantity ?: 1) ?: 1;
-
-        $makeable = [];
-        $limiting = [];
-
-        foreach ($branches as $branch) {
-            $branchId = (int) $branch->id;
-            $minUnits = null;
-            $limitName = null;
-
-            foreach ($ingredients as $ing) {
-                $ip = $ing->product;
-
-                $requiredPerBatch = (float) $ing->quantity;
-
-                // Convert ingredient unit → ingredient product base unit (as consumption does).
-                if ($ing->unit_id && $ip->unit_id && $ing->unit_id !== $ip->unit_id && $ing->unit && $ip->unit) {
-                    try {
-                        $requiredPerBatch = $unitConversion->convert($requiredPerBatch, $ing->unit, $ip->unit);
-                    } catch (\Throwable) {
-                        // UB-08 (22 Oct): no conversion path means the sale is refused (RecipeConsumptionService), so
-                        // none can be made. It used to read the figure in the wrong unit (250 g as 250 kg).
-                        $minUnits = 0;
-                        $limitName = $ip->name;
-                        break;
-                    }
-                }
-
-                if ($requiredPerBatch <= 0) {
-                    continue;
-                }
-
-                $variantId = (int) ($ing->product_variant_id ?: 0);
-                $stock = $stockLookup[$branchId][(int) $ip->id][$variantId] ?? 0.0;
-
-                $units = ($stock / $requiredPerBatch) * $yield;
-
-                if ($minUnits === null || $units < $minUnits) {
-                    $minUnits = $units;
-                    $limitName = $ip->name;
-                }
-            }
-
-            $makeable[$branchId]  = (int) floor(max(0, $minUnits ?? 0));
-            $limiting[$branchId]  = $limitName ?? '';
-        }
-
-        return ['is_recipe' => true, 'makeable' => $makeable, 'limiting' => $limiting];
     }
 
     /**
@@ -998,60 +917,24 @@ class POSController extends Controller
             app(UserDataScope::class)->assertPosSelection(auth('tenant')->user(), $branchId, null);
         }
 
-        // Only the order types this operator is allowed to run — a delivery counter never sees
-        // dine-in/takeaway orders. An optional filter narrows further, but never widens.
-        $allowedTypes = auth("tenant")->user()?->effectiveAllowedOrderTypes() ?? [];
-        $filterType = (string) $request->input('order_type', '');
-
-        $sales = SalesOrder::with(['customer', 'deliveryChannel', 'deliveryRider', 'branch', 'shift',
-                                   'restaurantWaiter', 'restaurantTable'])
-            ->where('status', '!=', 'held')
-            ->whereNotNull('sale_no')
-            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
-            ->when($allowedTypes, fn ($q) => $q->whereIn('order_type', $allowedTypes))
-            ->when($filterType !== '' && in_array($filterType, $allowedTypes, true),
-                fn ($q) => $q->where('order_type', $filterType))
-            ->tap(fn ($query) => app(UserDataScope::class)->applyToSales($query, auth('tenant')->user()))
-            ->orderByDesc('id')
-            ->limit(50)
+        // ONE list rule for both runtimes (App\Support\Pos\RecentOrders — Phase 4 gap C): inclusion (every non-held sale
+        // with a sale number, cancelled included; only the order types this operator may run — an optional filter
+        // narrows, never widens; UserDataScope), newest 50 by id, and the row the shared view consumes. The Branch
+        // Server twin (EdgeLocalOrderLifecycleService::recentSales) calls the same class; Online's only runtime truth
+        // here is its direct-pay print state.
+        $user = auth('tenant')->user();
+        $sales = RecentOrders::applyInclusion(
+            SalesOrder::with(RecentOrders::RELATIONS),
+            $user,
+            $branchId ?: null,
+            (string) $request->input('order_type', '')
+        )
+            ->orderByDesc('sales_orders.id')
+            ->limit(RecentOrders::LIMIT)
             ->get();
 
         return response()->json([
-            'sales' => $sales->map(function ($s) {
-                $printState = $s->direct_pay_print_state;
-                $resumePrinting = $printState && (
-                    in_array($printState['kot_status'] ?? null, ['pending', 'pending_retry'], true)
-                    || in_array($printState['receipt_status'] ?? null, ['pending', 'pending_retry'], true)
-                    || in_array($printState['reminder_status'] ?? null, ['pending_retry', 'awaiting_confirmation'], true)
-                );
-
-                return [
-                'id'             => (int) $s->id,
-                'sale_no'        => $s->sale_no,
-                'order_type'     => $s->order_type,
-                'status'         => $s->status,
-                'payment_status' => $s->payment_status,
-                'customer'       => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
-                // Both lists render order meta through one JS helper, so both must feed it the
-                // same keys: which channel took the order, and who is carrying it.
-                'delivery_channel'      => $s->deliveryChannel?->name,
-                'delivery_channel_type' => $s->deliveryChannel?->type,
-                'delivery_rider'        => $s->deliveryRider?->name,
-                // Waiter (quick-sale + dine-in), vehicle (quick-sale), table (dine-in) for the list.
-                'waiter'         => $s->restaurantWaiter?->name,
-                'vehicle_number' => $s->vehicle_number,
-                'table'          => $s->restaurantTable?->table_no,
-                'total'          => number_format((float) $s->grand_total, 2),
-                'time'           => app(\App\Support\TenantClock::class)->formatSale($s, 'd M, h:i A'),
-                'ago'            => optional($s->sale_date ?? $s->created_at)->diffForHumans(),
-                'printing'       => $printState ? [
-                    'kot' => $printState['kot_status'] ?? null,
-                    'receipt' => $printState['receipt_status'] ?? null,
-                    'reminder' => $printState['reminder_status'] ?? null,
-                    'resume_available' => $resumePrinting,
-                ] : null,
-                ];
-            })->values(),
+            'sales' => $sales->map(fn (SalesOrder $s) => RecentOrders::present($s, RecentOrders::directPayPrinting($s)))->values(),
         ]);
     }
 }

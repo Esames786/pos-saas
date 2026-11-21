@@ -1,40 +1,49 @@
 {
-    "built_at": "2026-11-20T11:40:21+00:00",
+    "built_at": "2026-11-20T23:45:39+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
-    "prod_branch_head": "8863218b",
+    "prod_branch_head": "be3693e4",
     "work": [
         {
-            "path": "D:/laragon2/www/pos-saas-printhere",
-            "branch": "feat/print-offline-here-20261120",
-            "head": "7b7abd7c",
-            "behind_prod": 0,
-            "ahead_of_prod": 1,
-            "last_commit": "2026-11-20\u00b7PRINT-OFFLINE-HERE-1: print agent chup ho to counter apni parchi khud chhaapta hai",
+            "path": "D:/laragon2/www/pos-saas-edge",
+            "branch": "feat/edge-config-refresh-v1",
+            "head": "a23d1f26",
+            "behind_prod": 12,
+            "ahead_of_prod": 277,
+            "last_commit": "2026-11-21\u00b7edge(owner control): tenant.offline-edge.security in the POS permission catalogue (manager group; Online route + Edge controller); system map rebuilt (two authority routes)",
             "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-integ-khatri",
+            "branch": "integ/khatri-cloud-edge-20261121",
+            "head": "dab7e1f3",
+            "behind_prod": 0,
+            "ahead_of_prod": 280,
+            "last_commit": "2026-11-21\u00b7docs: Khatri deployment-day runbook (phases 1-5, who/command/expect/STOP, rollback per phase, 8-hour timeline); plan tenant count from the latest records",
+            "uncommitted_files": 24
         },
         {
             "path": "D:/laragon2/www/pos-saas",
             "branch": "feat/14d-2-plan-upgrade-requests",
-            "head": "8863218b",
+            "head": "be3693e4",
             "behind_prod": 0,
             "ahead_of_prod": 0,
-            "last_commit": "2026-11-17\u00b7Deployment record: SLIP-END-LINES-1 live (f5644a5f) \u2014 bill, preview, report and catering slips end with the last line then the cut; checks clean",
+            "last_commit": "2026-11-20\u00b7Merge PRINT-OFFLINE-HERE-1: print agent chup ho to POS ki batti laal aur counter apni parchi (KOT, bill) khud chhaapta hai \u2014 dobara nahi chhapti",
             "uncommitted_files": 0
         },
         {
-            "path": "D:/laragon2/www/pos-saas-edge",
-            "branch": "feat/edge-config-refresh-v1",
-            "head": "dd5168b1",
-            "behind_prod": 8,
-            "ahead_of_prod": 269,
-            "last_commit": "2026-11-17\u00b7docs: interactive acceptance runbook (owner feature freeze, 17 Nov) - items 1-10 with prerequisites, prepared commands, pass criteria and GO gates; read-only LAB pre-flight recorded (STANDBY_READY, workers running, outbox 0, admin.pass absent, 3317 up, browsable Cloud name not answering); signed 0.8.3 package hashes preserved",
+            "path": "D:/laragon2/www/pos-saas-printhere",
+            "branch": "feat/print-offline-here-20261120",
+            "head": "c6c4249e",
+            "behind_prod": 1,
+            "ahead_of_prod": 1,
+            "last_commit": "2026-11-20\u00b7PRINT-OFFLINE-HERE-1: batti 60 s chuppi par laal, 15 par nahi \u2014 atka hua agent band agent nahi",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-integ-082",
             "branch": "integ/canonical-rehearsal-082",
             "head": "dc9f1cec",
-            "behind_prod": 8,
+            "behind_prod": 12,
             "ahead_of_prod": 254,
             "last_commit": "2026-11-16\u00b7docs(integ): Phase F report - \u00a710 merges, \u00a711 five chunks with focused proofs, \u00a712 full gates (gate 1 Edge MySQL 771 green, gate 2 330 with the print_prepares cause fixed, gate 3 Unit 142 with 7 canonical-own reds classified by file identity, gate 4 Feature Edge+Pos 238 green); system map rebuilt from the integ test DBs (279 tables / 445 FKs / 749 screens)",
             "uncommitted_files": 0
@@ -43,7 +52,7 @@
             "path": "D:/laragon2/www/pos-saas-kkvenue",
             "branch": "feat/print-prepare-agent-20261111",
             "head": "c359dfc5",
-            "behind_prod": 31,
+            "behind_prod": 35,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-12\u00b7PRINT-PREPARE-1 + AGENT-UPGRADE-1: logon par khud chalna sabit (laptop, session 2) + internet jaane par bhi zinda",
             "uncommitted_files": 0
@@ -52,7 +61,7 @@
             "path": "D:/laragon2/www/pos-saas-webstore",
             "branch": "feat/online-ordering-20261014",
             "head": "5ab6c967",
-            "behind_prod": 60,
+            "behind_prod": 64,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-09\u00b7Merge PLACE-NAME-NEAR-1: a society's name picks the website area only within 1 km of the customer's pin",
             "uncommitted_files": 0
@@ -61,7 +70,7 @@
             "path": "D:/laragon2/www/pos-saas-costblock",
             "branch": "feat/cost-block-clarity-20261105",
             "head": "ea87e95f",
-            "behind_prod": 93,
+            "behind_prod": 97,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-06\u00b7System map rebuilt (COST-BLOCK-CLARITY-1)",
             "uncommitted_files": 0
@@ -70,7 +79,7 @@
             "path": "D:/laragon2/www/pos-saas-dealsplit-golden",
             "branch": "(detached)",
             "head": "19813266",
-            "behind_prod": 80,
+            "behind_prod": 84,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-06\u00b7Deployment record: PURCHASE-EDIT-RECOST-1 + PNL-DETAIL-RECOST-1 live (c94a2c79) \u2014 GRN #90 editable, P&L detail fixed, totals unchanged",
             "uncommitted_files": 0
@@ -79,7 +88,7 @@
             "path": "D:/laragon2/www/pos-saas-rel-083",
             "branch": "rel/0.8.3-service-reliability",
             "head": "0b73606f",
-            "behind_prod": 299,
+            "behind_prod": 303,
             "ahead_of_prod": 213,
             "last_commit": "2026-11-06\u00b7docs: Agent F - clean-machine install class green after the host reboot (OK 1 test / 160 assertions, scratch on D:, edge_relf set); all 0.8.3 gates complete",
             "uncommitted_files": 0
@@ -88,7 +97,7 @@
             "path": "D:/laragon2/www/pos-saas-web-i18n",
             "branch": "feat/hide-public-prices-20261104",
             "head": "9000dd7c",
-            "behind_prod": 102,
+            "behind_prod": 106,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-04\u00b7WEBSITE-HIDE-PRICES-1: SAAS_HIDE_PUBLIC_PRICES \u2014 website par koi qeemat nahi (\"Price on request\"), client demo ke liye",
             "uncommitted_files": 0
@@ -97,7 +106,7 @@
             "path": "D:/laragon2/www/pos-saas-catering",
             "branch": "feat/catering-restore-in-place-20261031",
             "head": "75d7e97d",
-            "behind_prod": 121,
+            "behind_prod": 125,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-01\u00b7Deployment record: CATERING-RESTORE-IN-PLACE-1 live (e2c54e18)",
             "uncommitted_files": 0
@@ -106,7 +115,7 @@
             "path": "D:/laragon2/www/pos-saas-catedit",
             "branch": "feat/catering-simplify-20261027",
             "head": "09ad9e87",
-            "behind_prod": 168,
+            "behind_prod": 172,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-27\u00b7System map rebuilt (CATERING-SIMPLIFY-1, copy price)",
             "uncommitted_files": 0
@@ -115,7 +124,7 @@
             "path": "D:/laragon2/www/pos-saas-relc",
             "branch": "release/unified-w3w4-20261024",
             "head": "14458b95",
-            "behind_prod": 207,
+            "behind_prod": 211,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-25\u00b7Release record: a backup is not an undo button \u2014 fix forward; any restore needs its own recovery plan",
             "uncommitted_files": 0
@@ -124,7 +133,7 @@
             "path": "D:/laragon2/www/pos-saas-rollout",
             "branch": "feat/rollout-completion-20261025",
             "head": "d822bbef",
-            "behind_prod": 202,
+            "behind_prod": 206,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-25\u00b7ROLLOUT-1: deployment record \u2014 54bb81f9 live, reconciled, khatribiryani purchasing on with whole numbers off",
             "uncommitted_files": 0
@@ -133,7 +142,7 @@
             "path": "D:/laragon2/www/pos-saas-video",
             "branch": "feat/demo-video-pipeline",
             "head": "e0bae109",
-            "behind_prod": 699,
+            "behind_prod": 703,
             "ahead_of_prod": 17,
             "last_commit": "2026-10-25\u00b7RESTAURANT-VIDEO-1: poori working video \u2014 har order asli punch hota hai",
             "uncommitted_files": 0
@@ -142,7 +151,7 @@
             "path": "D:/laragon2/www/pos-saas-integ",
             "branch": "integration/unified-w2-20261022",
             "head": "983668a6",
-            "behind_prod": 252,
+            "behind_prod": 256,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-23\u00b7Release-candidate record: d29487e2 tested frozen, baseline for the three known reds, merge-onto-production check, limits",
             "uncommitted_files": 0
@@ -151,7 +160,7 @@
             "path": "D:/laragon2/www/pos-saas-w2c",
             "branch": "feat/w2c-purchase-stock-qty-20261023",
             "head": "272b1a5a",
-            "behind_prod": 249,
+            "behind_prod": 253,
             "ahead_of_prod": 1,
             "last_commit": "2026-10-23\u00b7W2-C closing record: edf958d9 final, evidence per run, the one error read from the log, why the full suite was not repeated",
             "uncommitted_files": 0
@@ -160,7 +169,7 @@
             "path": "D:/laragon2/www/pos-saas-qrwaiter",
             "branch": "feat/unified-business-20261021",
             "head": "5441ead2",
-            "behind_prod": 266,
+            "behind_prod": 270,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-21\u00b7Merge production (59787ff6: category parent guard) into the unified branch",
             "uncommitted_files": 4
@@ -169,7 +178,7 @@
             "path": "D:/laragon2/www/pos-saas-packs",
             "branch": "feat/pharmacy-packs-20261019",
             "head": "a0dc6790",
-            "behind_prod": 302,
+            "behind_prod": 306,
             "ahead_of_prod": 0,
             "last_commit": "2026-10-20\u00b7Docs: return without a bill built (plan section 13); system map rebuilt",
             "uncommitted_files": 0
@@ -178,7 +187,7 @@
             "path": "D:/laragon2/www/pos-saas-voice",
             "branch": "research/voice-ordering-agent",
             "head": "79c76679",
-            "behind_prod": 636,
+            "behind_prod": 640,
             "ahead_of_prod": 2,
             "last_commit": "2026-10-05\u00b7VOICE-ORDER-1: vendor options + bahar wale mashware ki do ghaltiyan darj",
             "uncommitted_files": 0
@@ -187,7 +196,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/history-urdu-ux",
             "branch": "fix/catering-history-urdu-ux-20260829",
             "head": "da8e2ed3",
-            "behind_prod": 1029,
+            "behind_prod": 1033,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7Improve catering operator UX and Urdu print readability",
             "uncommitted_files": 0
@@ -196,7 +205,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/quoted-rate-persistence",
             "branch": "fix/catering-quoted-rate-persistence-20260828",
             "head": "e020c390",
-            "behind_prod": 1035,
+            "behind_prod": 1039,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-29\u00b7fix(catering): persist punched customer rates",
             "uncommitted_files": 0
@@ -205,7 +214,7 @@
             "path": "D:/laragon2/www/pos-saas-catering/.codex-worktrees/catering-client-feedback",
             "branch": "fix/catering-client-feedback-20260827",
             "head": "893d8e44",
-            "behind_prod": 1048,
+            "behind_prod": 1052,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-27\u00b7fix(catering): tighten time and item entry UX",
             "uncommitted_files": 0
@@ -214,7 +223,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert-v2",
             "branch": "(detached)",
             "head": "ec09b6a6",
-            "behind_prod": 1097,
+            "behind_prod": 1101,
             "ahead_of_prod": 0,
             "last_commit": "2026-08-22\u00b7KASHIF-LEGACY-ALIGN-5/6: Complimentary in one click, and a bill you can read",
             "uncommitted_files": 1
@@ -223,7 +232,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-parity",
             "branch": "feat/catering-operator-completion-v1",
             "head": "008ba947",
-            "behind_prod": 1117,
+            "behind_prod": 1121,
             "ahead_of_prod": 4,
             "last_commit": "2026-08-22\u00b7CATERING: keep event create and edit inside the operator workspace",
             "uncommitted_files": 0
@@ -232,7 +241,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-catalogue",
             "branch": "data/kashif-catalogue-prep-v1",
             "head": "73807eb9",
-            "behind_prod": 1120,
+            "behind_prod": 1124,
             "ahead_of_prod": 1,
             "last_commit": "2026-08-21\u00b7CATERING: transcribe the Kashif catalogue without inventing prices",
             "uncommitted_files": 0
@@ -241,7 +250,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-product",
             "branch": "audit/catering-product-completeness-v1",
             "head": "ef184b6a",
-            "behind_prod": 1166,
+            "behind_prod": 1170,
             "ahead_of_prod": 18,
             "last_commit": "2026-08-21\u00b7AUDIT: assess Catering product completeness",
             "uncommitted_files": 0
@@ -250,7 +259,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex",
             "branch": "audit/catering-e2e-qa-v1",
             "head": "f8fa2205",
-            "behind_prod": 1166,
+            "behind_prod": 1170,
             "ahead_of_prod": 13,
             "last_commit": "2026-08-20\u00b7DOCS: preserve independent Catering architecture audit",
             "uncommitted_files": 0
@@ -259,7 +268,7 @@
             "path": "D:/laragon2/www/pos-saas-catering-codex-cert",
             "branch": "audit/catering-rate-impact-cert-v1",
             "head": "55ad8d5e",
-            "behind_prod": 1166,
+            "behind_prod": 1170,
             "ahead_of_prod": 17,
             "last_commit": "2026-08-20\u00b7TEST: expose Catering draft writer send races",
             "uncommitted_files": 0
@@ -268,7 +277,7 @@
             "path": "D:/laragon2/www/pos-saas-cloud",
             "branch": "feat/cloud-billing-onboarding-v1",
             "head": "9c30ea46",
-            "behind_prod": 1232,
+            "behind_prod": 1236,
             "ahead_of_prod": 8,
             "last_commit": "2026-08-15\u00b7CLOUD-BILLING E2E: real monthly + yearly signup lifecycle (throwaway tenants)",
             "uncommitted_files": 0
@@ -366,6 +375,11 @@
             "modified": "2026-11-20"
         },
         {
+            "file": "docs/plans/edge-0.8.3-release-contents-2026-11-16.md",
+            "title": "Edge 0.8.3 \u2014 release contents (preparation only, 16 Nov 2026)",
+            "modified": "2026-11-20"
+        },
+        {
             "file": "docs/plans/finance-restart-keep-sales-2026-11-04.md",
             "title": "FINANCE-RESTART-1 \u2014 start a business's books again from its POS sales (4 Nov 2026)",
             "modified": "2026-11-20"
@@ -394,22 +408,17 @@
             "file": "docs/plans/items-by-category-section-2026-09-03.md",
             "title": "ITEMS-BY-CATEGORY-1 \u2014 Item ka category-wise breakup, apne alag section me",
             "modified": "2026-11-20"
-        },
-        {
-            "file": "docs/plans/items-in-category-sequence-2026-09-03.md",
-            "title": "ITEM-CATEGORY-SEQUENCE \u2014 Item report category ki tarteeb me, purane software ki tarah",
-            "modified": "2026-11-20"
         }
     ],
-    "git": "7b7abd7c",
+    "git": "dab7e1f3",
     "source": {
-        "tenant_db": "pos_test_tenant_poh2",
-        "master_db": "pos_test_master_poh2"
+        "tenant_db": "pos_integ_prodschema_tenant",
+        "master_db": "pos_integ_prodschema_master"
     },
     "counts": {
-        "tables": 239,
+        "tables": 248,
         "foreign_keys": 441,
-        "inferred_links": 230,
+        "inferred_links": 257,
         "screens": 751
     },
     "tables": [
@@ -1305,6 +1314,26 @@
                     "col": "branch_id"
                 },
                 {
+                    "table": "edge_branch_authority_leases",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_inbound_purchase_return_ingestions",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_inbound_return_ingestions",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_inbound_sale_ingestions",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_inbound_supplier_finance_ingestions",
+                    "col": "branch_id"
+                },
+                {
                     "table": "finished_good_receipts",
                     "col": "branch_id"
                 },
@@ -1361,11 +1390,23 @@
                     "col": "branch_id"
                 },
                 {
+                    "table": "edge_backup_recovery_audits",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_backup_recovery_keys",
+                    "col": "branch_id"
+                },
+                {
                     "table": "edge_bootstrap_snapshots",
                     "col": "branch_id"
                 },
                 {
                     "table": "edge_branch_activations",
+                    "col": "branch_id"
+                },
+                {
+                    "table": "edge_branch_config_revisions",
                     "col": "branch_id"
                 },
                 {
@@ -9650,6 +9691,7 @@
             "side": "tenant",
             "columns": [
                 "id bigint unsigned",
+                "address_uuid char(26)",
                 "customer_id bigint unsigned",
                 "label varchar(50)",
                 "address varchar(500)",
@@ -10037,6 +10079,34 @@
             "used_by_count": 16
         },
         {
+            "name": "customer_uuid_aliases",
+            "side": "tenant",
+            "columns": [
+                "alias_uuid char(26)",
+                "customer_id bigint unsigned",
+                "customer_uuid char(26)",
+                "source_device_uuid varchar(64)",
+                "source varchar(32)",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "customer_id",
+                    "table": "customers"
+                }
+            ],
+            "domain": "Sales & POS",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "CustomerUuidAlias"
+            ],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
             "name": "customers",
             "side": "tenant",
             "columns": [
@@ -10045,6 +10115,7 @@
                 "code varchar(50)",
                 "name varchar(255)",
                 "phone varchar(50)",
+                "phone_normalized varchar(32)",
                 "email varchar(255)",
                 "address text",
                 "tax_number varchar(100)",
@@ -10091,6 +10162,10 @@
             "inferred_in": [
                 {
                     "table": "customer_addresses",
+                    "col": "customer_id"
+                },
+                {
+                    "table": "customer_uuid_aliases",
                     "col": "customer_id"
                 },
                 {
@@ -12891,6 +12966,266 @@
             "used_by_count": 48
         },
         {
+            "name": "edge_branch_authority_leases",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "branch_id bigint unsigned",
+                "device_public_uuid varchar(64)",
+                "holder varchar(10)",
+                "edge_state varchar(20)",
+                "heartbeat_seq bigint unsigned",
+                "last_heartbeat_at timestamp",
+                "lease_ttl_seconds int unsigned",
+                "expires_at timestamp",
+                "fenced_at timestamp",
+                "released_at timestamp",
+                "release_reason varchar(255)",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "EdgeBranchAuthorityLease"
+            ],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_inbound_purchase_return_ingestions",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "event_uuid char(26)",
+                "content_hash char(64)",
+                "envelope_schema_version varchar(64)",
+                "tenant_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "device_public_uuid varchar(64)",
+                "activation_epoch bigint unsigned",
+                "config_revision bigint unsigned",
+                "ingestion_uuid char(26)",
+                "status varchar(24)",
+                "failure_code varchar(64)",
+                "supplier_id bigint unsigned",
+                "goods_receipt_id bigint unsigned",
+                "purchase_return_id bigint unsigned",
+                "official_return_no varchar(64)",
+                "amount decimal(15,4)",
+                "ack_payload json",
+                "last_error text",
+                "ingested_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "tenant_id",
+                    "table": "tenants",
+                    "cross_db": true
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                },
+                {
+                    "col": "supplier_id",
+                    "table": "suppliers"
+                },
+                {
+                    "col": "goods_receipt_id",
+                    "table": "goods_receipts"
+                },
+                {
+                    "col": "purchase_return_id",
+                    "table": "purchase_returns"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "EdgeInboundPurchaseReturnIngestion"
+            ],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_inbound_return_ingestions",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "return_uuid char(26)",
+                "content_hash char(64)",
+                "envelope_schema_version varchar(64)",
+                "tenant_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "device_public_uuid varchar(64)",
+                "activation_epoch bigint unsigned",
+                "config_revision bigint unsigned",
+                "ingestion_uuid char(26)",
+                "status varchar(24)",
+                "failure_code varchar(64)",
+                "sales_order_id bigint unsigned",
+                "sales_return_id bigint unsigned",
+                "official_return_no varchar(64)",
+                "approval_audit json",
+                "ack_payload json",
+                "last_error text",
+                "ingested_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "tenant_id",
+                    "table": "tenants",
+                    "cross_db": true
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                },
+                {
+                    "col": "sales_order_id",
+                    "table": "sales_orders"
+                },
+                {
+                    "col": "sales_return_id",
+                    "table": "sales_returns"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "EdgeInboundReturnIngestion"
+            ],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_inbound_sale_ingestions",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "sale_uuid char(26)",
+                "content_hash char(64)",
+                "envelope_schema_version varchar(64)",
+                "tenant_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "device_public_uuid varchar(64)",
+                "activation_epoch bigint unsigned",
+                "config_revision bigint unsigned",
+                "ingestion_uuid char(26)",
+                "status varchar(24)",
+                "failure_code varchar(64)",
+                "ingested_sales_order_id bigint unsigned",
+                "official_sale_no varchar(64)",
+                "ack_payload json",
+                "last_error text",
+                "ingested_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "tenant_id",
+                    "table": "tenants",
+                    "cross_db": true
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                },
+                {
+                    "col": "ingested_sales_order_id",
+                    "table": "sales_orders"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "EdgeInboundSaleIngestion"
+            ],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_inbound_supplier_finance_ingestions",
+            "side": "tenant",
+            "columns": [
+                "id bigint unsigned",
+                "event_uuid char(26)",
+                "event_type varchar(48)",
+                "content_hash char(64)",
+                "envelope_schema_version varchar(64)",
+                "tenant_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "device_public_uuid varchar(64)",
+                "activation_epoch bigint unsigned",
+                "config_revision bigint unsigned",
+                "ingestion_uuid char(26)",
+                "status varchar(24)",
+                "failure_code varchar(64)",
+                "supplier_id bigint unsigned",
+                "supplier_payment_id bigint unsigned",
+                "journal_entry_id bigint unsigned",
+                "official_reference_no varchar(64)",
+                "amount decimal(15,4)",
+                "ack_payload json",
+                "last_error text",
+                "ingested_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "tenant_id",
+                    "table": "tenants",
+                    "cross_db": true
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches"
+                },
+                {
+                    "col": "supplier_id",
+                    "table": "suppliers"
+                },
+                {
+                    "col": "supplier_payment_id",
+                    "table": "supplier_payments"
+                },
+                {
+                    "col": "journal_entry_id",
+                    "table": "journal_entries"
+                }
+            ],
+            "domain": "Edge (offline)",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "EdgeInboundSupplierFinanceIngestion"
+            ],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
             "name": "expense_categories",
             "side": "tenant",
             "columns": [
@@ -13937,6 +14272,10 @@
             ],
             "inferred_in": [
                 {
+                    "table": "edge_inbound_purchase_return_ingestions",
+                    "col": "goods_receipt_id"
+                },
+                {
                     "table": "goods_receipt_revisions",
                     "col": "goods_receipt_id"
                 }
@@ -14549,6 +14888,10 @@
                 {
                     "table": "department_handovers",
                     "col": "payout_journal_entry_id"
+                },
+                {
+                    "table": "edge_inbound_supplier_finance_ingestions",
+                    "col": "journal_entry_id"
                 },
                 {
                     "table": "finished_good_receipts",
@@ -17430,8 +17773,61 @@
             "fk_in": [],
             "inferred_in": [],
             "models": [],
-            "used_by": [],
-            "used_by_count": 0
+            "used_by": [
+                {
+                    "route": "tenant.pos.store",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.pos.printing.retry",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.index",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.create",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.store",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.show",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.rider.update",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.cancel",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.index",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.create",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.store",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.show",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.api.manager-approvals.verify",
+                    "why": "via ManagerApprovalService"
+                }
+            ],
+            "used_by_count": 13
         },
         {
             "name": "model_has_roles",
@@ -17458,8 +17854,61 @@
             "fk_in": [],
             "inferred_in": [],
             "models": [],
-            "used_by": [],
-            "used_by_count": 0
+            "used_by": [
+                {
+                    "route": "tenant.pos.store",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.pos.printing.retry",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.index",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.create",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.store",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.show",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.rider.update",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.cancel",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.index",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.create",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.store",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.show",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.api.manager-approvals.verify",
+                    "why": "via ManagerApprovalService"
+                }
+            ],
+            "used_by_count": 13
         },
         {
             "name": "modifier_groups",
@@ -18367,8 +18816,61 @@
             ],
             "inferred_in": [],
             "models": [],
-            "used_by": [],
-            "used_by_count": 0
+            "used_by": [
+                {
+                    "route": "tenant.pos.store",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.pos.printing.retry",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.index",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.create",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.store",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.show",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.rider.update",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-orders.cancel",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.index",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.create",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.store",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.sales-returns.show",
+                    "why": "via ManagerApprovalService"
+                },
+                {
+                    "route": "tenant.api.manager-approvals.verify",
+                    "why": "via ManagerApprovalService"
+                }
+            ],
+            "used_by_count": 13
         },
         {
             "name": "pos_quick_report_settings",
@@ -24560,6 +25062,10 @@
             ],
             "inferred_in": [
                 {
+                    "table": "edge_inbound_purchase_return_ingestions",
+                    "col": "purchase_return_id"
+                },
+                {
                     "table": "supplier_credit_reallocations",
                     "col": "purchase_return_id"
                 }
@@ -24956,29 +25462,9 @@
                 {
                     "route": "tenant.finance.expenses.void",
                     "why": "via PurgedNumbers"
-                },
-                {
-                    "route": "tenant.finance.manual-journals.index",
-                    "why": "via PurgedNumbers"
-                },
-                {
-                    "route": "tenant.finance.manual-journals.create",
-                    "why": "via PurgedNumbers"
-                },
-                {
-                    "route": "tenant.finance.manual-journals.store",
-                    "why": "via PurgedNumbers"
-                },
-                {
-                    "route": "tenant.finance.manual-journals.show",
-                    "why": "via PurgedNumbers"
-                },
-                {
-                    "route": "tenant.finance.manual-journals.reverse",
-                    "why": "via PurgedNumbers"
                 }
             ],
-            "used_by_count": 14
+            "used_by_count": 9
         },
         {
             "name": "receipt_layout_settings",
@@ -28400,7 +28886,16 @@
                     "on_delete": "CASCADE"
                 }
             ],
-            "inferred_in": [],
+            "inferred_in": [
+                {
+                    "table": "edge_inbound_return_ingestions",
+                    "col": "sales_order_id"
+                },
+                {
+                    "table": "edge_inbound_sale_ingestions",
+                    "col": "ingested_sales_order_id"
+                }
+            ],
             "models": [
                 "SalesOrder"
             ],
@@ -29207,7 +29702,8 @@
                 "shift_id bigint unsigned",
                 "terminal_id bigint unsigned",
                 "submission_key varchar(64)",
-                "submission_hash char(64)"
+                "submission_hash char(64)",
+                "processing_shift_uuid char(26)"
             ],
             "fk_out": [
                 {
@@ -29244,7 +29740,12 @@
                     "on_delete": "CASCADE"
                 }
             ],
-            "inferred_in": [],
+            "inferred_in": [
+                {
+                    "table": "edge_inbound_return_ingestions",
+                    "col": "sales_return_id"
+                }
+            ],
             "models": [
                 "SalesReturn"
             ],
@@ -32492,7 +32993,12 @@
             ],
             "domain": "Purchasing",
             "fk_in": [],
-            "inferred_in": [],
+            "inferred_in": [
+                {
+                    "table": "edge_inbound_supplier_finance_ingestions",
+                    "col": "supplier_payment_id"
+                }
+            ],
             "models": [
                 "SupplierPayment"
             ],
@@ -32779,6 +33285,14 @@
                 }
             ],
             "inferred_in": [
+                {
+                    "table": "edge_inbound_purchase_return_ingestions",
+                    "col": "supplier_id"
+                },
+                {
+                    "table": "edge_inbound_supplier_finance_ingestions",
+                    "col": "supplier_id"
+                },
                 {
                     "table": "purchase_bill_return_nettings",
                     "col": "supplier_id"
@@ -34038,26 +34552,6 @@
             ],
             "used_by": [
                 {
-                    "route": "tenant.pos.index",
-                    "why": "via UnitConversionService"
-                },
-                {
-                    "route": "tenant.api.pos.totals.quote",
-                    "why": "via UnitConversionService"
-                },
-                {
-                    "route": "tenant.api.pos.bill-preview",
-                    "why": "via UnitConversionService"
-                },
-                {
-                    "route": "tenant.api.pos.table-board",
-                    "why": "via UnitConversionService"
-                },
-                {
-                    "route": "tenant.api.pos.recent-sales",
-                    "why": "via UnitConversionService"
-                },
-                {
                     "route": "tenant.unit-conversions.index",
                     "why": "model UnitConversion"
                 },
@@ -34074,7 +34568,7 @@
                     "why": "model UnitConversion"
                 }
             ],
-            "used_by_count": 9
+            "used_by_count": 4
         },
         {
             "name": "units",
@@ -34466,7 +34960,7 @@
                 },
                 {
                     "route": "tenant.pos.index",
-                    "why": "via UnitConversionService"
+                    "why": "via PackUnits"
                 },
                 {
                     "route": "tenant.pos.store",
@@ -34554,19 +35048,19 @@
                 },
                 {
                     "route": "tenant.api.pos.totals.quote",
-                    "why": "via UnitConversionService"
+                    "why": "via PackUnits"
                 },
                 {
                     "route": "tenant.api.pos.bill-preview",
-                    "why": "via UnitConversionService"
+                    "why": "via PackUnits"
                 },
                 {
                     "route": "tenant.api.pos.table-board",
-                    "why": "via UnitConversionService"
+                    "why": "via PackUnits"
                 },
                 {
                     "route": "tenant.api.pos.recent-sales",
-                    "why": "via UnitConversionService"
+                    "why": "via PackUnits"
                 },
                 {
                     "route": "tenant.api.pos.table-sessions.open-orders",
@@ -37491,6 +37985,88 @@
             "used_by_count": 2
         },
         {
+            "name": "edge_backup_recovery_audits",
+            "side": "master",
+            "columns": [
+                "id bigint unsigned",
+                "tenant_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "action varchar(32)",
+                "outcome varchar(16)",
+                "key_id varchar(40)",
+                "actor varchar(190)",
+                "detail varchar(190)",
+                "ip varchar(45)",
+                "created_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "tenant_id",
+                    "table": "tenants"
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches",
+                    "cross_db": true
+                },
+                {
+                    "col": "key_id",
+                    "table": "(external id)"
+                }
+            ],
+            "domain": "Bingoo Master",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "EdgeBackupRecoveryAudit"
+            ],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
+            "name": "edge_backup_recovery_keys",
+            "side": "master",
+            "columns": [
+                "id bigint unsigned",
+                "tenant_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "key_id varchar(40)",
+                "key_ciphertext text",
+                "status varchar(16)",
+                "issued_by varchar(190)",
+                "issue_reason varchar(190)",
+                "retire_reason varchar(190)",
+                "retired_at timestamp",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "tenant_id",
+                    "table": "tenants"
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches",
+                    "cross_db": true
+                },
+                {
+                    "col": "key_id",
+                    "table": "(external id)"
+                }
+            ],
+            "domain": "Bingoo Master",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "EdgeBackupRecoveryKey"
+            ],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
             "name": "edge_bootstrap_snapshot_sections",
             "side": "master",
             "columns": [
@@ -37535,6 +38111,7 @@
                 "status varchar(20)",
                 "source_revision varchar(64)",
                 "activation_epoch bigint unsigned",
+                "config_revision bigint unsigned",
                 "manifest_hash char(64)",
                 "section_summary json",
                 "generated_at timestamp",
@@ -37616,6 +38193,39 @@
             "used_by_count": 0
         },
         {
+            "name": "edge_branch_config_revisions",
+            "side": "master",
+            "columns": [
+                "id bigint unsigned",
+                "tenant_id bigint unsigned",
+                "branch_id bigint unsigned",
+                "revision bigint unsigned",
+                "source_revision varchar(128)",
+                "created_at timestamp",
+                "updated_at timestamp"
+            ],
+            "fk_out": [],
+            "inferred_out": [
+                {
+                    "col": "tenant_id",
+                    "table": "tenants"
+                },
+                {
+                    "col": "branch_id",
+                    "table": "branches",
+                    "cross_db": true
+                }
+            ],
+            "domain": "Bingoo Master",
+            "fk_in": [],
+            "inferred_in": [],
+            "models": [
+                "EdgeBranchConfigRevision"
+            ],
+            "used_by": [],
+            "used_by_count": 0
+        },
+        {
             "name": "edge_devices",
             "side": "master",
             "columns": [
@@ -37628,8 +38238,12 @@
                 "device_secret_hash varchar(64)",
                 "status varchar(32)",
                 "active_slot tinyint unsigned",
-                "app_version varchar(40)",
-                "schema_version varchar(40)",
+                "app_version varchar(64)",
+                "schema_version varchar(64)",
+                "compatibility_manifest json",
+                "compatibility_reported_at timestamp",
+                "build_reported_hash char(64)",
+                "build_reported_at timestamp",
                 "paired_at timestamp",
                 "last_authenticated_at timestamp",
                 "revoked_at timestamp",
@@ -41123,11 +41737,39 @@
             ],
             "inferred_in": [
                 {
+                    "table": "edge_inbound_purchase_return_ingestions",
+                    "col": "tenant_id"
+                },
+                {
+                    "table": "edge_inbound_return_ingestions",
+                    "col": "tenant_id"
+                },
+                {
+                    "table": "edge_inbound_sale_ingestions",
+                    "col": "tenant_id"
+                },
+                {
+                    "table": "edge_inbound_supplier_finance_ingestions",
+                    "col": "tenant_id"
+                },
+                {
+                    "table": "edge_backup_recovery_audits",
+                    "col": "tenant_id"
+                },
+                {
+                    "table": "edge_backup_recovery_keys",
+                    "col": "tenant_id"
+                },
+                {
                     "table": "edge_bootstrap_snapshots",
                     "col": "tenant_id"
                 },
                 {
                     "table": "edge_branch_activations",
+                    "col": "tenant_id"
+                },
+                {
+                    "table": "edge_branch_config_revisions",
                     "col": "tenant_id"
                 },
                 {
@@ -47959,10 +48601,9 @@
                 "terminals",
                 "terminal_printer_settings",
                 "users",
-                "units",
-                "unit_conversions",
                 "product_pack_units",
                 "product_barcodes",
+                "units",
                 "tenants",
                 "shifts"
             ]
@@ -47996,6 +48637,9 @@
                 "modifiers",
                 "sales_ledgers",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
@@ -48033,6 +48677,9 @@
                 "modifiers",
                 "sales_ledgers",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
@@ -48217,6 +48864,9 @@
                 "modifiers",
                 "sales_ledgers",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
@@ -48254,6 +48904,9 @@
                 "modifiers",
                 "sales_ledgers",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
@@ -48291,6 +48944,9 @@
                 "modifiers",
                 "sales_ledgers",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
@@ -48328,6 +48984,9 @@
                 "modifiers",
                 "sales_ledgers",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
@@ -48365,6 +49024,9 @@
                 "modifiers",
                 "sales_ledgers",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
@@ -48402,6 +49064,9 @@
                 "modifiers",
                 "sales_ledgers",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "print_jobs",
                 "kot_batches",
                 "sales_order_line_cancellations",
@@ -48448,6 +49113,9 @@
                 "users",
                 "tenants",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "product_barcodes",
                 "units",
                 "restaurant_tables",
@@ -48479,6 +49147,9 @@
                 "users",
                 "tenants",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "product_barcodes",
                 "units",
                 "restaurant_tables",
@@ -48510,6 +49181,9 @@
                 "users",
                 "tenants",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "product_barcodes",
                 "units",
                 "restaurant_tables",
@@ -48541,6 +49215,9 @@
                 "users",
                 "tenants",
                 "manager_pins",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles",
                 "product_barcodes",
                 "units",
                 "restaurant_tables",
@@ -49364,10 +50041,9 @@
                 "terminals",
                 "terminal_printer_settings",
                 "users",
-                "units",
-                "unit_conversions",
                 "product_pack_units",
                 "product_barcodes",
+                "units",
                 "tenants",
                 "shifts"
             ]
@@ -49400,10 +50076,9 @@
                 "terminals",
                 "terminal_printer_settings",
                 "users",
-                "units",
-                "unit_conversions",
                 "product_pack_units",
                 "product_barcodes",
+                "units",
                 "tenants",
                 "shifts"
             ]
@@ -49436,10 +50111,9 @@
                 "terminals",
                 "terminal_printer_settings",
                 "users",
-                "units",
-                "unit_conversions",
                 "product_pack_units",
                 "product_barcodes",
+                "units",
                 "tenants",
                 "shifts"
             ]
@@ -49544,10 +50218,9 @@
                 "terminals",
                 "terminal_printer_settings",
                 "users",
-                "units",
-                "unit_conversions",
                 "product_pack_units",
                 "product_barcodes",
+                "units",
                 "tenants",
                 "shifts"
             ]
@@ -50810,7 +51483,10 @@
             "tables": [
                 "manager_approvals",
                 "manager_pins",
-                "sales_orders"
+                "sales_orders",
+                "permissions",
+                "model_has_permissions",
+                "model_has_roles"
             ]
         },
         {
@@ -52312,8 +52988,7 @@
                 "purchasing_settings",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments",
-                "purged_numbers"
+                "supplier_payments"
             ]
         },
         {
@@ -52333,8 +53008,7 @@
                 "purchasing_settings",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments",
-                "purged_numbers"
+                "supplier_payments"
             ]
         },
         {
@@ -52354,8 +53028,7 @@
                 "purchasing_settings",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments",
-                "purged_numbers"
+                "supplier_payments"
             ]
         },
         {
@@ -52375,8 +53048,7 @@
                 "purchasing_settings",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments",
-                "purged_numbers"
+                "supplier_payments"
             ]
         },
         {
@@ -52396,8 +53068,7 @@
                 "purchasing_settings",
                 "supplier_credit_allocations",
                 "supplier_ledgers",
-                "supplier_payments",
-                "purged_numbers"
+                "supplier_payments"
             ]
         },
         {
