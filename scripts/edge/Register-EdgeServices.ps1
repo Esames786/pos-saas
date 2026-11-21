@@ -15,13 +15,21 @@
 #   .\Register-EdgeServices.ps1 -Action Start     -PlanFile ...
 #   .\Register-EdgeServices.ps1 -Action Status    -PlanFile ...
 #   .\Register-EdgeServices.ps1 -Action Unregister -PlanFile ...  # removes the tasks only; DB/outbox/backups untouched
+#
+# EDGE 0.9 (auto-update): -Exclude <task names> leaves those tasks alone (the updater never stops itself); -KeepEnabled makes
+# Stop/Start only stop/run the tasks (no Disable/Enable - that needs write rights the service account does not hold). Register
+# grants the SERVICE ACCOUNT read+run rights on each Bingoo task's security descriptor (never another principal, never SYSTEM),
+# so the BingooEdgeUpdater task - running as that same account - can stop / start the others around a runtime switch.
 param(
     [Parameter(Mandatory = $true)][ValidateSet('Register', 'Start', 'Stop', 'Unregister', 'Status')][string]$Action,
     [Parameter(Mandatory = $true)][string]$PlanFile,
     [string]$ServiceAccount = 'NT AUTHORITY\LOCAL SERVICE',
     [switch]$CurrentUser,
     [switch]$NoGateway,
-    [int]$StopWaitSeconds = 150
+    [int]$StopWaitSeconds = 150,
+    [string[]]$Exclude = @(),
+    [switch]$KeepEnabled,
+    [switch]$NoTaskControlGrant
 )
 $ErrorActionPreference = 'Stop'
 
@@ -66,12 +74,30 @@ function Register-EdgeTask($name, $exe, $arguments, $workdir, $task) {
     $action = New-ScheduledTaskAction -Execute $exe -Argument $arguments -WorkingDirectory $workdir
     Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
     Register-ScheduledTask -TaskName $name -Action $action -Trigger (New-EdgeTrigger $task) -Settings (New-EdgeSettings) -Principal (New-EdgePrincipal) | Out-Null
+    Grant-EdgeTaskControl $name
     Write-Host ("  registered {0,-28} {1} {2}" -f $name, (Split-Path $exe -Leaf), $arguments)
 }
 
-$tasks = @($plan.tasks)
+$tasks = @($plan.tasks | Where-Object { $Exclude -notcontains [string]$_.name })
 $gateway = $plan.gateway
-$gatewayEnabled = (-not $NoGateway) -and $gateway -and (Test-Path ([string]$gateway.executable))
+$gatewayEnabled = (-not $NoGateway) -and $gateway -and (Test-Path ([string]$gateway.executable)) -and ($Exclude -notcontains [string]$gateway.name)
+
+# EDGE 0.9 - let the service account (and only it) read + run/stop the Bingoo tasks, so the auto-updater (same account) can
+# restart them after a verified runtime switch. GRGX on the task's own DACL; the task principal is never changed.
+function Grant-EdgeTaskControl($name) {
+    if ($NoTaskControlGrant -or $CurrentUser) { return }
+    try {
+        $sid = (New-Object System.Security.Principal.NTAccount($ServiceAccount)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+        $svc = New-Object -ComObject 'Schedule.Service'
+        $svc.Connect()
+        $task = $svc.GetFolder('\').GetTask($name)
+        $sddl = [string]$task.GetSecurityDescriptor(4)   # DACL_SECURITY_INFORMATION
+        $ace = "(A;;GRGX;;;$sid)"
+        if ($sddl.IndexOf($ace) -lt 0) { $task.SetSecurityDescriptor($sddl + $ace, 0) }
+    } catch {
+        Write-Warning "Could not grant $ServiceAccount run/stop rights on [$name] (auto-update restarts need it): $($_.Exception.Message)"
+    }
+}
 
 switch ($Action) {
     'Register' {
@@ -88,8 +114,8 @@ switch ($Action) {
         Write-Host 'Services registered and started.'
     }
     'Start' {
-        foreach ($t in $tasks) { Enable-ScheduledTask -TaskName $t.name -ErrorAction SilentlyContinue | Out-Null; Start-ScheduledTask -TaskName $t.name }
-        if ($gatewayEnabled) { Enable-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue | Out-Null; Start-ScheduledTask -TaskName $gateway.name }
+        foreach ($t in $tasks) { if (-not $KeepEnabled) { Enable-ScheduledTask -TaskName $t.name -ErrorAction SilentlyContinue | Out-Null }; Start-ScheduledTask -TaskName $t.name }
+        if ($gatewayEnabled) { if (-not $KeepEnabled) { Enable-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue | Out-Null }; Start-ScheduledTask -TaskName $gateway.name }
         Write-Host 'Services started.'
     }
     'Stop' {
@@ -103,13 +129,13 @@ switch ($Action) {
         }
         foreach ($t in $tasks) {
             Stop-ScheduledTask -TaskName $t.name -ErrorAction SilentlyContinue
-            Disable-ScheduledTask -TaskName $t.name -ErrorAction SilentlyContinue | Out-Null
+            if (-not $KeepEnabled) { Disable-ScheduledTask -TaskName $t.name -ErrorAction SilentlyContinue | Out-Null }
         }
         if ($gatewayEnabled) {
             Stop-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue
-            Disable-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue | Out-Null
+            if (-not $KeepEnabled) { Disable-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue | Out-Null }
         }
-        Write-Host 'Services stopped and disabled (Start re-enables them).'
+        Write-Host $(if ($KeepEnabled) { 'Services stopped (left enabled).' } else { 'Services stopped and disabled (Start re-enables them).' })
     }
     'Unregister' {
         foreach ($t in $tasks) {

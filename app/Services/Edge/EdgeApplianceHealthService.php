@@ -72,7 +72,10 @@ class EdgeApplianceHealthService
             'gateway' => $gateway,
             'layout' => $layout,
             'print_architecture' => (array) config('edge.print_architecture'),
-            'auto_failover_enabled' => false, // supervised takeover only (locked)
+            // EDGE 0.9: the EFFECTIVE optional Automatic Offline Takeover (Cloud branch setting AND appliance kill switch; default
+            // off). The takeover itself is always the engine's; this only reports whether the automatic trigger may call it.
+            'auto_failover_enabled' => $this->autoTakeover()['enabled'],
+            'auto_takeover' => $this->autoTakeover(),
         ];
     }
 
@@ -239,8 +242,20 @@ class EdgeApplianceHealthService
             'gates' => $gates,
             'handback_blockers' => $blockers,
             'require_confirmation' => (bool) config('edge.authority.require_confirmation', true),
-            'auto_failover' => false,
+            'auto_failover' => $this->autoTakeover()['enabled'],
+            'auto_takeover' => $this->autoTakeover(),
         ];
+    }
+
+    /** EDGE 0.9 — the optional Automatic Offline Takeover state (effective enabled, after N s, kill switch, last decision). */
+    private function autoTakeover(): array
+    {
+        try {
+            return app(\App\Services\Edge\AutoTakeover\AutoTakeoverEvaluator::class)->status();
+        } catch (Throwable) {
+            return ['cloud_enabled' => false, 'allowed' => false, 'enabled' => false, 'after_seconds' => \App\Services\Edge\AutoTakeover\AutoTakeoverEvaluator::DEFAULT_AFTER,
+                'last_decision' => null, 'last_reasons' => null, 'last_decision_at' => null, 'cloud_skew_seconds' => null];
+        }
     }
 
     private function freshness(?EdgeLocalMeta $meta, array &$problems): array
