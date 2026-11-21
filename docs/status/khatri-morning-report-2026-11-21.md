@@ -61,12 +61,26 @@ EDGE_PACKAGE=0.8.3-edge HELD and immutable (manifest e62976f1…, package_hash 6
 SIGNED_RELEASE_NEEDED=YES for the buttons at Khatri — the owner-control UI lives in the appliance code; the held 0.8.3 has no buttons
   (CLI only). Either install 0.8.3 (held, LAB-rehearsed) or 0.8.4 (buttons; needs the owner's separate installation approval and the
   D-D LAB certification on the same package).
-PRODUCTION_DEPLOYMENT=NOT PERFORMED — DEPLOYMENT_READY. The authorization could not be verified unambiguously: "I have given you
-  permission to deploy and post deploy check" (owner, ~04:00) was followed by "obtain the owner's explicit final production deployment
-  approval… do not automatically deploy when the suite completes" and "if the previous approval cannot be verified unambiguously, stop at
-  DEPLOYMENT_READY"; the change set also grew after that permission (owner-control UI, shared-view fixes). Nothing on production moved.
-POST_DEPLOY_HEALTH=n/a (not deployed). Prepared: runbook step 1.6 (login 200, Edge API 401 without device, log ERROR delta vs the
-  20-line baseline, migrate:status 0 pending, Khatri POS + one real print unchanged).
+PRODUCTION_DEPLOYMENT=DONE 21 Nov 05:33–05:35 PKT on the owner's "OWNER AUTHORIZATION: DEPLOY NOW" (limited to candidate 35684723;
+  gates re-verified green, migration plan matched the 11 reviewed files before launch — fail-closed script). Merge dc0babbf
+  ("Merge KHATRI-CLOUD-EDGE: …", candidate code 35684723 + docs 9a6c79e8, SAME file set as the candidate) pushed to
+  feat/14d-2-plan-upgrade-requests; server fast-forwarded be3693e4 → dc0babbf via deploy.sh (detached, log
+  /root/deploy-khatri-edge-2026-11-21-0533.log, copy in evidence\khatri-cloud-deploy-20261121\). Backups BEFORE: tenants:backup
+  storage/app/private/backups/20261121_044508/ (master + 13 tenant .sql + storage.tar.gz, 1004 MB, manifest) + master mysqldump
+  /var/backups/khatri-edge-master-2026-11-21-0457.sql.gz (gzip -t ok). Migrations: master 4 DONE (edge_branch_config_revisions,
+  edge_devices compat columns, edge_backup_recovery tables, edge_devices widen), each of the 13 tenants holds the 7 new rows
+  (verified in every tenant DB); "tenants ok=13 skipped=0"; migrate:status 0 pending; DEPLOY COMPLETE. Rollback remains
+  `git reset --hard be3693e4 && bash deploy.sh` (tables stay inert).
+POST_DEPLOY_HEALTH=GREEN at 05:38: 13/13 tenant /login 200; Khatri /pos 302 (auth), /settings/offline-edge 302 (auth, gate off);
+  Edge API on bingoopos.com/api/edge: authority/heartbeat 401, compatibility/report 401 (device auth), pair 422 on an empty body;
+  ERROR lines today 12 = the pre-deploy baseline (kashifkitchen jobs table, pre-existing); php-fpm + nginx active, queue:work running;
+  EDGE_FEATURE_ENABLED=false; offline_edge pivot: khatri_restaurant is_enabled=0 (unchanged since Aug), the two plans that had it
+  enabled since Aug unchanged, 204 pivot rows before and after (MasterSeeder re-touched updated_at on 4 unrelated disabled rows, values
+  unchanged); master modules/plans/permissions/roles/users/tenants/subscriptions: 0 rows created or updated. Khatri tenant: 0 rows
+  created/updated in permissions, roles, users, sales_orders, customers, customer_addresses, sales_returns (the 7 tenant.offline-edge.*
+  permissions already existed; Owner role holds them, no other role); customers.phone_normalized backfilled 1727/1731 (derived column,
+  updated_at untouched). Not verifiable at 05:38 (shop closed): a live sale and a live print — last sale 20 Nov 20:43, last print job
+  20:52, print agent "dinein" last seen 21:44; the owner does runbook 1.7 at opening.
 KHATRI_USB_KIT=C:\Users\Dell\.bingoo-edge-release\kits\khatri-20261121\ — BingooEdge-0.8.3-edge\ (held, unchanged), BingooEdge-0.8.4-edge-
   CANDIDATE\, mysql\ (8.0.30 binaries + my.ini.template + README-MYSQL.md), site-survey\Khatri-NetSurvey.ps1, docs\ (morning sheet,
   one-page, install worksheet, operator instructions, enablement procedure, deployment-day runbook, pilot plan, printer pre-flight,
@@ -78,13 +92,13 @@ KHATRI_SITE_CHECKLIST=docs\KHATRI-MORNING-ONE-PAGE.md (kit) = docs/status/khatri
 MORNING_INSTALL_READY=SURVEY + PC PREP: yes (read-only survey, printers 9100 connect-only, Cloud 443, MySQL 8 from the kit, reserved IP,
   CA/cert, firewall, cashier trust — each host change on your GO). APPLIANCE INSTALL/PAIRING: NO until the Cloud deployment (production
   has only pair + bootstrap endpoints today) and the Khatri offline_edge enablement (D-B, your GO).
-BLOCKERS=1) your unambiguous "DEPLOY NOW" for the candidate 35684723 (or the pre-UI f4e0cd95 state) — the clean full-suite line is in
-  the GO/NO-GO, no new red; 2) Khatri offline_edge enablement + EDGE_FEATURE_ENABLED (D-B, your GO); 3) which package goes to Khatri
+BLOCKERS=1) DONE — deployed (see PRODUCTION_DEPLOYMENT); 2) Khatri offline_edge enablement + EDGE_FEATURE_ENABLED (D-B, your GO); 3) which package goes to Khatri
   (0.8.3 held vs 0.8.4 buttons) + the D-D LAB certification before any real takeover; 4) PC host changes on site (MySQL, IP, cert,
   firewall) on your GO; 5) operators named by you (none assigned).
-NEXT_OWNER_ACTION=read docs/status/khatri-cloud-edge-go-no-go-2026-11-21.md (final suite line) → say "DEPLOY NOW" (runbook phase 1, ~20
-  min, Cloud-first, backups verified, post-checks) → "ENABLE KHATRI" (phase 2) → choose 0.8.3 or 0.8.4 for the install → at the shop:
-  one-page checklist, then phases 3–5 of the deployment-day runbook. No takeover today.
+NEXT_OWNER_ACTION=say "ENABLE KHATRI" → runbook 2.1 (EDGE_FEATURE_ENABLED=true) + the enrollment signing key (enablement procedure →
+  "Enrollment signing key"; you receive the PUBLIC value) + 2.2 (offline_edge on khatri_restaurant only) + 2.3; then at opening do
+  runbook 1.7 (POS + one real print); at the shop follow docs/status/khatri-onsite-install-steps-084-2026-11-21.md (0.8.4, real
+  installer parameters) — phases 3–5 of the runbook are superseded by that file where they differ. No takeover today.
 ```
 
 Agent outputs: C (operator readiness) → docs/operator-khatri/ + kit operator\; D (package/printer/site) → evidence
