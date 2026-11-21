@@ -409,7 +409,7 @@ switch ($step) {
         $migs = pdo()->query("SELECT migration FROM migrations WHERE migration LIKE '2026_11_2%' ORDER BY migration")->fetchAll(PDO::FETCH_COLUMN);
         [$c, $o] = edge(['edge:local:authority-worker', '--max-ticks=3', '--interval=3'], 300);
         $mirror = [];
-        foreach (['edge_mirror_shifts', 'edge_mirror_open_orders', 'edge_mirror_held_sales', 'edge_mirror_orders', 'edge_mirror_table_sessions'] as $t) {
+        foreach (['edge_mirror_shifts', 'edge_mirror_table_sessions', 'edge_mirror_table_orders', 'edge_mirror_held_sales', 'edge_mirror_order_lines'] as $t) {
             try {
                 $mirror[$t] = (int) pdo()->query("SELECT COUNT(*) FROM `{$t}`")->fetchColumn();
             } catch (Throwable) {
@@ -449,6 +449,41 @@ switch ($step) {
         $name = 'tick-' . date('His') . '.json';
         evid($name, ['exit' => $code, 'seconds' => time() - $t0, 'pointer' => pointer(), 'result' => $doc]);
         say("auto-update exit {$code} in " . (time() - $t0) . ' s, pointer ' . pointer() . ': ' . json_encode(array_intersect_key($doc, array_flip(['result', 'version', 'code', 'message', 'rollback', 'reasons']))) . " -> evidence {$name}");
+        break;
+
+    case 'verify':
+        // Post-step proof: pointer, health, data survival against the 0.9.0 baseline, 0.9 migrations, the CP4 probe table, PIN
+        // logins, the live-state mirror, authority, and the Cloud's view of the device.
+        $label = $argv[2] ?? 'verify';
+        $base = json_decode((string) @file_get_contents(EVID . '\state-090.json'), true) ?: [];
+        $h = health();
+        $fp = survivalFingerprint();
+        $p = pdo();
+        $migs = $p->query("SELECT migration FROM migrations WHERE migration LIKE '2026_11_2%' ORDER BY migration")->fetchAll(PDO::FETCH_COLUMN);
+        $probe = (bool) $p->query("SHOW TABLES LIKE 'edge_cp4_probe'")->fetchColumn();
+        $mirror = [];
+        foreach (['edge_mirror_shifts', 'edge_mirror_table_sessions', 'edge_mirror_table_orders', 'edge_mirror_held_sales', 'edge_mirror_order_lines'] as $t) {
+            $mirror[$t] = (int) $p->query("SELECT COUNT(*) FROM `{$t}`")->fetchColumn();
+        }
+        $auth = $p->query('SELECT authority_state FROM edge_local_meta LIMIT 1')->fetchColumn();
+        $s = cloudState();
+        $pins = pins();
+        $logins = [];
+        foreach (array_values($s['users']) as $i => $uid) {
+            $logins[$s['employee_codes'][$i]] = pinLogin($s['employee_codes'][$i], $pins[$uid])['ok'] ?? false;
+        }
+        [$c, $dev] = cloud(['device']);
+        $dev = lastJson($dev);
+        $baseSurvival = $base['after']['survival'] ?? null;
+        $doc = ['label' => $label, 'at' => date('c'), 'pointer' => pointer(), 'version' => $h['runtime']['edge_app_version'] ?? null, 'status' => $h['status'] ?? null,
+            'problems' => $h['problems'] ?? null, 'authority_state' => $auth, 'device_id' => envValue('EDGE_SYNC_DEVICE_ID'),
+            'same_device_as_090' => ($base['after']['device_id'] ?? null) === envValue('EDGE_SYNC_DEVICE_ID'),
+            'survival_equal_to_090' => $baseSurvival !== null ? array_diff_key($baseSurvival, ['edge_local_meta' => 1]) == array_diff_key($fp, ['edge_local_meta' => 1]) : null,
+            'migrations_0_9' => $migs, 'probe_table_exists' => $probe, 'mirror_counts' => $mirror, 'pin_logins' => $logins,
+            'cloud_device' => array_intersect_key((array) ($dev['device'] ?? []), array_flip(['public_uuid', 'status', 'app_version', 'reported_version', 'install_phase', 'update_now_requested_at', 'maintenance_window_start', 'maintenance_window_end'])),
+            'auto_update_status' => lastJson(edge(['edge:local:auto-update', '--status', '--json'])[1]), 'survival' => $fp];
+        evid("verify-{$label}.json", $doc);
+        say("verify {$label}: " . json_encode(array_diff_key($doc, ['survival' => 1, 'auto_update_status' => 1, 'at' => 1])));
         break;
 
     case 'edge':
