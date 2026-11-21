@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-11-21T13:48:30+00:00",
+    "built_at": "2026-11-21T16:08:53+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "dc0babbf",
     "work": [
@@ -24,10 +24,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-e09-b",
             "branch": "edge09/b-wizard",
-            "head": "6353bca0",
+            "head": "e580d6ba",
             "behind_prod": 0,
-            "ahead_of_prod": 24,
-            "last_commit": "2026-11-21\u00b7edge09(B): apply the stream C contract (c305c5a7) - restrictions-borne auto-takeover setting, K2/K3/K4/K5/K6 details",
+            "ahead_of_prod": 64,
+            "last_commit": "2026-11-21\u00b7test(edge 0.9 CP4): verify step takes an explicit survival baseline (after the supervised seed correction)",
             "uncommitted_files": 0
         },
         {
@@ -60,11 +60,11 @@
         {
             "path": "D:/laragon2/www/pos-saas-e09-integ",
             "branch": "edge09/integ",
-            "head": "594aeb0e",
+            "head": "e580d6ba",
             "behind_prod": 0,
-            "ahead_of_prod": 57,
-            "last_commit": "2026-11-21\u00b7Merge edge09/c-cloud follow-up (K6 approved plan hashes, K2b fresh pairing code) into the 0.9 integration",
-            "uncommitted_files": 1
+            "ahead_of_prod": 64,
+            "last_commit": "2026-11-21\u00b7test(edge 0.9 CP4): verify step takes an explicit survival baseline (after the supervised seed correction)",
+            "uncommitted_files": 3
         },
         {
             "path": "D:/laragon2/www/pos-saas-edge",
@@ -464,7 +464,7 @@
             "modified": "2026-11-21"
         }
     ],
-    "git": "594aeb0e",
+    "git": "e580d6ba",
     "source": {
         "tenant_db": "pos_sysmap_e09_tenant",
         "master_db": "pos_test_master_e09i"

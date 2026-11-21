@@ -9,7 +9,8 @@ use App\Services\Edge\EdgeUpdateInstaller;
  * version dir → D7 plan check against the approved hash → atomic pointer switch → schema upgrade in the NEW runtime →
  * pointer revert on a schema failure), with its two designated seams filled for an unattended appliance:
  *
- *   stopWorkers()  — called after the verified pre-update backup, before staging: stop every task but the updater;
+ *   stopWorkers()  — called after staging, the staged re-verify and the D7 plan check, right before the pointer switch: stop
+ *                    every task but the updater (the standby appliance keeps heartbeating through the long copy);
  *   startWorkers() — called after a successful schema upgrade: re-render the plan with the NEW runtime and start the tasks.
  *
  * Nothing in the base class is changed or bypassed; the callbacks are set by EdgeAutoUpdateApplier per run.
@@ -35,10 +36,11 @@ class EdgeAutoUpdateInstaller extends EdgeUpdateInstaller
 
     protected function stopWorkers(): void
     {
+        // Set BEFORE the callback: a stop that fails half-way still makes the applier restart the previous runtime.
+        $this->workersStopped = true;
         if ($this->onStop !== null) {
             ($this->onStop)();
         }
-        $this->workersStopped = true;
     }
 
     protected function startWorkers(): void

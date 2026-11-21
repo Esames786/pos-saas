@@ -255,6 +255,63 @@ class EdgeUpdatePlanHashMySqlTest extends MySqlTenantTestCase
         $this->assertSame('UPDATE_MIGRATION_PLAN_BLOCKED', $this->lastAudit()->failure_code);
     }
 
+    public function test_workers_stop_only_after_staging_and_the_plan_check_right_before_the_switch(): void
+    {
+        // EDGE 0.9 CP4: the copy must not run with the workers stopped (a standby appliance would stop heartbeating and the
+        // Cloud would pause the Online POS); a refused plan must never stop them at all.
+        $art = $this->makeArtifact();
+        $plan = $this->samplePlan();
+        $root = $this->installRoot;
+        $make = function (array $plan) use ($root) {
+            return new class(app(EdgeUpdateVerifier::class), app(EdgeUpdatePackageService::class), app(EdgeBackupService::class), $plan, $root) extends EdgeUpdateInstaller {
+                public array $events = [];
+
+                public function __construct(EdgeUpdateVerifier $v, EdgeUpdatePackageService $p, EdgeBackupService $b, private array $plan, private string $root)
+                {
+                    parent::__construct($v, $p, $b);
+                }
+
+                protected function migrationPlan(string $runtimeDir): array
+                {
+                    $this->events[] = 'plan:' . (is_dir($runtimeDir) ? 'staged' : 'missing');
+
+                    return $this->plan;
+                }
+
+                protected function applySchemaUpgrade(string $versionDir): string
+                {
+                    $this->events[] = 'schema';
+
+                    return (string) config('edge.config_schema');
+                }
+
+                protected function stopWorkers(): void
+                {
+                    $this->events[] = 'stop:current=' . trim((string) file_get_contents($this->root . DIRECTORY_SEPARATOR . 'current'));
+                }
+
+                protected function startWorkers(): void
+                {
+                    $this->events[] = 'start:current=' . trim((string) file_get_contents($this->root . DIRECTORY_SEPARATOR . 'current'));
+                }
+            };
+        };
+
+        $refused = $make($plan);
+        try {
+            $refused->install($this->package($art), $art, 'supervisor:test');   // no approved hash → unconfirmed
+            $this->fail('must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('UPDATE_MIGRATION_PLAN_UNCONFIRMED', $e->getMessage());
+        }
+        $this->assertSame(['plan:staged'], $refused->events, 'a refused plan never stops the workers');
+
+        $ok = $make($plan);
+        $ok->install($this->package($art), $art, 'supervisor:test', $plan['plan_hash']);
+        $this->assertSame(['plan:staged', 'stop:current=0.1.0-edge', 'schema', 'start:current=0.2.0-edge'], $ok->events,
+            'staged + planned with the workers running; stopped on the OLD pointer right before the switch; started on the new one');
+    }
+
     public function test_an_empty_plan_needs_no_hash(): void
     {
         $art = $this->makeArtifact();
