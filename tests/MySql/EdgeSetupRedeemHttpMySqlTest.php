@@ -218,6 +218,21 @@ class EdgeSetupRedeemHttpMySqlTest extends MySqlTenantTestCase
         $this->redeem($code)->assertOk();
     }
 
+    /** CP5 pre-flight (22 Nov 2026): the redeem's cloud_url keeps a non-default port of app.url on the central host. */
+    public function test_redeem_advertises_the_central_url_with_a_non_default_port_and_production_unchanged(): void
+    {
+        $central = (string) config('tenancy.central_domain');
+        config(['app.url' => 'http://' . $central . ':9831']);
+        ['code' => $code] = $this->createCode($this->branchA);
+        $this->redeem($code)->assertOk()->assertJsonPath('cloud_url', 'http://' . $central . ':9831');
+
+        app(SetupSessionService::class)->cancel(Tenant::findOrFail($this->tenantId), $this->branchA, $this->users['owner']);
+        DB::connection('master')->table('edge_pairing_codes')->where('tenant_id', $this->tenantId)->update(['active_slot' => null, 'cancelled_at' => now()]);
+        config(['app.url' => 'https://' . $central]);
+        ['code' => $code2] = $this->createCode($this->branchA);
+        $this->redeem($code2)->assertOk()->assertJsonPath('cloud_url', 'https://' . $central);
+    }
+
     public function test_redeem_fails_closed_without_an_enrollment_signing_key(): void
     {
         ['code' => $code, 'session' => $s] = $this->createCode($this->branchA);
