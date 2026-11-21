@@ -221,4 +221,87 @@ class CloudManagerApprovalEligibilityMySqlTest extends MySqlTenantTestCase
         }
         $this->assertNull($fresh->fresh()->consumed_at);
     }
+
+    /** A manager_pins row for $userId with $pin (verifyPin tries the rows in id order). */
+    private function pin(int $userId, string $pin): void
+    {
+        DB::connection('tenant')->table('manager_pins')->insert([
+            'user_id' => $userId, 'pin_hash' => Hash::make($pin), 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    /**
+     * MANAGER-PIN-SHARED-1 (22 Nov 2026) — the live case: a shop gave the owner and every counter ONE PIN, and the
+     * requester's row came first. "First matching PIN wins" stopped on the requester's own row and refused the request as
+     * self-approval, although another holder of the same PIN may approve it. The requester's own row is now skipped.
+     */
+    public function test_shared_pin_skips_the_requesters_own_row(): void
+    {
+        $c = DB::connection('tenant');
+        $c->table('manager_pins')->delete();
+        $this->pin($this->cashierId, '7777'); // the requester's own row FIRST — where the old lookup stopped
+        $this->pin($this->managerId, '7777');
+
+        $approval = $this->svc()->verifyPin('7777', 'void_kot_item', $this->cashierId, $this->payload());
+        $this->assertSame($this->managerId, (int) $approval->approved_by_user_id);
+        $this->assertSame($this->cashierId, (int) $approval->requested_by_user_id);
+        $this->assertNotNull($c->table('manager_pins')->where('user_id', $this->managerId)->value('last_used_at'), 'the approver\'s row is the one marked used');
+        $this->assertNull($c->table('manager_pins')->where('user_id', $this->cashierId)->value('last_used_at'));
+
+        // the other way round, the only other holder (the cashier) lacks the void permission → refused for THAT reason
+        try {
+            $this->svc()->verifyPin('7777', 'void_kot_item', $this->managerId, $this->payload());
+            $this->fail('the only other holder of the PIN lacks the action permission');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(ManagerApprovalService::NOT_AUTHORIZED_FOR_ACTION, $e->getMessage());
+        }
+        $this->grant($this->cashierId, 'tenant.pos.void-kot-item');
+        $this->assertSame($this->cashierId, (int) $this->svc()->verifyPin('7777', 'void_kot_item', $this->managerId, $this->payload())->approved_by_user_id);
+    }
+
+    /** A PIN that is only the requester's own is still refused — the self-approval guard keeps biting. */
+    public function test_own_pin_that_nobody_else_holds_is_still_self_approval(): void
+    {
+        $this->pin($this->cashierId, '9999');
+        try {
+            $this->svc()->verifyPin('9999', 'void_kot_item', $this->cashierId, $this->payload());
+            $this->fail('a PIN only the requester holds must stay refused');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(self::SELF_APPROVAL, $e->getMessage());
+        }
+        $this->assertSame(0, ManagerApproval::on('tenant')->count(), 'nothing minted');
+    }
+
+    /** Among other holders of a shared PIN, one WITHOUT the action's permission is passed over for one who has it. */
+    public function test_shared_pin_passes_over_a_holder_without_the_action_permission(): void
+    {
+        DB::connection('tenant')->table('manager_pins')->delete();
+        $noPermission = $this->makeUser(['default_branch_id' => $this->branchId, 'name' => 'Counter without void']);
+        $this->pin($noPermission, '5555'); // first, but may not approve a void
+        $this->pin($this->managerId, '5555');
+
+        $this->assertSame($this->managerId, (int) $this->svc()->verifyPin('5555', 'void_kot_item', $this->cashierId, $this->payload())->approved_by_user_id);
+    }
+
+    /** Among other holders of a shared PIN, one on the order's branch is preferred; nobody on it → the old branch refusal. */
+    public function test_shared_pin_prefers_a_manager_on_the_order_branch(): void
+    {
+        $c = DB::connection('tenant');
+        $c->table('manager_pins')->delete();
+        $otherBranch = $this->makeBranch(['name' => 'Other Branch']);
+        $away = $this->makeUser(['default_branch_id' => $otherBranch, 'name' => 'Other branch manager']);
+        $this->grant($away, 'tenant.pos.void-kot-item');
+        $this->pin($away, '3333'); // first, but not on the order's branch
+        $this->pin($this->managerId, '3333');
+
+        $this->assertSame($this->managerId, (int) $this->svc()->verifyPin('3333', 'void_kot_item', $this->cashierId, $this->payload())->approved_by_user_id);
+
+        $c->table('manager_pins')->where('user_id', $this->managerId)->delete();
+        try {
+            $this->svc()->verifyPin('3333', 'void_kot_item', $this->cashierId, $this->payload());
+            $this->fail('a manager who is not on the order branch must not approve');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('This manager is not authorized for the order branch.', $e->getMessage());
+        }
+    }
 }

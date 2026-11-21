@@ -341,4 +341,47 @@ class SalesReturnManagerApprovalMySqlTest extends MySqlTenantTestCase
 
         $this->assertSame(0, SalesReturn::on('tenant')->count());
     }
+
+    /**
+     * MANAGER-PIN-SHARED-1 (22 Nov 2026), through the screen's own path: the person doing the return and a manager share
+     * ONE PIN, and the requester's PIN row comes first. The return screen asks /api/manager-approvals/verify; that used
+     * to answer "You cannot approve your own request" and the return could not be posted. Now the other holder approves
+     * and the return posts with that approval.
+     */
+    public function test_a_shared_pin_approves_a_return_through_the_screen_path(): void
+    {
+        $this->setMode(Branch::SALES_RETURN_MANAGER_REQUIRED);
+        $c = DB::connection('tenant');
+        $c->table('manager_pins')->delete();
+        foreach ([$this->cashierId, $this->managerId] as $userId) { // the requester's own row first
+            $c->table('manager_pins')->insert([
+                'user_id' => $userId, 'pin_hash' => bcrypt('Shop@123'), 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $verify = $this->actingAs(User::on('tenant')->find($this->cashierId), 'tenant')
+            ->postJson('http://' . $this->host . '/api/manager-approvals/verify', [
+                'pin' => 'Shop@123', 'action_type' => 'sales_return',
+                'payload' => [
+                    'sales_order_id' => $this->saleId, 'branch_id' => $this->branchId,
+                    'refund_method' => 'cash', 'refund_amount' => $this->lineTotal,
+                ],
+            ]);
+        $verify->assertOk()->assertJsonPath('ok', true);
+        $approval = ManagerApproval::on('tenant')->findOrFail($verify->json('approval_id'));
+        $this->assertSame($this->managerId, (int) $approval->approved_by_user_id, 'the other holder of the PIN approved');
+        $this->assertSame($this->cashierId, (int) $approval->requested_by_user_id);
+
+        $this->postReturn(['manager_approval_id' => $approval->id])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(1, SalesReturn::on('tenant')->count());
+        $this->assertNotNull($approval->refresh()->consumed_at, 'the approval is spent');
+
+        // a PIN only the requester holds is still refused on the same path
+        $c->table('manager_pins')->where('user_id', $this->managerId)->delete();
+        $this->actingAs(User::on('tenant')->find($this->cashierId), 'tenant')
+            ->postJson('http://' . $this->host . '/api/manager-approvals/verify', [
+                'pin' => 'Shop@123', 'action_type' => 'sales_return',
+                'payload' => ['sales_order_id' => $this->saleId, 'branch_id' => $this->branchId, 'refund_method' => 'cash', 'refund_amount' => 500],
+            ])->assertStatus(422)->assertJsonPath('message', 'You cannot approve your own request. Ask another manager to approve.');
+    }
 }
