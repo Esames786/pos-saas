@@ -19,11 +19,19 @@ use Illuminate\Support\Facades\Process;
  *
  * The signing key is read from a FILE (or EDGE_UPDATE_SIGNING_KEY on the build host) — never from argv. A RELEASE build
  * signs from the encrypted custody keystore only (--signing-keystore + --signing-passphrase-file, P5B §2).
+ *
+ * Edge 0.9: a bundled PHP runtime is made PORTABLE (the builder writes php/php.ini + php/cacert.txt and refuses an ini that
+ * still names the build host; the CA bundle comes from --ca-bundle or the runtime); --mysql-runtime bundles the MySQL 8.0
+ * server binaries under mysql/; --strict-layout applies the 0.9 release layout gates (wizard, central -CloudUrl) to a dev
+ * build too.
  */
 class EdgeBuildPackageCommand extends Command
 {
     protected $signature = 'edge:build-package {dest : Destination directory (must be empty or absent)}
         {--php-runtime= : PHP runtime directory to bundle (php.exe inside); omit to rely on the installer -PhpPath}
+        {--ca-bundle= : CA bundle (Mozilla cacert) shipped as php/cacert.txt; default: the runtime cacert.txt / extras/ssl/cacert.pem / the file its php.ini trusted}
+        {--mysql-runtime= : MySQL 8.0 runtime directory (bin/share/lib) to bundle under mysql/}
+        {--strict-layout : Apply the 0.9 RELEASE layout gates (wizard + root Setup-BingooEdge.cmd required, central -CloudUrl) even to a dev build}
         {--gateway= : nginx.exe to bundle; omit to rely on the installer -GatewayPath}
         {--signing-keystore= : RELEASE: the encrypted release-signing keystore minted by edge:update:keygen (needs --signing-passphrase-file)}
         {--signing-passphrase-file= : File holding the keystore passphrase (never argv, never printed)}
@@ -110,6 +118,9 @@ class EdgeBuildPackageCommand extends Command
         }
         $artifactConfig = (array) config('edge.artifact');
         $artifactConfig['runtime_dirs'] = ['bootstrap/cache', 'storage/framework/cache/data', 'storage/framework/views', 'storage/framework/sessions', 'storage/logs', 'storage/app'];
+        // Edge 0.9 — the per-branch counter-setup templates are Cloud-rendered (stream D), never packaged; `resources` ships
+        // whole, so prune them here (the package boundary also refuses them: EdgePackageBuilder CLOUD_ONLY_SENTINELS).
+        $artifactConfig['exclude'] = array_values(array_unique(array_merge((array) ($artifactConfig['exclude'] ?? []), ['resources/edge/counter-setup'])));
         if ($this->option('vendor-junction')) {
             $artifactConfig['include'] = array_values(array_diff((array) $artifactConfig['include'], ['vendor']));
         }
@@ -152,6 +163,11 @@ class EdgeBuildPackageCommand extends Command
                 'source_root' => base_path(),
                 'artifact_meta' => $meta,
                 'php_runtime' => $this->option('php-runtime') ?: null,
+                'ca_bundle' => $this->option('ca-bundle') ?: null,
+                'php_smoke' => true,
+                'mysql_runtime' => $this->option('mysql-runtime') ?: null,
+                'mysql_probe' => true,
+                'strict_layout' => $this->option('strict-layout') ? true : null,
                 'gateway_binary' => $this->option('gateway') ?: null,
                 'signing_key' => $key,
                 'signing_key_id' => $signingKeyId,
@@ -161,8 +177,18 @@ class EdgeBuildPackageCommand extends Command
             $this->error('Package build FAILED: ' . $e->getMessage());
 
             return self::FAILURE;
+        } finally {
+            if ($key !== '') {
+                sodium_memzero($key);
+            }
         }
         $this->info(($release ? 'RELEASE' : 'DEV') . ' Edge appliance package built at: ' . $dest);
+        foreach ((array) ($summary['warnings'] ?? []) as $w) {
+            $this->warn('WARNING: ' . $w);
+        }
+        if ($release && $signingKeyId !== null && $signingKeyId !== EdgePackageBuilder::RELEASE_SIGNING_KEY_ID) {
+            $this->warn('WARNING: this RELEASE package is signed with key ' . $signingKeyId . ', not the pinned release key ' . EdgePackageBuilder::RELEASE_SIGNING_KEY_ID . ' — appliances pinned to the release key will refuse it.');
+        }
         $this->table(['field', 'value'], collect($summary)->map(fn ($v, $k) => [$k, is_scalar($v) || $v === null ? var_export($v, true) : json_encode($v)])->values()->all());
 
         return self::SUCCESS;
