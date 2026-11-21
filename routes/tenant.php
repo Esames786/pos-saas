@@ -142,6 +142,13 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
     Route::get('/order/privacy-policy', [\App\Http\Controllers\Website\WebsitePagesController::class, 'privacy'])->name('website.order.privacy');
     Route::get('/order/faqs', [\App\Http\Controllers\Website\WebsitePagesController::class, 'faqs'])->name('website.order.faqs');
 
+    // EDGE 0.9 (K7) — the branch CA certificate behind a 30-minute SIGNED URL (the QR on the Offline Edge phone page), so a
+    // phone installs the CA over the Cloud's public HTTPS without logging in. PUBLIC material only; the controller re-checks
+    // the branch's active device and that the CA fingerprint in the URL is still the current one. Not a `tenant.` name:
+    // it never becomes a staff permission.
+    Route::get('/settings/offline-edge/branches/{branch}/ca-public.crt', [OfflineEdgeController::class, 'caCertificatePublic'])
+        ->middleware(['signed', 'throttle:20,1'])->whereNumber('branch')->name('offline-edge.ca.public');
+
         Route::get('/login', [AuthController::class, 'showLogin'])->name('tenant.login');
         Route::post('/login', [AuthController::class, 'login'])->name('tenant.login.post');
 
@@ -197,6 +204,24 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // enrollment assertion for a Branch Server user (permission == route name).
                 Route::post('/settings/offline-edge/enrollment-assertions', [\App\Http\Controllers\Tenant\EdgeEnrollmentController::class, 'issue'])
                     ->middleware('throttle:20,1')->name('tenant.offline-edge.enrollment.issue');
+                // EDGE 0.9 (K2) — cancel a branch's live setup code / unexpired setup token: a SECURITY control like pairing cancel.
+                Route::post('/settings/offline-edge/branches/{branch}/setup-code/cancel', [OfflineEdgeController::class, 'cancelSetupCode'])
+                    ->name('tenant.offline-edge.setup-code.cancel');
+                // EDGE 0.9 (owner, 21 Nov) — optional, default-OFF Automatic Offline Takeover: a SECURITY control (switching it
+                // off never depends on entitlement); the controller also requires tenant.offline-edge.security and, to switch it
+                // ON, the entitlement + rollout.
+                Route::post('/settings/offline-edge/branches/{branch}/auto-takeover', [OfflineEdgeController::class, 'autoTakeover'])
+                    ->middleware('throttle:10,1')->name('tenant.offline-edge.auto-takeover');
+            });
+
+            // EDGE 0.9 (owner, 21 Nov 2026) — the two "Install Offline Counter" downloads are gated IN THE CONTROLLER by the ONE
+            // permission tenant.offline-edge.counter-install (+ entitlement + rollout), so they need no permissions of their own.
+            // my-enrollment issues an enrollment assertion for the requesting user THEMSELVES only (throttled, audited).
+            Route::middleware(['tenant.subscription.access', 'prevent.demo.mutation'])->group(function () {
+                Route::get('/pos/offline-counter/setup', [OfflineEdgeController::class, 'counterInstallSetup'])
+                    ->middleware('throttle:10,1')->name('tenant.offline-edge.counter-install.setup');
+                Route::post('/pos/offline-counter/my-enrollment', [OfflineEdgeController::class, 'counterInstallMyEnrollment'])
+                    ->middleware('throttle:5,1')->name('tenant.offline-edge.counter-install.my-enrollment');
             });
 
             Route::middleware(['tenant.subscription.access', 'route.permission', 'prevent.demo.mutation'])->group(function () {
@@ -771,6 +796,24 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // subscription gate. Pairing NEVER activates Local POS.
                 Route::post('/settings/offline-edge/branches/{branch}/pairing-code', [OfflineEdgeController::class, 'generatePairingCode'])
                     ->middleware('throttle:10,1')->name('tenant.offline-edge.pairing-code.generate');
+
+                // EDGE 0.9 — Branch Server setup wizard + counter/phone onboarding + auto-update controls (entitlement + rollout
+                // gated in the controller). The setup code additionally requires tenant.offline-edge.security (in-controller).
+                Route::post('/settings/offline-edge/branches/{branch}/setup-code', [OfflineEdgeController::class, 'generateSetupCode'])
+                    ->middleware('throttle:10,1')->name('tenant.offline-edge.setup-code.generate');
+                Route::post('/settings/offline-edge/devices/{edgeDevice}/update-now', [OfflineEdgeController::class, 'updateNow'])
+                    ->middleware('throttle:10,1')->name('tenant.offline-edge.devices.update-now');
+                Route::post('/settings/offline-edge/devices/{edgeDevice}/maintenance-window', [OfflineEdgeController::class, 'maintenanceWindow'])
+                    ->middleware('throttle:10,1')->name('tenant.offline-edge.devices.maintenance-window');
+                Route::get('/settings/offline-edge/branches/{branch}/counter-setup', [OfflineEdgeController::class, 'counterSetup'])
+                    ->name('tenant.offline-edge.counter-setup');
+                Route::get('/settings/offline-edge/branches/{branch}/phone', [OfflineEdgeController::class, 'phone'])
+                    ->name('tenant.offline-edge.phone');
+                // EDGE 0.9 (owner, 21 Nov 2026) — self-service "Install Offline Counter" (the Online POS entry): the user's OWN branch only.
+                Route::get('/pos/offline-counter', [OfflineEdgeController::class, 'counterInstall'])
+                    ->name('tenant.offline-edge.counter-install');
+                Route::get('/settings/offline-edge/branches/{branch}/ca.crt', [OfflineEdgeController::class, 'caCertificate'])
+                    ->name('tenant.offline-edge.branch.ca');   // the route name stream D's renderer refers to
 
                 // Sales Controls — Promotions
                 Route::get('/promotions', [PromotionController::class, 'index'])->name('tenant.promotions.index');

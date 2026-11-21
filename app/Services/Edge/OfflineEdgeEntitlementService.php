@@ -131,6 +131,12 @@ class OfflineEdgeEntitlementService
      */
     public function installerIsAvailable(): bool
     {
+        // EDGE 0.9 (K6) — a published STABLE release registered by `edge:release:publish` (signature + manifest verified
+        // at publish time; its zip on disk with the registered size) makes the Branch Server Setup downloadable.
+        if ($this->latestRelease() !== null) {
+            return true;
+        }
+
         $path = config('app.edge_installer_path');
 
         if (! is_string($path) || trim($path) === '') {
@@ -150,9 +156,28 @@ class OfflineEdgeEntitlementService
 
     public function installerVersion(): ?string
     {
+        if ($release = $this->latestRelease()) {
+            return (string) $release->version;
+        }
         $v = config('app.edge_installer_version');
 
         return is_string($v) && $v !== '' ? $v : null;
+    }
+
+    /**
+     * EDGE 0.9 — the latest servable stable release, or null. Resolved lazily (Cloud-only registry; never on a Branch
+     * Server, where this gate is not consulted) and fail-closed: a registry/DB problem means "not available".
+     */
+    public function latestRelease(): ?\App\Models\Master\EdgeRelease
+    {
+        if (\App\Support\EdgeRuntime::isBranchServer() || ! class_exists(\App\Services\Edge\Cloud\ReleaseRegistry::class)) {
+            return null;
+        }
+        try {
+            return app(\App\Services\Edge\Cloud\ReleaseRegistry::class)->latestServable();
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /* ── Helpers ────────────────────────────────────────────────────────── */
