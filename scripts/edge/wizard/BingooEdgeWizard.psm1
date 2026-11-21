@@ -1041,6 +1041,18 @@ function Get-WizUpdatePlan($ctx) {
 
 # UPDATE MODE (0.8.5 -> 0.9 at Khatri, no re-pairing): verify -> gate (standby, outbox empty) -> full DB snapshot -> signed
 # update through Update-EdgeAppliance.ps1 (-ReRegisterServices adds BingooEdgeUpdater) -> health -> K6 rollback rule.
+# The PUBLIC branch CA certificate for K5. A wizard install writes it to <DataRoot>\ca; a 0.8.x site set up by hand (the Khatri
+# kit: New-EdgeBranchCA.ps1 -OutDir C:\BingooEdge\ca) keeps it next to the MySQL base dir - both are looked at, an explicit
+# answers lan.ca_file first. Public material only.
+function Find-WizBranchCaFile($ctx) {
+    $candidates = @()
+    $explicit = Get-WizValue $ctx.Answers 'lan.ca_file' $null
+    if ($explicit) { $candidates += [string]$explicit }
+    $candidates += (Join-Path $ctx.DataRoot 'ca\bingoo-edge-branch-ca.crt')
+    $candidates += (Join-Path ([string](Get-WizValue $ctx.Answers 'mysql.base_dir' 'C:\BingooEdge')) 'ca\bingoo-edge-branch-ca.crt')
+    foreach ($c in $candidates) { if ($c -and (Test-Path -LiteralPath $c)) { return $c } }
+    return $null
+}
 function Invoke-WizUpdate($ctx) {
     $manifest = Get-WizPackageManifest $ctx
     $to = [string]$manifest.edge_app_version
@@ -1115,9 +1127,9 @@ function Invoke-WizUpdate($ctx) {
         Remove-Item -Force -Path $snap -ErrorAction SilentlyContinue
         Invoke-WizArtisan $ctx @('edge:local:report-status', 'updated', "--message=setup wizard: $previous -> $to") | Out-Null
         # K5 from the updated runtime (an appliance installed before 0.9 never reported its LAN profile).
-        $caFile = Join-Path $ctx.DataRoot 'ca\bingoo-edge-branch-ca.crt'
+        $caFile = Find-WizBranchCaFile $ctx
         $k5 = @('edge:local:report-lan-profile', '--json')
-        if (Test-Path $caFile) { $k5 += "--ca-file=$caFile" }
+        if ($caFile) { $k5 += "--ca-file=$caFile" } else { Write-WizLog $ctx 'warn' 'K5: no branch CA certificate found (answers lan.ca_file, <DataRoot>\ca, <mysql.base_dir>\ca) - the Cloud refuses a LAN profile without it' }
         $k5r = Invoke-WizArtisan $ctx $k5 -TimeoutSec 60
         Write-WizLog $ctx 'info' ('K5 LAN profile: ' + $k5r.StdOut.Trim())
         Write-WizLog $ctx 'ok' ("updated $previous -> $to, health OK (no new problem; status " + [string]$after.status + ')')
