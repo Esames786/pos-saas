@@ -35,9 +35,11 @@ class EdgeSupervisionPlan
     public const SINGLETON_BACKUP_LOCK = 'backup_lock';         // backup (flock)
     public const SINGLETON_AUTHORITY_WORKER = 'authority_worker_heartbeat'; // Q authority worker (DB singleton + liveness heartbeat)
     public const SINGLETON_LISTEN_PORT = 'listen_port';         // P4 web backend / gateway: the OS grants a port to one process only
+    public const SINGLETON_AUTO_UPDATE_LOCK = 'auto_update_lock'; // EDGE 0.9: the signed auto-updater (file lock in the work dir)
 
     public const GATEWAY_TASK = 'BingooEdgeGateway';
     public const WEB_TASK_PREFIX = 'BingooEdgeWeb';
+    public const UPDATER_TASK = 'BingooEdgeUpdater';
 
     private const SERVICE_ACCOUNT = 'NT AUTHORITY\\LOCAL SERVICE';
 
@@ -75,6 +77,12 @@ class EdgeSupervisionPlan
         ]);
         $tasks[] = $this->task('BingooEdgeBackup', 'edge:local:backup', $phpPath, $artisan, $appRoot, [
             'trigger' => 'at_startup', 'kind' => 'periodic', 'repeat_minutes' => 60, 'singleton' => self::SINGLETON_BACKUP_LOCK,
+        ]);
+        // EDGE 0.9 (stream B) — the signed AUTO-UPDATER: checks the Cloud (K6), verifies + stages a newer signed package, and applies it
+        // ONLY in standby with an empty outbox, inside the owner's maintenance window or on an explicit "Update now" (then health +
+        // rollback). Same least-privilege principal as every task; periodic (Win10-safe repetition is rendered by Register-EdgeServices).
+        $tasks[] = $this->task(self::UPDATER_TASK, 'edge:local:auto-update', $phpPath, $artisan, $appRoot, [
+            'trigger' => 'at_startup', 'kind' => 'periodic', 'repeat_minutes' => max(5, (int) config('edge.auto_update.check_interval_minutes', 15)), 'singleton' => self::SINGLETON_AUTO_UPDATE_LOCK,
         ]);
 
         // Defence-in-depth: nothing but an Edge-allowlisted command may ever be scheduled on the appliance.

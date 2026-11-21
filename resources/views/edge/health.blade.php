@@ -120,6 +120,59 @@
         @endif
     </section>
 
+    {{-- EDGE 0.9 (stream B) — SOFTWARE UPDATE: what runs, what the Cloud offers, what the updater did last, and "Update now".
+         Read-only status from the auto-update state file (non-secret). The button only RECORDS a request; the BingooEdgeUpdater
+         task applies it through the same gate as a maintenance-window update (standby only, nothing waiting to sync, signed +
+         verified package, health check, rollback). Values are computed here, never inline next to a word (Khatri 21 Nov lesson). --}}
+    @php
+        try {
+            $au = app(\App\Services\Edge\AutoUpdate\EdgeAutoUpdateService::class)->status();
+        } catch (\Throwable $e) {
+            $au = null;
+        }
+        $auCtl = session('auto_update_control');
+        $auAvailable = is_array($au) && is_array($au['available'] ?? null) ? (string) ($au['available']['version'] ?? '') : '';
+        $auLast = is_array($au) && is_array($au['last_result'] ?? null) ? $au['last_result'] : null;
+        $auLastText = $auLast ? (str_replace('_', ' ', (string) ($auLast['result'] ?? '')) . (! empty($auLast['version']) ? ' · ' . $auLast['version'] : '') . ' · ' . (string) ($auLast['at'] ?? '')) : 'no update has run yet';
+        $auLastClass = $auLast ? (in_array($auLast['result'] ?? '', ['updated', 'up_to_date', 'available'], true) ? 'ok' : (in_array($auLast['result'] ?? '', ['rolled_back', 'update_failed', 'refused', 'error'], true) ? 'bad' : 'warn')) : 'muted';
+        $auWaiting = is_array($au) && is_array($au['gate'] ?? null) && ! ($au['gate']['allowed'] ?? false) && $auAvailable !== '' ? array_column((array) ($au['gate']['reasons'] ?? []), 'detail') : [];
+        $auNow = is_array($au) && is_array($au['update_now'] ?? null) ? $au['update_now'] : null;
+        $auNowText = $auNow ? 'requested by ' . (string) ($auNow['requested_by'] ?? '?') . ' at ' . (string) ($auNow['requested_at'] ?? '') : 'not requested';
+        $auWindowText = is_array($au) ? (string) ($au['window']['describe'] ?? '') : '';
+        $auCanRequest = $canControl && ! $isLocal && $au !== null && ($au['enabled'] ?? false);
+    @endphp
+    <section class="headline" id="software-update" style="flex-direction:column;align-items:stretch;gap:.6rem">
+        <h2 style="margin:0;font-size:.95rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Software update</h2>
+        @if(is_array($auCtl))
+            <div id="auto-update-control-result" role="alert" class="{{ $auCtl['ok'] ? 'ok' : 'bad' }}" style="border:1px solid currentColor;border-radius:8px;padding:.5rem .8rem">{{ $auCtl['message'] }} <span class="muted">({{ $auCtl['at'] }})</span></div>
+        @endif
+        @if($au === null)
+            <span class="muted">Update status unavailable.</span>
+        @else
+            <dl>
+                <dt>Installed version</dt><dd id="update-current">{{ $au['current_version'] }}</dd>
+                <dt>Available version</dt><dd id="update-available" class="{{ $auAvailable !== '' ? 'warn' : 'ok' }}">{{ $auAvailable !== '' ? $auAvailable . ' (signed, verified before install)' : 'none — up to date' }}</dd>
+                <dt>Automatic updates</dt><dd>{{ ($au['enabled'] ?? false) ? 'on — only while the Cloud sells and nothing is waiting to sync' : 'off on this Branch Server' }}</dd>
+                <dt>Maintenance window</dt><dd>{{ $auWindowText }}</dd>
+                <dt>Last check</dt><dd>{{ $au['last_check_at'] ?? 'never' }}</dd>
+                <dt>Last result</dt><dd id="update-last-result" class="{{ $auLastClass }}">{{ $auLastText }}@if(!empty($auLast['message']))<div class="muted">{{ $auLast['message'] }}</div>@endif</dd>
+                <dt>Update now</dt><dd>{{ $auNowText }}</dd>
+                @if($auWaiting !== [])
+                    <dt>Waiting for</dt><dd class="warn">{{ implode('; ', $auWaiting) }}</dd>
+                @endif
+            </dl>
+            @if($auCanRequest)
+                <form method="POST" action="{{ url('/edge/local/pos/updates/update-now') }}" style="margin:0" onsubmit="return confirm('Update this Branch Server now?\n\nIt runs only while the Cloud sells (standby) and nothing is waiting to sync. The Branch Server restarts its services for a minute or two and checks itself afterwards; a failed update is rolled back automatically.');">
+                    @csrf<input type="hidden" name="confirm" value="yes">
+                    <button type="submit" id="btn-update-now" style="font-weight:600;padding:.6rem 1.1rem">Update now</button>
+                    <span class="muted">Skips only the maintenance window — never the safety checks.</span>
+                </form>
+            @elseif($canControl && $isLocal)
+                <span class="muted">Updates are paused while this Branch Server sells (Local Mode).</span>
+            @endif
+        @endif
+    </section>
+
     <section class="card">
         <h2>Cloud connection &amp; authority</h2>
         <dl>
