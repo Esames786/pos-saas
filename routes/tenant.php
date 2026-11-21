@@ -207,6 +207,21 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // EDGE 0.9 (K2) — cancel a branch's live setup code / unexpired setup token: a SECURITY control like pairing cancel.
                 Route::post('/settings/offline-edge/branches/{branch}/setup-code/cancel', [OfflineEdgeController::class, 'cancelSetupCode'])
                     ->name('tenant.offline-edge.setup-code.cancel');
+                // EDGE 0.9 (owner, 21 Nov) — optional, default-OFF Automatic Offline Takeover: a SECURITY control (switching it
+                // off never depends on entitlement); the controller also requires tenant.offline-edge.security and, to switch it
+                // ON, the entitlement + rollout.
+                Route::post('/settings/offline-edge/branches/{branch}/auto-takeover', [OfflineEdgeController::class, 'autoTakeover'])
+                    ->middleware('throttle:10,1')->name('tenant.offline-edge.auto-takeover');
+            });
+
+            // EDGE 0.9 (owner, 21 Nov 2026) — the two "Install Offline Counter" downloads are gated IN THE CONTROLLER by the ONE
+            // permission tenant.offline-edge.counter-install (+ entitlement + rollout), so they need no permissions of their own.
+            // my-enrollment issues an enrollment assertion for the requesting user THEMSELVES only (throttled, audited).
+            Route::middleware(['tenant.subscription.access', 'prevent.demo.mutation'])->group(function () {
+                Route::get('/pos/offline-counter/setup', [OfflineEdgeController::class, 'counterInstallSetup'])
+                    ->middleware('throttle:10,1')->name('tenant.offline-edge.counter-install.setup');
+                Route::post('/pos/offline-counter/my-enrollment', [OfflineEdgeController::class, 'counterInstallMyEnrollment'])
+                    ->middleware('throttle:5,1')->name('tenant.offline-edge.counter-install.my-enrollment');
             });
 
             Route::middleware(['tenant.subscription.access', 'route.permission', 'prevent.demo.mutation'])->group(function () {
@@ -794,6 +809,9 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     ->name('tenant.offline-edge.counter-setup');
                 Route::get('/settings/offline-edge/branches/{branch}/phone', [OfflineEdgeController::class, 'phone'])
                     ->name('tenant.offline-edge.phone');
+                // EDGE 0.9 (owner, 21 Nov 2026) — self-service "Install Offline Counter" (the Online POS entry): the user's OWN branch only.
+                Route::get('/pos/offline-counter', [OfflineEdgeController::class, 'counterInstall'])
+                    ->name('tenant.offline-edge.counter-install');
                 Route::get('/settings/offline-edge/branches/{branch}/ca.crt', [OfflineEdgeController::class, 'caCertificate'])
                     ->name('tenant.offline-edge.branch.ca');   // the route name stream D's renderer refers to
 

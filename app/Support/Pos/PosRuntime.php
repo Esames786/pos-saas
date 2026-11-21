@@ -69,6 +69,9 @@ final class PosRuntime implements JsonSerializable
         // /printing/jobs/{job}/print-here; Edge: null — the Branch Server prints straight to the LAN printers (no agent, no
         // network queue to take from), so the health pill is not rendered and the poller exits (route-null gate, no mode branch).
         'printHealth', 'printHereTake',
+        // EDGE 0.9 (owner, 21 Nov 2026): the self-service "Install Offline Counter" entry. Cloud: /pos/offline-counter when the user
+        // holds tenant.offline-edge.counter-install and the tenant has Offline Edge; Edge: null (the counter is already offline-capable).
+        'offlineCounterInstall',
     ];
 
     /** Every capability flag the shared view may ask for. Factories MUST define all of them. */

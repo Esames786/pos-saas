@@ -108,6 +108,18 @@ final class PosPermissionCatalog
             'edge' => 'none — Cloud-only (the Branch Server setup wizard redeems the code at POST /api/edge/setup/redeem)',
             'online' => 'POST /settings/offline-edge/branches/{branch}/setup-code — OfflineEdgeController@generateSetupCode (+ tenant.offline-edge.security)',
         ],
+        // EDGE 0.9 (owner, 21 Nov 2026) — self-service "Install Offline Counter" (Online POS entry): a cashier or manager downloads the
+        // counter setup for their OWN branch, optionally with an enrollment assertion for THEMSELVES only.
+        'tenant.offline-edge.counter-install' => [
+            'groups' => ['cashier', 'manager'],
+            'edge' => 'none — Cloud-only (the Online POS entry is the route key offlineCounterInstall; the Edge runtime sets it null)',
+            'online' => 'GET /pos/offline-counter — OfflineEdgeController@counterInstall (+ in-controller gate on GET /pos/offline-counter/setup and POST /pos/offline-counter/my-enrollment)',
+        ],
+        'tenant.offline-edge.auto-takeover' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (the appliance receives the setting as restrictions[0].auto_takeover in the config refresh)',
+            'online' => 'POST /settings/offline-edge/branches/{branch}/auto-takeover — OfflineEdgeController@autoTakeover (+ tenant.offline-edge.security)',
+        ],
         'tenant.offline-edge.setup-code.cancel' => [
             'groups' => ['manager'],
             'edge' => 'none — Cloud-only security control',
@@ -323,6 +335,11 @@ final class PosPermissionCatalog
      * @var array<string, array{since: string, decision: string, note: string}>
      */
     public const CASHIER_TEMPLATE_ADDITIONS = [
+        'tenant.offline-edge.counter-install' => [
+            'since' => '2026-11-21',
+            'decision' => 'owner 21 Nov 2026 (Edge 0.9 self-service Install Offline Counter)',
+            'note' => 'Lets a counter user download the Offline Counter setup for their own branch (and set their own Edge PIN). New tenants\' Cashier (Counter) template only; existing roles are never granted it automatically — the owner grants it per role.',
+        ],
         'tenant.pos.pause-reminders' => [
             'since' => '2026-10-20',
             'decision' => 'D3',

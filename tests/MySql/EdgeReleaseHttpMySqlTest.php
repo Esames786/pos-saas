@@ -313,7 +313,7 @@ class EdgeReleaseHttpMySqlTest extends MySqlTenantTestCase
 
         $this->grantTo('owner', ['tenant.offline-edge.index', 'tenant.offline-edge.download']);
         $page = $this->actingAsOwner()->get($this->tenantUrl('/settings/offline-edge'))->assertOk();
-        $page->assertSee('Download Branch Server Setup')->assertSee('Available v0.9.1-edge');
+        $page->assertSee('Download Branch Server Setup')->assertSee('Available v0.9.1-edge')->assertSee(EdgeRelease::firstOrFail()->zip_sha256);
         $dl = $this->actingAsOwner()->get($this->tenantUrl('/settings/offline-edge/download'))->assertOk();
         $this->assertStringContainsString('BingooEdgeSetup-0.9.1-edge.zip', (string) $dl->headers->get('Content-Disposition'));
         $this->assertSame(EdgeRelease::firstOrFail()->zip_sha256, $dl->headers->get('X-Edge-Release-Sha256'));

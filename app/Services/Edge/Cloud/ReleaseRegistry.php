@@ -54,11 +54,22 @@ class ReleaseRegistry
             throw new RuntimeException('RELEASE_PACKAGE_MISSING: ' . $dir);
         }
 
-        // 1. Integrity + boundary (the existing package audit).
+        $publicKey = (string) config('edge.update.public_key');
+        if ($publicKey === '') {
+            throw new RuntimeException('RELEASE_NO_PUBLIC_KEY: EDGE_UPDATE_PUBLIC_KEY is not configured on this Cloud.');
+        }
+
+        // 1. Integrity + boundary (the existing package audit). Stream E contract (edge09/e-packaging): verify() also checks the
+        //    package + checksums signatures against the update PUBLIC key when asked to — every flag must then be true. A builder
+        //    without that support (pre-E) reports neither flag; the signed update package is verified below in every case.
         $packages = new EdgePackageBuilder(EdgeArtifactBuilder::fromConfig(), $this->updates);
-        $check = $packages->verify($dir);
+        $check = $packages->verify($dir, ['public_key' => $publicKey, 'require_signature' => true]);
         if (! ($check['ok'] ?? false)) {
-            throw new RuntimeException('RELEASE_PACKAGE_INVALID: ' . json_encode(array_intersect_key($check, array_flip(['error', 'missing', 'unlisted', 'tampered', 'package_hash_ok', 'boundary_audit']))));
+            throw new RuntimeException('RELEASE_PACKAGE_INVALID: ' . json_encode(array_intersect_key($check, array_flip(['error', 'missing', 'unlisted', 'tampered', 'package_hash_ok', 'boundary_audit', 'signature_ok', 'checksums_signature_ok']))));
+        }
+        if ((array_key_exists('signature_ok', $check) || array_key_exists('checksums_signature_ok', $check))
+            && (($check['signature_ok'] ?? false) !== true || ($check['checksums_signature_ok'] ?? false) !== true)) {
+            throw new RuntimeException('RELEASE_SIGNATURE_INVALID: ' . json_encode(['signature_ok' => $check['signature_ok'] ?? null, 'checksums_signature_ok' => $check['checksums_signature_ok'] ?? null]));
         }
         $manifest = json_decode((string) file_get_contents($dir . '/package-manifest.json'), true);
         if (is_dir($dir . '/app/vendor') && self::isLinkedDir($dir . '/app/vendor')) {
@@ -84,9 +95,6 @@ class ReleaseRegistry
             if (isset($payload[$pin]) && $payload[$pin] !== null && $payload[$pin] !== '') {
                 throw new RuntimeException('RELEASE_PINNED_PACKAGE: a package pinned to a tenant/branch/device cannot be published to a channel.');
             }
-        }
-        if ((string) config('edge.update.public_key') === '') {
-            throw new RuntimeException('RELEASE_NO_PUBLIC_KEY: EDGE_UPDATE_PUBLIC_KEY is not configured on this Cloud.');
         }
         $minFrom = (string) ($payload['min_previous_edge_version'] ?? '0.0.0');
         try {

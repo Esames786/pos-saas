@@ -148,6 +148,43 @@ class OfflineEdgeController extends Controller
         ]);
     }
 
+    /**
+     * EDGE 0.9 (owner, 21 Nov 2026) — the OPTIONAL, default-OFF Automatic Offline Takeover branch setting. Only a holder of
+     * tenant.offline-edge.security may change it; switching it OFF is always possible (security control, no entitlement
+     * gate), switching it ON additionally needs the entitlement + rollout. Audited; delivered to the appliance by the next
+     * config revision (branches.updated_at is part of the bootstrap source watermark).
+     */
+    public function autoTakeover(Request $request, Branch $branch)
+    {
+        abort_unless((bool) auth('tenant')->user()?->can(self::SECURITY_PERMISSION), 403, 'Permission denied.');
+        $data = $request->validate([
+            'enabled'       => ['required', 'boolean'],
+            'after_seconds' => ['required_if:enabled,1', 'nullable', 'integer', 'min:180', 'max:3600'],
+        ]);
+        $enabled = (bool) $data['enabled'];
+        if ($enabled) {
+            $this->entitlement->assertSetupAccessAllowed();
+        }
+        $before = \App\Services\Edge\EdgeBootstrapService::autoTakeoverSetting($branch);
+        $after = $enabled ? (int) $data['after_seconds'] : (int) ($data['after_seconds'] ?? $before['after_seconds']);
+        $branch->forceFill([
+            'edge_auto_takeover_enabled'        => $enabled,
+            'edge_auto_takeover_after_seconds'  => max(180, min(3600, $after)),
+            'edge_auto_takeover_set_by_user_id' => (int) auth('tenant')->id(),
+            'edge_auto_takeover_set_at'         => now(),
+        ])->save();
+
+        \Illuminate\Support\Facades\Log::info('[edge-setup-audit] edge.branch.auto_takeover_changed', [
+            'tenant_id' => app('tenant')->id, 'branch_id' => $branch->id, 'user_id' => (int) auth('tenant')->id(),
+            'enabled' => $enabled, 'after_seconds' => (int) $branch->edge_auto_takeover_after_seconds,
+            'previous_enabled' => $before['enabled'], 'previous_after_seconds' => $before['after_seconds'],
+        ]);
+
+        return redirect($this->backTo())->with('status', $enabled
+            ? 'Automatic Offline Takeover is ON for ' . $branch->name . ' (after ' . (int) $branch->edge_auto_takeover_after_seconds . ' seconds). The Branch Server applies it on its next refresh — only where its own switch allows it.'
+            : 'Automatic Offline Takeover is OFF for ' . $branch->name . '.');
+    }
+
     /** Cancel a branch's live setup code and any unexpired setup token. SECURITY control. */
     public function cancelSetupCode(Request $request, Branch $branch)
     {
@@ -271,6 +308,84 @@ class OfflineEdgeController extends Controller
         return $response;
     }
 
+    /* ── EDGE 0.9 (owner, 21 Nov 2026): self-service "Install Offline Counter" ─────────────────────────────────── */
+
+    public const COUNTER_INSTALL_PERMISSION = 'tenant.offline-edge.counter-install';
+
+    /** The page behind the Online POS "Install Offline Counter" entry: the user's OWN branch only. */
+    public function counterInstall(Request $request)
+    {
+        $this->entitlement->assertSetupAccessAllowed();
+        $user = auth('tenant')->user();
+        $context = null;
+        $problem = null;
+        try {
+            $context = app(\App\Services\Edge\Cloud\CounterBundleService::class)->contextFor(app('tenant'), $user);
+        } catch (EdgeSetupException $e) {
+            $problem = $e->getMessage();
+        }
+        if ($context && ! $this->renderer()) {
+            $problem = 'Counter setup is not available on this Cloud yet.';
+        }
+
+        $response = response()->view('tenant.offline-edge.counter-install', [
+            'context'   => $context,
+            'problem'   => $problem,
+            'canEnroll' => $context !== null && \App\Support\EdgeUserAuthz::isEdgeLoginEligible($user),
+            'user'      => $user,
+        ]);
+        $response->headers->set('Cache-Control', 'no-store, private, max-age=0');
+
+        return $response;
+    }
+
+    /** GET — the counter setup for the user's own branch (signed bundle, no enrollment). */
+    public function counterInstallSetup(Request $request)
+    {
+        return $this->counterInstallDownload($request, false);
+    }
+
+    /** POST — the same, plus ONE enrollment assertion for the requesting user THEMSELVES (15 min, audited). */
+    public function counterInstallMyEnrollment(Request $request)
+    {
+        return $this->counterInstallDownload($request, true);
+    }
+
+    private function counterInstallDownload(Request $request, bool $withSelfEnrollment)
+    {
+        $user = auth('tenant')->user();
+        abort_unless((bool) $user?->can(self::COUNTER_INSTALL_PERMISSION), 403, 'Permission denied.');
+        $this->entitlement->assertSetupAccessAllowed();
+        $bundles = app(\App\Services\Edge\Cloud\CounterBundleService::class);
+        try {
+            ['branch' => $branch, 'device' => $device] = $bundles->contextFor(app('tenant'), $user);
+            $renderer = $this->renderer();
+            if (! $renderer) {
+                throw EdgeSetupException::of(EdgeSetupException::NOT_CONFIGURED, 'Counter setup is not available on this Cloud yet.');
+            }
+            try {
+                $script = $renderer->renderWindows($this->profiles->lanProfile($device), url('/pos'), (string) $branch->name);
+            } catch (\InvalidArgumentException|\RuntimeException $e) {
+                throw EdgeSetupException::of(EdgeSetupException::LAN_PROFILE_INVALID, 'Counter setup could not be built: ' . $e->getMessage());
+            }
+            $bundle = $bundles->bundle(app('tenant'), $user, $branch, $device, url('/pos'), $withSelfEnrollment);
+        } catch (EdgeSetupException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage(), 'code' => $e->setupCode] + $e->context, $e->httpStatus());
+            }
+
+            return redirect(url('/pos/offline-counter'))->withErrors(['counter' => $e->getMessage()]);
+        }
+
+        return response($script . \App\Services\Edge\Cloud\CounterBundleService::scriptBlock($bundle), 200, [
+            'Content-Type'           => 'text/plain; charset=utf-8',
+            'Content-Disposition'    => 'attachment; filename="' . CounterSetupRendererAdapter::fileNameFor($renderer, (string) $branch->name, (int) $branch->id) . '"',
+            'Cache-Control'          => 'no-store, private, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
+            'X-Edge-Counter-Bundle'  => \App\Services\Edge\Cloud\CounterBundleService::VERSION,
+        ]);
+    }
+
     /** EDGE 0.9 (K7) — the branch CA certificate (PEM) for manual installation on a counter PC. */
     public function caCertificate(Request $request, Branch $branch)
     {
@@ -376,6 +491,7 @@ class OfflineEdgeController extends Controller
                 'status'        => $device ? $this->deviceStatus($device, $latest) : null,
                 'window'        => $device ? $this->profiles->maintenanceWindow($device, $b) : null,
                 'lan_ready'     => $device ? $device->hasLanProfile() : false,
+                'auto_takeover' => \App\Services\Edge\EdgeBootstrapService::autoTakeoverSetting($b),
             ];
         });
 

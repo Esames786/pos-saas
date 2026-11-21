@@ -597,6 +597,14 @@
                     <i class="ti ti-send me-1"></i>Quick Report
                 </button>
             @endcan
+            @if($posRuntime->route('offlineCounterInstall'))
+                {{-- EDGE 0.9 (owner, 21 Nov 2026): self-service Install Offline Counter — route-null gate (Cloud: permitted users of an
+                     Offline Edge tenant; Edge: always null), no mode branch. --}}
+                <a href="{{ $posRuntime->route('offlineCounterInstall') }}" class="btn btn-sm btn-outline-secondary me-2" id="pos-offline-counter-btn"
+                   title="Set up this PC to keep selling through the Branch Server when the internet is down">
+                    <i class="ti ti-device-desktop-down me-1"></i>Install Offline Counter
+                </a>
+            @endif
             @if($medicalCounter ?? false)
                 {{-- MEDICAL-COUNTER-1: every shortcut key, one click away (Ctrl+/ or F1 too) --}}
                 <button type="button" class="btn btn-sm btn-dark me-2" data-med-keys title="All shortcut keys (Ctrl+/ or F1)">

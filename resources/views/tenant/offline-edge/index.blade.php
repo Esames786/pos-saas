@@ -79,6 +79,10 @@
             <div><div class="text-muted small text-uppercase">Licensed devices</div><div class="fw-semibold">{{ $activeDevices }} / {{ $deviceLimit }} active</div></div>
             <div><div class="text-muted small text-uppercase">Branch Server Setup</div>
                 <div class="fw-semibold">{{ $installerAvailable ? ('Available' . ($installerVersion ? ' v'.$installerVersion : '')) : 'Not available yet' }}</div>
+                @if(!empty($latestRelease))
+                    {{-- EDGE 0.9 (stream E contract): the SHA-256 of the exact zip the button serves, so the owner can check the download. --}}
+                    <div class="small text-muted edge-release-sha256">SHA-256 <span class="font-monospace text-break">{{ $latestRelease->zip_sha256 }}</span> · {{ number_format($latestRelease->size_bytes / 1048576, 1) }} MB</div>
+                @endif
             </div>
             <div class="ms-auto align-self-center">
                 @if($installerAvailable)
@@ -86,6 +90,9 @@
                 @else
                     <button class="btn btn-secondary btn-sm" disabled><i class="ti ti-download me-1"></i>Installer not available yet</button>
                 @endif
+                @can('tenant.offline-edge.counter-install')
+                    <a href="{{ url('/pos/offline-counter') }}" class="btn btn-outline-secondary btn-sm ms-1"><i class="ti ti-device-desktop-down me-1"></i>Install Offline Counter</a>
+                @endcan
             </div>
         </div>
     </div>
@@ -153,6 +160,14 @@
                                                     · CA <span class="font-monospace" title="{{ $st['lan_ca_sha256'] }}">{{ substr((string) $st['lan_ca_sha256'], 0, 16) }}…</span>
                                                 @else
                                                     <span class="text-muted">LAN address and certificate not reported yet</span>
+                                                @endif
+                                            </div>
+                                            @php $at = $row['auto_takeover']; @endphp
+                                            <div class="edge-auto-takeover" data-enabled="{{ $at['enabled'] ? '1' : '0' }}">Automatic Offline Takeover:
+                                                @if($at['enabled'])
+                                                    <span class="badge bg-warning-subtle text-warning">ON after {{ $at['after_seconds'] }} s</span>
+                                                @else
+                                                    <span class="badge bg-secondary-subtle text-secondary">OFF</span>
                                                 @endif
                                             </div>
                                             @if($win)
@@ -233,6 +248,21 @@
                                     @endif
                                 @endif
                                 </div>
+                                @if($row['device'] && !empty($canSecurity))
+                                    @php $at = $row['auto_takeover']; @endphp
+                                    <form method="POST" action="{{ url('/settings/offline-edge/branches/' . $row['id'] . '/auto-takeover') }}" class="mt-2 small text-start border rounded p-2 edge-auto-takeover-form"
+                                          onsubmit="return !this.enabled.checked || confirm('Turn ON Automatic Offline Takeover? When the Cloud cannot reach this Branch Server for the chosen time, the Branch Server starts selling by itself and the Online POS is paused. Returning to Online stays manual.');">
+                                        @csrf
+                                        <input type="hidden" name="enabled" value="0">
+                                        <div class="form-check form-switch d-inline-block me-2">
+                                            <input class="form-check-input" type="checkbox" name="enabled" value="1" id="auto-takeover-{{ $row['id'] }}" @checked($at['enabled'])>
+                                            <label class="form-check-label" for="auto-takeover-{{ $row['id'] }}">Automatic Offline Takeover after</label>
+                                        </div>
+                                        <input type="number" name="after_seconds" min="180" max="3600" step="30" value="{{ $at['after_seconds'] }}" class="form-control form-control-sm d-inline-block" style="width: 6rem" aria-label="Seconds without the Cloud"> seconds
+                                        <button class="btn btn-outline-warning btn-sm ms-1">Save</button>
+                                        <div class="text-muted mt-1">Off by default. When on, the Branch Server takes over selling by itself only after the internet has been gone this long AND its own safety checks pass (clock, lease, sync) AND its local switch allows it. The Online POS is paused while it sells. Return to Online is always manual.</div>
+                                    </form>
+                                @endif
                                 @if($row['device'] && empty($securityOnly) && $win)
                                     <form method="POST" action="{{ url('/settings/offline-edge/devices/' . $row['device']->id . '/maintenance-window') }}" class="d-inline-flex align-items-center gap-1 mt-1 small">
                                         @csrf

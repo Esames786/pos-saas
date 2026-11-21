@@ -355,6 +355,8 @@ class EdgePosRuntimeFactory
             // agent and prints straight to the LAN printers (EdgeLocalPrintDeliveryService); the shared view renders no agent pill.
             'printHealth' => null,
             'printHereTake' => null,
+            // EDGE 0.9: Install Offline Counter is a Cloud entry (this counter already reaches the Branch Server).
+            'offlineCounterInstall' => null,
         ];
     }
 
