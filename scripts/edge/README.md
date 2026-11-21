@@ -51,7 +51,7 @@ Both support `-WhatIf` (dry run) and validate their inputs (IP format, validity 
 
 ## Renewal
 
-- **Server certificate** (default 2 yr): re-run `New-EdgeServerCertificate.ps1` with the same CA
+- **Server certificate** (default 730 days, max 825 - iOS/macOS refuse longer server certificates even from a trusted CA; `-ValidDays`): re-run `New-EdgeServerCertificate.ps1` with the same CA
   before expiry and re-bind it to the web listener. Terminals need no change (same CA).
 - **CA** (default 5 yr): re-run `New-EdgeBranchCA.ps1`, re-issue the server cert, and **re-distribute
   the new public CA cert** to terminals. Plan CA rotation well before expiry.
