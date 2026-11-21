@@ -61,6 +61,10 @@ class ReleaseRegistry
             throw new RuntimeException('RELEASE_PACKAGE_INVALID: ' . json_encode(array_intersect_key($check, array_flip(['error', 'missing', 'unlisted', 'tampered', 'package_hash_ok', 'boundary_audit']))));
         }
         $manifest = json_decode((string) file_get_contents($dir . '/package-manifest.json'), true);
+        if (is_dir($dir . '/app/vendor') && self::isLinkedDir($dir . '/app/vendor')) {
+            // A dev/test package junctions app/vendor to a shared closure that the package hash does not cover.
+            throw new RuntimeException('RELEASE_DEV_PACKAGE: app/vendor is a junction/symlink — only release builds (real vendor) can be published.');
+        }
         $version = (string) ($manifest['edge_app_version'] ?? '');
         if ($version === '' || ! preg_match('/^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$/', $version)) {
             throw new RuntimeException('RELEASE_VERSION_INVALID: the package has no usable edge_app_version.');
@@ -119,7 +123,8 @@ class ReleaseRegistry
         $abs = storage_path('app/' . $rel);
         @mkdir(dirname($abs), 0755, true);
         $tmp = $abs . '.part-' . Str::random(8);
-        $count = $this->zipDirectory($dir, $tmp);
+        // Exactly the VERIFIED set: every file the package manifest lists (hash-checked above) + the manifest itself.
+        $count = $this->zipFiles($dir, array_merge(array_keys($manifest['files']), ['package-manifest.json']), $tmp);
         if (! @rename($tmp, $abs)) {
             @unlink($tmp);
             throw new RuntimeException('RELEASE_STORAGE: cannot move the zip into ' . $abs);
@@ -154,20 +159,23 @@ class ReleaseRegistry
         return ['status' => 'published', 'release' => $release, 'zip_sha256' => $zipSha, 'size_bytes' => $size] + $summary;
     }
 
-    private function zipDirectory(string $dir, string $zipPath): int
+    /** @param list<string> $rels */
+    private function zipFiles(string $dir, array $rels, string $zipPath): int
     {
         $zip = new ZipArchive();
         if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
             throw new RuntimeException('RELEASE_STORAGE: cannot create ' . $zipPath);
         }
         $count = 0;
-        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::LEAVES_ONLY);
-        foreach ($it as $file) {
-            if (! $file->isFile()) {
-                continue;
+        sort($rels);
+        foreach ($rels as $rel) {
+            $rel = ltrim(str_replace('\\', '/', (string) $rel), '/');
+            if ($rel === '' || str_contains($rel, '..') || ! is_file($dir . '/' . $rel)) {
+                $zip->close();
+                @unlink($zipPath);
+                throw new RuntimeException('RELEASE_PACKAGE_INVALID: listed file missing or unsafe: ' . $rel);
             }
-            $rel = ltrim(substr(str_replace('\\', '/', $file->getPathname()), strlen($dir)), '/');
-            $zip->addFile($file->getPathname(), $rel);
+            $zip->addFile($dir . '/' . $rel, $rel);
             $count++;
         }
         if (! $zip->close()) {
@@ -176,6 +184,18 @@ class ReleaseRegistry
         }
 
         return $count;
+    }
+
+    private static function isLinkedDir(string $path): bool
+    {
+        if (is_link($path)) {
+            return true;
+        }
+        $real = realpath($path);
+        $parent = realpath(dirname($path));
+        $norm = fn (string $p) => strtolower(rtrim(str_replace('\\', '/', $p), '/'));
+
+        return $real === false || $parent === false || $norm($real) !== $norm($parent . '/' . basename($path));
     }
 
     /* ── queries ────────────────────────────────────────────────────────── */

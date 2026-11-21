@@ -223,16 +223,23 @@ class SetupSessionService
                 if ($s->isRedeemed()) {
                     return ['fail' => EdgeSetupException::CODE_USED];
                 }
-                if ($s->isCancelled() || $s->active_slot !== EdgeSetupSession::ACTIVE_SLOT) {
+                if ($s->isCancelled()) {
                     return ['fail' => EdgeSetupException::CODE_INVALID];
                 }
+                if ($s->isExhausted()) {
+                    if ($s->active_slot !== null) {
+                        $s->update(['active_slot' => null]);
+                    }
+                    return ['fail' => EdgeSetupException::CODE_EXHAUSTED];
+                }
                 if ($s->isCodeExpired()) {
-                    $s->update(['active_slot' => null]);
+                    if ($s->active_slot !== null) {
+                        $s->update(['active_slot' => null]);
+                    }
                     return ['fail' => EdgeSetupException::CODE_EXPIRED];
                 }
-                if ($s->isExhausted()) {
-                    $s->update(['active_slot' => null]);
-                    return ['fail' => EdgeSetupException::CODE_EXHAUSTED];
+                if ($s->active_slot !== EdgeSetupSession::ACTIVE_SLOT) {
+                    return ['fail' => EdgeSetupException::CODE_INVALID];
                 }
                 if (! $this->entitlement->featureIsEnabled() || ! $this->entitlement->tenantHasOfflineEdgeAccess()) {
                     $this->burnAttempt($s);
