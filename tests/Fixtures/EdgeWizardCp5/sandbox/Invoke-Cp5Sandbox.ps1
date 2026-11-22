@@ -1143,11 +1143,13 @@ function Confirm-CloudUp {
     }
 }
 function Invoke-ScenarioS {
-    # Agent D's own STA process (headless Edge / cookie driver + the REAL counter wizard window); exit 0 = every verdict true
+    # Agent D's own STA process (headless Edge / cookie driver + the REAL counter wizard window); exit 0 = every verdict true.
+    # Its stdout goes to driver-s.log, NOT s-*: D's final redaction re-reads every s-* file and our redirect still holds that
+    # one open (run 10: every step PASS, then ReadAllText on s-driver.log threw and the verdict was never written).
     $p = Join-Path $Kit 'Invoke-Cp5CounterSelfService.ps1'
     if (-not (Test-Path $p)) { throw 'NOT_DELIVERED: Invoke-Cp5CounterSelfService.ps1 is not in the kit' }
     $r = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', $p, '-Evidence', $Ev, '-LanIp', $script:LanIp,
-        '-Kit', $Kit, '-Pkgs', $Pkgs, '-Work', $Work, '-CloudPhp', $CloudPhp, '-CloudIni', $CloudIni, '-LanHost', $LanHost, '-HttpsPort', [string]$HttpsPort) (Join-Path $Ev 's-driver.log') 3600
+        '-Kit', $Kit, '-Pkgs', $Pkgs, '-Work', $Work, '-CloudPhp', $CloudPhp, '-CloudIni', $CloudIni, '-LanHost', $LanHost, '-HttpsPort', [string]$HttpsPort) (Join-Path $Ev 'driver-s.log') 3600
     # s changed the cashier's PIN (secrets\pin-<id>) and keeps its own s-*.keep secrets: every short secret file joins the
     # redaction list of the final evidence scan
     foreach ($f in @(Get-ChildItem $Secrets -File | Where-Object { $_.Length -gt 0 -and $_.Length -lt 256 -and ($_.Name -like 'pin-*' -or $_.Name -like '*.keep') })) {
