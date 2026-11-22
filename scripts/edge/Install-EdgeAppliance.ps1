@@ -103,6 +103,31 @@ function Invoke-Edge {
     & $php $launcher @Arguments | Out-Host
     return $LASTEXITCODE
 }
+# The ONE authority/heartbeat worker. Step 11 starts its task, and step 12's one-off warm ticks run in the same second: when
+# the ticks take the worker slot first, the task's worker exits cleanly ("another authority worker is already RUNNING",
+# exit 0) and Task Scheduler restarts only on FAILURE - the branch had no heartbeat until a reboot (CP5 run 13, fresh
+# install: DEGRADED "Authority/heartbeat worker is not running"). The ticks release the slot when they end, so start ONLY
+# this task again (the backup / sync / updater tasks keep their own schedule) and wait until it stays Running.
+function Start-EdgeAuthorityTask([string]$PlanPath, [int]$WaitSeconds = 30) {
+    $plan = Get-Content -Path $PlanPath -Raw | ConvertFrom-Json
+    $task = @($plan.tasks | Where-Object { [string]$_.artisan_command -eq 'edge:local:authority-worker' -or [string]$_.arguments -match 'edge:local:authority-worker' }) | Select-Object -First 1
+    if (-not $task) { Write-Warning 'the service plan has no authority-worker task'; return }
+    $name = [string]$task.name
+    $st = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+    if (-not $st) { Write-Warning "the authority task $name is not registered"; return }
+    if ($st.State -ne 'Running') {
+        Start-ScheduledTask -TaskName $name
+        Write-Host "  authority task $name started again (the warm-sync ticks held the one worker slot)"
+    }
+    $deadline = (Get-Date).AddSeconds($WaitSeconds)
+    $seen = 0
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 3
+        if ((Get-ScheduledTask -TaskName $name).State -eq 'Running') { $seen++ } else { $seen = 0 }
+        if ($seen -ge 2) { Write-Host "  authority task ${name}: Running"; return }   # still running 3 s later: not a refused duplicate
+    }
+    Write-Warning "the authority task $name is not Running after $WaitSeconds s - edge:local:health will report it"
+}
 function Copy-Tree($src, $dst) {
     New-Item -ItemType Directory -Path $dst -Force | Out-Null
     # robocopy: /E all subdirs, /XJ never follow junctions (re-created below), quiet, exit codes 0-7 = success.
@@ -364,6 +389,7 @@ if (-not $SkipWarmSync -and $PairingCodeFile -and $CloudUrl) {
     Step 12 'warm standby sync (two authority ticks)'
     Invoke-Edge @('edge:local:authority-worker', '--max-ticks=2', '--interval=5', '--no-interaction') | Out-Null
 } else { Step 12 'warm sync skipped' }
+if (-not $NoServices) { Start-EdgeAuthorityTask $planFile }   # after the one-off ticks: the task's worker must be the one running
 
 # ---- 13. health -------------------------------------------------------------------------------------------------
 Step 13 'edge:local:health'

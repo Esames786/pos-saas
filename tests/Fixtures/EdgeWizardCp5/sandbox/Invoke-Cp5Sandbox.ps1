@@ -974,8 +974,15 @@ function Invoke-FreshChecks([string]$Via, [int]$Sec) {
     $updater = @($after.tasks | Where-Object { $_.name -eq 'BingooEdgeUpdater' }).Count -eq 1
     Save-Evidence 'f-state-fresh.json' ([ordered]@{ via = $Via; wizard_seconds = $Sec; after = $after; cloud_device = $dev; pin_logins_loopback = $loop; pin_logins_gateway_by_ip = $byIp })
     $gwOk = $byIp -and -not (@($byIp.Values) | Where-Object { -not ($_.ok -and $_.tls.verified) })
-    $ok = $after.pointer -eq '0.9.0-dev' -and $dev.device.lan_ca_pem_present -and $updater -and -not (@($loop.Values) | Where-Object { -not $_.ok }) -and $gwOk
-    return [ordered]@{ verdict_ok = $ok; via = $Via; wizard_seconds = $Sec; pointer = $after.pointer; status = $after.status; k5_ca_on_cloud = [bool]$dev.device.lan_ca_pem_present
+    # A fresh DEGRADED may only ever be cache staleness, never a stopped worker (run 13 passed f with the authority task
+    # Ready / exit 0 and "Authority/heartbeat worker is not running": no heartbeat until a reboot)
+    $authTask = [string](@($after.tasks | Where-Object { $_.name -eq 'BingooEdgeAuthorityWorker' }) | Select-Object -First 1).state
+    $problems = @($after.problems | ForEach-Object { [string]$_ })
+    $workerDown = [bool](@($problems | Where-Object { $_ -match 'Authority/heartbeat worker is not running' }).Count)
+    $ok = $after.pointer -eq '0.9.0-dev' -and $dev.device.lan_ca_pem_present -and $updater -and -not (@($loop.Values) | Where-Object { -not $_.ok }) -and $gwOk -and
+        $authTask -eq 'Running' -and -not $workerDown
+    return [ordered]@{ verdict_ok = $ok; via = $Via; wizard_seconds = $Sec; pointer = $after.pointer; status = $after.status; problems = $problems; authority_task = $authTask
+        authority_worker_problem = $workerDown; k5_ca_on_cloud = [bool]$dev.device.lan_ca_pem_present
         gateway_pin_logins_full_tls = [bool]$gwOk; tasks = @($after.tasks | ForEach-Object { $_.name + '=' + $_.state }) }
 }
 
