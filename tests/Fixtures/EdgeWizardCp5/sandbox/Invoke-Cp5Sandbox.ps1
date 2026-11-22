@@ -509,7 +509,8 @@ function New-BranchCertificates {
 function Invoke-Install085 {
     $mysql = Install-ApplianceMySql
     $certs = New-BranchCertificates
-    if (-not (Test-Path (Join-Path $InstallRoot 'appliance.json'))) {
+    $script:InstalledNow = -not (Test-Path (Join-Path $InstallRoot 'appliance.json'))
+    if ($script:InstalledNow) {
         $codeFile = Join-Path $Secrets 'pairing.code'
         Remove-Item -Force $codeFile -ErrorAction SilentlyContinue
         $edgePwFile = Write-Secret 'edge.pass' (Get-Secret 'mysql-edge' { throw 'no edge password' })
@@ -570,7 +571,9 @@ function Invoke-Install085 {
     $snap = Get-ApplianceSnapshot 'after-0.8.5-install'
     $logins = Test-PinLogins 'http://127.0.0.1:8090'
     Save-Evidence 'a-state-085.json' ([ordered]@{ mysql = $mysql; certificates = $certs; enrolled = $enrolled; snapshot = $snap; pin_logins_loopback = $logins; cloud_device = (Get-CloudDevice) })
-    $ok = $snap.pointer -eq '0.8.5-edge' -and -not ($enrolled.Values -contains $false) -and -not (@($logins.Values) | Where-Object { -not $_.ok })
+    # installed now -> must be the 0.8.5 runtime; a resumed sandbox session (installed + maybe updated by an earlier driver run)
+    # only re-enrolls the PINs and proves the logins
+    $ok = ((-not $script:InstalledNow) -or $snap.pointer -eq '0.8.5-edge') -and $snap.pointer -and -not ($enrolled.Values -contains $false) -and -not (@($logins.Values) | Where-Object { -not $_.ok })
     return [ordered]@{ verdict_ok = $ok; pointer = $snap.pointer; status = $snap.status; mysql = $mysql.service; tasks = @($snap.tasks | ForEach-Object { $_.name + '=' + $_.state })
         khatri_085_task_workaround = [bool]$script:Khatri085Workaround }
 }
