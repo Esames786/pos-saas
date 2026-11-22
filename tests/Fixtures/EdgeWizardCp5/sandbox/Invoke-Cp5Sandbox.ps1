@@ -267,10 +267,14 @@ function Start-CloudPhp([int]$ClockOffsetSec = 0) {
 }
 function Set-ApplianceEnv([string]$Key, [string]$Value) {
     $f = Join-Path $DataRoot 'config\appliance.env'
-    $lines = @(Get-Content -Path $f)
+    # one definition only (dotenv keeps the FIRST of duplicate keys): replace in place, append when absent
+    $out = New-Object System.Collections.ArrayList
     $hit = $false
-    $lines = @($lines | ForEach-Object { if ($_ -match ('^' + [regex]::Escape($Key) + '=')) { $hit = $true; "$Key=$Value" } else { $_ } })
-    if (-not $hit) { $lines += "$Key=$Value" }
+    foreach ($l in @(Get-Content -Path $f)) {
+        if ($l -match ('^' + [regex]::Escape($Key) + '=')) { if (-not $hit) { [void]$out.Add("$Key=$Value") }; $hit = $true } else { [void]$out.Add($l) }
+    }
+    if (-not $hit) { [void]$out.Add("$Key=$Value") }
+    $lines = @($out)
     [IO.File]::WriteAllText($f, (($lines -join "`r`n") + "`r`n"), (New-Object Text.ASCIIEncoding))
 }
 function Start-LeaseWatch([string]$Tag, [string]$StopFile, [int]$MaxSec = 5400) {
