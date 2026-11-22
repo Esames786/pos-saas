@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-11-21T23:33:52+00:00",
+    "built_at": "2026-11-22T14:11:30+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "9d93ee96",
     "work": [
@@ -15,19 +15,28 @@
         {
             "path": "D:/laragon2/www/pos-saas-e09-a",
             "branch": "edge09/a-continuity",
-            "head": "5f7c0f05",
+            "head": "a6a54d24",
             "behind_prod": 3,
-            "ahead_of_prod": 72,
-            "last_commit": "2026-11-22\u00b7edge09(A): CP3 continuity gaps - close a continued shift with the drawer count, deal orders, KOT numbering continues the Cloud",
+            "ahead_of_prod": 91,
+            "last_commit": "2026-11-22\u00b7edge09(A): CP3 gap 3 - a refund paid in a continued shift is counted in the ORIGINAL Cloud shift",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-e09-b",
             "branch": "edge09/b-wizard",
-            "head": "6af17762",
+            "head": "0821c78d",
             "behind_prod": 3,
-            "ahead_of_prod": 76,
-            "last_commit": "2026-11-22\u00b7test(edge 0.9 CP5): launch Setup-BingooEdge.cmd with bare space-free paths (cmd /c quote stripping)",
+            "ahead_of_prod": 112,
+            "last_commit": "2026-11-22\u00b7fix(edge 0.9 installer): a fresh install ends with the authority/heartbeat worker running as its task",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-e09-c",
+            "branch": "edge09/c-cloud",
+            "head": "4b5f5490",
+            "behind_prod": 3,
+            "ahead_of_prod": 91,
+            "last_commit": "2026-11-22\u00b7edge09(c): K2 cloud_url keeps a non-default app.url port on the central host (CP5 pre-flight)",
             "uncommitted_files": 0
         },
         {
@@ -51,10 +60,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-e09-integ",
             "branch": "edge09/integ",
-            "head": "44e8ff59",
+            "head": "4716aa49",
             "behind_prod": 3,
-            "ahead_of_prod": 89,
-            "last_commit": "2026-11-22\u00b7Merge edge09/e-packaging (CP5: signed VC++ prerequisite + Install-EdgePrereqs, slim MySQL server profile, release build recipe) into the 0.9 integration",
+            "ahead_of_prod": 118,
+            "last_commit": "2026-11-22\u00b7Merge edge09/b-wizard (CP5 D-5: a fresh install ends with the authority/heartbeat worker running as its task; CP5 fresh run 14 PASS STANDBY_READY) into the 0.9 integration",
             "uncommitted_files": 0
         },
         {
@@ -64,15 +73,6 @@
             "behind_prod": 2,
             "ahead_of_prod": 0,
             "last_commit": "2026-11-22\u00b7MANAGER-PIN-SHARED-1: a shared manager PIN skips the requester's own row instead of refusing",
-            "uncommitted_files": 0
-        },
-        {
-            "path": "D:/laragon2/www/pos-saas-e09-c",
-            "branch": "edge09/c-cloud",
-            "head": "40cfef60",
-            "behind_prod": 3,
-            "ahead_of_prod": 56,
-            "last_commit": "2026-11-21\u00b7edge09(c): K6 owner-approved plan hashes + K2b fresh pairing code for install setup sessions",
             "uncommitted_files": 0
         },
         {
@@ -464,7 +464,7 @@
             "modified": "2026-11-21"
         }
     ],
-    "git": "44e8ff59",
+    "git": "4716aa49",
     "source": {
         "tenant_db": "pos_sysmap_e09_tenant",
         "master_db": "pos_test_master_e09i"
