@@ -119,13 +119,26 @@ switch ($Action) {
         Write-Host 'Services started.'
     }
     'Stop' {
-        # Cooperative first: the workers finish their in-flight job / tick and record a graceful stop.
-        & $php $launcher edge:local:print-worker --stop --stop-wait=$StopWaitSeconds
-        if ($LASTEXITCODE -ne 0) { Write-Warning 'Print worker did not confirm a graceful stop (lease expiry recovers any in-flight job).' }
-        & $php $launcher edge:local:authority-worker --stop
-        if ($LASTEXITCODE -ne 0) { Write-Warning 'Authority worker did not confirm a graceful stop.' }
-        if ($gatewayEnabled) {
-            & $gateway.executable -p $gateway.working_directory -c $gateway.config_path -s quit 2>$null
+        # Cooperative first: the workers finish their in-flight job / tick and record a graceful stop. NEVER fatal: under
+        # $ErrorActionPreference = 'Stop' Windows PowerShell 5.1 turns any stderr line of a native command into a terminating
+        # error, and `nginx -s quit` from an administrator cannot open the quit event of a master started by the task principal
+        # (LOCAL SERVICE): "OpenEvent(Global\ngx_quit_<pid>) failed (5: Access is denied)" - found by CP5 in the Windows Sandbox,
+        # it aborted the wizard's update. Stopping the tasks below (plus the leftover-process sweep) is what really stops them.
+        $eap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $null = & $php $launcher edge:local:print-worker --stop --stop-wait=$StopWaitSeconds 2>&1
+            if ($LASTEXITCODE -ne 0) { Write-Warning 'Print worker did not confirm a graceful stop (lease expiry recovers any in-flight job).' }
+            $null = & $php $launcher edge:local:authority-worker --stop 2>&1
+            if ($LASTEXITCODE -ne 0) { Write-Warning 'Authority worker did not confirm a graceful stop.' }
+            if ($gatewayEnabled) {
+                $null = & $gateway.executable -p $gateway.working_directory -c $gateway.config_path -s quit 2>&1
+                if ($LASTEXITCODE -ne 0) { Write-Warning 'The gateway did not take the quit signal (another account started it) - its task is stopped instead.' }
+            }
+        } catch {
+            Write-Warning ('Cooperative stop step failed (the tasks are stopped anyway): ' + $_.Exception.Message)
+        } finally {
+            $ErrorActionPreference = $eap
         }
         foreach ($t in $tasks) {
             Stop-ScheduledTask -TaskName $t.name -ErrorAction SilentlyContinue
@@ -134,6 +147,16 @@ switch ($Action) {
         if ($gatewayEnabled) {
             Stop-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue
             if (-not $KeepEnabled) { Disable-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue | Out-Null }
+            # nginx worker processes can outlive the master's task: sweep the ones started from THIS gateway executable, so the
+            # new runtime's gateway can bind 80 / 8443 again
+            $exe = [string]$gateway.executable
+            $deadline = (Get-Date).AddSeconds(15)
+            do {
+                $left = @(Get-CimInstance Win32_Process -Filter "Name = 'nginx.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and $_.ExecutablePath -ieq $exe })
+                if ($left.Count -eq 0) { break }
+                Start-Sleep -Milliseconds 500
+            } while ((Get-Date) -lt $deadline)
+            foreach ($p in $left) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
         }
         Write-Host $(if ($KeepEnabled) { 'Services stopped (left enabled).' } else { 'Services stopped and disabled (Start re-enables them).' })
     }
