@@ -526,7 +526,28 @@ function Invoke-Install085 {
                 Write-Log 'info' 'pairing code issued by the Cloud owner path and handed to the installer (one-time file)'
             }
         }
-        if ($r.Out -notmatch 'INSTALL COMPLETE') { throw ('the 0.8.5 install did not complete (exit ' + $r.Code + '), see a-install-085.log') }
+        if ($r.Out -notmatch 'INSTALL COMPLETE') {
+            if (($r.Out + $r.Err) -match 'P99999999DT23H59M59S' -and $r.Out -match '\[11\] Register-EdgeServices') {
+                # The REAL 0.8.5 kit bug met at Khatri (21 Nov, docs/status/khatri-onsite-install-steps-084 pitfall (b)): its
+                # Register-EdgeServices.ps1 uses [TimeSpan]::MaxValue as a repetition duration, which the Task Scheduler rejects
+                # (Khatri: Windows 10 19045; here also Windows 11 26100). Apply the documented on-site workaround verbatim: a
+                # copy with (New-TimeSpan -Days 3650), -Action Register, -Action Start, then the installer's steps 12 + 13.
+                Write-Log 'warn' '0.8.5 step [11] hit the known [TimeSpan]::MaxValue task bug - applying the documented Khatri workaround'
+                $src = Join-Path $InstallRoot 'scripts\Register-EdgeServices.ps1'
+                $fix = Join-Path $InstallRoot 'scripts\Register-EdgeServices.khatri-fix.ps1'
+                [IO.File]::WriteAllText($fix, (Get-Content -Raw $src).Replace('([TimeSpan]::MaxValue)', '(New-TimeSpan -Days 3650)'), (New-Object Text.ASCIIEncoding))
+                $plan = Join-Path $DataRoot 'gateway\service-plan.json'
+                $w1 = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $fix, '-Action', 'Register', '-PlanFile', $plan) (Join-Path $Ev 'a-khatri-fix-register.log') 600
+                $w2 = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $fix, '-Action', 'Start', '-PlanFile', $plan) (Join-Path $Ev 'a-khatri-fix-start.log') 600
+                $w3 = Invoke-Edge @('edge:local:authority-worker', '--max-ticks=2', '--interval=5', '--no-interaction') 300
+                Save-Evidence 'a-khatri-workaround.json' ([ordered]@{ why = 'real 0.8.5 kit: Register-EdgeServices.ps1 [TimeSpan]::MaxValue repetition duration rejected (HRESULT 0x80041318)'
+                        applied = 'documented Khatri on-site workaround (copy with New-TimeSpan -Days 3650, Register, Start, warm sync)'; register_exit = $w1.Code; start_exit = $w2.Code; warm_sync_exit = $w3.Code })
+                if ($w1.Code -ne 0 -or $w2.Code -ne 0) { throw ('the documented 0.8.5 task workaround failed (register ' + $w1.Code + ', start ' + $w2.Code + ')') }
+                $script:Khatri085Workaround = $true
+            } else {
+                throw ('the 0.8.5 install did not complete (exit ' + $r.Code + '), see a-install-085.log')
+            }
+        }
         Remove-Item -Force $edgePwFile, $pfxPwFile -ErrorAction SilentlyContinue
     }
     # every Cloud user gets an Edge PIN on 0.8.5 (the documented operator path: Cloud assertion + edge:local:enroll --credential-file)
@@ -542,7 +563,8 @@ function Invoke-Install085 {
     $logins = Test-PinLogins 'http://127.0.0.1:8090'
     Save-Evidence 'a-state-085.json' ([ordered]@{ mysql = $mysql; certificates = $certs; enrolled = $enrolled; snapshot = $snap; pin_logins_loopback = $logins; cloud_device = (Get-CloudDevice) })
     $ok = $snap.pointer -eq '0.8.5-edge' -and -not ($enrolled.Values -contains $false) -and -not (@($logins.Values) | Where-Object { -not $_.ok })
-    return [ordered]@{ verdict_ok = $ok; pointer = $snap.pointer; status = $snap.status; mysql = $mysql.service; tasks = @($snap.tasks | ForEach-Object { $_.name + '=' + $_.state }) }
+    return [ordered]@{ verdict_ok = $ok; pointer = $snap.pointer; status = $snap.status; mysql = $mysql.service; tasks = @($snap.tasks | ForEach-Object { $_.name + '=' + $_.state })
+        khatri_085_task_workaround = [bool]$script:Khatri085Workaround }
 }
 
 # ------------------------------------------------------------------------------ b) 0.9 wizard UPDATE (Setup-BingooEdge.cmd)
