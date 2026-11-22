@@ -43,13 +43,19 @@ $holders = [];
 $ttl = null;
 $pointers = [];
 $errors = 0;
+// CP6: would the Cloud refuse this branch's Online POS mutations right now? The same rule as
+// EdgeAuthorityLeaseService::blocksCloud(): not released AND (holder = edge OR (heartbeated once AND lease expired)).
+// fenced_at alone under-reports it: the Cloud writes fenced_at only when a mutation actually asks during the lapse.
+$blockedSamples = 0;
+$blockedFirst = null;
+$blockedLast = null;
 
 while (time() - $t0 < $max && ! is_file($stopFile)) {
     $now = time();
     $row = ['t' => gmdate('H:i:s', $now)];
     try {
         $cloud ??= $connect($cloudPort, 'pos_tenant_cp5edgewiz', 'root', '');
-        $l = $cloud?->query('SELECT holder, edge_state, heartbeat_seq, last_heartbeat_at, lease_ttl_seconds, expires_at, fenced_at FROM edge_branch_authority_leases ORDER BY id LIMIT 1')->fetch(PDO::FETCH_ASSOC);
+        $l = $cloud?->query('SELECT holder, edge_state, heartbeat_seq, last_heartbeat_at, lease_ttl_seconds, expires_at, fenced_at, released_at FROM edge_branch_authority_leases ORDER BY id LIMIT 1')->fetch(PDO::FETCH_ASSOC);
         if ($l) {
             $row['cloud'] = ['holder' => $l['holder'], 'edge_state' => $l['edge_state'], 'seq' => (int) $l['heartbeat_seq'], 'last_hb' => $l['last_heartbeat_at'], 'expires' => $l['expires_at'], 'fenced' => $l['fenced_at']];
             $ttl = (int) $l['lease_ttl_seconds'];
@@ -57,6 +63,13 @@ while (time() - $t0 < $max && ! is_file($stopFile)) {
             if ($exp !== null) {
                 $in = $exp - $now;
                 $minExpiresIn = $minExpiresIn === null ? $in : min($minExpiresIn, $in);
+            }
+            $blocks = $l['released_at'] === null && ($l['holder'] === 'edge' || ($l['last_heartbeat_at'] !== null && ($exp === null || $exp <= $now)));
+            $row['cloud']['blocks_cloud'] = $blocks;
+            if ($blocks) {
+                $blockedSamples++;
+                $blockedFirst ??= gmdate('H:i:s', $now);
+                $blockedLast = gmdate('H:i:s', $now);
             }
             if ($l['last_heartbeat_at'] && end($cloudBeats) !== $l['last_heartbeat_at']) {
                 $cloudBeats[] = $l['last_heartbeat_at'];
@@ -136,6 +149,11 @@ $summary = [
     'holders_seen' => array_keys($holders),
     'pointer_changes' => $pointers,
     'read_errors' => $errors,
+    // CP6: the Online POS impact (blocksCloud rule, ~1 s samples): would a sale on the Online POS have been refused?
+    'cloud_blocked_samples' => $blockedSamples,
+    'cloud_blocked_first' => $blockedFirst,
+    'cloud_blocked_last' => $blockedLast,
+    'online_pos_paused' => $blockedSamples > 0,
 ];
 $summary['verdict'] = ($ttl && $summary['cloud_heartbeats']['max_gap_s'] < $ttl && $summary['lease_never_lapsed'] && $fencedSeen === null && $summary['holders_seen'] === ['cloud']) ? 'PASS' : 'FAIL';
 file_put_contents($prefix . '.summary.json', json_encode($summary, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));

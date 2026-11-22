@@ -243,6 +243,64 @@ switch ($cmd) {
         $out(['enrollment_public' => $k['enrollment_public'], 'update_key_id' => App\Services\Edge\EdgeSigningKeyStore::keyId((string) config('edge.update.public_key'))]);
         break;
 
+    case 'online-sale':
+        // CP6: ONE Online POS sale on the Cloud WHILE the appliance updates. The decision is the fence every sale-mutating
+        // POS controller asks (BranchOperatingModeService::assertSaleMutationAllowed - lease holder / lapse, operating mode);
+        // when it allows, the sale goes through the real sale services (shift, SalesOrder, payment, finalizePaidSale).
+        $tag = (string) ($argv[2] ?? 'during-update');
+        $t = $tenantFn();
+        $s = $readState();
+        $c = DB::connection('tenant');
+        $branch = Branch::findOrFail((int) $s['branch_id']);
+        $leaseBefore = (array) ($c->table('edge_branch_authority_leases')->where('branch_id', $branch->id)->first() ?? []);
+        $doc = ['tag' => $tag, 'at_utc' => now()->utc()->format('Y-m-d H:i:s'), 'decision_via' => 'BranchOperatingModeService::assertSaleMutationAllowed (the call the POS sale controllers make)',
+            'lease_before' => array_intersect_key($leaseBefore, array_flip(['holder', 'edge_state', 'last_heartbeat_at', 'expires_at', 'fenced_at', 'released_at']))];
+        $t0 = microtime(true);
+        try {
+            app(App\Services\Edge\BranchOperatingModeService::class)->assertSaleMutationAllowed($branch);
+            $doc['fence'] = 'allowed';
+        } catch (App\Exceptions\BranchLocalEdgeException $e) {
+            $doc['fence'] = 'blocked';
+            $doc['fence_message'] = mb_substr($e->getMessage(), 0, 240);
+        }
+        if ($doc['fence'] === 'allowed') {
+            try {
+                $counter = App\Models\Tenant\Terminal::findOrFail((int) $s['terminals'][0]);
+                $cashier = App\Models\Tenant\User::findOrFail((int) $s['users'][1]);
+                $product = App\Models\Tenant\Product::findOrFail((int) $s['product_id']);
+                $price = (float) ($product->default_selling_price ?: 450);
+                $cash = App\Models\Tenant\PaymentMethod::where('method_type', 'cash')->where('is_active', 1)->orderBy('id')->firstOrFail();
+                $shifts = app(App\Services\Sales\ShiftService::class);
+                $shift = $shifts->activeShiftForTerminal($counter) ?? $shifts->open($branch, $counter, (int) $cashier->id, 1500.0, 'CP6 online sale');
+                $sales = app(App\Services\Sales\SalesService::class);
+                $sale = new App\Models\Tenant\SalesOrder([
+                    'branch_id' => $branch->id, 'terminal_id' => $counter->id, 'shift_id' => $shift->id, 'business_date' => $shift->business_date?->toDateString(),
+                    'order_source' => 'pos', 'sale_date' => now(), 'discount_type' => 'none', 'discount_value' => 0, 'discount_amount' => 0, 'tax_amount' => 0,
+                    'service_charge_amount' => 0, 'delivery_charge_amount' => 0, 'tip_amount' => 0, 'paid_amount' => 0, 'change_amount' => 0, 'is_draft' => false,
+                    'inventory_posted' => false, 'created_by_user_id' => $cashier->id, 'sale_no' => $sales->nextSaleNo(), 'order_type' => 'takeaway',
+                    'subtotal' => $price, 'grand_total' => $price, 'status' => 'draft', 'notes' => 'CP6 online sale ' . $tag,
+                ]);
+                $sale->save();
+                $sale->lines()->create(['product_id' => $product->id, 'product_name' => $product->name, 'quantity' => 1, 'unit_price' => $price,
+                    'unit_cost' => 0, 'cost_total' => 0, 'discount_amount' => 0, 'tax_amount' => 0, 'line_total' => $price]);
+                $sale->payments()->create(['payment_method_id' => $cash->id, 'amount' => $price, 'tendered_amount' => $price, 'change_amount' => 0]);
+                $sale = $sales->finalizePaidSale($sale->fresh());
+                $doc['sale'] = ['id' => (int) $sale->id, 'sale_uuid' => (string) $sale->sale_uuid, 'sale_no' => (string) $sale->sale_no, 'status' => (string) $sale->status,
+                    'shift_id' => (int) $shift->id, 'payments' => (int) $c->table('sale_payments')->where('sales_order_id', $sale->id)->count()];
+                $doc['result'] = $sale->status === 'paid' ? 'accepted' : 'not_paid';
+            } catch (Throwable $e) {
+                $doc['result'] = $e instanceof App\Exceptions\BranchLocalEdgeException ? 'blocked' : 'error';
+                $doc['error'] = mb_substr(get_class($e) . ': ' . $e->getMessage(), 0, 300);
+            }
+        } else {
+            $doc['result'] = 'blocked';
+        }
+        $doc['ms'] = (int) ((microtime(true) - $t0) * 1000);
+        $leaseAfter = (array) ($c->table('edge_branch_authority_leases')->where('branch_id', $branch->id)->first() ?? []);
+        $doc['lease_after'] = array_intersect_key($leaseAfter, array_flip(['holder', 'edge_state', 'last_heartbeat_at', 'expires_at', 'fenced_at', 'released_at']));
+        $out($doc);
+        break;
+
     case 'lease':
         // The Cloud's view of the branch authority lease (Cloud clock): the fencing proof of CP5 scenario c/d.
         $t = $tenantFn();

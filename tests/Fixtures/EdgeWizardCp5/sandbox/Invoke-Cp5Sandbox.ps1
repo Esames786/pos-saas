@@ -54,7 +54,16 @@ $CloudDbPort = 3407
 $CloudUrl = "http://127.0.0.1:$CloudPort"
 $LanHost = 'bingoo-edge.local'
 $HttpsPort = 8443
-$Pkg090 = Join-Path $Pkgs 'BingooEdge-0.9.0-dev'
+# CP6 release variant: <kit>\cp5-variant.json names the 0.9.0 package (folder + version) and the update-key facts file
+# (the RELEASE public key - never a keystore). Without it: the DEV CP5 kit, unchanged.
+$script:Variant = $null
+if (Test-Path (Join-Path $Kit 'cp5-variant.json')) { $script:Variant = Get-Content -Raw (Join-Path $Kit 'cp5-variant.json') | ConvertFrom-Json }
+$V090 = '0.9.0-dev'
+$Pkg090Name = 'BingooEdge-0.9.0-dev'
+if ($script:Variant) { $V090 = [string]$script:Variant.version_090; $Pkg090Name = [string]$script:Variant.package_090 }
+$KeyFacts = Join-Path $Kit 'dev-public-facts.json'
+if (Test-Path (Join-Path $Kit 'update-public-facts.json')) { $KeyFacts = Join-Path $Kit 'update-public-facts.json' }
+$Pkg090 = Join-Path $Pkgs $Pkg090Name
 $Pkg091 = Join-Path $Pkgs 'BingooEdge-0.9.1-dev'
 $Pkg092 = Join-Path $Pkgs 'BingooEdge-0.9.2-dev'
 $CloudPhp = Join-Path $Pkg090 'php\php.exe'
@@ -362,13 +371,14 @@ function Invoke-Scenario([string]$Id, [string]$Title, [string[]]$Needs, [scriptb
 function Invoke-Prereqs {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     if (-not ((New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))) { throw 'the driver needs the sandbox administrator (run Start-Cp5.cmd from the .wsb LogonCommand)' }
-    foreach ($p in @($Kit, $Pkg090, $Pkg091, $Pkg092, $Rel085, $CloudSrc)) { if (-not (Test-Path $p)) { throw "missing mapped folder: $p" } }
+    $need = @($Kit, $Pkg090, $Rel085, $CloudSrc); if (-not $script:Variant) { $need += @($Pkg091, $Pkg092) }   # the release variant carries one package
+    foreach ($p in $need) { if (-not (Test-Path $p)) { throw "missing mapped folder: $p" } }
     # Visual C++ 2015-2022 x64 runtime: a clean sandbox has none, and the Cloud php / mysqld here plus the REAL 0.8.5 install of
     # scenario a (no bundled prerequisite) need it BEFORE any 0.9 wizard runs. Installed with stream E's own
     # Install-EdgePrereqs.ps1 + the verified VC_redist.x64.exe that the 0.9.0-dev package carries (Authenticode + Microsoft
     # signer + SHA256SUMS line) - the same script the wizard runs as its first step (which then finds the runtime present).
     $prereq = Join-Path $Pkg090 'scripts\Install-EdgePrereqs.ps1'
-    if (-not (Test-Path $prereq)) { throw 'the 0.9.0-dev package carries no scripts\Install-EdgePrereqs.ps1' }
+    if (-not (Test-Path $prereq)) { throw "the $V090 package carries no scripts\Install-EdgePrereqs.ps1" }
     $chk = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $prereq, '-PackageRoot', $Pkg090, '-CheckOnly') (Join-Path $Ev 'prereq-check-before.log') 120
     $how = 'present (check exit 0)'
     if ($chk.Code -ne 0) {
@@ -401,7 +411,7 @@ function Start-Cloud {
     # MySQL for the Cloud: the package's MySQL 8.0.30 (read-only basedir), own datadir, 127.0.0.1:3407, console process
     $mysqlSrc = Join-Path $Pkg090 'mysql'   # stream E layout: <package>\mysql\bin\mysqld.exe
     if (-not (Test-Path (Join-Path $mysqlSrc 'bin\mysqld.exe'))) { $mysqlSrc = (Get-ChildItem $mysqlSrc -Directory -Filter 'mysql-*' | Select-Object -First 1).FullName }
-    if (-not $mysqlSrc -or -not (Test-Path (Join-Path $mysqlSrc 'bin\mysqld.exe'))) { throw 'the 0.9.0-dev package carries no MySQL runtime' }
+    if (-not $mysqlSrc -or -not (Test-Path (Join-Path $mysqlSrc 'bin\mysqld.exe'))) { throw "the $V090 package carries no MySQL runtime" }
     $script:MySqlSrc = $mysqlSrc
     $cm = Join-Path $Work 'cloud-mysql'
     New-Item -ItemType Directory -Force -Path $cm | Out-Null
@@ -438,7 +448,7 @@ log_error=$(ConvertTo-Fwd (Join-Path $cm 'error.log'))
     try { $code = (Invoke-WebRequest -UseBasicParsing -Uri ($CloudUrl + '/up') -TimeoutSec 60).StatusCode } catch { $code = [int]$_.Exception.Response.StatusCode }
     $keys = Get-LastJson (Invoke-Cloud @('public-keys')).Out
     $script:EnrollmentPublic = [string]$keys.enrollment_public
-    $script:DevPublic = [string](Get-Content -Raw (Join-Path $Kit 'dev-public-facts.json') | ConvertFrom-Json).public_key
+    $script:DevPublic = [string](Get-Content -Raw $KeyFacts | ConvertFrom-Json).public_key
     $users = Get-Users
     foreach ($u in $users) { $pinFile = Join-Path $Secrets ('pin-' + $u.id); if (-not (Test-Path $pinFile)) { [void](Write-Secret ('pin-' + $u.id) (New-Pin)) } else { [void]$script:SecretValues.Add((Get-Content -Raw $pinFile).Trim()) } }
     Write-Log 'ok' ("Cloud up on $CloudUrl (HTTP $code), tenant cp5edgewiz, users " + (($users | ForEach-Object { $_.code }) -join ', ') + ', update key id ' + $keys.update_key_id)
@@ -630,7 +640,7 @@ function Invoke-SetupCmd([string]$AnswersFile, [string]$LogName, [hashtable]$Sec
     Write-Log 'warn' 'Setup-BingooEdge.cmd admin probe (net session) fails in this sandbox - starting the same wizard script directly'
     return Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', (Join-Path $Pkg090 'app\scripts\edge\wizard\Start-BingooEdgeWizard.ps1'), '-Headless', '-AnswersFile', $AnswersFile) (Join-Path $Ev $LogName) 5400 $SecretEnv
 }
-function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}, [string]$ExpectPointer = '0.9.0-dev') {
+function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}, [string]$ExpectPointer = $V090) {
     # the same proof for the UI-driven and the headless update: same device, 0.9 runtime, K5 with the CA on the Cloud, tasks
     # re-registered with BingooEdgeUpdater + the LOCAL SERVICE control grant, every user's PIN still logs in
     Save-BeforeUpdate   # loads the pre-update snapshot of this sandbox session when the update ran in another driver process
@@ -684,6 +694,186 @@ function Invoke-WizardUpdateHeadless {
     return $r
 }
 
+# ------------------------------------------------- CP6: duplicates by natural key, on the appliance DB AND the sandbox Cloud DB
+function Get-DupFacts([ValidateSet('edge', 'cloud')][string]$Target) {
+    if (-not $env:CP5_EDGE_ROOT_PASSFILE) { $env:CP5_EDGE_ROOT_PASSFILE = Join-Path $Secrets 'mysql-root.keep' }
+    $colsJ = Invoke-Sql $Target "SELECT TABLE_NAME t, COLUMN_NAME c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('shifts','sales_orders','sale_payments','print_jobs','kot_batches','edge_sync_outbox')"
+    $has = @{}
+    foreach ($r in @($colsJ.rows)) { $has[[string]$r.t + '.' + [string]$r.c] = $true }
+    $q = [ordered]@{
+        shifts_total = @('shifts.id', 'SELECT COUNT(*) n FROM shifts')
+        shifts_dup_uuid = @('shifts.shift_uuid', 'SELECT COUNT(*) n FROM (SELECT shift_uuid FROM shifts WHERE shift_uuid IS NOT NULL GROUP BY shift_uuid HAVING COUNT(*) > 1) d')
+        shifts_open_gt1_per_terminal = @('shifts.terminal_id', "SELECT COUNT(*) n FROM (SELECT terminal_id FROM shifts WHERE status = 'open' GROUP BY terminal_id HAVING COUNT(*) > 1) d")
+        orders_total = @('sales_orders.id', 'SELECT COUNT(*) n FROM sales_orders')
+        orders_dup_uuid = @('sales_orders.sale_uuid', 'SELECT COUNT(*) n FROM (SELECT sale_uuid FROM sales_orders WHERE sale_uuid IS NOT NULL GROUP BY sale_uuid HAVING COUNT(*) > 1) d')
+        orders_dup_sale_no = @('sales_orders.sale_no', 'SELECT COUNT(*) n FROM (SELECT branch_id, sale_no FROM sales_orders GROUP BY branch_id, sale_no HAVING COUNT(*) > 1) d')
+        payments_total = @('sale_payments.id', 'SELECT COUNT(*) n FROM sale_payments')
+        payments_dup_uuid = @('sale_payments.payment_uuid', 'SELECT COUNT(*) n FROM (SELECT payment_uuid FROM sale_payments WHERE payment_uuid IS NOT NULL GROUP BY payment_uuid HAVING COUNT(*) > 1) d')
+        payments_dup_natural = @('sale_payments.sales_order_id', 'SELECT COUNT(*) n FROM (SELECT sales_order_id, payment_method_id, amount, created_at FROM sale_payments GROUP BY sales_order_id, payment_method_id, amount, created_at HAVING COUNT(*) > 1) d')
+        print_jobs_total = @('print_jobs.id', 'SELECT COUNT(*) n FROM print_jobs')
+        print_jobs_dup_job_no = @('print_jobs.job_no', 'SELECT COUNT(*) n FROM (SELECT job_no FROM print_jobs GROUP BY job_no HAVING COUNT(*) > 1) d')
+        print_jobs_dup_logical_key = @('print_jobs.logical_key', 'SELECT COUNT(*) n FROM (SELECT logical_key FROM print_jobs WHERE logical_key IS NOT NULL GROUP BY logical_key HAVING COUNT(*) > 1) d')
+        print_jobs_repeated_document = @('print_jobs.reference_id', 'SELECT COUNT(*) n FROM (SELECT document_type, reference_type, reference_id FROM print_jobs WHERE reference_id IS NOT NULL GROUP BY document_type, reference_type, reference_id HAVING COUNT(*) > 1) d')
+        kot_total = @('kot_batches.id', 'SELECT COUNT(*) n FROM kot_batches')
+        kot_dup_event_uuid = @('kot_batches.event_uuid', 'SELECT COUNT(*) n FROM (SELECT event_uuid FROM kot_batches WHERE event_uuid IS NOT NULL GROUP BY event_uuid HAVING COUNT(*) > 1) d')
+    }
+    $doc = [ordered]@{ target = $Target; at = (Get-Date).ToUniversalTime().ToString('s') }
+    foreach ($k in $q.Keys) {
+        if (-not $has.ContainsKey($q[$k][0])) { $doc[$k] = 'n/a (column absent)'; continue }
+        $j = Invoke-Sql $Target $q[$k][1]
+        $doc[$k] = $(if ($j -and $j.rows) { [int](@($j.rows)[0].n) } else { 'error: ' + [string]$j.error })
+    }
+    if ($Target -eq 'edge' -and $has.ContainsKey('edge_sync_outbox.state')) {
+        $o = Invoke-Sql 'edge' 'SELECT state, COUNT(*) n, SUM(attempts > 0) retried, SUM(last_error IS NOT NULL) with_error FROM edge_sync_outbox GROUP BY state'
+        $doc['outbox'] = @($o.rows)
+    }
+    return $doc
+}
+function Compare-DupFacts($Before, $After) {
+    # duplicates (natural keys) must be 0 after and never grow; the totals' deltas are reported as they are
+    $dups = [ordered]@{}; $deltas = [ordered]@{}
+    foreach ($k in @($After.Keys)) {
+        $a = $After[$k]; $b = $Before[$k]
+        if ($k -match '_dup_|_gt1_|_repeated_' -and $a -is [int]) { $dups[$k] = $a }
+        if ($k -match '_total$' -and $a -is [int] -and $b -is [int]) { $deltas[$k] = $a - $b }
+    }
+    $newDup = @($dups.Keys | Where-Object { $dups[$_] -gt 0 -and -not ($Before[$_] -is [int] -and $Before[$_] -ge $dups[$_]) })
+    return [ordered]@{ duplicates_after = $dups; new_duplicates = $newDup; deltas = $deltas; ok = ($newDup.Count -eq 0) }
+}
+function Get-OutboxTotals($Facts) {
+    $t = [ordered]@{ pending = 0; failed = 0; with_error = 0; other = 0 }
+    foreach ($r in @($Facts.outbox)) {
+        $s = [string]$r.state; $n = [int]$r.n
+        if ($s -eq 'pending' -or $s -eq 'leased' -or $s -eq 'sending') { $t.pending += $n } elseif ($s -match 'fail|refus|dead') { $t.failed += $n } else { $t.other += $n }
+        $t.with_error += [int]$r.with_error
+    }
+    return $t
+}
+
+# ------------------------------------------------------------------------------------ CP6 v) the owner's checks after the update
+function Invoke-ScenarioV {
+    $h = $null
+    try { $h = Wait-Until { $x = Get-Health; if ([string]$x.status -eq 'STANDBY_READY' -and @($x.problems | Where-Object { $_ }).Count -eq 0) { $x } } 480 15 'STANDBY_READY with no problems' }
+    catch { $h = Get-Health }
+    $after = [ordered]@{ edge = (Get-DupFacts 'edge'); cloud = (Get-DupFacts 'cloud') }
+    Save-Evidence 'dupes-after.json' $after
+    # a v re-run in its own driver process (wsb exec ... auto v): the before-facts and the Online sales of the update are on C:\cp5w
+    $before = $script:DupBefore
+    $bf = Join-Path $Work 'cp6-dupes-before.json'
+    if (-not $before -and (Test-Path $bf)) {
+        $j = Get-Content -Raw $bf | ConvertFrom-Json
+        $before = [ordered]@{}
+        foreach ($side in 'edge', 'cloud') {
+            $h2 = [ordered]@{}
+            foreach ($p in $j.$side.PSObject.Properties) { $h2[$p.Name] = $(if ($p.Value -is [ValueType] -and $p.Value -isnot [bool]) { [int]$p.Value } else { $p.Value }) }
+            $before[$side] = $h2
+        }
+        Write-Log 'info' "v: before-facts loaded from $bf"
+    }
+    if (-not $before) { $before = $after; Write-Log 'warn' 'v: no before-facts - duplicates are checked on the after-facts only' }
+    if (-not $script:OnlineSales -or @($script:OnlineSales).Count -eq 0) {
+        $script:OnlineSales = @(Get-ChildItem (Join-Path $Work 'online-sales') -Filter 'online-sale-*.json' -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { Get-Content -Raw $_.FullName | ConvertFrom-Json })
+    }
+    $cmpE = Compare-DupFacts $before.edge $after.edge
+    $cmpC = Compare-DupFacts $before.cloud $after.cloud
+    $obB = Get-OutboxTotals $before.edge; $obA = Get-OutboxTotals $after.edge
+    $acceptedSales = @($script:OnlineSales | Where-Object { $_.result -eq 'accepted' })
+    $accepted = $acceptedSales.Count
+    # the warm standby MIRRORS closed Cloud sales (status cloud_mirror, the SAME sale_uuid; its payment rows are local copies):
+    # the appliance may gain exactly those rows - each accepted Online sale once - and nothing of its own
+    $mirror = [ordered]@{ orders = 0; payments = 0; per_sale = [ordered]@{} }
+    foreach ($s in $acceptedSales) {
+        $u = [string]$s.sale.sale_uuid
+        if ($u -notmatch '^[0-9A-Za-z]{26}$') { continue }
+        $o = Invoke-Sql 'edge' ("SELECT COUNT(*) n, SUM(status = 'cloud_mirror') m FROM sales_orders WHERE sale_uuid = '" + $u + "'")
+        $pm = Invoke-Sql 'edge' ("SELECT COUNT(*) n FROM sale_payments p JOIN sales_orders s ON s.id = p.sales_order_id WHERE s.sale_uuid = '" + $u + "'")
+        $n = [int]@($o.rows)[0].n; $m = [int]@($o.rows)[0].m; $np = [int]@($pm.rows)[0].n
+        $mirror.per_sale[$u] = [ordered]@{ rows = $n; cloud_mirror = $m; payments = $np }
+        $mirror.orders += $n; $mirror.payments += $np
+    }
+    $mirrorOk = -not (@($mirror.per_sale.Values) | Where-Object { $_.rows -gt 1 -or $_.rows -ne $_.cloud_mirror })
+    $edgeQuiet = [int]$cmpE.deltas['shifts_total'] -eq 0 -and [int]$cmpE.deltas['print_jobs_total'] -eq 0 -and
+        [int]$cmpE.deltas['orders_total'] -eq $mirror.orders -and [int]$cmpE.deltas['payments_total'] -eq $mirror.payments -and $mirrorOk
+    $cloudAsSold = ([int]$cmpC.deltas['orders_total'] -eq $accepted -and [int]$cmpC.deltas['payments_total'] -eq $accepted -and [int]$cmpC.deltas['shifts_total'] -eq 0)
+    $outboxOk = ($obA.pending -le $obB.pending -and $obA.failed -le $obB.failed -and $obA.with_error -le $obB.with_error)
+    $healthOk = ([string]$h.status -eq 'STANDBY_READY' -and @($h.problems | Where-Object { $_ }).Count -eq 0)
+    $doc = [ordered]@{ health_status = $h.status; health_label = $h.status_label; health_problems = @($h.problems); pointer = (Get-Pointer)
+        outbox_before = $obB; outbox_after = $obA; outbox_ok = $outboxOk; appliance = $cmpE; cloud = $cmpC
+        online_sales_accepted = $accepted; online_sales = @($script:OnlineSales); appliance_mirror_of_online_sales = $mirror
+        appliance_only_mirrored_online_sales = $edgeQuiet; cloud_deltas_match_online_sales = $cloudAsSold }
+    Save-Evidence 'v-owner-checks.json' $doc
+    return [ordered]@{ verdict_ok = ($healthOk -and $outboxOk -and $cmpE.ok -and $cmpC.ok -and $edgeQuiet -and $cloudAsSold); health = $h.status; problems = @($h.problems)
+        no_new_duplicates_appliance = $cmpE.ok; no_new_duplicates_cloud = $cmpC.ok; appliance_deltas = $cmpE.deltas; cloud_deltas = $cmpC.deltas
+        online_sales_accepted = $accepted; outbox_before = $obB; outbox_after = $obA }
+}
+
+# ------------------------------------------------- CP6 r) the REAL K6 rollback of the release update (backup-based, to 0.8.5)
+function Invoke-ScenarioR {
+    $from = Get-Pointer
+    if ($from -ne '0.8.5-edge') { throw "r needs the appliance on 0.8.5-edge (pointer $from) - a NEW sandbox with -Only r" }
+    Save-BeforeUpdate
+    $hBefore = Get-Health
+    $script:DupBefore = [ordered]@{ edge = (Get-DupFacts 'edge'); cloud = (Get-DupFacts 'cloud') }
+    Save-Evidence 'r-dupes-before.json' $script:DupBefore
+    [IO.File]::WriteAllText((Join-Path $Work 'cp6-dupes-before.json'), ($script:DupBefore | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+    $lwStop = Join-Path $Work 'r-watch.stop'; $lw = Start-LeaseWatch 'r' $lwStop 5400
+    $pwStop = Join-Path $Work 'r-proc.stop'; $pwOut = Join-Path $Work 'r-processes.jsonl'
+    Remove-Item -Force $pwStop, $pwOut -ErrorAction SilentlyContinue
+    $pw = Start-Process -FilePath 'powershell.exe' -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $Kit 'cp5-proc-watch.ps1') + '" -Out "' + $pwOut + '" -StopFile "' + $pwStop + '"') -WindowStyle Hidden -PassThru
+    $sec = @{ BINGOO_WIZARD_TEST_SECRETS = '1' }
+    $bStop = Join-Path $Work 'r-blocker.stop'; $bStatus = Join-Path $Work 'r-blocker.json'
+    Remove-Item -Force $bStop, $bStatus -ErrorAction SilentlyContinue
+    $t0 = Get-Date
+    try {
+        $sc = Get-SetupCode
+        $r1 = Invoke-SetupCmd (New-UpdateAnswers $null 'r-wizard-result-unapproved.json') 'r-wizard-unapproved.out.txt' ($sec + @{ BINGOO_WIZARD_SECRET_SETUP_CODE = $sc.Code })
+        $m = [regex]::Match($r1.Out + $r1.Err, 'approve plan (sha256:[0-9a-f]{64})')
+        if (-not $m.Success) { throw ('r: the unapproved run reported no plan hash (exit ' + $r1.Code + ')') }
+        $plan = $m.Groups[1].Value
+        # the fault: web backend #2's port held from the real edge:local:update until the wizard reports the unhealthy update
+        $bl = Start-Process -FilePath 'powershell.exe' -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $Kit 'cp5-port-blocker.ps1') + '" -Port 8091 -ProcFile "' + $pwOut + '" -LogDir "' + (Join-Path $Ev 'wizard-logs') + '" -StatusFile "' + $bStatus + '" -StopFile "' + $bStop + '"') -WindowStyle Hidden -PassThru
+        $sc = Get-SetupCode
+        $r2 = Invoke-SetupCmd (New-UpdateAnswers $plan 'r-wizard-result-approved.json') 'r-wizard-approved.out.txt' ($sec + @{ BINGOO_WIZARD_SECRET_SETUP_CODE = $sc.Code })
+    } finally {
+        Set-Content -Path $bStop -Value 'stop'
+        if ($bl) { [void]$bl.WaitForExit(30000) }
+    }
+    $wizSec = [int]((Get-Date) - $t0).TotalSeconds
+    $res = $null
+    if (Test-Path (Join-Path $Ev 'r-wizard-result-approved.json')) { $res = Get-Content -Raw (Join-Path $Ev 'r-wizard-result-approved.json') | ConvertFrom-Json }
+    $blk = $(if (Test-Path $bStatus) { Get-Content -Raw $bStatus | ConvertFrom-Json } else { $null })
+    # the restored 0.8.5 settles (its web backend #2 binds again once the port is free)
+    $oldProblems = @($hBefore.problems | Where-Object { $_ })
+    $h = $null
+    try { $h = Wait-Until { $x = Get-Health; if ((Get-Pointer) -eq $from -and -not (@($x.problems | Where-Object { $_ -and $oldProblems -notcontains $_ }))) { $x } } 420 15 'the restored 0.8.5 without new problems' }
+    catch { $h = Get-Health }
+    $logins = Test-PinLogins 'http://127.0.0.1:8090'
+    $dev = Get-CloudDevice
+    Start-Sleep -Seconds 20
+    Stop-LeaseWatch $lw $lwStop
+    Set-Content -Path $pwStop -Value 'stop'; [void]$pw.WaitForExit(30000)
+    if (Test-Path $pwOut) { Copy-Item -Force $pwOut (Join-Path $Ev 'r-processes.jsonl') }
+    if ($blk) { Save-Evidence 'r-blocker.json' $blk }
+    $after = [ordered]@{ edge = (Get-DupFacts 'edge'); cloud = (Get-DupFacts 'cloud') }
+    Save-Evidence 'r-dupes-after.json' $after
+    $cmpE = Compare-DupFacts $script:DupBefore.edge $after.edge
+    $cmpC = Compare-DupFacts $script:DupBefore.cloud $after.cloud
+    $lease = $(if (Test-Path (Join-Path $Ev 'r-lease.summary.json')) { Get-Content -Raw (Join-Path $Ev 'r-lease.summary.json') | ConvertFrom-Json } else { $null })
+    $newProblems = @($h.problems | Where-Object { $_ -and $oldProblems -notcontains $_ })
+    $doc = [ordered]@{ plan_hash = $plan; wizard_exit = $r2.Code; wizard_seconds = $wizSec; wizard_result = $res; blocker = $blk
+        pointer_after = (Get-Pointer); health_before = [ordered]@{ status = $hBefore.status; problems = $oldProblems }; health_after = [ordered]@{ status = $h.status; problems = @($h.problems) }
+        new_problems_after = $newProblems; pin_logins_loopback = $logins; cloud_device = $dev.device; appliance = $cmpE; cloud = $cmpC
+        lease = $(if ($lease) { [ordered]@{ max_gap_s = $lease.cloud_heartbeats.max_gap_s; ttl = $lease.lease_ttl_s; never_lapsed = $lease.lease_never_lapsed; fenced = $lease.fenced_at_seen; online_pos_paused = $lease.online_pos_paused; blocked_samples = $lease.cloud_blocked_samples } } else { $null }) }
+    Save-Evidence 'r-rollback.json' $doc
+    $ok = $res -and [string]$res.Result -eq 'rolled_back' -and @('restored_snapshot', 'reverted_runtime') -contains [string]$res.Rollback -and (Get-Pointer) -eq $from -and
+        $blk -and $blk.bound_at -and $newProblems.Count -eq 0 -and -not (@($logins.Values) | Where-Object { -not $_.ok }) -and $cmpE.ok -and $cmpC.ok
+    # the next update starts from a clean 0.8.5 again (b runs it headless in this chain)
+    $script:BeforeUpdate = $null; Remove-Item -Force (Join-Path $Work 'before-update.json') -ErrorAction SilentlyContinue
+    return [ordered]@{ verdict_ok = $ok; result = $(if ($res) { $res.Result } else { $null }); rollback = $(if ($res) { $res.Rollback } else { $null }); reasons = $(if ($res) { $res.Reasons } else { $null })
+        pointer_after = (Get-Pointer); health_after = $h.status; new_problems = $newProblems; blocker_bound_at = $(if ($blk) { $blk.bound_at } else { $null }); blocker_released = $(if ($blk) { $blk.released_because } else { $null })
+        cloud_install_phase = $dev.device.install_phase; cloud_reported_version = $dev.device.reported_version; lease = $doc.lease; wizard_seconds = $wizSec }
+}
+
 # ---------------------------------------------------------- w) the REAL WPF wizard driven through UI Automation (update/fresh)
 function Start-WizardWindow([string]$AnswersFile) {
     # Setup-BingooEdge.cmd exactly as the owner double-clicks it (elevation probe -> the WPF window); no -Headless
@@ -729,6 +919,27 @@ function Invoke-WizardUiUpdate {
     $af = Join-Path $Work 'answers-ui-update.json'
     [IO.File]::WriteAllText($af, ($a | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
     $doc = [ordered]@{ pages = New-Object System.Collections.ArrayList }
+    # CP6: the Online POS impact of the whole UI update (heartbeat gap vs TTL, lease lapse, blocksCloud seconds) and WHICH
+    # runtime's code runs each update step (process command lines), from before the window opens until it is closed
+    $layoutBefore = $null
+    if (Test-Path (Join-Path $InstallRoot 'appliance.json')) { $layoutBefore = Get-Content -Raw (Join-Path $InstallRoot 'appliance.json') | ConvertFrom-Json }
+    $pointerBefore = Get-Pointer
+    $lwStop = Join-Path $Work 'w-update-watch.stop'
+    $lw = Start-LeaseWatch 'w-update' $lwStop 5400
+    $pwStop = Join-Path $Work 'w-update-proc.stop'
+    $pwOut = Join-Path $Work 'w-update-processes.jsonl'
+    Remove-Item -Force $pwStop, $pwOut -ErrorAction SilentlyContinue
+    $pw = Start-Process -FilePath 'powershell.exe' -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $Kit 'cp5-proc-watch.ps1') + '" -Out "' + $pwOut + '" -StopFile "' + $pwStop + '"') -WindowStyle Hidden -PassThru
+    # CP6: duplicates before (both DBs) and ONE Online POS sale at each of two update moments (old workers stopped / update running)
+    $script:DupBefore = [ordered]@{ edge = (Get-DupFacts 'edge'); cloud = (Get-DupFacts 'cloud') }
+    Save-Evidence 'dupes-before.json' $script:DupBefore
+    [IO.File]::WriteAllText((Join-Path $Work 'cp6-dupes-before.json'), ($script:DupBefore | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+    $osDir = Join-Path $Work 'online-sales'
+    New-Item -ItemType Directory -Force -Path $osDir | Out-Null
+    $osStop = Join-Path $Work 'online-sale.stop'
+    Remove-Item -Force $osStop -ErrorAction SilentlyContinue
+    $os = Start-Process -FilePath 'powershell.exe' -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $Kit 'cp5-online-sale-trigger.ps1') + '" -ProcFile "' + $pwOut + '" -Php "' + $CloudPhp + '" -Ini "' + $CloudIni + '" -CloudScript "' + (Join-Path $Kit 'cp5-cloud.php') + '" -OutDir "' + $osDir + '" -StopFile "' + $osStop + '"') -WindowStyle Hidden -PassThru
+    Start-Sleep -Seconds 5
     $w = Start-WizardWindow $af
     $t0 = Get-Date
     try {
@@ -764,9 +975,61 @@ function Invoke-WizardUiUpdate {
         $doc.seconds = [int]((Get-Date) - $t0).TotalSeconds
         $doc.screenshots = @($script:Shots | ForEach-Object { Split-Path -Leaf $_ })
         Save-Evidence 'w-update-ui.json' $doc
+        Start-Sleep -Seconds 30   # a few heartbeats after the window closed, so the watch sees the authority worker back
+        Stop-LeaseWatch $lw $lwStop
+        Set-Content -Path $osStop -Value 'stop'; [void]$os.WaitForExit(120000)   # an attempt in flight finishes first
+        Set-Content -Path $pwStop -Value 'stop'; [void]$pw.WaitForExit(30000)
+    }
+    $script:OnlineSales = @()
+    foreach ($f in @(Get-ChildItem $osDir -Filter 'online-sale-*.json' -ErrorAction SilentlyContinue | Sort-Object Name)) {
+        Copy-Item -Force $f.FullName (Join-Path $Ev $f.Name)
+        $script:OnlineSales += (Get-Content -Raw $f.FullName | ConvertFrom-Json)
+    }
+    $lease = $null
+    $lf = Join-Path $Ev 'w-update-lease.summary.json'
+    if (Test-Path $lf) { $lease = Get-Content -Raw $lf | ConvertFrom-Json }
+    $procs = @()
+    if (Test-Path $pwOut) { $procs = @(Read-SharedLines $pwOut | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json }); Copy-Item -Force $pwOut (Join-Path $Ev 'w-update-processes.jsonl') }
+    $upd = @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'edge:local:update' -and $_.cmd -notmatch '--dry-run' }) | Select-Object -First 1
+    $updDry = @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'edge:local:update' -and $_.cmd -match '--dry-run' }) | Select-Object -First 1
+    $updPs = @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'Update-EdgeAppliance' }) | Select-Object -First 1
+    $stopPs = @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'Register-EdgeServices' -and $_.cmd -match 'Stop' }) | Select-Object -First 1
+    $runtime = [ordered]@{
+        pointer_before = $pointerBefore; pointer_after = (Get-Pointer); installed_php_before = $(if ($layoutBefore) { [string]$layoutBefore.php } else { $null })
+        update_script = $(if ($updPs) { $updPs.cmd } else { $null }); services_stop = $(if ($stopPs) { $stopPs.cmd } else { $null })
+        edge_local_update_exe = $(if ($upd) { $upd.exe } else { $null }); edge_local_update_cmd = $(if ($upd) { $upd.cmd } else { $null })
+        edge_local_update_dry_run_cmd = $(if ($updDry) { $updDry.cmd } else { $null }); processes_seen = $procs.Count
+        how_to_read = 'edge:local:update runs with the INSTALLED php + "<InstallRoot>\artisan" (the launcher of the runtime the pointer names BEFORE the switch); Update-EdgeAppliance.ps1 / Register-EdgeServices.ps1 come from the path in their command lines'
+    }
+    Save-Evidence 'w-update-runtime.json' $runtime
+    $impact = $(if ($lease) { [ordered]@{ lease_ttl_s = $lease.lease_ttl_s; max_heartbeat_gap_s = $lease.cloud_heartbeats.max_gap_s; max_gap_between = $lease.cloud_heartbeats.max_gap_between
+            min_lease_remaining_s = $lease.min_lease_remaining_s; lease_never_lapsed = $lease.lease_never_lapsed; fenced_at_seen = $lease.fenced_at_seen
+            online_pos_paused = $lease.online_pos_paused; cloud_blocked_samples = $lease.cloud_blocked_samples; cloud_blocked_first = $lease.cloud_blocked_first
+            cloud_blocked_last = $lease.cloud_blocked_last; holders_seen = $lease.holders_seen; lease_verdict = $lease.verdict } } else { 'w-update-lease.summary.json missing' })
+    # r2: the authority/heartbeat worker's lifetime across the update (process start / gone lines of the process watch)
+    $isWorker = { param($c) [string]$c -match 'edge:local:authority-worker"?\s*$' }
+    $authOld = @($procs | Where-Object { -not $_.gone -and (& $isWorker $_.cmd) }) | Select-Object -First 1
+    $authOldGone = $(if ($authOld) { @($procs | Where-Object { $_.gone -and $_.pid -eq $authOld.pid }) | Select-Object -First 1 } else { $null })
+    $authNew = $(if ($authOld) { @($procs | Where-Object { -not $_.gone -and (& $isWorker $_.cmd) -and $_.pid -ne $authOld.pid }) | Select-Object -First 1 } else { $null })
+    $authStop = @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'authority-worker --stop' }) | Select-Object -First 1
+    $updGone = $(if ($updPs) { @($procs | Where-Object { $_.gone -and $_.pid -eq $updPs.pid }) | Select-Object -First 1 } else { $null })
+    $serveNew = $(if ($upd) { @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'edge:local:serve' -and $_.t -gt $upd.t }) | Select-Object -First 1 } else { $null })
+    $authority = [ordered]@{ old_worker_pid = $(if ($authOld) { $authOld.pid } else { $null }); old_worker_seen = $(if ($authOld) { $authOld.t } else { $null })
+        update_script_started = $(if ($updPs) { $updPs.t } else { $null }); real_update_started = $(if ($upd) { $upd.t } else { $null })
+        authority_stop_requested = $(if ($authStop) { $authStop.t } else { $null }); old_worker_gone = $(if ($authOldGone) { $authOldGone.t } else { $null })
+        new_worker_started = $(if ($authNew) { $authNew.t } else { $null }); new_services_started = $(if ($serveNew) { $serveNew.t } else { $null })
+        update_script_ended = $(if ($updGone) { $updGone.t } else { $null }) }
+    Save-Evidence 'w-update-authority-timeline.json' $authority
+    $hbOk = $lease -and [int]$lease.cloud_heartbeats.max_gap_s -lt [int]$lease.lease_ttl_s -and -not [bool]$lease.online_pos_paused
+    if ($lease) {
+        Write-Log $(if ($hbOk) { 'ok' } else { 'error' }) ('CP6 heartbeat: max gap ' + $lease.cloud_heartbeats.max_gap_s + ' s (TTL ' + $lease.lease_ttl_s + ' s), Online POS paused ' + [int]$lease.cloud_blocked_samples + ' s -> ' + $(if ($hbOk) { 'PASS' } else { 'FAIL' }))
     }
     $ok = -not $doc.Contains('error') -and [string]$doc.finish -like 'Updated*'
-    return [ordered]@{ verdict_ok = $ok; seconds = $doc.seconds; finish = $doc.finish; error = $doc.error; screenshots = $doc.screenshots.Count; pointer = (Get-Pointer) }
+    if ($script:Variant) { $ok = $ok -and $hbOk }   # the release run: a lapse that pauses the Online POS is a FAIL
+    return [ordered]@{ verdict_ok = $ok; seconds = $doc.seconds; finish = $doc.finish; error = $doc.error; screenshots = $doc.screenshots.Count; pointer = (Get-Pointer)
+        heartbeat_verdict = $(if ($hbOk) { 'PASS' } else { 'FAIL' }); authority_timeline = $authority
+        online_pos_impact = $impact; edge_local_update_exe = $runtime.edge_local_update_exe; update_script = $runtime.update_script
+        online_sales = @($script:OnlineSales | ForEach-Object { [ordered]@{ tag = $_.tag; result = $_.result; fence = $_.fence; trigger = $_.trigger; at_utc = $_.at_utc; sale_no = $_.sale.sale_no } }) }
 }
 function Invoke-WizardUiFresh {
     if (Test-Path (Join-Path $InstallRoot 'appliance.json')) { throw 'an appliance is already installed in this sandbox - use a NEW sandbox (BingooEdge-CP5-fresh .wsb)' }
@@ -979,7 +1242,7 @@ function Invoke-FreshChecks([string]$Via, [int]$Sec) {
     $authTask = [string](@($after.tasks | Where-Object { $_.name -eq 'BingooEdgeAuthorityWorker' }) | Select-Object -First 1).state
     $problems = @($after.problems | ForEach-Object { [string]$_ })
     $workerDown = [bool](@($problems | Where-Object { $_ -match 'Authority/heartbeat worker is not running' }).Count)
-    $ok = $after.pointer -eq '0.9.0-dev' -and $dev.device.lan_ca_pem_present -and $updater -and -not (@($loop.Values) | Where-Object { -not $_.ok }) -and $gwOk -and
+    $ok = $after.pointer -eq $V090 -and $dev.device.lan_ca_pem_present -and $updater -and -not (@($loop.Values) | Where-Object { -not $_.ok }) -and $gwOk -and
         $authTask -eq 'Running' -and -not $workerDown
     return [ordered]@{ verdict_ok = $ok; via = $Via; wizard_seconds = $Sec; pointer = $after.pointer; status = $after.status; problems = $problems; authority_task = $authTask
         authority_worker_problem = $workerDown; k5_ca_on_cloud = [bool]$dev.device.lan_ca_pem_present
@@ -1240,7 +1503,7 @@ try {
     } else {
         $script:LanIp = [string]$prevRun.lan_ip
         $script:EnrollmentPublic = [string](Get-LastJson (Invoke-Cloud @('public-keys')).Out).enrollment_public
-        $script:DevPublic = [string](Get-Content -Raw (Join-Path $Kit 'dev-public-facts.json') | ConvertFrom-Json).public_key
+        $script:DevPublic = [string](Get-Content -Raw $KeyFacts | ConvertFrom-Json).public_key
         foreach ($u in (Get-Users)) { [void]$script:SecretValues.Add((Get-Content -Raw (Join-Path $Secrets ('pin-' + $u.id))).Trim()) }
         $caCrt = Join-Path $Base 'ca\bingoo-edge-branch-ca.crt'
         $ca = New-Object Security.Cryptography.X509Certificates.X509Certificate2($caCrt)
@@ -1253,15 +1516,18 @@ try {
     switch ($Scenario) {
         'auto' {
             Invoke-Scenario 'a' '0.8.5 elevated install (MySQL service, branch CA, gateway, tasks) paired to the sandbox Cloud' @('cloud') { Invoke-Install085 }
-            Invoke-Scenario 'w-update' 'the REAL WPF wizard (Setup-BingooEdge.cmd) driven by UI Automation: UPDATE 0.8.5 -> 0.9.0-dev' @('a') { Invoke-WizardUiUpdate }
+            # CP6: the wizard's own K6 rollback of a REAL (release) update, from 0.8.5; b then updates again headless (a NEW sandbox, -Only r+v)
+            Invoke-Scenario 'r' "wizard update 0.8.5 -> $V090 made unhealthy (web backend #2 port held) -> K6 rollback to 0.8.5 (snapshot restore)" @('a') { Invoke-ScenarioR }
+            Invoke-Scenario 'w-update' "the REAL WPF wizard (Setup-BingooEdge.cmd) driven by UI Automation: UPDATE 0.8.5 -> $V090" @('a') { Invoke-WizardUiUpdate }
             Invoke-Scenario 'b' 'update post-checks: same device, K5 with the branch CA, tasks + LOCAL SERVICE grant, PIN logins' @('a') {
                 $p = Get-Pointer
-                if ($p -eq '0.9.0-dev') { Invoke-UpdateChecks 'WPF wizard via UI Automation' }
+                if ($p -eq $V090) { Invoke-UpdateChecks 'WPF wizard via UI Automation' }
                 # a resumed session whose appliance c/d already moved on (0.9.1-dev): a 0.9.0 'update' would be a downgrade the wizard
                 # rightly refuses (run 9) - prove the same post-checks on the runtime it has
                 elseif (-not $script:InstalledNow -and $p -like '0.9.*-dev') { Write-Log 'info' ("resumed session: the appliance is already on $p - post-checks only"); Invoke-UpdateChecks 'earlier update in this sandbox session' @{} '0.9.*-dev' }
-                else { Write-Log 'warn' 'the UI-driven update did not reach 0.9.0-dev - headless Setup-BingooEdge.cmd so the chain can continue'; Invoke-WizardUpdateHeadless }
+                else { Write-Log 'warn' "the UI-driven update did not reach $V090 - headless Setup-BingooEdge.cmd so the chain can continue"; Invoke-WizardUpdateHeadless }
             }
+            Invoke-Scenario 'v' 'owner checks after the update: duplicates by natural key (appliance + Cloud), STANDBY_READY no problems, outbox, Online sales' @('b') { Invoke-ScenarioV }
         }
         'manual' {
             Invoke-Scenario 'a' '0.8.5 elevated install (MySQL service, branch CA, gateway, tasks) paired to the sandbox Cloud' @('cloud') { Invoke-Install085 }
