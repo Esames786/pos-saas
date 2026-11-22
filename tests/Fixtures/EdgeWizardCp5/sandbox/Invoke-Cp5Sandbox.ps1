@@ -612,7 +612,9 @@ function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}) {
     $dev = Get-CloudDevice
     $logins = Test-PinLogins 'http://127.0.0.1:8090'
     $grant = @($after.tasks | Where-Object { $_.name -ne 'BingooEdgeUpdater' } | Where-Object { -not $_.local_service_control_ace } | ForEach-Object { $_.name })
-    $k5 = @(Get-ChildItem (Join-Path $Ev 'wizard-logs') -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'K5 LAN profile' }) | Select-Object -Last 1
+    # [string] strips Get-Content's PSDrive / PSProvider note properties: ConvertTo-Json -Depth 12 would expand them without end
+    # (run 3: 1.9 GB and minutes of CPU inside Save-Evidence)
+    $k5 = [string](@(Get-ChildItem (Join-Path $Ev 'wizard-logs') -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object { [IO.File]::ReadAllLines($_.FullName) } | Where-Object { $_ -match 'K5 LAN profile' }) | Select-Object -Last 1)
     $d = $dev.device
     $b = $script:DeviceBeforeUpdate.device
     $doc = [ordered]@{ via = $Via; k5_line = $k5; before = $script:BeforeUpdate; after = $after; cloud_device_before = $script:DeviceBeforeUpdate; cloud_device_after = $dev
@@ -1059,7 +1061,7 @@ function Invoke-G2 {
     } catch { Start-CloudPhp; Stop-LeaseWatch $watch $stop; Save-Evidence 'g2-takeover.json' ([ordered]@{ before = $before; samples = $samples; error = $_.Exception.Message }); throw }
     $lease = Get-CloudLease   # read from the Cloud DB while the Cloud php is still down
     $meta = Get-EdgeMeta
-    $audit = @(Get-ChildItem (Join-Path $DataRoot 'logs') -Filter 'edge-*.log' -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'edge-auto-takeover' }) | Select-Object -Last 12
+    $audit = @(@(Get-ChildItem (Join-Path $DataRoot 'logs') -Filter 'edge-*.log' -ErrorAction SilentlyContinue | ForEach-Object { [IO.File]::ReadAllLines($_.FullName) } | Where-Object { $_ -match 'edge-auto-takeover' }) | Select-Object -Last 12 | ForEach-Object { [string]$_ })
     Start-CloudPhp
     Start-Sleep -Seconds 120
     $afterReconnect = Get-TakeoverFacts
