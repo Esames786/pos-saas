@@ -19,7 +19,8 @@ param(
     [string]$Version = '0.9.0-edge',
     [string]$PublicKeyFile = 'D:\BingooEdgeLab-e09\cp6\release-public\edge-update-signing-v1.public.txt',
     [string]$KeyIdFile = 'D:\BingooEdgeLab-e09\cp6\release-public\key_id.txt',
-    [string]$Only = 'w-update+b',
+    [string]$Only = 'w-update+v',          # main chain: prereqs, cloud, a, w-update, b (always), v
+    [string]$RollbackOnly = 'r+v',          # rollback chain (a NEW sandbox): prereqs, cloud, a, r, b (headless update again), v
     [int[]]$MemoryMB = @(4096, 6144),
     [switch]$SkipTree
 )
@@ -41,7 +42,7 @@ if ($pub -notmatch '^[A-Za-z0-9+/]{43}=$') { throw 'the public key file does not
 $utf8 = New-Object Text.UTF8Encoding($false)
 [IO.File]::WriteAllText((Join-Path $kit 'update-public-facts.json'), (([ordered]@{ public_key = $pub; key_id = $keyId; note = 'RELEASE update key - PUBLIC only (CP6)' }) | ConvertTo-Json), $utf8)
 [IO.File]::WriteAllText((Join-Path $kit 'cp5-variant.json'), (([ordered]@{ variant = 'release'; package_090 = $PackageName; version_090 = $Version; update_key_id = $keyId
-    tree_commit = $TreeCommit; scenarios = "prereqs, cloud, a, $($Only -replace '\+', ', ')" }) | ConvertTo-Json), $utf8)
+    tree_commit = $TreeCommit; scenarios = ('main: prereqs, cloud, a, b + ' + $Only + ' | rollback: prereqs, cloud, a, b + ' + $RollbackOnly) }) | ConvertTo-Json), $utf8)
 Remove-Item -Force (Join-Path $kit 'dev-public-facts.json') -ErrorAction SilentlyContinue   # never the DEV key in this kit
 Get-ChildItem $kit -Filter 'diag-*.ps1' | Remove-Item -Force
 
@@ -66,7 +67,7 @@ $b = Get-ChildItem -Recurse -File $rel | Measure-Object -Sum Length
 if ($a.Count -ne $b.Count -or $a.Sum -ne $b.Sum) { throw "0.8.5 copy differs: $($a.Count)/$($a.Sum) vs $($b.Count)/$($b.Sum)" }
 
 # ---- the .wsb files (auto: prereqs, cloud, a + $Only)
-function New-Wsb([string]$Name, [int]$Mem) {
+function New-Wsb([string]$Name, [int]$Mem, [string]$Ids) {
     $map = @(
         @{ host = $kit; box = 'C:\cp5\kit'; ro = 'true' },
         @{ host = $ReleaseDir; box = 'C:\cp5\pkgs'; ro = 'true' },
@@ -75,12 +76,15 @@ function New-Wsb([string]$Name, [int]$Mem) {
         @{ host = $evidence; box = 'C:\cp5\evidence'; ro = 'false' }
     )
     $folders = ($map | ForEach-Object { "    <MappedFolder>`r`n      <HostFolder>$($_.host)</HostFolder>`r`n      <SandboxFolder>$($_.box)</SandboxFolder>`r`n      <ReadOnly>$($_.ro)</ReadOnly>`r`n    </MappedFolder>" }) -join "`r`n"
-    $xml = "<Configuration>`r`n  <VGpu>Disable</VGpu>`r`n  <Networking>Enable</Networking>`r`n  <AudioInput>Disable</AudioInput>`r`n  <VideoInput>Disable</VideoInput>`r`n  <PrinterRedirection>Disable</PrinterRedirection>`r`n  <ClipboardRedirection>Enable</ClipboardRedirection>`r`n  <ProtectedClient>Disable</ProtectedClient>`r`n  <MemoryInMB>$Mem</MemoryInMB>`r`n  <MappedFolders>`r`n$folders`r`n  </MappedFolders>`r`n  <LogonCommand>`r`n    <Command>C:\cp5\kit\Start-Cp5.cmd auto $Only</Command>`r`n  </LogonCommand>`r`n</Configuration>`r`n"
+    $xml = "<Configuration>`r`n  <VGpu>Disable</VGpu>`r`n  <Networking>Enable</Networking>`r`n  <AudioInput>Disable</AudioInput>`r`n  <VideoInput>Disable</VideoInput>`r`n  <PrinterRedirection>Disable</PrinterRedirection>`r`n  <ClipboardRedirection>Enable</ClipboardRedirection>`r`n  <ProtectedClient>Disable</ProtectedClient>`r`n  <MemoryInMB>$Mem</MemoryInMB>`r`n  <MappedFolders>`r`n$folders`r`n  </MappedFolders>`r`n  <LogonCommand>`r`n    <Command>C:\cp5\kit\Start-Cp5.cmd auto $Ids</Command>`r`n  </LogonCommand>`r`n</Configuration>`r`n"
     $path = Join-Path $Root $Name
     [IO.File]::WriteAllText($path, $xml, $utf8)
     return $path
 }
-$w = foreach ($m in $MemoryMB) { New-Wsb ('BingooEdge-CP6-release-' + [int]($m / 1024) + 'g.wsb') $m }
+$w = foreach ($m in $MemoryMB) {
+    New-Wsb ('BingooEdge-CP6-release-' + [int]($m / 1024) + 'g.wsb') $m $Only
+    New-Wsb ('BingooEdge-CP6-rollback-' + [int]($m / 1024) + 'g.wsb') $m $RollbackOnly
+}
 
 $pkg = Join-Path $ReleaseDir $PackageName
 [ordered]@{ root = $Root; kit_files = @(Get-ChildItem $kit -File).Count; update_key_id = $keyId; tree_commit = $TreeCommit
