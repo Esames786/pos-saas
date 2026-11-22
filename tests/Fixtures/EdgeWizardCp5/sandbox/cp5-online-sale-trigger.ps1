@@ -1,12 +1,13 @@
-# CP6 (stream B): ONE Online POS sale on the sandbox Cloud at each of two moments of a real update, driven by what the process
+# CP6 (stream B): ONE Online POS sale on the sandbox Cloud at each of three moments of a real update, driven by what the process
 # watch (cp5-proc-watch.ps1) sees: (1) the old workers are being stopped ('authority-worker --stop' / 'print-worker --stop'),
-# (2) the real 'edge:local:update' (plan hash given, not --dry-run) is running. Each attempt runs cp5-cloud.php online-sale
+# (2) the real 'edge:local:update' (plan hash given, not --dry-run) is running, (3) right after the runtime pointer switched. Each attempt runs cp5-cloud.php online-sale
 # and saves its JSON as <OutDir>\online-sale-<tag>.json (accepted / blocked + the lease before and after). The Cloud's env
 # (CP5_*) is inherited from the driver.
 param(
     [Parameter(Mandatory = $true)][string]$ProcFile, [Parameter(Mandatory = $true)][string]$Php, [Parameter(Mandatory = $true)][string]$Ini,
     [Parameter(Mandatory = $true)][string]$CloudScript, [Parameter(Mandatory = $true)][string]$OutDir, [Parameter(Mandatory = $true)][string]$StopFile,
-    [int]$MaxSec = 5400
+    [int]$MaxSec = 5400,
+    [string]$PointerFile = 'C:\Program Files\Bingoo Edge\runtime\current'
 )
 $ErrorActionPreference = 'Continue'
 function Read-Lines([string]$Path) {
@@ -28,10 +29,17 @@ function Invoke-Sale([string]$Tag, [string]$Seen) {
 }
 $t0 = Get-Date
 $done = @{}
-while (((Get-Date) - $t0).TotalSeconds -lt $MaxSec -and -not (Test-Path $StopFile) -and $done.Count -lt 2) {
+$pointer0 = $(if (Test-Path $PointerFile) { (Get-Content -Raw $PointerFile).Trim() } else { '' })
+while (((Get-Date) - $t0).TotalSeconds -lt $MaxSec -and -not (Test-Path $StopFile) -and $done.Count -lt 3) {
+    $ptr = $(if (Test-Path $PointerFile) { try { (Get-Content -Raw $PointerFile).Trim() } catch { $pointer0 } } else { $pointer0 })
+    if (-not $done.ContainsKey('switch') -and $ptr -and $ptr -ne $pointer0) {
+        $done['switch'] = $true
+        Invoke-Sale 'after-pointer-switch' ((Get-Date).ToString('HH:mm:ss') + ' pointer ' + $pointer0 + ' -> ' + $ptr)
+    }
     foreach ($l in (Read-Lines $ProcFile)) {
         if (-not $l) { continue }
         try { $p = $l | ConvertFrom-Json } catch { continue }
+        if ($p.gone) { continue }
         $cmd = [string]$p.cmd
         if (-not $done.ContainsKey('stop') -and $cmd -match '(authority|print)-worker --stop') {
             $done['stop'] = $true

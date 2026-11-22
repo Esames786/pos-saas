@@ -21,7 +21,7 @@ $t0 = Get-Date
 $over = { ((Get-Date) - $t0).TotalSeconds -ge $MaxSec -or (Test-Path $StopFile) }
 # 1. wait for the real update (services stopped by then)
 while (-not (& $over)) {
-    $hit = @((Read-Text $ProcFile) -split "`r?`n" | Where-Object { $_ -match 'edge:local:update' -and $_ -notmatch '--dry-run' -and $_ -match 'expected-plan-hash' }) | Select-Object -First 1
+    $hit = @((Read-Text $ProcFile) -split "`r?`n" | Where-Object { $_ -notmatch '"gone":true' -and $_ -match 'edge:local:update' -and $_ -notmatch '--dry-run' -and $_ -match 'expected-plan-hash' }) | Select-Object -First 1
     if ($hit) { $st.trigger = $hit.Substring(0, [Math]::Min(200, $hit.Length)); break }
     Start-Sleep -Milliseconds 500
 }

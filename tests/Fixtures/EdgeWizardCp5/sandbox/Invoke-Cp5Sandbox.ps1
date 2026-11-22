@@ -990,10 +990,10 @@ function Invoke-WizardUiUpdate {
     if (Test-Path $lf) { $lease = Get-Content -Raw $lf | ConvertFrom-Json }
     $procs = @()
     if (Test-Path $pwOut) { $procs = @(Read-SharedLines $pwOut | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json }); Copy-Item -Force $pwOut (Join-Path $Ev 'w-update-processes.jsonl') }
-    $upd = @($procs | Where-Object { $_.cmd -match 'edge:local:update' -and $_.cmd -notmatch '--dry-run' }) | Select-Object -First 1
-    $updDry = @($procs | Where-Object { $_.cmd -match 'edge:local:update' -and $_.cmd -match '--dry-run' }) | Select-Object -First 1
-    $updPs = @($procs | Where-Object { $_.cmd -match 'Update-EdgeAppliance' }) | Select-Object -First 1
-    $stopPs = @($procs | Where-Object { $_.cmd -match 'Register-EdgeServices' -and $_.cmd -match 'Stop' }) | Select-Object -First 1
+    $upd = @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'edge:local:update' -and $_.cmd -notmatch '--dry-run' }) | Select-Object -First 1
+    $updDry = @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'edge:local:update' -and $_.cmd -match '--dry-run' }) | Select-Object -First 1
+    $updPs = @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'Update-EdgeAppliance' }) | Select-Object -First 1
+    $stopPs = @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'Register-EdgeServices' -and $_.cmd -match 'Stop' }) | Select-Object -First 1
     $runtime = [ordered]@{
         pointer_before = $pointerBefore; pointer_after = (Get-Pointer); installed_php_before = $(if ($layoutBefore) { [string]$layoutBefore.php } else { $null })
         update_script = $(if ($updPs) { $updPs.cmd } else { $null }); services_stop = $(if ($stopPs) { $stopPs.cmd } else { $null })
@@ -1006,8 +1006,28 @@ function Invoke-WizardUiUpdate {
             min_lease_remaining_s = $lease.min_lease_remaining_s; lease_never_lapsed = $lease.lease_never_lapsed; fenced_at_seen = $lease.fenced_at_seen
             online_pos_paused = $lease.online_pos_paused; cloud_blocked_samples = $lease.cloud_blocked_samples; cloud_blocked_first = $lease.cloud_blocked_first
             cloud_blocked_last = $lease.cloud_blocked_last; holders_seen = $lease.holders_seen; lease_verdict = $lease.verdict } } else { 'w-update-lease.summary.json missing' })
+    # r2: the authority/heartbeat worker's lifetime across the update (process start / gone lines of the process watch)
+    $isWorker = { param($c) [string]$c -match 'edge:local:authority-worker"?\s*$' }
+    $authOld = @($procs | Where-Object { -not $_.gone -and (& $isWorker $_.cmd) }) | Select-Object -First 1
+    $authOldGone = $(if ($authOld) { @($procs | Where-Object { $_.gone -and $_.pid -eq $authOld.pid }) | Select-Object -First 1 } else { $null })
+    $authNew = $(if ($authOld) { @($procs | Where-Object { -not $_.gone -and (& $isWorker $_.cmd) -and $_.pid -ne $authOld.pid }) | Select-Object -First 1 } else { $null })
+    $authStop = @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'authority-worker --stop' }) | Select-Object -First 1
+    $updGone = $(if ($updPs) { @($procs | Where-Object { $_.gone -and $_.pid -eq $updPs.pid }) | Select-Object -First 1 } else { $null })
+    $serveNew = $(if ($upd) { @($procs | Where-Object { -not $_.gone -and $_.cmd -match 'edge:local:serve' -and $_.t -gt $upd.t }) | Select-Object -First 1 } else { $null })
+    $authority = [ordered]@{ old_worker_pid = $(if ($authOld) { $authOld.pid } else { $null }); old_worker_seen = $(if ($authOld) { $authOld.t } else { $null })
+        update_script_started = $(if ($updPs) { $updPs.t } else { $null }); real_update_started = $(if ($upd) { $upd.t } else { $null })
+        authority_stop_requested = $(if ($authStop) { $authStop.t } else { $null }); old_worker_gone = $(if ($authOldGone) { $authOldGone.t } else { $null })
+        new_worker_started = $(if ($authNew) { $authNew.t } else { $null }); new_services_started = $(if ($serveNew) { $serveNew.t } else { $null })
+        update_script_ended = $(if ($updGone) { $updGone.t } else { $null }) }
+    Save-Evidence 'w-update-authority-timeline.json' $authority
+    $hbOk = $lease -and [int]$lease.cloud_heartbeats.max_gap_s -lt [int]$lease.lease_ttl_s -and -not [bool]$lease.online_pos_paused
+    if ($lease) {
+        Write-Log $(if ($hbOk) { 'ok' } else { 'error' }) ('CP6 heartbeat: max gap ' + $lease.cloud_heartbeats.max_gap_s + ' s (TTL ' + $lease.lease_ttl_s + ' s), Online POS paused ' + [int]$lease.cloud_blocked_samples + ' s -> ' + $(if ($hbOk) { 'PASS' } else { 'FAIL' }))
+    }
     $ok = -not $doc.Contains('error') -and [string]$doc.finish -like 'Updated*'
+    if ($script:Variant) { $ok = $ok -and $hbOk }   # the release run: a lapse that pauses the Online POS is a FAIL
     return [ordered]@{ verdict_ok = $ok; seconds = $doc.seconds; finish = $doc.finish; error = $doc.error; screenshots = $doc.screenshots.Count; pointer = (Get-Pointer)
+        heartbeat_verdict = $(if ($hbOk) { 'PASS' } else { 'FAIL' }); authority_timeline = $authority
         online_pos_impact = $impact; edge_local_update_exe = $runtime.edge_local_update_exe; update_script = $runtime.update_script
         online_sales = @($script:OnlineSales | ForEach-Object { [ordered]@{ tag = $_.tag; result = $_.result; fence = $_.fence; trigger = $_.trigger; at_utc = $_.at_utc; sale_no = $_.sale.sale_no } }) }
 }
