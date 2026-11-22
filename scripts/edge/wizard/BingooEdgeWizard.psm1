@@ -597,7 +597,7 @@ function Install-WizMySql($ctx) {
             "port=$($ctx.Db.Port)"
         ) -join "`r`n"
         $iniPath = Join-Path $mysqlDir 'my.ini'
-        [IO.File]::WriteAllText($iniPath, $ini + "`r`n", (New-Object Text.Encoding.ASCIIEncoding))
+        [IO.File]::WriteAllText($iniPath, $ini + "`r`n", (New-Object Text.ASCIIEncoding))
         if (-not (Test-Path $dataDir)) {
             $edgePw = ConvertTo-WizPlain $ctx.Secrets['db_password']
             $rp = ConvertTo-WizPlain $rootPw
