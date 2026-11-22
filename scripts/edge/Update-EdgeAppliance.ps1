@@ -33,6 +33,56 @@ $php = [string]$layout.php
 $launcher = Join-Path $InstallRoot 'artisan'
 $planFile = Join-Path ([string]$layout.data_root) 'gateway\service-plan.json'
 
+# EDGE 0.9 CP6 - the authority/heartbeat worker keeps the Cloud lease alive (TTL 120 s). It is NOT stopped with the other
+# services: it keeps heartbeating through the verify, dry-run, pre-update backup, staging and schema upgrade, and is stopped
+# only right before the new runtime's services start. Otherwise the Cloud fences the branch's Online POS once the update
+# takes longer than the lease (CP6 Windows Sandbox, 0.8.5 -> 0.9.0 through the wizard: 136 s without a heartbeat, Online POS
+# paused ~16 s; on a slow disk the 0.8.x staging re-verify alone takes ~5 min). A 0.8.x `edge:local:update` (and a 0.9 one
+# run by hand) never stops workers itself, and the CP6 LAB-copy rehearsal ran the whole 0.8.2 -> 0.9.0 update, schema
+# upgrade included, with every old worker running: no lapse, no duplicate, no harm.
+function Get-EdgeAuthorityTaskName([string]$PlanPath) {
+    if (-not (Test-Path $PlanPath)) { return $null }
+    $plan = Get-Content -Path $PlanPath -Raw | ConvertFrom-Json
+    $t = @($plan.tasks | Where-Object { [string]$_.artisan_command -eq 'edge:local:authority-worker' -or [string]$_.arguments -match 'edge:local:authority-worker' }) | Select-Object -First 1
+    if ($t) { return [string]$t.name }
+    return $null
+}
+$authorityTask = Get-EdgeAuthorityTaskName $planFile
+# Failure paths: start what step 3 stopped, with the old plan. The authority task was never stopped (IgnoreNew would make a
+# second Start a no-op anyway); start it only if it is not running.
+function Restore-EdgeServices {
+    if ($NoServices -or -not (Test-Path $planFile)) { return }
+    $restoreArgs = @{ Action = 'Start'; PlanFile = $planFile }
+    if ($NoGateway) { $restoreArgs['NoGateway'] = $true }
+    if ($authorityTask) { $restoreArgs['Exclude'] = @($authorityTask) }
+    & (Join-Path $scriptDir 'Register-EdgeServices.ps1') @restoreArgs
+    if ($authorityTask) {
+        $st = Get-ScheduledTask -TaskName $authorityTask -ErrorAction SilentlyContinue
+        if ($st -and $st.State -ne 'Running') { Start-ScheduledTask -TaskName $authorityTask -ErrorAction SilentlyContinue }
+    }
+}
+# Right before the new runtime's services start: cooperative stop (the worker records a graceful stop), then the task itself.
+function Stop-EdgeAuthorityWorker {
+    if ($NoServices -or -not $authorityTask) { return }
+    $eap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $null = & $php $launcher edge:local:authority-worker --stop 2>&1
+        if ($LASTEXITCODE -ne 0) { Write-Warning 'Authority worker did not confirm a graceful stop - its task is stopped instead.' }
+    } catch {
+        Write-Warning ('Cooperative authority stop failed (the task is stopped anyway): ' + $_.Exception.Message)
+    } finally {
+        $ErrorActionPreference = $eap
+    }
+    Stop-ScheduledTask -TaskName $authorityTask -ErrorAction SilentlyContinue
+    $deadline = (Get-Date).AddSeconds(30)
+    do {
+        $st = Get-ScheduledTask -TaskName $authorityTask -ErrorAction SilentlyContinue
+        if (-not $st -or $st.State -ne 'Running') { break }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+}
+
 # 1. verify the new package
 $manifestPath = Join-Path $PackageRoot 'package-manifest.json'
 if (-not (Test-Path $manifestPath)) { Fail 'package-manifest.json not found' }
@@ -60,10 +110,11 @@ if ($health.authority.state -eq 'local_active' -and -not $AllowLocalActive) {
     Fail 'the appliance is LOCAL_ACTIVE (serving the branch). Hand back to the Cloud first, or pass -AllowLocalActive for a deliberate in-place update.'
 }
 
-# 3. drain / stop
+# 3. drain / stop - every service EXCEPT the authority/heartbeat worker (see Get-EdgeAuthorityTaskName above)
 if (-not $NoServices -and (Test-Path $planFile)) {
     $stopArgs = @{ Action = 'Stop'; PlanFile = $planFile }
     if ($NoGateway) { $stopArgs['NoGateway'] = $true }
+    if ($authorityTask) { $stopArgs['Exclude'] = @($authorityTask) }
     & (Join-Path $scriptDir 'Register-EdgeServices.ps1') @stopArgs
 }
 
@@ -75,7 +126,7 @@ $dryLines = & $php $launcher edge:local:update $UpdateFile (Join-Path $PackageRo
 $dryCode = $LASTEXITCODE
 $dryJson = ($dryLines | Where-Object { $_ -is [string] -and $_.TrimStart().StartsWith('{') } | Select-Object -Last 1)
 if ($dryCode -ne 0 -or -not $dryJson) {
-    if (-not $NoServices -and (Test-Path $planFile)) { & (Join-Path $scriptDir 'Register-EdgeServices.ps1') -Action Start -PlanFile $planFile }
+    Restore-EdgeServices
     Write-Host ($dryLines -join "`n")
     Fail 'pre-install dry-run refused (package verification or migration plan; see the message above)'
 }
@@ -84,12 +135,12 @@ Write-Host "Migration plan ($($verdict.plan.format), manifest $($verdict.plan.ma
 foreach ($e in $verdict.plan.entries) { Write-Host ("  {0,-18} {1,-18} {2}" -f $e.decision, $e.classification, $e.migration) }
 Write-Host "PLAN_HASH=$($verdict.plan_hash)   verdict=$($verdict.verdict)"
 if ($verdict.verdict -ne 'OK') {
-    if (-not $NoServices -and (Test-Path $planFile)) { & (Join-Path $scriptDir 'Register-EdgeServices.ps1') -Action Start -PlanFile $planFile }
+    Restore-EdgeServices
     Fail 'RELEASE BLOCKER - the new runtime carries an unclassified tenant migration'
 }
 if ($ExpectedPlanHash) {
     if ($ExpectedPlanHash -ne [string]$verdict.plan_hash) {
-        if (-not $NoServices -and (Test-Path $planFile)) { & (Join-Path $scriptDir 'Register-EdgeServices.ps1') -Action Start -PlanFile $planFile }
+        Restore-EdgeServices
         Fail "the actual migration plan [$($verdict.plan_hash)] differs from the approved pre-install report [$ExpectedPlanHash] - update stopped"
     }
 } else {
@@ -101,7 +152,7 @@ if ($ExpectedPlanHash) {
 & $php $launcher edge:local:update $UpdateFile (Join-Path $PackageRoot 'app') "--expected-plan-hash=$ExpectedPlanHash" --no-interaction
 $code = $LASTEXITCODE
 if ($code -ne 0) {
-    if (-not $NoServices -and (Test-Path $planFile)) { & (Join-Path $scriptDir 'Register-EdgeServices.ps1') -Action Start -PlanFile $planFile }
+    Restore-EdgeServices
     Fail 'edge:local:update refused or failed (the previous runtime stays active; see the message above)'
 }
 # Dev/test packages carry app\vendor as a junction: the staged version needs the same link (a release copies a real vendor).
@@ -139,6 +190,8 @@ $planArgs = @('edge:local:service-plan', "--php=$php", "--app-root=$InstallRoot"
 if ($layout.gateway) { $planArgs += "--gateway=$($layout.gateway)" }
 $planJson = & $php $launcher @planArgs
 if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($planFile, ($planJson -join "`n"), (New-Object System.Text.UTF8Encoding($false))) }
+# the old heartbeat worker ran through the whole update; stop it only now, right before the new runtime's services start
+Stop-EdgeAuthorityWorker
 if (-not $NoServices -and (Test-Path $planFile)) {
     $startArgs = @{ Action = $(if ($ReRegisterServices) { 'Register' } else { 'Start' }); PlanFile = $planFile }
     if ($ReRegisterServices) { $startArgs['ServiceAccount'] = $ServiceAccount }

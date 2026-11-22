@@ -124,13 +124,20 @@ switch ($Action) {
         # error, and `nginx -s quit` from an administrator cannot open the quit event of a master started by the task principal
         # (LOCAL SERVICE): "OpenEvent(Global\ngx_quit_<pid>) failed (5: Access is denied)" - found by CP5 in the Windows Sandbox,
         # it aborted the wizard's update. Stopping the tasks below (plus the leftover-process sweep) is what really stops them.
+        # EDGE 0.9 CP6: the cooperative stops honour -Exclude too. An excluded worker keeps running (Update-EdgeAppliance.ps1
+        # keeps the authority/heartbeat worker alive through the update so the Cloud lease never lapses).
+        $runsWorker = { param($cmd) @($tasks | Where-Object { [string]$_.artisan_command -eq $cmd -or [string]$_.arguments -match [regex]::Escape($cmd) }).Count -gt 0 }
         $eap = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            $null = & $php $launcher edge:local:print-worker --stop --stop-wait=$StopWaitSeconds 2>&1
-            if ($LASTEXITCODE -ne 0) { Write-Warning 'Print worker did not confirm a graceful stop (lease expiry recovers any in-flight job).' }
-            $null = & $php $launcher edge:local:authority-worker --stop 2>&1
-            if ($LASTEXITCODE -ne 0) { Write-Warning 'Authority worker did not confirm a graceful stop.' }
+            if (& $runsWorker 'edge:local:print-worker') {
+                $null = & $php $launcher edge:local:print-worker --stop --stop-wait=$StopWaitSeconds 2>&1
+                if ($LASTEXITCODE -ne 0) { Write-Warning 'Print worker did not confirm a graceful stop (lease expiry recovers any in-flight job).' }
+            }
+            if (& $runsWorker 'edge:local:authority-worker') {
+                $null = & $php $launcher edge:local:authority-worker --stop 2>&1
+                if ($LASTEXITCODE -ne 0) { Write-Warning 'Authority worker did not confirm a graceful stop.' }
+            }
             if ($gatewayEnabled) {
                 $null = & $gateway.executable -p $gateway.working_directory -c $gateway.config_path -s quit 2>&1
                 if ($LASTEXITCODE -ne 0) { Write-Warning 'The gateway did not take the quit signal (another account started it) - its task is stopped instead.' }
