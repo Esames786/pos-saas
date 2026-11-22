@@ -1184,10 +1184,15 @@ function Protect-Evidence {
         $t = Read-Shared $f.FullName
         $n = $t
         foreach ($v in $vals) { if ($n.Contains($v)) { $hits++; $n = $n.Replace($v, '<REDACTED>') } }
+        # signed download URLs (the update status carries one, valid ~15 min): the capability part goes, the URL stays readable
+        $rx = '(?i)((?:[?&]|\\u0026)(?:signature|token)=)[0-9A-Za-z%._~-]{16,}'
+        $m = [regex]::Matches($n, $rx).Count
+        if ($m) { $script:SignedUrlRedactions += $m; $n = [regex]::Replace($n, $rx, '$1<REDACTED>') }
         if ($n -ne $t) { Write-MappedFile $f.FullName $n }
     }
     return $hits
 }
+$script:SignedUrlRedactions = 0
 
 # ================================================================================================================ main
 Write-Log 'step' "Bingoo Edge CP5 sandbox driver - scenario $Scenario - evidence $Ev"
@@ -1278,7 +1283,7 @@ try {
     }
 } finally {
     $hits = Protect-Evidence
-    $sum = [ordered]@{ scenario = $Scenario; finished = (Get-Date).ToString('s'); evidence = $Ev; secret_hits_redacted = $hits; results = $script:Results }
+    $sum = [ordered]@{ scenario = $Scenario; finished = (Get-Date).ToString('s'); evidence = $Ev; secret_hits_redacted = $hits; signed_url_params_redacted = $script:SignedUrlRedactions; results = $script:Results }
     Save-Evidence 'summary.json' $sum
     Write-Host ''
     Write-Host '================================ CP5 summary ================================' -ForegroundColor Cyan
