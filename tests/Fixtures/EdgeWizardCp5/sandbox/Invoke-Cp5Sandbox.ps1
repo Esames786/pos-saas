@@ -79,11 +79,33 @@ function Write-Log([string]$Level, [string]$Message) {
     $color = @{ step = 'Cyan'; ok = 'Green'; warn = 'Yellow'; error = 'Red'; info = 'Gray' }[$Level]
     if (-not $color) { $color = 'Gray' }
     Write-Host $line -ForegroundColor $color
-    Add-Content -Path (Join-Path $Ev 'driver.log') -Value $line -Encoding ASCII
+    Write-MappedFile (Join-Path $Ev 'driver.log') ($line + "`r`n") -Append
+}
+# The evidence folder is a host-mapped folder: a host process reading a file at the same instant can make a guest write fail
+# with a sharing violation (run 5 ended right after scenario c that way). Retry briefly; never let evidence writing abort a run.
+function Write-MappedFile([string]$Path, [string]$Text, [switch]$Append) {
+    for ($i = 1; $i -le 10; $i++) {
+        try {
+            if ($Append) { [IO.File]::AppendAllText($Path, $Text, (New-Object Text.ASCIIEncoding)) }
+            else { [IO.File]::WriteAllText($Path, $Text, (New-Object Text.UTF8Encoding($false))) }
+            return
+        } catch { Start-Sleep -Milliseconds (200 * $i) }
+    }
+    Write-Host ("(evidence write failed after retries: " + (Split-Path -Leaf $Path) + ')') -ForegroundColor Yellow
+}
+# Lines of a log another process is still WRITING (the appliance's edge-<date>.log): [IO.File]::ReadAllLines opens with
+# FileShare.Read only and fails against the writer (g2 in run 7); share read/write/delete like Get-Content does. Plain strings.
+function Read-SharedLines([string]$Path) {
+    $fs = $null
+    try {
+        $fs = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+        $sr = New-Object IO.StreamReader($fs)
+        return [string[]]($sr.ReadToEnd() -split "`r?`n")
+    } catch { return [string[]]@() } finally { if ($fs) { $fs.Dispose() } }
 }
 function Save-Evidence([string]$Name, $Object) {
     $text = $(if ($Object -is [string]) { $Object } else { $Object | ConvertTo-Json -Depth 12 })
-    [IO.File]::WriteAllText((Join-Path $Ev $Name), $text, (New-Object Text.UTF8Encoding($false)))
+    Write-MappedFile (Join-Path $Ev $Name) $text
 }
 function ConvertTo-Fwd([string]$p) { return ($p -replace '\\', '/') }
 function Read-Shared([string]$Path) {
@@ -267,10 +289,14 @@ function Start-CloudPhp([int]$ClockOffsetSec = 0) {
 }
 function Set-ApplianceEnv([string]$Key, [string]$Value) {
     $f = Join-Path $DataRoot 'config\appliance.env'
-    $lines = @(Get-Content -Path $f)
+    # one definition only (dotenv keeps the FIRST of duplicate keys): replace in place, append when absent
+    $out = New-Object System.Collections.ArrayList
     $hit = $false
-    $lines = @($lines | ForEach-Object { if ($_ -match ('^' + [regex]::Escape($Key) + '=')) { $hit = $true; "$Key=$Value" } else { $_ } })
-    if (-not $hit) { $lines += "$Key=$Value" }
+    foreach ($l in @(Get-Content -Path $f)) {
+        if ($l -match ('^' + [regex]::Escape($Key) + '=')) { if (-not $hit) { [void]$out.Add("$Key=$Value") }; $hit = $true } else { [void]$out.Add($l) }
+    }
+    if (-not $hit) { [void]$out.Add("$Key=$Value") }
+    $lines = @($out)
     [IO.File]::WriteAllText($f, (($lines -join "`r`n") + "`r`n"), (New-Object Text.ASCIIEncoding))
 }
 function Start-LeaseWatch([string]$Tag, [string]$StopFile, [int]$MaxSec = 5400) {
@@ -290,7 +316,8 @@ function Restart-EdgeTask([string]$Name) {
 
 # ---- scenarios ----
 $script:Results = [ordered]@{}
-$script:OnlyIds = @($Only -split '[,; ]+' | Where-Object { $_ })
+# cmd.exe splits arguments at commas: Start-Cp5.cmd passes "e+s+h" (any of + , ; space separate ids here)
+$script:OnlyIds = @($Only -split '[+,; ]+' | Where-Object { $_ })
 if ($Scenario -eq 'continue' -and (Test-Path (Join-Path $Ev 'scenarios.json'))) {
     (Get-Content -Raw (Join-Path $Ev 'scenarios.json') | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $script:Results[$_.Name] = $_.Value }
 }
@@ -298,6 +325,7 @@ function Invoke-Scenario([string]$Id, [string]$Title, [string[]]$Needs, [scriptb
     # the base chain of a fresh sandbox (prereqs, cloud, a, b / f) always runs; -Only selects among the rest
     if ($script:OnlyIds.Count -gt 0 -and @('prereqs', 'cloud', 'a', 'b', 'f') -notcontains $Id -and $script:OnlyIds -notcontains $Id) {
         $script:Results[$Id] = [ordered]@{ title = $Title; ok = $false; skipped = 'not selected (-Only)' }
+        Write-Log 'info' "scenario $Id not selected (-Only $($script:OnlyIds -join '+'))"
         Save-Evidence 'scenarios.json' $script:Results
         return
     }
@@ -505,7 +533,8 @@ function New-BranchCertificates {
 function Invoke-Install085 {
     $mysql = Install-ApplianceMySql
     $certs = New-BranchCertificates
-    if (-not (Test-Path (Join-Path $InstallRoot 'appliance.json'))) {
+    $script:InstalledNow = -not (Test-Path (Join-Path $InstallRoot 'appliance.json'))
+    if ($script:InstalledNow) {
         $codeFile = Join-Path $Secrets 'pairing.code'
         Remove-Item -Force $codeFile -ErrorAction SilentlyContinue
         $edgePwFile = Write-Secret 'edge.pass' (Get-Secret 'mysql-edge' { throw 'no edge password' })
@@ -526,7 +555,28 @@ function Invoke-Install085 {
                 Write-Log 'info' 'pairing code issued by the Cloud owner path and handed to the installer (one-time file)'
             }
         }
-        if ($r.Out -notmatch 'INSTALL COMPLETE') { throw ('the 0.8.5 install did not complete (exit ' + $r.Code + '), see a-install-085.log') }
+        if ($r.Out -notmatch 'INSTALL COMPLETE') {
+            if (($r.Out + $r.Err) -match 'P99999999DT23H59M59S' -and $r.Out -match '\[11\] Register-EdgeServices') {
+                # The REAL 0.8.5 kit bug met at Khatri (21 Nov, docs/status/khatri-onsite-install-steps-084 pitfall (b)): its
+                # Register-EdgeServices.ps1 uses [TimeSpan]::MaxValue as a repetition duration, which the Task Scheduler rejects
+                # (Khatri: Windows 10 19045; here also Windows 11 26100). Apply the documented on-site workaround verbatim: a
+                # copy with (New-TimeSpan -Days 3650), -Action Register, -Action Start, then the installer's steps 12 + 13.
+                Write-Log 'warn' '0.8.5 step [11] hit the known [TimeSpan]::MaxValue task bug - applying the documented Khatri workaround'
+                $src = Join-Path $InstallRoot 'scripts\Register-EdgeServices.ps1'
+                $fix = Join-Path $InstallRoot 'scripts\Register-EdgeServices.khatri-fix.ps1'
+                [IO.File]::WriteAllText($fix, (Get-Content -Raw $src).Replace('([TimeSpan]::MaxValue)', '(New-TimeSpan -Days 3650)'), (New-Object Text.ASCIIEncoding))
+                $plan = Join-Path $DataRoot 'gateway\service-plan.json'
+                $w1 = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $fix, '-Action', 'Register', '-PlanFile', $plan) (Join-Path $Ev 'a-khatri-fix-register.log') 600
+                $w2 = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $fix, '-Action', 'Start', '-PlanFile', $plan) (Join-Path $Ev 'a-khatri-fix-start.log') 600
+                $w3 = Invoke-Edge @('edge:local:authority-worker', '--max-ticks=2', '--interval=5', '--no-interaction') 300
+                Save-Evidence 'a-khatri-workaround.json' ([ordered]@{ why = 'real 0.8.5 kit: Register-EdgeServices.ps1 [TimeSpan]::MaxValue repetition duration rejected (HRESULT 0x80041318)'
+                        applied = 'documented Khatri on-site workaround (copy with New-TimeSpan -Days 3650, Register, Start, warm sync)'; register_exit = $w1.Code; start_exit = $w2.Code; warm_sync_exit = $w3.Code })
+                if ($w1.Code -ne 0 -or $w2.Code -ne 0) { throw ('the documented 0.8.5 task workaround failed (register ' + $w1.Code + ', start ' + $w2.Code + ')') }
+                $script:Khatri085Workaround = $true
+            } else {
+                throw ('the 0.8.5 install did not complete (exit ' + $r.Code + '), see a-install-085.log')
+            }
+        }
         Remove-Item -Force $edgePwFile, $pfxPwFile -ErrorAction SilentlyContinue
     }
     # every Cloud user gets an Edge PIN on 0.8.5 (the documented operator path: Cloud assertion + edge:local:enroll --credential-file)
@@ -534,15 +584,22 @@ function Invoke-Install085 {
     foreach ($u in (Get-Users)) {
         $af = Join-Path $Secrets ("assert-" + $u.id + '.json')
         [void](Invoke-Cloud @('assertion', [string]$u.id, $af))
-        $r = Invoke-Edge @('edge:local:enroll', $af, '--type=pin', ('--credential-file=' + (Join-Path $Secrets ('pin-' + $u.id))), '--no-interaction')
-        Remove-Item -Force $af -ErrorAction SilentlyContinue
+        # edge:local:enroll READS AND DELETES its --credential-file (secret hygiene): hand it a one-time copy, keep pin-<id>
+        $pinFile = Join-Path $Secrets ('pin-' + $u.id)
+        if (-not (Test-Path $pinFile)) { [void](Write-Secret ('pin-' + $u.id) (New-Pin)) }
+        $once = Write-Secret ('pin-' + $u.id + '.enroll') ((Get-Content -Raw $pinFile).Trim())
+        $r = Invoke-Edge @('edge:local:enroll', $af, '--type=pin', ('--credential-file=' + $once), '--no-interaction')
+        Remove-Item -Force $af, $once -ErrorAction SilentlyContinue
         $enrolled[$u.code] = ($r.Code -eq 0)
     }
     $snap = Get-ApplianceSnapshot 'after-0.8.5-install'
     $logins = Test-PinLogins 'http://127.0.0.1:8090'
     Save-Evidence 'a-state-085.json' ([ordered]@{ mysql = $mysql; certificates = $certs; enrolled = $enrolled; snapshot = $snap; pin_logins_loopback = $logins; cloud_device = (Get-CloudDevice) })
-    $ok = $snap.pointer -eq '0.8.5-edge' -and -not ($enrolled.Values -contains $false) -and -not (@($logins.Values) | Where-Object { -not $_.ok })
-    return [ordered]@{ verdict_ok = $ok; pointer = $snap.pointer; status = $snap.status; mysql = $mysql.service; tasks = @($snap.tasks | ForEach-Object { $_.name + '=' + $_.state }) }
+    # installed now -> must be the 0.8.5 runtime; a resumed sandbox session (installed + maybe updated by an earlier driver run)
+    # only re-enrolls the PINs and proves the logins
+    $ok = ((-not $script:InstalledNow) -or $snap.pointer -eq '0.8.5-edge') -and $snap.pointer -and -not ($enrolled.Values -contains $false) -and -not (@($logins.Values) | Where-Object { -not $_.ok })
+    return [ordered]@{ verdict_ok = $ok; pointer = $snap.pointer; status = $snap.status; mysql = $mysql.service; tasks = @($snap.tasks | ForEach-Object { $_.name + '=' + $_.state })
+        khatri_085_task_workaround = [bool]$script:Khatri085Workaround }
 }
 
 # ------------------------------------------------------------------------------ b) 0.9 wizard UPDATE (Setup-BingooEdge.cmd)
@@ -573,7 +630,7 @@ function Invoke-SetupCmd([string]$AnswersFile, [string]$LogName, [hashtable]$Sec
     Write-Log 'warn' 'Setup-BingooEdge.cmd admin probe (net session) fails in this sandbox - starting the same wizard script directly'
     return Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', (Join-Path $Pkg090 'app\scripts\edge\wizard\Start-BingooEdgeWizard.ps1'), '-Headless', '-AnswersFile', $AnswersFile) (Join-Path $Ev $LogName) 5400 $SecretEnv
 }
-function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}) {
+function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}, [string]$ExpectPointer = '0.9.0-dev') {
     # the same proof for the UI-driven and the headless update: same device, 0.9 runtime, K5 with the CA on the Cloud, tasks
     # re-registered with BingooEdgeUpdater + the LOCAL SERVICE control grant, every user's PIN still logs in
     Save-BeforeUpdate   # loads the pre-update snapshot of this sandbox session when the update ran in another driver process
@@ -582,14 +639,16 @@ function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}) {
     $dev = Get-CloudDevice
     $logins = Test-PinLogins 'http://127.0.0.1:8090'
     $grant = @($after.tasks | Where-Object { $_.name -ne 'BingooEdgeUpdater' } | Where-Object { -not $_.local_service_control_ace } | ForEach-Object { $_.name })
-    $k5 = @(Get-ChildItem (Join-Path $Ev 'wizard-logs') -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'K5 LAN profile' }) | Select-Object -Last 1
+    # [string] strips Get-Content's PSDrive / PSProvider note properties: ConvertTo-Json -Depth 12 would expand them without end
+    # (run 3: 1.9 GB and minutes of CPU inside Save-Evidence)
+    $k5 = [string](@(Get-ChildItem (Join-Path $Ev 'wizard-logs') -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object { Read-SharedLines $_.FullName } | Where-Object { $_ -match 'K5 LAN profile' }) | Select-Object -Last 1)
     $d = $dev.device
     $b = $script:DeviceBeforeUpdate.device
     $doc = [ordered]@{ via = $Via; k5_line = $k5; before = $script:BeforeUpdate; after = $after; cloud_device_before = $script:DeviceBeforeUpdate; cloud_device_after = $dev
         pin_logins_loopback = $logins; tasks_without_local_service_grant = $grant }
     foreach ($k in $Extra.Keys) { $doc[$k] = $Extra[$k] }
     Save-Evidence 'b-state-090.json' $doc
-    $ok = $after.pointer -eq '0.9.0-dev' -and $d.lan_ca_pem_present -and [string]$d.lan_ip -eq $script:LanIp -and [int]$d.lan_https_port -eq $HttpsPort -and
+    $ok = $after.pointer -like $ExpectPointer -and $d.lan_ca_pem_present -and [string]$d.lan_ip -eq $script:LanIp -and [int]$d.lan_https_port -eq $HttpsPort -and
         [string]$d.public_uuid -eq [string]$b.public_uuid -and [string]$d.installation_uuid -eq [string]$b.installation_uuid -and
         -not (@($logins.Values) | Where-Object { -not $_.ok }) -and @($after.tasks | Where-Object { $_.name -eq 'BingooEdgeUpdater' }).Count -eq 1 -and $grant.Count -eq 0
     return [ordered]@{ verdict_ok = $ok; via = $Via; pointer = $after.pointer; k5_ca_on_cloud = [bool]$d.lan_ca_pem_present; lan_ip = $d.lan_ip
@@ -1027,25 +1086,35 @@ function Invoke-G2 {
     try {
         $took = Wait-Until { $f = Get-TakeoverFacts; [void]$samples.Add($f); if ($f.state -eq 'local_active') { $f } } 600 10 'the automatic takeover (local_active)'
     } catch { Start-CloudPhp; Stop-LeaseWatch $watch $stop; Save-Evidence 'g2-takeover.json' ([ordered]@{ before = $before; samples = $samples; error = $_.Exception.Message }); throw }
-    $lease = Get-CloudLease   # read from the Cloud DB while the Cloud php is still down
-    $meta = Get-EdgeMeta
-    $audit = @(Get-ChildItem (Join-Path $DataRoot 'logs') -Filter 'edge-*.log' -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'edge-auto-takeover' }) | Select-Object -Last 12
-    Start-CloudPhp
-    Start-Sleep -Seconds 120
-    $afterReconnect = Get-TakeoverFacts
-    $leaseAfter = Get-CloudLease
-    # supervised handback (an operator decision; never automatic)
+    $lease = $meta = $afterReconnect = $leaseAfter = $final = $leaseFinal = $null; $audit = @()
     $hb = New-Object System.Collections.ArrayList
-    for ($i = 0; $i -lt 8; $i++) {
-        $r = Invoke-Edge @('edge:local:authority-handback', '--by=cp5-supervisor') 300
-        $st = [string](Get-EdgeMeta).authority_state
-        [void]$hb.Add([ordered]@{ attempt = $i + 1; exit = $r.Code; output = ($r.Out + $r.Err).Trim(); state = $st })
-        if ($st -eq 'standby') { break }
+    try {   # a fault after the takeover must still bring the Cloud back and stop the watch (run 7 left both behind)
+        $lease = Get-CloudLease   # read from the Cloud DB while the Cloud php is still down
+        $meta = Get-EdgeMeta
+        $audit = @(@(Get-ChildItem (Join-Path $DataRoot 'logs') -Filter 'edge-*.log' -ErrorAction SilentlyContinue | ForEach-Object { Read-SharedLines $_.FullName } | Where-Object { $_ -match 'edge-auto-takeover' }) | Select-Object -Last 12 | ForEach-Object { [string]$_ })
+        Start-CloudPhp
+        Start-Sleep -Seconds 120
+        $afterReconnect = Get-TakeoverFacts
+        $leaseAfter = Get-CloudLease
+        # supervised handback (an operator decision; never automatic)
+        for ($i = 0; $i -lt 8; $i++) {
+            $r = Invoke-Edge @('edge:local:authority-handback', '--by=cp5-supervisor') 300
+            $st = [string](Get-EdgeMeta).authority_state
+            [void]$hb.Add([ordered]@{ attempt = $i + 1; exit = $r.Code; output = ($r.Out + $r.Err).Trim(); state = $st })
+            if ($st -eq 'standby') { break }
+            Start-Sleep -Seconds 30
+        }
         Start-Sleep -Seconds 30
+        $final = Get-TakeoverFacts
+        $leaseFinal = Get-CloudLease
+    } catch {
+        $err = $_.Exception.Message
+        if (-not (Wait-Port $CloudPort 1)) { Start-CloudPhp }
+        Stop-LeaseWatch $watch $stop
+        Save-Evidence 'g2-takeover.json' ([ordered]@{ before = $before; cloud_stopped_at = $tStop.ToString('s'); takeover = $took; meta_at_takeover = $meta; cloud_lease_at_takeover = $lease
+                audit_lines = $audit; after_reconnect = $afterReconnect; cloud_lease_after_reconnect = $leaseAfter; handback = $hb; error = $err })
+        throw
     }
-    Start-Sleep -Seconds 30
-    $final = Get-TakeoverFacts
-    $leaseFinal = Get-CloudLease
     Stop-LeaseWatch $watch $stop
     Set-AutoTakeover $false $false 180
     $ttl = [int]$meta.authority_lease_ttl_seconds
@@ -1074,11 +1143,13 @@ function Confirm-CloudUp {
     }
 }
 function Invoke-ScenarioS {
-    # Agent D's own STA process (headless Edge / cookie driver + the REAL counter wizard window); exit 0 = every verdict true
+    # Agent D's own STA process (headless Edge / cookie driver + the REAL counter wizard window); exit 0 = every verdict true.
+    # Its stdout goes to driver-s.log, NOT s-*: D's final redaction re-reads every s-* file and our redirect still holds that
+    # one open (run 10: every step PASS, then ReadAllText on s-driver.log threw and the verdict was never written).
     $p = Join-Path $Kit 'Invoke-Cp5CounterSelfService.ps1'
     if (-not (Test-Path $p)) { throw 'NOT_DELIVERED: Invoke-Cp5CounterSelfService.ps1 is not in the kit' }
     $r = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', $p, '-Evidence', $Ev, '-LanIp', $script:LanIp,
-        '-Kit', $Kit, '-Pkgs', $Pkgs, '-Work', $Work, '-CloudPhp', $CloudPhp, '-CloudIni', $CloudIni, '-LanHost', $LanHost, '-HttpsPort', [string]$HttpsPort) (Join-Path $Ev 's-driver.log') 3600
+        '-Kit', $Kit, '-Pkgs', $Pkgs, '-Work', $Work, '-CloudPhp', $CloudPhp, '-CloudIni', $CloudIni, '-LanHost', $LanHost, '-HttpsPort', [string]$HttpsPort) (Join-Path $Ev 'driver-s.log') 3600
     # s changed the cashier's PIN (secrets\pin-<id>) and keeps its own s-*.keep secrets: every short secret file joins the
     # redaction list of the final evidence scan
     foreach ($f in @(Get-ChildItem $Secrets -File | Where-Object { $_.Length -gt 0 -and $_.Length -lt 256 -and ($_.Name -like 'pin-*' -or $_.Name -like '*.keep') })) {
@@ -1115,10 +1186,15 @@ function Protect-Evidence {
         $t = Read-Shared $f.FullName
         $n = $t
         foreach ($v in $vals) { if ($n.Contains($v)) { $hits++; $n = $n.Replace($v, '<REDACTED>') } }
-        if ($n -ne $t) { [IO.File]::WriteAllText($f.FullName, $n, (New-Object Text.UTF8Encoding($false))) }
+        # signed download URLs (the update status carries one, valid ~15 min): the capability part goes, the URL stays readable
+        $rx = '(?i)((?:[?&]|\\u0026)(?:signature|token)=)[0-9A-Za-z%._~-]{16,}'
+        $m = [regex]::Matches($n, $rx).Count
+        if ($m) { $script:SignedUrlRedactions += $m; $n = [regex]::Replace($n, $rx, '$1<REDACTED>') }
+        if ($n -ne $t) { Write-MappedFile $f.FullName $n }
     }
     return $hits
 }
+$script:SignedUrlRedactions = 0
 
 # ================================================================================================================ main
 Write-Log 'step' "Bingoo Edge CP5 sandbox driver - scenario $Scenario - evidence $Ev"
@@ -1172,7 +1248,11 @@ try {
             Invoke-Scenario 'a' '0.8.5 elevated install (MySQL service, branch CA, gateway, tasks) paired to the sandbox Cloud' @('cloud') { Invoke-Install085 }
             Invoke-Scenario 'w-update' 'the REAL WPF wizard (Setup-BingooEdge.cmd) driven by UI Automation: UPDATE 0.8.5 -> 0.9.0-dev' @('a') { Invoke-WizardUiUpdate }
             Invoke-Scenario 'b' 'update post-checks: same device, K5 with the branch CA, tasks + LOCAL SERVICE grant, PIN logins' @('a') {
-                if ((Get-Pointer) -eq '0.9.0-dev') { Invoke-UpdateChecks 'WPF wizard via UI Automation' }
+                $p = Get-Pointer
+                if ($p -eq '0.9.0-dev') { Invoke-UpdateChecks 'WPF wizard via UI Automation' }
+                # a resumed session whose appliance c/d already moved on (0.9.1-dev): a 0.9.0 'update' would be a downgrade the wizard
+                # rightly refuses (run 9) - prove the same post-checks on the runtime it has
+                elseif (-not $script:InstalledNow -and $p -like '0.9.*-dev') { Write-Log 'info' ("resumed session: the appliance is already on $p - post-checks only"); Invoke-UpdateChecks 'earlier update in this sandbox session' @{} '0.9.*-dev' }
                 else { Write-Log 'warn' 'the UI-driven update did not reach 0.9.0-dev - headless Setup-BingooEdge.cmd so the chain can continue'; Invoke-WizardUpdateHeadless }
             }
         }
@@ -1209,7 +1289,7 @@ try {
     }
 } finally {
     $hits = Protect-Evidence
-    $sum = [ordered]@{ scenario = $Scenario; finished = (Get-Date).ToString('s'); evidence = $Ev; secret_hits_redacted = $hits; results = $script:Results }
+    $sum = [ordered]@{ scenario = $Scenario; finished = (Get-Date).ToString('s'); evidence = $Ev; secret_hits_redacted = $hits; signed_url_params_redacted = $script:SignedUrlRedactions; results = $script:Results }
     Save-Evidence 'summary.json' $sum
     Write-Host ''
     Write-Host '================================ CP5 summary ================================' -ForegroundColor Cyan

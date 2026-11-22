@@ -1,6 +1,6 @@
 @echo off
 rem CP5 (stream B) - Windows Sandbox logon command: opens a visible PowerShell window that runs the driver.
-rem   Start-Cp5.cmd auto | manual | fresh | continue  [comma list of scenario ids for -Only, e.g. g1,g2]
+rem   Start-Cp5.cmd auto | manual | fresh | continue  [scenario ids for -Only joined with +, e.g. g1+g2 (cmd splits at commas)]
 rem Everything runs INSIDE the sandbox as its own administrator (WDAGUtilityAccount); the host is never elevated or changed.
 set "SCEN=%~1"
 if "%SCEN%"=="" set "SCEN=auto"

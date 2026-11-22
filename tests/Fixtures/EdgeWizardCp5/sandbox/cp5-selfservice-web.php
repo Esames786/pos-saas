@@ -29,8 +29,11 @@ if (! is_array($cfg)) {
 function cp5_http(array $cfg, string $method, string $url, ?string $jar, $body = null, array $headers = []): array
 {
     $ch = curl_init($url);
+    // A caller's own Accept REPLACES the default: two Accept headers reach Laravel as "text/html,...", so expectsJson() was
+    // false and the controller answered with its HTML redirect instead of the JSON status (CP5 run 7, s8 other_branch 302).
+    $ownAccept = (bool) preg_grep('/^\s*accept\s*:/i', $headers);
     $opts = [CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true, CURLOPT_TIMEOUT => 120, CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_FOLLOWLOCATION => false, CURLOPT_HTTPHEADER => array_merge(['Accept: text/html,application/json'], $headers),
+        CURLOPT_FOLLOWLOCATION => false, CURLOPT_HTTPHEADER => $ownAccept ? $headers : array_merge(['Accept: text/html,application/json'], $headers),
         CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2, CURLOPT_CAINFO => $cfg['cafile'], CURLOPT_RESOLVE => $cfg['resolve'] ?? []];
     if ($jar !== null) {
         $opts[CURLOPT_COOKIEJAR] = $jar;
@@ -97,6 +100,25 @@ function cp5_csrf(array $cfg, string $jar): ?string
     return null;
 }
 
+/**
+ * For a user who can open NO page (CP5NP: every page is 403, so no token to read; the login ROTATES the token -
+ * session()->regenerate() calls regenerateToken() - so the login form's token is stale): Laravel's own XSRF-TOKEN cookie
+ * (set on every response, the 403s included) goes back as X-XSRF-TOKEN, which VerifyCsrfToken decrypts when no _token is
+ * posted. Without it the POST got 419 before the controller's permission check (CP5 runs 7 + 8).
+ */
+function cp5_xsrf_header(string $jar): array
+{
+    $value = null;
+    foreach (@file($jar, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
+        $f = explode("\t", $line);
+        if (count($f) >= 7 && $f[5] === 'XSRF-TOKEN') {
+            $value = $f[6];
+        }
+    }
+
+    return $value === null ? [] : ['X-XSRF-TOKEN: ' . urldecode($value)];
+}
+
 /** Facts of a counter-setup body WITHOUT keeping the assertion (its user + issuer only). */
 function cp5_script_facts(string $body): array
 {
@@ -145,11 +167,13 @@ try {
             // 1. a user WITHOUT tenant.offline-edge.counter-install
             [$jar, $login] = cp5_login($cfg, 'CP5NP');
             $jars[] = $jar;
-            $token = cp5_csrf($cfg, $jar) ?? '';
+            $token = cp5_csrf($cfg, $jar);
             $n['no_permission'] = ['login' => $login,
                 'page' => cp5_http($cfg, 'GET', $cfg['base'] . '/pos/offline-counter', $jar)['status'],
                 'setup' => cp5_http($cfg, 'GET', $cfg['base'] . '/pos/offline-counter/setup', $jar)['status'],
-                'my_enrollment' => cp5_http($cfg, 'POST', $cfg['base'] . '/pos/offline-counter/my-enrollment', $jar, ['_token' => $token])['status']];
+                'csrf_via' => $token !== null ? 'page token' : 'XSRF-TOKEN cookie',
+                'my_enrollment' => cp5_http($cfg, 'POST', $cfg['base'] . '/pos/offline-counter/my-enrollment', $jar,
+                    $token !== null ? ['_token' => $token] : [], $token !== null ? [] : cp5_xsrf_header($jar))['status']];
             $n['no_permission']['ok'] = $login['logged_in'] && $n['no_permission']['setup'] === 403 && $n['no_permission']['my_enrollment'] === 403 && $n['no_permission']['page'] === 403;
 
             // 2. a cashier of ANOTHER branch (no Branch Server there): refused with a clear reason, no script
