@@ -67,7 +67,7 @@ class EdgeContinuityMergeHttpMySqlTest extends MySqlTenantTestCase
 
         // ── the Cloud's truth ──
         $this->cleanTenant([
-            'edge_branch_authority_leases', 'edge_inbound_sale_ingestions', 'kot_batch_lines', 'kot_batches', 'print_jobs',
+            'edge_branch_authority_leases', 'edge_inbound_return_ingestions', 'edge_inbound_sale_ingestions', 'sales_return_lines', 'sales_returns', 'kot_batch_lines', 'kot_batches', 'print_jobs',
             'sales_ledgers', 'cash_bank_account_transactions', 'journal_lines', 'journal_entries', 'accounts', 'cash_bank_accounts', 'stock_ledgers', 'stock_balances', 'inventory_batches',
             'sale_payments', 'sales_order_lines', 'sales_orders', 'restaurant_table_sessions', 'restaurant_tables', 'restaurant_floors', 'restaurant_waiters',
             'shifts', 'payment_methods', 'combo_components', 'combos', 'products', 'categories', 'units', 'terminals', 'branches', 'users',
@@ -118,7 +118,7 @@ class EdgeContinuityMergeHttpMySqlTest extends MySqlTenantTestCase
                 'edge_mirror_adoptions', 'edge_mirror_order_lines', 'edge_mirror_held_sales', 'edge_mirror_table_orders', 'edge_mirror_table_sessions', 'edge_mirror_shifts', 'edge_mirror_meta',
                 'edge_local_print_deliveries', 'kot_batch_lines', 'kot_batches', 'print_jobs', 'edge_returnable_sale_lines', 'edge_returnable_sales', 'edge_local_connection_transitions',
                 'edge_baseline_cutovers', 'edge_sync_outbox', 'edge_operational_stock_movements', 'edge_operational_stock_balances', 'edge_operational_stock_baselines',
-                'edge_local_user_credentials', 'edge_local_meta', 'sales_ledgers', 'sale_payments', 'sales_order_lines', 'sales_orders', 'restaurant_table_sessions', 'shifts', 'manager_approvals',
+                'edge_local_user_credentials', 'edge_local_meta', 'sales_return_lines', 'sales_returns', 'sales_ledgers', 'sale_payments', 'sales_order_lines', 'sales_orders', 'restaurant_table_sessions', 'shifts', 'manager_approvals',
             ]);
             DB::connection('tenant')->table('restaurant_tables')->update(['status' => 'available']);   // the appliance's own view of the floor
             $this->bindEdgeLocalMeta($this->branchId, 1, $this->cloudTenantId, $this->cloudDeviceUuid, 1);
@@ -514,4 +514,98 @@ class EdgeContinuityMergeHttpMySqlTest extends MySqlTenantTestCase
 
     private int $dealOrderId = 0;
     private array $dealLineUuids = [];
+
+    /** A takeaway of 2 Biryani on counter T1 and a CASH refund of one of them, both on the appliance; returns the outbox envelopes. */
+    private function sellAndRefundOnTheAppliance(): array
+    {
+        return $this->asEdge(function () {
+            $user = User::on('tenant')->find($this->userId);
+            Auth::guard('tenant')->setUser($user);
+            Auth::shouldUse('tenant');
+            $sale = app(EdgeLocalPosService::class)->completePaidSale(['order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+                'lines' => [['product_id' => $this->biryani, 'quantity' => 2]], 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 300]]], $user, $this->t1);
+            $lineId = (int) DB::connection('tenant')->table('sales_order_lines')->where('sales_order_id', $sale->id)->value('id');
+            app(\App\Services\Edge\EdgeLocalReturnService::class)->processReturn((int) $sale->id, [['sales_order_line_id' => $lineId, 'quantity' => 1]], 'wrong order', 'cash', 150.0, $user, $this->t1);
+            $rows = DB::connection('tenant')->table('edge_sync_outbox')->orderBy('id')->get(['sale_uuid', 'envelope']);
+
+            return ['sale' => json_decode((string) $rows[0]->envelope, true), 'return' => json_decode((string) $rows[1]->envelope, true)];
+        });
+    }
+
+    private function cloudShiftRow(): object
+    {
+        return $this->asCloud(fn () => DB::connection('tenant')->table('shifts')->where('id', $this->cloudShiftId)->first());
+    }
+
+    /**
+     * CP3 gap 3 — a refund paid from the CONTINUED shift is counted in the ORIGINAL Cloud shift's drawer (expected cash, refund
+     * buckets), exactly once: an exact replay is already_applied and moves nothing.
+     */
+    public function test_a_refund_in_the_continued_shift_lands_in_the_original_cloud_shift_once(): void
+    {
+        $this->assertSame('refreshed:initial', $this->tick()['work']['stock']);
+        $this->asEdge(fn () => app(LiveStateMirror::class)->apply($this->cloudLiveState()));
+        $this->assertSame('adopted', $this->goLocalAndAdopt()['status']);
+        $cloudShiftUuid = (string) $this->cloudShiftRow()->shift_uuid;
+        $env = $this->sellAndRefundOnTheAppliance();
+        $this->assertSame(\App\Services\Edge\EdgeReturnEnvelopeBuilder::SCHEMA, $env['return']['envelope_schema_version'], 'still the v2 return envelope');
+        $this->assertSame($cloudShiftUuid, $env['return']['processing_shift']['continues_cloud_shift_uuid']);
+        $this->assertNotSame($cloudShiftUuid, $env['return']['processing_shift']['shift_uuid'], 'the paying shift is the appliance continuation; the Cloud shift is named beside it');
+
+        $this->bridgeFailures = [];
+        $t = $this->tick();
+        $this->assertSame(2, $t['work']['drained'], json_encode($t['work']));
+        $shift = $this->cloudShiftRow();
+        $this->assertSame(['1350.00', '500.00', '150.00', '150.00'], [(string) $shift->expected_cash, (string) $shift->total_cash, (string) $shift->total_refunds, (string) $shift->total_cash_refunds],
+            'drawer 1 200 + 300 sold - 150 refunded (cash sales 200 online + 300 offline), in the ORIGINAL shift');
+        $this->asCloud(function () use ($env) {
+            $c = DB::connection('tenant');
+            $reg = $c->table('edge_inbound_return_ingestions')->where('return_uuid', $env['return']['return_uuid'])->first();
+            $this->assertSame('applied', $reg->status);
+            $this->assertSame((int) $this->cloudShiftId, (int) $c->table('sales_returns')->where('id', $reg->sales_return_id)->value('shift_id'));
+            $ack = json_decode((string) $reg->ack_payload, true);
+            $this->assertSame('merged', $ack['continuity']['shift']['status']);
+            $this->assertSame((int) $this->cloudShiftId, (int) $ack['continuity']['shift']['refund_shift_id']);
+            $this->assertSame($env['return']['processing_shift']['shift_uuid'], $ack['continuity']['shift']['edge_shift_uuid'], 'the appliance segment stays on the audit');
+        });
+
+        // An exact replay of the immutable return event: already_applied, the drawer moves no further.
+        $headers = ['X-Edge-Device-ID' => $this->cloudDeviceUuid, 'Authorization' => 'Bearer ' . $this->cloudDeviceSecret];
+        $this->asCloud(fn () => $this->postJson('http://' . config('tenancy.central_domain') . '/api/edge/sync/returns', ['envelope' => $env['return']], $headers)
+            ->assertOk()->assertJsonPath('status', 'already_applied'));
+        $this->assertEquals($shift, $this->cloudShiftRow(), 'a replay never double-counts');
+        $this->assertSame(1, $this->asCloud(fn () => DB::connection('tenant')->table('sales_returns')->count()));
+    }
+
+    /**
+     * The unchanged-legacy case: a refund paid from an ordinary Edge shift (opened by hand, nothing adopted) carries the exact
+     * v2 `processing_shift` keys of 0.8.x and the Cloud keeps today's attribution: the identity on the return row, no Cloud
+     * shift counted, the online shift untouched.
+     */
+    public function test_a_refund_in_an_ordinary_edge_shift_keeps_todays_envelope_and_attribution(): void
+    {
+        $this->assertSame('refreshed:initial', $this->tick()['work']['stock']);
+        $this->assertNotSame('adopted', $this->goLocalAndAdopt()['status'], 'nothing mirrored: nothing adopted, the counter opens its shift by hand');
+        $this->asEdge(fn () => app(ShiftService::class)->open(Branch::on('tenant')->find($this->branchId), Terminal::on('tenant')->find($this->t1), $this->userId, 500.0));
+        $before = $this->cloudShiftRow();
+        $env = $this->sellAndRefundOnTheAppliance();
+        $keys = array_keys($env['return']['processing_shift']);
+        sort($keys);
+        $this->assertSame(['business_date', 'opened_at', 'opened_by_user_id', 'shift_uuid', 'terminal_id'], $keys, 'the 0.8.x v2 processing_shift shape, byte for byte');
+        $this->assertSame(\App\Services\Edge\EdgeReturnEnvelopeBuilder::SCHEMA, $env['return']['envelope_schema_version']);
+        $this->assertSame(\App\Services\Edge\EdgeSaleEnvelopeBuilder::SCHEMA_VERSION, $env['sale']['envelope_schema_version'], 'an ordinary sale stays v1');
+
+        $this->bridgeFailures = [];
+        $this->assertSame(2, $this->tick()['work']['drained']);
+        $this->assertEquals($before, $this->cloudShiftRow(), 'the online shift is not touched by an ordinary Edge shift');
+        $this->asCloud(function () use ($env) {
+            $c = DB::connection('tenant');
+            $reg = $c->table('edge_inbound_return_ingestions')->where('return_uuid', $env['return']['return_uuid'])->first();
+            $this->assertSame('applied', $reg->status);
+            $ret = $c->table('sales_returns')->where('id', $reg->sales_return_id)->first();
+            $this->assertNull($ret->shift_id, 'no Cloud shift holds the appliance shift: today the refund is kept by identity only');
+            $this->assertSame($env['return']['processing_shift']['shift_uuid'], $ret->processing_shift_uuid);
+            $this->assertArrayNotHasKey('continuity', json_decode((string) $reg->ack_payload, true));
+        });
+    }
 }
