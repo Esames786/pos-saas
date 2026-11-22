@@ -559,8 +559,12 @@ function Invoke-Install085 {
     foreach ($u in (Get-Users)) {
         $af = Join-Path $Secrets ("assert-" + $u.id + '.json')
         [void](Invoke-Cloud @('assertion', [string]$u.id, $af))
-        $r = Invoke-Edge @('edge:local:enroll', $af, '--type=pin', ('--credential-file=' + (Join-Path $Secrets ('pin-' + $u.id))), '--no-interaction')
-        Remove-Item -Force $af -ErrorAction SilentlyContinue
+        # edge:local:enroll READS AND DELETES its --credential-file (secret hygiene): hand it a one-time copy, keep pin-<id>
+        $pinFile = Join-Path $Secrets ('pin-' + $u.id)
+        if (-not (Test-Path $pinFile)) { [void](Write-Secret ('pin-' + $u.id) (New-Pin)) }
+        $once = Write-Secret ('pin-' + $u.id + '.enroll') ((Get-Content -Raw $pinFile).Trim())
+        $r = Invoke-Edge @('edge:local:enroll', $af, '--type=pin', ('--credential-file=' + $once), '--no-interaction')
+        Remove-Item -Force $af, $once -ErrorAction SilentlyContinue
         $enrolled[$u.code] = ($r.Code -eq 0)
     }
     $snap = Get-ApplianceSnapshot 'after-0.8.5-install'
