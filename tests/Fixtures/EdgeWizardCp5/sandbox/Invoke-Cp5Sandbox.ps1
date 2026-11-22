@@ -54,7 +54,16 @@ $CloudDbPort = 3407
 $CloudUrl = "http://127.0.0.1:$CloudPort"
 $LanHost = 'bingoo-edge.local'
 $HttpsPort = 8443
-$Pkg090 = Join-Path $Pkgs 'BingooEdge-0.9.0-dev'
+# CP6 release variant: <kit>\cp5-variant.json names the 0.9.0 package (folder + version) and the update-key facts file
+# (the RELEASE public key - never a keystore). Without it: the DEV CP5 kit, unchanged.
+$script:Variant = $null
+if (Test-Path (Join-Path $Kit 'cp5-variant.json')) { $script:Variant = Get-Content -Raw (Join-Path $Kit 'cp5-variant.json') | ConvertFrom-Json }
+$V090 = '0.9.0-dev'
+$Pkg090Name = 'BingooEdge-0.9.0-dev'
+if ($script:Variant) { $V090 = [string]$script:Variant.version_090; $Pkg090Name = [string]$script:Variant.package_090 }
+$KeyFacts = Join-Path $Kit 'dev-public-facts.json'
+if (Test-Path (Join-Path $Kit 'update-public-facts.json')) { $KeyFacts = Join-Path $Kit 'update-public-facts.json' }
+$Pkg090 = Join-Path $Pkgs $Pkg090Name
 $Pkg091 = Join-Path $Pkgs 'BingooEdge-0.9.1-dev'
 $Pkg092 = Join-Path $Pkgs 'BingooEdge-0.9.2-dev'
 $CloudPhp = Join-Path $Pkg090 'php\php.exe'
@@ -362,13 +371,14 @@ function Invoke-Scenario([string]$Id, [string]$Title, [string[]]$Needs, [scriptb
 function Invoke-Prereqs {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     if (-not ((New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))) { throw 'the driver needs the sandbox administrator (run Start-Cp5.cmd from the .wsb LogonCommand)' }
-    foreach ($p in @($Kit, $Pkg090, $Pkg091, $Pkg092, $Rel085, $CloudSrc)) { if (-not (Test-Path $p)) { throw "missing mapped folder: $p" } }
+    $need = @($Kit, $Pkg090, $Rel085, $CloudSrc); if (-not $script:Variant) { $need += @($Pkg091, $Pkg092) }   # the release variant carries one package
+    foreach ($p in $need) { if (-not (Test-Path $p)) { throw "missing mapped folder: $p" } }
     # Visual C++ 2015-2022 x64 runtime: a clean sandbox has none, and the Cloud php / mysqld here plus the REAL 0.8.5 install of
     # scenario a (no bundled prerequisite) need it BEFORE any 0.9 wizard runs. Installed with stream E's own
     # Install-EdgePrereqs.ps1 + the verified VC_redist.x64.exe that the 0.9.0-dev package carries (Authenticode + Microsoft
     # signer + SHA256SUMS line) - the same script the wizard runs as its first step (which then finds the runtime present).
     $prereq = Join-Path $Pkg090 'scripts\Install-EdgePrereqs.ps1'
-    if (-not (Test-Path $prereq)) { throw 'the 0.9.0-dev package carries no scripts\Install-EdgePrereqs.ps1' }
+    if (-not (Test-Path $prereq)) { throw "the $V090 package carries no scripts\Install-EdgePrereqs.ps1" }
     $chk = Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $prereq, '-PackageRoot', $Pkg090, '-CheckOnly') (Join-Path $Ev 'prereq-check-before.log') 120
     $how = 'present (check exit 0)'
     if ($chk.Code -ne 0) {
@@ -401,7 +411,7 @@ function Start-Cloud {
     # MySQL for the Cloud: the package's MySQL 8.0.30 (read-only basedir), own datadir, 127.0.0.1:3407, console process
     $mysqlSrc = Join-Path $Pkg090 'mysql'   # stream E layout: <package>\mysql\bin\mysqld.exe
     if (-not (Test-Path (Join-Path $mysqlSrc 'bin\mysqld.exe'))) { $mysqlSrc = (Get-ChildItem $mysqlSrc -Directory -Filter 'mysql-*' | Select-Object -First 1).FullName }
-    if (-not $mysqlSrc -or -not (Test-Path (Join-Path $mysqlSrc 'bin\mysqld.exe'))) { throw 'the 0.9.0-dev package carries no MySQL runtime' }
+    if (-not $mysqlSrc -or -not (Test-Path (Join-Path $mysqlSrc 'bin\mysqld.exe'))) { throw "the $V090 package carries no MySQL runtime" }
     $script:MySqlSrc = $mysqlSrc
     $cm = Join-Path $Work 'cloud-mysql'
     New-Item -ItemType Directory -Force -Path $cm | Out-Null
@@ -438,7 +448,7 @@ log_error=$(ConvertTo-Fwd (Join-Path $cm 'error.log'))
     try { $code = (Invoke-WebRequest -UseBasicParsing -Uri ($CloudUrl + '/up') -TimeoutSec 60).StatusCode } catch { $code = [int]$_.Exception.Response.StatusCode }
     $keys = Get-LastJson (Invoke-Cloud @('public-keys')).Out
     $script:EnrollmentPublic = [string]$keys.enrollment_public
-    $script:DevPublic = [string](Get-Content -Raw (Join-Path $Kit 'dev-public-facts.json') | ConvertFrom-Json).public_key
+    $script:DevPublic = [string](Get-Content -Raw $KeyFacts | ConvertFrom-Json).public_key
     $users = Get-Users
     foreach ($u in $users) { $pinFile = Join-Path $Secrets ('pin-' + $u.id); if (-not (Test-Path $pinFile)) { [void](Write-Secret ('pin-' + $u.id) (New-Pin)) } else { [void]$script:SecretValues.Add((Get-Content -Raw $pinFile).Trim()) } }
     Write-Log 'ok' ("Cloud up on $CloudUrl (HTTP $code), tenant cp5edgewiz, users " + (($users | ForEach-Object { $_.code }) -join ', ') + ', update key id ' + $keys.update_key_id)
@@ -630,7 +640,7 @@ function Invoke-SetupCmd([string]$AnswersFile, [string]$LogName, [hashtable]$Sec
     Write-Log 'warn' 'Setup-BingooEdge.cmd admin probe (net session) fails in this sandbox - starting the same wizard script directly'
     return Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', (Join-Path $Pkg090 'app\scripts\edge\wizard\Start-BingooEdgeWizard.ps1'), '-Headless', '-AnswersFile', $AnswersFile) (Join-Path $Ev $LogName) 5400 $SecretEnv
 }
-function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}, [string]$ExpectPointer = '0.9.0-dev') {
+function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}, [string]$ExpectPointer = $V090) {
     # the same proof for the UI-driven and the headless update: same device, 0.9 runtime, K5 with the CA on the Cloud, tasks
     # re-registered with BingooEdgeUpdater + the LOCAL SERVICE control grant, every user's PIN still logs in
     Save-BeforeUpdate   # loads the pre-update snapshot of this sandbox session when the update ran in another driver process
@@ -729,6 +739,18 @@ function Invoke-WizardUiUpdate {
     $af = Join-Path $Work 'answers-ui-update.json'
     [IO.File]::WriteAllText($af, ($a | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
     $doc = [ordered]@{ pages = New-Object System.Collections.ArrayList }
+    # CP6: the Online POS impact of the whole UI update (heartbeat gap vs TTL, lease lapse, blocksCloud seconds) and WHICH
+    # runtime's code runs each update step (process command lines), from before the window opens until it is closed
+    $layoutBefore = $null
+    if (Test-Path (Join-Path $InstallRoot 'appliance.json')) { $layoutBefore = Get-Content -Raw (Join-Path $InstallRoot 'appliance.json') | ConvertFrom-Json }
+    $pointerBefore = Get-Pointer
+    $lwStop = Join-Path $Work 'w-update-watch.stop'
+    $lw = Start-LeaseWatch 'w-update' $lwStop 5400
+    $pwStop = Join-Path $Work 'w-update-proc.stop'
+    $pwOut = Join-Path $Work 'w-update-processes.jsonl'
+    Remove-Item -Force $pwStop, $pwOut -ErrorAction SilentlyContinue
+    $pw = Start-Process -FilePath 'powershell.exe' -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $Kit 'cp5-proc-watch.ps1') + '" -Out "' + $pwOut + '" -StopFile "' + $pwStop + '"') -WindowStyle Hidden -PassThru
+    Start-Sleep -Seconds 5
     $w = Start-WizardWindow $af
     $t0 = Get-Date
     try {
@@ -764,9 +786,34 @@ function Invoke-WizardUiUpdate {
         $doc.seconds = [int]((Get-Date) - $t0).TotalSeconds
         $doc.screenshots = @($script:Shots | ForEach-Object { Split-Path -Leaf $_ })
         Save-Evidence 'w-update-ui.json' $doc
+        Start-Sleep -Seconds 30   # a few heartbeats after the window closed, so the watch sees the authority worker back
+        Stop-LeaseWatch $lw $lwStop
+        Set-Content -Path $pwStop -Value 'stop'; [void]$pw.WaitForExit(30000)
     }
+    $lease = $null
+    $lf = Join-Path $Ev 'w-update-lease.summary.json'
+    if (Test-Path $lf) { $lease = Get-Content -Raw $lf | ConvertFrom-Json }
+    $procs = @()
+    if (Test-Path $pwOut) { $procs = @(Read-SharedLines $pwOut | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json }); Copy-Item -Force $pwOut (Join-Path $Ev 'w-update-processes.jsonl') }
+    $upd = @($procs | Where-Object { $_.cmd -match 'edge:local:update' -and $_.cmd -notmatch '--dry-run' }) | Select-Object -First 1
+    $updDry = @($procs | Where-Object { $_.cmd -match 'edge:local:update' -and $_.cmd -match '--dry-run' }) | Select-Object -First 1
+    $updPs = @($procs | Where-Object { $_.cmd -match 'Update-EdgeAppliance' }) | Select-Object -First 1
+    $stopPs = @($procs | Where-Object { $_.cmd -match 'Register-EdgeServices' -and $_.cmd -match 'Stop' }) | Select-Object -First 1
+    $runtime = [ordered]@{
+        pointer_before = $pointerBefore; pointer_after = (Get-Pointer); installed_php_before = $(if ($layoutBefore) { [string]$layoutBefore.php } else { $null })
+        update_script = $(if ($updPs) { $updPs.cmd } else { $null }); services_stop = $(if ($stopPs) { $stopPs.cmd } else { $null })
+        edge_local_update_exe = $(if ($upd) { $upd.exe } else { $null }); edge_local_update_cmd = $(if ($upd) { $upd.cmd } else { $null })
+        edge_local_update_dry_run_cmd = $(if ($updDry) { $updDry.cmd } else { $null }); processes_seen = $procs.Count
+        how_to_read = 'edge:local:update runs with the INSTALLED php + "<InstallRoot>\artisan" (the launcher of the runtime the pointer names BEFORE the switch); Update-EdgeAppliance.ps1 / Register-EdgeServices.ps1 come from the path in their command lines'
+    }
+    Save-Evidence 'w-update-runtime.json' $runtime
+    $impact = $(if ($lease) { [ordered]@{ lease_ttl_s = $lease.lease_ttl_s; max_heartbeat_gap_s = $lease.cloud_heartbeats.max_gap_s; max_gap_between = $lease.cloud_heartbeats.max_gap_between
+            min_lease_remaining_s = $lease.min_lease_remaining_s; lease_never_lapsed = $lease.lease_never_lapsed; fenced_at_seen = $lease.fenced_at_seen
+            online_pos_paused = $lease.online_pos_paused; cloud_blocked_samples = $lease.cloud_blocked_samples; cloud_blocked_first = $lease.cloud_blocked_first
+            cloud_blocked_last = $lease.cloud_blocked_last; holders_seen = $lease.holders_seen; lease_verdict = $lease.verdict } } else { 'w-update-lease.summary.json missing' })
     $ok = -not $doc.Contains('error') -and [string]$doc.finish -like 'Updated*'
-    return [ordered]@{ verdict_ok = $ok; seconds = $doc.seconds; finish = $doc.finish; error = $doc.error; screenshots = $doc.screenshots.Count; pointer = (Get-Pointer) }
+    return [ordered]@{ verdict_ok = $ok; seconds = $doc.seconds; finish = $doc.finish; error = $doc.error; screenshots = $doc.screenshots.Count; pointer = (Get-Pointer)
+        online_pos_impact = $impact; edge_local_update_exe = $runtime.edge_local_update_exe; update_script = $runtime.update_script }
 }
 function Invoke-WizardUiFresh {
     if (Test-Path (Join-Path $InstallRoot 'appliance.json')) { throw 'an appliance is already installed in this sandbox - use a NEW sandbox (BingooEdge-CP5-fresh .wsb)' }
@@ -979,7 +1026,7 @@ function Invoke-FreshChecks([string]$Via, [int]$Sec) {
     $authTask = [string](@($after.tasks | Where-Object { $_.name -eq 'BingooEdgeAuthorityWorker' }) | Select-Object -First 1).state
     $problems = @($after.problems | ForEach-Object { [string]$_ })
     $workerDown = [bool](@($problems | Where-Object { $_ -match 'Authority/heartbeat worker is not running' }).Count)
-    $ok = $after.pointer -eq '0.9.0-dev' -and $dev.device.lan_ca_pem_present -and $updater -and -not (@($loop.Values) | Where-Object { -not $_.ok }) -and $gwOk -and
+    $ok = $after.pointer -eq $V090 -and $dev.device.lan_ca_pem_present -and $updater -and -not (@($loop.Values) | Where-Object { -not $_.ok }) -and $gwOk -and
         $authTask -eq 'Running' -and -not $workerDown
     return [ordered]@{ verdict_ok = $ok; via = $Via; wizard_seconds = $Sec; pointer = $after.pointer; status = $after.status; problems = $problems; authority_task = $authTask
         authority_worker_problem = $workerDown; k5_ca_on_cloud = [bool]$dev.device.lan_ca_pem_present
@@ -1240,7 +1287,7 @@ try {
     } else {
         $script:LanIp = [string]$prevRun.lan_ip
         $script:EnrollmentPublic = [string](Get-LastJson (Invoke-Cloud @('public-keys')).Out).enrollment_public
-        $script:DevPublic = [string](Get-Content -Raw (Join-Path $Kit 'dev-public-facts.json') | ConvertFrom-Json).public_key
+        $script:DevPublic = [string](Get-Content -Raw $KeyFacts | ConvertFrom-Json).public_key
         foreach ($u in (Get-Users)) { [void]$script:SecretValues.Add((Get-Content -Raw (Join-Path $Secrets ('pin-' + $u.id))).Trim()) }
         $caCrt = Join-Path $Base 'ca\bingoo-edge-branch-ca.crt'
         $ca = New-Object Security.Cryptography.X509Certificates.X509Certificate2($caCrt)
@@ -1253,14 +1300,14 @@ try {
     switch ($Scenario) {
         'auto' {
             Invoke-Scenario 'a' '0.8.5 elevated install (MySQL service, branch CA, gateway, tasks) paired to the sandbox Cloud' @('cloud') { Invoke-Install085 }
-            Invoke-Scenario 'w-update' 'the REAL WPF wizard (Setup-BingooEdge.cmd) driven by UI Automation: UPDATE 0.8.5 -> 0.9.0-dev' @('a') { Invoke-WizardUiUpdate }
+            Invoke-Scenario 'w-update' "the REAL WPF wizard (Setup-BingooEdge.cmd) driven by UI Automation: UPDATE 0.8.5 -> $V090" @('a') { Invoke-WizardUiUpdate }
             Invoke-Scenario 'b' 'update post-checks: same device, K5 with the branch CA, tasks + LOCAL SERVICE grant, PIN logins' @('a') {
                 $p = Get-Pointer
-                if ($p -eq '0.9.0-dev') { Invoke-UpdateChecks 'WPF wizard via UI Automation' }
+                if ($p -eq $V090) { Invoke-UpdateChecks 'WPF wizard via UI Automation' }
                 # a resumed session whose appliance c/d already moved on (0.9.1-dev): a 0.9.0 'update' would be a downgrade the wizard
                 # rightly refuses (run 9) - prove the same post-checks on the runtime it has
                 elseif (-not $script:InstalledNow -and $p -like '0.9.*-dev') { Write-Log 'info' ("resumed session: the appliance is already on $p - post-checks only"); Invoke-UpdateChecks 'earlier update in this sandbox session' @{} '0.9.*-dev' }
-                else { Write-Log 'warn' 'the UI-driven update did not reach 0.9.0-dev - headless Setup-BingooEdge.cmd so the chain can continue'; Invoke-WizardUpdateHeadless }
+                else { Write-Log 'warn' "the UI-driven update did not reach $V090 - headless Setup-BingooEdge.cmd so the chain can continue"; Invoke-WizardUpdateHeadless }
             }
         }
         'manual' {

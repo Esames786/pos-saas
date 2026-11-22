@@ -44,7 +44,9 @@ function cp5_keys(): array
 function cp5_env(): array
 {
     $keys = cp5_keys();
-    $dev = json_decode((string) file_get_contents(CP5_KIT . '/dev-public-facts.json'), true);
+    // CP6 release variant: update-public-facts.json (the RELEASE public key) wins over the DEV facts; public keys only
+    $facts = is_file(CP5_KIT . '/update-public-facts.json') ? CP5_KIT . '/update-public-facts.json' : CP5_KIT . '/dev-public-facts.json';
+    $dev = json_decode((string) file_get_contents($facts), true);
     // Laravel treats only paths starting with '/' or '\' as absolute for APP_*_CACHE (a "C:" path is glued to the base path):
     // use the drive-relative form - the work dir and the processes' current directory are on the same drive (C:).
     $cache = preg_replace('#^[A-Za-z]:#', '', str_replace('\\', '/', CP5_CLOUD_DIR)) . '/cache';
