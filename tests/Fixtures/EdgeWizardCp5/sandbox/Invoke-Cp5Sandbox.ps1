@@ -306,7 +306,8 @@ function Restart-EdgeTask([string]$Name) {
 
 # ---- scenarios ----
 $script:Results = [ordered]@{}
-$script:OnlyIds = @($Only -split '[,; ]+' | Where-Object { $_ })
+# cmd.exe splits arguments at commas: Start-Cp5.cmd passes "e+s+h" (any of + , ; space separate ids here)
+$script:OnlyIds = @($Only -split '[+,; ]+' | Where-Object { $_ })
 if ($Scenario -eq 'continue' -and (Test-Path (Join-Path $Ev 'scenarios.json'))) {
     (Get-Content -Raw (Join-Path $Ev 'scenarios.json') | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $script:Results[$_.Name] = $_.Value }
 }
@@ -314,6 +315,7 @@ function Invoke-Scenario([string]$Id, [string]$Title, [string[]]$Needs, [scriptb
     # the base chain of a fresh sandbox (prereqs, cloud, a, b / f) always runs; -Only selects among the rest
     if ($script:OnlyIds.Count -gt 0 -and @('prereqs', 'cloud', 'a', 'b', 'f') -notcontains $Id -and $script:OnlyIds -notcontains $Id) {
         $script:Results[$Id] = [ordered]@{ title = $Title; ok = $false; skipped = 'not selected (-Only)' }
+        Write-Log 'info' "scenario $Id not selected (-Only $($script:OnlyIds -join '+'))"
         Save-Evidence 'scenarios.json' $script:Results
         return
     }
