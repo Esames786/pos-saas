@@ -79,11 +79,23 @@ function Write-Log([string]$Level, [string]$Message) {
     $color = @{ step = 'Cyan'; ok = 'Green'; warn = 'Yellow'; error = 'Red'; info = 'Gray' }[$Level]
     if (-not $color) { $color = 'Gray' }
     Write-Host $line -ForegroundColor $color
-    Add-Content -Path (Join-Path $Ev 'driver.log') -Value $line -Encoding ASCII
+    Write-MappedFile (Join-Path $Ev 'driver.log') ($line + "`r`n") -Append
+}
+# The evidence folder is a host-mapped folder: a host process reading a file at the same instant can make a guest write fail
+# with a sharing violation (run 5 ended right after scenario c that way). Retry briefly; never let evidence writing abort a run.
+function Write-MappedFile([string]$Path, [string]$Text, [switch]$Append) {
+    for ($i = 1; $i -le 10; $i++) {
+        try {
+            if ($Append) { [IO.File]::AppendAllText($Path, $Text, (New-Object Text.ASCIIEncoding)) }
+            else { [IO.File]::WriteAllText($Path, $Text, (New-Object Text.UTF8Encoding($false))) }
+            return
+        } catch { Start-Sleep -Milliseconds (200 * $i) }
+    }
+    Write-Host ("(evidence write failed after retries: " + (Split-Path -Leaf $Path) + ')') -ForegroundColor Yellow
 }
 function Save-Evidence([string]$Name, $Object) {
     $text = $(if ($Object -is [string]) { $Object } else { $Object | ConvertTo-Json -Depth 12 })
-    [IO.File]::WriteAllText((Join-Path $Ev $Name), $text, (New-Object Text.UTF8Encoding($false)))
+    Write-MappedFile (Join-Path $Ev $Name) $text
 }
 function ConvertTo-Fwd([string]$p) { return ($p -replace '\\', '/') }
 function Read-Shared([string]$Path) {
@@ -1150,7 +1162,7 @@ function Protect-Evidence {
         $t = Read-Shared $f.FullName
         $n = $t
         foreach ($v in $vals) { if ($n.Contains($v)) { $hits++; $n = $n.Replace($v, '<REDACTED>') } }
-        if ($n -ne $t) { [IO.File]::WriteAllText($f.FullName, $n, (New-Object Text.UTF8Encoding($false))) }
+        if ($n -ne $t) { Write-MappedFile $f.FullName $n }
     }
     return $hits
 }
