@@ -630,7 +630,7 @@ function Invoke-SetupCmd([string]$AnswersFile, [string]$LogName, [hashtable]$Sec
     Write-Log 'warn' 'Setup-BingooEdge.cmd admin probe (net session) fails in this sandbox - starting the same wizard script directly'
     return Invoke-Logged 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', (Join-Path $Pkg090 'app\scripts\edge\wizard\Start-BingooEdgeWizard.ps1'), '-Headless', '-AnswersFile', $AnswersFile) (Join-Path $Ev $LogName) 5400 $SecretEnv
 }
-function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}) {
+function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}, [string]$ExpectPointer = '0.9.0-dev') {
     # the same proof for the UI-driven and the headless update: same device, 0.9 runtime, K5 with the CA on the Cloud, tasks
     # re-registered with BingooEdgeUpdater + the LOCAL SERVICE control grant, every user's PIN still logs in
     Save-BeforeUpdate   # loads the pre-update snapshot of this sandbox session when the update ran in another driver process
@@ -648,7 +648,7 @@ function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}) {
         pin_logins_loopback = $logins; tasks_without_local_service_grant = $grant }
     foreach ($k in $Extra.Keys) { $doc[$k] = $Extra[$k] }
     Save-Evidence 'b-state-090.json' $doc
-    $ok = $after.pointer -eq '0.9.0-dev' -and $d.lan_ca_pem_present -and [string]$d.lan_ip -eq $script:LanIp -and [int]$d.lan_https_port -eq $HttpsPort -and
+    $ok = $after.pointer -like $ExpectPointer -and $d.lan_ca_pem_present -and [string]$d.lan_ip -eq $script:LanIp -and [int]$d.lan_https_port -eq $HttpsPort -and
         [string]$d.public_uuid -eq [string]$b.public_uuid -and [string]$d.installation_uuid -eq [string]$b.installation_uuid -and
         -not (@($logins.Values) | Where-Object { -not $_.ok }) -and @($after.tasks | Where-Object { $_.name -eq 'BingooEdgeUpdater' }).Count -eq 1 -and $grant.Count -eq 0
     return [ordered]@{ verdict_ok = $ok; via = $Via; pointer = $after.pointer; k5_ca_on_cloud = [bool]$d.lan_ca_pem_present; lan_ip = $d.lan_ip
@@ -1246,7 +1246,11 @@ try {
             Invoke-Scenario 'a' '0.8.5 elevated install (MySQL service, branch CA, gateway, tasks) paired to the sandbox Cloud' @('cloud') { Invoke-Install085 }
             Invoke-Scenario 'w-update' 'the REAL WPF wizard (Setup-BingooEdge.cmd) driven by UI Automation: UPDATE 0.8.5 -> 0.9.0-dev' @('a') { Invoke-WizardUiUpdate }
             Invoke-Scenario 'b' 'update post-checks: same device, K5 with the branch CA, tasks + LOCAL SERVICE grant, PIN logins' @('a') {
-                if ((Get-Pointer) -eq '0.9.0-dev') { Invoke-UpdateChecks 'WPF wizard via UI Automation' }
+                $p = Get-Pointer
+                if ($p -eq '0.9.0-dev') { Invoke-UpdateChecks 'WPF wizard via UI Automation' }
+                # a resumed session whose appliance c/d already moved on (0.9.1-dev): a 0.9.0 'update' would be a downgrade the wizard
+                # rightly refuses (run 9) - prove the same post-checks on the runtime it has
+                elseif (-not $script:InstalledNow -and $p -like '0.9.*-dev') { Write-Log 'info' ("resumed session: the appliance is already on $p - post-checks only"); Invoke-UpdateChecks 'earlier update in this sandbox session' @{} '0.9.*-dev' }
                 else { Write-Log 'warn' 'the UI-driven update did not reach 0.9.0-dev - headless Setup-BingooEdge.cmd so the chain can continue'; Invoke-WizardUpdateHeadless }
             }
         }
