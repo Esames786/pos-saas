@@ -29,8 +29,11 @@ if (! is_array($cfg)) {
 function cp5_http(array $cfg, string $method, string $url, ?string $jar, $body = null, array $headers = []): array
 {
     $ch = curl_init($url);
+    // A caller's own Accept REPLACES the default: two Accept headers reach Laravel as "text/html,...", so expectsJson() was
+    // false and the controller answered with its HTML redirect instead of the JSON status (CP5 run 7, s8 other_branch 302).
+    $ownAccept = (bool) preg_grep('/^\s*accept\s*:/i', $headers);
     $opts = [CURLOPT_RETURNTRANSFER => true, CURLOPT_HEADER => true, CURLOPT_TIMEOUT => 120, CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_FOLLOWLOCATION => false, CURLOPT_HTTPHEADER => array_merge(['Accept: text/html,application/json'], $headers),
+        CURLOPT_FOLLOWLOCATION => false, CURLOPT_HTTPHEADER => $ownAccept ? $headers : array_merge(['Accept: text/html,application/json'], $headers),
         CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2, CURLOPT_CAINFO => $cfg['cafile'], CURLOPT_RESOLVE => $cfg['resolve'] ?? []];
     if ($jar !== null) {
         $opts[CURLOPT_COOKIEJAR] = $jar;
@@ -80,6 +83,9 @@ function cp5_login(array $cfg, string $code): array
     $r = cp5_http($cfg, 'POST', $cfg['base'] . '/login', $jar, ['_token' => (string) $token, 'email' => $u['email'], 'password' => $password]);
     unset($password);
     $location = (string) ($r['headers']['location'] ?? '');
+    // The login keeps the session's CSRF token (AuthController only migrates the session id), so this token stays valid for
+    // a user who can open NO page afterwards (CP5NP: every page 403, no token to read -> my-enrollment answered 419, not 403).
+    $GLOBALS['cp5_login_tokens'][$jar] = $token;
 
     return [$jar, ['login_status' => $r['status'], 'tls_verified' => $page['tls_verified'], 'logged_in' => $r['status'] === 302 && ! str_contains($location, '/login'),
         'location' => preg_replace('#^https?://[^/]+#', '', $location)]];
@@ -94,7 +100,7 @@ function cp5_csrf(array $cfg, string $jar): ?string
         }
     }
 
-    return null;
+    return $GLOBALS['cp5_login_tokens'][$jar] ?? null;
 }
 
 /** Facts of a counter-setup body WITHOUT keeping the assertion (its user + issuer only). */
