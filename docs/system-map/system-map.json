@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-11-22T14:11:30+00:00",
+    "built_at": "2026-11-22T17:56:44+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "9d93ee96",
     "work": [
@@ -24,10 +24,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-e09-b",
             "branch": "edge09/b-wizard",
-            "head": "0821c78d",
+            "head": "56dedf35",
             "behind_prod": 3,
-            "ahead_of_prod": 112,
-            "last_commit": "2026-11-22\u00b7fix(edge 0.9 installer): a fresh install ends with the authority/heartbeat worker running as its task",
+            "ahead_of_prod": 116,
+            "last_commit": "2026-11-22\u00b7test(edge 0.9 CP6 r2): heartbeat PASS/FAIL line, the authority worker's lifetime across the update, a third Online sale after the pointer switch",
             "uncommitted_files": 0
         },
         {
@@ -60,10 +60,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-e09-integ",
             "branch": "edge09/integ",
-            "head": "4716aa49",
+            "head": "3328afb8",
             "behind_prod": 3,
-            "ahead_of_prod": 118,
-            "last_commit": "2026-11-22\u00b7Merge edge09/b-wizard (CP5 D-5: a fresh install ends with the authority/heartbeat worker running as its task; CP5 fresh run 14 PASS STANDBY_READY) into the 0.9 integration",
+            "ahead_of_prod": 121,
+            "last_commit": "2026-11-22\u00b7fix(edge 0.9 update): keep the heartbeat worker running through the whole update (CP6: 136 s gap paused the Online POS)",
             "uncommitted_files": 0
         },
         {
@@ -464,7 +464,7 @@
             "modified": "2026-11-21"
         }
     ],
-    "git": "4716aa49",
+    "git": "3328afb8",
     "source": {
         "tenant_db": "pos_sysmap_e09_tenant",
         "master_db": "pos_test_master_e09i"
