@@ -1,5 +1,5 @@
 {
-    "built_at": "2026-11-22T17:56:44+00:00",
+    "built_at": "2026-11-22T22:25:32+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "9d93ee96",
     "work": [
@@ -60,10 +60,10 @@
         {
             "path": "D:/laragon2/www/pos-saas-e09-integ",
             "branch": "edge09/integ",
-            "head": "3328afb8",
+            "head": "29082c3a",
             "behind_prod": 3,
-            "ahead_of_prod": 121,
-            "last_commit": "2026-11-22\u00b7fix(edge 0.9 update): keep the heartbeat worker running through the whole update (CP6: 136 s gap paused the Online POS)",
+            "ahead_of_prod": 127,
+            "last_commit": "2026-11-22\u00b7Merge edge09/b-wizard (CP6 Sandbox release kit: Online POS impact, sales during the update, duplicates by natural key, K6 rollback, heartbeat verdict) into the 0.9 integration",
             "uncommitted_files": 0
         },
         {
@@ -339,6 +339,11 @@
     ],
     "plans": [
         {
+            "file": "docs/plans/edge-0.9-production-cloud-plan-2026-11-23.md",
+            "title": "Edge 0.9: production Cloud delta (5 master + 1 tenant migrations). PLAN FOR OWNER APPROVAL",
+            "modified": "2026-11-22"
+        },
+        {
             "file": "docs/plans/bill-date-filter-2026-11-10.md",
             "title": "BILL-DATE-FILTER-1 \u2014 Supplier Invoices list: From / To + Today / Yesterday (10 Nov 2026)",
             "modified": "2026-11-21"
@@ -457,14 +462,9 @@
             "file": "docs/plans/finance-restart-keep-sales-2026-11-04.md",
             "title": "FINANCE-RESTART-1 \u2014 start a business's books again from its POS sales (4 Nov 2026)",
             "modified": "2026-11-21"
-        },
-        {
-            "file": "docs/plans/grn-extra-charges-2026-10-02.md",
-            "title": "GRN-EXTRA-CHARGES-1 \u2014 cartage ko product ki jagah \"Extra Charges\" banana",
-            "modified": "2026-11-21"
         }
     ],
-    "git": "3328afb8",
+    "git": "29082c3a",
     "source": {
         "tenant_db": "pos_sysmap_e09_tenant",
         "master_db": "pos_test_master_e09i"
