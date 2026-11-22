@@ -93,6 +93,16 @@ function Write-MappedFile([string]$Path, [string]$Text, [switch]$Append) {
     }
     Write-Host ("(evidence write failed after retries: " + (Split-Path -Leaf $Path) + ')') -ForegroundColor Yellow
 }
+# Lines of a log another process is still WRITING (the appliance's edge-<date>.log): [IO.File]::ReadAllLines opens with
+# FileShare.Read only and fails against the writer (g2 in run 7); share read/write/delete like Get-Content does. Plain strings.
+function Read-SharedLines([string]$Path) {
+    $fs = $null
+    try {
+        $fs = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+        $sr = New-Object IO.StreamReader($fs)
+        return [string[]]($sr.ReadToEnd() -split "`r?`n")
+    } catch { return [string[]]@() } finally { if ($fs) { $fs.Dispose() } }
+}
 function Save-Evidence([string]$Name, $Object) {
     $text = $(if ($Object -is [string]) { $Object } else { $Object | ConvertTo-Json -Depth 12 })
     Write-MappedFile (Join-Path $Ev $Name) $text
@@ -631,7 +641,7 @@ function Invoke-UpdateChecks([string]$Via, [hashtable]$Extra = @{}) {
     $grant = @($after.tasks | Where-Object { $_.name -ne 'BingooEdgeUpdater' } | Where-Object { -not $_.local_service_control_ace } | ForEach-Object { $_.name })
     # [string] strips Get-Content's PSDrive / PSProvider note properties: ConvertTo-Json -Depth 12 would expand them without end
     # (run 3: 1.9 GB and minutes of CPU inside Save-Evidence)
-    $k5 = [string](@(Get-ChildItem (Join-Path $Ev 'wizard-logs') -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object { [IO.File]::ReadAllLines($_.FullName) } | Where-Object { $_ -match 'K5 LAN profile' }) | Select-Object -Last 1)
+    $k5 = [string](@(Get-ChildItem (Join-Path $Ev 'wizard-logs') -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object { Read-SharedLines $_.FullName } | Where-Object { $_ -match 'K5 LAN profile' }) | Select-Object -Last 1)
     $d = $dev.device
     $b = $script:DeviceBeforeUpdate.device
     $doc = [ordered]@{ via = $Via; k5_line = $k5; before = $script:BeforeUpdate; after = $after; cloud_device_before = $script:DeviceBeforeUpdate; cloud_device_after = $dev
@@ -1076,25 +1086,35 @@ function Invoke-G2 {
     try {
         $took = Wait-Until { $f = Get-TakeoverFacts; [void]$samples.Add($f); if ($f.state -eq 'local_active') { $f } } 600 10 'the automatic takeover (local_active)'
     } catch { Start-CloudPhp; Stop-LeaseWatch $watch $stop; Save-Evidence 'g2-takeover.json' ([ordered]@{ before = $before; samples = $samples; error = $_.Exception.Message }); throw }
-    $lease = Get-CloudLease   # read from the Cloud DB while the Cloud php is still down
-    $meta = Get-EdgeMeta
-    $audit = @(@(Get-ChildItem (Join-Path $DataRoot 'logs') -Filter 'edge-*.log' -ErrorAction SilentlyContinue | ForEach-Object { [IO.File]::ReadAllLines($_.FullName) } | Where-Object { $_ -match 'edge-auto-takeover' }) | Select-Object -Last 12 | ForEach-Object { [string]$_ })
-    Start-CloudPhp
-    Start-Sleep -Seconds 120
-    $afterReconnect = Get-TakeoverFacts
-    $leaseAfter = Get-CloudLease
-    # supervised handback (an operator decision; never automatic)
+    $lease = $meta = $afterReconnect = $leaseAfter = $final = $leaseFinal = $null; $audit = @()
     $hb = New-Object System.Collections.ArrayList
-    for ($i = 0; $i -lt 8; $i++) {
-        $r = Invoke-Edge @('edge:local:authority-handback', '--by=cp5-supervisor') 300
-        $st = [string](Get-EdgeMeta).authority_state
-        [void]$hb.Add([ordered]@{ attempt = $i + 1; exit = $r.Code; output = ($r.Out + $r.Err).Trim(); state = $st })
-        if ($st -eq 'standby') { break }
+    try {   # a fault after the takeover must still bring the Cloud back and stop the watch (run 7 left both behind)
+        $lease = Get-CloudLease   # read from the Cloud DB while the Cloud php is still down
+        $meta = Get-EdgeMeta
+        $audit = @(@(Get-ChildItem (Join-Path $DataRoot 'logs') -Filter 'edge-*.log' -ErrorAction SilentlyContinue | ForEach-Object { Read-SharedLines $_.FullName } | Where-Object { $_ -match 'edge-auto-takeover' }) | Select-Object -Last 12 | ForEach-Object { [string]$_ })
+        Start-CloudPhp
+        Start-Sleep -Seconds 120
+        $afterReconnect = Get-TakeoverFacts
+        $leaseAfter = Get-CloudLease
+        # supervised handback (an operator decision; never automatic)
+        for ($i = 0; $i -lt 8; $i++) {
+            $r = Invoke-Edge @('edge:local:authority-handback', '--by=cp5-supervisor') 300
+            $st = [string](Get-EdgeMeta).authority_state
+            [void]$hb.Add([ordered]@{ attempt = $i + 1; exit = $r.Code; output = ($r.Out + $r.Err).Trim(); state = $st })
+            if ($st -eq 'standby') { break }
+            Start-Sleep -Seconds 30
+        }
         Start-Sleep -Seconds 30
+        $final = Get-TakeoverFacts
+        $leaseFinal = Get-CloudLease
+    } catch {
+        $err = $_.Exception.Message
+        if (-not (Wait-Port $CloudPort 1)) { Start-CloudPhp }
+        Stop-LeaseWatch $watch $stop
+        Save-Evidence 'g2-takeover.json' ([ordered]@{ before = $before; cloud_stopped_at = $tStop.ToString('s'); takeover = $took; meta_at_takeover = $meta; cloud_lease_at_takeover = $lease
+                audit_lines = $audit; after_reconnect = $afterReconnect; cloud_lease_after_reconnect = $leaseAfter; handback = $hb; error = $err })
+        throw
     }
-    Start-Sleep -Seconds 30
-    $final = Get-TakeoverFacts
-    $leaseFinal = Get-CloudLease
     Stop-LeaseWatch $watch $stop
     Set-AutoTakeover $false $false 180
     $ttl = [int]$meta.authority_lease_ttl_seconds
