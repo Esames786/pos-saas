@@ -757,19 +757,50 @@ function Invoke-ScenarioV {
     catch { $h = Get-Health }
     $after = [ordered]@{ edge = (Get-DupFacts 'edge'); cloud = (Get-DupFacts 'cloud') }
     Save-Evidence 'dupes-after.json' $after
+    # a v re-run in its own driver process (wsb exec ... auto v): the before-facts and the Online sales of the update are on C:\cp5w
     $before = $script:DupBefore
-    if (-not $before) { $before = $after; Write-Log 'warn' 'v: no before-facts in this driver process - duplicates are checked on the after-facts only' }
+    $bf = Join-Path $Work 'cp6-dupes-before.json'
+    if (-not $before -and (Test-Path $bf)) {
+        $j = Get-Content -Raw $bf | ConvertFrom-Json
+        $before = [ordered]@{}
+        foreach ($side in 'edge', 'cloud') {
+            $h2 = [ordered]@{}
+            foreach ($p in $j.$side.PSObject.Properties) { $h2[$p.Name] = $(if ($p.Value -is [ValueType] -and $p.Value -isnot [bool]) { [int]$p.Value } else { $p.Value }) }
+            $before[$side] = $h2
+        }
+        Write-Log 'info' "v: before-facts loaded from $bf"
+    }
+    if (-not $before) { $before = $after; Write-Log 'warn' 'v: no before-facts - duplicates are checked on the after-facts only' }
+    if (-not $script:OnlineSales -or @($script:OnlineSales).Count -eq 0) {
+        $script:OnlineSales = @(Get-ChildItem (Join-Path $Work 'online-sales') -Filter 'online-sale-*.json' -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { Get-Content -Raw $_.FullName | ConvertFrom-Json })
+    }
     $cmpE = Compare-DupFacts $before.edge $after.edge
     $cmpC = Compare-DupFacts $before.cloud $after.cloud
     $obB = Get-OutboxTotals $before.edge; $obA = Get-OutboxTotals $after.edge
-    $accepted = @($script:OnlineSales | Where-Object { $_.result -eq 'accepted' }).Count
-    $edgeQuiet = -not (@('shifts_total', 'orders_total', 'payments_total', 'print_jobs_total') | Where-Object { $cmpE.deltas[$_] -ne 0 -and $null -ne $cmpE.deltas[$_] })
+    $acceptedSales = @($script:OnlineSales | Where-Object { $_.result -eq 'accepted' })
+    $accepted = $acceptedSales.Count
+    # the warm standby MIRRORS closed Cloud sales (status cloud_mirror, the SAME sale_uuid; its payment rows are local copies):
+    # the appliance may gain exactly those rows - each accepted Online sale once - and nothing of its own
+    $mirror = [ordered]@{ orders = 0; payments = 0; per_sale = [ordered]@{} }
+    foreach ($s in $acceptedSales) {
+        $u = [string]$s.sale.sale_uuid
+        if ($u -notmatch '^[0-9A-Za-z]{26}$') { continue }
+        $o = Invoke-Sql 'edge' ("SELECT COUNT(*) n, SUM(status = 'cloud_mirror') m FROM sales_orders WHERE sale_uuid = '" + $u + "'")
+        $pm = Invoke-Sql 'edge' ("SELECT COUNT(*) n FROM sale_payments p JOIN sales_orders s ON s.id = p.sales_order_id WHERE s.sale_uuid = '" + $u + "'")
+        $n = [int]@($o.rows)[0].n; $m = [int]@($o.rows)[0].m; $np = [int]@($pm.rows)[0].n
+        $mirror.per_sale[$u] = [ordered]@{ rows = $n; cloud_mirror = $m; payments = $np }
+        $mirror.orders += $n; $mirror.payments += $np
+    }
+    $mirrorOk = -not (@($mirror.per_sale.Values) | Where-Object { $_.rows -gt 1 -or $_.rows -ne $_.cloud_mirror })
+    $edgeQuiet = [int]$cmpE.deltas['shifts_total'] -eq 0 -and [int]$cmpE.deltas['print_jobs_total'] -eq 0 -and
+        [int]$cmpE.deltas['orders_total'] -eq $mirror.orders -and [int]$cmpE.deltas['payments_total'] -eq $mirror.payments -and $mirrorOk
     $cloudAsSold = ([int]$cmpC.deltas['orders_total'] -eq $accepted -and [int]$cmpC.deltas['payments_total'] -eq $accepted -and [int]$cmpC.deltas['shifts_total'] -eq 0)
     $outboxOk = ($obA.pending -le $obB.pending -and $obA.failed -le $obB.failed -and $obA.with_error -le $obB.with_error)
     $healthOk = ([string]$h.status -eq 'STANDBY_READY' -and @($h.problems | Where-Object { $_ }).Count -eq 0)
     $doc = [ordered]@{ health_status = $h.status; health_label = $h.status_label; health_problems = @($h.problems); pointer = (Get-Pointer)
         outbox_before = $obB; outbox_after = $obA; outbox_ok = $outboxOk; appliance = $cmpE; cloud = $cmpC
-        online_sales_accepted = $accepted; online_sales = @($script:OnlineSales); appliance_unchanged = $edgeQuiet; cloud_deltas_match_online_sales = $cloudAsSold }
+        online_sales_accepted = $accepted; online_sales = @($script:OnlineSales); appliance_mirror_of_online_sales = $mirror
+        appliance_only_mirrored_online_sales = $edgeQuiet; cloud_deltas_match_online_sales = $cloudAsSold }
     Save-Evidence 'v-owner-checks.json' $doc
     return [ordered]@{ verdict_ok = ($healthOk -and $outboxOk -and $cmpE.ok -and $cmpC.ok -and $edgeQuiet -and $cloudAsSold); health = $h.status; problems = @($h.problems)
         no_new_duplicates_appliance = $cmpE.ok; no_new_duplicates_cloud = $cmpC.ok; appliance_deltas = $cmpE.deltas; cloud_deltas = $cmpC.deltas
@@ -784,6 +815,7 @@ function Invoke-ScenarioR {
     $hBefore = Get-Health
     $script:DupBefore = [ordered]@{ edge = (Get-DupFacts 'edge'); cloud = (Get-DupFacts 'cloud') }
     Save-Evidence 'r-dupes-before.json' $script:DupBefore
+    [IO.File]::WriteAllText((Join-Path $Work 'cp6-dupes-before.json'), ($script:DupBefore | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
     $lwStop = Join-Path $Work 'r-watch.stop'; $lw = Start-LeaseWatch 'r' $lwStop 5400
     $pwStop = Join-Path $Work 'r-proc.stop'; $pwOut = Join-Path $Work 'r-processes.jsonl'
     Remove-Item -Force $pwStop, $pwOut -ErrorAction SilentlyContinue
@@ -901,6 +933,7 @@ function Invoke-WizardUiUpdate {
     # CP6: duplicates before (both DBs) and ONE Online POS sale at each of two update moments (old workers stopped / update running)
     $script:DupBefore = [ordered]@{ edge = (Get-DupFacts 'edge'); cloud = (Get-DupFacts 'cloud') }
     Save-Evidence 'dupes-before.json' $script:DupBefore
+    [IO.File]::WriteAllText((Join-Path $Work 'cp6-dupes-before.json'), ($script:DupBefore | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
     $osDir = Join-Path $Work 'online-sales'
     New-Item -ItemType Directory -Force -Path $osDir | Out-Null
     $osStop = Join-Path $Work 'online-sale.stop'
