@@ -18,13 +18,11 @@ Health page (any device on the LAN, no login): `https://bingoo-edge.local:8443/e
 
 1. Confirm the internet is really down (phone on the shop Wi-Fi cannot open any website; the Online POS does not load).
 2. Confirm Edge is ready: health page shows `STANDBY_READY` and problems `none`. If it shows a problem, call the owner; do NOT force anything.
-3. **0.8.4-edge (owner-control UI):** on the status page `https://bingoo-edge.local:8443/edge/local/pos/health` (logged in as the Owner /
-   a manager holding `tenant.offline-edge.security`) press **Switch to Offline** and confirm. The page answers with the result or the
-   exact blocker. **0.8.3-edge (held release, no buttons):** on the Branch Server PC, open PowerShell and run (one line):
+3. On the Branch Server PC, open PowerShell and run (one line):
    ```powershell
    & "C:\Program Files\Bingoo Edge\php\php.exe" "C:\Program Files\Bingoo Edge\artisan" edge:local:authority-takeover --confirm --by="<your name>"
    ```
-   (both paths run the same engine; it refuses, with the reason, if any gate fails: it never half-takes.)
+   (there is no button for this anywhere; the command refuses, with the reason, if any gate fails: it never half-takes.)
 4. Status page (`https://bingoo-edge.local:8443/edge/local/pos/health`, after login) shows `LOCAL ACTIVE`. Cashiers open `https://bingoo-edge.local:8443/edge/local/login`, log in with their employee code + Edge PIN/password, open a shift, sell; the POS badge reads `LOCAL MODE ACTIVE`.
 5. Tell the owner (phone/SMS): "Khatri in Local Mode since HH:MM, by <name>".
 

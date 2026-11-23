@@ -40,8 +40,6 @@ class EdgeHeartbeatBuildPayloadTest extends TestCase
         $this->assertSame([
             // Phase 4: v3 (the new_customer kind) is a generation this build can EMIT (only while the Cloud advertises customer_create).
             EdgeSaleEnvelopeBuilder::SCHEMA_VERSION, EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V2, EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V3,
-            // EDGE 0.9 continuity: v4 (continued shift / adopted order) is emitted only when continuity data is present.
-            EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V4,
             // REFUND-SHIFT-H1: return v2 (processing shift by stable identity) is emitted; v1 may still sit in an upgraded appliance's outbox.
             EdgeReturnEnvelopeBuilder::SCHEMA_V1, EdgeReturnEnvelopeBuilder::SCHEMA, EdgePurchaseReturnEnvelopeBuilder::SCHEMA,
             EdgeSupplierFinanceEnvelopeBuilder::SCHEMA_PAYMENT, EdgeSupplierFinanceEnvelopeBuilder::SCHEMA_AP_JOURNAL,

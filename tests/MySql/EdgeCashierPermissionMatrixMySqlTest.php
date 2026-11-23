@@ -41,9 +41,6 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
         'tenant.sales-returns.create' => 'Online returns create PAGE gate — the shared view Return button @can only (rendered on Edge from W-B)',
         'tenant.shifts.create' => 'Online open-shift PAGE gate — W-B shared shift pages (openPage gates tenant.shifts.store today; tenant/shifts/index @can)',
         'tenant.shifts.close-form' => 'Online close-shift PAGE gate — W-B shared shift pages (closePage gates tenant.shifts.close today; tenant/shifts/show @can)',
-        // EDGE 0.9 (owner 21 Nov 2026): self-service Install Offline Counter. Cloud-only: GET /pos/offline-counter on the Online POS;
-        // the Edge runtime sets the offlineCounterInstall route key to null (a Branch Server counter is already offline-capable).
-        'tenant.offline-edge.counter-install' => 'Cloud-only Install Offline Counter (Online POS entry) — no Edge route; PosRuntime sets offlineCounterInstall null on Edge',
     ];
 
     private const TEMPLATE_TEST = 'test_cashier_role_template_is_for_new_tenants_only_and_the_audit_is_read_only';
@@ -498,19 +495,14 @@ class EdgeCashierPermissionMatrixMySqlTest extends MySqlTenantTestCase
             $this->assertSame(0, $roles[$name]['users']);
             $this->assertSame(1, $roles['Counter Staff']['users']);
             $this->assertEqualsCanonicalizing(array_values(array_diff(PosPermissionCatalog::cashier(), ['tenant.pos.index', 'tenant.pos.store', 'tenant.held-sales.store'])), $roles['Counter Staff']['missing']);
-            // D3 (20 Oct 2026) + EDGE 0.9 (owner 21 Nov 2026): every newly catalogued permission (CASHIER_TEMPLATE_ADDITIONS) is reported
-            // separately — never granted to an existing role.
-            $this->assertEqualsCanonicalizing(array_keys(PosPermissionCatalog::CASHIER_TEMPLATE_ADDITIONS), $roles['Counter Staff']['missing_recent_additions'], 'the custom role lacks the newly catalogued permissions');
-            $this->assertEqualsCanonicalizing(['tenant.offline-edge.counter-install', 'tenant.pos.pause-reminders'], array_keys(PosPermissionCatalog::CASHIER_TEMPLATE_ADDITIONS));
+            // D3 (20 Oct 2026): the newly catalogued pause-reminders permission is reported separately — never granted.
+            $this->assertSame(['tenant.pos.pause-reminders'], $roles['Counter Staff']['missing_recent_additions'], 'the custom role lacks the newly catalogued permission');
             $this->assertSame([], $roles[$name]['missing_recent_additions'], 'the fresh template holds it');
             $recent = collect($report['tenants'][0]['recent_additions'])->keyBy('permission');
-            $this->assertEqualsCanonicalizing(['tenant.offline-edge.counter-install', 'tenant.pos.pause-reminders'], $recent->keys()->all());
+            $this->assertSame(['tenant.pos.pause-reminders'], $recent->keys()->all());
             $this->assertSame([['role' => 'Counter Staff', 'users' => 1]], $recent['tenant.pos.pause-reminders']['roles_missing']);
             $this->assertSame(1, $recent['tenant.pos.pause-reminders']['users_affected']);
             $this->assertSame('D3', $recent['tenant.pos.pause-reminders']['decision']);
-            $this->assertSame([['role' => 'Counter Staff', 'users' => 1]], $recent['tenant.offline-edge.counter-install']['roles_missing'], 'never granted to an existing role');
-            $this->assertSame(1, $recent['tenant.offline-edge.counter-install']['users_affected']);
-            $this->assertSame(PosPermissionCatalog::CASHIER_TEMPLATE_ADDITIONS['tenant.offline-edge.counter-install']['decision'], $recent['tenant.offline-edge.counter-install']['decision']);
 
             // Human-readable form too.
             $this->assertSame(0, Artisan::call('permissions:audit-cashier-roles', ['--tenant' => $code]));

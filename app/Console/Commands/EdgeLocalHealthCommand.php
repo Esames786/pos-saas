@@ -74,7 +74,7 @@ class EdgeLocalHealthCommand extends Command
         $rows[] = ['Gateway', ($r['gateway']['kind'] ?? 'nginx') . ' :' . $r['gateway']['https_port'] . ' · ' . ($r['gateway']['https_listening'] ? 'listening' : 'not listening') . ' · cert ' . ($r['gateway']['certificate_present'] ? ('present' . (isset($r['gateway']['certificate']['days_left']) ? ', ' . $r['gateway']['certificate']['days_left'] . ' days left' : '')) : 'MISSING')];
         $rows[] = ['Backup', ($r['backup']['recovery_key_configured'] ? 'key ok' : 'NO KEY') . ' · last ' . ($r['backup']['last']['created_at'] ?? 'never') . ' · path ' . $r['backup']['path']];
         $rows[] = ['Update', 'active ' . ($r['update']['active_version_pointer'] ?? '-') . ' · verify key ' . ($r['update']['public_key_configured'] ? 'ok' : 'MISSING') . ' · last ' . ($r['update']['last']['result'] ?? '-')];
-        $rows[] = ['Auto failover', ($r['auto_failover_enabled'] ?? false) ? 'ON (automatic offline takeover enabled by the Cloud setting AND this appliance)' : 'no (supervised takeover only)'];
+        $rows[] = ['Auto failover', 'no (supervised takeover only)'];
         $this->table(['Area', 'Status'], $rows);
         if ($r['problems'] !== []) {
             $this->warn('Problems:');

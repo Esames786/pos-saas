@@ -218,13 +218,6 @@ class EdgeLocalConfigRefreshApplier
         // immediately). After the commit only, so a rolled-back refresh never flushes anything.
         if ($result['outcome'] === self::OUTCOME_APPLIED) {
             app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
-            // EDGE 0.9 — the Cloud's Automatic Offline Takeover setting rides in restrictions[0].auto_takeover (informational
-            // section, never imported as rows). Absent key = OFF.
-            try {
-                app(\App\Services\Edge\AutoTakeover\AutoTakeoverEvaluator::class)->recordCloudSetting($sections['restrictions'] ?? null);
-            } catch (\Throwable $e) {
-                Log::warning('[edge-auto-takeover] could not record the Cloud setting after a config refresh', ['error' => $e->getMessage()]);
-            }
         }
 
         return $result;

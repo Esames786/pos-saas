@@ -13,49 +13,12 @@ WAN restored → the appliance REMAINS the writer → sync/reconcile → control
 | Path | What |
 |---|---|
 | `package-manifest.json` | identity, every file's SHA-256, boundary audit result (`edge:audit-package` verifies) |
-| `SHA256SUMS` + `SHA256SUMS.sig` | SHA-256 of every distributable script/executable + its Ed25519 detached signature (see "Integrity without Authenticode") |
-| `Setup-BingooEdge.cmd` | **0.9+: start here.** Double-click (Run as administrator): the setup wizard installs or updates this server |
 | `app/` | the restricted artifact (no Cloud finance authorities, no ingestion, no Catering, no tests, no secrets) |
-| `app/scripts/edge/wizard/` | the setup wizard itself (also under `scripts/wizard/`) |
-| `php/` | PHP runtime (when bundled) — else pass `-PhpPath`. **Portable:** `php.ini` is written by the builder (see below), the CA bundle is `php/cacert.txt` |
-| `mysql/` | MySQL 8.0 server when bundled (slim "server" profile, ~85 MB: `mysqld`, `mysql`, `mysqladmin`, `mysqldump` + their DLLs, `share/`) — the wizard registers the `BingooEdgeMySQL` service from it |
-| `prereqs/VC_redist.x64.exe` | the official Microsoft Visual C++ 2015-2022 x64 runtime installer (PHP and MySQL need it; a clean Windows lacks it) — `scripts\Install-EdgePrereqs.ps1` installs it silently when missing |
+| `php/` | PHP runtime (when bundled) — else pass `-PhpPath` |
 | `gateway/nginx.exe` | the TLS gateway (when bundled) — else pass `-GatewayPath` |
 | `scripts/` | the reviewed PowerShell scripts (below) |
 | `templates/` | `appliance.env.template` (keys only), `edge-launcher.php`, `mime.types`, this file |
 | `update/edge-update-<v>.json` | the **signed** update package for this same artifact |
-
-## Install or update with the setup wizard (0.9 and later)
-
-1. On the Cloud (`https://bingoopos.com`) open **Settings → Offline Edge**, pick the branch and click **Set up a Branch Server**:
-   you get a one-time **setup code** (10 characters, valid 60 minutes).
-2. Copy this package folder to the Branch Server PC, right-click **`Setup-BingooEdge.cmd` → Run as administrator**.
-3. The wizard checks the PC (administrator, disk, clock, sleep, LAN IP), asks for the setup code and the passwords it needs
-   (typed once, kept in memory, handed to the installer through files that are deleted), installs MySQL + the server,
-   pairs it with the Cloud, enrolls the selected users with their PINs, and finishes with the shortcuts and a health check.
-4. **Update mode:** when the PC already runs Bingoo Edge (`C:\ProgramData\BingooEdge\config\appliance.env` exists) the same
-   launcher verifies this signed package and updates in place — no re-pairing, no data loss; pointer rollback on failure.
-   From 0.9 on, later versions arrive by themselves from the Cloud (standby only, inside the maintenance window).
-
-The Edge API lives on the **central domain** `https://bingoopos.com` — never a tenant subdomain
-(`https://<tenant>.bingoopos.com/api/edge/pair` answers 404). The manual installer below takes the same `-CloudUrl`.
-
-## Portable PHP runtime (php.ini contract)
-
-The builder never ships the build machine's `php.ini`. It writes `php/php.ini` itself (`PhpIniValidator`) and refuses the
-build when the result would still point at the build host:
-
-- `extension_dir = "ext"` (relative to `php.exe`), `include_path = "."`;
-- `error_log`, `sendmail_path`, `session.save_path`, `openssl.capath` and any other directive holding an absolute host
-  path (drive letter, UNC, `laragon`, POSIX-absolute on a path key) are commented out with `;[bingoo-edge-package]`;
-- `curl.cainfo` and `openssl.cafile` = `"__BINGOO_PHP_DIR__\cacert.txt"` — a **placeholder**: after copying `php\` to its
-  final folder the installer/updater runs
-  `app\scripts\edge\appliance\Set-EdgePhpIniPaths.ps1 -PhpDir "<InstallRoot>\php"`, which replaces the token with that
-  absolute folder and proves `php.exe` trusts `<InstallRoot>\php\cacert.txt`. Until it runs, HTTPS to the Cloud fails closed;
-- the CA bundle ships as `php/cacert.txt` (the package boundary forbids `*.pem` / `*.crt`), from `--ca-bundle`, the runtime
-  (`cacert.txt`, `extras\ssl\cacert.pem`) or the file the source `php.ini` trusted;
-- every required extension (`curl fileinfo gd mbstring openssl pdo_mysql sodium`) is enabled and its DLL is in `ext\`, and the
-  packaged `php.exe` is started once with only its packaged `php.ini` from a foreign folder (smoke run).
 
 ## Building a RELEASE package (build host, never an appliance)
 
@@ -75,34 +38,6 @@ build when the result would still point at the build host:
    A release build refuses a plaintext `--signing-key-file` (dev/test only).
    A release build refuses a dirty tree, a missing `--vendor-from`, a closure whose `composer.lock` differs, or a closure
    installed with dev packages. `edge:audit-package` verifies the result; the manifest records `vendor_source`.
-   Optional: `--ca-bundle=<Mozilla cacert file>` (else taken from the runtime) and `--mysql-runtime=<mysql-8.0.x dir>`.
-   A **0.9+ release** additionally refuses a package without the wizard (`app/scripts/edge/wizard/`) and the root
-   `Setup-BingooEdge.cmd`, or whose installer default / examples name a Cloud URL other than `https://bingoopos.com`
-   (`--strict-layout` applies the same gates to a dev build). Every build refuses a non-portable `php.ini` and any packaged
-   script using `[TimeSpan]::MaxValue` or a task duration above 3650 days (Windows 10 Task Scheduler rejects them).
-4. Audit with the release PUBLIC key: `php artisan edge:audit-package D:\out\BingooEdge-<v> --public-key=<base64> --require-signature --json`
-   → `ok: true`, `signature_ok: true` (Ed25519 over the update manifest, same primitive as the appliance), `php_ini.ok`,
-   `wizard`, `mysql_runtime`, `script_compat`, `cloud_url`. A package signed by any key other than the pinned release key
-   id `a2eaf8a3d3e66a48` is reported `signing_key_role: dev` (never install it at a live branch).
-   `--server-cert=<bingoo-edge-server.crt> [--server-cert-host=bingoo-edge.local --server-cert-ip=<LAN IP>]` also checks the
-   Branch Server certificate for phones and tablets: validity <= 825 days (iOS/macOS refuse longer even from a trusted CA),
-   serverAuth EKU, DNS + IP SAN, RSA >= 2048, SHA-2, not a CA (PEM or DER).
-
-## Integrity without Authenticode (SHA256SUMS)
-
-There is **no Authenticode code-signing certificate** yet, so Windows SmartScreen cannot vouch for `Setup-BingooEdge.cmd`,
-the scripts or the bundled `php.exe` / `mysqld.exe` / `nginx.exe`. Every package therefore carries:
-
-- `SHA256SUMS` — `<sha256>  <path>` for every distributable `*.ps1 *.psm1 *.psd1 *.cmd *.bat *.vbs *.exe *.dll *.phar` and the
-  PHP launchers outside the application code (`templates/edge-launcher.php`, `app/scripts/**`); `app/vendor` is not listed and
-  the application code is bound by the signed artifact manifest;
-- `SHA256SUMS.sig` — an Ed25519 **detached signature** over the exact bytes of `SHA256SUMS`, made with the package signing key
-  (the same key as `update/edge-update-<v>.json`; key id in the file).
-
-Check a single file on any PC: `(Get-FileHash .\Setup-BingooEdge.cmd -Algorithm SHA256).Hash` must equal its line in
-`SHA256SUMS`. `edge:audit-package --public-key=<base64>` verifies the whole list and the signature (`checksums_signature_ok`);
-an installed appliance can verify a new package with its own `EDGE_UPDATE_PUBLIC_KEY` before running any new script. The
-Cloud download page should also publish the SHA-256 of the zip it serves.
 
 ## Certifying a lab appliance (Administrator)
 
@@ -150,7 +85,7 @@ No secret is ever hard-coded, printed, logged, or passed on a command line. Secr
 read once and deleted** (`-DbPasswordFile`, `-RecoveryKeyFile`, `-PairingCodeFile`, `-EnrollmentCredentialFile`,
 `-CertPfxPasswordFile`) or hidden prompts.
 
-## First install (manual, without the wizard)
+## First install
 
 Prerequisites: Windows 10/11 Pro or Server, local MySQL 8 / MariaDB 10.4+ on 127.0.0.1 with a dedicated user and a
 database named `bingoo_edge_*`, a DHCP-reserved IP, the branch CA (`New-EdgeBranchCA.ps1`) and a server certificate
@@ -158,7 +93,7 @@ exported as PFX (`New-EdgeServerCertificate.ps1 -ExportPfx -PfxPasswordFile …`
 a one-time **pairing code** for the branch and an **enrollment assertion** for the first local user.
 
 ```powershell
-.\scripts\Install-EdgeAppliance.ps1 -PackageRoot D:\pkg\BingooEdge-0.9.0-edge -CloudUrl https://bingoopos.com `
+.\scripts\Install-EdgeAppliance.ps1 -PackageRoot D:\pkg\BingooEdge-0.1.0 -CloudUrl https://pos.example.com `
   -DbUser bingoo_edge -DbPasswordFile C:\secure\dbpw.txt -DbName bingoo_edge_gulberg `
   -PairingCodeFile C:\secure\code.txt -EnrollmentAssertionFile C:\secure\assertion.json -EnrollmentCredentialFile C:\secure\cred.txt `
   -EnrollmentPublicKey <base64> -UpdatePublicKey <base64> -RecoveryKeyFile C:\secure\recovery.key `

@@ -20,24 +20,6 @@ Route::domain(config('tenancy.central_domain'))
             ->middleware('throttle:5,1')
             ->name('edge.api.pair');
 
-        // EDGE 0.9 (K2) — the setup wizard redeems the owner's one-time setup code (public; own IP limiter; the code's own
-        // attempt limit bounds failures on a resolved code). Returns a setup token + a FRESH pairing code (existing pairing).
-        Route::post('/setup/redeem', [\App\Http\Controllers\Edge\EdgeSetupApiController::class, 'redeem'])
-            ->middleware('throttle:10,1,edge-setup-redeem')
-            ->name('edge.api.setup.redeem');
-
-        // EDGE 0.9 (K2b) — a fresh pairing code for an INSTALL setup session whose code expired / is in its last 3 minutes
-        // (public: the wizard has no device credential yet; X-Edge-Setup-Token scopes it to the session's tenant + branch).
-        Route::post('/setup/pairing-code', [\App\Http\Controllers\Edge\EdgeSetupApiController::class, 'pairingCode'])
-            ->middleware('throttle:10,1,edge-setup-pairing')
-            ->name('edge.api.setup.pairing-code');
-
-        // EDGE 0.9 (K6) — the release zip behind a 15-minute SIGNED URL bound to an active device (issued by updates/latest).
-        Route::get('/updates/{release}/download', [\App\Http\Controllers\Edge\EdgeUpdatesApiController::class, 'download'])
-            ->middleware(['signed', 'throttle:10,1,edge-release-download'])
-            ->where('release', '[0-9a-fA-F-]{36}')
-            ->name('edge.api.updates.download');
-
         // Device-authenticated endpoints (NOT heartbeat/sync/activation).
         Route::middleware(['edge.device.auth', 'throttle:60,1'])->group(function () {
             Route::get('/device/me', [EdgePairingApiController::class, 'me'])->name('edge.api.device.me');
@@ -85,19 +67,5 @@ Route::domain(config('tenancy.central_domain'))
             // tighter per-device throttle with its own limiter prefix; the response is never cacheable.
             Route::post('/backup/recovery-keys', [\App\Http\Controllers\Edge\EdgeBackupRecoveryApiController::class, 'material'])
                 ->middleware('throttle:6,1,edge-recovery')->name('edge.api.backup.recovery_keys');
-
-            // EDGE 0.9 — setup wizard + auto-update + continuity (all Cloud-only; tenant/branch from the device).
-            // K3: bulk enrollment assertions — also needs the X-Edge-Setup-Token of a live setup session of this branch.
-            Route::post('/setup/enrollment-assertions', [\App\Http\Controllers\Edge\EdgeSetupApiController::class, 'enrollmentAssertions'])
-                ->middleware('throttle:10,1,edge-setup-assertions')->name('edge.api.setup.enrollment-assertions');
-            // K4 / K5: install/update status and the PUBLIC LAN profile (CA certificate validated).
-            Route::post('/device/status', [\App\Http\Controllers\Edge\EdgeDeviceStatusApiController::class, 'status'])->name('edge.api.device.status');
-            Route::post('/device/lan-profile', [\App\Http\Controllers\Edge\EdgeDeviceStatusApiController::class, 'lanProfile'])
-                ->middleware('throttle:10,1,edge-lan-profile')->name('edge.api.device.lan-profile');
-            // K6: is a newer signed release registered for this device (+ maintenance window, Update-now flag).
-            Route::get('/updates/latest', [\App\Http\Controllers\Edge\EdgeUpdatesApiController::class, 'latest'])
-                ->middleware('throttle:20,1,edge-updates')->name('edge.api.updates.latest');
-            // K1: the branch live state the warm standby mirrors (read-only; monotonic revision; since= short-circuit).
-            Route::get('/live-state', [\App\Http\Controllers\Edge\EdgeLiveStateApiController::class, 'show'])->name('edge.api.live-state');
         });
     });

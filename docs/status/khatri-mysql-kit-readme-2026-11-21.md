@@ -21,10 +21,6 @@ Copy-Item <USB>\mysql\my.ini.template C:\BingooEdge\mysql\my.ini
 ```
 `--initialize-insecure` creates root WITHOUT a password only on loopback; step 4 sets it before anything else connects.
 
-**`my.ini` must disable the binary log with `skip-log-bin`** — NOT `log_bin=OFF`: in MySQL 8 `log_bin=<name>` ENABLES the binlog
-with the base name `OFF` (files `OFF.000001`… fill the data directory). Check before initializing: `Select-String -Path C:\BingooEdge\mysql\my.ini -Pattern 'log.bin'`
-must show only `skip-log-bin` (found at Khatri 21 Nov 2026).
-
 ## 3. Register and start the Windows service (ELEVATED)
 
 ```powershell
@@ -55,26 +51,6 @@ FLUSH PRIVILEGES;
 $sql | & C:\BingooEdge\mysql\bin\mysql.exe -uroot -h127.0.0.1     # first connect: root has no password yet
 Remove-Variable sql, root, edge
 ```
-**`root@localhost` is NOT reachable over TCP when `my.ini` has `skip-name-resolve`** (the client connects as `root@127.0.0.1`,
-which does not exist after `--initialize-insecure`, so the `$sql` block above is refused with `Access denied for user 'root'@'127.0.0.1'`).
-Fix, as done on site 21 Nov 2026: create the TCP root account once through `mysqld --init-file` (ELEVATED; the service must be
-stopped; the init file holds the root password, so it is written from `root.pass` and deleted straight after):
-
-```powershell
-Stop-Service BingooEdgeMySQL
-$root = (Get-Content C:\BingooEdge\secrets\root.pass -Raw).Trim()
-$init = "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '$root';`nGRANT ALL ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;`nFLUSH PRIVILEGES;"
-Set-Content -Path C:\BingooEdge\secrets\init.sql -Value $init -Encoding ASCII
-Remove-Variable init, root
-# one-time foreground run; it prints "Execution of init_file ... started/ended" — then stop it with Ctrl+C
-& C:\BingooEdge\mysql\bin\mysqld.exe --defaults-file=C:\BingooEdge\mysql\my.ini --init-file=C:\BingooEdge\secrets\init.sql --console
-Remove-Item C:\BingooEdge\secrets\init.sql -Force          # never leave the init file behind
-Start-Service BingooEdgeMySQL
-```
-Then run the `$sql` block above with `-uroot -h127.0.0.1 --password="$((Get-Content C:\BingooEdge\secrets\root.pass -Raw).Trim())"`
-(root@127.0.0.1 now has the password; the `ALTER USER 'root'@'localhost'` line still sets the socket/named-pipe root).
-`skip-name-resolve` stays in `my.ini` (it is correct for an appliance); only the extra `root@127.0.0.1` account is added.
-
 The appliance installer takes `-DbUser bingoo_edge -DbPasswordFile C:\BingooEdge\secrets\edge.pass` and DELETES that file after
 reading it (keep the password in the owner's password manager, not on the PC or the USB stick).
 Connection check without typing the password: `& C:\BingooEdge\mysql\bin\mysql.exe -u bingoo_edge -h127.0.0.1 --password="$((Get-Content C:\BingooEdge\secrets\edge.pass -Raw).Trim())" -e "SELECT 1"`

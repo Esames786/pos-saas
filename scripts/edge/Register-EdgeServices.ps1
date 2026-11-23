@@ -15,21 +15,13 @@
 #   .\Register-EdgeServices.ps1 -Action Start     -PlanFile ...
 #   .\Register-EdgeServices.ps1 -Action Status    -PlanFile ...
 #   .\Register-EdgeServices.ps1 -Action Unregister -PlanFile ...  # removes the tasks only; DB/outbox/backups untouched
-#
-# EDGE 0.9 (auto-update): -Exclude <task names> leaves those tasks alone (the updater never stops itself); -KeepEnabled makes
-# Stop/Start only stop/run the tasks (no Disable/Enable - that needs write rights the service account does not hold). Register
-# grants the SERVICE ACCOUNT read+run rights on each Bingoo task's security descriptor (never another principal, never SYSTEM),
-# so the BingooEdgeUpdater task - running as that same account - can stop / start the others around a runtime switch.
 param(
     [Parameter(Mandatory = $true)][ValidateSet('Register', 'Start', 'Stop', 'Unregister', 'Status')][string]$Action,
     [Parameter(Mandatory = $true)][string]$PlanFile,
     [string]$ServiceAccount = 'NT AUTHORITY\LOCAL SERVICE',
     [switch]$CurrentUser,
     [switch]$NoGateway,
-    [int]$StopWaitSeconds = 150,
-    [string[]]$Exclude = @(),
-    [switch]$KeepEnabled,
-    [switch]$NoTaskControlGrant
+    [int]$StopWaitSeconds = 150
 )
 $ErrorActionPreference = 'Stop'
 
@@ -58,10 +50,9 @@ function New-EdgeSettings {
 function New-EdgeTrigger($task) {
     $trigger = New-ScheduledTaskTrigger -AtStartup
     if ($task.kind -eq 'periodic' -and $task.repeat_minutes) {
-        # [TimeSpan]::MaxValue serialises to P99999999DT23H59M59S, rejected by Windows 10 Task Scheduler (found at Khatri 21 Nov 2026)
         $repeat = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
             -RepetitionInterval (New-TimeSpan -Minutes ([int]$task.repeat_minutes)) `
-            -RepetitionDuration (New-TimeSpan -Days 3650)).Repetition
+            -RepetitionDuration ([TimeSpan]::MaxValue)).Repetition
         $trigger.Repetition = $repeat
     }
     return $trigger
@@ -74,30 +65,12 @@ function Register-EdgeTask($name, $exe, $arguments, $workdir, $task) {
     $action = New-ScheduledTaskAction -Execute $exe -Argument $arguments -WorkingDirectory $workdir
     Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
     Register-ScheduledTask -TaskName $name -Action $action -Trigger (New-EdgeTrigger $task) -Settings (New-EdgeSettings) -Principal (New-EdgePrincipal) | Out-Null
-    Grant-EdgeTaskControl $name
     Write-Host ("  registered {0,-28} {1} {2}" -f $name, (Split-Path $exe -Leaf), $arguments)
 }
 
-$tasks = @($plan.tasks | Where-Object { $Exclude -notcontains [string]$_.name })
+$tasks = @($plan.tasks)
 $gateway = $plan.gateway
-$gatewayEnabled = (-not $NoGateway) -and $gateway -and (Test-Path ([string]$gateway.executable)) -and ($Exclude -notcontains [string]$gateway.name)
-
-# EDGE 0.9 - let the service account (and only it) read + run/stop the Bingoo tasks, so the auto-updater (same account) can
-# restart them after a verified runtime switch. GRGX on the task's own DACL; the task principal is never changed.
-function Grant-EdgeTaskControl($name) {
-    if ($NoTaskControlGrant -or $CurrentUser) { return }
-    try {
-        $sid = (New-Object System.Security.Principal.NTAccount($ServiceAccount)).Translate([System.Security.Principal.SecurityIdentifier]).Value
-        $svc = New-Object -ComObject 'Schedule.Service'
-        $svc.Connect()
-        $task = $svc.GetFolder('\').GetTask($name)
-        $sddl = [string]$task.GetSecurityDescriptor(4)   # DACL_SECURITY_INFORMATION
-        $ace = "(A;;GRGX;;;$sid)"
-        if ($sddl.IndexOf($ace) -lt 0) { $task.SetSecurityDescriptor($sddl + $ace, 0) }
-    } catch {
-        Write-Warning "Could not grant $ServiceAccount run/stop rights on [$name] (auto-update restarts need it): $($_.Exception.Message)"
-    }
-}
+$gatewayEnabled = (-not $NoGateway) -and $gateway -and (Test-Path ([string]$gateway.executable))
 
 switch ($Action) {
     'Register' {
@@ -114,58 +87,28 @@ switch ($Action) {
         Write-Host 'Services registered and started.'
     }
     'Start' {
-        foreach ($t in $tasks) { if (-not $KeepEnabled) { Enable-ScheduledTask -TaskName $t.name -ErrorAction SilentlyContinue | Out-Null }; Start-ScheduledTask -TaskName $t.name }
-        if ($gatewayEnabled) { if (-not $KeepEnabled) { Enable-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue | Out-Null }; Start-ScheduledTask -TaskName $gateway.name }
+        foreach ($t in $tasks) { Enable-ScheduledTask -TaskName $t.name -ErrorAction SilentlyContinue | Out-Null; Start-ScheduledTask -TaskName $t.name }
+        if ($gatewayEnabled) { Enable-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue | Out-Null; Start-ScheduledTask -TaskName $gateway.name }
         Write-Host 'Services started.'
     }
     'Stop' {
-        # Cooperative first: the workers finish their in-flight job / tick and record a graceful stop. NEVER fatal: under
-        # $ErrorActionPreference = 'Stop' Windows PowerShell 5.1 turns any stderr line of a native command into a terminating
-        # error, and `nginx -s quit` from an administrator cannot open the quit event of a master started by the task principal
-        # (LOCAL SERVICE): "OpenEvent(Global\ngx_quit_<pid>) failed (5: Access is denied)" - found by CP5 in the Windows Sandbox,
-        # it aborted the wizard's update. Stopping the tasks below (plus the leftover-process sweep) is what really stops them.
-        # EDGE 0.9 CP6: the cooperative stops honour -Exclude too. An excluded worker keeps running (Update-EdgeAppliance.ps1
-        # keeps the authority/heartbeat worker alive through the update so the Cloud lease never lapses).
-        $runsWorker = { param($cmd) @($tasks | Where-Object { [string]$_.artisan_command -eq $cmd -or [string]$_.arguments -match [regex]::Escape($cmd) }).Count -gt 0 }
-        $eap = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-        try {
-            if (& $runsWorker 'edge:local:print-worker') {
-                $null = & $php $launcher edge:local:print-worker --stop --stop-wait=$StopWaitSeconds 2>&1
-                if ($LASTEXITCODE -ne 0) { Write-Warning 'Print worker did not confirm a graceful stop (lease expiry recovers any in-flight job).' }
-            }
-            if (& $runsWorker 'edge:local:authority-worker') {
-                $null = & $php $launcher edge:local:authority-worker --stop 2>&1
-                if ($LASTEXITCODE -ne 0) { Write-Warning 'Authority worker did not confirm a graceful stop.' }
-            }
-            if ($gatewayEnabled) {
-                $null = & $gateway.executable -p $gateway.working_directory -c $gateway.config_path -s quit 2>&1
-                if ($LASTEXITCODE -ne 0) { Write-Warning 'The gateway did not take the quit signal (another account started it) - its task is stopped instead.' }
-            }
-        } catch {
-            Write-Warning ('Cooperative stop step failed (the tasks are stopped anyway): ' + $_.Exception.Message)
-        } finally {
-            $ErrorActionPreference = $eap
+        # Cooperative first: the workers finish their in-flight job / tick and record a graceful stop.
+        & $php $launcher edge:local:print-worker --stop --stop-wait=$StopWaitSeconds
+        if ($LASTEXITCODE -ne 0) { Write-Warning 'Print worker did not confirm a graceful stop (lease expiry recovers any in-flight job).' }
+        & $php $launcher edge:local:authority-worker --stop
+        if ($LASTEXITCODE -ne 0) { Write-Warning 'Authority worker did not confirm a graceful stop.' }
+        if ($gatewayEnabled) {
+            & $gateway.executable -p $gateway.working_directory -c $gateway.config_path -s quit 2>$null
         }
         foreach ($t in $tasks) {
             Stop-ScheduledTask -TaskName $t.name -ErrorAction SilentlyContinue
-            if (-not $KeepEnabled) { Disable-ScheduledTask -TaskName $t.name -ErrorAction SilentlyContinue | Out-Null }
+            Disable-ScheduledTask -TaskName $t.name -ErrorAction SilentlyContinue | Out-Null
         }
         if ($gatewayEnabled) {
             Stop-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue
-            if (-not $KeepEnabled) { Disable-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue | Out-Null }
-            # nginx worker processes can outlive the master's task: sweep the ones started from THIS gateway executable, so the
-            # new runtime's gateway can bind 80 / 8443 again
-            $exe = [string]$gateway.executable
-            $deadline = (Get-Date).AddSeconds(15)
-            do {
-                $left = @(Get-CimInstance Win32_Process -Filter "Name = 'nginx.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and $_.ExecutablePath -ieq $exe })
-                if ($left.Count -eq 0) { break }
-                Start-Sleep -Milliseconds 500
-            } while ((Get-Date) -lt $deadline)
-            foreach ($p in $left) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+            Disable-ScheduledTask -TaskName $gateway.name -ErrorAction SilentlyContinue | Out-Null
         }
-        Write-Host $(if ($KeepEnabled) { 'Services stopped (left enabled).' } else { 'Services stopped and disabled (Start re-enables them).' })
+        Write-Host 'Services stopped and disabled (Start re-enables them).'
     }
     'Unregister' {
         foreach ($t in $tasks) {

@@ -34,9 +34,6 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
     Route::get('/login', [EdgeLocalAuthController::class, 'showLogin'])->name('auth.login');
     Route::post('/login', [EdgeLocalAuthController::class, 'login'])->middleware('throttle:edge-login')->name('auth.login.post');
     Route::post('/logout', [EdgeLocalAuthController::class, 'logout'])->name('auth.logout');
-    // EDGE 0.9 (stream B): counter self-enrolment — a Cloud-signed assertion for ONE user + the PIN typed on the counter, over
-    // verified TLS. Off unless edge.local_enroll_endpoint.enabled; CSRF-exempt for this JSON route only; 5/min.
-    Route::post('/enroll', [\App\Http\Controllers\Edge\EdgeLocalSelfEnrollController::class, 'store'])->middleware('throttle:5,1')->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])->name('enroll');
     Route::get('/status', [EdgeLocalAuthController::class, 'status'])->middleware('edge.auth')->name('auth.status');
 
     // EDGE-LOCAL-POS-1 — the branch-local POS surface: authenticated local session (edge.auth) + bound
@@ -136,8 +133,6 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         // permission + confirm field + CSRF + lock + audit in EdgeLocalAuthorityControlController. No Artisan over HTTP.
         Route::post('/authority/switch-offline', [\App\Http\Controllers\Edge\EdgeLocalAuthorityControlController::class, 'switchOffline'])->middleware('throttle:6,1')->name('authority.switch-offline');
         Route::post('/authority/return-online', [\App\Http\Controllers\Edge\EdgeLocalAuthorityControlController::class, 'returnOnline'])->middleware('throttle:6,1')->name('authority.return-online');
-        // EDGE 0.9 (stream B): "Update now" on the status page — records the request only; the updater task applies it under its gates.
-        Route::post('/updates/update-now', [\App\Http\Controllers\Edge\EdgeLocalAutoUpdateController::class, 'updateNow'])->middleware('throttle:6,1')->name('updates.update-now');
 
         // ═══════════════ PARITY WORKSTREAM ROUTES (owner directive 20 Sep 2026) — one block per team, append-only ═══════════════
         // Every new URI must ALSO be added, deliberately, to the approved census in tests/Feature/Edge/EdgeBranchServerRegistrationTest.

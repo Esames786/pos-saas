@@ -35,36 +35,7 @@ class EdgeRuntimeController extends Controller
             'bootstrap_schema' => $info['bootstrap_schema'],
             'sync_protocol'    => $info['sync_protocol'],
             'server_epoch_ms'  => (int) round(microtime(true) * 1000),
-        ] + $this->counterSetupFacts());
-    }
-
-    /**
-     * EDGE 0.9 (stream B, for stream D's counter wizard): public facts the counter setup verifies BEFORE it asks for a PIN —
-     * the sha256 (uppercase hex) of the enrollment PUBLIC key this appliance trusts, and the bound branch's terminal ids with
-     * their active flag (ids + flags ONLY: this endpoint is unauthenticated). Never throws; empty while uninitialised (the
-     * tenant connection is already mapped to the Edge-local DB by IdentifyTenant; no socket opens until the query).
-     */
-    private function counterSetupFacts(): array
-    {
-        $key = trim((string) config('edge.enrollment.public_key', ''));
-        $raw = $key !== '' ? base64_decode($key, true) : false;
-        $terminals = [];
-        if (EdgeRuntime::isBranchServer()) {
-            try {
-                $branchId = app(\App\Services\Edge\EdgeBranchContext::class)->boundBranchId();
-                if ($branchId !== null) {
-                    $terminals = \Illuminate\Support\Facades\DB::connection('tenant')->table('terminals')->where('branch_id', $branchId)->orderBy('id')
-                        ->get(['id', 'status'])->map(fn ($t) => ['id' => (int) $t->id, 'active' => (string) $t->status === 'active'])->values()->all();
-                }
-            } catch (\Throwable) {
-                $terminals = [];
-            }
-        }
-
-        return [
-            'enrollment_key_sha256' => $raw !== false && $raw !== '' ? strtoupper(hash('sha256', $raw)) : null,
-            'terminals' => $terminals,
-        ];
+        ]);
     }
 
     /**

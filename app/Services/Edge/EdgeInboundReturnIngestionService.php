@@ -122,10 +122,6 @@ class EdgeInboundReturnIngestionService
                     $this->financeVerifier->verifyPostedReturn($return->fresh()->load(['lines.orderLine.product', 'order']));
 
                     $ack = $this->buildAck($returnUuid, $contentHash, $ingestionUuid, $return, $sale, (int) $envelope['activation_epoch'], $envelope['config_revision'] ?? null);
-                    if (! empty($processing['continuity'])) {
-                        // EDGE 0.9 CONTINUITY audit (registry, replayed verbatim): where the refund was counted.
-                        $ack['continuity'] = ['shift' => $processing['continuity'] + ['refund_shift_id' => $return->shift_id !== null ? (int) $return->shift_id : null]];
-                    }
                     $registry->update([
                         'status' => EdgeInboundReturnIngestion::STATUS_APPLIED,
                         'failure_code' => null,
@@ -291,37 +287,15 @@ class EdgeInboundReturnIngestionService
             throw new IngestionRefusal('RETURN_INVALID', 'the processing shift identity is not a valid shift_uuid');
         }
 
-        // EDGE 0.9 CONTINUITY (CP3 gap 3): a refund paid from a continued shift names the ORIGINAL Cloud shift. It is named as the
-        // paying shift ONLY when that row exists, is OPEN, and belongs to this branch and the SAME counter the event states (the
-        // tenant is the device's, validated above); SalesReturnService re-checks open under its row lock. Anything else — no key
-        // (every 0.8.x event), a malformed identity, an unknown / closed / other-counter shift — keeps today's attribution exactly.
-        $continued = $this->continuedCloudShift($block, $branch);
-
         return [
             'shift_uuid' => $uuid !== '' ? $uuid : null,
-            'legacy_terminal_shift_id' => $continued?->id,
+            'legacy_terminal_shift_id' => null,
             'facts' => $block ? [
                 'terminal_id' => ! empty($block['terminal_id']) ? (int) $block['terminal_id'] : null,
                 'business_date' => ! empty($block['business_date']) ? (string) $block['business_date'] : null,
             ] : null,
             'legacy' => false,
-            'continuity' => $block && ! empty($block['continues_cloud_shift_uuid'])
-                ? ['cloud_shift_uuid' => (string) $block['continues_cloud_shift_uuid'], 'status' => $continued ? 'merged' : 'not_resolved', 'edge_shift_uuid' => $uuid !== '' ? $uuid : null]
-                : null,
         ];
-    }
-
-    /** The original Cloud shift a continued Edge shift names — open, same branch, same counter — else null (today's behaviour). */
-    private function continuedCloudShift(?array $block, Branch $branch): ?\App\Models\Tenant\Shift
-    {
-        $uuid = $block ? trim((string) ($block['continues_cloud_shift_uuid'] ?? '')) : '';
-        $terminalId = $block ? (int) ($block['terminal_id'] ?? 0) : 0;
-        if ($uuid === '' || $terminalId <= 0 || ! EdgeIdentity::isValid($uuid, EdgeIdentity::FORMAT_ULID)) {
-            return null;
-        }
-
-        return \App\Models\Tenant\Shift::on('tenant')->where('shift_uuid', $uuid)->where('branch_id', $branch->id)
-            ->where('terminal_id', $terminalId)->where('status', 'open')->first();
     }
 
     private function resolveActor(array $envelope): User

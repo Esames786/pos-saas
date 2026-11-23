@@ -35,29 +35,6 @@ Branch Server.
 9. **Rollback** (any time, no data loss): Settings → Offline Edge → device → Revoke (`POST …/devices/{edgeDevice}/revoke`); detach the
    module from the plan; `EDGE_FEATURE_ENABLED=false` + `config:cache`. The appliance then fails closed (ENTITLEMENT_VALID false).
 
-## Enrollment signing key (Cloud, one-time, BEFORE step 6) + the two public keys the installer needs
-
-Found 21 Nov by the onsite-checklist review: `EdgeEnrollmentIssuer` fails closed ("issuer is not configured") until the production
-`.env` carries `EDGE_ENROLLMENT_SIGNING_KEY` (Ed25519 secret, base64, 64 bytes — `config('edge.enrollment.signing_key')`), and
-`edge:local:enroll` on the appliance fails closed until the installer got the matching PUBLIC key (`-EnrollmentPublicKey`). Nothing
-in the deployment plan or runbook provisioned it. Procedure (CLAUDE on the owner's "ENABLE KHATRI", together with runbook 2.1):
-
-```bash
-cd /var/www/html/pos-saas
-# generate once; the private key goes straight into .env and is never printed; only the PUBLIC key is echoed
-[ "$(grep -c ^EDGE_ENROLLMENT_SIGNING_KEY .env)" = 0 ] && php -r '$kp=sodium_crypto_sign_keypair(); file_put_contents(".env","EDGE_ENROLLMENT_SIGNING_KEY=".base64_encode(sodium_crypto_sign_secretkey($kp))."\n",FILE_APPEND); echo "EDGE_ENROLLMENT_PUBLIC_KEY=".base64_encode(sodium_crypto_sign_publickey($kp)).PHP_EOL;'
-bash deploy.sh        # rebuilds the config cache (idempotent); or: php artisan config:cache
-php artisan tinker --execute='echo strlen(base64_decode(config("edge.enrollment.signing_key"))) === 64 ? "signing key ok" : "MISSING";'
-```
-
-The printed `EDGE_ENROLLMENT_PUBLIC_KEY=<base64>` value is handed to the owner for the installer's `-EnrollmentPublicKey` (public, not
-a secret; it may be written on the install sheet). Never run the generator twice: a second key would invalidate every assertion signed
-by the first; the guard above skips if the line exists.
-
-`-UpdatePublicKey` = the release signing PUBLIC key `8BBZRe6+XEhZFVXJPrM4D+kTOi7iv/AV1RztyMZZ9EQ=` (public fact; sha256 fingerprint
-`a2eaf8a3d3e66a48` = `signing_key_id` of the 0.8.3 and 0.8.4 manifests, verified 21 Nov). Without it the appliance health reports
-"Update verification key not configured" and no signed update can ever be applied.
-
 ## What this does NOT do
 
 It does not change Khatri's POS, printing, agent, terminals, menu or GL. The branch keeps selling on the Cloud; Edge mirrors. No sale is

@@ -140,14 +140,6 @@ class EdgeHandbackOrchestrator
     public function run(?string $by = null): array
     {
         $meta = $this->context->requireCurrent();
-        // EDGE 0.9 CONTINUITY — handback preparation: adopted orders/held bills/table sessions the cashiers never touched (no
-        // payment, no KOT, lines exactly as mirrored) never became Edge facts; release them so they do not hold the unchanged
-        // OPEN_TABLES / HELD_CHECKS gates. Anything touched stays and must be settled on the appliance. Never fails the handback.
-        try {
-            app(\App\Services\Edge\Continuity\ContinuityAdoptionService::class)->releaseUntouched();
-        } catch (Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('[edge-continuity] releaseUntouched failed before handback', ['error' => $e->getMessage()]);
-        }
         $assessment = $this->assess();
         if (! $assessment['ready']) {
             $codes = implode(', ', array_column($assessment['blockers'], 'code'));

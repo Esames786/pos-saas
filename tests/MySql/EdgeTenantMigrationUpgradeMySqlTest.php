@@ -518,23 +518,15 @@ class EdgeTenantMigrationUpgradeMySqlTest extends MySqlTenantTestCase
 
         $conn = DB::connection('tenant');
         $schema = $conn->getSchemaBuilder();
-        try {
-            // The appliance shape: neither table exists (nothing on the appliance ever purges).
-            $schema->dropIfExists('purged_numbers');
-            $schema->dropIfExists('purged_entries');
-            \App\Support\PurgedNumbers::forget();
-            $this->assertFalse(\App\Support\PurgedNumbers::ready());
-            $this->assertNull(\App\Support\PurgedNumbers::highest(\App\Support\PurgedNumbers::JOURNAL_ENTRY, 'JE-'), 'JournalService::nextEntryNo sees "nothing removed"');
-            $this->assertSame(0, \App\Support\PurgedNumbers::highestInt(\App\Support\PurgedNumbers::MANUAL_JOURNAL));
-            $this->assertNull(\App\Support\PurgedNumbers::highest(\App\Support\PurgedNumbers::EXPENSE_VOUCHER, 'EXP-'));
-        } finally {
-            // CP6 (22 Nov 2026): put the Cloud shape back. The schema is migrated once per process, so a later test in the same
-            // process (VoidPurgeMySqlTest, SupplierCreditClarityMySqlTest) found both tables missing: 11 order-dependent errors in
-            // the single-process release gate. The migration's up() is idempotent (hasTable guards).
-            (require base_path('database/migrations/tenant/' . $name . '.php'))->up();
-            \App\Support\PurgedNumbers::forget();
-        }
-        $this->assertTrue($schema->hasTable('purged_entries') && $schema->hasTable('purged_numbers'), 'the shared test schema is restored for later tests');
+        // The appliance shape: neither table exists (nothing on the appliance ever purges).
+        $schema->dropIfExists('purged_numbers');
+        $schema->dropIfExists('purged_entries');
+        \App\Support\PurgedNumbers::forget();
+        $this->assertFalse(\App\Support\PurgedNumbers::ready());
+        $this->assertNull(\App\Support\PurgedNumbers::highest(\App\Support\PurgedNumbers::JOURNAL_ENTRY, 'JE-'), 'JournalService::nextEntryNo sees "nothing removed"');
+        $this->assertSame(0, \App\Support\PurgedNumbers::highestInt(\App\Support\PurgedNumbers::MANUAL_JOURNAL));
+        $this->assertNull(\App\Support\PurgedNumbers::highest(\App\Support\PurgedNumbers::EXPENSE_VOUCHER, 'EXP-'));
+        \App\Support\PurgedNumbers::forget();
     }
 
     /** UNITS-PACKS F1 (canonical 7308db7e): product_pack_units.factor DECIMAL(15,4); pack_size on the eight line tables. Owner review R-1. */

@@ -145,7 +145,7 @@ class EdgeLocalBootstrapImporter
             return $this->refresh->apply($manifest, $sections)['meta'];
         }
 
-        $imported = DB::connection(self::CONN)->transaction(function () use (
+        return DB::connection(self::CONN)->transaction(function () use (
             $sections, $tenantId, $branchId, $deviceUuid, $epoch, $tenantCode, $snapshotUuid, $manifestHash, $sourceRevision, $manifest
         ) {
             $meta = $this->markImporting($tenantCode, $tenantId, $branchId, $deviceUuid, $epoch, $snapshotUuid, $manifestHash, $sourceRevision, $manifest);
@@ -171,15 +171,6 @@ class EdgeLocalBootstrapImporter
 
             return $meta->fresh();
         });
-
-        // EDGE 0.9 — record the Cloud's Automatic Offline Takeover setting (restrictions[0].auto_takeover; absent = OFF) after commit.
-        try {
-            app(\App\Services\Edge\AutoTakeover\AutoTakeoverEvaluator::class)->recordCloudSetting($sections['restrictions'] ?? null);
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('[edge-auto-takeover] could not record the Cloud setting after bootstrap', ['error' => $e->getMessage()]);
-        }
-
-        return $imported;
     }
 
     // ── validation ─────────────────────────────────────────────────────────

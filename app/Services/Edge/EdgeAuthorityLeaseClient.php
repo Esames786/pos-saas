@@ -75,7 +75,6 @@ class EdgeAuthorityLeaseClient
             EdgeSaleEnvelopeBuilder::SCHEMA_VERSION,
             EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V2,
             EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V3,   // PHASE 4: new_customer kind (emitted only while the Cloud advertises customer_create)
-            EdgeSaleEnvelopeBuilder::SCHEMA_VERSION_V4,   // EDGE 0.9 CONTINUITY: continued shift / adopted order (emitted only with continuity data)
             EdgeReturnEnvelopeBuilder::SCHEMA_V1,         // a row queued by a pre-H1 build may still be in the outbox after an upgrade
             EdgeReturnEnvelopeBuilder::SCHEMA,            // REFUND-SHIFT-H1: v2 carries the processing shift by stable identity
             EdgePurchaseReturnEnvelopeBuilder::SCHEMA,

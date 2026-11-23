@@ -40,41 +40,13 @@ class EdgeAuthorityTick
 
         if ($hb['ok'] && $this->authority->state() === EdgeAuthorityService::STANDBY) {
             $work = ['kind' => 'standby_freshness'] + $this->freshness->tick();
-            $work['live_state'] = $this->mirrorLiveState();
         } elseif ($hb['ok'] && $this->authority->state() === EdgeAuthorityService::LOCAL_ACTIVE) {
             $work = ['kind' => 'local_sync'] + $this->drainAndReconcile($owner);
-        }
-
-        // EDGE 0.9 — OPTIONAL AUTOMATIC OFFLINE TAKEOVER (default OFF; effective only when the Cloud branch setting AND the appliance
-        // allowance are both on). Runs on standby ticks whether or not this beat was acknowledged — a lapse is exactly when it can
-        // matter. It decides through the SAME gates and calls the SAME EdgeAuthorityService::takeOver under the SAME lock as the
-        // status-page button; it never throws into the tick.
-        if ($this->authority->state() === EdgeAuthorityService::STANDBY) {
-            try {
-                $work['auto_takeover'] = app(\App\Services\Edge\AutoTakeover\AutoTakeoverEvaluator::class)->evaluateAndAct();
-            } catch (\Throwable $e) {
-                $work['auto_takeover'] = ['acted' => false, 'error' => $e->getMessage()];
-            }
         }
 
         $after = $this->states->evaluate();
 
         return ['heartbeat' => $hb, 'state' => $after, 'state_before_work' => $before['state'], 'work' => $work];
-    }
-
-    /**
-     * EDGE 0.9 CONTINUITY — the ONE guarded hook of the STANDBY phase: keep the read-only live-state mirror (open shifts, open
-     * tables, held bills) current. Runs only after an acknowledged heartbeat while standby, AFTER the freshness work; rate-limited
-     * and time-boxed inside LiveStateMirror (bounded client timeouts); it never throws, never writes edge_local_meta and never
-     * changes the heartbeat, the lease, authority_state or the connection state — a failure is a string in this tick's report.
-     */
-    private function mirrorLiveState(): string
-    {
-        try {
-            return app(\App\Services\Edge\Continuity\LiveStateMirror::class)->refreshIfDue();
-        } catch (Throwable $e) {
-            return 'error:' . mb_substr($e->getMessage(), 0, 120);
-        }
     }
 
     /**

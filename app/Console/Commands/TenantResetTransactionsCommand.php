@@ -293,11 +293,6 @@ class TenantResetTransactionsCommand extends Command
         'edge_supplier_finance_cash_bank_accounts', 'edge_supplier_finance_ledger_entries',
         'edge_local_purchase_return_events', 'edge_local_purchase_return_lines', 'edge_purchase_return_applied_events',
         'edge_purchase_return_grns', 'edge_purchase_return_grn_lines',
-        // EDGE 0.9 CONTINUITY (stream A): the appliance's read-only mirror of the Cloud's open shifts / table orders / held bills
-        // and the adoption register — Branch Server state, same class and reason as above (never on a cloud tenant; this
-        // command refuses to run on a Branch Server).
-        'edge_mirror_meta', 'edge_mirror_shifts', 'edge_mirror_table_sessions', 'edge_mirror_table_orders',
-        'edge_mirror_order_lines', 'edge_mirror_held_sales', 'edge_mirror_adoptions',
         // EDGE PHASE 4 (offline add-customer): the appliance's customer_uuid → Cloud customer map is customer IDENTITY, kept
         // with the customers it names (a reset wipes transactions, never who the customers are).
         'customer_uuid_aliases',

@@ -70,12 +70,11 @@ escrowed on the Cloud by the installer), `C:\BingooEdge\secrets\enrol.jwt` (enro
 cd <USB>\BingooEdge-0.8.3-edge\scripts
 .\Install-EdgeAppliance.ps1 -PackageRoot <USB>\BingooEdge-0.8.3-edge `
   -DbHost 127.0.0.1 -DbPort 3306 -DbName bingoo_edge_local -DbUser bingoo_edge -DbPasswordFile C:\BingooEdge\secrets\edge.pass `
-  -CloudUrl https://bingoopos.com -PairingCodeFile C:\BingooEdge\secrets\pairing.code -DeviceName KHATRI-BRANCH-SERVER-1 `
+  -CloudUrl https://khatribiryani.bingoopos.com -PairingCodeFile C:\BingooEdge\secrets\pairing.code -DeviceName KHATRI-BRANCH-SERVER-1 `
   -EnrollmentAssertionFile C:\BingooEdge\secrets\enrol.jwt -RecoveryKeyFile C:\BingooEdge\secrets\recovery.key `
   -LanHostname bingoo-edge.local -LanIp 192.168.100.___ -CertPfx C:\BingooEdge\certs\<file>.pfx -CertPfxPasswordFile C:\BingooEdge\secrets\pfx.pass `
   -HttpsPort 8443 -HttpPort 80
 ```
-`-CloudUrl https://bingoopos.com` = **central domain; the pairing code carries the tenant** (the tenant domain `https://khatribiryani.bingoopos.com` answers `PAIR_REFUSED: HTTP 404 The route api/edge/pair could not be found` — found at Khatri 21 Nov 2026; `routes/edge.php` registers the Edge API under the central domain). The cashier/operator URLs stay on the tenant domain.
 The installer: verifies the package signature → lays out InstallRoot/DataRoot → writes `appliance.env` (the only secrets file, restricted ACL)
 → `db-init` → `pair` → `bootstrap-pull` → gateway cert → service plan → registers the Scheduled Tasks under `NT AUTHORITY\LOCAL SERVICE`
 (gateway, web workers, print worker, sync sender, authority worker, hourly backup) → `health`.

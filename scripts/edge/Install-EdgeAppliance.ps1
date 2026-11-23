@@ -18,17 +18,11 @@
 #  13  edge:local:health             the consolidated report; exit 0 only when the appliance is bound
 #
 # Usage (elevated):
-#   .\Install-EdgeAppliance.ps1 -PackageRoot D:\pkg\BingooEdge-0.9.0-edge -CloudUrl https://bingoopos.com `
+#   .\Install-EdgeAppliance.ps1 -PackageRoot D:\pkg\BingooEdge-0.1.0 -CloudUrl https://pos.example.com `
 #       -DbUser bingoo_edge -DbPasswordFile C:\secure\dbpw.txt -PairingCodeFile C:\secure\code.txt `
 #       -EnrollmentAssertionFile C:\secure\assertion.json -EnrollmentCredentialFile C:\secure\cred.txt `
 #       -EnrollmentPublicKey <base64> -UpdatePublicKey <base64> -RecoveryKeyFile C:\secure\recovery.key `
 #       -LanHostname bingoo-edge.local -LanIp 192.168.1.50 -CertPfx C:\secure\server.pfx -CertPfxPasswordFile C:\secure\pfx.txt
-#
-# EDGE 0.9: the setup wizard (scripts\wizard\Start-BingooEdgeWizard.ps1) drives this script with the values from the Cloud
-# setup code (K2) - the operator never types this command. -CloudUrl defaults to the CENTRAL domain (the Edge API lives there;
-# a tenant domain answers 404 api/edge/pair - Khatri 21 Nov 2026). New: -InstallationUuid (the id the setup code was redeemed
-# with), -EnrollmentType pin|password for -EnrollmentAssertionFile, the auto-update maintenance window, the auto-update work
-# dir (<DataRoot>\updates) and the service account's right to stage a signed runtime under <InstallRoot>\runtime.
 param(
     [Parameter(Mandatory = $true)][string]$PackageRoot,
     [string]$InstallRoot = 'C:\Program Files\Bingoo Edge',
@@ -40,13 +34,11 @@ param(
     [string]$DbName = 'bingoo_edge_local',
     [Parameter(Mandatory = $true)][string]$DbUser,
     [string]$DbPasswordFile,
-    [string]$CloudUrl = 'https://bingoopos.com',
-    [string]$InstallationUuid,
+    [string]$CloudUrl,
     [string]$PairingCodeFile,
     [string]$DeviceName,
     [string]$EnrollmentAssertionFile,
     [string]$EnrollmentCredentialFile,
-    [ValidateSet('password', 'pin')][string]$EnrollmentType = 'password',
     [string]$EnrollmentPublicKey,
     [string]$UpdatePublicKey,
     [string]$RecoveryKeyFile,
@@ -67,10 +59,7 @@ param(
     [switch]$AllowHttpCloud,
     [switch]$SkipWarmSync,
     [int]$PairingCodeWaitSeconds = 900,
-    [string]$AppEnv = 'production',
-    [string]$AutoUpdateWindowStart,
-    [string]$AutoUpdateWindowEnd,
-    [string]$AutoUpdateWindowTz
+    [string]$AppEnv = 'production'
 )
 $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -102,31 +91,6 @@ function Invoke-Edge {
     param([string[]]$Arguments)
     & $php $launcher @Arguments | Out-Host
     return $LASTEXITCODE
-}
-# The ONE authority/heartbeat worker. Step 11 starts its task, and step 12's one-off warm ticks run in the same second: when
-# the ticks take the worker slot first, the task's worker exits cleanly ("another authority worker is already RUNNING",
-# exit 0) and Task Scheduler restarts only on FAILURE - the branch had no heartbeat until a reboot (CP5 run 13, fresh
-# install: DEGRADED "Authority/heartbeat worker is not running"). The ticks release the slot when they end, so start ONLY
-# this task again (the backup / sync / updater tasks keep their own schedule) and wait until it stays Running.
-function Start-EdgeAuthorityTask([string]$PlanPath, [int]$WaitSeconds = 30) {
-    $plan = Get-Content -Path $PlanPath -Raw | ConvertFrom-Json
-    $task = @($plan.tasks | Where-Object { [string]$_.artisan_command -eq 'edge:local:authority-worker' -or [string]$_.arguments -match 'edge:local:authority-worker' }) | Select-Object -First 1
-    if (-not $task) { Write-Warning 'the service plan has no authority-worker task'; return }
-    $name = [string]$task.name
-    $st = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-    if (-not $st) { Write-Warning "the authority task $name is not registered"; return }
-    if ($st.State -ne 'Running') {
-        Start-ScheduledTask -TaskName $name
-        Write-Host "  authority task $name started again (the warm-sync ticks held the one worker slot)"
-    }
-    $deadline = (Get-Date).AddSeconds($WaitSeconds)
-    $seen = 0
-    while ((Get-Date) -lt $deadline) {
-        Start-Sleep -Seconds 3
-        if ((Get-ScheduledTask -TaskName $name).State -eq 'Running') { $seen++ } else { $seen = 0 }
-        if ($seen -ge 2) { Write-Host "  authority task ${name}: Running"; return }   # still running 3 s later: not a refused duplicate
-    }
-    Write-Warning "the authority task $name is not Running after $WaitSeconds s - edge:local:health will report it"
 }
 function Copy-Tree($src, $dst) {
     New-Item -ItemType Directory -Path $dst -Force | Out-Null
@@ -173,32 +137,12 @@ if ($manifest.build_mode -ne 'release') { Write-Warning 'This is a DEV package (
 # ---- 2. install root -------------------------------------------------------------------------------------------
 Step 2 "Laying out install root $InstallRoot"
 New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
-$bundledPhp = $false
 if (-not $PhpPath) {
-    if (Test-Path (Join-Path $PackageRoot 'php\php.exe')) { Copy-Tree (Join-Path $PackageRoot 'php') (Join-Path $InstallRoot 'php'); $PhpPath = Join-Path $InstallRoot 'php\php.exe'; $bundledPhp = $true }
+    if (Test-Path (Join-Path $PackageRoot 'php\php.exe')) { Copy-Tree (Join-Path $PackageRoot 'php') (Join-Path $InstallRoot 'php'); $PhpPath = Join-Path $InstallRoot 'php\php.exe' }
     else { Fail 'the package bundles no PHP runtime - pass -PhpPath' }
 }
 if (-not (Test-Path $PhpPath)) { Fail "PHP not found at $PhpPath" }
 $php = $PhpPath
-# EDGE 0.9 / stream E contract: the packaged php.ini carries the placeholder __BINGOO_PHP_DIR__ (curl.cainfo / openssl.cafile ->
-# cacert.txt). Rewrite it in the INSTALLED copy only (never the package folder, which is verified against the manifest), BEFORE the
-# first php.exe call. A package that ships Set-EdgePhpIniPaths.ps1 does it (non-zero exit = install fails); an older package without
-# the helper gets the same literal substitution inline. An external -PhpPath (lab) is never touched.
-if ($bundledPhp) {
-    $phpDir = Join-Path $InstallRoot 'php'
-    $helper = Join-Path $PackageRoot 'app\scripts\edge\appliance\Set-EdgePhpIniPaths.ps1'
-    if (Test-Path $helper) {
-        $global:LASTEXITCODE = 0
-        try { & $helper -PhpDir $phpDir | Out-Host } catch { Fail "Set-EdgePhpIniPaths.ps1 failed: $($_.Exception.Message)" }
-        if ($LASTEXITCODE -ne 0) { Fail "Set-EdgePhpIniPaths.ps1 exited $LASTEXITCODE" }
-    } else {
-        $phpIni = Join-Path $phpDir 'php.ini'
-        if ((Test-Path $phpIni) -and ((Get-Content -Path $phpIni -Raw) -match '__BINGOO_PHP_DIR__')) {
-            Write-Utf8NoBom $phpIni ((Get-Content -Path $phpIni -Raw).Replace('__BINGOO_PHP_DIR__', $phpDir))
-            Write-Host "  php.ini paths set to $phpDir"
-        }
-    }
-}
 $phpVersion = (& $php -r 'echo PHP_VERSION;')
 if ([version]($phpVersion -replace '[^0-9.].*$', '') -lt [version]$manifest.min_php) { Fail "PHP $phpVersion is below the required $($manifest.min_php)" }
 $mods = (& $php -m) -join ' '
@@ -229,19 +173,16 @@ $launcher = Join-Path $InstallRoot 'artisan'
 
 # ---- 3. data root ----------------------------------------------------------------------------------------------
 Step 3 "Laying out data root $DataRoot"
-foreach ($d in @('config', 'certs', 'logs', 'backups', 'gateway', 'updates')) { New-Item -ItemType Directory -Path (Join-Path $DataRoot $d) -Force | Out-Null }
+foreach ($d in @('config', 'certs', 'logs', 'backups', 'gateway')) { New-Item -ItemType Directory -Path (Join-Path $DataRoot $d) -Force | Out-Null }
 $envFile = Join-Path $DataRoot 'config\appliance.env'
 if (Test-Path $envFile) { Fail "an appliance configuration already exists at $envFile - this box is already installed (use Update-EdgeAppliance.ps1)" }
 if (Test-IsAdmin) {
     $acct = if ($CurrentUserServices) { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name } else { $ServiceAccount }
     & icacls (Join-Path $DataRoot 'config') /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "$($acct):(OI)(CI)RX" | Out-Null
     & icacls (Join-Path $DataRoot 'certs')  /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "$($acct):(OI)(CI)RX" | Out-Null
-    foreach ($d in @('logs', 'backups', 'gateway', 'updates')) { & icacls (Join-Path $DataRoot $d) /grant "$($acct):(OI)(CI)M" | Out-Null }
-    # EDGE 0.9 auto-update: the updater task (same account) stages a VERIFIED signed runtime into runtime\versions and switches
-    # runtime\current. appliance.json, php\, gateway\ and scripts\ stay admin-only.
-    & icacls $runtimeRoot /grant "$($acct):(OI)(CI)M" | Out-Null
+    foreach ($d in @('logs', 'backups', 'gateway')) { & icacls (Join-Path $DataRoot $d) /grant "$($acct):(OI)(CI)M" | Out-Null }
     foreach ($d in @('bootstrap\cache', 'storage')) { & icacls (Join-Path $versionDir $d) /grant "$($acct):(OI)(CI)M" | Out-Null }
-    Write-Host "  ACLs restricted (config/certs: SYSTEM + Administrators full, $acct read; logs/backups/updates/storage/runtime: $acct modify)"
+    Write-Host "  ACLs restricted (config/certs: SYSTEM + Administrators full, $acct read; logs/backups/storage: $acct modify)"
 } else {
     Write-Warning 'Not elevated: ACLs were NOT restricted. Apply the config/certs ACLs (SYSTEM + Administrators full, service account read) before go-live.'
 }
@@ -281,13 +222,6 @@ $values = @{
     'EDGE_LAN_HOSTNAME' = $LanHostname
     'EDGE_LAN_IP' = $LanIp
 }
-if ($InstallationUuid) {
-    if ($InstallationUuid -notmatch '^[0-9a-fA-F-]{36}$') { Fail 'InstallationUuid must be a UUID' }
-    $values['EDGE_INSTALLATION_UUID'] = $InstallationUuid.ToLower()
-}
-if ($AutoUpdateWindowStart) { $values['EDGE_AUTO_UPDATE_WINDOW_START'] = $AutoUpdateWindowStart }
-if ($AutoUpdateWindowEnd) { $values['EDGE_AUTO_UPDATE_WINDOW_END'] = $AutoUpdateWindowEnd }
-if ($AutoUpdateWindowTz) { $values['EDGE_AUTO_UPDATE_WINDOW_TZ'] = $AutoUpdateWindowTz }
 if ($AllowHttpCloud) { $values['EDGE_CLOUD_ALLOW_HTTP'] = 'true' }
 $lines = $template -split "`r?`n"
 $out = New-Object System.Collections.Generic.List[string]
@@ -341,7 +275,7 @@ if ($PairingCodeFile -and $CloudUrl) {
 # ---- 8. first local user ---------------------------------------------------------------------------------------
 if ($EnrollmentAssertionFile) {
     Step 8 'edge:local:enroll (first local user)'
-    $enrollArgs = @('edge:local:enroll', $EnrollmentAssertionFile, "--type=$EnrollmentType", '--no-interaction')
+    $enrollArgs = @('edge:local:enroll', $EnrollmentAssertionFile, '--no-interaction')
     if ($EnrollmentCredentialFile) { $enrollArgs += "--credential-file=$EnrollmentCredentialFile" }
     if ((Invoke-Edge $enrollArgs) -ne 0) { Fail 'enrollment failed' }
 } else { Step 8 'edge:local:enroll skipped (no assertion) - enroll users from the Cloud Offline Edge page' }
@@ -389,7 +323,6 @@ if (-not $SkipWarmSync -and $PairingCodeFile -and $CloudUrl) {
     Step 12 'warm standby sync (two authority ticks)'
     Invoke-Edge @('edge:local:authority-worker', '--max-ticks=2', '--interval=5', '--no-interaction') | Out-Null
 } else { Step 12 'warm sync skipped' }
-if (-not $NoServices) { Start-EdgeAuthorityTask $planFile }   # after the one-off ticks: the task's worker must be the one running
 
 # ---- 13. health -------------------------------------------------------------------------------------------------
 Step 13 'edge:local:health'

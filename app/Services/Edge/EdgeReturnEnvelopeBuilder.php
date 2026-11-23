@@ -83,13 +83,13 @@ class EdgeReturnEnvelopeBuilder
             // v2: no `shift_id` here — a numeric local shift id must never cross systems (REFUND-SHIFT-H1).
             'actor' => ['user_id' => (int) $actor['user_id'], 'employee_code' => $actor['employee_code'] ?? null, 'terminal_id' => $actor['terminal_id'] ?? null],
             // v2: the shift that PAID the refund, by stable identity only (the Cloud resolves `shift_uuid`; the rest are facts).
-            'processing_shift' => $processingShift ? array_merge([
+            'processing_shift' => $processingShift ? [
                 'shift_uuid' => (string) $processingShift->shift_uuid,
                 'terminal_id' => (int) $processingShift->terminal_id,
                 'business_date' => $processingShift->business_date ? \Illuminate\Support\Carbon::parse($processingShift->business_date)->toDateString() : null,
                 'opened_at' => optional($processingShift->opened_at)->toIso8601String(),
                 'opened_by_user_id' => (int) $processingShift->opened_by_user_id,
-            ], self::continuation($processingShift)) : null,
+            ] : null,
             'freshness' => [
                 'returnable_cache_watermark' => $freshness['watermark'] ?? null,
                 'returnable_cache_as_of' => $freshness['as_of'] ?? null,
@@ -99,21 +99,6 @@ class EdgeReturnEnvelopeBuilder
         $envelope['content_hash'] = hash('sha256', EdgeCanonicalJson::encode($envelope));
 
         return $envelope;
-    }
-
-    /**
-     * EDGE 0.9 CONTINUITY (CP3 gap 3) — a refund paid from a CONTINUED shift (the Edge shift adopted from an online shift after a
-     * supervised Switch to Offline) also names the ORIGINAL Cloud shift, so the Cloud counts the refund in that shift's drawer
-     * (one shift, one report per counter). Additive optional key of the same v2 envelope, present ONLY for such a shift: every
-     * other return keeps its exact pre-0.9 bytes, and a Cloud that does not know the key ignores it (today's attribution).
-     *
-     * @return array{continues_cloud_shift_uuid?: string}
-     */
-    private static function continuation(Shift $processingShift): array
-    {
-        $uuid = $processingShift->getAttribute('continues_cloud_shift_uuid');
-
-        return $uuid ? ['continues_cloud_shift_uuid' => (string) $uuid] : [];
     }
 
     public function canonicalEnvelopeJson(array $envelope): string

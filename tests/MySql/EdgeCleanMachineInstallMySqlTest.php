@@ -330,8 +330,7 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $this->assertFileExists($this->dataRoot . '\\gateway\\nginx.conf');
         $this->assertFileExists($this->dataRoot . '\\gateway\\service-plan.json');
         $plan = json_decode((string) file_get_contents($this->dataRoot . '\\gateway\\service-plan.json'), true);
-        // EDGE 0.9 (stream B): the signed auto-updater is the sixth supervised task (EdgeSupervisionPlan::UPDATER_TASK, same LOCAL SERVICE principal).
-        $this->assertSame(['BingooEdgeWeb1', 'BingooEdgePrintWorker', 'BingooEdgeSyncSender', 'BingooEdgeAuthorityWorker', 'BingooEdgeBackup', 'BingooEdgeUpdater'], array_column($plan['tasks'], 'name'));
+        $this->assertSame(['BingooEdgeWeb1', 'BingooEdgePrintWorker', 'BingooEdgeSyncSender', 'BingooEdgeAuthorityWorker', 'BingooEdgeBackup'], array_column($plan['tasks'], 'name'));
         $this->assertSame('BingooEdgeGateway', $plan['gateway']['name']);
         foreach ($plan['tasks'] as $t) {
             $this->assertSame('NT AUTHORITY\\LOCAL SERVICE', $t['principal']);

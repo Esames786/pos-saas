@@ -202,13 +202,12 @@ class EdgeLocalShiftController extends Controller
             'denominations' => ['nullable', 'array'],
             'denominations.*' => ['nullable', 'integer', 'min:0'],
         ]);
-        $segment = null;
         try {
-            $closed = $this->closeWithCount($open, $data, $request->filled('counted_cash'), $countSource, $segment);
+            $closed = $this->closeWithCount($open, $data, $request->filled('counted_cash'));
         } catch (ShiftException $e) {
             return back()->withErrors(['shift' => $e->getMessage()])->withInput();
         }
-        $message = $segment ? (string) $segment['message'] : 'Shift closed successfully.';
+        $message = 'Shift closed successfully.';
         $short = -(float) $closed->cash_variance;
         if ($short > 0.009 && $this->maySeeAmounts($branch)) {
             $message .= ' Cash short by ' . number_format($short, 2) . ' — recorded on this shift (finance settles it from the shift record).';
@@ -285,13 +284,11 @@ class EdgeLocalShiftController extends Controller
     }
 
     /** The count lines + the shared close as ONE transaction (the rule both the JSON close and the page close use). */
-    private function closeWithCount(Shift $open, array $data, bool $typedCount, ?string &$source = null, ?array &$segment = null): Shift
+    private function closeWithCount(Shift $open, array $data, bool $typedCount, ?string &$source = null): Shift
     {
         $source = 'manual';
 
-        return DB::connection('tenant')->transaction(function () use ($data, $open, $typedCount, &$source, &$segment) {
-            // CP3 gap 1: inside the close transaction — a refused close (e.g. no count for a drawer holding cash) rolls the release back.
-            $segment = $this->releaseContinuationDrafts($open);
+        return DB::connection('tenant')->transaction(function () use ($data, $open, $typedCount, &$source) {
             $counted = $this->recordDenominationCount((array) ($data['denominations'] ?? []), (int) $open->id);
             if ($counted !== null) {
                 $source = 'denominations';
@@ -308,17 +305,6 @@ class EdgeLocalShiftController extends Controller
     private function branch(): Branch
     {
         return Branch::on('tenant')->findOrFail((int) $this->context->requireCurrent()->branch_id);
-    }
-
-    /** EDGE 0.9 CONTINUITY: the cashier-facing reason when this segment's adoption was refused (stale / untrusted / nothing mirrored). */
-    private function continuityRefusal(\App\Services\Edge\Continuity\ContinuityAdoptionService $continuity): ?array
-    {
-        $verdict = $continuity->verdict();
-        if (! $verdict || $verdict['status'] === \App\Services\Edge\Continuity\ContinuityAdoptionService::STATUS_ADOPTED || ! $verdict['reason']) {
-            return null;
-        }
-
-        return ['status' => $verdict['status'], 'banner' => (string) $verdict['reason']];
     }
 
     private function maySeeAmounts(?Branch $branch = null): bool
@@ -350,11 +336,6 @@ class EdgeLocalShiftController extends Controller
         if ($terminal instanceof JsonResponse) {
             return $terminal;
         }
-        // EDGE 0.9 CONTINUITY: the first touch after a supervised Switch to Offline adopts the mirrored live state (the counter's
-        // online shift continues here, no shift to open by hand) — best-effort, never breaks this badge; stale / untrusted
-        // mirrored state is refused and the reason rides the `continuity` block.
-        $continuity = app(\App\Services\Edge\Continuity\ContinuityAdoptionService::class);
-        $continuity->ensureAdoptedQuietly(auth('tenant')->user(), (int) $terminal->id);
         $open = Shift::on('tenant')->where('terminal_id', $terminal->id)->where('status', 'open')->latest('id')->first();
         // HIDE-AMOUNTS parity (W0b, audit R1.1/R1.4): the SAME AmountVisibility rule as the shift summary — figures are
         // STRIPPED for an operator the branch hides them from, never merely hidden in the page.
@@ -363,10 +344,6 @@ class EdgeLocalShiftController extends Controller
         $clock = app(TenantClock::class);
 
         return response()->json([
-            // EDGE 0.9 CONTINUITY (additive; the Cloud badge never carries it): open continuation → {banner: "Continuing online
-            // shift (mirrored HH:MM:SS)", cloud_shift_uuid, mirrored_at…}; no open shift after a refused adoption → {status,
-            // banner: the reason}; otherwise null. The shared page shows `banner` verbatim — identical markup on both runtimes.
-            'continuity' => $open ? $continuity->continuityFor($open) : $this->continuityRefusal($continuity),
             'terminal_id' => $terminal->id,
             'terminal_name' => $terminal->name,
             'has_terminal' => true,
@@ -566,12 +543,9 @@ class EdgeLocalShiftController extends Controller
         if (! $open) {
             return response()->json(['message' => 'No open shift on this terminal.'], 422);
         }
-        $segment = null;
         $source = 'manual';
         try {
-            $closed = DB::connection('tenant')->transaction(function () use ($data, $request, $open, &$source, &$segment) {
-                // CP3 gap 1: inside the close transaction — a refused close rolls the release of untouched drafts back.
-                $segment = $this->releaseContinuationDrafts($open);
+            $closed = DB::connection('tenant')->transaction(function () use ($data, $request, $open, &$source) {
                 $counted = $this->recordDenominationCount((array) ($data['denominations'] ?? []), (int) $open->id);
                 if ($counted !== null) {
                     $source = 'denominations';
@@ -611,39 +585,7 @@ class EdgeLocalShiftController extends Controller
                     : null,
             ],
             'detail_url' => url('/edge/local/pos/shifts/' . $closed->id),
-        ] + ($segment ? ['continuity' => $segment] : []));
-    }
-
-    /**
-     * EDGE 0.9 CONTINUITY (CP3 gap 1) — closing a CONTINUED shift with the drawer count closes the OFFLINE SEGMENT of the
-     * counter's online shift. The adopted drafts this counter never touched (Cloud orders adopted at the takeover: no payment,
-     * no appliance KOT, lines as mirrored) are released first: they never became Edge facts and would otherwise hold the close
-     * as unresolved work; anything touched still blocks exactly as before (shared ShiftService rule). The close itself, the
-     * count and the variance are the unchanged shared close; nothing is sent to the Cloud (the online shift continues after
-     * Return to Online and is closed there: one shift, one report). Null for an ordinary shift.
-     *
-     * @return array{segment_closed:bool, cloud_shift_uuid:string, released_untouched:int, message:string}|null
-     */
-    private function releaseContinuationDrafts(Shift $open): ?array
-    {
-        $cloudShift = $open->getAttribute('continues_cloud_shift_uuid');
-        if (! $cloudShift) {
-            return null;
-        }
-        $released = 0;
-        try {
-            $released = (int) app(\App\Services\Edge\Continuity\ContinuityAdoptionService::class)->releaseUntouched((int) $open->id)['released_orders'];
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('[edge-continuity] release before closing a continued shift failed', ['shift_id' => $open->id, 'error' => mb_substr($e->getMessage(), 0, 200)]);
-        }
-
-        return [
-            'segment_closed' => true,
-            'cloud_shift_uuid' => (string) $cloudShift,
-            'released_untouched' => $released,
-            'message' => 'Offline segment closed with the drawer count. The online shift stays open: after Return to Online this counter continues it on the Online POS and closes it there (one shift, one report).'
-                . ($released > 0 ? " {$released} untouched online order(s) were handed back to the Online POS." : ''),
-        ];
+        ]);
     }
 
     // ── Edge-local shift screens (Online /shifts and /shifts/{shift}) ─────────────────────────────────────────────

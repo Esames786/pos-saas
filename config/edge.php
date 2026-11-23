@@ -64,10 +64,6 @@ return [
         'handback_min_consecutive_acks' => (int) env('EDGE_AUTHORITY_HANDBACK_MIN_ACKS', 2),
         // Q — how many outbox envelopes one worker tick may drain while local (bounded work per tick).
         'drain_batch'             => (int) env('EDGE_AUTHORITY_DRAIN_BATCH', 25),
-        // EDGE 0.9 (lead decisions 21 Nov 2026 §2) — the appliance KILL SWITCH for the optional Automatic Offline Takeover.
-        // Effective only when the Cloud branch setting is ALSO on (AutoTakeoverEvaluator). Default false in every 0.9 package:
-        // enabling it at a real site needs the owner's GO twice (Cloud setting + this env).
-        'auto_takeover_allowed'   => filter_var(env('EDGE_AUTO_TAKEOVER_ALLOWED', false), FILTER_VALIDATE_BOOL),
     ],
 
     /*
@@ -161,62 +157,6 @@ return [
         'signing_key'  => env('EDGE_UPDATE_SIGNING_KEY'),  // Cloud/build ONLY: sign (base64 Ed25519 secret)
         'install_root' => env('EDGE_UPDATE_INSTALL_ROOT'), // versioned runtime dirs + the atomic `current` pointer
         'allow_downgrade' => (bool) env('EDGE_UPDATE_ALLOW_DOWNGRADE', false),
-    ],
-
-    /*
-    | EDGE 0.9 (stream B) — AUTO-UPDATE of an installed appliance from the Cloud (contract K6) + the device reports the setup
-    | wizard and the updater send (K3 bulk enrollment, K4 status, K5 LAN profile). The BingooEdgeUpdater task runs
-    | `edge:local:auto-update` every check_interval_minutes: check K6 → download over HTTPS (TLS verified, never disabled) →
-    | verify (manifest sha256, package hash, every file, boundary audit, Ed25519 signature with edge.update.public_key, signing
-    | key id) → stage under work_dir → APPLY ONLY when authority = standby AND outbox pending/in-flight = 0 AND (inside the
-    | maintenance window OR "Update now" was requested) → health → rollback (runtime pointer when the plan had no schema
-    | change; the full pre-update DB snapshot otherwise) → K4 status. Never in Local Mode, never with unsynced events.
-    | No secret lives here (device credentials stay in edge.sync.*).
-    */
-    /*
-    | EDGE 0.9 (stream B, lead decisions 21 Nov 2026 §5) — the OPTIONAL appliance endpoint POST /edge/local/enroll through which
-    | a counter wizard sets the logged-in cashier's OWN Edge PIN with a Cloud-signed assertion (EdgeEnrollmentConsumer: signature,
-    | expiry, replay, binding, PIN strength). Off by default; LAN + TLS only; 5/min/IP; the PIN is never logged.
-    */
-    'local_enroll_endpoint' => [
-        'enabled' => filter_var(env('EDGE_LOCAL_ENROLL_ENDPOINT_ENABLED', false), FILTER_VALIDATE_BOOL),
-    ],
-
-    // EDGE 0.9 CONTINUITY (stream A) — read-only live-state mirror pulled in the standby phase; adoption refuses a mirror older
-    // than max_mirror_age_seconds measured from the last acknowledged heartbeat (stale fails closed → normal open-shift flow).
-    // live_state_url: when empty it is derived from EDGE_STANDBY_CONFIG_REFRESH_URL (…/config/refresh → …/live-state).
-    'continuity' => [
-        'live_state_url'          => env('EDGE_CONTINUITY_LIVE_STATE_URL'),
-        'poll_seconds'            => (int) env('EDGE_CONTINUITY_POLL_SECONDS', 30),
-        'max_mirror_age_seconds'  => (int) env('EDGE_CONTINUITY_MAX_MIRROR_AGE', 120),
-        'connect_timeout'         => 5,
-        'timeout'                 => 15,
-    ],
-
-    'auto_update' => [
-        'enabled'                => filter_var(env('EDGE_AUTO_UPDATE_ENABLED', true), FILTER_VALIDATE_BOOL),
-        // The central Cloud base URL (written by edge:local:pair) — every endpoint below defaults to it + the contract path.
-        'cloud_base_url'         => env('EDGE_CLOUD_BASE_URL'),
-        'latest_url'             => env('EDGE_AUTO_UPDATE_LATEST_URL'),            // K6 GET  /api/edge/updates/latest
-        'status_url'             => env('EDGE_DEVICE_STATUS_URL'),                 // K4 POST /api/edge/device/status
-        'lan_profile_url'        => env('EDGE_DEVICE_LAN_PROFILE_URL'),            // K5 POST /api/edge/device/lan-profile
-        'enrollment_assertions_url' => env('EDGE_SETUP_ENROLLMENT_ASSERTIONS_URL'), // K3 POST /api/edge/setup/enrollment-assertions
-        'check_interval_minutes' => max(5, (int) env('EDGE_AUTO_UPDATE_CHECK_MINUTES', 15)),
-        // The owner-set maintenance window (HH:MM, may wrap midnight); a K6 response carrying maintenance_window overrides it.
-        'window_start'           => env('EDGE_AUTO_UPDATE_WINDOW_START', '03:00'),
-        'window_end'             => env('EDGE_AUTO_UPDATE_WINDOW_END', '05:00'),
-        'window_tz'              => env('EDGE_AUTO_UPDATE_WINDOW_TZ'),             // null = the appliance timezone
-        // Downloads, staged packages, DB snapshots, the state file and the "Update now" request (default <data_root>/updates).
-        'work_dir'               => env('EDGE_AUTO_UPDATE_DIR'),
-        'max_download_bytes'     => (int) env('EDGE_AUTO_UPDATE_MAX_BYTES', 2147483647),
-        'download_timeout'       => (int) env('EDGE_AUTO_UPDATE_DOWNLOAD_TIMEOUT', 1800),
-        'keep_staged'            => max(1, (int) env('EDGE_AUTO_UPDATE_KEEP_STAGED', 2)),
-        'health_wait_seconds'    => max(10, (int) env('EDGE_AUTO_UPDATE_HEALTH_WAIT', 150)),
-        // How the updater restarts the supervised tasks around the switch: 'tasks' (Register-EdgeServices.ps1 Stop/Start with
-        // -Exclude BingooEdgeUpdater -KeepEnabled, from the runtime being started) on an appliance; 'none' on a dev tree / tests.
-        'service_control'        => env('EDGE_AUTO_UPDATE_SERVICE_CONTROL', 'tasks'),
-        // An "Update now" request (status page / Cloud flag) stays valid this long; afterwards the window rule applies again.
-        'update_now_ttl_minutes' => max(15, (int) env('EDGE_AUTO_UPDATE_NOW_TTL', 240)),
     ],
 
     'backup' => [
@@ -350,9 +290,6 @@ return [
         // KHATRI OWNER CONTROL (21 Nov 2026): Switch to Offline / Return to Online on the health page (EdgeLocalAuthorityControlController).
         'edge.local.pos.authority.switch-offline',
         'edge.local.pos.authority.return-online',
-        // EDGE 0.9 (21 Nov 2026): status-page "Update now" (stream B) and the counter self-enrolment endpoint (stream B / D).
-        'edge.local.pos.updates.update-now',
-        'edge.local.enroll',
         // ── W1 (Team 1, parity directive 20 Sep 2026) — shell (each name deliberate; mirrors routes/edge_runtime.php W1) ──
         'edge.local.assets',   // whitelisted public/assets streamer (EdgeLocalAssetController; unauthenticated, no session)
         'edge.local.storage',  // W-C: whitelisted storage/app/public image streamer (EdgeLocalAssetController::storage; images only, no session)
@@ -449,11 +386,6 @@ return [
         // 0.8.3 SERVICE RELIABILITY (read-only / wait-only operator commands).
         'edge:local:wait-db',        // bounded, classified wait for the Edge-local database (task command lines, updater, reboot drill)
         'edge:local:worker-status',  // singleton worker slots + recorded process identity (+ OS liveness with --probe)
-        // EDGE 0.9 (stream B) — setup wizard + auto-update (read-only lists, device reports, the gated signed updater).
-        'edge:local:users',              // wizard: local users (id, name, employee code, roles, enrolled) + K3 bulk assertions to temp files
-        'edge:local:report-status',      // wizard/updater: K4 device status phase to the Cloud (non-secret)
-        'edge:local:report-lan-profile', // wizard: K5 LAN profile (hostname, IP, port, PUBLIC CA certificate) to the Cloud
-        'edge:local:auto-update',        // BingooEdgeUpdater: check K6 → verify → stage → apply ONLY in standby / outbox 0 / window or Update now
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',
@@ -568,16 +500,6 @@ return [
             'app/Models/Master/EdgeBackupRecoveryAudit.php',
             'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
             'resources/views/tenant/finance/manual-journals',
-            // EDGE 0.9 (21 Nov 2026) — Cloud-only setup/release/live-state/device-status authority (stream C) and the
-            // Cloud-rendered counter-setup templates (stream D) never ship on the appliance.
-            'app/Services/Edge/Cloud',
-            'app/Http/Controllers/Edge/EdgeSetupApiController.php',
-            'app/Http/Controllers/Edge/EdgeDeviceStatusApiController.php',
-            'app/Http/Controllers/Edge/EdgeUpdatesApiController.php',
-            'app/Http/Controllers/Edge/EdgeLiveStateApiController.php',
-            'app/Console/Commands/EdgeReleasePublishCommand.php',
-            'app/Console/Commands/EdgeReleaseApprovePlanCommand.php',
-            'resources/edge/counter-setup',
             // CANONICAL REHEARSAL Phase E (30 Oct 2026, C-7): VOID-PURGE-1/2/3 - the Owner's permanent deletion of a voided
             // finance entry is a Cloud back-office feature (Master switch void_purge; routes only in the Cloud tenant group;
             // VoidPurgeService imports the EXCLUDED CateringAdvance / CateringEvent / SupplierPayment models). No Edge runtime

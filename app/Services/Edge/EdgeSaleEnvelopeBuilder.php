@@ -58,15 +58,6 @@ class EdgeSaleEnvelopeBuilder
      */
     public const SCHEMA_VERSION_V3 = 'edge-sale-envelope-v3';
 
-    /**
-     * EDGE 0.9 CONTINUITY (stream A) — emitted ONLY for a sale that continues the Cloud's live state: its Edge shift continues
-     * an online shift (`shift.continues_cloud_shift_uuid`) and/or the sale IS an adopted Cloud open order (`adoption`, same
-     * sale_uuid). v4 ⊇ v3 (modifier stock + new_customer exactly as v3). The Cloud merges a v4 sale into the ORIGINAL shift /
-     * completes the EXISTING order; an older Cloud answers SCHEMA_UNSUPPORTED (bounded-backoff retry on the appliance) and can
-     * therefore never project a duplicate order. v1 / v2 / v3 byte shapes are unchanged for every other sale.
-     */
-    public const SCHEMA_VERSION_V4 = 'edge-sale-envelope-v4';
-
     public const CUSTOMER_KIND_WALK_IN = 'walk_in';
     public const CUSTOMER_KIND_CUSTOMER = 'customer';
     public const CUSTOMER_KIND_NEW = 'new_customer';
@@ -104,12 +95,6 @@ class EdgeSaleEnvelopeBuilder
         $schema = ($customer['kind'] ?? '') === self::CUSTOMER_KIND_NEW
             ? self::SCHEMA_VERSION_V3
             : ($this->consumesModifierStock($sale) ? self::SCHEMA_VERSION_V2 : self::SCHEMA_VERSION);
-        // EDGE 0.9 CONTINUITY: a continuation shift and/or an adopted Cloud order ⇒ v4 (⊇ v3).
-        $continuesCloudShift = $shift->getAttribute('continues_cloud_shift_uuid');
-        $adoptedFrom = $sale->getAttribute('adopted_from_order_uuid');
-        if ($continuesCloudShift || $adoptedFrom) {
-            $schema = self::SCHEMA_VERSION_V4;
-        }
 
         $envelope = [
             'envelope_schema_version' => $schema,
@@ -237,25 +222,6 @@ class EdgeSaleEnvelopeBuilder
         $notes = $sale->notes !== null ? trim((string) $sale->notes) : '';
         if ($notes !== '') {
             $envelope['notes'] = mb_substr($notes, 0, 1000);
-        }
-
-        // EDGE 0.9 CONTINUITY (v4 only): the ORIGINAL Cloud shift this Edge shift continues, and the Cloud order this sale IS.
-        // The Cloud attaches the sale to that shift (one shift per counter) and completes that order (never a second one); the
-        // fingerprint proves the Cloud order is still what the cashier adopted — any later change is refused, never guessed.
-        if ($continuesCloudShift) {
-            $envelope['shift']['continues_cloud_shift_uuid'] = (string) $continuesCloudShift;
-        }
-        if ($adoptedFrom) {
-            if ((string) $adoptedFrom !== (string) $sale->sale_uuid) {
-                throw new RuntimeException('ENVELOPE_UNSUPPORTED: an adopted order must keep the Cloud order identity (sale_uuid).');
-            }
-            $envelope['adoption'] = [
-                'adopted_from_order_uuid' => (string) $adoptedFrom,
-                'mirror_revision' => (string) $sale->getAttribute('adopted_mirror_revision'),
-                'mirrored_at' => $sale->getAttribute('adopted_mirrored_at') ? \Illuminate\Support\Carbon::parse($sale->getAttribute('adopted_mirrored_at'))->toIso8601String() : null,
-                'cloud_fingerprint' => (string) $sale->getAttribute('adopted_cloud_fingerprint'),
-                'table_session_uuid' => $session?->getAttribute('adopted_from_session_uuid') ? (string) $session->session_uuid : null,
-            ];
         }
 
         $this->assertNoSecretFields($envelope);
