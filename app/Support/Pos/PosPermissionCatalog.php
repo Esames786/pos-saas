@@ -100,6 +100,56 @@ final class PosPermissionCatalog
             'edge' => 'app/Http/Controllers/Edge/EdgeLocalAuthorityControlController.php — POST /edge/local/pos/authority/switch-offline|return-online (buttons on /edge/local/pos/health)',
             'online' => 'GET /settings/offline-edge/security — OfflineEdgeController@security (BRANCH-DEVICE-PAIRING-1 HARDEN-1)',
         ],
+        // EDGE 0.9 (stream C) — Cloud-only Offline Edge setup / auto-update / counter onboarding actions. Route-named (granted to
+        // the Owner by the route-catalog sync on deploy); NOT checked on a Branch Server — catalogued so the manager group
+        // lists every Offline Edge control. The setup code additionally requires tenant.offline-edge.security in-controller.
+        'tenant.offline-edge.setup-code.generate' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (the Branch Server setup wizard redeems the code at POST /api/edge/setup/redeem)',
+            'online' => 'POST /settings/offline-edge/branches/{branch}/setup-code — OfflineEdgeController@generateSetupCode (+ tenant.offline-edge.security)',
+        ],
+        // EDGE 0.9 (owner, 21 Nov 2026) — self-service "Install Offline Counter" (Online POS entry): a cashier or manager downloads the
+        // counter setup for their OWN branch, optionally with an enrollment assertion for THEMSELVES only.
+        'tenant.offline-edge.counter-install' => [
+            'groups' => ['cashier', 'manager'],
+            'edge' => 'none — Cloud-only (the Online POS entry is the route key offlineCounterInstall; the Edge runtime sets it null)',
+            'online' => 'GET /pos/offline-counter — OfflineEdgeController@counterInstall (+ in-controller gate on GET /pos/offline-counter/setup and POST /pos/offline-counter/my-enrollment)',
+        ],
+        'tenant.offline-edge.auto-takeover' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (the appliance receives the setting as restrictions[0].auto_takeover in the config refresh)',
+            'online' => 'POST /settings/offline-edge/branches/{branch}/auto-takeover — OfflineEdgeController@autoTakeover (+ tenant.offline-edge.security)',
+        ],
+        'tenant.offline-edge.setup-code.cancel' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only security control',
+            'online' => 'POST /settings/offline-edge/branches/{branch}/setup-code/cancel — OfflineEdgeController@cancelSetupCode',
+        ],
+        'tenant.offline-edge.devices.update-now' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (the appliance reads the flag from GET /api/edge/updates/latest)',
+            'online' => 'POST /settings/offline-edge/devices/{edgeDevice}/update-now — OfflineEdgeController@updateNow',
+        ],
+        'tenant.offline-edge.devices.maintenance-window' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (the appliance reads the window from GET /api/edge/updates/latest)',
+            'online' => 'POST /settings/offline-edge/devices/{edgeDevice}/maintenance-window — OfflineEdgeController@maintenanceWindow',
+        ],
+        'tenant.offline-edge.counter-setup' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (downloads the per-branch counter setup script)',
+            'online' => 'GET /settings/offline-edge/branches/{branch}/counter-setup — OfflineEdgeController@counterSetup',
+        ],
+        'tenant.offline-edge.phone' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (phone onboarding page with QR codes)',
+            'online' => 'GET /settings/offline-edge/branches/{branch}/phone — OfflineEdgeController@phone',
+        ],
+        'tenant.offline-edge.branch.ca' => [
+            'groups' => ['manager'],
+            'edge' => 'none — Cloud-only (the branch CA certificate download)',
+            'online' => 'GET /settings/offline-edge/branches/{branch}/ca.crt — OfflineEdgeController@caCertificate',
+        ],
         'tenant.sales-orders.split-bill' => [
             'groups' => ['cashier'],
             'edge' => 'shared POS view resources/views/tenant/pos/partials/table-board.blade.php @can (Split Bill button) — rendered on Edge from W-B',
@@ -285,6 +335,11 @@ final class PosPermissionCatalog
      * @var array<string, array{since: string, decision: string, note: string}>
      */
     public const CASHIER_TEMPLATE_ADDITIONS = [
+        'tenant.offline-edge.counter-install' => [
+            'since' => '2026-11-21',
+            'decision' => 'owner 21 Nov 2026 (Edge 0.9 self-service Install Offline Counter)',
+            'note' => 'Lets a counter user download the Offline Counter setup for their own branch (and set their own Edge PIN). New tenants\' Cashier (Counter) template only; existing roles are never granted it automatically — the owner grants it per role.',
+        ],
         'tenant.pos.pause-reminders' => [
             'since' => '2026-10-20',
             'decision' => 'D3',

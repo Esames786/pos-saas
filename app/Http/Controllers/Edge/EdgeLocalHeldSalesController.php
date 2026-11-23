@@ -102,7 +102,7 @@ class EdgeLocalHeldSalesController extends Controller
             'updated_at' => $sale->updated_at?->diffForHumans(),
             'recall_url' => null,
             'lines' => $sale->lines->map(fn ($l) => self::onlineLineView($l))->values(),
-        ];
+        ] + self::mirroredKey($sale);
     }
 
     /** One held line in Online's ajaxList / openOrderPayload shape (W2 re-hydration keys included). */
@@ -494,6 +494,8 @@ class EdgeLocalHeldSalesController extends Controller
     /** RECALL parity — the open checks (held + draft) on the bound branch, limited to the order types this operator may run. */
     public function heldSales(Request $request): JsonResponse
     {
+        // EDGE 0.9 CONTINUITY: the first touch after Switch to Offline adopts the mirrored held bills / tables (best-effort).
+        app(\App\Services\Edge\Continuity\ContinuityAdoptionService::class)->ensureAdoptedQuietly(auth('tenant')->user(), $request->integer('terminal_id') ?: null);
         // A26 — Online HeldSaleController::ajaxList scoping: allowed order types, the optional type filter (narrows, never
         // widens) and UserDataScope (branch / terminal / order-type assignments).
         $sales = $this->lifecycle->heldSalesQuery(auth('tenant')->user(), $request->query('order_type'))
@@ -542,7 +544,18 @@ class EdgeLocalHeldSalesController extends Controller
             'time' => $s->created_at?->diffForHumans(),
             'notes' => $s->notes,
             'lines' => $s->lines->map(fn ($l) => self::onlineLineView($l))->values(),
-        ];
+        ] + self::mirroredKey($s);
+    }
+
+    /**
+     * EDGE 0.9 CONTINUITY — an adopted (mirrored) Cloud order carries `mirrored: {badge: "Mirrored draft · up to HH:MM:SS", …}`;
+     * every other check keeps its exact key set (the Cloud never sends the key — the shared page renders the badge from data).
+     */
+    public static function mirroredKey(SalesOrder $s): array
+    {
+        $m = \App\Services\Edge\Continuity\ContinuityAdoptionService::mirroredFor($s);
+
+        return $m ? ['mirrored' => $m] : [];
     }
 
     /** One open check with its lines — what Recall / Add Round / Review & Pay load into the cart. */

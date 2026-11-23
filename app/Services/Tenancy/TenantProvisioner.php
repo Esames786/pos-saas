@@ -666,6 +666,16 @@ class TenantProvisioner
             'tenant.offline-edge.pairing-code.cancel',
             'tenant.offline-edge.devices.revoke',
             'tenant.offline-edge.security',
+            // EDGE 0.9 — wizard setup code, device update controls, counter setup, auto-takeover setting, self-service counter.
+            'tenant.offline-edge.setup-code.generate',
+            'tenant.offline-edge.setup-code.cancel',
+            'tenant.offline-edge.devices.update-now',
+            'tenant.offline-edge.devices.maintenance-window',
+            'tenant.offline-edge.counter-setup',
+            'tenant.offline-edge.phone',
+            'tenant.offline-edge.branch.ca',
+            'tenant.offline-edge.auto-takeover',
+            'tenant.offline-edge.counter-install',
 
             // Sales Controls — Promotions
             'tenant.promotions.index',

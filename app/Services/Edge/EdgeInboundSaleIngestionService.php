@@ -60,6 +60,17 @@ class EdgeInboundSaleIngestionService
      * (ENVELOPE_INVALID otherwise); an older Cloud answers SCHEMA_UNSUPPORTED to v3 and the appliance parks the row.
      */
     public const ENVELOPE_SCHEMA_V3 = 'edge-sale-envelope-v3';
+
+    /**
+     * EDGE 0.9 CONTINUITY (stream A) — v4 ⊇ v3 + the continuity keys: `shift.continues_cloud_shift_uuid` (the sale is attached to
+     * that ORIGINAL Cloud shift and settled into its counters exactly like a Cloud POS sale — one shift per counter) and/or
+     * `adoption` (the sale IS an open Cloud order adopted from the live-state mirror, same sale_uuid: the EXISTING order is
+     * completed, never a second one; any change of that order after the mirror revision is REFUSED, never guessed).
+     */
+    public const ENVELOPE_SCHEMA_V4 = 'edge-sale-envelope-v4';
+
+    /** Continuity verdicts answered as the terminal `conflict` shape (see continuityConflict). */
+    public const CONTINUITY_CONFLICT_CODES = ['ADOPTED_ORDER_CONFLICT', 'ADOPTED_ORDER_UNKNOWN', 'ADOPTED_ORDER_UNSUPPORTED', 'ADOPTED_LINES_DIVERGED', 'CONTINUED_SHIFT_UNKNOWN', 'CONTINUED_SHIFT_MISMATCH'];
     private const SUPPORTED_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
     private const SUPPORTED_METHOD_TYPES = ['cash'];
 
@@ -123,21 +134,43 @@ class EdgeInboundSaleIngestionService
         // ── authority validation (device/branch/tenant/epoch/customer/payment/order) ──
         try {
             [$device, $branch] = $this->validateAuthority($envelope);
+            // EDGE 0.9 CONTINUITY: the original shift / the adopted order must resolve and be UNCHANGED since the mirror —
+            // otherwise a classified refusal (needs attention) before any mutation.
+            $plan = $this->continuityPlan($envelope, $branch);
         } catch (IngestionRefusal $e) {
+            if (in_array($e->refusalCode, self::CONTINUITY_CONFLICT_CODES, true)) {
+                return $this->continuityConflict($envelope, $e->refusalCode, $e->getMessage());
+            }
+
             return $this->refuse($envelope, $e->refusalCode, $e->getMessage());
         }
 
         // ── authoritative posting: one tenant transaction, under the per-branch ingestion authority ──
         try {
-            return EdgeIngestionAuthority::run((int) $branch->id, function () use ($envelope, $device, $branch, $saleUuid, $contentHash) {
-                return DB::connection('tenant')->transaction(function () use ($envelope, $device, $branch, $saleUuid, $contentHash) {
+            return EdgeIngestionAuthority::run((int) $branch->id, function () use ($envelope, $device, $branch, $saleUuid, $contentHash, $plan) {
+                return DB::connection('tenant')->transaction(function () use ($envelope, $device, $branch, $saleUuid, $contentHash, $plan) {
                     // Claim the sale_uuid atomically — the registry unique index is the concurrency guard.
                     $ingestionUuid = (string) Str::ulid();
                     $registry = $this->claimRegistry($envelope, $device, $branch, $contentHash, $ingestionUuid);
 
-                    $sale = $this->projectSale($envelope, $branch, $device);
-                    $this->projectLinesWithOfficialStock($envelope, $sale, $branch);
+                    $continuity = null;
+                    if ($plan['order_id'] !== null) {
+                        // ADOPTED ORDER: complete the EXISTING Cloud order (re-verified under its row lock), never a second one.
+                        [$sale, $keptByIndex] = $this->mergeAdoptedOrder($envelope, $branch, $device, (int) $plan['order_id']);
+                        $this->projectLinesWithOfficialStock($envelope, $sale, $branch, $keptByIndex);
+                        $continuity = ['adopted_order' => ['sales_order_id' => (int) $sale->id, 'kept_lines' => count($keptByIndex),
+                            'appended_lines' => count((array) ($envelope['lines'] ?? [])) - count($keptByIndex)]];
+                    } else {
+                        $sale = $this->projectSale($envelope, $branch, $device);
+                        $this->projectLinesWithOfficialStock($envelope, $sale, $branch);
+                    }
                     $this->projectPayments($envelope, $sale);
+                    if ($plan['cloud_shift_id'] !== null) {
+                        $continuity = (array) $continuity + ['shift' => $this->attachContinuedShift($sale, (int) $plan['cloud_shift_id'], (string) $plan['cloud_shift_uuid'])];
+                    } elseif ($plan['order_id'] !== null) {
+                        // An adopted order paid in an Edge-only shift: its cash never reached a Cloud drawer — same as any Edge sale.
+                        $sale->update(['shift_id' => null]);
+                    }
 
                     // TEST-ONLY seam: fires AFTER official stock/COGS + payments, BEFORE finance posting, INSIDE
                     // the transaction. Production no-op; a subclass may throw here to prove the whole ingestion
@@ -145,6 +178,17 @@ class EdgeInboundSaleIngestionService
                     $this->afterOfficialStock();
 
                     $sale->refresh()->load(['payments.method', 'lines']);
+
+                    if (($continuity['shift']['status'] ?? null) === 'merged') {
+                        // ONE SHIFT PER COUNTER: the continued sale gets the SAME operational settlement a Cloud POS sale gets
+                        // (shift counters + operational sales ledger) — exactly once, inside this transaction (a replay is
+                        // already_applied before it is reached).
+                        app(\App\Services\Sales\SaleOperationalSettlementService::class)->settle($sale);
+                    }
+                    if ($plan['order_id'] !== null) {
+                        // Payment settles the table — the SAME custody rule the Cloud POS and the appliance apply.
+                        $this->sales->closeRestaurantTableSession($sale);
+                    }
 
                     // Official finance — same authorities the Cloud POS uses, INSIDE this transaction so a
                     // GL failure rolls the whole ingestion back (registry never claims success).
@@ -158,6 +202,9 @@ class EdgeInboundSaleIngestionService
                     $this->financeVerifier->verifyPaidSale($sale->fresh()->load(['payments.method', 'lines']));
 
                     $ack = $this->buildAck($saleUuid, $contentHash, $ingestionUuid, $sale, (int) $envelope['activation_epoch'], $envelope['config_revision'] ?? null, EdgeInboundSaleIngestion::STATUS_APPLIED);
+                    if ($continuity !== null) {
+                        $ack['continuity'] = $continuity;   // audit: where the sale went (stored on the registry, replayed verbatim)
+                    }
                     $registry->update([
                         'status' => EdgeInboundSaleIngestion::STATUS_APPLIED,
                         'ingested_sales_order_id' => $sale->id,
@@ -185,6 +232,9 @@ class EdgeInboundSaleIngestionService
             // survive). RELIABILITY (post-F2): a TERMINAL verdict (the identical immutable envelope can never be accepted)
             // answers `refused` WITH the envelope identity so the appliance parks the row as failed_permanent instead of
             // retrying forever; a retryable verdict (INSUFFICIENT_STOCK — 1E-gated) stays a deterministic `exception`.
+            if (in_array($e->refusalCode, self::CONTINUITY_CONFLICT_CODES, true)) {
+                return $this->continuityConflict($envelope, $e->refusalCode, $e->getMessage());   // moved under the lock
+            }
             if (EdgeIngestionVerdicts::isTerminal($e->refusalCode)) {
                 return $this->refuse($envelope, $e->refusalCode, $e->getMessage());
             }
@@ -204,7 +254,7 @@ class EdgeInboundSaleIngestionService
      */
     protected function supportedEnvelopeSchemas(): array
     {
-        return [self::ENVELOPE_SCHEMA_V1, self::ENVELOPE_SCHEMA_V2, self::ENVELOPE_SCHEMA_V3];
+        return [self::ENVELOPE_SCHEMA_V1, self::ENVELOPE_SCHEMA_V2, self::ENVELOPE_SCHEMA_V3, self::ENVELOPE_SCHEMA_V4];
     }
 
     /** TEST-ONLY seam (see ingest): production no-op; a subclass may throw to prove atomic rollback. */
@@ -316,8 +366,8 @@ class EdgeInboundSaleIngestionService
             return (int) $row->id;
         }
 
-        // ── kind new_customer (v3 only) ──
-        if ((string) ($envelope['envelope_schema_version'] ?? '') !== self::ENVELOPE_SCHEMA_V3) {
+        // ── kind new_customer (v3, and v4 ⊇ v3) ──
+        if (! in_array((string) ($envelope['envelope_schema_version'] ?? ''), [self::ENVELOPE_SCHEMA_V3, self::ENVELOPE_SCHEMA_V4], true)) {
             throw new IngestionRefusal('ENVELOPE_INVALID', 'the new_customer kind requires ' . self::ENVELOPE_SCHEMA_V3);
         }
         $intent = $customer['new_customer'] ?? null;
@@ -462,18 +512,230 @@ class EdgeInboundSaleIngestionService
         return $sale;
     }
 
-    private function projectLinesWithOfficialStock(array $envelope, SalesOrder $sale, Branch $branch): void
+    // ── EDGE 0.9 CONTINUITY: merge into the ORIGINAL shift / the EXISTING order ─────────────────────────────────────
+
+    /**
+     * Pre-mutation plan for a v4 envelope (refusals are classified and answered before anything is written):
+     *   shift.continues_cloud_shift_uuid  must name a Cloud shift of THIS branch and THIS terminal (CONTINUED_SHIFT_UNKNOWN /
+     *                                     CONTINUED_SHIFT_MISMATCH otherwise) — the Cloud never creates a shift here;
+     *   adoption                          must name THIS sale_uuid, resolve to a Cloud order of this branch that is still held,
+     *                                     unpaid, made of plain lines, with the fingerprint the cashier adopted, every Cloud
+     *                                     line still present on the appliance (ADOPTED_ORDER_UNKNOWN / ADOPTED_ORDER_CONFLICT /
+     *                                     ADOPTED_ORDER_UNSUPPORTED / ADOPTED_LINES_DIVERGED otherwise — never guessed).
+     *
+     * @return array{cloud_shift_id:?int, cloud_shift_uuid:?string, order_id:?int}
+     */
+    private function continuityPlan(array $envelope, Branch $branch): array
     {
-        // W6 v2 and PHASE 4 v3 (⊇ v2) consume modifier linked stock; v1 semantics stay frozen.
-        $consumeModifiers = in_array((string) ($envelope['envelope_schema_version'] ?? ''), [self::ENVELOPE_SCHEMA_V2, self::ENVELOPE_SCHEMA_V3], true);
+        $plan = ['cloud_shift_id' => null, 'cloud_shift_uuid' => null, 'order_id' => null];
+        $continues = $envelope['shift']['continues_cloud_shift_uuid'] ?? null;
+        $adoption = $envelope['adoption'] ?? null;
+        if ((string) ($envelope['envelope_schema_version'] ?? '') !== self::ENVELOPE_SCHEMA_V4) {
+            if ($continues !== null || $adoption !== null) {
+                throw new IngestionRefusal('ENVELOPE_INVALID', 'continuity keys are carried by ' . self::ENVELOPE_SCHEMA_V4 . ' only');
+            }
+
+            return $plan;
+        }
+        if ($continues === null && $adoption === null) {
+            throw new IngestionRefusal('ENVELOPE_INVALID', 'a ' . self::ENVELOPE_SCHEMA_V4 . ' envelope must carry continuity data');
+        }
+        if ($continues !== null) {
+            if (! EdgeIdentity::isValid((string) $continues, EdgeIdentity::FORMAT_ULID)) {
+                throw new IngestionRefusal('ENVELOPE_INVALID', 'continues_cloud_shift_uuid is not a canonical shift identity');
+            }
+            $shift = \App\Models\Tenant\Shift::on('tenant')->where('shift_uuid', (string) $continues)->first();
+            if (! $shift) {
+                throw new IngestionRefusal('CONTINUED_SHIFT_UNKNOWN', 'the online shift this Edge shift continues does not exist on the Cloud');
+            }
+            if ((int) $shift->branch_id !== (int) $branch->id || (int) $shift->terminal_id !== (int) ($envelope['terminal_id'] ?? 0)) {
+                throw new IngestionRefusal('CONTINUED_SHIFT_MISMATCH', 'the continued online shift belongs to another branch or counter');
+            }
+            $plan['cloud_shift_id'] = (int) $shift->id;
+            $plan['cloud_shift_uuid'] = (string) $continues;
+        }
+        if ($adoption !== null) {
+            if (! is_array($adoption) || (string) ($adoption['adopted_from_order_uuid'] ?? '') !== (string) ($envelope['sale_uuid'] ?? '')
+                || ! preg_match('/^[0-9a-f]{64}$/', (string) ($adoption['cloud_fingerprint'] ?? ''))) {
+                throw new IngestionRefusal('ENVELOPE_INVALID', 'an adoption must name this sale_uuid and carry the mirrored order fingerprint');
+            }
+            $order = SalesOrder::on('tenant')->where('sale_uuid', (string) $envelope['sale_uuid'])->first();
+            if (! $order) {
+                throw new IngestionRefusal('ADOPTED_ORDER_UNKNOWN', 'the adopted online order does not exist on the Cloud');
+            }
+            if ((int) $order->branch_id !== (int) $branch->id) {
+                throw new IngestionRefusal('WRONG_BRANCH', 'the adopted online order belongs to another branch');
+            }
+            $this->adoptedOrderLineMap($order, $order->lines()->orderBy('id')->get(), $envelope);
+            $plan['order_id'] = (int) $order->id;
+        }
+
+        return $plan;
+    }
+
+    /**
+     * Verify the Cloud order is EXACTLY what was adopted and map each Cloud line onto the envelope line that continues it.
+     * Matching: the same line_uuid first (an untouched adopted line keeps it), then the same product / variant / unit price with
+     * the same quantity, then with a quantity not below the Cloud's (a round added on the same item). A Cloud line with no
+     * continuation (voided or reduced on the appliance) is refused — milestone 1 does not merge voids of mirrored lines.
+     *
+     * @return array<int,\App\Models\Tenant\SalesOrderLine> envelope line index → kept Cloud line
+     */
+    private function adoptedOrderLineMap(SalesOrder $order, $cloudLines, array $envelope): array
+    {
+        if ((string) $order->status !== 'held') {
+            throw new IngestionRefusal('ADOPTED_ORDER_CONFLICT', "the online order is now [{$order->status}] — it changed on the Cloud after it was mirrored");
+        }
+        if ($order->payments()->exists()) {
+            throw new IngestionRefusal('ADOPTED_ORDER_CONFLICT', 'the online order carries a payment recorded on the Cloud — it cannot be paid twice');
+        }
+        foreach ($cloudLines as $cl) {
+            // CP3 gap 4: deal rows (combo header + components) are adoptable; anything else is not a sale line kind.
+            if (! in_array((string) ($cl->line_kind ?? 'standard'), ['standard', 'combo_header', 'component'], true)) {
+                throw new IngestionRefusal('ADOPTED_ORDER_UNSUPPORTED', 'the online order carries a line kind the live-state mirror does not adopt');
+            }
+        }
+        if (! hash_equals((string) $envelope['adoption']['cloud_fingerprint'], Continuity\ContinuityFingerprint::fromOrder($order, $cloudLines))) {
+            throw new IngestionRefusal('ADOPTED_ORDER_CONFLICT', 'the online order changed on the Cloud after the mirror revision ' . (string) ($envelope['adoption']['mirror_revision'] ?? '?'));
+        }
+        $env = array_values((array) ($envelope['lines'] ?? []));
+        $map = [];
+        // The same economic line: kind + deal + product + variant + captured price (a kept deal row keeps its Cloud parent link).
+        $same = fn ($cl, array $el, bool $exactQty) => (string) ($el['line_kind'] ?? 'standard') === (string) ($cl->line_kind ?? 'standard')
+            && (int) ($el['combo_id'] ?? 0) === (int) ($cl->combo_id ?? 0)
+            && (int) ($el['product_id'] ?? 0) === (int) $cl->product_id
+            && (int) ($el['product_variant_id'] ?? 0) === (int) ($cl->product_variant_id ?? 0)
+            && abs((float) ($el['unit_price'] ?? 0) - (float) $cl->unit_price) < 0.005
+            && ($exactQty ? abs((float) ($el['quantity'] ?? 0) - (float) $cl->quantity) < 0.0005 : (float) ($el['quantity'] ?? 0) + 0.0005 >= (float) $cl->quantity);
+        $pending = [];
+        foreach ($cloudLines as $cl) {
+            foreach ($env as $i => $el) {
+                if (! isset($map[$i]) && (string) ($el['line_uuid'] ?? '') === (string) $cl->line_uuid && $same($cl, $el, false)) {
+                    $map[$i] = $cl;
+                    continue 2;
+                }
+            }
+            $pending[] = $cl;
+        }
+        foreach ([true, false] as $exact) {
+            foreach ($pending as $k => $cl) {
+                foreach ($env as $i => $el) {
+                    if (! isset($map[$i]) && $same($cl, $el, $exact)) {
+                        $map[$i] = $cl;
+                        unset($pending[$k]);
+                        continue 2;
+                    }
+                }
+            }
+        }
+        if ($pending !== []) {
+            throw new IngestionRefusal('ADOPTED_LINES_DIVERGED', count($pending) . ' line(s) of the online order were removed or reduced on the Branch Server — a void of a mirrored line needs a supervisor');
+        }
+
+        return $map;
+    }
+
+    /**
+     * Complete the EXISTING Cloud order with the envelope's frozen commercial truth, re-verified under the order's row lock.
+     * Identity (sale_uuid, sale_no, client_uuid), table session, opening shift / business date and creator are the Cloud's;
+     * money, payment state and the settling counter are the envelope's.
+     *
+     * @return array{0: SalesOrder, 1: array<int,\App\Models\Tenant\SalesOrderLine>}
+     */
+    private function mergeAdoptedOrder(array $envelope, Branch $branch, EdgeDevice $device, int $orderId): array
+    {
+        $order = SalesOrder::on('tenant')->where('id', $orderId)->lockForUpdate()->firstOrFail();
+        $lines = $order->lines()->orderBy('id')->lockForUpdate()->get();
+        // Under the lock (a non-terminal exception if it moved since the plan: the retry meets the plan's terminal refusal).
+        $kept = $this->adoptedOrderLineMap($order, $lines, $envelope);
+        $totals = $envelope['totals'] ?? [];
+        $customerId = $this->resolveCustomerId($envelope, $device);
+        $order->fill([
+            'terminal_id' => (int) ($envelope['terminal_id'] ?? 0) ?: $order->terminal_id,
+            'customer_id' => $customerId ?? $order->customer_id,
+            'customer_name' => $customerId !== null ? ($envelope['customer']['name'] ?? null) : ($order->customer_name ?? ($envelope['customer']['name'] ?? null)),
+            'customer_phone' => $customerId !== null ? ($envelope['customer']['phone'] ?? null) : ($order->customer_phone ?? ($envelope['customer']['phone'] ?? null)),
+            'notes' => isset($envelope['notes']) && is_string($envelope['notes']) && trim($envelope['notes']) !== '' ? mb_substr(trim($envelope['notes']), 0, 1000) : $order->notes,
+            'order_type' => (string) $envelope['order_type'],
+            'subtotal' => (float) ($totals['subtotal'] ?? 0),
+            'discount_type' => in_array((string) ($totals['discount_type'] ?? 'none'), ['none', 'fixed', 'percent'], true) ? (string) ($totals['discount_type'] ?? 'none') : 'none',
+            'discount_value' => (float) ($totals['discount_value'] ?? 0),
+            'discount_amount' => (float) ($totals['discount_amount'] ?? 0),
+            'promo_code' => $totals['promo_code'] ?? null,
+            'tax_amount' => (float) ($totals['tax_amount'] ?? 0),
+            'service_charge_amount' => (float) ($totals['service_charge_amount'] ?? 0),
+            'delivery_charge_amount' => (float) ($totals['delivery_charge_amount'] ?? 0),
+            'tip_amount' => (float) ($totals['tip_amount'] ?? 0),
+            'grand_total' => (float) ($totals['grand_total'] ?? 0),
+            'paid_amount' => (float) ($totals['paid_amount'] ?? 0),
+            'change_amount' => (float) ($totals['change_amount'] ?? 0),
+            'status' => 'paid',
+            'is_draft' => false,
+            'inventory_posted' => false,
+            'completed_at' => $envelope['completed_at'] ?? now(),
+            'edge_sync_state' => 'synced',
+            'edge_activation_epoch' => (int) ($envelope['activation_epoch'] ?? 0),
+        ]);
+        $order->save();
+
+        return [$order, $kept];
+    }
+
+    /**
+     * ONE SHIFT PER COUNTER: attach the sale to the ORIGINAL Cloud shift its Edge shift continues — while that shift is still
+     * open (the Cloud cannot close it while fenced). A shift closed meanwhile is never reopened or rewritten: the sale then
+     * lands without a shift, exactly like any other Edge sale, and the ACK says so.
+     *
+     * @return array{cloud_shift_uuid:string, status:string}
+     */
+    private function attachContinuedShift(SalesOrder $sale, int $shiftId, string $shiftUuid): array
+    {
+        $shift = \App\Models\Tenant\Shift::on('tenant')->where('id', $shiftId)->lockForUpdate()->first();
+        if (! $shift || (string) $shift->status !== 'open') {
+            $sale->update(['shift_id' => null]);
+            Log::warning('[edge-sync-ingest] continued shift not open — sale kept without a shift', ['sale_uuid' => $sale->sale_uuid, 'cloud_shift_uuid' => $shiftUuid]);
+
+            return ['cloud_shift_uuid' => $shiftUuid, 'status' => 'cloud_shift_not_open'];
+        }
+        $sale->update(['shift_id' => (int) $shift->id]);
+
+        return ['cloud_shift_uuid' => $shiftUuid, 'status' => 'merged'];
+    }
+
+    /**
+     * @param  array<int,\App\Models\Tenant\SalesOrderLine>  $keptByIndex  EDGE 0.9 CONTINUITY: envelope line index → the adopted
+     *                                                                     Cloud line it continues (kept: identity, KOT links)
+     */
+    private function projectLinesWithOfficialStock(array $envelope, SalesOrder $sale, Branch $branch, array $keptByIndex = []): void
+    {
+        // W6 v2 and PHASE 4 v3 (⊇ v2) and 0.9 v4 (⊇ v3) consume modifier linked stock; v1 semantics stay frozen.
+        $consumeModifiers = in_array((string) ($envelope['envelope_schema_version'] ?? ''), [self::ENVELOPE_SCHEMA_V2, self::ENVELOPE_SCHEMA_V3, self::ENVELOPE_SCHEMA_V4], true);
         $sale->setRelation('branch', $branch);
         $headerIdByCombo = [];   // DEAL-SPLIT-REPORT-1 ingestion (rehearsal chunk 11): the last header seen per deal, in envelope order
-        foreach (($envelope['lines'] ?? []) as $line) {
+        foreach (($envelope['lines'] ?? []) as $i => $line) {
             $product = Product::on('tenant')->findOrFail((int) $line['product_id']);
             $variant = ($line['product_variant_id'] ?? null)
                 ? $this->inventory->resolveVariant($product, (int) $line['product_variant_id'])
                 : null;
             $qty = (float) $line['quantity'];
+
+            if (isset($keptByIndex[$i])) {
+                // EDGE 0.9 CONTINUITY — an adopted Cloud line: the SAME row (line_uuid, KOT batch links, kitchen state) carries
+                // the frozen envelope money and final quantity; official stock/COGS follow below exactly as for a new line (the
+                // Cloud never posted stock for an unpaid held order).
+                $newLine = $keptByIndex[$i];
+                $newLine->update([
+                    'quantity' => $qty,
+                    'unit_price' => (float) $line['unit_price'],
+                    'unit_cost' => 0,
+                    'cost_total' => 0,
+                    'discount_amount' => (float) ($line['discount_amount'] ?? 0),
+                    'tax_amount' => (float) ($line['tax_amount'] ?? 0),
+                    'line_total' => (float) $line['line_total'],
+                ]);
+                $this->postLineOfficialStock($line, $newLine, $product, $variant, $qty, $sale, $branch, $consumeModifiers);
+                continue;
+            }
 
             // Set the canonical line identity on the NEW model BEFORE the first save so the immutable-identity
             // hook preserves it (line_uuid is not mass-assignable; a post-save overwrite would be refused).
@@ -509,64 +771,73 @@ class EdgeInboundSaleIngestionService
                 $headerIdByCombo[(int) $line['combo_id']] = (int) $newLine->id;
             }
 
-            // Official COGS/stock authority (Cloud FEFO) — never the Edge provisional movement.
-            $method = $product->inventory_consumption_method ?? 'stock_item';
-            if (($line['line_kind'] ?? 'standard') === 'combo_header') {
-                // DEAL parity (Cloud SalesService::finalize): the header row is the priced bundle, never stock/COGS.
-                $method = 'none';
-            }
-            if ($method === 'recipe') {
-                $cost = $this->recipes->consumeForSalesOrderLine($sale, $newLine, $branch);
-                if ($cost > 0) {
-                    $newLine->update(['unit_cost' => $qty > 0 ? round($cost / $qty, 4) : 0, 'cost_total' => round($cost, 4)]);
-                }
-            } elseif ($method === 'stock_item' && $product->is_stock_tracked && (($line['line_kind'] ?? 'standard') !== 'combo_header')) {
-                // DEAL parity (Cloud SalesService::finalize): the header row is the priced bundle, never stock —
-                // its components are the ordinary lines that consume official stock and carry COGS.
-                try {
-                    $ledgers = $this->inventory->postOutFefo(
-                        branch: $branch,
-                        product: $product,
-                        variant: $variant,
-                        quantity: $qty,
-                        movementType: 'sale',
-                        referenceType: 'sales_order',
-                        referenceId: (int) $sale->id,
-                        referenceNo: $sale->sale_no,
-                        notes: 'Edge sync stock out',
-                        userId: (int) $sale->created_by_user_id,
-                        allowNegative: (bool) $branch->allow_negative_stock,
-                    );
-                } catch (Throwable $e) {
-                    // Respect the branch's CURRENT Cloud negative-stock policy: if official stock cannot fulfil
-                    // and negatives are disallowed, the whole ingestion aborts (no partial) — a deterministic
-                    // INSUFFICIENT_STOCK exception, recorded by the caller.
-                    throw new IngestionRefusal('INSUFFICIENT_STOCK', "official stock cannot fulfil line product {$line['product_id']}: " . $e->getMessage());
-                }
-                $costTotal = collect($ledgers)->sum(fn ($l) => (float) $l->total_cost);
-                $newLine->update(['unit_cost' => $qty > 0 ? $costTotal / $qty : 0, 'cost_total' => $costTotal]);
-            }
-            // 'none' (service/non-stock): no official stock movement, no COGS.
-
-            // W6 (B1) — envelope v2 ONLY: official modifier linked-stock consumption through the SAME shared rule the
-            // Cloud POS runs (SalesService::consumeLineModifiers — Cloud's CURRENT modifier book, unit conversion,
-            // FEFO, branch negative-stock policy), inside this ingestion transaction (a replay is already_applied with
-            // zero further effects). Its cost is added on top of the line COGS exactly as Cloud finalize does. A deal
-            // header never carries modifiers. Any failure rolls the WHOLE ingestion back as a retryable exception.
-            if ($consumeModifiers && (($line['line_kind'] ?? 'standard') !== 'combo_header')) {
-                try {
-                    $modifierCost = $this->sales->consumeLineModifiers($sale, $newLine);
-                } catch (Throwable $e) {
-                    throw new IngestionRefusal('MODIFIER_STOCK_FAILED', "modifier stock cannot be posted for line product {$line['product_id']}: " . $e->getMessage());
-                }
-                if ($modifierCost > 0) {
-                    $costTotal = round((float) $newLine->cost_total + $modifierCost, 4);
-                    $newLine->update(['cost_total' => $costTotal, 'unit_cost' => $qty > 0 ? round($costTotal / $qty, 4) : 0]);
-                }
-            }
+            $this->postLineOfficialStock($line, $newLine, $product, $variant, $qty, $sale, $branch, $consumeModifiers);
         }
 
         $sale->update(['inventory_posted' => true]);
+    }
+
+    /**
+     * Official COGS / stock (Cloud FEFO, recipe, modifier linked stock) for ONE projected line — the rule every ingested line
+     * follows, whether it was created from the envelope or is an adopted Cloud line kept by the 0.9 continuity merge.
+     */
+    private function postLineOfficialStock(array $line, \App\Models\Tenant\SalesOrderLine $newLine, Product $product, $variant, float $qty, SalesOrder $sale, Branch $branch, bool $consumeModifiers): void
+    {
+        // Official COGS/stock authority (Cloud FEFO) — never the Edge provisional movement.
+        $method = $product->inventory_consumption_method ?? 'stock_item';
+        if (($line['line_kind'] ?? 'standard') === 'combo_header') {
+            // DEAL parity (Cloud SalesService::finalize): the header row is the priced bundle, never stock/COGS.
+            $method = 'none';
+        }
+        if ($method === 'recipe') {
+            $cost = $this->recipes->consumeForSalesOrderLine($sale, $newLine, $branch);
+            if ($cost > 0) {
+                $newLine->update(['unit_cost' => $qty > 0 ? round($cost / $qty, 4) : 0, 'cost_total' => round($cost, 4)]);
+            }
+        } elseif ($method === 'stock_item' && $product->is_stock_tracked && (($line['line_kind'] ?? 'standard') !== 'combo_header')) {
+            // DEAL parity (Cloud SalesService::finalize): the header row is the priced bundle, never stock —
+            // its components are the ordinary lines that consume official stock and carry COGS.
+            try {
+                $ledgers = $this->inventory->postOutFefo(
+                    branch: $branch,
+                    product: $product,
+                    variant: $variant,
+                    quantity: $qty,
+                    movementType: 'sale',
+                    referenceType: 'sales_order',
+                    referenceId: (int) $sale->id,
+                    referenceNo: $sale->sale_no,
+                    notes: 'Edge sync stock out',
+                    userId: (int) $sale->created_by_user_id,
+                    allowNegative: (bool) $branch->allow_negative_stock,
+                );
+            } catch (Throwable $e) {
+                // Respect the branch's CURRENT Cloud negative-stock policy: if official stock cannot fulfil
+                // and negatives are disallowed, the whole ingestion aborts (no partial) — a deterministic
+                // INSUFFICIENT_STOCK exception, recorded by the caller.
+                throw new IngestionRefusal('INSUFFICIENT_STOCK', "official stock cannot fulfil line product {$line['product_id']}: " . $e->getMessage());
+            }
+            $costTotal = collect($ledgers)->sum(fn ($l) => (float) $l->total_cost);
+            $newLine->update(['unit_cost' => $qty > 0 ? $costTotal / $qty : 0, 'cost_total' => $costTotal]);
+        }
+        // 'none' (service/non-stock): no official stock movement, no COGS.
+
+        // W6 (B1) — envelope v2 ONLY: official modifier linked-stock consumption through the SAME shared rule the
+        // Cloud POS runs (SalesService::consumeLineModifiers — Cloud's CURRENT modifier book, unit conversion,
+        // FEFO, branch negative-stock policy), inside this ingestion transaction (a replay is already_applied with
+        // zero further effects). Its cost is added on top of the line COGS exactly as Cloud finalize does. A deal
+        // header never carries modifiers. Any failure rolls the WHOLE ingestion back as a retryable exception.
+        if ($consumeModifiers && (($line['line_kind'] ?? 'standard') !== 'combo_header')) {
+            try {
+                $modifierCost = $this->sales->consumeLineModifiers($sale, $newLine);
+            } catch (Throwable $e) {
+                throw new IngestionRefusal('MODIFIER_STOCK_FAILED', "modifier stock cannot be posted for line product {$line['product_id']}: " . $e->getMessage());
+            }
+            if ($modifierCost > 0) {
+                $costTotal = round((float) $newLine->cost_total + $modifierCost, 4);
+                $newLine->update(['cost_total' => $costTotal, 'unit_cost' => $qty > 0 ? round($costTotal / $qty, 4) : 0]);
+            }
+        }
     }
 
     private function projectPayments(array $envelope, SalesOrder $sale): void
@@ -631,6 +902,30 @@ class EdgeInboundSaleIngestionService
             'incoming_content_hash' => $incomingHash,
             'message' => 'this sale_uuid was already ingested with different content; the first accepted truth is authoritative',
         ];
+    }
+
+    /**
+     * EDGE 0.9 CONTINUITY — the Cloud's truth for the continued shift / adopted order is not what the envelope continues (changed,
+     * settled, voided or unknown on the Cloud). The identical immutable envelope can NEVER be accepted, so the verdict is the
+     * existing TERMINAL `conflict` shape (the appliance parks the row failed_permanent → the handback is blocked as "needs
+     * attention"; the rest of the outbox keeps draining) with a classified failure_code, persisted as STATUS_CONFLICT (never
+     * re-evaluated). Nothing was written: it is decided before the posting transaction, or the transaction rolled back.
+     */
+    private function continuityConflict(array $envelope, string $code, string $message): array
+    {
+        $hash = (string) ($envelope['content_hash'] ?? '');
+        $ack = [
+            'status' => 'conflict',
+            'failure_code' => $code,
+            'sale_uuid' => (string) ($envelope['sale_uuid'] ?? ''),
+            'content_hash' => $hash,
+            'incoming_content_hash' => $hash,   // the envelope this verdict answers (the appliance's identity proof for a conflict)
+            'message' => $message,
+        ];
+        $this->persistTerminal($envelope, $hash, EdgeInboundSaleIngestion::STATUS_CONFLICT, $code, $message, $ack);
+        Log::warning('[edge-sync-ingest] continuity conflict', ['sale_uuid' => $ack['sale_uuid'], 'failure_code' => $code]);
+
+        return $ack;
     }
 
     /** Record a deterministic refusal (no mutation happened) and return it as the ACK. */

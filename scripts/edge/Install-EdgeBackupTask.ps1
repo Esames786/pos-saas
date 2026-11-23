@@ -29,9 +29,10 @@ $action = New-ScheduledTaskAction -Execute $PhpPath `
     -WorkingDirectory $AppRoot
 
 $trigger = New-ScheduledTaskTrigger -AtStartup
+# [TimeSpan]::MaxValue serialises to P99999999DT23H59M59S, rejected by Windows 10 Task Scheduler (found at Khatri 21 Nov 2026)
 $repeat = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
     -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes) `
-    -RepetitionDuration ([TimeSpan]::MaxValue)).Repetition
+    -RepetitionDuration (New-TimeSpan -Days 3650)).Repetition
 $trigger.Repetition = $repeat
 
 $settings = New-ScheduledTaskSettingsSet `

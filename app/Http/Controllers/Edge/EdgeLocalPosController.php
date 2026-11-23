@@ -79,6 +79,8 @@ class EdgeLocalPosController extends Controller
         $branch = Branch::on('tenant')->findOrFail($branchId);
         $user = auth('tenant')->user();
         abort_unless((bool) $user?->can('tenant.pos.index'), 403, 'Permission denied — your account may not open the POS.');
+        // EDGE 0.9 CONTINUITY: the first touch after Switch to Offline adopts the mirrored tables / held bills / shifts (best-effort).
+        app(\App\Services\Edge\Continuity\ContinuityAdoptionService::class)->ensureAdoptedQuietly(auth('tenant')->user(), $request->integer('terminal_id') ?: null);
 
         $runtime = app(\App\Services\Edge\EdgePosRuntimeFactory::class)->make($request);
 

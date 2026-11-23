@@ -597,6 +597,14 @@
                     <i class="ti ti-send me-1"></i>Quick Report
                 </button>
             @endcan
+            @if($posRuntime->route('offlineCounterInstall'))
+                {{-- EDGE 0.9 (owner, 21 Nov 2026): self-service Install Offline Counter — route-null gate (Cloud: permitted users of an
+                     Offline Edge tenant; Edge: always null), no mode branch. --}}
+                <a href="{{ $posRuntime->route('offlineCounterInstall') }}" class="btn btn-sm btn-outline-secondary me-2" id="pos-offline-counter-btn"
+                   title="Set up this PC to keep selling through the Branch Server when the internet is down">
+                    <i class="ti ti-device-desktop-down me-1"></i>Install Offline Counter
+                </a>
+            @endif
             @if($medicalCounter ?? false)
                 {{-- MEDICAL-COUNTER-1: every shortcut key, one click away (Ctrl+/ or F1 too) --}}
                 <button type="button" class="btn btn-sm btn-dark me-2" data-med-keys title="All shortcut keys (Ctrl+/ or F1)">
@@ -646,6 +654,9 @@
                     <span class="badge bg-secondary" id="pos-shift-badge"></span>
                     <span id="pos-shift-detail" class="text-muted ms-1"></span>
                     <a href="{{ $posRuntime->route('shiftOpenPage') }}" id="pos-shift-open-link" class="ms-1" style="display:none">Open shift</a>
+                    {{-- EDGE 0.9 CONTINUITY: "Continuing online shift (mirrored HH:MM:SS)" — or why it was not continued. Data-driven: the
+                         shift-status answer carries `continuity.banner` (only a Branch Server ever sends it); same markup on both runtimes. --}}
+                    <span id="pos-continuity-banner" class="badge bg-info text-dark ms-1 text-wrap text-start" style="display:none"></span>
                 </div>
                 {{-- POS-REMINDER-PAUSE-1: this terminal's Reminder slips — ON, or paused until its shift
                      closes. Hidden on a terminal with no Reminder rule; the state rides on the
@@ -3087,6 +3098,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (link) link.style.display = '';
                 }
                 renderReminderStatus(d.reminder, !!d.open);
+                // EDGE 0.9 CONTINUITY — shown only when the answer carries it (the Cloud never does): continuation or refusal reason.
+                var cont = document.getElementById('pos-continuity-banner');
+                if (cont) {
+                    var text = (d.continuity && d.continuity.banner) ? String(d.continuity.banner) : '';
+                    cont.textContent = text;
+                    cont.className = 'badge ms-1 text-wrap text-start ' + (d.open ? 'bg-info text-dark' : 'bg-warning text-dark');
+                    cont.style.display = text ? '' : 'none';
+                }
                 // One source of truth: retune the shop clock to THIS terminal's shift timezone +
                 // business date + server epoch. Falls back to the branch business tz when closed.
                 if (window.__setPosClock) {
@@ -6699,7 +6718,7 @@ document.addEventListener('DOMContentLoaded', function () {
         html += '<div class="list-group text-start mb-2">';
         orders.forEach(function (order, idx) {
             html += '<button type="button" class="list-group-item list-group-item-action open-order-choice" data-order-index="' + idx + '">' +
-                '<strong>' + order.sale_no + '</strong>' +
+                '<strong>' + order.sale_no + '</strong>' + ((order.mirrored && order.mirrored.badge) ? ' <span class="badge bg-info text-dark" data-pos-mirrored-draft>' + escapeHtml(order.mirrored.badge) + '</span>' : '') +
                 '<span class="float-end">Rs ' + order.grand_total_formatted + '</span>' +
                 '<br><small class="text-muted">' + order.items_count + ' items &middot; ' + (order.updated_at || '') + '</small>' +
                 '</button>';
@@ -6885,7 +6904,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 html += '<tr>' +
                     '<td><strong>' + escapeHtml(s.sale_no) + '</strong></td>' +
                     '<td><span class="badge bg-secondary text-capitalize">' + escapeHtml(String(s.order_type || '').replace('_', ' ')) + '</span>' +
-                        (s.is_draft ? ' <span class="badge bg-warning text-dark">DRAFT</span>' : '') + '</td>' +
+                        (s.is_draft ? ' <span class="badge bg-warning text-dark">DRAFT</span>' : '') + ((s.mirrored && s.mirrored.badge) ? ' <span class="badge bg-info text-dark" data-pos-mirrored-draft>' + escapeHtml(s.mirrored.badge) + '</span>' : '') + '</td>' +
                     '<td>' + escapeHtml(s.customer || 'Walk-in') + posOrderMeta(s) + '</td>' +
                     '<td class="text-end">' + escapeHtml(s.items) + '</td>' +
                     '<td class="text-end fw-bold">' + escapeHtml(s.total) + '</td>' +
@@ -8041,7 +8060,7 @@ document.addEventListener('DOMContentLoaded', function () {
         loadTableOrders(sessionId, function (data) {
             if (!data.orders.length) { body.innerHTML = '<div class="alert alert-light border">This table has no held orders.</div>'; return; }
             body.innerHTML = '<h3 class="h5 mb-3">Held Orders - Table ' + escapeHtml(data.session.table_no || '') + '</h3><div class="table-action-list">' + data.orders.map(function (order, index) {
-                return '<article class="border rounded p-3"><div class="d-flex justify-content-between gap-2 mb-2"><strong>' + escapeHtml(order.sale_no) + '</strong><strong>' + escapeHtml(order.grand_total_formatted) + '</strong></div><div class="text-muted small mb-3">' + escapeHtml(order.items_count) + ' items &middot; ' + escapeHtml(order.updated_at || '') + '</div><button type="button" class="btn btn-primary w-100" data-workspace-recall="' + index + '">Recall / Continue</button></article>';
+                return '<article class="border rounded p-3"><div class="d-flex justify-content-between gap-2 mb-2"><strong>' + escapeHtml(order.sale_no) + ((order.mirrored && order.mirrored.badge) ? ' <span class="badge bg-info text-dark" data-pos-mirrored-draft>' + escapeHtml(order.mirrored.badge) + '</span>' : '') + '</strong><strong>' + escapeHtml(order.grand_total_formatted) + '</strong></div><div class="text-muted small mb-3">' + escapeHtml(order.items_count) + ' items &middot; ' + escapeHtml(order.updated_at || '') + '</div><button type="button" class="btn btn-primary w-100" data-workspace-recall="' + index + '">Recall / Continue</button></article>';
             }).join('') + '</div>';
             body.querySelectorAll('[data-workspace-recall]').forEach(function (button) {
                 button.addEventListener('click', function () { continueExistingOrder(data.orders[Number(button.dataset.workspaceRecall)], data.session); });

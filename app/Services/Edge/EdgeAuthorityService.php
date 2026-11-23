@@ -107,6 +107,13 @@ class EdgeAuthorityService
             'cloud_capabilities_seen_at' => now(),
         ])->save();
 
+        // EDGE 0.9 — the auto-takeover CLOCK GUARD input: Cloud server_time vs this appliance's clock at an accepted ack.
+        try {
+            app(\App\Services\Edge\AutoTakeover\AutoTakeoverEvaluator::class)->recordCloudSkew(isset($ack['server_time']) ? (string) $ack['server_time'] : null);
+        } catch (\Throwable) {
+            // recording a measurement must never fail an accepted heartbeat; an unknown skew keeps auto-takeover refused
+        }
+
         return [
             'ok' => true, 'holder' => $ack['holder'] ?? null, 'cloud_edge_state' => $ack['edge_state'] ?? null, 'state' => $this->state(), 'seq' => $seq,
             'consecutive_acks' => (int) $meta->heartbeat_consecutive_acks,

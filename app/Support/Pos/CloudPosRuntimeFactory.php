@@ -128,6 +128,8 @@ final class CloudPosRuntimeFactory
             // PRINT-OFFLINE-HERE-1 (production 7b7abd7c): tenant.api.pos.print-health + tenant.printing.jobs.print-here.
             'printHealth' => '/api/pos/print-health',
             'printHereTake' => '/printing/jobs/{job}/print-here',
+            // EDGE 0.9: self-service Install Offline Counter (route-null gate: null unless permitted AND the tenant has Offline Edge).
+            'offlineCounterInstall' => self::offlineCounterInstallAvailable() ? '/pos/offline-counter' : null,
         ]);
 
         return new PosRuntime(
@@ -161,6 +163,21 @@ final class CloudPosRuntimeFactory
             labels: [],
             chromeView: 'tenant.pos.partials.pos-chrome-cloud',
         );
+    }
+
+    /** EDGE 0.9 — the user may install an Offline Counter: permission + Offline Edge entitlement + rollout. Never throws. */
+    private static function offlineCounterInstallAvailable(): bool
+    {
+        try {
+            if (! (bool) auth('tenant')->user()?->can('tenant.offline-edge.counter-install')) {
+                return false;
+            }
+            $gate = app(\App\Services\Edge\OfflineEdgeEntitlementService::class);
+
+            return $gate->featureIsEnabled() && $gate->tenantHasOfflineEdgeAccess();
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /** '' on a domain-root deployment (every tenant today); '/sub' when the app is served from a sub-directory. */

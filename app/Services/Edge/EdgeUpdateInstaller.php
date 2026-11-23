@@ -117,8 +117,9 @@ class EdgeUpdateInstaller
         $versionDir = $root . DIRECTORY_SEPARATOR . 'versions' . DIRECTORY_SEPARATOR . $this->safe($to);
 
         // 3. Stage into a NEW directory (never overwrite the active runtime in place) + re-verify.
+        // Workers keep running through the copy (EDGE 0.9 CP4: staging took ~7 min on a laptop; stopping the workers first left a
+        // standby appliance silent long enough for the Cloud lease to lapse and pause the Online POS). They stop just before step 4.
         try {
-            $this->stopWorkers();
             $this->stage($stagedArtifactDir, $versionDir);
             if (! hash_equals($audit['artifact_manifest_hash'], $this->packages->recomputeManifestHash($versionDir))) {
                 throw new RuntimeException('UPDATE_STAGE_MISMATCH: staged bytes do not match the signed manifest.');
@@ -157,7 +158,14 @@ class EdgeUpdateInstaller
             throw new RuntimeException("UPDATE_MIGRATION_PLAN_MISMATCH: the actual migration plan [{$planHash}] differs from the pre-install report [{$expectedPlanHash}] — the update stops; re-run the dry-run and get the new plan approved.");
         }
 
-        // 4. ATOMIC switch.
+        // 4. ATOMIC switch — the workers are stopped only now, after staging, the staged re-verify and the D7 plan check, so the
+        //    stop → switch → schema upgrade → start window is as short as the migrations themselves.
+        try {
+            $this->stopWorkers();
+        } catch (\Throwable $e) {
+            $this->record($audit, 'failed', 'UPDATE_STOP_WORKERS_FAILED', 'none', $currentSchema, $plan, $expectedPlanHash);
+            throw new RuntimeException('UPDATE_STOP_WORKERS_FAILED: ' . $e->getMessage());
+        }
         $this->switchPointer($root, $this->safe($to));
 
         // 5. Forward-only schema upgrade — run by the NEW runtime (its own migration files), never by this process,
@@ -430,7 +438,8 @@ class EdgeUpdateInstaller
         return (string) config('edge.config_schema');
     }
 
-    /** Cooperative worker stop/start around the switch window. Overridable; a real appliance drives the tasks. */
+    /** Cooperative worker stop/start around the switch window (stop right before the pointer switch, start after the schema
+     *  upgrade). Overridable; a real appliance drives the tasks. */
     protected function stopWorkers(): void {}
 
     protected function startWorkers(): void {}

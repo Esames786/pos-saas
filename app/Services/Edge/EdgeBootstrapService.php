@@ -882,7 +882,33 @@ class EdgeBootstrapService
                     ? 'auto_approve'
                     : 'blocked_requires_online_manager',
                 'blocked_capabilities' => ['card_gateway', 'external_aggregator_api', 'customer_credit_ledger', 'returns_against_cloud', 'purchasing', 'stock_operations', 'manufacturing', 'cloud_manager_approval'],
+                // EDGE 0.9 (owner, 21 Nov 2026) — the OPTIONAL, default-OFF Automatic Offline Takeover branch setting. ADDED to
+                // this INFORMATIONAL row on purpose: the appliance imports every key of the `branch` row as a column (importer
+                // insert + refresh-applier update), so a new key there would break every 0.8.x appliance's bootstrap/refresh;
+                // restrictions is validated and hashed but never table-imported. Changing the setting touches branches.updated_at,
+                // which is part of sourceRevision → a new config revision → the standby pulls it on its next refresh.
+                'auto_takeover' => self::autoTakeoverSetting($branch),
             ]],
+        ];
+    }
+
+    /**
+     * EDGE 0.9 — the branch's Automatic Offline Takeover setting as delivered to the appliance:
+     * {enabled: bool, after_seconds: int (180–3600, default 300), set_by: ?int user id, set_at: ?ISO-8601}.
+     * Effective on the appliance only together with its own kill switch (edge.authority.auto_takeover_allowed, default off).
+     *
+     * @return array{enabled: bool, after_seconds: int, set_by: ?int, set_at: ?string}
+     */
+    public static function autoTakeoverSetting(Branch $branch): array
+    {
+        $after = (int) ($branch->getAttribute('edge_auto_takeover_after_seconds') ?? 300);
+        $setAt = $branch->getAttribute('edge_auto_takeover_set_at');
+
+        return [
+            'enabled' => (bool) ($branch->getAttribute('edge_auto_takeover_enabled') ?? false),
+            'after_seconds' => max(180, min(3600, $after > 0 ? $after : 300)),
+            'set_by' => $branch->getAttribute('edge_auto_takeover_set_by_user_id') !== null ? (int) $branch->getAttribute('edge_auto_takeover_set_by_user_id') : null,
+            'set_at' => $setAt ? \Illuminate\Support\Carbon::parse((string) $setAt, 'UTC')->toIso8601String() : null,
         ];
     }
 
