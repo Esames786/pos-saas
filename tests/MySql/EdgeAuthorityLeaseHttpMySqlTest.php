@@ -188,7 +188,9 @@ class EdgeAuthorityLeaseHttpMySqlTest extends MySqlTenantTestCase
         $this->assertTrue($this->cloudFenced($this->branchId), 'lease lapsed → Cloud refuses this branch');
 
         $this->assertSame(1, Artisan::call('edge:authority:release', ['tenant' => self::TENANT_CODE, 'branch' => $this->branchId]), 'a reason is required');
-        $this->assertSame(1, Artisan::call('edge:authority:release', ['tenant' => 'no-such-tenant', 'branch' => $this->branchId, '--reason' => 'x']), 'an unknown tenant is refused');
+        $this->assertSame(1, Artisan::call('edge:authority:release', ['tenant' => self::TENANT_CODE, 'branch' => $this->branchId, '--reason' => 'x']), 'a named operator is required');
+        $this->assertSame(1, Artisan::call('edge:authority:release', ['tenant' => 'no-such-tenant', 'branch' => $this->branchId, '--reason' => 'x', '--by' => 'owner']), 'an unknown tenant is refused');
+        $this->assertStringContainsString('Tenant not found', Artisan::output());
         $rc = Artisan::call('edge:authority:release', ['tenant' => self::TENANT_CODE, 'branch' => $this->branchId, '--reason' => 'appliance dead after a failed update', '--by' => 'owner']);
         $this->assertSame(0, $rc, Artisan::output());
         DB::setDefaultConnection('master');
@@ -198,6 +200,71 @@ class EdgeAuthorityLeaseHttpMySqlTest extends MySqlTenantTestCase
         $this->assertNotNull($row->released_at);
         $this->assertStringContainsString('(by owner)', (string) $row->release_reason);
         $this->assertFalse($this->cloudFenced($this->branchId), 'released → the Cloud writes again');
+    }
+
+    /**
+     * SAFE-RELEASE PRECONDITIONS: active or unsafe authority can never be released by accident. A live lease (standby OR the
+     * appliance holding authority) is refused with no override; a silent appliance that holds authority needs --edge-stopped;
+     * --dry-run never writes; every refusal leaves the lease row byte-identical.
+     */
+    public function test_the_release_command_never_releases_a_live_or_appliance_held_lease_by_accident(): void
+    {
+        Carbon::setTestNow(Carbon::now()->startOfSecond());
+        $row = fn () => (array) DB::connection('tenant')->table('edge_branch_authority_leases')->where('branch_id', $this->branchId)->first();
+        $release = function (array $extra = []): int {
+            $rc = Artisan::call('edge:authority:release', ['tenant' => self::TENANT_CODE, 'branch' => $this->branchId, '--reason' => 'test', '--by' => 'owner'] + $extra);
+            DB::setDefaultConnection('master');
+
+            return $rc;
+        };
+
+        // LIVE STANDBY lease (the Cloud already writes): refused, dry run refused, nothing written.
+        $this->postJson($this->heartbeatUri, ['seq' => 1, 'edge_state' => 'standby'], $this->headers())->assertOk()->assertJsonPath('holder', 'cloud');
+        $before = $row();
+        Carbon::setTestNow(Carbon::getTestNow()->copy()->addSeconds(59));
+        $this->assertSame(1, $release(['--dry-run' => true]));
+        $this->assertStringContainsString('DRY RUN: REFUSED LEASE_LIVE', Artisan::output());
+        $this->assertSame(1, $release());
+        $this->assertStringContainsString('REFUSED LEASE_LIVE', Artisan::output());
+        $this->assertSame(1, $release(['--edge-stopped' => true]), 'a live lease is never overridable');
+        $this->assertSame($before, $row(), 'a refused release writes nothing');
+        $this->assertFalse($this->cloudFenced($this->branchId));
+
+        // LIVE APPLIANCE AUTHORITY (it took over and keeps heartbeating): refused even with --edge-stopped — no split brain.
+        $this->postJson($this->heartbeatUri, ['seq' => 2, 'edge_state' => 'local_active'], $this->headers())->assertOk()->assertJsonPath('holder', 'edge');
+        $before = $row();
+        $this->assertSame(1, $release());
+        $this->assertSame(1, $release(['--edge-stopped' => true]));
+        $this->assertStringContainsString('REFUSED LEASE_LIVE', Artisan::output());
+        $this->assertSame($before, $row());
+        $this->assertTrue($this->cloudFenced($this->branchId), 'the appliance stays the writer');
+
+        // SILENT APPLIANCE THAT HOLDS AUTHORITY: refused without the operator's --edge-stopped statement; dry run writes nothing.
+        Carbon::setTestNow(Carbon::getTestNow()->copy()->addSeconds(61));
+        $before = $row();
+        $this->assertSame(1, $release());
+        $this->assertStringContainsString('REFUSED EDGE_HOLDS_AUTHORITY', Artisan::output());
+        $this->assertSame(0, $release(['--edge-stopped' => true, '--dry-run' => true]));
+        $this->assertStringContainsString('DRY RUN: this lease WOULD be released', Artisan::output());
+        $this->assertSame($before, $row(), 'refusal and dry run write nothing');
+        $this->assertTrue($this->cloudFenced($this->branchId));
+
+        // With the statement: released, audited, the Cloud writes again; a second release has nothing to release.
+        $this->assertSame(0, $release(['--edge-stopped' => true]), Artisan::output());
+        $after = $row();
+        $this->assertSame('cloud', $after['holder']);
+        $this->assertNotNull($after['released_at']);
+        $this->assertStringContainsString('(by owner)', (string) $after['release_reason']);
+        $this->assertFalse($this->cloudFenced($this->branchId));
+        $this->assertSame(1, $release(['--edge-stopped' => true]));
+        $this->assertStringContainsString('REFUSED ALREADY_RELEASED', Artisan::output());
+
+        // A branch with no lease: nothing to release, nothing created; the other branch is never touched.
+        $rc = Artisan::call('edge:authority:release', ['tenant' => self::TENANT_CODE, 'branch' => $this->otherBranchId, '--reason' => 'test', '--by' => 'owner']);
+        DB::setDefaultConnection('master');
+        $this->assertSame(0, $rc);
+        $this->assertStringContainsString('No lease exists', Artisan::output());
+        $this->assertSame(1, DB::connection('tenant')->table('edge_branch_authority_leases')->count());
     }
 
     public function test_the_appliance_reports_only_its_own_branch(): void

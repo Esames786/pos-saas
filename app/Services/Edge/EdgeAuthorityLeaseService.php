@@ -220,14 +220,64 @@ class EdgeAuthorityLeaseService
         });
     }
 
-    /** Operator release of a dead appliance's lease (Cloud CLI, audited). The Cloud becomes the writer again. */
-    public function release(int $branchId, string $reason, ?string $by = null): ?array
+    /** Refusal codes of an operator release (see releaseRefusal()). */
+    public const RELEASE_ALREADY_RELEASED = 'ALREADY_RELEASED';
+    public const RELEASE_NEVER_HEARTBEATED = 'NEVER_HEARTBEATED';
+    public const RELEASE_LEASE_LIVE = 'LEASE_LIVE';
+    public const RELEASE_EDGE_HOLDS_AUTHORITY = 'EDGE_HOLDS_AUTHORITY';
+
+    /**
+     * Why an operator release of this lease must be refused right now (null = it may be released). Pure: writes nothing.
+     *   ALREADY_RELEASED      nothing to release.
+     *   NEVER_HEARTBEATED     no lease was ever granted, so the Cloud is not fenced.
+     *   LEASE_LIVE            the appliance heartbeated within the TTL, so it is ALIVE: in standby the Cloud already writes; in
+     *                         local_active the appliance is the writer and a release would split the brain. Never overridable.
+     *   EDGE_HOLDS_AUTHORITY  the appliance took over and then went silent: its offline sales exist only on it. Released only
+     *                         when the operator confirms the Branch Server is stopped and will not sell again ($edgeStoppedConfirmed).
+     */
+    public function releaseRefusal(EdgeBranchAuthorityLease $lease, bool $edgeStoppedConfirmed = false): ?string
     {
-        return DB::connection('tenant')->transaction(function () use ($branchId, $reason, $by) {
+        if ($lease->isReleased()) {
+            return self::RELEASE_ALREADY_RELEASED;
+        }
+        if ($lease->last_heartbeat_at === null) {
+            return self::RELEASE_NEVER_HEARTBEATED;
+        }
+        if (! $lease->isExpired()) {
+            return self::RELEASE_LEASE_LIVE;
+        }
+        if ($lease->holder === EdgeBranchAuthorityLease::HOLDER_EDGE && ! $edgeStoppedConfirmed) {
+            return self::RELEASE_EDGE_HOLDS_AUTHORITY;
+        }
+
+        return null;
+    }
+
+    /**
+     * Operator release of a DEAD appliance's lease (Cloud CLI, audited). The Cloud becomes the writer again.
+     * The preconditions (releaseRefusal) are checked UNDER the row lock, so a heartbeat that lands between the operator's look and
+     * the release wins: a live lease is never released. A refusal throws RuntimeException(<code>) and writes nothing.
+     * Every release and refusal is logged (the lease row's release_reason is cleared by the next heartbeat, the log line is not).
+     */
+    public function release(int $branchId, string $reason, ?string $by = null, bool $edgeStoppedConfirmed = false): ?array
+    {
+        return DB::connection('tenant')->transaction(function () use ($branchId, $reason, $by, $edgeStoppedConfirmed) {
             $lease = EdgeBranchAuthorityLease::on('tenant')->where('branch_id', $branchId)->lockForUpdate()->first();
             if (! $lease) {
                 return null;
             }
+            $facts = [
+                'branch_id' => $branchId, 'device' => (string) $lease->device_public_uuid, 'holder' => (string) $lease->holder,
+                'edge_state' => (string) $lease->edge_state, 'seq' => (int) $lease->heartbeat_seq,
+                'last_heartbeat_at' => $lease->last_heartbeat_at?->toIso8601String(), 'reason' => mb_substr(trim($reason), 0, 200), 'by' => $by,
+                'edge_stopped_confirmed' => $edgeStoppedConfirmed,
+            ];
+            $refusal = $this->releaseRefusal($lease, $edgeStoppedConfirmed);
+            if ($refusal !== null) {
+                Log::warning('[edge-authority] operator lease release REFUSED: ' . $refusal, $facts);
+                throw new RuntimeException($refusal);
+            }
+            Log::warning('[edge-authority] operator lease RELEASED (the Cloud is the branch writer again)', $facts);
             $lease->holder = EdgeBranchAuthorityLease::HOLDER_CLOUD;
             $lease->edge_state = EdgeBranchAuthorityLease::EDGE_STANDBY;
             $lease->fenced_at = null;
