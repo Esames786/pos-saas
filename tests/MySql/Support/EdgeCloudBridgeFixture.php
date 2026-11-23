@@ -29,6 +29,14 @@ trait EdgeCloudBridgeFixture
     protected string $cloudDeviceSecret = 'q-device-secret';
     /** @var array<string,string> path fragment => 'down' | 'error' */
     protected array $bridgeFailures = [];
+    /**
+     * Optional hook run AS THE CLOUD (Cloud DB) just before each bridged request is answered, with the request path — lets a
+     * test stage what other Cloud clients write WHILE the appliance talks to the Cloud (e.g. print-agent heartbeats folding
+     * printer health, dine-in tables changing occupancy). Null = no hook.
+     *
+     * @var null|\Closure(string):void
+     */
+    protected ?\Closure $bridgeBeforeCall = null;
     protected string $cloudDb;
     protected string $edgeDb;
     private static bool $edgeDbProvisioned = false;
@@ -183,6 +191,9 @@ trait EdgeCloudBridgeFixture
             config(['app.role' => null]); // the Cloud answers as the Cloud …
             $this->useDb($this->cloudDb);  // … on the Cloud database
             try {
+                if ($this->bridgeBeforeCall !== null) {
+                    ($this->bridgeBeforeCall)($path);
+                }
                 $headers = [];
                 foreach ($request->headers() as $name => $values) {
                     $headers[$name] = is_array($values) ? implode(', ', $values) : (string) $values;
