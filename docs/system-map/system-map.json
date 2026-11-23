@@ -1,15 +1,15 @@
 {
-    "built_at": "2026-11-23T09:14:22+00:00",
+    "built_at": "2026-11-23T10:49:52+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "9d93ee96",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas-e09-deploy",
-            "branch": "deploy/edge09-cloud-20261123",
-            "head": "98521bc8",
+            "branch": "deploy/authority-release-fix-20261124",
+            "head": "5a68870e",
             "behind_prod": 0,
-            "ahead_of_prod": 129,
-            "last_commit": "2026-11-23\u00b7Merge EDGE-0.9-CLOUD: Edge 0.9 Cloud half (setup wizard codes, release registry + signed download, device status/LAN profile, live-state mirror, update-now + maintenance window, auto-takeover setting default OFF, Install Offline Counter) onto production 9d93ee96 (keeps MANAGER-PIN-SHARED-1) - edge09/integ 104ffc4f, signed r2 source 3328afb8",
+            "ahead_of_prod": 133,
+            "last_commit": "2026-11-23\u00b7Merge AUTHORITY-RELEASE-FIX: edge:authority:release finds the tenant by tenant_code (494eebd5) + safe-release preconditions (ced83beb: live lease never released, appliance-held lease needs --edge-stopped, --dry-run, --by required, audit log) onto production 6be3d9a1 (Edge 0.9 Cloud)",
             "uncommitted_files": 0
         },
         {
@@ -19,6 +19,15 @@
             "behind_prod": 3,
             "ahead_of_prod": 128,
             "last_commit": "2026-11-23\u00b7docs(edge 0.9): REAL LAB 0.8.2 -> 0.9.0 r2 acceptance PASS + production Cloud plan (5 master + 1 tenant) for approval + Khatri restore-time bound",
+            "uncommitted_files": 0
+        },
+        {
+            "path": "D:/laragon2/www/pos-saas-e09-prodref",
+            "branch": "fix/edge-authority-release-guard",
+            "head": "ced83beb",
+            "behind_prod": 0,
+            "ahead_of_prod": 132,
+            "last_commit": "2026-11-23\u00b7fix(edge lease): safe-release preconditions for edge:authority:release - a live lease is never released, an appliance-held lease needs --edge-stopped, --dry-run writes nothing, --by required, every release/refusal logged",
             "uncommitted_files": 0
         },
         {
@@ -73,15 +82,6 @@
             "behind_prod": 3,
             "ahead_of_prod": 75,
             "last_commit": "2026-11-22\u00b7fix(edge 0.9 packaging): slim MySQL profile keeps lib/private (ICU data for REGEXP) when the source has it",
-            "uncommitted_files": 0
-        },
-        {
-            "path": "D:/laragon2/www/pos-saas-e09-prodref",
-            "branch": "(detached)",
-            "head": "9d93ee96",
-            "behind_prod": 0,
-            "ahead_of_prod": 0,
-            "last_commit": "2026-11-22\u00b7docs: deployment record MANAGER-PIN-SHARED-1 (ead217f5 live 22 Nov ~00:55 PKT; perms/accounts/smoke unchanged; live rolled-back proof: owner on the phone now gets an approval)",
             "uncommitted_files": 0
         },
         {
@@ -482,10 +482,10 @@
             "modified": "2026-11-23"
         }
     ],
-    "git": "98521bc8",
+    "git": "5a68870e",
     "source": {
-        "tenant_db": "pos_test_tenant_edgewt_dep",
-        "master_db": "pos_test_master_edgewt_dep"
+        "tenant_db": "pos_prodschema23_khatribiryani_edge",
+        "master_db": "pos_prodschema23_master_edge"
     },
     "counts": {
         "tables": 250,
