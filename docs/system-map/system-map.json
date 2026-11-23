@@ -1,25 +1,25 @@
 {
-    "built_at": "2026-11-23T23:44:38+00:00",
+    "built_at": "2026-11-23T23:51:44+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "9d93ee96",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas-e09-deploy",
-            "branch": "deploy/authority-release-fix-20261124",
-            "head": "27353b88",
+            "branch": "deploy/edge-offline-readiness-20261124",
+            "head": "73670d68",
             "behind_prod": 0,
-            "ahead_of_prod": 136,
-            "last_commit": "2026-11-24\u00b7docs(status): Khatri Branch Server 0.8.5 -> 0.9.0 update record, 24 Nov 2026 (owner Khatri GO; updated + verified, lease max gap 45 s, never fenced; Windows Update restart = 23 Nov incident cause)",
+            "ahead_of_prod": 139,
+            "last_commit": "2026-11-24\u00b7Merge EDGE-OFFLINE-READINESS-FIX: Khatri warm standby can take over again - Cloud stock baseline names only appliance-held products (explicit zero position when the branch keeps no stock) + printer/table config fingerprint by shipped content, not print-agent heartbeats or table occupancy (f0a9e557, Cloud-only, no migration)",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-e09-fix",
             "branch": "fix/edge-offline-readiness-20261124",
-            "head": "f0a9e557",
+            "head": "296bdd47",
             "behind_prod": 0,
-            "ahead_of_prod": 135,
-            "last_commit": "2026-11-24\u00b7fix(edge cloud): unblock Khatri \"Switch to Offline\" - acceptable stock baseline + no config revision per print-agent heartbeat / table occupancy (Cloud-only)",
-            "uncommitted_files": 2
+            "ahead_of_prod": 136,
+            "last_commit": "2026-11-24\u00b7docs(system-map): rebuild on the EDGE-OFFLINE-READINESS-FIX candidate (no table/route change: 250/441/262/762; built from a clean tenant-only test DB)",
+            "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-e09-integ",
@@ -491,7 +491,7 @@
             "modified": "2026-11-23"
         }
     ],
-    "git": "f0a9e557",
+    "git": "73670d68",
     "source": {
         "tenant_db": "pos_test_tenant_edgefix24_map",
         "master_db": "pos_test_master_edgefix24"
