@@ -179,6 +179,27 @@ class EdgeAuthorityLeaseHttpMySqlTest extends MySqlTenantTestCase
         $this->assertFalse($this->cloudFenced($this->branchId));
     }
 
+    /** The operator's real recovery path is the ARTISAN command (not the service): a dead appliance's lapsed lease is released by tenant code. */
+    public function test_the_release_command_finds_the_tenant_by_code_and_unfences_a_dead_appliances_branch(): void
+    {
+        Carbon::setTestNow(Carbon::now()->startOfSecond());
+        $this->postJson($this->heartbeatUri, ['seq' => 1, 'edge_state' => 'standby'], $this->headers())->assertOk()->assertJsonPath('holder', 'cloud');
+        Carbon::setTestNow(Carbon::getTestNow()->copy()->addSeconds(61));
+        $this->assertTrue($this->cloudFenced($this->branchId), 'lease lapsed → Cloud refuses this branch');
+
+        $this->assertSame(1, Artisan::call('edge:authority:release', ['tenant' => self::TENANT_CODE, 'branch' => $this->branchId]), 'a reason is required');
+        $this->assertSame(1, Artisan::call('edge:authority:release', ['tenant' => 'no-such-tenant', 'branch' => $this->branchId, '--reason' => 'x']), 'an unknown tenant is refused');
+        $rc = Artisan::call('edge:authority:release', ['tenant' => self::TENANT_CODE, 'branch' => $this->branchId, '--reason' => 'appliance dead after a failed update', '--by' => 'owner']);
+        $this->assertSame(0, $rc, Artisan::output());
+        DB::setDefaultConnection('master');
+
+        $row = DB::connection('tenant')->table('edge_branch_authority_leases')->where('branch_id', $this->branchId)->first();
+        $this->assertSame('cloud', $row->holder);
+        $this->assertNotNull($row->released_at);
+        $this->assertStringContainsString('(by owner)', (string) $row->release_reason);
+        $this->assertFalse($this->cloudFenced($this->branchId), 'released → the Cloud writes again');
+    }
+
     public function test_the_appliance_reports_only_its_own_branch(): void
     {
         // The device is bound to branchId; a heartbeat can never create or move a lease for another branch —

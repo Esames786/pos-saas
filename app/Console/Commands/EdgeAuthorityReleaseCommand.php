@@ -33,7 +33,8 @@ class EdgeAuthorityReleaseCommand extends Command
 
             return self::FAILURE;
         }
-        $tenant = Tenant::where('code', (string) $this->argument('tenant'))->first();
+        // tenants has `tenant_code` (no `code` column): the old lookup threw "Unknown column 'code'" (found 23 Nov 2026).
+        $tenant = Tenant::where('tenant_code', (string) $this->argument('tenant'))->first();
         if (! $tenant) {
             $this->error('Tenant not found.');
 
