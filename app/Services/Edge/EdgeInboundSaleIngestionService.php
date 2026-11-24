@@ -154,28 +154,9 @@ class EdgeInboundSaleIngestionService
                     $registry = $this->claimRegistry($envelope, $device, $branch, $contentHash, $ingestionUuid);
 
                     $continuity = null;
-                    $reconcile = (array) ($plan['reconcile'] ?? []);   // SWITCHOVER AUTO-RECONCILE: every automatic fix, for the ACK + report
                     if ($plan['order_id'] !== null) {
-                        // ADOPTED ORDER: complete the EXISTING Cloud order (re-decided under its row lock), never a second one.
-                        $adopted = $this->reconcileAdoptedOrder($envelope, $branch, $device, (int) $plan['order_id']);
-                        $sale = $adopted['sale'];
-                        $reconcile = array_merge($reconcile, $adopted['reconcile']);
-                        if ($adopted['mode'] === 'already_paid') {
-                            // R3 — paid online already: acknowledge the offline copy against the ONLINE order and post NOTHING.
-                            $ack = $this->buildAck($saleUuid, $contentHash, $ingestionUuid, $sale, (int) $envelope['activation_epoch'], $envelope['config_revision'] ?? null, EdgeInboundSaleIngestion::STATUS_APPLIED);
-                            $ack['continuity'] = ['adopted_order' => ['sales_order_id' => (int) $sale->id, 'posted' => false], 'reconcile' => $reconcile];
-                            $registry->update([
-                                'status' => EdgeInboundSaleIngestion::STATUS_APPLIED,
-                                'ingested_sales_order_id' => $sale->id,
-                                'official_sale_no' => $sale->sale_no,
-                                'ack_payload' => $ack,
-                                'ingested_at' => now(),
-                            ]);
-                            Log::warning('[edge-sync-ingest] reconciled: paid online already — offline copy not posted', ['sale_uuid' => $saleUuid, 'sales_order_id' => $sale->id]);
-
-                            return $ack;
-                        }
-                        $keptByIndex = $adopted['kept'];
+                        // ADOPTED ORDER: complete the EXISTING Cloud order (re-verified under its row lock), never a second one.
+                        [$sale, $keptByIndex] = $this->mergeAdoptedOrder($envelope, $branch, $device, (int) $plan['order_id']);
                         $this->projectLinesWithOfficialStock($envelope, $sale, $branch, $keptByIndex);
                         $continuity = ['adopted_order' => ['sales_order_id' => (int) $sale->id, 'kept_lines' => count($keptByIndex),
                             'appended_lines' => count((array) ($envelope['lines'] ?? [])) - count($keptByIndex)]];
@@ -219,16 +200,6 @@ class EdgeInboundSaleIngestionService
                     // being durable. A missing/malformed effect throws here and rolls the WHOLE ingestion back —
                     // official sale/stock/COGS/payments/registry included; the registry never claims success.
                     $this->financeVerifier->verifyPaidSale($sale->fresh()->load(['payments.method', 'lines']));
-
-                    if ($plan['order_id'] === null) {
-                        // R7 — a NEW offline bill on a table: an unpaid online bill it replaces (re-punched offline) is closed here,
-                        // inside this transaction, with no kitchen print.
-                        $reconcile = array_merge($reconcile, $this->replaceSupersededOnlineTableBills($envelope, $sale, $branch));
-                    }
-                    if ($reconcile !== []) {
-                        $continuity = (array) $continuity + ['reconcile' => $reconcile];
-                        Log::info('[edge-sync-ingest] switchover auto-reconcile', ['sale_uuid' => $saleUuid, 'actions' => array_column($reconcile, 'action')]);
-                    }
 
                     $ack = $this->buildAck($saleUuid, $contentHash, $ingestionUuid, $sale, (int) $envelope['activation_epoch'], $envelope['config_revision'] ?? null, EdgeInboundSaleIngestion::STATUS_APPLIED);
                     if ($continuity !== null) {
@@ -556,7 +527,7 @@ class EdgeInboundSaleIngestionService
      */
     private function continuityPlan(array $envelope, Branch $branch): array
     {
-        $plan = ['cloud_shift_id' => null, 'cloud_shift_uuid' => null, 'order_id' => null, 'reconcile' => []];
+        $plan = ['cloud_shift_id' => null, 'cloud_shift_uuid' => null, 'order_id' => null];
         $continues = $envelope['shift']['continues_cloud_shift_uuid'] ?? null;
         $adoption = $envelope['adoption'] ?? null;
         if ((string) ($envelope['envelope_schema_version'] ?? '') !== self::ENVELOPE_SCHEMA_V4) {
@@ -574,15 +545,14 @@ class EdgeInboundSaleIngestionService
                 throw new IngestionRefusal('ENVELOPE_INVALID', 'continues_cloud_shift_uuid is not a canonical shift identity');
             }
             $shift = \App\Models\Tenant\Shift::on('tenant')->where('shift_uuid', (string) $continues)->first();
-            if (! $shift || (int) $shift->branch_id !== (int) $branch->id || (int) $shift->terminal_id !== (int) ($envelope['terminal_id'] ?? 0)) {
-                // SWITCHOVER AUTO-RECONCILE R6 (24 Nov 2026): the sale was really paid at the till — post it without a shift, exactly
-                // like any pre-0.9 Edge sale (the Cloud never creates or borrows another counter's shift), and say so in the ACK.
-                $plan['reconcile'][] = ['action' => 'continued_shift_not_used', 'cloud_shift_uuid' => (string) $continues,
-                    'reason' => ! $shift ? 'the continued online shift does not exist on the Cloud' : 'the continued online shift belongs to another branch or counter'];
-            } else {
-                $plan['cloud_shift_id'] = (int) $shift->id;
-                $plan['cloud_shift_uuid'] = (string) $continues;
+            if (! $shift) {
+                throw new IngestionRefusal('CONTINUED_SHIFT_UNKNOWN', 'the online shift this Edge shift continues does not exist on the Cloud');
             }
+            if ((int) $shift->branch_id !== (int) $branch->id || (int) $shift->terminal_id !== (int) ($envelope['terminal_id'] ?? 0)) {
+                throw new IngestionRefusal('CONTINUED_SHIFT_MISMATCH', 'the continued online shift belongs to another branch or counter');
+            }
+            $plan['cloud_shift_id'] = (int) $shift->id;
+            $plan['cloud_shift_uuid'] = (string) $continues;
         }
         if ($adoption !== null) {
             if (! is_array($adoption) || (string) ($adoption['adopted_from_order_uuid'] ?? '') !== (string) ($envelope['sale_uuid'] ?? '')
@@ -591,40 +561,33 @@ class EdgeInboundSaleIngestionService
             }
             $order = SalesOrder::on('tenant')->where('sale_uuid', (string) $envelope['sale_uuid'])->first();
             if (! $order) {
-                // R5: the online order is gone — the offline bill is still a paid sale: post it as a new one with the same identity.
-                $plan['reconcile'][] = ['action' => 'online_order_missing_posted_new'];
-            } else {
-                if ((int) $order->branch_id !== (int) $branch->id) {
-                    throw new IngestionRefusal('WRONG_BRANCH', 'the adopted online order belongs to another branch');
-                }
-                // Cheap early verdict for what can never be reconciled automatically; the rest is decided under the row lock.
-                $this->assertAutoReconcilable($order, $order->lines()->orderBy('id')->get());
-                $plan['order_id'] = (int) $order->id;
+                throw new IngestionRefusal('ADOPTED_ORDER_UNKNOWN', 'the adopted online order does not exist on the Cloud');
             }
+            if ((int) $order->branch_id !== (int) $branch->id) {
+                throw new IngestionRefusal('WRONG_BRANCH', 'the adopted online order belongs to another branch');
+            }
+            $this->adoptedOrderLineMap($order, $order->lines()->orderBy('id')->get(), $envelope);
+            $plan['order_id'] = (int) $order->id;
         }
 
         return $plan;
     }
 
-    /** Order statuses meaning the Cloud already took the money for this order (R3: never paid twice). */
-    private const PAID_ORDER_STATUSES = ['paid', 'partially_returned', 'returned'];
-
     /**
-     * SWITCHOVER AUTO-RECONCILE (24 Nov 2026) — the few adopted-order states that still need a person (terminal conflict, as
-     * before): an order PART-paid online (both payments are real money: splitting them is not guessed), an order line kind the
-     * mirror does not adopt, or an unknown order status.
+     * Verify the Cloud order is EXACTLY what was adopted and map each Cloud line onto the envelope line that continues it.
+     * Matching: the same line_uuid first (an untouched adopted line keeps it), then the same product / variant / unit price with
+     * the same quantity, then with a quantity not below the Cloud's (a round added on the same item). A Cloud line with no
+     * continuation (voided or reduced on the appliance) is refused — milestone 1 does not merge voids of mirrored lines.
+     *
+     * @return array<int,\App\Models\Tenant\SalesOrderLine> envelope line index → kept Cloud line
      */
-    private function assertAutoReconcilable(SalesOrder $order, $cloudLines): void
+    private function adoptedOrderLineMap(SalesOrder $order, $cloudLines, array $envelope): array
     {
-        $status = (string) $order->status;
-        if (in_array($status, self::PAID_ORDER_STATUSES, true)) {
-            return;   // R3 — already paid online: nothing is posted, nothing is refused
-        }
-        if (! in_array($status, ['held', 'draft', 'cancelled'], true)) {
-            throw new IngestionRefusal('ADOPTED_ORDER_CONFLICT', "the online order is now [{$status}] — it changed on the Cloud after it was mirrored");
+        if ((string) $order->status !== 'held') {
+            throw new IngestionRefusal('ADOPTED_ORDER_CONFLICT', "the online order is now [{$order->status}] — it changed on the Cloud after it was mirrored");
         }
         if ($order->payments()->exists()) {
-            throw new IngestionRefusal('ADOPTED_ORDER_CONFLICT', 'the online order carries a payment recorded on the Cloud — part-paid online and paid again offline needs a person, it is never split by guess');
+            throw new IngestionRefusal('ADOPTED_ORDER_CONFLICT', 'the online order carries a payment recorded on the Cloud — it cannot be paid twice');
         }
         foreach ($cloudLines as $cl) {
             // CP3 gap 4: deal rows (combo header + components) are adoptable; anything else is not a sale line kind.
@@ -632,20 +595,9 @@ class EdgeInboundSaleIngestionService
                 throw new IngestionRefusal('ADOPTED_ORDER_UNSUPPORTED', 'the online order carries a line kind the live-state mirror does not adopt');
             }
         }
-    }
-
-    /**
-     * Map each Cloud line of the adopted order onto the envelope line that continues it.
-     * Matching: the same line_uuid first (an untouched adopted line keeps it), then the same product / variant / unit price with
-     * the same quantity, then with a quantity not below the Cloud's (a round added on the same item).
-     * SWITCHOVER AUTO-RECONCILE (24 Nov 2026): a Cloud line with no continuation is no longer refused — it is returned as
-     * unmatched (added online after the copy and not billed offline, or voided offline); the caller applies the money-truth rule.
-     *
-     * @return array{0: array<int,\App\Models\Tenant\SalesOrderLine>, 1: list<\App\Models\Tenant\SalesOrderLine>} envelope line index →
-     *         kept Cloud line, and the Cloud lines the paid offline bill does not carry
-     */
-    private function matchAdoptedLines($cloudLines, array $envelope): array
-    {
+        if (! hash_equals((string) $envelope['adoption']['cloud_fingerprint'], Continuity\ContinuityFingerprint::fromOrder($order, $cloudLines))) {
+            throw new IngestionRefusal('ADOPTED_ORDER_CONFLICT', 'the online order changed on the Cloud after the mirror revision ' . (string) ($envelope['adoption']['mirror_revision'] ?? '?'));
+        }
         $env = array_values((array) ($envelope['lines'] ?? []));
         $map = [];
         // The same economic line: kind + deal + product + variant + captured price (a kept deal row keeps its Cloud parent link).
@@ -676,7 +628,11 @@ class EdgeInboundSaleIngestionService
                 }
             }
         }
-        return [$map, array_values($pending)];
+        if ($pending !== []) {
+            throw new IngestionRefusal('ADOPTED_LINES_DIVERGED', count($pending) . ' line(s) of the online order were removed or reduced on the Branch Server — a void of a mirrored line needs a supervisor');
+        }
+
+        return $map;
     }
 
     /**
@@ -684,54 +640,15 @@ class EdgeInboundSaleIngestionService
      * Identity (sale_uuid, sale_no, client_uuid), table session, opening shift / business date and creator are the Cloud's;
      * money, payment state and the settling counter are the envelope's.
      *
-     * SWITCHOVER AUTO-RECONCILE (24 Nov 2026) — decided under the order's row lock, the paid offline bill being the money truth:
-     *   already paid online (R3)            → nothing is posted: mode `already_paid`, the ACK points at the online order;
-     *   cancelled online, sold offline (R4) → the order is completed with the offline bill;
-     *   changed online after the copy (R1)  → merged when the offline bill carries every online line;
-     *   online lines not on the paid bill (R2) → those unpaid lines are removed (snapshot in the ACK), then merged.
-     * Part-paid online / unsupported lines / an unknown status stay the terminal conflict (assertAutoReconcilable).
-     *
-     * @return array{mode: string, sale: SalesOrder, kept: array<int,\App\Models\Tenant\SalesOrderLine>, reconcile: list<array<string,mixed>>}
+     * @return array{0: SalesOrder, 1: array<int,\App\Models\Tenant\SalesOrderLine>}
      */
-    private function reconcileAdoptedOrder(array $envelope, Branch $branch, EdgeDevice $device, int $orderId): array
+    private function mergeAdoptedOrder(array $envelope, Branch $branch, EdgeDevice $device, int $orderId): array
     {
         $order = SalesOrder::on('tenant')->where('id', $orderId)->lockForUpdate()->firstOrFail();
         $lines = $order->lines()->orderBy('id')->lockForUpdate()->get();
-        // Under the lock: the plan's early verdict is re-taken on the locked row (it may have moved since).
-        $this->assertAutoReconcilable($order, $lines);
-        $status = (string) $order->status;
+        // Under the lock (a non-terminal exception if it moved since the plan: the retry meets the plan's terminal refusal).
+        $kept = $this->adoptedOrderLineMap($order, $lines, $envelope);
         $totals = $envelope['totals'] ?? [];
-        if (in_array($status, self::PAID_ORDER_STATUSES, true)) {
-            // R3 — the Cloud already took the money for this order: never a second sale, payment, stock, GL or shift effect.
-            return ['mode' => 'already_paid', 'sale' => $order, 'kept' => [], 'reconcile' => [[
-                'action' => 'already_paid_online_not_posted',
-                'online_status' => $status,
-                'online_total' => round((float) $order->grand_total, 2),
-                'offline_total' => round((float) ($totals['grand_total'] ?? 0), 2),
-                'offline_paid' => round((float) collect((array) ($envelope['payments'] ?? []))->sum(fn ($p) => (float) ($p['amount'] ?? 0)), 2),
-            ]]];
-        }
-
-        $reconcile = [];
-        if ($status === 'cancelled') {
-            $reconcile[] = ['action' => 'cancelled_online_sold_offline'];
-        }
-        $changedOnline = ! hash_equals((string) ($envelope['adoption']['cloud_fingerprint'] ?? ''), Continuity\ContinuityFingerprint::fromOrder($order, $lines));
-        [$kept, $unmatched] = $this->matchAdoptedLines($lines, $envelope);
-        if ($unmatched !== []) {
-            // R2 — unpaid online lines the customer was not billed for offline: removed from the order (the Cloud POS itself re-saves
-            // held lines by delete + insert); a held order never posted stock or GL, so nothing is reversed. No kitchen print.
-            $removed = array_map(fn ($l) => [
-                'line_uuid' => (string) $l->line_uuid, 'product_id' => (int) $l->product_id, 'product_name' => (string) $l->product_name,
-                'quantity' => (float) $l->quantity, 'unit_price' => round((float) $l->unit_price, 2), 'line_total' => round((float) $l->line_total, 2),
-                'kot_sent_quantity' => (float) ($l->kot_sent_quantity ?? 0),
-            ], $unmatched);
-            \App\Models\Tenant\SalesOrderLine::on('tenant')->whereIn('id', array_map(fn ($l) => (int) $l->id, $unmatched))->delete();
-            $reconcile[] = ['action' => 'online_items_not_on_offline_bill', 'removed_lines' => $removed,
-                'removed_amount' => round(array_sum(array_column($removed, 'line_total')), 2)];
-        } elseif ($changedOnline && $status !== 'cancelled') {
-            $reconcile[] = ['action' => 'merged_after_online_change'];   // R1
-        }
         $customerId = $this->resolveCustomerId($envelope, $device);
         $order->fill([
             'terminal_id' => (int) ($envelope['terminal_id'] ?? 0) ?: $order->terminal_id,
@@ -761,115 +678,7 @@ class EdgeInboundSaleIngestionService
         ]);
         $order->save();
 
-        return ['mode' => 'merged', 'sale' => $order, 'kept' => $kept, 'reconcile' => $reconcile];
-    }
-
-    /**
-     * SWITCHOVER AUTO-RECONCILE R7 / R7b (24 Nov 2026) — a NEW offline dine-in bill on table X (not an adopted order). An unpaid online
-     * bill still open on table X that was opened BEFORE the offline table (so from before the outage — the Cloud is fenced during it) and
-     * whose items the offline bill carries is the same party re-punched offline (an order the mirror never copied, or a stale mirror that
-     * adopted nothing): it is closed as replaced (`cancelled` + note) and its table session released by the held-cancel rule — no KOT,
-     * no print job, no cancellation record (the kitchen already has the food). Anything else is left open (a real open table) and
-     * reported. Runs inside the ingestion transaction (atomic with the sale). Each offline line quantity can cover only one online bill.
-     *
-     * @return list<array<string,mixed>>
-     */
-    private function replaceSupersededOnlineTableBills(array $envelope, SalesOrder $sale, Branch $branch): array
-    {
-        $tableId = (int) ($envelope['table_session']['restaurant_table_id'] ?? 0);
-        $openedAt = $envelope['table_session']['opened_at'] ?? null;
-        if ($tableId <= 0 || ! is_string($openedAt) || $openedAt === '' || (string) ($envelope['order_type'] ?? '') !== 'dine_in') {
-            return [];
-        }
-        try {
-            $offlineOpenedAt = \Illuminate\Support\Carbon::parse($openedAt)->setTimezone((string) config('app.timezone', 'UTC'));
-        } catch (Throwable) {
-            return [];
-        }
-        $sessionIds = \App\Models\Tenant\RestaurantTableSession::on('tenant')->where('branch_id', (int) $branch->id)
-            ->where('restaurant_table_id', $tableId)->whereIn('status', ['open', 'bill_requested'])->pluck('id')->all();
-        if ($sessionIds === []) {
-            return [];
-        }
-        $candidates = SalesOrder::on('tenant')->where('branch_id', (int) $branch->id)->whereIn('restaurant_table_session_id', $sessionIds)
-            ->whereIn('status', ['held', 'draft'])->where('id', '!=', (int) $sale->id)
-            ->where('created_at', '<', $offlineOpenedAt->format('Y-m-d H:i:s'))
-            ->orderBy('id')->lockForUpdate()->get();
-
-        $env = array_values((array) ($envelope['lines'] ?? []));
-        $remaining = array_map(fn ($l) => (float) ($l['quantity'] ?? 0), $env);
-        $out = [];
-        foreach ($candidates as $order) {
-            $summary = ['sales_order_id' => (int) $order->id, 'sale_no' => (string) $order->sale_no, 'online_total' => round((float) $order->grand_total, 2)];
-            $paidOnline = $order->payments()->exists();
-            $left = $paidOnline ? null : $this->coverOnlineLines($order->lines()->orderBy('id')->get(), $env, $remaining);
-            if ($left === null) {
-                $out[] = ['action' => 'online_bill_left_open'] + $summary
-                    + ['reason' => $paidOnline ? 'it carries an online payment' : 'the offline bill does not carry all of its items'];
-                continue;
-            }
-            $remaining = $left;
-            $note = 'Replaced by offline bill ' . $sale->sale_no . ' (switchover auto-fix)';
-            $order->forceFill(['status' => 'cancelled', 'notes' => mb_substr(($order->notes ? $order->notes . ' | ' : '') . $note, 0, 1000)])->save();
-            $this->releaseReplacedTableSession((int) $order->restaurant_table_session_id, (int) ($sale->created_by_user_id ?? 0) ?: null);
-            $out[] = ['action' => 'replaced_online_bill'] + $summary + ['replaced_by_sale_no' => (string) $sale->sale_no];
-        }
-
-        return $out;
-    }
-
-    /**
-     * Does the offline bill carry every line of this online bill (same kind / deal / product / variant / price, quantity not below)?
-     * Returns the offline quantities still unclaimed after taking them, or null when it does not.
-     *
-     * @param  list<array<string,mixed>>  $env
-     * @param  list<float>  $remaining
-     * @return list<float>|null
-     */
-    private function coverOnlineLines($cloudLines, array $env, array $remaining): ?array
-    {
-        foreach ($cloudLines as $cl) {
-            $need = (float) $cl->quantity;
-            foreach ($env as $i => $el) {
-                if ($need <= 0.0005) {
-                    break;
-                }
-                $same = (string) ($el['line_kind'] ?? 'standard') === (string) ($cl->line_kind ?? 'standard')
-                    && (int) ($el['combo_id'] ?? 0) === (int) ($cl->combo_id ?? 0)
-                    && (int) ($el['product_id'] ?? 0) === (int) $cl->product_id
-                    && (int) ($el['product_variant_id'] ?? 0) === (int) ($cl->product_variant_id ?? 0)
-                    && abs((float) ($el['unit_price'] ?? 0) - (float) $cl->unit_price) < 0.005;
-                if (! $same || $remaining[$i] <= 0.0005) {
-                    continue;
-                }
-                $take = min($need, $remaining[$i]);
-                $remaining[$i] -= $take;
-                $need -= $take;
-            }
-            if ($need > 0.0005) {
-                return null;
-            }
-        }
-
-        return $remaining;
-    }
-
-    /** The held-cancel table rule (KotCancellationService::releaseTableIfNothingLeft): free the table when nothing live is left on it. */
-    private function releaseReplacedTableSession(int $sessionId, ?int $userId): void
-    {
-        if ($sessionId <= 0) {
-            return;
-        }
-        $session = \App\Models\Tenant\RestaurantTableSession::on('tenant')->whereKey($sessionId)->lockForUpdate()->first();
-        if (! $session || ! in_array((string) $session->status, ['open', 'bill_requested'], true)) {
-            return;
-        }
-        if (SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)->whereIn('status', ['held', 'draft'])->lockForUpdate()->exists()) {
-            return;
-        }
-        $tookMoney = SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)->whereIn('status', self::PAID_ORDER_STATUSES)->exists();
-        $session->update(['status' => $tookMoney ? 'closed' : 'cancelled', 'closed_by_user_id' => $userId, 'closed_at' => now()]);
-        \App\Models\Tenant\RestaurantTable::on('tenant')->where('id', $session->restaurant_table_id)->update(['status' => 'available']);
+        return [$order, $kept];
     }
 
     /**
