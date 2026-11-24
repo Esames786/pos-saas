@@ -285,5 +285,32 @@
             </div>
         </div>
     </div>
+
+    @if(empty($securityOnly))
+        {{-- SWITCHOVER AUTO-RECONCILE (24 Nov 2026): read-only — what the Cloud fixed by itself when offline sales came back. --}}
+        <div class="card mt-3" id="switchover-fixes">
+            <div class="card-header"><h5 class="mb-0">Switchover auto-fixes <small class="text-muted">(last 30 days)</small></h5></div>
+            <div class="card-body">
+                @if(empty($switchoverFixes))
+                    <p class="text-muted mb-0">Nothing needed fixing. When the Branch Server sells offline and the internet returns, any bill that changed online in the last seconds before the cut is fixed automatically and listed here.</p>
+                @else
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead><tr><th>When</th><th>Bill</th><th>What happened</th></tr></thead>
+                            <tbody>
+                            @foreach($switchoverFixes as $fix)
+                                <tr @class(['table-warning' => $fix['needs_person']])>
+                                    <td class="text-nowrap small">{{ $fix['at'] ? $fix['at']->copy()->setTimezone($switchoverTz ?? config('app.timezone'))->format('j M g:i A') : '' }}</td>
+                                    <td class="text-nowrap small">{{ $fix['sale_no'] ?? '—' }}</td>
+                                    <td class="small">{{ $fix['text'] }}</td>
+                                </tr>
+                            @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </div>
+        </div>
+    @endif
 </div>
 @endsection
