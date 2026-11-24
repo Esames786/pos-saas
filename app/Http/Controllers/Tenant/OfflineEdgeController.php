@@ -591,9 +591,6 @@ class OfflineEdgeController extends Controller
             'canSecurity'        => (bool) $user?->can(self::SECURITY_PERMISSION),
             'rendererAvailable'  => $this->renderer() !== null,
             'enrollmentKeyId'    => $this->profiles->enrollmentKeyId(),
-            // SWITCHOVER AUTO-RECONCILE (24 Nov 2026): read-only list of what the Cloud fixed by itself after an offline period.
-            'switchoverFixes'    => $securityOnly ? [] : app(\App\Services\Edge\EdgeSwitchoverReportService::class)->recent(),
-            'switchoverTz'       => app(\App\Support\TenantClock::class)->displayTimezone($user),
         ]));
 
         if ($newCode !== null || $setupCode !== null) {

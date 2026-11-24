@@ -54,7 +54,6 @@ class EdgeContinuityMergeHttpMySqlTest extends MySqlTenantTestCase
     private int $raita;
     private int $cashMethodId;
     private int $tableId;
-    private int $table13Id;
     private int $cloudShiftId;
     private int $cloudOrderId;
     private string $cloudOrderUuid;
@@ -92,7 +91,6 @@ class EdgeContinuityMergeHttpMySqlTest extends MySqlTenantTestCase
             $conn->table('stock_balances')->insert(['balance_key' => "{$this->branchId}-{$pid}-0-{$batchId}", 'branch_id' => $this->branchId, 'product_id' => $pid, 'inventory_batch_id' => $batchId, 'quantity_on_hand' => 100, 'average_cost' => 40, 'created_at' => now(), 'updated_at' => now()]);
         }
         $this->tableId = $this->makeTable($this->branchId, ['table_no' => 'T12', 'status' => 'occupied']);
-        $this->table13Id = $this->makeTable($this->branchId, ['table_no' => 'T13', 'status' => 'available']);   // switchover auto-reconcile R7
 
         // The ONLINE morning: T1's shift is open (1 000 opening + 200 cash sold online = 1 200 expected) …
         $shift = app(ShiftService::class)->open(Branch::on('tenant')->find($this->branchId), Terminal::on('tenant')->find($this->t1), $this->userId, 1000.0);
@@ -318,19 +316,13 @@ class EdgeContinuityMergeHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame(['acknowledged', 'acknowledged'], $this->asEdge(fn () => DB::connection('tenant')->table('edge_sync_outbox')->orderBy('id')->pluck('state')->all()));
     }
 
-    /**
-     * SWITCHOVER AUTO-RECONCILE R2 (owner, 24 Nov 2026: "i dont want manager involement i need to auto fix when internet on").
-     * A Raita was added ONLINE after the last mirror and the cashier did not add it offline: the paid offline bill (350) is the money
-     * truth — the order is completed with it, the unpaid online Raita line is removed (and reported), nothing is parked, the handback
-     * is not blocked. Was: terminal ADOPTED_ORDER_CONFLICT + failed_permanent (needs a supervisor).
-     */
-    public function test_an_order_changed_online_after_the_copy_settles_by_the_paid_offline_bill_with_no_person_needed(): void
+    public function test_an_order_changed_on_the_cloud_after_the_mirror_is_refused_and_nothing_of_it_is_written(): void
     {
         $this->assertSame('refreshed:initial', $this->tick()['work']['stock']);
         $this->asEdge(fn () => app(LiveStateMirror::class)->apply($this->cloudLiveState()));
         // Inside the lease window (before the Cloud fenced itself) a waiter added a Raita ONLINE — after the last mirror.
         $this->asCloud(function () {
-            $this->makeSaleLine($this->cloudOrderId, $this->raita, ['line_uuid' => (string) Str::ulid(), 'product_name' => 'Raita', 'quantity' => 1, 'unit_price' => 50, 'line_total' => 50, 'kot_sent' => 1, 'kot_sent_quantity' => 1]);
+            $this->makeSaleLine($this->cloudOrderId, $this->raita, ['line_uuid' => (string) Str::ulid(), 'product_name' => 'Raita', 'quantity' => 1, 'unit_price' => 50, 'line_total' => 50]);
             DB::connection('tenant')->table('sales_orders')->where('id', $this->cloudOrderId)->update(['subtotal' => 400, 'grand_total' => 400]);
         });
         $this->goLocalAndAdopt();
@@ -347,248 +339,27 @@ class EdgeContinuityMergeHttpMySqlTest extends MySqlTenantTestCase
 
         $this->bridgeFailures = [];
         $t = $this->tick();
-        $this->assertSame(2, (int) ($t['work']['outcomes']['acknowledged'] ?? 0), json_encode($t['work']));
-        $this->assertSame(0, (int) ($t['work']['outcomes']['terminal'] ?? 0), 'nothing parked: no person needed');
+        $this->assertSame(1, (int) ($t['work']['outcomes']['terminal'] ?? 0), json_encode($t['work']));
+        $this->assertSame(1, (int) ($t['work']['outcomes']['acknowledged'] ?? 0), 'the refused order never blocks the sale queued behind it');
         $this->asCloud(function () use ($quickUuid) {
             $c = DB::connection('tenant');
             $reg = $c->table('edge_inbound_sale_ingestions')->where('sale_uuid', $this->cloudOrderUuid)->first();
-            $this->assertSame('applied', $reg->status);
+            $this->assertSame(['conflict', 'ADOPTED_ORDER_CONFLICT'], [$reg->status, $reg->failure_code], 'classified terminal conflict (needs attention), never a guess');
             $order = $c->table('sales_orders')->where('id', $this->cloudOrderId)->first();
-            $this->assertSame(['paid', 'SO-ONLINE-1', '350.00', 1], [$order->status, $order->sale_no, (string) $order->grand_total, (int) $c->table('sale_payments')->where('sales_order_id', $this->cloudOrderId)->count()],
-                'completed in place with the PAID offline bill');
-            $this->assertEquals([[$this->biryani, 2.0], [$this->raita, 1.0]], $c->table('sales_order_lines')->where('sales_order_id', $this->cloudOrderId)->orderBy('id')->get()
-                ->map(fn ($l) => [(int) $l->product_id, (float) $l->quantity])->all(), 'the unpaid online Raita is no longer on the bill');
-            $fix = json_decode((string) $reg->ack_payload, true)['continuity']['reconcile'];
-            $this->assertSame('online_items_not_on_offline_bill', $fix[0]['action']);
-            $this->assertEquals(50.0, $fix[0]['removed_amount']);
-            $this->assertSame('Raita', $fix[0]['removed_lines'][0]['product_name']);
-            $this->assertSame('applied', $c->table('edge_inbound_sale_ingestions')->where('sale_uuid', $quickUuid)->value('status'));
+            $this->assertSame(['held', '400.00', 0], [$order->status, (string) $order->grand_total, (int) $c->table('sale_payments')->where('sales_order_id', $this->cloudOrderId)->count()], 'the online order is untouched');
+            $this->assertSame('applied', $c->table('edge_inbound_sale_ingestions')->where('sale_uuid', $quickUuid)->value('status'), 'the continuation sale beside it still merges');
             $this->assertSame($this->cloudShiftId, (int) $c->table('sales_orders')->where('sale_uuid', $quickUuid)->value('shift_id'));
-            $this->assertSame('700.00', (string) $c->table('shifts')->where('id', $this->cloudShiftId)->value('total_sales'), '200 online + 350 + 150 offline (paid money only)');
-            $report = app(\App\Services\Edge\EdgeSwitchoverReportService::class)->recent();
-            $this->assertCount(1, $report);
-            $this->assertStringContainsString('Raita x1', $report[0]['text']);
-            $this->assertFalse($report[0]['needs_person']);
         });
         $after = $this->cloudFacts();
-        $this->assertSame($before['sales_orders'] + 1, $after['sales_orders'], 'the order completed in place + the takeaway: never a second copy');
-        $this->assertSame($before['payments'] + 2, $after['payments']);
-        $this->assertSame(4.0, $after['stock_out'], 'official stock for the billed lines only: Biryani 1 (takeaway) + Biryani 2 + Raita 1');
-        $this->assertSame($before['kot_batches'], $after['kot_batches'], 'no kitchen print for the removed line');
-        $this->assertSame($before['print_jobs'], $after['print_jobs']);
-        $this->assertSame(['acknowledged', 'acknowledged'], $this->asEdge(fn () => DB::connection('tenant')->table('edge_sync_outbox')->orderBy('id')->pluck('state')->all()), 'the handback is not blocked');
-        // An exact replay: already_applied, zero further effects.
+        $this->assertSame($before['sales_orders'] + 1, $after['sales_orders'], 'only the takeaway was added — no copy of the refused order');
+        $this->assertSame($before['payments'] + 1, $after['payments']);
+        $this->assertSame(1.0, $after['stock_out'], 'no stock moved for the refused order');
+        $this->assertSame('failed_permanent', $this->asEdge(fn () => DB::connection('tenant')->table('edge_sync_outbox')->where('sale_uuid', $this->cloudOrderUuid)->value('state')), 'parked for a supervisor: the handback stays blocked (PERMANENT_SYNC_FAILURE)');
+        // Re-sending the identical envelope is answered from the registry: still the conflict, still nothing written.
         $envelope = json_decode((string) $this->asEdge(fn () => DB::connection('tenant')->table('edge_sync_outbox')->where('sale_uuid', $this->cloudOrderUuid)->value('envelope')), true);
         $headers = ['X-Edge-Device-ID' => $this->cloudDeviceUuid, 'Authorization' => 'Bearer ' . $this->cloudDeviceSecret];
-        $this->asCloud(fn () => $this->postJson('http://' . config('tenancy.central_domain') . '/api/edge/sync/sales', ['envelope' => $envelope], $headers)->assertJsonPath('status', 'already_applied'));
+        $this->asCloud(fn () => $this->postJson('http://' . config('tenancy.central_domain') . '/api/edge/sync/sales', ['envelope' => $envelope], $headers)->assertJsonPath('status', 'conflict')->assertJsonPath('failure_code', 'ADOPTED_ORDER_CONFLICT'));
         $this->assertSame($after, $this->cloudFacts());
-    }
-
-    /** R1 — the cashier saw the online Raita was missing and added it offline: the offline bill carries everything, merged in place. */
-    public function test_an_order_changed_online_and_re_added_offline_merges_in_place(): void
-    {
-        $this->assertSame('refreshed:initial', $this->tick()['work']['stock']);
-        $this->asEdge(fn () => app(LiveStateMirror::class)->apply($this->cloudLiveState()));
-        $this->asCloud(function () {
-            $this->makeSaleLine($this->cloudOrderId, $this->raita, ['line_uuid' => (string) Str::ulid(), 'product_name' => 'Raita', 'quantity' => 1, 'unit_price' => 50, 'line_total' => 50]);
-            DB::connection('tenant')->table('sales_orders')->where('id', $this->cloudOrderId)->update(['subtotal' => 400, 'grand_total' => 400]);
-        });
-        $this->goLocalAndAdopt();
-        $this->asEdge(function () {
-            $user = User::on('tenant')->find($this->userId);
-            $pos = app(EdgeLocalPosService::class);
-            $order = SalesOrder::on('tenant')->with('lines')->where('sale_uuid', $this->cloudOrderUuid)->firstOrFail();
-            $revised = $pos->holdOrReviseSale(['held_sale_id' => $order->id, 'restaurant_table_session_id' => $order->restaurant_table_session_id, 'order_type' => 'dine_in',
-                'lines' => array_merge($order->lines->map(fn ($l) => ['sales_order_line_id' => $l->id, 'product_id' => $l->product_id, 'quantity' => (float) $l->quantity])->all(),
-                    [['product_id' => $this->raita, 'quantity' => 1]])], $user, $this->t1);
-            $pos->settleHeldSale((int) $revised->id, ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 400]]], $user, $this->t1);
-        });
-
-        $this->bridgeFailures = [];
-        $t = $this->tick();
-        $this->assertSame(1, (int) ($t['work']['outcomes']['acknowledged'] ?? 0), json_encode($t['work']));
-        $this->asCloud(function () {
-            $c = DB::connection('tenant');
-            $order = $c->table('sales_orders')->where('id', $this->cloudOrderId)->first();
-            $this->assertSame(['paid', '400.00'], [$order->status, (string) $order->grand_total]);
-            $this->assertSame(3, $c->table('sales_order_lines')->where('sales_order_id', $this->cloudOrderId)->count(), 'Biryani, Raita and the online Raita (kept, same row)');
-            $ack = json_decode((string) $c->table('edge_inbound_sale_ingestions')->where('sale_uuid', $this->cloudOrderUuid)->value('ack_payload'), true);
-            $this->assertSame([['action' => 'merged_after_online_change']], $ack['continuity']['reconcile']);
-        });
-        $this->assertSame(4.0, $this->cloudFacts()['stock_out'], 'Biryani 2 + Raita 2, once');
-    }
-
-    /** R3 — paid ONLINE just before the cut, settled again offline: the money is never recorded twice, nothing is parked. */
-    public function test_an_order_paid_online_after_the_copy_is_never_paid_twice(): void
-    {
-        $this->assertSame('refreshed:initial', $this->tick()['work']['stock']);
-        $this->asEdge(fn () => app(LiveStateMirror::class)->apply($this->cloudLiveState()));
-        $this->asCloud(function () {
-            DB::connection('tenant')->table('sales_orders')->where('id', $this->cloudOrderId)->update(['status' => 'paid', 'paid_amount' => 350]);
-            $p = new \App\Models\Tenant\SalePayment(['sales_order_id' => $this->cloudOrderId, 'payment_method_id' => $this->cashMethodId, 'amount' => 350]);
-            $p->payment_uuid = (string) Str::ulid();
-            $p->save();
-        });
-        $this->goLocalAndAdopt();
-        $this->asEdge(function () {
-            $user = User::on('tenant')->find($this->userId);
-            $order = SalesOrder::on('tenant')->where('sale_uuid', $this->cloudOrderUuid)->firstOrFail();
-            app(EdgeLocalPosService::class)->settleHeldSale((int) $order->id, ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 350]]], $user, $this->t1);
-        });
-        $before = $this->cloudFacts();
-
-        $this->bridgeFailures = [];
-        $t = $this->tick();
-        $this->assertSame(1, (int) ($t['work']['outcomes']['acknowledged'] ?? 0), json_encode($t['work']));
-        $this->assertSame($before, $this->cloudFacts(), 'NOTHING posted: no sale, payment, stock, journal, cash-bank or ledger row');
-        $this->asCloud(function () {
-            $c = DB::connection('tenant');
-            $reg = $c->table('edge_inbound_sale_ingestions')->where('sale_uuid', $this->cloudOrderUuid)->first();
-            $this->assertSame(['applied', (int) $this->cloudOrderId, 'SO-ONLINE-1'], [$reg->status, (int) $reg->ingested_sales_order_id, $reg->official_sale_no]);
-            $fix = json_decode((string) $reg->ack_payload, true)['continuity']['reconcile'][0];
-            $this->assertSame(['already_paid_online_not_posted', 350.0], [$fix['action'], (float) $fix['offline_paid']]);
-            $this->assertSame(1, $c->table('sale_payments')->where('sales_order_id', $this->cloudOrderId)->count(), 'the online payment only');
-        });
-        $this->assertSame('acknowledged', $this->asEdge(fn () => DB::connection('tenant')->table('edge_sync_outbox')->where('sale_uuid', $this->cloudOrderUuid)->value('state')));
-    }
-
-    /** R4 — cancelled ONLINE just before the cut but sold and paid offline: the paid bill is the truth, recorded as sold. */
-    public function test_an_order_cancelled_online_after_the_copy_but_paid_offline_is_recorded_as_sold(): void
-    {
-        $this->assertSame('refreshed:initial', $this->tick()['work']['stock']);
-        $this->asEdge(fn () => app(LiveStateMirror::class)->apply($this->cloudLiveState()));
-        $this->asCloud(fn () => DB::connection('tenant')->table('sales_orders')->where('id', $this->cloudOrderId)->update(['status' => 'cancelled']));
-        $this->goLocalAndAdopt();
-        $this->asEdge(function () {
-            $user = User::on('tenant')->find($this->userId);
-            $order = SalesOrder::on('tenant')->where('sale_uuid', $this->cloudOrderUuid)->firstOrFail();
-            app(EdgeLocalPosService::class)->settleHeldSale((int) $order->id, ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 350]]], $user, $this->t1);
-        });
-
-        $this->bridgeFailures = [];
-        $t = $this->tick();
-        $this->assertSame(1, (int) ($t['work']['outcomes']['acknowledged'] ?? 0), json_encode($t['work']));
-        $this->asCloud(function () {
-            $c = DB::connection('tenant');
-            $order = $c->table('sales_orders')->where('id', $this->cloudOrderId)->first();
-            $this->assertSame(['paid', '350.00', 1], [$order->status, (string) $order->grand_total, (int) $c->table('sale_payments')->where('sales_order_id', $this->cloudOrderId)->count()]);
-            $ack = json_decode((string) $c->table('edge_inbound_sale_ingestions')->where('sale_uuid', $this->cloudOrderUuid)->value('ack_payload'), true);
-            $this->assertSame('cancelled_online_sold_offline', $ack['continuity']['reconcile'][0]['action']);
-        });
-        $this->assertSame(3.0, $this->cloudFacts()['stock_out'], 'Biryani 2 + Raita 1, once');
-    }
-
-    /** Still manual (rare, documented): PART-paid online in the last seconds and paid again offline — both are real money. */
-    public function test_an_order_part_paid_online_after_the_copy_still_needs_a_person(): void
-    {
-        $this->assertSame('refreshed:initial', $this->tick()['work']['stock']);
-        $this->asEdge(fn () => app(LiveStateMirror::class)->apply($this->cloudLiveState()));
-        $this->asCloud(function () {
-            $p = new \App\Models\Tenant\SalePayment(['sales_order_id' => $this->cloudOrderId, 'payment_method_id' => $this->cashMethodId, 'amount' => 100]);
-            $p->payment_uuid = (string) Str::ulid();
-            $p->save();
-        });
-        $this->goLocalAndAdopt();
-        $this->asEdge(function () {
-            $user = User::on('tenant')->find($this->userId);
-            $order = SalesOrder::on('tenant')->where('sale_uuid', $this->cloudOrderUuid)->firstOrFail();
-            app(EdgeLocalPosService::class)->settleHeldSale((int) $order->id, ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 350]]], $user, $this->t1);
-        });
-        $before = $this->cloudFacts();
-        $this->bridgeFailures = [];
-        $this->tick();
-        $this->assertSame($before, $this->cloudFacts(), 'nothing written');
-        $this->asCloud(function () {
-            $reg = DB::connection('tenant')->table('edge_inbound_sale_ingestions')->where('sale_uuid', $this->cloudOrderUuid)->first();
-            $this->assertSame(['conflict', 'ADOPTED_ORDER_CONFLICT'], [$reg->status, $reg->failure_code]);
-            $report = app(\App\Services\Edge\EdgeSwitchoverReportService::class)->recent();
-            $this->assertTrue($report[0]['needs_person']);
-        });
-    }
-
-    /** An unpaid online bill on table T13, opened AFTER the last mirror (so never copied), Biryani ×1. */
-    private function onlineBillOnT13NotInTheCopy(int $productId, float $price): int
-    {
-        return $this->asCloud(function () use ($productId, $price) {
-            $c = DB::connection('tenant');
-            $uuid = (string) Str::ulid();
-            $sessionId = $c->table('restaurant_table_sessions')->insertGetId(['session_uuid' => $uuid, 'session_no' => 'TS-' . $uuid, 'branch_id' => $this->branchId,
-                'restaurant_table_id' => $this->table13Id, 'opened_by_user_id' => $this->userId, 'opened_shift_id' => $this->cloudShiftId, 'business_date' => now()->toDateString(), 'guest_count' => 2,
-                'status' => 'open', 'opened_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
-            $c->table('restaurant_tables')->where('id', $this->table13Id)->update(['status' => 'occupied']);
-            $orderId = $this->makeSale($this->branchId, ['sale_no' => 'SO-ONLINE-13', 'sale_uuid' => (string) Str::ulid(), 'client_uuid' => (string) Str::uuid(), 'terminal_id' => $this->t1,
-                'shift_id' => $this->cloudShiftId, 'order_type' => 'dine_in', 'status' => 'held', 'subtotal' => $price, 'grand_total' => $price, 'inventory_posted' => 0, 'created_by_user_id' => $this->userId,
-                'restaurant_table_session_id' => $sessionId, 'restaurant_table_id' => $this->table13Id, 'business_date' => now()->toDateString(), 'created_at' => now()->subSeconds(5)]);
-            $this->makeSaleLine($orderId, $productId, ['line_uuid' => (string) Str::ulid(), 'product_name' => 'Item', 'quantity' => 1, 'unit_price' => $price, 'line_total' => $price, 'kot_sent' => 1, 'kot_sent_quantity' => 1]);
-
-            return $orderId;
-        });
-    }
-
-    /** The cashier opens T13 on the Branch Server and sells Biryani ×1 there (a NEW offline bill, nothing adopted for T13). */
-    private function sellOnT13Offline(): string
-    {
-        return $this->asEdge(function () {
-            $user = User::on('tenant')->find($this->userId);
-            $pos = app(EdgeLocalPosService::class);
-            $session = $pos->openTableSession($this->table13Id, ['guest_count' => 2], $user, $this->t1);
-            $held = $pos->holdOrReviseSale(['restaurant_table_session_id' => $session->id, 'order_type' => 'dine_in', 'lines' => [['product_id' => $this->biryani, 'quantity' => 1]]], $user, $this->t1);
-            $paid = $pos->settleHeldSale((int) $held->id, ['client_uuid' => (string) Str::uuid(), 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 150]]], $user, $this->t1);
-
-            return (string) $paid->sale_uuid;
-        });
-    }
-
-    /** R7 — a table punched online after the copy and re-punched offline: the old unpaid online bill is closed as replaced, table freed. */
-    public function test_a_table_re_punched_offline_closes_the_old_online_bill_without_a_kitchen_print(): void
-    {
-        $this->assertSame('refreshed:initial', $this->tick()['work']['stock']);
-        $this->asEdge(fn () => app(LiveStateMirror::class)->apply($this->cloudLiveState()));
-        $onlineId = $this->onlineBillOnT13NotInTheCopy($this->biryani, 150);
-        $this->goLocalAndAdopt();
-        $offlineUuid = $this->sellOnT13Offline();
-        $before = $this->cloudFacts();
-
-        $this->bridgeFailures = [];
-        $t = $this->tick();
-        $this->assertSame(1, (int) ($t['work']['outcomes']['acknowledged'] ?? 0), json_encode($t['work']));
-        $this->asCloud(function () use ($onlineId, $offlineUuid) {
-            $c = DB::connection('tenant');
-            $old = $c->table('sales_orders')->where('id', $onlineId)->first();
-            $this->assertSame('cancelled', $old->status, 'the re-punched online bill is closed as replaced');
-            $offline = $c->table('sales_orders')->where('sale_uuid', $offlineUuid)->first();
-            $this->assertStringContainsString('Replaced by offline bill ' . $offline->sale_no, (string) $old->notes);
-            $this->assertSame('cancelled', $c->table('restaurant_table_sessions')->where('id', $old->restaurant_table_session_id)->value('status'));
-            $this->assertSame('available', $c->table('restaurant_tables')->where('id', $this->table13Id)->value('status'), 'the table is free online again');
-            $this->assertSame(0, $c->table('sales_order_line_cancellations')->where('sales_order_id', $onlineId)->count(), 'no kitchen cancellation recorded');
-            $fix = json_decode((string) $c->table('edge_inbound_sale_ingestions')->where('sale_uuid', $offlineUuid)->value('ack_payload'), true)['continuity']['reconcile'];
-            $this->assertSame(['replaced_online_bill', 'SO-ONLINE-13'], [$fix[0]['action'], $fix[0]['sale_no']]);
-        });
-        $after = $this->cloudFacts();
-        $this->assertSame($before['sales_orders'] + 1, $after['sales_orders'], 'the offline bill is the one sale');
-        $this->assertSame($before['payments'] + 1, $after['payments']);
-        $this->assertSame($before['kot_batches'], $after['kot_batches'], 'no kitchen print');
-        $this->assertSame($before['print_jobs'], $after['print_jobs']);
-    }
-
-    /** R7b — a different party's bill on the same table (other items) is a real open table: left open and reported, never closed by guess. */
-    public function test_an_online_bill_with_other_items_on_the_same_table_is_left_open_and_reported(): void
-    {
-        $this->assertSame('refreshed:initial', $this->tick()['work']['stock']);
-        $this->asEdge(fn () => app(LiveStateMirror::class)->apply($this->cloudLiveState()));
-        $onlineId = $this->onlineBillOnT13NotInTheCopy($this->raita, 50);
-        $this->goLocalAndAdopt();
-        $offlineUuid = $this->sellOnT13Offline();
-
-        $this->bridgeFailures = [];
-        $this->assertSame(1, (int) ($this->tick()['work']['outcomes']['acknowledged'] ?? 0));
-        $this->asCloud(function () use ($onlineId, $offlineUuid) {
-            $c = DB::connection('tenant');
-            $this->assertSame('held', $c->table('sales_orders')->where('id', $onlineId)->value('status'), 'left open — never closed by guess');
-            $fix = json_decode((string) $c->table('edge_inbound_sale_ingestions')->where('sale_uuid', $offlineUuid)->value('ack_payload'), true)['continuity']['reconcile'];
-            $this->assertSame('online_bill_left_open', $fix[0]['action']);
-            $this->assertStringContainsString('left open', app(\App\Services\Edge\EdgeSwitchoverReportService::class)->recent()[0]['text']);
-        });
     }
 
     /**
