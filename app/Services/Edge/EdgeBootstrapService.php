@@ -58,15 +58,6 @@ class EdgeBootstrapService
     private const PHASE1_PAYMENT_TYPES  = ['cash'];
     private const OFFLINE_DELIVERY_TYPES = ['own', 'aggregator']; // AGGREGATOR-CUSTOMER-OPTIONAL parity needs the aggregator channels offline too
 
-    /**
-     * EDGE OFFLINE-READINESS FIX (24 Nov 2026) — the printer / restaurant-table columns the appliance RECEIVES (buildSections) and
-     * the ONLY ones the config watermark hashes for those two tables (sourceRevision → configContentWatermark). Their other columns
-     * are live operational state rewritten all day long and are NOT appliance configuration: printer health (last_seen_at,
-     * last_error, last_ping_*: every print-agent heartbeat and every print job) and table occupancy / reservations.
-     */
-    private const PRINTER_SECTION_COLUMNS = ['id', 'branch_id', 'name', 'code', 'printer_type', 'print_role', 'supports_reminder', 'ip_address', 'port', 'paper_size', 'characters_per_line', 'is_default', 'is_active', 'agent_enabled'];
-    private const RESTAURANT_TABLE_SECTION_COLUMNS = ['id', 'branch_id', 'restaurant_floor_id', 'table_no', 'name', 'capacity', 'status', 'sort_order'];
-
     public function __construct(
         private readonly OfflineEdgeEntitlementService $entitlement,
         private readonly TenancyManager $tenancy,
@@ -493,11 +484,6 @@ class EdgeBootstrapService
      * the same real sections a bootstrap ships (EDGE-CONFIG-REFRESH-1 upsert/tombstone contract), stamped with the
      * monotonic config revision the appliance orders refreshes by. Deterministic identity per revision: the same
      * revision always yields the same manifest (one revision = one content), so a re-pull can never conflict.
-     * One deliberate exception (24 Nov 2026): restaurant_tables.status still ships as it is now, but occupancy no longer moves
-     * the watermark. The appliance ignores it except for 'inactive' (EdgeLocalConfigRefreshApplier::mergeOccupancyStatus). So
-     * two ticks applying the SAME revision concurrently (handback orchestrator + worker) may see different content. The loser
-     * then gets REVISION_CONFLICT for that tick. It is refused under the meta lock before writing anything, and the next tick
-     * sees applied = advertised.
      *
      * Fails closed: contract (entitlement/pairing) as for bootstrap; the device must be the branch's CURRENT
      * activation (a superseded device never receives config). Sections are read at one consistent point in time
@@ -616,23 +602,9 @@ class EdgeBootstrapService
         // W6: the contract generation is part of the watermark, so a schema bump always mints a NEW config revision (an
         // already-bootstrapped appliance applies it as a newer revision instead of a same-revision content conflict).
         $wm[] = 'bootstrap_schema=' . self::SCHEMA_VERSION;
-        $add('payment_methods'); $add('restaurant_floors', 'branch_id');
-        // EDGE OFFLINE-READINESS FIX (24 Nov 2026): restaurant_tables and printers by their SHIPPED configuration content, not
-        // max(updated_at) — dine-in occupancy and print-agent health rewrite those rows all day (configContentWatermark()).
-        // Occupancy (available / occupied / bill_requested / cleaning / reserved) is LOCALLY owned on the appliance
-        // (EdgeLocalConfigRefreshApplier::mergeOccupancyStatus): only "disabled or not" is configuration.
-        $wm[] = 'restaurant_tables=' . $this->configContentWatermark(
-            $conn->table('restaurant_tables')->where('branch_id', $b),
-            self::RESTAURANT_TABLE_SECTION_COLUMNS,
-            fn (array $row) => ['status' => (string) $row['status'] === 'inactive' ? 'inactive' : 'active'] + $row,
-        );
+        $add('payment_methods'); $add('restaurant_floors', 'branch_id'); $add('restaurant_tables', 'branch_id');
         $add('restaurant_waiters', 'branch_id'); $add('delivery_channels'); $add('delivery_riders', 'branch_id');
-        // The same printer set buildSections ships: the branch's printers PLUS the global ones (branch_id NULL).
-        $wm[] = 'printers=' . $this->configContentWatermark(
-            $conn->table('printers')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id')),
-            self::PRINTER_SECTION_COLUMNS,
-        );
-        $add('receipt_layout_settings', 'branch_id'); $add('category_printer_mappings', 'branch_id');
+        $add('printers', 'branch_id'); $add('receipt_layout_settings', 'branch_id'); $add('category_printer_mappings', 'branch_id');
         $add('service_charge_settings', 'branch_id'); $add('void_reasons'); $add('roles'); $add('permissions');
         // ONLINE-POS PARITY: promo codes and the customer book (delivery / attach customer) are synced config.
         $add('promotions', 'branch_id'); $add('promotion_targets'); $add('customers'); $add('customer_addresses');
@@ -667,77 +639,6 @@ class EdgeBootstrapService
         $wm[] = 'model_has_permissions=' . implode(',', $directPermissions->map(fn ($r) => $r->model_id . ':' . $r->permission_id)->all());
 
         return hash('sha256', implode("\n", $wm));
-    }
-
-    /**
-     * EDGE OFFLINE-READINESS FIX (24 Nov 2026, Khatri) — a watermark component over a table's SHIPPED configuration content (the
-     * exact columns buildSections() exports, by id; an insert or delete changes it too) instead of max(updated_at)|count.
-     *
-     * For the two tables whose rows are rewritten all day by live state that is not configuration:
-     *  - printers: every print-agent heartbeat folds health onto each printer it reached, through an Eloquent update that also
-     *    moves updated_at (PrintAgentApiController::heartbeat); every print job stamps last_seen_at / last_error;
-     *  - restaurant_tables: occupancy and reservation on every dine-in order.
-     *
-     * Hashing updated_at there minted a config revision on almost every heartbeat at a busy restaurant (~140 per hour). Each one
-     * forced a config refresh plus a stock-baseline cutover on the warm standby. An outage between the two left the accepted
-     * baseline at the old revision: STOCK_AUTHORITY_READY false, with no supervisor override.
-     *
-     * Real edits (IP, port, name, role, enabled; a table added, renamed, disabled or removed) still change this hash. It is
-     * cheap: a branch has a handful of printers and tables.
-     */
-    private function configContentWatermark($query, array $columns, ?callable $normalize = null): string
-    {
-        $rows = [];
-        foreach ($query->orderBy('id')->get($columns) as $r) {
-            $row = (array) $r;
-            $rows[] = $normalize !== null ? $normalize($row) : $row;
-        }
-
-        return hash('sha256', $this->canonicalJson($rows)) . '|' . count($rows);
-    }
-
-    /**
-     * EDGE OFFLINE-READINESS FIX (24 Nov 2026) — the product / variant identities this branch's appliance HOLDS: exactly the ids
-     * of the `products` and `product_variants` sections buildSections() ships.
-     *  - products: the sellable POS set, plus the raw materials of its active recipes, plus modifier-linked products;
-     *  - variants: the active variants of the sellable set, plus the ingredient variants.
-     *
-     * The stock-baseline issuance names only these. The appliance refuses a WHOLE package that names a product it cannot resolve
-     * (EdgeBaselineClient::assertResolvable). Before this, a stocked purchase-only item kept a branch from ever getting a
-     * baseline. The queries are the same as buildSections, pinned id for id by EdgeConfigWatermarkMySqlTest.
-     *
-     * @return array{products: array<int,true>, variants: array<int,true>}
-     */
-    public function deliveredProductIdentities(Branch $branch): array
-    {
-        $conn = DB::connection('tenant');
-        $b = (int) $branch->id;
-        $groupIds = $conn->table('modifier_groups')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id'))->pluck('id')->all();
-        $productIds = $conn->table('products')->where('is_sellable', 1)->where('is_pos_visible', 1)->where('status', 'active')->pluck('id')->all();
-        $pid = $productIds ?: [0];
-        $variantIds = $conn->table('product_variants')->where('is_active', 1)->whereIn('product_id', $pid)->pluck('id')->all();
-        $recipeIds = $conn->table('recipes')->where('is_active', 1)->whereIn('product_id', $pid)->pluck('id')->all();
-        $ingredients = $conn->table('recipe_ingredients')->whereIn('recipe_id', $recipeIds ?: [0])->get(['product_id', 'product_variant_id']);
-        $modifierProductIds = $conn->table('modifiers')->whereIn('modifier_group_id', $groupIds ?: [0])
-            ->whereNotNull('linked_product_id')->whereIn('linked_product_id', $conn->table('products')->select('id'))
-            ->pluck('linked_product_id')->all();
-
-        $candidates = array_values(array_unique(array_map('intval', array_merge(
-            $productIds,
-            $ingredients->pluck('product_id')->filter()->all(),
-            $modifierProductIds,
-        ))));
-        $products = $conn->table('products')->whereIn('id', $candidates ?: [0])->pluck('id')->all(); // the rows the section ships
-        $ingredientVariantIds = $ingredients->pluck('product_variant_id')->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
-        $variants = array_merge(
-            $variantIds,
-            $ingredientVariantIds ? $conn->table('product_variants')->whereIn('id', $ingredientVariantIds)->pluck('id')->all() : [],
-        );
-
-        return [
-            'products' => array_fill_keys(array_map('intval', $products), true),
-            'variants' => array_fill_keys(array_map('intval', $variants), true),
-        ];
     }
 
     /* ── deterministic branch-scoped sections (allowlists + coherence) ────── */
@@ -928,7 +829,7 @@ class EdgeBootstrapService
             'currencies' => $rows($conn->table('currencies'), ['id', 'code', 'name', 'symbol', 'decimal_places', 'is_default', 'is_active']),
             'currency_denominations' => $rows($conn->table('currency_denominations'), ['id', 'currency_id', 'denomination_value', 'denomination_type', 'is_active']),
             'restaurant_floors' => $rows($conn->table('restaurant_floors')->where('branch_id', $b), ['id', 'branch_id', 'name', 'code', 'status', 'sort_order']),
-            'restaurant_tables' => $rows($conn->table('restaurant_tables')->where('branch_id', $b), self::RESTAURANT_TABLE_SECTION_COLUMNS),
+            'restaurant_tables' => $rows($conn->table('restaurant_tables')->where('branch_id', $b), ['id', 'branch_id', 'restaurant_floor_id', 'table_no', 'name', 'capacity', 'status', 'sort_order']),
             'restaurant_waiters' => $rows($conn->table('restaurant_waiters')->where('branch_id', $b), ['id', 'branch_id', 'name', 'code', 'phone', 'status']),
             'delivery_channels' => $rows($conn->table('delivery_channels')->where('is_active', 1)->whereIn('type', self::OFFLINE_DELIVERY_TYPES),
                 ['id', 'name', 'type', 'commission_percent', 'is_active', 'sort_order']),
@@ -938,7 +839,7 @@ class EdgeBootstrapService
             // SAME effective set — a branch-only filter silently dropped global printers, making Edge
             // routing fall back to browser where Cloud would have picked a real device.
             'printers' => $rows($conn->table('printers')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id')),
-                self::PRINTER_SECTION_COLUMNS),
+                ['id', 'branch_id', 'name', 'code', 'printer_type', 'print_role', 'supports_reminder', 'ip_address', 'port', 'paper_size', 'characters_per_line', 'is_default', 'is_active', 'agent_enabled']),
             'receipt_layout_settings' => $rows($conn->table('receipt_layout_settings')->where('branch_id', $b),
                 ['id', 'branch_id', 'document_type', 'paper_size', 'show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone', 'show_tax_number',
                  'show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time', 'show_item_codes', 'show_payment_breakdown', 'header_text', 'footer_text', 'font_size', 'kot_font_size',
