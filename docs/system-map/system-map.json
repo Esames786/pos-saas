@@ -1,24 +1,24 @@
 {
-    "built_at": "2026-11-24T07:29:32+00:00",
+    "built_at": "2026-11-24T07:31:04+00:00",
     "prod_branch": "feat/14d-2-plan-upgrade-requests",
     "prod_branch_head": "9d93ee96",
     "work": [
         {
             "path": "D:/laragon2/www/pos-saas-e09-autofix",
             "branch": "feat/edge-switchover-auto-reconcile-20261124",
-            "head": "349457e2",
+            "head": "1a49e9cb",
             "behind_prod": 0,
-            "ahead_of_prod": 142,
-            "last_commit": "2026-11-24\u00b7feat(edge cloud): switchover auto-reconcile - offline sales settle by the paid offline bill when the internet returns, no manager step (R1-R7: merge after online change, remove unpaid online lines not billed, never pay twice, cancelled-online sold offline, re-punched table closes old online bill, shift fallback; part-paid stays manual) + read-only Switchover auto-fixes list on Offline Edge page. Cloud-only, no migration, appliance unchanged",
+            "ahead_of_prod": 143,
+            "last_commit": "2026-11-24\u00b7docs(system-map): rebuild on SWITCHOVER-AUTO-RECONCILE (no table/route change)",
             "uncommitted_files": 0
         },
         {
             "path": "D:/laragon2/www/pos-saas-e09-deploy",
-            "branch": "deploy/edge-offline-readiness-20261124",
-            "head": "d72dfc80",
+            "branch": "deploy/edge-switchover-auto-reconcile-20261124",
+            "head": "0799b754",
             "behind_prod": 0,
-            "ahead_of_prod": 141,
-            "last_commit": "2026-11-24\u00b7docs(status): Edge offline-readiness fix production deploy record, 24 Nov 2026 (59b4c31d at 11:30 PKT; cause = empty stock baseline confirmed; Branch Server gates all pass except AUTHORITY_TAKEOVER_SAFE; 10-min settle PASS: config revision flat, lease never blocked)",
+            "ahead_of_prod": 144,
+            "last_commit": "2026-11-24\u00b7Merge EDGE-SWITCHOVER-AUTO-RECONCILE: offline sales settle automatically when the internet returns, no manager step (paid offline bill = money truth; never paid twice; re-punched table closes the old online bill; part-paid online stays manual) + Switchover auto-fixes list on the Offline Edge page (349457e2, Cloud-only, no migration)",
             "uncommitted_files": 0
         },
         {
@@ -375,132 +375,132 @@
     ],
     "plans": [
         {
+            "file": "docs/plans/edge-switchover-auto-reconcile-2026-11-24.md",
+            "title": "Edge switchover auto-reconcile: no manager step when the internet returns (24 Nov 2026)",
+            "modified": "2026-11-24"
+        },
+        {
             "file": "docs/plans/bill-date-filter-2026-11-10.md",
             "title": "BILL-DATE-FILTER-1 \u2014 Supplier Invoices list: From / To + Today / Yesterday (10 Nov 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/bill-preview-wrong-print-2026-09-14.md",
             "title": "BILL-PREVIEW-WRONG-PRINT-1 \u2014 table ka bill preview hota hai, magar chhapta koi aur order hai",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/billing-date-keep-2026-10-31.md",
             "title": "BILLING-DATE-KEEP-1 \u2014 paying an invoice never pulls the subscription end date back (31 Oct 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/cash-book-report-2026-10-10.md",
             "title": "CASH-BOOK-REPORT-1 \u2014 Cash Book report: kitna aaya, kitna gaya, kis cash/bank me, tareekh-war",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/category-parent-guard-2026-10-21.md",
             "title": "CATEGORY-PARENT-GUARD-1 \u2014 a category can never sit inside its own sub-category (21 Oct 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/catering-product-model-fix-2026-08-15.md",
             "title": "Catering product model \u2014 what is wrong, and the work to fix it",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/catering-restore-in-place-2026-10-31.md",
             "title": "CATERING-RESTORE-IN-PLACE-1 \u2014 Restore dabane par wohi purani quotation wapas aaye (31 Oct 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/catering-send-language-2026-11-11.md",
             "title": "CATERING-SEND-LANGUAGE-1 \u2014 \"Send to network\" chuni hui zubaan me chhape (11 Nov 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/catering-simplify-2026-10-27.md",
             "title": "CATERING-SIMPLIFY-1 \u2014 one place to price and edit a catering dish (27 Oct 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/chart-seeder-keep-names-2026-11-09.md",
             "title": "CHART-SEEDER-KEEP-NAMES-1 \u2014 a deploy no longer renames a tenant's built-in accounts (9 Nov 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/cloud-onboarding-billing-email-2026-08-14.md",
             "title": "Cloud Self-Signup, Billing, Payment & Email \u2014 Research + Plan",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/commercial-rate-picker-2026-10-26.md",
             "title": "Commercial rate material picker (COMMERCIAL-RATE-PICKER-1) \u2014 26 Oct 2026",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/cost-block-clarity-2026-11-05.md",
             "title": "COST-BLOCK-CLARITY-1 \u2014 a clearer cost-block area on the dish form (5 Nov 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/dashboard-cards-when-used-2026-11-02.md",
             "title": "DASHBOARD-CARDS-WHEN-USED-1 \u2014 Tax and Expiry cards only where they mean something; how the 1% bills (2 Nov 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/dashboard-operating-business-date-2026-09-06.md",
             "title": "Dashboard ka \"Aaj\" \u2014 khuli shift ka business date",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/dashboard-seven-day-population-2026-09-02.md",
             "title": "Two order counts on one dashboard \u2014 research",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/deal-split-report-2026-11-08.md",
             "title": "DEAL-SPLIT-REPORT-1 \u2014 a deal's money shown under the items inside it (8 Nov 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/deals-as-their-own-report-heads-2026-09-02.md",
             "title": "Deals belong under their own heads \u2014 research",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/edge-0.8.3-release-contents-2026-11-16.md",
             "title": "Edge 0.8.3 \u2014 release contents (preparation only, 16 Nov 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/edge-0.9-auto-takeover-and-counter-self-service-2026-11-21.md",
             "title": "Edge 0.9 \u2014 lead decisions: optional Automatic Offline Takeover + self-service Offline Counter (21 Nov 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/edge-0.9-continuity-design.md",
             "title": "Edge 0.9 \u2014 shift / order continuity (stream A): design note and financial invariants",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/edge-0.9-impact-map-2026-11-21.md",
             "title": "Edge 0.9 \u2014 impact map, stream ownership and cross-stream contracts (Checkpoint 1, 21 Nov 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/edge-0.9-production-cloud-plan-2026-11-23.md",
             "title": "Edge 0.9: production Cloud delta (5 master + 1 tenant migrations). PLAN FOR OWNER APPROVAL",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         },
         {
             "file": "docs/plans/edge-0.9-wizard-and-continuity-brief-2026-11-21.md",
             "title": "Bingoo Edge 0.9 \u2014 \"Setup Wizard + Shift/Order Continuity\" brief (21 Nov 2026)",
-            "modified": "2026-11-24"
-        },
-        {
-            "file": "docs/plans/edge-offline-readiness-fix-2026-11-24.md",
-            "title": "Edge offline readiness fix: Khatri \"Switch to Offline\" would be refused (24 Nov 2026)",
-            "modified": "2026-11-24"
+            "modified": "2026-11-23"
         }
     ],
-    "git": "349457e2",
+    "git": "0799b754",
     "source": {
         "tenant_db": "pos_test_tenant_edgefix24_map",
         "master_db": "pos_test_master_edgefix24"
