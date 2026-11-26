@@ -319,7 +319,17 @@
        ⚠ Aur 24px ka matlab safhe par KAM khane: naapa gaya to Urdu 14 se
        13 par aa gaya. Yani 14 khanon wali booking ab doosre safhe par
        jayegi. Ye adla-badli har baar wohi hai. */
-    .item-ur { font-size: 24px; font-weight: 600; }
+    {{-- KITCHEN-SHEET-FIT-10-1 (26 Nov) — malik: "10 item k bad address wala
+         footer area agae". 10 khanon wali booking (teen lambe naam do satron
+         me) par paer doosre safhe par ja raha tha.
+
+         Font 24px HI rehta hai (29 Sep ka faisla). Sirf satron ka faasla
+         1.7 se 1.5: Urdu ki har satar ~1.3mm kam leti hai. Saath me body
+         partial me Item ka khaana 42% se 48% hua, is liye lambe naam kam
+         toot-te hain. Upar `.ur` ka 1.7 baqi Urdu (graahak ka naam waghaira)
+         par wohi rehta hai; ye qaida baad me aata hai is liye dish par yehi
+         chalta hai. --}}
+    .item-ur { font-size: 24px; font-weight: 600; line-height: 1.5; }
     .qty { font-size: 14px; font-weight: bold; white-space: nowrap; }
     .instructions { color: #374151; font-size: 12px; }
     /* KASHIF-KITCHEN-MATERIALS-1: the material line sits UNDER the dish and

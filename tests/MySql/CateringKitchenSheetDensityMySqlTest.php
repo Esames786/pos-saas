@@ -279,6 +279,12 @@ class CateringKitchenSheetDensityMySqlTest extends MySqlTenantTestCase
      * descender Latin ki leading par kat jate hain. Jagah bachane ke liye Urdu
      * ki leading ko 1.7 se neeche le jana harf katwa dega — safha bacha kar
      * kaghaz bekaar karna.
+     *
+     * KITCHEN-SHEET-FIT-10-1 (26 Nov): DISH ke naam (`.item-ur`) ab is se alag
+     * hain — malik ne 10 khanon ke saath paer pehle safhe par maanga, aur
+     * dish ki satron ka faasla 1.5 kiya gaya (font 24px wohi). Us ki apni had
+     * (1.5 se neeche nahi) CateringKitchenSheetFitTenMySqlTest me hai. Ye
+     * jaanch `.ur` ki hai — graahak ka naam aur baqi Urdu — jo 1.7 par hi hai.
      */
     public function test_the_urdu_leading_is_not_cut_below_what_nastaliq_needs(): void
     {
