@@ -40,3 +40,15 @@ khane ≈ 13 ek safhe par.
 
 ## Wapsi
 Do qeematein wapas: `.item-ur` se `line-height: 1.5` hatao, chaurai 42/19. Koi data nahi badalta.
+
+## Deploy — 26 Nov 2026 ~21:55 PKT (malik: "kardo deploy")
+- Merge `dbf4c2cb` (feature `29aa84bc` + language-test pattern fix `29311563`) on production `040e91f4`; pushed,
+  origin == HEAD; `bash deploy.sh` exit 0 (deploy.sh unchanged); prod HEAD `dbf4c2cb`.
+- Tests before deploy: FitTen 3, Density 11, Preview 25, Language 11 (purana pattern 12 Nov se laal tha —
+  `<!--printed-at-->` nishan; ab hara), VenueNameOnly 6, SendLanguage 4, RequirementsToggle 5, PrintPrepare 12 — sab hare.
+- After deploy: PERMISSIONS OK (14 snapshots, lost 0, gained 0); smoke SAME 13/13 (tb_diff 0, neg 0, dept 0);
+  log ERROR 10 → 10; kashifkitchen/khatribiryani login + bingoopos.com 200.
+- Live render (KK release 22, Urdu, real controller): `.item-ur { font-size: 24px; font-weight: 600; line-height: 1.5; }`,
+  widths 48/13, comment leak 0. PRINT-PREPARE ki purani tayyar copies ka fingerprint HTML se banta hai, is liye
+  naya parcha khud nayi PDF banwata hai.
+- Baqi: KK par wohi 10 khanon wali booking chhap kar photo — paer pehle safhe par? ے/ں takraate to nahi?
