@@ -325,7 +325,10 @@ class CateringKitchenSheetLanguageMySqlTest extends MySqlTenantTestCase
 
         $html = $this->sheet($release->id, 'ur');
 
-        $this->assertMatchesRegularExpression('/<span dir="ltr">[^<]*چھپا[^<]*\d{1,2} \w{3} \d{4}/u', $html,
+        // PRINT-PREPARE-1 (12 Nov) ne waqt ke gird `<!--printed-at-->` nishan
+        // lagaya (fingerprint ke liye). Wo span ke ANDAR hai, is liye LTR ki
+        // shart wohi rehti hai — pattern sirf us nishan ko paar karta hai.
+        $this->assertMatchesRegularExpression('/<span dir="ltr">[^<]*(?:<!--printed-at-->)?[^<]*چھپا[^<]*\d{1,2} \w{3} \d{4}/u', $html,
             'chhapne ka waqt apne LTR khaane me ho — warna tareekh ulti chhapti hai');
     }
     // ── helpers ────────────────────────────────────────────────────────────

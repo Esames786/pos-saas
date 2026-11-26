@@ -182,9 +182,15 @@
                      khaanon se liye gaye jin ka content is daur me chhota hua —
                      Party/Own (label ab 11px) aur Done. Qty aur Instructions waise
                      hi hain, is liye un se kuch nahi liya gaya.
-                     Jama: 5 + 16 + 42 + 19 + 13 + 5 = 100. --}}
-                <th style="width: 42%;">{{ $t('Item', 'آئٹم') }}</th>
-                <th style="width: 19%;">{{ $t("Instructions", "ہدایات") }}</th>
+                     Jama: 5 + 16 + 42 + 19 + 13 + 5 = 100.
+
+                     KITCHEN-SHEET-FIT-10-1 (26 Nov): Item 42 -> 48%, chhe
+                     fisad Instructions se (19 -> 13%). Hidayat aksar khali
+                     hoti hai aur lambi ho to neeche lipat jati hai; dish ka
+                     naam toot-ne se har baar ek poori Urdu satar lagti thi.
+                     Jama: 5 + 16 + 48 + 13 + 13 + 5 = 100. --}}
+                <th style="width: 48%;">{{ $t('Item', 'آئٹم') }}</th>
+                <th style="width: 13%;">{{ $t("Instructions", "ہدایات") }}</th>
                 {{-- KITCHEN-SHEET-A5-1 (teesra daur) — "Done" ka khaana gaya,
                      us ki jagah maal. Malik: "done wali column hatado, us ki
                      jagah part ya own upar neeche dikha do."
