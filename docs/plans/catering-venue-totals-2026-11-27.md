@@ -66,3 +66,25 @@ Advance / Refund / Balance (unchanged)
   - Quotation with discount, English and Urdu: Total 23,320 between the lines, then Discount −220 highlighted, then Net
     Total 23,100.
   - Quotation without discount: unchanged.
+
+## Deployed — 27 Nov 2026 ~21:26 UTC (28 Nov 02:26 PKT), merge `446fd1c4`
+
+- **Before the deploy:**
+  - Owner's word: "teekh hai hogiya to deploy kardo".
+  - The canonical checkout was at `9d93ee96`, behind origin `d8af5c9a`. It was fast-forwarded first. Production had not
+    moved past this branch's base, so the merge is exactly this release's 9 files.
+  - origin == HEAD == `446fd1c4` was checked before `deploy.sh`.
+  - Production read-only checks before:
+    - Permission snapshot (`/tmp/vt_perm.php`, `PERM_SNAP` passed after `env`).
+    - Smoke clean on 13 tenants.
+    - KK quotation #1488 (EV-20261127-0789 Q1) rendered in the old order (Discount, then Net Total). Booking form venue
+      `maxlength=30`.
+  - The old `/tmp/perm_snapshot.php` was gone from prod; a fresh copy was written as `/tmp/vt_perm.php`.
+- **`deploy.sh`:** exit 0, tenants ok=13 skipped=0, nothing to migrate.
+- **After the deploy:**
+  - **PERMISSIONS OK:** every role's grants identical (master 70→70, kashifkitchen 2026→2026, khatribiryani
+    1896→1896, …), no user's roles changed.
+  - Smoke clean: tb_diff 0, neg_on_disallowed 0, department_negative 0 on all 13 tenants.
+  - KK quotation #1488 through the real controller: Subtotal 16,400 · Service 1 · Fare 800 · **Total 17,201** (between
+    the lines) · **Discount −501** (highlighted) · **Net Total 16,700**. Booking form venue `maxlength=200`.
+  - No new error in the app log after the deploy.
