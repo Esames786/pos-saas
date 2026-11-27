@@ -25,6 +25,9 @@ use Tests\MySql\Support\TenantFixtures;
  * (qaide se pehle likha gaya) us booking ki baqi editing na roke — warna kal
  * koi operator kisi purani booking ka PAX badalne jayega aur venue ki ghalti
  * par atak jayega jo us ne likhi hi nahi thi.
+ *
+ * VENUE-LIMIT-200-1 (27 Nov) — malik: hadd kam hai, 200 kar do. Ab 200 huroof:
+ * jo pata pehle rad hota tha (48) ab samata hai; rad wo hai jo 200 se lamba ho.
  */
 class CateringVenueNameOnlyMySqlTest extends MySqlTenantTestCase
 {
@@ -33,6 +36,11 @@ class CateringVenueNameOnlyMySqlTest extends MySqlTenantTestCase
     private int $branchId;
 
     private const FULL_ADDRESS = 'a 489 bl 5 gulshan iqbal near sirsyed university';
+
+    /** 200 se lamba, magar database ke 255 me samata hai — purani booking jaisa. */
+    private const TOO_LONG = 'a 489 bl 5 gulshan iqbal near sirsyed university, opposite dental clinic, '
+        .'second lane after the mosque, ground floor hall with the green gate, '
+        .'ask for the manager at reception, parking at the back of the building';
 
     protected function setUp(): void
     {
@@ -58,23 +66,29 @@ class CateringVenueNameOnlyMySqlTest extends MySqlTenantTestCase
     {
         $html = $this->controller()->create()->render();
 
-        $this->assertSame(30, CateringEvent::VENUE_MAX_LENGTH);
-        $this->assertMatchesRegularExpression('/name="venue"[^>]*maxlength="30"/s', $html,
+        $this->assertSame(200, CateringEvent::VENUE_MAX_LENGTH);
+        $this->assertMatchesRegularExpression('/name="venue"[^>]*maxlength="200"/s', $html,
             'venue ka khana maxlength ke baghair hai — lamba pata phir likha ja sakta hai');
         $this->assertStringContainsString('placeholder="Jaise: Universal Banquet"', $html);
         $this->assertStringContainsString('Poora pata upar <strong>Address</strong> me likhein', $html);
     }
 
-    /** Nayi booking: chhota naam qubool, poora pata venue me rad — saaf wajah ke saath. */
-    public function test_a_new_booking_takes_a_name_and_refuses_a_full_address(): void
+    /** Nayi booking: naam aur 48 huroof ka pata qubool, 200 se lamba rad — saaf wajah ke saath. */
+    public function test_a_new_booking_takes_a_name_and_refuses_a_venue_over_the_limit(): void
     {
         // Pehle probe zinda: naam wali booking banti hai.
         $this->controller()->store($this->request($this->valid(['customer_name' => 'NAME OK', 'venue' => 'Universal Banquet'])));
         $this->assertSame('Universal Banquet', CateringEvent::where('customer_name', 'NAME OK')->value('venue'));
 
+        // VENUE-LIMIT-200-1: jo 30 ki hadd par rad hota tha, ab samata hai.
+        $this->controller()->store($this->request($this->valid(['customer_name' => 'ADDRESS OK', 'venue' => self::FULL_ADDRESS])));
+        $this->assertSame(self::FULL_ADDRESS, CateringEvent::where('customer_name', 'ADDRESS OK')->value('venue'));
+
+        $this->assertGreaterThan(200, mb_strlen(self::TOO_LONG));
+        $this->assertLessThanOrEqual(255, mb_strlen(self::TOO_LONG), 'database ke khaane me samana chahiye — rad hamara qaida kare, database nahi');
         try {
-            $this->controller()->store($this->request($this->valid(['customer_name' => 'LONG VENUE', 'venue' => self::FULL_ADDRESS])));
-            $this->fail('poora pata venue me qubool ho gaya');
+            $this->controller()->store($this->request($this->valid(['customer_name' => 'LONG VENUE', 'venue' => self::TOO_LONG])));
+            $this->fail('200 se lamba venue qubool ho gaya');
         } catch (ValidationException $e) {
             $message = implode(' ', $e->validator->errors()->get('venue'));
             $this->assertStringContainsString('sirf hall ya jagah ka naam', $message);
@@ -84,14 +98,14 @@ class CateringVenueNameOnlyMySqlTest extends MySqlTenantTestCase
         $this->assertSame(0, CateringEvent::where('customer_name', 'LONG VENUE')->count());
     }
 
-    /** Hadd par theek 30 huroof qubool, 31 nahi. */
-    public function test_the_limit_is_thirty_characters_exactly(): void
+    /** Hadd par theek 200 huroof qubool, 201 nahi. */
+    public function test_the_limit_is_two_hundred_characters_exactly(): void
     {
-        $this->controller()->store($this->request($this->valid(['customer_name' => 'THIRTY', 'venue' => str_repeat('a', 30)])));
-        $this->assertSame(1, CateringEvent::where('customer_name', 'THIRTY')->count());
+        $this->controller()->store($this->request($this->valid(['customer_name' => 'TWO HUNDRED', 'venue' => str_repeat('a', 200)])));
+        $this->assertSame(1, CateringEvent::where('customer_name', 'TWO HUNDRED')->count());
 
         $this->expectException(ValidationException::class);
-        $this->controller()->store($this->request($this->valid(['customer_name' => 'THIRTY ONE', 'venue' => str_repeat('a', 31)])));
+        $this->controller()->store($this->request($this->valid(['customer_name' => 'TWO HUNDRED ONE', 'venue' => str_repeat('a', 201)])));
     }
 
     /** Purani booking ka lamba venue, bina chhede wapas aaye, to baqi editing nahi rukti. */
@@ -99,11 +113,11 @@ class CateringVenueNameOnlyMySqlTest extends MySqlTenantTestCase
     {
         $event = $this->oldBooking();
 
-        $this->controller()->update($this->request($this->valid(['venue' => self::FULL_ADDRESS, 'pax' => 250])), $event);
+        $this->controller()->update($this->request($this->valid(['venue' => self::TOO_LONG, 'pax' => 250])), $event);
 
         $event->refresh();
         $this->assertSame(250, (int) $event->pax, 'PAX ki tabdeeli venue ki wajah se ruk gayi');
-        $this->assertSame(self::FULL_ADDRESS, $event->venue);
+        $this->assertSame(self::TOO_LONG, $event->venue);
     }
 
     /** Magar purane venue ko KISI AUR lambe text se badalna rad hai. */
@@ -112,13 +126,13 @@ class CateringVenueNameOnlyMySqlTest extends MySqlTenantTestCase
         $event = $this->oldBooking();
 
         try {
-            $this->controller()->update($this->request($this->valid(['venue' => self::FULL_ADDRESS.' opp dental clinic'])), $event);
+            $this->controller()->update($this->request($this->valid(['venue' => str_replace('green gate', 'black gate', self::TOO_LONG)])), $event);
             $this->fail('badla hua lamba venue qubool ho gaya');
         } catch (ValidationException $e) {
             $this->assertArrayHasKey('venue', $e->validator->errors()->toArray());
         }
 
-        $this->assertSame(self::FULL_ADDRESS, $event->refresh()->venue);
+        $this->assertSame(self::TOO_LONG, $event->refresh()->venue);
     }
 
     /** Aur purane lambe venue ko chhote naam se badalna — yehi to chahiye — qubool. */
@@ -136,7 +150,7 @@ class CateringVenueNameOnlyMySqlTest extends MySqlTenantTestCase
     /** Qaide se PEHLE ki booking: venue me poora pata (service se, jo form ka qaida nahi lagati). */
     private function oldBooking(): CateringEvent
     {
-        return app(CateringEstimateService::class)->createEvent($this->valid(['venue' => self::FULL_ADDRESS]));
+        return app(CateringEstimateService::class)->createEvent($this->valid(['venue' => self::TOO_LONG]));
     }
 
     private function controller(): CateringEventController

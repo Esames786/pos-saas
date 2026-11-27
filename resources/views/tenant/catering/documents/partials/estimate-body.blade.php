@@ -205,13 +205,24 @@
     @if($estimate->other_charge_amount > 0)
         <tr><td class="k">{{ $estimate->other_charge_label ?: $t('Other Charges', 'دیگر چارجز') }}</td><td class="num">{{ number_format($estimate->other_charge_amount, 2) }}</td></tr>
     @endif
-    @if($estimate->discount_amount > 0)
-        <tr><td class="k">{{ $t('Discount', 'رعایت') }}</td><td class="num">-{{ number_format($estimate->discount_amount, 2) }}</td></tr>
+    {{-- CATERING-TOTALS-ORDER-1 (27 Nov) — malik: pehle Total, phir thora numaya
+         Discount, phir Net Total aur advance. Discount ho to charges ke baad
+         Total (Subtotal + charges) do lakeeron ke beech aata hai, us ke neeche
+         Discount apne dabbe me, phir Tax agar ho, phir Net Total. Discount na
+         ho to kaghaz pehle jaisa: Net Total hi lakeeron ke beech. Net Total
+         wohi rehta hai jo mehfooz hai; Total minus Discount plus Tax = Net Total. --}}
+    @php
+        $hasDiscount = (float) $estimate->discount_amount > 0;
+        $beforeDiscount = (float) $estimate->subtotal + (float) $estimate->service_charge_amount + (float) $estimate->other_charge_amount;
+    @endphp
+    @if($hasDiscount)
+        <tr class="grand"><td>{{ $t('Total', 'ٹوٹل') }}</td><td class="num">{{ number_format($beforeDiscount, 2) }}</td></tr>
+        <tr class="disc"><td>{{ $t('Discount', 'رعایت') }}</td><td class="num">-{{ number_format($estimate->discount_amount, 2) }}</td></tr>
     @endif
     @if($estimate->tax_amount > 0)
         <tr><td class="k">{{ $t('Tax', 'ٹیکس') }}</td><td class="num">{{ number_format($estimate->tax_amount, 2) }}</td></tr>
     @endif
-    <tr class="grand"><td>{{ $t('Net Total', 'کل واجب الادا') }}</td><td class="num">{{ number_format($estimate->grand_total, 2) }}</td></tr>
+    <tr class="{{ $hasDiscount ? 'net' : 'grand' }}"><td>{{ $t('Net Total', 'کل واجب الادا') }}</td><td class="num">{{ number_format($estimate->grand_total, 2) }}</td></tr>
     {{-- CAT-DOC-001: every figure below comes from the one settlement authority.
          The refund line is printed whenever money has gone back, because an
          "Advance Received" of 30,000 beside a balance that assumes 20,000 is how

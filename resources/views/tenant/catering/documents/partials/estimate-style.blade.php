@@ -105,6 +105,10 @@
     .totals .k { color: #6b7280; }
     .totals .num { text-align: {{ $isUr ? 'left' : 'right' }}; }
     .totals .grand td { font-weight: bold; font-size: 15px; border-top: 2px solid #111827; border-bottom: 3px double #111827; }
+    .totals .disc td { font-weight: bold; font-size: 14px; color: #92400e; background: #fef3c7;
+                       border-top: 1.5px dashed #b45309; border-bottom: 1.5px dashed #b45309;
+                       -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .totals .net td { font-weight: bold; font-size: 15px; }
     .terms { margin-top: 12px; font-size: 11px; color: #6b7280; white-space: pre-line; }
     .footer { margin-top: 16px; display: flex; justify-content: space-between; font-size: 12px; }
     .sig { border-top: 1px solid #9ca3af; padding-top: 4px; width: 200px; text-align: center; color: #6b7280; }

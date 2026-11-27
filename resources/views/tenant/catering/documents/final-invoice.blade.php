@@ -68,6 +68,10 @@
     .totals .k { color: #6b7280; }
     .totals .num { text-align: {{ $isUr ? 'left' : 'right' }}; }
     .totals .grand td { font-weight: bold; font-size: 15px; border-top: 2px solid #111827; }
+    .totals .disc td { font-weight: bold; font-size: 14px; color: #92400e; background: #fef3c7;
+                       border-top: 1.5px dashed #b45309; border-bottom: 1.5px dashed #b45309;
+                       -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .totals .net td { font-weight: bold; font-size: 15px; }
     .totals .due td { font-weight: bold; font-size: 16px; border-top: 3px double #111827; }
     .paid-stamp { display: inline-block; border: 3px solid #15803d; color: #15803d; padding: 4px 18px; border-radius: 6px; font-size: 18px; font-weight: bold; transform: rotate(-4deg); }
     .adv { margin-top: 10px; width: 46%; margin-{{ $isUr ? 'right' : 'left' }}: auto; font-size: 12px; color: #6b7280; }
@@ -213,13 +217,21 @@
     @if($invoice->other_charge_amount > 0)
         <tr><td class="k">{{ $invoice->other_charge_label ?: $t('Other Charges', 'دیگر چارجز') }}</td><td class="num">{{ number_format($invoice->other_charge_amount, 2) }}</td></tr>
     @endif
-    @if($invoice->discount_amount > 0)
-        <tr><td class="k">{{ $t('Discount', 'رعایت') }}</td><td class="num">-{{ number_format($invoice->discount_amount, 2) }}</td></tr>
+    {{-- CATERING-TOTALS-ORDER-1 (27 Nov) — quotation wali tarteeb: Discount ho
+         to pehle Total (Subtotal + charges), phir numaya Discount, phir Tax agar
+         ho, phir Net Total. Discount na ho to kaghaz pehle jaisa. --}}
+    @php
+        $hasDiscount = (float) $invoice->discount_amount > 0;
+        $beforeDiscount = (float) $invoice->subtotal + (float) $invoice->service_charge_amount + (float) $invoice->other_charge_amount;
+    @endphp
+    @if($hasDiscount)
+        <tr class="grand"><td>{{ $t('Total', 'ٹوٹل') }}</td><td class="num">{{ number_format($beforeDiscount, 2) }}</td></tr>
+        <tr class="disc"><td>{{ $t('Discount', 'رعایت') }}</td><td class="num">-{{ number_format($invoice->discount_amount, 2) }}</td></tr>
     @endif
     @if($invoice->tax_amount > 0)
         <tr><td class="k">{{ $t('Tax', 'ٹیکس') }}</td><td class="num">{{ number_format($invoice->tax_amount, 2) }}</td></tr>
     @endif
-    <tr class="grand"><td>{{ $t('Net Total', 'کل واجب الادا') }}</td><td class="num">{{ number_format($invoice->grand_total, 2) }}</td></tr>
+    <tr class="{{ $hasDiscount ? 'net' : 'grand' }}"><td>{{ $t('Net Total', 'کل واجب الادا') }}</td><td class="num">{{ number_format($invoice->grand_total, 2) }}</td></tr>
     {{-- CATERING-LIVE-BALANCE-1 (28 Sep) — ye do adad AB ke hain, invoice
          banne ke waqt ke nahi.
 

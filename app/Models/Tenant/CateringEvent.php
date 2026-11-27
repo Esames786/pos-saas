@@ -52,8 +52,12 @@ class CateringEvent extends Model
      * Form ka `maxlength` aur controller ka pehra dono yahin se parhte hain.
      * Huroof ki hadd, lafzon ki nahi: "Al Mehmil Banquet Five Star" (27) samata
      * hai, "a 489 bl 5 gulshan iqbal near sirsyed university…" (66) nahi.
+     *
+     * VENUE-LIMIT-200-1 (27 Nov) — malik: "venue ki limit abhi kam hai, 200 kar do".
+     * 30 se 200 huroof. Khaana `varchar(255)` hai aur release/invoice venue ki
+     * nakal JSON me rakhte hain, is liye database nahi badalta.
      */
-    public const VENUE_MAX_LENGTH = 30;
+    public const VENUE_MAX_LENGTH = 200;
 
     /** States in which the event still accepts commercial (estimate) changes. */
     public const OPEN_STATUSES = [
