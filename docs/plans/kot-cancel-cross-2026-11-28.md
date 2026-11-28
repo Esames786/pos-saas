@@ -74,3 +74,17 @@ Results (28 Nov 2026, worktree `pos-saas-kotx`, test DBs `pos_test_{master,tenan
 
 After deploy, Khatri only (KOT layout row, branch 1): `show_cancel_cross = 1`, `order_type_font_size = 19`,
 `table_font_size = 19`. The owner or client can change or clear them in Edit Layout → KOT. Every other tenant stays as is.
+
+## Live — 28 Nov 2026 ~11:38 UTC (4:38 PM PKT), prod `c4978a53`
+
+- `bash deploy.sh` exit 0 (log `/root/deploy-kot-cancel-cross-2026-11-28-1138.log`).
+- Permissions: 14 snapshots (master + 13 tenants) before = after, 0 lost, 0 gained. Smoke 13/13 the same (`tb_diff=0`,
+  `neg_on_disallowed=0`, `department_negative=0`). Chart of accounts identical on all 13. Log ERRORs today 29 → 29.
+- Columns present on all 13 tenants; no row used them before the Khatri change.
+- Khatri (khatribiryani) KOT layout #1, branch 1: `show_cancel_cross=1`, `order_type_font_size=19`, `table_font_size=19`
+  (11:39:49 UTC). Before-backup of every Khatri layout row on the laptop (session scratchpad `kb_layout_before_20261128.json`).
+  Every other tenant stays OFF / blank.
+- Proof (in memory, job rows untouched): the real order HS-20261128101254-292 re-rendered — cancel job #152493 prints
+  ` XX CANCEL KOT #2 XX` at 2x2, both jobs print `DINE IN` and `TABLE: 2` at 2x2; waiter, items and the normal heading as before.
+- Branch Server (0.9.0, status ready) pulled config/refresh at 11:40:27 → 200 after the change; heartbeat 200. It is not sent the
+  new columns (by design, see Edge above) and prints today's KOT if it takes over.
