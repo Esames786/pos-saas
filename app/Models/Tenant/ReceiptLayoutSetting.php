@@ -31,6 +31,8 @@ class ReceiptLayoutSetting extends Model
         'show_order_note',
         // KOT-DEAL-HEADING-1: a deal prints its name once, its items under it (default OFF)
         'show_deal_as_heading',
+        // KOT-CANCEL-CROSS-1: a cancel ticket's heading reads "XX CANCEL KOT #n XX", at least double size (default OFF)
+        'show_cancel_cross',
     ];
 
     public const SUPPORTED_DOCUMENT_TYPES = ['receipt', 'kot', 'reminder'];
@@ -46,9 +48,10 @@ class ReceiptLayoutSetting extends Model
         'show_item_codes', 'show_payment_breakdown', 'show_bingoo_branding',
         'show_delivery_details', 'show_vehicle_number', 'show_order_type',
         'show_column_dividers', 'show_category_header', 'show_heading_stars',
-        'show_bill_barcode', 'show_order_note', 'show_deal_as_heading',
+        'show_bill_barcode', 'show_order_note', 'show_deal_as_heading', 'show_cancel_cross',
         'header_text', 'footer_text', 'font_size', 'kot_font_size',
-        'item_font_size', 'time_font_size', 'customer_font_size', 'is_active',
+        'item_font_size', 'time_font_size', 'customer_font_size',
+        'order_type_font_size', 'table_font_size', 'is_active',
     ];
 
     protected function casts(): array
@@ -78,6 +81,7 @@ class ReceiptLayoutSetting extends Model
             'show_bill_barcode'       => 'boolean',
             'show_order_note'         => 'boolean',
             'show_deal_as_heading'    => 'boolean',
+            'show_cancel_cross'       => 'boolean',
             'is_active'               => 'boolean',
             'font_size'               => 'integer',
             'kot_font_size'           => 'integer',
@@ -85,6 +89,9 @@ class ReceiptLayoutSetting extends Model
             'time_font_size'          => 'integer',
             // RECEIPT-CUSTOMER-SIZE-1: the bill's Customer / Phone / Deliver to lines. NULL = normal, as before.
             'customer_font_size'      => 'integer',
+            // KOT-CANCEL-CROSS-1: the KOT's order type line and TABLE line. NULL = the KOT font, as before.
+            'order_type_font_size'    => 'integer',
+            'table_font_size'         => 'integer',
         ];
     }
 

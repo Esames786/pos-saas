@@ -211,6 +211,8 @@ foreach ($layouts as $l) {
         'item_font_size' => $l->item_font_size,
         'time_font_size' => $l->time_font_size,
         'customer_font_size' => $l->customer_font_size,
+        'order_type_font_size' => $l->order_type_font_size,
+        'table_font_size' => $l->table_font_size,
         'header_text'   => $l->header_text,
         'footer_text'   => $l->footer_text,
         'is_active'     => (bool) $l->is_active,
@@ -249,6 +251,8 @@ function openEditLayout(layoutId, branchName, docType) {
     setFormValue(form, 'item_font_size', data.item_font_size ?? '');
     setFormValue(form, 'time_font_size', data.time_font_size ?? '');
     setFormValue(form, 'customer_font_size', data.customer_font_size ?? '');
+    setFormValue(form, 'order_type_font_size', data.order_type_font_size ?? '');
+    setFormValue(form, 'table_font_size', data.table_font_size ?? '');
     setFormValue(form, 'header_text',  data.header_text || '');
     setFormValue(form, 'footer_text',  data.footer_text || '');
 
@@ -291,7 +295,8 @@ function syncLayoutOptions(form, docType) {
                   'show_order_type', 'show_column_dividers', 'show_bill_barcode'],
         kot:      ['show_branch_name', 'show_cashier_name', 'show_table_info', 'show_order_no',
                   'show_bingoo_branding', 'show_vehicle_number', 'show_column_dividers',
-                  'show_category_header', 'show_bill_barcode', 'show_order_note', 'show_deal_as_heading'],
+                  'show_category_header', 'show_bill_barcode', 'show_order_note', 'show_deal_as_heading',
+                  'show_cancel_cross'],
         reminder: ['show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no',
                   'show_order_time', 'show_updated_time', 'show_print_time', 'show_bingoo_branding',
                   'show_column_dividers'],
@@ -324,6 +329,8 @@ function buildPreviewUrl() {
     if (timeFs) params.set('time_font_size', timeFs);
     // Always sent, blank included: clearing the box must preview today's bill, not the saved size.
     params.set('customer_font_size', form.querySelector('[name="customer_font_size"]')?.value || '');
+    params.set('order_type_font_size', form.querySelector('[name="order_type_font_size"]')?.value || '');
+    params.set('table_font_size', form.querySelector('[name="table_font_size"]')?.value || '');
     params.set('header_text',  form.querySelector('[name="header_text"]')?.value  || '');
     params.set('footer_text',  form.querySelector('[name="footer_text"]')?.value  || '');
 

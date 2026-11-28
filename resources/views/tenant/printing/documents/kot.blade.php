@@ -36,6 +36,23 @@
             $dScaleH = min($iScaleH + 1, 8);
             $cScaleH = max($iScaleH - 1, 1);
             $normalFont = 'calc(' . $width . ' / ' . (42 * 0.6) . ')';
+
+            // KOT-CANCEL-CROSS-1 — mirrors EscPosPayloadService::kot(): the order type line and the TABLE line
+            // carry their own size, and a cancel ticket's heading is crossed and at least double size. Each is
+            // its own class ONLY when set, so a branch that sets none of them renders exactly today's HTML.
+            $bandCss = function (int $px) use ($width): string {
+                $w = match (true) { $px <= 17 => 1, $px <= 20 => 2, default => 3 };
+                $h = match (true) { $px <= 14 => 1, $px <= 17 => 2, $px <= 20 => 2, default => 3 };
+                $css = 'font-size: calc(' . $width . ' / ' . (max((int) floor(42 / $w), 8) * 0.6) . '); font-weight: bold; line-height: 1.15; overflow-wrap: break-word;';
+                if ($h > $w) {
+                    $css .= ' display: block; transform: scaleY(' . $h . '); transform-origin: left top; margin-bottom: ' . (($h - 1) * 1.2) . 'em;';
+                }
+
+                return $css;
+            };
+            $typeSize    = $layout?->order_type_font_size ?? null;
+            $tableSize   = $layout?->table_font_size ?? null;
+            $cancelCross = ($eventType ?? 'normal') === 'cancel' && (bool) ($layout?->show_cancel_cross ?? false);
         @endphp
         /* Without an @page rule the browser used its own page size and ~10mm margins, which on a
            continuous roll prints a blank band above the ticket and wastes paper below it. */
@@ -70,6 +87,16 @@
         .cbig    { transform: scaleY({{ $cScaleH }}); transform-origin: left top; margin-bottom: {{ ($cScaleH - 1) * 1.2 }}em; }
         @endif
         @endif
+        @if($typeSize !== null)
+        .obig    { {{ $bandCss((int) $typeSize) }} }
+        @endif
+        @if($tableSize !== null)
+        .tbig    { {{ $bandCss((int) $tableSize) }} }
+        @endif
+        @if($cancelCross)
+        /* "at least double size": the 2x2 band (18-20 px), or the KOT font when that is already bigger. */
+        .xbig    { {{ $bandCss(max((int) $fontSize, 19)) }} }
+        @endif
         hr       { border: none; border-top: 1px dashed #000; margin: 4px 0; }
         table    { width: 100%; border-collapse: collapse; }
         td       { vertical-align: top; padding: 2px 0; }
@@ -92,6 +119,10 @@
 </head>
 <body>
 
+@if($cancelCross)
+{{-- KOT-CANCEL-CROSS-1: crossed on both sides, at least double size — the same words the paper prints. --}}
+<div class="center xbig">XX CANCEL KOT #{{ ($sequenceNo ?? 0) ?: 1 }} XX</div>
+@else
 <div class="center bold" style="font-size:{{ $fontSize + 4 }}px">
     @if(($eventType ?? 'normal') === 'cancel')
         CANCEL KOT #{{ ($sequenceNo ?? 0) ?: 1 }}
@@ -103,6 +134,7 @@
         KOT #{{ ($sequenceNo ?? 0) ?: 1 }}
     @endif
 </div>
+@endif
 @if(($eventType ?? '') === 'duplicate')
 <div class="center bold">DUPLICATE {{ max($copyNo ?? 1, 1) }}</div>
 @endif
@@ -115,7 +147,7 @@
      nahi hain (thermal par hain — purana ikhtilaf). Jorne se har tenant ka preview badal jata,
      jabke kisi ne maanga nahi. Switch band hone par dono khud ba khud mil jate hain. --}}
 @php $kotStars = ($layout?->show_heading_stars ?? true) !== false; @endphp
-<div class="center big">{{ $kotStars ? '** ' : '' }}{{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }}{{ $kotStars ? ' **' : '' }}</div>
+<div class="center {{ $typeSize !== null ? 'obig' : 'big' }}">{{ $kotStars ? '** ' : '' }}{{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }}{{ $kotStars ? ' **' : '' }}</div>
 @if(!($layout?->show_category_header === false) && !empty($kotCategory ?? null))
 @php
     // Brackets are dropped when they would no longer fit, exactly as the ESC/POS builder does —
@@ -154,7 +186,7 @@
 {{-- Field ORDER + casing mirror EscPosPayloadService::kot() exactly, so the preview equals the
      paper: TABLE / WAITER (big, uppercase, no floor) → CASHIER → VEHICLE → TIME + date. --}}
 @if(!($layout?->show_table_info === false) && $salesOrder->restaurantTable)
-<div class="big">TABLE: {{ $salesOrder->restaurantTable->table_no }}</div>
+<div class="{{ $tableSize !== null ? 'tbig' : 'big' }}">TABLE: {{ $salesOrder->restaurantTable->table_no }}</div>
 @if($salesOrder->restaurantTableSession?->waiter)
 <div class="big">WAITER: {{ strtoupper($salesOrder->restaurantTableSession->waiter->name) }}</div>
 @endif

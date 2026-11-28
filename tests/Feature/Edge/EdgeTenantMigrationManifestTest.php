@@ -206,7 +206,10 @@ class EdgeTenantMigrationManifestTest extends TestCase
         // supplier_ledgers.entry_date, goods_receipt_revisions, purchase_bill voidable (ENUM, owner review), deal_split columns (EDGE_SCHEMA_SAFE ×4);
         // delivery_place_sightings, print_prepares (CLOUD_ONLY ×2).
         // EDGE 0.9 stream C (21 Nov 2026): + add_edge_auto_takeover_to_branches (CLOUD_ONLY — the setting reaches the appliance in the payload).
-        $this->assertSame(238, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6) + 025728d8 (3) + 59787ff6 exception (1) + H1 (1) + rehearsal chunks 1–8 (10) + chunks 9–11 (10) + Edge 0.9 auto-takeover (1)');
+        // KOT-CANCEL-CROSS-1 (28 Nov 2026): + add_kot_cancel_cross_and_line_sizes (EDGE_SCHEMA_SAFE — carried, not yet in the bootstrap list).
+        $this->assertSame(239, array_sum($counts), 'tree (173) + canonical pending (33) + post-99e9365 (6) + 025728d8 (3) + 59787ff6 exception (1) + H1 (1) + rehearsal chunks 1–8 (10) + chunks 9–11 (10) + Edge 0.9 auto-takeover (1) + KOT-CANCEL-CROSS-1 (1)');
+        $this->assertSame(EdgeTenantMigrationManifest::EDGE_SCHEMA_SAFE, $m->classification('2026_11_28_000001_add_kot_cancel_cross_and_line_sizes'),
+            'carried by the appliance; the bootstrap column list must not name these columns until every paired appliance has them');
         $this->assertSame(32, $counts[EdgeTenantMigrationManifest::CLOUD_ONLY]);
         $this->assertSame(4, count(array_filter(['2026_11_02_000001_add_order_note_toggle', '2026_11_02_000002_order_note_toggle_default_off', '2026_11_11_000001_add_deal_heading_toggle', '2026_11_14_000001_add_customer_font_size_to_receipt_layouts'], fn ($n) => $m->classification($n) === EdgeTenantMigrationManifest::EDGE_REQUIRED)), 'the replicated receipt layout columns are EDGE_REQUIRED');
         $this->assertTrue($m->entry('2026_11_03_000003_let_a_purchase_bill_be_voided')['OWNER_REVIEW_REQUIRED'], 'ENUM MODIFY keeps owner review (owner, 15 Nov 2026)');

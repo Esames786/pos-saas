@@ -947,6 +947,10 @@ class EdgeBootstrapService
                  // CANONICAL REHEARSAL chunks 10-11 (15 Nov 2026): KOT-ORDER-NOTE-1 (show_order_note, canonical 114413b9),
                  // KOT-DEAL-HEADING-1 (show_deal_as_heading, 7230a7b3), RECEIPT-CUSTOMER-SIZE-1 (customer_font_size, c8e333d9) —
                  // the Edge print worker renders the canonical KOT / receipt Blades from THIS row, so every switch they read replicates.
+                 // KOT-CANCEL-CROSS-1 (28 Nov 2026): show_cancel_cross / order_type_font_size / table_font_size are NOT listed
+                 // YET — the appliance updates a layout row with every key it receives, and an installed 0.9.0 appliance has no
+                 // such columns, so naming them here would fail its config refresh. Add them once every paired appliance runs a
+                 // package that carries 2026_11_28_000001 (manifest note). Until then the Branch Server prints today's KOT.
                  'show_order_note', 'show_deal_as_heading', 'customer_font_size', 'is_active']),
             // same §16 parity rule: routing accepts branch-or-GLOBAL mappings.
             'category_printer_mappings' => $rows($conn->table('category_printer_mappings')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id')), ['id', 'branch_id', 'terminal_id', 'category_id', 'printer_id', 'print_role', 'order_type', 'reminder_confirm_on_addition', 'is_active']),
